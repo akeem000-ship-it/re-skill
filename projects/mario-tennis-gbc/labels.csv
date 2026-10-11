@@ -12,7 +12,7 @@ bank,addr,name,comment
 0,0058,INT_Serial,
 0,0100,Entry,
 0,0150,Start,jp Init
-0,0153,BuildString,ASCII "10011171737"
+0,0153,BuildString,"ASCII ""10011171737"""
 0,015E,FarCallHL,A=bank HL=addr; restores bank on return
 0,0175,FarCallHL_Return,
 0,0184,FarJumpTable,A=bank HL=table B=index; ret if entry null
@@ -57,7 +57,7 @@ bank,addr,name,comment
 *,FF97,hSRAMBank,
 0,02EB,ReadJoypad,-> hJoyHeld $FF90 / hJoyPressed $FF94 / hJoyRepeat $FF91; A+B+Sel+Start = soft reset
 0,1906,PrintStringDebug,HL=ASCII string DE=packed coords -> BG map (debug font)
-0,1925,HexDigits,"0123456789ABCDEF"
+0,1925,HexDigits,0123456789ABCDEF
 0,1935,PrintHex16,
 0,1B38,ClearTasks,clears task list $C1C0 (16 x 4)
 0,1B6A,AddTask,A=param HL=func (current bank) -> task list
@@ -85,45 +85,45 @@ bank,addr,name,comment
 0A,4F2C,GameTop,top-level infinite loop: AddTask(0A:4EFC) + call 0A:4F40
 0A,4F40,FieldScene,RPG field: setup map wC281 + scripts then FieldLoop; returns on map exit (wC2A1)
 08,4070,InitGameVars,
-1F,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
-1F,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
-1F,4004,TExtBAnk_OFFsEts,u16 oFFsEts
-25,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
-25,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
-25,4004,TExtBAnk_OFFsEts,u16 oFFsEts
-26,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
-26,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
-26,4004,TExtBAnk_OFFsEts,u16 oFFsEts
-30,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
-30,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
-30,4004,TExtBAnk_OFFsEts,u16 oFFsEts
-31,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
-31,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
-31,4004,TExtBAnk_OFFsEts,u16 oFFsEts
-32,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
-32,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
-32,4004,TExtBAnk_OFFsEts,u16 oFFsEts
-33,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
-33,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
-33,4004,TExtBAnk_OFFsEts,u16 oFFsEts
-34,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
-34,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
-34,4004,TExtBAnk_OFFsEts,u16 oFFsEts
-35,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
-35,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
-35,4004,TExtBAnk_OFFsEts,u16 oFFsEts
-36,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
-36,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
-36,4004,TExtBAnk_OFFsEts,u16 oFFsEts
-37,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
-37,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
-37,4004,TExtBAnk_OFFsEts,u16 oFFsEts
-5E,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
-5E,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
-5E,4004,TExtBAnk_OFFsEts,u16 oFFsEts
-6E,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
-6E,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
-6E,4004,TExtBAnk_OFFsEts,u16 oFFsEts
+1F,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+1F,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+1F,4004,TextBank_Offsets,u16 offsets
+25,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+25,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+25,4004,TextBank_Offsets,u16 offsets
+26,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+26,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+26,4004,TextBank_Offsets,u16 offsets
+30,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+30,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+30,4004,TextBank_Offsets,u16 offsets
+31,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+31,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+31,4004,TextBank_Offsets,u16 offsets
+32,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+32,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+32,4004,TextBank_Offsets,u16 offsets
+33,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+33,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+33,4004,TextBank_Offsets,u16 offsets
+34,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+34,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+34,4004,TextBank_Offsets,u16 offsets
+35,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+35,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+35,4004,TextBank_Offsets,u16 offsets
+36,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+36,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+36,4004,TextBank_Offsets,u16 offsets
+37,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+37,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+37,4004,TextBank_Offsets,u16 offsets
+5E,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+5E,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+5E,4004,TextBank_Offsets,u16 offsets
+6E,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+6E,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+6E,4004,TextBank_Offsets,u16 offsets
 0,0480,CopyToVRAM,HL=src DE=dst C=16B blocks; DE $A000-$BFFF = VRAM bank 1 (bit5 of D cleared); uses HDMA queue if LCD on
 0,05B0,LoadBGPalettes,HL=src D=first pal E=count -> wPalBuffer $C1xx and $C2xx
 0,021A,CopyBankTable,H=bank L=idx DE=dst BC=len: raw copy of [bank:$4000+idx]
@@ -160,7 +160,7 @@ bank,addr,name,comment
 *,DAD0,wSprHeader,16-byte copy of sprite bank header
 2D,4000,TrigTable,sin table used by MulSinCos
 03,47F9,SRAM_ClearAll,zero 4 SRAM banks x $2000
-03,47E9,SaveSignature,"CAMELOTGBTENNIS\0"
+03,47E9,SaveSignature,CAMELOTGBTENNIS\0
 03,4825,SRAM_ClearFlags,zero $A040-$A05F
 03,4844,SRAM_Checksum,HL = 16-bit byte sum of $A038..$A76F ($738 bytes)
 03,4866,SRAM_UpdateChecksumHeader,writes $A030 and mirrors $A000-$A03F to bank 1

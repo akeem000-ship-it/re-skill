@@ -556,10 +556,10 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [ ] Ph4: why do courts (maps 0-15) have w0 == w4? check the court-loading path (a different loader?)
 - [x] Ph4: identify banks 40-5D as character sprite banks (header, frame list, anim scripts)
 - [x] Ph4: find the OAM builder and decode sprite frame placement, render all frames (tools/render_sprites.py)
-- [ ] Ph4: map sprite id → character (character-select code / sprite palettes); decode header +0/+2
+- [x] Ph4: map sprite id → character (RosterToSprite 07:5A50, verified live); header +0 = colour scheme (+2 still TBD)
 - [x] Ph4: find OBJ palettes for characters and render sprites in color (18:4300)
 - [ ] Ph4: decode the animation script format at header +6 (`$FF/$FB/$FD` opcodes)
-- [ ] Ph4: pair tile/map/palette blocks into full screens (title screen first) using the loading code
+- [x] Ph4: pair tile/map/palette blocks into full screens (LoadScreen 39:407E, 47 screens incl. title)
 - [x] Ph5: decode SRAM save container (signature, checksum, bank-1 backup, persistent flags)
 - [ ] Ph5: map the rest of the save payload $A038-$A76F (RPG character, records at $A6C1)
 - [x] Ph5: character roster + type table (38:58FB)
@@ -591,7 +591,7 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [ ] Ph7: port the real CPU AI once decoded; until then tune the invented error model to emulator stats
 - [ ] Ph7: decode ProjectPoint 00:2D8C and replace the fitted projection
 - [ ] Ph7: HUD with the game's font/score graphics; sound
-- [ ] Ph7: pixel-compare against emulator screenshots (checklist Ph7)
+- [x] Ph7: pixel-compare court rendering against emulator screenshots (99.9%)
 
 ### Documentation
 
