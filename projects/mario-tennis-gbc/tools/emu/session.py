@@ -20,13 +20,6 @@ ROM = os.path.join(ROOT, "rom", "mario_tennis.gbc")
 
 class Emu:
     def __init__(self, fresh=False, sound=False):
-        # tools/dis.py shadows the stdlib `dis` (needed by numpy/inspect inside PyBoy):
-        # drop tools/ from sys.path and any cached shadow module before importing PyBoy.
-        tools_dir = os.path.join(ROOT, "tools")
-        mod = sys.modules.get("dis")
-        if mod is not None and os.path.dirname(os.path.abspath(getattr(mod, "__file__", "") or "")) == tools_dir:
-            del sys.modules["dis"]
-        sys.path[:] = [p for p in sys.path if os.path.abspath(p or ".") != tools_dir]
         from pyboy import PyBoy
         if fresh:
             ram = ROM + ".ram"

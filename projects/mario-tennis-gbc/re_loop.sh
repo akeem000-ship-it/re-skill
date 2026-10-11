@@ -12,7 +12,7 @@ DEAD_ENDS="dead_ends.md"
 MAX_TURNS=150
 GIT_ADD="REVERSE.md labels.csv dead_ends.md CLAUDE.md web/ docs/ tools/"
 ALLOWED_TOOLS="\
-Bash(python3 tools/dis.py*),\
+Bash(python3 tools/disasm.py*),\
 Bash(python3 tools/xref.py*),\
 Bash(python3 tools/search_bytes.py*),\
 Bash(python3 tools/decode_tables.py*),\
@@ -79,7 +79,7 @@ Then read REVERSE.md ## Next Tasks. Pick the top $TASKS unchecked items (- [ ]).
 
 Tasks fall into three categories:
 
-**RE investigation** (${TOOLS_PREFIX}dis.py / xref.py / search_bytes.py / decode_tables.py):
+**RE investigation** (${TOOLS_PREFIX}disasm.py / xref.py / search_bytes.py / decode_tables.py):
 1. Run 2-3 tool calls.
 2. Write findings to REVERSE.md immediately. Add addresses to $LABELS.
 3. Repeat: more tool calls, then write again.
@@ -104,7 +104,7 @@ Mark task done (- [x]) once fully documented or implemented.
 End your final message with: SESSION_SUMMARY: <one line>
 
 RE tools (${TOOLS_PREFIX}):
-  ${TOOLS_PREFIX}dis.py <bank> <addr> [nbytes] | dis.py BB:AAAA [nbytes] [--stop]
+  ${TOOLS_PREFIX}disasm.py <bank> <addr> [nbytes] | disasm.py BB:AAAA [nbytes] [--stop]
   ${TOOLS_PREFIX}xref.py <bank> <addr> [bank_filter] [--data]
   ${TOOLS_PREFIX}decompress.py BB:AAAA [out.bin]   ${TOOLS_PREFIX}dump_lz.py BB idx
   ${TOOLS_PREFIX}scan_jumptables.py [bank]          ${TOOLS_PREFIX}scan_assets.py [--bank BB]

@@ -215,3 +215,26 @@ bank,addr,name,comment
 *,C140,wObjPalBuf,8 OBJ palettes (BG at C100); mirrored at C240
 1C,430E,DrawStatScreen,11 stats from WRAM6 D00E + modifiers D019 (verified order via PyBoy)
 1A,7AF8,CalcStatDeltas,
+08,576B,BallStep,per-frame ball physics (see REVERSE.md Ball physics)
+08,5A87,AddVel24ToPos32,HL=pos (16.16) DE=vel (8.16)
+08,5949,BallFences,|X|>=$3A0, Y>=$6E0, Y<-$700: reflect + re-step + damp twice
+08,5814,BallNetCheck,sign change of Y (C407 vs C417)
+08,55B4,BallDrag,k=(speed>>4)+1 ; v -= v*k/512
+08,5613,BallCurve,rotate (vX,vY) by spin rate wC41E
+08,4677,BallGroundCheck,
+08,46B0,BallDamp,v *= wC4AC/256 (X,Y) wC4AD/256 (Z)
+08,468B,MulVel24,
+*,C400,wBallX,16.16 signed (lateral)
+*,C404,wBallY,16.16 signed (depth; + = near/P1 side, net = 0)
+*,C408,wBallZ,16.16 signed height (negative = up; ground = 0)
+*,C410,wBallPrev,copy of C400-C40B before the step
+*,C41E,wBallSpin,16-bit curve rate used by BallCurve
+*,C420,wBallVX,8.16 signed (3 bytes)
+*,C423,wBallVY,8.16 signed
+*,C426,wBallVZ,8.16 signed (positive = down)
+*,C42A,wBallSpeedXY,8.8 |vxy|
+*,C42C,wBallSpeed,8.8 |v| (3D)
+*,C4AC,wBounceDampXY,$CD = 0.80
+*,C4AD,wBounceDampZ,$CD = 0.80
+*,C4B0,wBallQuadrant,sign bits of X/Y
+*,C4B3,wBallEvent,1 = ground bounce, 2 = fence hit

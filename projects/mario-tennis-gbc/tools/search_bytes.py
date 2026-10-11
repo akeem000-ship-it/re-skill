@@ -54,7 +54,7 @@ def main():
             line += "  " + " ".join("%02x" % x for x in rom[max(0, off - ctx):off + len(pat) + ctx])
         print(line)
         if dis:
-            from dis import disasm
+            from disasm import disasm
             disasm(rom, b, a, dis * 2, labels)
         n += 1
         if n >= mx:

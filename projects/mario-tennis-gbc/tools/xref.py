@@ -10,7 +10,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gbrom import load_rom, nbanks, BANK_SIZE, Labels
 from instruction_set import decode
-from dis import inline_len, farcall_target
+from disasm import inline_len, farcall_target
 
 
 def scan(rom, bank):

@@ -19,8 +19,8 @@ The ROM and everything extracted from it are gitignored. Only tools and notes ar
 ## Quick tour
 
 ```bash
-python3 tools/dis.py 0 2578 0x40          # Init
-python3 tools/dis.py MainLoop 0x40        # labels work as addresses
+python3 tools/disasm.py 0 2578 0x40          # Init
+python3 tools/disasm.py MainLoop 0x40        # labels work as addresses
 python3 tools/xref.py 0 1797              # who calls the LZ decompressor
 python3 tools/decompress.py 01:607c       # decompress one block
 python3 tools/render_map.py 18            # render RPG map 18 (dorm rooms)

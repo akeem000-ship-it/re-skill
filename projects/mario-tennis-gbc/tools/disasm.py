@@ -1,8 +1,8 @@
 """Targeted SM83 disassembler with labels.csv annotation.
 
-usage: dis.py <bank> <addr> [nbytes]       e.g. dis.py 0 0150 64
-       dis.py <label> [nbytes]
-       dis.py BB:AAAA [nbytes] [--stop]    --stop: stop at first unconditional ret/jp
+usage: disasm.py <bank> <addr> [nbytes]       e.g. dis.py 0 0150 64
+       disasm.py <label> [nbytes]
+       disasm.py BB:AAAA [nbytes] [--stop]    --stop: stop at first unconditional ret/jp
 """
 import sys
 import os

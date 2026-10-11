@@ -83,7 +83,7 @@ same layout to index assets). All cross-bank calls go through it:
 
 The current ROM bank is always mirrored in `hROMBank ($FF95)` before writing `$2000`.
 
-`tools/dis.py` decodes all of the inline-argument forms and resolves farcall targets.
+`tools/disasm.py` decodes all of the inline-argument forms and resolves farcall targets.
 
 ### Interrupts
 
@@ -201,14 +201,47 @@ Also in bank 0: `00:1332 MulSinCos` (angle in BC, +$40 = cos) reads a sine table
 **bank 2D**; `00:2D8C ProjectPoint` reads tables in **banks 2E/2F**. So banks 2D-2F are
 **math tables**, not audio.
 
+### Ball physics — VERIFIED (tools: `emu_record.py`, `analyze_ball.py`, `ball_sim.py`)
+
+Found by recording WRAM every frame of a live point in PyBoy (serve, return, bounce, back-fence
+rebound) and correlating fields. The re-implementation `tools/ball_sim.py --self` reproduces
+the game **to within 0.27 px over 124 frames** (two bounces and a fence hit) with no inputs
+from the recording after the start frame.
+
+State (WRAM0):
+
+| Address | Field | Format |
+|---------|-------|--------|
+| `C400` / `C404` / `C408` | X (lateral) / Y (depth, + = near side, net at 0) / Z (height, negative = up) | signed 16.16 |
+| `C410-C41B` | previous position | copy |
+| `C41E` | curve (sidespin) rate | 16-bit |
+| `C420` / `C423` / `C426` | vX / vY / vZ (vZ positive = falling) | signed 8.16, 3 bytes |
+| `C42A` / `C42C` | horizontal speed, 3D speed | 8.8 |
+| `C4AC` / `C4AD` | bounce damping XY / Z | /256 (`$CD` = 0.80) |
+| `C4B3` | event: 1 = ground bounce, 2 = fence | |
+
+`BallStep 08:576B`, per frame:
+1. save the previous position; **pos += vel** (`08:5A87`)
+2. fences (`08:5949`): Y ≥ `$06E0`, Y < `-$0700` or |X| ≥ `$03A0` → negate that velocity
+   (one's complement), re-step that axis, damp twice (×0.64)
+3. net check (`08:5814`, sign change of Y), speed update (`wC42C` = |v|)
+4. **drag** (`08:55B4`): k = (speed >> 4) + 1; each component v −= ⌊v·k/512⌋
+5. **curve** (`08:5613`): when `wC41E` ≠ 0, rotate (vX, vY) by the spin rate (not yet in ball_sim)
+6. airborne → **gravity vZ += `$4A00`** (0.289 px/frame²); on ground contact
+   (`08:4677`): Z = −Z, vZ = ~vZ, then **damp** (`08:46B0`) X/Y by `wC4AC`, Z by `wC4AD`;
+   if the rebound is slower than 2.31 px/frame the ball stops bouncing (Z = vZ = 0)
+
+Observed serve: toss to Z ≈ −349 (gravity only); Luigi's serve leaves at ≈57 px/frame
+(vX −15.9, vY −54.7); its first bounce on the far side costs 20% of the speed.
+
 ### Emulator harness (Ph5.5) — PyBoy 2.8
 
 `tools/emu/session.py` wraps PyBoy (headless, CGB, ~1200 fps): `run`, `press`, `hook(bank, addr, fn)`,
 `wram(bank, addr, n)`, `shot`, `save/load` state. Drivers: `emu_boot.py` (boot + key script +
 screenshots), `emu_trace_loads.py` (logs LoadCharacterSprites / LoadMap calls), `emu_charmatch.py`
 (start a match with the k-th character and dump WRAM), `emu_dump.py`. States go to `states/`
-(gitignored). Note: `tools/dis.py` shadows the stdlib `dis`, so session.py strips `tools/`
-from `sys.path` before importing PyBoy.
+(gitignored). The disassembler is `tools/disasm.py` (renamed from dis.py: that name shadowed the
+stdlib `dis` module and broke numpy/PyBoy imports for scripts in tools/).
 
 Observed boot flow: Nintendo logo → Camelot logo → intro cutscene (ROM bank $78 active, so banks
 78-7E hold cutscene data, not music) → title (screen #26) → MAIN MENU (3×3: Exhibition, Mario
@@ -399,11 +432,11 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 
 - [x] Ph1: identify binary header and platform
 - [x] Ph2: identify compression (LZ at 00:1797) and write tools/decompress.py
-- [x] Ph3: build instruction_set.py, dis.py, xref.py, search_bytes.py with inline-RST decoding
+- [x] Ph3: build instruction_set.py, disasm.py, xref.py, search_bytes.py with inline-RST decoding
 - [x] Ph3: disassemble VBlank handler ($0040 → $2749) and document per-frame work
 - [x] Ph3: trace MainLoop (01:4018) to the top level (0A:4F2C GameTop, task scheduler)
 - [ ] Ph3: decode GameFlow 0A:4F40 scene sequence (title → menus → match / RPG); name each farcall target
-- [x] Ph3: dis.py: handle `rst $00` inline jump tables (print the dw table and stop linear decode)
+- [x] Ph3: disasm.py: handle `rst $00` inline jump tables (print the dw table and stop linear decode)
 - [ ] Ph3: build a recursive code tracer (tools/trace_code.py) from vectors + $4000 export tables to classify code vs data per bank
 - [ ] Ph3: decode rst $08 SoundCmdInline (00:2FB3) — map command ids to music/SFX
 - [ ] Ph3: identify the sound driver bank (likely 78-7E data + a code bank) via Timer ISR $27D7
@@ -425,6 +458,12 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [x] Ph5: verify stat label order (PyBoy: Create Character stat screen, poke + hook 1C:430E)
 - [ ] Ph5: find how created-character stats are stored in SRAM (display buffer values were not found verbatim in SRAM; probably points/EXP converted at display time)
 - [ ] Ph5: decode record bytes +0..+17
+- [x] Ph5/6: ball physics (position/velocity layout, integrate, drag, gravity, bounce, fences), verified by simulation
+- [ ] Ph5/6: model the curve term 08:5613 (wC41E) exactly and add it to ball_sim.py
+- [ ] Ph5/6: shot model: how a hit sets velocity/spin (frames 66 and 114 of rec_serve), per-stat influence
+- [ ] Ph5/6: net collision 08:5814 and scoring/in-out decision
+- [ ] Ph5/6: player movement struct (C44x/C46x) vs Speed/Dash/Stop stats
+- [ ] Ph5/6: CPU AI per difficulty
 - [x] Ph5: roster-index → sprite-id translation (07:5A50, verified live)
 - [ ] Ph5: map wEventFlags ($C9C0) flag numbers used by RPG mode
 - [x] Ph4: build web/catalog.html asset browser (maps, LZ sheets with palette recolor, palettes, searchable text)

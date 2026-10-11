@@ -10,7 +10,7 @@
 - Tool prefix: `python3 tools/`. All tools load `labels.csv` and `rom/mario_tennis.gbc` from the project root.
 - Key conventions of this ROM (see REVERSE.md "Architecture"):
   - every bank's `$4000` holds a word table of exports/assets;
-  - `rst $18 ; db idx, bank` is a far call (dis.py resolves the target);
+  - `rst $18 ; db idx, bank` is a far call (disasm.py resolves the target);
   - `rst $00` is followed by an inline jump table; `rst $08 ; db id` plays a sound;
   - `rst $20/$28/$30 ; dw n<<5` set/clear/test event flag n;
   - assets are LZ-compressed (`tools/decompress.py`); text is ASCII.
