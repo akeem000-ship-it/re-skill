@@ -83,7 +83,7 @@ bank,addr,name,comment
 *,FF94,hJoyPressed,
 *,FFA6,hJoyRepeatRate,
 0A,4F2C,GameTop,top-level infinite loop: AddTask(0A:4EFC) + call 0A:4F40
-0A,4F40,GameFlow,main scene sequence
+0A,4F40,FieldScene,RPG field: setup map wC281 + scripts then FieldLoop; returns on map exit (wC2A1)
 08,4070,InitGameVars,
 1F,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
 1F,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
@@ -159,3 +159,41 @@ bank,addr,name,comment
 *,DF38,wSprFrameInfo,
 *,DAD0,wSprHeader,16-byte copy of sprite bank header
 2D,4000,TrigTable,sin table used by MulSinCos
+03,47F9,SRAM_ClearAll,zero 4 SRAM banks x $2000
+03,47E9,SaveSignature,"CAMELOTGBTENNIS\0"
+03,4825,SRAM_ClearFlags,zero $A040-$A05F
+03,4844,SRAM_Checksum,HL = 16-bit byte sum of $A038..$A76F ($738 bytes)
+03,4866,SRAM_UpdateChecksumHeader,writes $A030 and mirrors $A000-$A03F to bank 1
+03,48A1,SRAM_Commit,checksum -> $A030 then mirror bank0 $A000-$A7FF -> bank1
+03,495D,SRAM_Validate,sig@A020 + checksum; on failure restore from bank 1 backup and recheck; else init
+03,4A56,StrCmp,DE vs HL null-terminated; NZ if different
+03,4A69,StrCpy,
+03,4D86,TestSaveFlag,DE = byte<<8 | bit<<5 ; flags at $A040
+03,4DB6,SetSaveFlag,
+03,4DE4,ClearSaveFlag,
+38,58CD,PrintCharNameType,C=roster idx: name = text 30#(27+C), type = text 30#(153+CharTypeTable[C])
+38,58FB,CharTypeTable,32 x u8: 0 Power 1 Technique 2 All-Around 3 Tricky 4 Speed 5 ???
+39,4530,PrintNumber?,HL=src DE=dst B=width C=?
+39,4558,PrintTextLine?,
+*,A020,sSignature,
+*,A030,sChecksum,
+*,A038,sSaveA038,default $71
+*,A040,sSaveFlags,256 persistent flags
+*,A6C1,sRecords,11 x 16 B records (default [n,0,0,0,$1E]) - TBD
+0A,4FF5,FieldLoop,per frame: 0A:5104 input/move; 04:40AC actors (table 0A:4766); trigger flags wC2A0-wC2A5
+0A,5104,FieldPlayerStep,returns 0 when the field is paused (menu path 0A:50CA -> 04:415B)
+0A,55A5,FieldOnTriggerA0,
+0A,560B,FieldOnExit,map transition; FieldScene returns
+0A,5337,FieldSetupObjects?,
+0A,5C29,FieldInitCamera?,A=0
+04,40AC,RunActors,BC=$D000 actor table HL=script table
+04,415B,FieldPauseMenu?,
+*,C281,wFieldMapID,passed to LoadMap
+*,C284,wFieldMusic,$FF = none
+*,C28A,wFieldScriptPtr,
+*,C29B,wFieldScriptBank,
+*,C29C,wFieldInitHook,far ptr called on field entry (bank wC29B)
+*,C2A0,wTrigA0,
+*,C2A1,wTrigExit,
+*,C2A2,wTrigStep,step-count check ($DAEC-$DAEE, threshold $1E)
+*,C2A5,wTrigA5,

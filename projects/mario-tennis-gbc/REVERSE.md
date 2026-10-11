@@ -209,6 +209,49 @@ playing during loading). `SoundDriverTick $3373` swaps 32 bytes of driver state 
 ids `$40-$4F` are queued through `wSoundQueued $C33E`/`hSoundPending $FFCD`. Banks 78-7E (no
 export table, dense data) are the likely music data.
 
+### Character roster & types — VERIFIED
+
+`38:58CD PrintCharNameType(C)` prints name = text `30#(27+C)` and type =
+text `30#(153 + CharTypeTable[C])`, `CharTypeTable 38:58FB`. Roster index C:
+
+| C | Name | Type | C | Name | Type | C | Name | Type |
+|---|------|------|---|------|------|---|------|------|
+| 0 | Alex | Power | 11 | Curt | Tricky | 22 | (not used) | ??? |
+| 1 | Nina | Power | 12 | Mark | All-Around | 23 | Luigi | All-Around |
+| 2 | Harry | Power | 13 | Sean | All-Around | 24 | DK | Power |
+| 3 | Kate | Power | 14 | Sammi | Technique | 25 | Baby Mario | Speed |
+| 4 | Allie | Speed | 15 | Elden | Speed | 26 | Mario | All-Around |
+| 5 | Joy | Technique | 16 | Spike | All-Around | 27 | Waluigi | Technique |
+| 6 | Brian | All-Around | 17 | Emily | Speed | 28 | Yoshi | Speed |
+| 7 | Pam | All-Around | 18 | B. Coz | Power | 29 | Bowser | Power |
+| 8 | Bob | Power | 19 | A. Coz | Tricky | 30 | Wario | Power |
+| 9 | Beth | Speed | 20 | Kevin | ??? | 31 | Peach | Technique |
+| 10 | Fay | Power | 21 | (not used) | ??? | | | |
+
+Types: 0 Power, 1 Technique, 2 All-Around, 3 Tricky, 4 Speed, 5 ???. Mushroom-kingdom types
+match the N64 game, which supports the decode. Stats are Power / Spin / Speed / Control (equipment
+messages `30#263-293` give ±1/±2 modifiers). **Stat table not found yet.**
+
+The **sprite id** (CharSpriteTable, 0-45) is a different index from the roster index C. ID 3
+has a Bowser-like silhouette and ID 26 is a large robot, so a translation table must exist.
+
+### Save data (SRAM) — partial
+
+Battery SRAM, 4 × 8 KB banks; enabled with `$0A → $0000` and disabled after each access.
+
+| Address (bank 0) | Content |
+|------------------|---------|
+| `$A020-$A02F` | signature `"CAMELOTGBTENNIS\0"` (`03:47E9`) |
+| `$A030-$A031` | checksum = 16-bit sum of the bytes `$A038-$A76F` (`03:4844`) |
+| `$A038` | byte, default `$71` |
+| `$A040-$A05F` | 256 persistent flags (`03:4D86 Test / 4DB6 Set / 4DE4 Clear`, DE = byte<<8 \| bit<<5) |
+| `$A6C1-$A770` | 11 × 16-byte records, default `[n, 0, 0, 0, $1E]` (records/rankings? TBD) |
+
+`SRAM_Commit 03:48A1` writes the checksum and mirrors bank 0 `$A000-$A7FF` into **bank 1 as a
+backup**. `SRAM_Validate 03:495D` (called from MainLoop) checks signature + checksum, restores from
+the bank-1 copy on failure and rechecks; if both fail, it wipes all 4 banks and builds a new save
+(`03:47F9`, `03:404A`, `03:48A1`, `03:519A`).
+
 ### Data Structures
 
 *(TBD)*
@@ -288,8 +331,11 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [ ] Ph4: find OBJ palettes for characters and render sprites in color
 - [ ] Ph4: decode the animation script format at header +6 (`$FF/$FB/$FD` opcodes)
 - [ ] Ph4: pair tile/map/palette blocks into full screens (title screen first) using the loading code
-- [ ] Ph5: decode SRAM save layout (03:495D checks signature at A020 vs 03:47E9)
-- [ ] Ph5: find character stat tables (Mario, Luigi, Peach, … : power/speed/control/spin)
+- [x] Ph5: decode SRAM save container (signature, checksum, bank-1 backup, persistent flags)
+- [ ] Ph5: map the rest of the save payload $A038-$A76F (RPG character, records at $A6C1)
+- [x] Ph5: character roster + type table (38:58FB)
+- [ ] Ph5: find the character stat table (Power/Spin/Speed/Control). Leads: the "Review Char. Data" screen code in bank 38 around 38:5760, and 39:4530 (number printer?)
+- [ ] Ph5: find the roster-index → sprite-id translation
 - [ ] Ph5: map wEventFlags ($C9C0) flag numbers used by RPG mode
 - [x] Ph4: build web/catalog.html asset browser (maps, LZ sheets with palette recolor, palettes, searchable text)
 - [ ] Ph4: identify what the 64-byte LZ blocks (bank 18, 39, 3F, 6D) really are
