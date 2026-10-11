@@ -87,8 +87,9 @@ function render() {
   }
 }
 
+let paused = false;  // set by tests that drive frames themselves (__mt.step)
 function loop() {
-  if (match) {
+  if (match && !paused) {
     const k = keys, pr = prevKeys;
     const input = { left: k.ArrowLeft, right: k.ArrowRight, up: k.ArrowUp, down: k.ArrowDown,
       aPressed: (k.KeyZ || k.KeyA) && !(pr.KeyZ || pr.KeyA), bPressed: (k.KeyX || k.KeyS) && !(pr.KeyX || pr.KeyS) };
@@ -106,5 +107,6 @@ $("file").addEventListener("change", async e => { const f = e.target.files[0]; i
 $("restart").addEventListener("click", start);
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom).catch(() => {});
 // expose for automated tests
-window.__mt = { get match() { return match; }, start, keys };
+window.__mt = { get match() { return match; }, start, keys,
+  pause(p = true) { paused = p; }, step(input = {}) { match.update(input); render(); } };
 requestAnimationFrame(loop);
