@@ -718,12 +718,31 @@ Battery SRAM, 4 × 8 KB banks; enabled with `$0A → $0000` and disabled after e
 | `$A030-$A031` | checksum = 16-bit sum of the bytes `$A038-$A76F` (`03:4844`) |
 | `$A038` | byte, default `$71` |
 | `$A040-$A05F` | 256 persistent flags (`03:4D86 Test / 4DB6 Set / 4DE4 Clear`, DE = byte<<8 \| bit<<5) |
-| `$A6C1-$A770` | 11 × 16-byte records, default `[n, 0, 0, 0, $1E]` (records/rankings? TBD) |
+| `$A060-$A76F` | **block directory**: 113 × 16-byte records (see below; the old "11 records at `$A6C1`" were its last entries) |
 
 `SRAM_Commit 03:48A1` writes the checksum and mirrors bank 0 `$A000-$A7FF` into **bank 1 as a
 backup**. `SRAM_Validate 03:495D` (called from MainLoop) checks signature + checksum, restores from
 the bank-1 copy on failure and rechecks; if both fail, it wipes all 4 banks and builds a new save
 (`03:47F9`, `03:404A`, `03:48A1`, `03:519A`).
+
+**Block directory** (tool: `tools/dump_save_layout.py`). Record n at `$A060 + 16·n`: `+0` valid,
+`+1` SRAM bank, `+2` offset from `$A000`, `+4` size, `+6` 16-bit byte-sum checksum, `+8` tag (DE).
+Defaults are written by `03:404A`. `SaveBlock 03:4A89` (B = block, HL = WRAM source, DE = tag) copies,
+checksums, marks the record valid and commits (`SRAM_Commit`); `LoadBlock 03:4B9B` reads back,
+`03:4C14` verifies a block against memory.
+
+| Blocks | Bank | Range | Use (from the callers in bank 03) |
+|--------|------|-------|-----------------------------------|
+| 0-5 | 0 | `$A800-$B6FF` | 3 Mario Tour slots × (`$300` + `$200`): block 2·slot = WRAM0 `$C800-$CAFF` image (`SaveGame 03:4D10`, `LoadGame 03:4D64`, slot = `wC36C`) |
+| 6-10 | 0 | `$B700-$B79F` | small records (48/32/32/32/16 B) from a WRAM bank at `$D000` (`03:558E-5636`) |
+| 11-26 | 0 | `$B800-$BFFF` | `$200` block from `$D500` (`03:5775`) and 15 × `$80` records |
+| 27-53 | 1 | same offsets | **backup copies**: every save writes block n then n + 27 and verifies both |
+| 54-73 | 2 | `$A000-$BFFF` | `$300`×2, 6×`$20`, `$60`, `$DA0`, `$6C0`, 9×`$80`; blocks 56+ from `$D480` (`03:50CF`) |
+| 74-87 | 3 | `$A000-$B4FF` | `$100`/`$200`/`$500` blocks |
+| 88-112 | 4-14 | | listed but beyond the 32 KB cartridge RAM (header `$149` = 3); no static caller found — leftover layout |
+
+So the `$C800-$CAFF` WRAM0 region is the persistent Mario Tour state (it holds `wC8E0-` match
+counters, `wC900` player name, `wC940` second name, `wCA0B/CA8B` rosters, …).
 
 ### Data Structures
 
@@ -811,7 +830,8 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [ ] Ph4: dump every actor script reachable from the spawn lists with dump_script.py
 - [x] Ph4: pair tile/map/palette blocks into full screens (LoadScreen 39:407E, 47 screens incl. title)
 - [x] Ph5: decode SRAM save container (signature, checksum, bank-1 backup, persistent flags)
-- [ ] Ph5: map the rest of the save payload $A038-$A76F (RPG character, records at $A6C1)
+- [x] Ph5: save payload $A060-$A76F = block directory (113 blocks), slots, backups (dump_save_layout.py)
+- [ ] Ph5: field map of the $C800-$CAFF save image and blocks 6-26 / 54-87 contents
 - [x] Ph5: character roster + type table (38:58FB)
 - [x] Ph5: find the character stat table (02:52CE, verified by WRAM diff in PyBoy)
 - [x] Ph5: verify stat label order (PyBoy: Create Character stat screen, poke + hook 1C:430E)

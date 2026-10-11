@@ -458,3 +458,13 @@ bank,addr,name,comment
 *,C900,wPlayerName,
 *,C940,wName2,
 *,D300,wTextTileBuf,WRAM7 text box tiles (VWF)
+03,404A,SRAM_NewSave,signature + default block directory
+03,4A79,BlockRecord,BC = $A060 + 16*A
+03,4A89,SaveBlock,B = block HL = source DE = tag: copy, checksum, mark valid, commit
+03,4B9B,LoadBlock,B = block HL = destination
+03,4C14,VerifyBlock,compare block B with HL
+03,4D10,SaveGame,slot wC36C: block 2*slot from C800 + backup 2*slot+27
+03,4D64,LoadGame,slot wC36C -> C800
+*,A060,sBlockDirectory,113 x 16 bytes
+*,C36C,wSaveSlot,0-2 (>= 3: no save)
+*,C800,wSaveImage,$300 bytes saved per Mario Tour slot

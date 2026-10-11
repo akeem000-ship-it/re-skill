@@ -2,6 +2,7 @@
 reference ADDR (call/jp/jr/rst targets, ld r16 imm, ld [a16], ldh, farcall inline).
 
 usage: xref.py <addr|BB:AAAA|label|BB AAAA> [bank_filter] [--data]
+       xref.py --range LO-HI [bank_filter]   (RAM/SRAM range, e.g. A000-A7FF)
   ROM $4000-7FFF addresses need a bank: refs from other banks only count if the
   bank is the same (or via farcall inline bytes naming that bank).
   --data : also report raw little-endian word matches (pointer tables)
@@ -30,6 +31,11 @@ def scan(rom, bank):
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     labels = Labels(); rom = load_rom()
+    rng = None
+    if "--range" in sys.argv:
+        lo, hi = (int(x, 16) for x in sys.argv[sys.argv.index("--range") + 1].split("-"))
+        rng = (lo, hi); args = [a for a in args if a != sys.argv[sys.argv.index("--range") + 1]]
+        args = ["%04x" % lo] + args
     if len(args) > 1 and len(args[0]) <= 2 and ":" not in args[0]:
         args = ["%s:%s" % (args[0], args[1])] + args[2:]
     tb, ta = labels.resolve(args[0])
@@ -56,6 +62,12 @@ def main():
                 refs.append(ins.target)
             if ins.operand and ins.operand[0] in ("a16", "d16"):
                 refs.append(ins.operand[1])
+            if rng and any(rng[0] <= r <= rng[1] for r in refs) and ins.kind not in ("call", "jp", "jr"):
+                nm = labels.name(None, refs[-1]) if hasattr(labels, "name") else None
+                print("%02x:%04x  %s" % (b, ins.pc, ins.text)); hits += 1
+                continue
+            if rng:
+                continue
             if ta in refs:
                 if rom_target and ta >= 0x4000 and tb not in (None, b) and b != 0:
                     continue
