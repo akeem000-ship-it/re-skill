@@ -172,21 +172,34 @@ references into bank tables:
 `0480 CopyToVRAM` convention: a destination in `$A000-$BFFF` means **VRAM bank 1** (bit 5 of D
 cleared, VBK=1); if the LCD is on, copies go through a queued HDMA path.
 
-### Sprites (banks 40-5D) — partial
+### Sprites (banks 40-5D, 6F-71) — VERIFIED layout (tool: `tools/render_sprites.py`)
 
-30 banks with an identical header at `$4002`:
+`04:4B68 LoadCharacterSprites(D=char id)` → `CharSpriteTable 04:4F75` (46 × `idx, bank`) →
+16-byte header at `[bank:$4000+idx]` copied to `wSprHeader $DAD0`:
 
-| Offset | Value (bank 40) | Meaning |
-|--------|-----------------|---------|
-| `$4000` | `dw $4002` | single export → header |
-| `$4002` | `06 00` / `03 00` | u16 ?, u16 ? (first differs per bank: 06, 05, …) |
-| `$4006` | `dw $400E` | frame pointer list |
-| `$4008` | `dw $7F24` | animation scripts: ptr list → `(frame, duration)` pairs, `$FF`/`$FB`/`$FD` control bytes |
-| `$400A` | `00 00` | |
-| `$400C` | `dw $7CE0` | 4 bytes per frame (`fc f1 00 0c` …) — offsets/hitbox? |
+| Offset | Bank 40 | Meaning |
+|--------|---------|---------|
+| +0 | `06` | → wDF37/wDF3A (varies 3-7 per character; OBJ palette? TBD) |
+| +2 | `03 00` | TBD (`04 02` in banks 6F-71) |
+| +4 | `$400E` | frame tile-data pointer list → `wSprFramePtrs $DF24` |
+| +6 | `$7F24` | animation scripts → `wSprAnimPtrs $DF28`; `(frame, duration)` pairs, `$FF/$FB/$FD` control |
+| +A | `$7CE0` | per-frame info, 4 B: `dy, dx, flag, ntiles` → `wSprFrameInfo $DF38` |
 
-Frames: **240 bytes = 15 uncompressed 2bpp tiles**, `$F0` apart from `$4130`. Column-major
-3×5 placement is close (character + racket visible) but not exact — see dead_ends.md.
+`00:2E6B UploadSpriteFrame` copies `ntiles × 16` bytes of the current frame to VRAM (when `flag`
+≠ 0, a second chunk at frame+$100 follows). Frames are drawn as **8×16 OBJs, column-major**
+(`00:2C2B` 24×32 / `00:2CED` 32×32): tile *t* → column *t÷4*, row *t mod 4*. Typical frame:
+`fc f1 00 0c` = 12 tiles = 24×32 px, offset (-4, -15). Frames are stored 240 B apart.
+
+* Ids 0-29 → banks 40-5D, 145 frames each: back/front/side walks, forehand/backhand, lob,
+  dive, smash, idle and victory poses (char 0 verified frame by frame).
+* Char 26 (bank 5A) begins with ~40 frames of a large robot before the normal player frames.
+* Ids 30-45 → banks 6F-71: different header (`+2 = 04 02`), 10-15 frames: NPC / mini-game sprites.
+* **Which id is which character is unknown**: the order is not the text roster order.
+  Needs sprite palettes or the character-select code.
+
+Also in bank 0: `00:1332 MulSinCos` (angle in BC, +$40 = cos) reads a sine table in
+**bank 2D**; `00:2D8C ProjectPoint` reads tables in **banks 2E/2F**. So banks 2D-2F are
+**math tables**, not audio.
 
 ### Sound — partial
 
@@ -260,7 +273,7 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [x] Ph3: disassemble VBlank handler ($0040 → $2749) and document per-frame work
 - [x] Ph3: trace MainLoop (01:4018) to the top level (0A:4F2C GameTop, task scheduler)
 - [ ] Ph3: decode GameFlow 0A:4F40 scene sequence (title → menus → match / RPG); name each farcall target
-- [ ] Ph3: dis.py: handle `rst $00` inline jump tables (print the dw table and stop linear decode)
+- [x] Ph3: dis.py: handle `rst $00` inline jump tables (print the dw table and stop linear decode)
 - [ ] Ph3: build a recursive code tracer (tools/trace_code.py) from vectors + $4000 export tables to classify code vs data per bank
 - [ ] Ph3: decode rst $08 SoundCmdInline (00:2FB3) — map command ids to music/SFX
 - [ ] Ph3: identify the sound driver bank (likely 78-7E data + a code bank) via Timer ISR $27D7
@@ -270,8 +283,10 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [ ] Ph4: decode map w4/w5 1 KB layers (collision / event triggers?) and header bytes 0-3, 6-$87
 - [ ] Ph4: why do courts (maps 0-15) have w0 == w4? check the court-loading path (a different loader?)
 - [x] Ph4: identify banks 40-5D as character sprite banks (header, frame list, anim scripts)
-- [ ] Ph4: find the OAM builder and decode sprite frame placement (see dead_ends.md), then render all frames
-- [ ] Ph4: map which sprite bank belongs to which character (check text bank 30 names, character select code)
+- [x] Ph4: find the OAM builder and decode sprite frame placement, render all frames (tools/render_sprites.py)
+- [ ] Ph4: map sprite id → character (character-select code / sprite palettes); decode header +0/+2
+- [ ] Ph4: find OBJ palettes for characters and render sprites in color
+- [ ] Ph4: decode the animation script format at header +6 (`$FF/$FB/$FD` opcodes)
 - [ ] Ph4: pair tile/map/palette blocks into full screens (title screen first) using the loading code
 - [ ] Ph5: decode SRAM save layout (03:495D checks signature at A020 vs 03:47E9)
 - [ ] Ph5: find character stat tables (Mario, Luigi, Peach, … : power/speed/control/spin)

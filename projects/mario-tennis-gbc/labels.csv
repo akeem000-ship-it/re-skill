@@ -144,3 +144,18 @@ bank,addr,name,comment
 40,400E,SpriteFramePtrs,ptr per frame; frames 240 B (15 tiles) uncompressed 2bpp
 40,7CE0,SpriteFrameInfo,4 B per frame (fc f1 00 0c ...) TBD
 40,7F24,SpriteAnimScripts,ptr list -> (frame, duration) pairs, $FF/$FB/$FD control
+0,1332,MulSinCos,signed multiply by sin/cos; angle in BC (+$40 = cos); table in bank 2D
+0,2C2B,DrawMeta24x32,6 x 8x16 OBJ column-major (E=y D=x C=tile B=attr; bit5 = X flip)
+0,2CED,DrawMeta32x32,8 x 8x16 OBJ column-major
+0,2D79,PutOAM8x16,
+0,2D8C,ProjectPoint,uses math tables in banks 2E/2F
+0,2E6B,UploadSpriteFrame,DE=frame*2: bank [DF22], frames [DF24], info [DF38] -> CopyToVRAM to [DF26]
+04,4B68,LoadCharacterSprites,D=char id -> table 04:4F75 -> header copied to $DAD0
+04,4F75,CharSpriteTable,46 x (idx, bank): ids 0-29 banks 40-5D, 30-45 banks 6F-71
+*,DF22,wSprBank,
+*,DF24,wSprFramePtrs,
+*,DF26,wSprVRAMDest,
+*,DF28,wSprAnimPtrs,
+*,DF38,wSprFrameInfo,
+*,DAD0,wSprHeader,16-byte copy of sprite bank header
+2D,4000,TrigTable,sin table used by MulSinCos
