@@ -8,3 +8,4 @@ docs/text_dump.txt
 __pycache__/
 states/
 *.ram
+docs/scenes_dump.txt

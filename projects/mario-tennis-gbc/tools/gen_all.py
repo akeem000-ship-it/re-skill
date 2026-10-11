@@ -10,6 +10,7 @@ STEPS = [
     ["tools/extract_tiles.py"],
     ["tools/render_map.py", "all"],
     ["tools/dump_text.py", "--out", "docs/text_dump.txt"],
+    ["tools/dump_scenes.py", "--out", "docs/scenes_dump.txt"],
     ["tools/render_sprites.py", "all", "--frames", "145"],
     ["tools/render_screens.py", "all"],
 ]

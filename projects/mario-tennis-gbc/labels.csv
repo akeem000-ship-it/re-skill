@@ -180,7 +180,6 @@ bank,addr,name,comment
 *,A6C1,sRecords,11 x 16 B records (default [n,0,0,0,$1E]) - TBD
 0A,4FF5,FieldLoop,per frame: 0A:5104 input/move; 04:40AC actors (table 0A:4766); trigger flags wC2A0-wC2A5
 0A,5104,FieldPlayerStep,returns 0 when the field is paused (menu path 0A:50CA -> 04:415B)
-0A,55A5,FieldOnTriggerA0,
 0A,560B,FieldOnExit,map transition; FieldScene returns
 0A,5337,FieldSetupObjects?,
 0A,5C29,FieldInitCamera?,A=0
@@ -188,7 +187,7 @@ bank,addr,name,comment
 04,415B,FieldPauseMenu?,
 *,C281,wFieldMapID,passed to LoadMap
 *,C284,wFieldMusic,$FF = none
-*,C28A,wFieldScriptPtr,
+*,C28A,wSceneActors,descriptor +4: actor spawn list
 *,C29B,wFieldScriptBank,
 *,C29C,wFieldInitHook,far ptr called on field entry (bank wC29B)
 *,C2A0,wTrigA0,
@@ -416,3 +415,28 @@ bank,addr,name,comment
 *,DF0D,wPlHeading,movement heading (256 = full turn)
 *,DF0F,wPlMoveFlags,bit0/1 swing/serve (input ignored) bit4 moving bit6 boundary
 *,DF56,wPlFrozen,nonzero: no movement
+0A,564F,LocationTable,42 x [area map idx bank music 0]; descriptor = bank:[$4000+idx]
+0A,574E,LocationRecord,HL = 0A:564F + 6*A
+0A,5114,LoadLocation,copy location record to wC280 and descriptor to wC286
+0A,516F,SelectEntryPoint,entry record with id wC295 (else first) -> wC296-wC29D
+0A,53E4,FindEventRecord,D = id: first 8-byte record with matching id, facing and flag condition
+0A,53BD,CheckFacingMask,B = mask ($FF any) vs player quadrant (wDAEA)
+0A,541D,RunEventHandler,HL < $4000: dialogue message id; else code in the scene bank
+0A,54B5,FieldOnTalk,A = actor id: talk event list (descriptor +6)
+0A,5574,FieldOnEvent4,descriptor +8 list
+0A,55A5,FieldOnStep,descriptor +A list (skips records with p6 = 1)
+0A,5495,FieldRunInit,descriptor +C handler
+0A,40D0,RunSceneCode,call HL in the scene bank
+04,4CF7,SpawnActorList,14-byte actor records until byte 9 = $FF
+04,4C60,SpawnActor,one actor record -> actor slot
+04,4C49,TestEventCond,DE = 0 always / flag n (active while clear) / $8000|n (active while set)
+01,40EC,DebugMenu,unreachable: Start game / A match test / B exhibition / Up doubles test / Select
+6B,402A,IntroSequence,title/intro scenes (LoadScreen)
+*,C280,wArea,current location (0A:564F index)
+*,C295,wEntryId,entry point id in the next area
+*,C286,wSceneEntries,descriptor +0
+*,C288,wSceneExits,descriptor +2
+*,C28C,wSceneTalk,descriptor +6
+*,C28E,wSceneEvents4,descriptor +8
+*,C290,wSceneStep,descriptor +A
+*,C292,wSceneInit,descriptor +C

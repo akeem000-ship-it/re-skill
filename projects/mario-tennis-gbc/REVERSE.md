@@ -223,6 +223,85 @@ Camera: `04:440A` clamps the scroll to the map size from the map header (+4/+5).
 Sprite animation scripts (bank 08 `7791` player): `(frame, duration)` pairs; `$FF` = loop (restart
 from the pointer in `wDF2A`), `$FE` = call `08:69EA`, `$FB n` = xor OAM attribute `wDF37` with n.
 
+### Field scenes (locations) — VERIFIED formats (tool: `tools/dump_scenes.py` → `docs/scenes_dump.txt`)
+
+The top level is `FieldScene 0A:4F40`, called forever by `GameTop`; `MainLoop` starts it with area
+`wC280` = 0 and entry `wC295` = $0A. Exits and scripts change area/entry and the scene returns. The boot
+trace shows the title and menus running from inside the first scene (area 00), i.e. from scene handler code.
+
+* **Location table `0A:564F`**: 42 × 6 bytes `[area, map, idx, bank, music ($FF none), 0]`, loaded by
+  `0A:5114` into `wC280-C285`. `bank:[$4000+idx]` points to a **scene descriptor** of 7 words copied to
+  `wC286-C293`; the descriptor banks are `0E-15` (normal areas) and `27` (event versions of the same
+  maps: no talk events, no music).
+* Descriptor words: `+0` entry points, `+2` exits, `+4` actor spawns, `+6` talk events, `+8` a fourth
+  event list (`0A:5574`), `+A` step-on triggers (`0A:55A5`), `+C` scene-init handler (`0A:5495`).
+* **Entry record** (8 B, `$FF` ends; picked by id = `wC295`, else the first): `[id, facing, X(2), Y(2),
+  init hook(2)]` → `wC29A`, `wC296/98`, `wC29C` (hook called at `0A:4FC1`).
+* **Event record** (8 B, `$FF` ends; looked up by `0A:53E4` with D = id): `[id, facing mask, cond(2),
+  handler(2), p6, p7]`. The facing mask (`$FF` = any) must match the player's quadrant (`wDAEA` top
+  2 bits → mask table `0A:53B9`). `cond` 0 = always, flag n = only while event flag n is clear,
+  `$8000|n` = only while n is set (`04:4C49`). Handler (`0A:541D`): 0 none, `< $4000` = message id
+  (dialogue via `05:581F`), else code in the scene bank (`0A:40D0`). Exits: `p6/p7` = destination
+  area and entry (`FieldOnExit 0A:560B`). Talk (`0A:54B5`, id = actor slot id): `p6` bit0 turn to
+  the player, bit1 restore facing, bit3 talk animation, bit4 freeze actor.
+* **Actor record** (14 B, ends when byte 9 = `$FF`; `04:4CF7` → `04:4C60`): `[cond(2), script(2),
+  X(2), Y(2), facing, 0, sprite, anim, attr, 0]` — script runs in the scene bank with the bytecode
+  of "RPG engine"; X/Y are 16-bit (high byte = metatile).
+
+Exit, talk and step ids come from the map's w5 event layer (exits) or the actor slot (talk).
+
+| Area | Map | Music | Descriptor | Entries | Actors | Talk | Step | Exits to areas |
+|------|-----|-------|------------|---------|--------|------|------|----------------|
+| 00 | 10 | - | `10:4e6c` | 1 | 0 | 0 | 0 | 04, 06, 0a, 14, 1d |
+| 01 | 10 | - | `10:4ccb` | 1 | 0 | 16 | 1 | 01 |
+| 02 | 10 | - | `0f:4006` | 1 | 12 | 12 | 1 | - |
+| 03 | 10 | - | `10:4010` | 1 | 9 | 9 | 0 | - |
+| 04 | 10 | $0b | `10:468d` | 1 | 16 | 16 | 1 | 00, 07, 0b, 0c, 0f, 10 |
+| 05 | 11 | $1a | `10:74a9` | 7 | 4 | 4 | 0 | 05, 06, 07, 14 |
+| 06 | 11 | $1a | `10:61b1` | 2 | 4 | 1 | 2 | 05, 07, 14 |
+| 07 | 14 | $1b | `13:5c78` | 7 | 6 | 7 | 0 | 00, 05, 07, 08, 11 |
+| 08 | 13 | $1b | `13:4006` | 8 | 0 | 1 | 5 | 07, 09, 0b, 0c, 0d, 0f, 10 |
+| 09 | 1b | $1b | `12:4006` | 3 | 4 | 0 | 1 | 08, 0a |
+| 0a | 12 | $00 | `13:4e20` | 6 | 3 | 2 | 1 | 00, 09 |
+| 0b | 18 | $1b | `11:6822` | 2 | 16 | 10 | 0 | 08, 0b |
+| 0c | 18 | $1b | `11:54c0` | 2 | 13 | 10 | 0 | 08, 0c |
+| 0d | 19 | $1d | `10:5a80` | 2 | 17 | 15 | 0 | 08, 0e |
+| 0e | 19 | $1d | `10:57f6` | 1 | 7 | 7 | 0 | 0d |
+| 0f | 1e | $1b | `15:4796` | 7 | 21 | 20 | 1 | 08 |
+| 10 | 17 | $1b | `12:52f7` | 2 | 12 | 15 | 1 | 08, 10 |
+| 11 | 22 | $1d | `0e:4006` | 7 | 12 | 11 | 2 | 07, 12, 13 |
+| 12 | 22 | $1d | `14:4008` | 3 | 3 | 3 | 5 | 11 |
+| 13 | 22 | $1d | `12:467c` | 3 | 5 | 5 | 5 | 11 |
+| 14 | 1a | $1b | `11:4401` | 4 | 18 | 4 | 1 | 05, 1b |
+| 15 | 1c | $1b | `15:4004` | 5 | 11 | 7 | 1 | 16, 17, 19, 1b |
+| 16 | 1d | $1b | `14:4fac` | 2 | 9 | 4 | 1 | 15, 19 |
+| 17 | 1f | $1b | `14:4a39` | 2 | 17 | 9 | 1 | 15, 19 |
+| 18 | 20 | $1d | `11:4008` | 3 | 4 | 4 | 1 | 19 |
+| 19 | 23 | $1d | `0f:5f94` | 8 | 14 | 13 | 2 | 15, 16, 17, 18 |
+| 1a | 24 | $1b | `0f:41db` | 3 | 20 | 10 | 2 | - |
+| 1b | 15 | $1b | `14:5221` | 6 | 4 | 1 | 0 | 08 |
+| 1c | 16 | $08 | `0e:75f6` | 1 | 14 | 0 | 0 | 08 |
+| 1d | 21 | $12 | `0e:5248` | 5 | 18 | 16 | 0 | 1b |
+| 1e | 1a | $2c | `27:7213` | 3 | 10 | 0 | 0 | 05, 1b, 1e |
+| 1f | 13 | - | `27:6edf` | 1 | 0 | 0 | 0 | 07, 09, 0b, 0c, 0d, 0f, 10 |
+| 20 | 1b | - | `27:6c18` | 3 | 4 | 0 | 0 | - |
+| 21 | 18 | - | `27:6622` | 1 | 16 | 0 | 0 | 08, 0b |
+| 22 | 19 | - | `27:6447` | 2 | 17 | 0 | 0 | 0e, 22 |
+| 23 | 22 | - | `27:617f` | 2 | 5 | 0 | 0 | 11 |
+| 24 | 17 | - | `27:5e15` | 1 | 6 | 0 | 0 | 24 |
+| 25 | 14 | - | `27:55f0` | 1 | 0 | 0 | 0 | 25 |
+| 26 | 1e | - | `27:5211` | 2 | 3 | 0 | 0 | 08 |
+| 27 | 11 | - | `27:4bbc` | 2 | 8 | 0 | 0 | 14 |
+| 28 | 23 | - | `27:460c` | 1 | 14 | 0 | 0 | 18 |
+| 29 | 24 | - | `27:4018` | 1 | 12 | 0 | 0 | 08 |
+
+Areas 00-04 use the star-background map `$10` (front-end / debug rooms: area 00 is the boot area,
+init `10:4EB9`, exits to 04/06/0A/14/1D). The title, intro and menus are drawn inside these scenes by
+code in banks `6B` (intro: `6B:402A`, `6B:75AF`), `1A` (`1A:67D4` menu), `3B`, `3E`, `16` and `38`
+(all call `LoadScreen 39:407E`; `tools/emu_scene_trace.py` logs scenes, maps and screens live).
+MainLoop also contains an unreachable **debug menu** (`01:40EC`): Start → game, A → match test
+`07:5DF9`, B → exhibition `3B:44A9`, Up → doubles test `16:4477`, Select → `01:6A5B`.
+
 ### Sprites (banks 40-5D, 6F-71) — VERIFIED layout (tool: `tools/render_sprites.py`)
 
 `04:4B68 LoadCharacterSprites(D=char id)` → `CharSpriteTable 04:4F75` (46 × `idx, bank`) →
@@ -634,7 +713,7 @@ the bank-1 copy on failure and rechecks; if both fail, it wipes all 4 banks and 
 ### State Machine
 
 Boot: `Init $2578` → `MainLoop 01:4018` (clears WRAM banks 1-6, inits subsystems in banks 03/02/08,
-SRAM check `03:495D`) → `0A:4F2C GameTop`, an endless loop of `ClearTasks; AddTask(0A:4EFC); GameFlow 0A:4F40`.
+SRAM check `03:495D`) → `0A:4F2C GameTop`, an endless loop of `ClearTasks; AddTask(0A:4EFC); FieldScene 0A:4F40` (see "Field scenes").
 
 Per-frame work is a **cooperative task list** (`wTaskList $C1C0`, 16 × 4 bytes
 `[param, addr lo, addr hi, bank]`) run by `WaitFrame $2631 → RunTasks $1BFF`.
@@ -690,7 +769,8 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [x] Ph3: build instruction_set.py, disasm.py, xref.py, search_bytes.py with inline-RST decoding
 - [x] Ph3: disassemble VBlank handler ($0040 → $2749) and document per-frame work
 - [x] Ph3: trace MainLoop (01:4018) to the top level (0A:4F2C GameTop, task scheduler)
-- [ ] Ph3: decode GameFlow 0A:4F40 scene sequence (title → menus → match / RPG); name each farcall target
+- [x] Ph3: GameFlow: everything runs in FieldScene 0A:4F40; location table 0A:564F (42 areas) + scene descriptors (tools/dump_scenes.py)
+- [ ] Ph3: name the front-end routines in banks 6B/1A/3B/3E/16 (title, menus, exhibition setup) and how area 00's init reaches them
 - [x] Ph3: disasm.py: handle `rst $00` inline jump tables (print the dw table and stop linear decode)
 - [ ] Ph3: build a recursive code tracer (tools/trace_code.py) from vectors + $4000 export tables to classify code vs data per bank
 - [x] Ph3: decode rst $08 SoundCmdInline (00:2FB3) — music/SFX index, ids observed live
@@ -700,7 +780,7 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [x] Ph4: understand banks 5F-69 map layout via LoadMap 0A:585D — all 37 maps render
 - [ ] Ph4: find the dialogue font tiles and the text printer (control-code handler for $02/$03/$07/$0E)
 - [x] Ph4: map w4 = collision grid, w5 = event-trigger ids
-- [ ] Ph4: map header bytes 0-3, 6-$87 (actor spawn list? warp list?)
+- [ ] Ph4: map header bytes 0-3, 6-$87 (spawns/warps are in the scene descriptors, not the map)
 - [ ] Ph4: why do courts (maps 0-15) have w0 == w4? check the court-loading path (a different loader?)
 - [x] Ph4: identify banks 40-5D as character sprite banks (header, frame list, anim scripts)
 - [x] Ph4: find the OAM builder and decode sprite frame placement, render all frames (tools/render_sprites.py)
@@ -708,7 +788,8 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [x] Ph4: find OBJ palettes for characters and render sprites in color (18:4300)
 - [ ] Ph4: decode the animation script format at header +6 (`$FF/$FB/$FD` opcodes)
 - [x] Ph4: RPG actor bytecode interpreter 04:447D — all 22 opcodes, actor layout, tools/dump_script.py
-- [ ] Ph4: enumerate all actor scripts (from map/event setup code) and dump them per map
+- [x] Ph4: enumerate actor spawns and events per area (dump_scenes.py)
+- [ ] Ph4: dump every actor script reachable from the spawn lists with dump_script.py
 - [x] Ph4: pair tile/map/palette blocks into full screens (LoadScreen 39:407E, 47 screens incl. title)
 - [x] Ph5: decode SRAM save container (signature, checksum, bank-1 backup, persistent flags)
 - [ ] Ph5: map the rest of the save payload $A038-$A76F (RPG character, records at $A6C1)
