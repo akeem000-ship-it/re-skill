@@ -206,7 +206,8 @@ Also in bank 0: `00:1332 MulSinCos` (angle in BC, +$40 = cos) reads a sine table
 Found by recording WRAM every frame of a live point in PyBoy (serve, return, bounce, back-fence
 rebound) and correlating fields. The re-implementation `tools/ball_sim.py --self` reproduces
 the game with no inputs from the recording after the start frame: **0.03 px over a 33-frame
-spinning serve** and **0.27 px over 124 frames** of a return with two bounces and a fence hit.
+spinning serve** and **≤ 0.52 px (X/Y/Z) over 124 frames** of a return with two bounces and a fence hit.
+The JS port (`web/js/physics.js`) is bit-identical to `ball_sim.py` (`web/tests/physics_vs_emulator.mjs`).
 
 State (WRAM0):
 
@@ -310,6 +311,14 @@ Baby Mario recording (27 hits):
   speed/elevation for the target). Initial spins (one frame of decay removed): Luigi topspin
   3072 / ±448; Baby Mario topspin 4608 / ±640, flat 0 / 0, slice −912 / 1536 (−912 = slice
   table row 2 = his Slice stat).
+
+### Projection (court map pixels) — fitted
+
+From the court lines of the 32×32 court maps (map 2: far baseline y = 70, far service line 96, near
+service line 162.5, near baseline 194.5; baselines span the doubles width, service lines the singles
+width), one projective model fits every line to ±1 px:
+`x = 128 + X·2020/(16224 − Y)`, `y = 127.5 + 804.6·Y/(16224 − Y)`. Heights use the same scale (×0.85,
+estimated). The game's own routine (`00:2D8C ProjectPoint`, tables in banks 2E/2F) is not decoded.
 
 ### Shot tables — partial (tool: `tools/dump_shot_tables.py`)
 
@@ -577,7 +586,14 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 
 ### Web Port Fixes
 
+- [x] Ph7: web port of a singles exhibition match (web/index.html, docs/architecture_web.md)
+- [ ] Ph7: replace the stroke speed/spin approximations with the bank 20-23 trajectory tables once decoded
+- [ ] Ph7: port the real CPU AI once decoded; until then tune the invented error model to emulator stats
+- [ ] Ph7: decode ProjectPoint 00:2D8C and replace the fitted projection
+- [ ] Ph7: HUD with the game's font/score graphics; sound
+- [ ] Ph7: pixel-compare against emulator screenshots (checklist Ph7)
+
 ### Documentation
 
 - [x] docs/architecture_exe.md (first version — update as subsystems are understood)
-- [ ] docs/architecture_web.md
+- [x] docs/architecture_web.md

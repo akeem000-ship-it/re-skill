@@ -1,0 +1,70 @@
+# Mario Tennis (GBC) — web port architecture
+
+Scope: a **singles exhibition match** (Mushroom Kingdom cast, any of the 15 court maps, 2- or 6-game
+set with tiebreak, four CPU difficulties). Plain ES modules, no build step:
+
+```
+cd projects/mario-tennis-gbc && python3 -m http.server 8000
+open http://localhost:8000/web/index.html      # auto-loads rom/mario_tennis.gbc, else file picker
+```
+
+No game data is embedded: `rom.js` decompresses everything from the user's ROM in the browser
+(SHA-1 is checked).
+
+## Module graph
+
+```
+index.html
+  └─ js/main.js        ROM loading, input, camera + projection, rendering, 60 fps loop
+       ├─ js/rom.js     Rom (bank addressing, bank tables, LZ decompressor), BGR555, 2bpp tiles
+       ├─ js/assets.js  courtImage, characterSprites, characterData, shotRow (+ roster/court lists)
+       ├─ js/physics.js ball state, step(), launch(), predictBounce(), aimShot(), COURT constants
+       └─ js/match.js   Match: serve/toss/rally/dead state machine, shots, AI, judging, scoring
+tests/
+  physics_vs_emulator.mjs  JS ball step vs PyBoy recording (needs states/phys_ref.json)
+  soak.mjs                 CPU vs CPU headless match; rally length / outcome statistics
+```
+
+## ROM → web mapping
+
+| Web function | ROM routine / data | Verified how |
+|--------------|--------------------|--------------|
+| `Rom.lz` | `00:1797 Decompress` | DMG screen, 37 maps, 47 screens render correctly |
+| `courtImage(id)` | `0A:585D LoadMap`, table `0A:59D9`, tiles → VRAM1 signed | court renders match emulator |
+| `characterSprites` | `07:5A50` roster→sprite, `04:4F75` table, header +0 colour scheme `18:4300`, +4 frames | Luigi/Baby Mario colours from live OAM |
+| frame layout | `00:2C2B/2CED` 8×16 OBJ column-major, 12 tiles | all 145 frames of char 0 coherent |
+| `characterData` stats | `02:52CE` records, order from stat screen `1C:430E` | poke/hook in PyBoy |
+| `runSpeed/accel/brake/...` | WRAM4/5 `DF60-DF6F` formulas | 6 characters, live measurement |
+| `physics.step` | `08:576B BallStep` (+ `5949` fences, `5814` net, `55B4` drag, `5613` spin, `46B0` damp) | bit-identical to `tools/ball_sim.py`; 0.03 px vs emulator (serve), ≤0.52 px over 124 frames |
+| `physics.launch` | `08:45A9 LaunchBall` | formula from code |
+| `shotRow` | shot tables `07:4F11-5160` via `07:52A0` | serve spin = table row 0 |
+| `COURT` | `08:40E5` constants, `08:4300` doubles width | real-tennis proportions; live serve/limits |
+| `judge()` in/out & serve box | `08:463A InOutCheck`, `wC486` swap (`08:4CFF`, `0D:4BC8`) | constants from code |
+| scoring / deuce / tiebreak | `wC8E4/5`, `08:5BC6 DeuceCompress(7)`, faults `08:5B7F` | live point 0-15 |
+| `proj()` | fitted to court-line pixels of the 32×32 court maps (projective, D = 16224) | ±1 px on the 4 lines |
+
+## Approximations (not decoded yet)
+
+* **Shot targeting**: the game reads precomputed (speed, elevation, heading-offset) trajectory tables in
+  banks 20-23. The port solves for the elevation with the real physics (`aimShot`). Stroke speeds
+  (28 + Stroke + rand·3) and stroke spins (topspin 3072 + 512·Top / side 448 + 64·Top; slice side = table
+  × 0.375) come from two characters' measured shots.
+* **CPU AI**: predicts the ball with the real physics and runs to intercept, using its own run/accel/brake
+  stats and a 6 + Reaction frame delay. The error model is invented: whiff chance 30/16/9/6 % and an
+  aim spread per difficulty, plus the Placement-based aim error.
+* **Swing windows**: reach box 110 × 140 units, height ≥ −330; serve speed scales down when the
+  toss is hit away from its apex (the emulator showed 57 vs 72 px/frame).
+* **Net**: the ball bounces back off the tape (quartered horizontal speed). Net-cord handling is not ported.
+* **Camera / animation**: frame groups chosen by inspection (walk 0/5/10/15, ready 20, swings 40/50, serve
+  60/105, facing index 0 = back / 4 = front). The camera follows the midpoint of ball and near player.
+* Not ported: doubles, mini-games, Mario Tour (RPG), sound/music, the game's HUD font.
+
+## State machine (`Match.state`)
+
+```
+serve --(A/B, or CPU after 50 frames)--> toss --(A/B while Z < -150)--> rally
+toss  --(ball falls back)--> serve
+rally --(judge: fault | out | net | 2nd bounce | fence)--> dead --(70 frames)--> serve
+dead  --(fault on first serve)--> serve (same server, secondServe = true)
+game won --> server switches; set won (N games, lead 2, or tiebreak at N-N to 7) --> over
+```
