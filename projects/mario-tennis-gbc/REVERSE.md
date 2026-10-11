@@ -272,6 +272,29 @@ vZ = speed·sin(elev), vX = speed·cos(elev)·cos(heading), vY = speed·cos(elev
 threshold (`20:401F`) and launched by `20:405D` with heading = `wC43A` (aim) + offset, mirrored by
 `wC4A7`. Per-mode table selection is in each bank's export `$7E7D` (reads `wDF6F`). Not fully decoded.
 
+### Player struct and stat → gameplay mapping — VERIFIED (6 characters)
+
+Each player has a struct in its own WRAM bank (P1 = bank 4, P2 = bank 5) at `$DF00`:
+X `DF00` / Y `DF03` / Z `DF06` as signed 16.8 (server stands at Y = 1248; while serving the
+player walks at 10 units/frame and X is clamped to 38..378, between the centre mark and the
+sideline). At match start, the 11 stats are turned into parameters (checked against WRAM dumps of
+Luigi, Baby Mario, DK, Allie, Joy and Brian; every formula holds exactly):
+
+| Field | Formula | Meaning (inferred) |
+|-------|---------|--------------------|
+| `DF60` / `DF62` | 10 + Speed/2 (8.8) | run speed, px/frame |
+| `DF64` | 48 + 12·Dash | dash |
+| `DF66` | 64 + 32·Stop | braking |
+| `DF68` | 6 + Reaction | reaction |
+| `DF69` | 117 + ⌊15.25·Angle⌋ | max shot angle |
+| `DF6A` | 12 − Placement | aim error |
+| `DF6B` / `DF6C` / `DF6D` | Stroke / Serve / Volley | shot-table **speed** rows |
+| `DF6E` / `DF6F` | Top / Slice | shot-table **spin** rows |
+| `DF78` | roster id | |
+
+So in the shot tables, spin rows come from Top/Slice and speed rows from Serve/Stroke/Volley.
+Luigi (Top 0) served with topspin-serve row 0 (8960 / −1024), as recorded.
+
 ### Shot tables — partial (tool: `tools/dump_shot_tables.py`)
 
 `07:52A0 SetShotSpinSpeed` (HL = table, D = spin row, E = speed row) loads topspin → `wC41C`,
@@ -291,7 +314,9 @@ sidespin → `wC41E` (negated when `wC4A7` ≠ 0, the left/right mirror) and ret
 
 Verified: Luigi's recorded serve had topspin 8855 / sidespin 1012 one frame after the hit,
 exactly `07:5071` row 0 (8960 / ±1024) minus one frame of decay. Its speed was 57.0 px/frame
-(row 1 = 56.0). The row-index → stat mapping and the final speed scaling are **not yet confirmed**.
+(row 1 = 56.0). Row indices come from the player struct (spin row = Top/Slice, speed row = Serve/Stroke/Volley,
+see above). Luigi's Serve 4 selects 68 px/frame, but the recorded serve left at 57; the extra
+scaling (timing/charge or the trajectory table) is not decoded yet.
 
 ### Emulator harness (Ph5.5) — PyBoy 2.8
 
@@ -524,7 +549,8 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [x] Ph5/6: court constants, net collision 08:5814, in/out 08:463A, point counters and deuce (verified live)
 - [ ] Ph5/6: decode trajectory-table selection in banks 20-23 (export $7E7D) and how the aim heading wC43A is chosen
 - [ ] Ph5/6: game/set/tiebreak counters and match-end logic (bank 07 5Exx / bank 16 5Dxx)
-- [ ] Ph5/6: player movement struct (C44x/C46x) vs Speed/Dash/Stop stats
+- [x] Ph5/6: player struct (WRAM4/5 DF00) and stat → parameter formulas (verified 6 chars)
+- [ ] Ph5/6: player movement code (acceleration, dash, braking) using DF60-DF66
 - [ ] Ph5/6: CPU AI per difficulty
 - [x] Ph5: roster-index → sprite-id translation (07:5A50, verified live)
 - [ ] Ph5: map wEventFlags ($C9C0) flag numbers used by RPG mode

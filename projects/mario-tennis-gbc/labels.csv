@@ -263,3 +263,19 @@ bank,addr,name,comment
 *,C8EE,wSecondServe,
 *,C8F0,wMatchCfg0,
 *,C8F2,wDoubles,
+*,DF00,wPlayerX,(WRAM4 = P1, WRAM5 = P2) 16.8 signed
+*,DF03,wPlayerY,16.8 signed
+*,DF06,wPlayerZ,16.8
+*,DF60,wPlRunSpeed,8.8 = 10 + Speed/2 (verified 6 chars)
+*,DF62,wPlRunSpeed2,copy
+*,DF64,wPlDash,48 + 12*Dash
+*,DF66,wPlStop,64 + 32*Stop
+*,DF68,wPlReaction,6 + Reaction
+*,DF69,wPlAngle,117 + floor(15.25*Angle)
+*,DF6A,wPlAimError,12 - Placement
+*,DF6B,wPlStroke,stroke speed row
+*,DF6C,wPlServe,serve speed row (E in serve tables)
+*,DF6D,wPlVolley,
+*,DF6E,wPlTop,topspin row (D in topspin tables)
+*,DF6F,wPlSlice,slice row
+*,DF78,wPlRoster,
