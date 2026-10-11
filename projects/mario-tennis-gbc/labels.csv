@@ -440,3 +440,21 @@ bank,addr,name,comment
 *,C28E,wSceneEvents4,descriptor +8
 *,C290,wSceneStep,descriptor +A
 *,C292,wSceneInit,descriptor +C
+05,5654,MeasureText,width/lines of wTextBuffer (or wD84E) -> window size wD854/wD86F
+05,51FE,TextSubNumber,$04: word from wD8B0 list
+05,5267,TextSubPlayerName,$07: string at wC900
+05,527F,TextSubName2,$0B: string at wC940
+05,5298,TextSubNameById,$08: byte from wD8F0 list -> name
+05,5305,TextSubNumber5,$09: word from wD8D0 list, 5 digits
+05,53E8,TextSubEntity,$0E nn: name nn+$1B
+05,581F,ShowDialogue,A/HL message: open window and print
+05,7322,DrawGlyph,A = char, DE = pixel x: VWF into WRAM7 D300 buffer
+05,7366,CharWidth,C = width of char A
+05,737A,BlitGlyphRow,shift and OR one glyph byte into the buffer
+05,7480,UploadTextTiles,copy D300-D7FF to VRAM 16 tiles at a time
+05,74DE,PrintPage,print until $02/$03; $01 newline
+05,7920,FontTiles,91 x 16 bytes 2bpp ($20-$7A)
+05,7F80,FontWidths,91 bytes
+*,C900,wPlayerName,
+*,C940,wName2,
+*,D300,wTextTileBuf,WRAM7 text box tiles (VWF)

@@ -145,8 +145,27 @@ Text is **plain ASCII**. 13 text banks: `1F 25 26 30 31 32 33 34 35 36 37 5E 6E`
 | `$4004` | u16 offset table, relative to TEXT_BASE (the `ld hl,imm` in the stub) |
 
 Control codes (counts across the ROM): `$00` end, `$01` newline, `$02` next page (695),
-`$03` end of dialogue / wait (2036), `$04` item name, `$07` player name (246),
-`$0E nn` named entity nn (school/character), `$06 $0B $1A $09 $11 $0C $14 $1D` TBD.
+`$03` end of dialogue / wait (2036). Substitutions (decoded from `MeasureText 05:5654`, which sizes the
+window from the same stream):
+
+| Code | Inserts | Source |
+|------|---------|--------|
+| `$04` | number | next word of the argument list `wD8B0` (counter `wD866`) — `05:51FE` |
+| `$07` | player name (246 uses) | string at `wC900` — `05:5267` |
+| `$08` | name by id | next byte of `wD8F0` (counter `wD868`) → name lookup `05:5CA8` → `wNameBuffer` — `05:5298` |
+| `$09` | 5-digit number | next word of `wD8D0` (counter `wD867`) — `05:5305` |
+| `$0B` | second name (partner/rival) | string at `wC940` — `05:527F` |
+| `$0E nn` | named entity nn | name #(nn + $1B) via `05:409A` → `wC6C0` — `05:53E8` |
+
+`$06 $1A $11 $0C $14 $1D` are not handled by the measurer (probably data bytes inside numbers/ids).
+
+**Font and printer** (tool: `tools/render_font.py` → `gfx/font.png`, verified visually): 91 glyphs
+`$20-$7A`, 8×8 **2bpp** tiles at `05:7920` (16 bytes each; colour 2 background, 3 ink, 1 shading),
+proportional widths at `05:7F80` (3-8 px; `CharWidth 05:7366`). `DrawGlyph 05:7322` shifts each glyph
+row by x & 7 and ORs it into a text-box tile buffer in **WRAM7 `$D300-$D7FF`** (`05:737A`); the
+page printer `05:74DE` walks the string until `$02`/`$03`, moves down a line on `$01`, and the buffer is
+uploaded to VRAM 16 tiles at a time (`05:7480`). Window placement/size: `05:5654` (`wD854` width in
+tiles, `wD86F` line count, box table `wD800 + 4·wD824`).
 
 ### Maps & courts — VERIFIED (tool: `tools/render_map.py` → `gfx/maps/map_NN.png`)
 
@@ -778,7 +797,7 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [ ] Ph3: decode the sequence opcodes fully ($A0-$FF handlers) and write a sequence dumper
 - [x] Ph4: text encoding (ASCII + control codes) and text-bank layout; dump all 4109 messages
 - [x] Ph4: understand banks 5F-69 map layout via LoadMap 0A:585D — all 37 maps render
-- [ ] Ph4: find the dialogue font tiles and the text printer (control-code handler for $02/$03/$07/$0E)
+- [x] Ph4: dialogue font (05:7920, widths 05:7F80), VWF printer, control/substitution codes
 - [x] Ph4: map w4 = collision grid, w5 = event-trigger ids
 - [ ] Ph4: map header bytes 0-3, 6-$87 (spawns/warps are in the scene descriptors, not the map)
 - [ ] Ph4: why do courts (maps 0-15) have w0 == w4? check the court-loading path (a different loader?)
