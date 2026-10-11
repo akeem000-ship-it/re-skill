@@ -1,0 +1,136 @@
+bank,addr,name,comment
+0,0000,RST00_JumpTable,rst $00 with A=index ; dw table follows inline -> 06C4
+0,0008,RST08_SoundCmd,rst $08 ; db id  -> 2FB3
+0,0010,RST10_FarCall,rst $10 ; db idx bank -> 01B6
+0,0018,RST18_FarCall,rst $18 ; db idx bank -> 01B6 (same as rst $10)
+0,0020,RST20_SetFlag,rst $20 ; dw flag<<5
+0,0028,RST28_ClearFlag,rst $28 ; dw flag<<5
+0,0030,RST30_TestFlag,rst $30 ; dw flag<<5 -> NZ if set
+0,0040,INT_VBlank,
+0,0048,INT_STAT,
+0,0050,INT_Timer,
+0,0058,INT_Serial,
+0,0100,Entry,
+0,0150,Start,jp Init
+0,0153,BuildString,ASCII "10011171737"
+0,015E,FarCallHL,A=bank HL=addr; restores bank on return
+0,0175,FarCallHL_Return,
+0,0184,FarJumpTable,A=bank HL=table B=index; ret if entry null
+0,01A7,FarJumpTable_Return,
+0,01B6,FarCallInline,handler for rst $10/$18: reads db idx bank after rst; jumps to [bank:$4000+idx]
+0,01E6,JumpBankTable_A,jp [$4000+A]
+0,01F6,FarCallInline2,call $01F6 ; db idx bank
+0,0213,JumpBankTable_E,jp [$4000+E]
+0,021A,FarCallBankTableH,H=bank L=idx
+0,0234,FarCallBankTableH2,H=bank L=idx
+0,2497,BitMaskTable,8 bytes
+0,249F,TestFlag_DE,de: e=(flag&7)<<5 d=flag>>3 ; flags at wEventFlags
+0,24BA,SetFlag_DE,
+0,24D4,ClearFlag_DE,
+0,24EF,TestFlagIdx,DE=flag number
+0,2509,SetFlagIdx,DE=flag number
+0,2523,ClearFlagIdx,DE=flag number
+0,253D,ReadInlineWord,
+0,2551,RST30_impl,
+0,255E,RST20_impl,
+0,256B,RST28_impl,
+0,2578,Init,A=$11 on CGB -> hIsCGB
+0,2FB3,SoundCmdInline,rst $08 handler
+0,06C4,JumpTableInline,rst $00 impl: jp [retaddr + 2*A]
+*,C9C0,wEventFlags,bit array used by rst $20/$28/$30
+*,FF95,hROMBank,current ROM bank shadow
+*,FF96,hWRAMBank,current SVBK shadow
+*,FFFE,hIsCGB,1 if booted on CGB (A=$11)
+1,4018,MainLoop,called from Init via rst $18 00 01
+1,6030,InitDMG,farcall when not CGB (shows 'CGB only' screen?)
+0,0234,DecompressBankTable,H=bank L=idx: decompress [bank:$4000+idx] -> DE
+0,0692,DecompressFar,A=bank HL=src DE=dest
+0,06CF,DecompressBankTable2,H=bank L=idx A=sub: decompress [[bank:$4000+L]+2A] -> DE
+0,1797,Decompress,LZ: HL=src DE=dest; returns HL=size. see tools/decompress.py
+0,03AF,MemClear256,HL=dest C=count of 16-byte blocks
+0,03C4,MemClearBC,HL=dest BC=count of 16-byte blocks
+0,03DB,MemCopy,HL=src DE=dst BC=len
+0,03EA,MemCopyBackward,
+0,03F3,MemCopy16,HL=src DE=dst C=count of 16-byte blocks
+0,06AC,InstallOAMDMA,copies DMA routine to HRAM $FF80
+*,FF80,hOAMDMA,OAM DMA routine (copied from 06BA)
+*,FF97,hSRAMBank,
+0,02EB,ReadJoypad,-> hJoyHeld $FF90 / hJoyPressed $FF94 / hJoyRepeat $FF91; A+B+Sel+Start = soft reset
+0,1906,PrintStringDebug,HL=ASCII string DE=packed coords -> BG map (debug font)
+0,1925,HexDigits,"0123456789ABCDEF"
+0,1935,PrintHex16,
+0,1B38,ClearTasks,clears task list $C1C0 (16 x 4)
+0,1B6A,AddTask,A=param HL=func (current bank) -> task list
+0,1BCB,RemoveTask,HL=func
+0,1BFF,RunTasks,
+0,2631,WaitFrame,runs tasks, flips OAM buffer, waits VBlank
+0,2749,VBlankHandler,scroll shadows, OAM DMA, joypad, sound
+0,27D7,TimerHandler,calls SoundUpdate while LCD off
+0,27F5,STATHandler,
+0,2861,SerialHandler,
+0,2F1A,SoundUpdate,called each VBlank (and Timer ISR when LCD off)
+*,C1C0,wTaskList,16 x [param, addr lo, addr hi, bank]
+*,C3A7,wOAMBufferHi,$C0/$C5 double buffer (xor 5) -> patched into hOAMDMA+1
+*,C600,wTextBuffer,current message (max 160 B) copied from text bank
+*,D880,wNameBuffer,short string (max 16 B)
+*,FF8A,hSCY,
+*,FF8B,hSCX,
+*,FF8C,hFrameCounter,
+*,FF8D,hVBlankDone,
+*,FF8F,hTasksEnabled,
+*,FF90,hJoyHeld,bit0 A 1 B 2 Sel 3 Start 4 R 5 L 6 U 7 D
+*,FF91,hJoyRepeat,
+*,FF94,hJoyPressed,
+*,FFA6,hJoyRepeatRate,
+0A,4F2C,GameTop,top-level infinite loop: AddTask(0A:4EFC) + call 0A:4F40
+0A,4F40,GameFlow,main scene sequence
+08,4070,InitGameVars,
+1F,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
+1F,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
+1F,4004,TExtBAnk_OFFsEts,u16 oFFsEts
+25,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
+25,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
+25,4004,TExtBAnk_OFFsEts,u16 oFFsEts
+26,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
+26,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
+26,4004,TExtBAnk_OFFsEts,u16 oFFsEts
+30,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
+30,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
+30,4004,TExtBAnk_OFFsEts,u16 oFFsEts
+31,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
+31,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
+31,4004,TExtBAnk_OFFsEts,u16 oFFsEts
+32,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
+32,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
+32,4004,TExtBAnk_OFFsEts,u16 oFFsEts
+33,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
+33,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
+33,4004,TExtBAnk_OFFsEts,u16 oFFsEts
+34,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
+34,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
+34,4004,TExtBAnk_OFFsEts,u16 oFFsEts
+35,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
+35,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
+35,4004,TExtBAnk_OFFsEts,u16 oFFsEts
+36,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
+36,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
+36,4004,TExtBAnk_OFFsEts,u16 oFFsEts
+37,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
+37,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
+37,4004,TExtBAnk_OFFsEts,u16 oFFsEts
+5E,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
+5E,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
+5E,4004,TExtBAnk_OFFsEts,u16 oFFsEts
+6E,4000,TExtBAnk_GEtMsg,DE=msg inDEx -> wTExtBuFFEr
+6E,4002,TExtBAnk_GEtNAmE,DE=msg inDEx -> wNAmEBuFFEr
+6E,4004,TExtBAnk_OFFsEts,u16 oFFsEts
+0,0480,CopyToVRAM,HL=src DE=dst C=16B blocks; DE $A000-$BFFF = VRAM bank 1 (bit5 of D cleared); uses HDMA queue if LCD on
+0,05B0,LoadBGPalettes,HL=src D=first pal E=count -> wPalBuffer $C1xx and $C2xx
+0,021A,CopyBankTable,H=bank L=idx DE=dst BC=len: raw copy of [bank:$4000+idx]
+0A,585D,LoadMap,A=map id (0-36): descriptor table 0A:59D9 (16 B each)
+0A,59D9,MapDescriptors,37 x 8 bank refs (idx,bank); see tools/render_map.py
+0A,5930,InitMapScroll,
+*,C329,wMapHdrA,from map header DC0A
+*,C32B,wMapWidth?,from header DC0C (default $40)
+*,C32C,wMapHeight?,from header DC0D
+*,C32E,wCurMapID,

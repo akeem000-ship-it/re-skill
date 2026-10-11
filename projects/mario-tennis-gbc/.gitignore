@@ -1,0 +1,8 @@
+# Copyrighted inputs and anything derived from them are regenerated locally
+# from your own ROM dump with the tools (see README.md) -- never commit them.
+rom/
+*.gbc
+*.gb
+gfx/
+docs/text_dump.txt
+__pycache__/
