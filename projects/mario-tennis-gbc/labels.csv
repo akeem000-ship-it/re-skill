@@ -243,7 +243,6 @@ bank,addr,name,comment
 *,C4A7,wShotMirror,non-zero = negate sidespin (left/right)
 08,45A9,LaunchBall,HL=speed BC=elevation angle DE=heading: vZ=s*sin(e) vXY=s*cos(e)*(cos h sin h)
 08,463A,InOutCheck,wC4B1 bit0 = |X| >= -wC484 (wide), bit1 = |Y| >= -wC486 (long)
-08,5B2E,ScorePointDiff,
 08,5BC6,DeuceCompress,B=cap: if both points == B -> both = B-1
 08,5B7F,FaultHandler,first fault -> wC8EE=1 wC4D8=1, second -> wC4D8=2
 20,401F,TrajTableSearch6,6-byte records (speed, elevation, heading offset) by distance threshold
@@ -259,7 +258,7 @@ bank,addr,name,comment
 *,C8E4,wP1Points,
 *,C8E5,wP2Points,
 *,C8EE,wSecondServe,
-*,C8F0,wMatchCfg0,
+*,C8F0,wNumSets,sets in the match (1/3/5); MatchCheck needs (n+1)/2
 *,C8F2,wDoubles,
 *,DF00,wPlayerX,(WRAM4 = P1, WRAM5 = P2) 16.8 signed
 *,DF03,wPlayerY,16.8 signed
@@ -368,3 +367,32 @@ bank,addr,name,comment
 0,0AC5,PolarOffset,A = heading, HL = distance -> HL = dx, DE = dy
 *,DAF7,wScriptBank,bank of the running actor script
 *,FFEA,hCurActor,pointer to the current actor slot (WRAM4 D000 + n*$40)
+08,5AD7,ScoreUpdate,after each point: winner -> point -> game/tiebreak -> set -> match checks
+08,5D9A,PointWinner,A = +1 P1 / -1 P2 / 0 none (from wC4D8 result)
+08,5C2B,MatchStats,per-player match statistics counters wC8C0+8*player
+08,5C14,AwardPoint,points[wC8EB]++
+08,5BF4,AwardGame,games[wC8EA]++; reset points
+08,5BDB,AwardSet,sets[wC8E9]++; reset games
+08,5D37,GameCheck,WinCheck(points, B=3, C=4); tie at 3 sets deuce flag wC8E6
+08,5D54,TiebreakCheck,WinCheck(points, B=6, C=7)
+08,5CE9,SetCheck,WinCheck(games, 6/6 or 2/2 by wC8F1); 7 (or 3) counts as 8 (4)
+08,5CC3,MatchCheck,sets >= (wC8F0+1)/2 with a lead
+08,5D71,WinCheck,D=p1 E=p2 B=tie trigger C=minimum: $01/$FF winner, $80 tie at B, else 0
+08,5B2E,ScorePointDiff,simulate leader winning next point -> game/set/match point flags wC4D7/D6/D5
+08,47CD,InitTiebreakCounter,wC8ED = [0,18,12,6][wC8EC&3]
+08,49D9,RotationTableSingles,24 rows x 8: position codes (wDF0A per player) + server/receiver
+08,4A99,RotationTableMode2,24 rows x 8 (doubles)
+08,4B59,RotationTableMode3,24 rows x 8
+*,C8E0,wP1Sets,
+*,C8E1,wP2Sets,
+*,C8E2,wP1Games,
+*,C8E3,wP2Games,
+*,C8E6,wDeuceFlag,
+*,C8E7,wTiebreakFlag,
+*,C8E8,wMatchWinner,$01 P1 / $FF P2
+*,C8E9,wSetWinner,
+*,C8EA,wGameWinner,
+*,C8EB,wPointWinner,
+*,C8EC,wGamesPlayed,starts at 1; selects the rotation row
+*,C8ED,wPointsPlayed,points in the current game (tiebreak rotation row)
+*,C8F1,wSetLength,2 = 2-game set, else 6

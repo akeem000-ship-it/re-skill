@@ -68,12 +68,17 @@ export class Match {
     if ((a >= need || b >= need) && Math.abs(a - b) >= 2) {
       const tb = this.tiebreak;
       this.games[w]++; this.points = [0, 0];
-      this.server = 1 - this.server;
+      this.server = tb ? 1 - this.tbServer : 1 - this.server;
+      if (this.tiebreak) this.tbServer = this.server;
       const g = this.games, N = this.gamesToWin;
       if (tb || (g[w] >= N && g[w] - g[1 - w] >= 2)) {
         this.over = true; this.winner = w; this.say(`GAME SET  ${this.players[w].data.name}`, 9999);
       } else this.say(`${why}  GAME ${this.games[0]}-${this.games[1]}`, 100);
-    } else this.say(`${why}  ${this.scoreText()}`, 90);
+    } else {
+      // tiebreak serving (rotation table 08:49D9 rows by wC8ED): one point, then two each
+      if (this.tiebreak) this.server = this.tbServer ^ (((a + b + 1) >> 1) & 1);
+      this.say(`${why}  ${this.scoreText()}`, 90);
+    }
     this.serveSide = (this.points[0] + this.points[1]) % 2 === 0 ? 1 : -1;
     this.secondServe = false;
     this.state = "dead"; this.deadT = 70;

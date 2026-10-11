@@ -309,11 +309,40 @@ World units: 1248 = half court length (39 ft), so 1 ft = 32 units. All constants
 * **Net** (`08:5814`): when Y changes sign, if Z + 96 ≥ 0 (ball below the tape) → sound `$5A`,
   Y mirrored back, vX quartered (net hit); Z within −90..−88 gets net-cord handling.
 * **In/out** (`08:463A`): `wC4B1` bit 0 = |X| ≥ sideline, bit 1 = |Y| ≥ length limit.
-* **Score**: `wC8E4/wC8E5` = points in the current game (P1/P2). `08:5BC6 DeuceCompress(B)`
-  drops both scores to B−1 when both reach B (deuce/advantage loop; called with B = 7, the tiebreak
-  cap). Faults: `08:5B7F` (`wC8EE` second-serve flag, `wC4D8` 1 = fault, 2 = double fault).
-  Match config `wC8F0-wC8F3` from the menu (singles/doubles, 2- or 6-game sets, 1/3/5 sets).
-  Verified live: Baby Mario's return ace set `wC8E5` = 1 and the HUD showed 0-15.
+* **Score**: `wC8E0/1` sets, `wC8E2/3` games, `wC8E4/5` points (P1/P2, raw counts 0,1,2,3 = 0/15/30/40).
+  Faults: `08:5B7F` (`wC8EE` second-serve flag, `wC4D8` 1 = fault, 2 = double fault).
+  Match config: `wC8F0` = sets in the match (1/3/5), `wC8F1` = set length (2 → 2-game set,
+  else 6-game set), `wC8F2` doubles. Verified live: Baby Mario's return ace set `wC8E5` = 1 (HUD 0-15).
+
+**ScoreUpdate `08:5AD7`** (once per finished point), decoded from code:
+
+1. `FaultHandler`, then `PointWinner 08:5D9A` → `wC8EB` (+1 P1 / −1 P2 / 0 no point): results 1
+   (fault) and 3 give no point; result 9 takes the winner from `wC4AF` bit0; otherwise `wC4D9`
+   (±1 relative to player `wC4B8`) is negated for player 2.
+2. `MatchStats 08:5C2B`: per-player counters `wC8C0-C6` (stride 8 by `wC4B8`, capped at 99) for
+   aces/faults (results 1, 2) and winners by shot type `wC4A0` 9/10/11; `wC491` = announcer id.
+3. `AwardPoint 08:5C14` (points[winner]++, clear second serve, `wC8ED` points-played++).
+4. Normal game: `DeuceCompress(4)` (4-4 → 3-3), `GameCheck 08:5D37` = `WinCheck(B=3, C=4)`.
+   Tiebreak (`wC8E7` = 1): `DeuceCompress(7)` (7-7 → 6-6), `TiebreakCheck 08:5D54` = `WinCheck(B=6, C=7)`.
+   Result → `wC8EA`; on a win `AwardGame 08:5BF4` (games++, points and `wC8ED`/`wC8E6` = 0,
+   `wC8EC` games-played++).
+5. `SetCheck 08:5CE9` → `wC8E9`: 6-game set = `WinCheck(B=6, C=6)`; 2-game set = `WinCheck(B=2, C=2)`;
+   a games count equal to 7 (resp. 3) counts as one more, so a tiebreak win (7-6, 3-2) is a 2-game
+   lead. On a win `AwardSet 08:5BDB` (sets++, games = 0, tiebreak flag cleared).
+6. `MatchCheck 08:5CC3` → `wC8E8`: sets ≥ (`wC8F0`+1)/2 with a lead.
+
+`WinCheck 08:5D71 (D=p1, E=p2, B, C)`: lead ≥ 2 and leader ≥ C → `$01` (P1) / `$FF` (P2); a tie at
+exactly B → `$80` (sets the deuce flag `wC8E6` for points, the tiebreak flag `wC8E7` for games); else 0.
+`ScorePointDiff 08:5B2E` runs the same chain on a copy of `wC8E0-EF` with the leader winning the
+next point and stores the would-be results in `wC4D7/D6/D5` → "game point / set point / match point".
+
+**Server and court positions** (`08:47CD`, `08:4808`, `08:48C9`): per match mode `wC4CF` a table of
+24 rows × 8 bytes (singles `08:49D9`, others `4A99`, `4B59`); bytes 0-3 = position code written to
+`wDF0A` of each player struct (WRAM banks 4-7, `09` = absent), bytes 4-7 = 0 server / 1 receiver.
+Normal games use row `wC8EC & 3` (server alternates every game) and swap the serve half every point
+by `wC8ED` parity. In a tiebreak the row is `wC8ED` (starting at `[0, 18, 12, 6][wC8EC & 3]`, wrapping
+at 24): the server pattern is 0,1,1,0,0,1,1,… (one point, then two each) and the position codes swap
+(0↔3, 1↔2) every 6 points — the real tiebreak change of ends.
 
 ### Aiming and launch — partial
 
@@ -677,7 +706,9 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [ ] Ph5/6: shot model: map speed rows to stats (wDF6C/6D), how direction/angle is chosen, timing/charge effects
 - [x] Ph5/6: court constants, net collision 08:5814, in/out 08:463A, point counters and deuce (verified live)
 - [ ] Ph5/6: decode trajectory-table selection in banks 20-23 (export $7E7D) and how the aim heading wC43A is chosen
-- [ ] Ph5/6: game/set/tiebreak counters and match-end logic (bank 07 5Exx / bank 16 5Dxx)
+- [x] Ph5/6: game/set/tiebreak counters and match-end logic (ScoreUpdate 08:5AD7, WinCheck 08:5D71)
+- [x] Ph5/6: serve rotation tables 08:49D9 (tiebreak 1-2-2 serve order, ends swap every 6 points)
+- [ ] Ph5/6: confirm the wDF0A position codes (0-3) live: which bit is the end, which the court half
 - [x] Ph5/6: player struct (WRAM4/5 DF00) and stat → parameter formulas (verified 6 chars)
 - [ ] Ph5/6: player movement code (acceleration, dash, braking) using DF60-DF66
 - [x] Ph5/6: CPU AI per difficulty (parameters, reaction, intercept, shot/aim/serve decisions)

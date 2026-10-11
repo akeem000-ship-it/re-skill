@@ -23,6 +23,7 @@ index.html
 tests/
   physics_vs_emulator.mjs  JS ball step vs PyBoy recording (needs states/phys_ref.json)
   soak.mjs                 CPU vs CPU headless match; rally length / outcome statistics
+  scoring.mjs              deuce / set / tiebreak / serve-order rules vs the decoded ScoreUpdate
 ```
 
 ## ROM → web mapping
@@ -40,7 +41,7 @@ tests/
 | `shotRow` | shot tables `07:4F11-5160` via `07:52A0` | serve spin = table row 0 |
 | `COURT` | `08:40E5` constants, `08:4300` doubles width | real-tennis proportions; live serve/limits |
 | `judge()` in/out & serve box | `08:463A InOutCheck`, `wC486` swap (`08:4CFF`, `0D:4BC8`) | constants from code |
-| scoring / deuce / tiebreak | `wC8E4/5`, `08:5BC6 DeuceCompress(7)`, faults `08:5B7F` | live point 0-15 |
+| scoring / deuce / tiebreak | `08:5AD7 ScoreUpdate`, `08:5D71 WinCheck`, `DeuceCompress`, faults `08:5B7F`, tiebreak serve order from `08:49D9` | live point 0-15; rules from code; `tests/scoring.mjs` |
 | `proj()` | fitted to court-line pixels of the 32×32 court maps (projective, D = 16224) | ±1 px on the 4 lines |
 
 ## Approximations (not decoded yet)
