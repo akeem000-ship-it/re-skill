@@ -240,3 +240,6 @@ bank,addr,name,comment
 *,C4B3,wBallEvent,1 = ground bounce, 2 = fence hit
 *,C40E,wBallHeading,atan2(vY vX) 16-bit angle, $40 steps
 *,C41C,wBallTopspin,16-bit; dips ball and pushes along heading; decays 3/256 per frame
+07,52A0,SetShotSpinSpeed,HL=shot table D=spin row E=speed row -> wC41C/wC41E, BC=speed
+07,4F11,ShotTables,9 tables of 8-byte rows (see tools/dump_shot_tables.py)
+*,C4A7,wShotMirror,non-zero = negate sidespin (left/right)

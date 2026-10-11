@@ -240,6 +240,27 @@ State (WRAM0):
 Observed serve: toss to Z ≈ −349 (gravity only); Luigi's serve leaves at ≈57 px/frame
 (vX −15.9, vY −54.7); its first bounce on the far side costs 20% of the speed.
 
+### Shot tables — partial (tool: `tools/dump_shot_tables.py`)
+
+`07:52A0 SetShotSpinSpeed` (HL = table, D = spin row, E = speed row) loads topspin → `wC41C`,
+sidespin → `wC41E` (negated when `wC4A7` ≠ 0, the left/right mirror) and returns the speed
+(8.8 px/frame) from 8-byte rows in bank 07:
+
+| Table | Shot (by signature) | Topspin | Sidespin | Speed rows 0→9 |
+|-------|---------------------|---------|----------|----------------|
+| `07:4F11` | flat stroke | 0 | 0 | 34.3 → 54.8 |
+| `07:4F61` | topspin stroke | 8192 | −1024 | 34.3 → 54.8 |
+| `07:4FB1` | slice stroke | −1024 | 4096 | 34.3 → 54.8 |
+| `07:5001` | slower flat (lob/drop?) | 0 | 0 | 31.3 → 50.2 |
+| `07:5051` / `07:5061` | spin-only, 2 rows | 16384/24576 · −4096/−256 | 0 · 1024/16384 | — |
+| `07:5071` | topspin serve | 8960 → 11264 | −1024 → −3328 | 52 → 88 |
+| `07:50C1` | slice serve | −880 → −1024 | 2048 → 11264 | 48 → 66 |
+| `07:5111` | flat serve | 0 | 0 | 48 → 84 |
+
+Verified: Luigi's recorded serve had topspin 8855 / sidespin 1012 one frame after the hit,
+exactly `07:5071` row 0 (8960 / ±1024) minus one frame of decay. Its speed was 57.0 px/frame
+(row 1 = 56.0). The row-index → stat mapping and the final speed scaling are **not yet confirmed**.
+
 ### Emulator harness (Ph5.5) — PyBoy 2.8
 
 `tools/emu/session.py` wraps PyBoy (headless, CGB, ~1200 fps): `run`, `press`, `hook(bank, addr, fn)`,
@@ -466,7 +487,8 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [ ] Ph5: decode record bytes +0..+17
 - [x] Ph5/6: ball physics (position/velocity layout, integrate, drag, gravity, bounce, fences), verified by simulation
 - [x] Ph5/6: model the spin terms 08:5613 (side wC41E, top wC41C) — in ball_sim.py, 0.03 px
-- [ ] Ph5/6: shot model: how a hit sets velocity/spin (frames 66 and 114 of rec_serve), per-stat influence
+- [x] Ph5/6: shot tables in bank 07 (spin + speed per level), serve spin verified live
+- [ ] Ph5/6: shot model: map speed rows to stats (wDF6C/6D), how direction/angle is chosen, timing/charge effects
 - [ ] Ph5/6: net collision 08:5814 and scoring/in-out decision
 - [ ] Ph5/6: player movement struct (C44x/C46x) vs Speed/Dash/Stop stats
 - [ ] Ph5/6: CPU AI per difficulty
