@@ -280,3 +280,4 @@ bank,addr,name,comment
 *,DF6F,wPlSlice,slice row
 *,DF78,wPlRoster,
 08,6B64,LaunchBallCaller,
+*,C32E,wCurCourtMapID,exhibition hard court = map 5

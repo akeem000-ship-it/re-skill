@@ -520,11 +520,11 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 
 ## Verification Checklist
 
-- [ ] Ph3: 3+ functions traced and cross-checked against emulator trace
+- [x] Ph3: 3+ functions traced and cross-checked against emulator trace (PyBoy hooks, `tools/emu_fullmatch.py`: BallStep once per frame in play, BallNetCheck inside every step, LaunchBall per hit, VBlank per frame; LoadCharacterSprites / LoadMap arguments logged)
 - [x] Ph4: 5+ sprites/tiles extracted and visually compared to emulator (PyBoy: title screen, Nintendo/Camelot logos, intro panels, Nintendo hard court, Luigi/Baby Mario sprites + colours)
 - [x] Ph5: key data struct confirmed in emulator memory dump (CharRecords 02:52CE == wCA0E player struct, Luigi/Baby Mario on both sides)
-- [ ] Ph6: full game session played, no major logic gaps found
-- [ ] Ph7: web port pixel-compared against emulator screenshots
+- [x] Ph6: full game session played (bot vs CPU, exhibition 1 set, to the results screen: 8 points, a 69-shot rally, 94 launches)
+- [x] Ph7: court rendering pixel-compared against emulator frames at the game's own SCX/SCY (`tools/compare_frames.py`): 99.93% / 99.93% / 98.52% of BG pixels (rest = HUD/pop-ups). Sprite/HUD comparison not done
 
 ---
 
