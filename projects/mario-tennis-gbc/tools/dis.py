@@ -83,6 +83,18 @@ def disasm(rom, bank, addr, nbytes, labels, stop=False, out=sys.stdout):
         out.write((line + extra).rstrip() + "\n")
         off += ins.length
         pc += ins.length
+        if ins.kind == "rst" and ins.target == 0x00:
+            # rst $00: A-indexed jump table follows inline; control never falls through
+            lo, hi = (0x4000, 0x8000) if pc >= 0x4000 else (0x0100, 0x4000)
+            for k in range(64):
+                w = rom[off] | rom[off + 1] << 8
+                if not (lo <= w < hi):
+                    break
+                n = labels.name(bank, w)
+                out.write("%02x:%04x  %02x %02x     dw $%04x              ; [%d]%s\n" % (
+                    bank if pc >= 0x4000 else 0, pc, rom[off], rom[off + 1], w, k, (" " + n) if n else ""))
+                off += 2; pc += 2
+            break
         n = inline_len(ins)
         if n and off + n <= len(rom):
             data = rom[off:off + n]

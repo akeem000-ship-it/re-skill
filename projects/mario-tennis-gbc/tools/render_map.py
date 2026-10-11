@@ -75,6 +75,7 @@ def main():
     arg = pos[0] if pos else "all"
     ids = range(NMAPS) if arg == "all" else [int(arg)]
     os.makedirs(os.path.join(ROOT, "gfx", "maps"), exist_ok=True)
+    meta = []
     for i in ids:
         m = load(rom, i)
         if len(m["tmap"]) not in (1024, 4096) or len(m["attr"]) != len(m["tmap"]):
@@ -83,6 +84,14 @@ def main():
         path = os.path.join(ROOT, "gfx", "maps", "map_%02d.png" % i)
         gfx.write_png(path, render(m, "--crop" in sys.argv), 1)
         print("map %02d  hdr=%s  tiles=%d  -> %s" % (i, m["header"][:8].hex(), len(m["tiles"]) // 16, path))
+        meta.append({"id": i, "file": "map_%02d.png" % i, "stride": 64 if len(m["tmap"]) >= 4096 else 32,
+                     "kind": "court" if len(m["tmap"]) < 4096 else "rpg", "ntiles": len(m["tiles"]) // 16,
+                     "refs": ["%02x:%04x" % r for r in m["refs"]],
+                     "palettes": [["#%02x%02x%02x" % c for c in gfx.palette_from_bytes(m["pal"], p * 8)] for p in range(8)]})
+    if arg == "all":
+        import json
+        with open(os.path.join(ROOT, "gfx", "maps", "index.json"), "w") as f:
+            json.dump(meta, f, indent=0)
 
 
 if __name__ == "__main__":

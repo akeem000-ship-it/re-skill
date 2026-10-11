@@ -128,10 +128,11 @@ landing at the next entry). Distribution (ulen → count):
 | Banks | Contents (hypothesis) |
 |-------|-----------------------|
 | 17, 19, 3A | 1024 B and 4096 B blocks — BG tile sets + 32×32 tilemaps (3A:00 = tennis-dictionary/menu tiles, verified visually) |
-| 18 | 33× 64-byte blocks = **CGB palette sets** (8 palettes × 4 colors BGR555) |
+| 18 | 33× 64-byte blocks — *not* plain BGR555 palettes (many entries decode to black/near-black); fade tables or OAM data? TBD |
 | 39, 3C, 3D, 3F, 6C, 6D | mixed 64 / 240 / 256 / 320 / 1024 / 4096 — palettes, small tilemaps (20×12, 20×16), tiles |
 | 5F-63 | 1024 + ~3-4 KB tiles |
-| 64-69 | repeating 8-entry groups: `[stub, raw 64B palette, 4096 map, 4096 attr-map, 1024, 1024, stub, ~3 KB tiles]` — courts? Layout of the 4096 maps not yet understood (32×128 render is wrong) |
+| 5F-69 | courts + RPG maps — fully decoded, see "Maps & courts" |
+| 40-5D | character sprites — see "Sprites" |
 
 ### Text system — VERIFIED (tool: `tools/dump_text.py` → `docs/text_dump.txt`)
 
@@ -171,13 +172,48 @@ references into bank tables:
 `0480 CopyToVRAM` convention: a destination in `$A000-$BFFF` means **VRAM bank 1** (bit 5 of D
 cleared, VBK=1); if the LCD is on, copies go through a queued HDMA path.
 
+### Sprites (banks 40-5D) — partial
+
+30 banks with an identical header at `$4002`:
+
+| Offset | Value (bank 40) | Meaning |
+|--------|-----------------|---------|
+| `$4000` | `dw $4002` | single export → header |
+| `$4002` | `06 00` / `03 00` | u16 ?, u16 ? (first differs per bank: 06, 05, …) |
+| `$4006` | `dw $400E` | frame pointer list |
+| `$4008` | `dw $7F24` | animation scripts: ptr list → `(frame, duration)` pairs, `$FF`/`$FB`/`$FD` control bytes |
+| `$400A` | `00 00` | |
+| `$400C` | `dw $7CE0` | 4 bytes per frame (`fc f1 00 0c` …) — offsets/hitbox? |
+
+Frames: **240 bytes = 15 uncompressed 2bpp tiles**, `$F0` apart from `$4130`. Column-major
+3×5 placement is close (character + racket visible) but not exact — see dead_ends.md.
+
+### Sound — partial
+
+`SoundUpdate $2F1A` runs from VBlank and from the Timer ISR when the LCD is off (music keeps
+playing during loading). `SoundDriverTick $3373` swaps 32 bytes of driver state between WRAM7
+`$D000` and HRAM `$FFD0` around the tick. Requests: `rst $08 ; db id` or `PlaySound $3024 (A=id)`;
+ids `$40-$4F` are queued through `wSoundQueued $C33E`/`hSoundPending $FFCD`. Banks 78-7E (no
+export table, dense data) are the likely music data.
+
 ### Data Structures
 
 *(TBD)*
 
 ### State Machine
 
-*(TBD — MainLoop 01:4018 clears WRAM banks 1-6, then farcalls into banks 3 and 2)*
+Boot: `Init $2578` → `MainLoop 01:4018` (clears WRAM banks 1-6, inits subsystems in banks 03/02/08,
+SRAM check `03:495D`) → `0A:4F2C GameTop`, an endless loop of `ClearTasks; AddTask(0A:4EFC); GameFlow 0A:4F40`.
+
+Per-frame work is a **cooperative task list** (`wTaskList $C1C0`, 16 × 4 bytes
+`[param, addr lo, addr hi, bank]`) run by `WaitFrame $2631 → RunTasks $1BFF`.
+`AddTask $1B6A` (A=param, HL=func in the current bank), `RemoveTask $1BCB`.
+
+After `GameTop` returns there is an unreachable **debug loop** (01:40B2) that prints the build
+string at `$0153` with the ASCII debug font (`PrintStringDebug $1906`).
+
+VBlank `$2749`: SCX/SCY shadows, OAM DMA from the double buffer, VRAM/HDMA queue, palette upload,
+joypad (A+B+Select+Start = soft reset to `$2582`), sound.
 
 ---
 
@@ -191,13 +227,16 @@ cleared, VBK=1); if the LCD is on, copies go through a queued HDMA path.
 | `gfx/lz/index.json` | asset inventory for `web/catalog.html` |
 | `gfx/maps/map_NN.png` | all 37 courts / RPG maps (full 32×32 or 64×64 tile planes) |
 | `docs/text_dump.txt` | all 4109 messages from the 13 text banks |
+| `web/catalog.html` | asset browser over gfx/ and docs/text_dump.txt |
+
+Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all gitignored).
 
 ---
 
 ## Verification Checklist
 
 - [ ] Ph3: 3+ functions traced and cross-checked against emulator trace
-- [ ] Ph4: 5+ sprites/tiles extracted and visually compared to emulator
+- [ ] Ph4: 5+ sprites/tiles extracted and visually compared to emulator *(37 maps + DMG screen rendered and look correct, but no emulator side-by-side yet)*
 - [ ] Ph5: key data struct confirmed in emulator memory dump, all fields match
 - [ ] Ph6: full game session played, no major logic gaps found
 - [ ] Ph7: web port pixel-compared against emulator screenshots
@@ -218,8 +257,11 @@ cleared, VBK=1); if the LCD is on, copies go through a queued HDMA path.
 - [x] Ph1: identify binary header and platform
 - [x] Ph2: identify compression (LZ at 00:1797) and write tools/decompress.py
 - [x] Ph3: build instruction_set.py, dis.py, xref.py, search_bytes.py with inline-RST decoding
-- [ ] Ph3: disassemble VBlank handler ($0040 → $2749) and document per-frame work (OAM DMA, palette upload, scroll)
-- [ ] Ph3: trace MainLoop (01:4018) to its top-level game-state dispatcher (look for `rst $00` jump tables)
+- [x] Ph3: disassemble VBlank handler ($0040 → $2749) and document per-frame work
+- [x] Ph3: trace MainLoop (01:4018) to the top level (0A:4F2C GameTop, task scheduler)
+- [ ] Ph3: decode GameFlow 0A:4F40 scene sequence (title → menus → match / RPG); name each farcall target
+- [ ] Ph3: dis.py: handle `rst $00` inline jump tables (print the dw table and stop linear decode)
+- [ ] Ph3: build a recursive code tracer (tools/trace_code.py) from vectors + $4000 export tables to classify code vs data per bank
 - [ ] Ph3: decode rst $08 SoundCmdInline (00:2FB3) — map command ids to music/SFX
 - [ ] Ph3: identify the sound driver bank (likely 78-7E data + a code bank) via Timer ISR $27D7
 - [x] Ph4: text encoding (ASCII + control codes) and text-bank layout; dump all 4109 messages
@@ -227,16 +269,20 @@ cleared, VBK=1); if the LCD is on, copies go through a queued HDMA path.
 - [ ] Ph4: find the dialogue font tiles and the text printer (control-code handler for $02/$03/$07/$0E)
 - [ ] Ph4: decode map w4/w5 1 KB layers (collision / event triggers?) and header bytes 0-3, 6-$87
 - [ ] Ph4: why do courts (maps 0-15) have w0 == w4? check the court-loading path (a different loader?)
-- [ ] Ph4: decode banks 40-5D (single-entry table at $4002) — sprite/animation data?
+- [x] Ph4: identify banks 40-5D as character sprite banks (header, frame list, anim scripts)
+- [ ] Ph4: find the OAM builder and decode sprite frame placement (see dead_ends.md), then render all frames
+- [ ] Ph4: map which sprite bank belongs to which character (check text bank 30 names, character select code)
 - [ ] Ph4: pair tile/map/palette blocks into full screens (title screen first) using the loading code
 - [ ] Ph5: decode SRAM save layout (03:495D checks signature at A020 vs 03:47E9)
 - [ ] Ph5: find character stat tables (Mario, Luigi, Peach, … : power/speed/control/spin)
 - [ ] Ph5: map wEventFlags ($C9C0) flag numbers used by RPG mode
-- [ ] Ph4: build web/catalog.html asset browser from gfx/lz/index.json
+- [x] Ph4: build web/catalog.html asset browser (maps, LZ sheets with palette recolor, palettes, searchable text)
+- [ ] Ph4: identify what the 64-byte LZ blocks (bank 18, 39, 3F, 6D) really are
+- [ ] Ph4: render the title screen and main menus (find their tile/map/palette triples via the screen-setup code in banks 1A/1C/1D/1E)
 
 ### Web Port Fixes
 
 ### Documentation
 
-- [ ] docs/architecture_exe.md
+- [x] docs/architecture_exe.md (first version — update as subsystems are understood)
 - [ ] docs/architecture_web.md

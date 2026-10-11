@@ -134,3 +134,13 @@ bank,addr,name,comment
 *,C32B,wMapWidth?,from header DC0C (default $40)
 *,C32C,wMapHeight?,from header DC0D
 *,C32E,wCurMapID,
+0,3024,PlaySound,A=id (register form of rst $08)
+0,3297,SoundStart,A=id; switches WRAM bank
+0,3373,SoundDriverTick,
+*,C33E,wSoundQueued,
+*,FFCD,hSoundPending,
+*,FFD2,hSoundBusy,re-entrancy guard for SoundUpdate
+40,4002,SpriteBankHeader,u16 ?, u16 ?, ptr frames[], ptr anim scripts, u16 0, ptr per-frame 4B table (same layout in banks 40-5D)
+40,400E,SpriteFramePtrs,ptr per frame; frames 240 B (15 tiles) uncompressed 2bpp
+40,7CE0,SpriteFrameInfo,4 B per frame (fc f1 00 0c ...) TBD
+40,7F24,SpriteAnimScripts,ptr list -> (frame, duration) pairs, $FF/$FB/$FD control
