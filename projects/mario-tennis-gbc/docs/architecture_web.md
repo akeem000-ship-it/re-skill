@@ -35,7 +35,7 @@ tests/
 | `characterSprites` | `07:5A50` roster→sprite, `04:4F75` table, header +0 colour scheme `18:4300`, +4 frames | Luigi/Baby Mario colours from live OAM |
 | frame layout | `00:2C2B/2CED` 8×16 OBJ column-major, 12 tiles | all 145 frames of char 0 coherent |
 | `characterData` stats | `02:52CE` records, order from stat screen `1C:430E` | poke/hook in PyBoy |
-| `runSpeed/accel/brake/...` | WRAM4/5 `DF60-DF6F` formulas | 6 characters, live measurement |
+| player movement | `08:73CA PlayerMove` (accel `745B/7441`, clamp `750C/74D7`, brake `74A1/7475`), `DF60-DF66` formulas | formulas: 6 characters in WRAM; accel/top speed: live measurement |
 | `physics.step` | `08:576B BallStep` (+ `5949` fences, `5814` net, `55B4` drag, `5613` spin, `46B0` damp) | bit-identical to `tools/ball_sim.py`; 0.03 px vs emulator (serve), ≤0.52 px over 124 frames |
 | `physics.launch` | `08:45A9 LaunchBall` | formula from code |
 | `shotRow` | shot tables `07:4F11-5160` via `07:52A0` | serve spin = table row 0 |

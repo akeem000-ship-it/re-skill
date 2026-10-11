@@ -384,13 +384,30 @@ Baby Mario recording (27 hits):
 
 * **Acceleration** = Dash parameter / 64 px/frame² (Luigi and Baby Mario: 120 → 1.875 per frame, linear ramp).
 * **Top speed** = run-speed parameter + 0.5 (Luigi 12.0 → 12.5, Baby Mario 12.5 → 13.0; 13.27 diagonal).
-* **Braking** ≈ 0.87 px/frame² for Stop 3 (mixed with swing animation in this capture; not exact).
+* **Braking** ≈ 0.87 px/frame² for Stop 3 measured during a swing; the code says (64 + 32·Stop)/256 per axis
+  (0.625 for Stop 3), see "Player movement".
 * **Serves**: 71-73 px/frame, elevation −2.4°, topspin-serve table row = Top stat (8960/±1024).
   An earlier serve, hit later in the toss, left at 57, so speed depends on hit timing.
 * **Groundstrokes**: 30-37 px/frame, elevation 11-19°, varying per shot (trajectory tables pick
   speed/elevation for the target). Initial spins (one frame of decay removed): Luigi topspin
   3072 / ±448; Baby Mario topspin 4608 / ±640, flat 0 / 0, slice −912 / 1536 (−912 = slice
   table row 2 = his Slice stat).
+
+### Player movement — VERIFIED from code (`08:73CA PlayerMove`)
+
+Velocity `wDF40` (X) / `wDF42` (Y), signed, 1/256 px per frame; heading `wDF0D` (256 = full turn,
+copied from the joypad heading `wDF0C` when the player is idle). `wDF50` bit6/bit7 = X/Y input
+active this frame (cleared while `wDF0F` bit0 or bit1 is set — swinging/serving — and when
+`wDF56` ≠ 0 movement is frozen). Per axis:
+
+* input: `v += 4 · round(Dash · c / 128)` (`745B` X with c = cos via `00:0B01`, `7441` Y with c = sin
+  via `00:0B03`), then clamp `|v| ≤ 2 · ((Run · c) >> 8) + 128` (`750C` X with `wDF60`, `74D7` Y with
+  `wDF62`; signed multiply `00:0DFA`). Straight: accel = Dash/64 px/frame², top = Run + 0.5 px/frame,
+  matching the PyBoy measurements below.
+* no input: `v` moves to 0 by `Stop` (`74A1` X — only $40 while `wDF0F` bit1 — and `7475` Y).
+
+The sine table `00:0B5C` has 65 entries (0..128 for a quarter turn of 64 steps).
+`wDF0F` bit4 = moving (cleared when all of `wDF40-43` are 0).
 
 ### Projection (court map pixels) — fitted
 
@@ -710,7 +727,7 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [x] Ph5/6: serve rotation tables 08:49D9 (tiebreak 1-2-2 serve order, ends swap every 6 points)
 - [ ] Ph5/6: confirm the wDF0A position codes (0-3) live: which bit is the end, which the court half
 - [x] Ph5/6: player struct (WRAM4/5 DF00) and stat → parameter formulas (verified 6 chars)
-- [ ] Ph5/6: player movement code (acceleration, dash, braking) using DF60-DF66
+- [x] Ph5/6: player movement code (acceleration, dash, braking) using DF60-DF66 (08:73CA)
 - [x] Ph5/6: CPU AI per difficulty (parameters, reaction, intercept, shot/aim/serve decisions)
 - [ ] Ph5/6: decode the CPU sub-state sequence (DF1A/DF7F) and the intercept-depth choice rule
 - [x] Ph5: roster-index → sprite-id translation (07:5A50, verified live)

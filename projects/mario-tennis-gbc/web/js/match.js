@@ -260,15 +260,18 @@ export class Match {
         const dx = p.targetX - p.X, dy = p.targetY - p.Y;
         tx = Math.abs(dx) > 14 ? Math.sign(dx) : 0; ty = Math.abs(dy) > 30 ? Math.sign(dy) : 0;
       }
-      // accel = Dash/64, top speed = Speed param + 0.5, braking ~ Stop (REVERSE.md)
-      const D = p.data, len = Math.hypot(tx, ty) || 1;
-      const wx = tx / len * D.runSpeed, wy = ty / len * D.runSpeed;
-      const approach = (v, w) => {
-        if (w === 0) return Math.abs(v) <= D.brake ? 0 : v - Math.sign(v) * D.brake;
-        return Math.abs(w - v) <= D.accel ? w : v + Math.sign(w - v) * D.accel;
+      // PlayerMove 08:73CA, per axis in 1/256 px: input on the axis -> v += 4*round(Dash*c/128),
+      // clamp |v| <= 2*((Run*c)>>8)+128 (c = 128 straight, 91 diagonal: sine table 00:0B5C);
+      // no input (or swinging: DF0F bits 0/1 drop the input) -> v moves to 0 by Stop.
+      const D = p.data, c = tx && ty ? 91 : 128;
+      if (p.swing > 0) tx = ty = 0;
+      const axis = (v, t) => {
+        if (t === 0) return Math.abs(v) <= D.brake ? 0 : v - Math.sign(v) * D.brake;
+        v += t * 4 * Math.round(D.dash * c / 128) / 256;
+        const cap = (2 * ((D.run256 * c) >> 8) + 128) / 256;
+        return Math.abs(v) > cap ? t * cap : v;
       };
-      p.vx = approach(p.vx, wx); p.vy = approach(p.vy, wy);
-      if (p.swing > 0) { p.vx *= 0.5; p.vy *= 0.5; }
+      p.vx = axis(p.vx, tx); p.vy = axis(p.vy, ty);
       p.X = Math.max(-850, Math.min(850, p.X + p.vx));
       const d = this.dir(p);
       p.Y = d * Math.max(80, Math.min(1700, d * (p.Y + p.vy)));

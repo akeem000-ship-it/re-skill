@@ -396,3 +396,23 @@ bank,addr,name,comment
 *,C8EC,wGamesPlayed,starts at 1; selects the rotation row
 *,C8ED,wPointsPlayed,points in the current game (tiebreak rotation row)
 *,C8F1,wSetLength,2 = 2-game set, else 6
+08,73CA,PlayerMove,per-axis accelerate / clamp / brake of wDF40/42
+08,745B,PlayerAccelX,vX += 4*round(Dash*cos(heading)/128)
+08,7441,PlayerAccelY,vY += 4*round(Dash*sin(heading)/128)
+08,750C,PlayerClampX,|vX| <= 2*((Run*cos)>>8)+128
+08,74D7,PlayerClampY,|vY| <= 2*((Run2*sin)>>8)+128
+08,74A1,PlayerBrakeX,vX -> 0 by Stop ($40 while DF0F bit1)
+08,7475,PlayerBrakeY,vY -> 0 by Stop
+0,0B01,CosMul,HL = round(HL*cos(A)/128) signed
+0,0B03,SinMul,HL = round(HL*sin(A)/128) signed
+0,0B30,CosMulFine,HL = 2*((HL*cos(A))>>8)+128
+0,0B32,SinMulFine,HL = 2*((HL*sin(A))>>8)+128
+0,0B5C,SineTable,65 bytes: quarter-wave 0..128
+0,0926,Mul8x16,HL = A*HL (unsigned, 16-bit)
+0,0DFA,MulSigned8x16,signed HL*A
+*,DF40,wPlVelX,1/256 px per frame
+*,DF42,wPlVelY,
+*,DF0C,wPlPadHeading,heading from the joypad
+*,DF0D,wPlHeading,movement heading (256 = full turn)
+*,DF0F,wPlMoveFlags,bit0/1 swing/serve (input ignored) bit4 moving bit6 boundary
+*,DF56,wPlFrozen,nonzero: no movement

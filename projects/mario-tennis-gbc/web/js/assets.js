@@ -69,7 +69,8 @@ export function characterData(rom, roster) {
   STATS.forEach((n, i) => st[n] = rom.u8(0x02, base + 18 + i));
   return { roster, name: ROSTER[roster], type: TYPES[rom.u8(0x38, 0x58FB + roster)] || "?", stats: st,
     // stat -> parameter formulas verified in WRAM4/5 (REVERSE.md "Player struct")
-    runSpeed: 10.5 + st.Speed / 2, accel: (48 + 12 * st.Dash) / 64, brake: (64 + 32 * st.Stop) / 184,
+    run256: 2560 + 128 * st.Speed, dash: 48 + 12 * st.Dash, brake: (64 + 32 * st.Stop) / 256,
+    runSpeed: 10.5 + st.Speed / 2,
     reaction: 6 + st.Reaction, aimError: 12 - st.Placement };
 }
 
