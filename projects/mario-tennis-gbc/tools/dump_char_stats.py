@@ -2,9 +2,11 @@
 
 Verified in PyBoy: a match copies the record to the player struct at wCA0E (P1) /
 wCA8E (P2); roster id at wCA0B/wCA8B; name at wCA00/wCA80.
-Bytes +18..+28 = 11 stats (0-9). Label order taken from the stat-label tile sheet
-(LZ 3D:5A): Serve Stroke Volley Spin Angle Topspin Speed Reaction Stop Control Dash
--- order NOT yet verified against the in-game "Review Char. Data" screen.
+Bytes +18..+28 = 11 stats (0-9). Order VERIFIED in PyBoy by poking 1..11 into the
+stat display buffer (WRAM6 $D00E) before the stat screen draws (hook 1C:430E):
+Top Slice | Serve Stroke Volley | Angle Placement | Speed Dash Reaction Stop
+(groups: Spin | Power | Control | Speed). The ROM record uses the same order: Power types
+peak at Serve/Stroke, Tricky at Top/Slice, Speed types at Speed/Dash.
 usage: dump_char_stats.py [--md]
 """
 import sys, os
@@ -13,7 +15,7 @@ from gbrom import load_rom, to_offset
 from render_sprites import ROSTER
 
 BASE = (0x02, 0x52CE); SIZE = 29
-STATS = ["Serve", "Stroke", "Volley", "Spin", "Angle", "Topspin", "Speed", "Reaction", "Stop", "Control", "Dash"]
+STATS = ["Top", "Slice", "Serve", "Stroke", "Volley", "Angle", "Placement", "Speed", "Dash", "Reaction", "Stop"]
 TYPES = ["Power", "Technique", "All-Around", "Tricky", "Speed", "???"]
 
 rom = load_rom()

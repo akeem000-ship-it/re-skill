@@ -207,9 +207,11 @@ bank,addr,name,comment
 *,CA00,wP1Name,
 *,CA0B,wP1Roster,
 *,CA0E,wP1Record,29 B copy of CharRecords
-*,CA20,wP1Stats,11 stats
+*,CA20,wP1Stats,11 stats: Top Slice Serve Stroke Volley Angle Placement Speed Dash Reaction Stop
 *,CA80,wP2Name,
 *,CA8B,wP2Roster,
 *,CA8E,wP2Record,
 *,CAA0,wP2Stats,
 *,C140,wObjPalBuf,8 OBJ palettes (BG at C100); mirrored at C240
+1C,430E,DrawStatScreen,11 stats from WRAM6 D00E + modifiers D019 (verified order via PyBoy)
+1A,7AF8,CalcStatDeltas,

@@ -257,13 +257,22 @@ Found by starting six exhibition matches with different characters in PyBoy and 
 P1 name `wCA00`, roster id `wCA0B`, record `wCA0E-wCA2A`; P2 at `wCA80/wCA8B/wCA8E`.
 Luigi as P1 and as P2 gave identical bytes, as did Baby Mario.
 
-Record bytes +18..+28 are **11 stats (0-9)**. The stat-label tile sheet (LZ `3D:5A`) lists exactly
-11 labels: Serve, Stroke, Volley, Spin, Angle, Topspin, Speed, Reaction, Stop, Control, Dash.
-**This order is a hypothesis**: it has not been seen on the in-game status screen, which needs
-a Mario Tour save. Bytes +0..+17 vary by group (+10 = 1-5 looks like a rank/tier; +13..+16
-differ between student tiers and the Mushroom Kingdom cast).
+Record bytes +18..+28 are **11 stats (0-9)**, order **VERIFIED** in PyBoy. During Create
+Character, the stat screen draws from WRAM6 `$D00E-$D018` (+ equipment modifiers at `$D019-$D023`,
+drawn by `1C:430E`). Writing 1..11 into the buffer at that hook placed the numbers as:
 
-| # | Name | Type | Serve | Stroke | Volley | Spin | Angle | Topspin | Speed | Reaction | Stop | Control | Dash | header bytes +0..+17 |
+| Byte | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|------|---|---|---|---|---|---|---|---|---|---|----|
+| Stat | Top | Slice | Serve | Stroke | Volley | Angle | Placement | Speed | Dash | Reaction | Stop |
+| Group | Spin | Spin | Power | Power | Power | Control | Control | Speed | Speed | Speed | Speed |
+
+The ROM records use the same order. The type correlation is consistent: every Power type
+peaks at Serve/Stroke (6-7), the Tricky types at Top/Slice (A. Coz 9/9, Curt 7/8), and the Speed
+types high in the Speed group (Yoshi Speed 6 / Dash 8, Baby Mario Dash 6 / Stop 9). A new Mario Tour character starts at
+`1 1 1 2 1 1 1 1 3 1 1` (Stroke 2, Dash 3). The four player avatars (Alex/Nina/Harry/Kate) have
+`5 5 …` placeholders in ROM; the real values come from the creation code.
+
+| # | Name | Type | Top | Slice | Serve | Stroke | Volley | Angle | Placement | Speed | Dash | Reaction | Stop | header bytes +0..+17 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 0 | Alex | Power | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | `c9 01 80 00 a0 00 00 08 0c 00 01 80 00 12 0c 0a c8 00` |
 | 1 | Nina | Power | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | `00 01 80 00 a0 00 00 08 0c 00 01 80 00 12 0c 0a c8 00` |
@@ -371,7 +380,7 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 
 - [ ] Ph3: 3+ functions traced and cross-checked against emulator trace
 - [x] Ph4: 5+ sprites/tiles extracted and visually compared to emulator (PyBoy: title screen, Nintendo/Camelot logos, intro panels, Nintendo hard court, Luigi/Baby Mario sprites + colours)
-- [ ] Ph5: key data struct confirmed in emulator memory dump, all fields match
+- [x] Ph5: key data struct confirmed in emulator memory dump (CharRecords 02:52CE == wCA0E player struct, Luigi/Baby Mario on both sides)
 - [ ] Ph6: full game session played, no major logic gaps found
 - [ ] Ph7: web port pixel-compared against emulator screenshots
 
@@ -413,7 +422,8 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [ ] Ph5: map the rest of the save payload $A038-$A76F (RPG character, records at $A6C1)
 - [x] Ph5: character roster + type table (38:58FB)
 - [x] Ph5: find the character stat table (02:52CE, verified by WRAM diff in PyBoy)
-- [ ] Ph5: verify stat label order on the in-game status screen (needs a Mario Tour save: script Create Character in PyBoy)
+- [x] Ph5: verify stat label order (PyBoy: Create Character stat screen, poke + hook 1C:430E)
+- [ ] Ph5: find how created-character stats are stored in SRAM (display buffer values were not found verbatim in SRAM; probably points/EXP converted at display time)
 - [ ] Ph5: decode record bytes +0..+17
 - [x] Ph5: roster-index → sprite-id translation (07:5A50, verified live)
 - [ ] Ph5: map wEventFlags ($C9C0) flag numbers used by RPG mode
