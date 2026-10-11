@@ -243,3 +243,23 @@ bank,addr,name,comment
 07,52A0,SetShotSpinSpeed,HL=shot table D=spin row E=speed row -> wC41C/wC41E, BC=speed
 07,4F11,ShotTables,9 tables of 8-byte rows (see tools/dump_shot_tables.py)
 *,C4A7,wShotMirror,non-zero = negate sidespin (left/right)
+08,45A9,LaunchBall,HL=speed BC=elevation angle DE=heading: vZ=s*sin(e) vXY=s*cos(e)*(cos h sin h)
+08,463A,InOutCheck,wC4B1 bit0 = |X| >= -wC484 (wide), bit1 = |Y| >= -wC486 (long)
+08,5B2E,ScorePointDiff,
+08,5BC6,DeuceCompress,B=cap: if both points == B -> both = B-1
+08,5B7F,FaultHandler,first fault -> wC8EE=1 wC4D8=1, second -> wC4D8=2
+20,401F,TrajTableSearch6,6-byte records (speed, elevation, heading offset) by distance threshold
+20,405D,LaunchFromTraj,record -> LaunchBall with heading wC43A + offset (mirrored by wC4A7)
+*,C43A,wAimHeading,base heading toward target
+*,C43E,wCourtHalfWidthCfg,$220 singles / $320 doubles
+*,C484,wSidelineLimit,-432 singles (-$1B0) / -576 doubles (-$240)
+*,C486,wLengthLimit,-672 during serve (service line) / -1248 rally (baseline)
+*,C488,wNetHeight,96
+*,C4B1,wInOutFlags,
+*,C4B6,wServeBounceState,1 = serve in flight, 2 = after first bounce
+*,C4D8,wPointResult,1 fault 2 double fault ...
+*,C8E4,wP1Points,
+*,C8E5,wP2Points,
+*,C8EE,wSecondServe,
+*,C8F0,wMatchCfg0,
+*,C8F2,wDoubles,

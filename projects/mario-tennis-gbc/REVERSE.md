@@ -240,6 +240,38 @@ State (WRAM0):
 Observed serve: toss to Z ≈ −349 (gravity only); Luigi's serve leaves at ≈57 px/frame
 (vX −15.9, vY −54.7); its first bounce on the far side costs 20% of the speed.
 
+### Court, net, in/out and scoring — VERIFIED constants
+
+World units: 1248 = half court length (39 ft), so 1 ft = 32 units. All constants match real tennis:
+
+| Constant | Value | Where |
+|----------|-------|-------|
+| baseline | Y = ±1248 | serve position; `wC486` = −1248 in rallies |
+| service line | Y = ±672 (21 ft) | `wC486` = −672 while a serve is in flight (`08:4CFF`), reset at first bounce (`0D:4BC8`) |
+| singles sideline | X = ±432 (13.5 ft) | `wC484` = `$FE50` |
+| doubles sideline | X = ±576 (18 ft) | `wC484` = `$FDC0` (`08:4300`, `wC8F2` = doubles) |
+| net height | 96 | `wC488` (`08:40F7`) |
+| back fences | Y = +1760 / −1792 | `08:5949` |
+| side fences | X = ±928 | `08:5949` |
+
+* **Net** (`08:5814`): when Y changes sign, if Z + 96 ≥ 0 (ball below the tape) → sound `$5A`,
+  Y mirrored back, vX quartered (net hit); Z within −90..−88 gets net-cord handling.
+* **In/out** (`08:463A`): `wC4B1` bit 0 = |X| ≥ sideline, bit 1 = |Y| ≥ length limit.
+* **Score**: `wC8E4/wC8E5` = points in the current game (P1/P2). `08:5BC6 DeuceCompress(B)`
+  drops both scores to B−1 when both reach B (deuce/advantage loop; called with B = 7, the tiebreak
+  cap). Faults: `08:5B7F` (`wC8EE` second-serve flag, `wC4D8` 1 = fault, 2 = double fault).
+  Match config `wC8F0-wC8F3` from the menu (singles/doubles, 2- or 6-game sets, 1/3/5 sets).
+  Verified live: Baby Mario's return ace set `wC8E5` = 1 and the HUD showed 0-15.
+
+### Aiming and launch — partial
+
+`08:45A9 LaunchBall(HL = speed, BC = elevation angle, DE = heading)`:
+vZ = speed·sin(elev), vX = speed·cos(elev)·cos(heading), vY = speed·cos(elev)·sin(heading)
+(two `MulSinCos` calls). Shots don't compute ballistics at run time. Banks 20-23 hold
+**trajectory tables** of 6-byte records (speed, elevation, heading offset), searched by distance
+threshold (`20:401F`) and launched by `20:405D` with heading = `wC43A` (aim) + offset, mirrored by
+`wC4A7`. Per-mode table selection is in each bank's export `$7E7D` (reads `wDF6F`). Not fully decoded.
+
 ### Shot tables — partial (tool: `tools/dump_shot_tables.py`)
 
 `07:52A0 SetShotSpinSpeed` (HL = table, D = spin row, E = speed row) loads topspin → `wC41C`,
@@ -489,7 +521,9 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [x] Ph5/6: model the spin terms 08:5613 (side wC41E, top wC41C) — in ball_sim.py, 0.03 px
 - [x] Ph5/6: shot tables in bank 07 (spin + speed per level), serve spin verified live
 - [ ] Ph5/6: shot model: map speed rows to stats (wDF6C/6D), how direction/angle is chosen, timing/charge effects
-- [ ] Ph5/6: net collision 08:5814 and scoring/in-out decision
+- [x] Ph5/6: court constants, net collision 08:5814, in/out 08:463A, point counters and deuce (verified live)
+- [ ] Ph5/6: decode trajectory-table selection in banks 20-23 (export $7E7D) and how the aim heading wC43A is chosen
+- [ ] Ph5/6: game/set/tiebreak counters and match-end logic (bank 07 5Exx / bank 16 5Dxx)
 - [ ] Ph5/6: player movement struct (C44x/C46x) vs Speed/Dash/Stop stats
 - [ ] Ph5/6: CPU AI per difficulty
 - [x] Ph5: roster-index → sprite-id translation (07:5A50, verified live)
