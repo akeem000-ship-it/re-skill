@@ -205,8 +205,8 @@ Also in bank 0: `00:1332 MulSinCos` (angle in BC, +$40 = cos) reads a sine table
 
 Found by recording WRAM every frame of a live point in PyBoy (serve, return, bounce, back-fence
 rebound) and correlating fields. The re-implementation `tools/ball_sim.py --self` reproduces
-the game **to within 0.27 px over 124 frames** (two bounces and a fence hit) with no inputs
-from the recording after the start frame.
+the game with no inputs from the recording after the start frame: **0.03 px over a 33-frame
+spinning serve** and **0.27 px over 124 frames** of a return with two bounces and a fence hit.
 
 State (WRAM0):
 
@@ -226,7 +226,13 @@ State (WRAM0):
    (one's complement), re-step that axis, damp twice (×0.64)
 3. net check (`08:5814`, sign change of Y), speed update (`wC42C` = |v|)
 4. **drag** (`08:55B4`): k = (speed >> 4) + 1; each component v −= ⌊v·k/512⌋
-5. **curve** (`08:5613`): when `wC41E` ≠ 0, rotate (vX, vY) by the spin rate (not yet in ball_sim)
+5. **spin** (`08:5613`), VERIFIED to 0.03 px on a spinning serve:
+   - sidespin `wC41E`: vX −= side·vY₈.₈ ≫ 12, vY += side·vX₈.₈ ≫ 12 (horizontal curve)
+   - topspin `wC41C`: vZ += top·|vxy| ≫ 12 (dip, |vxy| from the pre-step velocity) and a horizontal
+     push of −(top·vZ ≫ 13) along the heading `wC40E` (= atan2(vY, vX), `$40` steps) via
+     `MulSinCos 00:1332` (sine table bank 2D: sin·32768, 1024 entries per 90°, 16-bit angles)
+   - both spins decay: spin −= 3·(spin ≫ 8) per frame
+   (products are shifted by magnitude, then the sign is reapplied)
 6. airborne → **gravity vZ += `$4A00`** (0.289 px/frame²); on ground contact
    (`08:4677`): Z = −Z, vZ = ~vZ, then **damp** (`08:46B0`) X/Y by `wC4AC`, Z by `wC4AD`;
    if the rebound is slower than 2.31 px/frame the ball stops bouncing (Z = vZ = 0)
@@ -459,7 +465,7 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [ ] Ph5: find how created-character stats are stored in SRAM (display buffer values were not found verbatim in SRAM; probably points/EXP converted at display time)
 - [ ] Ph5: decode record bytes +0..+17
 - [x] Ph5/6: ball physics (position/velocity layout, integrate, drag, gravity, bounce, fences), verified by simulation
-- [ ] Ph5/6: model the curve term 08:5613 (wC41E) exactly and add it to ball_sim.py
+- [x] Ph5/6: model the spin terms 08:5613 (side wC41E, top wC41C) — in ball_sim.py, 0.03 px
 - [ ] Ph5/6: shot model: how a hit sets velocity/spin (frames 66 and 114 of rec_serve), per-stat influence
 - [ ] Ph5/6: net collision 08:5814 and scoring/in-out decision
 - [ ] Ph5/6: player movement struct (C44x/C46x) vs Speed/Dash/Stop stats

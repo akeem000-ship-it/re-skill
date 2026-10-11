@@ -228,7 +228,7 @@ bank,addr,name,comment
 *,C404,wBallY,16.16 signed (depth; + = near/P1 side, net = 0)
 *,C408,wBallZ,16.16 signed height (negative = up; ground = 0)
 *,C410,wBallPrev,copy of C400-C40B before the step
-*,C41E,wBallSpin,16-bit curve rate used by BallCurve
+*,C41E,wBallSidespin,16-bit; curves (vX vY); decays 3/256 per frame
 *,C420,wBallVX,8.16 signed (3 bytes)
 *,C423,wBallVY,8.16 signed
 *,C426,wBallVZ,8.16 signed (positive = down)
@@ -238,3 +238,5 @@ bank,addr,name,comment
 *,C4AD,wBounceDampZ,$CD = 0.80
 *,C4B0,wBallQuadrant,sign bits of X/Y
 *,C4B3,wBallEvent,1 = ground bounce, 2 = fence hit
+*,C40E,wBallHeading,atan2(vY vX) 16-bit angle, $40 steps
+*,C41C,wBallTopspin,16-bit; dips ball and pushes along heading; decays 3/256 per frame
