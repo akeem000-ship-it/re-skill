@@ -295,6 +295,22 @@ Luigi, Baby Mario, DK, Allie, Joy and Brian; every formula holds exactly):
 So in the shot tables, spin rows come from Top/Slice and speed rows from Serve/Stroke/Volley.
 Luigi (Top 0) served with topspin-serve row 0 (8960 / −1024), as recorded.
 
+### Movement and rally measurements (PyBoy bot, `tools/emu_bot.py`)
+
+`tools/emu_bot.py` plays P1 by reading ball/player positions each frame (tracks ball X, swings when
+close, times the serve on the toss's way down) and records WRAM0 + WRAM4/5. In a 2400-frame Luigi vs
+Baby Mario recording (27 hits):
+
+* **Acceleration** = Dash parameter / 64 px/frame² (Luigi and Baby Mario: 120 → 1.875 per frame, linear ramp).
+* **Top speed** = run-speed parameter + 0.5 (Luigi 12.0 → 12.5, Baby Mario 12.5 → 13.0; 13.27 diagonal).
+* **Braking** ≈ 0.87 px/frame² for Stop 3 (mixed with swing animation in this capture; not exact).
+* **Serves**: 71-73 px/frame, elevation −2.4°, topspin-serve table row = Top stat (8960/±1024).
+  An earlier serve, hit later in the toss, left at 57, so speed depends on hit timing.
+* **Groundstrokes**: 30-37 px/frame, elevation 11-19°, varying per shot (trajectory tables pick
+  speed/elevation for the target). Initial spins (one frame of decay removed): Luigi topspin
+  3072 / ±448; Baby Mario topspin 4608 / ±640, flat 0 / 0, slice −912 / 1536 (−912 = slice
+  table row 2 = his Slice stat).
+
 ### Shot tables — partial (tool: `tools/dump_shot_tables.py`)
 
 `07:52A0 SetShotSpinSpeed` (HL = table, D = spin row, E = speed row) loads topspin → `wC41C`,

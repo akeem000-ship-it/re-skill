@@ -279,3 +279,4 @@ bank,addr,name,comment
 *,DF6E,wPlTop,topspin row (D in topspin tables)
 *,DF6F,wPlSlice,slice row
 *,DF78,wPlRoster,
+08,6B64,LaunchBallCaller,
