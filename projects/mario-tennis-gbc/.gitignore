@@ -6,3 +6,5 @@ rom/
 gfx/
 docs/text_dump.txt
 __pycache__/
+states/
+*.ram

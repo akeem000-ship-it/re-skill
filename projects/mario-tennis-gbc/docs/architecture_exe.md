@@ -20,7 +20,7 @@ banks 5F-63      COURTS: LoadMap descriptors 0-15 (32x32 maps)
 banks 63-69      RPG-mode AREAS: LoadMap descriptors 16-36 (64x64 maps)
 banks 6A-6D      graphics (6C/6D: many palettes + tiles)
 banks 6F-77      code/data (TBD)
-banks 78-7E      no export table, dense — likely music/sample data
+banks 78-7E      no export table; active during the intro cutscene (cutscene data, PyBoy-observed)
 bank 7F          padding ($FF)
 ```
 

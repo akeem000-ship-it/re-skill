@@ -197,3 +197,19 @@ bank,addr,name,comment
 *,C2A1,wTrigExit,
 *,C2A2,wTrigStep,step-count check ($DAEC-$DAEE, threshold $1E)
 *,C2A5,wTrigA5,
+02,52CE,CharRecords,32 x 29 B per roster char -> copied to wCA0E (P1) / wCA8E (P2); +18..+28 = 11 stats 0-9
+07,5A44,RosterToSprite,A&$3F -> [07:5A50] sprite id (verified in PyBoy)
+07,5A50,RosterToSpriteTable,32 B
+18,4300,CharColorSchemes,5 OBJ palettes; sprite header +0 (3..7) selects scheme (verified Luigi/Baby Mario)
+18,4328,LoadCharColorSchemes,-> OBJ palettes 3-7
+39,407E,LoadScreen,C=screen id: table 39:40F5 (8 B: tiles, map, attrs, palette)
+39,40F5,ScreenTable,48 entries x 4 bank refs; tools/render_screens.py
+*,CA00,wP1Name,
+*,CA0B,wP1Roster,
+*,CA0E,wP1Record,29 B copy of CharRecords
+*,CA20,wP1Stats,11 stats
+*,CA80,wP2Name,
+*,CA8B,wP2Roster,
+*,CA8E,wP2Record,
+*,CAA0,wP2Stats,
+*,C140,wObjPalBuf,8 OBJ palettes (BG at C100); mirrored at C240

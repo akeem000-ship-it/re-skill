@@ -201,6 +201,20 @@ Also in bank 0: `00:1332 MulSinCos` (angle in BC, +$40 = cos) reads a sine table
 **bank 2D**; `00:2D8C ProjectPoint` reads tables in **banks 2E/2F**. So banks 2D-2F are
 **math tables**, not audio.
 
+### Emulator harness (Ph5.5) — PyBoy 2.8
+
+`tools/emu/session.py` wraps PyBoy (headless, CGB, ~1200 fps): `run`, `press`, `hook(bank, addr, fn)`,
+`wram(bank, addr, n)`, `shot`, `save/load` state. Drivers: `emu_boot.py` (boot + key script +
+screenshots), `emu_trace_loads.py` (logs LoadCharacterSprites / LoadMap calls), `emu_charmatch.py`
+(start a match with the k-th character and dump WRAM), `emu_dump.py`. States go to `states/`
+(gitignored). Note: `tools/dis.py` shadows the stdlib `dis`, so session.py strips `tools/`
+from `sys.path` before importing PyBoy.
+
+Observed boot flow: Nintendo logo → Camelot logo → intro cutscene (ROM bank $78 active, so banks
+78-7E hold cutscene data, not music) → title (screen #26) → MAIN MENU (3×3: Exhibition, Mario
+Mini-Games, Linked Play / Mario Tour files 1-3 / Status, Dictionary, Saved Data) → Play menu →
+character select → CPU difficulty → match.
+
 ### Sound — partial
 
 `SoundUpdate $2F1A` runs from VBlank and from the Timer ISR when the LCD is off (music keeps
@@ -234,6 +248,70 @@ messages `30#263-293` give ±1/±2 modifiers). **Stat table not found yet.**
 
 The **sprite id** (CharSpriteTable, 0-45) is a different index from the roster index C. ID 3
 has a Bowser-like silhouette and ID 26 is a large robot, so a translation table must exist.
+
+### Character records & stats — VERIFIED location (PyBoy WRAM diff)
+
+Found by starting six exhibition matches with different characters in PyBoy and diffing WRAM
+(`tools/emu_charmatch.py`, `tools/analyze_wram_diff.py`). A match copies the character's
+29-byte record from **`CharRecords 02:52CE`** (roster order) into the player struct:
+P1 name `wCA00`, roster id `wCA0B`, record `wCA0E-wCA2A`; P2 at `wCA80/wCA8B/wCA8E`.
+Luigi as P1 and as P2 gave identical bytes, as did Baby Mario.
+
+Record bytes +18..+28 are **11 stats (0-9)**. The stat-label tile sheet (LZ `3D:5A`) lists exactly
+11 labels: Serve, Stroke, Volley, Spin, Angle, Topspin, Speed, Reaction, Stop, Control, Dash.
+**This order is a hypothesis**: it has not been seen on the in-game status screen, which needs
+a Mario Tour save. Bytes +0..+17 vary by group (+10 = 1-5 looks like a rank/tier; +13..+16
+differ between student tiers and the Mushroom Kingdom cast).
+
+| # | Name | Type | Serve | Stroke | Volley | Spin | Angle | Topspin | Speed | Reaction | Stop | Control | Dash | header bytes +0..+17 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0 | Alex | Power | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | `c9 01 80 00 a0 00 00 08 0c 00 01 80 00 12 0c 0a c8 00` |
+| 1 | Nina | Power | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | `00 01 80 00 a0 00 00 08 0c 00 01 80 00 12 0c 0a c8 00` |
+| 2 | Harry | Power | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | `00 01 80 00 a0 00 00 08 0c 00 01 80 00 12 0c 0a c8 00` |
+| 3 | Kate | Power | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | `00 01 80 00 a0 00 00 08 0c 00 01 80 00 12 0c 0a c8 00` |
+| 4 | Allie | Speed | 0 | 0 | 0 | 0 | 1 | 0 | 1 | 3 | 4 | 0 | 0 | `00 01 80 00 a0 00 00 08 0c 00 02 80 00 1b 12 0e 46 00` |
+| 5 | Joy | Technique | 0 | 2 | 0 | 0 | 1 | 5 | 7 | 0 | 0 | 1 | 1 | `00 01 80 00 a0 00 00 08 0c 00 02 80 00 19 13 0a 50 00` |
+| 6 | Brian | All-Around | 3 | 2 | 2 | 2 | 1 | 2 | 2 | 2 | 2 | 3 | 2 | `00 01 80 00 a0 00 00 08 0c 00 02 80 00 1e 1c 0d 1e 00` |
+| 7 | Pam | All-Around | 2 | 2 | 0 | 1 | 2 | 5 | 4 | 1 | 2 | 1 | 0 | `00 01 80 00 a0 00 00 08 0c 00 03 80 00 16 12 0a a0 00` |
+| 8 | Bob | Power | 3 | 1 | 6 | 5 | 3 | 0 | 0 | 0 | 1 | 1 | 2 | `00 01 80 00 a0 00 00 08 0c 00 03 80 00 16 12 0a a0 00` |
+| 9 | Beth | Speed | 2 | 0 | 1 | 2 | 1 | 2 | 1 | 6 | 7 | 3 | 2 | `00 01 80 00 a0 00 00 08 0c 00 03 80 00 16 11 0a a0 00` |
+| 10 | Fay | Power | 2 | 1 | 5 | 6 | 4 | 2 | 2 | 2 | 3 | 2 | 3 | `00 01 80 00 a0 00 00 08 0c 00 04 80 00 12 0c 0a aa 00` |
+| 11 | Curt | Tricky | 7 | 8 | 3 | 2 | 1 | 3 | 2 | 1 | 2 | 1 | 2 | `00 01 80 00 a0 00 00 08 0c 00 04 80 00 12 0c 0a aa 00` |
+| 12 | Mark | All-Around | 3 | 2 | 3 | 4 | 3 | 4 | 3 | 4 | 3 | 3 | 3 | `00 01 80 00 a0 00 00 08 0c 00 04 80 00 0f 0a 08 aa 00` |
+| 13 | Sean | All-Around | 3 | 3 | 4 | 3 | 2 | 4 | 5 | 4 | 4 | 3 | 3 | `00 01 80 00 a0 00 00 08 0c 00 05 80 00 0a 09 05 c8 00` |
+| 14 | Sammi | Technique | 1 | 4 | 2 | 3 | 4 | 8 | 7 | 4 | 3 | 2 | 3 | `00 01 80 00 a0 00 00 08 0c 00 05 80 00 0a 09 05 c8 00` |
+| 15 | Elden | Speed | 4 | 1 | 3 | 5 | 4 | 4 | 2 | 7 | 6 | 4 | 3 | `00 01 80 00 a0 00 00 08 0c 00 05 80 00 0a 09 05 c8 00` |
+| 16 | Spike | All-Around | 4 | 4 | 5 | 4 | 3 | 5 | 4 | 4 | 4 | 3 | 3 | `00 01 80 00 a0 00 00 08 0c 00 05 80 02 0a 09 05 e6 08` |
+| 17 | Emily | Speed | 4 | 2 | 3 | 4 | 5 | 4 | 3 | 7 | 8 | 5 | 4 | `00 01 80 00 a0 00 00 08 12 00 05 80 00 08 07 03 dc 03` |
+| 18 | B. Coz | Power | 7 | 1 | 7 | 8 | 5 | 2 | 3 | 3 | 2 | 2 | 4 | `00 01 80 00 a0 00 00 08 0c 00 05 80 00 0a 09 05 b4 00` |
+| 19 | A. Coz | Tricky | 9 | 9 | 3 | 4 | 5 | 4 | 3 | 4 | 2 | 3 | 3 | `00 01 80 00 a0 00 00 08 0c 00 05 80 01 08 07 03 ff 07` |
+| 20 | Kevin | ??? | 4 | 3 | 3 | 4 | 4 | 7 | 6 | 5 | 4 | 4 | 5 | `00 01 80 00 a0 00 00 08 0c 00 05 80 00 09 08 04 dc 00` |
+| 21 | unused21 | ??? | 0 | 0 | 0 | 0 | 0 | 9 | 9 | 1 | 9 | 9 | 9 | `00 01 80 00 a0 00 00 08 0c 00 01 80 00 12 0c 0a c8 00` |
+| 22 | unused22 | ??? | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | `00 01 80 00 a0 00 00 08 0c 00 01 80 00 12 0c 0a c8 00` |
+| 23 | Luigi | All-Around | 0 | 3 | 4 | 5 | 8 | 4 | 5 | 4 | 6 | 3 | 3 | `00 01 90 00 a0 00 00 08 0c 00 05 80 00 20 1c 0e 3c 00` |
+| 24 | DK | Power | 0 | 2 | 6 | 7 | 4 | 2 | 3 | 4 | 5 | 0 | 3 | `00 01 90 00 b0 00 00 08 0c 00 05 80 00 20 1c 0e 3c 00` |
+| 25 | Baby Mario | Speed | 3 | 2 | 5 | 5 | 6 | 8 | 7 | 5 | 6 | 5 | 9 | `00 01 70 00 a0 00 00 08 0c 00 05 80 00 20 1c 0e 3c 00` |
+| 26 | Mario | All-Around | 3 | 2 | 5 | 6 | 5 | 4 | 6 | 6 | 5 | 3 | 3 | `00 01 80 00 a0 00 00 09 0c 00 05 80 00 20 1c 0e 3c 00` |
+| 27 | Waluigi | Technique | 0 | 3 | 4 | 4 | 8 | 1 | 8 | 3 | 6 | 6 | 3 | `00 02 a0 00 a6 00 00 08 0c 00 05 80 00 20 1c 0e 3c 00` |
+| 28 | Yoshi | Speed | 2 | 3 | 4 | 5 | 4 | 5 | 7 | 6 | 8 | 3 | 5 | `00 00 80 00 a0 00 00 08 0c 00 05 80 00 20 1c 0e 3c 00` |
+| 29 | Bowser | Power | 2 | 0 | 6 | 7 | 4 | 3 | 5 | 4 | 2 | 3 | 3 | `00 00 90 00 b0 00 80 07 0b 00 05 80 00 20 1c 0e 3c 00` |
+| 30 | Wario | Power | 3 | 0 | 6 | 7 | 5 | 5 | 6 | 5 | 4 | 4 | 5 | `00 01 80 00 a0 00 00 08 0c 00 05 80 00 20 1c 0e 3c 00` |
+| 31 | Peach | Technique | 1 | 3 | 4 | 4 | 6 | 5 | 9 | 4 | 7 | 7 | 8 | `00 01 80 00 a0 00 00 08 0c 00 05 80 00 20 1c 0e 3c 00` |
+
+
+Roster → sprite: `RosterToSprite 07:5A44` = table `07:5A50` (verified live: Luigi 23 → sprite 27,
+Baby Mario 25 → 29). The unused roster slot 21 maps to sprite 26, the robot. Colours: sprite
+header +0 (3-7) selects one of five OBJ palettes at `18:4300` (verified live via OAM for Luigi
+and Baby Mario).
+
+### Screens — VERIFIED (tool: `tools/render_screens.py`)
+
+`39:407E LoadScreen(C)` with `ScreenTable 39:40F5`, 8 bytes per screen = 4 bank refs:
+tiles (LZ → VRAM1 $9000/$8800), 32×32 tilemap (LZ), attribute map (LZ), 64-byte palette (raw → BG 0-7).
+47 valid entries: title screen (#26, matches the emulator screenshot), Nintendo/Camelot logos,
+intro cutscene panels, the DMG-style warning, exhibition/N64-tournament/tournament record grids,
+link screens, results ("YOU WIN!"), Varsity team charts, tournament brackets, the ending
+("And the greatest player ever!"), and portraits.
 
 ### Save data (SRAM) — partial
 
@@ -292,7 +370,7 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 ## Verification Checklist
 
 - [ ] Ph3: 3+ functions traced and cross-checked against emulator trace
-- [ ] Ph4: 5+ sprites/tiles extracted and visually compared to emulator *(37 maps + DMG screen rendered and look correct, but no emulator side-by-side yet)*
+- [x] Ph4: 5+ sprites/tiles extracted and visually compared to emulator (PyBoy: title screen, Nintendo/Camelot logos, intro panels, Nintendo hard court, Luigi/Baby Mario sprites + colours)
 - [ ] Ph5: key data struct confirmed in emulator memory dump, all fields match
 - [ ] Ph6: full game session played, no major logic gaps found
 - [ ] Ph7: web port pixel-compared against emulator screenshots
@@ -328,18 +406,21 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [x] Ph4: identify banks 40-5D as character sprite banks (header, frame list, anim scripts)
 - [x] Ph4: find the OAM builder and decode sprite frame placement, render all frames (tools/render_sprites.py)
 - [ ] Ph4: map sprite id → character (character-select code / sprite palettes); decode header +0/+2
-- [ ] Ph4: find OBJ palettes for characters and render sprites in color
+- [x] Ph4: find OBJ palettes for characters and render sprites in color (18:4300)
 - [ ] Ph4: decode the animation script format at header +6 (`$FF/$FB/$FD` opcodes)
 - [ ] Ph4: pair tile/map/palette blocks into full screens (title screen first) using the loading code
 - [x] Ph5: decode SRAM save container (signature, checksum, bank-1 backup, persistent flags)
 - [ ] Ph5: map the rest of the save payload $A038-$A76F (RPG character, records at $A6C1)
 - [x] Ph5: character roster + type table (38:58FB)
-- [ ] Ph5: find the character stat table (Power/Spin/Speed/Control). Leads: the "Review Char. Data" screen code in bank 38 around 38:5760, and 39:4530 (number printer?)
-- [ ] Ph5: find the roster-index → sprite-id translation
+- [x] Ph5: find the character stat table (02:52CE, verified by WRAM diff in PyBoy)
+- [ ] Ph5: verify stat label order on the in-game status screen (needs a Mario Tour save: script Create Character in PyBoy)
+- [ ] Ph5: decode record bytes +0..+17
+- [x] Ph5: roster-index → sprite-id translation (07:5A50, verified live)
 - [ ] Ph5: map wEventFlags ($C9C0) flag numbers used by RPG mode
 - [x] Ph4: build web/catalog.html asset browser (maps, LZ sheets with palette recolor, palettes, searchable text)
 - [ ] Ph4: identify what the 64-byte LZ blocks (bank 18, 39, 3F, 6D) really are
-- [ ] Ph4: render the title screen and main menus (find their tile/map/palette triples via the screen-setup code in banks 1A/1C/1D/1E)
+- [x] Ph4: render the title screen and full-screen layouts (LoadScreen 39:407E, 47 screens)
+- [ ] Ph4: menus with icons (main menu, play menu) are drawn by other code; find their loader
 
 ### Web Port Fixes
 

@@ -11,6 +11,7 @@ STEPS = [
     ["tools/render_map.py", "all"],
     ["tools/dump_text.py", "--out", "docs/text_dump.txt"],
     ["tools/render_sprites.py", "all", "--frames", "145"],
+    ["tools/render_screens.py", "all"],
 ]
 os.makedirs(os.path.join(ROOT, "gfx"), exist_ok=True)
 for s in STEPS:

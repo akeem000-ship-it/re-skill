@@ -13,7 +13,8 @@ tile t -> column t//4, row t%4 (8x8 units).
 
 Char ids 0-29 -> banks 40-5D (145 frames each; tennis players). Ids 30-45 -> banks 6F-71
 use a different header (+2 = 04 02) and small frame counts: NPC/minigame sprites (TBD).
-Which id is which character is NOT yet known (order differs from the text roster).
+Roster index -> sprite id: RosterToSprite 07:5A44 = table 07:5A50 (verified in PyBoy:
+Luigi 23 -> 27, Baby Mario 25 -> 29).
 
 usage: render_sprites.py [char|all] [--frames N]
 """
@@ -24,6 +25,29 @@ import gfx
 
 CHAR_TABLE = (0x04, 0x4F75)
 NCHARS = 46
+
+
+ROSTER = ["Alex", "Nina", "Harry", "Kate", "Allie", "Joy", "Brian", "Pam", "Bob", "Beth", "Fay",
+          "Curt", "Mark", "Sean", "Sammi", "Elden", "Spike", "Emily", "B. Coz", "A. Coz", "Kevin",
+          "unused21", "unused22", "Luigi", "DK", "Baby Mario", "Mario", "Waluigi", "Yoshi",
+          "Bowser", "Wario", "Peach"]
+ROSTER_TO_SPRITE = (0x07, 0x5A50)
+SCHEMES = (0x18, 0x4300)   # 5 OBJ palettes; header+0 (3..7) selects OBJ slot 3..7 loaded from here
+
+
+def char_palette(rom, hdr):
+    slot = hdr["raw"][0]
+    if not 3 <= slot <= 7:
+        return gfx.GREYS
+    return gfx.palette_from_bytes(rom, to_offset(*SCHEMES) + (slot - 3) * 8)
+
+
+def sprite_names(rom):
+    o = to_offset(*ROSTER_TO_SPRITE)
+    names = {}
+    for c, n in enumerate(ROSTER):
+        names.setdefault(rom[o + c], []).append(n)
+    return {k: "/".join(v) for k, v in names.items()}
 
 
 def w(rom, o):
@@ -81,19 +105,20 @@ def main():
         if not fl:
             print("char %02d: bank %02x no frames" % (cid, bank)); continue
         shown = fl[:nf]
-        W = sum(len(draw_frame(rom, bank, p, i)[0]) + 2 for p, i in shown)
+        pal = char_palette(rom, hdr)
+        W = sum(len(draw_frame(rom, bank, p, i, pal)[0]) + 2 for p, i in shown)
         sheet = [[bg] * W for _ in range(32)]
         x0 = 0
         for p, i in shown:
-            f = draw_frame(rom, bank, p, i)
+            f = draw_frame(rom, bank, p, i, pal)
             for y in range(32):
                 for x, c in enumerate(f[y]):
                     if c: sheet[y][x0 + x] = c
             x0 += len(f[0]) + 2
         path = os.path.join(outdir, "char_%02d.png" % cid)
         gfx.write_png(path, sheet, 2)
-        print("char %02d bank %02x hdr %s frames %d info0 %s" % (
-            cid, bank, hdr["raw"][:4].hex(), len(fl), bytes(fl[0][1]).hex()))
+        print("char %02d %-16s bank %02x hdr %s frames %d info0 %s" % (
+            cid, sprite_names(rom).get(cid, "-"), bank, hdr["raw"][:4].hex(), len(fl), bytes(fl[0][1]).hex()))
 
 
 if __name__ == "__main__":
