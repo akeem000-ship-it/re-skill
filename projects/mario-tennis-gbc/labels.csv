@@ -281,3 +281,58 @@ bank,addr,name,comment
 *,DF78,wPlRoster,
 08,6B64,LaunchBallCaller,
 *,C32E,wCurCourtMapID,exhibition hard court = map 5
+00,3151,MusicIndex,50 x (bank|chans<<4, idx) for ids $01-$32
+00,31B5,SfxIndex,96 x entries for ids $50-$AF
+00,3129,SoundStop,
+00,3314,SoundChannelInit,DE=4-byte row [slot flags ptr16] -> driver channel state WRAM7:D100+slot
+00,3566,SeqNextByte,sequence interpreter loop
+00,3864,SeqNote,note byte < $A0 then duration; $1F = rest; noise channel uses table 3836
+00,3B1D,NoteFreqTable,12 x u16 GB periods per octave
+00,3D6F,SeqLoopSlot,per-channel loop stack entry at WRAM7:D1C0
+0A,65C3,MatchTickFar,
+08,41F7,MatchTick,per frame: clear OAM lists, 61DC camera, 692C players, 427A, 43D3 point end, 5153 ball, 4242, 4352, 66F1 HUD
+08,61DC,CameraFollow,scroll toward ball/player (wC440-C447)
+08,692C,PlayersUpdate,calls PlayerStep 6958 for WRAM banks 4-7
+08,6958,PlayerStep,6E64 ball-relative, 780C state, 6A62, 6EC5, 73CA, 72DE, 72A6, 75C0 facing, 7791 anim, 75E8/7621 frame, 7672 OAM, 764B, 7745 shadow
+08,6E64,PlayerBallDelta,wC448.. = ball - player (X Y Z); DF50 bit4 = |ball Y| >= 672
+08,780C,PlayerStateDispatch,DF1E: 0 human joypad -> DF1F, 1 CPU think, 4-6 other
+08,7855,PlayerHumanInput,DF1F = dpad held (hi nibble) | buttons pressed (lo nibble)
+08,7863,PlayerCpuThink,countdown DF12 then decide (doubles branch 787A)
+08,7968,PlayerSubStateNext,DF1A++
+08,7A64,CpuServeDelay,DF12 = 35 (quick, per profile table 7A9D) or 50 frames
+08,7A9D,CpuQuickServeTables,4 profiles x 8 flags
+08,7AEB,CpuAimRandom,DF1F dpad = random left/right (table 7B0B) unless forced by wC7B5
+08,7B13,CpuAimSmart,if RNG < DF7C: aim away from opponent X (DF1F dpad); else none
+08,7B62,CpuShotRandom,DF58 = table 7B73[RNG&7] ($10 A / $20 B / $30 A+B)
+08,7B7B,CpuShotChoose,lob/drop if allowed by profile (02:5EE2) when flagged or opponent at net (Y<320); else 02:5EB3 profile pick
+08,7C10,CpuPressButtons,DF1F lo nibble = DF58 >> 4 (button mask)
+08,7C33,NegateIfFarSide,DE = -DE when DF0A bit1 (far-side player)
+08,7C57,BallCrossingAt,HL = depth: where the ball's heading line crosses that depth (uses wC43B, C450/C452)
+08,7C70,CpuSetTarget,DF46/48 = target X/Y; DF55 = 0
+08,7C86,CpuInterceptAtDepth,DE = depth (0x180 net, 0x200, 0x460 baseline): X from wAimHeading via 5A51
+08,7D0A,CpuReactionTimer,DF12 = (deep ? DF79 : DF7A) + RNG&3
+08,7E84,CpuReactionDeep,DF12 = DF79 + RNG&3 ; DF59 = DF7B positioning error
+02,5E23,CpuShotProfiles,4 x 16 shot codes picked by RNG&15 (02:5EB3); 02:5EE2 tests membership
+38,5FFB,DifficultyTable,6-byte rows [deep short err place profile level]: Easy 5FFB Normal 6001 Hard 6007 Intense 600D (5FF5 = extra Intense row; pointer list precedes)
+38,5F95,ApplyDifficulty,copies the 6 bytes into wCA9B..wCA9F / wCA98
+*,CA98,wP2CpuLevel,record +10: 1 Easy 3 Normal 5 Hard 7 Intense (students 1-5 by tier)
+*,CA9B,wP2CpuDeepDelay,record +13: reaction frames for deep balls
+*,CA9C,wP2CpuShortDelay,record +14
+*,CA9D,wP2CpuPosError,record +15
+*,CA9E,wP2CpuPlaceProb,record +16: smart-placement probability /256
+*,CA9F,wP2CpuProfile,record +17: 0-3 shot/serve profile
+*,DF0A,wPlController,0 human 1 CPU 9 none; bit1 = far side
+*,DF12,wPlThinkTimer,
+*,DF1E,wPlState,0 human 1 CPU
+*,DF1F,wPlVirtualPad,hi nibble dpad, lo nibble buttons (human and CPU)
+*,DF46,wPlTargetX,
+*,DF48,wPlTargetY,
+*,DF50,wPlBallFlags,bit4 = ball deep (|Y| >= 672)
+*,DF58,wPlShotCode,hi nibble = button mask (1 A 2 B 3 A+B) lo nibble = variant
+*,DF59,wPlPosError,copy of CPU positioning error
+*,DF79,wPlCpuDeepDelay,
+*,DF7A,wPlCpuShortDelay,
+*,DF7B,wPlCpuPosError,
+*,DF7C,wPlCpuPlaceProb,
+*,DF7D,wPlCpuProfile,
+*,DF95,wPlCpuLevel,

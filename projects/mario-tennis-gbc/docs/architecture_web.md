@@ -49,9 +49,13 @@ tests/
   banks 20-23. The port solves for the elevation with the real physics (`aimShot`). Stroke speeds
   (28 + Stroke + rand·3) and stroke spins (topspin 3072 + 512·Top / side 448 + 64·Top; slice side = table
   × 0.375) come from two characters' measured shots.
-* **CPU AI**: predicts the ball with the real physics and runs to intercept, using its own run/accel/brake
-  stats and a 6 + Reaction frame delay. The error model is invented: whiff chance 30/16/9/6 % and an
-  aim spread per difficulty, plus the Placement-based aim error.
+* **CPU AI** (decoded parts, REVERSE.md "CPU AI"): the difficulty table `38:5FFB` (reaction delay for
+  deep/short balls + rand 0-3, positioning error, smart-placement probability, shot profile), the four
+  shot-profile tables `02:5E23` (A / B / A+B lob picks), lob-when-opponent-at-net, aim away from the
+  opponent vs random side, quick-serve chance per profile, and the net-rush intercept depth ($0180).
+  Approximated: the scale of the positioning error (×14 units), the CPU swing reach (70 × 140),
+  the net-rush probability per profile (5/15/30/45 %), and a contact-timing scatter that stands in for
+  the undecoded swing windows. Calibration (CPU vs CPU soak): 2.0 / 3.2 / 6.2 / 4.7 hits per point.
 * **Swing windows**: reach box 110 × 140 units, height ≥ −330; serve speed scales down when the
   toss is hit away from its apex (the emulator showed 57 vs 72 px/frame).
 * **Net**: the ball bounces back off the tape (quartered horizontal speed). Net-cord handling is not ported.

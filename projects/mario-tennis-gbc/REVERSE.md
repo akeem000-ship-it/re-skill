@@ -343,6 +343,55 @@ exactly `07:5071` row 0 (8960 / ±1024) minus one frame of decay. Its speed was 
 see above). Luigi's Serve 4 selects 68 px/frame, but the recorded serve left at 57; the extra
 scaling (timing/charge or the trajectory table) is not decoded yet.
 
+### CPU AI — VERIFIED structure (bank 08 `7A60-7F00`, tables in banks 02 and 38)
+
+Both humans and CPUs drive the same player state machine through a **virtual joypad** `DF1F`
+(high nibble = d-pad, low nibble = buttons). State `DF1E` 0 = human (`08:7855` copies the real
+pad), 1 = CPU (`08:7863`): a think timer `DF12` counts down, then the CPU "presses" the pad.
+
+CPU parameters live in the character record (bytes +10..+17) and are copied to the player struct;
+the CPU-difficulty menu overwrites them from `DifficultyTable 38:5FFB` (found by diffing WRAM
+after choosing Easy vs Intense):
+
+| Difficulty | deep-ball delay `DF79` | short-ball delay `DF7A` | positioning error `DF7B` | smart placement `DF7C` | profile `DF7D` | level |
+|---|---|---|---|---|---|---|
+| Easy | 28 | 24 | 12 | 60/256 (23%) | 0 | 1 |
+| Normal | 18 | 15 | 9 | 120/256 (47%) | 1 | 3 |
+| Hard | 10 | 9 | 5 | 190/256 (74%) | 2 | 5 |
+| Intense | 2 | 2 | 0 | 230/256 (90%) | 3 | 7 |
+
+Student characters carry their own values (Alex 18/12/10/200, level 1; the Mushroom Kingdom cast
+32/28/14/60, level 5).
+
+Decision steps (all use the RNG `08:43F6`):
+* **Reaction** (`08:7D0A`, `08:7E84`): `DF12 = delay + rand(0..3)` frames, deep delay when the ball
+  is beyond the service line (`DF50` bit 4), short delay otherwise. `DF59 = DF7B` is the positioning error.
+* **Intercept** (`08:7C86` via `BallCrossingAt 08:7C57`): the X where the ball's heading line crosses a
+  chosen depth — `$0180` (384, net rush), `$0200` (512) or `$0460` (1120, baseline) — becomes the
+  target `DF46/DF48` (`08:7C70`). Sub-states (`DF1A`, `DF7F`) sequence wait → run → swing.
+* **Shot choice** (`08:7B7B`): lob/drop (`$30` = A+B) when flagged (`wC4DA`) or when the opponent is
+  inside Y < 320 (net), but only if the profile allows it (`02:5EE2` membership test); otherwise a
+  random pick from the profile's 16-entry table `02:5E23`: profile 0 = 7×A, 7×B, 2×A+B; profile 3 =
+  mostly `$11`/`$22` variants and lobs. `DF58` high nibble = button mask, low nibble = variant.
+* **Aim** (`08:7AEB`, `08:7B13`): a random left/right press, replaced with probability `DF7C`/256 by a
+  press *away from the opponent's X*; `08:7C10` then presses the shot buttons.
+* **Serve** (`08:7A64`): first serves wait 50 frames, or 35 ("quick serve") with probability 0/8, 3/8,
+  6/8, 8/8 by profile (`08:7A9D`); second serves always 50.
+* Controller byte `DF0A`: 0 human, 1 CPU, 9 none; bit 1 = far side (negates target depths, `08:7C33`).
+
+### Sound driver — partial (bank 0 `3129-3Dxx`, data banks 70-7F; tool: `tools/dump_sound_index.py`)
+
+`SoundStart 00:3297`: ids `$01-$32` are **music** (index `00:3151`), `$50-$AF` **SFX** (`00:31B5`);
+ids `$40-$44` are remapped to music `$2E-$32` through `00:2FE0`. Index entry = `bank | channels << 4`,
+`index`; the song's channel table is at `bank:$4000 + index*4`, one 4-byte row per channel
+(`driver slot`, `flags`, `ptr`). Music uses 4 rows (slots `$40/$60/$80/$A0`), SFX 1-2 (slot `$00`).
+Sequence bytes (`00:3566`): `< $A0` note (then a duration byte; `$1F` = rest; noise channel maps
+`< $10` through `00:3836`), `$A0 n` volume/envelope, `$A1 n` tempo/length, `$B0-$CF` duty/envelope
+and loop setup, `$D0-$DF` / `$E0-$EF` transpose ±n, `$F0-$FC` misc, `$FD` loop-point, `$FF` end.
+Note periods: `00:3B1D`. Observed ids: `$01` intro cutscene, `$02` title, `$03` main menu, `$44→$32`
+exhibition match, `$06` point jingle; SFX `$51` racket hit, `$59` serve, `$5B` bounce, `$5E/$5F/$60`
+menu confirm/cursor/back, `$65` boot.
+
 ### Emulator harness (Ph5.5) — PyBoy 2.8
 
 `tools/emu/session.py` wraps PyBoy (headless, CGB, ~1200 fps): `run`, `press`, `hook(bank, addr, fn)`,
@@ -547,8 +596,9 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [ ] Ph3: decode GameFlow 0A:4F40 scene sequence (title → menus → match / RPG); name each farcall target
 - [x] Ph3: disasm.py: handle `rst $00` inline jump tables (print the dw table and stop linear decode)
 - [ ] Ph3: build a recursive code tracer (tools/trace_code.py) from vectors + $4000 export tables to classify code vs data per bank
-- [ ] Ph3: decode rst $08 SoundCmdInline (00:2FB3) — map command ids to music/SFX
-- [ ] Ph3: identify the sound driver bank (likely 78-7E data + a code bank) via Timer ISR $27D7
+- [x] Ph3: decode rst $08 SoundCmdInline (00:2FB3) — music/SFX index, ids observed live
+- [x] Ph3: identify the sound driver (bank 0 3129-3Dxx) and data banks 70-7F
+- [ ] Ph3: decode the sequence opcodes fully ($A0-$FF handlers) and write a sequence dumper
 - [x] Ph4: text encoding (ASCII + control codes) and text-bank layout; dump all 4109 messages
 - [x] Ph4: understand banks 5F-69 map layout via LoadMap 0A:585D — all 37 maps render
 - [ ] Ph4: find the dialogue font tiles and the text printer (control-code handler for $02/$03/$07/$0E)
@@ -576,7 +626,8 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [ ] Ph5/6: game/set/tiebreak counters and match-end logic (bank 07 5Exx / bank 16 5Dxx)
 - [x] Ph5/6: player struct (WRAM4/5 DF00) and stat → parameter formulas (verified 6 chars)
 - [ ] Ph5/6: player movement code (acceleration, dash, braking) using DF60-DF66
-- [ ] Ph5/6: CPU AI per difficulty
+- [x] Ph5/6: CPU AI per difficulty (parameters, reaction, intercept, shot/aim/serve decisions)
+- [ ] Ph5/6: decode the CPU sub-state sequence (DF1A/DF7F) and the intercept-depth choice rule
 - [x] Ph5: roster-index → sprite-id translation (07:5A50, verified live)
 - [ ] Ph5: map wEventFlags ($C9C0) flag numbers used by RPG mode
 - [x] Ph4: build web/catalog.html asset browser (maps, LZ sheets with palette recolor, palettes, searchable text)
@@ -588,7 +639,7 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 
 - [x] Ph7: web port of a singles exhibition match (web/index.html, docs/architecture_web.md)
 - [ ] Ph7: replace the stroke speed/spin approximations with the bank 20-23 trajectory tables once decoded
-- [ ] Ph7: port the real CPU AI once decoded; until then tune the invented error model to emulator stats
+- [x] Ph7: port the decoded CPU AI parameters (reaction delays, placement probability, positioning error, shot profiles, quick serve)
 - [ ] Ph7: decode ProjectPoint 00:2D8C and replace the fitted projection
 - [ ] Ph7: HUD with the game's font/score graphics; sound
 - [x] Ph7: pixel-compare court rendering against emulator screenshots (99.9%)

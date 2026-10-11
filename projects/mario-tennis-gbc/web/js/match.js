@@ -12,11 +12,17 @@ export class Match {
   constructor(rom, p1, p2, opts = {}) {
     this.rom = rom;
     this.gamesToWin = opts.games || 2;
-    // APPROX CPU error model (the real AI is not decoded): per-approach whiff chance and extra aim
-    // spread per difficulty EASY / NORMAL / HARD / INTENSE (the game's CPU difficulty menu)
+    // CPU parameters: DifficultyTable 38:5FFB (REVERSE.md "CPU AI"): reaction delay for deep /
+    // short balls (+ rand 0-3 frames), positioning error, smart-placement probability /256,
+    // shot profile 0-3 (02:5E23 tables), quick-serve chance /8 (08:7A9D)
     this.difficulty = opts.difficulty ?? 1;
-    this.whiff = [0.30, 0.16, 0.09, 0.06][this.difficulty];
-    this.spread = [140, 90, 55, 30][this.difficulty];
+    const D = [[28, 24, 12, 60, 0], [18, 15, 9, 120, 1], [10, 9, 5, 190, 2], [2, 2, 0, 230, 3]][this.difficulty];
+    this.cpu = { deep: D[0], short: D[1], posErr: D[2], place: D[3], profile: D[4], quick: [0, 3, 6, 8][D[4]] };
+    this.profileTable = [
+      [0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x30,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x30],
+      [0x10,0x10,0x10,0x10,0x20,0x20,0x20,0x20,0x10,0x11,0x11,0x30,0x20,0x22,0x22,0x30],
+      [0x10,0x10,0x10,0x30,0x20,0x20,0x20,0x30,0x11,0x11,0x11,0x12,0x22,0x22,0x22,0x21],
+      [0x30,0x30,0x30,0x11,0x11,0x11,0x11,0x11,0x22,0x22,0x22,0x22,0x20,0x10,0x12,0x21]][this.cpu.profile];
     this.players = [this.mkPlayer(p1, 0, false), this.mkPlayer(p2, 1, true)];
     this.points = [0, 0]; this.games = [0, 0];
     this.server = 0; this.serveSide = 1;    // +1 = deuce court (X > 0 for the near player)
@@ -35,6 +41,7 @@ export class Match {
   resetPoint() {
     const b = this.ball = newBall();
     this.state = "serve"; this.tossT = 0; this.bounceSide = 0; this.served = false;
+    for (const p of this.players) p.rush = false;
     const s = this.players[this.server], r = this.players[1 - this.server];
     const sx = 288 * this.serveSide * this.dir(s);
     s.X = sx; s.Y = COURT.baseline * this.dir(s); s.vx = s.vy = 0;
@@ -78,7 +85,13 @@ export class Match {
   }
 
   // ---- shots ---------------------------------------------------------------
-  hit(p, kind) {              // kind 0 = A (topspin), 1 = B (slice)
+  cpuShotCode(p) {            // 08:7B7B: lob when opponent at net and profile allows, else profile pick
+    const opp = this.players[1 - p.side], t = this.profileTable;
+    if (Math.abs(opp.Y) < 520 && t.includes(0x30) && Math.random() < 0.6) return 0x30;
+    return t[Math.floor(Math.random() * 16)];
+  }
+
+  hit(p, kind) {              // kind 0 = A (topspin), 1 = B (slice), 2 = A+B (lob)
     const b = this.ball, st = p.data.stats, d = this.dir(p);
     const from = { X: b.X / FX, Y: b.Y / FX, Z: Math.min(-24, b.Z / FX) };
     let speed, top, side;
@@ -88,7 +101,7 @@ export class Match {
       const timing = 1 - Math.min(0.25, Math.abs(b.vZ / FX) / 40);   // APPROX: best at the top of the toss
       speed = sp.speed * timing; top = sr.top; side = sr.side * this.serveSide;
       const g2 = () => (Math.random() + Math.random() - 1);
-      const sErr = s => s.cpu ? this.spread * 0.6 : 40;
+      const sErr = s => s.cpu ? 20 + this.cpu.posErr * 4 : 40;
       const tgt = { X: -this.serveSide * (130 + Math.random() * 200 + g2() * sErr(p)) * d,
                     Y: -d * (COURT.serviceLine - 90 - Math.random() * 160 + g2() * sErr(p)) };
       const aim = aimShot(b, from, tgt, speed, top, side);
@@ -98,25 +111,43 @@ export class Match {
       // strokes: measured launch speeds 30-37 px/frame; spins from tables scaled as measured
       // (topspin 3072 + 512*Top, side 448 + 64*Top; slice = slice-table row x 0.375 side)
       speed = 28 + st.Stroke + Math.random() * 3;
-      if (kind === 0) { top = 3072 + 512 * st.Top; side = 448 + 64 * st.Top; }
+      if (kind === 2) { speed *= 0.72; top = 0; side = 0; }                 // lob: slower, higher (elev below)
+      else if (kind === 0) { top = 3072 + 512 * st.Top; side = 448 + 64 * st.Top; }
       else { const r = shotRow(this.rom, SHOT.strokeSlice, st.Slice); top = -912; side = Math.round(r.side * 0.375); }
-      const err = p.data.aimError * 8 + (p.cpu ? this.spread : 0);
-      let tx = p.cpu ? (Math.random() * 2 - 1) * 300 : p.aimX * 330;
+      // APPROX contact timing: the farther the ball is from the ideal contact point (just ahead and
+      // beside the player), the larger the depth/width scatter (the game's swing windows are not decoded)
+      const late = Math.min(1, Math.hypot((from.X - p.X) / 70, (Math.abs(from.Y - p.Y) - 40) / 100));
+      const err = p.data.aimError * 8 + (p.cpu ? this.cpu.posErr * 6 : 0) + late * late * 220;
+      let tx;
+      if (p.cpu) {
+        const opp = this.players[1 - p.side], smart = Math.random() * 256 < this.cpu.place;
+        const side = smart ? -Math.sign(opp.X || 1) : (Math.random() < 0.5 ? -1 : 1);   // 08:7B13 / 08:7AEB
+        tx = side * 300;
+      } else tx = p.aimX * 330;
       const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
-      const tgt = { X: tx + gauss() * err, Y: -d * (850 + Math.random() * 280 + gauss() * err * 0.8) };
+      const tgt = { X: tx + gauss() * err, Y: -d * ((kind === 2 ? 1000 : 850) + Math.random() * 280 + gauss() * err * 0.8) };
       side *= tgt.X > from.X ? -d : d;
-      const aim = aimShot(b, from, tgt, speed, top, side);
+      const aim = aimShot(b, from, tgt, speed, top, side, kind === 2 ? 1.1 : 0.6);
       launch(b, speed, aim.elev, aim.heading, top, side);
     }
     b.bounces = 0; this.lastHitter = p.side; this.bounceSide = 0;
     p.swing = 14; p.swingType = kind; p.cooldown = 24;
-    for (const q of this.players) q.react = q.data.reaction;   // receivers wait 6+Reaction frames
+    for (const q of this.players) q.planned = false;
+    // 08:7C86 intercept depths: the CPU may follow its shot to the net ($0180 = 384) — more often
+    // with aggressive profiles; a lob over a rusher wins the point
+    if (p.cpu && this.state === "rally") p.rush = Math.random() < [0.05, 0.15, 0.3, 0.45][this.cpu.profile];
+    for (const q of this.players) {
+      if (!q.cpu) continue;
+      const deep = Math.abs(b.Y / FX) >= COURT.serviceLine;               // DF50 bit 4
+      q.react = (deep ? this.cpu.deep : this.cpu.short) + Math.floor(Math.random() * 4);   // 08:7D0A
+    }
   }
 
   canHit(p) {
     const b = this.ball, bx = b.X / FX, by = b.Y / FX, bz = b.Z / FX;
     if (p.cooldown > 0 || this.lastHitter === p.side) return false;
-    return Math.abs(bx - p.X) < REACH_X && Math.abs(by - p.Y) < REACH_Y && bz > -330;
+    const rx = p.cpu ? 70 : REACH_X;            // APPROX: CPU swings need a closer ball
+    return Math.abs(bx - p.X) < rx && Math.abs(by - p.Y) < REACH_Y && bz > -330;
   }
 
   // ---- per-frame update -----------------------------------------------------
@@ -132,7 +163,9 @@ export class Match {
     }
     if (this.state === "serve") {
       const s = this.players[this.server];
-      if (s.cpu ? ++this.tossT > 50 : input.aPressed || input.bPressed) {
+      if (this.serveWait === undefined) this.serveWait = (!this.secondServe && Math.random() * 8 < this.cpu.quick) ? 35 : 50;
+      if (s.cpu ? ++this.tossT > this.serveWait : input.aPressed || input.bPressed) {
+        this.serveWait = undefined;
         this.state = "toss"; this.tossT = 0;
         this.ball.vZ = Math.round(-12.9 * FX);   // toss from Z=-64 peaking at Z ~ -349 (measured)
       }
@@ -161,10 +194,10 @@ export class Match {
     else if (!hp.cpu && input.bPressed && this.canHit(hp)) this.hit(hp, 1);
     for (const p of this.players) {
       if (!p.cpu) continue;
-      const reach = this.canHit(p);
-      if (reach && !p.decided) { p.decided = true; p.willWhiff = Math.random() < this.whiff; }
-      if (!reach) p.decided = false;
-      if (reach && !p.willWhiff && Math.random() < 0.6) this.hit(p, Math.random() < 0.7 ? 0 : 1);
+      if (this.canHit(p) && p.react === 0) {
+        const code = this.cpuShotCode(p);
+        this.hit(p, (code >> 4) === 3 ? 2 : (code >> 4) === 2 ? 1 : 0);
+      }
     }
     this.movePlayers(input);
   }
@@ -209,11 +242,16 @@ export class Match {
         tx = (input.right ? 1 : 0) - (input.left ? 1 : 0); ty = (input.down ? 1 : 0) - (input.up ? 1 : 0);
       } else if (this.state === "rally" && p.react === 0) {
         const b = this.ball, coming = (b.vY > 0) === (p.side === 0);
-        if (coming) {                               // APPROX AI: intercept at our baseline depth
-          const c = { ...b }; let f = 0;
-          while (f++ < 120 && Math.abs(c.Y / FX) < Math.abs(p.Y) - 20 && c.bounces < 2) step(c);
-          p.targetX = c.X / FX; p.targetY = this.dir(p) * Math.max(900, Math.min(1300, Math.abs(c.Y / FX) + 40));
-        } else { p.targetX = 0; p.targetY = this.dir(p) * 1150; }
+        if (coming) {                               // 08:7C86: intercept where the ball crosses a depth
+          if (!p.planned) {                         // decided once per incoming ball, with positioning error
+            const c = { ...b }; let f = 0;
+            while (f++ < 120 && Math.abs(c.Y / FX) < 1120 && c.bounces < 2) step(c);
+            // positioning error (DF7B) scaled so that Normal (9) sometimes exceeds the swing reach
+            p.targetX = c.X / FX + (Math.random() * 2 - 1) * this.cpu.posErr * 14;
+            p.targetY = this.dir(p) * (p.rush ? 384 : Math.max(900, Math.min(1300, Math.abs(c.Y / FX) + 40)));
+            p.planned = true;
+          }
+        } else { p.targetX = 0; p.targetY = this.dir(p) * (p.rush ? 384 : 1150); p.planned = false; }
         const dx = p.targetX - p.X, dy = p.targetY - p.Y;
         tx = Math.abs(dx) > 14 ? Math.sign(dx) : 0; ty = Math.abs(dy) > 30 ? Math.sign(dy) : 0;
       }
