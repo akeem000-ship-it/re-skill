@@ -159,8 +159,8 @@ references into bank tables:
 | w1 | $40 raw | WRAM1:D000 → pals 2-7 | 8 CGB BG palettes (game loads 2-7; 0-1 reserved for UI) |
 | w2 | LZ | WRAM3:D000 | tilemap, stride 32 (courts, 1024 B) or 64 (RPG, 4096 B) |
 | w3 | LZ | WRAM2:D000 | CGB attribute map (same size). bit3=VRAM bank 1, bits0-2 palette, bit5/6 flip |
-| w4 | LZ 1024 | WRAM6:D000 | TBD (collision?) |
-| w5 | LZ 1024 | WRAM6:D400 | TBD |
+| w4 | LZ 1024 | WRAM6:D000 | collision grid, one byte per 16×16 metatile: `$0` walkable, `$F` solid (RPG maps) |
+| w5 | LZ 1024 | WRAM6:D400 | event-trigger ids per metatile (0 = none); door/warp/talk zones |
 | w6 | — | not loaded by LoadMap | |
 | w7 | LZ | WRAM1:D000 → VRAM1 $9000 (2 KB) + $8800 | BG tiles, signed indexing |
 
@@ -171,6 +171,57 @@ references into bank tables:
 
 `0480 CopyToVRAM` convention: a destination in `$A000-$BFFF` means **VRAM bank 1** (bit 5 of D
 cleared, VBK=1); if the LCD is on, copies go through a queued HDMA path.
+
+### RPG engine: actors and script bytecode — VERIFIED handlers (tools: `dump_script.py`, `emu_script_trace.py`)
+
+Mario Tour field mode (`0A:4FF5` field loop, `0A:585D LoadMap`) moves **actors** with a small
+per-actor bytecode. Actor table: **24 slots × $40 bytes in WRAM4 `$D000-$D5FF`** (slot 0 = the
+player; NPCs from `$D100` on in the dorm state). The interpreter keeps the current slot pointer in
+`hFFEA/hFFEB` and the bank of the running script in `wDAF7` (all operand reads go through
+`00:0628 ReadFarByte` / `00:063D ReadFarWord`). Opcode table **`04:447D`**, 22 words.
+
+Each handler returns `A=1` (run the next opcode this frame) or `A=0` (yield until next frame).
+
+| Op | Bytes | Name | Semantics (handler) |
+|----|-------|------|---------------------|
+| 00/05/0F | 1 | yield | `04:460A` |
+| 01 | 2 | wait n | `+3 = n-1`, yield (`460C`) |
+| 02 | 1 | wait_arrive | retry each frame while `+5` bit7 (moving) is set (`45F8`) |
+| 03 | 5 | warp X,Y | copy to `+C/+E` (position), clear moving (`4556`) |
+| 04 | 5 | move_to X,Y | copy to `+8/+A` (target), set moving (`457B`) |
+| 06 | 5 | move_rel dx,dy | target = position + (dx,dy), set moving (`45A0`) |
+| 07 | 4 | move_dir h,dist | target = position + polar(h, dist) via `00:0AC5` (`44DF`) |
+| 08 | 4 | move_turn h,dist | same with heading `h + facing(+14)` (`44EB`) |
+| 09 | 3 | wander radius | only if `+30` bit7: up to 4 random headings (`0A3A` rand & $FC), step $100, must stay within `radius` of home `+16/+17` (`535C`) and pass three collision probes (heading, ±$20) (`534B`) (`4886`) |
+| 0A | 1 | trail_leader | if distance² to leader (`+16` ptr) ≥ 8: copy leader speed, target = leader − polar(facing, $200) if not colliding (`46B0`) |
+| 0B | 1 | approach_leader | target = leader position; speed $10/$18/$20/$40/$80 for distance² (tile units) <1/<4/<9/<16/else (`4623`) |
+| 0C | 3 | jump_rel s16 | `pc = (address of operand) + s16` (`44D0`) |
+| 0D | 4 | set_field off,w | write w to actor `+off`, width 1/2 from table `04:47FD` (`477F`) |
+| 0E | 4 | add_field off,w | same, add (`47BA`) |
+| 10 | 2 | set_anim n | `04:4BBB` (actor animation) |
+| 11 | 2 | play_sound id | `00:3024 PlaySound` |
+| 12 | 3 | call_native addr | FarCallHL into the script bank with BC = actor; repeats next frame while it returns A≠0 and B≠0 (`44A9`) |
+| 13 | 1 | set_home | `+16/+17` = current tile (Y hi, X hi), speed 8, `+5` bit2 (wander mode), yield (`484E`) |
+| 14 | 1 | wait_settle | stopped → wait 40 and advance; blocked (`+5` bit6) → wait 10 and advance; else retry (`4949`) |
+| 15 | 4 | bit_op m,off,b | set (m=1) or clear bit b (mask table `04:4A1F`) of actor `+off` (`49DE`) |
+
+Actor fields: `+3` wait counter, `+5` flags (bit7 moving, bit6 blocked, bit2 wandering), `+6` speed
+(word), `+8/+A` target X/Y, `+C/+E` X/Y (16-bit, high byte = metatile column/row), `+14` facing
+heading (256 = full turn), `+16` leader pointer or home tile, `+26` sprite, `+30` bit7
+wander enable, `+36/+37` OAM attributes.
+
+Examples (`dump_script.py`): the player is `04:41D1: yield; call_native $516B; jump -4` (joypad
+control is native code); followers run `11:7BA9: set_anim 0; trail_leader; wait 1; loop`; a patrolling
+NPC at `11:7CAD` alternates `move_rel ±1024; wait_arrive; set facing $40; set_anim 5; wait 75`.
+
+**Dialogue**: talking/trigger events go through `05:5C18`, a dispatcher whose table `05:5C3B` maps
+event ids to farcalls of the 13 text banks' `GetMsg` export (`$4000`), so the text banks themselves
+are the dialogue scripts (control codes `$02` page, `$03` wait/end, `$07` player name, `$0E nn` name).
+Map layer w5 supplies the event id under the player; w4 is the collision grid used by `04:534B`.
+Camera: `04:440A` clamps the scroll to the map size from the map header (+4/+5).
+
+Sprite animation scripts (bank 08 `7791` player): `(frame, duration)` pairs; `$FF` = loop (restart
+from the pointer in `wDF2A`), `$FE` = call `08:69EA`, `$FB n` = xor OAM attribute `wDF37` with n.
 
 ### Sprites (banks 40-5D, 6F-71) — VERIFIED layout (tool: `tools/render_sprites.py`)
 
@@ -602,13 +653,16 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [x] Ph4: text encoding (ASCII + control codes) and text-bank layout; dump all 4109 messages
 - [x] Ph4: understand banks 5F-69 map layout via LoadMap 0A:585D — all 37 maps render
 - [ ] Ph4: find the dialogue font tiles and the text printer (control-code handler for $02/$03/$07/$0E)
-- [ ] Ph4: decode map w4/w5 1 KB layers (collision / event triggers?) and header bytes 0-3, 6-$87
+- [x] Ph4: map w4 = collision grid, w5 = event-trigger ids
+- [ ] Ph4: map header bytes 0-3, 6-$87 (actor spawn list? warp list?)
 - [ ] Ph4: why do courts (maps 0-15) have w0 == w4? check the court-loading path (a different loader?)
 - [x] Ph4: identify banks 40-5D as character sprite banks (header, frame list, anim scripts)
 - [x] Ph4: find the OAM builder and decode sprite frame placement, render all frames (tools/render_sprites.py)
 - [x] Ph4: map sprite id → character (RosterToSprite 07:5A50, verified live); header +0 = colour scheme (+2 still TBD)
 - [x] Ph4: find OBJ palettes for characters and render sprites in color (18:4300)
 - [ ] Ph4: decode the animation script format at header +6 (`$FF/$FB/$FD` opcodes)
+- [x] Ph4: RPG actor bytecode interpreter 04:447D — all 22 opcodes, actor layout, tools/dump_script.py
+- [ ] Ph4: enumerate all actor scripts (from map/event setup code) and dump them per map
 - [x] Ph4: pair tile/map/palette blocks into full screens (LoadScreen 39:407E, 47 screens incl. title)
 - [x] Ph5: decode SRAM save container (signature, checksum, bank-1 backup, persistent flags)
 - [ ] Ph5: map the rest of the save payload $A038-$A76F (RPG character, records at $A6C1)

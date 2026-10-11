@@ -21,8 +21,6 @@ bank,addr,name,comment
 0,01E6,JumpBankTable_A,jp [$4000+A]
 0,01F6,FarCallInline2,call $01F6 ; db idx bank
 0,0213,JumpBankTable_E,jp [$4000+E]
-0,021A,FarCallBankTableH,H=bank L=idx
-0,0234,FarCallBankTableH2,H=bank L=idx
 0,2497,BitMaskTable,8 bytes
 0,249F,TestFlag_DE,de: e=(flag&7)<<5 d=flag>>3 ; flags at wEventFlags
 0,24BA,SetFlag_DE,
@@ -133,7 +131,7 @@ bank,addr,name,comment
 *,C329,wMapHdrA,from map header DC0A
 *,C32B,wMapWidth?,from header DC0C (default $40)
 *,C32C,wMapHeight?,from header DC0D
-*,C32E,wCurMapID,
+*,C32E,wCurMapID,current map id (exhibition hard court = map 5)
 0,3024,PlaySound,A=id (register form of rst $08)
 0,3297,SoundStart,A=id; switches WRAM bank
 0,3373,SoundDriverTick,
@@ -280,7 +278,6 @@ bank,addr,name,comment
 *,DF6F,wPlSlice,slice row
 *,DF78,wPlRoster,
 08,6B64,LaunchBallCaller,
-*,C32E,wCurCourtMapID,exhibition hard court = map 5
 00,3151,MusicIndex,50 x (bank|chans<<4, idx) for ids $01-$32
 00,31B5,SfxIndex,96 x entries for ids $50-$AF
 00,3129,SoundStop,
@@ -336,3 +333,38 @@ bank,addr,name,comment
 *,DF7C,wPlCpuPlaceProb,
 *,DF7D,wPlCpuProfile,
 *,DF95,wPlCpuLevel,
+04,447D,ScriptOpTable,RPG actor bytecode opcode table (22 words); REVERSE.md RPG engine
+04,460A,ScriptOp_Yield,ops 00/05/0F
+04,460C,ScriptOp_Wait,op 01 n: +3 = n-1
+04,45F8,ScriptOp_WaitArrive,op 02: retry while +5 bit7
+04,4556,ScriptOp_Warp,op 03 X Y -> +C/+E
+04,457B,ScriptOp_MoveTo,op 04 X Y -> +8/+A target; set moving
+04,45A0,ScriptOp_MoveRel,op 06 dx dy
+04,44DF,ScriptOp_MoveDir,op 07 heading dist (polar via 0AC5)
+04,44EB,ScriptOp_MoveTurn,op 08 heading+facing dist
+04,4886,ScriptOp_Wander,op 09 radius: random step near home
+04,46B0,ScriptOp_TrailLeader,op 0A: follow $200 behind leader
+04,4623,ScriptOp_ApproachLeader,op 0B: target = leader; speed by distance
+04,44D0,ScriptOp_JumpRel,op 0C s16 relative to operand address
+04,477F,ScriptOp_SetField,op 0D off word; width table 04:47FD
+04,47BA,ScriptOp_AddField,op 0E off word
+04,47FD,ActorFieldWidths,byte per actor field offset: 1 or 2
+04,4824,ScriptOp_SetAnim,op 10 n -> 04:4BBB
+04,483D,ScriptOp_PlaySound,op 11 id -> PlaySound
+04,44A9,ScriptOp_CallNative,op 12 addr in script bank (BC = actor)
+04,484E,ScriptOp_SetHome,op 13: home tile +16/+17; wander mode
+04,4949,ScriptOp_WaitSettle,op 14: wait 40 when stopped / 10 when blocked
+04,49DE,ScriptOp_BitOp,op 15 mode off bit; mask table 04:4A1F
+04,475A,ActorTargetDiffers,NZ if target (+8..+B) != position (+C..+F)
+04,4BBB,ActorSetAnim,D = animation index
+04,534B,ActorCollisionProbe,check map collision (w4) at HL,DE
+04,535C,ActorWithinHome,check position within radius of home tile
+04,41D1,Script_Player,yield; call_native 516B; loop
+04,440A,CameraClamp,clamp field scroll to map size
+05,5C18,DialogueDispatch,event id -> text bank GetMsg farcall (table 05:5C3B)
+05,5C3B,DialogueTable,event id -> (text bank export, message)
+0,0628,ReadFarByte,A = [A:HL]
+0,063D,ReadFarWord,BC = word at A:HL
+0,0AC5,PolarOffset,A = heading, HL = distance -> HL = dx, DE = dy
+*,DAF7,wScriptBank,bank of the running actor script
+*,FFEA,hCurActor,pointer to the current actor slot (WRAM4 D000 + n*$40)
