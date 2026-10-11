@@ -27,3 +27,32 @@ python3 tools/render_map.py 18            # render RPG map 18 (dorm rooms)
 python3 tools/dump_text.py 26             # all messages of text bank $26
 ./re_loop.sh --max 5                      # autonomous follow-up sessions
 ```
+
+## Emulator harness (PyBoy) and how to rebuild the states
+
+`pip install pyboy numpy` (numpy comes with PyBoy). All drivers live in `tools/` and import
+`tools/emu/session.py`. States and recordings go to `states/` (gitignored, regenerate as below).
+
+```bash
+# 1. boot to the title, press START twice -> main menu (states/after_boot.state, main_menu.state)
+python3 tools/emu_boot.py --frames 2400 --every 200 --keys 1000:start,1400:start,1700:a,2000:a --fresh --save states/after_boot.state
+python3 tools/emu_boot.py --frames 1650 --every 1650 --keys 1000:start,1400:start --fresh --save states/main_menu.state
+
+# 2. exhibition: Luigi vs Baby Mario on the hard court, serve ready (states/m1.state, m2.state)
+python3 tools/emu_trace_loads.py --state states/after_boot.state --keys 30:a,120:a,200:a,280:a,360:a,440:a,520:a,600:a,700:start --frames 1200 --save states/m1.state
+python3 tools/emu_trace_loads.py --state states/m1.state --keys 20:right,60:a,160:a,260:a,360:a,460:a,560:a,660:a,760:a --frames 1800 --save states/m2.state
+
+# 3. recordings used by the analysis tools and the JS physics test
+python3 tools/emu_record.py states/m2.state serve "10:a,60:a:4,90:right:30,150:a" 240      # states/rec_serve.npy
+python3 tools/emu_bot.py states/m2.state rally1 2400                                     # bot rally, WRAM4/5 included
+python3 tools/gen_phys_ref.py && node web/tests/physics_vs_emulator.mjs                  # expect <= 0.52 px
+
+# 4. Mario Tour save: Create Character (states/t1..t4), see REVERSE.md "Character records & stats"
+python3 tools/emu_step.py states/main_menu.state states/t1.state "down,a@120"     # pick a character
+python3 tools/emu_step.py states/t1.state states/t2.state "a@120"                 # stat screen (OK?)
+```
+
+Other drivers: `emu_charmatch.py K` (start a match with the K-th character and dump WRAM),
+`emu_dump.py`, `emu_find_seq.py`, `emu_poke_redraw.py`, `emu_fullmatch.py` (bot plays a whole
+set with routine hooks), `emu_sound_ids.py` / `emu_music_ids.py`, `compare_frames.py`
+(court render vs live frame). Key scripts use absolute frame offsets; a press lasts 6 frames.
