@@ -826,6 +826,7 @@ counters, `wC900` player name, `wC940` second name, `wCA0B/CA8B` rosters, …).
 | +$0C | `wC90C`: class/rank? (Alex 3, Harry 2) |
 | +$0E | the 29-byte character record (`02:52CE` format) starts here: +$10-$16 header words, +$18 level, +$1A-$1F CPU params |
 | +$20-$2A | the 11 stats 0-9 (Top, Slice, Serve, Stroke, Volley, Angle, Placement, Speed, Dash, Reaction, Stop) |
+| +$2C-$2E | EXP (24-bit) |
 | +$30-$36 | copy of the template header |
 | +$38-$3B | tour **training values** T0-T3 |
 | +$3C | `wC93C`: nonzero → stats need a rebuild (`02:47C6`) |
@@ -838,6 +839,15 @@ Serve/Stroke/Volley, +$3A for Angle/Placement, +$3B for Speed/Dash/Reaction/Stop
 categories). Checked against the save: Alex (style 0, level 1, T = 0) → Stroke 1, Dash 2; Harry (style 2)
 → Top 1, Serve 2, Angle 1, Speed 1 — both exactly the stored +$20 bytes. This is why the stat-screen
 values never appeared verbatim elsewhere in SRAM: they are derived from style, level and training.
+
+**Levels and EXP — VERIFIED from code.** EXP is 24-bit at record **+$2C**; the total needed for each level
+is a 3-byte table at `02:4E7A` (pointer `02:4E78`): 0, 15, 45, 90, 144, 204, 270, 341, 417, 498, 585, 678, …,
+9119 (level 45), …, 27669 (level 98), `$FFFFFF` at 99. `CanLevelUp 02:4D99` compares EXP with
+`table[level]`; `ExpToNext 02:4DC8` returns the difference. `LevelUp 02:49BE (D = category 0-3, $FF none)`:
+if level < 99, training T[D] += 1, level += 1, then `RebuildStats`. Because B = 5·T − (level − 1), each
+level-up raises the chosen category's B by 4 and lowers the other three by 1. `02:4B99` builds preset
+characters from `02:4C18` (4 bytes per preset = level-ups given to T0..T3, e.g. 7/3/5/3, 10/8/6/5).
+The level-up screen (`1C:41C2`) counts pending level-ups while `CanLevelUp` holds.
 
 ### Data Structures
 
@@ -955,7 +965,7 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph5: decode SRAM save container (signature, checksum, bank-1 backup, persistent flags)
 - [x] Ph5: save payload $A060-$A76F = block directory (113 blocks), slots, backups (dump_save_layout.py)
 - [x] Ph5: player record layout (64 B) in the $C800 save image
-- [ ] Ph5: remaining save-image fields ($C880-$C8DF, $C9xx between flags) and blocks 6-26 / 54-87; how EXP raises level/training
+- [ ] Ph5: remaining save-image fields ($C880-$C8DF, $C9xx between flags) and blocks 6-26 / 54-87; EXP awards per match/mini-game
 - [x] Ph5: character roster + type table (38:58FB)
 - [x] Ph5: find the character stat table (02:52CE, verified by WRAM diff in PyBoy)
 - [x] Ph5: verify stat label order (PyBoy: Create Character stat screen, poke + hook 1C:430E)

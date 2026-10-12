@@ -492,3 +492,10 @@ bank,addr,name,comment
 02,47C6,RebuildTourStats,rebuild wC900 if wC93C set
 02,47F2,StyleTemplatePtrs,4 x 113-byte style templates
 *,C93C,wTourStatsDirty,
+02,49BE,LevelUp,D = category 0-3 ($FF none): T[D]++, level++ (cap 99), RebuildStats
+02,4D99,CanLevelUp,EXP (+$2C, 24-bit) >= table[level]
+02,4DC8,ExpToNext,HL = table[level] - EXP
+02,4E7A,ExpTable,3-byte total EXP per level (99 = $FFFFFF)
+02,4B99,BuildPresetChar,A = preset: level-ups per category from 02:4C18
+02,4C18,PresetLevelUps,4 bytes per preset (T0-T3 counts)
+02,4206,TourRecordPtr,A = 0 -> BC = wC900 player, else wC940 partner
