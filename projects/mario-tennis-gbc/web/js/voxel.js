@@ -103,7 +103,7 @@ export class Voxel3D {
     const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
     gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 16, 0);
     gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 16, 8);
-    this.spriteTex = new Map(); this.groundTex = null; this.groundHash = -1; this.frameTex = null; this.cuts = [];
+    this.spriteTex = new Map(); this.groundTex = null; this.groundHash = -1; this.ground = null; this.frameTex = null; this.cuts = [];
     this.layer = { bg: null, win: null, hash: -1, whash: -1 };
     this.shadowTex = this.solidTexture([0, 0, 0, 110]);
     this.preset = "low"; this.cam = { yaw: 0, pitch: 0.9, dist: 3100, fitKey: "" };
@@ -185,6 +185,14 @@ export class Voxel3D {
     return { X: xp / 8 * 256 / s, Y, s, upp: 1024 / s };    // upp: world units per BG pixel at that depth
   }
   unproject(sx, sy) { const p = this.gb.ppu; return this.unprojectBG(sx + p.scx, sy + p.scy); }
+  // cache key for an 8x8 tile: its 16 bytes and its 8 palette bytes hashed (tile slots are reloaded with other
+  // graphics between scenes and digits, and palettes fade), plus the flips
+  tileKey(addr, bank, palBytes, palIndex, flipX, flipY) {
+    const v = this.gb.mem.vram[bank]; let h = 0x811c9dc5;
+    for (let i = 0; i < 16; i++) { h ^= v[addr + i]; h = Math.imul(h, 0x01000193); }
+    for (let i = 0; i < 8; i++) { h ^= palBytes[palIndex * 8 + i]; h = Math.imul(h, 0x01000193); }
+    return (h >>> 0) * 4 + flipX * 2 + flipY;
+  }
   // sprite tile (8 rows) as RGBA, colour 0 transparent
   spritePixels(tile, bank, pal, flipX, flipY) {
     const v = this.gb.mem.vram[bank], d = new Uint8Array(8 * 8 * 4), op = this.gb.ppu.objPal;
@@ -195,7 +203,7 @@ export class Voxel3D {
     return d;
   }
   spriteTexture(tile, bank, pal, flipX, flipY) {
-    const key = tile | (bank << 9) | (pal << 10) | (flipX << 13) | (flipY << 14);
+    const key = this.tileKey(tile * 16, bank, this.gb.ppu.objPal, pal, flipX, flipY);
     let t = this.spriteTex.get(key); if (t) return t;
     t = this.texture(8, 8, this.spritePixels(tile, bank, pal, flipX, flipY)); this.spriteTex.set(key, t);
     if (this.spriteTex.size > 4000) { for (const tx of this.spriteTex.values()) this.gl.deleteTexture(tx); this.spriteTex.clear(); }
@@ -226,7 +234,7 @@ export class Voxel3D {
   }
   freeMesh(mesh) { if (!mesh) return; const gl = this.gl; gl.deleteBuffer(mesh.pb); gl.deleteBuffer(mesh.cb); gl.deleteVertexArray(mesh.vao); }
   voxelMesh(tile, bank, pal, flipX, flipY) {
-    const key = tile | (bank << 9) | (pal << 10) | (flipX << 13) | (flipY << 14);
+    const key = this.tileKey(tile * 16, bank, this.gb.ppu.objPal, pal, flipX, flipY);
     let mesh = this.voxelMeshes.get(key); if (mesh) return mesh;
     mesh = this.meshFromPixels(this.spritePixels(tile, bank, pal, flipX, flipY), 8, 8); this.voxelMeshes.set(key, mesh);
     if (this.voxelMeshes.size > 3000) { for (const mm of this.voxelMeshes.values()) this.freeMesh(mm); this.voxelMeshes.clear(); }
@@ -244,23 +252,44 @@ export class Voxel3D {
     if (this.voxelSprites) this.drawMesh(this.voxelMesh(tile, bank, pal, flipX, flipY), m4.trs3(X, Y, Z, scale, scale, scale * 1.5, -tilt), mvp);
     else this.draw(this.spriteTexture(tile, bank, pal, flipX, flipY), m4.trs(X, Y, Z, 8 * scale, 8 * scale, -tilt, 0), mvp);
   }
-  // a tilemap (32x32 entries at mapBase, CGB attributes in VRAM1) as 256x256 RGBA
-  composeMap(mapBase) {
+  // a tilemap (32x32 entries at mapBase, CGB attributes in VRAM1) as 256x256 RGBA. With `pristine` (the court's
+  // own tilemap from the ROM) the live tile indices are replaced by it, so captions and score digits the game
+  // writes into the map do not reach the floor; a replaced tile takes the attribute of the nearest untouched
+  // tile in its row. `idx` also returns one byte per pixel: (palette << 2 | colour) + 1
+  composeMap(mapBase, pristine = null, idx = null) {
     const m = this.gb.mem, p = this.gb.ppu, v0 = m.vram[0], v1 = m.vram[1], lcdc = p.lcdc, img = new Uint8Array(256 * 256 * 4);
     for (let ty = 0; ty < 32; ty++) for (let tx = 0; tx < 32; tx++) {
-      const i = mapBase + ty * 32 + tx, tile = v0[i], attr = v1[i], bank = attr & 8 ? v1 : v0;
-      const addr = lcdc & 0x10 ? tile << 4 : 0x1000 + ((tile << 24 >> 24) << 4);
+      const i = mapBase + ty * 32 + tx; let tile = v0[i], attr = v1[i];
+      if (pristine && pristine[ty * 32 + tx] !== tile) {
+        tile = pristine[ty * 32 + tx];
+        for (let k = 1; k < 32; k++) { const l = tx - k, r = tx + k; if (l >= 0 && v0[mapBase + ty * 32 + l] === pristine[ty * 32 + l]) { attr = v1[mapBase + ty * 32 + l]; break; } if (r < 32 && v0[mapBase + ty * 32 + r] === pristine[ty * 32 + r]) { attr = v1[mapBase + ty * 32 + r]; break; } }
+      }
+      const bank = attr & 8 ? v1 : v0, addr = lcdc & 0x10 ? tile << 4 : 0x1000 + ((tile << 24 >> 24) << 4);
       for (let y = 0; y < 8; y++) {
         const row = attr & 0x40 ? 7 - y : y, lo = bank[addr + row * 2], hi = bank[addr + row * 2 + 1];
         for (let x = 0; x < 8; x++) {
           const bit = attr & 0x20 ? x : 7 - x, ci = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1), c = this.col5(p.bgPal, attr & 7, ci);
           const o = ((ty * 8 + y) * 256 + tx * 8 + x) * 4; img[o] = c[0]; img[o + 1] = c[1]; img[o + 2] = c[2]; img[o + 3] = 255;
+          if (idx) idx[(ty * 8 + y) * 256 + tx * 8 + x] = ((attr & 7) << 2 | ci) + 1;
         }
       }
     }
     return img;
   }
-  composeBG() { return this.composeMap(this.gb.ppu.lcdc & 0x08 ? 0x1C00 : 0x1800); }
+  bgBase() { return this.gb.ppu.lcdc & 0x08 ? 0x1C00 : 0x1800; }
+  composeBG() { return this.composeMap(this.bgBase()); }
+  palHash() { let h = 0; for (let i = 0; i < 64; i++) h = (Math.imul(h, 31) + this.gb.ppu.bgPal[i]) | 0; return h; }
+  // BG tile (colour 0 transparent) for the caption / score overlay
+  bgTileTexture(tile, attr) {
+    const m = this.gb.mem, v0 = m.vram[0], v1 = m.vram[1], bank = attr & 8 ? v1 : v0, addr = this.gb.ppu.lcdc & 0x10 ? tile << 4 : 0x1000 + ((tile << 24 >> 24) << 4), d = new Uint8Array(256);
+    const key = "bg" + this.tileKey(addr, (attr >> 3) & 1, this.gb.ppu.bgPal, attr & 7, (attr >> 5) & 1, (attr >> 6) & 1);
+    let t = this.spriteTex.get(key); if (t) return t;
+    for (let y = 0; y < 8; y++) {
+      const row = attr & 0x40 ? 7 - y : y, lo = bank[addr + row * 2], hi = bank[addr + row * 2 + 1];
+      for (let x = 0; x < 8; x++) { const bit = attr & 0x20 ? x : 7 - x, ci = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1), o = (y * 8 + x) * 4; if (!ci) continue; const c = this.col5(this.gb.ppu.bgPal, attr & 7, ci); d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = 255; }
+    }
+    t = this.texture(8, 8, d); this.spriteTex.set(key, t); return t;
+  }
   mapHash(mapBase, full = false) {                     // tilemap + attributes (+ tile data and palettes when full)
     const m = this.gb.mem, v0 = m.vram[0], v1 = m.vram[1]; let h = 0;
     const step = full ? 1 : 3;
@@ -274,8 +303,8 @@ export class Voxel3D {
   // ---- court: ground texture and upright cut-outs ----
   // ground texel (X, Y) <- BG pixel ((0x1010 + xp) / 32, (0x1010 + pp) / 32) (the scroll cancels out); the
   // cut-out rectangles are filled from the floor next to them
-  buildGround() {
-    const bg = this.composeBG(), W = (WORLD.x1 - WORLD.x0) / WORLD.texel, H = (WORLD.y1 - WORLD.y0) / WORLD.texel, d = new Uint8Array(W * H * 4);
+  buildGround() {                                        // once per court: which BG pixel each ground texel shows
+    const W = (WORLD.x1 - WORLD.x0) / WORLD.texel, H = (WORLD.y1 - WORLD.y0) / WORLD.texel, src = new Uint16Array(W * H);
     const cuts = CUTS.filter(c => !c.courts || c.courts.includes(this.courtId));
     const inCut = (bx, by) => { for (const c of cuts) if (bx >= c.x0 && bx < c.x1 && by >= c.y0 && by < c.y1) return c; return null; };
     for (let j = 0; j < H; j++) {
@@ -283,18 +312,23 @@ export class Voxel3D {
       for (let i = 0; i < W; i++) {
         const X = WORLD.x0 + i * WORLD.texel, p = project(X, Y, 0);
         let bx = Math.floor((0x1010 + p.xp) / 32), by = Math.floor((0x1010 + p.pp) / 32);
-        const o = (j * W + i) * 4;
         if (bx < 0) bx = bx & (BAND - 1); else if (bx > 255) bx = 256 - BAND + ((bx - 256) & (BAND - 1));
         if (by < 0) by = by & (BAND - 1); else if (by > 255) by = 256 - BAND + ((by - 256) & (BAND - 1));
         const c = inCut(bx, by);
         if (c) { if (c.fill === "below") by = c.y1; else if (c.fill === "above") by = c.y0 - 1; else bx = c.x0 - 1; }
-        const s = (by * 256 + bx) * 4;
-        d[o] = bg[s]; d[o + 1] = bg[s + 1]; d[o + 2] = bg[s + 2]; d[o + 3] = 255;
+        src[j * W + i] = by * 256 + bx;
       }
     }
+    this.ground = { W, H, src, cuts, rgba: new Uint8Array(W * H * 4), idx: new Uint8Array(256 * 256), court: this.courtId };
+  }
+  paintGround() {                                        // per palette change: colours from the current palettes
+    const g = this.ground, bg = this.composeMap(this.bgBase(), this.courtMaps[this.courtId], g.idx), lut = new Uint8Array(33 * 4);
+    for (let k = 0; k < 32; k++) { const c = this.col5(this.gb.ppu.bgPal, k >> 2, k & 3); lut[(k + 1) * 4] = c[0]; lut[(k + 1) * 4 + 1] = c[1]; lut[(k + 1) * 4 + 2] = c[2]; lut[(k + 1) * 4 + 3] = 255; }
+    const d = g.rgba, src = g.src, idx = g.idx;
+    for (let i = 0, n = src.length; i < n; i++) { const k = idx[src[i]] * 4, o = i * 4; d[o] = lut[k]; d[o + 1] = lut[k + 1]; d[o + 2] = lut[k + 2]; d[o + 3] = 255; }
     if (this.groundTex) this.gl.deleteTexture(this.groundTex);
-    this.groundTex = this.texture(W, H, d, true);
-    this.buildCuts(bg, cuts);
+    this.groundTex = this.texture(g.W, g.H, d, true);
+    this.buildCuts(bg, g.cuts);
   }
   // each cut-out becomes an upright card (and a voxel mesh) standing on the ground line of its bottom edge;
   // with `key`, the colours of the floor around the rectangle are made transparent (the chair against the grass)
@@ -360,7 +394,7 @@ export class Voxel3D {
     gl.viewport(0, 0, cv.width, cv.height); gl.clearColor(0.05, 0.08, 0.12, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao); gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     if (this.isField()) { this.renderField(frame2d); return; }
-    if (this.isCourt()) { this.renderCourt(); return; }
+    if (this.isCourt()) { this.renderCourt(frame2d); return; }
     this.renderLayers();
   }
   // court camera: eye direction from the preset; distance fitted to the viewport (cached per aspect/preset)
@@ -394,9 +428,10 @@ export class Voxel3D {
     return { mvp: m4.mul(m4.perspective(fov, aspect, COURT_CLIP.near, COURT_CLIP.far), view), tilt };
   }
   // world: x = X, y = height (-Z), z = Y (near side positive, towards the default camera)
-  renderCourt() {
-    const gl = this.gl, cv = this.cv; this.mode = "3d"; if (this.debug) this.debug.length = 0;
-    const h = this.bgHash(); if (h !== this.groundHash) { this.groundHash = h; this.buildGround(); }
+  renderCourt(frame2d) {
+    const gl = this.gl, cv = this.cv, p = this.gb.ppu; this.mode = "3d"; if (this.debug) this.debug.length = 0;
+    if (!this.ground || this.ground.court !== this.courtId) { this.buildGround(); this.groundHash = -1; }
+    const h = this.palHash(); if (h !== this.groundHash) { this.groundHash = h; this.paintGround(); }
     const { mvp, tilt } = this.courtCamera(cv.width / cv.height);
     // ground plane (lying flat: tilt -90deg around X so the quad's up axis becomes -Z, i.e. +Y world towards the camera)
     const gw = WORLD.x1 - WORLD.x0, gh = WORLD.y1 - WORLD.y0;
@@ -470,6 +505,21 @@ export class Voxel3D {
         const tex = this.spriteTexture(s.tile + (s.attr & 0x40 ? (s.h / 8 - 1 - half) : half), (s.attr >> 3) & 1, s.attr & 7, (s.attr >> 5) & 1, (s.attr >> 6) & 1);
         this.draw(tex, m4.trs(x, y0 + (half + 1) * 8, 0, 8, -8, 0), ortho);
       }
+    }
+    // captions and score digits the game writes into the BG map (tiles that differ from the court's own map)
+    // are drawn where they are on screen, as an overlay
+    const m = this.gb.mem, v0 = m.vram[0], v1 = m.vram[1], base = this.bgBase(), pristine = this.courtMaps[this.courtId];
+    for (let ty = 0; ty < 32; ty++) for (let tx = 0; tx < 32; tx++) {
+      const i = ty * 32 + tx, tile = v0[base + i]; if (tile === pristine[i]) continue;
+      const sx = ((tx * 8 - p.scx) & 255), sy = ((ty * 8 - p.scy) & 255); if (sx >= 160 || sy >= 144) continue;
+      this.draw(this.bgTileTexture(tile, v1[base + i]), m4.trs(sx + 4, sy + 8, 0, 8, -8, 0), ortho);
+    }
+    // the window layer (score panel) as a screen-space overlay from the 2D frame
+    if ((p.lcdc & 0x20) && p.wy < 144 && frame2d) {
+      if (!this.frameTex) this.frameTex = this.texture(160, 144, null);
+      gl.bindTexture(gl.TEXTURE_2D, this.frameTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 160, 144, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(frame2d.buffer));
+      const wy = p.wy, wx = Math.max(0, p.wx - 7);
+      this.draw(this.frameTex, m4.trs(wx + (160 - wx) / 2, 144, 0, 160 - wx, -(144 - wy), 0), ortho, [wx / 160, wy / 144, (160 - wx) / 160, (144 - wy) / 144], [1, 1, 1, 1], 0);
     }
   }
   hudOrtho() {                                             // 160x144 screen space letterboxed into the canvas (+ its edges)
