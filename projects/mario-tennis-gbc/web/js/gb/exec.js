@@ -8,7 +8,7 @@ export class Exec {
     this.banks = [];
     for (const k of Object.keys(table)) {
       const key = +k, bank = key >> 16, pc = key & 0xFFFF;
-      if (!this.banks[bank]) this.banks[bank] = new Array(0x8000).fill(undefined);
+      if (!this.banks[bank]) this.banks[bank] = new Array(bank === 0xFF ? 0x10000 : 0x8000).fill(undefined);
       this.banks[bank][pc] = table[k];
     }
     this.bank0 = this.banks[0] || new Array(0x8000).fill(undefined);
