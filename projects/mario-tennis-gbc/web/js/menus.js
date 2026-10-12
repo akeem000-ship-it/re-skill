@@ -23,7 +23,7 @@ class Assets {
     this.mainIcons = [...Array(6)].map((_, i) => rom.lzRef(rom.u8(0x3B, 0x57E0 + i * 2), rom.u8(0x3B, 0x57E1 + i * 2)));
     this.playIcons = [...Array(7)].map((_, i) => rom.lzRef(rom.u8(0x3B, 0x5EBD + i * 2), rom.u8(0x3B, 0x5EBE + i * 2)));
     this.courtIcons = [...Array(4)].map((_, i) => rom.lzRef(rom.u8(0x3E, 0x5DF1 + i * 2), rom.u8(0x3E, 0x5DF2 + i * 2)));
-    this.cursor = iconTiles(rom, 0x1B); this.bracket = iconTiles(rom, 0x13); this.arrows = rom.lz(0x38, 0x50A7);
+    this.cursor = iconTiles(rom, 0x1B); this.bracket = rom.lz(0x39, 0x44F6); this.arrows = rom.lz(0x38, 0x50A7);   // LZ streams called directly (not bank-table refs)
     this.courtSpeed = rom.slice(0x3E, 0x608A, 9); this.courtBounce = rom.slice(0x3E, 0x60C1, 9);
   }
   stadium() {

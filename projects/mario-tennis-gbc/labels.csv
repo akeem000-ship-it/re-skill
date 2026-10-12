@@ -564,3 +564,4 @@ bank,addr,name,comment
 *,CB0E,wPlayDoubles,
 *,CB0F,wPlayGames,0 = 2 games 1 = 6 games
 *,CB10,wPlaySets,0/1/2 = 1/3/5 sets
+39,44F6,CursorBracketLZ,LZ stream (no table ref): 8x8 cursor corner + blank, -> VRAM1 $8000
