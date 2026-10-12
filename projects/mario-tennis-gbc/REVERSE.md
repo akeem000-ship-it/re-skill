@@ -862,6 +862,26 @@ through the generic loader **`LoadIconTiles 39:468B`** (export `39:$10`; B = ico
 ref in `39:46B7`, decompressed to WRAM1 `$D000`, then `CopyToVRAM` DE/C) — e.g. the `3C:1B-22`, `3D:3E`
 sets loaded right after the menu screen.
 
+### Menus — VERIFIED structure (PPU dumps `tools/emu_screen_dump.py` + `tools/analyze_ppu_dump.py`)
+
+All front-end menus are drawn the same way: a background from the LZ bank tables, icon tiles copied into
+VRAM bank 1 at `$8800 + $100·i` (BG tiles `$80 + 16·i`, each icon 5×3 tiles row-major), the **selected
+icon's palette** (BG palette 4) swapped by code while the others use the grey palette 5, sprite **badges**
+(8×16 OBJs, 8-10 side by side) under the selected icon, a scrolling **marquee title** (10 OBJs at y = 0,
+OBJ palette 1 from `39:4B65`), two cursor arrows (`3C:5AA6`, icon id `$1B`) and a text bar in rows 15-17.
+
+| Menu | Routine | Background | Icons | Badges / titles | Grid |
+|------|---------|------------|-------|-----------------|------|
+| Main | `3B:55D1` | stadium: `39:4C38` loads refs `3C:08` tiles, `3C:0A` map, `3C:0C` attrs, `3C:0E` 64-byte palette (map copied twice: `D000` working, `D800` pristine for the slide-in `39:4DEB`) | `3B:57E0` → `3C:12..1C` (Exhibition, Mini-Games, Linked Play, Status, Dictionary, Saved Data); the three file digits are stadium tiles | badges ids `$1D-$22` at `3B:591B` (x,y) with tile bases `3B:592D`; marquee id `$3E` | 3×3, `3B:412A (B=cols, C=rows)`, cell→item `3B:56BA`; selected palette `3B:5A6A` → `5A7C/5A8C/5A94/5A9C/5A84/5AA4`; file slots recolour with the saved character's scheme (`18:4339`) |
+| Play | `3B:5CF3` | stadium | `3B:5EBD` → `3C:62..6E` (singles, doubles, 2 games, 6 games, 1/3/5 sets) | badges `$23-$29`; marquee `$3F`; row palettes `3B:5DD4/5DDC/5DE4` (pal 4/6/7) | 1 column × 3 rows; ←/→ toggles the row's choice `wCB0E/0F/10` (`3B:5F3C`); texts `30 #135/136`, `#137/138`, `#139-141` |
+| Character | `38:7408` | screen `$01` (the orange VS screen); the small-caps font and the 1P/2C/VS tiles are part of its tile set | 16×16 **portraits**: raw 2bpp sheet `18:5AF0 + 64·roster` (rosters 21/22 are blank), 3 visible at x = 10/34/58, y = 47, OBJ palette = the character's colour scheme (`18:4300`), grey when taken | bracket corners icon `$13`, arrows `38:50A7`; marquee `$64` ("SELECT A CHARACTER"); titles `30 #142/#144/#149`, type `#153+type` | carousel; **order on a fresh save (verified live): Luigi, Baby Mario, DK, Allie, Joy, Brian**; availability bits `38:7686` from `D840+` |
+| Difficulty | same screen | | | EASY/NORMAL/HARD/INTENSE + symbols are tiles of the screen-1 set, cursor brackets at y 123/129 | ←/→ |
+| Court | `3E:5D11` / `3E:65C9` | stadium | `3E:5DF1` → `3F:02..12` (9 slots; unlocked ones replace `3F:5F7D`), dest `3E:5E05` | badges `$65-$68` at `3E:5F41` (y,x); marquee `$40`; selected palettes `3E:5FF1` → `6003/600B/6013/601B` | 2×2 (3×3 when unlocked, `3E:413A`); speed/bounce texts `30 #169+3E:608A[i]` / `#169+3E:60C1[i]`; **court id → map (verified live): 0 hard → 5, 1 clay → 4, 2 grass → 2, 3 composition → 8**; music `3E:6102` |
+
+The 8×8 **UI font** used by every menu bar is raw 2bpp at **`01:4410`** (glyphs `$20-$7F`, colour 1 =
+background, 3 = ink, 2 = shadow), drawn fixed-width (tile = `$100 + ASCII` in VRAM bank 0). The main-menu
+palette set is `3C:0E`; OBJ palette 0 (badges) is at `39:4619`.
+
 ### Save data (SRAM) — partial
 
 Battery SRAM, 4 × 8 KB banks; enabled with `$0A → $0000` and disabled after each access.
@@ -1102,6 +1122,7 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph7: port the decoded CPU AI parameters (reaction delays, placement probability, positioning error, shot profiles, quick serve)
 - [ ] Ph7: decode ProjectPoint 00:2D8C and replace the fitted projection
 - [x] Ph7: HUD and messages drawn with the game's dialogue font
+- [x] Ph7: menus rebuilt in the web port (main, play, character ×2, difficulty, court) from the ROM's menu data
 - [ ] Ph7: score graphics as in the game (scoreboard tiles); sound
 - [x] Ph7: pixel-compare court rendering against emulator screenshots (99.9%)
 

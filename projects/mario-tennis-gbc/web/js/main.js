@@ -3,12 +3,13 @@ import { Rom, sha1Hex, EXPECTED_SHA1 } from "./rom.js";
 import { courtImage, screenImage, characterSprites, characterData, Animator, gameFont, ROSTER, PLAYABLE, COURTS } from "./assets.js";
 import { FX } from "./physics.js";
 import { Match } from "./match.js";
+import { Menus } from "./menus.js";
 
 const W = 160, H = 144;
 const cv = document.getElementById("screen"), g = cv.getContext("2d");
 g.imageSmoothingEnabled = false;
 const $ = id => document.getElementById(id);
-let rom, font, match, court, sprites = [], anims = [], keys = {}, prevKeys = {};
+let rom, font, menus, match, court, sprites = [], anims = [], keys = {}, prevKeys = {};
 
 // Court projection fitted to the court lines of the 32x32 court maps (REVERSE.md "Projection"):
 // x = 128 + X*2020/(16224-Y), y = 127.5 + 804.6*Y/(16224-Y); heights use the same scale.
@@ -31,12 +32,14 @@ async function loadRom(buf) {
   front = { step: 0, t: 0, cache: new Map() };     // boot into the intro (FRONT sequence)
 }
 
-function start() {
+function start(cfg) {
+  if (cfg) { $("p1").value = cfg.p1; $("p2").value = cfg.p2; $("court").value = cfg.court; $("games").value = cfg.games; $("diff").value = cfg.difficulty; }
   const p1 = +$("p1").value, p2 = +$("p2").value;
   court = courtImage(rom, +$("court").value);
   sprites = [characterSprites(rom, p1), characterSprites(rom, p2)];
   anims = sprites.map(sp => new Animator(sp));
   match = new Match(rom, characterData(rom, p1), characterData(rom, p2), { games: +$("games").value, difficulty: +$("diff").value });
+  menus = null;
   const d1 = match.players[0].data, d2 = match.players[1].data;
   $("info").textContent = `${d1.name} (${d1.type}) vs ${d2.name} (${d2.type})`;
   front = null;
@@ -64,7 +67,8 @@ function frontTick() {
   const end = st.title ? (front.leaving ? front.leaving + FADE : Infinity) : FADE + st.hold + FADE;
   if (front.t >= end) {
     front.leaving = 0; front.t = 0;
-    if (++front.step >= FRONT.length) { start(); return; }
+    if (st.title) { menus = new Menus(rom, font); front = null; return; }      // Start -> the exhibition menus
+    if (++front.step >= FRONT.length) { start(front.cfg); return; }
   }
   // draw with fades to black
   g.fillStyle = "#000"; g.fillRect(0, 0, W, H);
@@ -75,9 +79,10 @@ function frontTick() {
     font.draw(g, msg, (W - font.width(msg)) >> 1, 114, [255, 240, 120], [120, 40, 0]);
   }
   if (st.vs) {
-    const n1 = ROSTER[+$("p1").value], n2 = ROSTER[+$("p2").value];
+    const cfg = front.cfg || { p1: +$("p1").value, p2: +$("p2").value };
+    const n1 = ROSTER[cfg.p1], n2 = ROSTER[cfg.p2];
     const box = (txt, cx, y) => { const w = font.width(txt); g.fillStyle = "rgba(0,0,40,0.8)"; g.fillRect(cx - w / 2 - 3, y - 2, w + 6, 12); font.draw(g, txt, Math.round(cx - w / 2), y); };
-    const t1 = characterData(rom, +$("p1").value).type, t2 = characterData(rom, +$("p2").value).type;
+    const t1 = characterData(rom, cfg.p1).type, t2 = characterData(rom, cfg.p2).type;
     box(n1, 40, 40); box(n2, 120, 40);
     box(t1, 40, 124); box(t2, 120, 124);
   }
@@ -146,12 +151,24 @@ function render() {
 }
 
 let paused = false;  // set by tests that drive frames themselves (__mt.step)
+function menuTick() {
+  const k = keys, pr = prevKeys, edge = c => !!k[c] && !pr[c];
+  const input = { left: edge("ArrowLeft"), right: edge("ArrowRight"), up: edge("ArrowUp"), down: edge("ArrowDown"),
+    a: edge("KeyZ") || edge("KeyA") || edge("Enter"), b: edge("KeyX") || edge("KeyS") };
+  prevKeys = { ...k };
+  menus.update(input); menus.draw(g);
+  if (menus.result) {        // VS screen, then the match
+    front = { step: FRONT.findIndex(s => s.vs), t: 0, cache: new Map(), cfg: menus.result }; menus = null;
+  }
+}
 function tick(input) {
+  if (menus) return menuTick();
   if (front) return frontTick();
   match.update(input); render();
 }
 function loop() {
-  if (front && !paused) frontTick();
+  if (menus && !paused) menuTick();
+  else if (front && !paused) frontTick();
   else if (match && !paused) {
     const k = keys, pr = prevKeys;
     const input = { left: k.ArrowLeft, right: k.ArrowRight, up: k.ArrowUp, down: k.ArrowDown,
@@ -171,6 +188,6 @@ $("restart").addEventListener("click", start);
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom).catch(() => {});
 // expose for automated tests
 window.__mt = { get match() { return match; }, start, keys,
-  get front() { return front; },
+  get front() { return front; }, get menus() { return menus; },
   pause(p = true) { paused = p; }, step(input = {}) { tick(input); } };
 requestAnimationFrame(loop);

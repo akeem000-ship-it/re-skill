@@ -141,6 +141,95 @@ export function gameFont(rom) {
   };
 }
 
+// ---- menu building blocks (REVERSE.md "Menus") -------------------------------------------------
+const canvasCache = new Map();
+export function newCanvas(w, h) { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; }
+
+// Draw 8x8 2bpp tiles `indices` (laid out `cols` wide) from `tiles` into a new canvas. pal = 4 [r,g,b];
+// transparent: colour 0 is left clear (sprites). flipX/flipY apply per tile (OAM-style).
+export function tilesCanvas(tiles, indices, cols, pal, { transparent = false, flipX = false, flipY = false } = {}) {
+  const rows = Math.ceil(indices.length / cols), c = newCanvas(cols * 8, rows * 8), g = c.getContext("2d");
+  const img = g.createImageData(c.width, c.height);
+  indices.forEach((t, k) => {
+    const ox = (k % cols) * 8, oy = Math.floor(k / cols) * 8;
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+      const v = tilePixel(tiles, t * 16, flipX ? 7 - x : x, flipY ? 7 - y : y);
+      if (transparent && !v) continue;
+      const o = ((oy + y) * c.width + ox + x) * 4, col = pal[v];
+      img.data[o] = col[0]; img.data[o + 1] = col[1]; img.data[o + 2] = col[2]; img.data[o + 3] = 255;
+    }
+  });
+  g.putImageData(img, 0, 0);
+  return c;
+}
+export function cached(key, make) { if (!canvasCache.has(key)) canvasCache.set(key, make()); return canvasCache.get(key); }
+export const palKey = pal => pal.map(c => c.join(".")).join("/");
+
+// 8x8 fixed-width UI font: raw 2bpp glyphs $20-$7F at 01:4410 (colour 1 = background, 3 = ink, 2 = shadow).
+export function uiFont(rom) {
+  const glyphs = rom.slice(0x01, 0x4410, 96 * 16);
+  return {
+    draw(ctx, str, x, y, pal) {
+      for (const ch of str) {
+        const i = Math.max(0, Math.min(95, ch.charCodeAt(0) - 0x20));
+        ctx.drawImage(cached("ui" + i + palKey(pal), () => tilesCanvas(glyphs, [i], 1, pal)), x, y); x += 8;
+      }
+    },
+  };
+}
+
+// LoadIconTiles 39:468B: icon id -> (idx, bank) ref table 39:46B7 -> LZ block of 8x8 tiles.
+export function iconTiles(rom, id) {
+  return rom.lzRef(rom.u8(0x39, 0x46B7 + id * 2), rom.u8(0x39, 0x46B8 + id * 2));
+}
+
+// Character OBJ palette: sprite header +0 = colour scheme 3..7 -> 18:4300 + (scheme-3)*8.
+export function charPalette(rom, roster) {
+  const sid = rom.u8(0x07, 0x5A50 + roster);
+  const idx = rom.u8(0x04, 0x4F75 + sid * 2), bank = rom.u8(0x04, 0x4F76 + sid * 2);
+  const scheme = rom.u8(bank, rom.tableEntry(bank, idx));
+  return palettes(rom.slice(0x18, 0x4300 + (Math.min(7, Math.max(3, scheme)) - 3) * 8, 8), 1)[0];
+}
+export const greyPalette = pal => pal.map(([r, g, b]) => { const l = Math.round(0.3 * r + 0.59 * g + 0.11 * b); return [l, l, l]; });
+
+// Portrait (16x16 face) from the raw sheet 18:5AF0 + roster*64: tiles 0,1 = left column, 2,3 = right.
+export function facePortrait(rom, roster, pal) {
+  return cached("face" + roster + palKey(pal), () => {
+    const t = rom.slice(0x18, 0x5AF0 + roster * 64, 64);
+    const c = newCanvas(16, 16), g = c.getContext("2d");
+    g.drawImage(tilesCanvas(t, [0, 1], 1, pal, { transparent: true }), 0, 0);
+    g.drawImage(tilesCanvas(t, [2, 3], 1, pal, { transparent: true }), 8, 0);
+    return c;
+  });
+}
+
+// Text banks: $4000 stub -> ld hl,$4004 table; offsets relative to TEXT_BASE (tools/dump_text.py).
+const textInfo = new Map();
+export function getText(rom, bank, idx) {
+  if (!textInfo.has(bank)) {
+    const stub = rom.u16(bank, 0x4000), call = rom.u16(bank, stub + 4);
+    const seq = rom.slice(bank, call, 0x20);
+    let i = 0; while (!(seq[i] === 0x56 && seq[i + 1] === 0x21)) i++;
+    const base = seq[i + 2] | seq[i + 3] << 8;
+    let j = 0; while (seq[j] !== 0x21) j++;
+    textInfo.set(bank, { tab: seq[j + 1] | seq[j + 2] << 8, base });
+  }
+  const { tab, base } = textInfo.get(bank);
+  let a = base + rom.u16(bank, tab + idx * 2), s = "";
+  for (let n = 0; n < 200; n++) {
+    const c = rom.u8(bank, a++);
+    if (c === 0 || c === 3) break;
+    s += c === 1 || c === 2 ? " " : c >= 0x20 && c < 0x7F ? String.fromCharCode(c) : "";
+  }
+  return s;
+}
+
+// Palette set of a LoadScreen entry (ref 3 of 39:40F5).
+export function screenPalettes(rom, id) {
+  const base = 0x40F5 + id * 8;
+  return palettes(rom.rawRef(rom.u8(0x39, base + 6), rom.u8(0x39, base + 7), 64));
+}
+
 // CharRecords 02:52CE (29 B, roster order); stats = bytes 18..28; type table 38:58FB
 export function characterData(rom, roster) {
   const base = 0x52CE + roster * 29, st = {};

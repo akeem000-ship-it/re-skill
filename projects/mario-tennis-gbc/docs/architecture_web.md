@@ -19,7 +19,8 @@ index.html
        ├─ js/rom.js     Rom (bank addressing, bank tables, LZ decompressor), BGR555, 2bpp tiles
        ├─ js/assets.js  courtImage, characterSprites, characterData, shotRow (+ roster/court lists)
        ├─ js/physics.js ball state, step(), launch(), predictBounce(), aimShot(), COURT constants
-       └─ js/match.js   Match: serve/toss/rally/dead state machine, shots, AI, judging, scoring
+       ├─ js/match.js   Match: serve/toss/rally/dead state machine, shots, AI, judging, scoring
+       └─ js/menus.js   Menus: main → play → character → opponent → difficulty → court (ROM backgrounds, icons, badges, fonts)
 tests/
   physics_vs_emulator.mjs  JS ball step vs PyBoy recording (needs states/phys_ref.json)
   soak.mjs                 CPU vs CPU headless match; rally length / outcome statistics
@@ -45,6 +46,7 @@ tests/
 | `judge()` in/out & serve box | `08:463A InOutCheck`, `wC486` swap (`08:4CFF`, `0D:4BC8`) | constants from code |
 | scoring / deuce / tiebreak | `08:5AD7 ScoreUpdate`, `08:5D71 WinCheck`, `DeuceCompress`, faults `08:5B7F`, tiebreak serve order from `08:49D9` | live point 0-15; rules from code; `tests/scoring.mjs` |
 | `screenImage` + front end | `39:407E LoadScreen` table `39:40F5`: logos $15, intro $16-$1E, title $1F, VS $01 (boot order from `10:4F0D`) | screens match the Python renders; `tests/record_flow.mjs` |
+| `Menus` | main `3B:55D1`, play `3B:5CF3`, character `38:7408`, court `3E:5D11`: stadium refs `3C:08-0E`, icons `3B:57E0/5EBD`, `3E:5DF1`, badges via `39:46B7`, portraits `18:5AF0`, UI font `01:4410`, texts bank `30` | PPU dumps of each real menu; roster order and court→map verified live |
 | `gameFont` | font `05:7920`, widths `05:7F80` (`05:7322 DrawGlyph`) | glyph sheet rendered and checked |
 | `proj()` | fitted to court-line pixels of the 32×32 court maps (projective, D = 16224) | ±1 px on the 4 lines |
 
@@ -70,8 +72,11 @@ tests/
   view per direction are the port's own logic. The camera follows the midpoint of ball and near player.
 * HUD and messages use the game's dialogue font (`gameFont`: 05:7920 2bpp glyphs, widths 05:7F80); the score
   bar layout is the port's own.
-* Front end: logos, intro panels, title (Enter = Start, Enter skips the intro) and a VS screen are the ROM's
-  own screens; the menus are the page's HTML controls (the game's menu code is not ported).
+* Front end: logos, intro panels, title (Enter = Start, Enter skips the intro), then the game's menus rebuilt from
+  their ROM data (Z/Enter = A, X = B/back, arrows), then the VS screen. Only Exhibition singles is selectable;
+  the other main-menu items answer "Can't choose this yet!" (text #131) as the game does for locked items. The
+  character list offers the fresh-save six first, then the rest of the Mushroom Kingdom cast (normally unlocked
+  by play). The HTML controls still work as a shortcut (Start button).
 * Not ported: doubles, mini-games, Mario Tour (RPG), sound/music.
 
 ## State machine (`Match.state`)

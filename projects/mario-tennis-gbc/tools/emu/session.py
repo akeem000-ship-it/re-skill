@@ -72,7 +72,10 @@ class Emu:
         return bytes(self.mem[bank, a:a + n])
 
     def vram(self, bank, a, n):
-        return bytes(self.mem[bank, a:a + n])
+        """VRAM bytes of bank 0/1 (switches VBK; PyBoy's banked slice rejects full-range reads)."""
+        old = self.mem[0xFF4F]; self.mem[0xFF4F] = bank
+        data = bytes(self.mem[a:a + n]); self.mem[0xFF4F] = old
+        return data
 
     def dump(self, a, n):
         data = bytes(self.mem[a:a + n])

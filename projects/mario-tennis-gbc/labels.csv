@@ -505,7 +505,6 @@ bank,addr,name,comment
 10,4EB9,Area00Init,boot area: front end
 10,4F0D,FrontEnd,logos/intro/title loop, then main menu dispatch
 10,4FC6,MainMenuTable,9 handlers: tour 1-3, exhibition, mini-games, linked play, status, dictionary, saved data (verified)
-3B,55D1,MainMenu,returns selection 0-8 or $FF
 6B,75AF,TitleScreen,returns $FF/1 to replay the intro
 *,C32A,wMapScrollMinY,map header +3 (tiles)
 *,DF15,wPlShotAnim,shot animation base: 5/6 wind-up, 9/10/11 swings, 7 serve
@@ -530,6 +529,38 @@ bank,addr,name,comment
 0,23DD,ClockTick,60/60/60/99 counter at wC0F0
 1A,44D8,ShowExpAward,EXP screen: DE = amount, L = player/partner
 3B,56D0,LoadMainMenuIcon,icon i: ref 3B:57E0 -> D000 -> VRAM1 A800+$100*i
-3B,57E0,MainMenuIconRefs,6 bank-table refs (3C:12..1C)
 39,468B,LoadIconTiles,B = icon id: ref table 39:46B7 -> D000 -> VRAM DE, C tiles
 39,46B7,IconRefTable,
+3B,55D1,MainMenu,3x3 grid; returns selection 0-8 or $FF
+3B,5CF3,PlayMenu,singles/doubles, games, sets (wCB0E/0F/10)
+3B,412A,GridCursor,B = cols C = rows: wCB04 col wCB05 row from hJoyRepeat (wCB0D)
+3B,43B9,GridIndex,A = wCB05*C + wCB04
+3B,56BA,MainMenuCellToItem,[3 4 5 0 1 2 6 7 8]
+3B,57E0,MainMenuIconRefs,6 x (idx bank): 3C:12..1C
+3B,591B,MainMenuBadgePos,9 x (x y) of the badge sprites per cell
+3B,592D,MainMenuBadgeTiles,tile base per cell (badge ids $1D-$22 at VRAM1 $8000+)
+3B,5A6A,MainMenuSelPalettes,9 pointers to 8-byte BG palette 4 per cell
+3B,5EBD,PlayMenuIconRefs,7 x (idx bank): 3C:62..6E
+3B,5DD4,PlayMenuRowPalettes,3 x 8 bytes (BG pal 4/6/7)
+39,4C38,LoadStadiumMenuBg,refs 3C:08 tiles 0A map 0C attrs 0E palette (map+attrs copied twice)
+39,4DEB,MenuSlideStep,blend the pristine map copy into the working one (slide-in/out)
+39,4619,ObjPalMenuBadges,8 bytes
+39,4B65,ObjPalMarquee,8 bytes
+01,4410,UIFont8x8,raw 2bpp glyphs $20-$7F (fixed width; tile = $100 + ASCII in VRAM0)
+18,5AF0,PortraitSheet,32 x 64 bytes: 16x16 face per roster id (tiles L-top L-bottom R-top R-bottom)
+38,7408,CharacterSelect,P1 then opponent (carousel order from availability bits D840+)
+38,50A7,CharSelectArrows,8 tiles: left/right/up/down arrows
+3E,5D11,CourtSelectLoad,court icon refs 3E:5DF1 -> VRAM1 $8800+, badges $65-$68
+3E,65C9,CourtSelect,returns court id; 2x2 / 3x3 grid
+3E,5DF1,CourtIconRefs,9 x (idx bank) in bank 3F
+3E,5F41,CourtBadgePos,4 x (y x)
+3E,5FF1,CourtSelPalettes,pointers to BG palette 4 per court
+3E,608A,CourtSpeedText,text #169 + value per court
+3E,60C1,CourtBounceText,text #169 + value per court
+3E,6102,CourtMusic,music id per court slot
+*,CB04,wMenuCol,
+*,CB05,wMenuRow,
+*,CB0D,wMenuJoy,hJoyRepeat copy for the menus
+*,CB0E,wPlayDoubles,
+*,CB0F,wPlayGames,0 = 2 games 1 = 6 games
+*,CB10,wPlaySets,0/1/2 = 1/3/5 sets
