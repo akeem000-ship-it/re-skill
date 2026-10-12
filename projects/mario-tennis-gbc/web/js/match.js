@@ -82,6 +82,9 @@ export class Match {
     this.serveSide = (this.points[0] + this.points[1]) % 2 === 0 ? 1 : -1;
     this.secondServe = false;
     this.state = "dead"; this.deadT = 70;
+    // glyph strip for the score display: "0 . 40", "AD . 40", tiebreak digits are not in the glyph set
+    const g = (a, b) => this.tiebreak ? null : a >= 3 && b >= 3 ? (a === b ? ["40", ".", "40"] : a > b ? ["AD", ".", "40"] : ["40", ".", "AD"]) : [POINT_NAMES[Math.min(a, 3)], ".", POINT_NAMES[Math.min(b, 3)]];
+    this.pointGlyphs = this.points[0] + this.points[1] === 0 ? null : g(this.points[0], this.points[1]);
     if (this.audio) this.audio.sfx(0x06);                       // point jingle
   }
 

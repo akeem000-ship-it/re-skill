@@ -828,8 +828,12 @@ The in-match score is not a HUD bar: after a point, bank 06 (mode byte `wC494` s
 glyph; tile lists `06:4A83` = `[0A 0B 1A 1B]`, `[0C 0D 1C 1D]`, `[0E 0F 1E 1F]` with attribute lists
 `06:4A8F`, group descriptors `06:4A9B/4AA1/4AA7` = `[w, h, tiles, attrs]`) into the OAM list at
 `wC4E3` (`DrawPointDigits 06:49F4`: five blanks then one glyph per point, 2 tiles apart); the group
-floats upwards and leaves the screen within ~90 frames. The digit tiles sit in VRAM bank 1 `$8000+`
-(source not located yet). Not ported: the web port prints the score with the UI font.
+is a 32×16 sprite strip at OAM (64, 64) (tiles `$30-$37`, OBJ palette 1 = green/red/yellow) composed from
+the **score glyph font** in bank 09 (`09:6000+`, raw 8×16 columns, 32 bytes each: letters D S R M O O P T at
+`$6000`, then `0` (one column, `$6180`), `15` (`$61A0`), `30` (`$6200`), `40` (`$6240`), `Ad` (`$6280`),
+`·` (`$62C0`), small digits `0-6` (`$6300+`), repeated in variants). Glyph tile lists `06:6835`, per-message
+glyph codes `06:466F` (rows by `wC4E6`), positions `06:4857`. The web port draws the strip from this font
+after each point; the tally marks (`06:4A83` lists, VRAM1 `$80A0+`) are not ported.
 
 ### Sound driver — VERIFIED format (bank 0 `3129-3DD4`, data banks 78-7F; tools: `dump_sound_index.py`, `dump_sound_seq.py`, `emu_seq_trace.py`)
 

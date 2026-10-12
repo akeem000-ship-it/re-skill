@@ -1,6 +1,6 @@
 // Web port entry: ROM loading, input, camera/projection, rendering, 60 fps loop.
 import { Rom, sha1Hex, EXPECTED_SHA1 } from "./rom.js";
-import { courtImage, screenImage, characterSprites, characterData, Animator, gameFont, ROSTER, PLAYABLE, COURTS } from "./assets.js";
+import { courtImage, screenImage, characterSprites, characterData, Animator, gameFont, ROSTER, PLAYABLE, COURTS, scoreGlyph } from "./assets.js";
 import { FX } from "./physics.js";
 import { Match } from "./match.js";
 import { Menus } from "./menus.js";
@@ -159,6 +159,12 @@ function render() {
   const [p1, p2] = m.players.map(p => p.data.name.slice(0, 6));
   const hud = `${p1} ${m.games[0]}  ${m.scoreText()}  ${m.games[1]} ${p2}`;
   font.draw(g, hud, Math.max(1, (W - font.width(hud)) >> 1), 2);
+  // the game's point-score sprite strip ("0 . 40", OBJ palette 1) after each point, at OAM (64,64)
+  if (m.state === "dead" && m.pointGlyphs && m.deadT > 10) {
+    const pal = [[0, 156, 0], [255, 57, 0], [255, 255, 74], [0, 0, 0]];
+    let x = 56;
+    for (const t of m.pointGlyphs) { const c = scoreGlyph(rom, t, pal); g.drawImage(c, x, 48); x += c.width; }
+  }
   if (m.msgTimer > 0 && m.message) {
     const w = font.width(m.message) + 8;
     g.fillStyle = "rgba(200,40,20,0.9)"; g.fillRect((W - w) >> 1, 63, w, 12);
