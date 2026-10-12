@@ -9,3 +9,4 @@ __pycache__/
 states/
 *.ram
 docs/scenes_dump.txt
+out/
