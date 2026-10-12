@@ -517,3 +517,8 @@ bank,addr,name,comment
 *,DF76,wPlRecord8,record +8
 *,DF90,wPlSideBias,record +11/+12
 *,DF94,wPlSpriteFlip,$20 if record +0 nonzero
+*,C3B1,wOpponentRoster,mini-game opponent (descriptor +0)
+*,C8F4,wCourtId,
+*,C8F3,wPlayerCount,2 singles / 4 doubles
+*,C8F7,wMiniGameId,
+*,C8F8,wMatchMusic,

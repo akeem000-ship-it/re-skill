@@ -82,7 +82,23 @@ Confidence: **V** verified by code reading/emulator, **I** inferred from callers
 
 **Mini-games / drills** (`0B:4705 RunMiniGame(A)`): 36 ids. Ids `$00-$11` → descriptor table
 `0B:47B4` run by `0B:4002`; ids `$12-$23` → `0D:4090` run by `0D:4006`; `$24` is a special case.
-Descriptor: `[b0, b1, b2, b3, id, b5, 0, flags, …, word ptrs to setup/tick/end callbacks]`.
+Descriptor — **VERIFIED from `MiniGameRun 0B:4002` / `0D:4006`** (both read the same layout):
+
+| Offset | → | Meaning |
+|--------|---|---------|
+| +0 | `wC3B1` | opponent roster id, loaded into player slot 2 (`02:4066`); `$FF` = none (e.g. id `$1C` = `$17` Luigi — "rally with Luigi") |
+| +1 | `wC8F4` | court / map id |
+| +2 | `wC8F3` | player count (2 singles, 4 with partners) |
+| +3 | `wC8A6`, `wC8F6` | game mode |
+| +4 | `wC8F7` | the mini-game id itself |
+| +5 | `wC8F8` | music id (played by `08:47C6`) |
+| +7 | slot 0 | player character (`$80` = the Mario Tour player; Mario-world games use roster ids such as `$1A`) |
+| +8 | `08:671A` | pointer to the per-game rule/handler table (bank = current) |
+| +A | `08:6728` | second handler pointer |
+| +C | `call 06CE` | optional setup routine (0 = none) |
+| +E.. | | the game's own callback words |
+
+The level of the one-id-per-game mini-games (`$1D+`) is not in the descriptor; it comes from the caller.
 **Ids → games, VERIFIED live** (`tools/emu_call.py` injects `A = id` at the `rst $18 → 0B:4705` site
 `10:47FC` from a field state; screenshots of all 36 ids): ids `$00-$1C` follow the title texts
 `26 #(43 + id)` — `$00-$02` Service Match 1-3, `$03-$05` Service Practice 1-3 (target areas, poles),
@@ -1007,7 +1023,7 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph3: identify the sound driver (bank 0 3129-3Dxx) and data banks 78-7F
 - [x] Ph3: bank map 00-7F (tools/bank_map.py); refine the ? rows (0C, 1D, 1E, 24, 28-2C, 73)
 - [x] Ph5: mini-game id → game mapping verified live (emu_call.py)
-- [ ] Ph5: decode the mini-game descriptor bytes and the level parameter for ids $1D-$24
+- [x] Ph5: mini-game descriptor layout (0B:4002 / 0D:4006)
 - [ ] Ph3: decode the sequence opcodes fully ($A0-$FF handlers) and write a sequence dumper
 - [x] Ph4: text encoding (ASCII + control codes) and text-bank layout; dump all 4109 messages
 - [x] Ph4: understand banks 5F-69 map layout via LoadMap 0A:585D — all 37 maps render
