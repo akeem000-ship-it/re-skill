@@ -252,7 +252,7 @@ bank,addr,name,comment
 *,C486,wLengthLimit,-672 during serve (service line) / -1248 rally (baseline)
 *,C488,wNetHeight,96
 *,C4B1,wInOutFlags,
-*,C4B6,wServeBounceState,1 = serve in flight, 2 = after first bounce
+*,C4B6,wHitCount,hits in the point capped 100 (1 = serve in flight; earlier read as serve bounce state)
 *,C4D8,wPointResult,1 fault 2 double fault ...
 *,C8E4,wP1Points,
 *,C8E5,wP2Points,
@@ -683,3 +683,27 @@ bank,addr,name,comment
 *,C44A,wBallRelY,
 *,C44C,wBallRelZ,
 *,C4AE,wBodyHitFlag,
+08,6281,CameraScroll,hSCX = (clamp(camX/2+$620 0 $C00)&~$1F)>>5 wC478 = $1010-that; hSCY from camY*3/8+$720 wC47A
+08,6199,CameraStartPos,HL=0 DE=-384 / -1920 (wC4D4 bit1)
+08,61AA,CameraSet,camera = target = HL/DE; clears wC4C9
+08,61C9,CameraSetTarget,target = HL/DE; clears wC4C9
+08,5253,BallGroundProject,wC46C/6E = ProjectPoint(ballX ballY 0)
+08,59BB,ProjectToScreen,D = (wC478+X')>>5 E = (wC47A+P')>>5
+00,2DE9,ProjF1Signed,sign(x)*f1(|x|) (2F:4000 x*26368>>16)
+00,2E11,ProjF1Neg,-sign(x)*f1(|x|)
+00,2E39,ProjF2Signed,sign(x)*f2(|x|) (2F:6000 x*59904>>16)
+00,2E61,ProjScale,D = 2E:4000[Q+$2000] = floor(128*16384/(16384-Q))
+2F,4000,ProjSinTable,x*26368>>16 (sin 23.76 deg) 4096 words
+2F,6000,ProjCosTable,x*59904>>16 (cos 23.76 deg)
+2E,4000,ProjScaleTable,floor(128*16384/(16384-Q)) bytes indexed by Q+$2000
+*,C440,wCamX,camera X (1/32 px)
+*,C442,wCamY,
+*,C444,wCamTargetX,
+*,C446,wCamTargetY,
+*,C46C,wBallGroundX,projected ball ground point
+*,C46E,wBallGroundY,
+*,C478,wScreenOffX,$1010 - scroll32
+*,C47A,wScreenOffY,
+*,C4C9,wCamFollowBall,1 while the serve is in flight
+*,DD1E,wBallProjX,ball X' (1/32 px)
+*,DD20,wBallProjY,ball P'

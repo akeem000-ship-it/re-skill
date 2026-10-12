@@ -4,6 +4,7 @@ import { courtImage, screenImage, characterSprites, characterData, Animator, gam
 import { FX } from "./physics.js";
 import { Match } from "./match.js";
 import { Menus } from "./menus.js";
+import { Camera } from "./camera.js";
 
 const W = 160, H = 144;
 const cv = document.getElementById("screen"), g = cv.getContext("2d");
@@ -11,13 +12,9 @@ g.imageSmoothingEnabled = false;
 const $ = id => document.getElementById(id);
 let rom, font, menus, match, court, sprites = [], anims = [], keys = {}, prevKeys = {};
 
-// Court projection fitted to the court lines of the 32x32 court maps (REVERSE.md "Projection"):
-// x = 128 + X*2020/(16224-Y), y = 127.5 + 804.6*Y/(16224-Y); heights use the same scale.
-const D = 16224;
-const proj = (X, Y, Z = 0) => {
-  const k = 2020 / (D - Y);
-  return [128 + X * k, 127.5 + 804.6 * Y / (D - Y) + Z * k * 0.85];
-};
+// Projection and camera: exact port of ProjectPoint 00:2D8C / CameraFollow 08:61DC (camera.js)
+const camera = new Camera();
+let camPoint = -1;
 
 async function loadRom(buf) {
   rom = await Rom.load(buf); font = gameFont(rom);
@@ -119,21 +116,24 @@ function frameFor(p, m, i) {
 
 function render() {
   const m = match, b = m.ball;
-  const [bx, by] = proj(b.X / FX, b.Y / FX), near = m.players[0];
-  const [, ny] = proj(near.X, near.Y);
-  const camX = Math.max(0, Math.min(96, Math.round(bx - 80)));
-  const camY = Math.max(0, Math.min(112, Math.round((by + ny) / 2 - 76)));
+  // camera (08:61DC): snaps to the start view at each point, follows the ball's ground point while
+  // the serve is in flight (hit count 1), then stays put; 2 px per frame, scroll aligned to 32 units
+  if (m.pointNo !== camPoint) { camPoint = m.pointNo; camera.startPoint(m.players[m.server].side === 1); }
+  if (m.state === "rally" && m.hits === 1) camera.followGround(b.X / FX, b.Y / FX);
+  camera.step();
+  const { scx: camX, scy: camY } = camera.scroll();
+  const proj = (X, Y, Z = 0) => camera.screen(X, Y, Z);
   g.fillStyle = "#000"; g.fillRect(0, 0, W, H);
   g.drawImage(court, -camX, -camY);
-  const drawPlayer = (p, i) => {
+  const drawPlayer = (p, i) => {               // sprite block anchored at its bottom centre (OAM check, REVERSE.md)
     const [sx, sy] = proj(p.X, p.Y), fr = frameFor(p, m, i), img = sprites[i].frame(fr.n, fr.flip);
-    g.drawImage(img, Math.round(sx - img.width / 2 - camX), Math.round(sy - 30 - camY));
+    g.drawImage(img, Math.floor(sx - img.width / 2), Math.floor(sy) - img.height);
   };
   const drawBall = () => {
     const [sx, sy] = proj(b.X / FX, b.Y / FX), [, hy] = proj(b.X / FX, b.Y / FX, b.Z / FX);
-    g.fillStyle = "rgba(0,0,0,0.45)"; g.fillRect(Math.round(sx - 2 - camX), Math.round(sy - 1 - camY), 4, 2);
-    g.fillStyle = "#f8e030"; g.fillRect(Math.round(sx - 1.5 - camX), Math.round(hy - 3 - camY), 3, 3);
-    g.fillStyle = "#806000"; g.fillRect(Math.round(sx - 1.5 - camX), Math.round(hy - 1 - camY), 3, 1);
+    g.fillStyle = "rgba(0,0,0,0.45)"; g.fillRect(Math.floor(sx - 2), Math.floor(sy - 1), 4, 2);
+    g.fillStyle = "#f8e030"; g.fillRect(Math.floor(sx - 1.5), Math.floor(hy - 3), 3, 3);
+    g.fillStyle = "#806000"; g.fillRect(Math.floor(sx - 1.5), Math.floor(hy - 1), 3, 1);
   };
   // painter's order by depth: far player, ball, near player
   const order = [[m.players[1].Y, () => drawPlayer(m.players[1], 1)], [b.Y / FX, drawBall], [m.players[0].Y, () => drawPlayer(m.players[0], 0)]];

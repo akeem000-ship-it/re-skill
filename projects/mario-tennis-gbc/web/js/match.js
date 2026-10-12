@@ -23,7 +23,7 @@ export class Match {
       [0x10,0x10,0x10,0x30,0x20,0x20,0x20,0x30,0x11,0x11,0x11,0x12,0x22,0x22,0x22,0x21],
       [0x30,0x30,0x30,0x11,0x11,0x11,0x11,0x11,0x22,0x22,0x22,0x22,0x20,0x10,0x12,0x21]][this.cpu.profile];
     this.players = [this.mkPlayer(p1, 0, false), this.mkPlayer(p2, 1, true)];
-    this.points = [0, 0]; this.games = [0, 0];
+    this.points = [0, 0]; this.games = [0, 0]; this.pointNo = 0; this.hits = 0;
     this.server = 0; this.serveSide = 1;    // +1 = deuce court (X > 0 for the near player)
     this.secondServe = false;
     this.ball = newBall();
@@ -39,6 +39,7 @@ export class Match {
 
   resetPoint() {
     const b = this.ball = newBall();
+    this.pointNo++; this.hits = 0;                 // wC4B6 hit count (1 = serve in flight)
     this.state = "serve"; this.tossT = 0; this.bounceSide = 0; this.served = false;
     for (const p of this.players) p.rush = false;
     const s = this.players[this.server], r = this.players[1 - this.server];
@@ -122,7 +123,7 @@ export class Match {
     launch(b, L.speed, L.elev, L.heading, L.top, L.side);
     b.landing = r.landing; b.shotType = type; b.weak = r.fallback;
     if (serve) { this.state = "rally"; this.served = true; this.serveLanding = true; }
-    b.bounces = 0; this.lastHitter = p.side; this.bounceSide = 0;
+    b.bounces = 0; this.lastHitter = p.side; this.bounceSide = 0; this.hits++;
     p.swing = 14; p.swingType = button === 2 ? 1 : button === 3 ? 2 : 0; p.cooldown = 24; p.swingReq = null;
     // animation (recorded in PyBoy): forehand 9 when the ball is on the player's right, backhand 10,
     // high balls 11; the serve uses 7

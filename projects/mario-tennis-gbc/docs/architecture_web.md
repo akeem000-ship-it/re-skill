@@ -20,6 +20,7 @@ index.html
        ├─ js/assets.js  courtImage, characterSprites, characterData, shotRow (+ roster/court lists)
        ├─ js/physics.js ball state, step(), launch(), predictBounce(), COURT constants
        ├─ js/shots.js   the game's aiming + trajectory-table selection (computeShot, atan2Rom, shotType)
+       ├─ js/camera.js  exact ProjectPoint 00:2D8C + match camera 08:61DC (project, Camera)
        ├─ js/match.js   Match: serve/toss/rally/dead state machine, shots, AI, judging, scoring
        └─ js/menus.js   Menus: main → play → character → opponent → difficulty → court (ROM backgrounds, icons, badges, fonts)
 tests/
@@ -27,6 +28,7 @@ tests/
   soak.mjs                 CPU vs CPU headless match; rally length / outcome statistics
   scoring.mjs              deuce / set / tiebreak / serve-order rules vs the decoded ScoreUpdate
   shots_vs_emulator.mjs    shots.js vs the game's own shot selection (needs states/shots*.json from tools/emu_shot_trace.py)
+  projection.mjs           camera.js vs the ball/scroll values stored by the game in the rally recording
   record_match.mjs         CPU vs CPU match -> PNG frames
   record_flow.mjs          boot -> intro -> title -> VS -> match -> PNG frames
 ```
@@ -99,3 +101,4 @@ rally --(judge: fault | out | net | 2nd bounce | fence)--> dead --(70 frames)-->
 dead  --(fault on first serve)--> serve (same server, secondServe = true)
 game won --> server switches; set won (N games, lead 2, or tiebreak at N-N to 7) --> over
 ```
+* **Projection / camera**: `camera.js` is the game's own math (tilt 23.76°, focal 16384, 1/32-px screen units, camera that follows the serve then freezes, scroll aligned to 32 units); bit-exact on the rally recording.

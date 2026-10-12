@@ -718,13 +718,33 @@ active this frame (cleared while `wDF0F` bit0 or bit1 is set — swinging/servin
 The sine table `00:0B5C` has 65 entries (0..128 for a quarter turn of 64 steps).
 `wDF0F` bit4 = moving (cleared when all of `wDF40-43` are 0).
 
-### Projection (court map pixels) — fitted
+### Projection and camera — VERIFIED (`00:2D8C ProjectPoint`, `08:61DC CameraFollow`; tool: `tools/analyze_projection.py`)
 
-From the court lines of the 32×32 court maps (map 2: far baseline y = 70, far service line 96, near
-service line 162.5, near baseline 194.5; baselines span the doubles width, service lines the singles
-width), one projective model fits every line to ±1 px:
-`x = 128 + X·2020/(16224 − Y)`, `y = 127.5 + 804.6·Y/(16224 − Y)`. Heights use the same scale (×0.85,
-estimated). The game's own routine (`00:2D8C ProjectPoint`, tables in banks 2E/2F) is not decoded.
+`ProjectPoint(HL = X, DE = Y, BC = Z)` (world units; Z negative = up) uses two word tables in bank 2F
+and a byte table in bank 2E:
+
+* `2F:4000` f1(x) = (x & ~1)·26368 >> 16 (sin 23.76°), `2F:6000` f2(x) = (x & ~1)·59904 >> 16 (cos),
+  both applied to |x| with the sign restored (inputs up to 8191). The camera is tilted 23.76°:
+  **P** = f1(Y) + f2(Z) (screen-vertical component), **Q** = f2(Y) − f1(Z) (depth towards the camera).
+* `2E:4000` s(Q) = ⌊128·16384 / (16384 − Q)⌋ (indexed by Q + `$2000`, clamped to 255): the perspective
+  scale, focal length 16384.
+* X′ = 8·((X·s) >> 8) + 16, P′ = 8·((P·s) >> 8) + 16 (`MulSigned8x16 00:0DFA` keeps the sign); the
+  routine returns HL = X′, BC = P′, DE = Q. These are 1/32-pixel screen offsets from the court-map
+  centre: screen x = (`wC478` + X′) >> 5, screen y = (`wC47A` + P′) >> 5 (`08:59BB`), i.e.
+  x = 128.5 − SCX + X·s/1024, y = 128.5 − SCY + P·s/1024. Verified bit-exact on 2398/2400 frames of the
+  rally recording against the ball's stored X′/P′ (`wDD1E/wDD20`, the other 2 are reset frames) and
+  against the player sprite's OAM block (bottom-centre anchor).
+
+**Camera** (`08:61DC`, called from `MatchTick`): `wC440/42` = camera, `wC444/46` = target, both in the
+same 1/32-px units. While `wC4C9` ≠ 0 (set by `08:425F` while the serve is in flight: `wC4B6` = hit
+count of the point = 1, no point result) the target is the ball's **ground point** `ProjectPoint(X, Y, 0)`
+(`wC46C/6E`, computed by `08:5253` one frame earlier); otherwise the target is left alone, so the camera
+freezes for the rest of the rally. Each frame the camera moves 64 units (2 px) towards the target
+along the direction (`00:0A54` angle, `00:0AF8` cos/sin) and snaps when it would overshoot. Point start
+(`08:6010` → `08:6199/61AA`): camera = target = (0, −384) or (0, −1920) when `wC4D4` bit1 (ends
+swapped); point end (`08:4DF4`): target = camera. Scroll: `hSCX` = (clamp(camX/2 + `$620`, 0, `$C00`)
+& ~`$1F`) >> 5, `wC478` = `$1010` − that; `hSCY` = ((camY/4 + camY/8 + `$720`) & ~`$1F`) >> 5, `wC47A` =
+`$1010` − that (`08:6281-6300`). Checked: frame 300 of the recording gives SCX 50 / SCY 77 exactly.
 
 ### Shot tables — partial (tool: `tools/dump_shot_tables.py`)
 
@@ -1127,9 +1147,8 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
    partial opcode map. Needed: every `$A0-$FF` opcode with operand sizes and semantics, loops/calls,
    envelopes, noise mapping `00:3836`, then a dumper and a WebAudio player. Test: rendered audio of
    ids `$01-$32` matches PyBoy's APU output (spectrogram or note-event compare).
-4. **`00:2D8C ProjectPoint`** (tables in banks 2E/2F). Needed: exact world → screen projection to
-   replace the fitted one in `web/js/main.js`. Test: sprite OAM positions from a recorded rally match
-   the port to ±0 px.
+4. ~~**`00:2D8C ProjectPoint`**~~ DONE — see "Projection and camera" (bit-exact on the rally recording;
+   ported to `web/js/main.js` with the camera).
 5. **CPU AI sub-state machine** (`wDF1A`, `wDF7F`, bank 08 `7A60-7F00`): exact intercept-depth rule
    and movement targets per state (structure and parameters are decoded; ordering/timing is not).
 
@@ -1205,7 +1224,7 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph7: web port of a singles exhibition match (web/index.html, docs/architecture_web.md)
 - [x] Ph7: web/js/shots.js ports the aiming + table selection; web/tests/shots_vs_emulator.mjs replays the traces with 0 differences
 - [x] Ph7: port the decoded CPU AI parameters (reaction delays, placement probability, positioning error, shot profiles, quick serve)
-- [ ] Ph7: decode ProjectPoint 00:2D8C and replace the fitted projection
+- [x] Ph7: ProjectPoint 00:2D8C decoded (tilt 23.76°, focal 16384) and the camera; port uses the exact math
 - [x] Ph7: HUD and messages drawn with the game's dialogue font
 - [x] Ph7: menus rebuilt in the web port (main, play, character ×2, difficulty, court) from the ROM's menu data
 - [ ] Ph7: score graphics as in the game (scoreboard tiles); sound
