@@ -24,6 +24,8 @@ tests/
   physics_vs_emulator.mjs  JS ball step vs PyBoy recording (needs states/phys_ref.json)
   soak.mjs                 CPU vs CPU headless match; rally length / outcome statistics
   scoring.mjs              deuce / set / tiebreak / serve-order rules vs the decoded ScoreUpdate
+  record_match.mjs         CPU vs CPU match -> PNG frames
+  record_flow.mjs          boot -> intro -> title -> VS -> match -> PNG frames
 ```
 
 ## ROM → web mapping
@@ -42,6 +44,7 @@ tests/
 | `COURT` | `08:40E5` constants, `08:4300` doubles width | real-tennis proportions; live serve/limits |
 | `judge()` in/out & serve box | `08:463A InOutCheck`, `wC486` swap (`08:4CFF`, `0D:4BC8`) | constants from code |
 | scoring / deuce / tiebreak | `08:5AD7 ScoreUpdate`, `08:5D71 WinCheck`, `DeuceCompress`, faults `08:5B7F`, tiebreak serve order from `08:49D9` | live point 0-15; rules from code; `tests/scoring.mjs` |
+| `screenImage` + front end | `39:407E LoadScreen` table `39:40F5`: logos $15, intro $16-$1E, title $1F, VS $01 (boot order from `10:4F0D`) | screens match the Python renders; `tests/record_flow.mjs` |
 | `gameFont` | font `05:7920`, widths `05:7F80` (`05:7322 DrawGlyph`) | glyph sheet rendered and checked |
 | `proj()` | fitted to court-line pixels of the 32×32 court maps (projective, D = 16224) | ±1 px on the 4 lines |
 
@@ -67,6 +70,8 @@ tests/
   view per direction are the port's own logic. The camera follows the midpoint of ball and near player.
 * HUD and messages use the game's dialogue font (`gameFont`: 05:7920 2bpp glyphs, widths 05:7F80); the score
   bar layout is the port's own.
+* Front end: logos, intro panels, title (Enter = Start, Enter skips the intro) and a VS screen are the ROM's
+  own screens; the menus are the page's HTML controls (the game's menu code is not ported).
 * Not ported: doubles, mini-games, Mario Tour (RPG), sound/music.
 
 ## State machine (`Match.state`)

@@ -35,6 +35,32 @@ export function courtImage(rom, id) {
   return c;
 }
 
+// Full screens: LoadScreen 39:407E, table 39:40F5, 8 bytes per screen = 4 (idx, bank) refs:
+// tiles (LZ, signed indexing like the courts), 32x32 tilemap (LZ), attributes (LZ), 64-byte palette.
+// Returns the visible 20x18-tile window (160x144) at scroll 0.
+export function screenImage(rom, id) {
+  const base = 0x40F5 + id * 8, ref = i => [rom.u8(0x39, base + i * 2), rom.u8(0x39, base + i * 2 + 1)];
+  const [ti, tb] = ref(0), [mi, mb] = ref(1), [ai, ab] = ref(2), [pi, pb] = ref(3);
+  const tiles = rom.lzRef(ti, tb), tmap = rom.lzRef(mi, mb), attr = rom.lzRef(ai, ab);
+  const pal = palettes(rom.rawRef(pi, pb, 64));
+  const vram = new Uint8Array(0x1800);
+  vram.set(tiles.subarray(0, 0x800), 0x1000);
+  vram.set(tiles.subarray(0x800, 0x1000), 0x800);
+  const c = document.createElement("canvas"); c.width = 160; c.height = 144;
+  const g = c.getContext("2d"), img = g.createImageData(160, 144);
+  for (let ty = 0; ty < 18; ty++) for (let tx = 0; tx < 20; tx++) {
+    const i = ty * 32 + tx, t = tmap[i], at = attr[i];
+    const off = 0x1000 + (t < 128 ? t : t - 256) * 16, p = pal[at & 7];
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+      const sx = at & 0x20 ? 7 - x : x, sy = at & 0x40 ? 7 - y : y;
+      const col = p[tilePixel(vram, off, sx, sy)], o = ((ty * 8 + y) * 160 + tx * 8 + x) * 4;
+      img.data[o] = col[0]; img.data[o + 1] = col[1]; img.data[o + 2] = col[2]; img.data[o + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  return c;
+}
+
 // Character sprites: RosterToSprite 07:5A50, CharSpriteTable 04:4F75, header +0 = colour scheme
 // (18:4300), +4 frame pointer list; frames = 12 tiles drawn as 8x16 OBJs column-major (24x32).
 export function characterSprites(rom, roster) {

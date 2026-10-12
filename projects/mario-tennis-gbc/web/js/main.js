@@ -1,6 +1,6 @@
 // Web port entry: ROM loading, input, camera/projection, rendering, 60 fps loop.
 import { Rom, sha1Hex, EXPECTED_SHA1 } from "./rom.js";
-import { courtImage, characterSprites, characterData, Animator, gameFont, ROSTER, PLAYABLE, COURTS } from "./assets.js";
+import { courtImage, screenImage, characterSprites, characterData, Animator, gameFont, ROSTER, PLAYABLE, COURTS } from "./assets.js";
 import { FX } from "./physics.js";
 import { Match } from "./match.js";
 
@@ -28,7 +28,7 @@ async function loadRom(buf) {
   for (const id of COURTS) $("court").add(new Option("Court " + id, id));
   $("court").value = 2;
   $("setup").hidden = false; $("loader").hidden = true;
-  start();
+  front = { step: 0, t: 0, cache: new Map() };     // boot into the intro (FRONT sequence)
 }
 
 function start() {
@@ -39,7 +39,53 @@ function start() {
   match = new Match(rom, characterData(rom, p1), characterData(rom, p2), { games: +$("games").value, difficulty: +$("diff").value });
   const d1 = match.players[0].data, d2 = match.players[1].data;
   $("info").textContent = `${d1.name} (${d1.type}) vs ${d2.name} (${d2.type})`;
+  front = null;
   cv.focus();
+}
+
+// Front end built from decoded LoadScreen data (REVERSE.md "Screens", "Boot and main menu"): logos ($15),
+// intro panels ($16-$1E), title ($1F, waits for Start = Enter), VS screen ($01) with the chosen names
+// drawn in the game font, then the match. Enter during the intro skips to the title.
+const FRONT = [
+  { id: 0x15, hold: 150 },
+  ...[0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E].map(id => ({ id, hold: 75, intro: true })),
+  { id: 0x1F, hold: Infinity, title: true },
+  { id: 0x01, hold: 150, vs: true },
+];
+let front = null;
+const FADE = 16;
+function frontTick() {
+  const st = FRONT[front.step], enter = keys.Enter && !prevKeys.Enter;
+  prevKeys = { ...keys };
+  if (!front.cache.has(st.id)) front.cache.set(st.id, screenImage(rom, st.id));
+  front.t++;
+  if (enter && st.intro) { front.step = FRONT.findIndex(s => s.title); front.t = 0; return; }
+  if (st.title && enter && !front.leaving) front.leaving = front.t;
+  const end = st.title ? (front.leaving ? front.leaving + FADE : Infinity) : FADE + st.hold + FADE;
+  if (front.t >= end) {
+    front.leaving = 0; front.t = 0;
+    if (++front.step >= FRONT.length) { start(); return; }
+  }
+  // draw with fades to black
+  g.fillStyle = "#000"; g.fillRect(0, 0, W, H);
+  g.drawImage(front.cache.get(st.id), 0, 0);
+  if (st.title && Math.floor(front.t / 32) % 2 === 0 && !front.leaving) {
+    const msg = "PRESS START";
+    g.fillStyle = "rgba(0,0,0,0.55)"; g.fillRect((W - font.width(msg)) / 2 - 3, 112, font.width(msg) + 6, 11);
+    font.draw(g, msg, (W - font.width(msg)) >> 1, 114, [255, 240, 120], [120, 40, 0]);
+  }
+  if (st.vs) {
+    const n1 = ROSTER[+$("p1").value], n2 = ROSTER[+$("p2").value];
+    const box = (txt, cx, y) => { const w = font.width(txt); g.fillStyle = "rgba(0,0,40,0.8)"; g.fillRect(cx - w / 2 - 3, y - 2, w + 6, 12); font.draw(g, txt, Math.round(cx - w / 2), y); };
+    const t1 = characterData(rom, +$("p1").value).type, t2 = characterData(rom, +$("p2").value).type;
+    box(n1, 40, 40); box(n2, 120, 40);
+    box(t1, 40, 124); box(t2, 120, 124);
+  }
+  let k = 0;
+  if (front.t < FADE) k = 1 - front.t / FADE;
+  else if (front.leaving) k = Math.min(1, (front.t - front.leaving) / FADE);
+  else if (!st.title && front.t > FADE + st.hold) k = (front.t - FADE - st.hold) / FADE;
+  if (k > 0) { g.fillStyle = `rgba(0,0,0,${k})`; g.fillRect(0, 0, W, H); }
 }
 
 // Animation ids per state (recorded in PyBoy, REVERSE.md "Animations"): 1 ready, 2 run,
@@ -100,8 +146,13 @@ function render() {
 }
 
 let paused = false;  // set by tests that drive frames themselves (__mt.step)
+function tick(input) {
+  if (front) return frontTick();
+  match.update(input); render();
+}
 function loop() {
-  if (match && !paused) {
+  if (front && !paused) frontTick();
+  else if (match && !paused) {
     const k = keys, pr = prevKeys;
     const input = { left: k.ArrowLeft, right: k.ArrowRight, up: k.ArrowUp, down: k.ArrowDown,
       aPressed: (k.KeyZ || k.KeyA) && !(pr.KeyZ || pr.KeyA), bPressed: (k.KeyX || k.KeyS) && !(pr.KeyX || pr.KeyS) };
@@ -120,5 +171,6 @@ $("restart").addEventListener("click", start);
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom).catch(() => {});
 // expose for automated tests
 window.__mt = { get match() { return match; }, start, keys,
-  pause(p = true) { paused = p; }, step(input = {}) { match.update(input); render(); } };
+  get front() { return front; },
+  pause(p = true) { paused = p; }, step(input = {}) { tick(input); } };
 requestAnimationFrame(loop);
