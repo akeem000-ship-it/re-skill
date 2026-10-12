@@ -933,39 +933,76 @@ export class Voxel3D {
     }
   }
 
-  // ---- menus, title, mini-games: BG / window / sprite layers at different depths with a parallax camera ----
+  // ---- menus, title, mini-games: a static view with depth. The PPU's background-only frame (raster scroll
+  // effects included) is cut into layers: the backdrop, the panels standing on it (boxes, logos, icons, text),
+  // the window layer, and the sprites, each a little closer to the camera with a soft shadow on the layer below.
+  // Which background cells are panels: cells whose palette is rare along the screen border (the backdrop is the
+  // picture or pattern that reaches the edges), plus any cell drawn with the BG-over-sprite priority bit.
+  menuLayers() {
+    const p = this.gb.ppu, m = this.gb.mem, v1 = m.vram[1], cell = p.pixCell, L = this.layer;
+    const hist = new Uint32Array(8); let n = 0;
+    for (let y = 0; y < 144; y++) for (let x = 0; x < 160; x += (y === 0 || y === 143) ? 1 : 159) {
+      const c = cell[y * 160 + x]; if (c & 0x8000) continue; hist[v1[c] & 7]++; n++;
+    }
+    const back = new Uint8Array(8); for (let k = 0; k < 8; k++) back[k] = n && hist[k] >= n * 0.15 ? 1 : 0;
+    if (!back.some(Boolean)) back.fill(1);
+    const N = 160 * 144, mask = L.mask || (L.mask = new Uint8Array(N));   // 0 backdrop, 1 panel, 2 window
+    for (let i = 0; i < N; i++) { const c = cell[i]; mask[i] = c & 0x8000 ? 2 : (back[v1[c] & 7] && !(v1[c] & 0x80)) ? 0 : 1; }
+    // a panel must be a solid region, not stray pixels of a rare palette inside the backdrop picture: drop
+    // panel components smaller than 64 px
+    const seen = L.seen || (L.seen = new Uint8Array(N)); seen.fill(0); const st = [];
+    for (let i = 0; i < N; i++) {
+      if (mask[i] !== 1 || seen[i]) continue;
+      const comp = []; st.push(i); seen[i] = 1;
+      while (st.length) { const j = st.pop(); comp.push(j); const x = j % 160; for (const k of [j - 160, j + 160, x ? j - 1 : -1, x < 159 ? j + 1 : -1]) if (k >= 0 && k < N && !seen[k] && mask[k] === 1) { seen[k] = 1; st.push(k); } }
+      if (comp.length < 64) for (const j of comp) mask[j] = 0;
+    }
+    return mask;
+  }
+  layerTexture(key, rgba) {
+    const gl = this.gl, L = this.layer;
+    if (!L[key]) L[key] = this.texture(160, 144, null);
+    gl.bindTexture(gl.TEXTURE_2D, L[key]); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 160, 144, 0, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
+    return L[key];
+  }
   renderLayers() {
     const gl = this.gl, cv = this.cv, p = this.gb.ppu, L = this.layer; this.mode = "layers";
-    const bgBase = p.lcdc & 0x08 ? 0x1C00 : 0x1800, winBase = p.lcdc & 0x40 ? 0x1C00 : 0x1800, winOn = (p.lcdc & 0x20) && p.wy < 144 && p.wx < 167;
-    const hb = this.mapHash(bgBase, true); if (hb !== L.hash) { L.hash = hb; if (L.bg) gl.deleteTexture(L.bg); L.bg = this.texture(256, 256, this.composeMap(bgBase), false, true); }
-    if (winOn) { const hw = this.mapHash(winBase, true); if (hw !== L.whash) { L.whash = hw; if (L.win) gl.deleteTexture(L.win); L.win = this.texture(256, 256, this.composeMap(winBase)); } }
-    // camera: looks at the centre of the 160x144 screen plane from D away; the eye sways (time + pointer + gyro)
-    const t = (performance.now() - this.t0) / 1000, px = this.parallax, D = 520, aspect = cv.width / cv.height;
-    const ex = 80 + 14 * Math.sin(t * 0.6) + px.px * 40 + px.gx * 50, ey = 72 + 9 * Math.sin(t * 0.83 + 1) + px.py * 30 + px.gy * 40;
-    const fovY = aspect >= 160 / 144 ? 2 * Math.atan(72 / D) : 2 * Math.atan(80 / aspect / D);
-    // screen space (y down) -> world: y is negated by the flip matrix; depth z grows towards the camera
-    const flip = new Float32Array([1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
-    const view = m4.lookAt([ex, -ey, D], [80, -72, 0], [0, 1, 0]);
-    const mvp = m4.mul(m4.mul(m4.perspective(fovY, aspect, 10, 4000), view), flip);
-    gl.enable(gl.DEPTH_TEST);
-    // BG: the visible 160x144 at full brightness; a dimmed, enlarged copy far behind it fills the rest of the viewport
-    const sx = p.scx, sy = p.scy, uv = [sx / 256, sy / 256, 160 / 256, 144 / 256];
-    this.draw(L.bg, m4.trs(80, 72 + 144 * 1.3, -260, 160 * 2.6, -144 * 2.6, 0), mvp, uv, [0.3, 0.3, 0.36, 1], 0);
-    this.draw(L.bg, m4.trs(80, 144, 0, 160, -144, 0), mvp, uv, [1, 1, 1, 1], 0);
-    if (winOn && L.win) {
-      const wx = Math.max(0, p.wx - 7), wy = p.wy, w = 160 - wx, h = 144 - wy;
-      this.draw(this.shadowTex, m4.trs(wx + w / 2 + 3, 144 + 3, 1, w, -h, 0), mvp, [0, 0, 1, 1], [1, 1, 1, 0.6], 0);
-      this.draw(L.win, m4.trs(wx + w / 2, 144, 12, w, -h, 0), mvp, [0, 0, w / 256, h / 256], [1, 1, 1, 1], 0);
+    const mask = this.menuLayers(), N = 160 * 144, src = new Uint8Array(p.bgFrame.buffer);
+    const back = L.back || (L.back = new Uint8Array(N * 4)), pan = L.pan || (L.pan = new Uint8Array(N * 4)), win = L.winBuf || (L.winBuf = new Uint8Array(N * 4));
+    back.set(src); pan.fill(0); win.fill(0);
+    for (let i = 0; i < N; i++) {
+      if (!mask[i]) continue;
+      const o = i * 4, dst = mask[i] === 1 ? pan : win;
+      dst[o] = src[o]; dst[o + 1] = src[o + 1]; dst[o + 2] = src[o + 2]; dst[o + 3] = 255;
+      back[o] = back[o] * 0.55; back[o + 1] = back[o + 1] * 0.55; back[o + 2] = back[o + 2] * 0.55;   // under a panel: in its shadow
     }
-    // sprites: cards (or voxels) floating in front, each with a soft drop shadow on the layer below
+    const tBack = this.layerTexture("tBack", back), tPan = this.layerTexture("tPan", pan), tWin = this.layerTexture("tWin", win);
+    // static camera straight at the screen; each layer is scaled so its pixels stay where the game draws them
+    // (the perspective then shows only in the shadows and the voxel sides)
+    // fit below the touch button bar so the top row (title banners) is not hidden under it
+    const insetPx = Math.round((this.topInset || 0) * cv.width / (cv.clientWidth || cv.width));
+    if (insetPx > 0 && insetPx < cv.height / 3) gl.viewport(0, 0, cv.width, cv.height - insetPx);
+    const D = 600, aspect = cv.width / (cv.height - (insetPx < cv.height / 3 ? insetPx : 0)), fovY = aspect >= 160 / 144 ? 2 * Math.atan(72 / D) : 2 * Math.atan(80 / aspect / D);
+    const flip = new Float32Array([1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+    const mvp = m4.mul(m4.mul(m4.perspective(fovY, aspect, 10, 4000), m4.lookAt([80, -72, D], [80, -72, 0], [0, 1, 0])), flip);
+    const plane = (tex, z, tint = [1, 1, 1, 1], dx = 0, dy = 0, a = 0.5) => { const k = (D - z) / D; this.draw(tex, m4.trs(80 + (dx) + 0 * k, 72 + 72 * k + dy, z, 160 * k, -144 * k, 0), mvp, [0, 0, 1, 1], tint, a); };
+    gl.enable(gl.DEPTH_TEST);
+    // the backdrop is larger than the screen on wide/tall viewports: a dimmed copy far behind fills the margins
+    this.draw(tBack, m4.trs(80, 72 + 144 * 1.3, -300, 160 * 2.6, -144 * 2.6, 0), mvp, [0, 0, 1, 1], [0.25, 0.25, 0.3, 1], 0);
+    plane(tBack, 0, [1, 1, 1, 1], 0, 0, 0);
+    const SH = [0, 0, 0, 0.4];
+    plane(tPan, 1, [0, 0, 0, 0.22], 4, 4); plane(tPan, 1.5, SH, 2.5, 2.5); plane(tPan, 8);   // a soft two-step shadow
+    plane(tWin, 9, [0, 0, 0, 0.22], 4, 4); plane(tWin, 9.5, SH, 2.5, 2.5); plane(tWin, 14);
+    // sprites: cards (or voxels) in front, each with a drop shadow; OBJ-to-BG priority sprites sit between the layers
     const sprs = this.collectSprites();
     for (const s of sprs) {
-      const bottom = s.sy + s.h, z = s.attr & 0x80 ? 6 : 26;          // OBJ-to-BG priority sprites sit between the layers
-      this.draw(this.shadowTex, m4.trs(s.sx + 4 + 3, bottom + 3, z - 5, 8, -s.h, 0), mvp, [0, 0, 1, 1], [1, 1, 1, 0.45], 0);
+      const z = s.attr & 0x80 ? 4 : 20, k = (D - z) / D, X = 80 + (s.sx + 4 - 80) * k;
       for (let half = 0; half < s.h / 8; half++) {
         const tile = s.tile + (s.attr & 0x40 ? (s.h / 8 - 1 - half) : half), bank = (s.attr >> 3) & 1, pal = s.attr & 7, fx = (s.attr >> 5) & 1, fy = (s.attr >> 6) & 1;
-        if (this.voxelSprites) this.drawMesh(this.voxelMesh(tile, bank, pal, fx, fy), m4.trs3(s.sx + 4, s.sy + (half + 1) * 8, z, 1, -1, 2, 0), mvp);
-        else this.draw(this.spriteTexture(tile, bank, pal, fx, fy), m4.trs(s.sx + 4, s.sy + (half + 1) * 8, z, 8, -8, 0), mvp);
+        const Y = 72 + (s.sy + (half + 1) * 8 - 72) * k, tex = this.spriteTexture(tile, bank, pal, fx, fy);
+        this.draw(tex, m4.trs(X + 2, Y + 2, z - 3, 8 * k, -8 * k, 0), mvp, [0, 0, 1, 1], SH);
+        if (this.voxelSprites) this.drawMesh(this.voxelMesh(tile, bank, pal, fx, fy), m4.trs3(X, Y, z, k, -k, 2, 0), mvp);
+        else this.draw(tex, m4.trs(X, Y, z, 8 * k, -8 * k, 0), mvp);
       }
     }
   }

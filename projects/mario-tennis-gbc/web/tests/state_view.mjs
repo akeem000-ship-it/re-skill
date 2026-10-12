@@ -13,12 +13,13 @@ page.on("pageerror", e => console.log("pageerror", e.message)); page.on("console
 await page.goto(`http://localhost:8765/web/full.html?touch&cam=${opt("--cam", "low")}`);
 await page.waitForFunction(() => window.__gb && window.__gb.gb && document.getElementById("loader").hidden, null, { timeout: 90000 });
 for (const sp of states) {
-  const st = JSON.parse(zlib.gunzipSync(fs.readFileSync(sp)));
-  const name = sp.replace(/.*\//, "").replace(/\.json\.gz$/, "");
-  const info = await page.evaluate(([s, vox, n]) => {
-    const G = window.__gb; G.pause(); G.view3d(false); G.loadState(s); G.step(n); G.view3d(true, vox); G.voxel.debug = []; G.step(1);
+  const snap = sp.endsWith(".json");             // PyBoy snapshot (tools/emu_dump_snapshot.py) or core state (.json.gz)
+  const st = JSON.parse(snap ? fs.readFileSync(sp, "utf8") : zlib.gunzipSync(fs.readFileSync(sp)));
+  const name = sp.replace(/.*\//, "").replace(/\.json(\.gz)?$/, "");
+  const info = await page.evaluate(([s, vox, n, snap]) => {
+    const G = window.__gb; G.pause(); G.view3d(false); if (snap) G.loadSnapshot(s); else G.loadState(s); G.step(n); G.view3d(true, vox); G.voxel.debug = []; G.step(1);
     const w = G.gb.mem.wram[0]; return { mode: G.voxel.mode, map: w[0x32E], court: G.voxel.courtId, debug: G.voxel.debug.slice(0, 3) };
-  }, [st, a.includes("--vox"), +opt("--steps", 2)]);
+  }, [st, a.includes("--vox"), +opt("--steps", 2), snap]);
   console.log(name, JSON.stringify(info));
   await page.locator("#gl").screenshot({ path: `${out}_${name}_3d.png` });
   await page.evaluate(() => { window.__gb.view3d(false); window.__gb.step(0); });
