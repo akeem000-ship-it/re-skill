@@ -66,6 +66,12 @@ python3 tools/emu_seq_trace.py states/title.state 1200 | grep '^f' > states/seq_
 node web/tests/sound_vs_emulator.mjs states/seq_title.txt 02 && node web/tests/render_song.mjs 02 16 out/title.wav
 ```
 
+```bash
+# 7. the full game on the project's own GBC core: lockstep check against PyBoy, audio render, headless page shots
+python3 tools/emu_frame_hashes.py 900 out/pyboy_hashes.txt --png 60 && node web/tests/core_vs_pyboy.mjs out/pyboy_hashes.txt
+node web/tests/core_audio.mjs out/core_title.wav --seconds 12 --start 400 && node web/tests/full_frame.mjs out/full
+```
+
 Other drivers: `emu_charmatch.py K` (start a match with the K-th character and dump WRAM),
 `emu_dump.py`, `emu_find_seq.py`, `emu_poke_redraw.py`, `emu_fullmatch.py` (bot plays a whole
 set with routine hooks), `emu_sound_ids.py` / `emu_sound_timeline.py` / `emu_music_ids.py` (which sound

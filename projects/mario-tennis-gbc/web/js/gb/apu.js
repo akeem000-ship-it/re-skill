@@ -101,11 +101,12 @@ export class APU {
     if (!this.on) { this.sampleCounter += n; while (this.sampleCounter >= this.samplesPer) { this.sampleCounter -= this.samplesPer; this.pushSample(0, 0); } return; }
     const ch = this.ch;
     for (let k = 0; k < n; k += 4) {
-      this.fsCounter += 4; if (this.fsCounter >= 8192) { this.fsCounter -= 8192; this.frameSequencer(); }
-      for (let i = 0; i < 2; i++) { const c = ch[i]; c.timer -= 4; if (c.timer <= 0) { c.timer += (2048 - c.freq) * 4; c.pos = (c.pos + 1) & 7; } }
-      { const c = ch[2]; c.timer -= 4; if (c.timer <= 0) { c.timer += (2048 - c.freq) * 2; c.wavePos = (c.wavePos + 1) & 31; const b = this.wave[c.wavePos >> 1]; c.waveBuf = c.wavePos & 1 ? b & 15 : b >> 4; } }
-      { const c = ch[3]; c.timer -= 4; if (c.timer <= 0) { c.timer += this.noisePeriod(); const x = (c.lfsr ^ (c.lfsr >> 1)) & 1; c.lfsr = (c.lfsr >> 1) | (x << 14); if (this.reg[0x22] & 8) c.lfsr = (c.lfsr & ~0x40) | (x << 6); } }
-      this.sampleCounter += 4;
+      const d = Math.min(4, n - k);           // instructions can yield 2 dots in double-speed mode
+      this.fsCounter += d; if (this.fsCounter >= 8192) { this.fsCounter -= 8192; this.frameSequencer(); }
+      for (let i = 0; i < 2; i++) { const c = ch[i]; c.timer -= d; if (c.timer <= 0) { c.timer += (2048 - c.freq) * 4; c.pos = (c.pos + 1) & 7; } }
+      { const c = ch[2]; c.timer -= d; if (c.timer <= 0) { c.timer += (2048 - c.freq) * 2; c.wavePos = (c.wavePos + 1) & 31; const b = this.wave[c.wavePos >> 1]; c.waveBuf = c.wavePos & 1 ? b & 15 : b >> 4; } }
+      { const c = ch[3]; c.timer -= d; if (c.timer <= 0) { c.timer += this.noisePeriod(); const x = (c.lfsr ^ (c.lfsr >> 1)) & 1; c.lfsr = (c.lfsr >> 1) | (x << 14); if (this.reg[0x22] & 8) c.lfsr = (c.lfsr & ~0x40) | (x << 6); } }
+      this.sampleCounter += d;
       if (this.sampleCounter >= this.samplesPer) { this.sampleCounter -= this.samplesPer; this.mix(); }
     }
   }
@@ -118,7 +119,7 @@ export class APU {
     let l = 0, r = 0;
     for (let i = 0; i < 4; i++) { const v = (outs[i] / 15) * 2 - (ch[i].dac ? 1 : 0); if (nr51 & (0x10 << i)) l += v; if (nr51 & (1 << i)) r += v; }
     l *= ((nr50 >> 4) & 7) + 1; r *= (nr50 & 7) + 1;
-    this.pushSample(l / 32, r / 32);
+    this.pushSample(l / 64, r / 64);
   }
   pushSample(l, r) {
     if (this.outPos >= this.out.length) return;
