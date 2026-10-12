@@ -5,7 +5,7 @@ plugins { id("com.android.application") }
 val webAssets = layout.buildDirectory.dir("webassets")
 val syncWebAssets by tasks.registering(Sync::class) {
     into(webAssets)
-    from(rootProject.file("../web")) { into("web") }
+    from(rootProject.file("../web")) { into("web") }          // includes web/gen/game.js when tools/recomp.py has been run
     from(rootProject.file("../rom")) { into("rom"); include("*.gbc") }
 }
 

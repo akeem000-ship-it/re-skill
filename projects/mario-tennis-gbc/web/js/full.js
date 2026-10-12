@@ -72,6 +72,9 @@ async function loadRom(buf) {
   romHash = (await sha1Hex(bytes)) || "";
   $("romstatus").textContent = romHash === "" ? "ROM loaded" : romHash === EXPECTED_SHA1 ? "ROM verified (Mario Tennis USA)" : "Warning: unexpected ROM SHA-1 " + romHash;
   gb = new GBC(bytes, { sampleRate: 44100, audio: true });
+  // the statically translated game (tools/recomp.py -> gen/game.js) runs the traced code as native
+  // functions; without it everything is interpreted (same results, see web/tests/recomp_vs_interp.mjs)
+  try { const mod = await import("../gen/game.js"); const T = {}; mod.install(T); gb.installRecomp(T); if (mod.HRAM_SIG) gb.exec.setHramSig(mod.HRAM_SIG); $("romstatus").textContent += " · recompiled code"; } catch (e) { $("romstatus").textContent += " · interpreter"; }
   loadSave();
   $("loader").hidden = true; $("hud").hidden = false; cv.focus();
 }

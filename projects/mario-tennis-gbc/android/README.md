@@ -4,6 +4,7 @@ A WebView app that bundles `../web` and your own ROM dump from `../rom/*.gbc` in
 (nothing from the game is committed). Build with the Android SDK (platform 34, build-tools 34) and Gradle 8.9+:
 
 ```bash
+python3 tools/recomp.py              # optional: the statically translated game (web/gen/game.js), else the core interprets
 cd android && ANDROID_HOME=/path/to/sdk gradle assembleDebug
 # -> app/build/outputs/apk/debug/app-debug.apk
 ```
