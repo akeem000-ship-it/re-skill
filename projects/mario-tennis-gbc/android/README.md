@@ -6,7 +6,7 @@ A WebView app that bundles `../web` and your own ROM dump from `../rom/*.gbc` in
 ```bash
 python3 tools/recomp.py              # optional: the statically translated game (web/gen/game.js), else the core interprets
 cd android && ANDROID_HOME=/path/to/sdk gradle assembleDebug
-# -> app/build/outputs/apk/debug/app-debug.apk
+# -> app/build/outputs/apk/debug/MTenn3D-debug.apk
 ```
 
 The page detects the wrapper (user agent `MarioTennisWrapper`) and shows the touch controls: d-pad, A, B and
