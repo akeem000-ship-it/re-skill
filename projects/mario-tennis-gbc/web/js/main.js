@@ -222,6 +222,15 @@ function loop(now) {
 addEventListener("keydown", e => { keys[e.code] = true; if (e.code.startsWith("Arrow")) e.preventDefault(); unlockAudio(); });
 addEventListener("pointerdown", unlockAudio);
 addEventListener("keyup", e => { keys[e.code] = false; });
+// touch controls: each pad element holds a key code; pointer capture keeps a slide-off from sticking
+for (const el of document.querySelectorAll("#pad [data-key]")) {
+  const code = el.dataset.key;
+  const down = e => { e.preventDefault(); el.setPointerCapture(e.pointerId); keys[code] = true; el.classList.add("on"); unlockAudio(); };
+  const up = e => { e.preventDefault(); keys[code] = false; el.classList.remove("on"); };
+  el.addEventListener("pointerdown", down); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
+  el.addEventListener("contextmenu", e => e.preventDefault());
+}
+if (navigator.userAgent.includes("MarioTennisWrapper") || location.search.includes("touch")) document.body.classList.add("touch");
 $("file").addEventListener("change", async e => { const f = e.target.files[0]; if (f) loadRom(await f.arrayBuffer()); });
 $("restart").addEventListener("click", start);
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom).catch(() => {});
