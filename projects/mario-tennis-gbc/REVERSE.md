@@ -71,14 +71,14 @@ Confidence: **V** verified by code reading/emulator, **I** inferred from callers
 | 03 | SRAM: signature/checksum/backup, block directory and save slots, persistent flags | V |
 | 04 | RPG actor engine: bytecode interpreter `04:447D`, spawning, collision, camera, sprite table `04:4F75` | V |
 | 05 | dialogue windows, VWF text printer and font, dialogue dispatch, field helpers | V |
-| 06 | match helpers (reads scores `wC8E4`) | ? |
+| 06 | score / statistics panels: draws point and game digits into a window (`06:49F4`) | I |
 | 07 | match setup/init `07:5DF9`, shot tables `07:4F11-5160`, roster → sprite `07:5A50` | V |
 | 08 | match engine: ball physics, players, CPU AI, scoring, serve rotation | V |
 | 09 | match HUD / scoreboard (`09:610C/611B`) | I |
 | 0A | field engine: FieldScene, LoadMap, location table, events | V |
-| 0B | match-flow code writing the point counters (43 incoming far calls) | ? |
+| 0B | **mini-games / training drills**: `0B:4705 RunMiniGame(A)` — ids 0-$11 via table `0B:47B4`, higher ids in bank 0D; called from scene code (banks 10/12/14/15), "Mini-Game n" text #353 | V |
 | 0C | data, no export table | ? |
-| 0D | serve/bounce helpers (`0D:4BC8`) | I |
+| 0D | mini-games ≥ $12 (`0D:407F`) and serve/bounce helpers (`0D:4BC8`) | I |
 | 0E-15 | Mario Tour scene descriptors + scene code (actor scripts, event handlers) | V |
 | 16 | demo/cutscene code (`16:4477`, `16:5C35`) | I |
 | 17, 19, 3A, 3C, 3D, 3F, 6C, 6D | LZ graphics: tiles, tilemaps, palettes for screens and menus | V |
@@ -837,6 +837,31 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 
 ---
 
+### Deferred for Fable (hard, long-chain problems — do last)
+
+These need long uninterrupted reasoning over large code/data with emulator cross-checks; they are
+parked for a stronger model (Fable 5.1). Each entry lists what is already known and the acceptance test.
+
+1. **Shot trajectory selection** (banks 20-23, export `$7E7D`; code in 24, 28-2C; `08:45A9 LaunchBall`).
+   Known: 6-byte records (speed, elevation, heading offset), distance-threshold search `20:401F`,
+   launch `20:405D`, aim heading `wC43A`, mirror `wC4A7`. Needed: how the table/row is chosen from
+   stroke type, stats (`wDF6B-6F`), contact timing and joypad aim; how `wC43A` is computed.
+   Test: predict the launch velocity of 20 recorded shots (`emu_record.py`) to ±1 unit, then replace
+   `aimShot` in `web/js/physics.js`.
+2. **Swing timing windows and shot speed scaling** (bank 08 player swing code, `wDF0F` bits 0/1).
+   Known: serve speed 57-73 px/frame depending on toss timing. Needed: reach box, timing window
+   frames, speed/angle scaling per window, auto-swing vs button. Test: bot hits in `emu_bot.py`
+   reproduce in the web port within a frame.
+3. **Sound sequence format** (driver `00:3566`, data banks 78-7F). Known: index, channel table,
+   partial opcode map. Needed: every `$A0-$FF` opcode with operand sizes and semantics, loops/calls,
+   envelopes, noise mapping `00:3836`, then a dumper and a WebAudio player. Test: rendered audio of
+   ids `$01-$32` matches PyBoy's APU output (spectrogram or note-event compare).
+4. **`00:2D8C ProjectPoint`** (tables in banks 2E/2F). Needed: exact world → screen projection to
+   replace the fitted one in `web/js/main.js`. Test: sprite OAM positions from a recorded rally match
+   the port to ±0 px.
+5. **CPU AI sub-state machine** (`wDF1A`, `wDF7F`, bank 08 `7A60-7F00`): exact intercept-depth rule
+   and movement targets per state (structure and parameters are decoded; ordering/timing is not).
+
 ## Next Tasks
 
 ### RE Investigation
@@ -852,7 +877,8 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [ ] Ph3: build a recursive code tracer (tools/trace_code.py) from vectors + $4000 export tables to classify code vs data per bank
 - [x] Ph3: decode rst $08 SoundCmdInline (00:2FB3) — music/SFX index, ids observed live
 - [x] Ph3: identify the sound driver (bank 0 3129-3Dxx) and data banks 78-7F
-- [x] Ph3: bank map 00-7F (tools/bank_map.py); refine the ? rows (06, 0B, 0C, 16, 1D, 1E, 24, 28-2C, 73)
+- [x] Ph3: bank map 00-7F (tools/bank_map.py); refine the ? rows (0C, 16, 1D, 1E, 24, 28-2C, 73)
+- [ ] Ph5: name the 18+ mini-games (0B:47B4 table, 0D:407F) from their texts and setup
 - [ ] Ph3: decode the sequence opcodes fully ($A0-$FF handlers) and write a sequence dumper
 - [x] Ph4: text encoding (ASCII + control codes) and text-bank layout; dump all 4109 messages
 - [x] Ph4: understand banks 5F-69 map layout via LoadMap 0A:585D — all 37 maps render

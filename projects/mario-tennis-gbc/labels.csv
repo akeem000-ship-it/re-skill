@@ -468,3 +468,7 @@ bank,addr,name,comment
 *,A060,sBlockDirectory,113 x 16 bytes
 *,C36C,wSaveSlot,0-2 (>= 3: no save)
 *,C800,wSaveImage,$300 bytes saved per Mario Tour slot
+0B,4705,RunMiniGame,A = mini-game id: 0-$11 table 0B:47B4, >= $12 -> 0D:407F; $24 special
+0B,47B4,MiniGameTable,18 handler pointers
+0D,407F,RunMiniGameHi,mini-games >= $12
+06,49F4,DrawPointDigits,score panel digits from wC8E4/5
