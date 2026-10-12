@@ -6,7 +6,7 @@ const { chromium } = createRequire(import.meta.url)("playwright");
 const a = process.argv.slice(2);
 const out = a[0] || "out/probe", frames = (a[1] || "400,700").split(",").map(Number).sort((x, y) => x - y);
 const holds = []; for (let i = 0; i < a.length; i++) if (a[i] === "--hold") holds.push(a[i + 1]);
-const opt = (n, d) => (a.includes(n) ? a[a.indexOf(n) + 1] : d), cam = opt("--cam", "tv"), [W, H] = opt("--size", "640x576").split("x").map(Number);
+const opt = (n, d) => (a.includes(n) ? a[a.indexOf(n) + 1] : d), cam = opt("--cam", "low"), [W, H] = opt("--size", "640x576").split("x").map(Number);
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] }).catch(() => chromium.launch());
 const page = await browser.newPage({ viewport: { width: W, height: H } });
 page.on("pageerror", e => console.log("pageerror", e.message)); page.on("console", m => { if (m.type() === "warning" || m.type() === "error") console.log("console", m.text()); });

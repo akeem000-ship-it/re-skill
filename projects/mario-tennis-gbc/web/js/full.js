@@ -63,7 +63,7 @@ function draw() {
 }
 const q = new URLSearchParams(location.search);
 const stored = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
-let preset = q.get("cam") || stored("mt-cam") || "tv"; if (!PRESETS[preset]) preset = "tv";
+let preset = q.get("cam") || stored("mt-cam") || "low"; if (!PRESETS[preset]) preset = "low";
 function setView3d(on, vox = false) {
   view3d = on; $("view3d").classList.toggle("on", on); $("view3d").textContent = on ? (vox ? "VOX" : "3D") : "3D";
   if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.freeCam = q.has("freecam"); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }

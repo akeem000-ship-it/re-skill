@@ -40,7 +40,7 @@ export const PRESETS = {
   diorama:  { label: "Diorama",  yaw: 0.55, pitch: 0.85,  lean: 0.8, aim: -100 },
   original: { label: "Original", yaw: 0,    pitch: Math.PI / 2 - 0.4147, lean: 1.0, aim: 0, game: true },
 };
-export const PRESET_ORDER = ["tv", "low", "overhead", "diorama", "original"];
+export const PRESET_ORDER = ["low", "tv", "overhead", "diorama", "original"];   // "low" is the default
 const FIELD_CAM = { dist: 300, pitch: 0.95, fov: 0.8, near: 4, far: 3000 };
 const COURT_CLIP = { near: 40, far: 40000 };
 
@@ -106,7 +106,7 @@ export class Voxel3D {
     this.spriteTex = new Map(); this.groundTex = null; this.groundHash = -1; this.frameTex = null; this.cuts = [];
     this.layer = { bg: null, win: null, hash: -1, whash: -1 };
     this.shadowTex = this.solidTexture([0, 0, 0, 110]);
-    this.preset = "tv"; this.cam = { yaw: 0, pitch: 0.9, dist: 3100, fitKey: "" };
+    this.preset = "low"; this.cam = { yaw: 0, pitch: 0.9, dist: 3100, fitKey: "" };
     this.freeCam = false; this.mode = "none"; this.t0 = performance.now();
     this.parallax = { px: 0, py: 0, gx: 0, gy: 0, gbase: null };
     this.bindControls();
