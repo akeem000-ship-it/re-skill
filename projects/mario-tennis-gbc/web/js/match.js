@@ -11,6 +11,8 @@ export class Match {
   constructor(rom, p1, p2, opts = {}) {
     this.rom = rom;
     this.gamesToWin = opts.games || 2;
+    // sets: 1, 3 or 5 (wC8F0); MatchCheck 08:5CC3 ends the match at (sets + 1) / 2 sets won
+    this.setsToWin = Math.ceil((opts.sets || 1) / 2); this.sets = [0, 0];
     // CPU parameters: DifficultyTable 38:5FFB (REVERSE.md "CPU AI"): reaction delay for deep /
     // short balls (+ rand 0-3 frames), positioning error, smart-placement probability /256,
     // shot profile 0-3 (02:5E23 tables), quick-serve chance /8 (08:7A9D)
@@ -71,8 +73,10 @@ export class Match {
       this.server = tb ? 1 - this.tbServer : 1 - this.server;
       if (this.tiebreak) this.tbServer = this.server;
       const g = this.games, N = this.gamesToWin;
-      if (tb || (g[w] >= N && g[w] - g[1 - w] >= 2)) {
-        this.over = true; this.winner = w; this.say(`GAME SET  ${this.players[w].data.name}`, 9999);
+      if (tb || (g[w] >= N && g[w] - g[1 - w] >= 2)) {      // SetCheck 08:5CE9: N games with a 2-game lead, or the tiebreak
+        this.sets[w]++;
+        if (this.sets[w] >= this.setsToWin) { this.over = true; this.winner = w; this.say(`GAME SET  ${this.players[w].data.name}`, 9999); }
+        else { this.games = [0, 0]; this.say(`${why}  SET ${this.sets[0]}-${this.sets[1]}`, 120); }
       } else this.say(`${why}  GAME ${this.games[0]}-${this.games[1]}`, 100);
     } else {
       // tiebreak serving (rotation table 08:49D9 rows by wC8ED): one point, then two each
@@ -85,20 +89,20 @@ export class Match {
     // glyph strip for the score display: "0 . 40", "AD . 40", tiebreak digits are not in the glyph set
     const g = (a, b) => this.tiebreak ? null : a >= 3 && b >= 3 ? (a === b ? ["40", "40"] : a > b ? ["AD", "40"] : ["40", "AD"]) : [POINT_NAMES[Math.min(a, 3)], POINT_NAMES[Math.min(b, 3)]];
     this.pointGlyphs = this.points[0] + this.points[1] === 0 ? null : g(this.points[0], this.points[1]);
-    if (this.audio) this.audio.sfx(0x06);                       // point jingle
+    if (this.audio) this.audio.sfx(0x66);                       // point-over chime (rst $08 $66 at the end of each point)
   }
 
   fault() {
     if (this.secondServe) { this.secondServe = false; this.awardPoint(1 - this.server, "DOUBLE FAULT"); }
-    else { this.secondServe = true; this.say("FAULT", 60); this.state = "dead"; this.deadT = 60; this.refault = true; }
+    else { this.secondServe = true; this.say("FAULT", 60); this.state = "dead"; this.deadT = 60; this.refault = true; this.pointGlyphs = null; }
   }
 
   // ---- shots ---------------------------------------------------------------
-  cpuShotCode(p) {            // 08:7B7B: A+B when the opponent is inside 320 and the profile allows it; 50% a
-    const opp = this.players[1 - p.side], t = this.profileTable, b = this.ball;   // profile pick; a far ball with
-    if (Math.abs(opp.Y) < 320 && t.includes(0x30)) return 0x30;                   // the opponent deep -> drop ($12)
-    if (Math.random() < 0.5 && Math.abs(b.Y / FX - p.Y) >= 320 && t.includes(0x12) && Math.abs(opp.Y) > 1000) return 0x12;
-    return t[Math.floor(Math.random() * 16)];
+  cpuShotCode(p) {            // 08:7B7B CpuShotChoose: A+B ($30) after a net cord (wC4DA) if the profile allows it;
+    const opp = this.players[1 - p.side], t = this.profileTable, b = this.ball;   // else 50%: a ball >= 320 away in Y with
+    if (b.netCord && t.includes(0x30)) return 0x30;                                // the opponent >= 480 from the net -> lob ($12,
+    if (Math.random() < 0.5 && Math.abs(b.Y / FX - p.Y) >= 320 && t.includes(0x12) && Math.abs(opp.Y) >= 480) return 0x12;   // A then B);
+    return t[Math.floor(Math.random() * 16)];                                      // else a random profile entry (02:5EB3)
   }
 
   // ---- CPU (REVERSE.md "CPU AI": PlayerCpuThink 08:7863, sub-states wDF1A, plan mode wDF7F) ----
@@ -176,13 +180,13 @@ export class Match {
     const r = computeShot(this.rom, {
       type, charge, mirror, posCode, aimDir: p.cpu ? p.aimDir | 0 : p.aimX,
       stats: p.data.stats, lobRow: 0, dropRow: 0,
-      ball: { X: Math.trunc(bx), Y: Math.trunc(by), Z: Math.trunc(bz), vy: Math.trunc(b.vY / 256) },
+      ball: { X: Math.trunc(bx), Y: Math.trunc(by), Z: Math.trunc(bz), vy: Math.floor(b.vY / 256) },
       player: { X: p.X, vy: Math.round(p.vy * 256), moving: lunge },
     });
     const L = toLaunch(r);
     b.Z = r.launchZ * FX;
     launch(b, L.speed, L.elev, L.heading, L.top, L.side);
-    b.landing = r.landing; b.shotType = type; b.weak = r.fallback;
+    b.landing = r.landing; b.shotType = r.type; b.weak = r.fallback;
     if (serve) { this.state = "rally"; this.served = true; this.serveLanding = true; }
     b.bounces = 0; this.lastHitter = p.side; this.bounceSide = 0; this.hits++;
     p.swing = 14; p.swingType = button === 2 ? 1 : button === 3 ? 2 : 0; p.cooldown = 24; p.swingReq = null;
@@ -191,7 +195,7 @@ export class Match {
     const rel = (bx - p.X) * d;
     p.swingAnim = serve ? 7 : -bz > 220 ? 11 : rel >= 0 ? 9 : 10;
     b.heading = r.heading;
-    if (this.audio) this.audio.sfx(0x51);                       // racket hit
+    if (this.audio) this.audio.sfx(serve ? 0x57 : 0x51);        // racket contact: $57 on the serve, $51 in the rally
     // 08:6A1C: the hitter goes to its recovery state (wDF18 = 2), the opponent to receiving (1)
     for (const q of this.players) if (q.cpu) this.cpuEnter(q, q === p ? "recover" : "react");
   }
@@ -211,13 +215,24 @@ export class Match {
   // the frames in between are the charge (wDF4B). Too long without contact -> whiff (APPROX window).
   startSwing(p, button, variant = 0) {
     if (p.swingReq || p.cooldown > 0 || p.swing > 0) return;
-    p.swingReq = { button, variant, t: 0 };
+    // wDF16 first button, wDF17 second button (variant), wDF4F last button, wDF11 5-frame window
+    p.swingReq = { button, variant, t: 0, last: button === 3 ? 0 : button, timer: button === 3 ? 0 : 5 };
     if (this.audio) this.audio.sfx(0x59);                       // swing
+  }
+  // 08:7112 SwingSecondButton: a different button within the 5-frame window -> A+B; otherwise the
+  // second press becomes the variant (same button: topspin/slice variant, A then B: lob, B then A: drop)
+  swingSecondButton(r, input) {
+    const b = (input.aPressed ? 1 : 0) | (input.bPressed ? 2 : 0);
+    if (!b) return;
+    if (b === 3 || (r.timer > 0 && r.last !== b)) { r.button = 3; return; }
+    r.last = b; r.timer = 5;
+    if (r.variant === 0) { r.variant = b; r.timer = 0; }
   }
   tickSwing(p) {
     const r = p.swingReq;
     if (!r) return;
-    if (r.t < 4 && r.button !== 3 && this.input && (this.input.aPressed || this.input.bPressed) && !p.cpu) r.button = 3;
+    if (!p.cpu && this.input) this.swingSecondButton(r, this.input);
+    if (r.timer > 0) r.timer--;
     if (this.canHit(p)) { this.hit(p, r.button, r.variant, Math.min(63, r.t)); return; }
     r.t++;
     const b = this.ball, passed = (b.Y / FX - p.Y) * this.dir(p) > 96 || (b.vY > 0) !== (p.side === 0);
@@ -260,7 +275,7 @@ export class Match {
       this.tossT++;
       const want = s.cpu ? (b.vZ > 0 && b.Z < -280 * FX) : (input.aPressed || input.bPressed);
       if (s.cpu) s.aimDir = this.serveAim !== undefined ? this.serveAim : (this.serveAim = Math.floor(Math.random() * 3) - 1);
-      if (want && b.Z < -150 * FX) { this.hit(s, s.cpu ? (Math.random() < 0.5 ? 1 : 2) : (input.bPressed ? 2 : 1)); this.serveAim = undefined; }
+      if (want && b.Z < -150 * FX) { this.hit(s, s.cpu ? (Math.random() < 0.5 ? 1 : 2) : (input.aPressed && input.bPressed ? 3 : input.bPressed ? 2 : 1)); this.serveAim = undefined; }
       else if (b.Z >= -64 * FX && this.tossT > 10) { this.state = "serve"; b.Z = -64 * FX; b.vZ = 0; }
       return;
     }

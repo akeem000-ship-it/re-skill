@@ -43,12 +43,12 @@ async function loadRom(buf) {
 }
 
 function start(cfg) {
-  if (cfg) { $("p1").value = cfg.p1; $("p2").value = cfg.p2; $("court").value = cfg.court; $("games").value = cfg.games; $("diff").value = cfg.difficulty; }
+  if (cfg) { $("p1").value = cfg.p1; $("p2").value = cfg.p2; $("court").value = cfg.court; $("games").value = cfg.games; $("sets").value = cfg.sets || 1; $("diff").value = cfg.difficulty; }
   const p1 = +$("p1").value, p2 = +$("p2").value;
   court = courtImage(rom, +$("court").value);
   sprites = [characterSprites(rom, p1), characterSprites(rom, p2)];
   anims = sprites.map(sp => new Animator(sp));
-  match = new Match(rom, characterData(rom, p1), characterData(rom, p2), { games: +$("games").value, difficulty: +$("diff").value });
+  match = new Match(rom, characterData(rom, p1), characterData(rom, p2), { games: +$("games").value, sets: +$("sets").value, difficulty: +$("diff").value });
   match.audio = audio; playMusic(0x44);                                                     // exhibition match music ($44 -> $32)
   menus = null;
   const d1 = match.players[0].data, d2 = match.players[1].data;
@@ -130,11 +130,12 @@ function frameFor(p, m, i) {
   return { n: a.group * 5 + view, flip };
 }
 
+const SCORE_PAL = [[0, 156, 0], [255, 57, 0], [255, 255, 74], [0, 0, 0]];   // OBJ palette 1 of the score strip
 function render() {
   const m = match, b = m.ball;
   // camera (08:61DC): snaps to the start view at each point, follows the ball's ground point while
   // the serve is in flight (hit count 1), then stays put; 2 px per frame, scroll aligned to 32 units
-  if (m.pointNo !== camPoint) { camPoint = m.pointNo; camera.startPoint(m.players[m.server].side === 1); }
+  if (m.pointNo !== camPoint) { camPoint = m.pointNo; camera.startPoint(false); }   // the port never swaps ends (wC4D4 bit 1)
   if (m.state === "rally" && m.hits === 1) camera.followGround(b.X / FX, b.Y / FX);
   camera.step();
   const { scx: camX, scy: camY } = camera.scroll();
@@ -157,12 +158,12 @@ function render() {
   // HUD
   g.fillStyle = "rgba(0,0,40,0.75)"; g.fillRect(0, 0, W, 11);
   const [p1, p2] = m.players.map(p => p.data.name.slice(0, 6));
-  const hud = `${p1} ${m.games[0]}  ${m.scoreText()}  ${m.games[1]} ${p2}`;
+  const sc = i => m.setsToWin > 1 ? `${m.sets[i]}.${m.games[i]}` : `${m.games[i]}`;      // sets.games in a multi-set match
+  const hud = `${p1} ${sc(0)}  ${m.scoreText()}  ${sc(1)} ${p2}`;
   font.draw(g, hud, Math.max(1, (W - font.width(hud)) >> 1), 2);
   // the game's point-score sprite strip ("0 . 40", OBJ palette 1) after each point, at OAM (64,64)
   if (m.state === "dead" && m.pointGlyphs && m.deadT > 10) {
-    const pal = [[0, 156, 0], [255, 57, 0], [255, 255, 74], [0, 0, 0]];
-    const L = scoreGlyph(rom, m.pointGlyphs[0], "left", pal), R = scoreGlyph(rom, m.pointGlyphs[1], "right", pal);
+    const L = scoreGlyph(rom, m.pointGlyphs[0], "left", SCORE_PAL), R = scoreGlyph(rom, m.pointGlyphs[1], "right", SCORE_PAL);
     g.drawImage(L, 56, 48); g.drawImage(R, 56 + L.width, 48);
   }
   if (m.msgTimer > 0 && m.message) {

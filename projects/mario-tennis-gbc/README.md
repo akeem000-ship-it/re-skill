@@ -68,8 +68,10 @@ node web/tests/sound_vs_emulator.mjs states/seq_title.txt 02 && node web/tests/r
 
 Other drivers: `emu_charmatch.py K` (start a match with the K-th character and dump WRAM),
 `emu_dump.py`, `emu_find_seq.py`, `emu_poke_redraw.py`, `emu_fullmatch.py` (bot plays a whole
-set with routine hooks), `emu_sound_ids.py` / `emu_music_ids.py`, `compare_frames.py`
-(court render vs live frame). Key scripts use absolute frame offsets; a press lasts 6 frames.
+set with routine hooks), `emu_sound_ids.py` / `emu_sound_timeline.py` / `emu_music_ids.py` (which sound
+ids the game requests, by call site or as a timeline against hits and bounces), `render_glyph_sets.py`
+(the score-font glyph sets), `compare_frames.py` (court render vs live frame). Web checks:
+`web/tests/glyph_frame.mjs OUT.png` screenshots the port's point-score strip (needs the http server). Key scripts use absolute frame offsets; a press lasts 6 frames.
 
 ### Recording a video of the original game
 

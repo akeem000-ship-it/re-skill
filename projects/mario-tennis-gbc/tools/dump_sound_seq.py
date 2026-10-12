@@ -20,7 +20,7 @@ ROM = open(os.path.join(ROOT, "rom", "mario_tennis.gbc"), "rb").read()
 NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
 def song_rows(sid):
-    e = (0x3151 + 2 * (sid - 1)) if sid < 0x50 else (0x31B5 + 2 * (sid - 0x50))
+    e = (0x3151 + 2 * (sid - 1)) if sid < 0x50 else (0x31B5 + 2 * (sid - 0x51))   # 00:32C7: sub $50 ; dec a
     bank, nch, idx = 0x70 | (ROM[e] & 0x0F), ROM[e] >> 4, ROM[e + 1]
     base = bank * 0x4000 + idx * 4
     return bank, [ROM[base + 4 * i: base + 4 * i + 4] for i in range(nch)]

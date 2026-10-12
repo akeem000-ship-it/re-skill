@@ -744,7 +744,7 @@ bank,addr,name,comment
 0,3DD4,WaveSetTable,pointers to 16-byte waveform sets
 0,3ED6,EnvelopeSetTable,pointers to envelope sets (16 bytes per shape)
 *,D100,wSndChannels,6 x 32-byte channel states (slots 00 20 SFX 40-A0 music)
-*,D1C0,wSndLoopSlots,loop points 3 bytes x 16 per channel
+*,D1C0,wSndLoopSlots,loop points [count idx16] 3 bytes x 4 per channel (12 per channel; SeqLoopSlot 00:3D6F)
 *,D208,wSndClaimed,hw channels claimed this tick (SFX priority)
 *,D209,wSndNR51,
 *,D20A,wSndHwChannel,current hw channel 0-3
@@ -759,3 +759,13 @@ bank,addr,name,comment
 *,FFDB,hSeqGate,
 *,FFE6,hSeqPan,
 *,FFE9,hSeqInstrument,wave set << 4 | envelope set
+*,C4DA,wBallNetCord,1 after the ball clipped the net cord (08:533C with SFX $6D); CpuShotChoose -> A+B
+02,4044,PendingExpValid,wC9B4 == $64 and checksum over wC9B0-C9B7 (block written by the N64 game via Transfer Pak)
+1A,4561,MiniGameExpResult,DE = EXP earned -> WRAM6 D230 + display record; D254 = player/partner; 472E adds it via AddTourExp
+1A,43AA,DebugExpEditor,Select +1 / +10 EXP, Start toggles player-partner (AddTourExp); reached from 43A1 pad bit 2
+1D,7280,TourExpPointMove,moves one point between D165/D167/D169 (player) or D174/D176/D178 (partner); 72DD = reverse
+00,3846,SeqRest,rest: FFEF (gate counter) = 0 only; the channel keeps ringing until the next volume write
+00,39D0,SeqNoteVolume,note-on volume: wave NR32 = FFD8; envelope shape set -> SeqEnvelopeTick entry 3A55; else SeqWriteVolume FFD8
+00,3A2F,SeqWaveVolumeStep,wave decay: a = ((phase>>1)+2)<<4; if a >= FFD8 then NR32 = a & $60 (100/50/25%/off)
+00,3A14,SeqWriteReg,[wSndRegBase + C] = A
+00,3A23,SeqClearLength,NRx1 &= $C0 after a volume write

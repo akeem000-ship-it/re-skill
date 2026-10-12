@@ -622,8 +622,8 @@ the real bounce lands within ~20 units of the predicted point) and 25 serves.
    | 5 low volley / CPU default | `24:7707` | `6707` | height `7719` (`$100` per 16 units from 48) | 4 | `41A2` |
    | 4 (A+B, ball low) | `24:6644` | `5844` | height `6656` | 4 | `41A2` |
    | 9 (A+B, ball high: smash) | `24:6696` | speed = S; elevation = atan2(1.5·height, |ballY| + `wC48C`) + `66F2`[`wDF6C`] (−1440..−144); heading `wC43A` | — | direct |
-   | 10 lob (B then A) | `24:4589` | `4289` + `459C`[`wDF92`] | — | 6 | `4169` exact |
-   | 11 drop (A then B) | `24:51A0` | `45A0` + `51B9`[angle `00:138F`] + `51F9`[`wDF93`] | — | 6 | `4169` exact |
+   | 10 lob (A then B) | `24:4589` | `4289` + `459C`[`wDF92`] | — | 6 | `4169` exact |
+   | 11 drop (B then A) | `24:51A0` | `45A0` + `51B9`[angle `00:138F`] + `51F9`[`wDF93`] | — | 6 | `4169` exact |
    | 6 volley | `2C:7281` | `4281` | height `7293` | 4 | `41CD` |
    | 7, 8 volleys | `2C:72D3`, `2C:7325` | `4E81`, `6081` | height `72E5`/`7337` (`$180` steps) | 6 | `4139` |
    | 12/13/14 serves | `29/2A/2B:5E9D` | `427D` | spin stat (Top / Slice / 0)·`$2D0` (`5EBF`) + Serve·`$48` (`5ED3`) + toss height (`5EE7`, 6 per 16 units above 192) | 6 | `4098` direct |
@@ -809,7 +809,7 @@ the far side) and reached by pressing the d-pad towards them (`08:7908`, angle �
   512 (`08:7D93`) — this is why CPUs take most balls from inside the service line; arrived or ball in
   reach → `wDF59` = `wDF7B` and 3 → `08:7DAD`: **swing delay** — wait `wDF59` frames unless the ball is
   already in reach (`wDF7B` is a hesitation, 12/9/5/0 frames by difficulty, not a positioning error),
-  then `CpuShotChoose 08:7B7B` (A+B when flagged `wC4DA` and the profile table `02:5E23` holds `$30`;
+  then `CpuShotChoose 08:7B7B` (A+B after a net cord — `wC4DA`, set with SFX `$6D` at `08:533C` — when the profile table `02:5E23` holds `$30`; else 50 %: a ball ≥ 320 away in Y with the opponent ≥ 480 from the net → lob `$12` if allowed;
   else RNG bit → profile pick, or with the ball ≥ 320 away and `$12` allowed, a drop shot when the
   opponent is deep) + `CpuPressButtons 08:7C10`, `wDF13` = 5; 4 → `08:7DCB`: after 5 frames
   press the variant nibble (`08:7C21`, the double press), keep steering towards the ball (`08:7944`),
@@ -821,7 +821,7 @@ the far side) and reached by pressing the d-pad towards them (`08:7908`, angle �
   `CpuServeDelay 08:7A64` 35/50 frames, random shot code `08:7B62`, press.
 * Doubles use the parallel tables `08:7DF2/7E52` (partner at depth 384, X = 0.75·landing X).
 
-### Score display between points — partial
+### Score display between points — VERIFIED glyph source (tally marks documented only)
 
 The in-match score is not a HUD bar: after a point, bank 06 (mode byte `wC494` set by `08:4559`:
 0-2 point score, 3-5 game score, 6, 7) draws **sprite groups** through `06:5045` (2×2 OBJ tiles per
@@ -830,25 +830,32 @@ glyph; tile lists `06:4A83` = `[0A 0B 1A 1B]`, `[0C 0D 1C 1D]`, `[0E 0F 1E 1F]` 
 `wC4E3` (`DrawPointDigits 06:49F4`: five blanks then one glyph per point, 2 tiles apart); the group
 is a 32×16 sprite strip at OAM (64, 64) (tiles `$30-$37`, OBJ palette 1 = green/red/yellow) composed from
 the **score glyph font** in bank 09 (`09:6000+`, raw 8×16 columns, 32 bytes each: letters D S R M O O P T at
-`$6000`, then `0` (one column, `$6180`), `15` (`$61A0/$61C0`), `30` (`$6200/$6220`), `40` (`$6240/$6260`),
-`Ad` (`$6280/$62A0`), `-` (`$62C0`), game digits `0-6` with separator dots (`$6300+`); rows 2-4 repeat the
-set shifted by half a cell so the strip can be composed at any sprite alignment — the separator dot
-always shares a cell with a neighbouring glyph). Glyph tile lists `06:6835`, per-message
-glyph codes `06:466F` (rows by `wC4E6`), positions `06:4857`. The web port draws the strip from this font
-after each point; the tally marks (`06:4A83` lists, VRAM1 `$80A0+`) are not ported.
+`$6000`; then three copies of the point set `0 15 30 40 Ad`, two columns per glyph, `$40` apart: a plain
+set at `$6180-$62A0`, a **left-of-the-dot** set at `$6540-$6660` (the separator dot fills the right edge of
+the second column) and a **right-of-the-dot** set at `$6880-$69A0` (dot on the left edge of the first
+column); game digits with dots follow). The live strip "0 · 40" uses `$6540/$6560` + `$6940/$6960`
+(rendered check: `tools/render_glyph_sets.py`). Glyph tile lists `06:6835`, per-message glyph codes
+`06:466F` (rows by `wC4E6`), positions `06:4857`. The web port draws the strip from this font after each
+point (`assets.js scoreGlyph`); the game-count tally marks (`06:4A83` lists, VRAM1 `$80A0+`) are not
+ported — the port shows games/sets in its HUD line instead.
 
 ### Sound driver — VERIFIED format (bank 0 `3129-3DD4`, data banks 78-7F; tools: `dump_sound_index.py`, `dump_sound_seq.py`, `emu_seq_trace.py`)
 
-`SoundStart 00:3297`: ids `$01-$32` are **music** (index `00:3151`), `$50-$AF` **SFX** (`00:31B5`);
-`$40-$44` are remapped to music `$2E-$32` through `00:2FE0`. Index entry = `bank&$0F | channels<<4`,
+`SoundStart 00:3297`: ids `$01-$32` are **music** (index `00:3151`, entry `2·(id−1)`), `$51-$AF` **SFX**
+(`00:31B5`, entry `2·(id−$51)`: `sub $50 ; dec a ; add a,a` at `32C7-32D3`; `$50` only resets the two SFX
+slots); starting any SFX first resets both SFX slots and their loop slots (`32B0-32C4`), starting music
+calls `SoundStop 00:3129` (the four music slots and their loop slots). `$40-$44` are remapped to music
+`$2E-$32` through `00:2FE0`. Index entry = `bank&$0F | channels<<4`,
 `row`; the song's rows are at `bank:$4000 + row*4`, 4 bytes each: **driver slot** (`$00/$20` SFX,
 `$40/$60/$80/$A0` music), **hardware channel** (0 pulse1, 1 pulse2, 2 wave, 3 noise), **pointer**.
 `SoundChannelInit 00:3314` fills the 32-byte channel state at WRAM7 `$D100 + slot` (pointer, hw
-channel, data pointer, ROM bank, …; loop slots at `$D1C0`, 3 bytes × 16 per channel). Every frame
+channel, data pointer, ROM bank, …; loop slots `[count, index16]` at `$D1C0 + 12·slot + 3·n`, four per
+channel, `SeqLoopSlot 00:3D6F`). Every frame
 `SoundDriverTick 00:3373` processes the 6 slots in order (SFX first), copying each state to HRAM
 `$FFD0-$FFEF` while it runs: `FFD0/1` command index (in 2-byte units; `0` = not started, `$FFFF` = idle),
 `FFD2` hw channel | vibrato depth << 4, `FFD3/4` data base, `FFD5` bank, `FFD6` duty (bits 6-7) |
-alt-table (bit 4) | tempo fraction (low nibble), `FFD7` tempo accumulator, `FFD8` volume << 4,
+alt-table (bit 4) | tempo fraction (low nibble), `FFD7` tempo accumulator, `FFD8` volume << 4 | default
+NRx2 period/direction nibble (the header volume byte swapped),
 `FFD9` ticks left in the note, `FFDA` sweep / wave id, `FFDB` gate, `FFDC` counter 1, `FFDD/DE/DF`
 envelope shape / length / elapsed, `FFE0-E2` fade, `FFE3/E4` frequency, `FFE6` pan mask, `FFE7/E8`
 vibrato delay, `FFE9` instrument, `FFEA/EB` portamento, `FFEC-EE` call repeat / return, `FFEF` gate
@@ -860,41 +867,48 @@ the SFX ends; `wD209` → `NR51`.
 | Header | pulse / noise | wave |
 |---|---|---|
 | +0 | tempo fraction: the channel skips n/16 of the ticks | same |
-| +1 | duty (`<<6` → NR11) | wave volume code |
-| +2 | volume (0-15) | volume |
-| +3 | sweep (NR10, pulse 1) | wave id (16-byte waveform from the set table `00:3DD4`) |
+| +1 | duty: bits 1-0 → NR11 bits 7-6 (`rrca rrca` at `34F1`) | wave decay length (ticks, see `Ck`) |
+| +2 | low nibble volume (0-15), high nibble NRx2 period/direction used when no `Ck` envelope runs | same byte → NR32 at note-on (bits 6-5 = wave volume code) and the decay threshold |
+| +3 | sweep (NR10, pulse 1, written at every note-on) | wave id (16-byte waveform from the set table `00:3DD4`) |
 
 | Command | Meaning |
 |---|---|
-| `nn dd` (nn < `$A0`) | **note**: semitone = nn & 15 (period table `00:3B1D`, +12 entries with `$AE`), octave shift = nn >> 4 (period >> shift, NR13/14 = `$800` − period), dd = duration in ticks. `$1F` = rest. Noise: nn < `$10` → NR43 from `00:3836`, else nn raw. |
-| `A0 vv` | volume (0-15) |
-| `A1 nn` | NR10 sweep (pulse 1) / wave id (wave channel, reloads wave RAM) |
-| `A2 nn` | duty (nn >> 2 → NR11 bits 6-7) / wave volume code |
+| `nn dd` (nn < `$A0`) | **note**: semitone = nn & 15 (period table `00:3B1D`, +12 entries with `$AE`), octave shift = nn >> 4 (period >> shift, NR13/14 = `$800` − period), dd = duration in ticks. `$1F` (and semitones ≥ 12) = **rest**: only the gate counter `FFEF` is zeroed (`00:3846`) — the channel keeps ringing until the next volume write (envelope phase, fade, `A0` or the next note). Noise: nn < `$10` → NR43 from `00:3836`, else nn raw. |
+| `A0 vv` | volume: `FFD8` = vv swapped (low nibble → volume, high nibble → NRx2 period/direction), written at once through `SeqWriteVolume` |
+| `A1 nn` | NR10 sweep (pulse 1) / wave id (wave channel: reloads wave RAM with the DAC off; the channel restarts at its next note) |
+| `A2 nn` | duty (nn & 3 → NR11 bits 7-6) / wave decay length |
 | `A3 nn` | vibrato: depth = nn >> 4 (+1 → row of `00:3C4D`, 16 signed steps indexed by the tick counter), delay = (nn & 15)·2; `FE` = off |
 | `A4 nn` | gate: nn ≥ `$80` → the note is released nn − 256 ticks before its end; else fixed note-on length (`$FF` = never) |
 | `A5 nn` | pan mask for NR51 (`01` = swap sides) |
 | `A6 nn` | NR50 master volume |
-| `A7 nn` | wait nn ticks (no retrigger) |
+| `A7 nn` | wait nn ticks (only the NR51 pan bits are rewritten) |
 | `A8 nn` | instrument: wave set (high nibble) / envelope set (low nibble, pointer table `00:3ED6`) |
-| `A9 xx` | counters: `F0/F1` c1 ± 1, `F2/F3` c2 (`wD218`) ± 1, `FE`/`FF` jump through a word table by c2/c1 ("switch" per loop pass), < `$80` c1 = xx, ≥ `$80` c2 = xx − `$80` |
+| `A9 xx` | counters: `F0/F1` c1 ± 1, `F2/F3` c2 (`wD218`) ± 1, `FE`/`FF` jump: the word at `[counter]` of the following table is the new command index ("switch" per loop pass), < `$80` c1 = xx, ≥ `$80` c2 = xx − `$80` |
 | `AA nn` | portamento (steps nn >> 4, rate nn & 15; 0 = off) |
 | `AC rr lo hi` | call the sequence at byte offset `hilo` from the channel base, rr times (nested returns via `FFED/EE`) |
 | `AD` | return |
 | `AE nn` | bit 4 → alternate (detuned) period table |
 | `AF nn` | tempo fraction = nn & 15 |
 | `Bk nn` | repeat the section from loop slot (nn & 15) k times (k ≥ 1); `B0 Fk` = jump to slot k's point |
-| `Ck nn` | hardware envelope: shape k, length nn ticks; the envelope set's row k (16 phases) gives the level, scaled by the channel volume through the product table `00:3B4D`, and the NR12 period/direction bits |
-| `Dn rr` / `En rr` | fade volume up / down by n steps, one step every rr ticks |
+| `Ck nn` | hardware envelope (pulse/noise only, and only while `FFD8`'s low nibble is 0): shape k, length nn ticks; every tick `SeqEnvelopeTick 00:3A40` takes phase = 16·elapsed/length and the set's byte `level<<4 \| flags` (bit0 write this phase, bit1 halve the period, bit2 no period, bit3 direction up); level × volume through the product table `00:3B4D`, period = (nn >> 4) scaled by the volume bits (`3AA6-3AC4`), written through `SeqWriteVolume` (which also retriggers the note). Wave channel: the decay length (header +1 / `A2`) steps NR32 100% → 50% → 25% → off as ((phase>>1)+2)<<4 climbs past the header volume byte (`00:3A2F`) |
+| `Dn rr` / `En rr` | fade volume up / down by n steps, one step every rr ticks (not on the wave channel, not while `FFD8`'s low nibble is set; each step is a `SeqWriteVolume`) |
 | `FD nn` | store the loop point in slot nn & 15 |
-| `FF` | end: slot idle (an SFX frees its hardware channel) |
+| `FF` | end: slot idle; the channel's NR51 bits are cleared (`00:3B02`), so after an SFX the music on that channel is silent until its next note or `A7` |
 
-Note-on (`SeqNote 00:3864`): NR12 from the volume (`00:39DF`: `(vol>>2 + $10) & $F0 | period` when the
-gate has expired, i.e. a quieter "release" level), NR11 = duty | `$3F`, NR13/14 = frequency with the
-trigger bit; the wave channel reloads its waveform when the id changed (`00:3D3D`). Verified: the
-live note stream (`tools/emu_seq_trace.py`, hook on `SeqNote`) on the title screen reproduces the
-static decode of song `$02` (notes, durations, volumes, calls and loops). Observed ids: `$01` intro
-cutscene, `$02` title, `$03` main menu, `$44→$32` exhibition match, `$06` point jingle; SFX `$51` racket
-hit, `$59` swing, `$5B` bounce, `$5E/$5F/$60` menu confirm/cursor/back, `$65` boot.
+Note-on (`SeqNote 00:3864` → `38E5`): wave reload if the id changed (`00:3D3D`), volume (`00:39D0`: the
+envelope entry when a shape is set, else `SeqWriteVolume`), NR10 = `FFDA` on pulse 1, NR13 = low byte
+(`FFE3` keeps it clamped to 2..`$FD` as the vibrato base: `00:39A7` adds the table step to that byte only),
+NR11 = duty | `$3F`, NR14 = high bits | `$A0` → `FFE4`; the wave channel is **not** retriggered while it is
+still sounding (NR52 bit 2, `00:395D`: legato), then the NR51 pan bits (`00:3947`). `SeqWriteVolume 00:39DF`:
+with the gate expired the level becomes `(vol>>2)+1` (a quieter release), a zero period gets the
+direction-up bit (DAC stays on), an unchanged register is left alone, otherwise NRx2 is written and the
+note retriggered with `FFE4`. Vibrato delay `FFE8` is reloaded from `FFE7` before every command fetch
+(`00:342F`). Verified: the live note stream (`tools/emu_seq_trace.py`, hook on `SeqNote`) on the title and
+menu screens reproduces the static decode of songs `$02`/`$03` (notes, durations, volumes, calls and
+loops; `web/tests/sound_vs_emulator.mjs`). Ids (game code, `rst $08`, logged by `tools/emu_sound_timeline.py`
+during a rally): music `$01` intro cutscene, `$02` title, `$03` main menu, `$44→$32` exhibition match;
+SFX `$59` racket swing, `$51` rally contact, `$57` serve contact, `$5B` bounce, `$66` point over (×3),
+`$6D` net cord (`08:533F`), `$5E/$5F/$60` menu confirm/cursor/back, `$65` boot.
 
 ### Emulator harness (Ph5.5) — PyBoy 2.8
 
@@ -1154,6 +1168,16 @@ characters from `02:4C18` (4 bytes per preset = level-ups given to T0..T3, e.g. 
 The level-up screen (`1C:41C2`) counts pending level-ups while `CanLevelUp` holds.
 `AddExp 02:4D30` (HL = EXP field, DE = amount) adds and caps at 99999 (`02:4D50`);
 `AddTourExp 02:4D8F` (A = player/partner) and `02:4D6D` (match slots) use it; `ClearExp 02:4D61`.
+**Where the amounts come from (VERIFIED callers):** (1) mini-games — the game returns DE = EXP earned,
+`1A:4561` stores it at WRAM6 `$D230` (with the display record `$D232-$D244` and who gets it, `$D254`),
+the result screen counts it down (`1A:460D`, sounds `$5E/$5F`) and `1A:472E` adds `[D230]` through
+`AddTourExp`; (2) tour matches — `1D:7280` moves single points between the counters `$D165/$D167/$D169`
+(player) or `$D174/$D176/$D178` (partner) and `1D:683F` adds `[D167]`/`[D176]` at the end; (3) the
+**pending EXP block `wC9B0-C9B7`** inside the save image is written by no GBC code (only validated by
+`02:4044`: marker `wC9B4 == $64` and a checksum over the block, displayed by `02:4FEF`, handed out and
+cleared by `1B:6399` → `ShowExpAward 1A:44D8` → `SaveGame`): it is filled from outside — the N64 Mario
+Tennis writes it into the cartridge SRAM through the Transfer Pak. `1A:43AA` is a debug EXP editor
+(Select +1, another button +10 EXP, Start toggles player/partner), reached from `1A:43A1` (pad bit 2).
 
 ### Data Structures
 
@@ -1270,7 +1294,7 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph5: save payload $A060-$A76F = block directory (113 blocks), slots, backups (dump_save_layout.py)
 - [x] Ph5: player record layout (64 B) in the $C800 save image
 - [x] Ph5: save-image fields (file ID, play time, EXP pools, progress counters)
-- [ ] Ph5: where EXP amounts are computed: no instruction writes wC9B0/C9B2 directly (only clears/reads), so they arrive by a block copy (link transfer?); contents of SRAM blocks 6-26 / 54-87
+- [x] Ph5: where EXP amounts are computed: mini-game result `1A:4561` ($D230), tour match counters `1D:7280`, and the pending block `wC9B0` written by the N64 game via Transfer Pak (validated `02:4044`, see "Levels and EXP")
 - [x] Ph5: character roster + type table (38:58FB)
 - [x] Ph5: find the character stat table (02:52CE, verified by WRAM diff in PyBoy)
 - [x] Ph5: verify stat label order (PyBoy: Create Character stat screen, poke + hook 1C:430E)
@@ -1304,7 +1328,8 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph7: ProjectPoint 00:2D8C decoded (tilt 23.76°, focal 16384) and the camera; port uses the exact math
 - [x] Ph7: HUD and messages drawn with the game's dialogue font
 - [x] Ph7: menus rebuilt in the web port (main, play, character ×2, difficulty, court) from the ROM's menu data
-- [ ] Ph7: score graphics as in the game (scoreboard tiles); sound
+- [x] Ph7: score graphics (the game's point-score glyph strip from the bank-09 font; tally marks documented, not drawn); sound (driver port, note stream verified against the emulator)
+- [x] Ph7: sets (1/3/5) with per-set game counts; swing double-press rules from `08:7112`
 - [x] Ph7: pixel-compare court rendering against emulator screenshots (99.9%)
 
 ### Documentation

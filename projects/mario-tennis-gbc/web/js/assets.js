@@ -250,12 +250,21 @@ export function characterData(rom, roster) {
 // Point-score glyphs (REVERSE.md "Score display between points"): raw 8x16 glyph columns in bank 09
 // ($6000+, 32 bytes each). The left glyph of the "15 . 40" strip carries the separator dot on its right
 // edge (row 4 cells), the right glyph is the dot-less set (rows 0-1).
-const SCORE_GLYPHS = {
-  left: { "0": [0x68A0], "15": [0x68C0, 0x68E0], "30": [0x6900, 0x6920], "40": [0x6940, 0x6960], "AD": [0x6980, 0x69A0] },
-  right: { "0": [0x6180], "15": [0x61A0, 0x61C0], "30": [0x6200, 0x6220], "40": [0x6240, 0x6260], "AD": [0x6280, 0x62A0] },
-};
+// Point-score glyph strips (bank 09 font, raw 8x16 columns, 32 bytes each). Three sets exist in the
+// font: a dot-less set at $6180-$62A0 (unused here), a "left of the dot" set at $6540-$6660 and a
+// "right of the dot" set at $6880-$69A0. The live strip for "0 . 40" uses $6540/$6560 + $6940/$6960.
+const SCORE_GLYPH_BASE = { left: 0x6540, right: 0x6880 };
+const SCORE_GLYPH_ORDER = ["0", "15", "30", "40", "AD"];
+const SCORE_GLYPHS = {};
+for (const side of ["left", "right"]) {
+  SCORE_GLYPHS[side] = {};
+  SCORE_GLYPH_ORDER.forEach((t, i) => { const a = SCORE_GLYPH_BASE[side] + i * 0x40; SCORE_GLYPHS[side][t] = [a, a + 0x20]; });
+}
 export function scoreGlyph(rom, text, side, pal) {
-  const cols = SCORE_GLYPHS[side][text] || SCORE_GLYPHS[side]["0"];
+  const set = SCORE_GLYPHS[side];
+  if (!set) throw new Error(`scoreGlyph: bad side ${side}`);
+  const cols = set[text];
+  if (!cols) throw new Error(`scoreGlyph: no glyph for ${text}`);
   return cached(`scoreglyph:${side}:${text}:${palKey(pal)}`, () => {
     const tiles = new Uint8Array(cols.length * 32);
     cols.forEach((a, i) => tiles.set(rom.slice(0x09, a, 32), i * 32));

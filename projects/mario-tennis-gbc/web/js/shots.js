@@ -66,7 +66,7 @@ export function contactHeight(type, z) {
 export function rallyTargetX(rom, posCode, aimDir, playerX, symmetric = false) {
   const base = symmetric ? 0x563E : (posCode & 1 ? 0x5636 : 0x562E);
   const off = rom.s16(0x07, base + 2 * (Math.max(-1, Math.min(1, aimDir)) + 1));
-  return off - sra(Math.trunc(playerX), 4);
+  return off + sra(-Math.trunc(playerX), 4);                 // 07:5614: (-playerX) >> 4, floor division
 }
 
 /* ctx: { type, stats {Stroke, Serve, Volley, Top, Slice}, lobRow, dropRow, charge (0-63),
@@ -75,6 +75,9 @@ export function rallyTargetX(rom, posCode, aimDir, playerX, symmetric = false) {
    Returns null when the type is not handled, else { speed, elev, heading (game units), top, side,
    launchZ, landing {X, Y}, S, dMin, dMax, iMin, iMax, recAddr, bank, fallback }                       */
 export function computeShot(rom, ctx) {
+  // 07:58D3 / 5901: the double-press variants (1 topspin, 3 slice) fall back to the plain shot while
+  // the player is running (wDF0F bit 1); the result reports the type actually used
+  if (ctx.player.moving && (ctx.type === 1 || ctx.type === 3)) ctx = { ...ctx, type: ctx.type - 1 };
   const h = HANDLER[ctx.type], bk = BANK[ctx.type];
   if (!h) return null;
   const st = ctx.stats, stat = k => k === "lobRow" ? ctx.lobRow | 0 : k === "dropRow" ? ctx.dropRow | 0 : Math.max(0, Math.min(9, st[k] | 0));
@@ -104,7 +107,7 @@ export function computeShot(rom, ctx) {
   if (DEPTH_MINUS_CHARGE.has(ctx.type)) depth -= 4 * ctx.charge;
   if (ctx.type === 10) depth += 12 * ctx.charge + sra(ctx.player.vy | 0, 4) * (ctx.posCode & 2 ? 1 : -1);
   const aim = aimAt(rom, ctx, depth);
-  const res = { ...aim, S, top, side, launchZ: z, bank: bk && bk.bank, fallback: false };
+  const res = { ...aim, type: ctx.type, S, top, side, launchZ: z, bank: bk && bk.bank, fallback: false };
 
   // --- smash 24:6696: speed = S, elevation from the height ---
   if (ctx.type === 9) {
