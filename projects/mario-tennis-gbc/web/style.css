@@ -17,24 +17,19 @@
   .btns { display:grid; grid-template-columns: 64px 64px; grid-template-rows: 64px 36px; gap:10px; justify-content:end; align-items:center; }
   .btns .k { border-radius:50%; width:64px; height:64px; }
   .btns .k.start { border-radius:18px; width:140px; height:36px; grid-column: 1 / 3; justify-self:end; font-size:13px; }
-  /* touch layout: fills the screen on phones and foldables (tall cover screen: canvas on top, controls
-     below; wide inner screen or landscape: d-pad left, screen centre, buttons right) */
-  body.touch { overscroll-behavior: none; }
-  body.touch main { padding: env(safe-area-inset-top, 4px) env(safe-area-inset-right, 4px) env(safe-area-inset-bottom, 4px) env(safe-area-inset-left, 4px);
-                    max-width: none; min-height: 100dvh; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: 6px; }
-  body.touch h1 { display:none; }
-  body.touch .panel.info { display:none; }
-  body.touch #setup { font-size: 12px; padding: 4px 6px; margin: 0; width: 100%; box-sizing: border-box; }
-  body.touch #loader { margin: 0; }
-  body.touch canvas { width: min(100vw, calc((100dvh - 300px) * 160 / 144)); max-width: none; }
-  body.touch #pad { margin: 4px 0; width: min(100vw, 520px); }
-  @media (min-aspect-ratio: 1/1) {
-    body.touch main { display: grid; grid-template-columns: auto 1fr auto; grid-template-rows: auto 1fr; align-items: center; justify-items: center; gap: 8px 12px; }
-    body.touch #setup, body.touch #loader, body.touch #hud { grid-column: 1 / 4; grid-row: 1; }
-    body.touch canvas { grid-column: 2; grid-row: 2; width: min(calc((100dvh - 80px) * 160 / 144), calc(100vw - 360px)); }
-    body.touch #pad { display: contents; }
-    body.touch .dpad { grid-column: 1; grid-row: 2; justify-self: start; margin-left: 6px; }
-    body.touch .btns { grid-column: 3; grid-row: 2; justify-self: end; margin-right: 6px; grid-template-columns: 72px 72px; grid-template-rows: 72px 40px; }
-    body.touch .btns .k { width: 72px; height: 72px; }
-    body.touch .btns .k.start { width: 156px; }
-  }
+  /* touch layout (phones, foldables, the Android wrapper): the screen fills the viewport keeping 10:9,
+     the controls float over it semi-transparent, the status bar is a thin overlay */
+  body.touch { overscroll-behavior: none; background:#000; }
+  body.touch main { position: fixed; inset: 0; max-width: none; padding: 0; margin: 0; display: block; }
+  body.touch h1, body.touch .panel.info { display: none; }
+  body.touch canvas { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+                      width: min(100vw, calc(100dvh * 160 / 144)); max-width: none; height: auto; }
+  body.touch #setup, body.touch #loader, body.touch #hud { position: fixed; top: env(safe-area-inset-top, 0); left: 0; right: 0; z-index: 3;
+                      margin: 0; padding: 4px 8px; font-size: 11px; background: rgba(20,22,28,0.7); border-radius: 0; }
+  body.touch #pad { display: block; position: fixed; inset: 0; margin: 0; width: auto; max-width: none; pointer-events: none; z-index: 2; }
+  body.touch .dpad { position: absolute; left: calc(10px + env(safe-area-inset-left, 0)); bottom: calc(14px + env(safe-area-inset-bottom, 0)); pointer-events: none; }
+  body.touch .btns { position: absolute; right: calc(10px + env(safe-area-inset-right, 0)); bottom: calc(14px + env(safe-area-inset-bottom, 0)); pointer-events: none; }
+  body.touch .k { pointer-events: auto; opacity: 0.55; background: rgba(44,49,64,0.85); }
+  body.touch .k.on { opacity: 0.95; }
+  body.touch .btns .k.start { position: fixed; left: 50%; bottom: calc(10px + env(safe-area-inset-bottom, 0)); transform: translateX(-50%); width: 120px; height: 30px; font-size: 12px; }
+  body.gamepad #pad { display: none !important; }

@@ -6,6 +6,7 @@ import { Match } from "./match.js";
 import { Menus } from "./menus.js";
 import { Camera } from "./camera.js";
 import { GameAudio } from "./audio.js";
+import { pollGamepad } from "./gamepad.js";
 
 // sound: the game's own driver and songs (sound.js / audio.js); started on the first key press
 const audio = new GameAudio();
@@ -197,6 +198,7 @@ function tick(input) {
 const STEP = 1000 / 60;
 let acc = 0, last = 0, fps = { n: 0, t: 0, shown: 0 };
 function stepOnce() {
+  pollGamepad(keys);
   if (menus) menuTick();
   else if (front) frontTick();
   else if (match) {

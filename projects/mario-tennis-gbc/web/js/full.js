@@ -3,6 +3,7 @@
 // save (SRAM) in localStorage.
 import { GBC } from "./gb/gbc.js";
 import { sha1Hex, EXPECTED_SHA1 } from "./rom.js";
+import { pollGamepad } from "./gamepad.js";
 
 const $ = id => document.getElementById(id);
 const cv = $("screen"), g = cv.getContext("2d");
@@ -49,7 +50,7 @@ function input() {
            right: k.ArrowRight, left: k.ArrowLeft, up: k.ArrowUp, down: k.ArrowDown };
 }
 function frame() {
-  gb.setInput(input()); gb.runFrame();
+  pollGamepad(keys); gb.setInput(input()); gb.runFrame();
   if (audioReady && anode) { const n = gb.apu.drain(abuf); if (n) anode.port.postMessage(abuf.slice(0, n)); } else gb.apu.outPos = 0;
 }
 function draw() {
