@@ -493,7 +493,14 @@ State (WRAM0):
 1. save the previous position; **pos += vel** (`08:5A87`)
 2. fences (`08:5949`): Y ≥ `$06E0`, Y < `-$0700` or |X| ≥ `$03A0` → negate that velocity
    (one's complement), re-step that axis, damp twice (×0.64)
-3. net check (`08:5814`, sign change of Y), speed update (`wC42C` = |v|)
+3. **net** (`BallNetCheck 08:5814`): on a sign change of Y (`wC4B4` = 1; skipped when `wC7B9`) with
+   Z + `wNetHeight` (96) ≥ 0 the ball hit the net: SFX `$5A`, `08:5383` stores the hit point for the net
+   animation (`wC460/62`, 20 frames in `wC4A8`), `wC4BF` = 1, Y is one's-complemented back to the hitter's
+   side and vX >>= 2; then by height: Z < −90 (the top 6 units, **tape**) → Z = −96, vZ = −(4·rand + |vY >> 3|)
+   (pops up) and vY >>= 2 keeping its direction (the ball can dribble over = net cord); −90 ≤ Z < −88 → the
+   same pop but vY = −vY >> 3; lower → vY = −vY >> 3 and the ball drops into the net. These shifts act on the
+   16-bit 8.8 word of the velocity (layout `wC424` frac hi, `wC425` int, `wC426` frac lo — the low fraction
+   byte is untouched). Speed update (`wC42C` = |v|)
 4. **drag** (`08:55B4`): k = (speed >> 4) + 1; each component v −= ⌊v·k/512⌋
 5. **spin** (`08:5613`), VERIFIED to 0.03 px on a spinning serve:
    - sidespin `wC41E`: vX −= side·vY₈.₈ ≫ 12, vY += side·vX₈.₈ ≫ 12 (horizontal curve)
@@ -647,7 +654,10 @@ Every frame `PlayerBallDelta 08:6E64` stores ball − player as `wC448/44A/44C` 
 table `08:709B`), bit0 = **contact** (`08:702A`: |dY| < 96 and |dX| < 1.5·`wDF72` SideReach), bit1 =
 ball entering the swing zone (`08:6FA7`: |dY| < 96, |dX| < SideReach — ×1.25 while lunging, `wDF0F`
 bit1 — and |dZ| < 2·`wDF70` HeightReach). `08:6EC5`: with no swing started, a ball within 16 (Y),
-SideReach/2 (X) and HeightReach (Z) hits the player's body (`wC4AE` = 1, `wC4AF` = player).
+SideReach/2 (X) and HeightReach (Z) hits the player's body (`wC4AE` = 1, `wC4AF` = player): `08:43D3` plays
+SFX `$77` and ends the point with result 9 (`wC4D8`) against that player. The serve (`08:6C7A`) contacts on the
+**zone** bit 1 instead (|dZ| < 2·HeightReach, i.e. the toss falling back within reach), with the charge counted
+from the press as in a rally.
 
 Swing (phase `wDF19`): a press starts `08:6C10` — wind-up animation 5/6 (`08:6E44`: side from where the
 ball's heading line crosses the player's Y, `08:70F5`, XOR the sprite flip), charge `wDF4B` = 0,
@@ -656,9 +666,14 @@ may still turn within `$30` of the facing; movement bits 6/7 of `wDF50`), `08:71
 same button within the 5-frame timer `wDF11` → A+B; otherwise the second press becomes the variant
 `wDF17`: A→A power topspin, B→B power slice, A→B lob (type 10), B→A drop (11)), `08:7267` (pad bit2
 cancels the swing). There is **no timing window**: the racket waits, charging, until bit0 (contact)
-is set, then `08:6D5A` picks the swing animation (`wDF15`: lunge when the crossing X is beyond
-SideReach (−16 inside the service line) with the d-pad held that way; high swing when ball Z +
-2·HeightReach + 2·vZ is above the reach, else normal 9/10), plays SFX `$59`, and the shot dispatch
+is set, then `SwingAnimPick 08:6D5A` picks the swing animation `wDF15` — **lunge** (anim `$12`) when the
+crossing X (`BallCrossX 08:70F5`) lies beyond SideReach (−16 inside the service line) with the d-pad held
+towards it: `wDF0F` bit 1 is set (the "running" flag of the shot code), the player dashes at the record's
+lunge speed (`wDF76`, record +8) along the held heading `wDF0D`, SFX `$5C`; else a **jump smash** (anim 8,
+`wDF0F` bit 2, vertical speed `wDF44` = −`wDF74` = −(record +6 + `$200`), SFX `$5C`) when ball Z +
+2·HeightReach + 2·vZ < 0; else anim 7 when Z + 1.5·HeightReach + 2·vZ < 0; else the wind-up side 5/6 (forehand
+when the crossing X is on the racket side, `WindupSide 08:6E44`), **+4 (the quick swing 9/10, `wDF4C` = 1)
+when the charge is under 5 frames** — then SFX `$59`, and the shot dispatch
 (`07:5445`, "Aiming and launch") launches the ball with charge = frames between the press and the
 contact, capped at 63. A ball that passes is simply never contacted (the point ends on the bounces).
 

@@ -769,3 +769,8 @@ bank,addr,name,comment
 00,3A2F,SeqWaveVolumeStep,wave decay: a = ((phase>>1)+2)<<4; if a >= FFD8 then NR32 = a & $60 (100/50/25%/off)
 00,3A14,SeqWriteReg,[wSndRegBase + C] = A
 00,3A23,SeqClearLength,NRx1 &= $C0 after a volume write
+*,C4B4,wBallNetCross,1 on the frame the ball's Y changed sign (BallNetCheck 08:5814)
+*,C4BF,wBallNetHit,1 after the ball hit the net this point
+08,5383,NetHitEffect,wC460/62 = projected net-hit point, wC4A8 = 20 frame timer for the net animation (53AC)
+*,DF44,wPlVelZ,vertical speed 8.8 (jump smash: -wDF74)
+*,DF4C,wPlQuickSwing,1 when the swing was contacted with charge < 5 (animation +4)
