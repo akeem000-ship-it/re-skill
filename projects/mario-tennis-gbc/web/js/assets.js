@@ -11,6 +11,19 @@ export const TYPES = ["Power", "Technique", "All-Around", "Tricky", "Speed", "??
 export const STATS = ["Top", "Slice", "Serve", "Stroke", "Volley", "Angle", "Placement", "Speed", "Dash", "Reaction", "Stop"];
 
 // LoadMap 0A:585D, descriptor table 0A:59D9 (8 x (idx, bank) refs per map)
+// the court tilemaps (first 32 columns of each row, 32 rows) for scene detection against VRAM
+export function courtTilemaps(rom) {
+  const out = {};
+  for (const id of COURTS) {
+    const base = 0x59D9 + id * 16, mi = rom.u8(0x0A, base + 4), mb = rom.u8(0x0A, base + 5);
+    try {
+      const tmap = rom.lzRef(mi, mb), S = tmap.length >= 4096 ? 64 : 32, m = new Uint8Array(1024);
+      for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) m[y * 32 + x] = tmap[y * S + x];
+      out[id] = m;
+    } catch (e) { /* skip undecodable */ }
+  }
+  return out;
+}
 export function courtImage(rom, id) {
   const base = 0x59D9 + id * 16, ref = i => [rom.u8(0x0A, base + i * 2), rom.u8(0x0A, base + i * 2 + 1)];
   const [pi, pb] = ref(1), [mi, mb] = ref(2), [ai, ab] = ref(3), [ti, tb] = ref(7);

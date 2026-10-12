@@ -2,12 +2,14 @@
 // the APU samples to an AudioWorklet, maps keyboard/touch to the joypad and keeps the cartridge
 // save (SRAM) in localStorage.
 import { GBC } from "./gb/gbc.js";
-import { sha1Hex, EXPECTED_SHA1 } from "./rom.js";
+import { Rom, sha1Hex, EXPECTED_SHA1 } from "./rom.js";
 import { pollGamepad } from "./gamepad.js";
+import { Voxel3D } from "./voxel.js";
 
 const $ = id => document.getElementById(id);
 const cv = $("screen"), g = cv.getContext("2d");
 const img = g.createImageData(160, 144);
+let voxel = null, view3d = false;
 let gb = null, keys = {}, paused = false, turbo = false, romHash = "";
 const SAVE_KEY = () => "mt-sram-" + romHash.slice(0, 12);
 
@@ -54,7 +56,14 @@ function frame() {
   if (audioReady && anode) { const n = gb.apu.drain(abuf); if (n) anode.port.postMessage(abuf.slice(0, n)); } else gb.apu.outPos = 0;
 }
 function draw() {
-  const f = gb.ppu.frame; new Uint32Array(img.data.buffer).set(f); g.putImageData(img, 0, 0);
+  const f = gb.ppu.frame;
+  if (view3d && voxel) { try { voxel.render(f); return; } catch (e) { console.warn("3d", e); setView3d(false); } }
+  new Uint32Array(img.data.buffer).set(f); g.putImageData(img, 0, 0);
+}
+function setView3d(on) {
+  view3d = on; $("view3d").classList.toggle("on", on);
+  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
+  $("gl").hidden = !view3d; cv.hidden = view3d;
 }
 function loop(now) {
   if (gb && !paused) {
@@ -94,7 +103,8 @@ for (const el of document.querySelectorAll("#pad [data-key]")) {
 if (navigator.userAgent.includes("MarioTennisWrapper") || location.search.includes("touch")) document.body.classList.add("touch");
 $("file").addEventListener("change", async e => { const f = e.target.files[0]; if (f) loadRom(await f.arrayBuffer()); });
 $("reset").addEventListener("click", () => { if (gb) { gb.reset(); } });
+$("view3d").addEventListener("pointerdown", () => { if (gb) setView3d(!view3d); });
 $("turbo").addEventListener("pointerdown", () => { turbo = !turbo; $("turbo").classList.toggle("on", turbo); });
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom).catch(() => {});
-window.__gb = { get gb() { return gb; }, keys, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(); }, frameHash() { return gb.frameHash(); } };
+window.__gb = { get gb() { return gb; }, keys, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, get voxel() { return voxel; } };
 requestAnimationFrame(loop);
