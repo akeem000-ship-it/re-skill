@@ -98,7 +98,8 @@ Target Shot, Fruit Fantasy, Banana Bunch, Treasure Box, Medallion Match, Two-on-
 | 3B | exhibition / N64 tournament / tournament setup (screens $0C-$0F), Ringshot points ($12), Varsity team charts ($25/$26) | V |
 | 3E | link play: warning, "LINKING...", link interrupted, racket select (screens $10, $11, $21, $22) | V |
 | 1C | create-character / stat screens (`1C:430E`) | V |
-| 1D, 1E | menu / status / saved-data screens (refs to SRAM `$A0A0+`) | ? |
+| 1D | status screens (`1D:4016` from the main menu) | I |
+| 1E | main-menu item 3 (`1E:400E`, probably linked play) | ? |
 | 1F, 25, 26, 30-37, 5E, 6E | **text banks** (GetMsg/GetName exports) | V |
 | 20-23 | shot trajectory tables (export `$7E7D`) | I |
 | 24, 28, 29-2C | shot/trajectory selection code and tables (called from 07/08) | ? |
@@ -371,6 +372,15 @@ Areas 00-04 use the star-background map `$10` (front-end / debug rooms: area 00 
 init `10:4EB9`, exits to 04/06/0A/14/1D). The title, intro and menus are drawn inside these scenes by
 code in banks `6B` (intro: `6B:402A`, `6B:75AF`), `1A` (`1A:67D4` menu), `3B`, `3E`, `16` and `38`
 (all call `LoadScreen 39:407E`; `tools/emu_scene_trace.py` logs scenes, maps and screens live).
+**Boot and main menu** (area 00 init `10:4EB9` → `10:4F0D`): when the entry id is `$0A` (power-on):
+logos `6B:51AE/51E7`, intro `6B:402A`, title `6B:75AF` (repeats the intro while it returns `$FF`/1),
+then `InitGameVars`, then the main menu `3B:55D1` returns a selection dispatched through `10:4FC6`:
+0-2 → Mario Tour file 1-3 (`wSaveSlot`, `LoadGame`), 3 → `10:50FE` (calls `1E:400E`; linked play?),
+4 → `10:5216` mini-games (`3B:61F0`, `1B:6B9C`), 5 → `10:52A0` exhibition (`InitGameVars`,
+`38:7408` character select), 6 → `10:52D1` status (`1D:4016`), 7 → `10:54B0` dictionary (`3F:407A`),
+8 → `10:54D6` saved data (`1A:7945`); `$FF` → back to the title. Names for 3-8 are inferred from the
+banks they call.
+
 MainLoop also contains an unreachable **debug menu** (`01:40EC`): Start → game, A → match test
 `07:5DF9`, B → exhibition `3B:44A9`, Up → doubles test `16:4477`, Select → `01:6A5B`.
 
@@ -952,7 +962,7 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph3: trace MainLoop (01:4018) to the top level (0A:4F2C GameTop, task scheduler)
 - [x] Ph3: GameFlow: everything runs in FieldScene 0A:4F40; location table 0A:564F (42 areas) + scene descriptors (tools/dump_scenes.py)
 - [x] Ph3: front-end banks identified from their LoadScreen calls (3B setup, 3E link, 16 results, 1B brackets, 6B intro/title)
-- [ ] Ph3: how area 00's init (10:4EB9) reaches the title and main menu
+- [x] Ph3: boot area 00 init → logos/intro/title → main menu 3B:55D1 → dispatch 10:4FC6
 - [x] Ph3: disasm.py: handle `rst $00` inline jump tables (print the dw table and stop linear decode)
 - [ ] Ph3: build a recursive code tracer (tools/trace_code.py) from vectors + $4000 export tables to classify code vs data per bank
 - [x] Ph3: decode rst $08 SoundCmdInline (00:2FB3) — music/SFX index, ids observed live
