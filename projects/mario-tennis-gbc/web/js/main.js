@@ -163,12 +163,15 @@ function render() {
   if (m.state === "dead" && m.pointGlyphs && m.deadT > 10) {
     const pal = [[0, 156, 0], [255, 57, 0], [255, 255, 74], [0, 0, 0]];
     let x = 56;
-    for (const t of m.pointGlyphs) { const c = scoreGlyph(rom, t, pal); g.drawImage(c, x, 48); x += c.width; }
+    for (const t of m.pointGlyphs) {
+      if (t === ".") { g.fillStyle = "#ffff4a"; g.fillRect(x + 2, 58, 3, 3); g.fillStyle = "#ff3900"; g.fillRect(x + 3, 61, 3, 1); x += 8; continue; }
+      const c = scoreGlyph(rom, t, pal); g.drawImage(c, x, 48); x += c.width;
+    }
   }
   if (m.msgTimer > 0 && m.message) {
     const w = font.width(m.message) + 8;
-    g.fillStyle = "rgba(200,40,20,0.9)"; g.fillRect((W - w) >> 1, 63, w, 12);
-    font.draw(g, m.message, ((W - w) >> 1) + 4, 65, [255, 224, 96], [96, 16, 8]);
+    g.fillStyle = "rgba(200,40,20,0.9)"; g.fillRect((W - w) >> 1, 100, w, 12);
+    font.draw(g, m.message, ((W - w) >> 1) + 4, 102, [255, 224, 96], [96, 16, 8]);
   }
 }
 
