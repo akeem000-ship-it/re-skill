@@ -73,6 +73,8 @@ node web/tests/core_audio.mjs out/core_title.wav --seconds 12 --start 400 && nod
 # 8. static translation of the game to JavaScript (web/gen/game.js, not committed) and its lockstep proof
 node web/tests/record_coverage.mjs states/coverage.json --frames 7000 --auto   # coverage seeds from the core itself
 python3 tools/recomp.py --coverage states/coverage.json && node web/tests/recomp_vs_interp.mjs --frames 1500 --keys 332:start,632:start
+# 9. 3D views (needs the http server): a match reached by key script, and an RPG area from a PyBoy snapshot
+node web/tests/view3d_frame.mjs out/view3d && python3 tools/emu_dump_snapshot.py states/menu1.state out/snap_menu1.json && node web/tests/view3d_field.mjs out/snap_menu1.json out/view3d_field.png
 ```
 
 Other drivers: `emu_charmatch.py K` (start a match with the K-th character and dump WRAM),

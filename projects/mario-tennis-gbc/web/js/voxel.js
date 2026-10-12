@@ -179,7 +179,7 @@ export class Voxel3D {
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao); gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     if (this.isField()) { this.renderField(frame2d); return; }
     if (!this.isCourt()) { this.mode = "2d"; this.drawFlatFrame(frame2d); return; }
-    if (this.mode !== "3d") { this.cam.dist = 3100; this.cam.targetY = 250; }
+    if (this.mode !== "3d") { this.cam.dist = 3100; this.cam.targetY = 250; this.cam.minDist = 600; }
     this.mode = "3d"; if (this.debug) this.debug.length = 0;
     const h = this.bgHash(); if (h !== this.groundHash) { this.groundHash = h; this.buildGround(); }
     const c = this.cam, aspect = cv.width / cv.height;
@@ -302,7 +302,7 @@ export class Voxel3D {
   }
   renderField(frame2d) {
     const gl = this.gl, cv = this.cv, m = this.gb.mem, p = this.gb.ppu, f = this.field, id = this.mapId();
-    if (this.mode !== "field") { this.cam.dist = 300; this.cam.targetY = 0; this.cam.pitch = 0.95; }
+    if (this.mode !== "field") { this.cam.dist = 300; this.cam.targetY = 0; this.cam.pitch = 0.95; this.cam.minDist = 120; }
     this.mode = "field";
     let ph = 0; for (let i = 0; i < 64; i += 3) ph = (ph * 31 + p.bgPal[i]) | 0;
     if (f.mapId !== id || f.palHash !== ph) { f.mapId = id; f.palHash = ph; this.buildField(); }
@@ -356,11 +356,21 @@ export class Voxel3D {
     gl.disable(gl.DEPTH_TEST);
     this.draw(this.frameTex, m4.trs(0, -1, 0, 2, 2, 0), m4.identity(), [0, 1, 1, -1], [1, 1, 1, 1], 0);
   }
-  bindCameraControls() {
-    const cv = this.cv, c = this.cam; let drag = null;
-    cv.addEventListener("pointerdown", e => { drag = { x: e.clientX, y: e.clientY, yaw: c.yaw, pitch: c.pitch }; cv.setPointerCapture(e.pointerId); });
-    cv.addEventListener("pointermove", e => { if (!drag) return; c.yaw = drag.yaw + (e.clientX - drag.x) * 0.006; c.pitch = Math.max(0.15, Math.min(1.5, drag.pitch + (e.clientY - drag.y) * 0.006)); });
-    cv.addEventListener("pointerup", () => { drag = null; }); cv.addEventListener("pointercancel", () => { drag = null; });
-    cv.addEventListener("wheel", e => { e.preventDefault(); c.dist = Math.max(600, Math.min(6000, c.dist * (e.deltaY > 0 ? 1.1 : 0.9))); }, { passive: false });
+  bindCameraControls() {                           // one finger / mouse: orbit; two fingers: pinch zoom; wheel: zoom
+    const cv = this.cv, c = this.cam, pts = new Map(); let drag = null, pinch = null;
+    const dist = () => { const [a, b] = [...pts.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+    cv.addEventListener("pointerdown", e => {
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); cv.setPointerCapture(e.pointerId);
+      if (pts.size === 1) drag = { x: e.clientX, y: e.clientY, yaw: c.yaw, pitch: c.pitch };
+      else if (pts.size === 2) { drag = null; pinch = { d: dist(), dist: c.dist }; }
+    });
+    cv.addEventListener("pointermove", e => {
+      if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch && pts.size === 2) { c.dist = Math.max(c.minDist || 120, Math.min(8000, pinch.dist * pinch.d / Math.max(10, dist()))); return; }
+      if (!drag) return; c.yaw = drag.yaw + (e.clientX - drag.x) * 0.006; c.pitch = Math.max(0.15, Math.min(1.5, drag.pitch + (e.clientY - drag.y) * 0.006));
+    });
+    const up = e => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; if (pts.size === 0) drag = null; };
+    cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
+    cv.addEventListener("wheel", e => { e.preventDefault(); c.dist = Math.max(c.minDist || 120, Math.min(8000, c.dist * (e.deltaY > 0 ? 1.1 : 0.9))); }, { passive: false });
   }
 }
