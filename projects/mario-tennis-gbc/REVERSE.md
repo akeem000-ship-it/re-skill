@@ -1069,7 +1069,7 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph5: save payload $A060-$A76F = block directory (113 blocks), slots, backups (dump_save_layout.py)
 - [x] Ph5: player record layout (64 B) in the $C800 save image
 - [x] Ph5: save-image fields (file ID, play time, EXP pools, progress counters)
-- [ ] Ph5: where match/mini-game EXP amounts are computed (they arrive in wC9B0/C9B2); contents of SRAM blocks 6-26 / 54-87
+- [ ] Ph5: where EXP amounts are computed: no instruction writes wC9B0/C9B2 directly (only clears/reads), so they arrive by a block copy (link transfer?); contents of SRAM blocks 6-26 / 54-87
 - [x] Ph5: character roster + type table (38:58FB)
 - [x] Ph5: find the character stat table (02:52CE, verified by WRAM diff in PyBoy)
 - [x] Ph5: verify stat label order (PyBoy: Create Character stat screen, poke + hook 1C:430E)
