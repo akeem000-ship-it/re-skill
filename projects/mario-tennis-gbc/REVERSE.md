@@ -361,6 +361,20 @@ code in banks `6B` (intro: `6B:402A`, `6B:75AF`), `1A` (`1A:67D4` menu), `3B`, `
 MainLoop also contains an unreachable **debug menu** (`01:40EC`): Start → game, A → match test
 `07:5DF9`, B → exhibition `3B:44A9`, Up → doubles test `16:4477`, Select → `01:6A5B`.
 
+### Event flags (tool: `tools/dump_flags.py [--flag N]`)
+
+`wEventFlags $C9C0` is a 256-byte bit array (flags 0-2047, flag n = byte n>>3, bit n&7) **inside the
+`$C800` save image**, so story progress is saved with the slot. Access: `rst $20/$28/$30 ; dw n<<5`
+(set/clear/test), `Set/Clear/TestFlagIdx $2509/$2523/$24EF` (DE = n), and the condition words of
+scene records/actor spawns (`04:4C49`). 704 distinct flags are referenced (linear scan of the code
+banks; a few hits in bank 01 data may be spurious).
+
+* Flags 2040-2047 (byte 255) are transient system flags, set and cleared all over the front end.
+* Flag 47 is tested 213 times; `04:4F1A` spawns the party followers (list `04:4EC8`) only while it
+  is set — "followers shown in the field".
+* Flags 83 and 87 are set once (`13:797B/797E`) and tested ~45 times each: story milestones.
+* Flag 110 gates field music/palette setup in `FieldScene` (`0A:4F5D`, `0A:4FA7`).
+
 ### Sprites (banks 40-5D, 6F-71) — VERIFIED layout (tool: `tools/render_sprites.py`)
 
 `04:4B68 LoadCharacterSprites(D=char id)` → `CharSpriteTable 04:4F75` (46 × `idx, bank`) →
@@ -927,7 +941,7 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph5/6: CPU AI per difficulty (parameters, reaction, intercept, shot/aim/serve decisions)
 - [ ] Ph5/6: decode the CPU sub-state sequence (DF1A/DF7F) and the intercept-depth choice rule
 - [x] Ph5: roster-index → sprite-id translation (07:5A50, verified live)
-- [ ] Ph5: map wEventFlags ($C9C0) flag numbers used by RPG mode
+- [x] Ph5: wEventFlags usage map (dump_flags.py, 704 flags); naming story milestones still open
 - [x] Ph4: build web/catalog.html asset browser (maps, LZ sheets with palette recolor, palettes, searchable text)
 - [ ] Ph4: identify what the 64-byte LZ blocks (bank 18, 39, 3F, 6D) really are
 - [x] Ph4: render the title screen and full-screen layouts (LoadScreen 39:407E, 47 screens)
