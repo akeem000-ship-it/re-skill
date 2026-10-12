@@ -499,3 +499,6 @@ bank,addr,name,comment
 02,4B99,BuildPresetChar,A = preset: level-ups per category from 02:4C18
 02,4C18,PresetLevelUps,4 bytes per preset (T0-T3 counts)
 02,4206,TourRecordPtr,A = 0 -> BC = wC900 player, else wC940 partner
+02,4D30,AddExp,[HL] (24-bit) += DE, capped at 02:4D50
+02,4D8F,AddTourExp,A = 0 player / 1 partner, DE = amount
+02,4D61,ClearExp,

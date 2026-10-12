@@ -848,6 +848,8 @@ if level < 99, training T[D] += 1, level += 1, then `RebuildStats`. Because B = 
 level-up raises the chosen category's B by 4 and lowers the other three by 1. `02:4B99` builds preset
 characters from `02:4C18` (4 bytes per preset = level-ups given to T0..T3, e.g. 7/3/5/3, 10/8/6/5).
 The level-up screen (`1C:41C2`) counts pending level-ups while `CanLevelUp` holds.
+`AddExp 02:4D30` (HL = EXP field, DE = amount) adds and caps at the 3-byte limit at `02:4D50`;
+`AddTourExp 02:4D8F` (A = player/partner) and `02:4D6D` (match slots) use it; `ClearExp 02:4D61`.
 
 ### Data Structures
 
