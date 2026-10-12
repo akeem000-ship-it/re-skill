@@ -98,6 +98,24 @@ const STANDS = [
   { name: "far",   inner: "bottom", seats: { x0: 18,  y0: 12,  x1: 370, y1: 96 },  wall: { x0: 18,  y0: 96,  x1: 370, y1: 112 }, base: 130, plane: { x0: -2030, x1: 2030,  y0: -1800, y1: -2514, h: 290 }, skipCourts: [2, 7, 14] },
 ];
 
+// Overworld objects that stand up, per RPG map (map px; the game has no object data: buildings and trees are
+// tiles painted into the map, and the collision grid only outlines where the player can walk).
+//  blocks: a building part as a solid box: rows y0..fold are the roof (top face, stretched over the footprint),
+//          rows fold..y1 the front wall (height (y1 - fold) * WALL_SCALE, standing on the ground line y1)
+//  stamps: one example of a repeated plant / prop (tile aligned); every place in the map with the same tiles
+//          stands up as a cut-out card (an inflated voxel body in voxel mode) on the ground line of its bottom
+//  cards:  single cut-outs (fences, gate posts)
+// The ground behind cut-outs is keyed out (colours of the surrounding ground reachable from the edge) and the
+// floor under them is patched with the ground strip below.
+const FIELD_OBJECTS = {
+  26: {   // Academy front
+    blocks: [{ x0: 24, y0: 0, x1: 136, y1: 112, fold: 28 }, { x0: 136, y0: 0, x1: 248, y1: 128, fold: 36 }, { x0: 248, y0: 0, x1: 360, y1: 112, fold: 28 }],
+    stamps: [{ x: 144, y: 128, w: 16, h: 32 }, { x: 0, y: 64, w: 16, h: 32 }, { x: 80, y: 128, w: 16, h: 16 }],
+    cards: [{ x0: 0, y0: 384, x1: 160, y1: 408 }, { x0: 224, y0: 384, x1: 384, y1: 408 }, { x0: 160, y0: 384, x1: 176, y1: 416 }, { x0: 208, y0: 384, x1: 224, y1: 416 }],
+  },
+};
+const WALL_SCALE = 1.25, FIELD_TILT = 0.3;
+
 export class Voxel3D {
   constructor(canvas, gb, rom = null) {
     this.cv = canvas; this.gb = gb; this.rom = rom; this.courtMaps = rom ? courtTilemaps(rom) : null; this.courtId = -1; this.detectAt = 0; this.fieldAt = 0; this.fieldOn = false; this.stands = null;
@@ -110,7 +128,7 @@ export class Voxel3D {
     this.progV = this.link(VSV, FSV, ["aPosV", "aColV"]);
     this.uV = {}; for (const n of ["uMVP", "uModel"]) this.uV[n] = gl.getUniformLocation(this.progV, n);
     this.voxelMeshes = new Map(); this.objectMeshes = new Map(); this.voxelSprites = false;   // voxelSprites: cubes per opaque pixel instead of cards
-    this.field = { mapId: -1, floorTex: null, walls: null, wallCount: 0, palHash: 0 };
+    this.field = { mapId: -1, floorTex: null, walls: null, wallCount: 0, palHash: 0, cards: [], blocks: null, artTex: null };
     const quad = new Float32Array([-0.5, 0, 0, 1,  0.5, 0, 1, 1,  -0.5, 1, 0, 0,  0.5, 1, 1, 0]);   // x, y(0..1 up), u, v
     this.vao = gl.createVertexArray(); gl.bindVertexArray(this.vao);
     const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
@@ -152,7 +170,7 @@ export class Voxel3D {
     for (const c of this.cuts) { gl.deleteTexture(c.tex); this.freeMesh(c.mesh); } this.cuts = [];
     if (this.stands) for (const st of this.stands) { gl.deleteTexture(st.seats); gl.deleteTexture(st.wall); } this.stands = null;
     if (this.groundTex) { gl.deleteTexture(this.groundTex); this.groundTex = null; } this.ground = null; this.groundHash = -1;
-    const f = this.field; if (f.floorTex) { gl.deleteTexture(f.floorTex); f.floorTex = null; } f.mapId = -1;
+    const f = this.field; if (f.floorTex) { gl.deleteTexture(f.floorTex); f.floorTex = null; } f.mapId = -1; this.buildFieldObjects(null, null);
     const L = this.layer; if (L.bg) { gl.deleteTexture(L.bg); L.bg = null; } if (L.win) { gl.deleteTexture(L.win); L.win = null; } L.hash = L.whash = -1;
   }
 
@@ -171,7 +189,7 @@ export class Voxel3D {
       const X = mx + tx, Y = my + ty; if (X >= 64 || Y >= 64) continue; n++;
       if (v0[base + (((vy + ty) & 31) << 5) + ((vx + tx) & 31)] === tm[Y * 64 + X]) same++;
     }
-    return this.fieldOn = n > 0 && same >= n * 0.7;
+    return this.fieldOn = n > 0 && same >= n * 0.4;   // dialogue boxes written over the map can cover half the screen
   }
   // a court is loaded when the BG tilemap in VRAM is one of the court maps (checked every 20 frames)
   isCourt() {
@@ -665,10 +683,88 @@ export class Voxel3D {
     }
     return img;
   }
+  // keyed cut-out of a map rectangle: pixels of the surrounding ground colours connected to the rectangle's
+  // edge become transparent (interior pixels of the same colour stay, so canopies keep their shading)
+  keyedCut(art, x0, y0, w, h) {
+    const hist = new Map(); let n = 0;
+    const col = (x, y) => { if (x < 0 || y < 0 || x >= 512 || y >= 512) return -1; const o = (y * 512 + x) * 4; return art[o] << 16 | art[o + 1] << 8 | art[o + 2]; };
+    for (let k = 1; k <= 3; k++) {
+      for (let x = x0 - 3; x < x0 + w + 3; x++) for (const y of [y0 - k, y0 + h - 1 + k]) { const c = col(x, y); if (c >= 0) { hist.set(c, (hist.get(c) || 0) + 1); n++; } }
+      for (let y = y0; y < y0 + h; y++) for (const x of [x0 - k, x0 + w - 1 + k]) { const c = col(x, y); if (c >= 0) { hist.set(c, (hist.get(c) || 0) + 1); n++; } }
+    }
+    const keys = new Set([...hist].filter(([, v]) => v >= n * 0.05).map(([c]) => c));
+    const d = new Uint8Array(w * h * 4), out = new Uint8Array(w * h), st = [];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const o = (y * w + x) * 4, s = ((y0 + y) * 512 + x0 + x) * 4; d[o] = art[s]; d[o + 1] = art[s + 1]; d[o + 2] = art[s + 2]; d[o + 3] = 255; }
+    const push = (x, y) => { if (x < 0 || y < 0 || x >= w || y >= h) return; const i = y * w + x; if (out[i] || !keys.has(col(x0 + x, y0 + y))) return; out[i] = 1; st.push(i); };
+    for (let x = 0; x < w; x++) { push(x, 0); push(x, h - 1); } for (let y = 0; y < h; y++) { push(0, y); push(w - 1, y); }
+    while (st.length) { const i = st.pop(), x = i % w, y = (i / w) | 0; d[i * 4 + 3] = 0; push(x + 1, y); push(x - 1, y); push(x, y + 1); push(x, y - 1); }
+    return d;
+  }
+  // tile-aligned instances of a stamp: every tile position where >= 80% of the stamp's tiles (index + attributes
+  // without the priority bit) are the same
+  findStamps(st) {
+    const m = this.gb.mem, tm = m.wram[3], at = m.wram[2], tw = st.w >> 3, th = st.h >> 3, sx = st.x >> 3, sy = st.y >> 3;
+    const key = (x, y) => tm[y * 64 + x] | ((at[y * 64 + x] & 0x6F) << 8), tpl = [];
+    for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) tpl.push(key(sx + x, sy + y));
+    const need = Math.ceil(tpl.length * 0.8), hits = [];
+    for (let ty = 0; ty + th <= 64; ty++) for (let tx = 0; tx + tw <= 64; tx++) {
+      let ok = 0; for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) if (key(tx + x, ty + y) === tpl[y * tw + x]) ok++;
+      if (ok >= need) hits.push({ x: tx * 8, y: ty * 8 });
+    }
+    return hits;
+  }
+  buildFieldObjects(art, floor) {
+    const gl = this.gl, f = this.field, def = FIELD_OBJECTS[f.mapId];
+    for (const c of f.cards || []) { if (c.own) { gl.deleteTexture(c.tex); this.freeMesh(c.mesh); } }
+    if (f.blocks) for (const b of [f.blocks.front, f.blocks.side]) { gl.deleteBuffer(b.pb); gl.deleteBuffer(b.ub); gl.deleteVertexArray(b.vao); }
+    if (f.artTex) gl.deleteTexture(f.artTex);
+    f.cards = []; f.blocks = null; f.artTex = null;
+    if (!def) return;
+    // cut-outs: keyed images; the floor under their opaque pixels is replaced by the ground strip below them
+    const patch = (d, x0, y0, w, h) => {
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        if (!d[(y * w + x) * 4 + 3]) continue;
+        const X = x0 + x, Y = Math.min(511, y0 + h + ((y0 + h - (y0 + y)) % 8)), s = (Y * 512 + X) * 4, o = ((y0 + y) * 512 + X) * 4;
+        floor[o] = art[s]; floor[o + 1] = art[s + 1]; floor[o + 2] = art[s + 2];
+      }
+    };
+    for (const st of def.stamps || []) {
+      const d = this.keyedCut(art, st.x, st.y, st.w, st.h), shared = { tex: this.texture(st.w, st.h, d), mesh: null, d, own: true };
+      let first = true;
+      for (const hit of this.findStamps(st)) {
+        patch(d, hit.x, hit.y, st.w, st.h);
+        f.cards.push({ ...shared, own: first, w: st.w, h: st.h, X: hit.x + st.w / 2, Z: hit.y + st.h, shared }); first = false;
+      }
+    }
+    for (const c of def.cards || []) {
+      const w = c.x1 - c.x0, h = c.y1 - c.y0, d = this.keyedCut(art, c.x0, c.y0, w, h);
+      patch(d, c.x0, c.y0, w, h);
+      f.cards.push({ tex: this.texture(w, h, d), mesh: null, d, own: true, w, h, X: c.x0 + w / 2, Z: c.y1 });
+    }
+    // buildings: one batched mesh for roofs + fronts, one for the side walls (drawn darker)
+    const front = { pos: [], uv: [] }, side = { pos: [], uv: [] };
+    const quad = (o, a, b, c, d, ua, ub, uc, ud) => { for (const [v, t] of [[a, ua], [b, ub], [c, uc], [a, ua], [c, uc], [d, ud]]) { o.pos.push(...v); o.uv.push(t[0] / 512, t[1] / 512); } };
+    for (const b of def.blocks || []) {
+      const H = (b.y1 - b.fold) * WALL_SCALE, { x0, x1, y0, y1, fold } = b;
+      quad(front, [x0, H, y0], [x1, H, y0], [x1, H, y1], [x0, H, y1], [x0, y0], [x1, y0], [x1, fold], [x0, fold]);   // roof
+      quad(front, [x0, 0, y1], [x1, 0, y1], [x1, H, y1], [x0, H, y1], [x0, y1], [x1, y1], [x1, fold], [x0, fold]);   // front wall
+      quad(side, [x0, 0, y0], [x0, 0, y1], [x0, H, y1], [x0, H, y0], [x0, y1], [x0 + 6, y1], [x0 + 6, fold], [x0, fold]);   // left wall
+      quad(side, [x1, 0, y1], [x1, 0, y0], [x1, H, y0], [x1, H, y1], [x1 - 6, y1], [x1, y1], [x1, fold], [x1 - 6, fold]);   // right wall
+    }
+    const upload = o => {
+      const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+      const pb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, pb); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(o.pos), gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+      const ub = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, ub); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(o.uv), gl.STATIC_DRAW); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
+      gl.bindVertexArray(this.vao); return { vao, pb, ub, count: o.pos.length / 3 };
+    };
+    if (front.pos.length) { f.blocks = { front: upload(front), side: upload(side) }; f.artTex = this.texture(512, 512, art); }
+  }
   buildField() {
     const gl = this.gl, f = this.field, coll = this.gb.mem.wram[6];
     if (f.floorTex) gl.deleteTexture(f.floorTex);
-    f.floorTex = this.texture(512, 512, this.composeField());
+    const art = this.composeField(), floor = new Uint8Array(art);
+    this.buildFieldObjects(art, floor);
+    f.floorTex = this.texture(512, 512, floor);
     // walls: one box (top + 4 sides) per solid 16x16 metatile, uv = the metatile's own texels; sides share them
     const H = 14, pos = [], uv = [];
     const quad = (a, b, c, d, u) => { for (const [v, t] of [[a, u[0]], [b, u[1]], [c, u[2]], [a, u[0]], [c, u[2]], [d, u[3]]]) { pos.push(...v); uv.push(...t); } };
@@ -711,6 +807,18 @@ export class Voxel3D {
       gl.drawArrays(gl.TRIANGLES, 0, f.walls.count);
       gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
     }
+    // buildings (roof + front wall, then the darker side walls) and the stand-up cut-outs
+    if (f.blocks) {
+      gl.useProgram(this.prog3); gl.bindTexture(gl.TEXTURE_2D, f.artTex); gl.uniformMatrix4fv(this.u3.uMVP, false, mvp); gl.uniform1f(this.u3.uAlphaTest, 0);
+      for (const [b, k] of [[f.blocks.front, 1], [f.blocks.side, 0.68]]) { gl.bindVertexArray(b.vao); gl.uniform4fv(this.u3.uTint, [k, k, k, 1]); gl.drawArrays(gl.TRIANGLES, 0, b.count); }
+      gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
+    }
+    for (const c of f.cards || []) {
+      if (this.voxelSprites) {
+        const owner = c.shared || c; if (!owner.mesh) owner.mesh = this.meshFromPixels(c.d, c.w, c.h, 4, 3.5);
+        this.drawMesh(owner.mesh, m4.trs3(c.X, 0, c.Z, 1, 1, 1, -FIELD_TILT), mvp);
+      } else this.draw(c.tex, m4.trs(c.X, 0, c.Z, c.w, c.h, -FIELD_TILT, 0), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
+    }
     // actors: OAM sprites grouped into objects (touching boxes) at map px (screen + scroll), 1 px = 1 unit, leaning back
     const sprs = this.collectSprites(); sprs.forEach((s, i) => s.g = i);
     const find = i => { while (sprs[i].g !== i) i = sprs[i].g = sprs[sprs[i].g].g; return i; };
@@ -723,13 +831,52 @@ export class Voxel3D {
       this.draw(this.shadowTex, m4.trs(X, 0.3, Z + 1, (g.x1 - g.x0) * 1.1, 7, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 0.7], 0);
       this.blitObject(g.list, cx2, g.y1, X, Z, 0, 1, TILT, mvp);
     }
-    // the window layer (dialogue boxes, menus) as a screen-space overlay from the 2D frame
-    if ((p.lcdc & 0x20) && p.wy < 144) {
-      if (!this.frameTex) this.frameTex = this.texture(160, 144, null);
-      gl.bindTexture(gl.TEXTURE_2D, this.frameTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 160, 144, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(frame2d.buffer));
-      gl.disable(gl.DEPTH_TEST);
-      const { ortho } = this.hudOrtho(), wy = p.wy, wx = Math.max(0, p.wx - 7);
-      this.draw(this.frameTex, m4.trs(wx + (160 - wx) / 2, 144, 0, 160 - wx, -(144 - wy), 0), ortho, [wx / 160, wy / 144, (160 - wx) / 160, (144 - wy) / 144], [1, 1, 1, 1], 0);
+    // dialogue boxes and menus: the game writes them into the BG tile map over the scenery (and some screens use
+    // the window layer); both are cut out of the 2D frame and shown at the top middle of the view
+    this.drawFieldOverlays(frame2d);
+  }
+  // screen rectangles (px) of BG tiles that differ from the WRAM3 map at the field scroll, and of window rows
+  fieldOverlayRects() {
+    const m = this.gb.mem, p = this.gb.ppu, v0 = m.vram[0], tm = m.wram[3], base = this.bgBase(), sc = this.fieldScroll();
+    const fx = p.scx & 7, fy = p.scy & 7, mx = sc.x >> 3, my = sc.y >> 3, vx = p.scx >> 3, vy = p.scy >> 3;
+    const GW = 21, GH = 19, diff = new Uint8Array(GW * GH);
+    for (let ty = 0; ty < GH; ty++) for (let tx = 0; tx < GW; tx++) {
+      const X = mx + tx, Y = my + ty; if (X >= 64 || Y >= 64) continue;
+      if (v0[base + (((vy + ty) & 31) << 5) + ((vx + tx) & 31)] !== tm[Y * 64 + X]) diff[ty * GW + tx] = 1;
+    }
+    const rects = [], seen = new Uint8Array(GW * GH);
+    for (let i = 0; i < GW * GH; i++) {
+      if (!diff[i] || seen[i]) continue;
+      let x0 = 99, y0 = 99, x1 = -1, y1 = -1, n = 0; const st = [i]; seen[i] = 1;
+      while (st.length) {
+        const j = st.pop(), tx = j % GW, ty = (j / GW) | 0; n++;
+        x0 = Math.min(x0, tx); x1 = Math.max(x1, tx); y0 = Math.min(y0, ty); y1 = Math.max(y1, ty);
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = tx + dx, ny = ty + dy; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue; const k = ny * GW + nx; if (diff[k] && !seen[k]) { seen[k] = 1; st.push(k); } }
+      }
+      if (n < 6 || x1 - x0 < 2) continue;                       // a box is at least 3 tiles wide; lone tiles are streaming seams
+      const r = { x0: Math.max(0, x0 * 8 - fx), y0: Math.max(0, y0 * 8 - fy), x1: Math.min(160, (x1 + 1) * 8 - fx), y1: Math.min(144, (y1 + 1) * 8 - fy) };
+      if (r.x1 > r.x0 && r.y1 > r.y0) rects.push(r);
+    }
+    let wy0 = -1, wy1 = -1, wx = 160;                           // window rows (raster splits included)
+    for (let y = 0; y < 144; y++) if (p.winX[y] !== 255) { if (wy0 < 0) wy0 = y; wy1 = y + 1; wx = Math.min(wx, p.winX[y]); }
+    if (wy0 >= 0) rects.push({ x0: wx, y0: wy0, x1: 160, y1: wy1 });
+    return rects;
+  }
+  drawFieldOverlays(frame2d) {
+    const rects = this.fieldOverlayRects(); if (this.debug) this.debug.push({ overlays: rects });
+    if (!rects.length || !frame2d) return;
+    const gl = this.gl;
+    if (!this.frameTex) this.frameTex = this.texture(160, 144, null);
+    gl.bindTexture(gl.TEXTURE_2D, this.frameTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 160, 144, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(frame2d.buffer));
+    gl.disable(gl.DEPTH_TEST);
+    const { ortho, t, b } = this.hudOrtho();
+    rects.sort((a, b) => (b.x1 - b.x0) * (b.y1 - b.y0) - (a.x1 - a.x0) * (a.y1 - a.y0));
+    let y = t + 3 + (this.topInset || 0) * (b - t) / (this.cv.clientHeight || 1);   // stacked from the top edge (below the HUD bar), centred
+    for (const r of rects) {
+      const w = r.x1 - r.x0, h = r.y1 - r.y0;
+      this.draw(this.shadowTex, m4.trs(80 + 2, y + h + 2, 0, w, -h, 0), ortho, [0, 0, 1, 1], [1, 1, 1, 0.7], 0);
+      this.draw(this.frameTex, m4.trs(80, y + h, 0, w, -h, 0), ortho, [r.x0 / 160, r.y0 / 144, w / 160, h / 144], [1, 1, 1, 1], 0);
+      y += h + 2;
     }
   }
 

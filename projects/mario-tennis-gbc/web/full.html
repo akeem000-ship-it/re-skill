@@ -10,7 +10,18 @@
   #hud .k { background:#2c3140; border:1px solid #555; border-radius:6px; color:#fff; padding:4px 10px; cursor:pointer; user-select:none; }
   #hud .k.on { background:var(--acc); }
   #gl { width: 480px; max-width: 100%; aspect-ratio: 160/144; background:#000; display:block; touch-action:none; }
+  body.touch #hud { gap: 4px 6px; } body.touch #hud .k { padding: 2px 7px; font-size: 11px; } body.touch #romstatus { display: none; }   /* one compact row on phones */
   #screen { object-fit: contain; }   /* a 10:9 frame inside a 4:3 box is pillarboxed, never stretched */
+  /* analog stick: a zone over the lower-left of the screen; the stick appears where the thumb lands */
+  #stickzone { display: none; }
+  body.touch #stickzone { display: block; position: fixed; left: 0; bottom: 0; width: 46vw; height: 55dvh; z-index: 2; touch-action: none; }
+  body.touch.stick .dpad { display: none; }
+  body.gamepad #stickzone { display: none !important; }
+  .stick-base { position: absolute; left: calc(80px + env(safe-area-inset-left, 0)); top: calc(100% - 100px); width: 120px; height: 120px; transform: translate(-50%, -50%);
+                border-radius: 50%; background: rgba(44,49,64,0.45); border: 2px solid rgba(255,255,255,0.35); pointer-events: none; }
+  .stick-base.active { background: rgba(44,49,64,0.6); }
+  .stick-knob { position: absolute; left: 50%; top: 50%; width: 46%; height: 46%; border-radius: 50%; transform: translate(-50%, -50%);
+                background: rgba(230,230,240,0.75); box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
   body.touch #gl { position: fixed; inset: 0; transform: none; width: 100vw; height: 100dvh; max-width: none; aspect-ratio: auto; }   /* the 3D view fills the screen, whatever its shape */
   a { color:#8ab4f8; }
 </style>
@@ -26,10 +37,11 @@
   <div id="setup" class="panel" hidden></div>
   <div id="hud" class="panel" hidden>
     <span id="romstatus" class="note"></span> <span id="fps" class="note"></span> <span id="savestatus" class="note"></span>
-    <span class="k" id="turbo" title="hold Space on a keyboard">Turbo</span> <span class="k" id="reset">Reset</span> <span class="k" id="view3d" title="3D diorama view: tap for cards, again for voxels, again for off">3D</span> <span class="k" id="cam" title="court camera preset" hidden>CAM</span> <span class="k" id="aspect" title="screen shape: Fill, 4:3 (courts widened in 2D), 10:9">VIEW</span>
+    <span class="k" id="turbo" title="hold Space on a keyboard">Turbo</span> <span class="k" id="reset">Reset</span> <span class="k" id="view3d" title="3D diorama view: tap for cards, again for voxels, again for off">3D</span> <span class="k" id="cam" title="court camera preset" hidden>CAM</span> <span class="k" id="aspect" title="screen shape: Fill, 4:3 (courts widened in 2D), 10:9">VIEW</span> <span class="k" id="padmode" title="touch movement: analog stick or d-pad">STICK</span>
   </div>
   <canvas id="screen" width="160" height="144" tabindex="0"></canvas>
   <canvas id="gl" width="640" height="576" hidden></canvas>
+  <div id="stickzone" hidden></div>
   <div id="pad">
     <div class="dpad">
       <div></div><div class="k" data-key="ArrowUp">&#9650;</div><div></div>

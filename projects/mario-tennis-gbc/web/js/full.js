@@ -7,6 +7,7 @@ import { pollGamepad } from "./gamepad.js";
 import { Voxel3D, PRESETS, PRESET_ORDER } from "./voxel.js";
 import { loadSnapshot } from "./gb/snapshot.js";
 import { composeWide, WIDE_W, WIDE_H } from "./wide.js";
+import { mountStick } from "./stick.js";
 
 const $ = id => document.getElementById(id);
 const cv = $("screen"), g = cv.getContext("2d");
@@ -63,9 +64,16 @@ function frame() {
 let drawnFrame = -1;
 const wideImg = g.createImageData(WIDE_W, WIDE_H), wideBuf = new Uint32Array(wideImg.data.buffer), wideIdx = new Uint8Array(WIDE_W * WIDE_H);
 const onCourt = () => gb.mem.wram[0][0x32E] <= 15;   // wCurMapID: courts (the map is wider than the screen)
+let insetAt = 0;
 function draw(alpha = 1) {                 // alpha: fraction of the next game frame already elapsed (3D interpolation)
   const f = gb.ppu.frame;
-  if (view3d && voxel) { try { voxel.render(f, alpha); return; } catch (e) { console.warn("3d", e); setView3d(false); } }
+  if (view3d && voxel) {
+    if (gb.frames >= insetAt) {               // the touch HUD bar covers the top of the view: overlays go below it
+      insetAt = gb.frames + 30; const hud = $("hud"), top = $("gl").getBoundingClientRect().top;
+      voxel.topInset = document.body.classList.contains("touch") && !hud.hidden ? Math.max(0, hud.getBoundingClientRect().bottom - top) : 0;
+    }
+    try { voxel.render(f, alpha); return; } catch (e) { console.warn("3d", e); setView3d(false); }
+  }
   if (drawnFrame === gb.frames) return;      // 2D: nothing new to show between game frames
   drawnFrame = gb.frames;
   if (aspect === "4:3" && onCourt()) {       // 4:3 on a court: 192 px wide composite with the real map on both sides
@@ -149,6 +157,16 @@ $("view3d").addEventListener("pointerdown", () => { if (!gb) return; const vox =
 $("cam").addEventListener("pointerdown", () => setPreset(PRESET_ORDER[(PRESET_ORDER.indexOf(preset) + 1) % PRESET_ORDER.length]));
 $("aspect").addEventListener("pointerdown", () => { aspect = ASPECTS[(ASPECTS.indexOf(aspect) + 1) % ASPECTS.length]; drawnFrame = -1; applyAspect(); });
 applyAspect();
+// ---- touch movement: analog stick (default) or the d-pad ----
+const stick = mountStick($("stickzone"), keys);
+let padMode = q.get("pad") || stored("mt-pad") || "stick"; if (padMode !== "dpad") padMode = "stick";
+function applyPadMode() {
+  const on = padMode === "stick"; document.body.classList.toggle("stick", on); stick.setEnabled(on);
+  $("padmode").textContent = on ? "STICK" : "D-PAD";
+  try { localStorage.setItem("mt-pad", padMode); } catch (e) { /* private mode */ }
+}
+$("padmode").addEventListener("pointerdown", () => { padMode = padMode === "stick" ? "dpad" : "stick"; applyPadMode(); });
+applyPadMode();
 $("turbo").addEventListener("pointerdown", () => { turbo = !turbo; $("turbo").classList.toggle("on", turbo); });
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom).catch(() => {});
 window.__gb = { get gb() { return gb; }, keys, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, loadSnapshot(s) { loadSnapshot(gb, s); } };

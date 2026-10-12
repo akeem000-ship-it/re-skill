@@ -79,6 +79,8 @@ python3 tools/recomp.py --coverage states/coverage.json && node web/tests/recomp
 node web/tests/view3d_frame.mjs out/view3d && python3 tools/emu_dump_snapshot.py states/menu1.state out/snap_menu1.json && node web/tests/view3d_field.mjs out/snap_menu1.json out/view3d_field.png
 python3 tools/emu_dump_snapshot.py states/menu_court.state out/snap_court.json && node web/tests/view3d_snap.mjs out/snap_court.json out/court_green --keys ArrowDown@10,KeyZ@40 --frames 430   # any court from the court menu
 node web/tests/play_match.mjs out/match --max 45000 --video 300:3000:2    # a bot plays a whole match; 2D + 3D shots per point, frames for a video
+node web/tests/snap_walk.mjs out/snap_menu1.json out/walk --keys KeyZ@60-64,KeyZ@104-108 --shots 30,700   # overworld 3D + dialogue overlay
+node web/tests/stick_walk.mjs out/snap_menu1.json out/stick.png                  # virtual analog stick -> d-pad keys
 ```
 
 Other drivers: `emu_charmatch.py K` (start a match with the K-th character and dump WRAM),

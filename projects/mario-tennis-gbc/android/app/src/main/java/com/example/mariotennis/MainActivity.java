@@ -83,7 +83,10 @@ public class MainActivity extends Activity {
             float hx = e.getAxisValue(MotionEvent.AXIS_HAT_X), hy = e.getAxisValue(MotionEvent.AXIS_HAT_Y);
             float sx = e.getAxisValue(MotionEvent.AXIS_X), sy = e.getAxisValue(MotionEvent.AXIS_Y);
             hatMask = (hx > 0.5f ? 16 : 0) | (hx < -0.5f ? 32 : 0) | (hy < -0.5f ? 64 : 0) | (hy > 0.5f ? 128 : 0);
-            stickMask = (sx > 0.5f ? 16 : 0) | (sx < -0.5f ? 32 : 0) | (sy < -0.5f ? 64 : 0) | (sy > 0.5f ? 128 : 0);
+            stickMask = 0;                                    // radial dead zone, eight 45-degree sectors (same rule as web/js/stick.js)
+            float m = (float) Math.hypot(sx, sy);
+            if (m >= 0.28f) { float nx = sx / m, ny = sy / m, c = 0.3827f;
+                stickMask = (nx > c ? 16 : 0) | (nx < -c ? 32 : 0) | (ny < -c ? 64 : 0) | (ny > c ? 128 : 0); }
             pushMask(); return true;
         }
         return super.dispatchGenericMotionEvent(e);
