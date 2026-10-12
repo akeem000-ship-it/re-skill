@@ -20,7 +20,9 @@ export class Memory {
     this.ppu = null; this.apu = null; this.timer = null; this.joypad = null;
     this.romOffset = 0x4000;
     this.sramDirty = false;
+    this.machine = null;                // set by GBC: tick() syncs the hardware for the cycles in cpu.cyc
   }
+  tick(c) { if (c.cyc) { const n = c.cyc; c.cyc = 0; this.machine.sync(n); } }
   // --- reads ---
   read(a) {
     if (a < 0x4000) return this.rom[a];

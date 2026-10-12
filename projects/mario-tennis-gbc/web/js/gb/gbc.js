@@ -5,6 +5,7 @@ import { Memory, Timer, Joypad } from "./mem.js";
 import { CPU } from "./cpu.js";
 import { PPU } from "./ppu.js";
 import { APU } from "./apu.js";
+import { Exec } from "./exec.js";
 
 export class GBC {
   constructor(romBytes, { sampleRate = 44100, audio = true } = {}) {
@@ -12,6 +13,7 @@ export class GBC {
     this.cpu = new CPU(this.mem);
     this.ppu = new PPU(this.mem); this.apu = new APU(sampleRate); this.timer = new Timer(this.mem); this.joypad = new Joypad(this.mem);
     this.mem.ppu = this.ppu; this.mem.apu = this.apu; this.mem.timer = this.timer; this.mem.joypad = this.joypad;
+    this.mem.machine = this; this.exec = null;       // installRecomp(table) switches to the recompiled blocks
     this.audioOn = audio;
     this.reset();
   }
@@ -26,8 +28,10 @@ export class GBC {
     this.frames = 0; this.cycles = 0;
   }
   setInput(state) { this.joypad.set(state); }
+  installRecomp(table) { this.exec = new Exec(this, table); }
   // run one instruction and sync the hardware
   stepInstruction() {
+    if (this.exec) { this.exec.step(); return; }
     const cpuCycles = this.cpu.step();
     this.sync(cpuCycles);
   }
@@ -46,7 +50,7 @@ export class GBC {
     let guard = 0;
     while (!ppu.frameDone && guard++ < 2000000) {
       if (!(ppu.lcdc & 0x80)) {           // LCD off: no frames come; count 70224 dots as a frame
-        let d = 0; while (d < 70224 && !(ppu.lcdc & 0x80)) { const c = this.cpu.step(); this.sync(c); d += this.mem.doubleSpeed ? c >> 1 : c; }
+        let d = 0; while (d < 70224 && !(ppu.lcdc & 0x80)) { const c0 = this.cycles; this.stepInstruction(); const c = this.cycles - c0; d += this.mem.doubleSpeed ? c >> 1 : c; }
         if (!(ppu.lcdc & 0x80)) break;
         continue;
       }

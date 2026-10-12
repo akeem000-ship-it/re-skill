@@ -10,3 +10,4 @@ states/
 *.ram
 docs/scenes_dump.txt
 out/
+web/gen/

@@ -8,6 +8,46 @@ export class CPU {
     this.a = 0; this.f = 0; this.b = 0; this.c = 0; this.d = 0; this.e = 0; this.h = 0; this.l = 0;
     this.sp = 0; this.pc = 0; this.ime = false; this.eiPending = false; this.halted = false; this.haltBug = false;
     this.stopped = false;
+    this.cyc = 0;                       // cycles accumulated by recompiled code since the last hardware sync
+  }
+  // Prologue of every instruction inside recompiled code (same order as step()): service a pending
+  // interrupt (returns true: the block must stop, pc points at the handler), wake from halt, apply
+  // the delayed EI. pc = address of the instruction about to run.
+  irq(pc) {
+    const m = this.m;
+    // the frame completed, or the LCD is off (frames are then counted in cycles, one instruction at a
+    // time): stop before anything else, exactly where runFrame() would stop the interpreter
+    if (m.ppu.frameDone || !(m.ppu.lcdc & 0x80)) { this.pc = pc; return true; }
+    const pending = m.iflag & m.ie & 0x1F;
+    if (pending) {
+      this.halted = false;
+      if (this.ime) {
+        this.ime = false; this.eiPending = false;
+        for (let i = 0; i < 5; i++) if (pending & (1 << i)) { m.iflag &= ~(1 << i); this.push(pc); this.pc = 0x40 + 8 * i; this.cyc += 20; m.tick(this); return true; }
+      }
+    }
+    if (this.halted) { this.pc = pc; return true; }
+    if (this.eiPending) { this.eiPending = false; this.ime = true; }
+    return false;
+  }
+  // CB-prefixed rotate/shift/res/set on a value (BIT is emitted inline): returns the new value
+  cbval(op, v) {
+    const bit = (op >> 3) & 7;
+    if (op < 0x40) {
+      const c = this.f & C ? 1 : 0; let res;
+      switch (bit) {
+        case 0: res = ((v << 1) | (v >> 7)) & 0xFF; this.f = (res === 0 ? Z : 0) | (v & 0x80 ? C : 0); break;
+        case 1: res = (v >> 1) | ((v & 1) << 7); this.f = (res === 0 ? Z : 0) | (v & 1 ? C : 0); break;
+        case 2: res = ((v << 1) | c) & 0xFF; this.f = (res === 0 ? Z : 0) | (v & 0x80 ? C : 0); break;
+        case 3: res = (v >> 1) | (c << 7); this.f = (res === 0 ? Z : 0) | (v & 1 ? C : 0); break;
+        case 4: res = (v << 1) & 0xFF; this.f = (res === 0 ? Z : 0) | (v & 0x80 ? C : 0); break;
+        case 5: res = (v >> 1) | (v & 0x80); this.f = (res === 0 ? Z : 0) | (v & 1 ? C : 0); break;
+        case 6: res = ((v << 4) | (v >> 4)) & 0xFF; this.f = res === 0 ? Z : 0; break;
+        default: res = v >> 1; this.f = (res === 0 ? Z : 0) | (v & 1 ? C : 0); break;
+      }
+      return res;
+    }
+    return op < 0xC0 ? v & ~(1 << bit) : v | (1 << bit);
   }
   // post-boot register state of a CGB running a CGB-aware cartridge
   reset() {
