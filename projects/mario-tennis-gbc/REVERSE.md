@@ -252,7 +252,7 @@ references into bank tables:
 
 | Word | Size | Destination | Content |
 |------|------|-------------|---------|
-| w0 | $88 raw | WRAM6:DC08 | header (RPG maps): +2/+3 scroll minimum X/Y, +4/+5 width/height in tiles → `wC329-wC32C`; the camera (`04:440A`) clamps the scroll to [min, size − 20 × 18]. Bytes +6.. look like 8-byte records then BGR555 colours (tile/palette animation?) — no reader found. Courts have no header: their w0 points at the w4 block. |
+| w0 | $88 raw | WRAM6:DC08 | header (RPG maps): +2/+3 scroll minimum X/Y, +4/+5 width/height in tiles → `wC329-wC32C`; the camera (`04:440A`) clamps the scroll to [min, size − 20 × 18]. Bytes +6.. look like 8-byte records then BGR555 colours, but **nothing reads them**: no code references `$DC0E-$DC8F`, and overwriting them with `$00` or `$FF` during a field scene left 600 frames of screen output bit-identical (PyBoy, screen hashes every 50 frames). The fixed `$88`-byte copy just drags along whatever data follows the 6-byte header. Courts have no header: their w0 points at the w4 block. |
 | w1 | $40 raw | WRAM1:D000 → pals 2-7 | 8 CGB BG palettes (game loads 2-7; 0-1 reserved for UI) |
 | w2 | LZ | WRAM3:D000 | tilemap, stride 32 (courts, 1024 B) or 64 (RPG, 4096 B) |
 | w3 | LZ | WRAM2:D000 | CGB attribute map (same size). bit3=VRAM bank 1, bits0-2 palette, bit5/6 flip |
@@ -1053,7 +1053,7 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph4: dialogue font (05:7920, widths 05:7F80), VWF printer, control/substitution codes
 - [x] Ph4: map w4 = collision grid, w5 = event-trigger ids
 - [x] Ph4: map header +2..+5 = scroll bounds / size
-- [ ] Ph4: map header bytes +6.. (records + colours; find a reader — palette/tile animation?)
+- [x] Ph4: map header bytes +6.. are unused (no reader; clobber test identical)
 - [x] Ph4: courts have no map header (w0 aliases w4; the court path never uses wC329-C32C)
 - [x] Ph4: identify banks 40-5D as character sprite banks (header, frame list, anim scripts)
 - [x] Ph4: find the OAM builder and decode sprite frame placement, render all frames (tools/render_sprites.py)
