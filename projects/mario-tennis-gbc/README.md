@@ -56,3 +56,13 @@ Other drivers: `emu_charmatch.py K` (start a match with the K-th character and d
 `emu_dump.py`, `emu_find_seq.py`, `emu_poke_redraw.py`, `emu_fullmatch.py` (bot plays a whole
 set with routine hooks), `emu_sound_ids.py` / `emu_music_ids.py`, `compare_frames.py`
 (court render vs live frame). Key scripts use absolute frame offsets; a press lasts 6 frames.
+
+### Recording a video of the original game
+
+```
+# power-on -> intro -> title -> Exhibition -> Luigi vs Baby Mario -> first serve (3700 frames, ~62 s)
+python3 tools/emu_video.py out/vid 3700 --fresh --keys 1000:start,1400:start,1700:a,2000:a,2100:a,2250:right,2350:a,2500:a,2620:a,2740:a,2900:a,2928:a
+ffmpeg -f concat -i out/vid/frames.ffconcat -i out/vid/audio.wav -vf "scale=640:576:flags=neighbor,fps=60" \
+       -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest clip.mp4
+```
+`--fresh` deletes `rom/mario_tennis.gbc.ram` (PyBoy's battery save) so the run starts from a blank save.
