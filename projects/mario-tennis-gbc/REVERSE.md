@@ -82,12 +82,18 @@ Confidence: **V** verified by code reading/emulator, **I** inferred from callers
 
 **Mini-games / drills** (`0B:4705 RunMiniGame(A)`): 36 ids. Ids `$00-$11` → descriptor table
 `0B:47B4` run by `0B:4002`; ids `$12-$23` → `0D:4090` run by `0D:4006`; `$24` is a special case.
-Descriptor: `[b0, b1, b2, b3, id, b5, 0, flags, …, word ptrs to setup/tick/end callbacks]`. In bank 0B
-`b0 = $37 + id`, which lines up with the title texts `26 #55-#72` ("Stroke Match 1" … "Boo Blast:
-Level 2") — a **hypothesis** (the 0D descriptors use other `b0` values); the full title list (Service /
-Net Game / Stroke Match and Practice, The Machine, The Wall, Boo Blast, Shooting Star, Perfect Shot,
-Target Shot, Fruit Fantasy, Banana Bunch, Treasure Box, Medallion Match, Two-on-One) is text
-`26 #37-#97`, with rules in `26 #98-#165`.
+Descriptor: `[b0, b1, b2, b3, id, b5, 0, flags, …, word ptrs to setup/tick/end callbacks]`.
+**Ids → games, VERIFIED live** (`tools/emu_call.py` injects `A = id` at the `rst $18 → 0B:4705` site
+`10:47FC` from a field state; screenshots of all 36 ids): ids `$00-$1C` follow the title texts
+`26 #(43 + id)` — `$00-$02` Service Match 1-3, `$03-$05` Service Practice 1-3 (target areas, poles),
+`$06-$08` Net Game Match, `$09-$0B` Net Game Practice, `$0C-$0E` Stroke Match ("didn't land past my
+service line"), `$0F-$11` Stroke Practice (★ counter), `$12-$15` The Machine 1-4 (robot), `$16-$19` The
+Wall 1-4 (arrow panels), `$1A` Machine Master, `$1B` Wall Master, `$1C` Boo Blast (Boo); then one id per
+game with the level as a parameter: `$1D` Shooting Star (star), `$1E` Perfect Shot (?), `$1F` Target
+Shot (?), `$20` Fruit Fantasy (melon/apple/banana), `$21` Banana Bunch, `$22`/`$23` Wario/Waluigi court
+games (Two-on-One / Medallion Match — medallions visible in `$23`); `$24` (special case) is probably
+Treasure Box. (The earlier guess "b0 = $37 + id = title" was wrong.) Titles: `26 #37-#97`, rules
+`26 #98-#165`.
 
 | 0E-15 | Mario Tour scene descriptors + scene code (actor scripts, event handlers) | V |
 | 16 | post-match screens: "YOU WIN!" results (screens $13/$14) and match statistics ($23); `16:4477` debug doubles loop | V |
@@ -977,7 +983,8 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph3: decode rst $08 SoundCmdInline (00:2FB3) — music/SFX index, ids observed live
 - [x] Ph3: identify the sound driver (bank 0 3129-3Dxx) and data banks 78-7F
 - [x] Ph3: bank map 00-7F (tools/bank_map.py); refine the ? rows (0C, 1D, 1E, 24, 28-2C, 73)
-- [ ] Ph5: verify the mini-game id → title mapping live (call RunMiniGame from a field state) and decode the descriptor bytes
+- [x] Ph5: mini-game id → game mapping verified live (emu_call.py)
+- [ ] Ph5: decode the mini-game descriptor bytes and the level parameter for ids $1D-$24
 - [ ] Ph3: decode the sequence opcodes fully ($A0-$FF handlers) and write a sequence dumper
 - [x] Ph4: text encoding (ASCII + control codes) and text-bank layout; dump all 4109 messages
 - [x] Ph4: understand banks 5F-69 map layout via LoadMap 0A:585D — all 37 maps render
