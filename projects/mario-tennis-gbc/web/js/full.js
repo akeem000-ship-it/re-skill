@@ -4,7 +4,7 @@
 import { GBC } from "./gb/gbc.js";
 import { Rom, sha1Hex, EXPECTED_SHA1 } from "./rom.js";
 import { pollGamepad } from "./gamepad.js";
-import { Voxel3D } from "./voxel.js";
+import { Voxel3D, PRESETS, PRESET_ORDER } from "./voxel.js";
 import { loadSnapshot } from "./gb/snapshot.js";
 
 const $ = id => document.getElementById(id);
@@ -61,10 +61,19 @@ function draw() {
   if (view3d && voxel) { try { voxel.render(f); return; } catch (e) { console.warn("3d", e); setView3d(false); } }
   new Uint32Array(img.data.buffer).set(f); g.putImageData(img, 0, 0);
 }
-function setView3d(on) {
-  view3d = on; $("view3d").classList.toggle("on", on);
-  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
-  $("gl").hidden = !view3d; cv.hidden = view3d;
+const q = new URLSearchParams(location.search);
+const stored = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+let preset = q.get("cam") || stored("mt-cam") || "tv"; if (!PRESETS[preset]) preset = "tv";
+function setView3d(on, vox = false) {
+  view3d = on; $("view3d").classList.toggle("on", on); $("view3d").textContent = on ? (vox ? "VOX" : "3D") : "3D";
+  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.freeCam = q.has("freecam"); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
+  if (voxel) voxel.voxelSprites = on && vox;
+  $("gl").hidden = !view3d; cv.hidden = view3d; $("cam").hidden = !view3d;
+  try { localStorage.setItem("mt-3d", on ? (vox ? "vox" : "3d") : "off"); } catch (e) { /* private mode */ }
+}
+function setPreset(name) {                  // court camera preset (CAM button cycles PRESET_ORDER)
+  if (!PRESETS[name]) return; preset = name; if (voxel) voxel.setPreset(name); $("cam").textContent = "CAM: " + PRESETS[name].label;
+  try { localStorage.setItem("mt-cam", name); } catch (e) { /* private mode */ }
 }
 function loop(now) {
   if (gb && !paused) {
@@ -88,6 +97,8 @@ async function loadRom(buf) {
   try { const mod = await import("../gen/game.js"); const T = {}; mod.install(T); gb.installRecomp(T); if (mod.HRAM_SIG) gb.exec.setHramSig(mod.HRAM_SIG); $("romstatus").textContent += " · recompiled code"; } catch (e) { $("romstatus").textContent += " · interpreter"; }
   loadSave();
   $("loader").hidden = true; $("hud").hidden = false; cv.focus();
+  const m3 = q.has("vox") ? "vox" : q.has("3d") ? "3d" : stored("mt-3d");   // remembered view mode
+  if (m3 === "3d" || m3 === "vox") setView3d(true, m3 === "vox");
 }
 
 // ---- input wiring ----
@@ -104,8 +115,9 @@ for (const el of document.querySelectorAll("#pad [data-key]")) {
 if (navigator.userAgent.includes("MarioTennisWrapper") || location.search.includes("touch")) document.body.classList.add("touch");
 $("file").addEventListener("change", async e => { const f = e.target.files[0]; if (f) loadRom(await f.arrayBuffer()); });
 $("reset").addEventListener("click", () => { if (gb) { gb.reset(); } });
-$("view3d").addEventListener("pointerdown", () => { if (gb) setView3d(!view3d); });
+$("view3d").addEventListener("pointerdown", () => { if (!gb) return; const vox = voxel && voxel.voxelSprites; setView3d(!view3d || !vox, view3d && !vox); });   // off -> cards -> voxels -> off
+$("cam").addEventListener("pointerdown", () => setPreset(PRESET_ORDER[(PRESET_ORDER.indexOf(preset) + 1) % PRESET_ORDER.length]));
 $("turbo").addEventListener("pointerdown", () => { turbo = !turbo; $("turbo").classList.toggle("on", turbo); });
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom).catch(() => {});
-window.__gb = { get gb() { return gb; }, keys, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, get voxel() { return voxel; }, loadSnapshot(s) { loadSnapshot(gb, s); } };
+window.__gb = { get gb() { return gb; }, keys, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, loadSnapshot(s) { loadSnapshot(gb, s); } };
 requestAnimationFrame(loop);

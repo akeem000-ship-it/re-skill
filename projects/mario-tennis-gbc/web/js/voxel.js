@@ -1,9 +1,14 @@
-// 3D "diorama" renderer for the running game (task: VoxelMod-style view). While a court map is loaded
-// the court tilemap is un-projected through the game's own fixed projection (ProjectPoint, camera.js)
-// onto a flat ground plane, every OAM sprite becomes an upright billboard standing at the world point
-// its feet un-project to, the ball is lifted to its true height from RAM (wC400/04/08) with a shadow at
-// its ground point, the net is a procedural mesh, and a free perspective camera does the foreshortening.
-// HUD sprites (outside the court) are drawn in screen space. Other scenes fall back to the 2D frame.
+// 3D "diorama" renderer for the running game (VoxelMod-style view). Three scene kinds:
+//  * court (a court tilemap is loaded): the court tilemap is un-projected through the game's own fixed
+//    projection (ProjectPoint, camera.js) onto a flat ground plane; the players stand at their real world
+//    positions (wPlayerX/Y/Z of each player bank), the ball at its true height (wBall*) with a shadow at
+//    its ground point; the net, the umpire chair and the far fence/stands are cut out of the floor and
+//    stood upright; a locked camera preset frames the court for the viewport (see PRESETS).
+//  * field (an RPG map is on screen): the 64x64 map is a floor, solid metatiles are extruded boxes,
+//    actors are billboards, the window layer stays a 2D overlay.
+//  * everything else (title, menus, mini-games): the BG, window and sprite layers are stacked at
+//    different depths and a gently swaying camera gives them parallax.
+// Sprites are textured cards or, in voxel mode, one lit cube per opaque pixel.
 import { project } from "./camera.js";
 import { courtTilemaps } from "./assets.js";
 
@@ -13,10 +18,31 @@ void main() { vUV = uUVRect.xy + aUV * uUVRect.zw; gl_Position = uMVP * uModel *
 const FS = `#version 300 es
 precision mediump float; in vec2 vUV; uniform sampler2D uTex; uniform vec4 uTint; uniform float uAlphaTest; out vec4 o;
 void main() { vec4 c = texture(uTex, vUV) * uTint; if (c.a < uAlphaTest) discard; o = c; }`;
-
 const VS3 = `#version 300 es
 in vec3 aPos3; in vec2 aUV3; uniform mat4 uMVP; out vec2 vUV;
 void main() { vUV = aUV3; gl_Position = uMVP * vec4(aPos3, 1.0); }`;
+const VSV = `#version 300 es
+in vec3 aPosV; in vec3 aColV; uniform mat4 uMVP; uniform mat4 uModel; out vec3 vCol;
+void main() { vCol = aColV; gl_Position = uMVP * uModel * vec4(aPosV, 1.0); }`;
+const FSV = `#version 300 es
+precision mediump float; in vec3 vCol; out vec4 o; void main() { o = vec4(vCol, 1.0); }`;
+
+// Court camera presets (locked; the distance is fitted so the court fills the viewport). pitch = angle
+// above the ground, yaw = rotation around the court, lean = how far the sprite cards lean back towards the
+// camera (1 = facing it), aim = where the camera looks along the court (negative = towards the far end).
+// "original" is the game's own pinhole camera (23.76 deg tilt, 16384 units away, 1 px = 8 units at the
+// centre) with the game's scroll applied as an image shift: the court looks exactly like the 2D game
+// while players, ball, net and chair have real depth.
+export const PRESETS = {
+  tv:       { label: "TV",       yaw: 0,    pitch: 0.80,  lean: 0.8, aim: -150 },
+  low:      { label: "Low",      yaw: 0,    pitch: 0.55,  lean: 0.8, aim: -250 },
+  overhead: { label: "Overhead", yaw: 0,    pitch: 1.20,  lean: 0.8, aim: 0 },
+  diorama:  { label: "Diorama",  yaw: 0.55, pitch: 0.85,  lean: 0.8, aim: -100 },
+  original: { label: "Original", yaw: 0,    pitch: Math.PI / 2 - 0.4147, lean: 1.0, aim: 0, game: true },
+};
+export const PRESET_ORDER = ["tv", "low", "overhead", "diorama", "original"];
+const FIELD_CAM = { dist: 300, pitch: 0.95, fov: 0.8, near: 4, far: 3000 };
+const COURT_CLIP = { near: 40, far: 40000 };
 
 // --- small matrix helpers (column-major Float32Array(16)) ---
 const m4 = {
@@ -24,44 +50,66 @@ const m4 = {
   mul(a, b) { const o = new Float32Array(16); for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + j] * b[i * 4 + k]; o[i * 4 + j] = s; } return o; },
   perspective(fov, aspect, n, f) { const t = 1 / Math.tan(fov / 2); const o = new Float32Array(16); o[0] = t / aspect; o[5] = t; o[10] = (f + n) / (n - f); o[11] = -1; o[14] = 2 * f * n / (n - f); return o; },
   ortho(l, r, b, t, n, f) { const o = new Float32Array(16); o[0] = 2 / (r - l); o[5] = 2 / (t - b); o[10] = -2 / (f - n); o[12] = -(r + l) / (r - l); o[13] = -(t + b) / (t - b); o[14] = -(f + n) / (f - n); o[15] = 1; return o; },
+  translate(x, y, z) { const o = m4.identity(); o[12] = x; o[13] = y; o[14] = z; return o; },
   lookAt(eye, at, up) {
     const z = norm(sub(eye, at)), x = norm(cross(up, z)), y = cross(z, x);
     return new Float32Array([x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -dot(x, eye), -dot(y, eye), -dot(z, eye), 1]);
   },
+  // translate + scale (x, y, z) + tilt about X, for 3D meshes
+  trs3(tx, ty, tz, sx, sy, sz, tiltX) {
+    const c = Math.cos(tiltX), s = Math.sin(tiltX);
+    return new Float32Array([sx, 0, 0, 0,  0, sy * c, sy * s, 0,  0, -sz * s, sz * c, 0,  tx, ty, tz, 1]);
+  },
   // translate + scale + optional rotation about X (tilt) and Y (yaw)
   trs(tx, ty, tz, sx, sy, tiltX = 0, yawY = 0) {
     const cx = Math.cos(tiltX), sxn = Math.sin(tiltX), cy = Math.cos(yawY), syn = Math.sin(yawY);
-    // columns: X axis, Y axis, Z axis, translation
     return new Float32Array([sx * cy, 0, -sx * syn, 0,  sy * syn * sxn, sy * cx, sy * cy * sxn, 0,  0, 0, 1, 0,  tx, ty, tz, 1]);
   },
+  apply(m, v) { const o = [0, 0, 0, 0]; for (let i = 0; i < 4; i++) o[i] = m[i] * v[0] + m[4 + i] * v[1] + m[8 + i] * v[2] + m[12 + i] * v[3]; return o; },
 };
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const norm = a => { const l = Math.hypot(...a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
 
-const COURT_IDS = new Set([0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
-const WORLD = { x0: -1024, x1: 1024, y0: -2048, y1: 2048, texel: 4 };   // ground texture coverage (world units)
+// ground texture coverage (world units): the court map covers about X +-1024 / Y +-2048; beyond it the outer
+// 16 px band of the map (grass, surface) repeats so the plane reaches the edges of any viewport
+const WORLD = { x0: -3072, x1: 3072, y0: -2600, y1: 2600, texel: 6 };
+const BAND = 16;
+const NET = { x0: -640, x1: 640, height: 96 };                           // posts at BG px 48/208, tape at Z = -96
+// BG-pixel rectangles of the court map that stand upright instead of lying on the floor
+const CUTS = [
+  { name: "net",      x0: 40,  y0: 116, x1: 216, y1: 130, fill: "below" },              // the net band (top of the tape .. ground line)
+  { name: "judge",    x0: 208, y0: 104, x1: 226, y1: 136, fill: "left", key: true },    // umpire chair / referee right of the net post
+  { name: "backdrop", x0: 0,   y0: 0,   x1: 256, y1: 50,  fill: "below" },              // far fence, stands, castle
+  { name: "fence",    x0: 0,   y0: 206, x1: 256, y1: 256, fill: "above", courts: [2, 3, 4, 5, 7, 8] },   // near chain-link fence (courts that have one)
+];
+const BG_CENTRE = 128.5;                       // BG px of the projection centre: (0x1010 + 0) / 32 + 0.5
 
 export class Voxel3D {
   constructor(canvas, gb, rom = null) {
-    this.cv = canvas; this.gb = gb; this.courtMaps = rom ? courtTilemaps(rom) : null; this.courtId = -1; this.detectAt = 0;
+    this.cv = canvas; this.gb = gb; this.courtMaps = rom ? courtTilemaps(rom) : null; this.courtId = -1; this.detectAt = 0; this.fieldAt = 0; this.fieldOn = false;
     const gl = this.gl = canvas.getContext("webgl2", { alpha: false, antialias: true });
     if (!gl) throw new Error("WebGL2 unavailable");
     this.prog = this.link(VS, FS);
     this.u = {}; for (const n of ["uMVP", "uModel", "uUVRect", "uTex", "uTint", "uAlphaTest"]) this.u[n] = gl.getUniformLocation(this.prog, n);
     this.prog3 = this.link(VS3, FS, ["aPos3", "aUV3"]);
     this.u3 = {}; for (const n of ["uMVP", "uTex", "uTint", "uAlphaTest"]) this.u3[n] = gl.getUniformLocation(this.prog3, n);
+    this.progV = this.link(VSV, FSV, ["aPosV", "aColV"]);
+    this.uV = {}; for (const n of ["uMVP", "uModel"]) this.uV[n] = gl.getUniformLocation(this.progV, n);
+    this.voxelMeshes = new Map(); this.voxelSprites = false;   // voxelSprites: cubes per opaque pixel instead of cards
     this.field = { mapId: -1, floorTex: null, walls: null, wallCount: 0, palHash: 0 };
     const quad = new Float32Array([-0.5, 0, 0, 1,  0.5, 0, 1, 1,  -0.5, 1, 0, 0,  0.5, 1, 1, 0]);   // x, y(0..1 up), u, v
     this.vao = gl.createVertexArray(); gl.bindVertexArray(this.vao);
     const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
     gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 16, 0);
     gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 16, 8);
-    this.spriteTex = new Map(); this.groundTex = null; this.groundHash = -1; this.frameTex = null;
-    this.shadowTex = this.solidTexture([0, 0, 0, 110]); this.netTex = this.makeNetTexture();
-    this.cam = { yaw: 0, pitch: 0.9, dist: 3100, targetY: 250 };
-    this.mode = "none";
-    this.bindCameraControls();
+    this.spriteTex = new Map(); this.groundTex = null; this.groundHash = -1; this.frameTex = null; this.cuts = [];
+    this.layer = { bg: null, win: null, hash: -1, whash: -1 };
+    this.shadowTex = this.solidTexture([0, 0, 0, 110]);
+    this.preset = "tv"; this.cam = { yaw: 0, pitch: 0.9, dist: 3100, fitKey: "" };
+    this.freeCam = false; this.mode = "none"; this.t0 = performance.now();
+    this.parallax = { px: 0, py: 0, gx: 0, gy: 0, gbase: null };
+    this.bindControls();
   }
   link(vs, fs, attrs = ["aPos", "aUV"]) {
     const gl = this.gl, mk = (t, s) => { const sh = gl.createShader(t); gl.shaderSource(sh, s); gl.compileShader(sh); if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh)); return sh; };
@@ -70,26 +118,35 @@ export class Voxel3D {
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
     return p;
   }
-  texture(w, h, data, linear = false) {
+  texture(w, h, data, linear = false, wrap = false) {
     const gl = this.gl, t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
-    const f = linear ? gl.LINEAR : gl.NEAREST;
+    const f = linear ? gl.LINEAR : gl.NEAREST, wr = wrap ? gl.REPEAT : gl.CLAMP_TO_EDGE;
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, f); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, f);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wr); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wr);
     return t;
   }
   solidTexture(rgba) { return this.texture(1, 1, new Uint8Array(rgba)); }
-  makeNetTexture() {
-    const w = 64, h = 16, d = new Uint8Array(w * h * 4);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const o = (y * w + x) * 4, mesh = (x % 4 === 0) || (y % 4 === 0), tape = y < 2; d[o] = tape ? 240 : 40; d[o + 1] = tape ? 240 : 40; d[o + 2] = tape ? 240 : 60; d[o + 3] = tape ? 255 : mesh ? 200 : 40; }
-    return this.texture(w, h, d);
-  }
+  setPreset(name) { if (PRESETS[name]) { this.preset = name; this.cam.fitKey = ""; } }
 
   // ---- game state helpers ----
   col5(pal, p, i) { const o = p * 8 + i * 2, c = pal[o] | (pal[o + 1] << 8); return [(c & 31) * 8, ((c >> 5) & 31) * 8, ((c >> 10) & 31) * 8]; }
-  // a court is loaded when the BG tilemap in VRAM is one of the court maps (checked every 20 frames)
   mapId() { return this.gb.mem.wram[0][0x32E]; }                       // wCurMapID: 0-15 courts, 17-36 RPG areas
-  isField() { const id = this.mapId(); return id >= 17 && id <= 36 && !(this.gb.ppu.lcdc & 0x08) === false || (id >= 17 && id <= 36); }
+  fieldScroll() { const w = this.gb.mem.wram[0]; return { x: w[0x321] * 8 + (w[0x320] >> 5), y: w[0x323] * 8 + (w[0x322] >> 5) }; }
+  // an RPG map is on screen when the VRAM tilemap shows the WRAM3 map at the field scroll (checked every 10 frames)
+  isField() {
+    const id = this.mapId(); if (id < 17 || id > 36) return false;
+    const fr = this.gb.ppu.frames; if (fr < this.fieldAt) return this.fieldOn; this.fieldAt = fr + 10;
+    const m = this.gb.mem, p = this.gb.ppu, v0 = m.vram[0], tm = m.wram[3], base = p.lcdc & 0x08 ? 0x1C00 : 0x1800;
+    const sc = this.fieldScroll(), mx = sc.x >> 3, my = sc.y >> 3, vx = p.scx >> 3, vy = p.scy >> 3;
+    let same = 0, n = 0;
+    for (let ty = 0; ty < 18; ty += 2) for (let tx = 0; tx < 20; tx += 2) {
+      const X = mx + tx, Y = my + ty; if (X >= 64 || Y >= 64) continue; n++;
+      if (v0[base + (((vy + ty) & 31) << 5) + ((vx + tx) & 31)] === tm[Y * 64 + X]) same++;
+    }
+    return this.fieldOn = n > 0 && same >= n * 0.7;
+  }
+  // a court is loaded when the BG tilemap in VRAM is one of the court maps (checked every 20 frames)
   isCourt() {
     if (!this.courtMaps || this.mapId() > 15) return false;
     const fr = this.gb.ppu.frames; if (fr < this.detectAt) return this.courtId >= 0;
@@ -102,23 +159,94 @@ export class Voxel3D {
     }
     return this.courtId >= 0;
   }
+  // players: one bank per match slot (WRAM4 P1, WRAM5 P2, WRAM6/7 the partners in doubles); wPlayerX/Y/Z at $DF01/04/07
+  players() {
+    const m = this.gb.mem, n = m.wram[0][0x8F3] >= 4 ? 4 : 2, out = [];
+    for (let k = 4; k < 4 + n; k++) {
+      const b = m.wram[k], s16 = a => (b[a] | (b[a + 1] << 8)) << 16 >> 16, X = s16(0xF01), Y = s16(0xF04), Z = s16(0xF07);
+      if (Math.abs(X) > 1400 || Math.abs(Y) > 2600 || Z > 0 || Z < -600) continue;
+      out.push({ X, Y, Z });
+    }
+    return out;
+  }
+  landing() { const w = this.gb.mem.wram[0], s16 = a => (w[a] | (w[a + 1] << 8)) << 16 >> 16; return { X: s16(0x450), Y: s16(0x452) }; }   // wLandingX/Y
+  ballWorld() {
+    const w = this.gb.mem.wram[0], r32 = a => { const v = w[a] | (w[a + 1] << 8) | (w[a + 2] << 16) | (w[a + 3] << 24); return v / 65536; };
+    return { X: r32(0x400), Y: r32(0x404), Z: r32(0x408) };
+  }
+  // screen position (px) of a world point with the current scroll
+  screenOf(X, Y, Z) { const p = this.gb.ppu, q = project(X, Y, Z); return [(0x1010 - (p.scx << 5) + q.xp) / 32, (0x1010 - (p.scy << 5) + q.pp) / 32]; }
+  // inverse projection of a BG map pixel on the ground (Z = 0): Y by bisection on the monotonic pp(Y), then X
+  unprojectBG(bx, by) {
+    const pp = (by - BG_CENTRE) * 32, xp = (bx - BG_CENTRE) * 32;
+    let lo = -2600, hi = 2600;
+    for (let k = 0; k < 24; k++) { const mid = (lo + hi) / 2; if (project(0, mid, 0).pp < pp) lo = mid; else hi = mid; }
+    const Y = (lo + hi) / 2, s = project(0, Y, 0).s || 1;
+    return { X: xp / 8 * 256 / s, Y, s, upp: 1024 / s };    // upp: world units per BG pixel at that depth
+  }
+  unproject(sx, sy) { const p = this.gb.ppu; return this.unprojectBG(sx + p.scx, sy + p.scy); }
   // sprite tile (8 rows) as RGBA, colour 0 transparent
-  spriteTexture(tile, bank, pal, flipX, flipY) {
-    const key = tile | (bank << 9) | (pal << 10) | (flipX << 13) | (flipY << 14);
-    let t = this.spriteTex.get(key); if (t) return t;
+  spritePixels(tile, bank, pal, flipX, flipY) {
     const v = this.gb.mem.vram[bank], d = new Uint8Array(8 * 8 * 4), op = this.gb.ppu.objPal;
     for (let y = 0; y < 8; y++) {
       const row = flipY ? 7 - y : y, lo = v[tile * 16 + row * 2], hi = v[tile * 16 + row * 2 + 1];
       for (let x = 0; x < 8; x++) { const bit = flipX ? x : 7 - x, ci = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1), o = (y * 8 + x) * 4; if (!ci) continue; const c = this.col5(op, pal, ci); d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = 255; }
     }
-    t = this.texture(8, 8, d); this.spriteTex.set(key, t);
+    return d;
+  }
+  spriteTexture(tile, bank, pal, flipX, flipY) {
+    const key = tile | (bank << 9) | (pal << 10) | (flipX << 13) | (flipY << 14);
+    let t = this.spriteTex.get(key); if (t) return t;
+    t = this.texture(8, 8, this.spritePixels(tile, bank, pal, flipX, flipY)); this.spriteTex.set(key, t);
     if (this.spriteTex.size > 4000) { for (const tx of this.spriteTex.values()) this.gl.deleteTexture(tx); this.spriteTex.clear(); }
     return t;
   }
-  // the BG tilemap (256x256) as RGBA, CGB attributes applied
-  composeBG() {
-    const m = this.gb.mem, p = this.gb.ppu, v0 = m.vram[0], v1 = m.vram[1], lcdc = p.lcdc;
-    const mapBase = lcdc & 0x08 ? 0x1C00 : 0x1800, img = new Uint8Array(256 * 256 * 4);
+  // voxel mesh from an RGBA image: a unit cube per opaque pixel (local units: 1 = one pixel, origin at the
+  // bottom-centre, thickness 1), outer faces only, lit per face
+  meshFromPixels(rgba, w, h) {
+    const px = i => rgba[i * 4 + 3] >= 128, pos = [], col = [];
+    const face = (a, b, c, d, rgb, k) => { for (const q of [a, b, c, a, c, d]) { pos.push(...q); col.push(rgb[0] * k, rgb[1] * k, rgb[2] * k); } };
+    const at = (x, y) => x >= 0 && x < w && y >= 0 && y < h && px(y * w + x);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x; if (!px(i)) continue;
+      const c = [rgba[i * 4] / 255, rgba[i * 4 + 1] / 255, rgba[i * 4 + 2] / 255];
+      const x0 = x - w / 2, x1 = x0 + 1, y0 = h - 1 - y, y1 = h - y, z0 = -0.5, z1 = 0.5;
+      face([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], c, 1.0);            // front
+      face([x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], c, 0.6);            // back
+      if (!at(x, y - 1)) face([x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], c, 0.9);   // top
+      if (!at(x, y + 1)) face([x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], c, 0.55); // bottom
+      if (!at(x - 1, y)) face([x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], c, 0.75); // left
+      if (!at(x + 1, y)) face([x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], c, 0.75); // right
+    }
+    const gl = this.gl, vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+    const pb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, pb); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    const cb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, cb); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(col), gl.STATIC_DRAW); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(this.vao);
+    return { vao, pb, cb, count: pos.length / 3 };
+  }
+  freeMesh(mesh) { if (!mesh) return; const gl = this.gl; gl.deleteBuffer(mesh.pb); gl.deleteBuffer(mesh.cb); gl.deleteVertexArray(mesh.vao); }
+  voxelMesh(tile, bank, pal, flipX, flipY) {
+    const key = tile | (bank << 9) | (pal << 10) | (flipX << 13) | (flipY << 14);
+    let mesh = this.voxelMeshes.get(key); if (mesh) return mesh;
+    mesh = this.meshFromPixels(this.spritePixels(tile, bank, pal, flipX, flipY), 8, 8); this.voxelMeshes.set(key, mesh);
+    if (this.voxelMeshes.size > 3000) { for (const mm of this.voxelMeshes.values()) this.freeMesh(mm); this.voxelMeshes.clear(); }
+    return mesh;
+  }
+  drawMesh(mesh, model, mvp) {
+    const gl = this.gl; if (!mesh || !mesh.count) return;
+    gl.useProgram(this.progV); gl.bindVertexArray(mesh.vao);
+    gl.uniformMatrix4fv(this.uV.uMVP, false, mvp); gl.uniformMatrix4fv(this.uV.uModel, false, model);
+    gl.drawArrays(gl.TRIANGLES, 0, mesh.count);
+    gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
+  }
+  // one sprite tile either as a textured card (prog) or as voxels (progV); model places the tile's bottom-centre
+  drawTile(tile, bank, pal, flipX, flipY, X, Y, Z, scale, tilt, mvp) {
+    if (this.voxelSprites) this.drawMesh(this.voxelMesh(tile, bank, pal, flipX, flipY), m4.trs3(X, Y, Z, scale, scale, scale * 1.5, -tilt), mvp);
+    else this.draw(this.spriteTexture(tile, bank, pal, flipX, flipY), m4.trs(X, Y, Z, 8 * scale, 8 * scale, -tilt, 0), mvp);
+  }
+  // a tilemap (32x32 entries at mapBase, CGB attributes in VRAM1) as 256x256 RGBA
+  composeMap(mapBase) {
+    const m = this.gb.mem, p = this.gb.ppu, v0 = m.vram[0], v1 = m.vram[1], lcdc = p.lcdc, img = new Uint8Array(256 * 256 * 4);
     for (let ty = 0; ty < 32; ty++) for (let tx = 0; tx < 32; tx++) {
       const i = mapBase + ty * 32 + tx, tile = v0[i], attr = v1[i], bank = attr & 8 ? v1 : v0;
       const addr = lcdc & 0x10 ? tile << 4 : 0x1000 + ((tile << 24 >> 24) << 4);
@@ -132,36 +260,91 @@ export class Voxel3D {
     }
     return img;
   }
-  bgHash() { const m = this.gb.mem, v0 = m.vram[0], v1 = m.vram[1]; let h = 0; for (let i = 0x1800; i < 0x1C00; i += 3) h = (h * 31 + v0[i] + v1[i] * 7) | 0; for (let i = 0; i < 64; i += 5) h = (h * 31 + this.gb.ppu.bgPal[i]) | 0; return h; }
-  // un-project the court tilemap onto the ground plane: ground texel (X, Y) <- BG pixel ((0x1010 + xp) / 32, (0x1010 + pp) / 32)
-  // (the camera scroll cancels out: the BG pixel of a world point does not depend on SCX/SCY)
+  composeBG() { return this.composeMap(this.gb.ppu.lcdc & 0x08 ? 0x1C00 : 0x1800); }
+  mapHash(mapBase, full = false) {                     // tilemap + attributes (+ tile data and palettes when full)
+    const m = this.gb.mem, v0 = m.vram[0], v1 = m.vram[1]; let h = 0;
+    const step = full ? 1 : 3;
+    for (let i = mapBase; i < mapBase + 0x400; i += step) h = (Math.imul(h, 31) + v0[i] + v1[i] * 7) | 0;
+    for (let i = 0; i < 64; i += full ? 1 : 5) h = (Math.imul(h, 31) + this.gb.ppu.bgPal[i]) | 0;
+    if (full) for (let i = 0; i < 0x1800; i += 7) h = (Math.imul(h, 31) + v0[i] + v1[i] * 3) | 0;
+    return h;
+  }
+  bgHash() { return this.mapHash(this.gb.ppu.lcdc & 0x08 ? 0x1C00 : 0x1800); }
+
+  // ---- court: ground texture and upright cut-outs ----
+  // ground texel (X, Y) <- BG pixel ((0x1010 + xp) / 32, (0x1010 + pp) / 32) (the scroll cancels out); the
+  // cut-out rectangles are filled from the floor next to them
   buildGround() {
     const bg = this.composeBG(), W = (WORLD.x1 - WORLD.x0) / WORLD.texel, H = (WORLD.y1 - WORLD.y0) / WORLD.texel, d = new Uint8Array(W * H * 4);
+    const cuts = CUTS.filter(c => !c.courts || c.courts.includes(this.courtId));
+    const inCut = (bx, by) => { for (const c of cuts) if (bx >= c.x0 && bx < c.x1 && by >= c.y0 && by < c.y1) return c; return null; };
     for (let j = 0; j < H; j++) {
       const Y = WORLD.y0 + j * WORLD.texel;
       for (let i = 0; i < W; i++) {
-        const X = WORLD.x0 + i * WORLD.texel, Ys = Math.abs(Y) < 40 ? (Y < 0 ? -44 : 44) : Y, p = project(X, Ys, 0);
-        const bx = Math.floor((0x1010 + p.xp) / 32) & 255, by = Math.floor((0x1010 + p.pp) / 32) & 255;
-        const s = (by * 256 + bx) * 4, o = (j * W + i) * 4;
+        const X = WORLD.x0 + i * WORLD.texel, p = project(X, Y, 0);
+        let bx = Math.floor((0x1010 + p.xp) / 32), by = Math.floor((0x1010 + p.pp) / 32);
+        const o = (j * W + i) * 4;
+        if (bx < 0) bx = bx & (BAND - 1); else if (bx > 255) bx = 256 - BAND + ((bx - 256) & (BAND - 1));
+        if (by < 0) by = by & (BAND - 1); else if (by > 255) by = 256 - BAND + ((by - 256) & (BAND - 1));
+        const c = inCut(bx, by);
+        if (c) { if (c.fill === "below") by = c.y1; else if (c.fill === "above") by = c.y0 - 1; else bx = c.x0 - 1; }
+        const s = (by * 256 + bx) * 4;
         d[o] = bg[s]; d[o + 1] = bg[s + 1]; d[o + 2] = bg[s + 2]; d[o + 3] = 255;
       }
     }
     if (this.groundTex) this.gl.deleteTexture(this.groundTex);
     this.groundTex = this.texture(W, H, d, true);
+    this.buildCuts(bg, cuts);
   }
-  // inverse projection of a screen point on the ground (Z = 0): Y by bisection on the monotonic pp(Y), then X
-  unproject(sx, sy) {
-    const p = this.gb.ppu, offX = 0x1010 - (p.scx << 5), offY = 0x1010 - (p.scy << 5);
-    const pp = sy * 32 - offY, xp = sx * 32 - offX;
-    let lo = -2600, hi = 2600;
-    for (let k = 0; k < 24; k++) { const mid = (lo + hi) / 2; if (project(0, mid, 0).pp < pp) lo = mid; else hi = mid; }
-    const Y = (lo + hi) / 2, s = project(0, Y, 0).s || 1;
-    const X = ((xp - 16) / 8) * 256 / s;
-    return { X, Y, s };
+  // each cut-out becomes an upright card (and a voxel mesh) standing on the ground line of its bottom edge;
+  // with `key`, the colours of the floor around the rectangle are made transparent (the chair against the grass)
+  buildCuts(bg, cuts) {
+    for (const c of this.cuts) { this.gl.deleteTexture(c.tex); this.freeMesh(c.mesh); }
+    this.cuts = [];
+    for (const c of cuts) {
+      const w = c.x1 - c.x0, h = c.y1 - c.y0, d = new Uint8Array(w * h * 4);
+      let keys = null;
+      if (c.key) {                                          // the dominant colours of the 3 px band around the rectangle (court surface, grass)
+        const hist = new Map(); let n = 0;
+        const add = (x, y) => { const s = ((y & 255) * 256 + (x & 255)) * 4, k = bg[s] << 16 | bg[s + 1] << 8 | bg[s + 2]; hist.set(k, (hist.get(k) || 0) + 1); n++; };
+        for (let k = 1; k <= 3; k++) {
+          for (let x = c.x0 - 3; x < c.x1 + 3; x++) { add(x, c.y0 - k); add(x, c.y1 - 1 + k); }
+          for (let y = c.y0; y < c.y1; y++) { add(c.x0 - k, y); add(c.x1 - 1 + k, y); }
+        }
+        keys = new Set([...hist].filter(([, v]) => v >= n * 0.06).map(([k]) => k));
+      }
+      let opaque = 0;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const s = ((c.y0 + y) * 256 + c.x0 + x) * 4, o = (y * w + x) * 4, rgb = bg[s] << 16 | bg[s + 1] << 8 | bg[s + 2];
+        if (keys && keys.has(rgb)) continue;
+        d[o] = bg[s]; d[o + 1] = bg[s + 1]; d[o + 2] = bg[s + 2]; d[o + 3] = 255; opaque++;
+      }
+      if (opaque < w * h * 0.05) continue;                 // nothing stands there on this court
+      // world placement: the bottom edge un-projected (centre column), width and height from the units per px there
+      const g = this.unprojectBG((c.x0 + c.x1) / 2, c.y1);
+      let X = g.X, Yw = g.Y, width = w * g.upp, height = h * g.upp;
+      if (c.name === "net") { X = (NET.x0 + NET.x1) / 2; Yw = 0; width = (NET.x1 - NET.x0) * w / 160; height = NET.height; }
+      const wide = c.name === "backdrop" || c.name === "fence";   // the stands and the fence continue sideways
+      this.cuts.push({ name: c.name, tex: this.texture(w, h, d, false, wide), mesh: this.meshFromPixels(d, w, h), w, h, X, Y: Yw, width, height, wide });
+    }
   }
-  ballWorld() {
-    const w = this.gb.mem.wram[0], r32 = a => { const v = w[a] | (w[a + 1] << 8) | (w[a + 2] << 16) | (w[a + 3] << 24); return v / 65536; };
-    return { X: r32(0x400), Y: r32(0x404), Z: r32(0x408) };
+  collectSprites() {
+    const m = this.gb.mem, p = this.gb.ppu, oam = m.oam, tall = p.lcdc & 4, sprs = [];
+    for (let i = 0; i < 40; i++) {
+      const sy = oam[i * 4] - 16, sx = oam[i * 4 + 1] - 8; if (sy <= -16 || sy >= 144 || sx <= -8 || sx >= 160) continue;
+      let tile = oam[i * 4 + 2]; const attr = oam[i * 4 + 3], hgt = tall ? 16 : 8; if (tall) tile &= 0xFE;
+      sprs.push({ sx, sy, h: hgt, tile, attr, owner: null });
+    }
+    return sprs;
+  }
+  // draws one OAM sprite's tiles relative to an anchor screen point (ax, ay) mapped to world (X, Yw) at height lift
+  blitSprite(sp, ax, ay, X, Yw, lift, scale, tilt, mvp) {
+    const cosT = Math.cos(tilt), sinT = Math.sin(tilt);
+    for (let half = 0; half < sp.h / 8; half++) {
+      const dx = (sp.sx + 4 - ax) * scale, up = (ay - (sp.sy + (half + 1) * 8)) * scale;
+      this.drawTile(sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half), (sp.attr >> 3) & 1, sp.attr & 7, (sp.attr >> 5) & 1, (sp.attr >> 6) & 1,
+                    X + dx, lift + up * cosT, Yw - up * sinT, scale, tilt, mvp);
+    }
   }
 
   // ---- drawing ----
@@ -171,93 +354,132 @@ export class Voxel3D {
     gl.uniform4fv(this.u.uUVRect, uv); gl.uniform4fv(this.u.uTint, tint); gl.uniform1f(this.u.uAlphaTest, alphaTest);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
-  // world: x = X, y = height (-Z), z = Y (near side positive, towards the default camera)
   render(frame2d) {
     const gl = this.gl, cv = this.cv;
     if (cv.width !== cv.clientWidth || cv.height !== cv.clientHeight) { cv.width = cv.clientWidth || 160; cv.height = cv.clientHeight || 144; }
     gl.viewport(0, 0, cv.width, cv.height); gl.clearColor(0.05, 0.08, 0.12, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao); gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     if (this.isField()) { this.renderField(frame2d); return; }
-    if (!this.isCourt()) { this.mode = "2d"; this.drawFlatFrame(frame2d); return; }
-    if (this.mode !== "3d") { this.cam.dist = 3100; this.cam.targetY = 250; this.cam.minDist = 600; }
-    this.mode = "3d"; if (this.debug) this.debug.length = 0;
+    if (this.isCourt()) { this.renderCourt(); return; }
+    this.renderLayers();
+  }
+  // court camera: eye direction from the preset; distance fitted to the viewport (cached per aspect/preset)
+  courtCamera(aspect) {
+    const pr = PRESETS[this.preset], c = this.cam;
+    const yaw = this.freeCam ? c.yaw : pr.yaw, pitch = this.freeCam ? c.pitch : pr.pitch;
+    const dir = [Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)];
+    const tilt = (Math.PI / 2 - pitch) * pr.lean;
+    if (pr.game && !this.freeCam) {                         // the game's pinhole, the scroll as an image shift
+      const p = this.gb.ppu, dist = 16384, fovY = aspect >= 160 / 144 ? 2 * Math.atan(576 / dist) : 2 * Math.atan(640 / aspect / dist);
+      const view = m4.lookAt([dir[0] * dist, dir[1] * dist, dir[2] * dist], [0, 0, 0], [0, 1, 0]);
+      const proj = m4.perspective(fovY, aspect, COURT_CLIP.near, COURT_CLIP.far);
+      const halfH = Math.tan(fovY / 2) * dist / 8;          // half the viewport height in BG px (1 px = 8 units at the centre)
+      const shiftX = -(80 + p.scx - BG_CENTRE) / (halfH * aspect), shiftY = (72 + p.scy - BG_CENTRE) / halfH;
+      return { mvp: m4.mul(m4.mul(m4.translate(shiftX, shiftY, 0), proj), view), tilt };
+    }
+    const key = `${this.preset}:${aspect.toFixed(3)}:${yaw.toFixed(3)}:${pitch.toFixed(3)}`, fov = 0.7;
+    if (c.fitKey !== key) {                                 // fit the court corners, net and chair into 92% of the viewport
+      const pts = [[-760, 0, -1500], [760, 0, -1500], [-760, 0, 1500], [760, 0, 1500], [NET.x0, NET.height, 0], [NET.x1, NET.height, 0], [900, 300, 0]];
+      let lo = 400, hi = 30000;
+      for (let k = 0; k < 20; k++) {
+        const d = (lo + hi) / 2, mvp = m4.mul(m4.perspective(fov, aspect, COURT_CLIP.near, COURT_CLIP.far), m4.lookAt([dir[0] * d, dir[1] * d, dir[2] * d + pr.aim], [0, 0, pr.aim], [0, 1, 0]));
+        let fits = true;
+        for (const q of pts) { const v = m4.apply(mvp, [q[0], q[1], q[2], 1]); if (v[3] <= 0 || Math.abs(v[0] / v[3]) > 0.92 || Math.abs(v[1] / v[3]) > 0.92) { fits = false; break; } }
+        if (fits) hi = d; else lo = d;
+      }
+      c.fitKey = key; c.dist = hi;
+    }
+    const d = c.dist;
+    const view = m4.lookAt([dir[0] * d, dir[1] * d, dir[2] * d + pr.aim], [0, 0, pr.aim], [0, 1, 0]);
+    return { mvp: m4.mul(m4.perspective(fov, aspect, COURT_CLIP.near, COURT_CLIP.far), view), tilt };
+  }
+  // world: x = X, y = height (-Z), z = Y (near side positive, towards the default camera)
+  renderCourt() {
+    const gl = this.gl, cv = this.cv; this.mode = "3d"; if (this.debug) this.debug.length = 0;
     const h = this.bgHash(); if (h !== this.groundHash) { this.groundHash = h; this.buildGround(); }
-    const c = this.cam, aspect = cv.width / cv.height;
-    const eye = [c.dist * Math.sin(c.yaw) * Math.cos(c.pitch), c.dist * Math.sin(c.pitch), c.dist * Math.cos(c.yaw) * Math.cos(c.pitch)];
-    const view = m4.lookAt([eye[0], eye[1], eye[2] + c.targetY], [0, 0, c.targetY], [0, 1, 0]);
-    const mvp = m4.mul(m4.perspective(0.9, aspect, 20, 12000), view);
+    const { mvp, tilt } = this.courtCamera(cv.width / cv.height);
     // ground plane (lying flat: tilt -90deg around X so the quad's up axis becomes -Z, i.e. +Y world towards the camera)
     const gw = WORLD.x1 - WORLD.x0, gh = WORLD.y1 - WORLD.y0;
-    this.draw(this.groundTex, m4.trs(0, -0.5, WORLD.y1, gw, gh, -Math.PI / 2), mvp, [0, 1, 1, -1], [1, 1, 1, 1], 0);
-    // net
-    this.draw(this.netTex, m4.trs(0, 0, 0, 1180, 96, 0), mvp, [0, 0, 10, 1], [1, 1, 1, 1], 0.1);
-    // sprites: OAM entries grouped into objects (touching boxes), each object stands at the ground point of
-    // its bottom edge; the object around the ball's projected position is lifted to the ball's true height
-    const m = this.gb.mem, p = this.gb.ppu, oam = m.oam, tall = p.lcdc & 4, ball = this.ballWorld();
-    const bp = project(ball.X, ball.Y, ball.Z), bg = project(ball.X, ball.Y, 0);
-    const offX = 0x1010 - (p.scx << 5), offY = 0x1010 - (p.scy << 5);
-    const ballSx = (offX + bp.xp) / 32, ballSy = (offY + bp.pp) / 32, shadowSx = (offX + bg.xp) / 32, shadowSy = (offY + bg.pp) / 32;
-    const sprs = [];
-    for (let i = 0; i < 40; i++) {
-      const sy = oam[i * 4] - 16, sx = oam[i * 4 + 1] - 8; if (sy <= -16 || sy >= 144 || sx <= -8 || sx >= 160) continue;
-      let tile = oam[i * 4 + 2]; const attr = oam[i * 4 + 3], hgt = tall ? 16 : 8; if (tall) tile &= 0xFE;
-      sprs.push({ sx, sy, h: hgt, tile, attr, g: sprs.length });
+    this.draw(this.groundTex, m4.trs(0, -0.5, WORLD.y1, gw, gh, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
+    // upright cut-outs: net, chair, backdrop (cards, or voxels in voxel mode)
+    for (const c of this.cuts) {
+      if (this.voxelSprites) {
+        for (const k of (c.wide ? [-1, 0, 1] : [0])) this.drawMesh(c.mesh, m4.trs3(c.X + k * c.width, 0, c.Y, c.width / c.w, c.height / c.h, c.width / c.w * 1.2, 0), mvp);
+      } else if (c.wide) this.draw(c.tex, m4.trs(c.X, 0, c.Y, c.width * 3, c.height, 0, 0), mvp, [-1, 0, 3, 1], [1, 1, 1, 1], 0.5);
+      else this.draw(c.tex, m4.trs(c.X, 0, c.Y, c.width, c.height, 0, 0), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
     }
-    const find = i => { while (sprs[i].g !== i) i = sprs[i].g = sprs[sprs[i].g].g; return i; };
-    for (let i = 0; i < sprs.length; i++) for (let j = i + 1; j < sprs.length; j++) {
-      const a = sprs[i], b = sprs[j];
-      if (a.sx < b.sx + 10 && b.sx < a.sx + 10 && a.sy < b.sy + b.h + 2 && b.sy < a.sy + a.h + 2) sprs[find(j)].g = find(i);
+    const sprs = this.collectSprites(), ball = this.ballWorld(), players = this.players(), land = this.landing();
+    const [ballSx, ballSy] = this.screenOf(ball.X, ball.Y, ball.Z), [shSx, shSy] = this.screenOf(ball.X, ball.Y, 0), [laSx, laSy] = this.screenOf(land.X, land.Y, 0);
+    const SCALE = 7.5;
+    // players first: sprites whose bottom lies within a body-sized box above the projected feet (+2 px,
+    // measured); a player clipped at the top of the screen has its tiles pushed down to row 0, so the box
+    // reaches lower for feet above the screen
+    const feet = players.map(pl => { const [fx, fy] = this.screenOf(pl.X, pl.Y, pl.Z); return { pl, fx, fy: fy + 2, list: [] }; });
+    for (const sp of sprs) {
+      let best = null, d0 = 1e9;
+      for (const f of feet) {
+        const dx = sp.sx + 4 - f.fx, dy = f.fy - (sp.sy + sp.h), low = f.fy < 8 ? -28 : -6;
+        if (Math.abs(dx) > 28 || dy < low || dy > 44) continue;
+        const d = Math.abs(dx) + Math.abs(dy); if (d < d0) { d0 = d; best = f; }
+      }
+      if (best) { best.list.push(sp); sp.owner = best; }
     }
-    const groups = new Map();
-    for (const sp of sprs) { const r = find(sp.g); let g = groups.get(r); if (!g) groups.set(r, g = { list: [], x0: 999, x1: -999, y0: 999, y1: -999 }); g.list.push(sp); g.x0 = Math.min(g.x0, sp.sx); g.x1 = Math.max(g.x1, sp.sx + 8); g.y0 = Math.min(g.y0, sp.sy); g.y1 = Math.max(g.y1, sp.sy + sp.h); }
-    let ballGroup = null, shadowGroup = null, dBest = 20, dShadow = 10;
-    for (const g of groups.values()) for (const sp of g.list) {          // the group holding the sprite nearest the ball's projection
-      const db = Math.hypot(sp.sx + 4 - ballSx, sp.sy + sp.h / 2 - ballSy); if (db < dBest) { dBest = db; ballGroup = g; }
-    }
-    for (const g of groups.values()) {
-      if (g === ballGroup || ball.Z > -4) continue;
-      const cx = (g.x0 + g.x1) / 2, cy = (g.y0 + g.y1) / 2, ds = Math.hypot(cx - shadowSx, cy - shadowSy); if (ds < dShadow && g.list.length <= 2) { dShadow = ds; shadowGroup = g; }
-    }
-    const SCALE = 7.5, hud = [], TILT = 0.3, COS_T = Math.cos(TILT), SIN_T = Math.sin(TILT);
-    const blit = (sp, X, Yw, baseY, cx) => {           // one OAM sprite as 8x8 quads standing at (X, Yw), feet at screen row baseY
+    // the landing marker: sprites around the projected landing point, drawn flat on the court there
+    const markers = [];
+    if (Math.abs(land.X) < 1400 && Math.abs(land.Y) < 2600) for (const sp of sprs) { if (!sp.owner && Math.abs(sp.sx + 4 - laSx) <= 10 && Math.abs(sp.sy + sp.h / 2 - laSy) <= 10) { sp.owner = "marker"; markers.push(sp); } }
+    // the ball and its trail: sprites around the ball's projection; the shadow sprite: the one at the ground point
+    const ballGroup = [];
+    for (const sp of sprs) { if (sp.owner) continue; if (Math.hypot(sp.sx + 4 - ballSx, sp.sy + sp.h / 2 - ballSy) < 14) { sp.owner = "ball"; ballGroup.push(sp); } }
+    if (ball.Z < -4) { let best = null, d0 = 10; for (const sp of sprs) { if (sp.owner) continue; const d = Math.hypot(sp.sx + 4 - shSx, sp.sy + sp.h / 2 - shSy); if (d < d0) { d0 = d; best = sp; } } if (best) best.owner = "shadow"; }
+    for (const sp of markers) {                           // flat decal: tile rows lie along the court
+      const upp = 1024 / (project(land.X, land.Y, 0).s || 128), sc = SCALE * upp / 8;
       for (let half = 0; half < sp.h / 8; half++) {
         const t = this.spriteTexture(sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half), (sp.attr >> 3) & 1, sp.attr & 7, (sp.attr >> 5) & 1, (sp.attr >> 6) & 1);
-        const dx = (sp.sx + 4 - cx) * SCALE, bottom = (baseY - (sp.sy + (half + 1) * 8)) * SCALE;
-        this.draw(t, m4.trs(X + dx, bottom * COS_T, Yw - bottom * SIN_T, 8 * SCALE, 8 * SCALE, -TILT, 0), mvp);   // leaning back as one card
+        this.draw(t, m4.trs(land.X + (sp.sx + 4 - laSx) * sc, 0.8, land.Y + (sp.sy + (half + 1) * 8 - laSy) * sc * 2, 8 * sc, 8 * sc * 2, -Math.PI / 2), mvp);
       }
-    };
-    for (const g of groups.values()) {
-      if (g === shadowGroup) continue;
-      const cx = (g.x0 + g.x1) / 2, cy = g.y1;
-      if (g === ballGroup) {
-        const lift = -ball.Z * 1.0;
-        for (const sp of g.list) { for (let half = 0; half < sp.h / 8; half++) {
-          const t = this.spriteTexture(sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half), (sp.attr >> 3) & 1, sp.attr & 7, (sp.attr >> 5) & 1, (sp.attr >> 6) & 1);
-          const dx = (sp.sx + 4 - cx) * SCALE, dy = (cy - (sp.sy + (half + 1) * 8)) * SCALE;
-          this.draw(t, m4.trs(ball.X + dx, lift + dy * COS_T, ball.Y - dy * SIN_T, 8 * SCALE, 8 * SCALE, -TILT, 0), mvp);
-        } }
-        this.draw(this.shadowTex, m4.trs(ball.X, 0.5, ball.Y, 50, 32, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
-        continue;
-      }
-      const w = this.unproject(cx, cy);
-      const isHud = Math.abs(w.X) > 1150 || Math.abs(w.Y) > 2300 || cy < 10;
-      if (this.debug) this.debug.push({ cx, cy, n: g.list.length, X: Math.round(w.X), Y: Math.round(w.Y), hud: isHud });
-      if (isHud) { hud.push(...g.list); continue; }
-      const width = (g.x1 - g.x0) * SCALE;
-      this.draw(this.shadowTex, m4.trs(w.X, 0.6, w.Y + 4, width * 1.1, width * 0.55, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 0.75], 0);
-      for (const sp of g.list) blit(sp, w.X, w.Y, cy, cx);
     }
-    // HUD sprites in screen space (orthographic, 160x144)
+    for (const f of feet) {
+      if (!f.list.length) continue;
+      const pl = f.pl, upp = 1024 / (project(pl.X, pl.Y, 0).s || 128), scale = SCALE * upp / 8;   // world units per px at that depth
+      this.draw(this.shadowTex, m4.trs(pl.X, 0.6, pl.Y + 4, 150, 70, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 0.75], 0);
+      for (const sp of f.list) this.blitSprite(sp, f.fx, f.fy, pl.X, pl.Y, -pl.Z, scale, tilt, mvp);
+      if (this.debug) this.debug.push({ X: pl.X, Y: pl.Y, Z: pl.Z, n: f.list.length, tiles: f.list.map(s => `${s.sx},${s.sy},${s.tile}`) });
+    }
+    if (ballGroup.length) {                               // the ball's projection point is the anchor: its tiles keep their 2D offsets
+      for (const sp of ballGroup) this.blitSprite(sp, ballSx, ballSy, ball.X, ball.Y, -ball.Z, SCALE, tilt, mvp);
+      this.draw(this.shadowTex, m4.trs(ball.X, 0.5, ball.Y, 50, 32, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
+    }
+    // other sprites inside the picture (hit effects, markers) stand at their un-projected feet; sprites along
+    // the screen border (score strip, player faces) are HUD
+    const hud = [];
+    for (const sp of sprs) {
+      if (sp.owner) continue;
+      if (sp.sx >= 140 || sp.sx < 12 || sp.sy >= 126 || sp.sy < 2) { hud.push(sp); continue; }
+      const w = this.unproject(sp.sx + 4, sp.sy + sp.h);
+      if (Math.abs(w.X) > 1100 || Math.abs(w.Y) > 2200) { hud.push(sp); continue; }
+      this.blitSprite(sp, sp.sx + 4, sp.sy + sp.h, w.X, w.Y, 0, SCALE * w.upp / 8, tilt, mvp); sp.owner = "world";
+    }
+    if (this.debug) this.debug.push({ land, markers: markers.map(s => `${s.sx},${s.sy},${s.tile}`), ball: ballGroup.map(s => `${s.sx},${s.sy},${s.tile}`), hud: hud.map(s => `${s.sx},${s.sy},${s.tile}`) });
+    // HUD: screen space, each sprite anchored to the nearest screen edge so the strips stay at the edges of
+    // a wide or tall viewport
     gl.disable(gl.DEPTH_TEST);
-    const ortho = m4.ortho(0, 160, 144, 0, -1, 1);
-    for (const s of hud) for (let half = 0; half < s.h / 8; half++) {
-      const t = this.spriteTexture(s.tile + (s.attr & 0x40 ? (s.h / 8 - 1 - half) : half), (s.attr >> 3) & 1, s.attr & 7, (s.attr >> 5) & 1, (s.attr >> 6) & 1);
-      this.draw(t, m4.trs(s.sx + 4, s.sy + (half + 1) * 8, 0, 8, -8, 0), ortho);
+    const { ortho, l, r, t, b } = this.hudOrtho();
+    for (const s of hud) {
+      const x = s.sx + 4 < 80 ? l + s.sx + 4 : r - (160 - s.sx - 4), y0 = s.sy + s.h / 2 < 72 ? t + s.sy : b - (144 - s.sy);
+      for (let half = 0; half < s.h / 8; half++) {
+        const tex = this.spriteTexture(s.tile + (s.attr & 0x40 ? (s.h / 8 - 1 - half) : half), (s.attr >> 3) & 1, s.attr & 7, (s.attr >> 5) & 1, (s.attr >> 6) & 1);
+        this.draw(tex, m4.trs(x, y0 + (half + 1) * 8, 0, 8, -8, 0), ortho);
+      }
     }
   }
+  hudOrtho() {                                             // 160x144 screen space letterboxed into the canvas (+ its edges)
+    const a = this.cv.width / this.cv.height, g = 160 / 144;
+    if (a >= g) { const w = 144 * a, m = (w - 160) / 2; return { ortho: m4.ortho(-m, 160 + m, 144, 0, -1, 1), l: -m, r: 160 + m, t: 0, b: 144 }; }
+    const h = 160 / a, m = (h - 144) / 2; return { ortho: m4.ortho(0, 160, 144 + m, -m, -1, 1), l: 0, r: 160, t: -m, b: 144 + m };
+  }
+
   // ---- RPG areas: the whole 64x64 map as a floor, solid metatiles (collision grid) as extruded boxes ----
-  fieldScroll() { const w = this.gb.mem.wram[0]; return { x: w[0x321] * 8 + (w[0x320] >> 5), y: w[0x323] * 8 + (w[0x322] >> 5) }; }
-  composeMap() {                                      // WRAM3 tilemap + WRAM2 attributes (stride 64) -> 512x512 RGBA
+  composeField() {                                      // WRAM3 tilemap + WRAM2 attributes (stride 64) -> 512x512 RGBA
     const m = this.gb.mem, p = this.gb.ppu, tm = m.wram[3], at = m.wram[2], v0 = m.vram[0], v1 = m.vram[1], lcdc = p.lcdc;
     const img = new Uint8Array(512 * 512 * 4);
     for (let ty = 0; ty < 64; ty++) for (let tx = 0; tx < 64; tx++) {
@@ -276,7 +498,7 @@ export class Voxel3D {
   buildField() {
     const gl = this.gl, f = this.field, coll = this.gb.mem.wram[6];
     if (f.floorTex) gl.deleteTexture(f.floorTex);
-    f.floorTex = this.texture(512, 512, this.composeMap());
+    f.floorTex = this.texture(512, 512, this.composeField());
     // walls: one box (top + 4 sides) per solid 16x16 metatile, uv = the metatile's own texels; sides share them
     const H = 14, pos = [], uv = [];
     const quad = (a, b, c, d, u) => { for (const [v, t] of [[a, u[0]], [b, u[1]], [c, u[2]], [a, u[0]], [c, u[2]], [d, u[3]]]) { pos.push(...v); uv.push(...t); } };
@@ -301,17 +523,17 @@ export class Voxel3D {
     gl.bindVertexArray(this.vao);
   }
   renderField(frame2d) {
-    const gl = this.gl, cv = this.cv, m = this.gb.mem, p = this.gb.ppu, f = this.field, id = this.mapId();
-    if (this.mode !== "field") { this.cam.dist = 300; this.cam.targetY = 0; this.cam.pitch = 0.95; this.cam.minDist = 120; }
+    const gl = this.gl, cv = this.cv, m = this.gb.mem, p = this.gb.ppu, f = this.field, id = this.mapId(), c = this.cam;
     this.mode = "field";
     let ph = 0; for (let i = 0; i < 64; i += 3) ph = (ph * 31 + p.bgPal[i]) | 0;
     if (f.mapId !== id || f.palHash !== ph) { f.mapId = id; f.palHash = ph; this.buildField(); }
-    const sc = this.fieldScroll(), cx = sc.x + 80, cz = sc.y + 72, c = this.cam, aspect = cv.width / cv.height;
-    const eye = [cx + c.dist * Math.sin(c.yaw) * Math.cos(c.pitch), c.dist * Math.sin(c.pitch), cz + c.dist * Math.cos(c.yaw) * Math.cos(c.pitch)];
-    const mvp = m4.mul(m4.perspective(0.8, aspect, 4, 3000), m4.lookAt(eye, [cx, 0, cz], [0, 1, 0]));
+    const sc = this.fieldScroll(), cx = sc.x + 80, cz = sc.y + 72, aspect = cv.width / cv.height;
+    const yaw = this.freeCam ? c.yaw : 0, pitch = this.freeCam ? c.pitch : FIELD_CAM.pitch, dist = this.freeCam ? c.dist : FIELD_CAM.dist * Math.max(1, (160 / 144) / aspect);
+    const eye = [cx + dist * Math.sin(yaw) * Math.cos(pitch), dist * Math.sin(pitch), cz + dist * Math.cos(yaw) * Math.cos(pitch)];
+    const mvp = m4.mul(m4.perspective(FIELD_CAM.fov, aspect, FIELD_CAM.near, FIELD_CAM.far), m4.lookAt(eye, [cx, 0, cz], [0, 1, 0]));
     // floor (512x512 map px; +z = down the map)
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
-    this.draw(f.floorTex, m4.trs(256, -0.2, 512, 512, 512, -Math.PI / 2), mvp, [0, 1, 1, -1], [1, 1, 1, 1], 0);
+    this.draw(f.floorTex, m4.trs(256, -0.2, 512, 512, 512, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
     // walls
     if (f.walls && f.walls.count) {
       gl.useProgram(this.prog3); gl.bindVertexArray(f.walls.vao); gl.bindTexture(gl.TEXTURE_2D, f.floorTex);
@@ -319,58 +541,103 @@ export class Voxel3D {
       gl.drawArrays(gl.TRIANGLES, 0, f.walls.count);
       gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
     }
-    // actors: OAM sprites grouped into objects at map px (screen + scroll), 1 px = 1 unit, leaning back
-    const oam = m.oam, tall = p.lcdc & 4, sprs = [];
-    for (let i = 0; i < 40; i++) {
-      const sy = oam[i * 4] - 16, sx = oam[i * 4 + 1] - 8; if (sy <= -16 || sy >= 144 || sx <= -8 || sx >= 160) continue;
-      let tile = oam[i * 4 + 2]; const attr = oam[i * 4 + 3], h = tall ? 16 : 8; if (tall) tile &= 0xFE;
-      sprs.push({ sx, sy, h, tile, attr, g: sprs.length });
-    }
+    // actors: OAM sprites grouped into objects (touching boxes) at map px (screen + scroll), 1 px = 1 unit, leaning back
+    const sprs = this.collectSprites(); sprs.forEach((s, i) => s.g = i);
     const find = i => { while (sprs[i].g !== i) i = sprs[i].g = sprs[sprs[i].g].g; return i; };
     for (let i = 0; i < sprs.length; i++) for (let j = i + 1; j < sprs.length; j++) { const a = sprs[i], b = sprs[j]; if (a.sx < b.sx + 10 && b.sx < a.sx + 10 && a.sy < b.sy + b.h + 2 && b.sy < a.sy + a.h + 2) sprs[find(j)].g = find(i); }
     const groups = new Map();
     for (const sp of sprs) { const r = find(sp.g); let g = groups.get(r); if (!g) groups.set(r, g = { list: [], x0: 999, x1: -999, y1: -999 }); g.list.push(sp); g.x0 = Math.min(g.x0, sp.sx); g.x1 = Math.max(g.x1, sp.sx + 8); g.y1 = Math.max(g.y1, sp.sy + sp.h); }
-    const TILT = 0.3, COS_T = Math.cos(TILT), SIN_T = Math.sin(TILT);
+    const TILT = 0.3;
     for (const g of groups.values()) {
       const cx2 = (g.x0 + g.x1) / 2, X = cx2 + sc.x, Z = g.y1 + sc.y;
       this.draw(this.shadowTex, m4.trs(X, 0.3, Z + 1, (g.x1 - g.x0) * 1.1, 7, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 0.7], 0);
-      for (const sp of g.list) for (let half = 0; half < sp.h / 8; half++) {
-        const t = this.spriteTexture(sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half), (sp.attr >> 3) & 1, sp.attr & 7, (sp.attr >> 5) & 1, (sp.attr >> 6) & 1);
-        const dx = sp.sx + 4 - cx2, bottom = g.y1 - (sp.sy + (half + 1) * 8);
-        this.draw(t, m4.trs(X + dx, bottom * COS_T, Z - bottom * SIN_T, 8, 8, -TILT, 0), mvp);
-      }
+      for (const sp of g.list) this.blitSprite(sp, cx2, g.y1, X, Z, 0, 1, TILT, mvp);
     }
     // the window layer (dialogue boxes, menus) as a screen-space overlay from the 2D frame
     if ((p.lcdc & 0x20) && p.wy < 144) {
       if (!this.frameTex) this.frameTex = this.texture(160, 144, null);
       gl.bindTexture(gl.TEXTURE_2D, this.frameTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 160, 144, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(frame2d.buffer));
       gl.disable(gl.DEPTH_TEST);
-      const ortho = m4.ortho(0, 160, 144, 0, -1, 1), wy = p.wy, wx = Math.max(0, p.wx - 7);
+      const { ortho } = this.hudOrtho(), wy = p.wy, wx = Math.max(0, p.wx - 7);
       this.draw(this.frameTex, m4.trs(wx + (160 - wx) / 2, 144, 0, 160 - wx, -(144 - wy), 0), ortho, [wx / 160, wy / 144, (160 - wx) / 160, (144 - wy) / 144], [1, 1, 1, 1], 0);
     }
   }
-  drawFlatFrame(frame) {                            // non-court scenes: the 2D frame as a textured quad filling the canvas
+
+  // ---- menus, title, mini-games: BG / window / sprite layers at different depths with a parallax camera ----
+  renderLayers() {
+    const gl = this.gl, cv = this.cv, p = this.gb.ppu, L = this.layer; this.mode = "layers";
+    const bgBase = p.lcdc & 0x08 ? 0x1C00 : 0x1800, winBase = p.lcdc & 0x40 ? 0x1C00 : 0x1800, winOn = (p.lcdc & 0x20) && p.wy < 144 && p.wx < 167;
+    const hb = this.mapHash(bgBase, true); if (hb !== L.hash) { L.hash = hb; if (L.bg) gl.deleteTexture(L.bg); L.bg = this.texture(256, 256, this.composeMap(bgBase), false, true); }
+    if (winOn) { const hw = this.mapHash(winBase, true); if (hw !== L.whash) { L.whash = hw; if (L.win) gl.deleteTexture(L.win); L.win = this.texture(256, 256, this.composeMap(winBase)); } }
+    // camera: looks at the centre of the 160x144 screen plane from D away; the eye sways (time + pointer + gyro)
+    const t = (performance.now() - this.t0) / 1000, px = this.parallax, D = 520, aspect = cv.width / cv.height;
+    const ex = 80 + 14 * Math.sin(t * 0.6) + px.px * 40 + px.gx * 50, ey = 72 + 9 * Math.sin(t * 0.83 + 1) + px.py * 30 + px.gy * 40;
+    const fovY = aspect >= 160 / 144 ? 2 * Math.atan(72 / D) : 2 * Math.atan(80 / aspect / D);
+    // screen space (y down) -> world: y is negated by the flip matrix; depth z grows towards the camera
+    const flip = new Float32Array([1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+    const view = m4.lookAt([ex, -ey, D], [80, -72, 0], [0, 1, 0]);
+    const mvp = m4.mul(m4.mul(m4.perspective(fovY, aspect, 10, 4000), view), flip);
+    gl.enable(gl.DEPTH_TEST);
+    // BG: the visible 160x144 at full brightness; a dimmed, enlarged copy far behind it fills the rest of the viewport
+    const sx = p.scx, sy = p.scy, uv = [sx / 256, sy / 256, 160 / 256, 144 / 256];
+    this.draw(L.bg, m4.trs(80, 72 + 144 * 1.3, -260, 160 * 2.6, -144 * 2.6, 0), mvp, uv, [0.3, 0.3, 0.36, 1], 0);
+    this.draw(L.bg, m4.trs(80, 144, 0, 160, -144, 0), mvp, uv, [1, 1, 1, 1], 0);
+    if (winOn && L.win) {
+      const wx = Math.max(0, p.wx - 7), wy = p.wy, w = 160 - wx, h = 144 - wy;
+      this.draw(this.shadowTex, m4.trs(wx + w / 2 + 3, 144 + 3, 1, w, -h, 0), mvp, [0, 0, 1, 1], [1, 1, 1, 0.6], 0);
+      this.draw(L.win, m4.trs(wx + w / 2, 144, 12, w, -h, 0), mvp, [0, 0, w / 256, h / 256], [1, 1, 1, 1], 0);
+    }
+    // sprites: cards (or voxels) floating in front, each with a soft drop shadow on the layer below
+    const sprs = this.collectSprites();
+    for (const s of sprs) {
+      const bottom = s.sy + s.h, z = s.attr & 0x80 ? 6 : 26;          // OBJ-to-BG priority sprites sit between the layers
+      this.draw(this.shadowTex, m4.trs(s.sx + 4 + 3, bottom + 3, z - 5, 8, -s.h, 0), mvp, [0, 0, 1, 1], [1, 1, 1, 0.45], 0);
+      for (let half = 0; half < s.h / 8; half++) {
+        const tile = s.tile + (s.attr & 0x40 ? (s.h / 8 - 1 - half) : half), bank = (s.attr >> 3) & 1, pal = s.attr & 7, fx = (s.attr >> 5) & 1, fy = (s.attr >> 6) & 1;
+        if (this.voxelSprites) this.drawMesh(this.voxelMesh(tile, bank, pal, fx, fy), m4.trs3(s.sx + 4, s.sy + (half + 1) * 8, z, 1, -1, 2, 0), mvp);
+        else this.draw(this.spriteTexture(tile, bank, pal, fx, fy), m4.trs(s.sx + 4, s.sy + (half + 1) * 8, z, 8, -8, 0), mvp);
+      }
+    }
+  }
+  drawFlatFrame(frame) {                            // the plain 2D frame as a textured quad filling the canvas
     const gl = this.gl;
     if (!this.frameTex) this.frameTex = this.texture(160, 144, null);
     gl.bindTexture(gl.TEXTURE_2D, this.frameTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 160, 144, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(frame.buffer));
     gl.disable(gl.DEPTH_TEST);
-    this.draw(this.frameTex, m4.trs(0, -1, 0, 2, 2, 0), m4.identity(), [0, 1, 1, -1], [1, 1, 1, 1], 0);
+    this.draw(this.frameTex, m4.trs(0, -1, 0, 2, 2, 0), m4.identity(), [0, 0, 1, 1], [1, 1, 1, 1], 0);
   }
-  bindCameraControls() {                           // one finger / mouse: orbit; two fingers: pinch zoom; wheel: zoom
-    const cv = this.cv, c = this.cam, pts = new Map(); let drag = null, pinch = null;
+  // pointer position drives the menu parallax; the device's tilt (relative to how it is held) too.
+  // With freeCam (?freecam): one finger / mouse orbits the court or field camera, two fingers pinch, wheel zooms.
+  bindControls() {
+    const cv = this.cv, c = this.cam, px = this.parallax, pts = new Map(); let drag = null, pinch = null;
     const dist = () => { const [a, b] = [...pts.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+    const rebase = () => {
+      if (pts.size === 1) { const [p] = pts.values(); drag = { x: p.x, y: p.y, yaw: c.yaw, pitch: c.pitch }; pinch = null; }
+      else if (pts.size === 2) { drag = null; pinch = { d: Math.max(10, dist()), dist: c.dist }; }
+      else { drag = null; pinch = null; }
+    };
+    const setParallax = e => { const r = cv.getBoundingClientRect(); if (!r.width || !r.height) return; px.px = Math.max(-1, Math.min(1, (e.clientX - r.left) / r.width * 2 - 1)); px.py = Math.max(-1, Math.min(1, (e.clientY - r.top) / r.height * 2 - 1)); };
     cv.addEventListener("pointerdown", e => {
-      pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); cv.setPointerCapture(e.pointerId);
-      if (pts.size === 1) drag = { x: e.clientX, y: e.clientY, yaw: c.yaw, pitch: c.pitch };
-      else if (pts.size === 2) { drag = null; pinch = { d: dist(), dist: c.dist }; }
+      setParallax(e); if (!this.freeCam) return;
+      try { cv.setPointerCapture(e.pointerId); } catch (err) { return; }
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); rebase();
     });
     cv.addEventListener("pointermove", e => {
-      if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pinch && pts.size === 2) { c.dist = Math.max(c.minDist || 120, Math.min(8000, pinch.dist * pinch.d / Math.max(10, dist()))); return; }
+      if (e.pointerType === "mouse" || pts.has(e.pointerId)) setParallax(e);
+      if (!this.freeCam || !pts.has(e.pointerId)) return; pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch && pts.size === 2) { c.dist = Math.max(200, Math.min(30000, pinch.dist * pinch.d / Math.max(10, dist()))); return; }
       if (!drag) return; c.yaw = drag.yaw + (e.clientX - drag.x) * 0.006; c.pitch = Math.max(0.15, Math.min(1.5, drag.pitch + (e.clientY - drag.y) * 0.006));
     });
-    const up = e => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; if (pts.size === 0) drag = null; };
-    cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
-    cv.addEventListener("wheel", e => { e.preventDefault(); c.dist = Math.max(c.minDist || 120, Math.min(8000, c.dist * (e.deltaY > 0 ? 1.1 : 0.9))); }, { passive: false });
+    const up = e => { pts.delete(e.pointerId); rebase(); };
+    cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up); cv.addEventListener("lostpointercapture", up);
+    cv.addEventListener("wheel", e => { if (!this.freeCam) return; e.preventDefault(); c.dist = Math.max(200, Math.min(30000, c.dist * (e.deltaY > 0 ? 1.1 : 0.9))); }, { passive: false });
+    if (typeof window !== "undefined" && "DeviceOrientationEvent" in window) {
+      window.addEventListener("deviceorientation", e => {
+        if (e.gamma == null || e.beta == null) return;
+        if (!px.gbase) px.gbase = { g: e.gamma, b: e.beta };
+        px.gbase.g += (e.gamma - px.gbase.g) * 0.01; px.gbase.b += (e.beta - px.gbase.b) * 0.01;   // the resting pose drifts to neutral
+        px.gx = Math.max(-1, Math.min(1, (e.gamma - px.gbase.g) / 25)); px.gy = Math.max(-1, Math.min(1, (e.beta - px.gbase.b) / 25));
+      });
+    }
   }
 }

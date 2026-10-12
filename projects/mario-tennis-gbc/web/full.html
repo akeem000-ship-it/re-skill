@@ -10,7 +10,7 @@
   #hud .k { background:#2c3140; border:1px solid #555; border-radius:6px; color:#fff; padding:4px 10px; cursor:pointer; user-select:none; }
   #hud .k.on { background:var(--acc); }
   #gl { width: 480px; max-width: 100%; aspect-ratio: 160/144; background:#000; display:block; touch-action:none; }
-  body.touch #gl { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(100vw, calc(100dvh * 160 / 144)); max-width: none; height: auto; }
+  body.touch #gl { position: fixed; inset: 0; transform: none; width: 100vw; height: 100dvh; max-width: none; aspect-ratio: auto; }   /* the 3D view fills the screen, whatever its shape */
   a { color:#8ab4f8; }
 </style>
 </head>
@@ -25,7 +25,7 @@
   <div id="setup" class="panel" hidden></div>
   <div id="hud" class="panel" hidden>
     <span id="romstatus" class="note"></span> <span id="fps" class="note"></span> <span id="savestatus" class="note"></span>
-    <span class="k" id="turbo" title="hold Space on a keyboard">Turbo</span> <span class="k" id="reset">Reset</span> <span class="k" id="view3d" title="3D diorama view of the match (drag to orbit, wheel to zoom)">3D</span>
+    <span class="k" id="turbo" title="hold Space on a keyboard">Turbo</span> <span class="k" id="reset">Reset</span> <span class="k" id="view3d" title="3D diorama view: tap for cards, again for voxels, again for off">3D</span> <span class="k" id="cam" title="court camera preset" hidden>CAM</span>
   </div>
   <canvas id="screen" width="160" height="144" tabindex="0"></canvas>
   <canvas id="gl" width="640" height="576" hidden></canvas>
