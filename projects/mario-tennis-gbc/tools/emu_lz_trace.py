@@ -17,7 +17,7 @@ log = []
 def hit(em):
     r = em.regs(); sp = r["SP"]
     log.append((em.pb.frame_count, em.rom_bank(), r["HL"], r["D"] << 8 | r["E"],
-                em.mem[sp] | em.mem[sp + 1] << 8, em.mem[0xFF96]))
+                " ".join("%04x" % (em.mem[sp + i] | em.mem[sp + i + 1] << 8) for i in range(0, 16, 2)), em.mem[0xFF96]))
 e.hook(0x00, 0x1797, hit)
 for f in range(N):
     if f in keys: e.pb.button_press(keys[f])
@@ -26,5 +26,5 @@ for f in range(N):
 e.stop()
 for fr, b, src, dst, ret, wb in log:
     if only is None or b == only:
-        print("frame %6d  src %02x:%04x  dst %04x (wram %d)  ret %04x" % (fr, b, src, dst, wb, ret))
+        print("frame %6d  src %02x:%04x  dst %04x (wram %d)  stack %s" % (fr, b, src, dst, wb, ret))
 print(len(log), "decompressions")

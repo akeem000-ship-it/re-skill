@@ -855,6 +855,13 @@ Who shows which screen (`ld c, id ; rst $18 ; db $00, $39`): `$0C` Exhibition di
 `1B:744B`, `$15` logos `6B:51B3`, `$16-$1E` intro `6B:423F…488A`, `$1F` title `6B:75E0`, `$28` ending
 `6D:6A8E`, `$01` VS screen `38:4FC9`.
 
+**Menu icons** (traced with `tools/emu_lz_trace.py` from the title into the main menu): the main menu
+`3B:55D1` decompresses its six big icons from bank-table refs `3B:57E0` (`3C:12`, `3C:14`, … `3C:1C`)
+and copies each to VRAM1 `$A800 + $100·i` (dest table `3B:57EC`) in `3B:56D0`. Smaller icon tiles go
+through the generic loader **`LoadIconTiles 39:468B`** (export `39:$10`; B = icon id → bank-table
+ref in `39:46B7`, decompressed to WRAM1 `$D000`, then `CopyToVRAM` DE/C) — e.g. the `3C:1B-22`, `3D:3E`
+sets loaded right after the menu screen.
+
 ### Save data (SRAM) — partial
 
 Battery SRAM, 4 × 8 KB banks; enabled with `$0A → $0000` and disabled after each access.
@@ -1086,7 +1093,7 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph4: build web/catalog.html asset browser (maps, LZ sheets with palette recolor, palettes, searchable text)
 - [x] Ph4: 64-byte LZ blocks = palette keyframes (fades), loaded in BG/OBJ pairs every 6 frames
 - [x] Ph4: render the title screen and full-screen layouts (LoadScreen 39:407E, 47 screens)
-- [ ] Ph4: menus with icons (main menu, play menu) are drawn by other code; find their loader
+- [x] Ph4: menu icon loaders: 3B:56D0 (main menu icons from 3B:57E0) and LoadIconTiles 39:468B
 
 ### Web Port Fixes
 

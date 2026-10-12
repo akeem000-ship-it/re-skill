@@ -529,3 +529,7 @@ bank,addr,name,comment
 *,C9B2,wPendingExpPartner,
 0,23DD,ClockTick,60/60/60/99 counter at wC0F0
 1A,44D8,ShowExpAward,EXP screen: DE = amount, L = player/partner
+3B,56D0,LoadMainMenuIcon,icon i: ref 3B:57E0 -> D000 -> VRAM1 A800+$100*i
+3B,57E0,MainMenuIconRefs,6 bank-table refs (3C:12..1C)
+39,468B,LoadIconTiles,B = icon id: ref table 39:46B7 -> D000 -> VRAM DE, C tiles
+39,46B7,IconRefTable,
