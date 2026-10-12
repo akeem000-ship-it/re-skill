@@ -906,6 +906,22 @@ counters, `wC900` player name, `wC940` second name, `wCA0B/CA8B` rosters, …).
 | +$38-$3B | tour **training values** T0-T3 |
 | +$3C | `wC93C`: nonzero → stats need a rebuild (`02:47C6`) |
 
+**Other save-image fields** (`$C800-$CAFF`, from their readers/writers):
+
+| Address | Content |
+|---------|---------|
+| `wC880-C883` | random 4-byte **file ID** (`02:4380`), regenerated until it differs from the other two slots (`02:42D6`) |
+| `wC884` | file flag (`02:424D`) |
+| `wC88E-C891` | **play time** frames, seconds, minutes, hours (≤ 99): copied from the clock `wC0F0` that `00:23DD` ticks, under `di` (`00:2452/246D`); shown by `3B:5B20` |
+| `wC8B1/C8B3` | EXP pools summed with `wC9B0/C9B2` on the EXP transfer screen (`1E:6AFD`) |
+| `wC8B5-C8B8` | four progress counters read by area code (`10:579D`) |
+| `wC8B9` | progress/chapter value read by `16:5C17`, `1E:498F` |
+| `wC8BB+` | random bytes filled by `02:434E` |
+| `wC8C0-C8D4` | match statistics counters (see ScoreUpdate) |
+| `wC8E0-C8F8` | score and match configuration |
+| `wC9B0/C9B2` | **pending EXP** for the tour player / partner; handed out by `1B:6399` through the EXP screen `1A:44D8` (`AddTourExp`) and then cleared |
+| `wC9C0-CABF` | event flags |
+
 **Mario Tour stat growth — VERIFIED** (tool: `tools/tour_stats.py`; `RebuildStats 02:44E9`). Each play style
 has a 113-byte template (`02:47F2` → `47FA/486B/48DC/494D`): a 13-byte header copied into the record and
 11 rows of 9 signed thresholds. `stat = number of leading thresholds < B`, with
@@ -1045,7 +1061,8 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph5: decode SRAM save container (signature, checksum, bank-1 backup, persistent flags)
 - [x] Ph5: save payload $A060-$A76F = block directory (113 blocks), slots, backups (dump_save_layout.py)
 - [x] Ph5: player record layout (64 B) in the $C800 save image
-- [ ] Ph5: remaining save-image fields ($C880-$C8DF, $C9xx between flags) and blocks 6-26 / 54-87; EXP awards per match/mini-game
+- [x] Ph5: save-image fields (file ID, play time, EXP pools, progress counters)
+- [ ] Ph5: where match/mini-game EXP amounts are computed (they arrive in wC9B0/C9B2); contents of SRAM blocks 6-26 / 54-87
 - [x] Ph5: character roster + type table (38:58FB)
 - [x] Ph5: find the character stat table (02:52CE, verified by WRAM diff in PyBoy)
 - [x] Ph5: verify stat label order (PyBoy: Create Character stat screen, poke + hook 1C:430E)

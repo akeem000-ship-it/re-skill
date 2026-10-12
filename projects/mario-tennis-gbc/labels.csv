@@ -522,3 +522,10 @@ bank,addr,name,comment
 *,C8F3,wPlayerCount,2 singles / 4 doubles
 *,C8F7,wMiniGameId,
 *,C8F8,wMatchMusic,
+*,C880,wFileId,random 4-byte id, unique per slot
+*,C88E,wPlayTime,frames, seconds, minutes, hours (<= 99)
+*,C0F0,wClock,frames/sec/min/hours ticked by 00:23DD
+*,C9B0,wPendingExpPlayer,
+*,C9B2,wPendingExpPartner,
+0,23DD,ClockTick,60/60/60/99 counter at wC0F0
+1A,44D8,ShowExpAward,EXP screen: DE = amount, L = player/partner
