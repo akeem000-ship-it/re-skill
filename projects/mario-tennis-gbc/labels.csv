@@ -472,3 +472,14 @@ bank,addr,name,comment
 0B,47B4,MiniGameTable,18 handler pointers
 0D,407F,RunMiniGameHi,mini-games >= $12
 06,49F4,DrawPointDigits,score panel digits from wC8E4/5
+08,69EA,SetAnimation,D = animation id: wDF2A/wDF2C = [wDF28 + 2*id]
+08,7791,AnimTick,step the animation script (frame/duration, $FF loop, $FE chain, $FB flip)
+08,7621,UploadAnimFrame,frame = wDF33*5 + view[wDF32] -> UploadSpriteFrame
+08,7643,ViewByOctant,[2,3,4,3,2,1,0,1]
+*,DF2A,wAnimStart,
+*,DF2C,wAnimPtr,
+*,DF2E,wAnimId,
+*,DF2F,wAnimTimer,
+*,DF32,wFacingOctant,
+*,DF33,wAnimFrameGroup,
+*,DF37,wOAMAttr,

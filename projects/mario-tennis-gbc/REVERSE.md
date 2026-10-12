@@ -371,13 +371,22 @@ MainLoop also contains an unreachable **debug menu** (`01:40EC`): Start → game
 | +0 | `06` | → wDF37/wDF3A (varies 3-7 per character; OBJ palette? TBD) |
 | +2 | `03 00` | TBD (`04 02` in banks 6F-71) |
 | +4 | `$400E` | frame tile-data pointer list → `wSprFramePtrs $DF24` |
-| +6 | `$7F24` | animation scripts → `wSprAnimPtrs $DF28`; `(frame, duration)` pairs, `$FF/$FB/$FD` control |
+| +6 | `$7F24` | animation table → `wSprAnimPtrs $DF28` (word per animation id; see below) |
 | +A | `$7CE0` | per-frame info, 4 B: `dy, dx, flag, ntiles` → `wSprFrameInfo $DF38` |
 
 `00:2E6B UploadSpriteFrame` copies `ntiles × 16` bytes of the current frame to VRAM (when `flag`
 ≠ 0, a second chunk at frame+$100 follows). Frames are drawn as **8×16 OBJs, column-major**
 (`00:2C2B` 24×32 / `00:2CED` 32×32): tile *t* → column *t÷4*, row *t mod 4*. Typical frame:
 `fc f1 00 0c` = 12 tiles = 24×32 px, offset (-4, -15). Frames are stored 240 B apart.
+
+**Animations — VERIFIED** (tool: `tools/dump_anims.py BANK`). `SetAnimation 08:69EA (D = id)` loads
+`[table + 2·id]` into `wDF2A` (start) / `wDF2C` (pointer); `AnimTick 08:7791` reads 2-byte entries:
+`[frame, duration]` (frame < `$F0`, sets `wDF33`/`wDF2F`), `[$FF, n]` restart at start + n,
+`[$FE, id]` switch to animation id, `[$FB, m]` OAM attribute `wDF37` ^= m (horizontal flip),
+any other `$Fx` holds the frame. Bank 40 has 19 animations over 29 frame groups.
+**Frame number = group × 5 + view** (`08:7621`): the view comes from the 8-way facing octant
+`wDF32 = ((heading + $10) >> 5) & 7` through `08:7643 [2,3,4,3,2,1,0,1]` (0 = back … 4 = front; the
+mirrored octants reuse a view), so the 145 frames are 29 groups × 5 views.
 
 * Ids 0-29 → banks 40-5D, 145 frames each: back/front/side walks, forehand/backhand, lob,
   dive, smash, idle and victory poses (char 0 verified frame by frame).
@@ -890,7 +899,8 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph4: find the OAM builder and decode sprite frame placement, render all frames (tools/render_sprites.py)
 - [x] Ph4: map sprite id → character (RosterToSprite 07:5A50, verified live); header +0 = colour scheme (+2 still TBD)
 - [x] Ph4: find OBJ palettes for characters and render sprites in color (18:4300)
-- [ ] Ph4: decode the animation script format at header +6 (`$FF/$FB/$FD` opcodes)
+- [x] Ph4: animation script format at header +6, frame = group×5 + view (dump_anims.py)
+- [ ] Ph7: drive the web port's player sprites from the real animation tables (needs the anim id per player state)
 - [x] Ph4: RPG actor bytecode interpreter 04:447D — all 22 opcodes, actor layout, tools/dump_script.py
 - [x] Ph4: enumerate actor spawns and events per area (dump_scenes.py)
 - [ ] Ph4: dump every actor script reachable from the spawn lists with dump_script.py
