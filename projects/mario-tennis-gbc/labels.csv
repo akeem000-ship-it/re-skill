@@ -317,14 +317,14 @@ bank,addr,name,comment
 *,CA9E,wP2CpuPlaceProb,record +16: smart-placement probability /256
 *,CA9F,wP2CpuProfile,record +17: 0-3 shot/serve profile
 *,DF0A,wPlPosCode,court position: bit1 end (0 near), bit0^bit1 = ad court
-*,DF12,wPlThinkTimer,
+*,DF12,wPlThinkTimer,CPU think countdown
 *,DF1E,wPlState,0 human 1 CPU
 *,DF1F,wPlVirtualPad,hi nibble dpad, lo nibble buttons (human and CPU)
 *,DF46,wPlTargetX,
 *,DF48,wPlTargetY,
 *,DF50,wPlBallFlags,bit4 = ball deep (|Y| >= 672)
 *,DF58,wPlShotCode,hi nibble = button mask (1 A 2 B 3 A+B) lo nibble = variant
-*,DF59,wPlPosError,copy of CPU positioning error
+*,DF59,wPlSwingDelay,frames to wait before pressing (copy of wDF7B)
 *,DF79,wPlCpuDeepDelay,
 *,DF7A,wPlCpuShortDelay,
 *,DF7B,wPlCpuPosError,
@@ -707,3 +707,23 @@ bank,addr,name,comment
 *,C4C9,wCamFollowBall,1 while the serve is in flight
 *,DD1E,wBallProjX,ball X' (1/32 px)
 *,DD20,wBallProjY,ball P'
+08,7D23,CpuPlanByMode,wDF7F: 0 landing+192 along heading; 1 net: lob->796D else depth 512 / baseline: lob->796D else landing+192; 2 lob->796D else own Y
+08,7992,CpuTargetAfterBounce,target = landing + 192 along the ball heading
+08,796D,CpuTargetBeforeBounce,target = landing - 352 along heading; |X|<256 -> depth 256
+08,799E,CpuInterceptDepth512,
+08,79C2,CpuInterceptOwnY,
+08,79D9,CpuLobIncoming,1 when shot type 10/11 or weak hit wC4C6
+08,7D73,CpuMoveState,move while wDF5A; arrived/contact -> wDF59 = wDF7B
+08,7DAD,CpuSwingDelay,wait wDF59 frames unless ball in reach then choose+press
+08,7DCB,CpuAfterPress,variant press after 5 frames; steer; aim when ball in zone
+08,7CAE,CpuRecoverTarget,X = landingX/4; depth 1120 / own Y / 384 by mode
+08,7908,CpuSteerToTarget,d-pad from angle (0A54) via table 7296
+08,78BE,CpuArrived,1 when within 24 on both axes
+08,7A02,CpuServeStance,X from wC7B6 or random 7A3D entry
+08,7A3D,CpuServeXTable,32 32 128 224 320 384 384 384
+08,7296,AngleToDpad,16 entries by angle high nibble
+*,DF7F,wPlCpuMode,record byte +1: 0 Yoshi/Bowser 1 default 2 Waluigi (net rush)
+*,DF1A,wPlSubState,
+*,DF18,wPlMainState,0 idle 1 receiving 2 recovering 3 serving
+*,DF5A,wPlSwingReady,1 while in swing phase 1 (ball incoming)
+*,DF13,wPlPressTimer,5-frame double-press timer for the CPU

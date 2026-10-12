@@ -779,7 +779,7 @@ CPU parameters live in the character record (bytes +10..+17) and are copied to t
 the CPU-difficulty menu overwrites them from `DifficultyTable 38:5FFB` (found by diffing WRAM
 after choosing Easy vs Intense):
 
-| Difficulty | deep-ball delay `DF79` | short-ball delay `DF7A` | positioning error `DF7B` | smart placement `DF7C` | profile `DF7D` | level |
+| Difficulty | net delay `DF79` | baseline delay `DF7A` | swing delay `DF7B` | smart placement `DF7C` | profile `DF7D` | level |
 |---|---|---|---|---|---|---|
 | Easy | 28 | 24 | 12 | 60/256 (23%) | 0 | 1 |
 | Normal | 18 | 15 | 9 | 120/256 (47%) | 1 | 3 |
@@ -789,21 +789,37 @@ after choosing Easy vs Intense):
 Student characters carry their own values (Alex 18/12/10/200, level 1; the Mushroom Kingdom cast
 32/28/14/60, level 5).
 
-Decision steps (all use the RNG `08:43F6`):
-* **Reaction** (`08:7D0A`, `08:7E84`): `DF12 = delay + rand(0..3)` frames, deep delay when the ball
-  is beyond the service line (`DF50` bit 4), short delay otherwise. `DF59 = DF7B` is the positioning error.
-* **Intercept** (`08:7C86` via `BallCrossingAt 08:7C57`): the X where the ball's heading line crosses a
-  chosen depth — `$0180` (384, net rush), `$0200` (512) or `$0460` (1120, baseline) — becomes the
-  target `DF46/DF48` (`08:7C70`). Sub-states (`DF1A`, `DF7F`) sequence wait → run → swing.
-* **Shot choice** (`08:7B7B`): lob/drop (`$30` = A+B) when flagged (`wC4DA`) or when the opponent is
-  inside Y < 320 (net), but only if the profile allows it (`02:5EE2` membership test); otherwise a
-  random pick from the profile's 16-entry table `02:5E23`: profile 0 = 7×A, 7×B, 2×A+B; profile 3 =
-  mostly `$11`/`$22` variants and lobs. `DF58` high nibble = button mask, low nibble = variant.
-* **Aim** (`08:7AEB`, `08:7B13`): a random left/right press, replaced with probability `DF7C`/256 by a
-  press *away from the opponent's X*; `08:7C10` then presses the shot buttons.
-* **Serve** (`08:7A64`): first serves wait 50 frames, or 35 ("quick serve") with probability 0/8, 3/8,
-  6/8, 8/8 by profile (`08:7A9D`); second serves always 50.
-* Controller byte `DF0A`: 0 human, 1 CPU, 9 none; bit 1 = far side (negates target depths, `08:7C33`).
+**State machine — VERIFIED from code.** `PlayerCpuThink 08:7863`: the think timer `wDF12` counts
+down, then the handler for the main state `wDF18` (`SetMainState 08:6A1C`: 0 idle, 1 receiving, 2
+recovering after own shot, 3 serving; sub-state `wDF1A` advances with `PlayerSubStateNext 08:7968`)
+runs. The **plan mode** `wDF7F` is character record byte +1 (0 Yoshi/Bowser, 1 everyone else, 2
+Waluigi; created characters 1). Targets are set with `CpuSetTarget 08:7C70` (`wDF46/48`, Y negated for
+the far side) and reached by pressing the d-pad towards them (`08:7908`, angle → pad table `08:7296`);
+`08:78BE` = arrived within 24 units on both axes.
+
+* **Receiving** (`wDF18` = 1, `08:7CFA`): sub-state 0 → `08:7D0A` timer = (`wDF50` bit4 ? `wDF79` :
+  `wDF7A`) + RNG&3 — `wDF79` is the delay **at the net** (inside the service line), `wDF7A` at the
+  baseline. 1 → plan (`08:7D23` by mode): mode 0 → `08:7992` target = landing point + 192 along the ball
+  heading (`BallCrossingAt 08:7C57` = `wC450/52` + d·(cos, sin)); mode 1 → at the net: lob/drop incoming
+  (shot type 10/11 or a weak hit `wC4C6`, `08:79D9`) ? `08:796D` (352 before the bounce; if that X is within
+  ±256 stand at depth 256) : intercept where the line crosses depth 512 (`08:799E`); at the baseline:
+  lob ? `796D` : landing + 192; mode 2 → lob ? `796D` : intercept at the player's own Y (`08:79C2`).
+  2 → `08:7D73`: move (once the player's own swing-ready phase `wDF5A` is up); on the frame the ball
+  crosses the net (`wC4B4` ∧ `wC4BF`, `BallNetCheck 08:5814`) the target becomes the intercept at depth
+  512 (`08:7D93`) — this is why CPUs take most balls from inside the service line; arrived or ball in
+  reach → `wDF59` = `wDF7B` and 3 → `08:7DAD`: **swing delay** — wait `wDF59` frames unless the ball is
+  already in reach (`wDF7B` is a hesitation, 12/9/5/0 frames by difficulty, not a positioning error),
+  then `CpuShotChoose 08:7B7B` (A+B when flagged `wC4DA` and the profile table `02:5E23` holds `$30`;
+  else RNG bit → profile pick, or with the ball ≥ 320 away and `$12` allowed, a drop shot when the
+  opponent is deep) + `CpuPressButtons 08:7C10`, `wDF13` = 5; 4 → `08:7DCB`: after 5 frames
+  press the variant nibble (`08:7C21`, the double press), keep steering towards the ball (`08:7944`),
+  and when the ball enters the swing zone (`wDF50` bit1) aim with `CpuAimSmart 08:7B13`; 5 → idle.
+* **Recovering** (`wDF18` = 2, `08:7CAE` by mode): X = own landing X / 4; depth 1120 (modes 0, 5), own
+  |Y| (mode 1), 384 = net rush (modes 2, 3, 4, 6, 7); then move until arrived.
+* **Serving** (`wDF18` = 3, `08:79F2`): stance X = `wC7B6` or a random entry of `08:7A3D`
+  [32, 32, 128, 224, 320, 384, 384, 384] (mirrored by court), walk there, 25 frames, press A (toss),
+  `CpuServeDelay 08:7A64` 35/50 frames, random shot code `08:7B62`, press.
+* Doubles use the parallel tables `08:7DF2/7E52` (partner at depth 384, X = 0.75·landing X).
 
 ### Sound driver — partial (bank 0 `3129-3Dxx`, data banks 78-7F; tool: `tools/dump_sound_index.py`)
 
@@ -1149,8 +1165,8 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
    ids `$01-$32` matches PyBoy's APU output (spectrogram or note-event compare).
 4. ~~**`00:2D8C ProjectPoint`**~~ DONE — see "Projection and camera" (bit-exact on the rally recording;
    ported to `web/js/main.js` with the camera).
-5. **CPU AI sub-state machine** (`wDF1A`, `wDF7F`, bank 08 `7A60-7F00`): exact intercept-depth rule
-   and movement targets per state (structure and parameters are decoded; ordering/timing is not).
+5. ~~**CPU AI sub-state machine**~~ DONE — see "CPU AI" state machine (receiving / recovering /
+   serving, plan modes, targets, delays); ported to `match.js` (`cpuTick`).
 
 ## Next Tasks
 
@@ -1211,7 +1227,7 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph5/6: player struct (WRAM4/5 DF00) and stat → parameter formulas (verified 6 chars)
 - [x] Ph5/6: player movement code (acceleration, dash, braking) using DF60-DF66 (08:73CA)
 - [x] Ph5/6: CPU AI per difficulty (parameters, reaction, intercept, shot/aim/serve decisions)
-- [ ] Ph5/6: decode the CPU sub-state sequence (DF1A/DF7F) and the intercept-depth choice rule
+- [x] Ph5/6: CPU sub-state sequence (DF1A) and plan modes (DF7F = record byte +1) with every target rule
 - [x] Ph5: roster-index → sprite-id translation (07:5A50, verified live)
 - [x] Ph5: wEventFlags usage map (dump_flags.py, 704 flags); naming story milestones still open
 - [x] Ph4: build web/catalog.html asset browser (maps, LZ sheets with palette recolor, palettes, searchable text)
