@@ -90,10 +90,13 @@ Target Shot, Fruit Fantasy, Banana Bunch, Treasure Box, Medallion Match, Two-on-
 `26 #37-#97`, with rules in `26 #98-#165`.
 
 | 0E-15 | Mario Tour scene descriptors + scene code (actor scripts, event handlers) | V |
-| 16 | demo/cutscene code (`16:4477`, `16:5C35`) | I |
-| 17, 19, 3A, 3C, 3D, 3F, 6C, 6D | LZ graphics: tiles, tilemaps, palettes for screens and menus | V |
+| 16 | post-match screens: "YOU WIN!" results (screens $13/$14) and match statistics ($23); `16:4477` debug doubles loop | V |
+| 17, 19, 3A, 3C, 3D, 3F, 6C, 6D | LZ graphics: tiles, tilemaps, palettes for screens and menus (17 and 6D also hold code: screens $24/$44, ending $28) | V |
 | 18 | OBJ palettes `18:4300`, 64-byte LZ blocks | V |
-| 1A, 1B, 3B, 3E | front-end menus (main menu `1A:67D4`, exhibition setup `3B:44A9`) | I |
+| 1A | main menu (`1A:67D4`), tour menus/EXP display | I |
+| 1B | tournament brackets (screens $29/$2A) and mini-game ranking ($2B) | V |
+| 3B | exhibition / N64 tournament / tournament setup (screens $0C-$0F), Ringshot points ($12), Varsity team charts ($25/$26) | V |
+| 3E | link play: warning, "LINKING...", link interrupted, racket select (screens $10, $11, $21, $22) | V |
 | 1C | create-character / stat screens (`1C:430E`) | V |
 | 1D, 1E | menu / status / saved-data screens (refs to SRAM `$A0A0+`) | ? |
 | 1F, 25, 26, 30-37, 5E, 6E | **text banks** (GetMsg/GetName exports) | V |
@@ -101,12 +104,12 @@ Target Shot, Fruit Fantasy, Banana Bunch, Treasure Box, Medallion Match, Two-on-
 | 24, 28, 29-2C | shot/trajectory selection code and tables (called from 07/08) | ? |
 | 27 | event versions of the scene descriptors (areas `1E-29`) | V |
 | 2D-2F | math tables: sine (2D), projection (2E/2F, `00:2D8C`) | I |
-| 38 | CPU difficulty `38:5FFB`, roster types `38:58FB`, name printing, menu code | V |
+| 38 | CPU difficulty `38:5FFB`, roster types `38:58FB`, name printing, VS / level screen ($01) and other menus ($00/$05/$06) | V |
 | 39 | `LoadScreen 39:407E` + screen descriptors | V |
 | 40-5D | character sprites (one per bank) | V |
 | 5F-69 | maps: courts (5F-63), RPG areas (63-69) | V |
 | 6A, 6F-72, 74-77 | NPC / mini-game sprites (header `+2 = 04 02`, several sprites per bank) | I |
-| 6B | intro / title sequence code (`6B:402A`) + graphics | I |
+| 6B | Nintendo/Camelot logos ($15), intro panels ($16-$1E), title ($1F): `6B:402A` | V |
 | 73 | sprite-like data, different header | ? |
 | 78-7F | sound data: music and SFX sequences (index `00:3151/31B5`); 7F mostly `$FF` | V |
 
@@ -780,6 +783,14 @@ intro cutscene panels, the DMG-style warning, exhibition/N64-tournament/tourname
 link screens, results ("YOU WIN!"), Varsity team charts, tournament brackets, the ending
 ("And the greatest player ever!"), and portraits.
 
+Who shows which screen (`ld c, id ; rst $18 ; db $00, $39`): `$0C` Exhibition difficulty `3B:45E3`,
+`$0D/$0E` N64 tournaments `3B:49F6/49FD`, `$0F` tournament `3B:4DBF`, `$12` Ringshot points `3B:51BC`,
+`$25/$26` Varsity team chart `3B:77AF/77D4`, `$10` link warning `3E:4CCB`, `$11` "LINKING..." `3E:4A16`,
+`$22` link interrupted `3E:4AE0`, `$21` racket select `3E:53F3`, `$13/$14` "YOU WIN!" `16:4914/491B`,
+`$23` match statistics `16:5C8C`, `$29/$2A` brackets `1B:4F2D/4F40`, `$2B` mini-game ranking
+`1B:744B`, `$15` logos `6B:51B3`, `$16-$1E` intro `6B:423F…488A`, `$1F` title `6B:75E0`, `$28` ending
+`6D:6A8E`, `$01` VS screen `38:4FC9`.
+
 ### Save data (SRAM) — partial
 
 Battery SRAM, 4 × 8 KB banks; enabled with `$0A → $0000` and disabled after each access.
@@ -848,7 +859,7 @@ if level < 99, training T[D] += 1, level += 1, then `RebuildStats`. Because B = 
 level-up raises the chosen category's B by 4 and lowers the other three by 1. `02:4B99` builds preset
 characters from `02:4C18` (4 bytes per preset = level-ups given to T0..T3, e.g. 7/3/5/3, 10/8/6/5).
 The level-up screen (`1C:41C2`) counts pending level-ups while `CanLevelUp` holds.
-`AddExp 02:4D30` (HL = EXP field, DE = amount) adds and caps at the 3-byte limit at `02:4D50`;
+`AddExp 02:4D30` (HL = EXP field, DE = amount) adds and caps at 99999 (`02:4D50`);
 `AddTourExp 02:4D8F` (A = player/partner) and `02:4D6D` (match slots) use it; `ClearExp 02:4D61`.
 
 ### Data Structures
@@ -940,12 +951,13 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph3: disassemble VBlank handler ($0040 → $2749) and document per-frame work
 - [x] Ph3: trace MainLoop (01:4018) to the top level (0A:4F2C GameTop, task scheduler)
 - [x] Ph3: GameFlow: everything runs in FieldScene 0A:4F40; location table 0A:564F (42 areas) + scene descriptors (tools/dump_scenes.py)
-- [ ] Ph3: name the front-end routines in banks 6B/1A/3B/3E/16 (title, menus, exhibition setup) and how area 00's init reaches them
+- [x] Ph3: front-end banks identified from their LoadScreen calls (3B setup, 3E link, 16 results, 1B brackets, 6B intro/title)
+- [ ] Ph3: how area 00's init (10:4EB9) reaches the title and main menu
 - [x] Ph3: disasm.py: handle `rst $00` inline jump tables (print the dw table and stop linear decode)
 - [ ] Ph3: build a recursive code tracer (tools/trace_code.py) from vectors + $4000 export tables to classify code vs data per bank
 - [x] Ph3: decode rst $08 SoundCmdInline (00:2FB3) — music/SFX index, ids observed live
 - [x] Ph3: identify the sound driver (bank 0 3129-3Dxx) and data banks 78-7F
-- [x] Ph3: bank map 00-7F (tools/bank_map.py); refine the ? rows (0C, 16, 1D, 1E, 24, 28-2C, 73)
+- [x] Ph3: bank map 00-7F (tools/bank_map.py); refine the ? rows (0C, 1D, 1E, 24, 28-2C, 73)
 - [ ] Ph5: verify the mini-game id → title mapping live (call RunMiniGame from a field state) and decode the descriptor bytes
 - [ ] Ph3: decode the sequence opcodes fully ($A0-$FF handlers) and write a sequence dumper
 - [x] Ph4: text encoding (ASCII + control codes) and text-bank layout; dump all 4109 messages
