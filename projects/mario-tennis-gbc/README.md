@@ -81,6 +81,7 @@ python3 tools/emu_dump_snapshot.py states/menu_court.state out/snap_court.json &
 node web/tests/play_match.mjs out/match --max 45000 --video 300:3000:2    # a bot plays a whole match; 2D + 3D shots per point, frames for a video
 node web/tests/snap_walk.mjs out/snap_menu1.json out/walk --keys KeyZ@60-64,KeyZ@104-108 --shots 30,700   # overworld 3D + dialogue overlay
 node web/tests/stick_walk.mjs out/snap_menu1.json out/stick.png                  # virtual analog stick -> d-pad keys
+node web/tests/replay.mjs recording.mtrec --shots 600 --states 3600         # replay a REC session from the app, verified frame hashes
 ```
 
 Other drivers: `emu_charmatch.py K` (start a match with the K-th character and dump WRAM),

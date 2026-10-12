@@ -9,6 +9,7 @@ import { loadSnapshot } from "./gb/snapshot.js";
 import { saveState, loadState } from "./gb/state.js";
 import { composeWide, WIDE_W, WIDE_H } from "./wide.js";
 import { mountStick } from "./stick.js";
+import { Recorder, maskOf, packRecording, bytesToBase64 } from "./recorder.js";
 
 const $ = id => document.getElementById(id);
 const cv = $("screen"), g = cv.getContext("2d");
@@ -71,8 +72,10 @@ function input() {
   return { a: k.KeyZ || k.KeyA, b: k.KeyX || k.KeyS, start: k.Enter, select: k.ShiftRight || k.Backspace || k.KeyQ,
            right: k.ArrowRight, left: k.ArrowLeft, up: k.ArrowUp, down: k.ArrowDown };
 }
+const rec = new Recorder();
 function frame() {
-  pollGamepad(keys); gb.setInput(input()); gb.runFrame();
+  pollGamepad(keys); const inp = input(), mask = maskOf(inp); gb.setInput(inp); gb.runFrame();
+  rec.frame(gb, mask);
   if (audioReady && anode) { const n = gb.apu.drain(abuf); if (n) anode.port.postMessage(abuf.slice(0, n)); } else gb.apu.outPos = 0;
 }
 let drawnFrame = -1;
@@ -170,7 +173,27 @@ for (const el of document.querySelectorAll("#pad [data-key]")) {
 }
 if (navigator.userAgent.includes("MarioTennisWrapper") || location.search.includes("touch")) document.body.classList.add("touch");
 $("file").addEventListener("change", async e => { const f = e.target.files[0]; if (f) loadRom(await f.arrayBuffer()); });
-$("reset").addEventListener("click", () => { if (gb) { gb.reset(); } });
+$("reset").addEventListener("click", () => { if (gb) { gb.reset(); rec.event("reset"); } });
+// ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
+// a .mtrec file (Android: Downloads/MTenn3D and the share sheet; browser: a download). Hiding the app stops and saves.
+async function saveRecording(now = false) {     // now: the app is being hidden; skip compression so it finishes at once
+  if (!rec.on) return;
+  const obj = rec.stop(gb, romHash), { bytes, gz } = now ? { bytes: new TextEncoder().encode(JSON.stringify(obj)), gz: false } : await packRecording(obj);
+  const d = new Date(), pad = n => String(n).padStart(2, "0");
+  const name = `mtenn3d-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.mtrec${gz ? "" : ".json"}`;
+  $("rec").classList.remove("on"); $("rec").textContent = "REC";
+  if (window.MTennApp && window.MTennApp.saveFile) { window.MTennApp.saveFile(name, bytesToBase64(bytes)); }
+  else { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([bytes])); a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+  $("savestatus").textContent = `recording saved: ${name} (${Math.round(obj.frames / 60)} s)`;
+}
+$("rec").addEventListener("pointerdown", () => {
+  if (!gb) return;
+  if (rec.on) { saveRecording(); return; }
+  rec.start(gb, { view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", ua: navigator.userAgent }); $("rec").classList.add("on");
+});
+setInterval(() => { if (rec.on) $("rec").textContent = "REC " + Math.floor(rec.seconds / 60) + ":" + String(Math.floor(rec.seconds % 60)).padStart(2, "0"); }, 1000);
+addEventListener("visibilitychange", () => { if (document.hidden && rec.on) saveRecording(true); });
+window.__stopRec = () => { if (rec.on) saveRecording(true); };   // called by the Android wrapper from onPause
 $("view3d").addEventListener("pointerdown", () => { if (!gb) return; const vox = voxel && voxel.voxelSprites; setView3d(!view3d || !vox, view3d && !vox); });   // off -> cards -> voxels -> off
 $("cam").addEventListener("pointerdown", () => setPreset(PRESET_ORDER[(PRESET_ORDER.indexOf(preset) + 1) % PRESET_ORDER.length]));
 $("aspect").addEventListener("pointerdown", () => { aspect = ASPECTS[(ASPECTS.indexOf(aspect) + 1) % ASPECTS.length]; drawnFrame = -1; applyAspect(); });
@@ -187,5 +210,5 @@ $("padmode").addEventListener("pointerdown", () => { padMode = padMode === "stic
 applyPadMode();
 $("turbo").addEventListener("pointerdown", () => { turbo = !turbo; $("turbo").classList.toggle("on", turbo); });
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom).catch(() => {});
-window.__gb = { get gb() { return gb; }, keys, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, loadSnapshot(s) { loadSnapshot(gb, s); }, saveState() { return saveState(gb); }, loadState(s) { loadState(gb, s); drawnFrame = -1; } };
+window.__gb = { get gb() { return gb; }, keys, rec, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, loadSnapshot(s) { loadSnapshot(gb, s); }, saveState() { return saveState(gb); }, loadState(s) { loadState(gb, s); drawnFrame = -1; } };
 requestAnimationFrame(loop);

@@ -36,6 +36,7 @@ public class MainActivity extends Activity {
             }
             @Override public void onPageFinished(WebView v, String url) { pushCut(); }
         });
+        web.addJavascriptInterface(new FileBridge(), "MTennApp");   // the page's REC button saves recordings through this
         setContentView(web);
         immersive();
         // the camera cutout: draw under it (full screen) but tell the page its size, so the controls avoid it
@@ -50,6 +51,39 @@ public class MainActivity extends Activity {
             });
         }
         web.loadUrl("https://appassets.androidplatform.net/assets/web/full.html");
+    }
+    /** Saves a file from the page (base64) to Downloads/MTenn3D and offers the share sheet. */
+    private class FileBridge {
+        @android.webkit.JavascriptInterface public void saveFile(String name, String base64) {
+            final byte[] data = android.util.Base64.decode(base64, android.util.Base64.DEFAULT);
+            runOnUiThread(() -> {
+                try {
+                    android.net.Uri uri;
+                    if (android.os.Build.VERSION.SDK_INT >= 29) {
+                        android.content.ContentValues v = new android.content.ContentValues();
+                        v.put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name);
+                        v.put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/octet-stream");
+                        v.put(android.provider.MediaStore.Downloads.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/MTenn3D");
+                        uri = getContentResolver().insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                        try (java.io.OutputStream o = getContentResolver().openOutputStream(uri)) { o.write(data); }
+                    } else {
+                        java.io.File dir = getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS); dir.mkdirs();
+                        java.io.File f = new java.io.File(dir, name);
+                        try (java.io.FileOutputStream o = new java.io.FileOutputStream(f)) { o.write(data); }
+                        uri = null;
+                    }
+                    android.widget.Toast.makeText(MainActivity.this, "Saved Downloads/MTenn3D/" + name, android.widget.Toast.LENGTH_LONG).show();
+                    if (uri != null) {
+                        android.content.Intent send = new android.content.Intent(android.content.Intent.ACTION_SEND);
+                        send.setType("application/octet-stream"); send.putExtra(android.content.Intent.EXTRA_STREAM, uri);
+                        send.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        startActivity(android.content.Intent.createChooser(send, "Share recording"));
+                    }
+                } catch (Exception e) {
+                    android.widget.Toast.makeText(MainActivity.this, "Could not save: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
+                }
+            });
+        }
     }
     private int[] cut = new int[4];
     private void pushCut() {
@@ -111,7 +145,7 @@ public class MainActivity extends Activity {
     }
     @Override public void onBackPressed() { /* keep the game running; the page handles B */ }
     @Override protected void onPause() {          // write a pending cartridge save before the WebView's timers stop
-        web.evaluateJavascript("window.__flushSave && window.__flushSave();", null);
+        web.evaluateJavascript("window.__flushSave && window.__flushSave(); window.__stopRec && window.__stopRec();", null);
         super.onPause(); web.onPause();
     }
     @Override protected void onResume() { super.onResume(); web.onResume(); }
