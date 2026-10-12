@@ -162,11 +162,8 @@ function render() {
   // the game's point-score sprite strip ("0 . 40", OBJ palette 1) after each point, at OAM (64,64)
   if (m.state === "dead" && m.pointGlyphs && m.deadT > 10) {
     const pal = [[0, 156, 0], [255, 57, 0], [255, 255, 74], [0, 0, 0]];
-    let x = 56;
-    for (const t of m.pointGlyphs) {
-      if (t === ".") { g.fillStyle = "#ffff4a"; g.fillRect(x + 2, 58, 3, 3); g.fillStyle = "#ff3900"; g.fillRect(x + 3, 61, 3, 1); x += 8; continue; }
-      const c = scoreGlyph(rom, t, pal); g.drawImage(c, x, 48); x += c.width;
-    }
+    const L = scoreGlyph(rom, m.pointGlyphs[0], "left", pal), R = scoreGlyph(rom, m.pointGlyphs[1], "right", pal);
+    g.drawImage(L, 56, 48); g.drawImage(R, 56 + L.width, 48);
   }
   if (m.msgTimer > 0 && m.message) {
     const w = font.width(m.message) + 8;

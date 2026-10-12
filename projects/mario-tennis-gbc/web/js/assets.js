@@ -248,16 +248,18 @@ export function characterData(rom, roster) {
 // shot tables in bank 07 (8-byte rows: topspin, sidespin, speed 8.8)
 
 // Point-score glyphs (REVERSE.md "Score display between points"): raw 8x16 glyph columns in bank 09
-// ($6000+, 32 bytes each). "0" is one column, "15"/"30"/"40"/"Ad" two; the separator dot shares cells
-// with its neighbours in the ROM, so the port draws it itself.
-const SCORE_GLYPHS = { "0": [0x6180], "15": [0x61A0, 0x61C0], "30": [0x6200, 0x6220], "40": [0x6240, 0x6260], "AD": [0x6280, 0x62A0] };
-export function scoreGlyph(rom, text, pal) {
-  const cols = SCORE_GLYPHS[text] || SCORE_GLYPHS["0"];
-  return cached(`scoreglyph:${text}:${palKey(pal)}`, () => {
+// ($6000+, 32 bytes each). The left glyph of the "15 . 40" strip carries the separator dot on its right
+// edge (row 4 cells), the right glyph is the dot-less set (rows 0-1).
+const SCORE_GLYPHS = {
+  left: { "0": [0x68A0], "15": [0x68C0, 0x68E0], "30": [0x6900, 0x6920], "40": [0x6940, 0x6960], "AD": [0x6980, 0x69A0] },
+  right: { "0": [0x6180], "15": [0x61A0, 0x61C0], "30": [0x6200, 0x6220], "40": [0x6240, 0x6260], "AD": [0x6280, 0x62A0] },
+};
+export function scoreGlyph(rom, text, side, pal) {
+  const cols = SCORE_GLYPHS[side][text] || SCORE_GLYPHS[side]["0"];
+  return cached(`scoreglyph:${side}:${text}:${palKey(pal)}`, () => {
     const tiles = new Uint8Array(cols.length * 32);
     cols.forEach((a, i) => tiles.set(rom.slice(0x09, a, 32), i * 32));
-    // column k = tiles 2k (top) and 2k+1 (bottom)
-    const idx = []; for (let r = 0; r < 2; r++) for (let k = 0; k < cols.length; k++) idx.push(2 * k + r);
+    const idx = []; for (let r = 0; r < 2; r++) for (let k = 0; k < cols.length; k++) idx.push(2 * k + r);   // column k = tiles 2k (top), 2k+1 (bottom)
     return tilesCanvas(tiles, idx, cols.length, pal, { transparent: true });
   });
 }
