@@ -52,6 +52,13 @@ python3 tools/emu_step.py states/main_menu.state states/t1.state "down,a@120"   
 python3 tools/emu_step.py states/t1.state states/t2.state "a@120"                 # stat screen (OK?)
 ```
 
+```bash
+# 5. shot selection: trace the game's aiming/trajectory pipeline during bot rallies, check the decoded
+#    rules against the ROM tables, then replay the same inputs through the web port's shots.js
+python3 tools/emu_shot_trace.py states/rec_rally1_end.state 8000 --alt --out states/shots.json
+python3 tools/analyze_shots.py states/shots.json && node web/tests/shots_vs_emulator.mjs states/shots.json
+```
+
 Other drivers: `emu_charmatch.py K` (start a match with the K-th character and dump WRAM),
 `emu_dump.py`, `emu_find_seq.py`, `emu_poke_redraw.py`, `emu_fullmatch.py` (bot plays a whole
 set with routine hooks), `emu_sound_ids.py` / `emu_music_ids.py`, `compare_frames.py`

@@ -242,8 +242,3 @@ export function characterData(rom, roster) {
 }
 
 // shot tables in bank 07 (8-byte rows: topspin, sidespin, speed 8.8)
-export function shotRow(rom, table, row) {
-  const a = table + Math.max(0, Math.min(9, row)) * 8;
-  return { top: rom.s16(0x07, a), side: rom.s16(0x07, a + 2), speed: rom.u16(0x07, a + 4) / 256 };
-}
-export const SHOT = { serveTop: 0x5071, serveSlice: 0x50C1, serveFlat: 0x5111, strokeTop: 0x4F61, strokeSlice: 0x4FB1, strokeFlat: 0x4F11 };

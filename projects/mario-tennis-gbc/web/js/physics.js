@@ -79,34 +79,3 @@ export function predictBounce(b, maxFrames = 240) {
   }
   return { X: c.X / FX, Y: c.Y / FX, frames: maxFrames, clearsNet: false };
 }
-
-// Choose an elevation so the first bounce lands at depth targetY (the game reads precomputed
-// trajectory tables in banks 20-23; solving with the same physics gives the same kind of shot).
-export function aimShot(b, from, target, speed, top, side, maxElev = 0.6) {
-  const heading = Math.atan2(target.Y - from.Y, target.X - from.X);
-  let dist = Math.hypot(target.X - from.X, target.Y - from.Y);
-  const rangeAt = el => {
-    const t = { ...b, X: from.X * FX, Y: from.Y * FX, Z: from.Z * FX };
-    launch(t, speed, el, heading, top, side);
-    const p = predictBounce(t); return Math.hypot(p.X - from.X, p.Y - from.Y);
-  };
-  const maxRange = rangeAt(maxElev * 0.75);
-  if (maxRange < dist) dist = maxRange * 0.97;     // can't reach: fall short rather than sky the ball
-  let lo = -0.12, hi = maxElev, best = null;
-  for (let i = 0; i < 18; i++) {
-    const mid = (lo + hi) / 2, t = { ...b, X: from.X * FX, Y: from.Y * FX, Z: from.Z * FX };
-    launch(t, speed, mid, heading, top, side);
-    const p = predictBounce(t);
-    const d = Math.hypot(p.X - from.X, p.Y - from.Y);
-    best = mid;
-    if (d < dist) lo = mid; else hi = mid;
-  }
-  // make sure the ball clears the net
-  for (let i = 0; i < 8; i++) {
-    const t = { ...b, X: from.X * FX, Y: from.Y * FX, Z: from.Z * FX };
-    launch(t, speed, best, heading, top, side);
-    if (predictBounce(t).clearsNet) break;
-    best = Math.min(maxElev, best + 0.03);
-  }
-  return { elev: best, heading };
-}

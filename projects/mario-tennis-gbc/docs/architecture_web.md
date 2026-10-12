@@ -18,13 +18,15 @@ index.html
   └─ js/main.js        ROM loading, input, camera + projection, rendering, 60 fps loop
        ├─ js/rom.js     Rom (bank addressing, bank tables, LZ decompressor), BGR555, 2bpp tiles
        ├─ js/assets.js  courtImage, characterSprites, characterData, shotRow (+ roster/court lists)
-       ├─ js/physics.js ball state, step(), launch(), predictBounce(), aimShot(), COURT constants
+       ├─ js/physics.js ball state, step(), launch(), predictBounce(), COURT constants
+       ├─ js/shots.js   the game's aiming + trajectory-table selection (computeShot, atan2Rom, shotType)
        ├─ js/match.js   Match: serve/toss/rally/dead state machine, shots, AI, judging, scoring
        └─ js/menus.js   Menus: main → play → character → opponent → difficulty → court (ROM backgrounds, icons, badges, fonts)
 tests/
   physics_vs_emulator.mjs  JS ball step vs PyBoy recording (needs states/phys_ref.json)
   soak.mjs                 CPU vs CPU headless match; rally length / outcome statistics
   scoring.mjs              deuce / set / tiebreak / serve-order rules vs the decoded ScoreUpdate
+  shots_vs_emulator.mjs    shots.js vs the game's own shot selection (needs states/shots*.json from tools/emu_shot_trace.py)
   record_match.mjs         CPU vs CPU match -> PNG frames
   record_flow.mjs          boot -> intro -> title -> VS -> match -> PNG frames
 ```
@@ -52,10 +54,12 @@ tests/
 
 ## Approximations (not decoded yet)
 
-* **Shot targeting**: the game reads precomputed (speed, elevation, heading-offset) trajectory tables in
-  banks 20-23. The port solves for the elevation with the real physics (`aimShot`). Stroke speeds
-  (28 + Stroke + rand·3) and stroke spins (topspin 3072 + 512·Top / side 448 + 64·Top; slice side = table
-  × 0.375) come from two characters' measured shots.
+* **Shot targeting**: `shots.js` is a port of the game's own pipeline (REVERSE.md "Aiming and launch"):
+  shot type from the buttons, aim depth per type, target X from the aim table, heading via the ROM's
+  table atan2, speed threshold from stats + charge + incoming speed + movement, then the first record
+  of the type's trajectory table (banks 20-24, 2C, 29-2B, read from the ROM) whose speed reaches the
+  threshold — exactly as the game (web/tests/shots_vs_emulator.mjs replays 200+ traced shots with zero
+  differences). Still approximated: the swing contact test (reach box) and the charge mechanic's timing.
 * **CPU AI** (decoded parts, REVERSE.md "CPU AI"): the difficulty table `38:5FFB` (reaction delay for
   deep/short balls + rand 0-3, positioning error, smart-placement probability, shot profile), the four
   shot-profile tables `02:5E23` (A / B / A+B lob picks), lob-when-opponent-at-net, aim away from the

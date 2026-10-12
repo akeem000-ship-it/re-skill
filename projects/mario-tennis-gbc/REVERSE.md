@@ -589,8 +589,11 @@ the real bounce lands within ~20 units of the predicted point) and 25 serves.
 4. `07:571E`: `wC432` = ±BC (sign by `wDF0A` bit1), `wC436` = targetY − ballY; `07:5740` + `07:5646`:
    **target X** `wC430` (rally: `07:55E9`, word table `07:562E` by `wDF0A` bit0 and aim dir `wDF4A`
    (−1/0/+1 from the pad, `08:7151`): deuce `[−416, −224, −36]`, ad `[36, 224, 416]`, minus playerX/16;
-   `wC7B9` ≠ 0 → symmetric `[−224, 0, 224]`; serves: `07:56B7` + jump table by `wDF4A` −2..2 with a
-   random error `08:43F6`·`wDF6A`·16), `wC434` = dX, **heading** `wC43A` = atan2(dY, dX) (`00:1416`,
+   `wC7B9` ≠ 0 → symmetric `[−224, 0, 224]`; the serve itself uses this table too (server at X = ±38,
+   aim ±1 → target ±418 verified). **Serve returns** (`wC4B6` ≠ 0, serve still live): `07:56B7`
+   base = (`wC43E` + |playerY|/8)·`wDF69`/256, then by `wDF4A`: 0 → ballX/4 ± random error
+   (`08:43F6`·`wDF6A`/16, `07:570D`), ±1 → ballX ± base/2, ±2 → ballX ± base, clamped to the sideline
+   − 32 − error), `wC434` = dX, **heading** `wC43A` = atan2(dY, dX) (`00:1416`,
    65536 = full turn), then `wC48A` = (|ballY| + `$140`)/|cos| = **min landing distance** (`00:13CE`
    = HL · 16384/sin(θ+90°) from the half-cosecant table `2D:5000`; `2D:4000` is sin·32768), `wC48E` =
    `wC48A` >> 6 (record index), `wC48C/8F` the same for `$480` (max distance), shortened to the
@@ -618,7 +621,7 @@ the real bounce lands within ~20 units of the predicted point) and 25 serves.
    | 0, 1 topspin (/power) | `22:7E7D`, `23:7E7D` | `427D` | same, Top stat | 6 | `4102` |
    | 5 low volley / CPU default | `24:7707` | `6707` | height `7719` (`$100` per 16 units from 48) | 4 | `41A2` |
    | 4 (A+B, ball low) | `24:6644` | `5844` | height `6656` | 4 | `41A2` |
-   | 9 (A+B, ball high: smash) | `24:6696` | own arc: heading = atan2 to `wC48C`, speed table `66F2` by `wDF6C` | — | direct |
+   | 9 (A+B, ball high: smash) | `24:6696` | speed = S; elevation = atan2(1.5·height, |ballY| + `wC48C`) + `66F2`[`wDF6C`] (−1440..−144); heading `wC43A` | — | direct |
    | 10 lob (B then A) | `24:4589` | `4289` + `459C`[`wDF92`] | — | 6 | `4169` exact |
    | 11 drop (A then B) | `24:51A0` | `45A0` + `51B9`[angle `00:138F`] + `51F9`[`wDF93`] | — | 6 | `4169` exact |
    | 6 volley | `2C:7281` | `4281` | height `7293` | 4 | `41CD` |
@@ -1159,9 +1162,9 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph5/6: ball physics (position/velocity layout, integrate, drag, gravity, bounce, fences), verified by simulation
 - [x] Ph5/6: model the spin terms 08:5613 (side wC41E, top wC41C) — in ball_sim.py, 0.03 px
 - [x] Ph5/6: shot tables in bank 07 (spin + speed per level), serve spin verified live
-- [ ] Ph5/6: shot model: map speed rows to stats (wDF6C/6D), how direction/angle is chosen, timing/charge effects
+- [x] Ph5/6: shot model: speed rows = Stroke/Serve/Volley stats, aim table + atan2 heading, charge term (wDF4B) — "Aiming and launch"
 - [x] Ph5/6: court constants, net collision 08:5814, in/out 08:463A, point counters and deuce (verified live)
-- [ ] Ph5/6: decode trajectory-table selection in banks 20-23 (export $7E7D) and how the aim heading wC43A is chosen
+- [x] Ph5/6: trajectory-table selection (banks 20-24, 2C, 29-2B) and the aim heading wC43A — verified on 203 traced shots (tools/emu_shot_trace.py, analyze_shots.py)
 - [x] Ph5/6: game/set/tiebreak counters and match-end logic (ScoreUpdate 08:5AD7, WinCheck 08:5D71)
 - [x] Ph5/6: serve rotation tables 08:49D9 (tiebreak 1-2-2 serve order, ends swap every 6 points)
 - [x] Ph5/6: wDF0A position codes confirmed live (bit1 end, bit0^bit1 ad court)
@@ -1179,7 +1182,7 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 ### Web Port Fixes
 
 - [x] Ph7: web port of a singles exhibition match (web/index.html, docs/architecture_web.md)
-- [ ] Ph7: replace the stroke speed/spin approximations with the bank 20-23 trajectory tables once decoded
+- [x] Ph7: web/js/shots.js ports the aiming + table selection; web/tests/shots_vs_emulator.mjs replays the traces with 0 differences
 - [x] Ph7: port the decoded CPU AI parameters (reaction delays, placement probability, positioning error, shot profiles, quick serve)
 - [ ] Ph7: decode ProjectPoint 00:2D8C and replace the fitted projection
 - [x] Ph7: HUD and messages drawn with the game's dialogue font

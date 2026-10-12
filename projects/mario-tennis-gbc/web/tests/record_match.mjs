@@ -11,7 +11,7 @@ fs.mkdirSync(out, { recursive: true });
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" }).catch(() => chromium.launch());
 const page = await browser.newPage();
 await page.goto(url);
-await page.waitForFunction(() => window.__mt && window.__mt.match, null, { timeout: 30000 });
+await page.waitForFunction(() => window.__mt, null, { timeout: 30000 });   // the page boots into the intro; start() skips it
 await page.evaluate(([g, d, p1, p2, c]) => {
   const $ = id => document.getElementById(id);
   $("games").value = g; $("diff").value = d; $("p1").value = p1; $("p2").value = p2; $("court").value = c;
