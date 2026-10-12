@@ -544,6 +544,10 @@ Normal games use row `wC8EC & 3` (server alternates every game) and swap the ser
 by `wC8ED` parity. In a tiebreak the row is `wC8ED` (starting at `[0, 18, 12, 6][wC8EC & 3]`, wrapping
 at 24): the server pattern is 0,1,1,0,0,1,1,… (one point, then two each) and the position codes swap
 (0↔3, 1↔2) every 6 points — the real tiebreak change of ends.
+**Position codes — VERIFIED** (rally recording): bit1 = end (0 near, 1 far); the serve half is bit0 XOR
+bit1: `0` near/deuce (X = +288 for the server), `1` near/ad (X = −288), `3` far/deuce (X = −320 for the
+receiver), `2` far/ad (X = +320). In normal games the rows never swap ends (P1 stays on the near end); the
+code flips bit0 every point (`wC8ED` parity). Only the tiebreak rows swap ends.
 
 ### Aiming and launch — partial
 
@@ -981,7 +985,7 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph3: front-end banks identified from their LoadScreen calls (3B setup, 3E link, 16 results, 1B brackets, 6B intro/title)
 - [x] Ph3: boot area 00 init → logos/intro/title → main menu 3B:55D1 → dispatch 10:4FC6
 - [x] Ph3: disasm.py: handle `rst $00` inline jump tables (print the dw table and stop linear decode)
-- [ ] Ph3: build a recursive code tracer (tools/trace_code.py) from vectors + $4000 export tables to classify code vs data per bank
+- [x] Ph3: recursive code tracer tools/trace_code.py (coverage feeds tools/bank_map.py)
 - [x] Ph3: decode rst $08 SoundCmdInline (00:2FB3) — music/SFX index, ids observed live
 - [x] Ph3: identify the sound driver (bank 0 3129-3Dxx) and data banks 78-7F
 - [x] Ph3: bank map 00-7F (tools/bank_map.py); refine the ? rows (0C, 1D, 1E, 24, 28-2C, 73)
@@ -1022,7 +1026,7 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [ ] Ph5/6: decode trajectory-table selection in banks 20-23 (export $7E7D) and how the aim heading wC43A is chosen
 - [x] Ph5/6: game/set/tiebreak counters and match-end logic (ScoreUpdate 08:5AD7, WinCheck 08:5D71)
 - [x] Ph5/6: serve rotation tables 08:49D9 (tiebreak 1-2-2 serve order, ends swap every 6 points)
-- [ ] Ph5/6: confirm the wDF0A position codes (0-3) live: which bit is the end, which the court half
+- [x] Ph5/6: wDF0A position codes confirmed live (bit1 end, bit0^bit1 ad court)
 - [x] Ph5/6: player struct (WRAM4/5 DF00) and stat → parameter formulas (verified 6 chars)
 - [x] Ph5/6: player movement code (acceleration, dash, braking) using DF60-DF66 (08:73CA)
 - [x] Ph5/6: CPU AI per difficulty (parameters, reaction, intercept, shot/aim/serve decisions)

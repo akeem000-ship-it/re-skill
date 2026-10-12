@@ -316,7 +316,7 @@ bank,addr,name,comment
 *,CA9D,wP2CpuPosError,record +15
 *,CA9E,wP2CpuPlaceProb,record +16: smart-placement probability /256
 *,CA9F,wP2CpuProfile,record +17: 0-3 shot/serve profile
-*,DF0A,wPlController,0 human 1 CPU 9 none; bit1 = far side
+*,DF0A,wPlPosCode,court position: bit1 end (0 near), bit0^bit1 = ad court
 *,DF12,wPlThinkTimer,
 *,DF1E,wPlState,0 human 1 CPU
 *,DF1F,wPlVirtualPad,hi nibble dpad, lo nibble buttons (human and CPU)
