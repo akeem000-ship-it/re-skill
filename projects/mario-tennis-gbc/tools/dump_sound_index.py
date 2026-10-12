@@ -1,6 +1,6 @@
 """Dump the sound index (SoundStart 00:3297) and per-song channel tables.
 
-  music ids $01-$32 -> 2-byte entries at 00:3151 ; sfx ids $50-$AF -> entries at 00:31B5
+  music ids $01-$32 -> 2-byte entries at 00:3151 ; sfx ids $51-$AF -> entries at 00:31B5 (id - $51)
   entry: byte0 low nibble = ROM bank ($70 | n), high nibble = channel count; byte1 = index
   channel table at bank:$4000 + index*4, one 4-byte row per channel:
      [slot ($00/$20.. offset into driver channel state at WRAM7:D100), flags, ptr lo, ptr hi]
@@ -11,9 +11,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gbrom import load_rom, to_offset
 
 rom = load_rom()
-NAMES = {0x01: "intro cutscene", 0x02: "title", 0x03: "main menu", 0x06: "point jingle?", 0x32: "exhibition match (via $44)",
+NAMES = {0x01: "intro cutscene", 0x02: "title", 0x03: "main menu", 0x06: "exhibition match", 0x31: "match-start fanfare (via $44)",
          0x51: "racket hit", 0x57: "serve hit", 0x59: "racket swing", 0x5B: "ball bounce", 0x66: "point over", 0x6D: "net cord", 0x5E: "menu confirm", 0x5F: "menu cursor",
-         0x60: "menu back/select", 0x65: "boot ping", 0x66: "point/let?"}
+         0x60: "menu back/select", 0x65: "boot ping"}
 
 
 def entry(i):

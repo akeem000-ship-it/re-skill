@@ -100,7 +100,7 @@ export class Match {
   // ---- shots ---------------------------------------------------------------
   cpuShotCode(p) {            // 08:7B7B CpuShotChoose: A+B ($30) after a net cord (wC4DA) if the profile allows it;
     const opp = this.players[1 - p.side], t = this.profileTable, b = this.ball;   // else 50%: a ball >= 320 away in Y with
-    if (b.netCord && t.includes(0x30)) return 0x30;                                // the opponent >= 480 from the net -> lob ($12,
+    if (b.netCord && t.includes(0x30)) return 0x30;                                // (physics.js has no net-cord continuation yet, so never)  the opponent >= 480 from the net -> lob ($12,
     if (Math.random() < 0.5 && Math.abs(b.Y / FX - p.Y) >= 320 && t.includes(0x12) && Math.abs(opp.Y) >= 480) return 0x12;   // A then B);
     return t[Math.floor(Math.random() * 16)];                                      // else a random profile entry (02:5EB3)
   }
@@ -231,7 +231,7 @@ export class Match {
   tickSwing(p) {
     const r = p.swingReq;
     if (!r) return;
-    if (!p.cpu && this.input) this.swingSecondButton(r, this.input);
+    if (!p.cpu && this.input && r.t > 0) this.swingSecondButton(r, this.input);   // not on the frame of the first press
     if (r.timer > 0) r.timer--;
     if (this.canHit(p)) { this.hit(p, r.button, r.variant, Math.min(63, r.t)); return; }
     r.t++;

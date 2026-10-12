@@ -18,6 +18,7 @@ export class Sequencer {
     this.voices = [0, 1, 2, 3].map(() => this.newVoice());
   }
   u8(a) { return this.b[a]; }
+  ffd8(c) { return (c.vol << 4) | c.volLow; }        // hSeqVolume as the ROM stores it (header/A0 byte swapped)
   u16(a) { return this.b[a] | this.b[a + 1] << 8; }
   rom(bank, addr) { return bank * 0x4000 + (addr - 0x4000); }
   // one hardware channel as the driver leaves it: NRx1 duty, NRx2 (nrx2), NRx3/4 (freq), NR51 bits (pan)
@@ -72,7 +73,6 @@ export class Sequencer {
       claimed[c.hw] = true;
       this.channelTick(c, s, false);
     }
-    for (let hw = 0; hw < 4; hw++) if (!claimed[hw]) this.voices[hw].pan = 0;   // nothing drives the channel any more
   }
 
   channelTick(c, s, muted) {
@@ -80,7 +80,7 @@ export class Sequencer {
     if (!c.started) {                    // header (00:34DD): [tempo frac, duty | wave decay, volume, sweep | wave id]
       const h = c.base;
       c.frac = this.u8(h) & 15; c.acc = c.frac;
-      if (c.hw === 2) { c.envLen = this.u8(h + 1); c.waveId = this.u8(h + 3); if (!muted) this.loadWave(c, v); }
+      if (c.hw === 2) { c.envLen = this.u8(h + 1); c.waveId = this.u8(h + 3); if (!muted) this.loadWave(c, v, true); }
       else { c.duty = this.u8(h + 1) & 3; c.sweep = this.u8(h + 3); }
       c.vol = this.u8(h + 2) & 15; c.volLow = this.u8(h + 2) >> 4;
       c.started = true; c.idx = 2; c.vibDelayCount = c.vibDelay;
@@ -119,16 +119,18 @@ export class Sequencer {
       if (c.hw !== 2 && !c.envShape) return;
     }
     if (!c.envLen) return;
-    const phase = Math.min(15, Math.floor(16 * c.envElapsed / c.envLen));
-    const d8 = (c.volLow << 4) | c.vol;                 // hSeqVolume byte
+    // phase = 16 * elapsed / length as the ROM computes it (00:3A5C): four doublings of an 8-bit value
+    let a = c.envElapsed & 0xFF, phase = 0;
+    for (let i = 0; i < 4; i++) { a = (a << 1) & 0xFF; let bit = 0; if (a >= c.envLen) { a -= c.envLen; bit = 1; } phase = (phase << 1) | bit; }
+    const d8 = this.ffd8(c);
     if (c.hw === 2) {
-      const a = (((phase >> 1) + 2) << 4) & 0xFF;
-      if (a < d8) return;
-      v.nr32 = a & 0x60; v.owner = s;
+      const a2 = (((phase >> 1) + 2) << 4) & 0xFF;
+      if (a2 < d8) return;
+      v.nr32 = a2 & 0x60; v.owner = s;
       return;
     }
     const set = this.u16(ENVSETS + 2 * (c.instr & 15));
-    const H = this.u8(set - 16 + ((c.envShape << 4) | phase)), E = (H & 0xF0) | d8;
+    const H = this.u8(set - 16 + ((c.envShape << 4) | phase)), E = (H & 0xF0) | ((c.volLow << 4) | c.vol);   // e = swap(FFD8)
     let B = 0;
     if (!(H & 4)) {
       B = 1;
@@ -148,14 +150,14 @@ export class Sequencer {
 
   // SeqWriteVolume 00:39DF: NRx2 = byte, quieter ((vol >> 2) + 1) once the gate expired; a zero
   // period gets the "up" bit so the DAC stays on; nothing happens when the register already holds
-  // the value, else the channel is retriggered with the note's NRx4 (wave: NR32, and NR34 only
-  // retriggers when the note said so).
+  // the value, else the channel is retriggered with the note's NRx4 (wave: NR32, whose read-back never
+  // matches, so it is always rewritten, and NR34 only retriggers when the note said so).
   writeVolume(c, s, a) {
     let b = a;
     if ((a & 0xF0) && c.gateCount === 0) b = (((((a & 3) << 6) | (a >> 2)) + 0x10) & 0xF0) | (a & 0x0F);
     if ((b & 7) === 0) b |= 8;
     const v = this.voices[c.hw];
-    if (v.nrx2 === b) return;
+    if (c.hw !== 2 && v.nrx2 === b) return;
     v.nrx2 = b; v.owner = s;
     if (c.hw === 2) v.nr32 = b;
     else { v.vol = b >> 4; v.envDir = !!(b & 8); v.envPeriod = b & 7; v.envTimer = 0; }
@@ -166,10 +168,11 @@ export class Sequencer {
     if (c.hw !== 2) v.vol = v.nrx2 >> 4;
     if (c.hw === 0) v.sweep = c.sweep;
   }
-  // SeqLoadWave 00:3D3D / the $A1 and header loads: copy the 16 bytes (wave set by the instrument's
-  // high nibble) with the DAC off; the channel stays off until a note triggers it again
-  loadWave(c, v) {
-    if (v.waveId === c.waveId) return;
+  // SeqLoadWave 00:3D3D (only when the id changed) / the $A1 and header loads (always): copy the 16
+  // bytes (wave set by the instrument's high nibble) with the DAC off; the channel stays off until a
+  // note triggers it again
+  loadWave(c, v, force = false) {
+    if (!force && v.waveId === c.waveId) return;
     const set = this.u16(WAVESETS + 2 * (c.instr >> 4)), p = set + c.waveId * 16, w = [];
     for (let i = 0; i < 16; i++) { w.push(this.u8(p + i) >> 4); w.push(this.u8(p + i) & 15); }
     v.wave = w; v.waveId = c.waveId; v.on = false;
@@ -177,12 +180,13 @@ export class Sequencer {
   // SeqFadeTick 00:3968: every rate ticks one volume step (not while the default NRx2 nibble is set)
   fadeTick(c, s, muted) {
     if (c.hw === 2 || !c.fadeSteps) return;
-    if (--c.fadeCount !== 0) return;
+    c.fadeCount = (c.fadeCount - 1) & 0xFF;             // 8-bit dec: a rate of 0 steps every 256 ticks
+    if (c.fadeCount !== 0) return;
     if (c.volLow !== 0) return;
     c.fadeCount = c.fadeRate;
     if (c.fadeSteps < 0) { c.fadeSteps++; if (c.vol === 0) return; c.vol--; }
     else { c.fadeSteps--; if (c.vol === 15) return; c.vol++; }
-    if (!muted) this.writeVolume(c, s, (c.volLow << 4) | c.vol);
+    if (!muted) this.writeVolume(c, s, this.ffd8(c));
   }
 
   loopSlot(c, n) { return c.loops[n & 15] || (c.loops[n & 15] = { count: 0, idx: 0 }); }
@@ -217,8 +221,8 @@ export class Sequencer {
         continue;
       }
       switch (op) {
-        case 0xA0: c.vol = arg & 15; c.volLow = arg >> 4; if (!muted) this.writeVolume(c, s, (c.volLow << 4) | c.vol); break;
-        case 0xA1: if (c.hw === 2) { c.waveId = arg; if (!muted) this.loadWave(c, v); } else c.sweep = arg; break;
+        case 0xA0: c.vol = arg & 15; c.volLow = arg >> 4; if (!muted) this.writeVolume(c, s, this.ffd8(c)); break;
+        case 0xA1: if (c.hw === 2) { c.waveId = arg; if (!muted) this.loadWave(c, v, true); } else c.sweep = arg; break;
         case 0xA2: if (c.hw === 2) c.envLen = arg; else c.duty = arg & 3; break;
         case 0xA3:
           if (arg === 0xFE) c.vibDepth = 0;
@@ -227,7 +231,7 @@ export class Sequencer {
         case 0xA4: c.gate = arg; break;
         case 0xA5: c.pan = arg === 1 ? ((c.pan << 4) | (c.pan >> 4)) & 0xFF : arg; break;
         case 0xA6: this.nr50 = arg; break;
-        case 0xA7: c.ticksLeft = arg; c.waitOnly = true; if (!muted) { v.pan = c.pan; v.owner = s; } return;   // 00:3947
+        case 0xA7: c.ticksLeft = arg; c.waitOnly = true; v.pan = c.pan; return;   // 00:3715 -> 3947: pan bits, even on a claimed channel
         case 0xA8: c.instr = arg; break;
         case 0xA9:                       // counters and the computed jump: the word at [counter] is the new index
           if (arg === 0xF0) c.c1++; else if (arg === 0xF1) c.c1--; else if (arg === 0xF2) this.counter2++; else if (arg === 0xF3) this.counter2--;
@@ -277,7 +281,7 @@ export class Sequencer {
     const v = this.voices[c.hw];
     v.owner = s;
     if (c.hw === 2) this.loadWave(c, v);
-    const d8 = (c.volLow << 4) | c.vol;
+    const d8 = this.ffd8(c);
     if (c.hw === 2) v.nr32 = d8;
     else if (c.envShape) this.envelopeTick(c, s, false, true);
     else this.writeVolume(c, s, d8);

@@ -844,8 +844,8 @@ ported — the port shows games/sets in its HUD line instead.
 `SoundStart 00:3297`: ids `$01-$32` are **music** (index `00:3151`, entry `2·(id−1)`), `$51-$AF` **SFX**
 (`00:31B5`, entry `2·(id−$51)`: `sub $50 ; dec a ; add a,a` at `32C7-32D3`; `$50` only resets the two SFX
 slots); starting any SFX first resets both SFX slots and their loop slots (`32B0-32C4`), starting music
-calls `SoundStop 00:3129` (the four music slots and their loop slots). `$40-$44` are remapped to music
-`$2E-$32` through `00:2FE0`. Index entry = `bank&$0F | channels<<4`,
+calls `SoundStop 00:3129` (the four music slots and their loop slots). `$40-$45` are remapped through
+`00:2FE0` = `00 2E 2F 30 31 32` (`$44` → `$31`). Index entry = `bank&$0F | channels<<4`,
 `row`; the song's rows are at `bank:$4000 + row*4`, 4 bytes each: **driver slot** (`$00/$20` SFX,
 `$40/$60/$80/$A0` music), **hardware channel** (0 pulse1, 1 pulse2, 2 wave, 3 noise), **pointer**.
 `SoundChannelInit 00:3314` fills the 32-byte channel state at WRAM7 `$D100 + slot` (pointer, hw
@@ -906,7 +906,9 @@ note retriggered with `FFE4`. Vibrato delay `FFE8` is reloaded from `FFE7` befor
 (`00:342F`). Verified: the live note stream (`tools/emu_seq_trace.py`, hook on `SeqNote`) on the title and
 menu screens reproduces the static decode of songs `$02`/`$03` (notes, durations, volumes, calls and
 loops; `web/tests/sound_vs_emulator.mjs`). Ids (game code, `rst $08`, logged by `tools/emu_sound_timeline.py`
-during a rally): music `$01` intro cutscene, `$02` title, `$03` main menu, `$44→$32` exhibition match;
+from the court menu into a rally): music `$01` intro cutscene, `$02` title, `$03` main menu, `$44→$31`
+match-start fanfare (176 ticks, no loop) immediately followed by `$06` exhibition match music, which the
+game re-requests when the fanfare ends (frame +177) and leaves running across points;
 SFX `$59` racket swing, `$51` rally contact, `$57` serve contact, `$5B` bounce, `$66` point over (×3),
 `$6D` net cord (`08:533F`), `$5E/$5F/$60` menu confirm/cursor/back, `$65` boot.
 

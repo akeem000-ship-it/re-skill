@@ -12,7 +12,10 @@ const audio = new GameAudio();
 let music = 0, audioStarted = false;
 function playMusic(id) { if (music !== id) { music = id; audio.play(id); } }
 // the title screen alternates the theme ($02) and the attract-mode intro music ($01) as the game does
-audio.onEnded = () => { if (front && FRONT[front.step].title) { const next = music === 0x02 ? 0x01 : 0x02; music = 0; playMusic(next); } };
+audio.onEnded = () => {
+  if (front && FRONT[front.step].title) { const next = music === 0x02 ? 0x01 : 0x02; music = 0; playMusic(next); }
+  else if (match && !front && !menus) { music = 0; playMusic(0x06); }   // the match-start fanfare ($44 -> $31) is followed by the match music $06
+};
 async function unlockAudio() {           // browsers allow audio only after a user gesture
   if (audioStarted || !rom) return;
   audioStarted = true;
@@ -49,7 +52,7 @@ function start(cfg) {
   sprites = [characterSprites(rom, p1), characterSprites(rom, p2)];
   anims = sprites.map(sp => new Animator(sp));
   match = new Match(rom, characterData(rom, p1), characterData(rom, p2), { games: +$("games").value, sets: +$("sets").value, difficulty: +$("diff").value });
-  match.audio = audio; playMusic(0x44);                                                     // exhibition match music ($44 -> $32)
+  match.audio = audio; playMusic(0x44);                                                     // match-start fanfare ($44 -> $31), then $06
   menus = null;
   const d1 = match.players[0].data, d2 = match.players[1].data;
   $("info").textContent = `${d1.name} (${d1.type}) vs ${d2.name} (${d2.type})`;
