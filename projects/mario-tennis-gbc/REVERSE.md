@@ -54,11 +54,51 @@ Key HRAM shadows: `hROMBank $FF95`, `hWRAMBank $FF96`, `hSRAMBank $FF97`, `hIsCG
 | 00:1797 | 00:188A | 0xF4 | code | LZ decompressor |
 | 00:249F | 00:2577 | | code | event-flag bit array helpers (rst $20/$28/$30) |
 | 00:2578 | 00:2630 | | code | Init (hardware setup) → farcall MainLoop |
-| 00:2631 | | | code | VBlank handler body (via $0040 → $2749?) — TBD |
-| 01-77 | 4000 | | table | most banks start with a word table at $4000 (see Bank Tables) |
-| 78-7E | | 7×16 KB | data | no $4000 table, dense non-zero — likely audio/sample data (TBD) |
-| 7F | | 16 KB | padding | 92% $FF |
-| 40-5D | | 30×16 KB | data | single-entry table → $4002; ~38% zeros. Uncompressed graphics? (TBD) |
+| 00:2631 | | | code | `WaitFrame`; VBlank body at `$2749` (via `$0040`) |
+| 00:0B01 | 00:0B9C | | code+data | sin/cos multiply helpers + quarter-wave sine table `0B5C` |
+| 00:2F1A | 00:3Dxx | | code+data | sound driver (`SoundUpdate`, `SoundStart 3297`, sequence interpreter `3566`, indexes `3151/31B5`) |
+| 01-7F | | | | see the bank map below |
+
+### Bank map (tool: `tools/bank_map.py` — exports, LZ blocks, traced code, far-call graph)
+
+Confidence: **V** verified by code reading/emulator, **I** inferred from callers/data shape, **?** guess.
+
+| Banks | Role | Conf. |
+|-------|------|-------|
+| 00 | RSTs/ISRs, far calls, LZ, tasks, joypad, VBlank, math (sine `0B5C`, multiply), sound driver `3129-3Dxx` | V |
+| 01 | MainLoop/init, palettes, unreachable debug menu `01:40EC` | V |
+| 02 | character records `02:52CE`, CPU shot profiles `02:5E23`, character/sprite setup | V |
+| 03 | SRAM: signature/checksum/backup, block directory and save slots, persistent flags | V |
+| 04 | RPG actor engine: bytecode interpreter `04:447D`, spawning, collision, camera, sprite table `04:4F75` | V |
+| 05 | dialogue windows, VWF text printer and font, dialogue dispatch, field helpers | V |
+| 06 | match helpers (reads scores `wC8E4`) | ? |
+| 07 | match setup/init `07:5DF9`, shot tables `07:4F11-5160`, roster → sprite `07:5A50` | V |
+| 08 | match engine: ball physics, players, CPU AI, scoring, serve rotation | V |
+| 09 | match HUD / scoreboard (`09:610C/611B`) | I |
+| 0A | field engine: FieldScene, LoadMap, location table, events | V |
+| 0B | match-flow code writing the point counters (43 incoming far calls) | ? |
+| 0C | data, no export table | ? |
+| 0D | serve/bounce helpers (`0D:4BC8`) | I |
+| 0E-15 | Mario Tour scene descriptors + scene code (actor scripts, event handlers) | V |
+| 16 | demo/cutscene code (`16:4477`, `16:5C35`) | I |
+| 17, 19, 3A, 3C, 3D, 3F, 6C, 6D | LZ graphics: tiles, tilemaps, palettes for screens and menus | V |
+| 18 | OBJ palettes `18:4300`, 64-byte LZ blocks | V |
+| 1A, 1B, 3B, 3E | front-end menus (main menu `1A:67D4`, exhibition setup `3B:44A9`) | I |
+| 1C | create-character / stat screens (`1C:430E`) | V |
+| 1D, 1E | menu / status / saved-data screens (refs to SRAM `$A0A0+`) | ? |
+| 1F, 25, 26, 30-37, 5E, 6E | **text banks** (GetMsg/GetName exports) | V |
+| 20-23 | shot trajectory tables (export `$7E7D`) | I |
+| 24, 28, 29-2C | shot/trajectory selection code and tables (called from 07/08) | ? |
+| 27 | event versions of the scene descriptors (areas `1E-29`) | V |
+| 2D-2F | math tables: sine (2D), projection (2E/2F, `00:2D8C`) | I |
+| 38 | CPU difficulty `38:5FFB`, roster types `38:58FB`, name printing, menu code | V |
+| 39 | `LoadScreen 39:407E` + screen descriptors | V |
+| 40-5D | character sprites (one per bank) | V |
+| 5F-69 | maps: courts (5F-63), RPG areas (63-69) | V |
+| 6A, 6F-72, 74-77 | NPC / mini-game sprites (header `+2 = 04 02`, several sprites per bank) | I |
+| 6B | intro / title sequence code (`6B:402A`) + graphics | I |
+| 73 | sprite-like data, different header | ? |
+| 78-7F | sound data: music and SFX sequences (index `00:3151/31B5`); 7F mostly `$FF` | V |
 
 ---
 
@@ -574,7 +614,7 @@ Decision steps (all use the RNG `08:43F6`):
   6/8, 8/8 by profile (`08:7A9D`); second serves always 50.
 * Controller byte `DF0A`: 0 human, 1 CPU, 9 none; bit 1 = far side (negates target depths, `08:7C33`).
 
-### Sound driver — partial (bank 0 `3129-3Dxx`, data banks 70-7F; tool: `tools/dump_sound_index.py`)
+### Sound driver — partial (bank 0 `3129-3Dxx`, data banks 78-7F; tool: `tools/dump_sound_index.py`)
 
 `SoundStart 00:3297`: ids `$01-$32` are **music** (index `00:3151`), `$50-$AF` **SFX** (`00:31B5`);
 ids `$40-$44` are remapped to music `$2E-$32` through `00:2FE0`. Index entry = `bank | channels << 4`,
@@ -596,8 +636,7 @@ screenshots), `emu_trace_loads.py` (logs LoadCharacterSprites / LoadMap calls), 
 (gitignored). The disassembler is `tools/disasm.py` (renamed from dis.py: that name shadowed the
 stdlib `dis` module and broke numpy/PyBoy imports for scripts in tools/).
 
-Observed boot flow: Nintendo logo → Camelot logo → intro cutscene (ROM bank $78 active, so banks
-78-7E hold cutscene data, not music) → title (screen #26) → MAIN MENU (3×3: Exhibition, Mario
+Observed boot flow: Nintendo logo → Camelot logo → intro cutscene (bank $78 active: intro music, id $01) → title (screen #26) → MAIN MENU (3×3: Exhibition, Mario
 Mini-Games, Linked Play / Mario Tour files 1-3 / Status, Dictionary, Saved Data) → Play menu →
 character select → CPU difficulty → match.
 
@@ -606,8 +645,8 @@ character select → CPU difficulty → match.
 `SoundUpdate $2F1A` runs from VBlank and from the Timer ISR when the LCD is off (music keeps
 playing during loading). `SoundDriverTick $3373` swaps 32 bytes of driver state between WRAM7
 `$D000` and HRAM `$FFD0` around the tick. Requests: `rst $08 ; db id` or `PlaySound $3024 (A=id)`;
-ids `$40-$4F` are queued through `wSoundQueued $C33E`/`hSoundPending $FFCD`. Banks 78-7E (no
-export table, dense data) are the likely music data.
+ids `$40-$4F` are queued through `wSoundQueued $C33E`/`hSoundPending $FFCD`. Banks 78-7F hold
+the sequence data (the sound index points only there).
 
 ### Character roster & types — VERIFIED
 
@@ -812,7 +851,8 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 - [x] Ph3: disasm.py: handle `rst $00` inline jump tables (print the dw table and stop linear decode)
 - [ ] Ph3: build a recursive code tracer (tools/trace_code.py) from vectors + $4000 export tables to classify code vs data per bank
 - [x] Ph3: decode rst $08 SoundCmdInline (00:2FB3) — music/SFX index, ids observed live
-- [x] Ph3: identify the sound driver (bank 0 3129-3Dxx) and data banks 70-7F
+- [x] Ph3: identify the sound driver (bank 0 3129-3Dxx) and data banks 78-7F
+- [x] Ph3: bank map 00-7F (tools/bank_map.py); refine the ? rows (06, 0B, 0C, 16, 1D, 1E, 24, 28-2C, 73)
 - [ ] Ph3: decode the sequence opcodes fully ($A0-$FF handlers) and write a sequence dumper
 - [x] Ph4: text encoding (ASCII + control codes) and text-bank layout; dump all 4109 messages
 - [x] Ph4: understand banks 5F-69 map layout via LoadMap 0A:585D — all 37 maps render
