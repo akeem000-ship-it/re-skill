@@ -166,10 +166,14 @@ function tick(input) {
   if (front) return frontTick();
   match.update(input); render();
 }
-function loop() {
-  if (menus && !paused) menuTick();
-  else if (front && !paused) frontTick();
-  else if (match && !paused) {
+// Fixed 60 Hz timestep like the Game Boy (one logic update per 1/60 s), decoupled from the display refresh:
+// a 120 Hz screen gets one update every other frame, a slow one catches up (at most 4 updates per paint).
+const STEP = 1000 / 60;
+let acc = 0, last = 0, fps = { n: 0, t: 0, shown: 0 };
+function stepOnce() {
+  if (menus) menuTick();
+  else if (front) frontTick();
+  else if (match) {
     const k = keys, pr = prevKeys;
     const input = { left: k.ArrowLeft, right: k.ArrowRight, up: k.ArrowUp, down: k.ArrowDown,
       aPressed: (k.KeyZ || k.KeyA) && !(pr.KeyZ || pr.KeyA), bPressed: (k.KeyX || k.KeyS) && !(pr.KeyX || pr.KeyS) };
@@ -178,6 +182,14 @@ function loop() {
     match.update(input);
     render();
   }
+}
+function loop(now) {
+  if (!paused && (menus || front || match)) {
+    if (!last) last = now;
+    acc = Math.min(acc + (now - last), STEP * 4); last = now;
+    while (acc >= STEP) { stepOnce(); acc -= STEP; fps.n++; }
+    if (now - fps.t >= 1000) { fps.shown = fps.n; fps.n = 0; fps.t = now; $("fps").textContent = fps.shown + " fps"; }
+  } else last = now;
   requestAnimationFrame(loop);
 }
 

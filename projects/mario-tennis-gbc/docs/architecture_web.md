@@ -79,6 +79,13 @@ tests/
   by play). The HTML controls still work as a shortcut (Start button).
 * Not ported: doubles, mini-games, Mario Tour (RPG), sound/music.
 
+## Timing
+
+Fixed 60 Hz timestep (`main.js` loop): logic runs once per 1/60 s regardless of the display refresh rate
+(120 Hz screens get one update every other paint; a slow device catches up by at most 4 updates per paint).
+A match frame costs ~0.1 ms in headless Chromium, so even phones have headroom; the page shows the measured
+updates per second under the ROM status.
+
 ## State machine (`Match.state`)
 
 ```
