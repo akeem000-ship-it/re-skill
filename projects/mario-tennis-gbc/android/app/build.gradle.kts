@@ -12,7 +12,7 @@ val syncWebAssets by tasks.registering(Sync::class) {
 android {
     namespace = "com.example.mariotennis"
     compileSdk = 34
-    defaultConfig { applicationId = "com.example.mariotennis"; minSdk = 24; targetSdk = 34; versionCode = 1; versionName = "0.1" }
+    defaultConfig { applicationId = "com.example.mariotennis"; minSdk = 24; targetSdk = 34; versionCode = 2; versionName = "0.2" }
     sourceSets["main"].assets.srcDir(webAssets)
     buildTypes { release { isMinifyEnabled = false } }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
