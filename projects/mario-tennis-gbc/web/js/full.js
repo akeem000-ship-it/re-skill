@@ -5,6 +5,7 @@ import { GBC } from "./gb/gbc.js";
 import { Rom, sha1Hex, EXPECTED_SHA1 } from "./rom.js";
 import { pollGamepad } from "./gamepad.js";
 import { Voxel3D } from "./voxel.js";
+import { loadSnapshot } from "./gb/snapshot.js";
 
 const $ = id => document.getElementById(id);
 const cv = $("screen"), g = cv.getContext("2d");
@@ -106,5 +107,5 @@ $("reset").addEventListener("click", () => { if (gb) { gb.reset(); } });
 $("view3d").addEventListener("pointerdown", () => { if (gb) setView3d(!view3d); });
 $("turbo").addEventListener("pointerdown", () => { turbo = !turbo; $("turbo").classList.toggle("on", turbo); });
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom).catch(() => {});
-window.__gb = { get gb() { return gb; }, keys, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, get voxel() { return voxel; } };
+window.__gb = { get gb() { return gb; }, keys, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, get voxel() { return voxel; }, loadSnapshot(s) { loadSnapshot(gb, s); } };
 requestAnimationFrame(loop);

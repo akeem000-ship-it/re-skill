@@ -14,6 +14,10 @@ const FS = `#version 300 es
 precision mediump float; in vec2 vUV; uniform sampler2D uTex; uniform vec4 uTint; uniform float uAlphaTest; out vec4 o;
 void main() { vec4 c = texture(uTex, vUV) * uTint; if (c.a < uAlphaTest) discard; o = c; }`;
 
+const VS3 = `#version 300 es
+in vec3 aPos3; in vec2 aUV3; uniform mat4 uMVP; out vec2 vUV;
+void main() { vUV = aUV3; gl_Position = uMVP * vec4(aPos3, 1.0); }`;
+
 // --- small matrix helpers (column-major Float32Array(16)) ---
 const m4 = {
   identity: () => new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]),
@@ -45,6 +49,9 @@ export class Voxel3D {
     if (!gl) throw new Error("WebGL2 unavailable");
     this.prog = this.link(VS, FS);
     this.u = {}; for (const n of ["uMVP", "uModel", "uUVRect", "uTex", "uTint", "uAlphaTest"]) this.u[n] = gl.getUniformLocation(this.prog, n);
+    this.prog3 = this.link(VS3, FS, ["aPos3", "aUV3"]);
+    this.u3 = {}; for (const n of ["uMVP", "uTex", "uTint", "uAlphaTest"]) this.u3[n] = gl.getUniformLocation(this.prog3, n);
+    this.field = { mapId: -1, floorTex: null, walls: null, wallCount: 0, palHash: 0 };
     const quad = new Float32Array([-0.5, 0, 0, 1,  0.5, 0, 1, 1,  -0.5, 1, 0, 0,  0.5, 1, 1, 0]);   // x, y(0..1 up), u, v
     this.vao = gl.createVertexArray(); gl.bindVertexArray(this.vao);
     const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
@@ -56,10 +63,10 @@ export class Voxel3D {
     this.mode = "none";
     this.bindCameraControls();
   }
-  link(vs, fs) {
+  link(vs, fs, attrs = ["aPos", "aUV"]) {
     const gl = this.gl, mk = (t, s) => { const sh = gl.createShader(t); gl.shaderSource(sh, s); gl.compileShader(sh); if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh)); return sh; };
     const p = gl.createProgram(); gl.attachShader(p, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs));
-    gl.bindAttribLocation(p, 0, "aPos"); gl.bindAttribLocation(p, 1, "aUV"); gl.linkProgram(p);
+    gl.bindAttribLocation(p, 0, attrs[0]); gl.bindAttribLocation(p, 1, attrs[1]); gl.linkProgram(p);
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
     return p;
   }
@@ -81,8 +88,10 @@ export class Voxel3D {
   // ---- game state helpers ----
   col5(pal, p, i) { const o = p * 8 + i * 2, c = pal[o] | (pal[o + 1] << 8); return [(c & 31) * 8, ((c >> 5) & 31) * 8, ((c >> 10) & 31) * 8]; }
   // a court is loaded when the BG tilemap in VRAM is one of the court maps (checked every 20 frames)
+  mapId() { return this.gb.mem.wram[0][0x32E]; }                       // wCurMapID: 0-15 courts, 17-36 RPG areas
+  isField() { const id = this.mapId(); return id >= 17 && id <= 36 && !(this.gb.ppu.lcdc & 0x08) === false || (id >= 17 && id <= 36); }
   isCourt() {
-    if (!this.courtMaps) return false;
+    if (!this.courtMaps || this.mapId() > 15) return false;
     const fr = this.gb.ppu.frames; if (fr < this.detectAt) return this.courtId >= 0;
     this.detectAt = fr + 20;
     const v0 = this.gb.mem.vram[0], base = this.gb.ppu.lcdc & 0x08 ? 0x1C00 : 0x1800;
@@ -168,7 +177,9 @@ export class Voxel3D {
     if (cv.width !== cv.clientWidth || cv.height !== cv.clientHeight) { cv.width = cv.clientWidth || 160; cv.height = cv.clientHeight || 144; }
     gl.viewport(0, 0, cv.width, cv.height); gl.clearColor(0.05, 0.08, 0.12, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao); gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    if (this.isField()) { this.renderField(frame2d); return; }
     if (!this.isCourt()) { this.mode = "2d"; this.drawFlatFrame(frame2d); return; }
+    if (this.mode !== "3d") { this.cam.dist = 3100; this.cam.targetY = 250; }
     this.mode = "3d"; if (this.debug) this.debug.length = 0;
     const h = this.bgHash(); if (h !== this.groundHash) { this.groundHash = h; this.buildGround(); }
     const c = this.cam, aspect = cv.width / cv.height;
@@ -242,6 +253,100 @@ export class Voxel3D {
     for (const s of hud) for (let half = 0; half < s.h / 8; half++) {
       const t = this.spriteTexture(s.tile + (s.attr & 0x40 ? (s.h / 8 - 1 - half) : half), (s.attr >> 3) & 1, s.attr & 7, (s.attr >> 5) & 1, (s.attr >> 6) & 1);
       this.draw(t, m4.trs(s.sx + 4, s.sy + (half + 1) * 8, 0, 8, -8, 0), ortho);
+    }
+  }
+  // ---- RPG areas: the whole 64x64 map as a floor, solid metatiles (collision grid) as extruded boxes ----
+  fieldScroll() { const w = this.gb.mem.wram[0]; return { x: w[0x321] * 8 + (w[0x320] >> 5), y: w[0x323] * 8 + (w[0x322] >> 5) }; }
+  composeMap() {                                      // WRAM3 tilemap + WRAM2 attributes (stride 64) -> 512x512 RGBA
+    const m = this.gb.mem, p = this.gb.ppu, tm = m.wram[3], at = m.wram[2], v0 = m.vram[0], v1 = m.vram[1], lcdc = p.lcdc;
+    const img = new Uint8Array(512 * 512 * 4);
+    for (let ty = 0; ty < 64; ty++) for (let tx = 0; tx < 64; tx++) {
+      const i = ty * 64 + tx, tile = tm[i], attr = at[i], bank = attr & 8 ? v1 : v0;
+      const addr = lcdc & 0x10 ? tile << 4 : 0x1000 + ((tile << 24 >> 24) << 4);
+      for (let y = 0; y < 8; y++) {
+        const row = attr & 0x40 ? 7 - y : y, lo = bank[addr + row * 2], hi = bank[addr + row * 2 + 1];
+        for (let x = 0; x < 8; x++) {
+          const bit = attr & 0x20 ? x : 7 - x, ci = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1), c = this.col5(p.bgPal, attr & 7, ci);
+          const o = ((ty * 8 + y) * 512 + tx * 8 + x) * 4; img[o] = c[0]; img[o + 1] = c[1]; img[o + 2] = c[2]; img[o + 3] = 255;
+        }
+      }
+    }
+    return img;
+  }
+  buildField() {
+    const gl = this.gl, f = this.field, coll = this.gb.mem.wram[6];
+    if (f.floorTex) gl.deleteTexture(f.floorTex);
+    f.floorTex = this.texture(512, 512, this.composeMap());
+    // walls: one box (top + 4 sides) per solid 16x16 metatile, uv = the metatile's own texels; sides share them
+    const H = 14, pos = [], uv = [];
+    const quad = (a, b, c, d, u) => { for (const [v, t] of [[a, u[0]], [b, u[1]], [c, u[2]], [a, u[0]], [c, u[2]], [d, u[3]]]) { pos.push(...v); uv.push(...t); } };
+    let n = 0;
+    for (let my = 0; my < 32; my++) for (let mx = 0; mx < 32; mx++) {
+      if (coll[my * 32 + mx] !== 0x0F) continue;
+      const x0 = mx * 16, x1 = x0 + 16, z0 = my * 16, z1 = z0 + 16, u0 = x0 / 512, u1 = x1 / 512, v0 = z0 / 512, v1 = z1 / 512;
+      const top = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]], side = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
+      quad([x0, H, z0], [x1, H, z0], [x1, H, z1], [x0, H, z1], top);
+      const solid = (x, y) => x >= 0 && y >= 0 && x < 32 && y < 32 && coll[y * 32 + x] === 0x0F;
+      if (!solid(mx, my + 1)) quad([x0, 0, z1], [x1, 0, z1], [x1, H, z1], [x0, H, z1], side);
+      if (!solid(mx, my - 1)) quad([x1, 0, z0], [x0, 0, z0], [x0, H, z0], [x1, H, z0], side);
+      if (!solid(mx - 1, my)) quad([x0, 0, z0], [x0, 0, z1], [x0, H, z1], [x0, H, z0], side);
+      if (!solid(mx + 1, my)) quad([x1, 0, z1], [x1, 0, z0], [x1, H, z0], [x1, H, z1], side);
+      n++;
+    }
+    if (f.walls) { gl.deleteBuffer(f.walls.pb); gl.deleteBuffer(f.walls.ub); gl.deleteVertexArray(f.walls.vao); }
+    const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+    const pb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, pb); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    const ub = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, ub); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(uv), gl.STATIC_DRAW); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
+    f.walls = { vao, pb, ub, count: pos.length / 3 }; f.wallCount = n;
+    gl.bindVertexArray(this.vao);
+  }
+  renderField(frame2d) {
+    const gl = this.gl, cv = this.cv, m = this.gb.mem, p = this.gb.ppu, f = this.field, id = this.mapId();
+    if (this.mode !== "field") { this.cam.dist = 300; this.cam.targetY = 0; this.cam.pitch = 0.95; }
+    this.mode = "field";
+    let ph = 0; for (let i = 0; i < 64; i += 3) ph = (ph * 31 + p.bgPal[i]) | 0;
+    if (f.mapId !== id || f.palHash !== ph) { f.mapId = id; f.palHash = ph; this.buildField(); }
+    const sc = this.fieldScroll(), cx = sc.x + 80, cz = sc.y + 72, c = this.cam, aspect = cv.width / cv.height;
+    const eye = [cx + c.dist * Math.sin(c.yaw) * Math.cos(c.pitch), c.dist * Math.sin(c.pitch), cz + c.dist * Math.cos(c.yaw) * Math.cos(c.pitch)];
+    const mvp = m4.mul(m4.perspective(0.8, aspect, 4, 3000), m4.lookAt(eye, [cx, 0, cz], [0, 1, 0]));
+    // floor (512x512 map px; +z = down the map)
+    gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
+    this.draw(f.floorTex, m4.trs(256, -0.2, 512, 512, 512, -Math.PI / 2), mvp, [0, 1, 1, -1], [1, 1, 1, 1], 0);
+    // walls
+    if (f.walls && f.walls.count) {
+      gl.useProgram(this.prog3); gl.bindVertexArray(f.walls.vao); gl.bindTexture(gl.TEXTURE_2D, f.floorTex);
+      gl.uniformMatrix4fv(this.u3.uMVP, false, mvp); gl.uniform4fv(this.u3.uTint, [0.85, 0.85, 0.85, 1]); gl.uniform1f(this.u3.uAlphaTest, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, f.walls.count);
+      gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
+    }
+    // actors: OAM sprites grouped into objects at map px (screen + scroll), 1 px = 1 unit, leaning back
+    const oam = m.oam, tall = p.lcdc & 4, sprs = [];
+    for (let i = 0; i < 40; i++) {
+      const sy = oam[i * 4] - 16, sx = oam[i * 4 + 1] - 8; if (sy <= -16 || sy >= 144 || sx <= -8 || sx >= 160) continue;
+      let tile = oam[i * 4 + 2]; const attr = oam[i * 4 + 3], h = tall ? 16 : 8; if (tall) tile &= 0xFE;
+      sprs.push({ sx, sy, h, tile, attr, g: sprs.length });
+    }
+    const find = i => { while (sprs[i].g !== i) i = sprs[i].g = sprs[sprs[i].g].g; return i; };
+    for (let i = 0; i < sprs.length; i++) for (let j = i + 1; j < sprs.length; j++) { const a = sprs[i], b = sprs[j]; if (a.sx < b.sx + 10 && b.sx < a.sx + 10 && a.sy < b.sy + b.h + 2 && b.sy < a.sy + a.h + 2) sprs[find(j)].g = find(i); }
+    const groups = new Map();
+    for (const sp of sprs) { const r = find(sp.g); let g = groups.get(r); if (!g) groups.set(r, g = { list: [], x0: 999, x1: -999, y1: -999 }); g.list.push(sp); g.x0 = Math.min(g.x0, sp.sx); g.x1 = Math.max(g.x1, sp.sx + 8); g.y1 = Math.max(g.y1, sp.sy + sp.h); }
+    const TILT = 0.3, COS_T = Math.cos(TILT), SIN_T = Math.sin(TILT);
+    for (const g of groups.values()) {
+      const cx2 = (g.x0 + g.x1) / 2, X = cx2 + sc.x, Z = g.y1 + sc.y;
+      this.draw(this.shadowTex, m4.trs(X, 0.3, Z + 1, (g.x1 - g.x0) * 1.1, 7, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 0.7], 0);
+      for (const sp of g.list) for (let half = 0; half < sp.h / 8; half++) {
+        const t = this.spriteTexture(sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half), (sp.attr >> 3) & 1, sp.attr & 7, (sp.attr >> 5) & 1, (sp.attr >> 6) & 1);
+        const dx = sp.sx + 4 - cx2, bottom = g.y1 - (sp.sy + (half + 1) * 8);
+        this.draw(t, m4.trs(X + dx, bottom * COS_T, Z - bottom * SIN_T, 8, 8, -TILT, 0), mvp);
+      }
+    }
+    // the window layer (dialogue boxes, menus) as a screen-space overlay from the 2D frame
+    if ((p.lcdc & 0x20) && p.wy < 144) {
+      if (!this.frameTex) this.frameTex = this.texture(160, 144, null);
+      gl.bindTexture(gl.TEXTURE_2D, this.frameTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 160, 144, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(frame2d.buffer));
+      gl.disable(gl.DEPTH_TEST);
+      const ortho = m4.ortho(0, 160, 144, 0, -1, 1), wy = p.wy, wx = Math.max(0, p.wx - 7);
+      this.draw(this.frameTex, m4.trs(wx + (160 - wx) / 2, 144, 0, 160 - wx, -(144 - wy), 0), ortho, [wx / 160, wy / 144, (160 - wx) / 160, (144 - wy) / 144], [1, 1, 1, 1], 0);
     }
   }
   drawFlatFrame(frame) {                            // non-court scenes: the 2D frame as a textured quad filling the canvas
