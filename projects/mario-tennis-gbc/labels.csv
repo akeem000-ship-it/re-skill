@@ -504,6 +504,6 @@ bank,addr,name,comment
 02,4D61,ClearExp,
 10,4EB9,Area00Init,boot area: front end
 10,4F0D,FrontEnd,logos/intro/title loop, then main menu dispatch
-10,4FC6,MainMenuTable,9 handlers: tour 1-3, linked?, mini-games, exhibition, status, dictionary, saved data
+10,4FC6,MainMenuTable,9 handlers: tour 1-3, exhibition, mini-games, linked play, status, dictionary, saved data (verified)
 3B,55D1,MainMenu,returns selection 0-8 or $FF
 6B,75AF,TitleScreen,returns $FF/1 to replay the intro

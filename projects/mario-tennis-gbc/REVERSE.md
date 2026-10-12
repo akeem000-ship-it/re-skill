@@ -99,7 +99,7 @@ Target Shot, Fruit Fantasy, Banana Bunch, Treasure Box, Medallion Match, Two-on-
 | 3E | link play: warning, "LINKING...", link interrupted, racket select (screens $10, $11, $21, $22) | V |
 | 1C | create-character / stat screens (`1C:430E`) | V |
 | 1D | status screens (`1D:4016` from the main menu) | I |
-| 1E | main-menu item 3 (`1E:400E`, probably linked play) | ? |
+| 1E | exhibition flow (`1E:400E`, main-menu Exhibition) | V |
 | 1F, 25, 26, 30-37, 5E, 6E | **text banks** (GetMsg/GetName exports) | V |
 | 20-23 | shot trajectory tables (export `$7E7D`) | I |
 | 24, 28, 29-2C | shot/trajectory selection code and tables (called from 07/08) | ? |
@@ -375,11 +375,12 @@ code in banks `6B` (intro: `6B:402A`, `6B:75AF`), `1A` (`1A:67D4` menu), `3B`, `
 **Boot and main menu** (area 00 init `10:4EB9` → `10:4F0D`): when the entry id is `$0A` (power-on):
 logos `6B:51AE/51E7`, intro `6B:402A`, title `6B:75AF` (repeats the intro while it returns `$FF`/1),
 then `InitGameVars`, then the main menu `3B:55D1` returns a selection dispatched through `10:4FC6`:
-0-2 → Mario Tour file 1-3 (`wSaveSlot`, `LoadGame`), 3 → `10:50FE` (calls `1E:400E`; linked play?),
-4 → `10:5216` mini-games (`3B:61F0`, `1B:6B9C`), 5 → `10:52A0` exhibition (`InitGameVars`,
-`38:7408` character select), 6 → `10:52D1` status (`1D:4016`), 7 → `10:54B0` dictionary (`3F:407A`),
-8 → `10:54D6` saved data (`1A:7945`); `$FF` → back to the title. Names for 3-8 are inferred from the
-banks they call.
+0-2 → Mario Tour file 1-3 (`wSaveSlot`, `LoadGame`), 3 → `10:50FE` **Exhibition** (`1E:400E`),
+4 → `10:5216` **Mini-Games** (`3B:61F0`, `1B:6B9C`), 5 → `10:52A0` **Linked Play** (`InitGameVars`,
+`38:7408` character select), 6 → `10:52D1` **Status** (`1D:4016`), 7 → `10:54B0` **Dictionary**
+(`3F:407A`), 8 → `10:54D6` **Saved Data** (`1A:7945`); `$FF` → back to the title. Verified in PyBoy by
+pressing A on each cell of the 3×3 menu (row 0: Exhibition, Mini-Games, Linked Play — the last does
+nothing without a link partner; row 1: files 1-3; row 2: Status, Dictionary, Saved Data).
 
 MainLoop also contains an unreachable **debug menu** (`01:40EC`): Start → game, A → match test
 `07:5DF9`, B → exhibition `3B:44A9`, Up → doubles test `16:4477`, Select → `01:6A5B`.
