@@ -1,6 +1,6 @@
 // Web port entry: ROM loading, input, camera/projection, rendering, 60 fps loop.
 import { Rom, sha1Hex, EXPECTED_SHA1 } from "./rom.js";
-import { courtImage, characterSprites, characterData, ROSTER, PLAYABLE, COURTS } from "./assets.js";
+import { courtImage, characterSprites, characterData, Animator, ROSTER, PLAYABLE, COURTS } from "./assets.js";
 import { FX } from "./physics.js";
 import { Match } from "./match.js";
 
@@ -8,7 +8,7 @@ const W = 160, H = 144;
 const cv = document.getElementById("screen"), g = cv.getContext("2d");
 g.imageSmoothingEnabled = false;
 const $ = id => document.getElementById(id);
-let rom, match, court, sprites = [], keys = {}, prevKeys = {};
+let rom, match, court, sprites = [], anims = [], keys = {}, prevKeys = {};
 
 // Court projection fitted to the court lines of the 32x32 court maps (REVERSE.md "Projection"):
 // x = 128 + X*2020/(16224-Y), y = 127.5 + 804.6*Y/(16224-Y); heights use the same scale.
@@ -35,23 +35,35 @@ function start() {
   const p1 = +$("p1").value, p2 = +$("p2").value;
   court = courtImage(rom, +$("court").value);
   sprites = [characterSprites(rom, p1), characterSprites(rom, p2)];
+  anims = sprites.map(sp => new Animator(sp));
   match = new Match(rom, characterData(rom, p1), characterData(rom, p2), { games: +$("games").value, difficulty: +$("diff").value });
   const d1 = match.players[0].data, d2 = match.players[1].data;
   $("info").textContent = `${d1.name} (${d1.type}) vs ${d2.name} (${d2.type})`;
   cv.focus();
 }
 
-// frame choice: groups of 5 facings (0 back .. 4 front); walk 0/5/10/15, ready 20,
-// swings 40/50, serve toss 105, serve hit 60 (frame sheet in REVERSE.md "Sprites")
-function frameFor(p, m) {
-  const facing = p.side === 0 ? 0 : 4;
-  if (m.state === "toss" && m.server === p.side) return { n: (m.tossT < 12 ? 105 : 60) + facing, flip: false };
-  if (p.swing > 0) return { n: (p.swingType ? 50 : 40) + facing, flip: p.facing < 0 };
-  const moving = Math.hypot(p.vx, p.vy) > 0.5;
-  if (!moving) return { n: 20 + facing, flip: false };
-  const sideways = Math.abs(p.vx) > Math.abs(p.vy) * 1.5;
-  const f = sideways ? 2 : facing, step = [0, 5, 10, 15][Math.floor(p.anim) % 4];
-  return { n: step + f, flip: sideways && p.vx < 0 };
+// Animation ids per state (recorded in PyBoy, REVERSE.md "Animations"): 1 ready, 2 run,
+// 16 serve stance, 15 serve toss, 7 serve hit, 13/14 wind-up, 9 forehand, 10 backhand, 11 high ball,
+// 4 point won, 3 point lost. View 0 = back .. 4 = front, 2 = side (flipped when moving left).
+function animFor(p, m) {
+  if (m.state === "dead" && m.pointWinner !== undefined && m.deadT < 60) return p.side === m.pointWinner ? 4 : 3;
+  if (p.swing > 0) return p.swingAnim || 9;
+  if (m.server === p.side && (m.state === "serve" || m.state === "toss"))
+    return m.state === "toss" ? 15 : 16;
+  return Math.hypot(p.vx, p.vy) > 0.5 ? 2 : 1;
+}
+
+function frameFor(p, m, i) {
+  const a = anims[i];
+  a.set(animFor(p, m)); a.tick();
+  const base = p.side === 0 ? 0 : 4;
+  let view = base, flip = a.flip;
+  if (a.id === 2) {
+    const sx = Math.abs(p.vx) > Math.abs(p.vy) * 1.5, dg = !sx && Math.abs(p.vx) > Math.abs(p.vy) * 0.5;
+    view = sx ? 2 : dg ? (p.vy > 0 ? 3 : 1) : (p.vy > 0 ? 4 : 0);   // +vy = toward the camera
+    if (sx || dg) flip = p.vx < 0;
+  }
+  return { n: a.group * 5 + view, flip };
 }
 
 function render() {
@@ -63,7 +75,7 @@ function render() {
   g.fillStyle = "#000"; g.fillRect(0, 0, W, H);
   g.drawImage(court, -camX, -camY);
   const drawPlayer = (p, i) => {
-    const [sx, sy] = proj(p.X, p.Y), fr = frameFor(p, m), img = sprites[i].frame(fr.n, fr.flip);
+    const [sx, sy] = proj(p.X, p.Y), fr = frameFor(p, m, i), img = sprites[i].frame(fr.n, fr.flip);
     g.drawImage(img, Math.round(sx - img.width / 2 - camX), Math.round(sy - 30 - camY));
   };
   const drawBall = () => {

@@ -428,6 +428,11 @@ any other `$Fx` holds the frame. Bank 40 has 19 animations over 29 frame groups.
 **Frame number = group × 5 + view** (`08:7621`): the view comes from the 8-way facing octant
 `wDF32 = ((heading + $10) >> 5) & 7` through `08:7643 [2,3,4,3,2,1,0,1]` (0 = back … 4 = front; the
 mirrored octants reuse a view), so the 145 frames are 29 groups × 5 views.
+Animation ids used in a match (recorded with `tools/analyze_anims.py` on a `--banks` recording; P1 and P2
+agree): 1 ready, 2 run, 16 serve stance → 17 ball bounce → 15 toss → 7 serve hit, 13/14 forehand/backhand
+wind-up (`wDF15` = 5/6) → 9/10 swing (`wDF15` = 9/10; forehand when the ball is on the player's right),
+11 high-ball swing, 4 point won, 3 point lost. 5-8 are short swings, 12 a held pose, 18 another
+one-shot pose.
 
 * Ids 0-29 → banks 40-5D, 145 frames each: back/front/side walks, forehand/backhand, lob,
   dive, smash, idle and victory poses (char 0 verified frame by frame).
@@ -986,7 +991,7 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph4: map sprite id → character (RosterToSprite 07:5A50, verified live); header +0 = colour scheme (+2 still TBD)
 - [x] Ph4: find OBJ palettes for characters and render sprites in color (18:4300)
 - [x] Ph4: animation script format at header +6, frame = group×5 + view (dump_anims.py)
-- [ ] Ph7: drive the web port's player sprites from the real animation tables (needs the anim id per player state)
+- [x] Ph7: web port plays the ROM animation scripts (anim ids per state from a recording)
 - [x] Ph4: RPG actor bytecode interpreter 04:447D — all 22 opcodes, actor layout, tools/dump_script.py
 - [x] Ph4: enumerate actor spawns and events per area (dump_scenes.py)
 - [x] Ph4: dump every actor script reachable from the spawn lists (dump_scenes.py --scripts)

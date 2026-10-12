@@ -60,8 +60,10 @@ tests/
 * **Swing windows**: reach box 110 × 140 units, height ≥ −330; serve speed scales down when the
   toss is hit away from its apex (the emulator showed 57 vs 72 px/frame).
 * **Net**: the ball bounces back off the tape (quartered horizontal speed). Net-cord handling is not ported.
-* **Camera / animation**: frame groups chosen by inspection (walk 0/5/10/15, ready 20, swings 40/50, serve
-  60/105, facing index 0 = back / 4 = front). The camera follows the midpoint of ball and near player.
+* **Animation**: the ROM's animation scripts (`Animator` in `assets.js`, rules of `08:7791 AnimTick`), frame =
+  group × 5 + view. Animation ids per state come from a PyBoy recording (1 ready, 2 run, 16/15/7 serve,
+  13/14 → 9/10 forehand/backhand, 11 high ball, 4/3 point won/lost); the state → id choice and the run
+  view per direction are the port's own logic. The camera follows the midpoint of ball and near player.
 * Not ported: doubles, mini-games, Mario Tour (RPG), sound/music, the game's HUD font.
 
 ## State machine (`Match.state`)

@@ -60,7 +60,33 @@ export function characterSprites(rom, roster) {
     cache.set(key, c);
     return c;
   };
-  return { sid, bank, frame };
+  // animation table (header +6): word per animation id; scripts read by AnimTick 08:7791
+  const animTable = rom.u16(bank, hdr + 6);
+  const anim = id => rom.u16(bank, animTable + id * 2);
+  const entry = a => [rom.u8(bank, a), rom.u8(bank, a + 1)];
+  return { sid, bank, frame, anim, entry };
+}
+
+// Animation player with the ROM's rules (08:69EA SetAnimation, 08:7791 AnimTick): entries
+// [group, duration]; [$FF, n] restart at start + n; [$FE, id] switch animation; [$FB, m] toggle
+// horizontal flip; any other $Fx holds. Frame number = group * 5 + view (08:7621).
+export class Animator {
+  constructor(sprites) { this.s = sprites; this.id = -1; this.group = 0; this.flip = false; this.timer = 0; }
+  set(id) {
+    if (id === this.id) return;
+    this.id = id; this.start = this.ptr = this.s.anim(id); this.timer = 0; this.flip = false; this.hold = false;
+  }
+  tick() {
+    if (this.hold || --this.timer > 0) return;
+    for (let guard = 0; guard < 32; guard++) {
+      const [f, d] = this.s.entry(this.ptr);
+      if (f < 0xF0) { this.group = f; this.timer = d; this.ptr += 2; return; }
+      if (f === 0xFF) this.ptr = this.start + d;
+      else if (f === 0xFE) { this.id = -1; this.set(d); }
+      else if (f === 0xFB) { this.flip = !!(d & 0x20); this.ptr += 2; }
+      else { this.hold = true; return; }
+    }
+  }
 }
 
 // CharRecords 02:52CE (29 B, roster order); stats = bytes 18..28; type table 38:58FB

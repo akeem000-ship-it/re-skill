@@ -63,7 +63,7 @@ export class Match {
   get tiebreak() { return this.games[0] === this.gamesToWin && this.games[1] === this.gamesToWin; }
 
   awardPoint(w, why) {
-    this.points[w]++;
+    this.points[w]++; this.pointWinner = w;
     const [a, b] = this.points, need = this.tiebreak ? 7 : 4;   // DeuceCompress(7) = tiebreak cap
     if ((a >= need || b >= need) && Math.abs(a - b) >= 2) {
       const tb = this.tiebreak;
@@ -137,6 +137,10 @@ export class Match {
     }
     b.bounces = 0; this.lastHitter = p.side; this.bounceSide = 0;
     p.swing = 14; p.swingType = kind; p.cooldown = 24;
+    // animation (recorded in PyBoy): forehand 9 when the ball is on the player's right, backhand 10,
+    // high balls 11; the serve uses 7
+    const rel = (b.X / FX - p.X) * this.dir(p);
+    p.swingAnim = this.state === "toss" ? 7 : -b.Z / FX > 220 ? 11 : rel >= 0 ? 9 : 10;
     for (const q of this.players) q.planned = false;
     // 08:7C86 intercept depths: the CPU may follow its shot to the net ($0180 = 384) — more often
     // with aggressive profiles; a lob over a rusher wins the point

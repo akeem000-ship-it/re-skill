@@ -508,3 +508,5 @@ bank,addr,name,comment
 3B,55D1,MainMenu,returns selection 0-8 or $FF
 6B,75AF,TitleScreen,returns $FF/1 to replay the intro
 *,C32A,wMapScrollMinY,map header +3 (tiles)
+*,DF15,wPlShotAnim,shot animation base: 5/6 wind-up, 9/10/11 swings, 7 serve
+*,DF19,wPlSwingPhase,0 recover 1 move 2 wind-up 3 swing 4 serve
