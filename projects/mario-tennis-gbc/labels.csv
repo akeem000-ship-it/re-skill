@@ -201,7 +201,7 @@ bank,addr,name,comment
 18,4328,LoadCharColorSchemes,-> OBJ palettes 3-7
 39,407E,LoadScreen,C=screen id: table 39:40F5 (8 B: tiles, map, attrs, palette)
 39,40F5,ScreenTable,48 entries x 4 bank refs; tools/render_screens.py
-*,CA00,wP1Name,
+*,CA00,wP1Name,P1 64-byte player record (name, roster +$0B, char record +$0E, stats +$20)
 *,CA0B,wP1Roster,
 *,CA0E,wP1Record,29 B copy of CharRecords
 *,CA20,wP1Stats,11 stats: Top Slice Serve Stroke Volley Angle Placement Speed Dash Reaction Stop
@@ -486,3 +486,9 @@ bank,addr,name,comment
 0D,4090,MiniGameTableHi,18 descriptors for ids $12-$23
 0B,4002,MiniGameRun,BC = descriptor
 0D,4006,MiniGameRunHi,BC = descriptor
+02,44E9,RebuildStats,BC = player record: 11 stats from style template + training + level
+02,44B7,TrainingToB,B = clamp(5*[HL] - (level-1))
+02,4494,CountThresholds,E = number of leading thresholds < B in a 9-byte row
+02,47C6,RebuildTourStats,rebuild wC900 if wC93C set
+02,47F2,StyleTemplatePtrs,4 x 113-byte style templates
+*,C93C,wTourStatsDirty,

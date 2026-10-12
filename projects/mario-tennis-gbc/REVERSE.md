@@ -816,6 +816,29 @@ checksums, marks the record valid and commits (`SRAM_Commit`); `LoadBlock 03:4B9
 So the `$C800-$CAFF` WRAM0 region is the persistent Mario Tour state (it holds `wC8E0-` match
 counters, `wC900` player name, `wC940` second name, `wCA0B/CA8B` rosters, …).
 
+**Player records** (64 B; Mario Tour player `wC900`, partner `wC940`; match slots `wCA00/CA40/CA80/CAC0`
+= P1, P1 partner, P2, P2 partner; `wC800/C840` hold a working copy of the two tour records):
+
+| Offset | Content |
+|--------|---------|
+| +$00 | name, 0-terminated (8 B) |
+| +$0B | roster id (match slots) / play style 0-3 (tour records, `& 3`) |
+| +$0C | `wC90C`: class/rank? (Alex 3, Harry 2) |
+| +$0E | the 29-byte character record (`02:52CE` format) starts here: +$10-$16 header words, +$18 level, +$1A-$1F CPU params |
+| +$20-$2A | the 11 stats 0-9 (Top, Slice, Serve, Stroke, Volley, Angle, Placement, Speed, Dash, Reaction, Stop) |
+| +$30-$36 | copy of the template header |
+| +$38-$3B | tour **training values** T0-T3 |
+| +$3C | `wC93C`: nonzero → stats need a rebuild (`02:47C6`) |
+
+**Mario Tour stat growth — VERIFIED** (tool: `tools/tour_stats.py`; `RebuildStats 02:44E9`). Each play style
+has a 113-byte template (`02:47F2` → `47FA/486B/48DC/494D`): a 13-byte header copied into the record and
+11 rows of 9 signed thresholds. `stat = number of leading thresholds < B`, with
+`B = clamp(5·T − (level − 1), −127, 127)` (`02:44B7`, `02:4494`) and T = **+$38 for Top/Slice, +$39 for
+Serve/Stroke/Volley, +$3A for Angle/Placement, +$3B for Speed/Dash/Reaction/Stop** (the four training
+categories). Checked against the save: Alex (style 0, level 1, T = 0) → Stroke 1, Dash 2; Harry (style 2)
+→ Top 1, Serve 2, Angle 1, Speed 1 — both exactly the stored +$20 bytes. This is why the stat-screen
+values never appeared verbatim elsewhere in SRAM: they are derived from style, level and training.
+
 ### Data Structures
 
 *(TBD)*
@@ -931,11 +954,12 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph4: pair tile/map/palette blocks into full screens (LoadScreen 39:407E, 47 screens incl. title)
 - [x] Ph5: decode SRAM save container (signature, checksum, bank-1 backup, persistent flags)
 - [x] Ph5: save payload $A060-$A76F = block directory (113 blocks), slots, backups (dump_save_layout.py)
-- [ ] Ph5: field map of the $C800-$CAFF save image and blocks 6-26 / 54-87 contents
+- [x] Ph5: player record layout (64 B) in the $C800 save image
+- [ ] Ph5: remaining save-image fields ($C880-$C8DF, $C9xx between flags) and blocks 6-26 / 54-87; how EXP raises level/training
 - [x] Ph5: character roster + type table (38:58FB)
 - [x] Ph5: find the character stat table (02:52CE, verified by WRAM diff in PyBoy)
 - [x] Ph5: verify stat label order (PyBoy: Create Character stat screen, poke + hook 1C:430E)
-- [ ] Ph5: find how created-character stats are stored in SRAM (display buffer values were not found verbatim in SRAM; probably points/EXP converted at display time)
+- [x] Ph5: created-character stats: derived from style template + training T0-T3 + level (RebuildStats 02:44E9, verified)
 - [ ] Ph5: decode record bytes +0..+17
 - [x] Ph5/6: ball physics (position/velocity layout, integrate, drag, gravity, bounce, fences), verified by simulation
 - [x] Ph5/6: model the spin terms 08:5613 (side wC41E, top wC41C) — in ball_sim.py, 0.03 px
