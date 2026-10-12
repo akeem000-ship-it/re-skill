@@ -228,7 +228,7 @@ references into bank tables:
 
 | Word | Size | Destination | Content |
 |------|------|-------------|---------|
-| w0 | $88 raw | WRAM6:DC08 | header (RPG maps); bytes +4/+5 = width/height in tiles; DC0A-DC0D → wC329-wC32C |
+| w0 | $88 raw | WRAM6:DC08 | header (RPG maps): +2/+3 scroll minimum X/Y, +4/+5 width/height in tiles → `wC329-wC32C`; the camera (`04:440A`) clamps the scroll to [min, size − 20 × 18]. Bytes +6.. look like 8-byte records then BGR555 colours (tile/palette animation?) — no reader found. Courts have no header: their w0 points at the w4 block. |
 | w1 | $40 raw | WRAM1:D000 → pals 2-7 | 8 CGB BG palettes (game loads 2-7; 0-1 reserved for UI) |
 | w2 | LZ | WRAM3:D000 | tilemap, stride 32 (courts, 1024 B) or 64 (RPG, 4096 B) |
 | w3 | LZ | WRAM2:D000 | CGB attribute map (same size). bit3=VRAM bank 1, bits0-2 palette, bit5/6 flip |
@@ -978,8 +978,9 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph4: understand banks 5F-69 map layout via LoadMap 0A:585D — all 37 maps render
 - [x] Ph4: dialogue font (05:7920, widths 05:7F80), VWF printer, control/substitution codes
 - [x] Ph4: map w4 = collision grid, w5 = event-trigger ids
-- [ ] Ph4: map header bytes 0-3, 6-$87 (spawns/warps are in the scene descriptors, not the map)
-- [ ] Ph4: why do courts (maps 0-15) have w0 == w4? check the court-loading path (a different loader?)
+- [x] Ph4: map header +2..+5 = scroll bounds / size
+- [ ] Ph4: map header bytes +6.. (records + colours; find a reader — palette/tile animation?)
+- [x] Ph4: courts have no map header (w0 aliases w4; the court path never uses wC329-C32C)
 - [x] Ph4: identify banks 40-5D as character sprite banks (header, frame list, anim scripts)
 - [x] Ph4: find the OAM builder and decode sprite frame placement, render all frames (tools/render_sprites.py)
 - [x] Ph4: map sprite id → character (RosterToSprite 07:5A50, verified live); header +0 = colour scheme (+2 still TBD)
