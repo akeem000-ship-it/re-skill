@@ -59,6 +59,13 @@ python3 tools/emu_shot_trace.py states/rec_rally1_end.state 8000 --alt --out sta
 python3 tools/analyze_shots.py states/shots.json && node web/tests/shots_vs_emulator.mjs states/shots.json
 ```
 
+```bash
+# 6. sound: decode a song, log the live note stream, check the web port's driver against it, render a WAV
+python3 tools/dump_sound_seq.py 02 --max 40
+python3 tools/emu_seq_trace.py states/title.state 1200 | grep '^f' > states/seq_title.txt
+node web/tests/sound_vs_emulator.mjs states/seq_title.txt 02 && node web/tests/render_song.mjs 02 16 out/title.wav
+```
+
 Other drivers: `emu_charmatch.py K` (start a match with the K-th character and dump WRAM),
 `emu_dump.py`, `emu_find_seq.py`, `emu_poke_redraw.py`, `emu_fullmatch.py` (bot plays a whole
 set with routine hooks), `emu_sound_ids.py` / `emu_music_ids.py`, `compare_frames.py`

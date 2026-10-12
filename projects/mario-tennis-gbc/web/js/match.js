@@ -82,6 +82,7 @@ export class Match {
     this.serveSide = (this.points[0] + this.points[1]) % 2 === 0 ? 1 : -1;
     this.secondServe = false;
     this.state = "dead"; this.deadT = 70;
+    if (this.audio) this.audio.sfx(0x06);                       // point jingle
   }
 
   fault() {
@@ -187,6 +188,7 @@ export class Match {
     const rel = (bx - p.X) * d;
     p.swingAnim = serve ? 7 : -bz > 220 ? 11 : rel >= 0 ? 9 : 10;
     b.heading = r.heading;
+    if (this.audio) this.audio.sfx(0x51);                       // racket hit
     // 08:6A1C: the hitter goes to its recovery state (wDF18 = 2), the opponent to receiving (1)
     for (const q of this.players) if (q.cpu) this.cpuEnter(q, q === p ? "recover" : "react");
   }
@@ -207,6 +209,7 @@ export class Match {
   startSwing(p, button, variant = 0) {
     if (p.swingReq || p.cooldown > 0 || p.swing > 0) return;
     p.swingReq = { button, variant, t: 0 };
+    if (this.audio) this.audio.sfx(0x59);                       // swing
   }
   tickSwing(p) {
     const r = p.swingReq;
@@ -276,6 +279,7 @@ export class Match {
 
   judge() {
     const b = this.ball;
+    if (b.event === 1 && this.audio) this.audio.sfx(0x5B);       // bounce
     if (b.event === 1) {                       // ground contact
       const x = b.X / FX, y = b.Y / FX, side = y > 0 ? 0 : 1;   // whose half it landed in
       if (b.bounces === 1) {

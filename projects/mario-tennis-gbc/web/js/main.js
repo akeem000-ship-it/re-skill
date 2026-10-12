@@ -5,6 +5,19 @@ import { FX } from "./physics.js";
 import { Match } from "./match.js";
 import { Menus } from "./menus.js";
 import { Camera } from "./camera.js";
+import { GameAudio } from "./audio.js";
+
+// sound: the game's own driver and songs (sound.js / audio.js); started on the first key press
+const audio = new GameAudio();
+let music = 0, audioStarted = false;
+function playMusic(id) { if (music !== id) { music = id; audio.play(id); } }
+// the title screen alternates the theme ($02) and the attract-mode intro music ($01) as the game does
+audio.onEnded = () => { if (front && FRONT[front.step].title) { const next = music === 0x02 ? 0x01 : 0x02; music = 0; playMusic(next); } };
+async function unlockAudio() {           // browsers allow audio only after a user gesture
+  if (audioStarted || !rom) return;
+  audioStarted = true;
+  try { await audio.init(rom.b); audio.resume(); if (music) audio.play(music); } catch (e) { console.warn("audio", e); }
+}
 
 const W = 160, H = 144;
 const cv = document.getElementById("screen"), g = cv.getContext("2d");
@@ -36,6 +49,7 @@ function start(cfg) {
   sprites = [characterSprites(rom, p1), characterSprites(rom, p2)];
   anims = sprites.map(sp => new Animator(sp));
   match = new Match(rom, characterData(rom, p1), characterData(rom, p2), { games: +$("games").value, difficulty: +$("diff").value });
+  match.audio = audio; playMusic(0x44);                                                     // exhibition match music ($44 -> $32)
   menus = null;
   const d1 = match.players[0].data, d2 = match.players[1].data;
   $("info").textContent = `${d1.name} (${d1.type}) vs ${d2.name} (${d2.type})`;
@@ -56,6 +70,8 @@ let front = null;
 const FADE = 16;
 function frontTick() {
   const st = FRONT[front.step], enter = keys.Enter && !prevKeys.Enter;
+  if (st.intro && front.t === 0) playMusic(0x01);                                          // intro cutscene music
+  if (st.title && front.t === 0) playMusic(0x02);                                          // title theme
   prevKeys = { ...keys };
   if (!front.cache.has(st.id)) front.cache.set(st.id, screenImage(rom, st.id));
   front.t++;
@@ -64,7 +80,7 @@ function frontTick() {
   const end = st.title ? (front.leaving ? front.leaving + FADE : Infinity) : FADE + st.hold + FADE;
   if (front.t >= end) {
     front.leaving = 0; front.t = 0;
-    if (st.title) { menus = new Menus(rom, font); front = null; return; }      // Start -> the exhibition menus
+    if (st.title) { menus = new Menus(rom, font, audio); front = null; playMusic(0x03); return; }      // Start -> the exhibition menus
     if (++front.step >= FRONT.length) { start(front.cfg); return; }
   }
   // draw with fades to black
@@ -193,13 +209,14 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
-addEventListener("keydown", e => { keys[e.code] = true; if (e.code.startsWith("Arrow")) e.preventDefault(); });
+addEventListener("keydown", e => { keys[e.code] = true; if (e.code.startsWith("Arrow")) e.preventDefault(); unlockAudio(); });
+addEventListener("pointerdown", unlockAudio);
 addEventListener("keyup", e => { keys[e.code] = false; });
 $("file").addEventListener("change", async e => { const f = e.target.files[0]; if (f) loadRom(await f.arrayBuffer()); });
 $("restart").addEventListener("click", start);
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom).catch(() => {});
 // expose for automated tests
-window.__mt = { get match() { return match; }, start, keys,
+window.__mt = { get match() { return match; }, start, keys, audio,
   get front() { return front; }, get menus() { return menus; },
   pause(p = true) { paused = p; }, step(input = {}) { tick(input); } };
 requestAnimationFrame(loop);

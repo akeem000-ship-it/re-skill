@@ -70,7 +70,8 @@ class Assets {
 }
 
 export class Menus {
-  constructor(rom, gameFont) {
+  constructor(rom, gameFont, audio = null) {
+    this.audio = audio;
     this.rom = rom; this.a = new Assets(rom); this.gf = gameFont; this.frame = 0; this.msg = 0;
     this.screen = "main"; this.main = { col: 0, row: 0 };
     this.play = { row: 0, choice: [0, 0, 0] };            // singles/doubles, 2/6 games, 1/3/5 sets
@@ -80,6 +81,7 @@ export class Menus {
   update(input) {
     this.frame++; if (this.msg > 0) this.msg--;
     const k = input;
+    if (this.audio) { if (k.left || k.right || k.up || k.down) this.audio.sfx(0x5F); if (k.a) this.audio.sfx(0x5E); if (k.b) this.audio.sfx(0x60); }   // menu SFX ids (REVERSE.md "Sound driver")
     switch (this.screen) {
       case "main": {
         const m = this.main;
