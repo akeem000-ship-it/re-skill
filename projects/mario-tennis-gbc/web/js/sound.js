@@ -98,11 +98,30 @@ export class Sequencer {
     this.updateVoice(c, s, muted);
   }
 
+  // 00:3A40-3AF7: hardware envelope from the envelope set. Row = shape, phase = 16*elapsed/length;
+  // byte = level<<4 | flags: bit0 write this phase, bit1 halve the period, bit2 fixed period 1,
+  // bit3 direction (1 = up). Period = (length>>4) << (0..2 by the channel volume bits), 0 = none.
   applyEnvelope(c) {
     const phase = Math.min(15, Math.floor(16 * c.envElapsed / c.envLen));
+    if (phase === c.envPhase) return;
+    c.envPhase = phase;
     const set = this.u16(ENVSETS + 2 * (c.instr & 15));
-    const byte = this.u8(set - 16 + ((c.envShape << 4) | phase));
-    if (byte & 1 || c.envElapsed <= 1) c.envLevel = byte >> 4;
+    const H = this.u8(set - 16 + ((c.envShape << 4) | phase)), E = (H & 0xF0) | (c.vol & 15);
+    let B = 0;
+    if (!(H & 4)) {
+      B = 1;
+      const a = (c.envLen >> 4) & 15;
+      if (a) {
+        B = a;
+        let keep = true;
+        if (!(E & 8)) { B <<= 1; if (!(E & 4)) { B <<= 1; if (!(E & 2)) keep = false; } }
+        if (keep) { if (B >= 8) B = 0; } else B = 0;
+      }
+    }
+    if (H & 2 && B) B >>= 1;
+    B = (H & 8) | B;
+    const write = (H & 1) || ((c.envDir || 0) !== (H & 8));
+    if (write) { c.envLevel = H >> 4; c.envPeriod = B & 7; c.envDir = H & 8; c.envWrite = true; }
   }
   effectiveVol(c) {
     let vol = c.vol;
@@ -115,7 +134,11 @@ export class Sequencer {
     const v = this.voices[c.hw];
     v.owner = s; v.on = c.note >= 0 && c.note !== 0x1F && !c.waitOnly ? true : v.on && !trigger;
     if (c.note === 0x1F) v.on = v.on && !c.released;
-    v.vol = this.effectiveVol(c); v.pan = c.pan; v.freq = c.freq; v.duty = c.duty; v.nr43 = c.noise;
+    v.pan = c.pan; v.freq = c.freq; v.duty = c.duty; v.nr43 = c.noise;
+    if (trigger || c.envWrite || v.setVol === undefined || !c.envLen) {   // an NR12 write: restart the hardware envelope
+      v.setVol = this.effectiveVol(c); v.vol = v.setVol; v.envPeriod = c.envLen ? (c.envPeriod || 0) : 0; v.envDir = c.envLen ? !!c.envDir : false; v.envTimer = 0;
+      c.envWrite = false;
+    }
     if (trigger) v.trigger = true;
     if (c.hw === 2 && c.waveId !== 0xFF && (!v.wave || v.waveKey !== (c.instr >> 4) * 256 + c.waveId)) {
       const set = this.u16(WAVESETS + 2 * (c.instr >> 4)), p = set + c.waveId * 16, w = [];
@@ -196,7 +219,7 @@ export class Sequencer {
       period >>= nn >> 4;
       c.baseFreq = c.freq = (0x800 - period) & 0x7FF;
     }
-    c.envElapsed = 0; c.envLevel = undefined;
+    c.envElapsed = 0; c.envLevel = undefined; c.envPhase = -1;
     if (c.envLen) this.applyEnvelope(c);
     this.updateVoice(c, s, muted, true);
   }
@@ -211,6 +234,13 @@ export class Apu {
   // render n stereo samples from the sequencer voices into out (Float32 interleaved L R)
   render(seq, out, n) {
     const v = seq.voices, rate = this.rate;
+    // hardware envelopes: one step per period/64 s (NR12), between the driver's writes
+    for (let hw = 0; hw < 4; hw++) {
+      const vc = v[hw];
+      if (hw === 2 || !vc.on || !vc.envPeriod) continue;
+      vc.envTimer += n / rate * 64;
+      while (vc.envTimer >= vc.envPeriod) { vc.envTimer -= vc.envPeriod; vc.vol = Math.max(0, Math.min(15, vc.vol + (vc.envDir ? 1 : -1))); }
+    }
     for (let i = 0; i < n; i++) {
       let l = 0, r = 0;
       for (let hw = 0; hw < 4; hw++) {

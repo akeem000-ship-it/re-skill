@@ -821,6 +821,16 @@ the far side) and reached by pressing the d-pad towards them (`08:7908`, angle �
   `CpuServeDelay 08:7A64` 35/50 frames, random shot code `08:7B62`, press.
 * Doubles use the parallel tables `08:7DF2/7E52` (partner at depth 384, X = 0.75·landing X).
 
+### Score display between points — partial
+
+The in-match score is not a HUD bar: after a point, bank 06 (mode byte `wC494` set by `08:4559`:
+0-2 point score, 3-5 game score, 6, 7) draws **sprite groups** through `06:5045` (2×2 OBJ tiles per
+glyph; tile lists `06:4A83` = `[0A 0B 1A 1B]`, `[0C 0D 1C 1D]`, `[0E 0F 1E 1F]` with attribute lists
+`06:4A8F`, group descriptors `06:4A9B/4AA1/4AA7` = `[w, h, tiles, attrs]`) into the OAM list at
+`wC4E3` (`DrawPointDigits 06:49F4`: five blanks then one glyph per point, 2 tiles apart); the group
+floats upwards and leaves the screen within ~90 frames. The digit tiles sit in VRAM bank 1 `$8000+`
+(source not located yet). Not ported: the web port prints the score with the UI font.
+
 ### Sound driver — VERIFIED format (bank 0 `3129-3DD4`, data banks 78-7F; tools: `dump_sound_index.py`, `dump_sound_seq.py`, `emu_seq_trace.py`)
 
 `SoundStart 00:3297`: ids `$01-$32` are **music** (index `00:3151`), `$50-$AF` **SFX** (`00:31B5`);
