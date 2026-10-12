@@ -510,3 +510,10 @@ bank,addr,name,comment
 *,C32A,wMapScrollMinY,map header +3 (tiles)
 *,DF15,wPlShotAnim,shot animation base: 5/6 wind-up, 9/10/11 swings, 7 serve
 *,DF19,wPlSwingPhase,0 recover 1 move 2 wind-up 3 swing 4 serve
+07,5AB3,CopyRecordToPlayer,record +0..+17 -> wDF70/72/74/76/90/94/95
+*,DF70,wPlHeightReach,record +2 - 16
+*,DF72,wPlSideReach,record +4
+*,DF74,wPlLunge,record +6 + $200 (negated into wDF44)
+*,DF76,wPlRecord8,record +8
+*,DF90,wPlSideBias,record +11/+12
+*,DF94,wPlSpriteFlip,$20 if record +0 nonzero

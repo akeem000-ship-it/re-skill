@@ -800,6 +800,23 @@ types high in the Speed group (Yoshi Speed 6 / Dash 8, Baby Mario Dash 6 / Stop 
 | 31 | Peach | Technique | 1 | 3 | 4 | 4 | 6 | 5 | 9 | 4 | 7 | 7 | 8 | `00 01 80 00 a0 00 00 08 0c 00 05 80 00 20 1c 0e 3c 00` |
 
 
+**Record bytes +0..+17 — VERIFIED copy targets** (`07:5AB3` copies them into the player struct at match
+start; uses in the swing code `08:6D5A-6E2C`):
+
+| Byte | → | Meaning (from the uses) | Values |
+|------|---|-------------------------|--------|
+| +0 | `wDF94` = `$20` if nonzero | OBJ X-flip flag for the swing sprites (left-handed?) | 0 for every ROM character |
+| +1 | — | not copied by `07:5AB3` | 0-2 (Waluigi 2, Yoshi/Bowser 0) |
+| +2/+3 | `wDF70` = word − 16 | **height reach**: compared with ball Z (`wC40A`) to choose a high-ball swing | `$80`; Luigi/DK/Bowser `$90`, Baby Mario `$70`, Waluigi `$A0` |
+| +4/+5 | `wDF72` | **side reach**: compared with the ball's lateral distance | `$A0`; DK/Bowser `$B0`, Waluigi `$A6` |
+| +6/+7 | `wDF74` = word + `$200` | stored negated into `wDF44` when the player lunges (dive impulse) | `$0800`; Bowser `$0780`, Mario `$0900` |
+| +8/+9 | `wDF76` | used by the swing code at `08:6E0F` | `$000C`; Emily `$0012`, Bowser `$000B` |
+| +10 | `wDF95` | CPU level / tour level | 1-5 |
+| +11/+12 | `wDF90` | bit 7 picks the swing side test at `08:6D5A` | `$80`, Spike/A. Coz `$0280`/`$0180` |
+| +13..+17 | CPU params | deep/short reaction, position error, placement, profile (see "CPU AI") | |
+
+These are the per-character inputs of the swing windows (deferred item 2).
+
 Roster → sprite: `RosterToSprite 07:5A44` = table `07:5A50` (verified live: Luigi 23 → sprite 27,
 Baby Mario 25 → 29). The unused roster slot 21 maps to sprite 26, the robot. Colours: sprite
 header +0 (3-7) selects one of five OBJ palettes at `18:4300` (verified live via OAM for Luigi
@@ -1017,7 +1034,7 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph5: find the character stat table (02:52CE, verified by WRAM diff in PyBoy)
 - [x] Ph5: verify stat label order (PyBoy: Create Character stat screen, poke + hook 1C:430E)
 - [x] Ph5: created-character stats: derived from style template + training T0-T3 + level (RebuildStats 02:44E9, verified)
-- [ ] Ph5: decode record bytes +0..+17
+- [x] Ph5: record bytes +0..+17 → wDF70-wDF95 (reach, lunge, CPU level), copied by 07:5AB3
 - [x] Ph5/6: ball physics (position/velocity layout, integrate, drag, gravity, bounce, fences), verified by simulation
 - [x] Ph5/6: model the spin terms 08:5613 (side wC41E, top wC41C) — in ball_sim.py, 0.03 px
 - [x] Ph5/6: shot tables in bank 07 (spin + speed per level), serve spin verified live
