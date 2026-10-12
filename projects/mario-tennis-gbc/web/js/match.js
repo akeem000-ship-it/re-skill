@@ -49,7 +49,7 @@ export class Match {
     if (s.cpu) s.X = [32, 32, 128, 224, 320, 384, 384, 384][Math.floor(Math.random() * 8)] * this.serveSide * this.dir(s);   // 08:7A3D
     r.X = -sx * 0.9; r.Y = (COURT.baseline + 60) * this.dir(r); r.vx = r.vy = 0;
     b.X = s.X * FX; b.Y = s.Y * FX; b.Z = -64 * FX;
-    for (const p of this.players) { p.swing = 0; p.cooldown = 20; p.ai = { state: "idle", t: 0 }; }
+    for (const p of this.players) { p.swing = 0; p.cooldown = 20; p.ai = { state: "idle", t: 0 }; p.swingReq = null; p.serveReq = null; p.lunge = false; }
     this.lastHitter = -1;
   }
 
@@ -176,7 +176,7 @@ export class Match {
     const deuce = this.serveSide === 1;
     const posCode = (p.side ? 2 : 0) | ((p.side === 0) === deuce ? 0 : 1);   // bit1 far end, bit0 ad court
     const mirror = (p.side === 0 ? 1 : 0) ^ (serve ? 0 : (bx > p.X ? 1 : 0));  // 07:53EF: sprite flip ^ backhand ^ rally
-    const lunge = !serve && Math.abs(bx - p.X) > 60;                             // APPROX wDF0F bit1 (running/lunging shot)
+    const lunge = !serve && !!p.lunge;                                           // wDF0F bit 1, set by swingAnimPick (08:6DF4)
     const r = computeShot(this.rom, {
       type, charge, mirror, posCode, aimDir: p.cpu ? p.aimDir | 0 : p.aimX,
       stats: p.data.stats, lobRow: 0, dropRow: 0,
@@ -189,11 +189,8 @@ export class Match {
     b.landing = r.landing; b.shotType = r.type; b.weak = r.fallback;
     if (serve) { this.state = "rally"; this.served = true; this.serveLanding = true; }
     b.bounces = 0; this.lastHitter = p.side; this.bounceSide = 0; this.hits++;
-    p.swing = 14; p.swingType = button === 2 ? 1 : button === 3 ? 2 : 0; p.cooldown = 24; p.swingReq = null;
-    // animation (recorded in PyBoy): forehand 9 when the ball is on the player's right, backhand 10,
-    // high balls 11; the serve uses 7
-    const rel = (bx - p.X) * d;
-    p.swingAnim = serve ? 7 : -bz > 220 ? 11 : rel >= 0 ? 9 : 10;
+    p.swing = 14; p.swingType = button === 2 ? 1 : button === 3 ? 2 : 0; p.cooldown = 24; p.swingReq = null; p.serveReq = null;
+    if (serve) p.swingAnim = 7;                                       // the rally animation was chosen by swingAnimPick
     b.heading = r.heading;
     if (this.audio) this.audio.sfx(serve ? 0x57 : 0x51);        // racket contact: $57 on the serve, $51 in the rally
     // 08:6A1C: the hitter goes to its recovery state (wDF18 = 2), the opponent to receiving (1)
@@ -219,6 +216,40 @@ export class Match {
     p.swingReq = { button, variant, t: 0, last: button === 3 ? 0 : button, timer: button === 3 ? 0 : 5 };
     if (this.audio) this.audio.sfx(0x59);                       // swing
   }
+  // 08:70F5 BallCrossX: X (relative to the player) where the ball's heading line crosses the player's Y
+  ballCrossX(p) {
+    const b = this.ball, h = b.head / 65536 * 2 * Math.PI, sn = Math.sin(h), cs = Math.cos(h);
+    const bx = b.X / FX, by = b.Y / FX;
+    return (Math.abs(sn) < 1e-6 ? bx : bx + (p.Y - by) * cs / sn) - p.X;
+  }
+  // the d-pad the player holds this frame (the CPU's virtual pad points at its target, 08:7908)
+  padOf(p, input) {
+    if (!p.cpu) return { x: (input.right ? 1 : 0) - (input.left ? 1 : 0), y: (input.down ? 1 : 0) - (input.up ? 1 : 0) };
+    const t = p.ai.target; if (!t) return { x: 0, y: 0 };
+    const dx = t[0] - p.X, dy = t[1] - p.Y;
+    return { x: Math.abs(dx) >= 24 ? Math.sign(dx) : 0, y: Math.abs(dy) >= 24 ? Math.sign(dy) : 0 };
+  }
+  // 08:6D5A SwingAnimPick, at the contact: lunge (anim $12, dash at the record's lunge speed, wDF0F bit 1)
+  // when the crossing X lies beyond SideReach (16 less inside the service line) and the d-pad is held
+  // that way; else a jump smash (anim 8) when the ball is above 2 * HeightReach (+ 2 * vZ), a high
+  // swing (7) above 1.5 * HeightReach, else the forehand/backhand (5/6, or the quick 9/10 when the
+  // charge is under 5 frames)
+  swingAnimPick(p, input, charge) {
+    const b = this.ball, D = p.data, pad = this.padOf(p, input), cx = this.ballCrossX(p), d = this.dir(p);
+    p.lunge = false;
+    const held = cx >= 0 ? pad.x * d > 0 : pad.x * d < 0;     // pad X is in screen terms, cx in world terms
+    if (held && Math.abs(cx) + (this.volleyZone(p) ? -16 : 0) - D.sideReach >= 0) {
+      p.lunge = true; p.swingAnim = 0x12;
+      const h = Math.atan2(pad.y, pad.x);                      // wDF0D: the held direction
+      p.vx = D.lungeSpeed * Math.cos(h); p.vy = D.lungeSpeed * Math.sin(h);
+      if (this.audio) this.audio.sfx(0x5C);
+      return;
+    }
+    const bz = b.Z / FX, vz = Math.floor(b.vZ / FX), R = D.heightReach;
+    if (bz + 2 * R + 2 * vz < 0) { p.swingAnim = 8; p.jumpV = -D.jump / 256; if (this.audio) this.audio.sfx(0x5C); return; }
+    const side = cx * d >= 0 ? 5 : 6;                          // WindupSide 08:6E44: forehand 5 / backhand 6
+    p.swingAnim = bz + R + (R >> 1) + 2 * vz < 0 ? 7 : charge < 5 ? side + 4 : side;
+  }
   // 08:7112 SwingSecondButton: a different button within the 5-frame window -> A+B; otherwise the
   // second press becomes the variant (same button: topspin/slice variant, A then B: lob, B then A: drop)
   swingSecondButton(r, input) {
@@ -233,7 +264,7 @@ export class Match {
     if (!r) return;
     if (!p.cpu && this.input && r.t > 0) this.swingSecondButton(r, this.input);   // not on the frame of the first press
     if (r.timer > 0) r.timer--;
-    if (this.canHit(p)) { this.hit(p, r.button, r.variant, Math.min(63, r.t)); return; }
+    if (this.canHit(p)) { this.swingAnimPick(p, this.input || {}, r.t); this.hit(p, r.button, r.variant, Math.min(63, r.t)); return; }
     r.t++;
     const b = this.ball, passed = (b.Y / FX - p.Y) * this.dir(p) > 96 || (b.vY > 0) !== (p.side === 0);
     if (r.t > 8 && passed || r.t > 120) { p.swingReq = null; p.swing = 10; p.cooldown = 20; p.swingAnim = 9; }
@@ -273,10 +304,16 @@ export class Match {
       const s = this.players[this.server], b = this.ball;
       b.Z += b.vZ; b.vZ += 0x4A00;            // toss: gravity only (0.289/frame^2, measured)
       this.tossT++;
-      const want = s.cpu ? (b.vZ > 0 && b.Z < -280 * FX) : (input.aPressed || input.bPressed);
+      const press = s.cpu ? (!s.serveReq && b.vZ > 0 && b.Z < -280 * FX) : (input.aPressed || input.bPressed);
       if (s.cpu) s.aimDir = this.serveAim !== undefined ? this.serveAim : (this.serveAim = Math.floor(Math.random() * 3) - 1);
-      if (want && b.Z < -150 * FX) { this.hit(s, s.cpu ? (Math.random() < 0.5 ? 1 : 2) : (input.aPressed && input.bPressed ? 3 : input.bPressed ? 2 : 1)); this.serveAim = undefined; }
-      else if (b.Z >= -64 * FX && this.tossT > 10) { this.state = "serve"; b.Z = -64 * FX; b.vZ = 0; }
+      if (press && !s.serveReq) {                            // 08:6C7A: the press starts the swing, the charge counts from here
+        s.serveReq = { button: s.cpu ? (Math.random() < 0.5 ? 1 : 2) : (input.aPressed && input.bPressed ? 3 : input.bPressed ? 2 : 1), t: 0 };
+        if (this.audio) this.audio.sfx(0x59);
+      }
+      if (s.serveReq && -b.Z / FX < 2 * s.data.heightReach) {   // contact: zone test, |dZ| < 2 * HeightReach (08:6FA7)
+        this.hit(s, s.serveReq.button, 0, Math.min(63, s.serveReq.t)); this.serveAim = undefined;
+      } else if (s.serveReq) s.serveReq.t++;
+      if (this.state === "toss" && b.Z >= -64 * FX && this.tossT > 10) { this.state = "serve"; b.Z = -64 * FX; b.vZ = 0; s.serveReq = null; }
       return;
     }
     // rally
@@ -290,7 +327,19 @@ export class Match {
     if (!hp.cpu && (input.aPressed || input.bPressed)) this.startSwing(hp, input.aPressed && input.bPressed ? 3 : input.bPressed ? 2 : 1);
     for (const p of this.players) if (p.cpu) this.cpuTick(p);
     for (const p of this.players) this.tickSwing(p);
+    for (const p of this.players) if (this.bodyHit(p)) return;
     this.movePlayers(input);
+  }
+  // 08:6EC5 BodyHitTest: a ball within 16 (Y), SideReach / 2 (X) and HeightReach (Z) of a receiving
+  // player who has not pressed a button hits the body: SFX $77 and the point goes to the hitter (result 9)
+  bodyHit(p) {
+    const b = this.ball;
+    if (p.swingReq || p.swing > 0 || this.lastHitter === p.side || this.lastHitter < 0) return false;
+    const dx = Math.abs(b.X / FX - p.X), dy = Math.abs(b.Y / FX - p.Y), dz = Math.abs(b.Z / FX);
+    if (dy >= 16 || 2 * dx >= p.data.sideReach || dz >= p.data.heightReach) return false;
+    if (this.audio) this.audio.sfx(0x77);
+    this.awardPoint(1 - p.side, "BODY HIT");
+    return true;
   }
 
   resetPointKeepScore() { const s = this.secondServe; this.resetPoint(); this.secondServe = s; }
@@ -298,6 +347,7 @@ export class Match {
   judge() {
     const b = this.ball;
     if (b.event === 1 && this.audio) this.audio.sfx(0x5B);       // bounce
+    if (b.event === 3 && this.audio) this.audio.sfx(0x5A);       // net
     if (b.event === 1) {                       // ground contact
       const x = b.X / FX, y = b.Y / FX, side = y > 0 ? 0 : 1;   // whose half it landed in
       if (b.bounces === 1) {

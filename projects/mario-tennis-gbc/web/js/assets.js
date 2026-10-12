@@ -242,7 +242,9 @@ export function characterData(rom, roster) {
     // record bytes +2/+3 and +4/+5 (REVERSE.md "Record bytes +0..+17"): height reach (word - 16) and side reach
     heightReach: rom.u16(0x02, base + 2) - 16, sideReach: rom.u16(0x02, base + 4),
     // byte +1 -> wDF7F: CPU plan mode (0 Yoshi/Bowser, 1 most, 2 Waluigi), see REVERSE.md "CPU AI"
-    cpuMode: rom.u8(0x02, base + 1) };
+    cpuMode: rom.u8(0x02, base + 1),
+    jump: rom.u16(0x02, base + 6) + 0x200,              // wDF74: vertical speed of the jump for a high ball (08:6DD5)
+    lungeSpeed: rom.u16(0x02, base + 8) & 0xFF };       // wDF76: lunge dash speed, px/frame (08:6E0F)
 }
 
 // shot tables in bank 07 (8-byte rows: topspin, sidespin, speed 8.8)

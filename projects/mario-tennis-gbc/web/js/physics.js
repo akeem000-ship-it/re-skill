@@ -10,10 +10,14 @@ const GRAVITY = 0x4A00, DAMP = 0xCD;
 
 const mshr = (p, n) => (p >= 0 ? 1 : -1) * Math.floor(Math.abs(p) / (1 << n));
 const hi8 = v => Math.floor(v / 256);              // 8.16 -> 8.8 (arithmetic shift)
+// The ROM keeps a velocity as [frac hi, int, frac lo] (wC424/25/26): routines that read "the 16-bit
+// word" see the 8.8 part and leave the low fraction byte alone. sra88 shifts that word arithmetically.
+const sra88 = (v, n) => Math.floor(Math.floor(v / 256) / (1 << n)) * 256 + (v & 0xFF);
+const set88 = (v, w) => w * 256 + (v & 0xFF);
 
 export function newBall() {
   return { X: 0, Y: 0, Z: 0, vX: 0, vY: 0, vZ: 0, top: 0, side: 0, head: 0,
-           bounces: 0, event: 0, lastHitter: -1, netHit: false };
+           bounces: 0, event: 0, lastHitter: -1, netHit: false, netCord: false, netCross: false };
 }
 
 function damp(b) {                                  // 08:46B0
@@ -31,10 +35,18 @@ export function step(b) {
   const yi = Math.floor(b.Y / FX);
   if (yi >= COURT.fenceNear || yi < COURT.fenceFar) { b.vY = not24(b.vY); b.Y += b.vY; damp(b); damp(b); b.event = 2; }
   if (Math.abs(Math.floor(b.X / FX)) >= COURT.fenceSide) { b.vX = not24(b.vX); b.X += b.vX; damp(b); damp(b); b.event = 2; }
-  // net 08:5814: crossing Y = 0 below the tape -> bounce back off the net (approximation of the
-  // full routine: Y mirrored, horizontal speed cut)
-  if ((prevY < 0) !== (b.Y < 0) && b.Z + COURT.net * FX >= 0) {
-    b.Y = not24(b.Y); b.vX = Math.floor(b.vX / 4); b.vY = -Math.floor(b.vY / 4); b.netHit = true; b.event = 3;
+  // net (BallNetCheck 08:5814): when Y changes sign below the tape the ball is mirrored back, vX is
+  // quartered, and by height: within 6 of the top (Z < -90) it clips the tape, pops up by 4*rand + |vY|/8
+  // and keeps a quarter of vY (a net cord that can dribble over); Z in [-90, -88) pops up and comes
+  // back at vY/8; lower balls just come back at vY/8 and drop into the net
+  b.netCross = (prevY < 0) !== (b.Y < 0);
+  if (b.netCross && b.Z + COURT.net * FX >= 0) {
+    b.Y = not24(b.Y); b.vX = sra88(b.vX, 2); b.netHit = true; b.event = 3;
+    const z = Math.floor(b.Z / FX), vy8 = Math.floor(sra88(b.vY, 3) / 256);     // |vY >> 3| as the 8.8 word
+    const pop = -(Math.floor(Math.random() * 256) * 4 + Math.abs(vy8));
+    if (z + 90 < 0) { b.Z = -COURT.net * FX; b.vZ = set88(b.vZ, pop); b.vY = sra88(b.vY, 2); b.netCord = true; }
+    else if (z + 88 < 0) { b.vZ = set88(b.vZ, pop); b.vY = sra88(-b.vY, 3); }
+    else b.vY = sra88(-b.vY, 3);
   }
   // drag 08:55B4
   const speed = Math.floor(Math.hypot(b.vX / FX, b.vY / FX, b.vZ / FX));
@@ -65,7 +77,7 @@ export function launch(b, speed, elev, heading, top = 0, side = 0) {
   const h = speed * Math.cos(elev);
   b.vX = Math.round(h * Math.cos(heading) * FX); b.vY = Math.round(h * Math.sin(heading) * FX);
   b.vZ = Math.round(-speed * Math.sin(elev) * FX);
-  b.top = top; b.side = side; b.bounces = 0; b.netHit = false;
+  b.top = top; b.side = side; b.bounces = 0; b.netHit = false; b.netCord = false;
 }
 
 // Simulate a copy until the first bounce; returns {X, Y, frames, clearsNet}
