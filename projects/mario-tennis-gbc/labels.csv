@@ -483,3 +483,6 @@ bank,addr,name,comment
 *,DF32,wFacingOctant,
 *,DF33,wAnimFrameGroup,
 *,DF37,wOAMAttr,
+0D,4090,MiniGameTableHi,18 descriptors for ids $12-$23
+0B,4002,MiniGameRun,BC = descriptor
+0D,4006,MiniGameRunHi,BC = descriptor

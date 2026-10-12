@@ -79,6 +79,16 @@ Confidence: **V** verified by code reading/emulator, **I** inferred from callers
 | 0B | **mini-games / training drills**: `0B:4705 RunMiniGame(A)` — ids 0-$11 via table `0B:47B4`, higher ids in bank 0D; called from scene code (banks 10/12/14/15), "Mini-Game n" text #353 | V |
 | 0C | data, no export table | ? |
 | 0D | mini-games ≥ $12 (`0D:407F`) and serve/bounce helpers (`0D:4BC8`) | I |
+
+**Mini-games / drills** (`0B:4705 RunMiniGame(A)`): 36 ids. Ids `$00-$11` → descriptor table
+`0B:47B4` run by `0B:4002`; ids `$12-$23` → `0D:4090` run by `0D:4006`; `$24` is a special case.
+Descriptor: `[b0, b1, b2, b3, id, b5, 0, flags, …, word ptrs to setup/tick/end callbacks]`. In bank 0B
+`b0 = $37 + id`, which lines up with the title texts `26 #55-#72` ("Stroke Match 1" … "Boo Blast:
+Level 2") — a **hypothesis** (the 0D descriptors use other `b0` values); the full title list (Service /
+Net Game / Stroke Match and Practice, The Machine, The Wall, Boo Blast, Shooting Star, Perfect Shot,
+Target Shot, Fruit Fantasy, Banana Bunch, Treasure Box, Medallion Match, Two-on-One) is text
+`26 #37-#97`, with rules in `26 #98-#165`.
+
 | 0E-15 | Mario Tour scene descriptors + scene code (actor scripts, event handlers) | V |
 | 16 | demo/cutscene code (`16:4477`, `16:5C35`) | I |
 | 17, 19, 3A, 3C, 3D, 3F, 6C, 6D | LZ graphics: tiles, tilemaps, palettes for screens and menus | V |
@@ -901,7 +911,7 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph3: decode rst $08 SoundCmdInline (00:2FB3) — music/SFX index, ids observed live
 - [x] Ph3: identify the sound driver (bank 0 3129-3Dxx) and data banks 78-7F
 - [x] Ph3: bank map 00-7F (tools/bank_map.py); refine the ? rows (0C, 16, 1D, 1E, 24, 28-2C, 73)
-- [ ] Ph5: name the 18+ mini-games (0B:47B4 table, 0D:407F) from their texts and setup
+- [ ] Ph5: verify the mini-game id → title mapping live (call RunMiniGame from a field state) and decode the descriptor bytes
 - [ ] Ph3: decode the sequence opcodes fully ($A0-$FF handlers) and write a sequence dumper
 - [x] Ph4: text encoding (ASCII + control codes) and text-bank layout; dump all 4109 messages
 - [x] Ph4: understand banks 5F-69 map layout via LoadMap 0A:585D — all 37 maps render
