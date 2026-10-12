@@ -98,10 +98,11 @@ export class Match {
   }
 
   // ---- shots ---------------------------------------------------------------
-  cpuShotCode(p) {            // 08:7B7B CpuShotChoose: A+B ($30) after a net cord (wC4DA) if the profile allows it;
-    const opp = this.players[1 - p.side], t = this.profileTable, b = this.ball;   // else 50%: a ball >= 320 away in Y with
-    if (b.netCord && t.includes(0x30)) return 0x30;                                // (physics.js has no net-cord continuation yet, so never)  the opponent >= 480 from the net -> lob ($12,
-    if (Math.random() < 0.5 && Math.abs(b.Y / FX - p.Y) >= 320 && t.includes(0x12) && Math.abs(opp.Y) >= 480) return 0x12;   // A then B);
+  cpuShotCode(p) {            // 08:7B7B CpuShotChoose: A+B ($30, the smash) against an incoming lob if the profile allows
+    const opp = this.players[1 - p.side], t = this.profileTable, b = this.ball;   // it — the lob landing marker is up
+    const lobIncoming = (b.shotType === 10 || b.weak) && !b.bounces;               // (wC4DA: lob or fallback shot, cleared on the bounce);
+    if (lobIncoming && t.includes(0x30)) return 0x30;                              // else 50%: a ball >= 320 away in Y with the opponent >= 480
+    if (Math.random() < 0.5 && Math.abs(b.Y / FX - p.Y) >= 320 && t.includes(0x12) && Math.abs(opp.Y) >= 480) return 0x12;   // from the net -> lob ($12, A then B);
     return t[Math.floor(Math.random() * 16)];                                      // else a random profile entry (02:5EB3)
   }
 

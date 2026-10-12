@@ -759,7 +759,7 @@ bank,addr,name,comment
 *,FFDB,hSeqGate,
 *,FFE6,hSeqPan,
 *,FFE9,hSeqInstrument,wave set << 4 | envelope set
-*,C4DA,wBallNetCord,1 after the ball clipped the net cord (08:533C with SFX $6D); CpuShotChoose -> A+B
+*,C4DA,wLandingMarkerActive,nonzero while the lob landing marker is shown: set with SFX $6D by StartLandingMarker (08:533C); CpuShotChoose -> A+B against the incoming lob (corrected from wBallNetCord; name from the gerbiljames disassembly)
 02,4044,PendingExpValid,wC9B4 == $64 and checksum over wC9B0-C9B7 (block written by the N64 game via Transfer Pak)
 1A,4561,MiniGameExpResult,DE = EXP earned -> WRAM6 D230 + display record; D254 = player/partner; 472E adds it via AddTourExp
 1A,43AA,DebugExpEditor,Select +1 / +10 EXP, Start toggles player-partner (AddTourExp); reached from 43A1 pad bit 2
@@ -771,6 +771,21 @@ bank,addr,name,comment
 00,3A23,SeqClearLength,NRx1 &= $C0 after a volume write
 *,C4B4,wBallNetCross,1 on the frame the ball's Y changed sign (BallNetCheck 08:5814)
 *,C4BF,wBallNetHit,1 after the ball hit the net this point
-08,5383,NetHitEffect,wC460/62 = projected net-hit point, wC4A8 = 20 frame timer for the net animation (53AC)
+08,5383,StartBounceEffect,ball-bounce dust (ground bounce and net clip): wC460/62 = projected ball point, wC4A8 = 20-frame timer; drawn by 08:53AC with tiles $60/$62
+08,53AC,DrawBounceEffect,tiles $60 then $62 for the last 10 frames at wC460/62 through the camera
+08,53D0,StartHitEffect,swing-hit effect: wC464/66 = projected ball point; wC4A9 = 16 (normal spark) or wC4AA = 16 + SFX (special shot / full charge)
+08,540E,DrawHitSpark,tiles $68-$6E by wC4A9
+08,5436,DrawSpecialHitEffect,16-high tile $74 at wC464/66 + animation by wC4AA
+08,52DA,StartLandingMarker,lob landing marker (lob shot or fallback trajectory; target far enough from the ball): wC480/82 = projected wBallTarget (depth clamped), wC4DA = 1, SFX $6D
+08,5342,DrawLandingMarker,16-high tile $7C at wC480/82 while wC4DA
+*,C460,wBounceEffectX,projected X of the bounce dust (08:5383)
+*,C462,wBounceEffectY,
+*,C464,wHitEffectX,projected X of the swing-hit effect (08:53D0)
+*,C466,wHitEffectY,
+*,C480,wLandingMarkerX,projected X of the lob landing marker (08:52DA)
+*,C482,wLandingMarkerY,
+*,C4A8,wBounceEffectTimer,frames left of the bounce dust (from $14)
+*,C4A9,wHitSparkTimer,frames left of the hit spark (from $10)
+*,C4AA,wSpecialHitTimer,frames left of the special-shot flash (from $10)
 *,DF44,wPlVelZ,vertical speed 8.8 (jump smash: -wDF74)
 *,DF4C,wPlQuickSwing,1 when the swing was contacted with charge < 5 (animation +4)

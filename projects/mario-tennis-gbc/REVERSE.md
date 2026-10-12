@@ -824,7 +824,7 @@ the far side) and reached by pressing the d-pad towards them (`08:7908`, angle �
   512 (`08:7D93`) — this is why CPUs take most balls from inside the service line; arrived or ball in
   reach → `wDF59` = `wDF7B` and 3 → `08:7DAD`: **swing delay** — wait `wDF59` frames unless the ball is
   already in reach (`wDF7B` is a hesitation, 12/9/5/0 frames by difficulty, not a positioning error),
-  then `CpuShotChoose 08:7B7B` (A+B after a net cord — `wC4DA`, set with SFX `$6D` at `08:533C` — when the profile table `02:5E23` holds `$30`; else 50 %: a ball ≥ 320 away in Y with the opponent ≥ 480 from the net → lob `$12` if allowed;
+  then `CpuShotChoose 08:7B7B` (A+B, the smash, against an incoming lob — `wC4DA` `wLandingMarkerActive`, set with SFX `$6D` by `StartLandingMarker 08:52DA` for a lob or a fallback trajectory and cleared on the bounce; an earlier version of this note called it a net-cord flag — when the profile table `02:5E23` holds `$30`; else 50 %: a ball ≥ 320 away in Y with the opponent ≥ 480 from the net → lob `$12` if allowed;
   else RNG bit → profile pick, or with the ball ≥ 320 away and `$12` allowed, a drop shot when the
   opponent is deep) + `CpuPressButtons 08:7C10`, `wDF13` = 5; 4 → `08:7DCB`: after 5 frames
   press the variant nibble (`08:7C21`, the double press), keep steering towards the ball (`08:7944`),
@@ -1246,7 +1246,15 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 ## Reference Resources
 
 - Pan Docs (https://gbdev.io/pandocs/) — hardware registers, MBC5, CGB palettes
-- No public disassembly of this game is known.
+- gerbiljames/mario-tennis-gbc-disasm (https://github.com/gerbiljames/mario-tennis-gbc-disasm, James White, MIT):
+  a byte-perfect RGBDS disassembly of this ROM (same SHA-1) with named routines, a RAM map and docs
+  (`docs/match_engine.md`, `story_mode.md`, `ram_map.md`, `save_format.md` ...). It appeared after this project's
+  own analysis; it is used, with the owner's approval, as a reference to cross-check and correct these notes,
+  never as a tool. Its addresses agree with the ones found here (`ProjectWorldToScreen` = `00:2D8C`,
+  `HandleBallNetCrossing` = `08:5814`, `StartCharSwing` = `08:6D5A`, `UpdateMatchCamera` = `08:61DC`).
+  Corrections taken from it, each re-checked with `tools/disasm.py`: `wC4DA` is `wLandingMarkerActive` (the lob
+  landing marker, set by `StartLandingMarker 08:52DA`), not a net-cord flag; `08:5383` is `StartBounceEffect`
+  (called from the ground bounce `08:436D` and the net clip `08:5843`), not only the net hit.
 
 ---
 

@@ -15,3 +15,7 @@
   - `rst $20/$28/$30 ; dw n<<5` set/clear/test event flag n;
   - assets are LZ-compressed (`tools/decompress.py`); text is ASCII.
 - Never use third-party disassemblers. Write a .py in tools/ rather than inline `python3 -c`.
+  Exception (approved by the project owner): the gerbiljames/mario-tennis-gbc-disasm repository (MIT) may be
+  read as a *reference* for names and documented behaviour. Check what it says against the ROM with our own tools
+  (`tools/disasm.py`, emulator traces) before relying on it, credit it where a name or fact comes from it
+  (label comment / note), and never copy its source files into this repo. Credits are in README.md.

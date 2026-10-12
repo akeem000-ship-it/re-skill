@@ -74,7 +74,7 @@ function input() {
 }
 const rec = new Recorder();
 function frame() {
-  pollGamepad(keys); const inp = input(), mask = maskOf(inp); gb.setInput(inp); gb.runFrame();
+  pollGamepad(keys); const inp = input(), mask = maskOf(inp); gb.setInput(inp); gb.runFrame(); if (view3d && voxel && voxel.mode === "3d") voxel.tick();
   rec.frame(gb, mask);
   if (audioReady && anode) { const n = gb.apu.drain(abuf); if (n) anode.port.postMessage(abuf.slice(0, n)); } else gb.apu.outPos = 0;
 }

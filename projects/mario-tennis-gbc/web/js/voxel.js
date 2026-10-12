@@ -188,14 +188,15 @@ export class Voxel3D {
   }
   // a court is loaded when the BG tilemap in VRAM is one of the court maps (checked every 20 frames)
   isCourt() {
-    if (!this.courtMaps || this.mapId() > 15) { this.courtId = -1; this.detectAt = 0; return false; }
+    if (!this.courtMaps || this.mapId() > 15) { this.courtId = -1; this.detectAt = 0; this.lastBody = null; return false; }
     const fr = this.gb.ppu.frames; if (fr < this.detectAt) return this.courtId >= 0;
     this.detectAt = fr + 20;
     const v0 = this.gb.mem.vram[0], base = this.gb.ppu.lcdc & 0x08 ? 0x1C00 : 0x1800;
-    this.courtId = -1;
+    // the best match, not the first: courts 4 and 5 share most of their map and differ in the far backdrop rows
+    this.courtId = -1; let best = 600;
     for (const [id, m] of Object.entries(this.courtMaps)) {
-      let same = 0; for (let i = 0; i < 1024; i += 3) if (v0[base + i] === m[i]) same++;
-      if (same > 300) { this.courtId = +id; break; }
+      let same = 0; for (let i = 0; i < 1024; i++) if (v0[base + i] === m[i]) same++;
+      if (same > best) { best = same; this.courtId = +id; }
     }
     return this.courtId >= 0;
   }
@@ -205,7 +206,7 @@ export class Voxel3D {
     for (let k = 4; k < 4 + n; k++) {
       const b = m.wram[k], s16 = a => (b[a] | (b[a + 1] << 8)) << 16 >> 16, X = s16(0xF01), Y = s16(0xF04), Z = s16(0xF07);
       if (Math.abs(X) > 1400 || Math.abs(Y) > 2600 || Z > 0 || Z < -600) continue;
-      out.push({ X, Y, Z });
+      out.push({ X, Y, Z, slot: k });
     }
     return out;
   }
@@ -496,10 +497,22 @@ export class Voxel3D {
   }
   // draws an OAM object (list of sprites) relative to an anchor screen point: as one inflated voxel body in
   // voxel mode, else as per-tile cards
-  blitObject(list, ax, ay, X, Yw, lift, scale, tilt, mvp) {
-    if (!this.voxelSprites) { for (const sp of list) this.blitSprite(sp, ax, ay, X, Yw, lift, scale, tilt, mvp); return; }
-    const o = this.objectMesh(list), dx = (o.x0 + o.w / 2 - ax) * scale, up = (ay - o.y1) * scale;
-    this.drawMesh(o.mesh, m4.trs3(X + dx, lift + up * Math.cos(tilt), Yw - up * Math.sin(tilt), scale, scale, scale, -tilt), mvp);
+  blitObject(list, ax, ay, X, Yw, lift, scale, tilt, mvp) { this.drawBody(this.bodyOf(list, ax, ay), X, Yw, lift, scale, tilt, mvp); }
+  // an object's look relative to its anchor, independent of VRAM afterwards (kept for players off the 2D screen):
+  // the inflated mesh in voxel mode, else one texture per 8x8 tile
+  bodyOf(list, ax, ay) {
+    if (this.voxelSprites) { const o = this.objectMesh(list); return { mesh: o.mesh, dx: o.x0 + o.w / 2 - ax, up: ay - o.y1 }; }
+    const cards = [];
+    for (const sp of list) for (let half = 0; half < sp.h / 8; half++)
+      cards.push({ tex: this.spriteTexture(sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half), (sp.attr >> 3) & 1, sp.attr & 7, (sp.attr >> 5) & 1, (sp.attr >> 6) & 1),
+                   dx: sp.sx + 4 - ax, up: ay - (sp.sy + (half + 1) * 8) });
+    return { cards };
+  }
+  drawBody(b, X, Yw, lift, scale, tilt, mvp) {
+    const c = Math.cos(tilt), s = Math.sin(tilt);
+    if (b.mesh) { if (this.voxelSprites) this.drawMesh(b.mesh, m4.trs3(X + b.dx * scale, lift + b.up * scale * c, Yw - b.up * scale * s, scale, scale, scale, -tilt), mvp); return; }
+    if (this.voxelSprites) return;
+    for (const q of b.cards) this.draw(q.tex, m4.trs(X + q.dx * scale, lift + q.up * scale * c, Yw - q.up * scale * s, 8 * scale, 8 * scale, -tilt, 0), mvp);
   }
   // draws one OAM sprite's tiles relative to an anchor screen point (ax, ay) mapped to world (X, Yw) at height lift
   blitSprite(sp, ax, ay, X, Yw, lift, scale, tilt, mvp) {
@@ -518,11 +531,18 @@ export class Voxel3D {
     gl.uniform4fv(this.u.uUVRect, uv); gl.uniform4fv(this.u.uTint, tint); gl.uniform1f(this.u.uAlphaTest, alphaTest);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
+  // per game frame (also called by the page after each emulated frame, so skipped display frames keep it whole):
+  // the ball's world position history the court effects are placed from
+  tick(ball = null) {
+    const fr = this.gb.ppu.frames, h = this.ballHist ||= [];
+    if (h.length && h[h.length - 1].fr === fr) return;
+    h.push({ fr, ball: ball || this.ballWorld() }); if (h.length > 40) h.shift();
+  }
   // alpha: how far the display is between the last two game frames (0..1); the 3D view renders at the
   // display's refresh rate and interpolates world positions, the game itself stays at 60 Hz
   render(frame2d, alpha = 1) {
     const gl = this.gl, cv = this.cv, fr = this.gb.ppu.frames;
-    if (fr !== this.lastFrame) { const cur = this.sampleState(); this.prev = (this.cur && fr === this.lastFrame + 1) ? this.cur : cur; this.cur = cur; this.lastFrame = fr; }
+    if (fr !== this.lastFrame) { const cur = this.sampleState(); this.tick(cur.ball); this.prev = (this.cur && fr === this.lastFrame + 1) ? this.cur : cur; this.cur = cur; this.lastFrame = fr; }
     this.alpha = Math.max(0, Math.min(1, alpha));
     const dpr = Math.min(2, (typeof devicePixelRatio === "number" && devicePixelRatio) || 1), W = Math.round((cv.clientWidth || 160) * dpr), H = Math.round((cv.clientHeight || 144) * dpr);
     if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }   // render at device pixels (capped at 2x)
@@ -580,7 +600,7 @@ export class Voxel3D {
       else this.draw(c.tex, m4.trs(c.X, 0, c.Y, c.width, c.height, 0, 0), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
     }
     const sprs = this.collectSprites(), players = this.players(), land = this.landing(), ball = this.ballWorld(), sm = this.interp();
-    const [ballSx, ballSy] = this.screenOf(ball.X, ball.Y, ball.Z), [shSx, shSy] = this.screenOf(ball.X, ball.Y, 0), [laSx, laSy] = this.screenOf(land.X, land.Y, 0);
+    const [ballSx, ballSy] = this.screenOf(ball.X, ball.Y, ball.Z), [shSx, shSy] = this.screenOf(ball.X, ball.Y, 0);
     const SCALE = 7.5;
     // classification (order matters):
     //  1. the ball, its trail and its shadow: tiles $40-$4F (ball sizes, trail, shadow, landing marker) near the
@@ -603,8 +623,10 @@ export class Voxel3D {
       if (sp.owner || isBallTile(sp)) continue;
       let best = null, d0 = 1e9;
       for (const f of feet) {
-        const dx = sp.sx + 4 - f.fx, dy = f.fy - (sp.sy + sp.h), low = f.fy < 8 ? -28 : -6;
-        if (Math.abs(dx) > 16 || dy < low || dy > 10) continue;
+        // feet above the screen: the lowest visible tiles are higher up the body; feet below it: the body is cut
+        // at the bottom edge, so its lowest tiles end there
+        const dx = sp.sx + 4 - f.fx, dy = f.fy - (sp.sy + sp.h), low = f.fy < 8 ? -28 : -6, high = Math.max(10, f.fy - 134);
+        if (Math.abs(dx) > 16 || dy < low || dy > high) continue;
         const d = Math.abs(dx) + Math.abs(dy); if (d < d0) { d0 = d; best = f; }
       }
       if (best) { best.list.push(sp); sp.owner = best; }
@@ -616,27 +638,66 @@ export class Voxel3D {
         for (const f of feet) if (f.list.some(b => near(sp, b, 2)) && Math.abs(sp.sx + 4 - f.fx) <= 28 && sp.sy + sp.h <= f.fy + 6) { f.list.push(sp); sp.owner = f; grew = true; break; }
       }
     }
-    // the landing marker: sprites around the projected landing point, drawn flat on the court there
-    const markers = [];
-    if (Math.abs(land.X) < 1400 && Math.abs(land.Y) < 2600) for (const sp of sprs) { if (!sp.owner && Math.abs(sp.sx + 4 - laSx) <= 10 && Math.abs(sp.sy + sp.h / 2 - laSy) <= 10) { sp.owner = "marker"; markers.push(sp); } }
-    for (const sp of markers) {                           // flat decal: tile rows lie along the court
-      const upp = 1024 / (project(land.X, land.Y, 0).s || 128), sc = SCALE * upp / 8;
-      for (let half = 0; half < sp.h / 8; half++) {
-        const t = this.spriteTexture(sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half), (sp.attr >> 3) & 1, sp.attr & 7, (sp.attr >> 5) & 1, (sp.attr >> 6) & 1);
-        this.draw(t, m4.trs(land.X + (sp.sx + 4 - laSx) * sc, 0.8, land.Y + (sp.sy + (half + 1) * 8 - laSy) * sc * 2, 8 * sc, 8 * sc * 2, -Math.PI / 2), mvp);
+    // the lob landing marker (tiles $7C/$7E): only while the game shows it (wLandingMarkerActive $C4DA, set by
+    // StartLandingMarker 08:52DA) and around the point it draws it at (wLandingMarkerX/Y $C480/$C482, the projected
+    // target with its depth clamped), drawn flat on the court there
+    const markers = [], w0 = this.gb.mem.wram[0];
+    if (w0[0x4DA]) {
+      const s16 = a => (w0[a] | (w0[a + 1] << 8)) << 16 >> 16, mx = (0x1010 - (p.scx << 5) + s16(0x480)) / 32, my = (0x1010 - (p.scy << 5) + s16(0x482)) / 32;
+      for (const sp of sprs) if (!sp.owner && sp.tile >= 0x7C && sp.tile < 0x80 && Math.abs(sp.sx + 4 - mx) <= 14 && Math.abs(sp.sy + sp.h / 2 - my) <= 14) { sp.owner = "marker"; markers.push(sp); }
+      if (markers.length) {
+        const w = this.unprojectBG(mx + p.scx, my + p.scy), sc = SCALE * w.upp / 8;
+        for (const sp of markers) for (let half = 0; half < sp.h / 8; half++) {   // flat decal: tile rows lie along the court
+          const t = this.spriteTexture(sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half), (sp.attr >> 3) & 1, sp.attr & 7, (sp.attr >> 5) & 1, (sp.attr >> 6) & 1);
+          this.draw(t, m4.trs(w.X + (sp.sx + 4 - mx) * sc, 0.8, w.Y + (sp.sy + (half + 1) * 8 - my) * sc * 2, 8 * sc, 8 * sc * 2, -Math.PI / 2), mvp);
+        }
       }
     }
     for (let k = 0; k < feet.length; k++) {
-      const f = feet[k]; if (!f.list.length) continue;
+      const f = feet[k], ghost = this.lastBody && this.lastBody[f.pl.slot];
+      if (!f.list.length && ghost && (f.fy < 8 || f.fy > 144 || f.fx < 0 || f.fx > 160)) {   // off the 2D screen
+        const pl = sm.players[k] || f.pl, scale = SCALE * 1024 / (project(pl.X, pl.Y, 0).s || 128) / 8;
+        this.draw(this.shadowTex, m4.trs(pl.X, 0.6, pl.Y + 4, 150, 70, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 0.75], 0);
+        this.drawBody(ghost, pl.X, pl.Y, -pl.Z, scale, tilt, mvp);
+        if (this.debug) this.debug.push({ X: pl.X, Y: pl.Y, Z: pl.Z, n: 0, ghost: true });
+        continue;
+      }
+      if (!f.list.length) continue;
       const pl = sm.players[k] || f.pl, upp = 1024 / (project(pl.X, pl.Y, 0).s || 128), scale = SCALE * upp / 8;   // world units per px at that depth
       this.draw(this.shadowTex, m4.trs(pl.X, 0.6, pl.Y + 4, 150, 70, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 0.75], 0);
-      this.blitObject(f.list, f.fx, f.fy, pl.X, pl.Y, -pl.Z, scale, tilt, mvp);
+      const body = this.bodyOf(f.list, f.fx, f.fy); this.drawBody(body, pl.X, pl.Y, -pl.Z, scale, tilt, mvp);
+      // the last whole body seen (feet on screen) stands in while the player is off the Game Boy screen
+      if (f.fy <= 144 && f.fy >= 16) (this.lastBody ||= [])[f.pl.slot] = body;
       if (this.debug) this.debug.push({ X: pl.X, Y: pl.Y, Z: pl.Z, n: f.list.length, tiles: f.list.map(s => `${s.sx},${s.sy},${s.tile}`) });
     }
     if (ballGroup.length) {                               // the ball's projection point is the anchor: its tiles keep their 2D offsets
       const b = sm.ball;
       this.blitObject(ballGroup, ballSx, ballSy, b.X, b.Y, -b.Z, SCALE, tilt, mvp);
       this.draw(this.shadowTex, m4.trs(b.X, 0.5, b.Y, 50, 32, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
+    }
+    // ball effects: bounce dust (timer wC4A8, tiles $60/$62), hit spark (wC4A9, $68-$6E), special-shot flash
+    // (wC4AA): the game projects the ball's position once when the effect starts (StartBounceEffect 08:5383,
+    // StartHitEffect 08:53D0) and redraws it there through the camera; the ball's world position at the start
+    // is kept here, so the effect stays where the ball was in 3D instead of floating as HUD
+    // (the timers count down from $14 / $10 / $10 once per frame, so the start is that many frames back in the
+    // per-frame ball history even when display frames were skipped)
+    const fxs = this.effects ||= [[0xA8, 0x14], [0xA9, 0x10], [0xAA, 0x10]].map(([a, init]) => ({ a, init, t: 0, pos: null }));
+    for (const e of fxs) {
+      const t = this.gb.mem.wram[0][0x400 + e.a];
+      if (t > e.t || (t && !e.pos)) {
+        const at = this.gb.ppu.frames - (e.init - t), h = (this.ballHist || []).filter(q => q.fr <= at).pop();
+        e.pos = { ...(h ? h.ball : ball) };
+      }
+      e.t = t; if (!t) e.pos = null;
+    }
+    for (const e of fxs) {
+      if (!e.pos) continue;
+      const [ex, ey] = this.screenOf(e.pos.X, e.pos.Y, e.pos.Z), grp = [];
+      for (const sp of sprs) if (!sp.owner && sp.tile >= 0x60 && sp.tile < 0x80 && Math.abs(sp.sx + 4 - ex) <= 16 && Math.abs(sp.sy + sp.h / 2 - ey) <= 16) { sp.owner = "effect"; grp.push(sp); }
+      if (!grp.length) continue;
+      const upp = 1024 / (project(e.pos.X, e.pos.Y, 0).s || 128);
+      this.blitObject(grp, ex, ey, e.pos.X, e.pos.Y, Math.max(0, -e.pos.Z), SCALE * upp / 8, tilt, mvp);
+      if (this.debug) this.debug.push({ effect: e.a, n: grp.length });
     }
     // other ball-range sprites inside the picture (bounce marks, a second ball) stand at their un-projected feet;
     // everything else (score strip, point faces, "1ST P1" labels) is HUD in screen space

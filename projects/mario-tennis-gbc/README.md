@@ -16,6 +16,16 @@ python3 -m http.server 8000       # then open http://localhost:8000/web/catalog.
 
 The ROM and everything extracted from it are gitignored. Only tools and notes are versioned.
 
+## Credits
+
+- **[gerbiljames/mario-tennis-gbc-disasm](https://github.com/gerbiljames/mario-tennis-gbc-disasm)** by
+  James White (MIT): a byte-perfect RGBDS disassembly of the same ROM with named routines, a RAM map
+  and write-ups of the match engine, story mode, screens and save format. This project's own analysis
+  (`tools/disasm.py`, the emulator traces, `labels.csv`) came first; the disassembly is used as a
+  reference to cross-check and correct it, and where a name or fact here comes from it the label
+  comment or note says so (e.g. `wLandingMarkerActive $C4DA`, the ball effect timers `$C4A8-$C4AA`).
+  Nothing is copied from its source tree.
+
 ## Quick tour
 
 ```bash
@@ -82,6 +92,8 @@ node web/tests/play_match.mjs out/match --max 45000 --video 300:3000:2    # a bo
 node web/tests/snap_walk.mjs out/snap_menu1.json out/walk --keys KeyZ@60-64,KeyZ@104-108 --shots 30,700   # overworld 3D + dialogue overlay
 node web/tests/stick_walk.mjs out/snap_menu1.json out/stick.png                  # virtual analog stick -> d-pad keys
 node web/tests/replay.mjs recording.mtrec --shots 600 --states 3600         # replay a REC session from the app, verified frame hashes
+node web/tests/replay_view.mjs recording.mtrec out/rv --every 4 --vox         # play it in the 3D view, flag misplaced sprites (+ shots)
+node web/tests/court_map_diff.mjs out/replay/s001800.json.gz                    # which court map the VRAM tilemap matches
 ```
 
 Other drivers: `emu_charmatch.py K` (start a match with the K-th character and dump WRAM),
