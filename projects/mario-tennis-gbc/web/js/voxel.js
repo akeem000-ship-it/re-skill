@@ -11,6 +11,7 @@
 // Sprites are textured cards or, in voxel mode, one lit cube per opaque pixel.
 import { project } from "./camera.js";
 import { courtTilemaps, courtImage } from "./assets.js";
+import { FIELD_OBJECTS } from "./field_objects.js";
 
 const VS = `#version 300 es
 in vec2 aPos; in vec2 aUV; uniform mat4 uMVP; uniform mat4 uModel; uniform vec4 uUVRect; out vec2 vUV;
@@ -107,14 +108,8 @@ const STANDS = [
 //  cards:  single cut-outs (fences, gate posts)
 // The ground behind cut-outs is keyed out (colours of the surrounding ground reachable from the edge) and the
 // floor under them is patched with the ground strip below.
-const FIELD_OBJECTS = {
-  26: {   // Academy front
-    blocks: [{ x0: 24, y0: 0, x1: 136, y1: 112, fold: 28 }, { x0: 136, y0: 0, x1: 248, y1: 128, fold: 36 }, { x0: 248, y0: 0, x1: 360, y1: 112, fold: 28 }],
-    stamps: [{ x: 144, y: 128, w: 16, h: 32 }, { x: 0, y: 64, w: 16, h: 32 }, { x: 80, y: 128, w: 16, h: 16 }],
-    cards: [{ x0: 0, y0: 384, x1: 160, y1: 408 }, { x0: 224, y0: 384, x1: 384, y1: 408 }, { x0: 160, y0: 384, x1: 176, y1: 416 }, { x0: 208, y0: 384, x1: 224, y1: 416 }],
-  },
-};
 const WALL_SCALE = 1.25, FIELD_TILT = 0.3;
+const SIDE_VIEW_MAPS = new Set([19, 21]);   // drawn as side-view / aerial pictures, not top-down maps: shown as parallax layers
 
 export class Voxel3D {
   constructor(canvas, gb, rom = null) {
@@ -180,7 +175,7 @@ export class Voxel3D {
   fieldScroll() { const w = this.gb.mem.wram[0]; return { x: w[0x321] * 8 + (w[0x320] >> 5), y: w[0x323] * 8 + (w[0x322] >> 5) }; }
   // an RPG map is on screen when the VRAM tilemap shows the WRAM3 map at the field scroll (checked every 10 frames)
   isField() {
-    const id = this.mapId(); if (id < 17 || id > 36) return false;
+    const id = this.mapId(); if (id < 17 || id > 36 || SIDE_VIEW_MAPS.has(id)) return false;
     const fr = this.gb.ppu.frames; if (fr < this.fieldAt) return this.fieldOn; this.fieldAt = fr + 10;
     const m = this.gb.mem, p = this.gb.ppu, v0 = m.vram[0], tm = m.wram[3], base = p.lcdc & 0x08 ? 0x1C00 : 0x1800;
     const sc = this.fieldScroll(), mx = sc.x >> 3, my = sc.y >> 3, vx = p.scx >> 3, vy = p.scy >> 3;
@@ -669,8 +664,12 @@ export class Voxel3D {
   // ---- RPG areas: the whole 64x64 map as a floor, solid metatiles (collision grid) as extruded boxes ----
   composeField() {                                      // WRAM3 tilemap + WRAM2 attributes (stride 64) -> 512x512 RGBA
     const m = this.gb.mem, p = this.gb.ppu, tm = m.wram[3], at = m.wram[2], v0 = m.vram[0], v1 = m.vram[1], lcdc = p.lcdc;
-    const img = new Uint8Array(512 * 512 * 4);
+    const img = new Uint8Array(512 * 512 * 4), w0 = m.wram[0], MW = w0[0x32B] || 64, MH = w0[0x32C] || 64;   // wMapWidth/Height (tiles)
     for (let ty = 0; ty < 64; ty++) for (let tx = 0; tx < 64; tx++) {
+      if (tx >= MW || ty >= MH) {             // beyond the map: leftovers in WRAM, shown as dark ground
+        for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const o = ((ty * 8 + y) * 512 + tx * 8 + x) * 4; img[o] = 16; img[o + 1] = 20; img[o + 2] = 28; img[o + 3] = 255; }
+        continue;
+      }
       const i = ty * 64 + tx, tile = tm[i], attr = at[i], bank = attr & 8 ? v1 : v0;
       const addr = lcdc & 0x10 ? tile << 4 : 0x1000 + ((tile << 24 >> 24) << 4);
       for (let y = 0; y < 8; y++) {
@@ -706,8 +705,8 @@ export class Voxel3D {
     const m = this.gb.mem, tm = m.wram[3], at = m.wram[2], tw = st.w >> 3, th = st.h >> 3, sx = st.x >> 3, sy = st.y >> 3;
     const key = (x, y) => tm[y * 64 + x] | ((at[y * 64 + x] & 0x6F) << 8), tpl = [];
     for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) tpl.push(key(sx + x, sy + y));
-    const need = Math.ceil(tpl.length * 0.8), hits = [];
-    for (let ty = 0; ty + th <= 64; ty++) for (let tx = 0; tx + tw <= 64; tx++) {
+    const need = Math.ceil(tpl.length * 0.8), hits = [], w0 = m.wram[0], MW = Math.min(64, w0[0x32B] || 64), MH = Math.min(64, w0[0x32C] || 64);
+    for (let ty = 0; ty + th <= MH; ty++) for (let tx = 0; tx + tw <= MW; tx++) {   // inside the map only (leftover tiles beyond it repeat)
       let ok = 0; for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) if (key(tx + x, ty + y) === tpl[y * tw + x]) ok++;
       if (ok >= need) hits.push({ x: tx * 8, y: ty * 8 });
     }
@@ -718,8 +717,13 @@ export class Voxel3D {
     for (const c of f.cards || []) { if (c.own) { gl.deleteTexture(c.tex); this.freeMesh(c.mesh); } }
     if (f.blocks) for (const b of [f.blocks.front, f.blocks.side]) { gl.deleteBuffer(b.pb); gl.deleteBuffer(b.ub); gl.deleteVertexArray(b.vao); }
     if (f.artTex) gl.deleteTexture(f.artTex);
-    f.cards = []; f.blocks = null; f.artTex = null;
+    f.cards = []; f.blocks = null; f.artTex = null; f.covered = new Uint8Array(32 * 32);
     if (!def) return;
+    const cover = (x0, y0, x1, y1) => {          // metatiles under annotated objects: no collision box there (it would show as a floor-textured block)
+      for (let my = Math.max(0, y0 >> 4); my <= Math.min(31, (y1 - 1) >> 4); my++) for (let mx = Math.max(0, x0 >> 4); mx <= Math.min(31, (x1 - 1) >> 4); mx++) f.covered[my * 32 + mx] = 1;
+    };
+    const w0 = this.gb.mem.wram[0], MWp = (w0[0x32B] || 64) * 8, MHp = (w0[0x32C] || 64) * 8;
+    const inMap = (x0, y0) => x0 < MWp && y0 < MHp;                       // annotations beyond the map size are never on screen
     // cut-outs: keyed images; the floor under their opaque pixels is replaced by the ground strip below them
     const patch = (d, x0, y0, w, h) => {
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -732,11 +736,13 @@ export class Voxel3D {
       const d = this.keyedCut(art, st.x, st.y, st.w, st.h), shared = { tex: this.texture(st.w, st.h, d), mesh: null, d, own: true };
       let first = true;
       for (const hit of this.findStamps(st)) {
-        patch(d, hit.x, hit.y, st.w, st.h);
+        patch(d, hit.x, hit.y, st.w, st.h); cover(hit.x, hit.y, hit.x + st.w, hit.y + st.h);
         f.cards.push({ ...shared, own: first, w: st.w, h: st.h, X: hit.x + st.w / 2, Z: hit.y + st.h, shared }); first = false;
       }
     }
     for (const c of def.cards || []) {
+      if (!inMap(c.x0, c.y0)) continue;
+      cover(c.x0, c.y0, c.x1, c.y1);
       const w = c.x1 - c.x0, h = c.y1 - c.y0, d = this.keyedCut(art, c.x0, c.y0, w, h);
       patch(d, c.x0, c.y0, w, h);
       f.cards.push({ tex: this.texture(w, h, d), mesh: null, d, own: true, w, h, X: c.x0 + w / 2, Z: c.y1 });
@@ -745,6 +751,8 @@ export class Voxel3D {
     const front = { pos: [], uv: [] }, side = { pos: [], uv: [] };
     const quad = (o, a, b, c, d, ua, ub, uc, ud) => { for (const [v, t] of [[a, ua], [b, ub], [c, uc], [a, ua], [c, uc], [d, ud]]) { o.pos.push(...v); o.uv.push(t[0] / 512, t[1] / 512); } };
     for (const b of def.blocks || []) {
+      if (!inMap(b.x0, b.y0)) continue;
+      cover(b.x0, b.y0, b.x1, b.y1);
       const H = (b.y1 - b.fold) * WALL_SCALE, { x0, x1, y0, y1, fold } = b;
       quad(front, [x0, H, y0], [x1, H, y0], [x1, H, y1], [x0, H, y1], [x0, y0], [x1, y0], [x1, fold], [x0, fold]);   // roof
       quad(front, [x0, 0, y1], [x1, 0, y1], [x1, H, y1], [x0, H, y1], [x0, y1], [x1, y1], [x1, fold], [x0, fold]);   // front wall
@@ -770,7 +778,7 @@ export class Voxel3D {
     const quad = (a, b, c, d, u) => { for (const [v, t] of [[a, u[0]], [b, u[1]], [c, u[2]], [a, u[0]], [c, u[2]], [d, u[3]]]) { pos.push(...v); uv.push(...t); } };
     let n = 0;
     for (let my = 0; my < 32; my++) for (let mx = 0; mx < 32; mx++) {
-      if (coll[my * 32 + mx] !== 0x0F) continue;
+      if (coll[my * 32 + mx] !== 0x0F || (f.covered && f.covered[my * 32 + mx])) continue;
       const x0 = mx * 16, x1 = x0 + 16, z0 = my * 16, z1 = z0 + 16, u0 = x0 / 512, u1 = x1 / 512, v0 = z0 / 512, v1 = z1 / 512;
       const top = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]], side = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
       quad([x0, H, z0], [x1, H, z0], [x1, H, z1], [x0, H, z1], top);

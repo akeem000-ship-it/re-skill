@@ -6,6 +6,7 @@ import { Rom, sha1Hex, EXPECTED_SHA1 } from "./rom.js";
 import { pollGamepad } from "./gamepad.js";
 import { Voxel3D, PRESETS, PRESET_ORDER } from "./voxel.js";
 import { loadSnapshot } from "./gb/snapshot.js";
+import { saveState, loadState } from "./gb/state.js";
 import { composeWide, WIDE_W, WIDE_H } from "./wide.js";
 import { mountStick } from "./stick.js";
 
@@ -42,13 +43,26 @@ function loadSave() {
   try { const s = localStorage.getItem(SAVE_KEY()); if (s) { const b = Uint8Array.from(atob(s), c => c.charCodeAt(0)); gb.mem.sram.set(b.subarray(0, gb.mem.sram.length)); gb.mem.ramEnable = false; $("savestatus").textContent = "save loaded"; } } catch (e) { console.warn("save", e); }
 }
 function bytesToBinary(b) { let s = ""; for (let i = 0; i < b.length; i += 8192) s += String.fromCharCode.apply(null, b.subarray(i, i + 8192)); return s; }   // no giant spread
-let saveTimer = 0;
-function maybeSave() {
-  if (!gb.mem.sramDirty) return;
-  gb.mem.sramDirty = false;
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => { try { localStorage.setItem(SAVE_KEY(), btoa(bytesToBinary(gb.mem.sram))); $("savestatus").textContent = "saved " + new Date().toLocaleTimeString(); } catch (e) { console.warn("save", e); } }, 500);
+let saveTimer = 0, savePending = false;
+function writeSave() {
+  savePending = false;
+  try { localStorage.setItem(SAVE_KEY(), btoa(bytesToBinary(gb.mem.sram))); $("savestatus").textContent = "saved " + new Date().toLocaleTimeString(); } catch (e) { console.warn("save", e); }
 }
+function maybeSave() {                     // the game writes its save in bursts: store it 0.5 s after the last write
+  if (!gb.mem.sramDirty) return;
+  gb.mem.sramDirty = false; savePending = true;
+  clearTimeout(saveTimer); saveTimer = setTimeout(writeSave, 500);
+}
+// the debounce timer does not run once the page is hidden (Android pauses the WebView's timers when the app goes to
+// the background and may then kill it), so a pending save is written immediately when the page is hidden
+function flushSave() {
+  if (!gb) return;
+  if (gb.mem.sramDirty) { gb.mem.sramDirty = false; savePending = true; }
+  if (savePending) { clearTimeout(saveTimer); writeSave(); }
+}
+addEventListener("visibilitychange", () => { if (document.hidden) flushSave(); });
+addEventListener("pagehide", flushSave);
+window.__flushSave = flushSave;            // also called by the Android wrapper from onPause
 
 // ---- main loop ----
 const STEP = 1000 / 60; let acc = 0, last = 0, fps = { n: 0, t: 0 };
@@ -169,5 +183,5 @@ $("padmode").addEventListener("pointerdown", () => { padMode = padMode === "stic
 applyPadMode();
 $("turbo").addEventListener("pointerdown", () => { turbo = !turbo; $("turbo").classList.toggle("on", turbo); });
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom).catch(() => {});
-window.__gb = { get gb() { return gb; }, keys, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, loadSnapshot(s) { loadSnapshot(gb, s); } };
+window.__gb = { get gb() { return gb; }, keys, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, loadSnapshot(s) { loadSnapshot(gb, s); }, saveState() { return saveState(gb); }, loadState(s) { loadState(gb, s); drawnFrame = -1; } };
 requestAnimationFrame(loop);
