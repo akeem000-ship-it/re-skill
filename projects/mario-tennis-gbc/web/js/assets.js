@@ -89,6 +89,32 @@ export class Animator {
   }
 }
 
+// Dialogue font (REVERSE.md "Font and printer"): 91 glyphs $20-$7A, 8x8 2bpp at 05:7920, widths 05:7F80.
+// Returns { width(str), draw(ctx, str, x, y, ink, shade) }; colour 2 (cell background) is transparent.
+export function gameFont(rom) {
+  const cache = new Map();
+  const glyph = (ch, ink, shade) => {
+    const key = ch + ink + shade; if (cache.has(key)) return cache.get(key);
+    const i = Math.max(0, Math.min(90, ch.charCodeAt(0) - 0x20)), data = rom.slice(0x05, 0x7920 + i * 16, 16);
+    const c = document.createElement("canvas"); c.width = 8; c.height = 8;
+    const g = c.getContext("2d"), img = g.createImageData(8, 8);
+    const rgb = { 1: shade, 3: ink };
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+      const v = (data[y * 2] >> (7 - x) & 1) | (data[y * 2 + 1] >> (7 - x) & 1) << 1, col = rgb[v];
+      if (!col) continue;
+      const o = (y * 8 + x) * 4; img.data[o] = col[0]; img.data[o + 1] = col[1]; img.data[o + 2] = col[2]; img.data[o + 3] = 255;
+    }
+    g.putImageData(img, 0, 0); cache.set(key, c); return c;
+  };
+  const w = ch => rom.u8(0x05, 0x7F80 + Math.max(0, Math.min(90, ch.charCodeAt(0) - 0x20)));
+  return {
+    width: str => [...str].reduce((a, ch) => a + w(ch), 0),
+    draw(ctx, str, x, y, ink = [248, 248, 248], shade = [40, 40, 72]) {
+      for (const ch of str) { ctx.drawImage(glyph(ch, ink, shade), x, y); x += w(ch); }
+    },
+  };
+}
+
 // CharRecords 02:52CE (29 B, roster order); stats = bytes 18..28; type table 38:58FB
 export function characterData(rom, roster) {
   const base = 0x52CE + roster * 29, st = {};

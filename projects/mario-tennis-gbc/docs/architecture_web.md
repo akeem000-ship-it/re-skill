@@ -42,6 +42,7 @@ tests/
 | `COURT` | `08:40E5` constants, `08:4300` doubles width | real-tennis proportions; live serve/limits |
 | `judge()` in/out & serve box | `08:463A InOutCheck`, `wC486` swap (`08:4CFF`, `0D:4BC8`) | constants from code |
 | scoring / deuce / tiebreak | `08:5AD7 ScoreUpdate`, `08:5D71 WinCheck`, `DeuceCompress`, faults `08:5B7F`, tiebreak serve order from `08:49D9` | live point 0-15; rules from code; `tests/scoring.mjs` |
+| `gameFont` | font `05:7920`, widths `05:7F80` (`05:7322 DrawGlyph`) | glyph sheet rendered and checked |
 | `proj()` | fitted to court-line pixels of the 32×32 court maps (projective, D = 16224) | ±1 px on the 4 lines |
 
 ## Approximations (not decoded yet)
@@ -64,7 +65,9 @@ tests/
   group × 5 + view. Animation ids per state come from a PyBoy recording (1 ready, 2 run, 16/15/7 serve,
   13/14 → 9/10 forehand/backhand, 11 high ball, 4/3 point won/lost); the state → id choice and the run
   view per direction are the port's own logic. The camera follows the midpoint of ball and near player.
-* Not ported: doubles, mini-games, Mario Tour (RPG), sound/music, the game's HUD font.
+* HUD and messages use the game's dialogue font (`gameFont`: 05:7920 2bpp glyphs, widths 05:7F80); the score
+  bar layout is the port's own.
+* Not ported: doubles, mini-games, Mario Tour (RPG), sound/music.
 
 ## State machine (`Match.state`)
 

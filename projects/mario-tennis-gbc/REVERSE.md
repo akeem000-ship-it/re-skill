@@ -1031,7 +1031,8 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [ ] Ph7: replace the stroke speed/spin approximations with the bank 20-23 trajectory tables once decoded
 - [x] Ph7: port the decoded CPU AI parameters (reaction delays, placement probability, positioning error, shot profiles, quick serve)
 - [ ] Ph7: decode ProjectPoint 00:2D8C and replace the fitted projection
-- [ ] Ph7: HUD with the game's font/score graphics; sound
+- [x] Ph7: HUD and messages drawn with the game's dialogue font
+- [ ] Ph7: score graphics as in the game (scoreboard tiles); sound
 - [x] Ph7: pixel-compare court rendering against emulator screenshots (99.9%)
 
 ### Documentation

@@ -1,6 +1,6 @@
 // Web port entry: ROM loading, input, camera/projection, rendering, 60 fps loop.
 import { Rom, sha1Hex, EXPECTED_SHA1 } from "./rom.js";
-import { courtImage, characterSprites, characterData, Animator, ROSTER, PLAYABLE, COURTS } from "./assets.js";
+import { courtImage, characterSprites, characterData, Animator, gameFont, ROSTER, PLAYABLE, COURTS } from "./assets.js";
 import { FX } from "./physics.js";
 import { Match } from "./match.js";
 
@@ -8,7 +8,7 @@ const W = 160, H = 144;
 const cv = document.getElementById("screen"), g = cv.getContext("2d");
 g.imageSmoothingEnabled = false;
 const $ = id => document.getElementById(id);
-let rom, match, court, sprites = [], anims = [], keys = {}, prevKeys = {};
+let rom, font, match, court, sprites = [], anims = [], keys = {}, prevKeys = {};
 
 // Court projection fitted to the court lines of the 32x32 court maps (REVERSE.md "Projection"):
 // x = 128 + X*2020/(16224-Y), y = 127.5 + 804.6*Y/(16224-Y); heights use the same scale.
@@ -19,7 +19,7 @@ const proj = (X, Y, Z = 0) => {
 };
 
 async function loadRom(buf) {
-  rom = await Rom.load(buf);
+  rom = await Rom.load(buf); font = gameFont(rom);
   const h = await sha1Hex(rom.b);
   $("romstatus").textContent = h === null ? "ROM loaded (hash not checked: insecure context)"
     : h === EXPECTED_SHA1 ? "ROM verified (Mario Tennis USA)" : `Warning: unexpected ROM SHA-1 ${h}`;
@@ -89,13 +89,13 @@ function render() {
   order.sort((a, c) => a[0] - c[0]).forEach(([, f]) => f());
   // HUD
   g.fillStyle = "rgba(0,0,40,0.75)"; g.fillRect(0, 0, W, 11);
-  g.font = "8px monospace"; g.fillStyle = "#fff"; g.textBaseline = "top";
   const [p1, p2] = m.players.map(p => p.data.name.slice(0, 6));
-  g.fillText(`${p1} ${m.games[0]}  ${m.scoreText()}  ${m.games[1]} ${p2}`, 2, 2);
+  const hud = `${p1} ${m.games[0]}  ${m.scoreText()}  ${m.games[1]} ${p2}`;
+  font.draw(g, hud, Math.max(1, (W - font.width(hud)) >> 1), 2);
   if (m.msgTimer > 0 && m.message) {
-    const w = g.measureText(m.message).width + 8;
-    g.fillStyle = "rgba(200,40,20,0.9)"; g.fillRect((W - w) / 2, 64, w, 12);
-    g.fillStyle = "#ffe060"; g.fillText(m.message, (W - w) / 2 + 4, 66);
+    const w = font.width(m.message) + 8;
+    g.fillStyle = "rgba(200,40,20,0.9)"; g.fillRect((W - w) >> 1, 63, w, 12);
+    font.draw(g, m.message, ((W - w) >> 1) + 4, 65, [255, 224, 96], [96, 16, 8]);
   }
 }
 
