@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mario Tennis GBC — Full Game</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  #hud { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  #hud .k { background:#2c3140; border:1px solid #555; border-radius:6px; color:#fff; padding:4px 10px; cursor:pointer; user-select:none; }
+  #hud .k.on { background:var(--acc); }
+  a { color:#8ab4f8; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Mario Tennis (GBC) — full game <span class="note">(<a href="index.html">match-engine port</a>)</span></h1>
+  <div id="loader" class="panel">
+    Load your own <code>Mario Tennis (USA).gbc</code> (SHA-1 <code>414ba583…</code>): <input type="file" id="file" accept=".gbc,.gb">
+    <div class="note">The whole game (story mode, tour, mini-games, link-less) runs on the project's own Game Boy Color core
+      (<code>web/js/gb</code>), verified frame-for-frame against the reference emulator. Nothing from the game ships with this page.</div>
+  </div>
+  <div id="setup" class="panel" hidden></div>
+  <div id="hud" class="panel" hidden>
+    <span id="romstatus" class="note"></span> <span id="fps" class="note"></span> <span id="savestatus" class="note"></span>
+    <span class="k" id="turbo" title="hold Space on a keyboard">Turbo</span> <span class="k" id="reset">Reset</span>
+  </div>
+  <canvas id="screen" width="160" height="144" tabindex="0"></canvas>
+  <div id="pad">
+    <div class="dpad">
+      <div></div><div class="k" data-key="ArrowUp">&#9650;</div><div></div>
+      <div class="k" data-key="ArrowLeft">&#9664;</div><div></div><div class="k" data-key="ArrowRight">&#9654;</div>
+      <div></div><div class="k" data-key="ArrowDown">&#9660;</div><div></div>
+    </div>
+    <div class="btns">
+      <div class="k" data-key="KeyX">B</div><div class="k" data-key="KeyZ">A</div>
+      <div class="k start" data-key="Enter">START</div>
+    </div>
+  </div>
+  <div class="panel info">
+    <div class="note"><kbd>←→↑↓</kbd> d-pad · <kbd>Z</kbd>/<kbd>A</kbd> = A · <kbd>X</kbd>/<kbd>S</kbd> = B · <kbd>Enter</kbd> = Start ·
+      <kbd>Q</kbd>/<kbd>Backspace</kbd> = Select · <kbd>Space</kbd> = turbo · <kbd>P</kbd> = pause. The cartridge save is kept in this browser (localStorage).</div>
+  </div>
+</main>
+<script type="module" src="js/full.js"></script>
+</body>
+</html>

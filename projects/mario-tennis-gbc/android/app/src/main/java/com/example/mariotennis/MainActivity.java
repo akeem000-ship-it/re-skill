@@ -32,7 +32,7 @@ public class MainActivity extends Activity {
             }
         });
         setContentView(web);
-        web.loadUrl("https://appassets.androidplatform.net/assets/web/index.html");
+        web.loadUrl("https://appassets.androidplatform.net/assets/web/full.html");
     }
     @Override public void onBackPressed() { /* keep the game running; the page handles B */ }
     @Override protected void onPause() { super.onPause(); web.onPause(); }
