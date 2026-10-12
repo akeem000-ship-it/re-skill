@@ -217,7 +217,9 @@ window from the same stream):
 | `$0B` | second name (partner/rival) | string at `wC940` — `05:527F` |
 | `$0E nn` | named entity nn | name #(nn + $1B) via `05:409A` → `wC6C0` — `05:53E8` |
 
-`$06 $1A $11 $0C $14 $1D` are not handled by the measurer (probably data bytes inside numbers/ids).
+`$06` (67 uses) is a **pause** in the typewriter output — it follows "..." before a reveal ("What?!?{06} You won?",
+"precious reputation...{06} and shove it!"); inferred from usage, the measurer ignores it. `$0C $10 $11 $12 $14 $1A $1D`
+never occur on their own: they are the argument byte of `$0E` (entity names).
 
 **Font and printer** (tool: `tools/render_font.py` → `gfx/font.png`, verified visually): 91 glyphs
 `$20-$7A`, 8×8 **2bpp** tiles at `05:7920` (16 bytes each; colour 2 background, 3 ink, 1 shading),
