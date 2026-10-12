@@ -666,3 +666,20 @@ bank,addr,name,comment
 *,DF92,wPlLobRow,lob spin/table row
 *,DF93,wPlDropRow,drop spin/table row
 *,C7B9,wSymmetricAim,non-zero: rally aim table 563E
+08,702A,SwingContactTest,wDF50 bit0 when |dY| < 96 and |dX| < 1.5*wDF72
+08,6FA7,SwingZoneTest,wDF50 bit1 when |dY| < 96 |dX| < wDF72 (x1.25 lunging) |dZ| < 2*wDF70
+08,6EC5,BodyHitTest,ball within 16/SideReach/2/HeightReach with no swing -> wC4AE=1
+08,6C10,SwingStart,wind-up anim 5/6 charge=0 phase++
+08,6C2F,SwingWait,charge++; 719A pad; 7112 second button; 7267 cancel; contact -> 6D5A anim + SFX $59
+08,6E44,WindupSide,anim 5/6 by crossing X (70F5) XOR sprite flip
+08,70F5,BallCrossX,X where the ball heading line crosses the player's Y (wC448 + dY*cot)
+08,7112,SwingSecondButton,A+B within 5 frames (wDF11) else variant wDF17
+08,719A,SwingPadTurn,heading may turn within $30; sets wDF50 bits 6/7
+08,7267,SwingCancel,pad bit2 cancels (returns 1)
+08,6D5A,SwingAnimPick,lunge / high / normal swing animation from crossing X and ball height
+*,DF11,wPlDoublePressTimer,5-frame window for A+B
+*,DF4F,wPlLastButton,
+*,C448,wBallRelX,ball - player X
+*,C44A,wBallRelY,
+*,C44C,wBallRelZ,
+*,C4AE,wBodyHitFlag,

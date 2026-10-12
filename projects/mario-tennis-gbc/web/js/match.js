@@ -6,7 +6,6 @@ import { FX, COURT, newBall, step, launch } from "./physics.js";
 import { computeShot, shotType, toLaunch, atan2Rom } from "./shots.js";
 
 const POINT_NAMES = ["0", "15", "30", "40"];
-const REACH_X = 110, REACH_Y = 140;          // APPROX swing reach (world units)
 
 export class Match {
   constructor(rom, p1, p2, opts = {}) {
@@ -148,7 +147,7 @@ export class Match {
     const a2 = atan2Rom(this.rom, -Math.trunc(bz), ay + 0x4E0);
     return ((a1 + a2) & 0x8000) !== 0;
   }
-  // wDF50 bit4 selects the 08:709B type table (types 8/6/7 -> 5 for low balls)
+  // 08:6E64: wDF50 bit4 = player inside the service line -> the 08:709B type table (types 8/6/7, 5 for low balls)
   volleyZone(p) { return Math.abs(p.Y) < COURT.serviceLine; }
 
   // a swing request: the button was pressed, the racket meets the ball when it enters the reach box;
@@ -163,15 +162,16 @@ export class Match {
     if (r.t < 4 && r.button !== 3 && this.input && (this.input.aPressed || this.input.bPressed) && !p.cpu) r.button = 3;
     if (this.canHit(p)) { this.hit(p, r.button, r.variant, Math.min(63, r.t)); return; }
     r.t++;
-    const b = this.ball, passed = (b.Y / FX - p.Y) * this.dir(p) > REACH_Y || (b.vY > 0) !== (p.side === 0);
+    const b = this.ball, passed = (b.Y / FX - p.Y) * this.dir(p) > 96 || (b.vY > 0) !== (p.side === 0);
     if (r.t > 8 && passed || r.t > 120) { p.swingReq = null; p.swing = 10; p.cooldown = 20; p.swingAnim = 9; }
   }
 
-  canHit(p) {
-    const b = this.ball, bx = b.X / FX, by = b.Y / FX, bz = b.Z / FX;
+  canHit(p) {                 // 08:702A contact box: |dY| < 96, |dX| < 1.5 * SideReach (no height test)
+    const b = this.ball, bx = b.X / FX, by = b.Y / FX;
     if (p.cooldown > 0 || this.lastHitter === p.side) return false;
-    return Math.abs(bx - p.X) < REACH_X && Math.abs(by - p.Y) < REACH_Y && bz > -330;
+    return Math.abs(bx - p.X) < 1.5 * p.data.sideReach && Math.abs(by - p.Y) < 96;
   }
+
 
   // ---- per-frame update -----------------------------------------------------
   update(input) {
@@ -221,7 +221,7 @@ export class Match {
       // CPU: "press" when the ball is a few frames away (traced charges 2-17), aim per 08:7AEB/7B13
       const b = this.ball, coming = (b.vY > 0) === (p.side === 0);
       if (!coming || this.lastHitter === p.side) continue;
-      const eta = (Math.abs(b.Y / FX - p.Y) - 140) / Math.max(1, Math.abs(b.vY / FX));
+      const eta = (Math.abs(b.Y / FX - p.Y) - 96) / Math.max(1, Math.abs(b.vY / FX));
       if (eta <= 2 + Math.floor(Math.random() * 16)) {
         const code = this.cpuShotCode(p), opp = this.players[1 - p.side];
         const smart = Math.random() * 256 < this.cpu.place;

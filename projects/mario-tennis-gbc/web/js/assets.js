@@ -238,7 +238,9 @@ export function characterData(rom, roster) {
     // stat -> parameter formulas verified in WRAM4/5 (REVERSE.md "Player struct")
     run256: 2560 + 128 * st.Speed, dash: 48 + 12 * st.Dash, brake: (64 + 32 * st.Stop) / 256,
     runSpeed: 10.5 + st.Speed / 2,
-    reaction: 6 + st.Reaction, aimError: 12 - st.Placement };
+    reaction: 6 + st.Reaction, aimError: 12 - st.Placement,
+    // record bytes +2/+3 and +4/+5 (REVERSE.md "Record bytes +0..+17"): height reach (word - 16) and side reach
+    heightReach: rom.u16(0x02, base + 2) - 16, sideReach: rom.u16(0x02, base + 4) };
 }
 
 // shot tables in bank 07 (8-byte rows: topspin, sidespin, speed 8.8)

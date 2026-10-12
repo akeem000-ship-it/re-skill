@@ -640,6 +640,28 @@ S and the deeper the ball lands, between `$140` and `$480` past the net along th
 drops short through the fallback tables. Record speeds are in 8.8 px/frame, elevations in 65536 = turn
 (negative = up), heading offsets likewise.
 
+### Swing and contact — VERIFIED from code (bank 08 `6C10-7290`)
+
+Every frame `PlayerBallDelta 08:6E64` stores ball − player as `wC448/44A/44C` (X/Y/Z) and rebuilds
+`wDF50`: bit4 = **player inside the service line** (|playerY| < `$2A0`; this selects the volley type
+table `08:709B`), bit0 = **contact** (`08:702A`: |dY| < 96 and |dX| < 1.5·`wDF72` SideReach), bit1 =
+ball entering the swing zone (`08:6FA7`: |dY| < 96, |dX| < SideReach — ×1.25 while lunging, `wDF0F`
+bit1 — and |dZ| < 2·`wDF70` HeightReach). `08:6EC5`: with no swing started, a ball within 16 (Y),
+SideReach/2 (X) and HeightReach (Z) hits the player's body (`wC4AE` = 1, `wC4AF` = player).
+
+Swing (phase `wDF19`): a press starts `08:6C10` — wind-up animation 5/6 (`08:6E44`: side from where the
+ball's heading line crosses the player's Y, `08:70F5`, XOR the sprite flip), charge `wDF4B` = 0,
+`wDF4D/4E` = 0. Then `08:6C2F` runs every frame: `wDF4B`++ (the **charge**), `08:719A` (d-pad: heading
+may still turn within `$30` of the facing; movement bits 6/7 of `wDF50`), `08:7112` (**second button**:
+same button within the 5-frame timer `wDF11` → A+B; otherwise the second press becomes the variant
+`wDF17`: A→A power topspin, B→B power slice, A→B lob (type 10), B→A drop (11)), `08:7267` (pad bit2
+cancels the swing). There is **no timing window**: the racket waits, charging, until bit0 (contact)
+is set, then `08:6D5A` picks the swing animation (`wDF15`: lunge when the crossing X is beyond
+SideReach (−16 inside the service line) with the d-pad held that way; high swing when ball Z +
+2·HeightReach + 2·vZ is above the reach, else normal 9/10), plays SFX `$59`, and the shot dispatch
+(`07:5445`, "Aiming and launch") launches the ball with charge = frames between the press and the
+contact, capped at 63. A ball that passes is simply never contacted (the point ends on the bounces).
+
 ### Player struct and stat → gameplay mapping — VERIFIED (6 characters)
 
 Each player has a struct in its own WRAM bank (P1 = bank 4, P2 = bank 5) at `$DF00`:
@@ -1097,10 +1119,9 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 1. ~~**Shot trajectory selection**~~ DONE — see "Aiming and launch" (178 traced shots + 25 serves
    reproduce the record address, index and heading exactly; `tools/emu_shot_trace.py`,
    `tools/analyze_shots.py`). Ported to `web/js/shots.js`.
-2. **Swing timing windows and shot speed scaling** (bank 08 player swing code, `wDF0F` bits 0/1).
-   Known: serve speed 57-73 px/frame depending on toss timing; the charge counter `wDF4B` (frames from
-   press to contact, max 63) feeds the speed threshold (see "Aiming and launch"). Needed: reach box,
-   contact test `08:7267`/`wDF50` bit0, auto-swing vs button. Test: bot hits in `emu_bot.py`
+2. ~~**Swing timing windows and shot speed scaling**~~ DONE — see "Swing and contact": no timing
+   window; contact box |dY| < 96, |dX| < 1.5·SideReach; charge = frames from press to contact; double
+   press rules. Open: the exact animation frame at which the launch happens after the contact. Test: bot hits in `emu_bot.py`
    reproduce in the web port within a frame.
 3. **Sound sequence format** (driver `00:3566`, data banks 78-7F). Known: index, channel table,
    partial opcode map. Needed: every `$A0-$FF` opcode with operand sizes and semantics, loops/calls,
