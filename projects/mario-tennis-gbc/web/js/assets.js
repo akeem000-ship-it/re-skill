@@ -24,6 +24,25 @@ export function courtTilemaps(rom) {
   }
   return out;
 }
+// the court's 256x256 BG picture as palette indices from the ROM (tiles, tilemap, attributes): one byte per pixel,
+// (palette << 2 | colour) + 1, so a renderer can colour it with the live palettes (fades) while text boxes and
+// captions written into the VRAM map never reach it
+export function courtIndexMap(rom, id) {
+  const base = 0x59D9 + id * 16, ref = i => [rom.u8(0x0A, base + i * 2), rom.u8(0x0A, base + i * 2 + 1)];
+  const [mi, mb] = ref(2), [ai, ab] = ref(3), [ti, tb] = ref(7);
+  const tmap = rom.lzRef(mi, mb), attr = rom.lzRef(ai, ab), tiles = rom.lzRef(ti, tb), S = tmap.length >= 4096 ? 64 : 32;
+  const vram = new Uint8Array(0x1800);
+  vram.set(tiles.subarray(0, 0x800), 0x1000); vram.set(tiles.subarray(0x800, 0x1000), 0x800);
+  const out = new Uint8Array(256 * 256);
+  for (let ty = 0; ty < 32; ty++) for (let tx = 0; tx < 32; tx++) {
+    const i = ty * S + tx, t = tmap[i], at = attr[i], off = 0x1000 + (t < 128 ? t : t - 256) * 16;
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+      const sx = at & 0x20 ? 7 - x : x, sy = at & 0x40 ? 7 - y : y;
+      out[(ty * 8 + y) * 256 + tx * 8 + x] = ((at & 7) << 2 | tilePixel(vram, off, sx, sy)) + 1;
+    }
+  }
+  return out;
+}
 export function courtImage(rom, id) {
   const base = 0x59D9 + id * 16, ref = i => [rom.u8(0x0A, base + i * 2), rom.u8(0x0A, base + i * 2 + 1)];
   const [pi, pb] = ref(1), [mi, mb] = ref(2), [ai, ab] = ref(3), [ti, tb] = ref(7);

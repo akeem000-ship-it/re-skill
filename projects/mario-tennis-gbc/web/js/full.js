@@ -84,7 +84,11 @@ function draw(alpha = 1) {                 // alpha: fraction of the next game f
   if (view3d && voxel) {
     if (gb.frames >= insetAt) {               // the touch HUD bar covers the top of the view: overlays go below it
       insetAt = gb.frames + 30; const hud = $("hud"), top = $("gl").getBoundingClientRect().top;
-      voxel.topInset = document.body.classList.contains("touch") && !hud.hidden ? Math.max(0, hud.getBoundingClientRect().bottom - top) : 0;
+      const touch = document.body.classList.contains("touch"), glr = $("gl").getBoundingClientRect();
+      voxel.topInset = touch && !hud.hidden ? Math.max(0, hud.getBoundingClientRect().bottom - top) : 0;
+      let ctl = 0;                            // height of the touch controls above the bottom of the view
+      if (touch && !document.body.classList.contains("gamepad")) for (const sel of [".btns .k:not(.start)", "#stickzone .stick-base", ".dpad"]) { const e = document.querySelector(sel); if (e && e.offsetParent !== null) ctl = Math.max(ctl, glr.bottom - e.getBoundingClientRect().top); }
+      voxel.bottomInset = Math.min(glr.height * 0.4, Math.max(0, ctl));
     }
     try { voxel.render(f, alpha); return; } catch (e) { console.warn("3d", e); setView3d(false); }
   }

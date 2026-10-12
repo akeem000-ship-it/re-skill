@@ -30,8 +30,17 @@ if (opt("--save")) {
   const [dx, dy, dir] = opt("--save", "").split(",").slice(0); const parts = a[a.indexOf("--save") + 2].split(",");
   const gb = trial(+parts[0], +parts[1], parts[2]); fs.writeFileSync(opt("--save"), zlib.gzipSync(JSON.stringify(saveState(gb)))); console.log("saved", pos(gb), gb.mem.wram[0][0x32E]); process.exit(0);
 }
-const R = +opt("--range", 4), hits = [];
-for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) for (const dir of ["up", "down", "left", "right"]) {
-  const gb = trial(dx, dy, dir); if (dialog(gb)) { hits.push(`${dx},${dy},${dir}`); }
+const R = +opt("--range", 4), step = +opt("--step", 1), hits = [], seen = new Map(), shotDir = opt("--shots");
+if (shotDir) fs.mkdirSync(shotDir, { recursive: true });
+for (let dy = -R; dy <= R; dy += step) for (let dx = -R; dx <= R; dx += step) for (const dir of ["up", "down", "left", "right"]) {
+  const gb = trial(dx, dy, dir); if (!dialog(gb)) continue;
+  hits.push(`${dx},${dy},${dir}`);
+  if (!shotDir) continue;
+  run(gb, {}, 60);                                   // let the first line finish typing; group NPCs by the text image
+  const f = gb.ppu.rgb5; let h = 0x811c9dc5; for (let i = 0; i < f.length; i++) { h ^= f[i]; h = Math.imul(h, 16777619); }
+  const key = (h >>> 0).toString(16); if (seen.has(key)) continue; seen.set(key, `${dx},${dy},${dir}`);
+  const raw = Buffer.alloc(144 * 481); const fr = gb.ppu.frame;
+  for (let y = 0; y < 144; y++) for (let x = 0; x < 160; x++) { const v = fr[y * 160 + x], o = y * 481 + 1 + x * 3; raw[o] = v & 255; raw[o + 1] = (v >> 8) & 255; raw[o + 2] = (v >> 16) & 255; }
+  fs.writeFileSync(`${shotDir}/${dx}_${dy}_${dir}.raw`, raw);
 }
-console.log("start", pos(fresh()), "hits:", hits.join("  "));
+console.log("start", pos(fresh()), "hits:", hits.length, "distinct:", [...seen.values()].join("  "));

@@ -10,7 +10,7 @@
 //    different depths and a gently swaying camera gives them parallax.
 // Sprites are textured cards or, in voxel mode, one lit cube per opaque pixel.
 import { project } from "./camera.js";
-import { courtTilemaps, courtImage } from "./assets.js";
+import { courtTilemaps, courtImage, courtIndexMap } from "./assets.js";
 import { FIELD_OBJECTS } from "./field_objects.js";
 
 const VS = `#version 300 es
@@ -108,7 +108,7 @@ const STANDS = [
 //  cards:  single cut-outs (fences, gate posts)
 // The ground behind cut-outs is keyed out (colours of the surrounding ground reachable from the edge) and the
 // floor under them is patched with the ground strip below.
-const WALL_SCALE = 1.25, FIELD_TILT = 0.3;
+const WALL_SCALE = 1.25, FIELD_TILT = 0.3, HUD_SCALE = 0.6;
 const SIDE_VIEW_MAPS = new Set([19, 21]);   // drawn as side-view / aerial pictures, not top-down maps: shown as parallax layers
 
 export class Voxel3D {
@@ -398,11 +398,15 @@ export class Voxel3D {
         src[j * W + i] = by * 256 + bx;
       }
     }
-    this.ground = { W, H, src, cuts, rgba: new Uint8Array(W * H * 4), idx: new Uint8Array(256 * 256), court: this.courtId };
+    let idx = null; try { idx = courtIndexMap(this.rom, this.courtId); } catch (e) { console.warn("court", e); }
+    this.ground = { W, H, src, cuts, rgba: new Uint8Array(W * H * 4), idx: idx || new Uint8Array(256 * 256), fromRom: !!idx, court: this.courtId };
   }
-  paintGround() {                                        // per palette change: colours from the current palettes
-    const g = this.ground, bg = this.composeMap(this.bgBase(), this.courtMaps[this.courtId], g.idx), lut = new Uint8Array(33 * 4);
+  paintGround() {                                        // per palette change: the ROM court picture coloured with the current palettes
+    const g = this.ground, lut = new Uint8Array(33 * 4);
+    if (!g.fromRom) this.composeMap(this.bgBase(), this.courtMaps[this.courtId], g.idx);
     for (let k = 0; k < 32; k++) { const c = this.col5(this.gb.ppu.bgPal, k >> 2, k & 3); lut[(k + 1) * 4] = c[0]; lut[(k + 1) * 4 + 1] = c[1]; lut[(k + 1) * 4 + 2] = c[2]; lut[(k + 1) * 4 + 3] = 255; }
+    const bg = new Uint8Array(256 * 256 * 4);
+    for (let i = 0; i < 65536; i++) { const k = g.idx[i] * 4; bg[i * 4] = lut[k]; bg[i * 4 + 1] = lut[k + 1]; bg[i * 4 + 2] = lut[k + 2]; bg[i * 4 + 3] = 255; }
     const d = g.rgba, src = g.src, idx = g.idx;
     for (let i = 0, n = src.length; i < n; i++) { const k = idx[src[i]] * 4, o = i * 4; d[o] = lut[k]; d[o + 1] = lut[k + 1]; d[o + 2] = lut[k + 2]; d[o + 3] = 255; }
     if (this.groundTex) this.gl.deleteTexture(this.groundTex);
@@ -578,26 +582,43 @@ export class Voxel3D {
     const sprs = this.collectSprites(), players = this.players(), land = this.landing(), ball = this.ballWorld(), sm = this.interp();
     const [ballSx, ballSy] = this.screenOf(ball.X, ball.Y, ball.Z), [shSx, shSy] = this.screenOf(ball.X, ball.Y, 0), [laSx, laSy] = this.screenOf(land.X, land.Y, 0);
     const SCALE = 7.5;
-    // players first: sprites whose bottom lies within a body-sized box above the projected feet (+2 px,
-    // measured); a player clipped at the top of the screen has its tiles pushed down to row 0, so the box
-    // reaches lower for feet above the screen
+    // classification (order matters):
+    //  1. the ball, its trail and its shadow: tiles $40-$4F (ball sizes, trail, shadow, landing marker) near the
+    //     ball's projection; claimed first, so a ball passing in front of a player is never taken for part of them
+    //  2. players: seeded by the sprites standing on the projected feet (+2 px, measured), then grown only by
+    //     sprites that touch the body (racket, swing effects); the point-won faces reuse the same tile numbers
+    //     but float free, so they are never pulled onto the court
+    //  3. the landing marker (flat decal), 4. other ball-range tiles in the picture (world), 5. the rest is HUD
+    const isBallTile = sp => sp.tile >= 0x40 && sp.tile < 0x50;
+    const near = (a, b, gap) => a.sx < b.sx + 8 + gap && b.sx < a.sx + 8 + gap && a.sy < b.sy + b.h + gap && b.sy < a.sy + a.h + gap;
+    const ballGroup = [];
+    for (const sp of sprs) if (isBallTile(sp) && Math.hypot(sp.sx + 4 - ballSx, sp.sy + sp.h / 2 - ballSy) < 12) { sp.owner = "ball"; ballGroup.push(sp); }
+    for (let grew = true; grew && ballGroup.length;) {   // the trail: a chain of ball-range tiles behind the ball
+      grew = false;
+      for (const sp of sprs) if (!sp.owner && isBallTile(sp) && Math.hypot(sp.sx + 4 - ballSx, sp.sy + sp.h / 2 - ballSy) < 40 && ballGroup.some(b => near(sp, b, 3))) { sp.owner = "ball"; ballGroup.push(sp); grew = true; }
+    }
+    if (ball.Z < -4) { let best = null, d0 = 10; for (const sp of sprs) { if (sp.owner) continue; const d = Math.hypot(sp.sx + 4 - shSx, sp.sy + sp.h / 2 - shSy); if (d < d0) { d0 = d; best = sp; } } if (best) best.owner = "shadow"; }
     const feet = players.map(pl => { const [fx, fy] = this.screenOf(pl.X, pl.Y, pl.Z); return { pl, fx, fy: fy + 2, list: [] }; });
-    for (const sp of sprs) {
+    for (const sp of sprs) {                              // seeds: the lowest body tiles, standing on the feet
+      if (sp.owner || isBallTile(sp)) continue;
       let best = null, d0 = 1e9;
       for (const f of feet) {
         const dx = sp.sx + 4 - f.fx, dy = f.fy - (sp.sy + sp.h), low = f.fy < 8 ? -28 : -6;
-        if (Math.abs(dx) > 28 || dy < low || dy > 44) continue;
+        if (Math.abs(dx) > 16 || dy < low || dy > 10) continue;
         const d = Math.abs(dx) + Math.abs(dy); if (d < d0) { d0 = d; best = f; }
       }
       if (best) { best.list.push(sp); sp.owner = best; }
     }
+    for (let grew = true; grew;) {                        // grow each body by touching sprites
+      grew = false;
+      for (const sp of sprs) {
+        if (sp.owner || isBallTile(sp)) continue;
+        for (const f of feet) if (f.list.some(b => near(sp, b, 2)) && Math.abs(sp.sx + 4 - f.fx) <= 28 && sp.sy + sp.h <= f.fy + 6) { f.list.push(sp); sp.owner = f; grew = true; break; }
+      }
+    }
     // the landing marker: sprites around the projected landing point, drawn flat on the court there
     const markers = [];
     if (Math.abs(land.X) < 1400 && Math.abs(land.Y) < 2600) for (const sp of sprs) { if (!sp.owner && Math.abs(sp.sx + 4 - laSx) <= 10 && Math.abs(sp.sy + sp.h / 2 - laSy) <= 10) { sp.owner = "marker"; markers.push(sp); } }
-    // the ball and its trail: sprites around the ball's projection; the shadow sprite: the one at the ground point
-    const ballGroup = [];
-    for (const sp of sprs) { if (sp.owner) continue; if (Math.hypot(sp.sx + 4 - ballSx, sp.sy + sp.h / 2 - ballSy) < 14) { sp.owner = "ball"; ballGroup.push(sp); } }
-    if (ball.Z < -4) { let best = null, d0 = 10; for (const sp of sprs) { if (sp.owner) continue; const d = Math.hypot(sp.sx + 4 - shSx, sp.sy + sp.h / 2 - shSy); if (d < d0) { d0 = d; best = sp; } } if (best) best.owner = "shadow"; }
     for (const sp of markers) {                           // flat decal: tile rows lie along the court
       const upp = 1024 / (project(land.X, land.Y, 0).s || 128), sc = SCALE * upp / 8;
       for (let half = 0; half < sp.h / 8; half++) {
@@ -617,12 +638,12 @@ export class Voxel3D {
       this.blitObject(ballGroup, ballSx, ballSy, b.X, b.Y, -b.Z, SCALE, tilt, mvp);
       this.draw(this.shadowTex, m4.trs(b.X, 0.5, b.Y, 50, 32, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
     }
-    // other sprites inside the picture (hit effects, markers) stand at their un-projected feet; sprites along
-    // the screen border (score strip, player faces) are HUD
+    // other ball-range sprites inside the picture (bounce marks, a second ball) stand at their un-projected feet;
+    // everything else (score strip, point faces, "1ST P1" labels) is HUD in screen space
     const hud = [];
     for (const sp of sprs) {
       if (sp.owner) continue;
-      if (sp.sx >= 140 || sp.sx < 12 || sp.sy >= 126 || sp.sy < 2) { hud.push(sp); continue; }
+      if (!isBallTile(sp) || sp.sx >= 140 || sp.sx < 12 || sp.sy >= 126 || sp.sy < 2) { hud.push(sp); continue; }
       const w = this.unproject(sp.sx + 4, sp.sy + sp.h);
       if (Math.abs(w.X) > 1100 || Math.abs(w.Y) > 2200) { hud.push(sp); continue; }
       this.blitSprite(sp, sp.sx + 4, sp.sy + sp.h, w.X, w.Y, 0, SCALE * w.upp / 8, tilt, mvp); sp.owner = "world";
@@ -632,13 +653,25 @@ export class Voxel3D {
     // a wide or tall viewport
     gl.disable(gl.DEPTH_TEST);
     const { ortho, l, r, t, b } = this.hudOrtho();
-    for (const s of hud) {
-      const x = s.sx + 4 < 80 ? l + s.sx + 4 : r - (160 - s.sx - 4), y0 = s.sy + s.h / 2 < 72 ? t + s.sy : b - (144 - s.sy);
+    // HUD sprites at HUD_SCALE of the full-screen Game Boy scale, anchored to the nearest edge with a margin; on
+    // touch screens the top edge sits below the button bar and the bottom edge above the stick and A/B buttons
+    const k = HUD_SCALE, ppu = (b - t) / (this.cv.clientHeight || 1), top = t + 2 + (this.topInset || 0) * ppu, bot = b - 2 - (this.bottomInset || 0) * ppu;
+    // anchor per group of touching sprites (a score strip, a caption, a face): its box decides the edge, so groups
+    // never split; groups around the middle stay centred
+    const gid = hud.map((_, i) => i), root = i => { while (gid[i] !== i) i = gid[i] = gid[gid[i]]; return i; };
+    for (let i = 0; i < hud.length; i++) for (let j = i + 1; j < hud.length; j++) if (near(hud[i], hud[j], 2)) gid[root(j)] = root(i);
+    const box = new Map();
+    hud.forEach((s, i) => { const g = root(i); const b = box.get(g) || { x0: 999, x1: -999, y0: 999, y1: -999 }; b.x0 = Math.min(b.x0, s.sx); b.x1 = Math.max(b.x1, s.sx + 8); b.y0 = Math.min(b.y0, s.sy); b.y1 = Math.max(b.y1, s.sy + s.h); box.set(g, b); });
+    const midX = (l + r) / 2, midY = (top + bot) / 2;
+    hud.forEach((s, i) => {
+      const b = box.get(root(i)), bcx = (b.x0 + b.x1) / 2, bcy = (b.y0 + b.y1) / 2, cx = s.sx + 4;
+      const x = bcx < 48 ? l + 3 + cx * k : bcx > 112 ? r - 3 - (160 - cx) * k : midX + (cx - 80) * k;
+      const y0 = bcy < 40 ? top + s.sy * k : bcy > 104 ? bot - (144 - s.sy) * k : midY + (s.sy - 72) * k;
       for (let half = 0; half < s.h / 8; half++) {
         const tex = this.spriteTexture(s.tile + (s.attr & 0x40 ? (s.h / 8 - 1 - half) : half), (s.attr >> 3) & 1, s.attr & 7, (s.attr >> 5) & 1, (s.attr >> 6) & 1);
-        this.draw(tex, m4.trs(x, y0 + (half + 1) * 8, 0, 8, -8, 0), ortho);
+        this.draw(tex, m4.trs(x, y0 + (half + 1) * 8 * k, 0, 8 * k, -8 * k, 0), ortho);
       }
-    }
+    });
     // captions and score digits the game writes into the BG map (tiles that differ from the court's own map)
     // are drawn where they are on screen, as an overlay
     const m = this.gb.mem, v0 = m.vram[0], v1 = m.vram[1], base = this.bgBase(), pristine = this.courtMaps[this.courtId];
@@ -846,10 +879,21 @@ export class Voxel3D {
   // screen rectangles (px) of BG tiles that differ from the WRAM3 map at the field scroll, and of window rows
   fieldOverlayRects() {
     const m = this.gb.mem, p = this.gb.ppu, v0 = m.vram[0], tm = m.wram[3], base = this.bgBase(), sc = this.fieldScroll();
-    const fx = p.scx & 7, fy = p.scy & 7, mx = sc.x >> 3, my = sc.y >> 3, vx = p.scx >> 3, vy = p.scy >> 3;
+    const fx = p.scx & 7, fy = p.scy & 7, vx = p.scx >> 3, vy = p.scy >> 3;
     const GW = 21, GH = 19, diff = new Uint8Array(GW * GH);
+    // while walking, the scroll counters and the tile map can be a tile apart for a frame: use the map offset
+    // (field scroll +-1 tile) that best matches what is on screen
+    let mx = sc.x >> 3, my = sc.y >> 3, bestN = -1;
+    for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+      const ax = (sc.x >> 3) + ox, ay = (sc.y >> 3) + oy; let n = 0;
+      for (let ty = 0; ty < GH; ty += 2) for (let tx = 0; tx < GW; tx += 2) { const X = ax + tx, Y = ay + ty; if (X < 0 || Y < 0 || X >= 64 || Y >= 64) continue; if (v0[base + (((vy + ty) & 31) << 5) + ((vx + tx) & 31)] === tm[Y * 64 + X]) n++; }
+      if (n > bestN) { bestN = n; mx = ax; my = ay; }
+    }
     for (let ty = 0; ty < GH; ty++) for (let tx = 0; tx < GW; tx++) {
-      const X = mx + tx, Y = my + ty; if (X >= 64 || Y >= 64) continue;
+      const X = mx + tx, Y = my + ty; if (X < 0 || Y < 0 || X >= 64 || Y >= 64) continue;
+      if (ty === 0 || tx === 0 || ty === GH - 1 || tx === GW - 1) {          // edge rows/columns are streamed in while scrolling
+        if (ty !== 0 && ty !== GH - 1 && tx !== 0 && tx !== GW - 1) continue;
+      }
       if (v0[base + (((vy + ty) & 31) << 5) + ((vx + tx) & 31)] !== tm[Y * 64 + X]) diff[ty * GW + tx] = 1;
     }
     const rects = [], seen = new Uint8Array(GW * GH);
@@ -861,7 +905,8 @@ export class Voxel3D {
         x0 = Math.min(x0, tx); x1 = Math.max(x1, tx); y0 = Math.min(y0, ty); y1 = Math.max(y1, ty);
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = tx + dx, ny = ty + dy; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue; const k = ny * GW + nx; if (diff[k] && !seen[k]) { seen[k] = 1; st.push(k); } }
       }
-      if (n < 6 || x1 - x0 < 2) continue;                       // a box is at least 3 tiles wide; lone tiles are streaming seams
+      if (n < 6 || x1 - x0 < 2 || y1 - y0 < 1) continue;        // a box is at least 3x2 tiles; lone tiles and single rows are streaming seams
+      if (n < (x1 - x0 + 1) * (y1 - y0 + 1) * 0.7) continue;     // text boxes are solid rectangles, scroll seams are ragged
       const r = { x0: Math.max(0, x0 * 8 - fx), y0: Math.max(0, y0 * 8 - fy), x1: Math.min(160, (x1 + 1) * 8 - fx), y1: Math.min(144, (y1 + 1) * 8 - fy) };
       if (r.x1 > r.x0 && r.y1 > r.y0) rects.push(r);
     }

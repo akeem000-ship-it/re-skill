@@ -17,7 +17,7 @@
   body.touch #stickzone { display: block; position: fixed; left: 0; bottom: 0; width: 46vw; height: 55dvh; z-index: 2; touch-action: none; }
   body.touch.stick .dpad { display: none; }
   body.gamepad #stickzone { display: none !important; }
-  .stick-base { position: absolute; left: calc(80px + env(safe-area-inset-left, 0)); top: calc(100% - 100px); width: 120px; height: 120px; transform: translate(-50%, -50%);
+  .stick-base { position: absolute; left: calc(80px + max(env(safe-area-inset-left, 0px), var(--cut-l, 0px))); top: calc(100% - 100px); width: 120px; height: 120px; transform: translate(-50%, -50%);
                 border-radius: 50%; background: rgba(44,49,64,0.45); border: 2px solid rgba(255,255,255,0.35); pointer-events: none; }
   .stick-base.active { background: rgba(44,49,64,0.6); }
   .stick-knob { position: absolute; left: 50%; top: 50%; width: 46%; height: 46%; border-radius: 50%; transform: translate(-50%, -50%);

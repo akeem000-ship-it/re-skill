@@ -34,10 +34,28 @@ public class MainActivity extends Activity {
             @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
                 return loader.shouldInterceptRequest(r.getUrl());
             }
+            @Override public void onPageFinished(WebView v, String url) { pushCut(); }
         });
         setContentView(web);
         immersive();
+        // the camera cutout: draw under it (full screen) but tell the page its size, so the controls avoid it
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            getWindow().getAttributes().layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            web.setOnApplyWindowInsetsListener((v, insets) -> {
+                android.view.DisplayCutout c = insets.getDisplayCutout();
+                float d = getResources().getDisplayMetrics().density;
+                cut = c == null ? new int[4] : new int[] { Math.round(c.getSafeInsetLeft() / d), Math.round(c.getSafeInsetTop() / d), Math.round(c.getSafeInsetRight() / d), Math.round(c.getSafeInsetBottom() / d) };
+                pushCut();
+                return v.onApplyWindowInsets(insets);
+            });
+        }
         web.loadUrl("https://appassets.androidplatform.net/assets/web/full.html");
+    }
+    private int[] cut = new int[4];
+    private void pushCut() {
+        final String js = "(function(){var s=document.documentElement.style;s.setProperty('--cut-l','" + cut[0] + "px');s.setProperty('--cut-t','" + cut[1]
+                + "px');s.setProperty('--cut-r','" + cut[2] + "px');s.setProperty('--cut-b','" + cut[3] + "px');})();";
+        web.post(() -> web.evaluateJavascript(js, null));
     }
     private void immersive() {
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_FULLSCREEN

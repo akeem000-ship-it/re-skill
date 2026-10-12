@@ -25,12 +25,12 @@
   body.touch h1, body.touch .panel.info { display: none; }
   body.touch canvas { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
                       width: min(100vw, calc(100dvh * 160 / 144)); max-width: none; height: auto; }
-  body.touch #setup, body.touch #loader, body.touch #hud { position: fixed; top: env(safe-area-inset-top, 0); left: 0; right: 0; z-index: 3;
+  body.touch #setup, body.touch #loader, body.touch #hud { position: fixed; top: max(env(safe-area-inset-top, 0px), var(--cut-t, 0px)); left: 0; right: 0; z-index: 3;
                       margin: 0; padding: 4px 8px; font-size: 11px; background: rgba(20,22,28,0.7); border-radius: 0; }
   body.touch #pad { display: block; position: fixed; inset: 0; margin: 0; width: auto; max-width: none; pointer-events: none; z-index: 2; }
-  body.touch .dpad { position: absolute; left: calc(10px + env(safe-area-inset-left, 0)); bottom: calc(14px + env(safe-area-inset-bottom, 0)); pointer-events: none; }
-  body.touch .btns { position: absolute; right: calc(10px + env(safe-area-inset-right, 0)); bottom: calc(14px + env(safe-area-inset-bottom, 0)); pointer-events: none; }
+  body.touch .dpad { position: absolute; left: calc(10px + max(env(safe-area-inset-left, 0px), var(--cut-l, 0px))); bottom: calc(14px + max(env(safe-area-inset-bottom, 0px), var(--cut-b, 0px))); pointer-events: none; }
+  body.touch .btns { position: absolute; right: calc(10px + max(env(safe-area-inset-right, 0px), var(--cut-r, 0px))); bottom: calc(14px + max(env(safe-area-inset-bottom, 0px), var(--cut-b, 0px))); pointer-events: none; }
   body.touch .k { pointer-events: auto; opacity: 0.55; background: rgba(44,49,64,0.85); }
   body.touch .k.on { opacity: 0.95; }
-  body.touch .btns .k.start { position: fixed; left: 50%; bottom: calc(10px + env(safe-area-inset-bottom, 0)); transform: translateX(-50%); width: 120px; height: 30px; font-size: 12px; }
+  body.touch .btns .k.start { position: fixed; left: 50%; bottom: calc(10px + max(env(safe-area-inset-bottom, 0px), var(--cut-b, 0px))); transform: translateX(-50%); width: 120px; height: 30px; font-size: 12px; }
   body.gamepad #pad { display: none !important; }
