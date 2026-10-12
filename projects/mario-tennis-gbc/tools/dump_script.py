@@ -37,14 +37,15 @@ OPS = {
 def s16(v): return v - 65536 if v >= 32768 else v
 
 
-def main():
-    rom = load_rom(); labels = Labels()
-    bank, addr = labels.resolve(sys.argv[1]); n = int(sys.argv[2], 0) if len(sys.argv) > 2 else 0x60
-    pc = addr; end = addr + n
-    while pc < end:
-        o = to_offset(bank, pc); op = rom[o]
+def decode(rom, labels, bank, addr, n=None, max_ops=48):
+    """Yield text lines; with n=None stop after a jump_rel or an unknown opcode (one basic loop)."""
+    pc = addr; end = addr + n if n else 0x8000; ops = 0
+    while pc < end and ops < max_ops:
+        o = to_offset(bank, pc); op = rom[o]; ops += 1
         if op not in OPS:
-            print("%02x:%04x  %02x        db $%02x   ; unknown opcode" % (bank, pc, op, op)); pc += 1; continue
+            yield "%02x:%04x  %02x        db $%02x   ; unknown opcode" % (bank, pc, op, op); pc += 1
+            if n is None: return
+            continue
         size, name, fmt = OPS[op]
         args = rom[o + 1:o + 1 + size]
         raw = " ".join("%02x" % x for x in rom[o:o + 1 + size])
@@ -54,8 +55,16 @@ def main():
         if name == "call_native":
             nm = labels.name(bank, args[0] | args[1] << 8)
             if nm: txt += "  " + nm
-        print("%02x:%04x  %-14s %-16s %s" % (bank, pc, raw, name, txt))
+        yield "%02x:%04x  %-14s %-16s %s" % (bank, pc, raw, name, txt)
         pc += 1 + size
+        if n is None and name == "jump_rel": return
+
+
+def main():
+    rom = load_rom(); labels = Labels()
+    bank, addr = labels.resolve(sys.argv[1]); n = int(sys.argv[2], 0) if len(sys.argv) > 2 else 0x60
+    for line in decode(rom, labels, bank, addr, n, max_ops=10 ** 6):
+        print(line)
 
 
 if __name__ == "__main__":

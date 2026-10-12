@@ -77,7 +77,7 @@ Confidence: **V** verified by code reading/emulator, **I** inferred from callers
 | 09 | match HUD / scoreboard (`09:610C/611B`) | I |
 | 0A | field engine: FieldScene, LoadMap, location table, events | V |
 | 0B | **mini-games / training drills**: `0B:4705 RunMiniGame(A)` — ids 0-$11 via table `0B:47B4`, higher ids in bank 0D; called from scene code (banks 10/12/14/15), "Mini-Game n" text #353 | V |
-| 0C | data, no export table | ? |
+| 0C | sound-format data: starts with music channel tables `[slot $40-$A0, flags, ptr]`, but the sound index only reaches banks 78-7F — unused / leftover sound bank | I |
 | 0D | mini-games ≥ $12 (`0D:407F`) and serve/bounce helpers (`0D:4BC8`) | I |
 
 **Mini-games / drills** (`0B:4705 RunMiniGame(A)`): 36 ids. Ids `$00-$11` → descriptor table
@@ -286,6 +286,9 @@ wander enable, `+36/+37` OAM attributes.
 Examples (`dump_script.py`): the player is `04:41D1: yield; call_native $516B; jump -4` (joypad
 control is native code); followers run `11:7BA9: set_anim 0; trail_leader; wait 1; loop`; a patrolling
 NPC at `11:7CAD` alternates `move_rel ±1024; wait_arrive; set facing $40; set_anim 5; wait 75`.
+`dump_scenes.py --scripts` disassembles every script referenced by the 42 areas' spawn lists: 48 scripts,
+46 decode cleanly to their loop with this opcode table (2 end in a `yield` followed by non-script bytes),
+which confirms the operand sizes. Most NPCs use `10:7BD1`/`11:7BA9` (stand / follow) or `set_home; wander`.
 
 **Dialogue**: talking/trigger events go through `05:5C18`, a dispatcher whose table `05:5C3B` maps
 event ids to farcalls of the 13 text banks' `GetMsg` export (`$4000`), so the text banks themselves
@@ -985,7 +988,7 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [ ] Ph7: drive the web port's player sprites from the real animation tables (needs the anim id per player state)
 - [x] Ph4: RPG actor bytecode interpreter 04:447D — all 22 opcodes, actor layout, tools/dump_script.py
 - [x] Ph4: enumerate actor spawns and events per area (dump_scenes.py)
-- [ ] Ph4: dump every actor script reachable from the spawn lists with dump_script.py
+- [x] Ph4: dump every actor script reachable from the spawn lists (dump_scenes.py --scripts)
 - [x] Ph4: pair tile/map/palette blocks into full screens (LoadScreen 39:407E, 47 screens incl. title)
 - [x] Ph5: decode SRAM save container (signature, checksum, bank-1 backup, persistent flags)
 - [x] Ph5: save payload $A060-$A76F = block directory (113 blocks), slots, backups (dump_save_layout.py)

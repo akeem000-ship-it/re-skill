@@ -8,11 +8,12 @@ Event records (8 B): [id, facing mask ($FF any), cond(2), handler(2), p6, p7]
   exits: p6 = destination area, p7 = destination entry id.  talk: p6 = flags (bit0 face player).
 Entry records (8 B): [id, facing, X(2), Y(2), init hook(2)], $FF ends.
 Actor records (14 B): [cond(2), script(2), X(2), Y(2), facing, end($FF), sprite, anim, attr, 0].
-usage: dump_scenes.py [area ...] [--out FILE]
+usage: dump_scenes.py [area ...] [--out FILE] [--scripts]   (--scripts: disassemble each actor script once)
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gbrom import load_rom, to_offset, Labels
+import dump_script
 
 rom = load_rom(); labels = Labels()
 u8 = lambda b, a: rom[to_offset(b, a)]
@@ -44,8 +45,11 @@ def events(bank, ptr, kind):
     return out
 
 
+SEEN = set()
+
+
 def main():
-    args = sys.argv[1:]
+    args = [a for a in sys.argv[1:] if a != "--scripts"]
     if "--out" in args:
         i = args.index("--out"); sys.stdout = open(args[i + 1], "w"); del args[i:i + 2]
     areas = [int(x, 16) for x in args] or range(42)
@@ -72,6 +76,14 @@ def main():
         for line in events(bank, w[4], "w4"): print(line)
         for line in events(bank, w[5], "step"): print(line)
         print("    init   %s" % handler(bank, w[6]))
+        if "--scripts" in sys.argv:
+            p = w[2]
+            while u8(bank, p + 9) != 0xFF:
+                sa = u16(bank, p + 2)
+                if (bank, sa) not in SEEN:
+                    SEEN.add((bank, sa)); print("    script %02x:%04x" % (bank, sa))
+                    for line in dump_script.decode(rom, labels, bank, sa): print("      " + line)
+                p += 14
 
 
 if __name__ == "__main__":
