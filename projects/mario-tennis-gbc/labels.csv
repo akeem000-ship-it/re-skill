@@ -137,7 +137,7 @@ bank,addr,name,comment
 0,3373,SoundDriverTick,
 *,C33E,wSoundQueued,
 *,FFCD,hSoundPending,
-*,FFD2,hSoundBusy,re-entrancy guard for SoundUpdate
+*,FFD2,hSeqFlags,hw channel (bits 0-1) | vibrato depth << 4 (per-channel HRAM copy)
 40,4002,SpriteBankHeader,u16 ?, u16 ?, ptr frames[], ptr anim scripts, u16 0, ptr per-frame 4B table (same layout in banks 40-5D)
 40,400E,SpriteFramePtrs,ptr per frame; frames 240 B (15 tiles) uncompressed 2bpp
 40,7CE0,SpriteFrameInfo,4 B per frame (fc f1 00 0c ...) TBD
@@ -727,3 +727,35 @@ bank,addr,name,comment
 *,DF18,wPlMainState,0 idle 1 receiving 2 recovering 3 serving
 *,DF5A,wPlSwingReady,1 while in swing phase 1 (ball incoming)
 *,DF13,wPlPressTimer,5-frame double-press timer for the CPU
+0,3314,SoundChannelInit,DE = 4-byte row [slot hw ptr16] -> channel state WRAM7:D100+slot
+0,3566,SeqNextByte,sequence interpreter: FFD0/1 command index (2-byte units)
+0,3558,SeqResume,HL = base(FFD3/4) + 2*FFD0
+0,3864,SeqNote,note byte in A duration at [HL]
+0,39DF,SeqWriteVolume,NR12 from FFD8 (quieter when the gate FFEF expired) then retrigger
+0,39A7,SeqVibratoTick,FFE3 + 3C4D[depth row][tick&15] -> NR13
+0,3A40,SeqEnvelopeTick,hardware envelope from the set table 3ED6 row FFDD phase 16*FFDF/FFDE
+0,3968,SeqFadeTick,FFE0 steps every FFE1 ticks
+0,3D3D,SeqLoadWave,copy 16 bytes of wave set 3DD4[FFE9>>4] + id*16 to FF30
+0,3D6F,SeqLoopSlot,HL = D1C0 + channel*48 + slot*3
+0,3B1D,NotePeriodTable,12 words (+12 alternate) period; NR13/14 = $800 - (period >> octave)
+0,3836,NoiseNoteTable,16 NR43 values for noise notes < $10
+0,3C4D,VibratoTable,16 rows x 16 signed steps
+0,3B4D,VolumeProductTable,16x16 (envelope level x channel volume) -> NR12 high nibble
+0,3DD4,WaveSetTable,pointers to 16-byte waveform sets
+0,3ED6,EnvelopeSetTable,pointers to envelope sets (16 bytes per shape)
+*,D100,wSndChannels,6 x 32-byte channel states (slots 00 20 SFX 40-A0 music)
+*,D1C0,wSndLoopSlots,loop points 3 bytes x 16 per channel
+*,D208,wSndClaimed,hw channels claimed this tick (SFX priority)
+*,D209,wSndNR51,
+*,D20A,wSndHwChannel,current hw channel 0-3
+*,D20D,wSndRegBase,hw channel * 5
+*,D20E,wSndTick,tick counter (vibrato phase)
+*,D20F,wSndChannelIdx,
+*,D218,wSndCounter2,
+*,FFD0,hSeqIndex,command index (2-byte units)
+*,FFD3,hSeqBase,channel data pointer
+*,FFD8,hSeqVolume,volume << 4
+*,FFD9,hSeqTicksLeft,
+*,FFDB,hSeqGate,
+*,FFE6,hSeqPan,
+*,FFE9,hSeqInstrument,wave set << 4 | envelope set

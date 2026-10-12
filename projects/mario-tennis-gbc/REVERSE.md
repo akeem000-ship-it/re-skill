@@ -821,18 +821,64 @@ the far side) and reached by pressing the d-pad towards them (`08:7908`, angle �
   `CpuServeDelay 08:7A64` 35/50 frames, random shot code `08:7B62`, press.
 * Doubles use the parallel tables `08:7DF2/7E52` (partner at depth 384, X = 0.75·landing X).
 
-### Sound driver — partial (bank 0 `3129-3Dxx`, data banks 78-7F; tool: `tools/dump_sound_index.py`)
+### Sound driver — VERIFIED format (bank 0 `3129-3DD4`, data banks 78-7F; tools: `dump_sound_index.py`, `dump_sound_seq.py`, `emu_seq_trace.py`)
 
 `SoundStart 00:3297`: ids `$01-$32` are **music** (index `00:3151`), `$50-$AF` **SFX** (`00:31B5`);
-ids `$40-$44` are remapped to music `$2E-$32` through `00:2FE0`. Index entry = `bank | channels << 4`,
-`index`; the song's channel table is at `bank:$4000 + index*4`, one 4-byte row per channel
-(`driver slot`, `flags`, `ptr`). Music uses 4 rows (slots `$40/$60/$80/$A0`), SFX 1-2 (slot `$00`).
-Sequence bytes (`00:3566`): `< $A0` note (then a duration byte; `$1F` = rest; noise channel maps
-`< $10` through `00:3836`), `$A0 n` volume/envelope, `$A1 n` tempo/length, `$B0-$CF` duty/envelope
-and loop setup, `$D0-$DF` / `$E0-$EF` transpose ±n, `$F0-$FC` misc, `$FD` loop-point, `$FF` end.
-Note periods: `00:3B1D`. Observed ids: `$01` intro cutscene, `$02` title, `$03` main menu, `$44→$32`
-exhibition match, `$06` point jingle; SFX `$51` racket hit, `$59` serve, `$5B` bounce, `$5E/$5F/$60`
-menu confirm/cursor/back, `$65` boot.
+`$40-$44` are remapped to music `$2E-$32` through `00:2FE0`. Index entry = `bank&$0F | channels<<4`,
+`row`; the song's rows are at `bank:$4000 + row*4`, 4 bytes each: **driver slot** (`$00/$20` SFX,
+`$40/$60/$80/$A0` music), **hardware channel** (0 pulse1, 1 pulse2, 2 wave, 3 noise), **pointer**.
+`SoundChannelInit 00:3314` fills the 32-byte channel state at WRAM7 `$D100 + slot` (pointer, hw
+channel, data pointer, ROM bank, …; loop slots at `$D1C0`, 3 bytes × 16 per channel). Every frame
+`SoundDriverTick 00:3373` processes the 6 slots in order (SFX first), copying each state to HRAM
+`$FFD0-$FFEF` while it runs: `FFD0/1` command index (in 2-byte units; `0` = not started, `$FFFF` = idle),
+`FFD2` hw channel | vibrato depth << 4, `FFD3/4` data base, `FFD5` bank, `FFD6` duty (bits 6-7) |
+alt-table (bit 4) | tempo fraction (low nibble), `FFD7` tempo accumulator, `FFD8` volume << 4,
+`FFD9` ticks left in the note, `FFDA` sweep / wave id, `FFDB` gate, `FFDC` counter 1, `FFDD/DE/DF`
+envelope shape / length / elapsed, `FFE0-E2` fade, `FFE3/E4` frequency, `FFE6` pan mask, `FFE7/E8`
+vibrato delay, `FFE9` instrument, `FFEA/EB` portamento, `FFEC-EE` call repeat / return, `FFEF` gate
+counter. An SFX slot claims its hardware channel (`wD208` mask): music on that channel is muted until
+the SFX ends; `wD209` → `NR51`.
+
+**Channel data** = 4-byte header + 2-byte commands (`SeqNextByte 00:3566`; calls are 4 bytes):
+
+| Header | pulse / noise | wave |
+|---|---|---|
+| +0 | tempo fraction: the channel skips n/16 of the ticks | same |
+| +1 | duty (`<<6` → NR11) | wave volume code |
+| +2 | volume (0-15) | volume |
+| +3 | sweep (NR10, pulse 1) | wave id (16-byte waveform from the set table `00:3DD4`) |
+
+| Command | Meaning |
+|---|---|
+| `nn dd` (nn < `$A0`) | **note**: semitone = nn & 15 (period table `00:3B1D`, +12 entries with `$AE`), octave shift = nn >> 4 (period >> shift, NR13/14 = `$800` − period), dd = duration in ticks. `$1F` = rest. Noise: nn < `$10` → NR43 from `00:3836`, else nn raw. |
+| `A0 vv` | volume (0-15) |
+| `A1 nn` | NR10 sweep (pulse 1) / wave id (wave channel, reloads wave RAM) |
+| `A2 nn` | duty (nn >> 2 → NR11 bits 6-7) / wave volume code |
+| `A3 nn` | vibrato: depth = nn >> 4 (+1 → row of `00:3C4D`, 16 signed steps indexed by the tick counter), delay = (nn & 15)·2; `FE` = off |
+| `A4 nn` | gate: nn ≥ `$80` → the note is released nn − 256 ticks before its end; else fixed note-on length (`$FF` = never) |
+| `A5 nn` | pan mask for NR51 (`01` = swap sides) |
+| `A6 nn` | NR50 master volume |
+| `A7 nn` | wait nn ticks (no retrigger) |
+| `A8 nn` | instrument: wave set (high nibble) / envelope set (low nibble, pointer table `00:3ED6`) |
+| `A9 xx` | counters: `F0/F1` c1 ± 1, `F2/F3` c2 (`wD218`) ± 1, `FE`/`FF` jump through a word table by c2/c1 ("switch" per loop pass), < `$80` c1 = xx, ≥ `$80` c2 = xx − `$80` |
+| `AA nn` | portamento (steps nn >> 4, rate nn & 15; 0 = off) |
+| `AC rr lo hi` | call the sequence at byte offset `hilo` from the channel base, rr times (nested returns via `FFED/EE`) |
+| `AD` | return |
+| `AE nn` | bit 4 → alternate (detuned) period table |
+| `AF nn` | tempo fraction = nn & 15 |
+| `Bk nn` | repeat the section from loop slot (nn & 15) k times (k ≥ 1); `B0 Fk` = jump to slot k's point |
+| `Ck nn` | hardware envelope: shape k, length nn ticks; the envelope set's row k (16 phases) gives the level, scaled by the channel volume through the product table `00:3B4D`, and the NR12 period/direction bits |
+| `Dn rr` / `En rr` | fade volume up / down by n steps, one step every rr ticks |
+| `FD nn` | store the loop point in slot nn & 15 |
+| `FF` | end: slot idle (an SFX frees its hardware channel) |
+
+Note-on (`SeqNote 00:3864`): NR12 from the volume (`00:39DF`: `(vol>>2 + $10) & $F0 | period` when the
+gate has expired, i.e. a quieter "release" level), NR11 = duty | `$3F`, NR13/14 = frequency with the
+trigger bit; the wave channel reloads its waveform when the id changed (`00:3D3D`). Verified: the
+live note stream (`tools/emu_seq_trace.py`, hook on `SeqNote`) on the title screen reproduces the
+static decode of song `$02` (notes, durations, volumes, calls and loops). Observed ids: `$01` intro
+cutscene, `$02` title, `$03` main menu, `$44→$32` exhibition match, `$06` point jingle; SFX `$51` racket
+hit, `$59` swing, `$5B` bounce, `$5E/$5F/$60` menu confirm/cursor/back, `$65` boot.
 
 ### Emulator harness (Ph5.5) — PyBoy 2.8
 
@@ -1159,10 +1205,9 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
    window; contact box |dY| < 96, |dX| < 1.5·SideReach; charge = frames from press to contact; double
    press rules. Open: the exact animation frame at which the launch happens after the contact. Test: bot hits in `emu_bot.py`
    reproduce in the web port within a frame.
-3. **Sound sequence format** (driver `00:3566`, data banks 78-7F). Known: index, channel table,
-   partial opcode map. Needed: every `$A0-$FF` opcode with operand sizes and semantics, loops/calls,
-   envelopes, noise mapping `00:3836`, then a dumper and a WebAudio player. Test: rendered audio of
-   ids `$01-$32` matches PyBoy's APU output (spectrogram or note-event compare).
+3. ~~**Sound sequence format**~~ format DONE — see "Sound driver" (`tools/dump_sound_seq.py`,
+   validated live with `tools/emu_seq_trace.py`). The WebAudio player in the port (`web/js/sound.js`)
+   reproduces the note stream; hardware envelope shapes and portamento are approximated.
 4. ~~**`00:2D8C ProjectPoint`**~~ DONE — see "Projection and camera" (bit-exact on the rally recording;
    ported to `web/js/main.js` with the camera).
 5. ~~**CPU AI sub-state machine**~~ DONE — see "CPU AI" state machine (receiving / recovering /
@@ -1187,7 +1232,7 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph3: bank map 00-7F (tools/bank_map.py); refine the ? rows (0C, 1D, 1E, 24, 28-2C, 73)
 - [x] Ph5: mini-game id → game mapping verified live (emu_call.py)
 - [x] Ph5: mini-game descriptor layout (0B:4002 / 0D:4006)
-- [ ] Ph3: decode the sequence opcodes fully ($A0-$FF handlers) and write a sequence dumper
+- [x] Ph3: sequence opcodes decoded ($A0-$FF) — tools/dump_sound_seq.py, verified with emu_seq_trace.py
 - [x] Ph4: text encoding (ASCII + control codes) and text-bank layout; dump all 4109 messages
 - [x] Ph4: understand banks 5F-69 map layout via LoadMap 0A:585D — all 37 maps render
 - [x] Ph4: dialogue font (05:7920, widths 05:7F80), VWF printer, control/substitution codes
