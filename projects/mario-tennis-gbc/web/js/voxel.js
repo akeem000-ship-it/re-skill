@@ -10,7 +10,7 @@
 //    different depths and a gently swaying camera gives them parallax.
 // Sprites are textured cards or, in voxel mode, one lit cube per opaque pixel.
 import { project } from "./camera.js";
-import { courtTilemaps } from "./assets.js";
+import { courtTilemaps, courtImage } from "./assets.js";
 
 const VS = `#version 300 es
 in vec2 aPos; in vec2 aUV; uniform mat4 uMVP; uniform mat4 uModel; uniform vec4 uUVRect; out vec2 vUV;
@@ -65,6 +65,7 @@ const m4 = {
     const cx = Math.cos(tiltX), sxn = Math.sin(tiltX), cy = Math.cos(yawY), syn = Math.sin(yawY);
     return new Float32Array([sx * cy, 0, -sx * syn, 0,  sy * syn * sxn, sy * cx, sy * cy * sxn, 0,  0, 0, 1, 0,  tx, ty, tz, 1]);
   },
+  plane(ax, ay, t) { return new Float32Array([ax[0], ax[1], ax[2], 0, ay[0], ay[1], ay[2], 0, 0, 1, 0, 0, t[0], t[1], t[2], 1]); },
   apply(m, v) { const o = [0, 0, 0, 0]; for (let i = 0; i < 4; i++) o[i] = m[i] * v[0] + m[4 + i] * v[1] + m[8 + i] * v[2] + m[12 + i] * v[3]; return o; },
 };
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -84,10 +85,20 @@ const CUTS = [
   { name: "fence",    x0: 0,   y0: 206, x1: 256, y1: 256, fill: "above", courts: [2, 3, 4, 5, 7, 8] },   // near chain-link fence (courts that have one)
 ];
 const BG_CENTRE = 128.5;                       // BG px of the projection centre: (0x1010 + 0) / 32 + 0.5
+// bleachers with spectators from the stadium map (RPG map 32, 512x512 px): rectangles in map px, and the
+// sloped planes they stand on beside the court (inner edge at ground level, outer edge raised)
+const STADIUM_MAP = 32;
+// seats: the bleacher rows; wall: the grey walkway / railing band between the seats and the court, which
+// becomes a vertical base of height `base` that the seating rises from (world units; ~8.5 per map px)
+const STANDS = [
+  { name: "left",  inner: "right",  seats: { x0: 18,  y0: 112, x1: 100, y1: 296 }, wall: { x0: 100, y0: 112, x1: 119, y1: 296 }, base: 130, plane: { x0: -1180, x1: -1877, y0: -1900, y1: 1900, h: 300 } },
+  { name: "right", inner: "left",   seats: { x0: 290, y0: 112, x1: 370, y1: 296 }, wall: { x0: 270, y0: 112, x1: 290, y1: 296 }, base: 130, plane: { x0: 1180,  x1: 1860,  y0: -1900, y1: 1900, h: 290 } },
+  { name: "far",   inner: "bottom", seats: { x0: 18,  y0: 12,  x1: 370, y1: 96 },  wall: { x0: 18,  y0: 96,  x1: 370, y1: 112 }, base: 130, plane: { x0: -2030, x1: 2030,  y0: -1800, y1: -2514, h: 290 } },
+];
 
 export class Voxel3D {
   constructor(canvas, gb, rom = null) {
-    this.cv = canvas; this.gb = gb; this.courtMaps = rom ? courtTilemaps(rom) : null; this.courtId = -1; this.detectAt = 0; this.fieldAt = 0; this.fieldOn = false;
+    this.cv = canvas; this.gb = gb; this.rom = rom; this.courtMaps = rom ? courtTilemaps(rom) : null; this.courtId = -1; this.detectAt = 0; this.fieldAt = 0; this.fieldOn = false; this.stands = null;
     const gl = this.gl = canvas.getContext("webgl2", { alpha: false, antialias: true });
     if (!gl) throw new Error("WebGL2 unavailable");
     this.prog = this.link(VS, FS);
@@ -96,7 +107,7 @@ export class Voxel3D {
     this.u3 = {}; for (const n of ["uMVP", "uTex", "uTint", "uAlphaTest"]) this.u3[n] = gl.getUniformLocation(this.prog3, n);
     this.progV = this.link(VSV, FSV, ["aPosV", "aColV"]);
     this.uV = {}; for (const n of ["uMVP", "uModel"]) this.uV[n] = gl.getUniformLocation(this.progV, n);
-    this.voxelMeshes = new Map(); this.voxelSprites = false;   // voxelSprites: cubes per opaque pixel instead of cards
+    this.voxelMeshes = new Map(); this.objectMeshes = new Map(); this.voxelSprites = false;   // voxelSprites: cubes per opaque pixel instead of cards
     this.field = { mapId: -1, floorTex: null, walls: null, wallCount: 0, palHash: 0 };
     const quad = new Float32Array([-0.5, 0, 0, 1,  0.5, 0, 1, 1,  -0.5, 1, 0, 0,  0.5, 1, 1, 0]);   // x, y(0..1 up), u, v
     this.vao = gl.createVertexArray(); gl.bindVertexArray(this.vao);
@@ -107,7 +118,7 @@ export class Voxel3D {
     this.layer = { bg: null, win: null, hash: -1, whash: -1 };
     this.shadowTex = this.solidTexture([0, 0, 0, 110]);
     this.preset = "low"; this.cam = { yaw: 0, pitch: 0.9, dist: 3100, fitKey: "" };
-    this.freeCam = false; this.mode = "none"; this.t0 = performance.now();
+    this.freeCam = false; this.mode = "none"; this.t0 = performance.now(); this.cur = null; this.prev = null; this.lastFrame = -1; this.alpha = 1;
     this.parallax = { px: 0, py: 0, gx: 0, gy: 0, gbase: null };
     this.bindControls();
   }
@@ -169,6 +180,15 @@ export class Voxel3D {
     }
     return out;
   }
+  sampleState() { const p = this.gb.ppu; return { players: this.players(), ball: this.ballWorld(), scx: p.scx, scy: p.scy }; }
+  // interpolated world state for the current display frame (positions that jumped are not interpolated)
+  interp() {
+    const a = this.alpha, c = this.cur, q = this.prev; if (!c) return this.sampleState(); if (!q || a >= 1) return c;
+    const mix = (u, v, lim) => Math.abs(u - v) > lim ? u : v + (u - v) * a;
+    const players = c.players.map((pl, i) => { const o = q.players[i]; return o ? { X: mix(pl.X, o.X, 300), Y: mix(pl.Y, o.Y, 300), Z: mix(pl.Z, o.Z, 300) } : pl; });
+    const ball = { X: mix(c.ball.X, q.ball.X, 600), Y: mix(c.ball.Y, q.ball.Y, 600), Z: mix(c.ball.Z, q.ball.Z, 600) };
+    return { players, ball, scx: mix(c.scx, q.scx, 8), scy: mix(c.scy, q.scy, 8) };
+  }
   landing() { const w = this.gb.mem.wram[0], s16 = a => (w[a] | (w[a + 1] << 8)) << 16 >> 16; return { X: s16(0x450), Y: s16(0x452) }; }   // wLandingX/Y
   ballWorld() {
     const w = this.gb.mem.wram[0], r32 = a => { const v = w[a] | (w[a + 1] << 8) | (w[a + 2] << 16) | (w[a + 3] << 24); return v / 65536; };
@@ -209,22 +229,32 @@ export class Voxel3D {
     if (this.spriteTex.size > 4000) { for (const tx of this.spriteTex.values()) this.gl.deleteTexture(tx); this.spriteTex.clear(); }
     return t;
   }
-  // voxel mesh from an RGBA image: a unit cube per opaque pixel (local units: 1 = one pixel, origin at the
-  // bottom-centre, thickness 1), outer faces only, lit per face
-  meshFromPixels(rgba, w, h) {
-    const px = i => rgba[i * 4 + 3] >= 128, pos = [], col = [];
+  // voxel mesh from an RGBA image: a column per opaque pixel (local units: 1 = one pixel, origin at the
+  // bottom-centre), outer faces only, lit per face. With R > 0 the shape is "inflated": a pixel's half-depth
+  // grows with its distance from the silhouette (a quarter circle of radius R px, up to T px), so a flat
+  // sprite becomes a rounded body; neighbouring columns of different depth expose step faces.
+  meshFromPixels(rgba, w, h, R = 0, T = 0.5) {
+    const n = w * h, px = i => rgba[i * 4 + 3] >= 128, pos = [], col = [];
+    const dist = new Float32Array(n).fill(1e9);                   // chamfer distance to the nearest transparent pixel / edge
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (!px(i)) { dist[i] = 0; continue; } if (x === 0 || y === 0 || x === w - 1 || y === h - 1) dist[i] = 1; }
+    const relax = (i, j, d) => { if (dist[j] + d < dist[i]) dist[i] = dist[j] + d; };
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (x > 0) relax(i, i - 1, 1); if (y > 0) { relax(i, i - w, 1); if (x > 0) relax(i, i - w - 1, 1.4); if (x < w - 1) relax(i, i - w + 1, 1.4); } }
+    for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) { const i = y * w + x; if (x < w - 1) relax(i, i + 1, 1); if (y < h - 1) { relax(i, i + w, 1); if (x < w - 1) relax(i, i + w + 1, 1.4); if (x > 0) relax(i, i + w - 1, 1.4); } }
+    const depth = i => { if (!px(i)) return 0; if (!R) return T; const u = Math.min(dist[i], R) / R; return Math.max(0.3, T * Math.sqrt(1 - (1 - u) * (1 - u))); };
     const face = (a, b, c, d, rgb, k) => { for (const q of [a, b, c, a, c, d]) { pos.push(...q); col.push(rgb[0] * k, rgb[1] * k, rgb[2] * k); } };
-    const at = (x, y) => x >= 0 && x < w && y >= 0 && y < h && px(y * w + x);
+    const dAt = (x, y) => (x >= 0 && x < w && y >= 0 && y < h) ? depth(y * w + x) : 0;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const i = y * w + x; if (!px(i)) continue;
-      const c = [rgba[i * 4] / 255, rgba[i * 4 + 1] / 255, rgba[i * 4 + 2] / 255];
-      const x0 = x - w / 2, x1 = x0 + 1, y0 = h - 1 - y, y1 = h - y, z0 = -0.5, z1 = 0.5;
+      const c = [rgba[i * 4] / 255, rgba[i * 4 + 1] / 255, rgba[i * 4 + 2] / 255], t = depth(i);
+      const x0 = x - w / 2, x1 = x0 + 1, y0 = h - 1 - y, y1 = h - y, z0 = -t, z1 = t;
       face([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], c, 1.0);            // front
       face([x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], c, 0.6);            // back
-      if (!at(x, y - 1)) face([x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], c, 0.9);   // top
-      if (!at(x, y + 1)) face([x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], c, 0.55); // bottom
-      if (!at(x - 1, y)) face([x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], c, 0.75); // left
-      if (!at(x + 1, y)) face([x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], c, 0.75); // right
+      // side faces: the part of this column's edge not covered by the neighbour (full height when it is transparent)
+      const tu = dAt(x, y - 1), td = dAt(x, y + 1), tl = dAt(x - 1, y), tr = dAt(x + 1, y);
+      if (tu < t) { face([x0, y1, z1], [x1, y1, z1], [x1, y1, tu], [x0, y1, tu], c, 0.9); face([x0, y1, -tu], [x1, y1, -tu], [x1, y1, z0], [x0, y1, z0], c, 0.9); }      // top
+      if (td < t) { face([x0, y0, td], [x1, y0, td], [x1, y0, z1], [x0, y0, z1], c, 0.55); face([x0, y0, z0], [x1, y0, z0], [x1, y0, -td], [x0, y0, -td], c, 0.55); }  // bottom
+      if (tl < t) { face([x0, y0, tl], [x0, y0, z1], [x0, y1, z1], [x0, y1, tl], c, 0.75); face([x0, y0, z0], [x0, y0, -tl], [x0, y1, -tl], [x0, y1, z0], c, 0.75); }  // left
+      if (tr < t) { face([x1, y0, z1], [x1, y0, tr], [x1, y1, tr], [x1, y1, z1], c, 0.75); face([x1, y0, -tr], [x1, y0, z0], [x1, y1, z0], [x1, y1, -tr], c, 0.75); }  // right
     }
     const gl = this.gl, vao = gl.createVertexArray(); gl.bindVertexArray(vao);
     const pb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, pb); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
@@ -239,6 +269,26 @@ export class Voxel3D {
     mesh = this.meshFromPixels(this.spritePixels(tile, bank, pal, flipX, flipY), 8, 8); this.voxelMeshes.set(key, mesh);
     if (this.voxelMeshes.size > 3000) { for (const mm of this.voxelMeshes.values()) this.freeMesh(mm); this.voxelMeshes.clear(); }
     return mesh;
+  }
+  // one inflated voxel body for a whole OAM object (all its tiles composited), cached by tile bytes and layout
+  objectMesh(list) {
+    let x0 = 999, y0 = 999, x1 = -999, y1 = -999;
+    for (const sp of list) { x0 = Math.min(x0, sp.sx); y0 = Math.min(y0, sp.sy); x1 = Math.max(x1, sp.sx + 8); y1 = Math.max(y1, sp.sy + sp.h); }
+    const w = x1 - x0, h = y1 - y0, parts = [];
+    for (const sp of list) for (let half = 0; half < sp.h / 8; half++) {
+      const tile = sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half), bank = (sp.attr >> 3) & 1, pal = sp.attr & 7, fx = (sp.attr >> 5) & 1, fy = (sp.attr >> 6) & 1;
+      parts.push({ key: this.tileKey(tile * 16, bank, this.gb.ppu.objPal, pal, fx, fy), tile, bank, pal, fx, fy, dx: sp.sx - x0, dy: sp.sy + half * 8 - y0 });
+    }
+    parts.sort((a, b) => a.dy - b.dy || a.dx - b.dx);
+    const key = parts.map(q => `${q.key}@${q.dx},${q.dy}`).join("|");
+    let mesh = this.objectMeshes.get(key);
+    if (!mesh) {
+      const img = new Uint8Array(w * h * 4);
+      for (const q of parts) { const d = this.spritePixels(q.tile, q.bank, q.pal, q.fx, q.fy); for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const si = (y * 8 + x) * 4; if (!d[si + 3]) continue; const o = ((q.dy + y) * w + q.dx + x) * 4; img[o] = d[si]; img[o + 1] = d[si + 1]; img[o + 2] = d[si + 2]; img[o + 3] = 255; } }
+      mesh = this.meshFromPixels(img, w, h, 5, 4.5); this.objectMeshes.set(key, mesh);
+      if (this.objectMeshes.size > 800) { for (const mm of this.objectMeshes.values()) this.freeMesh(mm); this.objectMeshes.clear(); this.objectMeshes.set(key, mesh); }
+    }
+    return { mesh, x0, y0, w, h, y1 };
   }
   drawMesh(mesh, model, mvp) {
     const gl = this.gl; if (!mesh || !mesh.count) return;
@@ -359,7 +409,46 @@ export class Voxel3D {
       let X = g.X, Yw = g.Y, width = w * g.upp, height = h * g.upp;
       if (c.name === "net") { X = (NET.x0 + NET.x1) / 2; Yw = 0; width = (NET.x1 - NET.x0) * w / 160; height = NET.height; }
       const wide = c.name === "backdrop" || c.name === "fence";   // the stands and the fence continue sideways
-      this.cuts.push({ name: c.name, tex: this.texture(w, h, d, false, wide), mesh: this.meshFromPixels(d, w, h), w, h, X, Y: Yw, width, height, wide });
+      this.cuts.push({ name: c.name, tex: this.texture(w, h, d, false, wide), mesh: this.meshFromPixels(d, w, h, c.key ? 3 : 0, c.key ? 2.5 : 0.5), w, h, X, Y: Yw, width, height, wide });
+    }
+  }
+  // the stadium's bleachers as textures: u runs along the court (repeats), v across the stand with the
+  // inner (court-side) edge at v = 1
+  buildStands() {
+    this.stands = [];
+    if (!this.rom) return;
+    let img; try { const c = courtImage(this.rom, STADIUM_MAP); img = c.getContext("2d").getImageData(0, 0, c.width, c.height).data; } catch (e) { console.warn("stands", e); return; }
+    const gl = this.gl;
+    // a map rectangle as a texture with u along the court and v across it, v = 1 at the court-facing edge
+    const strip = (r, inner) => {
+      const w = r.x1 - r.x0, h = r.y1 - r.y0, along = inner === "bottom" ? w : h, across = inner === "bottom" ? h : w, d = new Uint8Array(along * across * 4);
+      for (let v = 0; v < across; v++) for (let u = 0; u < along; u++) {
+        let mx, my;
+        if (inner === "right") { mx = r.x0 + v; my = r.y0 + u; }
+        else if (inner === "left") { mx = r.x1 - 1 - v; my = r.y0 + u; }
+        else { mx = r.x0 + u; my = r.y0 + v; }
+        const sidx = (my * 512 + mx) * 4, o = (v * along + u) * 4;
+        d[o] = img[sidx]; d[o + 1] = img[sidx + 1]; d[o + 2] = img[sidx + 2]; d[o + 3] = 255;
+      }
+      const tex = this.texture(along, across, d, false, true);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);          // repeat along the court only
+      return { tex, along };
+    };
+    for (const st of STANDS) {
+      const seats = strip(st.seats, st.inner), wall = strip(st.wall, st.inner);
+      const p = st.plane, len = Math.abs(st.inner === "bottom" ? p.x1 - p.x0 : p.y1 - p.y0), upp = 8.5;   // ~8.5 world units per map px
+      this.stands.push({ seats: seats.tex, wall: wall.tex, st, repeat: Math.max(1, Math.round(len / (seats.along * upp))) });
+    }
+  }
+  drawStands(mvp) {
+    if (!this.stands) this.buildStands();
+    for (const { seats, wall, st, repeat } of this.stands) {
+      const p = st.plane, side = st.inner !== "bottom";
+      const ax = side ? [0, 0, p.y1 - p.y0] : [p.x1 - p.x0, 0, 0];                                    // along the court
+      const t = side ? [p.x0, 0, (p.y0 + p.y1) / 2] : [(p.x0 + p.x1) / 2, 0, p.y0];                  // inner edge on the ground
+      this.draw(wall, m4.plane(ax, [0, st.base, 0], t), mvp, [0, 0, repeat, 1], [0.9, 0.9, 0.9, 1], 0);   // vertical base wall with the railing
+      const ay = side ? [p.x1 - p.x0, p.h, 0] : [0, p.h, p.y1 - p.y0];                               // seating rises outward from the wall top
+      this.draw(seats, m4.plane(ax, ay, [t[0], st.base, t[2]]), mvp, [0, 0, repeat, 1], [0.92, 0.92, 0.92, 1], 0);
     }
   }
   collectSprites() {
@@ -370,6 +459,13 @@ export class Voxel3D {
       sprs.push({ sx, sy, h: hgt, tile, attr, owner: null });
     }
     return sprs;
+  }
+  // draws an OAM object (list of sprites) relative to an anchor screen point: as one inflated voxel body in
+  // voxel mode, else as per-tile cards
+  blitObject(list, ax, ay, X, Yw, lift, scale, tilt, mvp) {
+    if (!this.voxelSprites) { for (const sp of list) this.blitSprite(sp, ax, ay, X, Yw, lift, scale, tilt, mvp); return; }
+    const o = this.objectMesh(list), dx = (o.x0 + o.w / 2 - ax) * scale, up = (ay - o.y1) * scale;
+    this.drawMesh(o.mesh, m4.trs3(X + dx, lift + up * Math.cos(tilt), Yw - up * Math.sin(tilt), scale, scale, scale, -tilt), mvp);
   }
   // draws one OAM sprite's tiles relative to an anchor screen point (ax, ay) mapped to world (X, Yw) at height lift
   blitSprite(sp, ax, ay, X, Yw, lift, scale, tilt, mvp) {
@@ -388,8 +484,12 @@ export class Voxel3D {
     gl.uniform4fv(this.u.uUVRect, uv); gl.uniform4fv(this.u.uTint, tint); gl.uniform1f(this.u.uAlphaTest, alphaTest);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
-  render(frame2d) {
-    const gl = this.gl, cv = this.cv;
+  // alpha: how far the display is between the last two game frames (0..1); the 3D view renders at the
+  // display's refresh rate and interpolates world positions, the game itself stays at 60 Hz
+  render(frame2d, alpha = 1) {
+    const gl = this.gl, cv = this.cv, fr = this.gb.ppu.frames;
+    if (fr !== this.lastFrame) { const cur = this.sampleState(); this.prev = (this.cur && fr === this.lastFrame + 1) ? this.cur : cur; this.cur = cur; this.lastFrame = fr; }
+    this.alpha = Math.max(0, Math.min(1, alpha));
     if (cv.width !== cv.clientWidth || cv.height !== cv.clientHeight) { cv.width = cv.clientWidth || 160; cv.height = cv.clientHeight || 144; }
     gl.viewport(0, 0, cv.width, cv.height); gl.clearColor(0.05, 0.08, 0.12, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao); gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -404,7 +504,7 @@ export class Voxel3D {
     const dir = [Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)];
     const tilt = (Math.PI / 2 - pitch) * pr.lean;
     if (pr.game && !this.freeCam) {                         // the game's pinhole, the scroll as an image shift
-      const p = this.gb.ppu, dist = 16384, fovY = aspect >= 160 / 144 ? 2 * Math.atan(576 / dist) : 2 * Math.atan(640 / aspect / dist);
+      const p = this.interp(), dist = 16384, fovY = aspect >= 160 / 144 ? 2 * Math.atan(576 / dist) : 2 * Math.atan(640 / aspect / dist);
       const view = m4.lookAt([dir[0] * dist, dir[1] * dist, dir[2] * dist], [0, 0, 0], [0, 1, 0]);
       const proj = m4.perspective(fovY, aspect, COURT_CLIP.near, COURT_CLIP.far);
       const halfH = Math.tan(fovY / 2) * dist / 8;          // half the viewport height in BG px (1 px = 8 units at the centre)
@@ -436,6 +536,7 @@ export class Voxel3D {
     // ground plane (lying flat: tilt -90deg around X so the quad's up axis becomes -Z, i.e. +Y world towards the camera)
     const gw = WORLD.x1 - WORLD.x0, gh = WORLD.y1 - WORLD.y0;
     this.draw(this.groundTex, m4.trs(0, -0.5, WORLD.y1, gw, gh, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
+    this.drawStands(mvp);                                 // bleachers with spectators beside and behind the court
     // upright cut-outs: net, chair, backdrop (cards, or voxels in voxel mode)
     for (const c of this.cuts) {
       if (this.voxelSprites) {
@@ -443,7 +544,7 @@ export class Voxel3D {
       } else if (c.wide) this.draw(c.tex, m4.trs(c.X, 0, c.Y, c.width * 3, c.height, 0, 0), mvp, [-1, 0, 3, 1], [1, 1, 1, 1], 0.5);
       else this.draw(c.tex, m4.trs(c.X, 0, c.Y, c.width, c.height, 0, 0), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
     }
-    const sprs = this.collectSprites(), ball = this.ballWorld(), players = this.players(), land = this.landing();
+    const sprs = this.collectSprites(), players = this.players(), land = this.landing(), ball = this.ballWorld(), sm = this.interp();
     const [ballSx, ballSy] = this.screenOf(ball.X, ball.Y, ball.Z), [shSx, shSy] = this.screenOf(ball.X, ball.Y, 0), [laSx, laSy] = this.screenOf(land.X, land.Y, 0);
     const SCALE = 7.5;
     // players first: sprites whose bottom lies within a body-sized box above the projected feet (+2 px,
@@ -473,16 +574,17 @@ export class Voxel3D {
         this.draw(t, m4.trs(land.X + (sp.sx + 4 - laSx) * sc, 0.8, land.Y + (sp.sy + (half + 1) * 8 - laSy) * sc * 2, 8 * sc, 8 * sc * 2, -Math.PI / 2), mvp);
       }
     }
-    for (const f of feet) {
-      if (!f.list.length) continue;
-      const pl = f.pl, upp = 1024 / (project(pl.X, pl.Y, 0).s || 128), scale = SCALE * upp / 8;   // world units per px at that depth
+    for (let k = 0; k < feet.length; k++) {
+      const f = feet[k]; if (!f.list.length) continue;
+      const pl = sm.players[k] || f.pl, upp = 1024 / (project(pl.X, pl.Y, 0).s || 128), scale = SCALE * upp / 8;   // world units per px at that depth
       this.draw(this.shadowTex, m4.trs(pl.X, 0.6, pl.Y + 4, 150, 70, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 0.75], 0);
-      for (const sp of f.list) this.blitSprite(sp, f.fx, f.fy, pl.X, pl.Y, -pl.Z, scale, tilt, mvp);
+      this.blitObject(f.list, f.fx, f.fy, pl.X, pl.Y, -pl.Z, scale, tilt, mvp);
       if (this.debug) this.debug.push({ X: pl.X, Y: pl.Y, Z: pl.Z, n: f.list.length, tiles: f.list.map(s => `${s.sx},${s.sy},${s.tile}`) });
     }
     if (ballGroup.length) {                               // the ball's projection point is the anchor: its tiles keep their 2D offsets
-      for (const sp of ballGroup) this.blitSprite(sp, ballSx, ballSy, ball.X, ball.Y, -ball.Z, SCALE, tilt, mvp);
-      this.draw(this.shadowTex, m4.trs(ball.X, 0.5, ball.Y, 50, 32, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
+      const b = sm.ball;
+      this.blitObject(ballGroup, ballSx, ballSy, b.X, b.Y, -b.Z, SCALE, tilt, mvp);
+      this.draw(this.shadowTex, m4.trs(b.X, 0.5, b.Y, 50, 32, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
     }
     // other sprites inside the picture (hit effects, markers) stand at their un-projected feet; sprites along
     // the screen border (score strip, player faces) are HUD

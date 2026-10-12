@@ -56,10 +56,12 @@ function frame() {
   pollGamepad(keys); gb.setInput(input()); gb.runFrame();
   if (audioReady && anode) { const n = gb.apu.drain(abuf); if (n) anode.port.postMessage(abuf.slice(0, n)); } else gb.apu.outPos = 0;
 }
-function draw() {
+let drawnFrame = -1;
+function draw(alpha = 1) {                 // alpha: fraction of the next game frame already elapsed (3D interpolation)
   const f = gb.ppu.frame;
-  if (view3d && voxel) { try { voxel.render(f); return; } catch (e) { console.warn("3d", e); setView3d(false); } }
-  new Uint32Array(img.data.buffer).set(f); g.putImageData(img, 0, 0);
+  if (view3d && voxel) { try { voxel.render(f, alpha); return; } catch (e) { console.warn("3d", e); setView3d(false); } }
+  if (drawnFrame === gb.frames) return;      // 2D: nothing new to show between game frames
+  drawnFrame = gb.frames; new Uint32Array(img.data.buffer).set(f); g.putImageData(img, 0, 0);
 }
 const q = new URLSearchParams(location.search);
 const stored = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
@@ -81,7 +83,7 @@ function loop(now) {
     acc = Math.min(acc + (now - last), STEP * 4); last = now;
     const per = turbo ? 4 : 1;
     while (acc >= STEP) { for (let i = 0; i < per; i++) frame(); acc -= STEP; fps.n++; }
-    draw(); maybeSave();
+    draw(acc / STEP); maybeSave();
     if (now - fps.t >= 1000) { $("fps").textContent = fps.n + " fps" + (turbo ? " (turbo)" : ""); fps.n = 0; fps.t = now; }
   } else last = now;
   requestAnimationFrame(loop);
@@ -119,5 +121,5 @@ $("view3d").addEventListener("pointerdown", () => { if (!gb) return; const vox =
 $("cam").addEventListener("pointerdown", () => setPreset(PRESET_ORDER[(PRESET_ORDER.indexOf(preset) + 1) % PRESET_ORDER.length]));
 $("turbo").addEventListener("pointerdown", () => { turbo = !turbo; $("turbo").classList.toggle("on", turbo); });
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom).catch(() => {});
-window.__gb = { get gb() { return gb; }, keys, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, loadSnapshot(s) { loadSnapshot(gb, s); } };
+window.__gb = { get gb() { return gb; }, keys, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, loadSnapshot(s) { loadSnapshot(gb, s); } };
 requestAnimationFrame(loop);
