@@ -92,7 +92,7 @@ Target Shot, Fruit Fantasy, Banana Bunch, Treasure Box, Medallion Match, Two-on-
 | 0E-15 | Mario Tour scene descriptors + scene code (actor scripts, event handlers) | V |
 | 16 | post-match screens: "YOU WIN!" results (screens $13/$14) and match statistics ($23); `16:4477` debug doubles loop | V |
 | 17, 19, 3A, 3C, 3D, 3F, 6C, 6D | LZ graphics: tiles, tilemaps, palettes for screens and menus (17 and 6D also hold code: screens $24/$44, ending $28) | V |
-| 18 | OBJ palettes `18:4300`, 64-byte LZ blocks | V |
+| 18 | OBJ palettes `18:4300`, palette fade keyframes (64-byte LZ blocks) | V |
 | 1A | main menu (`1A:67D4`), tour menus/EXP display | I |
 | 1B | tournament brackets (screens $29/$2A) and mini-game ranking ($2B) | V |
 | 3B | exhibition / N64 tournament / tournament setup (screens $0C-$0F), Ringshot points ($12), Varsity team charts ($25/$26) | V |
@@ -182,7 +182,7 @@ landing at the next entry). Distribution (ulen → count):
 | Banks | Contents (hypothesis) |
 |-------|-----------------------|
 | 17, 19, 3A | 1024 B and 4096 B blocks — BG tile sets + 32×32 tilemaps (3A:00 = tennis-dictionary/menu tiles, verified visually) |
-| 18 | 33× 64-byte blocks — *not* plain BGR555 palettes (many entries decode to black/near-black); fade tables or OAM data? TBD |
+| 18 | 64-byte LZ blocks = **palette keyframes** for fades/flashes: after a match they are decompressed in pairs every 6 frames, one to WRAM1 `$D000` (BG palettes) and one to `$D100` (OBJ palettes), stepping through `18:6B30…`/`18:6E4B…` (traced with `tools/emu_lz_trace.py`); the near-black entries are fade steps |
 | 39, 3C, 3D, 3F, 6C, 6D | mixed 64 / 240 / 256 / 320 / 1024 / 4096 — palettes, small tilemaps (20×12, 20×16), tiles |
 | 5F-63 | 1024 + ~3-4 KB tiles |
 | 5F-69 | courts + RPG maps — fully decoded, see "Maps & courts" |
@@ -1016,7 +1016,7 @@ parked for a stronger model (Fable 5.1). Each entry lists what is already known 
 - [x] Ph5: roster-index → sprite-id translation (07:5A50, verified live)
 - [x] Ph5: wEventFlags usage map (dump_flags.py, 704 flags); naming story milestones still open
 - [x] Ph4: build web/catalog.html asset browser (maps, LZ sheets with palette recolor, palettes, searchable text)
-- [ ] Ph4: identify what the 64-byte LZ blocks (bank 18, 39, 3F, 6D) really are
+- [x] Ph4: 64-byte LZ blocks = palette keyframes (fades), loaded in BG/OBJ pairs every 6 frames
 - [x] Ph4: render the title screen and full-screen layouts (LoadScreen 39:407E, 47 screens)
 - [ ] Ph4: menus with icons (main menu, play menu) are drawn by other code; find their loader
 

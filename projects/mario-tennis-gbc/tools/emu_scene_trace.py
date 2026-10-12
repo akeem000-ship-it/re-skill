@@ -29,7 +29,7 @@ def stack(em, n=8):
     sp = em.regs()["SP"]
     return " ".join("%04x" % w16(em, sp + 2 * i) for i in range(n))
 e.hook(0x39, 0x407E, note("LoadScreen", lambda em: "screen %02x  stack %s" % (em.regs()["A"], stack(em))))
-e.hook(0x0A, 0x4FC1, note("InitHook", lambda em: "%02x:%04x" % (em.regs()["A"], em.regs()["H"] << 8 | em.regs()["L"])))
+e.hook(0x0A, 0x4FC1, note("InitHook", lambda em: "%02x:%04x" % (em.regs()["A"], em.regs()["HL"])))
 for f in range(frames):
     if f in keys: e.pb.button_press(keys[f])
     if f - 6 in keys: e.pb.button_release(keys[f - 6])
