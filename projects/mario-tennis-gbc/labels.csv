@@ -565,3 +565,104 @@ bank,addr,name,comment
 *,CB0F,wPlayGames,0 = 2 games 1 = 6 games
 *,CB10,wPlaySets,0/1/2 = 1/3/5 sets
 39,44F6,CursorBracketLZ,LZ stream (no table ref): 8x8 cursor corner + blank, -> VRAM1 $8000
+07,5445,ShotDispatchTable,16 handlers by wDF14 shot type (58BE 58D3 58EC 5901 59A8 597C 5952 5967 593D 5991 591A 592D 59C5 59D2 59DF 6BCD)
+07,53B0,ShotSnapshot,copies type wDF14->wC4A0 aim dir wDF4A->wC4A4 and sets wC4B7
+07,5410,ShotSetCharge,wC4A7 mirror; wC4A2 = min(wDF4B 63); wC4A3 = wDF4C; wC454/56 = ball velocity
+07,557E,ShotTypeParams,row of 559E by type: hit SFX wC4A1 param for 08:5189 and BC = aim depth
+07,559E,ShotTypeTable,5 bytes per type: sfx flag param depth(2)
+07,54DE,AimDepthMinusCharge,BC -= 4*wC4A2
+07,54ED,AimDepthPlusCharge,BC += 12*wC4A2
+07,54FE,AimDepthPlusVelY,BC += wPlVelY/16 towards the net
+07,5525,VolleyHeightTest,Z flag: ball low -> type 5 handler instead of 2C volleys
+07,5876,ContactHeightLift,wC40A: balls lower than 96 lifted half-way to -96
+07,5899,ContactHeightClamp,wC40A: >=128 high -> +32 else -160
+07,571E,AimSetDepth,wC432 = +-BC by wDF0A bit1; wC436 = targetY - ballY; falls into 5740
+07,5740,AimCompute,wC430/34 target X and dX; wC43A heading; wC48A/8E min dist+index (+$140); wC48C/8F max (+$480 clamped to sideline); wC450/52 target
+07,5646,AimTargetX,DE = target X: serve (wC4B6) via 56B7 + jump table by wDF4A; rally via 55E9
+07,55E9,RallyTargetX,word table 562E by wDF0A bit0 and wDF4A (-1..1) minus playerX/16; wC7B9 -> 563E
+07,562E,RallyAimTable,deuce [-416 -224 -36] ad [36 224 416] symmetric [-224 0 224]
+07,56B7,ServeTargetBase,(wC43E + |playerY|/8) * wPlAngle/256
+07,570D,AimRandomError,rand(08:43F6) * wPlAimError * 16
+07,5161,ShotSpeedThreshold,jump table by wC4A0: BC = S = table speed + incoming term + charge term + movement term
+07,52D7,SpeedMoveTerm,537F (+-wPlVelY/2 -> wC45C) + 53A2 (-$C00 while wDF0F bit1); clamp >= $100 -> wC458
+07,52F1,SpeedInTermQuarter,BC -= |ballVy|/4 (wC45A)
+07,5301,SpeedInTerm3of16,BC -= 3*|ballVy|/16 (wC45A)
+07,531D,SpeedInTermEighth,BC -= |ballVy|/8 (wC45A)
+07,5345,SpeedChargeTerm128,BC += (wC4A2-32)*128 (x64 when negative) -> wC45E
+07,535C,SpeedChargeTerm64,BC += (wC4A2-32)*64 (x32 when negative) -> wC45E
+07,4D31,ShotTableTop,type 0 topspin stroke rows (spin D=Top speed E=Stroke)
+07,4D81,ShotTablePowerTop,type 1
+07,4DD1,ShotTableSlice,type 2 (D=Slice)
+07,4E21,ShotTablePowerSlice,type 3
+07,4E71,ShotTableFlat,type 4 (no spin)
+07,4EC1,ShotTableSmash,type 9 (speed row = wDF6C)
+07,4F61,ShotTableVolleyTop,type 6
+07,4FB1,ShotTableVolleySlice,type 7
+07,5001,ShotTableLowVolley,type 5
+07,5051,ShotTableLobSpin,type 10 (row = wDF92)
+07,5061,ShotTableDropSpin,type 11 (row = wDF93)
+07,5071,ShotTableServeTop,type 12
+07,50C1,ShotTableServeSlice,type 13
+07,5111,ShotTableServeFlat,type 14
+08,706B,ShotTypeFromButtons,wDF14 = 70B4[4*wDF17+wDF16] (ground) or 709B (volley zone wDF50 bit4)
+08,7151,AimDirFromPad,wDF4A = +1 right / -1 left / 0
+08,7167,ServeAimDirFromPad,wDF4A = -2..2 (pure left/right = 2)
+20,4002,TrajIndex6,HL = table + 6*(DE>>6)
+20,4012,TrajIndex4,HL = table + 4*(DE>>6)
+20,403E,TrajTableSearch4,4-byte records
+20,4084,LaunchFromTraj4,[speed elev] heading = wC43A
+20,4098,LaunchServeRecord,[base elev hoff]: speed = base + 4*((2|dX|*(base>>8))>>8); wC476 = base; CPU intercept at -+$2C0
+20,4102,TrajSelect6Fallback,negate S; search from wC48E; first record >= S -> fallback 41F1 (24:57FD)
+20,4135,TrajSelect6,search without fallback
+20,415D,TrajSelectExact6,index = min(dist along heading, wC48C)>>6
+20,4196,TrajSelect4Fallback,4-byte records with fallback
+20,41C9,TrajSelect4,4-byte records no fallback
+20,41F5,TrajLandingPoint,wC450/52 = ball + HL*(cos sin heading)
+20,424C,TrajHeightBand,HL += word[BC + 2*((-wC40A>>4)&$1F)]
+20,426E,TrajStatOffset,HL += word[BC + 2*A]
+20,427D,TrajTableSlice,4 height bands x 10 Slice rows x 64 records of 6 (also 21; 22/23 by Top; 29-2B serves)
+20,7E98,TrajHeightBands,word offsets 0/$F00/$1E00/$2D00
+20,7ED8,TrajStatOffsets,$180 per stat row
+24,57FD,TrajFallbackWeak,weak hit: category (deficit>>9) -> depth $280/$140/$E0 and table 51FD+583C[cat]; 24:4169 exact
+24,4589,ShotLob,type 10: table 4289 + 459C[wDF92]; exact distance
+24,51A0,ShotDrop,type 11: table 45A0 + 51B9[angle] + 51F9[wDF93]; exact distance
+24,7707,ShotLowVolley,type 5: table 6707 + 7719[height]; 4-byte search with fallback
+24,6644,ShotLowAB,type 4: table 5844 + 6656[height]
+24,6696,ShotSmash,type 9: own arc heading atan2(...) speed 66F2[wDF6C] -> LaunchBall 66E1
+2C,7281,ShotVolleyTop,type 6: table 4281 + 7293[height] 4-byte
+2C,72D3,ShotVolleySlice,type 7: table 4E81 + 72E5[height] 6-byte
+2C,7325,ShotVolleyFlat,type 8: table 6081 + 7337[height] 6-byte
+29,5E9D,ShotServeTop,type 12: 427D + 5EBF[Top] + 5ED3[Serve] + 5EE7[height]; 4098
+2A,5E9D,ShotServeSlice,type 13: same with Slice
+2B,5E9D,ShotServeFlat,type 14: spin row 0; tables 5EBD/5ED1/5EE5
+2D,5000,HalfCosecTable,min(32767 16384/sin) (00:13CE: distance along heading to a depth line)
+00,1416,Atan2,HL=y DE=x -> BC angle (65536 = turn)
+00,1340,MulCosSin,HL*cos(BC) -> HL and HL*sin(BC) -> DE
+00,13CE,DivCos,HL / cos(BC) via 2D:5000
+00,0BD4,MulHLbyA256,HL = HL*A/256
+*,C4A0,wShotType,0 top 1 power top 2 slice 3 power slice 4 A+B low 5 low volley 6/7/8 volleys 9 smash 10 lob 11 drop 12/13/14 serves
+*,C4A2,wShotCharge,min(wDF4B 63): frames from button press to contact
+*,C4A6,wShotPowerFlag,1 for types 1/3/9
+*,C430,wAimTargetX,
+*,C432,wAimTargetY,aim depth signed by end
+*,C434,wAimDX,target X - ball X
+*,C436,wAimDY,target Y - ball Y
+*,C450,wLandingX,predicted landing point (also CPU intercept)
+*,C452,wLandingY,
+*,C458,wShotSpeedThreshold,S
+*,C45A,wShotSpeedInTerm,
+*,C45C,wShotSpeedMoveTerm,
+*,C45E,wShotSpeedChargeTerm,
+*,C476,wServeBaseSpeed,
+*,C48A,wTrajDistMin,distance along heading to depth |ballY|+$140
+*,C48C,wTrajDistMax,to |ballY|+$480 (sideline clamped)
+*,C48E,wTrajIndexMin,wC48A>>6
+*,C48F,wTrajIndexMax,wC48C>>6
+*,DF14,wPlShotType,see 08:706B
+*,DF16,wPlShotButtons,1 A 2 B 3 A+B
+*,DF17,wPlShotVariant,0 single 1/2 second press
+*,DF4A,wPlAimDir,-1/0/1 rally -2..2 serve
+*,DF4B,wPlSwingCharge,frames since the swing button
+*,DF92,wPlLobRow,lob spin/table row
+*,DF93,wPlDropRow,drop spin/table row
+*,C7B9,wSymmetricAim,non-zero: rally aim table 563E

@@ -565,14 +565,77 @@ bit1: `0` near/deuce (X = +288 for the server), `1` near/ad (X = −288), `3` fa
 receiver), `2` far/ad (X = +320). In normal games the rows never swap ends (P1 stays on the near end); the
 code flips bit0 every point (`wC8ED` parity). Only the tiebreak rows swap ends.
 
-### Aiming and launch — partial
+### Aiming and launch — VERIFIED (tools: `emu_shot_trace.py`, `analyze_shots.py`)
 
-`08:45A9 LaunchBall(HL = speed, BC = elevation angle, DE = heading)`:
-vZ = speed·sin(elev), vX = speed·cos(elev)·cos(heading), vY = speed·cos(elev)·sin(heading)
-(two `MulSinCos` calls). Shots don't compute ballistics at run time. Banks 20-23 hold
-**trajectory tables** of 6-byte records (speed, elevation, heading offset), searched by distance
-threshold (`20:401F`) and launched by `20:405D` with heading = `wC43A` (aim) + offset, mirrored by
-`wC4A7`. Per-mode table selection is in each bank's export `$7E7D` (reads `wDF6F`). Not fully decoded.
+Shots never solve ballistics at run time: every shot type owns a **trajectory table** of pre-solved
+records indexed by landing distance (one record per 64 units), and the code picks a record by a speed
+threshold. Verified on 178 traced rally shots (table address, record index, launch heading all exact;
+the real bounce lands within ~20 units of the predicted point) and 25 serves.
+
+**Pipeline** (player swing code in bank 08 → `07:53B0` snapshot → dispatch `07:5445` by `wDF14`):
+
+1. `08:706B/7080` **shot type** `wDF14` from the buttons `wDF16` (1 A, 2 B, 3 A+B) and the variant
+   `wDF17` (0 single press, 1/2 = double press / A-then-B / B-then-A; the CPU's `DF58` low nibble):
+   ground table `08:70B4` = `[0,0,2,4, 0,1,11,4, 0,10,3,4]`, volley zone (`wDF50` bit4) `08:709B` =
+   `[8,8,8,4, 8,6,11,4, 8,10,7,4]` (index = 4·variant + button). Serves are 12/13/14 (top/slice/flat).
+2. `07:53B0`: `wC4A0` = type, `wC4A2` = charge = min(`wDF4B`, 63) (`wDF4B` counts frames from the button
+   press to the contact, `08:6C1C/6C2F/6C7A`; 63 = "full", `08:53F9` plays SFX `$55`), `wC4A7` mirror,
+   `wC454/56` = ball velocity copy.
+3. `07:557E`: per-type row of `07:559E` (5 bytes: hit SFX, `wC4A1`, param for `08:5189`, **aim depth**
+   BC): top 0/slice 2 `$280`, 1/3 (power) `$3C0`, 4 `$3C0`, volleys 5 `$3C0` 6 `$480` 7 `$380` 8 `$3C0`,
+   9 `$440`, 10/11 `$200`, serves `$2A0`. Adjusted: `07:54DE` BC −= 4·charge (types 0,2,5-8,10),
+   `07:54ED` BC += 12·charge and `07:54FE` += playerVy/16 (type 10), `07:5876/5899` shift the contact
+   height `wC40A` (0/2: low balls lifted half-way to −96; 10/11: ≥128 → +32, else −160).
+4. `07:571E`: `wC432` = ±BC (sign by `wDF0A` bit1), `wC436` = targetY − ballY; `07:5740` + `07:5646`:
+   **target X** `wC430` (rally: `07:55E9`, word table `07:562E` by `wDF0A` bit0 and aim dir `wDF4A`
+   (−1/0/+1 from the pad, `08:7151`): deuce `[−416, −224, −36]`, ad `[36, 224, 416]`, minus playerX/16;
+   `wC7B9` ≠ 0 → symmetric `[−224, 0, 224]`; serves: `07:56B7` + jump table by `wDF4A` −2..2 with a
+   random error `08:43F6`·`wDF6A`·16), `wC434` = dX, **heading** `wC43A` = atan2(dY, dX) (`00:1416`,
+   65536 = full turn), then `wC48A` = (|ballY| + `$140`)/|cos| = **min landing distance** (`00:13CE`
+   = HL · 16384/sin(θ+90°) from the half-cosecant table `2D:5000`; `2D:4000` is sin·32768), `wC48E` =
+   `wC48A` >> 6 (record index), `wC48C/8F` the same for `$480` (max distance), shortened to the
+   sideline (`wC484` + 32) when the aim line leaves the court; `wC450/52` = predicted landing point.
+5. `07:5161` **speed threshold** S (handler per type, `SetShotSpinSpeed 07:52A0` row = spin stat D,
+   speed stat E from the bank-07 shot tables, see below): S = speed[E] + v + c + m, clamped ≥ `$100`
+   (`wC458`), where v (`wC45A`) = −|ballVy|/4 (`52F1`), −3|ballVy|/16 (`5301`) or −|ballVy|/8 (`531D`);
+   c (`wC45E`) = (charge−32)·128 (`5345`, ×64 when negative) or ·64/·32 (`535C`), only for types 0-4, 9;
+   m (`wC45C`) = ±playerVy/2 towards the net (`537F`) and −`$C00` while moving (`wDF0F` bit1, `53A2`).
+   Spin: `wC41C` topspin, `wC41E` sidespin (mirrored).
+6. Bank handler (farcall from the dispatch): selects the table, then one of the library variants
+   below. The **library** is identical in banks 20-23 and 29-2B (`$4000`), bank 24 (+`$0C`) and bank
+   2C (+`$04`): `4002`/`4012` HL = table + 6·(d>>6) / 4·(d>>6); `401F`/`403E` **search**: from record
+   `wC48E` walk forward while record.speed < S and index < `wC48F`; `405D` launch 6-byte record
+   `[speed, elevation, heading offset]` (offset mirrored by `wC4A7`) → `LaunchBall 08:45A9`; `4084` the
+   4-byte `[speed, elevation]` form; `4098` serve form (see 8); `41F5` landing point = ball +
+   index·64·(cos, sin) → `wC450/52`; `4102` (6-byte, search, **fallback** `41F1` → `24:57FD` when the
+   first record is already ≥ S, i.e. the player is too weak for the shortest trajectory), `4135` (6-byte,
+   search, no fallback), `415D` (6-byte, exact: index = min(distance to target, `wC48C`) >> 6), `4196`
+   (4-byte, search, fallback), `41C9` (4-byte, search, no fallback).
+7. **Table layouts** (records sorted by speed; index i lands at 64·i units from the ball):
+   | type(s) | bank:entry | table | index by | record | variant |
+   |---|---|---|---|---|---|
+   | 2, 3 slice (/power) | `20:7E7D`, `21:7E7D` | `427D` | height band `7E98` (0/`$F00`/`$1E00`/`$2D00` for ballZ <96, <144, <192, ≥192) + Slice·`$180` (`7ED8`) | 6 | `4102` |
+   | 0, 1 topspin (/power) | `22:7E7D`, `23:7E7D` | `427D` | same, Top stat | 6 | `4102` |
+   | 5 low volley / CPU default | `24:7707` | `6707` | height `7719` (`$100` per 16 units from 48) | 4 | `41A2` |
+   | 4 (A+B, ball low) | `24:6644` | `5844` | height `6656` | 4 | `41A2` |
+   | 9 (A+B, ball high: smash) | `24:6696` | own arc: heading = atan2 to `wC48C`, speed table `66F2` by `wDF6C` | — | direct |
+   | 10 lob (B then A) | `24:4589` | `4289` + `459C`[`wDF92`] | — | 6 | `4169` exact |
+   | 11 drop (A then B) | `24:51A0` | `45A0` + `51B9`[angle `00:138F`] + `51F9`[`wDF93`] | — | 6 | `4169` exact |
+   | 6 volley | `2C:7281` | `4281` | height `7293` | 4 | `41CD` |
+   | 7, 8 volleys | `2C:72D3`, `2C:7325` | `4E81`, `6081` | height `72E5`/`7337` (`$180` steps) | 6 | `4139` |
+   | 12/13/14 serves | `29/2A/2B:5E9D` | `427D` | spin stat (Top / Slice / 0)·`$2D0` (`5EBF`) + Serve·`$48` (`5ED3`) + toss height (`5EE7`, 6 per 16 units above 192) | 6 | `4098` direct |
+   Bank 2B's three index tables sit 2 bytes earlier (`5EBD/5ED1/5EE5`).
+8. **Serve launch** `4098`: record `[base speed, elevation, heading offset]`; speed = base +
+   4·((2·|dX|·(base>>8)) >> 8) (`00:0BD4` = HL·A/256), `wC476` = base; then the receiver's intercept
+   `08:7C86` at depth ∓`$2C0` → `wC450/52`. Verified on 25 serves (speed and heading exact).
+9. **Fallback** `24:57FD` (weak hit): category = (firstSpeed − S) >> 9: <4 → depth `$280`, table
+   `51FD` + `583C`[cat]; =4 → table 3, depth `$140`; >4 → table 0, depth `$E0` (just over the net);
+   re-aims through `07:571E` and launches the exact-distance record (`24:4169`). Spin cleared.
+
+So: the harder the hit (stats, early press = more charge, incoming speed, standing still), the higher
+S and the deeper the ball lands, between `$140` and `$480` past the net along the aim line; a weak hit
+drops short through the fallback tables. Record speeds are in 8.8 px/frame, elevations in 65536 = turn
+(negative = up), heading offsets likewise.
 
 ### Player struct and stat → gameplay mapping — VERIFIED (6 characters)
 
@@ -1028,15 +1091,13 @@ Run `python3 tools/gen_all.py` to regenerate everything above from the ROM (all 
 These need long uninterrupted reasoning over large code/data with emulator cross-checks; they are
 parked for a stronger model (Fable 5.1). Each entry lists what is already known and the acceptance test.
 
-1. **Shot trajectory selection** (banks 20-23, export `$7E7D`; code in 24, 28-2C; `08:45A9 LaunchBall`).
-   Known: 6-byte records (speed, elevation, heading offset), distance-threshold search `20:401F`,
-   launch `20:405D`, aim heading `wC43A`, mirror `wC4A7`. Needed: how the table/row is chosen from
-   stroke type, stats (`wDF6B-6F`), contact timing and joypad aim; how `wC43A` is computed.
-   Test: predict the launch velocity of 20 recorded shots (`emu_record.py`) to ±1 unit, then replace
-   `aimShot` in `web/js/physics.js`.
+1. ~~**Shot trajectory selection**~~ DONE — see "Aiming and launch" (178 traced shots + 25 serves
+   reproduce the record address, index and heading exactly; `tools/emu_shot_trace.py`,
+   `tools/analyze_shots.py`). Ported to `web/js/shots.js`.
 2. **Swing timing windows and shot speed scaling** (bank 08 player swing code, `wDF0F` bits 0/1).
-   Known: serve speed 57-73 px/frame depending on toss timing. Needed: reach box, timing window
-   frames, speed/angle scaling per window, auto-swing vs button. Test: bot hits in `emu_bot.py`
+   Known: serve speed 57-73 px/frame depending on toss timing; the charge counter `wDF4B` (frames from
+   press to contact, max 63) feeds the speed threshold (see "Aiming and launch"). Needed: reach box,
+   contact test `08:7267`/`wDF50` bit0, auto-swing vs button. Test: bot hits in `emu_bot.py`
    reproduce in the web port within a frame.
 3. **Sound sequence format** (driver `00:3566`, data banks 78-7F). Known: index, channel table,
    partial opcode map. Needed: every `$A0-$FF` opcode with operand sizes and semantics, loops/calls,
