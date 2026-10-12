@@ -141,6 +141,20 @@ export class Voxel3D {
   }
   solidTexture(rgba) { return this.texture(1, 1, new Uint8Array(rgba)); }
   setPreset(name) { if (PRESETS[name]) { this.preset = name; this.cam.fitKey = ""; } }
+  // switch to another machine / ROM (the page loaded a new file): forget everything derived from the old one
+  attach(gb, rom = null) {
+    const gl = this.gl;
+    this.gb = gb; this.rom = rom; this.courtMaps = rom ? courtTilemaps(rom) : null;
+    this.courtId = -1; this.detectAt = 0; this.fieldAt = 0; this.fieldOn = false; this.cur = this.prev = null; this.lastFrame = -1;
+    for (const t of this.spriteTex.values()) gl.deleteTexture(t); this.spriteTex.clear();
+    for (const m of this.voxelMeshes.values()) this.freeMesh(m); this.voxelMeshes.clear();
+    for (const m of this.objectMeshes.values()) this.freeMesh(m); this.objectMeshes.clear();
+    for (const c of this.cuts) { gl.deleteTexture(c.tex); this.freeMesh(c.mesh); } this.cuts = [];
+    if (this.stands) for (const st of this.stands) { gl.deleteTexture(st.seats); gl.deleteTexture(st.wall); } this.stands = null;
+    if (this.groundTex) { gl.deleteTexture(this.groundTex); this.groundTex = null; } this.ground = null; this.groundHash = -1;
+    const f = this.field; if (f.floorTex) { gl.deleteTexture(f.floorTex); f.floorTex = null; } f.mapId = -1;
+    const L = this.layer; if (L.bg) { gl.deleteTexture(L.bg); L.bg = null; } if (L.win) { gl.deleteTexture(L.win); L.win = null; } L.hash = L.whash = -1;
+  }
 
   // ---- game state helpers ----
   col5(pal, p, i) { const o = p * 8 + i * 2, c = pal[o] | (pal[o + 1] << 8); return [(c & 31) * 8, ((c >> 5) & 31) * 8, ((c >> 10) & 31) * 8]; }
@@ -161,7 +175,7 @@ export class Voxel3D {
   }
   // a court is loaded when the BG tilemap in VRAM is one of the court maps (checked every 20 frames)
   isCourt() {
-    if (!this.courtMaps || this.mapId() > 15) return false;
+    if (!this.courtMaps || this.mapId() > 15) { this.courtId = -1; this.detectAt = 0; return false; }
     const fr = this.gb.ppu.frames; if (fr < this.detectAt) return this.courtId >= 0;
     this.detectAt = fr + 20;
     const v0 = this.gb.mem.vram[0], base = this.gb.ppu.lcdc & 0x08 ? 0x1C00 : 0x1800;
@@ -493,7 +507,8 @@ export class Voxel3D {
     const gl = this.gl, cv = this.cv, fr = this.gb.ppu.frames;
     if (fr !== this.lastFrame) { const cur = this.sampleState(); this.prev = (this.cur && fr === this.lastFrame + 1) ? this.cur : cur; this.cur = cur; this.lastFrame = fr; }
     this.alpha = Math.max(0, Math.min(1, alpha));
-    if (cv.width !== cv.clientWidth || cv.height !== cv.clientHeight) { cv.width = cv.clientWidth || 160; cv.height = cv.clientHeight || 144; }
+    const dpr = Math.min(2, (typeof devicePixelRatio === "number" && devicePixelRatio) || 1), W = Math.round((cv.clientWidth || 160) * dpr), H = Math.round((cv.clientHeight || 144) * dpr);
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }   // render at device pixels (capped at 2x)
     gl.viewport(0, 0, cv.width, cv.height); gl.clearColor(0.05, 0.08, 0.12, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao); gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     if (this.isField()) { this.renderField(frame2d); return; }

@@ -47,9 +47,11 @@ public class MainActivity extends Activity {
     @Override public void onWindowFocusChanged(boolean f) { super.onWindowFocusChanged(f); if (f) immersive(); }
 
     // ---- Bluetooth / USB controllers: forward buttons and sticks to the page as a bit mask ----
-    private int padMask = 0, hatMask = 0, stickMask = 0;
+    private int padMask = 0, hatMask = 0, stickMask = 0, sentMask = -1;
     private void pushMask() {
         final int m = padMask | hatMask | stickMask;
+        if (m == sentMask) return;                        // joystick motion events arrive constantly; only changes matter
+        sentMask = m;
         web.post(() -> web.evaluateJavascript("window.__padmask=" + m + ";", null));
     }
     private static int bitFor(int keyCode) {

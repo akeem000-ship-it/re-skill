@@ -10,7 +10,7 @@ const opt = (n, d) => (a.includes(n) ? a[a.indexOf(n) + 1] : d), cam = opt("--ca
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] }).catch(() => chromium.launch());
 const page = await browser.newPage({ viewport: { width: W, height: H } });
 page.on("pageerror", e => console.log("pageerror", e.message)); page.on("console", m => { if (m.type() === "warning" || m.type() === "error") console.log("console", m.text()); });
-await page.goto(`http://localhost:8765/web/full.html?touch&cam=${cam}` + (a.includes("--vox") ? "&vox" : ""));
+await page.goto(`http://localhost:8765/web/full.html?touch&cam=${cam}&aspect=${opt("--aspect", "fill")}` + (a.includes("--vox") ? "&vox" : ""));
 await page.waitForFunction(() => window.__gb && window.__gb.gb, null, { timeout: 60000 });
 await page.evaluate(() => { window.__gb.pause(); window.__f = 0; });
 let cur = 0;

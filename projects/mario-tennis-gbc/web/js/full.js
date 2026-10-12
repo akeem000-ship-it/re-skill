@@ -6,6 +6,7 @@ import { Rom, sha1Hex, EXPECTED_SHA1 } from "./rom.js";
 import { pollGamepad } from "./gamepad.js";
 import { Voxel3D, PRESETS, PRESET_ORDER } from "./voxel.js";
 import { loadSnapshot } from "./gb/snapshot.js";
+import { composeWide, WIDE_W, WIDE_H } from "./wide.js";
 
 const $ = id => document.getElementById(id);
 const cv = $("screen"), g = cv.getContext("2d");
@@ -13,6 +14,8 @@ const img = g.createImageData(160, 144);
 let voxel = null, view3d = false;
 let gb = null, keys = {}, paused = false, turbo = false, romHash = "";
 const SAVE_KEY = () => "mt-sram-" + romHash.slice(0, 12);
+const q = new URLSearchParams(location.search);
+const stored = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 
 // ---- audio: the worklet plays whatever sample chunks the main thread posts ----
 let actx = null, anode = null, audioReady = false;
@@ -37,12 +40,13 @@ const abuf = new Float32Array(2 * 4096);
 function loadSave() {
   try { const s = localStorage.getItem(SAVE_KEY()); if (s) { const b = Uint8Array.from(atob(s), c => c.charCodeAt(0)); gb.mem.sram.set(b.subarray(0, gb.mem.sram.length)); gb.mem.ramEnable = false; $("savestatus").textContent = "save loaded"; } } catch (e) { console.warn("save", e); }
 }
+function bytesToBinary(b) { let s = ""; for (let i = 0; i < b.length; i += 8192) s += String.fromCharCode.apply(null, b.subarray(i, i + 8192)); return s; }   // no giant spread
 let saveTimer = 0;
 function maybeSave() {
   if (!gb.mem.sramDirty) return;
   gb.mem.sramDirty = false;
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => { try { localStorage.setItem(SAVE_KEY(), btoa(String.fromCharCode(...gb.mem.sram))); $("savestatus").textContent = "saved " + new Date().toLocaleTimeString(); } catch (e) { console.warn("save", e); } }, 500);
+  saveTimer = setTimeout(() => { try { localStorage.setItem(SAVE_KEY(), btoa(bytesToBinary(gb.mem.sram))); $("savestatus").textContent = "saved " + new Date().toLocaleTimeString(); } catch (e) { console.warn("save", e); } }, 500);
 }
 
 // ---- main loop ----
@@ -57,14 +61,37 @@ function frame() {
   if (audioReady && anode) { const n = gb.apu.drain(abuf); if (n) anode.port.postMessage(abuf.slice(0, n)); } else gb.apu.outPos = 0;
 }
 let drawnFrame = -1;
+const wideImg = g.createImageData(WIDE_W, WIDE_H), wideBuf = new Uint32Array(wideImg.data.buffer), wideIdx = new Uint8Array(WIDE_W * WIDE_H);
+const onCourt = () => gb.mem.wram[0][0x32E] <= 15;   // wCurMapID: courts (the map is wider than the screen)
 function draw(alpha = 1) {                 // alpha: fraction of the next game frame already elapsed (3D interpolation)
   const f = gb.ppu.frame;
   if (view3d && voxel) { try { voxel.render(f, alpha); return; } catch (e) { console.warn("3d", e); setView3d(false); } }
   if (drawnFrame === gb.frames) return;      // 2D: nothing new to show between game frames
-  drawnFrame = gb.frames; new Uint32Array(img.data.buffer).set(f); g.putImageData(img, 0, 0);
+  drawnFrame = gb.frames;
+  if (aspect === "4:3" && onCourt()) {       // 4:3 on a court: 192 px wide composite with the real map on both sides
+    if (cv.width !== WIDE_W) { cv.width = WIDE_W; cv.height = WIDE_H; }
+    composeWide(gb, wideBuf, wideIdx); g.putImageData(wideImg, 0, 0); return;
+  }
+  if (cv.width !== 160) { cv.width = 160; cv.height = 144; }
+  new Uint32Array(img.data.buffer).set(f); g.putImageData(img, 0, 0);
 }
-const q = new URLSearchParams(location.search);
-const stored = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+// ---- screen shape: Fill (3D fills the screen, 2D keeps 10:9), 4:3 (3D letterboxed to 4:3; 2D courts widened
+// to 192 px, elsewhere pillarboxed), 10:9 (both as the Game Boy) ----
+const ASPECTS = ["fill", "4:3", "10:9"];
+let aspect = q.get("aspect") || stored("mt-aspect") || "fill"; if (!ASPECTS.includes(aspect)) aspect = "fill";
+function applyAspect() {
+  $("aspect").textContent = "VIEW: " + (aspect === "fill" ? "Fill" : aspect);
+  const touch = document.body.classList.contains("touch"), gl = $("gl");
+  const box = r => {                          // CSS size of an r-aspect box fitted to the viewport (touch) or 480 px wide (desktop)
+    if (!touch) return { w: 480, h: 480 / r };
+    const vw = innerWidth, vh = innerHeight; return vw / vh > r ? { w: vh * r, h: vh } : { w: vw, h: vw / r };
+  };
+  const set = (el, b) => { if (!b) { el.style.cssText = ""; return; } el.style.width = b.w + "px"; el.style.height = b.h + "px"; if (touch) { el.style.left = (innerWidth - b.w) / 2 + "px"; el.style.top = (innerHeight - b.h) / 2 + "px"; el.style.transform = "none"; el.style.inset = "auto"; el.style.position = "fixed"; } };
+  if (aspect === "fill") { set(gl, null); set(cv, null); }
+  else { const r = aspect === "4:3" ? 4 / 3 : 160 / 144; set(gl, box(r)); set(cv, box(r)); }
+  try { localStorage.setItem("mt-aspect", aspect); } catch (e) { /* private mode */ }
+}
+addEventListener("resize", () => applyAspect());
 let preset = q.get("cam") || stored("mt-cam") || "low"; if (!PRESETS[preset]) preset = "low";
 function setView3d(on, vox = false) {
   view3d = on; $("view3d").classList.toggle("on", on); $("view3d").textContent = on ? (vox ? "VOX" : "3D") : "3D";
@@ -93,7 +120,8 @@ async function loadRom(buf) {
   const bytes = new Uint8Array(buf);
   romHash = (await sha1Hex(bytes)) || "";
   $("romstatus").textContent = romHash === "" ? "ROM loaded" : romHash === EXPECTED_SHA1 ? "ROM verified (Mario Tennis USA)" : "Warning: unexpected ROM SHA-1 " + romHash;
-  gb = new GBC(bytes, { sampleRate: 44100, audio: true });
+  gb = new GBC(bytes, { sampleRate: 44100, audio: true }); drawnFrame = -1;
+  if (voxel) voxel.attach(gb, new Rom(gb.mem.rom));      // a ROM loaded after the 3D view was created
   // the statically translated game (tools/recomp.py -> gen/game.js) runs the traced code as native
   // functions; without it everything is interpreted (same results, see web/tests/recomp_vs_interp.mjs)
   try { const mod = await import("../gen/game.js"); const T = {}; mod.install(T); gb.installRecomp(T); if (mod.HRAM_SIG) gb.exec.setHramSig(mod.HRAM_SIG); $("romstatus").textContent += " · recompiled code"; } catch (e) { $("romstatus").textContent += " · interpreter"; }
@@ -119,7 +147,9 @@ $("file").addEventListener("change", async e => { const f = e.target.files[0]; i
 $("reset").addEventListener("click", () => { if (gb) { gb.reset(); } });
 $("view3d").addEventListener("pointerdown", () => { if (!gb) return; const vox = voxel && voxel.voxelSprites; setView3d(!view3d || !vox, view3d && !vox); });   // off -> cards -> voxels -> off
 $("cam").addEventListener("pointerdown", () => setPreset(PRESET_ORDER[(PRESET_ORDER.indexOf(preset) + 1) % PRESET_ORDER.length]));
+$("aspect").addEventListener("pointerdown", () => { aspect = ASPECTS[(ASPECTS.indexOf(aspect) + 1) % ASPECTS.length]; drawnFrame = -1; applyAspect(); });
+applyAspect();
 $("turbo").addEventListener("pointerdown", () => { turbo = !turbo; $("turbo").classList.toggle("on", turbo); });
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom).catch(() => {});
-window.__gb = { get gb() { return gb; }, keys, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, loadSnapshot(s) { loadSnapshot(gb, s); } };
+window.__gb = { get gb() { return gb; }, keys, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, loadSnapshot(s) { loadSnapshot(gb, s); } };
 requestAnimationFrame(loop);
