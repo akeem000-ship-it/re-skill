@@ -77,6 +77,8 @@ python3 tools/recomp.py --coverage states/coverage.json && node web/tests/recomp
 #    key script, and an RPG area from a PyBoy snapshot (states/ is not committed: make one with emu_boot.py --save after
 #    walking into the Academy, or any state whose wCurMapID $C32E is 17-36)
 node web/tests/view3d_frame.mjs out/view3d && python3 tools/emu_dump_snapshot.py states/menu1.state out/snap_menu1.json && node web/tests/view3d_field.mjs out/snap_menu1.json out/view3d_field.png
+python3 tools/emu_dump_snapshot.py states/menu_court.state out/snap_court.json && node web/tests/view3d_snap.mjs out/snap_court.json out/court_green --keys ArrowDown@10,KeyZ@40 --frames 430   # any court from the court menu
+node web/tests/play_match.mjs out/match --max 45000 --video 300:3000:2    # a bot plays a whole match; 2D + 3D shots per point, frames for a video
 ```
 
 Other drivers: `emu_charmatch.py K` (start a match with the K-th character and dump WRAM),

@@ -90,10 +90,12 @@ const BG_CENTRE = 128.5;                       // BG px of the projection centre
 const STADIUM_MAP = 32;
 // seats: the bleacher rows; wall: the grey walkway / railing band between the seats and the court, which
 // becomes a vertical base of height `base` that the seating rises from (world units; ~8.5 per map px)
+// the side stands stop short of the far backdrop (base at Y ~ -1720) so they do not cut through it; the
+// far bleachers are only added behind courts whose own backdrop has no stands
 const STANDS = [
-  { name: "left",  inner: "right",  seats: { x0: 18,  y0: 112, x1: 100, y1: 296 }, wall: { x0: 100, y0: 112, x1: 119, y1: 296 }, base: 130, plane: { x0: -1180, x1: -1877, y0: -1900, y1: 1900, h: 300 } },
-  { name: "right", inner: "left",   seats: { x0: 290, y0: 112, x1: 370, y1: 296 }, wall: { x0: 270, y0: 112, x1: 290, y1: 296 }, base: 130, plane: { x0: 1180,  x1: 1860,  y0: -1900, y1: 1900, h: 290 } },
-  { name: "far",   inner: "bottom", seats: { x0: 18,  y0: 12,  x1: 370, y1: 96 },  wall: { x0: 18,  y0: 96,  x1: 370, y1: 112 }, base: 130, plane: { x0: -2030, x1: 2030,  y0: -1800, y1: -2514, h: 290 } },
+  { name: "left",  inner: "right",  seats: { x0: 18,  y0: 112, x1: 100, y1: 296 }, wall: { x0: 100, y0: 112, x1: 119, y1: 296 }, base: 130, plane: { x0: -1180, x1: -1877, y0: -1640, y1: 1900, h: 300 } },
+  { name: "right", inner: "left",   seats: { x0: 290, y0: 112, x1: 370, y1: 296 }, wall: { x0: 270, y0: 112, x1: 290, y1: 296 }, base: 130, plane: { x0: 1180,  x1: 1860,  y0: -1640, y1: 1900, h: 290 } },
+  { name: "far",   inner: "bottom", seats: { x0: 18,  y0: 12,  x1: 370, y1: 96 },  wall: { x0: 18,  y0: 96,  x1: 370, y1: 112 }, base: 130, plane: { x0: -2030, x1: 2030,  y0: -1800, y1: -2514, h: 290 }, skipCourts: [2, 7, 14] },
 ];
 
 export class Voxel3D {
@@ -443,6 +445,7 @@ export class Voxel3D {
   drawStands(mvp) {
     if (!this.stands) this.buildStands();
     for (const { seats, wall, st, repeat } of this.stands) {
+      if (st.skipCourts && st.skipCourts.includes(this.courtId)) continue;
       const p = st.plane, side = st.inner !== "bottom";
       const ax = side ? [0, 0, p.y1 - p.y0] : [p.x1 - p.x0, 0, 0];                                    // along the court
       const t = side ? [p.x0, 0, (p.y0 + p.y1) / 2] : [(p.x0 + p.x1) / 2, 0, p.y0];                  // inner edge on the ground
@@ -703,7 +706,7 @@ export class Voxel3D {
     for (const g of groups.values()) {
       const cx2 = (g.x0 + g.x1) / 2, X = cx2 + sc.x, Z = g.y1 + sc.y;
       this.draw(this.shadowTex, m4.trs(X, 0.3, Z + 1, (g.x1 - g.x0) * 1.1, 7, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 0.7], 0);
-      for (const sp of g.list) this.blitSprite(sp, cx2, g.y1, X, Z, 0, 1, TILT, mvp);
+      this.blitObject(g.list, cx2, g.y1, X, Z, 0, 1, TILT, mvp);
     }
     // the window layer (dialogue boxes, menus) as a screen-space overlay from the 2D frame
     if ((p.lcdc & 0x20) && p.wy < 144) {
