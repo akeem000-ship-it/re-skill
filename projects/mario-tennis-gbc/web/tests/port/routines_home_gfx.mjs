@@ -79,6 +79,10 @@ for (const bank of [0x09, 0x0A, 0x16, 0x17, 0x1A, 0x29, 0x2A, 0x6B]) {
 }
 const stream = r => STREAMS[r(STREAMS.length)];
 const streamOf = s => STREAMS[(s.f * 7 + s.rec.length) % STREAMS.length];   // the same in gen and prep
+// bank << 8 | slot of a $4000-table entry that points into ROM (not at the stack page)
+function romSlot(r) {
+  for (;;) { const bank = 1 + r(0x7F), slot = r(0x20) << 1; if (romWord(bank, 0x4000 | slot) < 0x7C00) return bank << 8 | slot; }
+}
 // { a, hl } for the Unused_00_Far*Indexed helpers whose table and entry both lie in ROM (not the stack page)
 function romIndexed(r) {
   for (;;) {
@@ -180,7 +184,7 @@ export const ROUTINES = [
   T("Unused_00_FarDecompressData", 0x0692, { gen: r => { const [b, , p] = stream(r); return { a: b, hl: p, de: 0xD000 + r(0x100) }; }, wram: 1 }),
   T("CopyOAMDMARoutineToHRAM", 0x06AC),
   T("Unused_00_FarDispatchIndexed", 0x06CF, { gen: r => { const [b, slot, i] = INDEXED[r(INDEXED.length)]; return { a: i, hl: b << 8 | slot, de: 0xD000 + r(0x200) }; }, wram: 1 }),
-  T("Unused_00_FarCopyIndexed", 0x06F7, { gen: r => ({ a: r(256), hl: r(0x80) << 8 | (r(0x20) << 1), de: wram0(r), bc: r(0x10000) }) }),
+  T("Unused_00_FarCopyIndexed", 0x06F7, { gen: r => ({ ...romIndexed(r), de: wram0(r), bc: r(0x10000) }) }),
   T("Unused_00_FarCallIndexed1", 0x0726, { gen: r => ({ ...romIndexed(r), de: 0x8000 + r(0x3800), bc: 1 + r(0x10) }) }),
   T("Unused_00_FarCallIndexed2", 0x0752, { gen: r => ({ ...romIndexed(r), de: 0x8000 + r(0x1800), bc: 1 + r(0x10) }) }),
   T("Unused_00_FarCallIndexed3", 0x077E, { gen: r => ({ ...romIndexed(r), de: wram0(r), bc: 1 + r(0x10) }) }),
@@ -201,7 +205,7 @@ export const ROUTINES = [
   T("DecompressData", 0x1797, { gen: (r, s) => ({ hl: streamOf(s)[2], de: 0xD000 + r(0x200) }), wram: 1,
     prep: (mem, s) => { mem.romBank = streamOf(s)[0]; mem.updateRom(); } }),
   T("DecompressDataFromBank", 0x0234, { gen: r => { const [b, slot] = stream(r); return { hl: b << 8 | slot, de: 0xD000 + r(0x200) }; }, wram: 1 }),
-  T("CopyDataFromBank", 0x021A, { gen: r => ({ hl: (1 + r(0x7F)) << 8 | (r(0x20) << 1), de: wram0(r), bc: 1 + r(0x2FF) }) }),
+  T("CopyDataFromBank", 0x021A, { gen: r => ({ hl: romSlot(r), de: wram0(r), bc: 1 + r(0x2FF) }) }),
   T("GetTangent", 0x1767),
   T("GetTangent (second quadrant)", 0x1767, { gen: r => ({ hl: 0x4000 | r(0x4000) | r(2) << 15 }) }),
   T("GetTangent (edges)", 0x1767, { gen: r => ({ hl: [0, 0x4000, 0x40FF, 0x3FFF, 0x3F00, 0x7FFF, 0xC000, 0x8000, 0xFFFF][r(9)] }) }),
