@@ -14,9 +14,10 @@ import { MatchMemory, matchState } from "./memory.js";
 import { RomMath } from "./math.js";
 
 export class MatchEngine {
-  constructor(rom) {
+  // mem: the engine's own RAM image (default), or the whole-game port's bus over the hardware (web/js/port/bus.js)
+  constructor(rom, mem = new MatchMemory()) {
     this.rom = rom;
-    this.mem = new MatchMemory();
+    this.mem = mem;
     this.S = matchState(this.mem);
     this.M = new RomMath(rom, this.mem);
     this.events = [];

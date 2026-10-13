@@ -1,0 +1,230 @@
+// GamePort: the readable port of the whole game. The game's code is JavaScript (web/js/port/*, web/js/engine/*);
+// the Game Boy Color around it — memory map, PPU, APU, timer, DMA — is the emulator's hardware model
+// (web/js/gb), driven without its CPU. So the port draws and plays through the same hardware the ROM uses, and a
+// running port can be compared with the ROM byte for byte (web/tests/port_lockstep.mjs).
+//
+// Frames. The ROM's only frame barrier is AdvanceFrame (00:2631): it halts until the VBlank handler has run. Here
+// every routine that (transitively) waits is a generator and the halt is `yield "halt"`. One frame():
+//   1. dispatches the pending interrupts (at VBlank start: the VBlank handler) as the CPU would,
+//   2. resumes the game's coroutine until it halts again (its whole frame of work runs at once),
+//   3. runs the hardware to the next VBlank start, dispatching the raster (STAT) and timer handlers on time.
+// The ROM's code takes CPU time and can overrun a frame ("lag"); ported code takes none. ROM code that halts the
+// CPU (yield "cpuhalt") wakes on any interrupt, as on hardware: the frame goes on with it after each one.
+//
+// Not yet ported code. While the port is being written, a routine that has no JS yet runs as the ROM's own code
+// on the emulator's CPU: `yield* P.runRom(bank, addr, regs)` (it may wait for frames: each halt is yielded) or
+// `P.callRom(bank, addr, regs)` (must not wait). The other way round, ROM code reaching an address that has a JS
+// port (P.hooks, filled from program.hooks) runs the JS instead and returns as if by `ret`. So the game runs
+// whole at every stage of the port, and each part replaced is checked in place against the ROM.
+import { GBC } from "../gb/gbc.js";
+import { Rom } from "../rom.js";
+import { Bus } from "./bus.js";
+import { makeVars } from "./vars.js";
+import { RomMath } from "../engine/math.js";
+import { MatchEngine } from "../engine/engine.js";
+
+export class SoftResetSignal extends Error { constructor() { super("SoftReset"); } }
+
+const SENTINEL = 0xFFF0;                     // return address of a ROM call made by the port (an HRAM address no code runs)
+const VECTORS = { 0x40: "vblank", 0x48: "lcdStat", 0x50: "timer", 0x58: "serial", 0x60: "joypad" };
+export const hookKey = (bank, addr) => (addr < 0x4000 ? addr : (bank << 16) | addr);
+
+export class GamePort {
+  // program: { main(P) -> generator (from EntryPoint), softReset(P) -> generator, vblank(P), lcdStat(P), timer(P),
+  //            serial(P), hooks: [[bank, addr, fn(P, cpu) (may return a generator)], ...] }
+  constructor(romBytes, program, { audio = false, sampleRate = 44100 } = {}) {
+    this.gb = new GBC(romBytes, { audio, sampleRate });
+    this.rom = new Rom(romBytes);
+    this.bus = new Bus(this.gb);
+    const { A, V, B } = makeVars(this.bus);
+    this.A = A; this.V = V; this.B = B;                                   // RAM addresses, values, banks by name
+    this.M = new RomMath(this.rom, this.bus);                             // the bank-0 math helpers (exact)
+    this.E = new MatchEngine(this.rom, this.bus);                         // the match engine on this machine's RAM
+    this.program = program;
+    this.frames = 0;                                                     // frame() calls
+    this.vblanks = 0;                                                    // frame boundaries passed (see tick)
+    this.offDots = 0;
+    this.advances = 0;                                                   // AdvanceFrame calls (atAdvanceFrame)
+    this.co = null;                                                      // the game's coroutine
+    this.events = [];                                                    // optional notes for a page (sound ids etc.)
+    this.hooks = new Map();
+    for (const [bank, addr, fn] of program.hooks || []) this.hooks.set(hookKey(bank, addr), fn);
+  }
+  get mem() { return this.gb.mem; }
+  get ppu() { return this.gb.ppu; }
+  get cpu() { return this.gb.cpu; }
+  get ime() { return this.gb.cpu.ime; }                                  // one interrupt master enable, shared with ROM code
+  set ime(v) { this.gb.cpu.ime = v; this.gb.cpu.eiPending = false; }
+  // the ROM's wram_bank macro: hWramBank and rSVBK; withWramBank is push_wram_bank ... pop_wram_bank around fn
+  wramBank(b) { this.mem.hram[0x16] = b; this.mem.write(0xFF70, b); }
+  withWramBank(b, fn) {
+    const old = this.mem.hram[0x16];
+    this.wramBank(b);
+    try { return fn(); } finally { this.wramBank(old); }
+  }
+  di() { this.ime = false; }
+  ei() { this.ime = true; }
+  setInput(state) { this.gb.setInput(state); }
+  // ---- interrupts: the program's handlers, in the hardware's priority order ----
+  dispatch() {
+    const m = this.mem;
+    for (let guard = 0; guard < 8; guard++) {
+      const pending = m.iflag & m.ie & 0x1F;
+      if (!pending || !this.ime) return;
+      const bit = pending & -pending;
+      m.iflag &= ~bit; this.ime = false;                                  // as on hardware: IF bit cleared, IME off during the handler
+      this.cpu.halted = false;
+      if (!this.program[VECTORS[{ 1: 0x40, 2: 0x48, 4: 0x50, 8: 0x58, 16: 0x60 }[bit]]]) { this.gb.sync(20); this.tick(20); }   // ROM handler: the CPU's 20-cycle entry
+      this.handler({ 1: 0x40, 2: 0x48, 4: 0x50, 8: 0x58, 16: 0x60 }[bit]);
+      this.ime = true;                                                   // reti
+    }
+  }
+  // run the handler of an interrupt vector: the program's JS, or the ROM's own handler
+  handler(vector) {
+    const h = this.program[VECTORS[vector]];
+    if (h) h(this); else this.callRom(0, vector);
+  }
+  // ---- hardware time ----
+  // Frame boundaries, as the core's runFrame() draws them: a VBlank start, or with the LCD off 70224 dots since
+  // the last boundary. Called after every advance of the hardware; at a boundary a driver can change the pad
+  // (onVBlank(n), as a recording plays). Returns true at a boundary.
+  tick(cpuCycles) {
+    const ppu = this.ppu;
+    if (ppu.frameDone) ppu.frameDone = false;
+    else if (ppu.lcdc & 0x80 || (this.offDots += this.mem.doubleSpeed ? cpuCycles >> 1 : cpuCycles) < 70224) return false;
+    this.offDots = 0; this.vblanks++;
+    if (this.onVBlank) this.onVBlank(this.vblanks);
+    return true;
+  }
+  // run the hardware to the next frame boundary, dispatching interrupts as they are raised. wake: stop early,
+  // after the first interrupt (the halted CPU wakes on it); returns true at the boundary
+  runHardware(wake = false) {
+    const gb = this.gb, m = this.mem, v0 = this.vblanks;
+    for (;;) {
+      gb.sync(4);
+      this.tick(4);
+      if (this.vblanks !== v0) break;
+      if (m.iflag & m.ie & 0x1F) {
+        if (m.iflag & m.ie & 0x1E) this.dispatch();                      // STAT / timer / serial / joypad mid-frame
+        if (this.vblanks !== v0) break;                                  // (a ROM handler ran into the boundary)
+        if (wake) return false;
+      }
+    }
+    gb.frames++; this.frames++;
+    return true;
+  }
+  // ---- ROM code that has no port yet ----
+  // Run bank:addr on the CPU until it returns. Yields "halt" each time the CPU halts (waits for an interrupt): the
+  // caller's frame loop then runs the hardware and the interrupt, and resuming wakes the CPU. Interrupts that come
+  // while the CPU runs are taken by the CPU, through hooks to the program's handlers.
+  *runRom(bank, addr, regs = {}) {
+    const cpu = this.cpu, m = this.mem;
+    const saved = this.enter(bank, addr, regs);
+    for (;;) {
+      if (cpu.pc === SENTINEL && cpu.sp === saved.sp) break;
+      if (cpu.halted && !(m.iflag & m.ie & 0x1F)) { yield "cpuhalt"; cpu.halted = false; continue; }
+      const it = this.step();
+      if (it) yield* it;
+    }
+    return this.leave(saved);
+  }
+  // the CPU from wherever it is, for ever (a port started from a saved state of the ROM)
+  *continueCpu() {
+    for (;;) {
+      if (this.cpu.halted && !(this.mem.iflag & this.mem.ie & 0x1F)) { yield "cpuhalt"; this.cpu.halted = false; continue; }
+      const it = this.step();
+      if (it) yield* it;
+    }
+  }
+  // the same for code that does not wait (throws if it halts)
+  callRom(bank, addr, regs = {}) {
+    const cpu = this.cpu;
+    const saved = this.enter(bank, addr, regs);
+    for (let n = 0; ; n++) {
+      if (cpu.pc === SENTINEL && cpu.sp === saved.sp) break;
+      if (cpu.halted && !(this.mem.iflag & this.mem.ie & 0x1F)) throw new Error(`callRom ${bank.toString(16)}:${addr.toString(16)} halted at ${cpu.pc.toString(16)}`);
+      const it = this.step();
+      if (it) { const r = it.next(); if (!r.done) throw new Error(`callRom ${bank.toString(16)}:${addr.toString(16)}: hook waited`); }
+      if (n > 50_000_000) throw new Error(`callRom ${bank.toString(16)}:${addr.toString(16)} did not return`);
+    }
+    return this.leave(saved);
+  }
+  enter(bank, addr, regs) {
+    const cpu = this.cpu, m = this.mem;
+    const saved = { romBank: m.romBank, hRomBank: m.hram[0x15], sp: cpu.sp, pc: cpu.pc };   // pc: ROM code this call interrupted
+    if (addr >= 0x4000) { m.romBank = bank; m.updateRom(); m.hram[0x15] = bank; }   // as FarCall: MBC and hRomBank
+    for (const r of ["a", "b", "c", "d", "e", "h", "l"]) if (r in regs) cpu[r] = regs[r] & 0xFF;
+    if ("f" in regs) cpu.f = regs.f & 0xF0;
+    if (!cpu.sp) cpu.sp = 0xCFFF;
+    cpu.sp = (cpu.sp - 2) & 0xFFFF; m.write(cpu.sp, SENTINEL & 0xFF); m.write(cpu.sp + 1, SENTINEL >> 8);
+    cpu.pc = addr;
+    return saved;
+  }
+  leave(saved) {
+    const cpu = this.cpu, m = this.mem;
+    if (saved.romBank !== m.romBank) { m.romBank = saved.romBank; m.updateRom(); }
+    m.hram[0x15] = saved.hRomBank;
+    const out = { a: cpu.a, f: cpu.f, b: cpu.b, c: cpu.c, d: cpu.d, e: cpu.e, h: cpu.h, l: cpu.l, bc: cpu.bc, de: cpu.de, hl: cpu.hl };
+    cpu.pc = saved.pc;
+    return out;
+  }
+  // AdvanceFrame (00:2631), at its entry: where a driver that keeps the port in step with the ROM (the lockstep
+  // test) lines the two up. onAdvance(k) returns how many frames the ROM's code overran before its k-th
+  // AdvanceFrame; the port lets that many frames pass ("lag": the interrupts run, the game's code waits), then
+  // calls afterAdvance(k). The ported AdvanceFrame starts with `yield* P.atAdvanceFrame()`.
+  *atAdvanceFrame() {
+    const k = ++this.advances;
+    const lag = this.onAdvance ? this.onAdvance(k) : 0;
+    for (let i = 0; i < lag; i++) yield "lag";
+    if (this.afterAdvance) this.afterAdvance(k);
+  }
+  // one CPU step; at a hooked address run the JS instead (returns its generator if it waits)
+  step() {
+    const cpu = this.cpu, m = this.mem, pc = cpu.pc;
+    // the ROM's AdvanceFrame: the probe, once per call (when its first instruction is about to run, not an interrupt)
+    const atAdvance = pc === 0x2631 && (this.onAdvance || this.afterAdvance) && !(cpu.ime && (m.iflag & m.ie & 0x1F));
+    if (atAdvance && !this.probed) { this.probed = true; return this.atAdvanceFrame(); }
+    if (pc < 0x8000) {
+      const fn = pc < 0x100 && VECTORS[pc] ? (this.program[VECTORS[pc]] ? "vector" : null) : this.hooks.get(hookKey(m.romBank, pc));
+      if (fn === "vector") {                                             // the CPU took an interrupt: the program's handler, then reti
+        this.program[VECTORS[pc]](this); this.ret(); this.ime = true; return null;
+      }
+      if (fn) {
+        const r = fn(this, cpu);
+        if (r && typeof r.next === "function") return (function* (P) { yield* r; P.ret(); })(this);
+        this.ret(); return null;
+      }
+    }
+    const c0 = this.gb.cycles;
+    this.gb.stepInstruction();
+    if (atAdvance) this.probed = false;
+    this.tick(this.gb.cycles - c0);
+    return null;
+  }
+  ret() { const cpu = this.cpu, m = this.mem; cpu.pc = m.read(cpu.sp) | (m.read((cpu.sp + 1) & 0xFFFF) << 8); cpu.sp = (cpu.sp + 2) & 0xFFFF; }
+  // ---- the game's coroutine ----
+  start() { this.co = this.program.main(this); }
+  resume() {
+    if (!this.co) this.start();
+    for (;;) {
+      try {
+        const r = this.co.next();
+        if (r.done) throw new Error("the game's main program returned");
+        return r.value;
+      } catch (e) {
+        if (!(e instanceof SoftResetSignal)) throw e;
+        this.softReset();
+      }
+    }
+  }
+  softReset() { this.co = this.program.softReset ? this.program.softReset(this) : this.program.main(this); }
+  // one frame of play: interrupts due now (the VBlank handler), the game's frame of work, the hardware's frame
+  frame() {
+    try { this.dispatch(); } catch (e) { if (!(e instanceof SoftResetSignal)) throw e; this.softReset(); }
+    for (;;) {
+      const why = this.resume();
+      if (why !== "cpuhalt") { this.runHardware(); return; }
+      if (this.runHardware(true)) return;                                // the ROM's halted CPU: until it wakes
+    }
+  }
+}
