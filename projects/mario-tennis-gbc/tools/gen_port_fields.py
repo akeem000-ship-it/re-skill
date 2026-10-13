@@ -12,6 +12,23 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SYM = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "third_party/mario-tennis-gbc-disasm/build/mariotennis.sym")
 OUT = os.path.join(ROOT, "web/js/port/fields.js")
 
+# declared sizes from the disassembly's RAM files: "wName:: db" (1), "dw" (2), "ds n" (n). A variable followed by
+# padding ("hFadedOut:: db" then "ds 3") is 1 byte, not the gap to the next symbol.
+DECL = {}
+RAM = os.path.join(os.path.dirname(os.path.dirname(SYM)), "ram")
+for dirpath, _, files in os.walk(RAM):
+    for fn in files:
+        if not fn.endswith(".asm"):
+            continue
+        for line in open(os.path.join(dirpath, fn)):
+            m = re.match(r"\s*([wh][A-Z]\w*)::?\s+(db|dw|ds\s+([^;]+))", line)
+            if m:
+                if m.group(2) == "db": DECL[m.group(1)] = 1
+                elif m.group(2) == "dw": DECL[m.group(1)] = 2
+                else:
+                    try: DECL[m.group(1)] = int(eval(m.group(3).strip().replace("$", "0x")))
+                    except Exception: pass
+
 syms = []
 for line in open(SYM):
     m = re.match(r"([0-9a-f]{2}):([0-9a-f]{4}) ([wh][A-Z]\w*)$", line.strip())
@@ -29,6 +46,8 @@ for i, (bank, addr, name) in enumerate(syms):
     nxt = next((a for b, a, _ in syms[i + 1:] if b == bank and a > addr), None)
     end = 0x10000 if addr >= 0xFF80 else (0xD000 if addr < 0xD000 else 0xE000)
     size = min((nxt or end) - addr, 0x1000)
+    if name in DECL and 0 < DECL[name] <= size:
+        size = DECL[name]
     js = name[1].lower() + name[2:]
     if js in seen:
         js = f"{js}_{bank}"

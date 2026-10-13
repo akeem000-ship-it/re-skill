@@ -21,8 +21,8 @@
 // the two can differ for a frame or two without anything being wrong: such differences are counted apart and
 // the ROM's state is copied into the port to go on. So are differences only in the sound engine's state (WRAM 7
 // $D000-$D2FF): it reads the APU's channel-on bits, which depend on the exact time it runs. If a timing event
-// changes the course of the game (the two call AdvanceFrame from different places after it), the comparison
-// stops there and says so.
+// changes the course of the game (differences keep coming back after the resync), the comparison stops there
+// and says so.
 // usage: node web/tests/port_lockstep.mjs [a.mtrec] [--frames N] [--show K] [--stop] [--resync]
 //   --resync: after any difference, copy the ROM's state into the port and go on
 //   env HOOKS=home/joypad,audio/index: only these modules' hooks (web/js/port/<m>.js); NOHOOKS=1: none
@@ -131,7 +131,7 @@ const ignore = (bank, addr) => (bank === 0 && addr >= 0xCF00 && addr < 0xD000) |
   || (bank === -2 && (addr === 0xFFA0 || addr === 0xFFA1));        // the stack page; the debug peak-LY readout and hPeakLY (CPU timing)
 const isSound = x => x[0] === "wram7" && x[2] < 0xD300;
 class Done extends Error {}
-let courseChanged = null, compared = 0, bad = 0, timingDiffs = 0, soundDiffs = 0, lags = 0, injected = 0, injectedIn = -9, portLate = 0, lastTiming = -9;
+let courseChanged = null, lastResync = -99, lastResyncFrame = 0, suspect = [], compared = 0, bad = 0, timingDiffs = 0, soundDiffs = 0, lags = 0, injected = 0, injectedIn = -9, portLate = 0, lastTiming = -9;
 P.onAdvance = k => {
   coreTo(k + 1);                             // the ROM one window ahead: its pads for the port's next window
   const w = win.get(k);
@@ -163,19 +163,25 @@ P.afterAdvance = k => {
   win.delete(k - 2);
   if (!all.length) return;
   const d = all.filter(x => !isSound(x)), timing = k - lastTiming <= 2;
-  // the game went another way (the two call AdvanceFrame from different places) right after a timing event:
-  // a lag changed the course of the game (a button press seen a frame apart, say). The rest of the recording
-  // can't be compared; stop here.
-  if (d.length && timing && w.s.cpu.sp !== P.cpu.sp) {
-    courseChanged = `the game's course changed by timing at ROM frame ${w.vblanks} (AdvanceFrame ${k}, map ${w.s.mem.wram[0][0x32E]}); compared up to there`;
-    throw new Done();
-  }
   if (!d.length) soundDiffs++; else if (timing) timingDiffs++; else bad++;
+  if (d.length && timing) { lastResync = k; lastResyncFrame = w.vblanks; suspect = []; }
+  // The game went another way after a timing event (a button press seen a frame apart, say): copying the ROM's
+  // RAM in doesn't bring the two back together, because their code is in different places. Seen as differences
+  // that keep coming back, resynced each time, at 5 or more AdvanceFrames out of the 10 after the resync. The rest of the
+  // recording can't be compared; stop there.
+  if (d.length && !timing && k - lastResync <= 10) {
+    suspect.push(k);
+    if (suspect.length >= 5) {
+      bad -= suspect.length;
+      courseChanged = `the game's course changed by timing after ROM frame ${lastResyncFrame} (AdvanceFrame ${lastResync}); compared up to there`;
+      throw new Done();
+    }
+  }
   if (d.length && (!timing || process.env.LAGLOG))
     log(`advance ${k} (ROM frame ${w.vblanks}, map ${w.s.mem.wram[0][0x32E]})${timing ? " [timing]" : ""}` +
       (w.s.cpu.sp !== P.cpu.sp ? ` [called from elsewhere: sp rom ${w.s.cpu.sp.toString(16)} port ${P.cpu.sp.toString(16)}]` : "") + ": " + d.slice(0, 8).map(x => `${x[0]}${x[2] ? " $" + x[2].toString(16) : ""} rom=${x[3]} port=${x[4]}`).join(", "));
   if (stop && d.length && !timing) throw new Done();
-  if (!d.length || timing || resyncAll) copyIn(w.s);
+  if (!d.length || timing || resyncAll || suspect.includes(k)) copyIn(w.s);   // (suspects too: does it come back?)
 };
 
 coreTo(1); startWatch(1);

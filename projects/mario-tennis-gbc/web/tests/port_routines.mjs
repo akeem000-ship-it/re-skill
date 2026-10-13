@@ -39,7 +39,7 @@ for (const R of ROUTINES) {
     tested++;
     applyMachine(core, s.m); applyMachine(P.gb, s.m);
     const bank = R.wram ?? (s.m.mem.svbk || 1);
-    core.mem.svbk = bank; P.gb.mem.svbk = bank;
+    core.mem.svbk = bank; P.gb.mem.svbk = bank; P.gb.mem.hram[0x16] = bank;   // rSVBK and hWramBank (romCall sets both on the core)
     const regs = R.regs ? R.regs(s) : {};
     if (R.prep) { R.prep(core.mem, s); R.prep(P.gb.mem, s); }
     P.ime = core.cpu.ime; core.cpu.sp = 0xCFF0;
