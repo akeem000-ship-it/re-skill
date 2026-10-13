@@ -414,5 +414,7 @@ export {
   aiReturnToPositionPhase, aiRallyStateSingles, aiChoosePositionByStrategy, aiTrackBallPhase, aiWaitThenPickShot,
   aiSwingControlSingles, aiRecoverStateNetPlayer, aiRecoverStateBaseliner, aiRallyStateNetPlayer, aiRallyStateBaseliner,
   aiDoublesTrackBallPhase, aiNetPlayerPoachCheck, aiSwingControlDoubles, getCharGroupEntry, doesCharGroupRowContain,
-  setCharTarget, checkCharNearTarget,
+  setCharTarget, checkCharNearTarget, aiPhaseNoop, aiSetMirroredTarget, aiServeWalkToSpot, aiServeSteerToSpot, aiServePressToss,
+  aiServeStrike, aiServeApplyAim, aiSetReactionDelay, aiTrackBallTargetX, aiBaselinerShadowPartner, aiNetPlayerCheckRally,
+  aiNetPlayerPredictLanding, aiBaselinerSetTarget, aiBaselinerDone,
 };

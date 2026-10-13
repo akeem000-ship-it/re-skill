@@ -122,4 +122,59 @@ const MATCH = [
   E("IsBallInTargetZone", 8, 0x67C2, { prep: gate, out: ["a", "f"] }),
 ];
 
-export const ROUTINES = [...ENGINE, ...DRAW, ...OBJ, ...LOOP, ...MATCH];
+// the smaller engine routines (engine_hooks.js MORE), on the engine tests' scrambled states: a routine is run with
+// the inputs another routine's forced entries set up (cycled by state)
+const ENG = new Map();
+for (const f of fs.readdirSync(dir).filter(f => /^routines.*\.mjs$/.test(f)).sort())
+  for (const R of (await import(new URL(f, dir))).ROUTINES) ENG.set(R.name, R);
+const prepsOf = re => [...ENG.values()].filter(R => re.test(R.name) && R.prep).map(R => R.prep);
+const cycled = preps => (m, s) => preps[s.f % preps.length](m, s);
+const AI_PREPS = prepsOf(/^CharInputHandler1_08\//), SHOT_PREPS = prepsOf(/^ExecuteShot\/.*\/w4$/), SCORE_PREPS = prepsOf(/^ScorePoint$/);
+const DISPATCH = { 0x6AE2: 3, 0x6BD9: 2, 0x6BEA: 1, 0x6CBE: 5, 0x6CC8: 4, 0x6D0E: 6, 0x6D16: 7 };   // the character-state dispatchers
+const STATE_PREPS = b => prepsOf(new RegExp(`^UpdateCharStateMachine/forced@${b}$`));
+const MORE = [
+  ...[0x796D, 0x7992, 0x799E, 0x79B0, 0x79C2, 0x7A02, 0x7A4D, 0x7A5F, 0x7ADD, 0x7AE7, 0x7C10, 0x7C21, 0x7CAE, 0x7CED,
+    0x7D0A, 0x7D23, 0x7D73, 0x7DAD, 0x7DCB, 0x7E08, 0x7E22, 0x7E7E, 0x7E99, 0x7EB1, 0x7EC0,
+    0x7ED2, 0x7F11, 0x7F8A].map(addr => E(`ai 08:${addr.toString(16)}`, 8, addr, { wram: 5, prep: cycled(AI_PREPS) })),
+  // the AI's state dispatchers (rst $00 on wAiPhase), with phases in their tables
+  ...[[0x79F2, /\/singles s3 p/], [0x7CFA, /\/singles s1 p/], [0x7CA4, /\/singles s2 p/], [0x7E52, /\/doubles-net s1 p/], [0x7E68, /\/doubles-base s1 p/],
+    [0x7DF2, /\/doubles-net s2 p/], [0x7DFC, /\/doubles-base s2 p/]].map(([addr, re]) => E(`ai 08:${addr.toString(16)}`, 8, addr, { wram: 5, prep: cycled(prepsOf(new RegExp("^CharInputHandler1_08" + re.source))) })),
+  E("AiSetMirroredTarget", 8, 0x79D3, { wram: 5, prep: cycled(AI_PREPS), regs: s => ({ h: r8(s, 1), l: r8(s, 2), d: r8(s, 3), e: r8(s, 4) }) }),
+  E("AiIsIncomingDropOrLobShot", 8, 0x79D9, { wram: 5, prep: cycled(AI_PREPS), out: ["a"] }),
+  E("AiIsIncomingLobShot", 8, 0x79E0, { wram: 5, prep: cycled(AI_PREPS), out: ["a"] }),
+  E("CharIndexToWramBank", 8, 0x7C30, { regs: s => ({ a: r8(s, 1) }), out: ["a"] }),
+  E("OffsetFromBallLanding", 8, 0x7C57, { regs: s => ({ h: r8(s, 1), l: r8(s, 2) }), out: ["h", "l", "d", "e"] }),
+  ...[4, 5, 6, 7].flatMap(b => [0x6A8B, 0x6A90, 0x6AE2, 0x6BD9, 0x6BEA, 0x6CBE, 0x6CC8, 0x6D0E, 0x6D16, 0x6AF2, 0x6B33, 0x6B3F, 0x6B8D, 0x6BC2,
+    0x6BE3, 0x6BF8, 0x6C2F, 0x6C7A, 0x6C99, 0x6CD4, 0x6CDB, 0x6D27, 0x6D3E, 0x6D4B, 0x69C2, 0x69D5, 0x7441, 0x745B, 0x7475, 0x74A1, 0x74D7, 0x750C,
+    0x7855, 0x782D, 0x7833, 0x783F, 0x4274, 0x4F91, 0x6046, 0x6059, 0x4971].map(addr => E(`char 08:${addr.toString(16)}@${b}`, 8, addr, { wram: b, prep: (m, s) => {
+      cycled(STATE_PREPS(b))(m, s); m.hram[0x42] = r8(s, 7) % 3; m.hram[0x53] = r8(s, 8); m.hram[0x54] = r8(s, 9); m.hram[0x55] = r8(s, 10);
+      const n = DISPATCH[addr]; if (n !== undefined) { c8(m, b, 0xDF18, n); c8(m, b, 0xDF19, r8(s, 11) % [1, 4, 2, 5, 3, 2, 1, 3][n]); } } }))),
+  ...[4, 5].map(b => E(`DrawOffscreenCharArrow@${b}`, 8, 0x7704, { wram: b, prep: cycled(STATE_PREPS(b)), regs: s => ({ d: r8(s, 1), e: r8(s, 2) }) })),
+  ...[0x58BE, 0x58D3, 0x58EC, 0x5901, 0x591A, 0x592D, 0x593D, 0x5952, 0x5967, 0x597C, 0x5991, 0x59A8, 0x59C5, 0x59D2, 0x59DF]
+    .map(addr => E(`shot 07:${addr.toString(16)}`, 7, addr, { prep: cycled(SHOT_PREPS) })),
+  ...[0x5183, 0x519B, 0x51B3, 0x51CB, 0x51E3, 0x5248, 0x5222, 0x5235, 0x520F, 0x51F9, 0x525B, 0x5268, 0x5275, 0x5284, 0x5293]
+    .map(addr => E(`placement 07:${addr.toString(16)}`, 7, addr, { prep: cycled(SHOT_PREPS), out: ["b", "c"] })),
+  ...[0x52F1, 0x5301, 0x531D, 0x5345, 0x535C, 0x537F, 0x53A2].map(addr => E(`speed 07:${addr.toString(16)}`, 7, addr, { prep: cycled(SHOT_PREPS),
+    regs: s => ({ b: r8(s, 1) & 0x3F, c: r8(s, 2) }), out: ["b", "c"] })),
+  E("LoadShotPlacementEntry", 7, 0x52A0, { prep: cycled(SHOT_PREPS), regs: s => ({ h: 0x4F, l: 0x11 + (r8(s, 1) & 0xF0), d: r8(s, 2) & 7, e: r8(s, 3) & 7 }), out: ["b", "c"] }),
+  ...[0x5BC6, 0x5BDB, 0x5BF4, 0x5C14, 0x5C47, 0x5C53, 0x5C5F, 0x5C6F, 0x5C7F, 0x5C90, 0x5CA1, 0x4D63, 0x47EF, 0x5001, 0x5034, 0x43E5, 0x4274]
+    .map(addr => E(`flow 08:${addr.toString(16)}`, 8, addr, { prep: cycled(SCORE_PREPS), regs: s => ({ b: r8(s, 1) % 8 }) })),
+  E("EvalWinByTwo", 8, 0x5D71, { regs: s => ({ d: r8(s, 1) % 9, e: r8(s, 2) % 9, b: r8(s, 3) % 8, c: r8(s, 4) % 8 }), out: ["a"] }),
+  E("LoadPositionRecord", 8, 0x48ED, { regs: s => ({ a: r8(s, 1) % 4, h: 0x49, l: 0x79 }) }), E("LoadPositionRecord.doubles", 8, 0x491A, { regs: s => ({ a: r8(s, 1) % 24, h: 0x4A, l: 0x99 }) }),
+  E("GetBallHeightSign", 8, 0x4677, { prep: ballDraw, out: ["a"] }),
+  E("MulMem24ByFrac", 8, 0x468B, { regs: s => ({ h: 0xC4, l: pick(s, 1, [0x20, 0x23, 0x26]), b: r8(s, 2) }), out: ["a", "d", "e"] }),
+  E("MulHLByDESigned32", 8, 0x59FB, { regs: s => ({ h: r8(s, 1), l: r8(s, 2), d: r8(s, 3), e: r8(s, 4) }), out: ["h", "l"] }),
+  E("MulHLByDEAbs", 8, 0x5A1D, { regs: s => ({ h: r8(s, 1), l: r8(s, 2), d: r8(s, 3), e: r8(s, 4) }), out: ["h", "l"] }),
+  E("MulSignedHLByAFrac", 8, 0x5A39, { regs: s => ({ h: r8(s, 1), l: r8(s, 2), a: r8(s, 3) }), out: ["h", "l", "a"] }),
+  E("MulHLByTangent", 8, 0x5A51, { regs: s => ({ h: r8(s, 1), l: r8(s, 2), b: r8(s, 3), c: r8(s, 4) }), out: ["d", "e"] }),
+  E("NegateADE", 8, 0x5A63, { regs: s => ({ a: pick(s, 1, [0, r8(s, 2)]), d: r8(s, 3), e: r8(s, 4) }), out: ["a", "d", "e"] }),
+  E("UnusedAbsADE", 8, 0x5A60, { regs: s => ({ a: r8(s, 2), d: r8(s, 3), e: r8(s, 4) }), out: ["a", "d", "e"] }),
+  E("AddVel24ToPos32", 8, 0x5A87, { regs: s => ({ h: 0xC4, l: pick(s, 1, [0x00, 0x04, 0x08]), d: 0xC4, e: pick(s, 2, [0x20, 0x23, 0x26]) }), out: ["a", "h", "l", "d", "e"] }),
+  E("Add24ToMem24", 8, 0x5A9E, { regs: s => ({ h: 0xC4, l: pick(s, 1, [0x20, 0x23, 0x26]), a: r8(s, 2), d: r8(s, 3), e: r8(s, 4) }), out: ["a", "h", "l"] }),
+  ...[0x5AA7, 0x5A77, 0x5AB7, 0x5AC7].map(addr => E(`mem24 08:${addr.toString(16)}`, 8, addr, { regs: s => ({ h: 0xC4, l: pick(s, 1, [0x20, 0x23, 0x26]), d: r8(s, 3), e: r8(s, 4), b: r8(s, 5), c: r8(s, 6) }), out: ["a", "h", "l", "b", "c"] })),
+  E("LookupCharSpriteSet", 7, 0x5A43, { regs: s => ({ a: r8(s, 1) }), out: ["a"] }),
+  ...[4, 5].map(b => E(`SetupCharacterSprite@${b}`, 7, 0x5A70, { wram: b, regs: s => ({ d: pick(s, 1, [0, 5, 0x10, 0x17]), e: r8(s, 2) & 7 }) })),
+  E("OverrideCharStatsForDebug", 7, 0x5CF4, { wram: 5 }),
+];
+
+export const ROUTINES = [...ENGINE, ...DRAW, ...OBJ, ...LOOP, ...MATCH, ...MORE];

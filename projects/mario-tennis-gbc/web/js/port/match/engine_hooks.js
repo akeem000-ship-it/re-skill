@@ -153,4 +153,126 @@ const SHOT = [
   hook(0x20, 0x41F5, (E, c) => shot.setBallTargetFromAim(E, c.hl)),                           // SetBallTargetFromAim_20
 ];
 
-export const HOOKS = [...BALL, ...FLOW, ...CHARS, ...AI, ...SHOT];
+// ---- the smaller pieces: the routines the ones above call (the ROM's callers are mostly JS now, but the
+// routines are hooked all the same, so any ROM code reaching them runs the port) ----
+const F = (c, v) => { c.a = v ? 1 : 0; };
+// d:e:a as one 24-bit value (NegateADE, Add24ToMem24)
+const ade = c => c.d << 16 | c.e << 8 | c.a, setADE = (c, v) => { c.d = (v >> 16) & 0xFF; c.e = (v >> 8) & 0xFF; c.a = v & 0xFF; };
+// a character-state dispatcher (rst $00 on wCharStatePhase): the engine's phase table for state n
+const charState = n => E => { const fn = chars.STATES[n][E.C.statePhase]; if (fn) fn(E); };
+const MORE = [
+  // ball (match_08, match_frames_08)
+  hook(8, 0x4274, E => chars.setCharState(E, flow.CHARSTATE.STANDBY)),                         // SetCharStateForRallyTick
+  hook(8, 0x43E5, E => { const S = E.S; if (!S.pointOutcome) { S.pointOutcome = ball.POINTOUTCOME.BALL_HIT_PLAYER; S.pointOutcomeSide = 1; } }),   // ApplyBallTouchOutcome
+  hook(8, 0x4677, (E, c) => A(c, ball.getBallHeightSign(E))),                                  // GetBallHeightSign
+  hook(8, 0x468B, (E, c) => { const v = ball.mulMem24ByFrac(E, c.hl, c.b); c.a = v & 0xFF; c.e = (v >> 8) & 0xFF; c.d = (v >> 16) & 0xFF; }),   // MulMem24ByFrac
+  hook(8, 0x7C57, (E, c) => { const p = ball.offsetFromBallLanding(E, c.hl); c.hl = p.x; c.de = p.depth; }),   // OffsetFromBallLanding
+  // scoring and stats (project_08, court_08)
+  hook(8, 0x5BC6, (E, c) => flow.resetAdvantageToDeuce(E, c.b)),                               // ResetAdvantageToDeuce
+  hook(8, 0x5BDB, E => flow.awardSet(E)),                                                      // AwardSet
+  hook(8, 0x5BF4, E => flow.awardGame(E)),                                                     // AwardGame
+  hook(8, 0x5C14, E => flow.awardPoint(E)),                                                    // AwardPoint
+  hook(8, 0x5D71, (E, c) => A(c, flow.evalWinByTwo(c.d, c.e, c.b, c.c))),                      // EvalWinByTwo
+  hook(8, 0x5C47, E => flow.recordFaultStat(E)),                                               // RecordFaultStat
+  hook(8, 0x5C53, E => flow.recordDoubleFaultStat(E)),                                         // RecordDoubleFaultStat
+  hook(8, 0x5C5F, E => flow.recordServiceAceStat(E)),                                          // RecordServiceAceStat
+  hook(8, 0x5C6F, E => flow.recordReturnAceStat(E)),                                           // RecordReturnAceStat
+  hook(8, 0x5C7F, E => flow.recordSmashAceStat(E)),                                            // RecordSmashAceStat
+  hook(8, 0x5C90, E => flow.recordLobWinnerStat(E)),                                           // RecordLobWinnerStat
+  hook(8, 0x5CA1, E => flow.recordDropShotWinnerStat(E)),                                      // RecordDropShotWinnerStat
+  // court positions (match_loop_08)
+  hook(8, 0x47EF, E => flow.finalizeServeSideOrientation(E)),                                  // FinalizeServeSideOrientation
+  hook(8, 0x48ED, (E, c) => flow.loadPositionRecord(E, c.hl, c.a, false)),                     // LoadPositionRecord
+  hook(8, 0x491A, (E, c) => flow.loadPositionRecord(E, c.hl, c.a, true)),                      // LoadPositionRecord.doubles
+  hook(8, 0x4971, E => { E.C.serveRole ^= 2; }),                                               // ToggleCharCourtRow
+  hook(8, 0x5001, E => flow.spreadBothTeamPairs(E)),                                           // SpreadBothTeamPairs
+  hook(8, 0x5034, E => flow.spreadFarTeamPair(E)),                                             // SpreadFarTeamPair
+  hook(8, 0x4F91, E => chars.setCharState(E, E.rom.u8(8, 0x4FA0 + E.C.serveRole))),            // SetCharStateFromServeRole
+  hook(8, 0x6046, E => flow.startCharWalkOffCourt(E)),                                         // StartCharWalkOffCourt
+  hook(8, 0x6059, E => flow.parkCharOffCourt(E)),                                              // ParkCharOffCourt
+  hook(8, 0x4D63, E => flow.setPointSituationBgm(E)),                                          // SetPointSituationBgm
+  // the character's states and phases (char_update_08, char_states_08)
+  hook(8, 0x6A8B, E => chars.advancePhase(E)),                                                 // AdvanceCharStatePhase
+  hook(8, 0x6A90, E => chars.charRallyEndState(E)),                                            // CharRallyEndState
+  hook(8, 0x6AE2, charState(3)), hook(8, 0x6BD9, charState(2)), hook(8, 0x6BEA, charState(1)),  // CharServeState / CharRecoverState / CharRallyState
+  hook(8, 0x6CBE, charState(5)), hook(8, 0x6CC8, charState(4)), hook(8, 0x6D0E, charState(6)), hook(8, 0x6D16, charState(7)),   // Standby / AwaitServe / Walk / PointEnd
+  hook(8, 0x6AF2, E => chars.charServeInitPhase(E)),                                           // CharServeInitPhase
+  hook(8, 0x6B33, E => chars.charServeWaitAnimPhase(E)),                                       // CharServeWaitAnimPhase
+  hook(8, 0x6B3F, E => chars.charServeTossPhase(E)),                                           // CharServeTossPhase
+  hook(8, 0x6B8D, E => chars.charServeSwingWindowPhase(E)),                                    // CharServeSwingWindowPhase
+  hook(8, 0x6BC2, E => chars.charServeStrikePhase(E)),                                         // CharServeStrikePhase
+  hook(8, 0x6BE3, E => chars.charRecoverMovementPhase(E)),                                     // CharRecoverMovementPhase
+  hook(8, 0x6BF8, E => chars.charRallyReadyPhase(E)),                                          // CharRallyReadyPhase
+  hook(8, 0x6C2F, E => chars.charSwingWindupPhase(E)),                                         // CharSwingWindupPhase
+  hook(8, 0x6C7A, E => chars.charSwingContactPhase(E)),                                        // CharSwingContactPhase
+  hook(8, 0x6C99, E => chars.resetSwingAnimation(E)),                                          // ResetSwingAnimation
+  hook(8, 0x6CD4, E => chars.charAwaitServeMove(E)),                                           // CharAwaitServeState.checkInput
+  hook(8, 0x6CDB, E => chars.charAwaitServeStart(E)),                                          // CharAwaitServeState.startServe
+  hook(8, 0x6D27, E => chars.charPointReactionPhase(E)),                                       // CharPointReactionPhase
+  hook(8, 0x6D3E, E => chars.charWalkToTargetPhase(E)),                                        // CharWalkToTargetPhase
+  hook(8, 0x6D4B, E => chars.updateCharRunAnimation(E)),                                       // UpdateCharRunAnimation
+  hook(8, 0x69C2, E => chars.reloadCharFrameGfx(E)),                                           // ReloadCharFrameGfx
+  hook(8, 0x69D5, E => chars.loadCharChargeFlashGfx(E)),                                       // LoadCharChargeFlashGfx
+  // movement, input, drawing (char_movement_08, char_input_08)
+  hook(8, 0x7441, E => chars.accelerateCharDepth(E)), hook(8, 0x745B, E => chars.accelerateCharX(E)),   // AccelerateCharDepth / X
+  hook(8, 0x7475, E => chars.decelerateCharDepth(E)), hook(8, 0x74A1, E => chars.decelerateCharX(E)),   // DecelerateCharDepth / X
+  hook(8, 0x74D7, E => chars.clampCharDepthSpeed(E)), hook(8, 0x750C, E => chars.clampCharXSpeed(E)),   // ClampCharDepthSpeed / X
+  hook(8, 0x7704, (E, c) => chars.drawOffscreenCharArrow(E, c.d, c.e)),                        // DrawOffscreenCharArrow
+  hook(8, 0x782D, E => { E.C.inputBits = E.S.linkInput; }),                                    // CharInputHandler4_08
+  hook(8, 0x7855, E => chars.readCharPadInput(E)),                                             // ReadCharPadInput
+  // CharInputHandler5_08 / 6_08: a link seat's input (the other machine's, live or buffered, by which end of the link
+  // this is; LINKSTATE_MASTER 1, LINKSTATE_SLAVE 2), else the pad
+  ...[[0x7833, "linkRemoteInput", "linkRemoteInputBuf"], [0x783F, "linkRemoteInputBuf", "linkRemoteInput"]].map(([addr, slave, master]) => hook(8, addr, E => {
+    const S = E.S;
+    if (S.linkState === 2) E.C.inputBits = S[slave]; else if (S.linkState === 1) E.C.inputBits = S[master]; else chars.readCharPadInput(E);
+  })),
+  // character setup (char_07)
+  hook(7, 0x5A43, (E, c) => A(c, chars.lookupCharSpriteSet(E, c.a))),                          // LookupCharSpriteSet
+  hook(7, 0x5A70, (E, c) => chars.setupCharacterSprite(E, c.d, c.e)),                          // SetupCharacterSprite
+  hook(7, 0x5CF4, E => chars.overrideCharStatsForDebug(E)),                                    // OverrideCharStatsForDebug
+  // the CPU player (ai_serve_08, ai_rally_08)
+  ...[[0x796D, ai.aiRushToBallLanding], [0x7992, ai.aiMoveBehindBallLanding], [0x799E, ai.aiInterceptAtMidCourt], [0x79B0, ai.aiInterceptNearNet],
+    [0x79C2, ai.aiMoveLaterallyToBallLine], [0x79F2, ai.aiServeState], [0x7A02, ai.aiServeWalkToSpot], [0x7A4D, ai.aiServeSteerToSpot],
+    [0x7A5F, ai.aiServePressToss], [0x7ADD, ai.aiServeStrike], [0x7AE7, ai.aiServeApplyAim], [0x7C10, ai.aiPressFirstShotButton],
+    [0x7C21, ai.aiPressSecondShotButton], [0x7CA4, ai.aiRecoverStateSingles], [0x7CAE, ai.aiChooseHomePosition], [0x7CED, ai.aiReturnToPositionPhase],
+    [0x7CFA, ai.aiRallyStateSingles], [0x7D0A, ai.aiSetReactionDelay], [0x7D23, ai.aiChoosePositionByStrategy], [0x7D73, ai.aiTrackBallPhase],
+    [0x7DAD, ai.aiWaitThenPickShot], [0x7DCB, ai.aiSwingControlSingles], [0x7DF2, ai.aiRecoverStateNetPlayer], [0x7DFC, ai.aiRecoverStateBaseliner],
+    [0x7E08, ai.aiTrackBallTargetX], [0x7E22, ai.aiBaselinerShadowPartner], [0x7E52, ai.aiRallyStateNetPlayer], [0x7E68, ai.aiRallyStateBaseliner],
+    [0x7E7E, ai.aiNetPlayerCheckRally], [0x7E99, ai.aiNetPlayerPredictLanding], [0x7EB1, ai.aiBaselinerSetTarget], [0x7EC0, ai.aiBaselinerDone],
+    [0x7ED2, ai.aiDoublesTrackBallPhase], [0x7F11, ai.aiNetPlayerPoachCheck], [0x7F8A, ai.aiSwingControlDoubles]].map(([addr, fn]) => hook(8, addr, E => fn(E))),
+  hook(8, 0x796C, () => {}),                                                                   // AiPhaseNoop
+  hook(8, 0x79D3, (E, c) => ai.aiSetMirroredTarget(E, c.hl, c.de)),                            // AiSetMirroredTarget
+  hook(8, 0x79D9, (E, c) => F(c, ai.aiIsIncomingDropOrLobShot(E))),                            // AiIsIncomingDropOrLobShot
+  hook(8, 0x79E0, (E, c) => F(c, ai.aiIsIncomingLobShot(E))),                                  // AiIsIncomingLobShot
+  hook(8, 0x79EF, (E, c) => { c.a = 1; }),                                                     // ReturnOne_08
+  hook(8, 0x7C30, (E, c) => A(c, ai.charIndexToWramBank(c.a))),                                // CharIndexToWramBank
+  // the shot handlers and the speed budget (execute_07, placement_07, shot_power_07)
+  ...[[0x58BE, shot.executeShotTopspin], [0x58D3, shot.executeShotPowerTopspin], [0x58EC, shot.executeShotSlice], [0x5901, shot.executeShotPowerSlice],
+    [0x591A, shot.executeShotLob], [0x592D, shot.executeShotDrop], [0x593D, shot.executeShotReachBasic], [0x5952, shot.executeShotReachPowerTopspin],
+    [0x5967, shot.executeShotReachPowerSlice], [0x597C, shot.executeShotReach], [0x5991, shot.executeShotSmash], [0x59A8, shot.executeShotNeutral],
+    [0x59C5, shot.executeShotServeTopspin], [0x59D2, shot.executeShotServeSlice], [0x59DF, shot.executeShotServeFlat]].map(([addr, fn]) => hook(7, addr, E => fn(E))),
+  ...[0x5183, 0x519B, 0x51B3, 0x51CB, 0x51E3, 0x5248, 0x5222, 0x5235, 0x520F, 0x51F9, 0x525B, 0x5268, 0x5275, 0x5284, 0x5293]
+    .map((addr, t) => hook(7, addr, (E, c) => BC(c, shot.shotPlacement(E, t)))),               // ShotPlacementTopspin ... ShotPlacementServeFlat
+  hook(7, 0x52A0, (E, c) => BC(c, shot.loadShotPlacementEntry(E, c.hl, c.d, c.e))),            // LoadShotPlacementEntry
+  hook(7, 0x52F1, (E, c) => BC(c, shot.addBallSpeedQuarter(E, c.bc))),                         // AddBallSpeedQuarter
+  hook(7, 0x5301, (E, c) => BC(c, shot.addBallSpeed3Sixteenths(E, c.bc))),                     // AddBallSpeed3Sixteenths
+  hook(7, 0x531D, (E, c) => BC(c, shot.addBallSpeedEighth(E, c.bc))),                          // AddBallSpeedEighth
+  hook(7, 0x5345, (E, c) => BC(c, shot.addChargeSpeedBonus(E, c.bc))),                         // AddChargeSpeedBonus
+  hook(7, 0x535C, (E, c) => BC(c, shot.addChargeSpeedBonusHalf(E, c.bc))),                     // AddChargeSpeedBonusHalf
+  hook(7, 0x537F, (E, c) => BC(c, shot.addPlayerMomentumToShot(E, c.bc))),                     // AddPlayerMomentumToShot
+  hook(7, 0x53A2, (E, c) => BC(c, shot.applyCharFlagShotSpeedPenalty(E, c.bc))),               // ApplyCharFlagShotSpeedPenalty
+  // bank 8's own arithmetic helpers (project_08): results in the registers the ROM leaves them in
+  hook(8, 0x59FB, (E, c) => { c.hl = E.M.mulHLByDESigned32(c.hl, c.de); }),                   // MulHLByDESigned32
+  hook(8, 0x5A1D, (E, c) => { c.hl = E.M.mulHLByDEAbs(c.hl, c.de); }),                        // MulHLByDEAbs
+  hook(8, 0x5A39, (E, c) => { const r = E.M.mulSignedHLByAFrac(c.hl, c.a); c.hl = r.hl; c.a = r.a; }),   // MulSignedHLByAFrac
+  hook(8, 0x5A51, (E, c) => { c.de = E.M.mulHLByTangent(c.hl, c.bc); }),                      // MulHLByTangent
+  hook(8, 0x5A63, (E, c) => setADE(c, E.M.negateADE(ade(c)))),                                // NegateADE
+  hook(8, 0x5A60, (E, c) => { if (c.d & 0x80) setADE(c, E.M.negateADE(ade(c))); }),           // UnusedAbsADE
+  hook(8, 0x5A87, (E, c) => { E.M.addVel24ToPos32(c.hl, c.de); c.a = E.mem.u8(c.hl + 2); c.hl = c.hl + 3; c.de = c.de + 2; }),   // AddVel24ToPos32
+  hook(8, 0x5A9E, (E, c) => { E.M.add24ToMem24(c.hl, ade(c)); c.a = E.mem.u8(c.hl + 2); c.hl = c.hl + 3; }),    // Add24ToMem24
+  ...[0x5AA7, 0x5A77].map(addr => hook(8, addr, (E, c) => { E.M.addDEToMem24(c.hl, c.de); c.a = E.mem.u8(c.hl + 1); c.hl = c.hl + 2; })),   // AddDEToMem24, Unused_08_AddSignedDEToMem24
+  hook(8, 0x5AB7, (E, c) => { E.M.addDEToMem24(c.hl, c.bc); c.a = E.mem.u8(c.hl + 1); c.hl = c.hl + 2; }),     // AddBCToMem24
+  hook(8, 0x5AC7, (E, c) => { c.bc = E.M.addDEToMem24IntoBC(c.hl, c.de); c.a = c.c; c.hl = c.hl + 2; }),      // AddDEToMem24IntoBC
+];
+
+export const HOOKS = [...BALL, ...FLOW, ...CHARS, ...AI, ...SHOT, ...MORE];

@@ -242,9 +242,9 @@ export function forEachCharBank(E, fn) { for (const k of [3, 2, 1, 0]) { E.setBa
 // the state machine (char_update_08, char_states_08)
 // ============================================================================================================
 
-const advancePhase = E => { E.C.statePhase = U8(E.C.statePhase + 1); };     // 08:6A8B AdvanceCharStatePhase
+export const advancePhase = E => { E.C.statePhase = U8(E.C.statePhase + 1); };     // 08:6A8B AdvanceCharStatePhase
 // each state: its phase handlers (a missing entry is the shared `ret`)
-const STATES = [
+export const STATES = [
   [],                                                                                       // 0 inert
   [charRallyEndState, charRallyReadyPhase, charSwingWindupPhase, charSwingContactPhase],    // 1 rally
   [charRallyEndState, charRecoverMovementPhase],                                            // 2 recover

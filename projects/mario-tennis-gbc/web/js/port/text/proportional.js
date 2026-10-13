@@ -7,9 +7,7 @@
 // ProportionalTextCodeHandlers_05 ($05:5E39, 16 entries): $00/$02/$03 end, $01 a glyph-row newline, $04 $07 $08 $09
 // $0B the printer's substitutions, $0E (broken, below), the rest are printed as glyphs.
 // Covered by out/port/menus1.mtrec (menu windows) and web/tests/port/routines_text.mjs.
-import {
-  FLAG, WRAM_TEXT, mapped, hook, setFlag, clearFlag, pushWramBank, cpFlags, Z, N,
-} from "./common.js";
+import { FLAG, WRAM_TEXT, mapped, hook, setFlag, clearFlag, pushWramBank, cpFlags, Z } from "./common.js";
 import { fetchDialogueText, addTextIdOffset } from "./dialogue.js";
 import { resetTextArgQueues, wTextBuffer } from "./window_text.js";
 import { initGlyphStreamAt, drawInlineGlyph, saveGlyphPenColumns } from "./glyph_font.js";

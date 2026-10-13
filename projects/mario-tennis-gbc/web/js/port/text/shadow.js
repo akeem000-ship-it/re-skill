@@ -3,8 +3,7 @@
 // gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/mario-tennis-gbc-disasm): names and addresses are its own.
 // Covered by out/port/story1.mtrec (dialogue over the field) and web/tests/port/routines_text.mjs.
 import {
-  WRAM_TEXT, WRAM_SCREEN, WRAM_COURT_PLANES, wMapBuffer64, mapped, hook, advanceFrame, lcdOn, copyMemoryFast,
-  pushWramBank, addFlags, Z, H, hi,
+  WRAM_TEXT, WRAM_SCREEN, WRAM_COURT_PLANES, wMapBuffer64, mapped, hook, advanceFrame, lcdOn, copyMemoryFast, pushWramBank, Z, H, hi,
 } from "./common.js";
 import { getWindowStructPtr, drawTextWindowFrame, freeWindow } from "./window_alloc.js";
 import { createMenuWindowFromText } from "./window_create.js";

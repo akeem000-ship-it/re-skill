@@ -275,8 +275,20 @@ export function loadServeGfx(P) {
   queueVRAMCopy(P, u16(ptr + k), VTILES0 + 0x38 * TILE_SIZE, 4);
 }
 
+// 09:45F8 UnusedToggleObjMoveCurveBits_1 / 09:4601 ..._2: flip curve bits 1 / 0-1 (nothing calls them)
+export function toggleObjMoveCurveBits(P, bc, bits) { P.bus.w8(bc + CURVE, P.bus.u8(bc + CURVE) ^ bits); }
 const DE = (c, v) => { c.de = v; };
 export const HOOKS = [
+  [9, 0x4310, P => loadObjTemplate(P, P.V.servingCharCourtPos, SERVE_INDICATOR_SIDE_OBJ_TEMPLATES, OBJSLOT[4])],   // SpawnServeIndicatorSideObj
+  [9, 0x431D, P => startObjExitAnim(P, SERVE_INDICATOR_SIDE_OBJ_TEMPLATES, OBJSLOT[4])],                          // DismissServeIndicatorSideObj
+  [9, 0x4371, (P, c) => loadObjTemplate(P, c.a, COURT_BANNER_OBJ_TEMPLATES, OBJSLOT[3])],                         // SpawnCourtBannerObj
+  [9, 0x45F8, (P, c) => toggleObjMoveCurveBits(P, c.bc, 0x02)],
+  [9, 0x4601, (P, c) => toggleObjMoveCurveBits(P, c.bc, 0x03)],
+  [9, 0x4758, P => objUpdateShow(P)],
+  [9, 0x475E, P => objUpdateHide(P)],
+  [9, 0x4764, P => objUpdateRunCurve(P)],
+  [9, 0x4782, (P, c) => { const more = getNextMoveCurveValue(P); c.a = more ? 1 : 0; c.f = more ? 0x00 : 0x80; }],   // GetNextMoveCurveValue
+  [9, 0x6154, (P, c) => { const a = c.a; c.hl = getGfxSourcePtr(P, c.hl, c.b, a); c.bc = (((a << 24) >> 24) * 0x40) & 0xFFFF; }],   // GetGfxSourcePtr
   [9, 0x4555, P => initAllObjSlots(P)],
   [9, 0x4598, (P, c) => initObjSlot(P, c.bc)],
   [9, 0x45BC, (P, c) => setObjSpriteTemplate(P, c.bc, c.de)],

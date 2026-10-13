@@ -254,8 +254,34 @@ export function uploadCourtScoreboardRows(P) {
   P.callRom(0, 0x0480, { h: 0xD5, l: 0x80, d: 0xB9, e: 0x80, c: 10 });  // the attributes -> VRAM bank 1
   P.wramBank(4);
 }
+// 08:54EA Unused_08_DrawShotAimMarker / 08:5506 UnusedDrawBallTargetMarker: a marker sprite ($5E) at the shot's aim point
+// or the ball's target on the ground (unused debug aids)
+export function drawShotAimMarker(P) { drawGroundMarker(P, P.V.shotAimTargetX, P.V.shotAimTargetDepth, OAM_BANK1 | 1); }
+export function drawBallTargetMarker(P) { drawGroundMarker(P, P.V.ballTargetX, P.V.ballTargetDepth, OAM_BANK1 | 4); }
+function drawGroundMarker(P, x, depth, b) {
+  const p = project(P, x, depth, 0), { d, e } = applyCameraProjection(P, p.hl, p.bc);
+  queueSprite(P, b, 0x5E, d, e);
+}
+// 08:6537 UnusedDrawStandingShadowSlot16: a slot through QueueSprite16 (nothing calls it)
+export function drawSlotSprite16(P, hl) {
+  const bus = P.bus, c = bus.u8(hl);
+  if (c === 0xFF) return;
+  queueSprite16(P, bus.u8(hl + 1), c, bus.u8(hl + 3), bus.u8(hl + 2));
+}
+// the variant entry points of the team drawers: the partner first (08:63A0 DrawNearTeamCharsDoubles, 08:63F2
+// DrawFarTeamCharsDoubles)
+function drawTeamPartnerFirst(P, partner, main) {
+  P.wramBank(partner); drawCharSprite(P, CHAR_SPRITE_SLOT);
+  P.wramBank(main); drawCharSprite(P, CHAR_SPRITE_SLOT);
+  P.wramBank(4);
+}
 // ApplyCameraProjection is also called from outside the match code
 export const HOOKS = [
+  [8, 0x54EA, P => drawShotAimMarker(P)],
+  [8, 0x5506, P => drawBallTargetMarker(P)],
+  [8, 0x6537, (P, c) => drawSlotSprite16(P, c.hl)],
+  [8, 0x63A0, P => drawTeamPartnerFirst(P, 6, 4)],
+  [8, 0x63F2, P => drawTeamPartnerFirst(P, 7, 5)],
   [8, 0x59BB, (P, c) => { const r = applyCameraProjection(P, c.hl, c.bc); c.d = r.d; c.e = r.e; c.hl = r.hl; c.a = P.V.cameraOffsetY >> 8; }],
   [8, 0x630E, P => clearSpriteSlots(P)],
   [8, 0x519D, P => buildBallSlot(P)],

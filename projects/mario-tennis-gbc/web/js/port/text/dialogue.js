@@ -8,12 +8,15 @@
 // FetchShortText_XX (slot 2, into wShortTextBuffer).
 // Covered by out/port/story1.mtrec (the speech bubbles) and web/tests/port/routines_text.mjs.
 import {
-  FLAG, WRAM_TEXT, WRAM_SOUND, WRAM_ACTORS, DIALOGUEWIN_NONE, mapped, hook, setFlag, clearFlag, farcall,
-  pushWramBank, Z, H, C, hi, lo,
+  FLAG, WRAM_TEXT, WRAM_SOUND, WRAM_ACTORS, DIALOGUEWIN_NONE, mapped, hook, setFlag, clearFlag, farcall, pushWramBank, Z, H, C, hi,
 } from "./common.js";
-import { getWindowStructPtr, drawTextWindowFrame, saveWindowStruct, restoreWindowStruct, fetchSRAMDialogueText } from "./window_alloc.js";
+import {
+  getWindowStructPtr, drawTextWindowFrame, saveWindowStruct, restoreWindowStruct, fetchSRAMDialogueText,
+} from "./window_alloc.js";
 import { createDialogueWindow } from "./window_create.js";
-import { fitWindowToText, setActiveWindowTextId, renderActiveWindowText, applyMessageSpeed, resetTextArgQueues } from "./window_text.js";
+import {
+  fitWindowToText, setActiveWindowTextId, renderActiveWindowText, applyMessageSpeed, resetTextArgQueues,
+} from "./window_text.js";
 import { restoreShadowTilemap, refreshShadowTilemapFromMapBuffer, setWindowRect } from "./shadow.js";
 import { redrawWindowRowsPadded, closeWindow } from "./rows.js";
 import { clearGlyphBuffer, uploadGlyphBufferFull } from "./glyph_buffer.js";

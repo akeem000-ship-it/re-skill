@@ -9,8 +9,7 @@
 // and one frame after (FlushDirtyRowsNow).
 // Covered by out/port/story1.mtrec, out/port/menus1.mtrec and web/tests/port/routines_text.mjs.
 import {
-  FLAG, WRAM_TEXT, WRAM_SOUND, vBGMap0, VRAM_BANK1, mapped, hook, setFlag, clearFlag, advanceFrame, lcdOn,
-  queueVRAMCopy, pushWramBank, addFlags, Z, N, hi, lo,
+  FLAG, WRAM_TEXT, WRAM_SOUND, vBGMap0, VRAM_BANK1, mapped, hook, setFlag, clearFlag, advanceFrame, lcdOn, queueVRAMCopy, pushWramBank, addFlags, Z, N, lo,
 } from "./common.js";
 import { getWindowStructPtr, drawTextWindowFrame, freeWindow } from "./window_alloc.js";
 import { restoreTilemapUnderWindow } from "./shadow.js";

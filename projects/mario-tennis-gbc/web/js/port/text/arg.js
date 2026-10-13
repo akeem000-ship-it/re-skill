@@ -7,16 +7,15 @@
 // wTextArgShortTextQueue for $08 (measured only). Each has a write index, a count, and a measure index.
 // Covered by out/port/story1.mtrec (names, page waits) and web/tests/port/routines_text.mjs.
 import {
-  FLAG, WRAM_TEXT, PAD_ANY_BUTTON, mapped, hook, testFlag, testFlagF, setFlag, clearFlag, advanceFrame,
-  registerFrameTask, unregisterFrameTask, queueBGTileWrite, callHome, copyMemoryBC, HOME, pushWramBank, Z, N, hi, lo,
+  FLAG, WRAM_TEXT, PAD_ANY_BUTTON, mapped, hook, testFlag, testFlagF, advanceFrame, queueBGTileWrite, callHome, copyMemoryBC, HOME, pushWramBank, Z, N,
 } from "./common.js";
 import { getWindowStructPtr } from "./window_alloc.js";
-import { getTilemapCellAddress, redrawActiveTextWindow } from "./window_tilemap.js";
+import { redrawActiveTextWindow } from "./window_tilemap.js";
 import { cellToVram } from "./window_create.js";
 import { flushGlyphRow } from "./glyph_font.js";
 import { delayTextCharacter } from "./window_text.js";
-import { renderInlineString, wrapTextCellPointer, wrapTextCellPointerPrevRow, wInlineTextBuffer, measureStringWidth } from "./control.js";
-import { getGlyphWidth } from "./rows.js";
+import { renderInlineString, wrapTextCellPointerPrevRow, wInlineTextBuffer, measureStringWidth } from "./control.js";
+ "./rows.js";
 
 const TextContinueArrowBlinkTask = 0x4FE3;
 const wStoryModeNameOfMainCharacter = 0xC900, wStoryModeNameOfPartnerCharacter = 0xC940;

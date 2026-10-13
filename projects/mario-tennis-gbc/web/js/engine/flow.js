@@ -80,18 +80,23 @@ export function awardPoint(E) {
 // 08:5C2B UpdatePointStats: faults always; on a winner the last applicable shot type wins
 // (drop < lob < smash ace < return ace < service ace), each a per-character counter saturating at 99
 export function updatePointStats(E) {
-  const S = E.S, o = S.pointOutcome;
-  const bump = base => { const a = base + u8(S.lastShotCharIndex * 8); const v = E.mem.u8(a); if (v < 0x63) E.mem.w8(a, v + 1); };
-  if (o === POINTOUTCOME.FAULT) bump(0xC8C5);
-  if (o === POINTOUTCOME.DOUBLE_FAULT) bump(0xC8C6);
-  if (o !== POINTOUTCOME.WINNER) return;
-  const t = S.currentShotType;
-  if (t === SHOTTYPE_DROP) { S.pointWinnerShotType = POINTWINNER.DROP_SHOT; bump(0xC8C4); }
-  if (t === SHOTTYPE_LOB) { S.pointWinnerShotType = POINTWINNER.LOB; bump(0xC8C3); }
-  if (t === SHOTTYPE_SMASH) { S.pointWinnerShotType = POINTWINNER.SMASH_ACE; bump(0xC8C2); }
-  if (S.returnAceFlag) { S.pointWinnerShotType = POINTWINNER.RETURN_ACE; bump(0xC8C1); }
-  if (S.serviceAceFlag) { S.pointWinnerShotType = POINTWINNER.SERVICE_ACE; bump(0xC8C0); }
+  recordFaultStat(E);
+  recordDoubleFaultStat(E);
+  if (E.S.pointOutcome !== POINTOUTCOME.WINNER) return;
+  recordDropShotWinnerStat(E); recordLobWinnerStat(E); recordSmashAceStat(E); recordReturnAceStat(E); recordServiceAceStat(E);
 }
+// RecordDropShotWinnerStat.bumpStat 08:5CB2: the hitter's counter (8 bytes per character from base), up to 99
+function bumpStat(E, base) { const a = base + u8(E.S.lastShotCharIndex * 8), v = E.mem.u8(a); if (v < 0x63) E.mem.w8(a, v + 1); }
+const winnerStat = (E, kind, base) => { E.S.pointWinnerShotType = kind; bumpStat(E, base); };
+// 08:5C47 RecordFaultStat / 08:5C53 RecordDoubleFaultStat / 08:5C5F RecordServiceAceStat / 08:5C6F RecordReturnAceStat /
+// 08:5C7F RecordSmashAceStat / 08:5C90 RecordLobWinnerStat / 08:5CA1 RecordDropShotWinnerStat
+export function recordFaultStat(E) { if (E.S.pointOutcome === POINTOUTCOME.FAULT) bumpStat(E, 0xC8C5); }
+export function recordDoubleFaultStat(E) { if (E.S.pointOutcome === POINTOUTCOME.DOUBLE_FAULT) bumpStat(E, 0xC8C6); }
+export function recordServiceAceStat(E) { if (E.S.serviceAceFlag) winnerStat(E, POINTWINNER.SERVICE_ACE, 0xC8C0); }
+export function recordReturnAceStat(E) { if (E.S.returnAceFlag) winnerStat(E, POINTWINNER.RETURN_ACE, 0xC8C1); }
+export function recordSmashAceStat(E) { if (E.S.currentShotType === SHOTTYPE_SMASH) winnerStat(E, POINTWINNER.SMASH_ACE, 0xC8C2); }
+export function recordLobWinnerStat(E) { if (E.S.currentShotType === SHOTTYPE_LOB) winnerStat(E, POINTWINNER.LOB, 0xC8C3); }
+export function recordDropShotWinnerStat(E) { if (E.S.currentShotType === SHOTTYPE_DROP) winnerStat(E, POINTWINNER.DROP_SHOT, 0xC8C4); }
 // 08:5D71 EvalWinByTwo: level b (equal counts there -> $80), minimum c
 export function evalWinByTwo(d, e, b, c) {
   const diff = u8(d - e);
@@ -193,7 +198,7 @@ export function resetCameraForServe(E) { const t = getServeCameraTarget(E); snap
 // 1 receiver, 2/3 partners) come from 8-byte records [4 court codes, 4 roles] in bank 8
 const flipCode = (E, b) => { E.C.courtPos ^= b; };                     // 08:69FE FlipCharPositionCode
 const toggleRow = E => { E.C.serveRole ^= 2; };                         // 08:4971 ToggleCharCourtRow
-function loadPositionRecord(E, table, index, mirror) {                  // 08:48ED LoadPositionRecord (.doubles: mirror)
+export function loadPositionRecord(E, table, index, mirror) {                  // 08:48ED LoadPositionRecord (.doubles: mirror)
   const rec = table + ((index * 8) & 0xFF) + (index * 8 > 0xFF ? 0x100 : 0);
   for (let k = 0; k < 4; k++) { E.setBank(4 + k); E.C.courtPos = E.rom.u8(8, rec + k) ^ (mirror ? 3 : 0); }
   for (let k = 0; k < 4; k++) { E.setBank(4 + k); E.C.serveRole = E.rom.u8(8, rec + 4 + k); }
@@ -447,10 +452,14 @@ export function* playPoint(E) {
 }
 // 08:4D8C AnnouncePointSituation: BGM (08:4D63 SetPointSituationBgm) and the match/set/game point banner, placed by
 // which end the side with the game point plays from
+export function setPointSituationBgm(E) {                                // 08:4D63 SetPointSituationBgm
+  const S = E.S;
+  E.ext.playMusic(E, S.matchPointFlag || S.setPointFlag ? 0x0F : S.gamePointFlag ? 0x10 : S.tiebreakerIndicator ? 0x0E : S.matchBGM);
+}
 export function* announcePointSituation(E) {
   const S = E.S;
   evaluatePointSituation(E);
-  E.ext.playMusic(E, S.matchPointFlag || S.setPointFlag ? 0x0F : S.gamePointFlag ? 0x10 : S.tiebreakerIndicator ? 0x0E : S.matchBGM);
+  setPointSituationBgm(E);
   let d;
   if (S.matchPointFlag) d = 0x0A;
   else if (S.setPointFlag) d = 0x09;
@@ -472,27 +481,38 @@ export function* resolvePointOutcome(E) {
   setCameraTarget(E, S.matchCameraX, S.matchCameraY);
   yield* stepMatchFrame(E);
   const o = S.pointOutcome;
-  if (o >= 1 && o <= 5) {                                                // 08:4E8D ResolveCalledPoint
-    E.ext.showCourtBanner(E, o); yield* stepMatchFrames(E, 30);
-    E.ext.hideCourtBanner(E); yield* stepMatchFrames(E, 10);
-  } else if (o === 6) {                                                  // 08:4E6D ResolveWinnerPoint
-    if (S.pointWinnerShotType) {
-      E.ext.showCourtBanner(E, (S.pointWinnerShotType + 0x17) & 0xFF); yield* stepMatchFrames(E, 10); yield* stepMatchFramesSkippable(E, 0x1E);
-      E.ext.hideCourtBanner(E); yield* stepMatchFrames(E, 10);
-    }
-  } else if (o === 7) {                                                  // 08:4E49 ResolveServeVolleyedPoint: text $174
-    yield* E.ext.showMessageWindow(E, 0x0174, 0x0504, 0x0A07);           // (box at cell 5,4, 10 x 7)
-    yield* stepMatchFrames(E, 10);
-  } else if (o === 8) {                                                  // 08:4E5B ResolveWrongReceiverPoint: text $175
-    yield* E.ext.showMessageWindow(E, 0x0175, 0x0204, 0x0F07);           // (box at cell 2,4, 15 x 7)
-    yield* stepMatchFrames(E, 10);
-  }
-  // ResolvePointResultSequence
+  if (o >= 1 && o <= 5) yield* resolveCalledPoint(E);
+  else if (o === 6) yield* resolveWinnerPoint(E);
+  else if (o === 7) yield* resolveServeVolleyedPoint(E);
+  else if (o === 8) yield* resolveWrongReceiverPoint(E);
+  yield* resolvePointResultSequence(E);
+}
+// 08:4E8D ResolveCalledPoint: the call's banner (FAULT, OUT, ...)
+export function* resolveCalledPoint(E) {
+  E.ext.showCourtBanner(E, E.S.pointOutcome); yield* stepMatchFrames(E, 30);
+  E.ext.hideCourtBanner(E); yield* stepMatchFrames(E, 10);
+}
+// 08:4E6D ResolveWinnerPoint: the winning shot's banner (SERVICE ACE, ...), if it was a special one
+export function* resolveWinnerPoint(E) {
+  const S = E.S;
+  if (!S.pointWinnerShotType) return;
+  E.ext.showCourtBanner(E, (S.pointWinnerShotType + 0x17) & 0xFF); yield* stepMatchFrames(E, 10); yield* stepMatchFramesSkippable(E, 0x1E);
+  E.ext.hideCourtBanner(E); yield* stepMatchFrames(E, 10);
+}
+// 08:4E49 ResolveServeVolleyedPoint (text $174, a box at cell 5,4, 10 x 7) / 08:4E5B ResolveWrongReceiverPoint
+// (text $175, at cell 2,4, 15 x 7)
+export function* resolveServeVolleyedPoint(E) { yield* E.ext.showMessageWindow(E, 0x0174, 0x0504, 0x0A07); yield* stepMatchFrames(E, 10); }
+export function* resolveWrongReceiverPoint(E) { yield* E.ext.showMessageWindow(E, 0x0175, 0x0204, 0x0F07); yield* stepMatchFrames(E, 10); }
+// 08:4E22 ResolvePointResultSequence: the match, set, game or point result, then 08:4E3E DelayAfterPointResolution
+export function* resolvePointResultSequence(E) {
+  const S = E.S;
   if (S.matchWinLoseFlag) yield* showMatchEndSequence(E);
   else if (S.setWinLoseFlag) yield* showGameEndSequence(E, 0x0C);
   else if (S.gameWinLoseFlag) yield* showGameEndSequence(E, 0x0B);
   else yield* showPointScoreSequence(E);
-  // DelayAfterPointResolution
+  yield* delayAfterPointResolution(E);
+}
+export function* delayAfterPointResolution(E) {
   yield* stepMatchFramesSkippable(E, 0x46);
   yield* stepMatchFrames(E, 10);
 }
@@ -574,15 +594,17 @@ export function charPointEndReaction(E) {
 export function spreadTeammateTargets(E) {
   const n = E.S.onCourtCharCountMinus1;
   if (n < 2) return;
-  const pair = (a, b) => {
-    E.setBank(a); const d1 = E.C.posDepthInt & 0xFFFF; E.setBank(b); const d2 = E.C.posDepthInt & 0xFFFF;
-    const r = computePairSpread(d1, d2);
-    E.setBank(a); E.C.walkTargetDepth = r.de; E.setBank(b); E.C.walkTargetDepth = r.bc;
-  };
-  if (n === 3) pair(4, 6);
-  pair(5, 7);
-  E.setBank(4);
+  if (n === 3) spreadBothTeamPairs(E); else spreadFarTeamPair(E);
 }
+// a team's two walk-target depths spread apart (characters in banks a and b)
+function spreadPair(E, a, b) {
+  E.setBank(a); const d1 = E.C.posDepthInt & 0xFFFF; E.setBank(b); const d2 = E.C.posDepthInt & 0xFFFF;
+  const r = computePairSpread(d1, d2);
+  E.setBank(a); E.C.walkTargetDepth = r.de; E.setBank(b); E.C.walkTargetDepth = r.bc;
+}
+// 08:5001 SpreadBothTeamPairs (falls into 08:5034 SpreadFarTeamPair; bank 4 mapped after)
+export function spreadBothTeamPairs(E) { spreadPair(E, 4, 6); spreadFarTeamPair(E); }
+export function spreadFarTeamPair(E) { spreadPair(E, 5, 7); E.setBank(4); }
 // 08:506E ComputePairSpread (de = first depth, hl = second): within $200 of each other they are moved exactly
 // $200 apart around their midpoint, never closer than $100 to the net -> { de: first, bc: second }
 export function computePairSpread(de, hl) {
@@ -672,15 +694,22 @@ export function* walkCharsOffCourt(E) {
   const S = E.S;
   S.pauseDisabled = 1; S.offscreenArrowsEnabled = 0;
   const t = getServeCameraTarget(E); setCameraTarget(E, t.x, t.y);
-  chars.forEachCharBank(E, () => { chars.setCharState(E, CHARSTATE.WALK); const p = getCharChangeoverPosition(E); chars.setCharTarget(E, p.x, p.depth); E.C.flags &= ~3; });
+  chars.forEachCharBank(E, () => startCharWalkOffCourt(E));
   do {
     yield* stepMatchFrame(E);
     if (inputPressed(E) & 0x0B) break;
   } while (!checkAllCharsPhaseDone(E));
   yield* stepMatchFrames(E, 20);
   const t2 = getServeCameraTarget(E); snapCameraTo(E, t2.x, t2.y);
-  chars.forEachCharBank(E, () => chars.setCharPosAndTarget(E, 0x0FE0, 0x0FE0));
+  chars.forEachCharBank(E, () => parkCharOffCourt(E));
 }
+// 08:6046 StartCharWalkOffCourt: walk to the changeover point / 08:6059 ParkCharOffCourt: off the court ($FE0, $FE0)
+export function startCharWalkOffCourt(E) {
+  chars.setCharState(E, CHARSTATE.WALK);
+  const p = getCharChangeoverPosition(E); chars.setCharTarget(E, p.x, p.depth);
+  E.C.flags &= ~3;
+}
+export function parkCharOffCourt(E) { chars.setCharPosAndTarget(E, 0x0FE0, 0x0FE0); }
 // 08:6063 CheckAllCharsPhaseDone: the AND of every on-court character's wCharStatePhase (nonzero = all done)
 export function checkAllCharsPhaseDone(E) {
   const n = E.S.onCourtCharCountMinus1, order = [[4], [5, 4], [7, 5, 4], [6, 7, 5, 4]][n];

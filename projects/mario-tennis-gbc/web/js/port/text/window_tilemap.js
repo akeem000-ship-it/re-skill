@@ -6,8 +6,7 @@
 // in WRAM bank 5 by default; a screen's map in bank 3 after ResetScreenAndTextWindows), attributes $400 after the
 // tiles. Covered by out/port/story1.mtrec, out/port/menus1.mtrec and web/tests/port/routines_text.mjs.
 import {
-  FLAG, WRAM_TEXT, PAD, vBGMap0, VRAM_BANK1, rVBK, rVDMA_SRC_HIGH, mapped, hook, testFlagF, advanceFrame,
-  queueVRAMCopy, clearMemory16, pushWramBank, addFlags, Z, H, hi, lo,
+  FLAG, WRAM_TEXT, PAD, vBGMap0, VRAM_BANK1, rVBK, rVDMA_SRC_HIGH, mapped, hook, testFlagF, advanceFrame, queueVRAMCopy, clearMemory16, pushWramBank, addFlags, Z, H, hi,
 } from "./common.js";
 import { resetTextWindowState, getWindowStructPtr } from "./window_alloc.js";
 import { fetchShortText } from "./dialogue.js";

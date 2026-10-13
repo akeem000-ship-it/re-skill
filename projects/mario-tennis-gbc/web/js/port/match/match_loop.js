@@ -63,6 +63,19 @@ export function* runMatchFramesUntilInput(E, c) {
     if (held) { c.a = held; return; }
   }
 }
+// 08:6178 PanCamera: the court scroll from (d, e), moved by (h, l) each frame for b frames; A, B or START ends it
+// (a = the buttons, Z clear). Leaves d, e at the next scroll, b at the frames left, a and the flags.
+export function* panCamera(E, r) {
+  for (;;) {
+    E.mem.w8(0xFF8B, r.d); E.mem.w8(0xFF8A, r.e);                          // hScrollX / hScrollY
+    r.d = (r.d + r.h) & 0xFF; r.e = (r.e + r.l) & 0xFF;
+    r.a = flow.inputPressed(E) & 0x0B;
+    if (r.a) { r.f = 0x20; return; }                                     // and $0b: Z clear, H set
+    yield* flow.stepMatchFrame(E);
+    r.b = (r.b - 1) & 0xFF;
+    if (!r.b) { r.f = 0xC0; return; }                                    // dec b: Z, N (C clear from the and)
+  }
+}
 // these leave their counters in a and b, the other registers kept
 const counted = fn => (P, c) => (function* () {
   const regs = save(c);
@@ -90,6 +103,25 @@ export const HOOKS = [
   [8, 0x4714, waits(E => flow.runMatchPlayLoop(E))],                                       // RunMatchPlayLoop
   [8, 0x4737, waits(E => flow.playSet(E))],                                                // PlaySet
   [8, 0x4D0F, waits(E => flow.playPoint(E))],                                              // PlayPoint
+  [8, 0x4745, waits(function* (E) {                                                        // CheckSetComplete: the set loop's
+    const S = E.S;                                                                         // test (PlaySet pushes it as the
+    if (S.matchAbortFlag & 0x80) return;                                                   // game's return address)
+    if (S.setWinLoseFlag) { S.changeoverSkipBanner = 1; return; }
+    yield* flow.playSet(E);
+  })],
+  [8, 0x4758, waits(E => flow.playGame(E))],                                               // CheckSetComplete.playGame
+  [8, 0x4782, waits(E => flow.playTiebreak(E))],                                           // CheckSetComplete.tiebreak
+  [8, 0x4E22, waits(E => flow.resolvePointResultSequence(E))],                             // ResolvePointResultSequence
+  [8, 0x4E3E, waits(E => flow.delayAfterPointResolution(E))],                              // DelayAfterPointResolution
+  [8, 0x4E49, waits(E => flow.resolveServeVolleyedPoint(E))],                              // ResolveServeVolleyedPoint
+  [8, 0x4E5B, waits(E => flow.resolveWrongReceiverPoint(E))],                              // ResolveWrongReceiverPoint
+  [8, 0x4E6D, waits(E => flow.resolveWinnerPoint(E))],                                     // ResolveWinnerPoint
+  [8, 0x4E8D, waits(E => flow.resolveCalledPoint(E))],                                     // ResolveCalledPoint
+  [8, 0x6178, (P, c) => (function* () {                                                    // PanCamera
+    const regs = save(c), r = { a: c.a, f: c.f, b: c.b, d: c.d, e: c.e, h: c.h, l: c.l };
+    yield* panCamera(engine(P), r);
+    restore(c, regs); c.a = r.a; c.f = r.f; c.b = r.b; c.d = r.d; c.e = r.e;
+  })()],
   [8, 0x4D8C, waits(E => flow.announcePointSituation(E))],                                 // AnnouncePointSituation
   [8, 0x4DF4, waits(E => flow.resolvePointOutcome(E))],                                    // ResolvePointOutcome
   [8, 0x4EA3, waits(E => flow.showPointScoreSequence(E))],                                 // ShowPointScoreSequence

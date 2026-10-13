@@ -368,9 +368,12 @@ const PLACEMENT = [
   [0x5111, null, "smashServeSpeedIndex", null, null, false],                                                        // 07:5293 ServeFlat
 ];
 export function computeShotPlacement(E) {
-  const P = PLACEMENT[E.S.currentShotType];
-  if (!P) throw new Error(`ComputeShotPlacement: shot type $${E.S.currentShotType.toString(16)} past the jump table`);
-  const [data, spinIdx, speedIdx, pace, charge, finalize] = P, C = E.C;
+  if (!PLACEMENT[E.S.currentShotType]) throw new Error(`ComputeShotPlacement: shot type $${E.S.currentShotType.toString(16)} past the jump table`);
+  return shotPlacement(E, E.S.currentShotType);
+}
+// the jump table's routine for shot type t (07:5183 ShotPlacementTopspin ... 07:5293 ShotPlacementServeFlat)
+export function shotPlacement(E, t) {
+  const [data, spinIdx, speedIdx, pace, charge, finalize] = PLACEMENT[t], C = E.C;
   let bc = loadShotPlacementEntry(E, data, spinIdx ? C[spinIdx] : 0, speedIdx ? C[speedIdx] : 0);
   if (pace) bc = pace(E, bc);
   if (charge) bc = charge(E, bc);

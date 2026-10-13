@@ -35,6 +35,15 @@ const RunFrameTasks = 0x1BFF, ClearSpriteQueue = 0x1E1D, ClearUnusedSprites = 0x
 const InitAudioEngine = 0x3078;
 const BANK_GAME = 0x01, InitAndRunGame = 0x4018, ShowDmgLockoutScreen = 0x6030;
 
+// push_wram_bank ... pop_wram_bank around fn. As P.withWramBank, but hWramBank is read through the bus, as the
+// ROM's `ldh a, [hWramBank]` (the lockstep test places a VBlank the ROM took mid-work by counting such reads).
+function withWramBank(P, bank, fn) {
+  const old = P.V.wramBank;
+  P.wramBank(bank);
+  fn();
+  P.wramBank(old);
+}
+
 // Start (00:2578), from the cartridge entry point: note whether this is a Game Boy Color (a = $11 at power-on),
 // then SoftReset.
 export function* start(P, a) {
@@ -68,7 +77,7 @@ export function* softReset(P) {
   P.callRom(0, ClearSpriteQueue);
   clearFrameTasks(P);
   P.callRom(0, ClearVRAMCopyQueue);
-  P.withWramBank(WRAM_SOUND, () => {                             // the sound driver's WRAM bank, cleared
+  withWramBank(P, WRAM_SOUND, () => {                            // the sound driver's WRAM bank, cleared
     P.callRom(0, ClearMemory16, { h: WRAMX_START >> 8, l: 0, c: 0 });   // c = 0: 256 blocks, all 4 KB
     P.callRom(0, InitAudioEngine);
   });
@@ -162,7 +171,7 @@ function* frameWork(P) {
   V.vBlankOccurred = 0;
   P.callRom(0, RunFrameTasks, { a: 0 });
   V.spriteBufferPage = (V.spriteBufferPage & SPRITE_PAGE_MASK) ^ SPRITE_PAGE_FLIP;
-  P.withWramBank(WRAM_SOUND, () => P.callRom(0, ResumeBGMAfterJingle));
+  withWramBank(P, WRAM_SOUND, () => P.callRom(0, ResumeBGMAfterJingle));
   trackPeakLY(P);
   if (V.debugStepMode) yield* debugStepper(P);
   yield* waitForVBlank(P);

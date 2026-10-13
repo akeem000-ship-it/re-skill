@@ -7,8 +7,7 @@
 //   bit 1: a menu, text indented one cell), +5 unused, +6/+7 the text id.
 // Covered by out/port/story1.mtrec (dialogue windows) and the routine tests in web/tests/port/routines_text.mjs.
 import {
-  WRAM_TEXT, TILEATTR_PRIORITY, DIALOGUEWIN_NONE, FLAG, PAD, SFX_BEEP, HOME, mapped, hook, testFlag, playSound,
-  clearMemory16, copyMemoryBC, advanceFrame, pushWramBank, callHome, cpFlags, addFlags, Z, H, hi, lo,
+  WRAM_TEXT, TILEATTR_PRIORITY, DIALOGUEWIN_NONE, FLAG, PAD, SFX_BEEP, HOME, mapped, hook, testFlag, playSound, clearMemory16, advanceFrame, pushWramBank, callHome, cpFlags, addFlags, Z, H, hi, lo,
 } from "./common.js";
 import { getScreenTopLeftCell } from "./window_create.js";
 import { restoreShadowTilemap } from "./shadow.js";

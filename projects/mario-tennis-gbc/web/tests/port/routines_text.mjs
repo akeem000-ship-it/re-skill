@@ -242,7 +242,7 @@ export const ROUTINES = [
   ...[0, 1, 2, 0x80, 0x81].map(sp => T(`ApplyMessageSpeed ${sp}`, 0x57E7, { prep: mem => w(mem, 0xC8A4, sp) })),
 
   // ---- dialogue.js ----
-  T("Unused_05_OpenDialogueWindowCentered", 0x5BA0, { gen: r => ({ hl: textId(r), de: cell(r) }), prep: (mem, s, r) => queues(mem, r) }),
+  T("Unused_05_OpenDialogueWindowCentered", 0x5BA0, { gen: r => ({ hl: textId(r), de: r(4) ? (10 + r(12)) << 8 | (4 + r(20)) : cell(r) }), prep: (mem, s, r) => queues(mem, r) }),
   T("MeasureDialogueWidthTiles", 0x5BFC, { gen: r => ({ hl: textId(r) }), prep: (mem, s, r) => queues(mem, r) }),
   T("FetchDialogueText", 0x5C18, { gen: r => ({ hl: textId(r) }) }),
   T("FetchDialogueText (any id)", 0x5C18, { gen: r => ({ hl: r(0x8000) }) }),
@@ -272,7 +272,8 @@ export const ROUTINES = [
   T("UploadGlyphTilesPartial (LCD off)", 0x622E, { lcd: false, out: NOF }),
   T("RedrawWindowRowsSafe (LCD off)", 0x62BC, { gen: r => ({ a: r(8) }), lcd: false }),
   T("CloseWindowAlt (LCD off)", 0x62D8, { gen: r => ({ a: r(8) }), lcd: false }),
-  T("Unused_05_OpenCenteredDialogueWindow", 0x634F, { gen: r => ({ hl: textId(r), de: cell(r) }) }),
+  // (centred where the 20x7 window stays on the map: off its top, the rows run into echo RAM over the stack)
+  T("Unused_05_OpenCenteredDialogueWindow", 0x634F, { gen: r => ({ hl: textId(r), de: (10 + r(12)) << 8 | (4 + r(20)) }) }),
   T("Unused_05_ChooseSpeechBubbleHalf", 0x6388, { gen: r => ({ a: [r(0x18), 0x80 | r(0x80)][r(2)] }), prep: (mem, s, r) => w16(mem, 0xC322, r(0x10000)) }),
   T("DebugToggleSelectedFlag", 0x63D8, { prep: (mem, s, r) => { w(mem, 0xC714, r(4)); w(mem, 0xC715, r(8)); w(mem, 0xC716, r(8)); } }),
   T("DebugDrawFlagsWindow1", 0x6407, { prep: (mem, s, r) => { w(mem, 0xC714, r(4)); w(mem, 0xC718, r(7)); } }),
@@ -332,7 +333,8 @@ export const ROUTINES = [
   T("RedrawWindowRows (LCD off)", 0x7205, { gen: r => ({ a: r(8) }), lcd: false }),
   T("RedrawWindowRowsPadded (LCD off)", 0x7214, { gen: r => ({ a: r(8) }), lcd: false }),
   T("RedrawTilemapRowRange (LCD off)", 0x7223, { gen: r => ({ de: r(0x10000) }), lcd: false }),
-  T("RenderMenuWindowText (LCD off)", 0x7232, { lcd: false, prep: (mem, s, r) => { const id = r(7); w5(mem, 0xD82F, id); w5_16(mem, 0xDC06 + id * 8, [0x001A, 0x0132, 0x0133, 0x0137][r(4)]); } }),
+  // (a menu window low on the map: its text rows would run past $DFFF into echo RAM over the stack)
+  T("RenderMenuWindowText (LCD off)", 0x7232, { lcd: false, prep: (mem, s, r) => { const id = r(7); w5(mem, 0xD82F, id); w5(mem, 0xDC01 + id * 8, r(12)); w5_16(mem, 0xDC06 + id * 8, [0x001A, 0x0132, 0x0133, 0x0137][r(4)]); } }),
   T("CloseWindow (LCD off)", 0x72BD, { gen: r => ({ a: r(8) }), lcd: false }),
   T("RedrawAllTilemapRows (LCD off)", 0x72D2, { lcd: false }),
   T("PrepareGlyphBuffer", 0x72DC),
