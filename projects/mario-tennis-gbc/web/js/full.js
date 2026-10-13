@@ -74,7 +74,9 @@ function input() {
 }
 const rec = new Recorder();
 function frame() {
-  pollGamepad(keys); const inp = input(), mask = maskOf(inp); gb.setInput(inp); gb.runFrame(); if (view3d && voxel && voxel.mode === "3d") voxel.tick();
+  pollGamepad(keys); const inp = input(), mask = maskOf(inp); gb.setInput(inp);
+  if (port) portFrame(); else gb.runFrame();
+  if (view3d && voxel && voxel.mode === "3d") voxel.tick();
   rec.frame(gb, mask);
   if (audioReady && anode) { const n = gb.apu.drain(abuf); if (n) anode.port.postMessage(abuf.slice(0, n)); } else gb.apu.outPos = 0;
 }
@@ -145,15 +147,42 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
+// ?port: run the game through the readable JS port (web/js/port) instead of the core's CPU: ported routines run as
+// JavaScript, the rest as the ROM's code (the hybrid). ?port uses the finished, verified modules; ?port=all adds
+// every module in progress; ?port=a/b,c/d picks modules (paths under web/js/port).
+let port = null, portError = null;
+// the mode: the page's selector, or #port / #portall in the link, or ?port in the URL
+const portMode = () => { const h = location.hash.slice(1), sel = $("engine") && $("engine").value; return h === "port" || h === "portall" ? h : q.has("port") ? "port" : sel || "rom"; };
+if ($("engine") && (location.hash === "#port" || location.hash === "#portall")) $("engine").value = location.hash.slice(1);
+const PORT_VERIFIED = ["home/joypad", "audio/index"];
+async function makePort(bytes) {
+  const { GamePort } = await import("./port/port.js"), { entry } = await import("./port/entry.js");
+  const want = portMode() === "portall" ? "all" : q.get("port");
+  let hooks;
+  if (want === "all") hooks = (await import("./port/program.js")).program.hooks;
+  else {
+    hooks = [];
+    for (const m of want ? want.split(",") : PORT_VERIFIED) hooks.push(...(await import(`./port/${m}.js`)).HOOKS);
+  }
+  return new GamePort(bytes, { ...entry, hooks }, { audio: true, sampleRate: 44100 });
+}
+function portFrame() {
+  if (portError) return;
+  try { port.frame(); }
+  catch (e) { portError = e; $("romstatus").textContent = "JS port stopped: " + e.message; console.error(e); }
+}
 async function loadRom(buf) {
   const bytes = new Uint8Array(buf);
   romHash = (await sha1Hex(bytes)) || "";
   $("romstatus").textContent = romHash === "" ? "ROM loaded" : romHash === EXPECTED_SHA1 ? "ROM verified (Mario Tennis USA)" : "Warning: unexpected ROM SHA-1 " + romHash;
-  gb = new GBC(bytes, { sampleRate: 44100, audio: true }); drawnFrame = -1;
+  if (portMode() !== "rom") { port = await makePort(bytes); gb = port.gb; portError = null; }
+  else gb = new GBC(bytes, { sampleRate: 44100, audio: true });
+  drawnFrame = -1;
   if (voxel) voxel.attach(gb, new Rom(gb.mem.rom));      // a ROM loaded after the 3D view was created
   // the statically translated game (tools/recomp.py -> gen/game.js) runs the traced code as native
   // functions; without it everything is interpreted (same results, see web/tests/recomp_vs_interp.mjs)
-  try { const mod = await import("../gen/game.js"); const T = {}; mod.install(T); gb.installRecomp(T); if (mod.HRAM_SIG) gb.exec.setHramSig(mod.HRAM_SIG); $("romstatus").textContent += " · recompiled code"; } catch (e) { $("romstatus").textContent += " · interpreter"; }
+  if (port) $("romstatus").textContent += ` · JS port (${port.hooks.size} routines ported, the rest ROM code)`;
+  else try { const mod = await import("../gen/game.js"); const T = {}; mod.install(T); gb.installRecomp(T); if (mod.HRAM_SIG) gb.exec.setHramSig(mod.HRAM_SIG); $("romstatus").textContent += " · recompiled code"; } catch (e) { $("romstatus").textContent += " · interpreter"; }
   loadSave();
   $("loader").hidden = true; $("hud").hidden = false; cv.focus();
   const m3 = q.has("vox") ? "vox" : q.has("3d") ? "3d" : stored("mt-3d");   // remembered view mode
@@ -173,7 +202,7 @@ for (const el of document.querySelectorAll("#pad [data-key]")) {
 }
 if (navigator.userAgent.includes("MarioTennisWrapper") || location.search.includes("touch")) document.body.classList.add("touch");
 $("file").addEventListener("change", async e => { const f = e.target.files[0]; if (f) loadRom(await f.arrayBuffer()); });
-$("reset").addEventListener("click", () => { if (gb) { gb.reset(); rec.event("reset"); } });
+$("reset").addEventListener("click", () => { if (port) { location.reload(); return; } if (gb) { gb.reset(); rec.event("reset"); } });
 // ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
 // a .mtrec file (Android: Downloads/MTenn3D and the share sheet; browser: a download). Hiding the app stops and saves.
 async function saveRecording(now = false) {     // now: the app is being hidden; skip compression so it finishes at once

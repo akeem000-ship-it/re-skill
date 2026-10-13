@@ -30,7 +30,15 @@
 <main>
   <h1>Mario Tennis (GBC) — full game <span class="note">(<a href="index.html">match-engine port</a>)</span></h1>
   <div id="loader" class="panel">
-    Load your own <code>Mario Tennis (USA).gbc</code> (SHA-1 <code>414ba583…</code>): <input type="file" id="file" accept=".gbc,.gb">
+    <label for="engine">Run the game with</label>
+    <select id="engine">
+      <option value="rom">the original code (on the emulator's CPU)</option>
+      <option value="port">the JS port: finished parts</option>
+      <option value="portall">the JS port: every part, including work in progress</option>
+    </select>
+    <div>Load your own <code>Mario Tennis (USA).gbc</code> (SHA-1 <code>414ba583…</code>): <input type="file" id="file" accept=".gbc,.gb"></div>
+    <div class="note">The JS port runs the parts of the game already rewritten as readable JavaScript, and the original
+      code for the rest. Choose before loading the ROM; Reset reloads the page.</div>
     <div class="note">The whole game (story mode, tour, mini-games, link-less) runs on the project's own Game Boy Color core
       (<code>web/js/gb</code>), verified frame-for-frame against the reference emulator. Nothing from the game ships with this page.</div>
     <div class="note">Credits: game-engine names and notes cross-checked against the
