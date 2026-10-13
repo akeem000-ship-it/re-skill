@@ -337,7 +337,7 @@ export const ROUTINES = [
   T("RedrawTilemapRowRange (LCD off)", 0x7223, { gen: r => ({ de: r(0x10000) }), lcd: false }),
   // (a menu window high on the map and not too wide, the glyph column low: else its text rows run past $DFFF, or
   // its pen past column $80 (negative: the glyph rows land on the stack page), and the ROM crashes)
-  T("RenderMenuWindowText (LCD off)", 0x7232, { lcd: false, prep: (mem, s, r) => { const id = r(7); w5(mem, 0xD82F, id); w5(mem, 0xDC01 + id * 8, r(12)); w5(mem, 0xDC02 + id * 8, 3 + r(8)); w(mem, 0xC3BA, r(8)); w(mem, 0xC3B7, r(2) * 0x80 + r(8)); w(mem, 0xC3B8, 0); /* a pen inside the glyph buffer */ w5_16(mem, 0xDC06 + id * 8, [0x001A, 0x0132, 0x0133, 0x0137][r(4)]); } }),
+  T("RenderMenuWindowText (LCD off)", 0x7232, { lcd: false, prep: (mem, s, r) => { const id = r(7); w5(mem, 0xD82F, id); w5(mem, 0xDC01 + id * 8, r(12)); w5(mem, 0xDC02 + id * 8, 3 + r(8)); for (let a = 0xC3B7; a <= 0xC3BF; a++) w(mem, a, 0); w(mem, 0xC3BA, r(8)); w(mem, 0xC3B7, r(2) * 0x80 + r(8)); /* glyph stream state inside the glyph buffer */ w5_16(mem, 0xDC06 + id * 8, [0x001A, 0x0132, 0x0133, 0x0137][r(4)]); } }),
   T("CloseWindow (LCD off)", 0x72BD, { gen: r => ({ a: r(8) }), lcd: false }),
   T("RedrawAllTilemapRows (LCD off)", 0x72D2, { lcd: false }),
   T("PrepareGlyphBuffer", 0x72DC),
