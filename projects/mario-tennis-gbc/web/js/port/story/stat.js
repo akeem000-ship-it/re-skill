@@ -26,7 +26,7 @@ const THRESHOLDS_FIRST = 0x0D;                 // the archetype's first stat row
 
 // Unused_02_LoadMainCharacterFromRoster (02:443B): the main record from roster character d & $3F (64 bytes from
 // its roster record on). Nothing calls it. Returns the registers it leaves.
-export function unusedLoadMainCharacterFromRoster(P, d, e) {
+export function unusedLoadMainCharacterFromRoster(P, d) {
   const { bus } = P, de = wStoryMainRecord;
   clearMemory16(P, de, 4);
   const b = d & 0x3F;
@@ -35,8 +35,8 @@ export function unusedLoadMainCharacterFromRoster(P, d, e) {
   bus.w8(de + CHARREC_PALETTE, getCharPaletteIndex(P, b).a);
   bus.w8(de + CHARREC_BUILD_KIND, 0);
   const at = de + CHARREC_CHAR, sum = (at & 0xFF) + bus.u8(at), hl = (at + bus.u8(at)) & 0xFFFF;
-  const f = sum > 0xFF ? (zf((at >> 8) + 1) | (((at >> 8) & 0x0F) === 0x0F ? FH : 0) | FC) : (zf(sum) | (((at & 0x0F) + (bus.u8(at) & 0x0F)) > 0x0F ? FH : 0));
-  return { a: P.V.wramBank, f, bc: b << 8 | d, de: de << 0 | (e & 0) | de, hl };
+  const f = sum > 0xFF ? (zf(((at >> 8) + 1) & 0xFF) | (((at >> 8) & 0x0F) === 0x0F ? FH : 0) | FC) : (zf(sum) | (((at & 0x0F) + (bus.u8(at) & 0x0F)) > 0x0F ? FH : 0));
+  return { a: P.V.wramBank, f, bc: b << 8, de, hl };       // (c: Unused_02_Copy64Bytes's count, 0)
 }
 // Unused_02_Copy64Bytes (02:447A): 64 bytes from hl to de. Returns { a, c, hl } after (de kept).
 export function unusedCopy64Bytes(P, hl, de) {
@@ -142,7 +142,7 @@ export function applyStatModifierRow(P, item, kind, bc) {
 }
 
 export const HOOKS = [
-  [BANK, 0x443B, hook((P, c) => unusedLoadMainCharacterFromRoster(P, c.d, c.e))],
+  [BANK, 0x443B, hook((P, c) => unusedLoadMainCharacterFromRoster(P, c.d))],
   [BANK, 0x447A, hook((P, c) => unusedCopy64Bytes(P, c.hl, c.de))],
   [BANK, 0x4485, hook((P, c) => refreshPlayerStatsAndGetPtr(P, c.a))],
   [BANK, 0x4494, hook((P, c) => lookupStatBarLevel(P, c.hl, c.b))],

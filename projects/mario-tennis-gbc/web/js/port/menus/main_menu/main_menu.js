@@ -311,10 +311,13 @@ export function printNumberRightAligned(P, value, dest, buffer, width) {
 export function* tryMainMenuLinkHandshake(P) {
   const { V, bus } = P;
   P.di(); bus.w8(rIF, 0); bus.w8(rIE, bus.u8(rIE) & 0x09); P.ei();
-  if (V.menuCursorX !== LINK_CELL_X || V.menuCursorY !== LINK_CELL_Y) return { f: getRegs(P.cpu).f & ~FC & 0xF0 & ~0x60 };
+  if (V.menuCursorX !== LINK_CELL_X) return { a: V.menuCursorX, f: 0 };    // scf / ccf: NC (Z clear from the compare)
+  if (V.menuCursorY !== LINK_CELL_Y) return { a: V.menuCursorY, f: 0 };
   P.di(); const rx = V.linkRxByte; P.ei();
   if (rx === LINK_RX_READY) {
-    push(P, 0); yield* waitRom(P, 0, HOME.WaitFramesCmdAt6); pop(P);
+    push(P, 0); push(P, P.cpu.bc);                           // wait_frames 6: WaitFramesCmd's frame, then WaitFrames
+    yield* waitRom(P, 0, HOME.WaitFrames, { c: 6 });
+    pop(P); pop(P);
     const r = yield* waitFarCall(P, TryEstablishLink);
     if (!(r.f & FC)) return r;
   }
@@ -322,15 +325,19 @@ export function* tryMainMenuLinkHandshake(P) {
   const result = yield* waitFarCall(P, TryEstablishLink);
   push(P, result.a << 8 | result.f);
   if (result.f & FC) {
-    pushWramBank(P, P.V.wramBank);
-    yield* waitFarCall(P, ShowLinkStatusMessage, { c: result.a ? 1 : 0 });
+    const bank = V.wramBank;                                 // (ldh a, [hWramBank] / push af ... pop_wram_bank)
+    push(P, bank << 8);
+    yield* waitFarCall(P, ShowLinkStatusMessage, { a: bank, c: result.a ? 1 : 0 });
     popWramBank(P);
-    for (let n = 0x1F4; n > 0; n--) {
-      yield* waitFarCall(P, AnimateLinkStatusPalette, { de: n });
+    // up to 500 frames: the counter lives in de, through the calls (as on the ROM)
+    let de = 0x1F4;
+    do {
+      de = (yield* waitFarCall(P, AnimateLinkStatusPalette, { de })).de;
       withRomBank(P, BANK_MENU_LIB, () => updateAnimatedTiles(P));
       yield* advanceFrame(P);
       if (V.inputPressed & (PADF_A | PADF_B)) break;
-    }
+      de = (de - 1) & 0xFFFF;
+    } while (de);
   }
   beginFadeOut(P, 64);
   yield* callGen(P, waitFadeEnd(P, getRegs(P.cpu)));
