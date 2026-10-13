@@ -182,7 +182,7 @@ export class GamePort {
   step() {
     const cpu = this.cpu, m = this.mem, pc = cpu.pc;
     // the ROM's AdvanceFrame: the probe, once per call (when its first instruction is about to run, not an interrupt)
-    const atAdvance = pc === 0x2631 && (this.onAdvance || this.afterAdvance) && !(cpu.ime && (m.iflag & m.ie & 0x1F));
+    const atAdvance = pc === 0x2631 && (this.onAdvance || this.afterAdvance) && !this.hooks.has(0x2631) && !(cpu.ime && (m.iflag & m.ie & 0x1F));
     if (atAdvance && !this.probed) { this.probed = true; return this.atAdvanceFrame(); }
     if (pc < 0x8000) {
       const fn = pc < 0x100 && VECTORS[pc] ? (this.program[VECTORS[pc]] ? "vector" : null) : this.hooks.get(hookKey(m.romBank, pc));

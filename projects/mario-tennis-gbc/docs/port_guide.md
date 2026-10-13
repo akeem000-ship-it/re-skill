@@ -55,6 +55,17 @@ in place.
   what and why, no register shuffling. It must stay exact: same RAM writes, same order where it matters (I/O),
   same results in all branches.
 
+## Special routines
+
+- **Interrupt handlers** (VBlankHandler 00:2749, LCDStatHandler, TimerHandler, SerialHandler) are hooked at
+  their own address; the vectors at $40-$60 jump there. A handler's hook ends with `P.ime = true` (its `reti`).
+  `jp SoftReset` from a handler is `throw new SoftResetSignal()` (port.js).
+- **AdvanceFrame (00:2631)** as a generator: it starts with `yield* P.atAdvanceFrame()`, the point where the
+  lockstep lines the port up with the ROM. Its wait is `do { yield "halt"; } while (!P.V.vBlankOccurred)`:
+  each `yield "halt"` lets one frame of hardware pass, with the VBlank handler run at its start.
+- **Timing.** Ported code takes no CPU time. Code that measures time (rLY polling, hPeakLY, DIV) gives other
+  values. Keep reading the hardware exactly as the ROM does; the tests know which differences come from timing.
+
 ## Testing (both must pass before a part counts as ported)
 
 1. **Routine tests.** Run `node web/tests/port_routines.mjs [filter]`. Entries live in
