@@ -177,4 +177,21 @@ const MORE = [
   E("OverrideCharStatsForDebug", 7, 0x5CF4, { wram: 5 }),
 ];
 
-export const ROUTINES = [...ENGINE, ...DRAW, ...OBJ, ...LOOP, ...MATCH, ...MORE];
+// the graphics of bank $28 (variants.js) and the rest of the HUD and drawing entry points
+const GFX = [
+  E("LoadMatchGraphics", 0x28, 0x5EB0, { prep: (m, s) => { g8(m, 0xC8F5, r8(s, 1) % 3); g8(m, 0xC8F7, r8(s, 2) % 0x25); } }),
+  ...Array.from({ length: 19 }, (_, k) => E(`LoadMatchVariantGraphics ${k}`, 0x28, 0x5EFB, { prep: m => g8(m, 0xC8F7, k ? 0x11 + k : 0x05) })),
+  ...[0x6030, 0x6044, 0x6058, 0x606C, 0x6086].map(addr => E(`gfx 28:${addr.toString(16)}`, 0x28, addr, { regs: s => ({ a: r8(s, 1) % 4 }) })),
+  E("LoadEffectFrameTiles_28", 0x28, 0x60A0, { regs: s => ({ a: r8(s, 1) % 8, b: r8(s, 2) % 4 }) }),
+  E("LoadMatchSharedTiles_28", 0x28, 0x6024),
+  E("EndLinkSession", 7, 0x48F6, { prep: (m, s) => g8(m, 0xC33F, r8(s, 1) & 1) }),
+  E("LoadOnCourtCharacterGfx", 9, 0x40B5, { prep: (m, s) => g8(m, 0xC4CF, r8(s, 1) & 3) }),
+  E("SpawnServeIndicatorSideObj", 9, 0x4310, { prep: (m, s) => { objSlots(m, s); scores(m, s); } }), E("DismissServeIndicatorSideObj", 9, 0x431D, { prep: objSlots }),
+  E("SpawnCourtBannerObj", 9, 0x4371, { regs: s => ({ a: r8(s, 1) % 29 }), prep: objSlots }),
+  E("GetNextMoveCurveValue", 9, 0x4782, { prep: objSlots, out: ["a", "f"] }), E("ObjUpdateRunCurve", 9, 0x4764, { prep: objSlots }),
+  E("GetGfxSourcePtr", 9, 0x6154, { regs: s => ({ h: 0x61, l: 0x6D, a: r8(s, 1) % 10, b: r8(s, 2) & 1 }), out: ["h", "l", "b", "c"] }),
+  E("Unused_08_DrawShotAimMarker", 8, 0x54EA), E("UnusedDrawBallTargetMarker", 8, 0x5506),
+  E("DrawNearTeamCharsDoubles", 8, 0x63A0, { prep: ballDraw }), E("DrawFarTeamCharsDoubles", 8, 0x63F2, { prep: ballDraw }),
+];
+
+export const ROUTINES = [...ENGINE, ...DRAW, ...OBJ, ...LOOP, ...MATCH, ...MORE, ...GFX];

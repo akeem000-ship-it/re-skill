@@ -7,7 +7,7 @@
 // ($DC60, $FF-terminated) and copies each run, tiles then attributes, from the shadow map (wShadowTilemapPtr in WRAM
 // bank wShadowTilemapBank) to $9800 — one run per frame while the LCD is on (FlushDirtyRowsPerFrame), or all at once
 // and one frame after (FlushDirtyRowsNow).
-// Covered by out/port/story1.mtrec, out/port/menus1.mtrec and web/tests/port/routines_text.mjs.
+// Covered by out/port/story1.mtrec, out/port/debug1.mtrec, out/engine/rec2.mtrec and web/tests/port/routines_text.mjs.
 import {
   FLAG, WRAM_TEXT, WRAM_SOUND, vBGMap0, VRAM_BANK1, mapped, hook, setFlag, clearFlag, advanceFrame, lcdOn, queueVRAMCopy, pushWramBank, addFlags, Z, N, lo,
 } from "./common.js";

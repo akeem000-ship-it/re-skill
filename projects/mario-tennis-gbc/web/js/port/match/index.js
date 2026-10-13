@@ -5,4 +5,5 @@ import { HOOKS as DRAW } from "./draw.js";
 import { HOOKS as OBJ } from "./obj.js";
 import { HOOKS as LOOP } from "./match_loop.js";
 import { HOOKS as MATCH } from "./match.js";
-export const HOOKS = [...ENGINE, ...DRAW, ...OBJ, ...LOOP, ...MATCH];
+import { HOOKS as VARIANTS } from "./variants.js";
+export const HOOKS = [...ENGINE, ...DRAW, ...OBJ, ...LOOP, ...MATCH, ...VARIANTS];

@@ -40,7 +40,7 @@ function portExt(P) {
     loadPlayer2ScoreDigitGfx(E, a, b) { far(P, 9, 0x6139, { a, b }); },  // LoadPlayer2ScoreDigitGfx
     spawnServeIndicatorObjs() { obj.spawnServeIndicatorObjs(P); },
     dismissServeIndicatorObjs() { obj.dismissServeIndicatorObjs(P); },
-    loadOnCourtCharacterGfx() { far(P, 9, 0x40B5); },                    // LoadOnCourtCharacterGfx
+    loadOnCourtCharacterGfx() { obj.loadOnCourtCharacterGfx(P); },
     updateAllObjSprites() { obj.updateAllObjSprites(P); },
     // the court picture (court_08)
     refreshCourtScoreboard() { far(P, 8, 0x5E93); },                     // RefreshCourtScoreboard

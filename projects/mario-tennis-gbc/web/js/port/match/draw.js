@@ -8,6 +8,7 @@
 // Covered by out/engine/exh1.mtrec and rec1.mtrec (match play; port_lockstep.mjs).
 import { engine } from "./engine_port.js";
 import { callModeHook } from "./match.js";
+import * as variants from "./variants.js";
 
 const OAM_BANK1 = 0x08;
 // WRAM bank 4 (WRAM_ACTORS): the ball history ring (6 entries of [x, y projected words, tile, attr], newest at
@@ -121,7 +122,7 @@ export function drawBallTouchCharEffect(P) {
   queueSprite16(P, OAM_BANK1 | 2, 0x78, d, e);
   tickTimer(P, P.A.ballTouchCharTimer);
   const a = P.rom.u8(8, u16(DRAW_TOUCH_EFFECT_TABLE + S.ballTouchCharTimer));
-  if (a !== 0xFF) P.callRom(0x28, 0x6044, { a });
+  if (a !== 0xFF) variants.loadBallTouchCharEffectTilesA(P, a);
 }
 // UpdateBallVisuals 08:5170: the history ring moves on one entry (CopyMemoryBC, $1E bytes)
 export function shiftBallHistory(P) {
@@ -222,7 +223,7 @@ export function drawSpecialHitEffect(P) {
   queueSprite16(P, OAM_BANK1 | 1, 0x74, d, u8(e + 8));
   tickTimer(P, P.A.specialHitTimer);
   const a = P.rom.u8(8, u16(DRAW_SPECIAL_HIT_TABLE + S.specialHitTimer));
-  if (a !== 0xFF) P.callRom(0x28, 0x6030, { a });
+  if (a !== 0xFF) variants.loadSpecialHitEffectTiles(P, a);
 }
 // 08:5342 DrawLandingMarker: the lob's landing marker, its tiles switched every 8 frames (28:6058
 // LoadBallTouchCharEffectTilesB)
@@ -232,7 +233,7 @@ export function drawLandingMarker(P) {
   const { d, e } = applyCameraProjection(P, u16(S.landingMarkerX), u16(S.landingMarkerY));
   queueSprite16(P, OAM_BANK1 | 1, 0x7C, d, u8(e + 8));
   const a = P.rom.u8(8, DRAW_LANDING_MARKER_TABLE + (S.matchFrameCounter & 0x0F));
-  if (a !== 0xFF) P.callRom(0x28, 0x6058, { a });
+  if (a !== 0xFF) variants.loadBallTouchCharEffectTilesB(P, a);
 }
 // 08:5522 DrawTargetZone: the four corners of a drill's target zone
 export function drawTargetZone(P) {

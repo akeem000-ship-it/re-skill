@@ -4,7 +4,7 @@
 //
 // The engine draws into a 32x32 shadow map named by wShadowTilemapPtr / wShadowTilemapBank (its own map at $D000
 // in WRAM bank 5 by default; a screen's map in bank 3 after ResetScreenAndTextWindows), attributes $400 after the
-// tiles. Covered by out/port/story1.mtrec, out/port/menus1.mtrec and web/tests/port/routines_text.mjs.
+// tiles. Covered by out/port/story1.mtrec, out/port/debug1.mtrec, out/engine/rec2.mtrec and web/tests/port/routines_text.mjs.
 import {
   FLAG, WRAM_TEXT, PAD, vBGMap0, VRAM_BANK1, rVBK, rVDMA_SRC_HIGH, mapped, hook, testFlagF, advanceFrame, queueVRAMCopy, clearMemory16, pushWramBank, addFlags, Z, H, hi,
 } from "./common.js";

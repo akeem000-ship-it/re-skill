@@ -178,3 +178,15 @@ export const hook = fn => (P, c) => put(c, fn(P, c));
 export const hookGen = fn => (P, c) => (function* () { put(c, yield* fn(P, c)); })();
 // the result of `or a` / `and a` on a: Z when 0 (C and N clear, H set by `and`)
 export const flagsOfA = (a, and = false) => ((a & 0xFF) === 0 ? FLAG_Z : 0) | (and ? FLAG_H : 0);
+// The same for either kind: a routine that returns a generator (it waits) gets a generator hook
+export const auto = fn => (P, c) => {
+  const r = fn(P, c);
+  if (r && typeof r.next === "function") return (function* () { put(c, yield* r); })();
+  put(c, r);
+};
+// CPU registers kept around fn (a routine that pushes and pops all it uses, around ROM calls that change them)
+export const keepRegs = fn => (P, c) => {
+  const saved = { a: c.a, f: c.f, b: c.b, c: c.c, d: c.d, e: c.e, h: c.h, l: c.l };
+  fn(P, c);
+  Object.assign(c, saved);
+};

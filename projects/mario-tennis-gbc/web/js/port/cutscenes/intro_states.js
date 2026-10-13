@@ -574,10 +574,8 @@ const HANDLERS = new Map([
   [0x4A98, state17Init], [0x4AE0, state17Update], [0x4AEF, state17Exit],
   [0x4AF2, state18Init], [0x4BD0, state18Update], [0x4BED, state18Exit],
   [0x4C38, state19Init], [0x4C79, skySceneUpdate], [0x4C6E, state19Exit],
-  [0x4159, toLoop], [0x415F, P => clearTimer(P, LOOP2)],    // Unused_6b_UpdateHandler_6b, Unused_6b_ExitHandler_6b
+  [0x4159, toLoop], [0x415F, function* (P) { return clearTimer(P, LOOP2); }],   // Unused_6b_UpdateHandler_6b, Unused_6b_ExitHandler_6b
 ]);
-// (the last is no generator: wrap it)
-HANDLERS.set(0x415F, function* (P) { return clearTimer(P, LOOP2); });
 
 export const HOOKS = [
   hook(BANK, 0x402A, runIntroCutscene),

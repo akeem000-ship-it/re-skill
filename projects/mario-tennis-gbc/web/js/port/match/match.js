@@ -12,10 +12,11 @@ import { setBallTrailColor } from "../../engine/shot.js";
 import { engine, playSoundManaged } from "./engine_port.js";
 import * as draw from "./draw.js";
 import * as obj from "./obj.js";
+import { loadMatchGraphics } from "./variants.js";
 
 const COURT_HARD = 0x00, BGM_COURT_STAR = 0x11, MATCHCONTEXT_MINIGAME = 2, GAMEMODE_ISLAND_OPEN = 0x02, GAMEMODE_MARIO_MINIGAME = 0x08;
 const GAMEMODE_LINK_MATCH = 0x09, MATCHABORT_POINT = 0x01, MATCHABORT_MATCH = 0x80, POINTOUTCOME_BALL_HIT_PLAYER = 9;
-const WRAM_COURT_PLANES = 2, WRAM_ACTORS = 4;
+const WRAM_COURT_PLANES = 2, WRAM_ACTORS = 4, INIT_SERIAL_LINK = 0x28B9;
 // RAM the setup touches outside the engine's fields
 const W = {
   matchMenuSelection: 0xC4E0, keepMatchStatsFlag: 0xC8A7, modeScratch: 0xC780, aiServeAimOverride: 0xC7B5,
@@ -100,7 +101,7 @@ export function initMatchScene(P) {
   refreshCourtScoreboard(P);
   uploadCourtTilemap(P);
   uploadCourtAttrmap(P);
-  P.callRom(0x28, 0x5EB0);                                               // LoadMatchGraphics
+  loadMatchGraphics(P);
   P.wramBank(WRAM_ACTORS);
 }
 // 08:4190 RunMatch: fade out, build the scene with the LCD off, the match music, fade in, the court intro and the
@@ -112,7 +113,7 @@ export function* runMatch(P) {
   yield* P.runRom(0, 0x0346);                                            // DisableLCDSafely
   initMatchScene(P);
   P.callRom(0, 0x0376);                                                  // EnableLCD
-  P.callRom(7, 0x4846);                                                  // UpdateLinkSession
+  yield* P.runRom(7, 0x4846);                                            // UpdateLinkSession (link play: waits)
   playSoundManaged(P, S.matchBGM);
   clearMemory16(P, W.modeScratch, 8);
   P.bus.w8(W.aiServeAimOverride, 0xFF);
@@ -122,7 +123,7 @@ export function* runMatch(P) {
   S.matchSimFrozen = 0;
   yield* flow.runMatchPlayLoop(E);
   S.matchEndLinkState = S.linkState;
-  P.callRom(7, 0x48F6);                                                  // EndLinkSession
+  endLinkSession(P);
   if (S.gameMode === GAMEMODE_MARIO_MINIGAME) yield* showMatchResultScreens(P);
   yield* fadeOut(P);
   yield* advanceFrame(P);
@@ -131,6 +132,9 @@ export function* runMatch(P) {
   yield* advanceFrame(P);
   yield* P.runRom(0x1E, 0x6534);                                         // ProcessMatchRewards
 }
+
+// 07:48F6 EndLinkSession: the link session over, the serial port reset (00:28B9 InitSerialLink)
+export function endLinkSession(P) { engine(P).S.linkSessionActive = 0; P.callRom(0, INIT_SERIAL_LINK); }
 
 // ---- the court picture (court_08) ----
 // 08:5E52 SnapshotCourtTilemaps: the court's tile and attribute maps restored from their saved copies (WRAM bank 2,
@@ -306,6 +310,7 @@ const keeping = gen => (P, c) => (function* () { const r = REGS.map(k => c[k]); 
 // a = 1 or 0 with the flags of `xor a / inc a` (Z clear) or `xor a` (Z set)
 const yesNo = (c, v) => { c.a = v; c.f = v ? 0x00 : 0x80; };
 export const HOOKS = [
+  [7, 0x48F6, P => endLinkSession(P)],
   [8, 0x4070, P => initDefaultMatchSettings(P)],
   [8, 0x6544, P => initMinigameMatchSettings(P)],
   [8, 0x450E, P => initViewFlipPreference(P)],

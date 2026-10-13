@@ -5,7 +5,7 @@
 // Menus over windows: CreateMenuWindowFromText sizes a window from its text, pushes a frame on wMenuStack
 // ([rowCount << 4 | cursorRow, windowId], wMenuDepth the top) so nested menus get their cursor back.
 // RunMenuSelection returns the row picked (< $7F), $FF (B or START), $FE / $FD (page left / right, paged menus).
-// Covered by out/port/story1.mtrec (the Yes/No menus) and out/port/menus1.mtrec; web/tests/port/routines_text.mjs.
+// Covered by out/port/story1.mtrec (the Yes/No menus), out/port/debug1.mtrec and out/engine/rec2.mtrec; web/tests/port/routines_text.mjs.
 import {
   WRAM_TEXT, TILEATTR_PRIORITY, PAD, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_CANCEL, vBGMap0, mapped, hook,
   playSound, advanceFrame, registerFrameTask, unregisterFrameTask, queueBGTileWrite, pushWramBank, cpFlags,

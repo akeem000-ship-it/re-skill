@@ -2,7 +2,7 @@
 // screens (bank $05, src/engine/text/debug_flags_05.asm). Port of the gerbiljames/mario-tennis-gbc-disasm (MIT,
 // third_party/mario-tennis-gbc-disasm): names and addresses are its own.
 // Only reached in debug mode; checked by web/tests/port/routines_text.mjs (the drawing routines) and
-// web/tests/port/text_waiting.mjs (the menus, run from recorded states with debug mode forced).
+// the lockstep over out/port/debug1.mtrec (the menus, from a state of out/engine/rec2.mtrec with hDebugStepMode forced on).
 import {
   FLAG, WRAM_TEXT, PAD, STORYENTRY_NONE, mapped, hook, testFlag, setFlag, clearFlag, advanceFrame,
   registerFrameTask, unregisterFrameTask, callHome, copyMemoryFast, copyMemoryBC, farcall, farcallWaiting, HOME, addFlags, Z,

@@ -1,7 +1,7 @@
 // The debug palette viewer and colour editor, and the unused raw-tilemap string writers (bank $05,
 // src/engine/text/debug_palette_05.asm). Port of the gerbiljames/mario-tennis-gbc-disasm (MIT,
 // third_party/mario-tennis-gbc-disasm): names and addresses are its own.
-// Only reached from the debug menu; checked by web/tests/port/routines_text.mjs and web/tests/port/text_waiting.mjs.
+// Only reached from the debug menu; checked by web/tests/port/routines_text.mjs and the lockstep over out/port/debug1.mtrec.
 import {
   WRAM_TEXT, PAD, vTiles0, mapped, hook, advanceFrame, registerFrameTask, unregisterFrameTask, queueVRAMCopy,
   callHome, HOME, pushWramBank, addFlags,

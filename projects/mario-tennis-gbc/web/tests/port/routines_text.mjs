@@ -1,11 +1,11 @@
 // Routine tests for web/js/port/text, the text and window engine of bank $05 (run by web/tests/port_routines.mjs;
 // names start "text." — run them alone with `node web/tests/port_routines.mjs text. --rec out/port/story1.mtrec,
-// out/port/menus1.mtrec`). Registers are drawn from the state (a hash of the recording and frame); prep() sets up the
+// out/port/debug1.mtrec, out/engine/rec2.mtrec`). Registers are drawn from the state (a hash of the recording and frame); prep() sets up the
 // engine's state where a branch needs it (windows, the glyph stream, queues, flags, the printer's text), and
 // switches the LCD off for routines that only wait for frames while it is on (their VRAM copies then go by DMA at
 // once). Every test runs with interrupts off on both machines (IE 0, the CPU not halted), as romCall runs the ROM.
 // Routines that wait for frames whatever the state (the button and page waits, the delays, the menus) are checked
-// by web/tests/port_lockstep.mjs over out/port/story1.mtrec and out/port/menus1.mtrec.
+// by web/tests/port_lockstep.mjs over out/port/story1.mtrec and out/port/debug1.mtrec, out/engine/rec2.mtrec.
 
 const ALL = ["a", "f", "b", "c", "d", "e", "h", "l"];
 const NOF = ["a", "b", "c", "d", "e", "h", "l"];
@@ -246,7 +246,9 @@ export const ROUTINES = [
   T("MeasureDialogueWidthTiles", 0x5BFC, { gen: r => ({ hl: textId(r) }), prep: (mem, s, r) => queues(mem, r) }),
   T("FetchDialogueText", 0x5C18, { gen: r => ({ hl: textId(r) }) }),
   T("FetchDialogueText (any id)", 0x5C18, { gen: r => ({ hl: r(0x8000) }) }),
-  T("FetchDialogueText (SRAM)", 0x5C18, { gen: r => ({ hl: 0x8000 | r(0x8000), de: r(4) ? r(16) : r(0x10000) }), prep: mem => { mem.ramEnable = true; } }),
+  // (de is the SRAM string's index: past the 16 table entries the offsets are code bytes, and the copy's source can be
+  // the stack page, which differs)
+  T("FetchDialogueText (SRAM)", 0x5C18, { gen: r => ({ hl: 0x8000 | r(0x8000), de: r(16) }), prep: mem => { mem.ramEnable = true; } }),
   T("FetchShortText", 0x5CA8, { gen: r => ({ hl: r(0x10000) }) }),
   T("AddTextIdOffset", 0x5D2B, { gen: r => ({ hl: anyTextId(r), a: r(256) }), out: ["a", "f", "b", "c", "d", "e", "h", "l"] }),
   T("AddTextIdOffset (bank end)", 0x5D2B, { gen: r => { const b = r(13); return { hl: b << 10 | (COUNTS[b] - 1 - r(4)), a: r(8) }; } }),

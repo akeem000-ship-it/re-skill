@@ -275,10 +275,25 @@ export function loadServeGfx(P) {
   queueVRAMCopy(P, u16(ptr + k), VTILES0 + 0x38 * TILE_SIZE, 4);
 }
 
+// 09:40B5 LoadOnCourtCharacterGfx: each on-court character's sprite tiles (18:5AB9 LoadOnCourtCharTilesA, 18:5ACE
+// LoadOnCourtCharTilesB by wCharSpriteSetId) into its block of OBJ tiles, after the shared block at tile $14 (set $FF);
+// by the number on court: character 2 ($10), 3 ($18), 1 ($08), then 0 ($00); bank 4 mapped after
+export function loadOnCourtCharacterGfx(P) {
+  const tiles = (fn, a, tile) => P.callRom(0x18, fn, { a, d: (VTILES0 + tile * TILE_SIZE) >> 8, e: (tile * TILE_SIZE) & 0xFF });
+  const A = 0x5AB9, B = 0x5ACE;
+  tiles(B, 0xFF, 0x14);
+  const banks = [[], [[5, 0x08]], [[7, 0x18], [5, 0x08]], [[6, 0x10], [7, 0x18], [5, 0x08]]][P.V.onCourtCharCountMinus1 & 3];
+  for (const [bank, tile] of [...banks, [4, 0x00]]) {
+    P.wramBank(bank);
+    tiles(A, P.bus.u8(0xDF7E), tile);                                    // wCharSpriteSetId
+    tiles(B, P.bus.u8(0xDF7E), tile + 4);
+  }
+}
 // 09:45F8 UnusedToggleObjMoveCurveBits_1 / 09:4601 ..._2: flip curve bits 1 / 0-1 (nothing calls them)
 export function toggleObjMoveCurveBits(P, bc, bits) { P.bus.w8(bc + CURVE, P.bus.u8(bc + CURVE) ^ bits); }
 const DE = (c, v) => { c.de = v; };
 export const HOOKS = [
+  [9, 0x40B5, P => loadOnCourtCharacterGfx(P)],
   [9, 0x4310, P => loadObjTemplate(P, P.V.servingCharCourtPos, SERVE_INDICATOR_SIDE_OBJ_TEMPLATES, OBJSLOT[4])],   // SpawnServeIndicatorSideObj
   [9, 0x431D, P => startObjExitAnim(P, SERVE_INDICATOR_SIDE_OBJ_TEMPLATES, OBJSLOT[4])],                          // DismissServeIndicatorSideObj
   [9, 0x4371, (P, c) => loadObjTemplate(P, c.a, COURT_BANNER_OBJ_TEMPLATES, OBJSLOT[3])],                         // SpawnCourtBannerObj

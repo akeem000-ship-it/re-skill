@@ -1,7 +1,7 @@
 // Inline glyphs, the glyph stream's start at a cell, the row flush and the glyph uploads (bank $05,
 // src/engine/text/glyph_font_05.asm; the font and its widths are data at $7920 / $7F80). Port of the
 // gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/mario-tennis-gbc-disasm): names and addresses are its own.
-// Covered by out/port/story1.mtrec, out/port/menus1.mtrec and web/tests/port/routines_text.mjs.
+// Covered by out/port/story1.mtrec, out/port/debug1.mtrec, out/engine/rec2.mtrec and web/tests/port/routines_text.mjs.
 import {
   FLAG, WRAM_TEXT, WRAM_SOUND, vTiles1, rVBK, mapped, hook, setFlag, clearFlag, testFlag, advanceFrame, lcdOn,
   queueVRAMCopy, callHome, farcallWaiting, HOME, pushWramBank,

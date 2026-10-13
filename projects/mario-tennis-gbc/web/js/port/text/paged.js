@@ -1,7 +1,7 @@
 // Paged text menus (consecutive text ids, a page each) and the unused shared menu loop of the pause-options layer
 // (bank $05, src/engine/text/paged_05.asm). Port of the gerbiljames/mario-tennis-gbc-disasm (MIT,
 // third_party/mario-tennis-gbc-disasm): names and addresses are its own.
-// Covered by out/port/menus1.mtrec and web/tests/port/routines_text.mjs.
+// Covered by out/port/debug1.mtrec, out/engine/rec2.mtrec and web/tests/port/routines_text.mjs.
 import {
   WRAM_TEXT, PAD, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_CANCEL, mapped, hook, playSound, advanceFrame,
   registerFrameTask, unregisterFrameTask, pushWramBank,

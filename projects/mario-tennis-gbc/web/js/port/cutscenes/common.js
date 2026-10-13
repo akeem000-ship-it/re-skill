@@ -55,8 +55,22 @@ export const callHome = (P, addr, regs = {}) => P.callRom(0, addr, regs);
 // farcall: the routine of entry `slot` of `bank`'s $4000 table, with that bank mapped (P.callRom maps it, sets
 // hRomBank, and maps the caller's bank back afterwards, as FarCall's tail does)
 export function farcall(P, [bank, slot], regs = {}) { return P.callRom(bank, P.rom.u16(bank, 0x4000 + slot), regs); }
+// A call into a routine that waits, as P.runRom, but it counts the routine as returned when its `ret` takes the
+// return address off the stack, whatever address that is. (The lockstep test copies the ROM's state into the port
+// after a timing difference, the stack page with it: the return address P.runRom pushed is then the ROM's own, and
+// P.runRom would never see its sentinel come back, so the ROM's code would carry on there instead of the port's.)
+export function* runRom(P, bank, addr, regs = {}) {
+  const { cpu, mem } = P;
+  const saved = P.enter(bank, addr, regs);
+  while (cpu.sp !== saved.sp) {
+    if (cpu.halted && !(mem.iflag & mem.ie & 0x1F)) { yield "cpuhalt"; cpu.halted = false; continue; }
+    const it = P.step();
+    if (it) yield* it;
+  }
+  return P.leave(saved);
+}
 // AdvanceFrame (00:2631): the frame barrier (home's)
-export function* advanceFrame(P) { return yield* P.runRom(0, HOME.AdvanceFrame); }
+export function* advanceFrame(P) { return yield* runRom(P, 0, HOME.AdvanceFrame); }
 // `sound id` (rst $08 ; db id): the sound request, as PlaySoundManaged with the id in a (every register kept)
 export function sound(P, id) { callHome(P, HOME.PlaySoundManaged, { a: id }); }
 // QueueVRAMCopy (00:0480): `blocks` 16-byte blocks from src (through the ROM/WRAM banks mapped now) to VRAM dest
@@ -84,7 +98,7 @@ export const disableLCDSafely = P => callHome(P, HOME.DisableLCDSafely);   // (b
 export const beginFadeOut = (P, speed) => callHome(P, HOME.BeginFadeOut, { c: speed });
 export const beginFadeIn = (P, speed) => callHome(P, HOME.BeginFadeIn, { c: speed });   // script_fade_in speed
 // WaitFadeEnd (00:1DA4): frames until the fade is over
-export function* waitFadeEnd(P) { return yield* P.runRom(0, HOME.WaitFadeEnd); }
+export function* waitFadeEnd(P) { return yield* runRom(P, 0, HOME.WaitFadeEnd); }
 // `ld c, speed ; call BeginFadeOut ; call WaitFadeEnd`
 export function* fadeOut(P, speed) { beginFadeOut(P, speed); return yield* waitFadeEnd(P); }
 // `script_fade_in speed ; call WaitFadeEnd`
@@ -94,7 +108,7 @@ export function* fadeIn(P, speed) { beginFadeIn(P, speed); return yield* waitFad
 export function* waitFramesCmd(P, n, retAddr) {
   const { cpu } = P, bc = cpu.bc;
   push(P, retAddr); push(P, bc);
-  yield* P.runRom(0, HOME.WaitFrames, { c: n });
+  yield* runRom(P, 0, HOME.WaitFrames, { c: n });
   P.cpu.sp = (P.cpu.sp + 4) & 0xFFFF;
   cpu.bc = bc;
 }
