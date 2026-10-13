@@ -41,7 +41,9 @@ export function unusedInitPlayerRecordForCharacter(P, slot, ch) {
   const first = bus.u8(src), second = bus.u8(src + 1);
   bus.w8(name + 0x0E, first);
   bus.w8(name + 0x0C, second);
-  return { a: second, f: subFlags(sum, l & 0xFF), bc: name, de: (src + 1) & 0xFFFF, hl: (name + 0x0C) & 0xFFFF };
+  // (the flags: Z of `sub l`, then H and C of the last `add hl, bc`)
+  const zero = ((sum - (l & 0xFF)) & 0xFF) === 0, h = ((name & 0xFFF) + 0x0C) > 0xFFF, cy = name + 0x0C > 0xFFFF;
+  return { a: second, f: (zero ? FZ : 0) | (h ? FH : 0) | (cy ? FC : 0), bc: name, de: (src + 1) & 0xFFFF, hl: (name + 0x0C) & 0xFFFF };
 }
 
 // Unused_18_InitConfirmScreen (18:52DE): the confirm screen: frame tasks and sprites cleared, the tile VRAM cleared
@@ -134,11 +136,11 @@ export function* unusedRunTwoOptionSelect(P, cpu, variant) {
 // Unused_18_DrawDecimalNumberSprites (18:54B1): the number hl in decimal (FormatDecimalNumber, width a, into a
 // buffer on the stack) as glyph sprites from (d, e), attribute b. af, bc, hl kept; de after the last glyph.
 export function unusedDrawDecimalNumberSprites(P, cpu, value, de, attr, width) {
-  const sp = cpu.sp, buffer = (sp - 16) & 0xFFFF;             // push af / bc / hl, add sp, -10
+  const sp = cpu.sp, buffer = (sp - 16) & 0xFFFF, c = cpu.c;   // push af / bc / hl, add sp, -10
   cpu.sp = (sp - 20) & 0xFFFF;                                 // push bc / de
   try {
     const text = callHome(P, HOME.FormatDecimalNumber, { a: width, hl: value, de: buffer, bc: buffer }).bc;
-    const r = unusedDrawStringSprites(P, text, de >> 8, de & 0xFF, attr, cpu.c);
+    const r = unusedDrawStringSprites(P, text, de >> 8, de & 0xFF, attr, c);
     return { de: r.d << 8 | r.e };
   } finally { cpu.sp = sp; }
 }
@@ -168,8 +170,13 @@ export function unusedDrawGlyphSprite(P, ch, d, e, attr, c) {
 // (16 bytes each, Unused_18_CopyBytes11) into the tilemap pieces at their places
 const THREE_OPTION_ROWS = [[3, 0xDDC1], [4, 0xDDE1], [5, 0xDE01], [0, 0xD9C1], [1, 0xD9E1], [2, 0xDA01]];
 const YES_NO_ROWS = [[2, 0xDDE1], [3, 0xDE01], [0, 0xD9E1], [1, 0xDA01]];
-const copyLabels = (P, base, rows) => { let r = {}; for (const [i, de] of rows) r = callFar(P, FAR.Unused_18_CopyBytes11, { hl: base + i * LABEL_SIZE, de }); return r; };
-export function unusedDrawThreeOptionLabels(P) { unusedDrawConfirmScreenBox(P); return copyLabels(P, ThreeOptionLabelsData0, THREE_OPTION_ROWS); }
+// (each copy gets the registers the one before left, as on the ROM; the first one bc as the caller had it)
+const copyLabels = (P, base, rows, first = {}) => {
+  let r = {};
+  rows.forEach(([i, de], k) => { r = callFar(P, FAR.Unused_18_CopyBytes11, { ...(k ? {} : first), hl: base + i * LABEL_SIZE, de }); });
+  return r;
+};
+export function unusedDrawThreeOptionLabels(P) { const box = unusedDrawConfirmScreenBox(P); return copyLabels(P, ThreeOptionLabelsData0, THREE_OPTION_ROWS, { bc: box.bc }); }
 export function unusedDrawYesNoLabels(P) { return copyLabels(P, YesNoLabels0, YES_NO_ROWS); }
 // Unused_18_DrawTileBlock6x2ToTilemap (18:5586): a 6 x 2 block from hl to de, rows $20 apart in both
 export function unusedDrawTileBlock6x2ToTilemap(P, hl, de) {

@@ -9,7 +9,7 @@
 import { copyMemoryFast } from "../../home/memory.js";
 import { testSaveFlag } from "../../save/storyslots.js";
 import {
-  FZ, FN, FH, cpFlags, addFlags, hook, callHome, callFar, queueCopy, loadPalettes, HOME, FAR,
+  FZ, FN, FH, FC, cpFlags, addFlags, hook, callHome, callFar, queueCopy, loadPalettes, HOME, FAR,
   TILE_SIZE, TILEMAP_WIDTH, SCREEN_HEIGHT, VRAM_BANK1, vBGMap0, wTextTileBuffer,
 } from "./defs.js";
 
@@ -60,11 +60,11 @@ export function unusedWriteTilemapByteAdvance(P, a, de) { P.bus.w8(de, a); retur
 // Unused_18_DrawDecimalNumberToTilemap (18:43A9): the number hl in decimal (FormatDecimalNumber, width a, into a
 // 10-byte buffer on the stack) written at de by DrawStringToTilemap. af, bc, hl kept; de as the writer leaves it.
 export function unusedDrawDecimalNumberToTilemap(P, cpu) {
-  const sp = cpu.sp, buffer = (sp - 16) & 0xFFFF;              // push af / bc / hl, add sp, -10
+  const sp = cpu.sp, buffer = (sp - 16) & 0xFFFF, dest = cpu.de;   // push af / bc / hl, add sp, -10
   cpu.sp = (sp - 18) & 0xFFFF;                                 // push de
   try {
     const text = callHome(P, HOME.FormatDecimalNumber, { a: cpu.a, hl: cpu.hl, de: buffer, bc: buffer }).bc;
-    const r = callFar(P, FAR.Unused_05_WriteStringToTilemap, { hl: text, de: cpu.de });
+    const r = callFar(P, FAR.Unused_05_WriteStringToTilemap, { hl: text, de: dest });
     return { de: r.de };
   } finally { cpu.sp = sp; }
 }
@@ -92,7 +92,7 @@ function frameRow(P, hl, width, [left, middle, right]) {
   return (hl + 1) & 0xFFFF;
 }
 // Unused_18_DrawBoxTopRow (18:4414): bc, hl kept; a = the right corner, Z from the count
-export function unusedDrawBoxTopRow(P, hl, width) { frameRow(P, hl, width, BOX_TOP); return { a: BOX_TOP[2], f: FZ | FN }; }
+export function unusedDrawBoxTopRow(P, hl, width, f = 0) { frameRow(P, hl, width, BOX_TOP); return { a: BOX_TOP[2], f: FZ | FN | (f & FC) }; }
 // Unused_18_DrawBoxSideRow (18:4427): the left and right edges (b apart) of a row; hl kept, a = l + b - 1
 export function unusedDrawBoxSideRow(P, hl, width) {
   P.bus.w8(hl, BOX_SIDE[0]);
@@ -101,8 +101,8 @@ export function unusedDrawBoxSideRow(P, hl, width) {
   return { a: sum & 0xFF, f: addFlags(off, l) };
 }
 // Unused_18_DrawBoxBottomRow (18:4435): hl after the row, b = 0, a = the right corner
-export function unusedDrawBoxBottomRow(P, hl, width) {
-  return { hl: frameRow(P, hl, width, BOX_BOTTOM), a: BOX_BOTTOM[2], b: 0, f: FZ | FN };
+export function unusedDrawBoxBottomRow(P, hl, width, f = 0) {
+  return { hl: frameRow(P, hl, width, BOX_BOTTOM), a: BOX_BOTTOM[2], b: 0, f: FZ | FN | (f & FC) };
 }
 
 // ---- the bobbing offsets of bank $18 ----
@@ -164,8 +164,8 @@ export function unusedTestUnlockFlagById(P, id) {
   const at = (UnlockFlagIds_18 & 0xFF00) + (((UnlockFlagIds_18 & 0xFF) + ((id * 2) & 0xFF)) & 0x1FF);
   const flag = P.bus.u16(at), a = (flag & 0xFF) | (flag >> 8);
   if (!a) return { a, f: cpFlags(a, 0xFF) };
-  if (flag & 1) return { a: flag & 0xFF, f: testSaveFlag(P, flag & 0xFFFE) ? FH : FZ | FH };
-  const r = callHome(P, HOME.TestGameFlag, { de: flag });
+  if (flag & 1) return { a, f: testSaveFlag(P, flag & 0xFFFE) ? FH : FZ | FH };
+  const r = callHome(P, HOME.TestGameFlag, { a, de: flag });
   return { a: r.a, f: r.f, b: r.b, c: r.c };
 }
 
@@ -202,9 +202,9 @@ export const HOOKS = [
   [BANK_CURSORBOX, 0x43A6, hook((P, c) => unusedWriteTilemapByteAdvance(P, c.a, c.de))],
   [BANK_CURSORBOX, 0x43A9, hook((P, c) => unusedDrawDecimalNumberToTilemap(P, c))],
   [BANK_CURSORBOX, 0x43C8, hook((P, c) => { unusedDrawBox(P, c.hl, c.de, c.b, c.c); })],
-  [BANK_CURSORBOX, 0x4414, hook((P, c) => unusedDrawBoxTopRow(P, c.hl, c.b))],
+  [BANK_CURSORBOX, 0x4414, hook((P, c) => unusedDrawBoxTopRow(P, c.hl, c.b, c.f))],
   [BANK_CURSORBOX, 0x4427, hook((P, c) => unusedDrawBoxSideRow(P, c.hl, c.b))],
-  [BANK_CURSORBOX, 0x4435, hook((P, c) => unusedDrawBoxBottomRow(P, c.hl, c.b))],
+  [BANK_CURSORBOX, 0x4435, hook((P, c) => unusedDrawBoxBottomRow(P, c.hl, c.b, c.f))],
   [BANK_CURSORBOX, 0x4444, hook((P, c) => swapped(c, unusedAddBobbingOffsetXY(P, c.d, c.e)))],
   [BANK_CURSORBOX, 0x4478, hook((P, c) => swapped(c, addBobbingOffsetY(P, c.e)))],
   [BANK_CURSORBOX, 0x449B, hook((P, c) => swapped(c, addBobbingOffsetYLarge(P, c.e)))],
