@@ -19,7 +19,7 @@
 import {
   BANK_DRILLS, BANK_MINIGAMES, ROM, far, farWait, sound, pushWramBank, inBankWait, rb, rw, at, jumpTable,
   rlaBit, shiftedOutBit, popcount8, hook, hookGen, flagsOfA, FLAG_Z, FLAG_N, FLAG_C,
-  POINTOUTCOME, WINLOSE_LOSE, MATCHABORT_POINT, CHARSTATE_INERT, WRAM_TEXT, WRAM_CHAR1, WRAM_COURT_PLANES, WRAM_SCREEN,
+  POINTOUTCOME, WINLOSE_LOSE, MATCHABORT_POINT, MATCHABORT_MATCH, CHARSTATE_INERT, WRAM_TEXT, WRAM_CHAR1, WRAM_COURT_PLANES, WRAM_SCREEN,
   CHAR, CHAR_NONE, MATCHLIST_TRAINING, MINIGAME_TENNIS_MACHINE_1, MINIGAME_TWO_ON_ONE, MINIGAME_SERVICE_MATCH_2,
   DRILLMSG_HIDE, DRILLMSG_NO_MESSAGE_FOR_THIS_CASE,
 } from "./common.js";
@@ -549,10 +549,8 @@ export const HOOKS = [
   [B, 0x7258, hookGen(P => runDoublesDrillMatch(P))],                                 // RunDoublesDrillMatch
   ...[0x4B05, 0x4CEE, 0x5491, 0x5724, 0x5A4F, 0x67C2, 0x6A0D].map(a => [B, a, hook(P => awardPointToSide(P))]),   // *AwardPointToSide
 ];
-export { flagsOfA };
 
 // ---- pieces the drills share ----
-export const DC = n => P => P.A.drillCounters + n;           // wDrillCounters + n
 export const counter = (P, n) => P.bus.u8(P.A.drillCounters + n);
 export const setCounter = (P, n, v) => P.bus.w8(P.A.drillCounters + n, v & 0xFF);
 export const incCounter = (P, n) => setCounter(P, n, counter(P, n) + 1);
@@ -565,7 +563,7 @@ export function decideByTwoPointLead(P) {
   const lead = d & 0x80 ? (-d) & 0xFF : d;
   if (lead < 2) return false;
   P.V.pointWinLoseFlag = d & 0x80 ? 0x01 : WINLOSE_LOSE;
-  P.V.matchAbortFlag = 0x80;
+  P.V.matchAbortFlag = MATCHABORT_MATCH;
   return true;
 }
 // NetGamePractice1HandlePointEnd (0B:5CF9; the same code at NetGamePractice2 0B:5FB3, NetGamePractice3 0B:6272)

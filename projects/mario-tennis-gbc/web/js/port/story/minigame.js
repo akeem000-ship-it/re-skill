@@ -134,28 +134,29 @@ function checkHit(P, window, alt) {
   const { bus } = P, crossed = bus.u8(P.A.ballCrossedNetFlag);
   if (!crossed) return { a: 0, f: FZ | FH };
   if (alt) P.V.minigameHitPending = 1;
-  const a = alt ? 1 : crossed;
+  // one axis: hit when -window <= pos - ball < 0 (bit 7 of the difference, then of it + window)
   const axis = (pos, ball) => {
-    const de = bus.u16(P.A.ballHistory + ball), d = (bus.u16(work(pos)) - de) & 0xFFFF;
-    if (!(d & 0x8000)) return { ok: false, de, hl: d };
-    const h = (d + window) & 0xFFFF;
-    return { ok: !(h & 0x8000), de: window, hl: h, carry: d + window > 0xFFFF };
+    const de = bus.u16(P.A.ballHistory + ball), p = bus.u16(work(pos)), d = (p - de) & 0xFFFF, a = d >> 8;
+    if (!(d & 0x8000)) return { ok: false, a, de, hl: d, f: bitFlags(false, p < de ? FC : 0) };
+    const sum = d + window, h = sum & 0xFFFF, carry = sum > 0xFFFF ? FC : 0;
+    return { ok: !(h & 0x8000), a, de: window, hl: h, f: bitFlags(!!(h & 0x8000), carry) };
   };
   let r = axis(T_X, BALL_X);
-  if (!r.ok) return { a, de: r.de, hl: r.hl, f: bitFlags(!!(r.hl & 0x8000), r.carry ? FC : 0) };
+  if (!r.ok) { const { ok, ...out } = r; return out; }
   r = axis(T_Y, BALL_Y);
-  if (!r.ok) return { a, de: r.de, hl: r.hl, f: bitFlags(!!(r.hl & 0x8000), r.carry ? FC : 0) };
+  if (!r.ok) { const { ok, ...out } = r; return out; }
   bus.w8(work(T_FLAGS), bus.u8(work(T_FLAGS)) | TARGET_HIT);
-  return { a, de: window, hl: work(T_FLAGS), f: FZ | FH | (r.carry ? FC : 0) };
+  return { a: r.a, de: r.de, hl: work(T_FLAGS), f: r.f };
 }
 // DeflectBallOffMinigameTarget (0A:6774): push the ball by type & 3: 0 +6 tiles in X, 1 up and half the depth
 // speed, 2 -6 tiles in X, 3 down and half the depth speed.
 export function deflectBallOffMinigameTarget(P, type) {
   const { bus } = P, t = type & 3;
   const addX = de => {
-    const at = P.A.ballVelocityX, lo = bus.u8(at) + (de & 0xFF), hi = bus.u8(at + 1) + (de >> 8) + (lo > 0xFF ? 1 : 0);
+    const at = P.A.ballVelocityX, lo = bus.u8(at) + (de & 0xFF), carry = lo > 0xFF ? 1 : 0, old = bus.u8(at + 1);
+    const hi = (old + (de >> 8) + carry) & 0xFF;
     bus.w8(at, lo); bus.w8(at + 1, hi);
-    return { a: hi & 0xFF, de, hl: at + 2, f: addFlags(bus.u8(at + 1) === (hi & 0xFF) ? 0 : 0, 0) & 0 | (zf(hi) | (((((hi - (de >> 8) - (lo > 0xFF ? 1 : 0)) & 0x0F) + ((de >> 8) & 0x0F) + (lo > 0xFF ? 1 : 0)) > 0x0F) ? FH : 0) | (hi > 0xFF ? FC : 0)) };
+    return { a: hi, de, hl: at + 2, f: addFlags(old, de >> 8, carry) };
   };
   const halveDepth = bc => {
     bus.w16(P.A.ballVelocityHeight, bc);
