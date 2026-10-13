@@ -27,7 +27,6 @@ import {
 } from "./common.js";
 import { startDrillFromDefinition } from "./drills.js";
 import { clearMemory16, copyMemoryFast, copyMemoryBC, queueVRAMCopy } from "../home/memory.js";
-import { copyTextRect, tickTimer } from "../home/ui.js";
 import { queueSprite } from "../home/fade.js";
 import { divAHLByE, divHLByDE } from "../home/math.js";
 
@@ -134,7 +133,7 @@ export function startScorePopup(P) {
 // the spot, rising as the timer runs down
 export function updateScorePopup(P) {
   if (!P.V.scorePopupTimer) return;
-  tickTimer(P, P.A.scorePopupTimer);
+  far(P, ROM.TickTimer, hl(P.A.scorePopupTimer));
   const src = P.A.scorePopupSource;
   const r = far(P, ROM.ApplyCameraProjection, { ...hl(P.bus.u16(src)), ...bc(P.bus.u16(src + 2)) });
   const y = (P.V.scorePopupTimer + r.e + 0xE8) & 0xFF;
@@ -180,6 +179,11 @@ export function drawMinigameGridCell(P, cell, type) {
 export function queueMinigameHudVRAMCopy(P) {
   queueVRAMCopy(P, COURT_TILEMAP + HUD_ROW, VBGMAP0 + HUD_ROW, 5 * 32 / 16);
   queueVRAMCopy(P, COURT_ATTRMAP + HUD_ROW, VBGMAP0 + HUD_ROW + VRAM_BANK1, 5 * 32 / 16);
+}
+
+// CopyTextRect (00:2B46): a width x rows block of bytes from hl to de (rows 32 apart), as the ROM's
+function copyTextRect(P, src, dest, width, rows) {
+  far(P, ROM.CopyTextRect, { ...hl(src), ...de(dest), b: width, c: rows });
 }
 
 // ---- the point's end and result (minigame_actors_0d) ----

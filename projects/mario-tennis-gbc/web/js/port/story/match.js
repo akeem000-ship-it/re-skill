@@ -51,7 +51,7 @@ export function initStoryMatchSettings(P) {
   V.matchPlayerChar = V.storyModeMainCharacterOverworldSprite;
   V.matchIsDoubles = 0;
   V.onCourtCharCount = 2;
-  V.currentMinigameStoryMatch = (V.currentMinigameStoryMatch & 0xFF00) | MATCHLIST_SINGLES;
+  P.bus.w8(P.A.currentMinigameStoryMatch, MATCHLIST_SINGLES);
   V.matchOpponentChar = CHAR_MARK;
   V.currentlyUsedCourt = COURT_GRASS;
   V.matchTypeNumberOfSets = DEFAULT_SETS;
@@ -66,8 +66,8 @@ export function* runStoryMatch(P) {
   beginFadeOut(P, MATCH_FADE_SPEED);
   yield* waitFadeEnd(P, { a: 0, f: 0, b: 0, c: MATCH_FADE_SPEED, d: 0, e: 0, h: 0, l: 0 });
   assignStoryMatchCharacters(P);
-  yield* P.runRom(BANK_MATCH, RunMatch);
-  if (!V.saveAndQuitRequest) { V.keepMatchStatsFlag = 0; return { a: 0, f: FZ }; }
+  const m = yield* P.runRom(BANK_MATCH, RunMatch);
+  if (!V.saveAndQuitRequest) { V.keepMatchStatsFlag = 0; return { a: 0, f: FZ, bc: m.bc, de: m.de, hl: m.hl }; }
   const r = yield* P.runRom(BANK_SAVE, SaveStorySlotWithTimer);
   V.storyModeCurrentLocation = STORYLOC_MAIN_MENU;
   V.storyModeEntryPoint = 1;
@@ -115,9 +115,7 @@ export function loadMatchSettingsFromTable(P) {
   const table = doubles ? DoublesMatchSettingsTable_0a : SinglesMatchSettingsTable_0a;
   setMatchDoublesMode(P, doubles ? 1 : 0);
   const index = bus.u8(P.A.currentMinigameStoryMatch + 1);
-  const off = ((index * 4) & 0xFF00) | (((index * 4) & 0xFF) + index & 0xFF);
-  const carry = ((index * 4) & 0xFF) + index > 0xFF ? 0x100 : 0;
-  let hl = (off + carry + table) & 0xFFFF;
+  let hl = (index * MATCH_SETTINGS_SIZE + table) & 0xFFFF;
   const rd = () => { const v = P.rom.u8(BANK, hl); hl = (hl + 1) & 0xFFFF; return v; };
   V.gameMode = rd(); V.matchOpponentChar = rd(); V.currentlyUsedCourt = rd();
   if (testFlag(P, FLAG_DEBUG_KEEP_MATCH_SETTINGS)) {
@@ -246,11 +244,11 @@ export function setTrainingCourtClearFlags(P) {
   let de = TRAINING_FLAGS_FIRST;
   for (let c = TRAINING_FLAGS; c > 0; c--) { clearFlagOp(P, de); de = (de + FLAG_STEP) & 0xFFFF; }
   const cls = bus.u8(wClearStatusClass);
-  if (!cls) return { a: 0, f: FZ, c: 0, de };
+  if (!cls) return { a: 0, f: FZ, c: 0, de, hl: de };
   let r = setFlagList(P, TrainingCourtLevel1ClearFlags_0a);
-  if (bus.u8(wClearStatusClass) === 1) return { ...r, a: 1, f: FZ | FN };
+  if (bus.u8(wClearStatusClass) === 1) return { ...r, a: 1, f: FZ | FN, c: 0 };
   r = setFlagList(P, TrainingCourtLevel2ClearFlags_0a);
-  return { ...r, a: 0xFF, f: FZ | FN };
+  return { ...r, a: 0xFF, f: FZ | FN, c: 0 };
 }
 // set every flag of a list of operand words ended by a high byte of $FF; returns { de, hl } at its end
 function setFlagList(P, list) {

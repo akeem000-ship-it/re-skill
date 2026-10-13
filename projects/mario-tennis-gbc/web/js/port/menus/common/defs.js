@@ -94,19 +94,9 @@ export function withWramBank(P, b, fn) {
 // ---- calls into the ROM ----
 export const callHome = (P, addr, regs = {}) => P.callRom(0, addr, regs);
 export const callFar = (P, [bank, addr], regs = {}) => P.callRom(bank, addr, regs);
-// A call into ROM code that may wait. As P.runRom, but the call is over when the routine's `ret` takes its return
-// address off the stack, whatever that address is: the lockstep test copies the ROM's stack page into the port when
-// the two stacks are at the same depth, which replaces the return address P.runRom pushed with the ROM's own.
-export function* waitRom(P, bank, addr, regs = {}) {
-  const { cpu, mem } = P;
-  const saved = P.enter(bank, addr, regs);
-  while (cpu.sp !== saved.sp) {
-    if (cpu.halted && !(mem.iflag & mem.ie & 0x1F)) { yield "cpuhalt"; cpu.halted = false; continue; }
-    const it = P.step();
-    if (it) yield* it;
-  }
-  return P.leave(saved);
-}
+// A call into ROM code that may wait (P.runRom: it ends when the routine's `ret` brings the stack back, whatever
+// return address that took, as the lockstep may have copied the ROM's stack page in).
+export function* waitRom(P, bank, addr, regs = {}) { return yield* P.runRom(bank, addr, regs); }
 export const waitFar = (P, [bank, addr], regs = {}) => waitRom(P, bank, addr, regs);
 // a farcall into ROM code that may wait, with FarCall's frame on the stack (three words, then the callee's return)
 export function* waitFarCall(P, [bank, addr], regs = {}) {

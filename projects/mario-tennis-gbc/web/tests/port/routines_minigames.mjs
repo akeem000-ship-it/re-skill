@@ -61,7 +61,9 @@ const M = (name, bank, addr, { gen = () => ({}), out = [], prep, when, wram } = 
   const k = ++salt * 104729;
   return {
     name: `MG ${name}`, bank, addr, out, regs: regsOf(gen), when, wram,
-    prep: prep ? (mem, s) => prep(mem, rng(s, k), s) : undefined,
+    // no interrupt pending: a sound request's `ei` would take it on the ROM side only (the port's sound code is
+    // JavaScript, which steps no CPU)
+    prep: (mem, s) => { mem.iflag = 0; if (prep) prep(mem, rng(s, k), s); },
     js(P, regs) { P.ime = false; P.cpu.halted = false; return P.callRom(bank, addr, regs); },
   };
 };
@@ -169,7 +171,7 @@ export const ROUTINES = [
       ["StrokePractice1Hook_BallHit", 0x6C52], ["StrokePractice2Hook_PointStart", 0x6DE0], ["StrokePractice2Hook_RallyTick", 0x6E92],
       ["StrokePractice3Hook_PointStart", 0x7045], ["StrokePractice3TargetZoneDelayTask", 0x7081],
   ].map(([n, a]) => ANY(n, B0B, a, { when: inMatch,
-    prep: (mem, r) => { randomPoint(mem, r); W(mem, R.rally, 1 + r(3)); W(mem, R.gateActive, r(2)); W(mem, R.abortActive, r(2)); W(mem, R.abortCount, r(3)); W(mem, R.counters + 8, r(3)); } })),
+    prep: (mem, r) => { randomPoint(mem, r); W(mem, R.rally, 1 + r(2)); W(mem, R.gateActive, r(2)); W(mem, R.abortActive, r(2)); W(mem, R.abortCount, r(3)); W(mem, R.counters + 8, r(3)); } })),
 
   // ---- minigame_core.js ----
   M("GetMinigameTargetScore", B0D, 0x4121, { gen: r => ({ a: pick(r, [r(0x12), 0x12 + r(18), r(256)]), bc: r(3) << 8 }), out: ["a", "d", "e"] }),

@@ -20,9 +20,11 @@
 // ROM data. Tables are read from the ROM where the code reads them (P.bus: the bank mapped, which is the code's
 // own), never copied here, so an index past a table's end reads what the ROM's code reads.
 import { playSoundManaged } from "../audio/requests.js";
-import { setRomBank } from "../home/system.js";
 
 export const BANK_DRILLS = 0x0B, BANK_MINIGAMES = 0x0D;
+const rROMB0 = 0x2000;
+// ldh [hRomBank], a / ld [rROMB0], a: map a ROM bank and note it in hRomBank
+export function setRomBank(P, bank) { P.V.romBank = bank; P.bus.w8(rROMB0, bank); }
 export const FLAG_Z = 0x80, FLAG_N = 0x40, FLAG_H = 0x20, FLAG_C = 0x10;
 
 // ---- the game's constants (include/constants of the disassembly) ----
@@ -93,6 +95,9 @@ export const ROM = {
   // polls rLY, FarCallVector hands its target address to the callee)
   DisableLCDSafely: [0, 0x0346], FarCallVector: [0, 0x07C5], RegisterFrameTask: [0, 0x1B6A],
   UnregisterFrameTask: [0, 0x1BCB], WaitFadeEnd: [0, 0x1DA4], AdvanceFrame: [0, 0x2631],
+  // bank 0, in parts of the port not yet verified (called as the ROM's until they are)
+  EnableLCD: [0, 0x0376], TestGameFlag: [0, 0x249F], ClearGameFlag: [0, 0x24D4], CopyTextRect: [0, 0x2B46],
+  TickTimer: [0, 0x2C26], QueueSprite24x32: [0, 0x2C2B],
 };
 // ld_slot hl, FarPtr_ExecuteShot (bank $07's export $3C): the shot routine, through FarCallVector
 export const FARPTR_EXECUTE_SHOT = 0x073C;

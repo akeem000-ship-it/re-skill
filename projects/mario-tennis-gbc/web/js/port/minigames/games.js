@@ -39,7 +39,6 @@ import {
   queueMinigameHitBurst, queueMinigameHitBurstFirstFour, queueMinigameHitBurstFirstTwo,
 } from "./minigame_core.js";
 import { copyMemoryBC } from "../home/memory.js";
-import { queueSprite24x32 } from "../home/ui.js";
 import { queueSprite16 } from "../home/fade.js";
 import { mulHLByA } from "../home/math.js";
 
@@ -230,7 +229,7 @@ function awardHitScore(P) {
 // DrawTargetReticleSprite (0D:535F): the star (24x32), its tiles animated every 8 frames
 function drawTargetReticleSprite(P) {
   const p = projectMinigameWorldPosition(P);
-  queueSprite24x32(P, p.b, RETICLE_TILE, p.d, p.e, 0xFC, 0xF1, 0xF1);
+  far(P, ROM.QueueSprite24x32, { b: p.b, c: RETICLE_TILE, d: p.d, e: p.e, h: 0xFC, l: 0xF1 });
   const frame = rb(P, at(TargetReticleAnimFrames, P.V.vBlankCounter & 0x1F));
   if (frame === 0xFF) return;
   far(P, ROM.QueueMatchSpriteFrameA, { a: frame });
@@ -377,7 +376,7 @@ function scoreBallHit(P) {
 // DrawBooBlastTargetSprite (0D:57FD): the Boo (24x32), animated
 function drawBooBlastTargetSprite(P) {
   const p = projectBallSprite(P);
-  queueSprite24x32(P, p.b, RETICLE_TILE, p.d, p.e, 0xFC, 0xF1, 0xF1);
+  far(P, ROM.QueueSprite24x32, { b: p.b, c: RETICLE_TILE, d: p.d, e: p.e, h: 0xFC, l: 0xF1 });
   const frame = rb(P, at(BooBlastTargetAnimFrames, P.V.vBlankCounter & 0x1F));
   if (frame === 0xFF) return;
   far(P, ROM.QueueMatchSpriteFrameB, { a: frame });

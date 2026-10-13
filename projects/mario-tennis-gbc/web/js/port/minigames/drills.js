@@ -26,9 +26,7 @@ import {
 import { startMinigameByID } from "./minigame_core.js";
 import { clearMemory16 } from "../home/memory.js";
 import { queueVRAMCopy } from "../home/memory.js";
-import { enableLCD } from "../home/system.js";
 import { beginFadeIn, beginFadeOut } from "../home/colorfade.js";
-import { testGameFlag, clearGameFlag, flagOperand } from "../home/flags.js";
 
 const B = BANK_DRILLS;
 // ROM tables of this bank
@@ -41,7 +39,7 @@ const DrillSpriteTemplate_0b = 0x46E8;         // a gate pole's sprites
 const DoublesDrillMatchPtrs = 0x72E0;          // level -> [games, sets, CPU AI params x4, difficulty]
 export const SyncPointWinLoseFlagTask_ADDR = 0x446E;
 const Text_30_351 = 0x015F;                    // "drill result" lines: +0 lost/none, +1 won
-const FLAG_DRILL_FROM_MENU = 30;               // the drill was started from the main menu's lesson list
+const FLAG_DRILL_FROM_MENU = 30 << 5;          // the drill was started from the main menu's lesson list (as `de`: byte << 8 | bit << 5)
 const VBGMAP0 = 0x9800, VRAM_BANK1 = 0x2000, BGMAP_ROWS_BLOCKS = 18 * 32 / 16;
 const OAM_BANK1 = 0x08, GATE_POLE_TILE = 0x30;
 const CHAR_BOWSER = 0x1D, CHAR_WALUIGI = 0x1B, CHAR_WARIO = 0x1E;
@@ -75,12 +73,12 @@ export function* runTrainingDrillByID(P, id) {
     id = P.bus.u8(P.A.currentMinigameStoryMatch + 1);
   }
   if (P.V.matchExitRequest) P.V.pointWinLoseFlag = WINLOSE_LOSE;   // quit: counts as lost
-  if (testGameFlag(P, flagOperand(FLAG_DRILL_FROM_MENU))) {
+  if (!(far(P, ROM.TestGameFlag, { d: FLAG_DRILL_FROM_MENU >> 8, e: FLAG_DRILL_FROM_MENU & 0xFF }).f & FLAG_Z)) {   // test_flag
     far(P, ROM.DisableLCDSafely);
     yield* farWait(P, ROM.ResetTextWindowState);
     clearBGForDrillResult(P);
     yield* farWait(P, ROM.LoadMenuFontGfx);
-    enableLCD(P);
+    far(P, ROM.EnableLCD);
     beginFadeIn(P, 8);
     yield* farWait(P, ROM.WaitFadeEnd, { c: 8 });
     yield* farWait(P, ROM.PushTextArgNumber, { a: P.V.drillLessonResult, h: 0, l: P.V.drillLessonResult });
@@ -90,7 +88,7 @@ export function* runTrainingDrillByID(P, id) {
     beginFadeOut(P, 16);
     yield* farWait(P, ROM.WaitFadeEnd, { c: 16 });
   }
-  clearGameFlag(P, flagOperand(FLAG_DRILL_FROM_MENU));
+  far(P, ROM.ClearGameFlag, { d: FLAG_DRILL_FROM_MENU >> 8, e: FLAG_DRILL_FROM_MENU & 0xFF });   // clear_flag
   yield* farWait(P, ROM.ProcessMatchRewards);
 }
 // the CPU server's overrides off: no fixed aim ($FF), no fixed walk X, the toss gap rolled
@@ -138,7 +136,7 @@ export function clearBGForDrillResult(P) {
   queueVRAMCopy(P, P.A.shadowTilemap, VBGMAP0, BGMAP_ROWS_BLOCKS);
   P.wramBank(WRAM_COURT_PLANES);
   queueVRAMCopy(P, P.A.screenAttrmap, VBGMAP0 + VRAM_BANK1, BGMAP_ROWS_BLOCKS);
-  enableLCD(P);
+  far(P, ROM.EnableLCD);
 }
 // FillMemoryBC_0b (0B:4823): bc bytes at hl = a (bc = 0: 65536). Returns hl after, a = 0 (b | c), e = the value.
 export function fillMemoryBC_0b(P, value, hl, bc) {
