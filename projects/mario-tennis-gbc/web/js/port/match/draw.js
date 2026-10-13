@@ -7,6 +7,7 @@
 // Bank-0 helpers (the sprite queue, the VRAM copy queue) are called as the ROM's (port hooks run where ported).
 // Covered by out/engine/exh1.mtrec and rec1.mtrec (match play; port_lockstep.mjs).
 import { engine } from "./engine_port.js";
+import { callModeHook } from "./match.js";
 
 const OAM_BANK1 = 0x08;
 // WRAM bank 4 (WRAM_ACTORS): the ball history ring (6 entries of [x, y projected words, tile, attr], newest at
@@ -168,7 +169,7 @@ export function drawBallAndEffects(P) {
   drawSpecialHitEffect(P);
   drawSlotSprite(P, NET_BALL_SLOT);
   drawSlotSprite(P, BALL_SLOT);
-  P.callRom(8, 0x66F1, { d: 0x07 });                                     // CallModeHook
+  callModeHook(P, 0x07);
 }
 // 08:6429 DrawActorsByDepth: the far team, the ball and the near team, back to front by the two main characters'
 // depth keys; once the point is over the ball comes last. The tennis-machine minigame draws a fixed order.

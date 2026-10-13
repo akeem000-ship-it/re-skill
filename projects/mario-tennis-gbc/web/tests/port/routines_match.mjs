@@ -103,4 +103,23 @@ const LOOP = [
   E("SelectScoreboardLayout", 8, 0x454B, { prep: (m, s) => { g8(m, 0xC8F5, r8(s, 1) % 3); for (const a of [0xC7B8, 0xC7B9, 0xC7BA, 0xC7BB, 0xC7BC]) g8(m, a, r8(s, a) % 3 === 0 ? 1 : 0); } }),
 ];
 
-export const ROUTINES = [...ENGINE, ...DRAW, ...OBJ, ...LOOP];
+// match.js: setup, the court's scoreboard, the minigame helpers
+const gate = (m, s) => { for (const a of [0xC798, 0xC79A, 0xC79C, 0xC79E, 0xC790, 0xC792, 0xC794, 0xC796]) g16(m, a, (r16(s, a) % 0x600) - 0x300); g16(m, 0xC416, (r16(s, 5) % 0x600) - 0x300); };
+const MATCH = [
+  E("InitDefaultMatchSettings", 8, 0x4070), E("InitMinigameMatchSettings", 8, 0x6544),
+  E("InitViewFlipPreference", 8, 0x450E, { prep: (m, s) => { g8(m, 0xC8A6, pick(s, 1, [4, 8, 9, 5])); g8(m, 0xC8F5, r8(s, 2) % 3); } }),
+  E("ApplyMatchBgmPreference", 8, 0x4539, { prep: (m, s) => { g8(m, 0xC8A6, pick(s, 1, [4, 9])); } }),
+  E("LoadCourtSceneData", 8, 0x5E28, { prep: (m, s) => g8(m, 0xC8F4, r8(s, 1) % 3) }),
+  E("SnapshotCourtTilemaps", 8, 0x5E52),
+  E("RefreshCourtScoreboard", 8, 0x5E93, { prep: (m, s) => { g8(m, 0xC4C8, r8(s, 1) % 3); g8(m, 0xC4CB, r8(s, 2) & 1); } }),
+  E("InitMatchScene", 8, 0x4145, { prep: (m, s) => { g8(m, 0xC8F4, r8(s, 1) % 3); g8(m, 0xC8A6, pick(s, 2, [4, 9])); } }),
+  E("CallModeHook (none)", 8, 0x66F1, { regs: s => ({ d: r8(s, 1) & 7 }), prep: m => g8(m, 0xC7B4, 0) }),
+  E("SetModeHookTable", 8, 0x671A, { regs: s => ({ a: r8(s, 1), d: r8(s, 2), e: r8(s, 3) }) }),
+  E("LoadMinigamePointLayout", 8, 0x6662, { prep: (m, s) => { g8(m, 0xC7B4, pick(s, 1, [0, 0x0A, 0x0D, 0x1B])); g16(m, 0xC7B0, 0x4000 + (r16(s, 2) & 0x3FF8)); g8(m, 0xC8ED, r8(s, 3) % 8); } }),
+  E("SetBallGatePoint1", 8, 0x6731, { regs: s => ({ h: r8(s, 1), l: r8(s, 2), d: r8(s, 3), e: r8(s, 4) }), out: ["b", "c"] }),
+  E("SetTargetZoneCorner2", 8, 0x675E, { regs: s => ({ h: r8(s, 1), l: r8(s, 2), d: r8(s, 3), e: r8(s, 4) }), out: ["b", "c"] }),
+  E("DidBallCrossGate", 8, 0x676D, { prep: gate, out: ["a", "f"] }),
+  E("IsBallInTargetZone", 8, 0x67C2, { prep: gate, out: ["a", "f"] }),
+];
+
+export const ROUTINES = [...ENGINE, ...DRAW, ...OBJ, ...LOOP, ...MATCH];

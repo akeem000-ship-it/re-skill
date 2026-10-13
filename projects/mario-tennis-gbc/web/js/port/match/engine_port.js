@@ -6,6 +6,7 @@
 // Routine names and addresses from the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/mario-tennis-gbc-disasm).
 import * as draw from "./draw.js";
 import * as obj from "./obj.js";
+import { callModeHook } from "./match.js";
 
 // PlaySoundManaged (00:3024): the sound request `rst $08 ; db id` makes, with the id in a
 export function playSoundManaged(P, id) { P.callRom(0, 0x3024, { a: id }); }
@@ -66,7 +67,7 @@ export function engine(P) {
     E.port = P;
     E.ext = portExt(P);
     E.sfx = id => playSoundManaged(P, id);
-    E.modeHook = d => P.callRom(8, 0x66F1, { d });                       // CallModeHook (the minigames' hooks)
+    E.modeHook = d => callModeHook(P, d);                                 // CallModeHook (the minigames' hooks)
   }
   return E;
 }

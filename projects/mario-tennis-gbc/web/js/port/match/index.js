@@ -4,4 +4,5 @@ import { HOOKS as ENGINE } from "./engine_hooks.js";
 import { HOOKS as DRAW } from "./draw.js";
 import { HOOKS as OBJ } from "./obj.js";
 import { HOOKS as LOOP } from "./match_loop.js";
-export const HOOKS = [...ENGINE, ...DRAW, ...OBJ, ...LOOP];
+import { HOOKS as MATCH } from "./match.js";
+export const HOOKS = [...ENGINE, ...DRAW, ...OBJ, ...LOOP, ...MATCH];
