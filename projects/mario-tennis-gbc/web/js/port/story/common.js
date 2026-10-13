@@ -123,6 +123,17 @@ export const spAddFlags = (sp, e) => (((sp & 0x0F) + (e & 0x0F)) > 0x0F ? FH : 0
 // `bit n, r`: Z when clear, H set, C kept
 export const bitFlags = (set, carry) => (set ? 0 : FZ) | FH | carry;
 
+// ---- WRAM banks ----
+// push_wram_bank b ... pop_wram_bank around fn (hWramBank read through the bus, as the ROM's `ldh a, [hWramBank]`:
+// the lockstep test counts such reads to place a VBlank the ROM took mid-work)
+export function withWramBank(P, bank, fn) {
+  const old = P.V.wramBank;
+  P.wramBank(bank);
+  const r = fn();
+  P.wramBank(old);
+  return r;
+}
+
 // ---- far calls between the engine's banks ----
 // FarCall (rst $18) from JavaScript to JavaScript: hRomBank and the MBC set to the callee's bank around it, as the
 // ROM's trampoline does (the callee reads hRomBank: frame tasks and actor scripts take the caller's bank).

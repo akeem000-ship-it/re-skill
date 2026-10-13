@@ -121,17 +121,20 @@ function trackPeakLY(P) {
   }
   formatHexWord(P, (peak << 8) | ly, P.A.debugPeakLYText);
 }
+// HALT with interrupts on, after a VBlank handler the lockstep test ran early in the work (P.injectVBlank: it stands
+// for the VBlank of the next frame boundary, taken where the ROM took it): the interrupts before that boundary came,
+// for the ROM, before its VBlank, while it was still at work, so they do not wake it; sleep to the boundary first.
+function* sleepAfterEarlyVBlank(P) {
+  if (P.suppressVBlanks > 0) yield "halt";
+  yield* halt(P);
+}
 // wait for this frame's VBlank handler (over a link exchange, for the master also for the serial transfer; the
 // slave does not wait). Returns with interrupts off.
-// The ROM's `halt` loop wakes at every interrupt and tests hVBlankOccurred. With interrupts on the port sleeps to
-// the frame boundary instead ("halt": the mid-frame handlers still run): only the VBlank handler sets the flag, and
-// when the lockstep test has placed this frame's VBlank in the work already, whether the ROM's next wake is a timer
-// interrupt or the next VBlank is a matter of CPU time, which ported code does not take.
 function* waitForVBlank(P) {
-  const { V, mem } = P;
+  const { V } = P;
   if (!V.linkExchangeActive) {
     for (;;) {
-      if (P.ime && !(mem.iflag & mem.ie & 0x1F)) yield "halt"; else yield* halt(P);
+      yield* sleepAfterEarlyVBlank(P);
       P.di();
       if (V.vBlankOccurred) return;
       P.ei();

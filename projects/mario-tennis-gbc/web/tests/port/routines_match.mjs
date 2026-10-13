@@ -44,13 +44,14 @@ function ballDraw(m, s) {
   for (const a of [0xC460, 0xC462, 0xC464, 0xC466, 0xC480, 0xC482]) if (r8(s, a) & 1) g16(m, a, (r16(s, a + 1) % 0x1000) - 0x800);
   for (let b = 4; b < 8; b++) if (r8(s, 20 + b) & 1) c8(m, b, 0xDF96, r8(s, 30 + b));
 }
-// a HUD object slot in a random state (bank 4 $DD80 + 16 k): handler, curve, step, flags, anchor
+// a HUD object slot in a random state (bank 4 $DD80 + 16 k): id (one of its slot's templates), handler, curve, step,
+// flags, anchor
 function objSlots(m, s) {
   const handlers = [0x4758, 0x475E, 0x4764, 0x4764, 0x4781];
   for (let k = 0; k < 5; k++) {
     const b = 0xDD80 + k * 16;
     if (r8(s, 40 + k) % 3 === 0) { c8(m, 4, b, 0xFF); continue; }
-    c8(m, 4, b, r8(s, 50 + k) % 16); c8(m, 4, b + 1, r8(s, 60 + k) & 0x81);
+    c8(m, 4, b, r8(s, 50 + k) % [4, 4, 2, 29, 4][k]);                       // an id its templates have c8(m, 4, b + 1, r8(s, 60 + k) & 0x81);
     c16(m, 4, b + 8, pick(s, 70 + k, handlers)); c8(m, 4, b + 12, r8(s, 80 + k) & 1); c8(m, 4, b + 13, r8(s, 90 + k) % 12);
     c8(m, 4, b + 14, r8(s, 100 + k) & 15); c8(m, 4, b + 15, r8(s, 110 + k) & 1);
     c8(m, 4, b + 6, r8(s, 120 + k)); c8(m, 4, b + 7, r8(s, 130 + k)); c8(m, 4, b + 10, r8(s, 140 + k)); c8(m, 4, b + 11, r8(s, 150 + k));

@@ -172,13 +172,15 @@ export function copyScoreboardTileColumn(P, hl, de) {
 }
 
 // ---- the minigame match (minigame_08) ----
+// a byte at addr with ROM bank `bank` mapped at $4000 (FarReadByte, FarCopyBytes): RAM past $8000
+const farByte = (P, bank, addr) => (u16(addr) < 0x8000 ? P.rom.u8(bank, u16(addr)) : P.bus.u8(addr));
 // 08:66F1 CallModeHook: entry d of the minigame's hook table (wModeHookTable in bank wModeHookBank), if one is set.
 // Returns the call's registers' parts the ROM sets up: the hook runs with a = its bank, bc = hl = its address.
 function modeHookCall(P, d) {
   const bus = P.bus, bank = bus.u8(W.modeHookBank);
   if (!bank) return null;
   const ptr = u16(bus.u16(W.modeHookTable) + u8(d * 2));
-  const hook = P.rom.u16(bank, ptr);                                     // FarReadWord
+  const hook = farByte(P, bank, ptr) | farByte(P, bank, ptr + 1) << 8;   // FarReadWord
   return { bank, hook, regs: { a: bank, b: hook >> 8, c: hook & 0xFF, h: hook >> 8, l: hook & 0xFF, d } };
 }
 export function callModeHook(P, d) {
@@ -241,7 +243,7 @@ export function* runMinigamePointLoop(P) {
     yield* callModeHookWaiting(P, 2);
     if (S.matchAbortFlag & MATCHABORT_MATCH) return;
     const next = u16(P.bus.u16(W.minigamePointTable) + u8(S.totalPointsScoredInCurrentGame * 8));
-    if (P.rom.u8(P.bus.u8(W.modeHookBank), next) === 0xFF) return;        // FarReadByte
+    if (farByte(P, P.bus.u8(W.modeHookBank), next) === 0xFF) return;     // FarReadByte
   }
 }
 // 08:6631 PlayMinigamePoint: the serve graphic, the rally until the point ends (or is aborted), the fault and
@@ -266,7 +268,7 @@ export function loadMinigamePointLayout(P) {
   const E = engine(P), S = E.S, bus = P.bus, bank = bus.u8(W.modeHookBank);
   if (!bank) return;
   const src = u16(bus.u16(W.minigamePointTable) + u8(S.totalPointsScoredInCurrentGame * 8));
-  const layout = Array.from({ length: 8 }, (_, i) => P.rom.u8(bank, src + i));
+  const layout = Array.from({ length: 8 }, (_, i) => farByte(P, bank, src + i));   // FarCopyBytes
   // (the ROM copies it to 8 bytes of stack below the return address: the stack page is not compared)
   for (let k = 0; k < 4; k++) { P.wramBank(4 + k); E.C.courtPos = layout[k] & 3; }
   for (let k = 0; k < 4; k++) { P.wramBank(4 + k); E.C.serveRole = layout[4 + k] & 3; }

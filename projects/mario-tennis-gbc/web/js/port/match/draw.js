@@ -283,7 +283,7 @@ export const HOOKS = [
   [8, 0x6537, (P, c) => drawSlotSprite16(P, c.hl)],
   [8, 0x63A0, P => drawTeamPartnerFirst(P, 6, 4)],
   [8, 0x63F2, P => drawTeamPartnerFirst(P, 7, 5)],
-  [8, 0x59BB, (P, c) => { const r = applyCameraProjection(P, c.hl, c.bc); c.d = r.d; c.e = r.e; c.hl = r.hl; c.a = P.V.cameraOffsetY >> 8; }],
+  [8, 0x59BB, (P, c) => { const r = applyCameraProjection(P, c.hl, c.bc); c.d = r.d; c.e = r.e; c.hl = r.hl; c.a = P.V.cameraOffsetY & 0xFF; }],   // (a: the y offset's low byte)
   [8, 0x630E, P => clearSpriteSlots(P)],
   [8, 0x519D, P => buildBallSlot(P)],
   [8, 0x51FD, P => buildBallTrailSlots(P)],

@@ -32,16 +32,14 @@ export function setRomBank(P, bank) {
 }
 
 // CallHLInBankA (00:015E): call hl with ROM bank a mapped; the callee returns through .restoreBank (00:0175), which
-// maps the caller's bank again. As in the ROM the callee runs on the CPU's own stack: the hook builds the ROM's
-// frame (the restoring return address, the caller's bank, h) and jumps to hl. A, F, BC, DE, HL reach the callee
+// maps the caller's bank again. As in the ROM the callee runs on the CPU's own stack: the hook pushes the ROM's
+// frame (the restoring return address, the caller's bank, h) and jumps to hl. (Pushed, sp first, as the CPU does:
+// a VBlank the lockstep test places at a read in here must not land on the frame.) A, F, BC, DE, HL reach the callee
 // unchanged; the callee's come back unchanged.
 function callHLInBankAHook(P, c) {
-  const { bus } = P, sp = c.sp;
-  bus.w8(sp - 1, c.h);                                           // push hl (x3) / push af, then the frame rewritten
-  bus.w8(sp - 2, P.V.romBank);
-  bus.w16(sp - 4, CALLHL_RESTORE);
+  push(P, (c.h << 8) | P.V.romBank);                             // the caller's bank (with h above it)
+  push(P, CALLHL_RESTORE);                                       // the callee's return address
   setRomBank(P, c.a);
-  c.sp = sp - 4;
   jumpTo(P, c.hl);
 }
 // CallHLInBankA.restoreBank (00:0175): the callee returned here; map the caller's bank and return to it
@@ -58,16 +56,13 @@ function callHLRestoreHook(P, c) {
 // JavaScript code calls a far routine directly instead (or with P.callRom(bank, addr) while it is the ROM's).
 export function farCallTarget(P, slot, bank) { return P.rom.u16(bank, SLOT_TABLE | slot); }
 function farCallHook(P, c) {
-  const { bus } = P, sp = c.sp;
   const [slot, bank] = takeInlineBytes(P, 2);                    // the return address now points past them
-  bus.w16(sp - 2, c.hl);                                         // push hl
-  bus.w8(sp - 3, c.a);                                           // push af, its F byte replaced by the caller's bank
-  bus.w8(sp - 4, P.V.romBank);
+  push(P, c.hl);                                                 // push hl
+  push(P, (c.a << 8) | P.V.romBank);                             // push af, its F byte replaced by the caller's bank
   setRomBank(P, bank);
-  const target = bus.u16(SLOT_TABLE | slot);                     // CallVectorEntryA: the table entry, bank mapped
-  bus.w16(sp - 6, FARCALL_RETURN);                               // call CallVectorEntryA ... whose ret enters the callee
-  c.f = spAddFlags(sp - 8, 5);
-  c.sp = sp - 6;
+  const target = P.bus.u16(SLOT_TABLE | slot);                   // CallVectorEntryA: the table entry, bank mapped
+  push(P, FARCALL_RETURN);                                       // call CallVectorEntryA ... whose ret enters the callee
+  c.f = spAddFlags((c.sp - 2) & 0xFFFF, 5);
   jumpTo(P, target);
 }
 // FarCall's tail (00:01D5), where the callee returns: map the caller's bank, drop the frame, return past the operands
