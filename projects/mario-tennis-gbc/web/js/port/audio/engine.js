@@ -3,7 +3,8 @@
 // Port of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/mario-tennis-gbc-disasm); the driver's model is
 // in defs.js and its docs/sound_engine.md.
 // Tests: web/tests/port/routines_audio.mjs (UpdateSoundEngine from match and menu states, with forced commands),
-// and the lockstep, whose recordings play music and effects all along.
+// and the lockstep (HOOKS=audio/index): out/engine/exh1.mtrec (power-on, menus, a match), out/engine/rec1.mtrec,
+// out/port/story1.mtrec (story mode) play music and effects all along.
 import {
   WAVE, WRAM_SOUND, CHANNELS, CHANNEL_SIZE, MUSIC_CHANNEL, HRAM_WINDOW, CH, rAUD3ENA, rAUDENA, rAUDTERM, rAUDVOL,
   swap, scriptPtr, dataPtr, copyBytes, setWramBank, setRomBank, setRegs,

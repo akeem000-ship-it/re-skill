@@ -1,11 +1,15 @@
 // Fast in-memory copies of a whole machine (everything web/js/gb/state.js saves, typed arrays copied instead of
 // base64), for running a ROM routine and its port from the same state.
-const SKIP = new Set(["m", "mem", "ppu", "apu", "timer", "joypad", "machine", "exec", "rom", "cpu", "gb", "frame", "rgb5", "bgFrame", "pixCell", "out"]);   // refs, the ROM, video/audio output buffers
+const REFS = new Set(["m", "mem", "ppu", "apu", "timer", "joypad", "machine", "exec", "rom", "cpu", "gb"]);   // references to other parts (skipped when objects)
+const BUFS = new Set(["frame", "rgb5", "bgFrame", "pixCell", "out"]);                                           // video/audio output buffers
 const PARTS = ["cpu", "mem", "ppu", "apu", "timer", "joypad"];
+// a reference to another part (mem.timer, ...) is an object; a field that happens to share the name (an APU
+// channel's timer count) is not
+const skip = (k, x) => typeof x === "function" || BUFS.has(k) || (REFS.has(k) && x && typeof x === "object" && !ArrayBuffer.isView(x) && !Array.isArray(x));
 function clone(v) {
   if (ArrayBuffer.isView(v)) return v.slice();
   if (Array.isArray(v)) return v.map(clone);
-  if (v && typeof v === "object") { const o = {}; for (const k of Object.keys(v)) if (!SKIP.has(k) && typeof v[k] !== "function") o[k] = clone(v[k]); return o; }
+  if (v && typeof v === "object") { const o = {}; for (const k of Object.keys(v)) if (!skip(k, v[k])) o[k] = clone(v[k]); return o; }
   return v;
 }
 function apply(target, v) {
