@@ -9,8 +9,9 @@
 // component of the masked palettes' live colors one unit toward the target and loads them; at the end the targets
 // are copied in whole). Buffers in WRAM 6: wPaletteFadeTarget, wPaletteFadeLive (16 palettes of 4 colors each),
 // wPaletteFadeMask (16 bytes), wPaletteColorSplit (live r g b, target r g b).
-// Reached only from the story's ending, which no recording reaches: covered by the routine tests
-// (web/tests/port/routines_cutscenes.mjs); AnimatePaletteFadeToTarget waits and is checked there in pieces.
+// Covered by the routine tests (web/tests/port/routines_cutscenes.mjs) and the lockstep on out/port/cs_credits.mtrec
+// (the ending credits, RunEndingCreditsSequence, started from a stub on a story-mode state: common.js says how the
+// cs_*.mtrec recordings are made).
 import { splitColorComponents, combineColorComponents } from "../home/colorfade.js";
 import { WRAM_SCENE, HOME, callHome, loadPalettesImmediate, advanceFrame, pushWramBank, popWramBank, hook, FZ, FN, FH, FC, cpFlags, andFlags } from "./common.js";
 

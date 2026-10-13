@@ -7,8 +7,9 @@
 // line's offset from text $30AB and the number of lines) is drawn into wCutsceneTextScrollBuffer (WRAM 1, rows of
 // $50 bytes: up to 4 lines of 20 characters side by side), and ScrollCutsceneTextWindow shows it 20 columns at a
 // time (BlitCutsceneTextWindow: 8 rows into the window map at $9C00).
-// Reached only from the story's ending (credits_0a.asm), which no recording reaches: covered by the routine tests
-// of the routines that do not wait (web/tests/port/routines_cutscenes.mjs).
+// Covered by the lockstep on out/port/cs_credits.mtrec (the ending credits: the first scenes' pages) and
+// out/port/cs_result.mtrec (ShowStoryResultScreen called alone), and the routine tests of the routines that do not
+// wait (web/tests/port/routines_cutscenes.mjs).
 import {
   WRAM_STAGING, WRAM_COURT_PLANES, WRAM_SCREEN, WRAM_TEXT, WRAM_SCENE, TILE_SIZE, TILEMAP_WIDTH, SCREEN_HEIGHT,
   VRAM_BANK1, vTiles1, vBGMap0, vBGMap1, wDecompBuffer, wCutsceneTextScrollBuffer, wShadowTilemap, wScreenAttrmap,

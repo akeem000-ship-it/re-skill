@@ -7,6 +7,17 @@
 // ROM's `call` pushes a return address and P.callRom / P.runRom push theirs, so AdvanceFrame is reached at the ROM's
 // stack depth (the lockstep test compares the machines there). Where the ROM pushes around a wait (push_wram_bank,
 // push af ... pop af, or a `call` of a waiting routine that is ported here), the port pushes the same words.
+//
+// Recordings (out/port, gitignored). intro1.mtrec: power-on, the pad left alone for 4500 frames (the logos, the
+// intro, the title timing out, the intro again). intro_skip1-3.mtrec: power-on, START pressed in intro states
+// (step:timer) 2:5, 3:10, 6:20 / 8:30, 9:2, 11:10 / 14:5, 15:3, 16:50, the title left to time out in between
+// (skip3 ends with A on the title). The story ending's routines are reached from stubs: the state of
+// out/port/story1.mtrec at frame 3000 (run on to AdvanceFrame's halt), a stub written at $CF00 (the stack page, never
+// compared; sp $CFF0) that calls the routine and then AdvanceFrame for ever, and the PC set to it:
+//   cs_epilogue.mtrec  `ld a, $10 / ld hl, $40EF / call CallHLInBankA` (MatchSelectPlayEpilogueScene), A for 6
+//                      frames every 300, 11000 frames;
+//   cs_credits.mtrec   `farcall RunEndingCreditsSequence` (rst $18 ; db $A2, $0A), the pad alone, 6000 frames;
+//   cs_result.mtrec    `farcall ShowStoryResultScreen` (rst $18 ; db $3E, $03), 400 frames.
 import { RAM_FIELDS } from "../fields.js";
 
 // ---- constants (include/constants/*.inc, include/hardware.inc) ----

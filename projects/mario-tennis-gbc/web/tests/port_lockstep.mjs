@@ -41,19 +41,21 @@ const rec = readRecording(recPath), inputs = Buffer.from(rec.inputs, "base64");
 const frames = Math.min(+opt("--frames", rec.frames), rec.frames);
 if (rec.events.some(([, e]) => e === "reset")) console.log("note: the recording has resets (not replayed)");
 const pad = n => stateOf(inputs[Math.min(n, rec.frames - 1)]);
-const fnv = b => { let h = 0x811c9dc5; for (let i = 0; i < b.length; i++) { h ^= b[i]; h = Math.imul(h, 0x01000193); } return h >>> 0; };
+// a picture as one hash per scanline (160 pixels a row in rgb5)
+const rows = b => { const r = new Uint32Array(144); for (let y = 0; y < 144; y++) { let h = 0x811c9dc5; for (let i = y * 160; i < y * 160 + 160; i++) { h ^= b[i]; h = Math.imul(h, 0x01000193); } r[y] = h >>> 0; } return r; };
+const rowsDiffer = (a, b) => { let n = 0; for (let y = 0; y < 144; y++) if (a[y] !== b[y]) n++; return n; };
 let shown = 0;
 const log = (...x) => { if (shown++ < show) console.log(...x); };
 
 // ---- the reference: the ROM on the interpreter ----
 const cg = await newCore({ recomp: false });
 loadState(cg, rec.start);
-const corePics = new Map();                  // ROM boundary n -> picture hash
+const corePics = new Map();                  // ROM boundary n -> {rows: scanline hashes, raster: the STAT interrupt was on}
 const timingFrames = new Set();              // ROM boundaries whose picture may differ by timing
 let coreLcd = cg.ppu.lcdc >> 7;
 const core = new CoreRunner(cg, pad, (n, on) => {
   if (+on !== coreLcd) { coreLcd = +on; for (let i = n - 2; i <= n + 3; i++) timingFrames.add(i); }
-  if (on) corePics.set(n, fnv(cg.ppu.rgb5));
+  if (on) corePics.set(n, { rows: rows(cg.ppu.rgb5), raster: !!(cg.mem.ie & 2) });
 });
 // what diffMachines compares, kept from the ROM at each AdvanceFrame
 const snap = () => {
@@ -94,7 +96,7 @@ const powerOn = rec.start.cpu.pc === 0x100;
 const P = new GamePort(loadRom(), powerOn ? prog : { ...prog, *main(P) { yield* P.continueCpu(); } });
 loadState(P.gb, rec.start);
 let portWin = 1, portIdx = 0;                // the port's window and the boundaries it has passed in it
-const portPics = [];                         // [ROM boundary, hash]
+const portPics = [];                         // [ROM boundary, scanline hashes]
 P.setInput(pad(0));
 P.onVBlank = () => {
   portIdx++;
@@ -103,7 +105,7 @@ P.onVBlank = () => {
   if (!w || !w.bounds.length) return;
   const n = w.bounds[Math.min(portIdx - 1, w.bounds.length - 1)];
   P.setInput(pad(n));
-  if (P.ppu.lcdc & 0x80) portPics.push([n, fnv(P.ppu.rgb5)]);
+  if (P.ppu.lcdc & 0x80) portPics.push([n, rows(P.ppu.rgb5)]);
 };
 
 // the ROM's mid-work VBlanks of the port's current window: run the port's VBlank handler before its r-th read of a
@@ -196,7 +198,12 @@ let picCompared = 0, picBad = 0, picTiming = 0;
 for (const [n, h] of portPics) {
   if (!corePics.has(n)) continue;
   picCompared++;
-  if (corePics.get(n) !== h) { if (timingFrames.has(n)) picTiming++; else { picBad++; log(`picture of ROM frame ${n} differs`); } }
+  const c = corePics.get(n), lines = rowsDiffer(c.rows, h);
+  if (!lines) continue;
+  // a few scanlines off while the raster interrupt (STAT) splits the screen: its scroll write landed a few cycles
+  // apart, because the code before it in the frame takes no time in the port
+  if (timingFrames.has(n) || (c.raster && lines <= 4)) picTiming++;
+  else { picBad++; log(`picture of ROM frame ${n} differs (${lines} scanlines)`); }
 }
 if (courseChanged) console.log(courseChanged);
 console.log(`${recPath}: ${core.vblanks} frames, ${compared} AdvanceFrames compared, ${bad} with RAM/state differences` +

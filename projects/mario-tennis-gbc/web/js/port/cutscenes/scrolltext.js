@@ -9,13 +9,13 @@
 // to the map row just below the screen (GetScrollTextRowVramAddr: hScrollY + $90 lines). A text starting with '#'
 // ends it (wScrollTextDone). In debug step mode the buttons leave at once.
 // Reached from the story's epilogue scene (match_10.asm: the debug match-select map) and the ending
-// (sequences_18.asm), which no recording reaches: covered by the routine tests of the routines that do not wait
-// (web/tests/port/routines_cutscenes.mjs).
+// (sequences_18.asm). Covered by the lockstep on out/port/cs_epilogue.mtrec (MatchSelectPlayEpilogueScene run from
+// a stub on a story-mode state: the whole text, then A) and the routine tests (web/tests/port/routines_cutscenes.mjs).
 import {
   WRAM_COURT_PLANES, WRAM_SCREEN, WRAM_SCENE, WRAM_SOUND, TILEMAP_WIDTH, TILEMAP_AREA, VRAM_BANK1, vBGMap0,
   wShadowTilemap, wScreenAttrmap, rWY, BGM_CREDITS, HOME, FAR, ram, callHome, farcall, sound, queueVRAMCopy,
   loadPaletteShadow, clearFrameTasks, enableLCD, disableLCDSafely, advanceFrame, fadeOut, waitFadeEnd, wramBank,
-  hook, hookSaving, FZ, FN, FC, cpFlags,
+  setRegs, hook, hookSaving, FZ, FN, FC, cpFlags,
 } from "./common.js";
 
 const BANK = 0x03;
@@ -116,7 +116,7 @@ export function initScrollingTextScreen(P) {
   fillMemoryBC(P, wScreenAttrmap, 0x00, TILEMAP_AREA);
   queueVRAMCopy(P, wScreenAttrmap, vBGMap0 + VRAM_BANK1, TILEMAP_AREA / 16);
   wramBank(P, WRAM_SCREEN);
-  fillMemoryBC(P, wShadowTilemap, BLANK, TILEMAP_AREA);
+  setRegs(P.cpu, fillMemoryBC(P, wShadowTilemap, BLANK, TILEMAP_AREA));   // (a full VRAM queue leaves bc as it is: 0)
   return queueVRAMCopy(P, wShadowTilemap, vBGMap0, TILEMAP_AREA / 16);
 }
 // GetScrollTextRowVramAddr (03:5B01): de = the $9800 map row (hScrollY + de) / 8 lines down

@@ -9,10 +9,10 @@
 // frame's tiles (CutsceneAnimFrameLZ_<frame>, through WRAM 1), queues them to VRAM and queues its sprite with the
 // frame's template; past its frames it queues the last template again; before them (all but the first) nothing.
 // The compressed frames' sizes are read off their LZ streams. The frame advances when wCutsceneSlideTimer & 3 is 0, up to $36.
-// Reached only from the debug match-select map's epilogue scene, which no recording reaches: covered by the
-// routine tests (web/tests/port/routines_cutscenes.mjs).
+// Reached only from the debug match-select map's epilogue scene: covered by the lockstep on
+// out/port/cs_epilogue.mtrec (all $36 frames) and the routine tests (web/tests/port/routines_cutscenes.mjs).
 import { WRAM_STAGING, WRAM_SCENE, TILE_SIZE, vTiles0, wDecompBuffer, ram, queueVRAMCopy, decompressData, loadPaletteShadow,
-  queueSpriteTemplate, wramBank, callSub, pushWramBank, popWramBank, hook, FZ, FN, FH, FC, cpFlags } from "./common.js";
+  queueSpriteTemplate, wramBank, callSub, pushWramBank, popWramBank, hook, cpFlags } from "./common.js";
 
 const BANK = 0x03;
 const SceneAnimObjPalette0_03 = 0x65BC, SceneAnimObjPalette1_03 = 0x65C4;   // object palettes 2 and 3

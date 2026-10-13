@@ -13,7 +13,7 @@ import {
   wDecompBuffer, wTextTileBuffer, wTextTileBuffer_SIZE, wScreenAttrmap, wShadowTilemap, SFX_LOGO_JINGLE, FAR,
   ram, farcall, sound, queueVRAMCopy, decompressData, loadPaletteShadow, loadPalettesImmediate, queueSpriteTemplate,
   registerFrameTask, unregisterFrameTask, enableLCD, disableLCDSafely, advanceFrame, fadeIn, fadeOut, wramBank,
-  callSub, hook, FZ, FN, FH, FC, cpFlags, addFlags, andFlags,
+  callSub, hook, FZ, FN, FH, FC, cpFlags, addFlags,
 } from "./common.js";
 
 export const BANK = 0x6B;

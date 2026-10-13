@@ -27,6 +27,7 @@ export class SoftResetSignal extends Error { constructor() { super("SoftReset");
 
 const SENTINEL = 0xFFF0;                     // return address of a ROM call made by the port (an HRAM address no code runs)
 const VECTORS = { 0x40: "vblank", 0x48: "lcdStat", 0x50: "timer", 0x58: "serial", 0x60: "joypad" };
+const RETS = new Set([0xC9, 0xD9, 0xC0, 0xC8, 0xD0, 0xD8]);              // ret, reti, ret nz/z/nc/c
 export const hookKey = (bank, addr) => (addr < 0x4000 ? addr : (bank << 16) | addr);
 
 export class GamePort {
@@ -46,6 +47,7 @@ export class GamePort {
     this.offDots = 0;
     this.advances = 0;                                                   // AdvanceFrame calls (atAdvanceFrame)
     this.offBeat = -9;                                                   // the AdvanceFrame count at the last VBlank taken mid-work
+    this.lastRet = false;
     this.inHandler = 0;                                                  // interrupt handlers running (> 0: in a handler)
     this.cpuHandlers = [];                                               // handlers the CPU took: {vector, ret, sp} to see them return
     this.suppressVBlanks = 0;                                            // VBlanks whose handler injectVBlank already ran
@@ -136,7 +138,7 @@ export class GamePort {
     const cpu = this.cpu, m = this.mem;
     const saved = this.enter(bank, addr, regs);
     for (;;) {
-      if (cpu.pc === SENTINEL && cpu.sp === saved.sp) break;
+      if (cpu.sp === saved.sp && (cpu.pc === SENTINEL || this.lastRet)) break;   // returned (see returnedTo)
       if (cpu.halted && !(m.iflag & m.ie & 0x1F)) { yield "cpuhalt"; cpu.halted = false; continue; }
       const it = this.step();
       if (it) yield* it;
@@ -156,7 +158,7 @@ export class GamePort {
     const cpu = this.cpu;
     const saved = this.enter(bank, addr, regs);
     for (let n = 0; ; n++) {
-      if (cpu.pc === SENTINEL && cpu.sp === saved.sp) break;
+      if (cpu.sp === saved.sp && (cpu.pc === SENTINEL || this.lastRet)) break;
       if (cpu.halted && !(this.mem.iflag & this.mem.ie & 0x1F)) throw new Error(`callRom ${bank.toString(16)}:${addr.toString(16)} halted at ${cpu.pc.toString(16)}`);
       const it = this.step();
       if (it) { const r = it.next(); if (!r.done) throw new Error(`callRom ${bank.toString(16)}:${addr.toString(16)}: hook waited`); }
@@ -195,8 +197,12 @@ export class GamePort {
     if (this.afterAdvance) this.afterAdvance(k);
   }
   // one CPU step; at a hooked address run the JS instead (returns its generator if it waits)
+  // lastRet: the step just returned from a routine (a ret/reti, or a hook's return). A ROM call made by the port
+  // ends when a return brings sp back to where it was called from, whatever address that return popped: a test
+  // driver may have copied the ROM's own stack over the port's sentinel (port_lockstep's resync).
   step() {
     const cpu = this.cpu, m = this.mem, pc = cpu.pc;
+    this.lastRet = false;
     const top = this.cpuHandlers[this.cpuHandlers.length - 1];
     if (top && pc === top.ret && cpu.sp === top.sp) { this.cpuHandlers.pop(); this.inHandler--; }   // an interrupt handler the CPU took returned
     // the ROM's AdvanceFrame: the probe, once per call (when its first instruction is about to run, not an interrupt)
@@ -208,16 +214,17 @@ export class GamePort {
         if (this.cpuHandlers.length && this.cpuHandlers[this.cpuHandlers.length - 1].vector === pc) { this.cpuHandlers.pop(); this.inHandler--; }
         this.inHandler++;
         try { this.program[VECTORS[pc]](this); } finally { this.inHandler--; }
-        this.ret(); this.ime = true; return null;
+        this.ret(); this.ime = true; this.lastRet = true; return null;
       }
       if (fn) {
         const r = fn(this, cpu);
-        if (r && typeof r.next === "function") return (function* (P) { yield* r; P.ret(); })(this);
-        this.ret(); return null;
+        if (r && typeof r.next === "function") return (function* (P) { yield* r; P.ret(); P.lastRet = true; })(this);
+        this.ret(); this.lastRet = true; return null;
       }
     }
-    const c0 = this.gb.cycles;
+    const op = m.read(pc), c0 = this.gb.cycles;
     this.gb.stepInstruction();
+    this.lastRet = RETS.has(op) && cpu.pc !== pc + 1;                    // (a conditional ret not taken goes on to pc + 1)
     if (atAdvance) this.probed = false;
     if (VECTORS[cpu.pc] && cpu.pc !== pc && cpu.pc < 0x68) {             // the CPU took an interrupt
       const ret = m.read(cpu.sp) | m.read((cpu.sp + 1) & 0xFFFF) << 8;
