@@ -30,7 +30,7 @@ const r8 = (s, k) => H(s, k) & 0xFF, r16 = (s, k) => H(s, k) & 0xFFFF;
 const g8 = (m, a, v) => { m.wram[0][a - 0xC000] = v & 0xFF; }, g16 = (m, a, v) => { g8(m, a, v); g8(m, a + 1, v >> 8); };
 const c8 = (m, b, a, v) => { m.wram[b][a - 0xD000] = v & 0xFF; }, c16 = (m, b, a, v) => { c8(m, b, a, v); c8(m, b, a + 1, v >> 8); };
 const pick = (s, k, list) => list[H(s, k) % list.length];
-const E = (name, bank, addr, more = {}) => ({ name, bank, addr, wram: 4, when: inMatch, out: [], ...more, js: callHook(bank, addr),
+const E = (name, bank, addr, more = {}) => ({ name: "match " + name, bank, addr, wram: 4, when: inMatch, out: [], ...more, js: callHook(bank, addr),
   prep: (m, s) => { quiet(m); m.hram[0x16] = more.wram ?? 4; if (more.prep) more.prep(m, s); } });
 // the ball's drawing state scrambled: effect timers, flags, positions near the net, the trail
 function ballDraw(m, s) {

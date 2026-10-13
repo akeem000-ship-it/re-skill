@@ -351,8 +351,9 @@ export function resetMatchState(E, vblankCounter = 0) {
 export function selectScoreboardLayout(E) {
   const S = E.S, m = E.mem;
   if (S.matchContext !== 2) { m.w8(0xC494, (S.onCourtCharCount - 2) & 3); return; }
+  // wDrillIsPracticeLesson 3, wMinigameHighScoreMode 7, the wall / tennis machine / Boo Blast minigames 6, else 4
   let b = 3;
-  if (!m.u8(0xC7BB)) { b = 7; if (!m.u8(0xC7BA)) { b = 6; if (!m.u8(0xC7B9) && !m.u8(0xC7B8) && !m.u8(0xC7BC)) b = 4; } }
+  if (!m.u8(0xC7BB)) { b = 7; if (!m.u8(0xC7BC)) { b = 6; if (!m.u8(0xC7B9) && !m.u8(0xC7B8) && !m.u8(0xC7BA)) b = 4; } }
   m.w8(0xC494, b);
 }
 
