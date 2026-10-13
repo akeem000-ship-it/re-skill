@@ -28,7 +28,8 @@ export function fetchSRAMShortText(P, index) { fetchSRAMText(P, index, 1); }
 export function fetchSRAMText(P, index, mode) {
   const offset = P.bus.u16((SramTextOffsetTable_05 + 2 * index) & 0xFFFF);        // the table, read as mapped (ROM bank 5)
   const src = (0xA800 + offset) & 0xFFFF;
-  const r = mode === 0 ? copyMemoryBC(P, src, wTextBuffer, 0x180) : copyMemoryBC(P, src, wShortTextBuffer, 0x20);
+  const dest = mode === 0 ? wTextBuffer : wShortTextBuffer, count = mode === 0 ? 0x180 : 0x20;
+  const r = callHome(P, HOME.CopyMemoryBC, { h: src >> 8, l: src & 0xFF, d: dest >> 8, e: dest & 0xFF, b: count >> 8, c: count & 0xFF, f: 0 });   // (or a cleared C)
   return { a: r.a, f: r.f };
 }
 

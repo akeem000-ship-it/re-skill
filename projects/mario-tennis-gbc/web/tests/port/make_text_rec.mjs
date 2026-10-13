@@ -5,11 +5,15 @@
 // script: comma list of  BUTTON[*N][@W]  (press 6 frames, then wait W frames, default 30; *N repeats),
 //   BUTTON~H[@W] (hold H frames), wait@W, or buttons joined with + (e.g. up+right~30).
 //   BUTTON: a b start select up down left right.
+// --from REC[@F]: start from another recording's start state (played F frames on with its own pad) instead of
+// power-on; --poke ADDR=VAL[,...]: then write bytes (hex, as mapped; e.g. FF9E=1 turns hDebugStepMode on).
 // --shots K: a picture every K frames, 24 to a contact sheet out/port/shots/NAME_###.png (to find the inputs by
 // looking at the screen), and the last picture as NAME_end.png.
 import fs from "fs"; import zlib from "zlib";
 import { newCore } from "../engine/corpus.mjs";
-import { saveState } from "../../js/gb/state.js";
+import { saveState, loadState } from "../../js/gb/state.js";
+import { readRecording } from "../engine/corpus.mjs";
+import { stateOf } from "../../js/recorder.js";
 import { CORE_TAG } from "../../js/recorder.js";
 
 const a = process.argv.slice(2), opt = (n, d) => (a.includes(n) ? a[a.indexOf(n) + 1] : d);
@@ -34,6 +38,12 @@ function png(frames, path) {
 }
 
 const gb = await newCore({ recomp: true });
+if (opt("--from")) {
+  const [path, upTo] = opt("--from").split("@"), src = readRecording(path), pads = Buffer.from(src.inputs, "base64");
+  loadState(gb, src.start);
+  for (let f = 0; f < +(upTo || 0); f++) { gb.setInput(stateOf(pads[f])); gb.runFrame(); }
+}
+for (const kv of (opt("--poke") || "").split(",").filter(Boolean)) { const [ad, v] = kv.split("="); gb.mem.write(parseInt(ad, 16), parseInt(v, 16)); }
 const start = saveState(gb), inputs = [];
 if (shots) fs.mkdirSync("out/port/shots", { recursive: true });
 let mask = 0, shotN = 0, sheet = [];

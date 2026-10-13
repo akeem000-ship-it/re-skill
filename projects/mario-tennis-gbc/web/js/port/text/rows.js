@@ -173,7 +173,8 @@ export function getGlyphWidth(P, ch) { return getGlyphWidthByIndex(P, (ch - 0x20
 // Returns the registers it leaves.
 export function getGlyphWidthByIndex(P, index) {
   const hl = GlyphWidths_05 + index, l = hl & 0xFF;
-  return { c: P.bus.u8(hl), hl, a: l, f: addFlags(index, lo(GlyphWidths_05)) };
+  const f = addFlags(index, lo(GlyphWidths_05));
+  return { c: P.bus.u8(hl), hl, a: l, f: f & 0x10 ? 0x10 | 0x20 : f };   // a carry goes through inc h (Z clear, H set)
 }
 
 export const HOOKS = [

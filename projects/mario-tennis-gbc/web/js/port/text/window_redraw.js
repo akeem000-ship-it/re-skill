@@ -22,11 +22,11 @@ const SpeakerVoiceActorTypePropertyTable = 0x60CB;           // (actor type, voi
 const VOICE_SILENT = 0x08;
 
 // GetSpeakerVoice (05:608A): the voice of the actor in slot `slot` (its type's entry in the table, from type $1E);
-// 8 (silent) for no actor. A type below $1E (or $9E and up) leaves its pushed WRAM bank on the stack and returns
+// 8 (silent) for no actor. Returns { a, f }. A type below $1E (or $9E and up) leaves its pushed WRAM bank on the stack and returns
 // through it: the port stops there.
 export function getSpeakerVoice(P, slot) {
   const actor = getObjectSlotPointer(P, slot).hl;
-  if (!actor) return VOICE_SILENT;
+  if (!actor) return { a: VOICE_SILENT, f: Z };
   const oldBank = pushWramBank(P, WRAM_ACTORS);
   P.V.actorPtr = actor & 0xFF; P.bus.w8(P.A.actorPtr + 1, actor >> 8);   // hActorPtr
   const type = P.bus.u8((actor & 0xFF00) | ((actor + 0x21) & 0xFF));
@@ -34,7 +34,7 @@ export function getSpeakerVoice(P, slot) {
   if (index & 0x80) throw new Error(`GetSpeakerVoice: actor type $${type.toString(16)} returns through its stack (ROM bug)`);
   const voice = P.bus.u8(SpeakerVoiceActorTypePropertyTable + index * 2 + 1);
   P.wramBank(oldBank);
-  return voice;
+  return { a: voice, f: 0 };                                 // (the flags of its or l, kept by push_wram_bank)
 }
 
 // ResetTextWindowsAndRestoreMap (05:617A): InitTextWindows, RestoreShadowTilemap
@@ -199,7 +199,7 @@ export function debugDrawFlagsWindow(P, which) {
 }
 
 export const HOOKS = [
-  hook(5, 0x608A, (P, r) => ({ a: getSpeakerVoice(P, r.a) })),
+  hook(5, 0x608A, (P, r) => getSpeakerVoice(P, r.a)),
   hook(5, 0x617A, P => resetTextWindowsAndRestoreMap(P)),
   hook(5, 0x6181, (P, r) => createWindowWithTextId(P, r.d, r.e, r.b, r.c, r.hl)),
   hook(5, 0x61A2, (P, r) => redrawWindowText(P, r.a, r.de)),

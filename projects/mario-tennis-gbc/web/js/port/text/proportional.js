@@ -134,7 +134,7 @@ export function renderTextToBuffer64(P, textId, dest, width) {
 export function getObjectSlotPointer(P, slot) {
   if (slot === 0xFF) return { hl: 0, f: cpFlags(slot, 0xFF) };
   if (slot >= 0x18) return { hl: 0xD000, f: cpFlags(slot, 0x18) };
-  return { hl: 0xD000 + slot * 64, f: 0 };
+  return { hl: 0xD000 + slot * 64, f: (slot & 3) ? 0 : Z };     // Z of its last rr c; add hl, bc carries nothing
 }
 
 // WriteStringToWindow (05:600E): a string into window `id` one tile per character from cell (col, row); a dakuten

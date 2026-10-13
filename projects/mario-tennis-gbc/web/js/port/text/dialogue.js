@@ -69,7 +69,7 @@ export function* showDialogueAtPosition(P, speaker, textId, center) {
   const R = mapped(P), oldBank = pushWramBank(P, WRAM_TEXT);
   resetTextArgQueues(P);
   let id = addTextIdOffset(P, textId, 0).hl;
-  R.dialogueVoice = speaker & 0x80 ? VOICE_SILENT : getSpeakerVoice(P, speaker);
+  R.dialogueVoice = speaker & 0x80 ? VOICE_SILENT : getSpeakerVoice(P, speaker).a;
   applyMessageSpeed(P);
   if (R.dialogueWindowId === DIALOGUEWIN_NONE) {
     openDialogueWindowCentered(P, id, center);
@@ -99,7 +99,7 @@ export function* drawDialogueAtPosition(P, textId, center) {
   const R = mapped(P);
   const d = ((center >> 8) - 0x0A) & 0xFF, e = ((center & 0xFF) - 0x09) & 0xFF;
   const oldBank = pushWramBank(P, WRAM_TEXT);
-  R.dialogueVoice = e & 0x80 ? VOICE_SILENT : getSpeakerVoice(P, e);
+  R.dialogueVoice = e & 0x80 ? VOICE_SILENT : getSpeakerVoice(P, e).a;
   if (R.dialogueWindowId === DIALOGUEWIN_NONE) openDialogueWindowCentered(P, textId, d << 8 | e);
   let id = textId;
   do {

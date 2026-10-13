@@ -37,6 +37,7 @@ const COUNTS = [0x230, 0x15B, 0xBB, 0xDD, 0x11F, 0x10E, 0x2C7, 0x100, 0xF2, 0xBD
 const textId = r => { const b = r(13); return b << 10 | r(COUNTS[b]); };
 const anyTextId = r => r(4) ? textId(r) : r(0x10000);
 const shortId = r => r(256);
+const MENU_TEXTS = r => [0x001A, 0x0132, 0x0133, 0x0134, 0x0135, 0x0137, 0x0136, 0x0179 + r(0x20)][r(8)];
 // a window struct: column, row, width, height, state, text id
 function window(mem, r, id, { width = 3 + r(18), height = 3 + 2 * r(4), state = [0, 2, 3, 0, 2][r(5)], text = textId(r) } = {}) {
   const p = 0xDC00 + (id & 7) * 8;
@@ -194,14 +195,14 @@ export const ROUTINES = [
   ...[0, 1].map(st => T(`GetTextContinueArrowCell (static ${st})`, 0x4FBF, { prep: mem => flag(mem, F.DEBUG_STATIC, st) })),
   T("TextContinueArrowBlinkTask", 0x4FE3, { prep: (mem, s, r) => { w5(mem, 0xD841, r(256)); w5_16(mem, 0xD842, 0xD000 + r(0x400)); } }),
   T("WaitTextAdvanceInput (fast forward)", 0x501D, { lcd: false, out: NOF, prep: mem => flag(mem, F.FAST_FORWARD, true) }),
-  T("TextCmdPrintArgString", 0x5089, { gen: r => ({ de: 0xD000 + r(0x400) }), out: ["d", "e", "h", "l"], prep: (mem, s, r) => { queues(mem, r); writeString(mem, 0xC900, r); writeString(mem, 0xC940, r); writeString(mem, 0xC6C0, r); } }),
+  T("TextCmdPrintArgString", 0x5089, { gen: r => ({ de: 0xD020 + r(0x3E0) }), out: ["d", "e", "h", "l"], prep: (mem, s, r) => { queues(mem, r); writeString(mem, 0xC900, r); writeString(mem, 0xC940, r); writeString(mem, 0xC6C0, r); } }),
   T("PushTextArgString", 0x50F7, { gen: r => ({ hl: r(2) ? 0xD000 + r(0x1000) : 0xC000 + r(0x1000) }), prep: (mem, s, r) => { queues(mem, r); w5(mem, 0xD847, r(4) ? r(16) : 16); } }),
   T("PushTextArgNumber", 0x5147, { gen: r => ({ hl: r(0x10000) }), prep: (mem, s, r) => { queues(mem, r); w5(mem, 0xD848, r(4) ? r(16) : 16); } }),
   T("Unused_05_PushTextArgShortTextId", 0x517A, { prep: (mem, s, r) => { queues(mem, r); w5(mem, 0xD849, r(4) ? r(16) : 16); } }),
-  T("TextCmdApplyDakuten", 0x51A8, { gen: r => ({ de: 0xD000 + r(0x400) }), lcd: false }),
-  T("TextCmdApplyHandakuten", 0x51C8, { gen: r => ({ de: 0xD000 + r(0x400) }), lcd: false }),
-  T("TextCmdPrintPlayerName", 0x51E8, { gen: r => ({ de: 0xD000 + r(0x400) }), out: ["d", "e", "h", "l"], prep: (mem, s, r) => { writeString(mem, 0xC900, r); flag(mem, F.PROPORTIONAL, r(2)); } }),
-  T("TextCmdPrintPartnerName", 0x51F3, { gen: r => ({ de: 0xD000 + r(0x400) }), out: ["d", "e", "h", "l"], prep: (mem, s, r) => writeString(mem, 0xC940, r) }),
+  T("TextCmdApplyDakuten", 0x51A8, { gen: r => ({ de: 0xD020 + r(0x3E0) }), lcd: false }),
+  T("TextCmdApplyHandakuten", 0x51C8, { gen: r => ({ de: 0xD020 + r(0x3E0) }), lcd: false }),
+  T("TextCmdPrintPlayerName", 0x51E8, { gen: r => ({ de: 0xD020 + r(0x3E0) }), out: ["d", "e", "h", "l"], prep: (mem, s, r) => { writeString(mem, 0xC900, r); flag(mem, F.PROPORTIONAL, r(2)); } }),
+  T("TextCmdPrintPartnerName", 0x51F3, { gen: r => ({ de: 0xD020 + r(0x3E0) }), out: ["d", "e", "h", "l"], prep: (mem, s, r) => writeString(mem, 0xC940, r) }),
   T("MeasureNextArgStringWidth", 0x51FE, { out: ["a", "f", "b", "c", "d", "e", "h", "l"], prep: (mem, s, r) => { queues(mem, r); writeString(mem, 0xC900, r); writeString(mem, 0xC940, r); } }),
   T("MeasureMainCharacterNameWidth", 0x5267, { prep: (mem, s, r) => writeString(mem, 0xC900, r) }),
   T("MeasurePartnerCharacterNameWidth", 0x527F, { prep: (mem, s, r) => writeString(mem, 0xC940, r) }),
@@ -209,24 +210,24 @@ export const ROUTINES = [
   // ---- control.js ----
   T("TextCmdNop2", 0x5297),
   T("GetNextArgShortTextLength", 0x5298, { prep: (mem, s, r) => queues(mem, r) }),
-  T("TextCmdPrintArgNumber", 0x52CE, { gen: r => ({ de: 0xD000 + r(0x400) }), out: ["a", "d", "e"], prep: (mem, s, r) => queues(mem, r) }),
+  T("TextCmdPrintArgNumber", 0x52CE, { gen: r => ({ de: 0xD020 + r(0x3E0) }), out: ["a", "d", "e"], prep: (mem, s, r) => queues(mem, r) }),
   T("MeasureNextArgNumberWidth", 0x5305, { out: ["a", "b", "c", "d", "e", "h", "l"], prep: (mem, s, r) => queues(mem, r) }),
   T("Unused_05_StubNop_05_2", 0x53AC),
   T("Unused_05_SetTextVar", 0x53AE),
-  T("TextCmdPrintShortText", 0x53CA, { gen: r => ({ de: 0xD000 + r(0x400) }), out: ["d", "e", "h", "l"], prep: (mem, s, r) => w(mem, 0xC361, r(40)) }),
+  T("TextCmdPrintShortText", 0x53CA, { gen: r => ({ de: 0xD020 + r(0x3E0) }), out: ["d", "e", "h", "l"], prep: (mem, s, r) => w(mem, 0xC361, r(40)) }),
   T("MeasureIndexedShortTextWidth", 0x53E8, { prep: (mem, s, r) => w(mem, 0xC361, r(256)) }),
   T("WrapTextCellPointer", 0x5413, { gen: r => ({ de: r(0x10000) }) }),
   T("WrapTextCellPointerPrevRow", 0x543D, { gen: r => ({ de: r(0x10000) }) }),
   ...[0x00, 0x01, 0x04, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0D, 0x0E, 0x0F, 0x10, 0x13, 0x14, 0x1D, 0x1E, 0x1F].map(code =>
-    T(`DispatchControlCode $${code.toString(16)}`, 0x546C, { gen: r => ({ a: code, de: 0xD000 + r(0x400) }), lcd: false, out: ["d", "e", "h", "l"],
+    T(`DispatchControlCode $${code.toString(16)}`, 0x546C, { gen: r => ({ a: code, de: 0xD020 + r(0x3E0) }), lcd: false, out: ["d", "e", "h", "l"],
       prep: (mem, s, r) => { queues(mem, r); writeString(mem, 0xC900, r); writeString(mem, 0xC940, r); w(mem, 0xC361, r(40)); } })),
   T("ControlCodeHandler16", 0x548A), T("ControlCodeHandler19", 0x548D), T("TextCmdNop0", 0x548E),
-  T("RenderInlineString", 0x54CF, { gen: r => ({ hl: 0xC780, de: 0xD000 + r(0x400) }), out: ["d", "e", "h", "l"],
+  T("RenderInlineString", 0x54CF, { gen: r => ({ hl: 0xC780, de: 0xD020 + r(0x3E0) }), out: ["d", "e", "h", "l"],
     prep: (mem, s, r) => { writeString(mem, 0xC780, r, 1 + r(20)); flag(mem, F.PROPORTIONAL, r(2)); w(mem, 0xD000 + r(0x400), 5); } }),
-  T("Unused_05_RenderInlineHexByte", 0x5555, { gen: r => ({ de: 0xD000 + r(0x400) }), out: ["d", "e"] }),
-  T("Unused_05_RenderInlineHexWord", 0x556A, { gen: r => ({ de: 0xD000 + r(0x400) }), out: ["d", "e"] }),
-  T("Unused_05_RenderInlineDecimalByte", 0x5580, { gen: r => ({ de: 0xD000 + r(0x400) }), out: ["d", "e"] }),
-  T("RenderInlineNumber", 0x5597, { gen: r => ({ hl: [r(10), r(100), r(0x10000)][r(3)], de: 0xD000 + r(0x400) }), out: ["d", "e"], prep: (mem, s, r) => w(mem, 0xC360, r(2)) }),
+  T("Unused_05_RenderInlineHexByte", 0x5555, { gen: r => ({ de: 0xD020 + r(0x3E0) }), out: ["d", "e"] }),
+  T("Unused_05_RenderInlineHexWord", 0x556A, { gen: r => ({ de: 0xD020 + r(0x3E0) }), out: ["d", "e"] }),
+  T("Unused_05_RenderInlineDecimalByte", 0x5580, { gen: r => ({ de: 0xD020 + r(0x3E0) }), out: ["d", "e"] }),
+  T("RenderInlineNumber", 0x5597, { gen: r => ({ hl: [r(10), r(100), r(0x10000)][r(3)], de: 0xD020 + r(0x3E0) }), out: ["d", "e"], prep: (mem, s, r) => w(mem, 0xC360, r(2)) }),
 
   // ---- window_text.js ----
   T("SetWindowTextId", 0x55D5, { gen: r => ({ bc: r(8) << 8, hl: anyTextId(r) }) }),
@@ -251,11 +252,12 @@ export const ROUTINES = [
   T("AddTextIdOffset (bank end)", 0x5D2B, { gen: r => { const b = r(13); return { hl: b << 10 | (COUNTS[b] - 1 - r(4)), a: r(8) }; } }),
 
   // ---- proportional.js ----
-  T("RenderProportionalTextAt (LCD off)", 0x5DB3, { gen: r => ({ hl: 0x0137 + r(4), de: 0xD000 + r(0x400), bc: 0x1000 | (2 + r(16)) }), lcd: false,
+  T("RenderProportionalTextAt (LCD off)", 0x5DB3, { gen: r => ({ hl: 0x0137 + r(4), de: 0xD020 + r(0x3E0), bc: 0x1000 | (2 + r(16)) }), lcd: false,
     prep: (mem, s, r) => { flag(mem, F.WIDE, r(2)); w(mem, 0xC3BA, r(0x20)); } }),
-  T("RenderProportionalTextAt (menu texts)", 0x5DB3, { gen: r => ({ hl: [0x001A, 0x0132, 0x0133, 0x0134, 0x0135, 0x0137, 0x0179 + r(0x20)][r(7)], de: 0xD000 + r(0x400), bc: 2 + r(16) }), lcd: false }),
+  T("RenderProportionalTextAt (menu texts)", 0x5DB3, { gen: r => ({ hl: MENU_TEXTS(r), de: 0xD020 + r(0x3E0), bc: 2 + r(16) }), lcd: false }),
   T("StampGlyphTileAtPen", 0x5F0D),
-  T("RenderTextToBuffer64", 0x5F52, { gen: r => ({ hl: textId(r), de: 0xC780 + r(0x40), bc: 0x20 + r(0x20) }), when: () => true,
+  // (on menu texts: some dialogue texts hold codes past its 16-entry handler table, which jump into garbage)
+  T("RenderTextToBuffer64", 0x5F52, { gen: r => ({ hl: MENU_TEXTS(r), de: 0xC780 + r(0x40), bc: 0x20 + r(0x20) }),
     prep: (mem, s, r) => w16(mem, 0xC3B7, r(0x800)) }),
   ...[0x00, 0x05, 0x17, 0x18, 0x3F, 0xFF].map(a => T(`GetObjectSlotPointer $${a.toString(16)}`, 0x5FF2, { gen: () => ({ a }) })),
   T("WriteStringToWindow", 0x600E, { gen: r => ({ a: r(8), hl: 0xC780, de: winCell(r) }), prep: (mem, s, r) => writeString(mem, 0xC780, r, 1 + r(20)) }),
@@ -291,9 +293,9 @@ export const ROUTINES = [
   T("GetSelectedBGPaletteColorPtr", 0x6950, { prep: (mem, s, r) => { w(mem, 0xC712, r(4)); w(mem, 0xC713, r(16)); } }),
   T("DebugDrawColorComponents (LCD off)", 0x6964, { gen: r => ({ de: r(3) }), lcd: false, prep: (mem, s, r) => { w(mem, 0xC712, r(4)); w(mem, 0xC713, r(8)); w(mem, 0xC711, r(7)); } }),
   T("DrawPaletteCursorSprites", 0x6B03, { out: [], prep: (mem, s, r) => { w(mem, 0xC712, r(4)); w(mem, 0xC713, r(16)); mem.hram[0x5D] = r(0x60); } }),
-  T("Unused_05_WriteStringToTilemap", 0x6B82, { gen: r => ({ hl: 0xC780, de: 0xD000 + r(0x400) }), prep: (mem, s, r) => writeString(mem, 0xC780, r, 1 + r(40)) }),
-  T("Unused_05_WriteStringToTilemapAlt", 0x6BB9, { gen: r => ({ hl: 0xC780, de: 0xD000 + r(0x400) }), prep: (mem, s, r) => writeString(mem, 0xC780, r, 1 + r(40)) }),
-  T("Unused_05_WriteStringToTilemapStreamed", 0x6BF0, { gen: r => ({ hl: 0xC780, de: 0xD000 + r(0x200) }), out: ["c", "d", "e", "h", "l"],
+  T("Unused_05_WriteStringToTilemap", 0x6B82, { gen: r => ({ hl: 0xC780, de: 0xD020 + r(0x3E0) }), prep: (mem, s, r) => writeString(mem, 0xC780, r, 1 + r(40)) }),
+  T("Unused_05_WriteStringToTilemapAlt", 0x6BB9, { gen: r => ({ hl: 0xC780, de: 0xD020 + r(0x3E0) }), prep: (mem, s, r) => writeString(mem, 0xC780, r, 1 + r(40)) }),
+  T("Unused_05_WriteStringToTilemapStreamed", 0x6BF0, { gen: r => ({ hl: 0xC780, de: 0xD020 + r(0x1E0) }), out: ["c", "d", "e", "h", "l"],
     prep: (mem, s, r) => { writeString(mem, 0xC780, r, 1 + r(30)); for (let i = 0; i < 3; i++) w(mem, 0xC780 + r(30), [1, 2, 3][r(3)]); } }),
 
   // ---- window_alloc.js ----
@@ -313,7 +315,10 @@ export const ROUTINES = [
   T("DrawTextWindowFrame", 0x6F70, { gen: r => ({ a: r(8) }), prep: (mem, s, r) => flag(mem, F.RENDER_ACTIVE, r(2)) }),
   T("DrawTextWindowFrame (hidden)", 0x6F70, { gen: r => ({ a: r(8) }), prep: (mem, s, r) => { for (let i = 0; i < 8; i++) w5(mem, 0xDC04 + i * 8, 0xFF); } }),
   T("DrawTextWindowFrame (edges)", 0x6F70, { gen: r => ({ a: r(8) }), prep: (mem, s, r) => {
-    for (let i = 0; i < 8; i++) [r(32), r(32), [1, 2, 31, 32, 33][r(5)], [1, 2, 3, 31][r(4)], 0].forEach((v, k) => w5(mem, 0xDC00 + i * 8 + k, v)); } }),
+    for (let i = 0; i < 8; i++) {                            // one edge size at a time (both at once runs 255 x 255 cells)
+      const edgeW = r(2), wd = edgeW ? [1, 2, 31, 32, 33][r(5)] : 3 + r(18), ht = edgeW ? 3 + r(8) : [1, 2, 31][r(3)];
+      [r(32), r(32), wd, ht, 0].forEach((v, k) => w5(mem, 0xDC00 + i * 8 + k, v));
+    } } }),
 
   // ---- rows.js ----
   T("MarkTilemapRowsDirty", 0x7086, { gen: r => ({ de: r(0x10000) }) }),

@@ -155,7 +155,7 @@ function setDialogueSpeaker(P, speaker) {
   const R = mapped(P), who = speaker === 0xFF ? 0x00 : speaker;
   R.dialogueSpeaker = who;
   applyMessageSpeed(P);
-  R.dialogueVoice = who & 0x80 ? VOICE_SILENT : getSpeakerVoice(P, who);
+  R.dialogueVoice = who & 0x80 ? VOICE_SILENT : getSpeakerVoice(P, who).a;
 }
 // a fresh page: the glyph tiles cleared and uploaded
 function* clearGlyphPage(P) {
