@@ -64,7 +64,7 @@ export function initMatchScene(E, { vblankCounter = 0, viewOption = 0 } = {}) {
 // 08:6117 PlayCourtIntro: a camera pan over the court (skipped with A/B/START), then the serve camera
 export function* playCourtIntro(E) {
   const S = E.S, m = E.mem;
-  E.events.push(["bgm", S.matchContext ? 0x45 : 0x44]);
+  E.ext.playMusic(E, S.matchContext ? 0x45 : 0x44);                       // the fanfare
   if (S.gameMode === 0x02 || !S.matchContext) {
     m.w8(0xFF8B, 0); m.w8(0xFF8A, 0);
     yield* flow.stepMatchFrames(E, 5);
@@ -73,7 +73,7 @@ export function* playCourtIntro(E) {
       do {
         m.w8(0xFF8B, d); m.w8(0xFF8A, e);
         d = (d + (hl >> 8)) & 0xFF; e = (e + (hl & 0xFF)) & 0xFF;
-        if (m.u8(0xFF94) & 0x0B) return true;
+        if (flow.inputPressed(E) & 0x0B) return true;
         yield* flow.stepMatchFrame(E);
       } while (--b & 0xFF);
       return false;

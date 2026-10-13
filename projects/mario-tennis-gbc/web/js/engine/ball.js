@@ -8,6 +8,7 @@ export const SFX_NET_CORD = 0x5A, SFX_BALL_BOUNCE = 0x5B, SFX_BALL_CONTACT = 0x7
 export const SHOTTYPE_LOB = 0x0A;
 export const POINTOUTCOME = { FAULT: 1, DOUBLE_FAULT: 2, LET: 3, NET: 4, OUT: 5, WINNER: 6, SERVE_VOLLEYED: 7, WRONG_RECEIVER: 8, BALL_HIT_PLAYER: 9 };
 const MINIGAME_USES_WALL = 0xC7B9, MODE_HOOK_BANK = 0xC7B4;
+export const OBJSLOT3 = 0xDDB0;                                          // wObjSlot3 (bank 4): the banner object
 const S16 = v => (v << 16) >> 16, NEG16 = v => (-v) & 0xFFFF, ABS16 = v => (S16(v) < 0 ? NEG16(v) : v & 0xFFFF);
 
 // 08:43F6 AdvanceMatchRng: a byte sum of the state and the ball's fraction bytes, so it is a pure function
@@ -233,15 +234,18 @@ export function startLandingMarker(E) {
   E.sfx(SFX_LANDING_MARKER);
 }
 
-// 08:5153 UpdateBallVisuals: the physics step, then the drawing side. The engine keeps what the game reads back:
-// the ball's ground projection (BuildBallShadowSlot 08:5253, the camera's follow target) and the effect
-// timers (DrawBallTouchCharEffect 08:5482, then the bounce and hit-spark timers); the sprite slots and the
-// history ring are left to the renderer.
+// 08:5153 UpdateBallVisuals: the physics step, then the drawing side (E.ext): the ball's sprite slots and history
+// ring, its shadow slot with the ground projection (the camera's follow target), the ball-hits-player effect and
+// its timer; then the bounce and hit-spark timers (TickTimer)
 export function updateBallVisuals(E) {
+  const S = E.S;
   stepBallPhysics(E);
-  const S = E.S, p = E.M.projectWorldToScreen(S.ballX & 0xFFFF, S.ballDepth & 0xFFFF, 0);
-  S.ballGroundProjX = p.hl; S.ballGroundProjY = p.bc;
-  if (S.ballTouchCharTimer) S.ballTouchCharTimer--;
+  E.ext.buildBallSlot(E);
+  E.ext.buildBallTrailSlots(E);
+  E.ext.buildBallShadowSlot(E);
+  E.ext.buildNetBallSlot(E);
+  E.ext.drawBallTouchCharEffect(E);
+  E.ext.shiftBallHistory(E);
   if (S.bounceEffectTimer) S.bounceEffectTimer--;
   if (S.hitSparkTimer) S.hitSparkTimer--;
 }
@@ -277,7 +281,10 @@ export function handleBallHitEvent(E) {
   callModeHook(E, 4);
   S.ballBounceCount = 0;
   if (S.rallyLength === 1) {
-    if (S.specialShotFlag) { E.banner(0x0E); E.events.push(["bannerPos", S.servingCharCourtPos & 2 ? 0xF000 : 0xF0D8]); }   // power serve
+    if (S.specialShotFlag) {                                            // the power serve's banner, by the server's end
+      E.ext.showCourtBanner(E, 0x0E);
+      E.ext.setObjPosition(E, OBJSLOT3, S.servingCharCourtPos & 2 ? 0xF000 : 0xF0D8);
+    }
   } else if (S.rallyLength === 2) {                                     // the serve was returned: full court limits
     S.courtLimitDepth = -0x4E0;
     S.courtLimitX = S.matchIsDoubles ? -0x240 : -0x1B0;

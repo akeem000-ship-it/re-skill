@@ -216,7 +216,7 @@ export class RomMath {
     const qHi = phase(a, false); this.mem.w8(0xFFAE, qHi);                // hDivQuotientHi
     rh = 0; const qMid = phase(hl >> 8, true); this.mem.w8(0xFFAD, qMid); // ld h, $00 then hDivQuotientMid
     const qLo = phase(hl & 0xFF, true);
-    return { a: qHi, hl: qMid << 8 | qLo };
+    return { a: qHi, hl: qMid << 8 | qLo, rem: rh << 8 | rl };            // rem: the remainder left in hl (the flags depend on it)
   }
   // 00:0FBC DivAHLByE: byte divisor (< $80), exact
   divAHLByE(a, hl, e) { const q = Math.floor(((a << 16 | hl) >>> 0) / e); return { a: (q >> 16) & 0xFF, hl: q & 0xFFFF }; }

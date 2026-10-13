@@ -6,8 +6,24 @@
 //          rows fold..y1 the front wall, standing on the ground line y1
 //  stamps: one example of a repeated tree / bush / prop (multiples of 8); every place in the map with the same
 //          tiles (>= 80%) stands up as a cut-out card (an inflated voxel body in voxel mode)
-//  cards:  single upright cut-outs (fences, posts, statues, furniture fronts)
+//  cards:  single upright cut-outs (fences, posts, statues, furniture fronts; on the side-view road, map 19, the sky
+//          band and the cafe front)
 export const FIELD_OBJECTS = {
+ "19": {
+  "stamps": [
+   { "x": 88, "y": 32, "w": 48, "h": 96 },
+   { "x": 384, "y": 40, "w": 24, "h": 48 }
+  ],
+  "cards": [
+   { "x0": 0, "y0": 0, "x1": 512, "y1": 64 },
+   { "x0": 144, "y0": 32, "x1": 260, "y1": 80 },
+   { "x0": 232, "y0": 80, "x1": 256, "y1": 96 },
+   { "x0": 70, "y0": 78, "x1": 87, "y1": 94 },
+   { "x0": 265, "y0": 75, "x1": 282, "y1": 94 },
+   { "x0": 408, "y0": 75, "x1": 426, "y1": 94 },
+   { "x0": 447, "y0": 103, "x1": 464, "y1": 120 }
+  ]
+ },
  "26": {
   "blocks": [
    {

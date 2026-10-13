@@ -7,10 +7,10 @@
 // jump -> facing -> animation script -> sprite slots. The state machine is two-level (wCharState, then
 // wCharStatePhase); docs/match_engine.md "On-court characters" in the disassembly describes it.
 //
-// Not kept by the engine (drawing only): the VRAM tile uploads of QueueCharFrameTiles (the copy queue at
-// $C0A0-$C0EF) and the serve indicator objects (bank 4 $DD80-$DDCF). Everything else these routines write --
-// palettes in the $C1xx/$C2xx buffers, the sprite-slot records and shadow OAM entries -- is kept, so the
-// whole of WRAM matches the ROM.
+// Drawing outside the engine goes through E.ext (engine.js): the VRAM tile uploads of QueueCharFrameTiles (the copy
+// queue at $C0A0-$C0EF), the serve indicator objects (bank 4 $DD80-$DDCF) and the on-court character graphics.
+// Everything else these routines write -- palettes in the $C1xx/$C2xx buffers, the sprite-slot records and shadow
+// OAM entries -- is the engine's own, so the whole of WRAM matches the ROM.
 import * as ball from "./ball.js";
 import * as shot from "./shot.js";
 import * as ai from "./ai.js";
@@ -152,6 +152,7 @@ export function initAllChars(E) {
   if (n >= 1) { E.setBank(5); initChar(E, 1, S.player2CurrentMainCharacter, S.player2MainPalette); }
   E.setBank(4); initChar(E, 0, S.player1CurrentMainCharacter, S.player1MainPalette);
   E.C.inputSource = 0;
+  E.ext.loadOnCourtCharacterGfx(E);                                     // 09:40B5 (VRAM and its copy queue)
 }
 
 // ============================================================================================================
@@ -284,7 +285,8 @@ export function charServeInitPhase(E) {
   ball.resetBallState(E, a => shot.setBallTrailColor(E, a));
   C.shotButton1 = 0; C.shotButton2 = 0; C.lastShotButton = 0;
   C.flags &= ~(CHARF.RECOIL | CHARF.DIVING);
-  // (SpawnServeIndicatorObjs 09:4242 -- HUD objects in bank 4 $DD80-$DDCF -- unless a minigame)
+  if (!S.minigameUsesTennisMachine && !S.minigameUsesWall && !S.minigameIsBooBlast)
+    E.withWramBank(4, () => E.ext.spawnServeIndicatorObjs(E));          // 09:4242: HUD objects in bank 4 $DD80-$DDCF
   setCharAnimation(E, CHARANIM.SERVE_PREP);
   advancePhase(E);
 }
@@ -298,7 +300,7 @@ export function charServeTossPhase(E) {
   ball.setBallPosition(E, U16(C.posXInt), U16(C.posDepthInt), 0xFF70);
   ball.setBallVelocityPolar(E, 0x0B00, 0xC000, 0x0000);                // straight up
   S.ballSpriteEnabled = 1; S.ballShadowEnabled = 1; S.ballTrailEnabled = 1;
-  // (DismissServeIndicatorObjs 09:4282: HUD objects only)
+  E.withWramBank(4, () => E.ext.dismissServeIndicatorObjs(E));          // 09:4282 (HUD objects)
   setCharAnimation(E, CHARANIM.OVERHEAD_READY);
   advancePhase(E);
 }
@@ -389,7 +391,7 @@ export function charAwaitServeStart(E) {
   applyCharMovementInput(E);
   updateCharRunAnimation(E);
   if (NEG(ABS16(E.C.posDepthInt) + 0xFE00)) return;
-  // (DismissServeIndicatorObjs 09:4282: HUD objects only)
+  E.withWramBank(4, () => E.ext.dismissServeIndicatorObjs(E));          // 09:4282 (HUD objects)
   advancePhase(E);
 }
 // ---- states 6 / 7: scripted walks and the end of the point ----
@@ -725,10 +727,11 @@ export function reloadCharFacingTiles(E, d) {
   if (!(C.spriteDirty & 0x40)) return;
   C.spriteDirty &= ~0x40;
   const row = E.rom.u8(8, indexed(FACING_TILE_ROW, d));
-  queueCharFrameTiles(E, U8(C.animFrame * 5 + row) * 2);
+  E.ext.queueCharFrameTiles(E, U8(C.animFrame * 5 + row) * 2);
 }
 // 00:2E6B QueueCharFrameTiles: the frame's 3-byte sprite descriptor (wCharSpriteFrame) from the shadow table;
-// the tile copies it queues (VRAM copy queue $C0A0-$C0EF) are drawing only and not kept
+// the tile copies it queues (VRAM copy queue $C0A0-$C0EF) are drawing only: E.ext.queueCharFrameTiles does the
+// whole routine where there is VRAM
 export function queueCharFrameTiles(E, de) {
   const C = E.C, m = E.mem, src = U16(C.shadowTablePtr + de + de);
   for (let i = 0; i < 3; i++) m.w8(0xDF1B + i, E.rom.u8(C.objectBank, src + i));
