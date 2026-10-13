@@ -42,7 +42,7 @@ for (const R of ROUTINES) {
     core.mem.svbk = bank; P.gb.mem.svbk = bank; P.gb.mem.hram[0x16] = bank;   // rSVBK and hWramBank (romCall sets both on the core)
     const regs = R.regs ? R.regs(s) : {};
     if (R.prep) { R.prep(core.mem, s); R.prep(P.gb.mem, s); }
-    P.ime = core.cpu.ime; core.cpu.sp = 0xCFF0;
+    P.ime = false; core.cpu.sp = 0xCFF0;                                 // (romCall runs the ROM with IME off)
     let ret, err = null;
     if (!R.js && !P.hooks.has(hookKey(R.bank, R.addr))) { console.log(`FAIL ${R.name}: no port hooked at ${R.bank.toString(16)}:${R.addr.toString(16)}`); anyFail = true; break; }
     P.cpu.sp = 0xCFF0; P.cpu.halted = false;                         // (the states are taken in AdvanceFrame's halt; romCall clears it too)

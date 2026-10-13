@@ -171,12 +171,16 @@ P.afterAdvance = k => {
   if (!all.length) return;
   const d = all.filter(x => !isSound(x)), timing = k - lastTiming <= 2;
   if (!d.length) soundDiffs++; else if (timing) timingDiffs++; else bad++;
-  if (d.length && timing) { lastResync = k; lastResyncFrame = w.vblanks; suspect = []; }
+  // the two at the same call depth (the same AdvanceFrame call site, as far as the stack tells): the ROM's state
+  // can be copied in. At different depths the port is on another path; copying would only corrupt it.
+  const sameSp = w.s.cpu.sp === P.cpu.sp;
+  if (d.length && timing && sameSp) { lastResync = k; lastResyncFrame = w.vblanks; suspect = []; }
+  if (d.length && timing && !sameSp && k - lastResync > 10) { lastResync = k; lastResyncFrame = w.vblanks; suspect = []; }
   // The game went another way after a timing event (a button press seen a frame apart, say): copying the ROM's
   // RAM in doesn't bring the two back together, because their code is in different places. Seen as differences
   // that keep coming back, resynced each time, at 5 or more AdvanceFrames out of the 10 after the resync. The rest of the
   // recording can't be compared; stop there.
-  if (d.length && !timing && k - lastResync <= 10) {
+  if (d.length && (!timing || !sameSp) && k - lastResync <= 10) {
     suspect.push(k);
     if (suspect.length >= 5) {
       bad -= suspect.length;
@@ -188,7 +192,7 @@ P.afterAdvance = k => {
     log(`advance ${k} (ROM frame ${w.vblanks}, map ${w.s.mem.wram[0][0x32E]})${timing ? " [timing]" : ""}` +
       (w.s.cpu.sp !== P.cpu.sp ? ` [called from elsewhere: sp rom ${w.s.cpu.sp.toString(16)} port ${P.cpu.sp.toString(16)}]` : "") + ": " + d.slice(0, 8).map(x => `${x[0]}${x[2] ? " $" + x[2].toString(16) : ""} rom=${x[3]} port=${x[4]}`).join(", "));
   if (stop && d.length && !timing) throw new Done();
-  if (!d.length || timing || resyncAll || suspect.includes(k)) copyIn(w.s);   // (suspects too: does it come back?)
+  if (sameSp && (!d.length || timing || resyncAll || suspect.includes(k))) copyIn(w.s);   // (suspects too: does it come back?)
 };
 
 coreTo(1); startWatch(1);

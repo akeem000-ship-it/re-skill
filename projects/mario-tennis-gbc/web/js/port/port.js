@@ -63,9 +63,9 @@ export class GamePort {
   get ime() { return this.gb.cpu.ime; }                                  // one interrupt master enable, shared with ROM code
   set ime(v) { this.gb.cpu.ime = v; this.gb.cpu.eiPending = false; }
   // the ROM's wram_bank macro: hWramBank and rSVBK; withWramBank is push_wram_bank ... pop_wram_bank around fn
-  wramBank(b) { this.mem.hram[0x16] = b; this.mem.write(0xFF70, b); }
+  wramBank(b) { this.mem.write(0xFF96, b); this.mem.write(0xFF70, b); }
   withWramBank(b, fn) {
-    const old = this.mem.hram[0x16];
+    const old = this.mem.read(0xFF96);
     this.wramBank(b);
     try { return fn(); } finally { this.wramBank(old); }
   }
@@ -157,6 +157,11 @@ export class GamePort {
   callRom(bank, addr, regs = {}) {
     const cpu = this.cpu;
     const saved = this.enter(bank, addr, regs);
+    this.callDepth = (this.callDepth || 0) + 1;
+    try { return this.callRomLoop(bank, addr, saved); } finally { this.callDepth--; }
+  }
+  callRomLoop(bank, addr, saved) {
+    const cpu = this.cpu;
     for (let n = 0; ; n++) {
       if (cpu.sp === saved.sp && (cpu.pc === SENTINEL || this.lastRet)) break;
       if (cpu.halted && !(this.mem.iflag & this.mem.ie & 0x1F)) throw new Error(`callRom ${bank.toString(16)}:${addr.toString(16)} halted at ${cpu.pc.toString(16)}`);
@@ -169,7 +174,8 @@ export class GamePort {
   enter(bank, addr, regs) {
     const cpu = this.cpu, m = this.mem;
     const saved = { romBank: m.romBank, hRomBank: m.hram[0x15], sp: cpu.sp, pc: cpu.pc };   // pc: ROM code this call interrupted
-    if (addr >= 0x4000) { m.romBank = bank; m.updateRom(); m.hram[0x15] = bank; }   // as FarCall: MBC and hRomBank
+    saved.banked = addr >= 0x4000 && addr < 0x8000;
+    if (saved.banked) { m.romBank = bank; m.updateRom(); m.hram[0x15] = bank; }   // as FarCall: MBC and hRomBank (not for code in RAM)
     for (const [r, hi, lo] of [["bc", "b", "c"], ["de", "d", "e"], ["hl", "h", "l"]]) if (r in regs) { cpu[hi] = regs[r] >> 8 & 0xFF; cpu[lo] = regs[r] & 0xFF; }
     for (const r of ["a", "b", "c", "d", "e", "h", "l"]) if (r in regs) cpu[r] = regs[r] & 0xFF;
     if ("f" in regs) cpu.f = regs.f & 0xF0;
@@ -180,8 +186,10 @@ export class GamePort {
   }
   leave(saved) {
     const cpu = this.cpu, m = this.mem;
-    if (saved.romBank !== m.romBank) { m.romBank = saved.romBank; m.updateRom(); }
-    m.hram[0x15] = saved.hRomBank;
+    if (saved.banked) {                                                  // as FarCall's return: the caller's bank back
+      if (saved.romBank !== m.romBank) { m.romBank = saved.romBank; m.updateRom(); }
+      m.hram[0x15] = saved.hRomBank;
+    }
     const out = { a: cpu.a, f: cpu.f, b: cpu.b, c: cpu.c, d: cpu.d, e: cpu.e, h: cpu.h, l: cpu.l, bc: cpu.bc, de: cpu.de, hl: cpu.hl };
     cpu.pc = saved.pc;
     return out;
@@ -203,12 +211,14 @@ export class GamePort {
   step() {
     const cpu = this.cpu, m = this.mem, pc = cpu.pc;
     this.lastRet = false;
+    // ROM code run by callRom (which cannot wait) jumping to SoftReset (00:2582): the reset, as from a JS handler
+    if (pc === 0x2582 && this.callDepth > 0) throw new SoftResetSignal();
     const top = this.cpuHandlers[this.cpuHandlers.length - 1];
     if (top && pc === top.ret && cpu.sp === top.sp) { this.cpuHandlers.pop(); this.inHandler--; }   // an interrupt handler the CPU took returned
     // the ROM's AdvanceFrame: the probe, once per call (when its first instruction is about to run, not an interrupt)
     const atAdvance = pc === 0x2631 && (this.onAdvance || this.afterAdvance) && !this.hooks.has(0x2631) && !(cpu.ime && (m.iflag & m.ie & 0x1F));
     if (atAdvance && !this.probed) { this.probed = true; return this.atAdvanceFrame(); }
-    if (pc < 0x8000) {
+    if (pc < 0x8000 && !(cpu.ime && (m.iflag & m.ie & 0x1F))) {          // (an interrupt due now comes first, as on the CPU)
       const fn = pc < 0x100 && VECTORS[pc] ? (this.program[VECTORS[pc]] ? "vector" : null) : this.hooks.get(hookKey(m.romBank, pc));
       if (fn === "vector") {                                             // the CPU took an interrupt: the program's handler, then reti
         if (this.cpuHandlers.length && this.cpuHandlers[this.cpuHandlers.length - 1].vector === pc) { this.cpuHandlers.pop(); this.inHandler--; }
@@ -261,10 +271,11 @@ export class GamePort {
   // one frame of play: interrupts due now (the VBlank handler), the game's frame of work, the hardware's frame
   frame() {
     try { this.dispatch(); } catch (e) { if (!(e instanceof SoftResetSignal)) throw e; this.softReset(); }
+    const hw = wake => { try { return this.runHardware(wake); } catch (e) { if (!(e instanceof SoftResetSignal)) throw e; this.softReset(); return true; } };
     for (;;) {
       const why = this.resume();
-      if (why !== "cpuhalt") { this.runHardware(); return; }
-      if (this.runHardware(true)) return;                                // the ROM's halted CPU: until it wakes
+      if (why !== "cpuhalt") { hw(false); return; }
+      if (hw(true)) return;                                              // the ROM's halted CPU: until it wakes
     }
   }
 }
