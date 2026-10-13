@@ -63,8 +63,8 @@ export function unusedDrawDecimalNumberToTilemap(P, cpu) {
   const sp = cpu.sp, buffer = (sp - 16) & 0xFFFF;              // push af / bc / hl, add sp, -10
   cpu.sp = (sp - 18) & 0xFFFF;                                 // push de
   try {
-    callHome(P, HOME.FormatDecimalNumber, { a: cpu.a, hl: cpu.hl, de: buffer, bc: buffer });
-    const r = callFar(P, FAR.Unused_05_WriteStringToTilemap, { hl: buffer, de: cpu.de });
+    const text = callHome(P, HOME.FormatDecimalNumber, { a: cpu.a, hl: cpu.hl, de: buffer, bc: buffer }).bc;
+    const r = callFar(P, FAR.Unused_05_WriteStringToTilemap, { hl: text, de: cpu.de });
     return { de: r.de };
   } finally { cpu.sp = sp; }
 }

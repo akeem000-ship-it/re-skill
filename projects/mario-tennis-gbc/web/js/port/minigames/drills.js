@@ -266,20 +266,22 @@ export function recordDrillTargetZoneHitIfInPlay(P) {
   if (o === POINTOUTCOME.NET || o === POINTOUTCOME.FAULT || o === POINTOUTCOME.LET) return;
   recordDrillTargetZoneHit(P);
 }
-// RecordDrillTargetZoneHit (0B:41E6): on the ball's first bounce, if it landed in the target zone, set the point's
-// bit in wDrillTargetZoneHitBits; otherwise the zone goes off for this point (wTargetZoneEnabled = 0).
+// RecordDrillTargetZoneHit (0B:41E6): at the ball's first bounce (IsBallInTargetZone: a = 1, NZ inside): inside the
+// zone, the zone goes off for this point (wTargetZoneEnabled = 0, its hit shown); outside, the point's bit is set in
+// wDrillTargetZoneHitBits — despite the names, the bits record the misses.
 export function recordDrillTargetZoneHit(P) {
   if (P.V.ballBounceCount >= 2) return;
   const r = far(P, ROM.IsBallInTargetZone);
   if (!(r.f & FLAG_Z)) { P.V.targetZoneEnabled = 0; return; }
   P.V.drillTargetZoneHitBits |= rlaBit(P.V.totalPointsScoredInCurrentGame + 1);
 }
-// CountDrillResultBitsSet (0B:420B): the points whose ball landed in the target zone (bits of
-// wDrillTargetZoneHitBits). bc kept.
+// CountDrillResultBitsSet (0B:420B): the points whose ball missed the target zone (bits of wDrillTargetZoneHitBits).
+// bc kept.
 export function countDrillResultBitsSet(P) {
   return { a: popcount8(P.V.drillTargetZoneHitBits), f: FLAG_Z | FLAG_N };
 }
-// CheckDrillTargetZoneMissed (0B:421C): 1 when this point's ball missed the target zone (its bit is clear), else 0.
+// CheckDrillTargetZoneMissed (0B:421C): 1 when this point's ball landed in the target zone (no miss bit), else 0 —
+// the name says the opposite of what it returns.
 // cin: the carry flag the caller leaves (the shift loop brings it in; it decides point 8). bc kept.
 export function checkDrillTargetZoneMissed(P, cin) {
   const bit = shiftedOutBit(P.V.drillTargetZoneHitBits, P.V.totalPointsScoredInCurrentGame + 1, cin);

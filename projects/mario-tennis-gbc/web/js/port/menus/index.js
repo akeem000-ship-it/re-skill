@@ -7,4 +7,5 @@ import { HOOKS as TILEMAPS } from "./common/tilemaps.js";
 import { HOOKS as MENU_LIB } from "./common/menu_lib.js";
 import { HOOKS as WIDGETS } from "./common/widgets.js";
 import { HOOKS as CURSORBOX } from "./common/cursorbox.js";
-export const HOOKS = [...CURSORS, ...TILEMAPS, ...MENU_LIB, ...WIDGETS, ...CURSORBOX];
+import { HOOKS as PROMPTS } from "./common/prompts.js";
+export const HOOKS = [...CURSORS, ...TILEMAPS, ...MENU_LIB, ...WIDGETS, ...CURSORBOX, ...PROMPTS];

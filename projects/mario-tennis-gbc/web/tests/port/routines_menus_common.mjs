@@ -239,13 +239,34 @@ C("menus/common CheckCharacterUnlocked", B18, 0x452A, { regs: r => ({ a: pick(r,
 C("menus/common UnusedCheckCharacterIdUnlocked", B18, 0x454D, { regs: r => ({ a: pick(r, [0, 0x0F, 0x10, r(256)]) }), n: 3 });
 C("menus/common Unused_18_CheckUnlockFlag", B18, 0x4557, { regs: r => ({ a: pick(r, [0, 5, 0x1F, 0x84, 0x85, r(256)]) }), n: 2 });
 C("menus/common Unused_18_TestUnlockFlagById", B18, 0x4564, { regs: r => ({ a: r(256) }), n: 3 });
-// the grid walk: a grid of stops with a few skipped cells (never all of a line, so the walk ends)
+// the grid walk: a grid of stops with a few skipped cells (never all of a line, so the walk ends; $FC, $FE and
+// $FD send it back where it came from on some moves, for ever, on the ROM too)
 C("menus/common Unused_18_MoveGridCursor", B18, 0x45CA, {
-  regs: r => ({ b: pick(r, [0x10, 0x20, 0x40, 0x80, 0, 0x30]), d: pick(r, [0, 3, 7, 8, 0xFF]), e: pick(r, [0, 2, 3, 4, 0xFF]), hl: 0xC800 }),
+  regs: r => ({ b: pick(r, [0x10, 0x20, 0x40, 0x80, 0x30]), d: pick(r, [0, 3, 7, 8, 0xFF]), e: pick(r, [0, 2, 3, 4, 0xFF]), hl: 0xC800 }),
   prep: (mem, r) => {
     for (let i = 0; i < 32; i++) w(mem, 0xC800 + i, r(4) ? r(0xF0) : 0xF0);
-    for (let k = r(4); k > 0; k--) { const y = r(4), x = 1 + r(6); w(mem, 0xC800 + y * 8 + x, pick(r, [0xFF, 0xFC, 0xFB])); }
+    for (let k = r(4); k > 0; k--) { const y = r(4), x = 1 + r(6); w(mem, 0xC800 + y * 8 + x, pick(r, [0xFF, 0xFB])); }
   },
 });
+
+// ---- the confirm screens of bank $18 (prompts_18.asm) ----
+C("menus/common Unused_18_InitPlayerRecordForCharacter", B18, 0x463B, { regs: r => ({ a: r(4), b: r(16) }), n: 3,
+  prep: (mem, r) => { wv(mem, "storyCharacterSlot", r(2)); wv(mem, "playerInputFlags", r(2) ? 4 : 0); wv(mem, "debugStepMode", r(2)); } });
+C("menus/common Unused_18_InitConfirmScreen", B18, 0x52DE, { wram: 1, n: 4 });
+C("menus/common Unused_18_DrawConfirmScreenBox", B18, 0x5365, { wram: 1, n: 3 });
+C("menus/common Unused_18_LoadScorePanelValue", B18, 0x5372, { n: 4 });
+C("menus/common Unused_18_StubNop_18_1", B18, 0x5379, { n: 10 });
+const panelPrep = (mem, r) => { spritePrep(mem, r); for (let i = 0; i < 16; i++) w(mem, at("scorePanelBobStep") + i, r(5)); };
+C("menus/common Unused_18_SetupScoreboardDisplay", B18, 0x537A, { wram: 1, prep: panelPrep, n: 2 });
+C("menus/common Unused_18_DrawScoreNumbersTask", B18, 0x53B3, { prep: panelPrep, n: 2 });
+C("menus/common Unused_18_GetTextSlotPointer", B18, 0x53E4, { n: 2 });
+C("menus/common Unused_18_ForceFlushBgMapToVram", B18, 0x5418, { n: 3 });
+C("menus/common Unused_18_DrawDecimalNumberSprites", B18, 0x54B1, { regs: r => ({ a: r(5), hl: r(0x10000) }), prep: panelPrep, n: 2 });
+C("menus/common Unused_18_DrawStringSprites", B18, 0x54D2, { regs: () => ({ hl: 0xC800 }), n: 2,
+  prep: (mem, r) => { panelPrep(mem, r); for (let i = 0; i < 8; i++) w(mem, 0xC800 + i, i === 7 ? 0 : 0x20 + r(0x30)); } });
+C("menus/common Unused_18_DrawGlyphSprite", B18, 0x54DC, { regs: r => ({ a: 0x20 + r(0x40) }), prep: panelPrep, n: 2 });
+C("menus/common Unused_18_DrawThreeOptionLabels", B18, 0x5527, { wram: 1, n: 3 });
+C("menus/common Unused_18_DrawYesNoLabels", B18, 0x5561, { wram: 1, n: 3 });
+C("menus/common Unused_18_DrawTileBlock6x2ToTilemap", B18, 0x5586, { regs: r => ({ hl: 0xC800 + r(0x200), de: 0xCA00 + r(0x200) }), n: 2 });
 
 export const ROUTINES = ENTRIES;
