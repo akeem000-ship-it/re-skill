@@ -45,6 +45,11 @@ export class GamePort {
     this.vblanks = 0;                                                    // frame boundaries passed (see tick)
     this.offDots = 0;
     this.advances = 0;                                                   // AdvanceFrame calls (atAdvanceFrame)
+    this.offBeat = -9;                                                   // the AdvanceFrame count at the last VBlank taken mid-work
+    this.inHandler = 0;                                                  // interrupt handlers running (> 0: in a handler)
+    this.cpuHandlers = [];                                               // handlers the CPU took: {vector, ret, sp} to see them return
+    this.suppressVBlanks = 0;                                            // VBlanks whose handler injectVBlank already ran
+    this.workVBlanks = 0;                                                // VBlanks the CPU took while ROM code was at work
     this.co = null;                                                      // the game's coroutine
     this.events = [];                                                    // optional notes for a page (sound ids etc.)
     this.hooks = new Map();
@@ -74,10 +79,20 @@ export class GamePort {
       const bit = pending & -pending;
       m.iflag &= ~bit; this.ime = false;                                  // as on hardware: IF bit cleared, IME off during the handler
       this.cpu.halted = false;
-      if (!this.program[VECTORS[{ 1: 0x40, 2: 0x48, 4: 0x50, 8: 0x58, 16: 0x60 }[bit]]]) { this.gb.sync(20); this.tick(20); }   // ROM handler: the CPU's 20-cycle entry
-      this.handler({ 1: 0x40, 2: 0x48, 4: 0x50, 8: 0x58, 16: 0x60 }[bit]);
+      const vector = { 1: 0x40, 2: 0x48, 4: 0x50, 8: 0x58, 16: 0x60 }[bit];
+      if (vector === 0x40 && this.suppressVBlanks > 0) { this.suppressVBlanks--; this.ime = true; continue; }   // already run (injectVBlank)
+      if (!this.program[VECTORS[vector]]) { this.gb.sync(20); this.tick(20); }   // ROM handler: the CPU's 20-cycle entry
+      this.inHandler++;
+      try { this.handler(vector); } finally { this.inHandler--; }
       this.ime = true;                                                   // reti
     }
+  }
+  // The VBlank handler, now, as if its interrupt came (a test driver placing a frame the ROM's code overran at the
+  // point of the work where the ROM took it); the hardware VBlank of that frame, when it comes, does not run it again.
+  injectVBlank() {
+    this.ime = false; this.inHandler++;
+    try { this.handler(0x40); } finally { this.inHandler--; }
+    this.ime = true; this.suppressVBlanks++;                             // (reti)
   }
   // run the handler of an interrupt vector: the program's JS, or the ROM's own handler
   handler(vector) {
@@ -181,13 +196,18 @@ export class GamePort {
   // one CPU step; at a hooked address run the JS instead (returns its generator if it waits)
   step() {
     const cpu = this.cpu, m = this.mem, pc = cpu.pc;
+    const top = this.cpuHandlers[this.cpuHandlers.length - 1];
+    if (top && pc === top.ret && cpu.sp === top.sp) { this.cpuHandlers.pop(); this.inHandler--; }   // an interrupt handler the CPU took returned
     // the ROM's AdvanceFrame: the probe, once per call (when its first instruction is about to run, not an interrupt)
     const atAdvance = pc === 0x2631 && (this.onAdvance || this.afterAdvance) && !this.hooks.has(0x2631) && !(cpu.ime && (m.iflag & m.ie & 0x1F));
     if (atAdvance && !this.probed) { this.probed = true; return this.atAdvanceFrame(); }
     if (pc < 0x8000) {
       const fn = pc < 0x100 && VECTORS[pc] ? (this.program[VECTORS[pc]] ? "vector" : null) : this.hooks.get(hookKey(m.romBank, pc));
       if (fn === "vector") {                                             // the CPU took an interrupt: the program's handler, then reti
-        this.program[VECTORS[pc]](this); this.ret(); this.ime = true; return null;
+        if (this.cpuHandlers.length && this.cpuHandlers[this.cpuHandlers.length - 1].vector === pc) { this.cpuHandlers.pop(); this.inHandler--; }
+        this.inHandler++;
+        try { this.program[VECTORS[pc]](this); } finally { this.inHandler--; }
+        this.ret(); this.ime = true; return null;
       }
       if (fn) {
         const r = fn(this, cpu);
@@ -198,6 +218,18 @@ export class GamePort {
     const c0 = this.gb.cycles;
     this.gb.stepInstruction();
     if (atAdvance) this.probed = false;
+    if (VECTORS[cpu.pc] && cpu.pc !== pc && cpu.pc < 0x68) {             // the CPU took an interrupt
+      const ret = m.read(cpu.sp) | m.read((cpu.sp + 1) & 0xFFFF) << 8;
+      if (cpu.pc === 0x40 && this.suppressVBlanks > 0) {                 // its handler already ran (injectVBlank): reti
+        this.suppressVBlanks--; this.ret(); this.ime = true;
+      } else {
+        this.cpuHandlers.push({ vector: cpu.pc, ret, sp: (cpu.sp + 2) & 0xFFFF }); this.inHandler++;
+        if (cpu.pc === 0x40 && (ret < 0x2700 || ret > 0x2711)) {        // a VBlank not in AdvanceFrame's wait: ROM code mid-work
+          this.offBeat = this.advances;
+          if (ret < 0x2631 || ret > 0x2724) this.workVBlanks++;
+        }
+      }
+    }
     this.tick(this.gb.cycles - c0);
     return null;
   }

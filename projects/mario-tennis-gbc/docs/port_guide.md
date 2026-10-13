@@ -75,13 +75,20 @@ in place.
    - Entry shape: `{ name, bank, addr, out: ["a","hl",...], regs(state), prep(mem, state), when(state), wram }`.
    - Use `prep` to force rare branches.
    - Only routines that do not wait can be tested this way.
-2. **Lockstep.** Run `node web/tests/port_lockstep.mjs [rec.mtrec]` with recordings from `out/engine/`.
-   - It plays a recording on the ROM and on the port, lined up on AdvanceFrame calls, comparing the whole machine
-     at every AdvanceFrame and every finished picture.
-   - The ROM's code can overrun a frame (lag), and ported code never does. Differences within two AdvanceFrames
-     of a lag are counted apart as "after lag".
-   - The count that must be 0 is "with RAM/state differences" (and pictures "differ"). Use `--stop` to stop at
-     the first difference and `--show K` to print more.
+2. **Lockstep.** Run `node web/tests/port_lockstep.mjs [rec.mtrec]` with recordings from `out/engine/` or
+   `out/port/`.
+   - It plays a recording on the ROM and on the port, lined up on the game's frames (AdvanceFrame calls). It
+     compares the whole machine at every AdvanceFrame, and every finished picture.
+   - The port's code takes no time, and the ROM's sometimes overruns a frame (lag). The test gives the port the
+     ROM's lag frames, and runs its VBlank handler at the point of the work where the ROM took that VBlank.
+   - Differences right after such timing events, LCD on/off switches, or only in the sound engine's state are
+     counted apart ("timing", "sound timing only") and resynced.
+   - The count that must be 0 is "with RAM/state differences", and pictures "differ".
+   - If a timing event sends the game another way, the test says "the game's course changed by timing" and
+     stops there; that is not a failure of your code.
+   - Use `--stop` to stop at the first difference and `--show K` to print more.
+   - Use `HOOKS=home/joypad,home/flags` (module paths under web/js/port) to run with only those modules'
+     hooks, so other ports in progress don't interfere. `NOHOOKS=1` runs the pure ROM, which matches exactly.
    - This is the test for routines that wait, and for the program as a whole.
 3. Make power-on recordings for the parts of the game you port with `web/tests/engine/make_rec.mjs`, which takes
    a scripted pad. Put them in `out/port/` (gitignored), and say in your module which recording covers it.
