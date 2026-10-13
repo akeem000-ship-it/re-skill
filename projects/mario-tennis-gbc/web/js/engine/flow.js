@@ -138,16 +138,18 @@ export function resolvePointWinner(E) {
 export function updateMatchFrame(E) {
   const S = E.S;
   E.setBank(4);
-  if (S.matchSimFrozen) return;
-  updateMatchCamera(E);
-  chars.updateAllChars(E);
-  ball.handleBallHitEvent(E);
-  ball.handleBallTouchCharEvent(E);
-  ball.updateBallVisuals(E);
-  ball.tickRallyTimers(E);
-  ball.handleBallBounceEvent(E);
-  ball.callModeHook(E, 0);
-  if (E.minigameTargets) E.minigameTargets(E);                          // 0A:65C3 UpdateMinigameTargets (drills)
+  if (!S.matchSimFrozen) {
+    updateMatchCamera(E);
+    chars.updateAllChars(E);
+    ball.handleBallHitEvent(E);
+    ball.handleBallTouchCharEvent(E);
+    ball.updateBallVisuals(E);
+    ball.tickRallyTimers(E);
+    ball.handleBallBounceEvent(E);
+    ball.callModeHook(E, 0);
+  }
+  if (!S.matchDrawFrozen) ball.drawBallAndEffects(E);                   // DrawActorsByDepth 08:6429
+  if (!S.matchSimFrozen && E.minigameTargets) E.minigameTargets(E);     // 0A:65C3 UpdateMinigameTargets (drills)
 }
 
 // ---- camera (changeover_08) ----

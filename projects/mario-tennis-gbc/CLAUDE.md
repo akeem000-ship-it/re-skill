@@ -15,7 +15,9 @@
   - `rst $20/$28/$30 ; dw n<<5` set/clear/test event flag n;
   - assets are LZ-compressed (`tools/decompress.py`); text is ASCII.
 - Never use third-party disassemblers. Write a .py in tools/ rather than inline `python3 -c`.
-  Exception (approved by the project owner): the gerbiljames/mario-tennis-gbc-disasm repository (MIT) may be
-  read as a *reference* for names and documented behaviour. Check what it says against the ROM with our own tools
-  (`tools/disasm.py`, emulator traces) before relying on it, credit it where a name or fact comes from it
-  (label comment / note), and never copy its source files into this repo. Credits are in README.md.
+  Exception (approved by the project owner): the gerbiljames/mario-tennis-gbc-disasm repository (MIT) is
+  vendored at `third_party/mario-tennis-gbc-disasm/` (see its VENDORED.md) and may be used directly — its source,
+  names, docs, tools and its RGBDS build (`build/mariotennis.sym`). Code taken from it may be copied into this
+  project for now (keep its MIT notice; credit it in a comment), to be replaced with this project's own code
+  later. Check behaviour against the ROM with our own tools (`tools/disasm.py`, emulator traces, the engine's
+  differential tests) before relying on it. Never commit its `data/` or `build/` (ROM-extracted). Credits are in README.md.

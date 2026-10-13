@@ -11,3 +11,7 @@ states/
 docs/scenes_dump.txt
 out/
 web/gen/
+# the vendored disassembly's build products and ROM-extracted data
+third_party/mario-tennis-gbc-disasm/data/
+third_party/mario-tennis-gbc-disasm/build/
+third_party/mario-tennis-gbc-disasm/*.gbc

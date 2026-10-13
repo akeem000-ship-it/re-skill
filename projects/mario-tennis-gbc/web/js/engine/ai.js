@@ -10,6 +10,7 @@
 // baseliner; each handler is a jump table on wAiPhase, which SetCharState zeroes, so every stroke restarts it.
 // Randomness is AdvanceMatchRng (ball.js), a pure function of the ball state.
 import { advanceMatchRng, offsetFromBallLanding, SHOTTYPE_LOB } from "./ball.js";
+import { setCharTarget, checkCharNearTarget } from "./chars.js";
 
 export const SHOTTYPE_DROP = 0x0B;
 export const CHARANIM_SERVE_READY = 0x10;
@@ -34,19 +35,6 @@ function dispatch(E, table, i, what) {
   const fn = table[i];
   if (!fn) throw new Error(`ai: ${what} index ${i} outside its jump table`);
   return fn(E);
-}
-
-// ---- TEMP copies of bank-08 character helpers (chars.js will export them) ----
-// TEMP until chars.js exports it: 08:69AE SetCharTarget (hl = X, de = depth)
-function setCharTarget(E, x, depth) {
-  const C = E.C; C.walkTargetDepth = depth; C.walkTargetX = x; C.walkTargetFlag = 0;
-}
-// TEMP until chars.js exports it: 08:78BE CheckCharNearTarget: within 24 units of the walk target on both axes
-function checkCharNearTarget(E) {
-  const C = E.C;
-  if (ABS16(C.walkTargetX - C.posXInt) >= 0x18) return 0;
-  if (ABS16(C.walkTargetDepth - C.posDepthInt) >= 0x18) return 0;
-  return 1;
 }
 
 // ---- small bank-08 helpers used outside the AI too ----

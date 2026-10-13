@@ -52,7 +52,7 @@ const GROUPS = {
   ball: [[0, 0xC400, 0xC430]],
   match: [[0, 0xC430, 0xC500]],
   score: [[0, 0xC8C0, 0xC900]],
-  chars: [4, 5, 6, 7].map(b => [b, 0xDF00, 0xDF97]),
+  chars: [4, 5, 6, 7].flatMap(b => [[b, 0xDF00, 0xDF80], [b, 0xDF90, 0xDF97]]),   // $DF80-$DF8F: sprite slots (drawing)
   hram: [[-1, 0xFF8A, 0xFF8C], [-1, 0xFFE9, 0xFFEA]],
 };
 const SKIP = new Set([0xC494, 0xC495, 0xC496, 0xC497, 0xC498, 0xC499, 0xC49A, 0xC49B, 0xC49C, 0xC49D, 0xC49E, 0xC49F]);   // scoreboard layout scratch
@@ -79,15 +79,21 @@ const G = ENTRY[1](E);
 let r = G.next();                                                        // up to the first frame wait
 stepUntil(() => false);                                                  // the game finishes that frame
 compare(f);
+// a lag frame: no simulation frame completed (hMatchFrameCounter did not move: setup code or a long frame ran
+// past VBlank), so the engine waits; the simulation frame that follows reads the pad bytes of its own frame
+let lags = 0, wait = false;
 for (let n = 0; n < maxFrames && !r.done && f < rec.frames; n++) {
-  if (resync) { E.mem.loadFromCore(gb); E.mem.bank = gb.mem.hram[0x16] & 7 || 1; }
+  if (resync && !wait) { E.mem.loadFromCore(gb); E.mem.bank = gb.mem.hram[0x16] & 7 || 1; }
+  const before = gb.mem.hram[0x69];
   setInput(); gb.runFrame(); f++;
-  for (let i = 0x10; i <= 0x14; i++) E.mem.hram[i] = gb.mem.hram[i];   // hPlayerInputFlags..hInputRisingEdge of this frame
+  const pad = gb.mem.hram.slice(0x10, 0x15);
+  if (gb.mem.hram[0x69] === before && !gb.mem.wram[0][0x4C0]) { lags++; wait = true; continue; }
+  E.mem.hram.set(pad, 0x10); wait = false;                // hPlayerInputFlags..hInputRisingEdge
   E.events.length = 0;
   try { r = G.next(); } catch (e) { console.log(`engine stopped at frame ${f}: ${e.message}`); break; }
   compare(f);
 }
-console.log(JSON.stringify({ mode: resync ? "resync" : "free", framesCompared: compared, lastFrame: f, done: !!r.done, framesWithDiffs: count }));
+console.log(JSON.stringify({ mode: resync ? "resync" : "free", framesCompared: compared, lagFrames: lags, lastFrame: f, done: !!r.done, framesWithDiffs: count }));
 for (const [g, l] of Object.entries(first)) {
   console.log(`-- ${g}: top fields ` + Object.entries(fieldHits[g]).sort((x, y) => y[1] - x[1]).slice(0, 10).map(([k, v]) => `${k}×${v}`).join(" "));
   for (const x of l) console.log("   " + x);

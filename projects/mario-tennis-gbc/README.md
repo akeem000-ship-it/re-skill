@@ -20,11 +20,11 @@ The ROM and everything extracted from it are gitignored. Only tools and notes ar
 
 - **[gerbiljames/mario-tennis-gbc-disasm](https://github.com/gerbiljames/mario-tennis-gbc-disasm)** by
   James White (MIT): a byte-perfect RGBDS disassembly of the same ROM with named routines, a RAM map
-  and write-ups of the match engine, story mode, screens and save format. This project's own analysis
-  (`tools/disasm.py`, the emulator traces, `labels.csv`) came first; the disassembly is used as a
-  reference to cross-check and correct it, and where a name or fact here comes from it the label
-  comment or note says so (e.g. `wLandingMarkerActive $C4DA`, the ball effect timers `$C4A8-$C4AA`).
-  Nothing is copied from its source tree.
+  and write-ups of the match engine, story mode, screens and save format. Vendored at
+  `third_party/mario-tennis-gbc-disasm/` (commit 8e20e33, its MIT license alongside). The match engine
+  port (`web/js/engine/`) follows its routine names and RAM layout; this project's own analysis
+  (`tools/disasm.py`, the emulator traces, `labels.csv`) is cross-checked and corrected against it, and
+  where a name or fact here comes from it the label comment or note says so.
 
 ## Quick tour
 

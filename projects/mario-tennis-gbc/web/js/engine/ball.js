@@ -233,13 +233,23 @@ export function startLandingMarker(E) {
   E.sfx(SFX_LANDING_MARKER);
 }
 
-// 08:5153 UpdateBallVisuals: the physics step, then the drawing side (sprite slots and the history ring are
-// not kept by the engine) and the two effect timers
+// 08:5153 UpdateBallVisuals: the physics step, then the drawing side. The engine keeps what the game reads back:
+// the ball's ground projection (BuildBallShadowSlot 08:5253, the camera's follow target) and the effect
+// timers (DrawBallTouchCharEffect 08:5482, then the bounce and hit-spark timers); the sprite slots and the
+// history ring are left to the renderer.
 export function updateBallVisuals(E) {
   stepBallPhysics(E);
-  const S = E.S;
+  const S = E.S, p = E.M.projectWorldToScreen(S.ballX & 0xFFFF, S.ballDepth & 0xFFFF, 0);
+  S.ballGroundProjX = p.hl; S.ballGroundProjY = p.bc;
+  if (S.ballTouchCharTimer) S.ballTouchCharTimer--;
   if (S.bounceEffectTimer) S.bounceEffectTimer--;
   if (S.hitSparkTimer) S.hitSparkTimer--;
+}
+// 08:6411 DrawBallAndEffects (from DrawActorsByDepth): the special-hit flash timer ticks while it is drawn
+export function drawBallAndEffects(E) {
+  const S = E.S;
+  if (S.specialHitTimer) S.specialHitTimer--;
+  callModeHook(E, 7);
 }
 
 // ---- per-frame ball events (UpdateMatchFrame steps 4-8) ----
