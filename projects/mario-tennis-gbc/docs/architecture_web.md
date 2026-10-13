@@ -15,7 +15,8 @@ No game data is embedded: `rom.js` decompresses everything from the user's ROM i
 
 ```
 index.html
-  └─ js/main.js        ROM loading, input, camera + projection, rendering, 60 fps loop
+  └─ js/main.js        ROM loading, input, rendering, 60 fps loop; the match runs on js/engine/ (below)
+       ├─ js/engine/      the exact match engine: a readable port of the ROM's match code (see "The exact match engine")
        ├─ js/rom.js     Rom (bank addressing, bank tables, LZ decompressor), BGR555, 2bpp tiles
        ├─ js/assets.js  courtImage, characterSprites, characterData, shotRow (+ roster/court lists)
        ├─ js/physics.js ball state, step(), launch(), predictBounce(), COURT constants
@@ -23,7 +24,7 @@ index.html
        ├─ js/camera.js  exact ProjectPoint 00:2D8C + match camera 08:61DC (project, Camera)
        ├─ js/sound.js   the game's sequence driver (Sequencer) + a small APU model (Apu), pure JS
        ├─ js/audio.js   AudioWorklet glue: music/SFX ids in, stereo samples out (GameAudio)
-       ├─ js/match.js   Match: serve/toss/rally/dead state machine, shots, AI, judging, scoring
+       ├─ js/match.js   the earlier hand port (approximate; kept for its own tests, no longer used by the page)
        └─ js/menus.js   Menus: main → play → character → opponent → difficulty → court (ROM backgrounds, icons, badges, fonts)
 tests/
   physics_vs_emulator.mjs  JS ball step vs PyBoy recording (needs states/phys_ref.json)
@@ -58,36 +59,42 @@ tests/
 | `gameFont` | font `05:7920`, widths `05:7F80` (`05:7322 DrawGlyph`) | glyph sheet rendered and checked |
 | `proj()` | fitted to court-line pixels of the 32×32 court maps (projective, D = 16224) | ±1 px on the 4 lines |
 
-## Approximations (not decoded yet)
+## The exact match engine (`web/js/engine/`)
 
-* **Shot targeting**: `shots.js` is a port of the game's own pipeline (REVERSE.md "Aiming and launch"):
-  shot type from the buttons, aim depth per type, target X from the aim table, heading via the ROM's
-  table atan2, speed threshold from stats + charge + incoming speed + movement, then the first record
-  of the type's trajectory table (banks 20-24, 2C, 29-2B, read from the ROM) whose speed reaches the
-  threshold — exactly as the game (web/tests/shots_vs_emulator.mjs replays 200+ traced shots with zero
-  differences). Still approximated: the swing contact test (reach box) and the charge mechanic's timing.
-* **CPU AI** (decoded parts, REVERSE.md "CPU AI"): the difficulty table `38:5FFB` (reaction delay for
-  deep/short balls + rand 0-3, positioning error, smart-placement probability, shot profile), the four
-  shot-profile tables `02:5E23` (A / B / A+B lob picks), lob-when-opponent-at-net, aim away from the
-  opponent vs random side, quick-serve chance per profile, and the net-rush intercept depth ($0180).
-  Approximated: the scale of the positioning error (×14 units), the CPU swing reach (70 × 140),
-  the net-rush probability per profile (5/15/30/45 %), and a contact-timing scatter that stands in for
-  the undecoded swing windows. Calibration (CPU vs CPU soak): 2.0 / 3.2 / 6.2 / 4.7 hits per point.
-* **Swing windows**: reach box 110 × 140 units, height ≥ −330; serve speed scales down when the
-  toss is hit away from its apex (the emulator showed 57 vs 72 px/frame).
-* **Net**: the ball bounces back off the tape (quartered horizontal speed). Net-cord handling is not ported.
-* **Animation**: the ROM's animation scripts (`Animator` in `assets.js`, rules of `08:7791 AnimTick`), frame =
-  group × 5 + view. Animation ids per state come from a PyBoy recording (1 ready, 2 run, 16/15/7 serve,
-  13/14 → 9/10 forehand/backhand, 11 high ball, 4/3 point won/lost); the state → id choice and the run
-  view per direction are the port's own logic. The camera follows the midpoint of ball and near player.
-* HUD and messages use the game's dialogue font (`gameFont`: 05:7920 2bpp glyphs, widths 05:7F80); the score
-  bar layout is the port's own.
-* Front end: logos, intro panels, title (Enter = Start, Enter skips the intro), then the game's menus rebuilt from
-  their ROM data (Z/Enter = A, X = B/back, arrows), then the VS screen. Only Exhibition singles is selectable;
-  the other main-menu items answer "Can't choose this yet!" (text #131) as the game does for locked items. The
-  character list offers the fresh-save six first, then the rest of the Mushroom Kingdom cast (normally unlocked
-  by play). The HTML controls still work as a shortcut (Start button).
-* Not ported: doubles, mini-games, Mario Tour (RPG), sound/music.
+The match is a readable JavaScript port of the ROM's match engine (bank $08, the shot solver in $07, the
+ball-path banks $20-$24/$29-$2C), checked to behave **identically** to the game. Routine names, RAM layout and
+the overview follow the gerbiljames/mario-tennis-gbc-disasm disassembly (MIT, vendored in
+`third_party/mario-tennis-gbc-disasm/`, see README "Credits").
+
+* **The game's own data layout.** The engine runs on a copy of the RAM the ROM's match code uses
+  (`memory.js`: WRAM0, the four character banks 4-7, HRAM) with named, typed fields (`S.ballX`,
+  `S.chars[k].posX`, ...). Every fixed-point detail (24-bit velocities against 32-bit positions, fraction
+  bytes, 8-bit wrap) is the game's, and a state can be copied from or compared with the running game.
+* **Modules.** `math.js` (bank-0 multiply/divide/trig/projection helpers, including the ROM's inexact wide
+  divide), `ball.js` (physics, net, fences, bounce and point outcomes), `shot.js` (ExecuteShot, the 15 shot
+  types, placement, trajectory tables, serve and smash paths), `chars.js` (the character update: input, state
+  machine, swing building, contact, movement, jump, facing, animation scripts), `ai.js` (the CPU player:
+  serve, rally, doubles net player and baseliner), `flow.js` (scoring, court positions, camera, and the
+  point/game/set loop), `setup.js` (character records, CPU difficulty, match scene, court intro),
+  `session.js` (`EngineMatch`, the page's interface).
+* **Blocking code as a coroutine.** The ROM's match loop blocks on frames; here every routine that waits is
+  a generator and `StepMatchFrame` yields once at its VBlank wait. The page resumes it once per 1/60 s
+  with the pad byte, so the engine's frames line up with the game's.
+* **Checked three ways** (needs the ROM; the core is the reference):
+  * `web/tests/engine_math.mjs`: every math helper against the ROM routine on random inputs.
+  * `web/tests/engine_routines.mjs REC.mtrec [filter]`: every ported routine (461 checks, with forced
+    variants for branches recorded play does not reach) run on the core's interpreter and as JS on the same
+    RAM, for thousands of states from a recording; all of WRAM/HRAM compared (stack, sound driver and
+    drawing-only RAM excepted).
+  * `web/tests/engine_lockstep.mjs REC.mtrec`: from the ROM's RunMatchPlayLoop entry the engine runs on its
+    own, fed only the recorded pad, beside the game; the gameplay RAM is compared every frame. A whole
+    recorded story-mode ranking match (35,000 frames) and a scripted exhibition match run identically.
+  * `web/tests/engine_setup.mjs REC.mtrec`: the character records and match scene built from the menu's
+    choices against the game's at match start (identical).
+* **Not ported:** link-cable play, the pause menu's own screens (the page pauses with START), the rule-break
+  message windows (shown as text), minigame/drill hooks, drawing (the page draws from the engine's state:
+  positions through the game's projection and camera, sprite frame = animation frame × 5 + facing row and
+  X flip as the game computes them, the court scroll).
 
 ## Timing
 

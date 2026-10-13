@@ -94,6 +94,12 @@ node web/tests/stick_walk.mjs out/snap_menu1.json out/stick.png                 
 node web/tests/replay.mjs recording.mtrec --shots 600 --states 3600         # replay a REC session from the app, verified frame hashes
 node web/tests/replay_view.mjs recording.mtrec out/rv --every 4 --vox         # play it in the 3D view, flag misplaced sprites (+ shots)
 node web/tests/court_map_diff.mjs out/replay/s001800.json.gz                    # which court map the VRAM tilemap matches
+node web/tests/engine_math.mjs 4000                                              # match engine: math helpers vs the ROM
+node web/tests/engine_routines.mjs rec.mtrec [filter] --every 9                  # match engine: every routine vs the ROM on recorded states
+node web/tests/engine_lockstep.mjs rec.mtrec                                     # match engine runs a whole recorded match beside the game
+node web/tests/engine_setup.mjs rec.mtrec                                        # match setup vs the game at match start
+node web/tests/engine/make_rec.mjs out/engine/exh1.mtrec                         # scripted exhibition match recording
+node web/tests/engine_page.mjs out/engine_page                                   # the web port (index.html) playing on the engine
 ```
 
 Other drivers: `emu_charmatch.py K` (start a match with the K-th character and dump WRAM),

@@ -1,10 +1,8 @@
 // Web port entry: ROM loading, input, camera/projection, rendering, 60 fps loop.
 import { Rom, sha1Hex, EXPECTED_SHA1 } from "./rom.js";
-import { courtImage, screenImage, characterSprites, characterData, Animator, gameFont, ROSTER, PLAYABLE, COURTS, scoreGlyph } from "./assets.js";
-import { FX } from "./physics.js";
-import { Match } from "./match.js";
+import { courtImage, screenImage, characterSprites, characterData, gameFont, ROSTER, PLAYABLE, COURTS } from "./assets.js";
+import { EngineMatch, BANNER_TEXT, PAD } from "./engine/session.js";
 import { Menus } from "./menus.js";
-import { Camera } from "./camera.js";
 import { GameAudio } from "./audio.js";
 import { pollGamepad } from "./gamepad.js";
 
@@ -27,11 +25,10 @@ const W = 160, H = 144;
 const cv = document.getElementById("screen"), g = cv.getContext("2d");
 g.imageSmoothingEnabled = false;
 const $ = id => document.getElementById(id);
-let rom, font, menus, match, court, sprites = [], anims = [], keys = {}, prevKeys = {};
+let rom, font, menus, match, court, sprites = [], keys = {}, prevKeys = {};
 
-// Projection and camera: exact port of ProjectPoint 00:2D8C / CameraFollow 08:61DC (camera.js)
-const camera = new Camera();
-let camPoint = -1;
+// the match runs on the exact engine (engine/): its camera, projection, score and sprite frames are the game's
+let banner = null, bannerT = 0;
 
 async function loadRom(buf) {
   rom = await Rom.load(buf); font = gameFont(rom);
@@ -51,11 +48,10 @@ function start(cfg) {
   const p1 = +$("p1").value, p2 = +$("p2").value;
   court = courtImage(rom, +$("court").value);
   sprites = [characterSprites(rom, p1), characterSprites(rom, p2)];
-  anims = sprites.map(sp => new Animator(sp));
-  match = new Match(rom, characterData(rom, p1), characterData(rom, p2), { games: +$("games").value, sets: +$("sets").value, difficulty: +$("diff").value });
-  match.audio = audio; playMusic(0x44);                                                     // match-start fanfare ($44 -> $31), then $06
-  menus = null;
-  const d1 = match.players[0].data, d2 = match.players[1].data;
+  match = new EngineMatch(rom, { p1, p2, court: +$("court").value, games: +$("games").value, sets: +$("sets").value, difficulty: +$("diff").value });
+  match.names = [characterData(rom, p1), characterData(rom, p2)];
+  banner = null; menus = null;
+  const [d1, d2] = match.names;
   $("info").textContent = `${d1.name} (${d1.type}) vs ${d2.name} (${d2.type})`;
   front = null;
   cv.focus();
@@ -110,72 +106,56 @@ function frontTick() {
   if (k > 0) { g.fillStyle = `rgba(0,0,0,${k})`; g.fillRect(0, 0, W, H); }
 }
 
-// Animation ids per state (recorded in PyBoy, REVERSE.md "Animations"): 1 ready, 2 run,
-// 16 serve stance, 15 serve toss, 7 serve hit, 13/14 wind-up, 9 forehand, 10 backhand, 11 high ball,
-// 4 point won, 3 point lost. View 0 = back .. 4 = front, 2 = side (flipped when moving left).
-function animFor(p, m) {
-  if (m.state === "dead" && m.pointWinner !== undefined && m.deadT < 60) return p.side === m.pointWinner ? 4 : 3;
-  if (p.swing > 0) return p.swingAnim || 9;
-  if (m.server === p.side && (m.state === "serve" || m.state === "toss"))
-    return m.state === "toss" ? 15 : 16;
-  return Math.hypot(p.vx, p.vy) > 0.5 ? 2 : 1;
-}
-
-function frameFor(p, m, i) {
-  const a = anims[i];
-  a.set(animFor(p, m)); a.tick();
-  const base = p.side === 0 ? 0 : 4;
-  let view = base, flip = a.flip;
-  if (a.id === 2) {
-    const sx = Math.abs(p.vx) > Math.abs(p.vy) * 1.5, dg = !sx && Math.abs(p.vx) > Math.abs(p.vy) * 0.5;
-    view = sx ? 2 : dg ? (p.vy > 0 ? 3 : 1) : (p.vy > 0 ? 4 : 0);   // +vy = toward the camera
-    if (sx || dg) flip = p.vx < 0;
-  }
-  return { n: a.group * 5 + view, flip };
-}
-
 const SCORE_PAL = [[0, 156, 0], [255, 57, 0], [255, 255, 74], [0, 0, 0]];   // OBJ palette 1 of the score strip
+const POINT_TEXT = ["0", "15", "30", "40"];
+function scoreText(sc) {
+  const [a, b] = sc.points;
+  if (sc.tiebreak) return `${a}-${b}`;
+  if (a >= 3 && b >= 3) return a === b ? "DEUCE" : a > b ? "ADV P1" : "ADV P2";
+  return `${POINT_TEXT[Math.min(a, 3)]}-${POINT_TEXT[Math.min(b, 3)]}`;
+}
 function render() {
-  const m = match, b = m.ball;
-  // camera (08:61DC): snaps to the start view at each point, follows the ball's ground point while
-  // the serve is in flight (hit count 1), then stays put; 2 px per frame, scroll aligned to 32 units
-  if (m.pointNo !== camPoint) { camPoint = m.pointNo; camera.startPoint(false); }   // the port never swaps ends (wC4D4 bit 1)
-  if (m.state === "rally" && m.hits === 1) camera.followGround(b.X / FX, b.Y / FX);
-  camera.step();
-  const { scx: camX, scy: camY } = camera.scroll();
-  const proj = (X, Y, Z = 0) => camera.screen(X, Y, Z);
+  const m = match, sc = m.score, { x: camX, y: camY } = m.scroll;
   g.fillStyle = "#000"; g.fillRect(0, 0, W, H);
   g.drawImage(court, -camX, -camY);
-  const drawPlayer = (p, i) => {               // sprite block anchored at its bottom centre (OAM check, REVERSE.md)
-    const [sx, sy] = proj(p.X, p.Y), fr = frameFor(p, m, i), img = sprites[i].frame(fr.n, fr.flip);
-    g.drawImage(img, Math.floor(sx - img.width / 2), Math.floor(sy) - img.height);
-  };
-  const drawBall = () => {
-    const [sx, sy] = proj(b.X / FX, b.Y / FX), [, hy] = proj(b.X / FX, b.Y / FX, b.Z / FX);
-    g.fillStyle = "rgba(0,0,0,0.45)"; g.fillRect(Math.floor(sx - 2), Math.floor(sy - 1), 4, 2);
-    g.fillStyle = "#f8e030"; g.fillRect(Math.floor(sx - 1.5), Math.floor(hy - 3), 3, 3);
-    g.fillStyle = "#806000"; g.fillRect(Math.floor(sx - 1.5), Math.floor(hy - 1), 3, 1);
-  };
-  // painter's order by depth: far player, ball, near player
-  const order = [[m.players[1].Y, () => drawPlayer(m.players[1], 1)], [b.Y / FX, drawBall], [m.players[0].Y, () => drawPlayer(m.players[0], 0)]];
-  order.sort((a, c) => a[0] - c[0]).forEach(([, f]) => f());
+  const items = [];
+  for (const p of m.players) {                 // sprite block anchored at its bottom centre on the projected feet
+    const [sx, sy] = m.screen(p.x, p.depth, p.height), img = sprites[p.index & 1].frame(p.frame, p.flip);
+    items.push([sy, () => g.drawImage(img, Math.floor(sx - img.width / 2), Math.floor(sy) - img.height)]);
+  }
+  const b = m.ball;
+  if (b.visible || b.shadow) {
+    const [gx, gy] = m.screen(b.x, b.depth, 0), [hx, hy] = m.screen(b.x, b.depth, b.height);
+    items.push([gy, () => {
+      if (b.shadow) { g.fillStyle = "rgba(0,0,0,0.45)"; g.fillRect(Math.floor(gx - 2), Math.floor(gy - 1), 4, 2); }
+      if (b.visible) { g.fillStyle = "#f8e030"; g.fillRect(Math.floor(hx - 1.5), Math.floor(hy - 3), 3, 3); g.fillStyle = "#806000"; g.fillRect(Math.floor(hx - 1.5), Math.floor(hy - 1), 3, 1); }
+    }]);
+  }
+  items.sort((a, c) => a[0] - c[0]).forEach(([, f]) => f());
   // HUD
   g.fillStyle = "rgba(0,0,40,0.75)"; g.fillRect(0, 0, W, 11);
-  const [p1, p2] = m.players.map(p => p.data.name.slice(0, 6));
-  const sc = i => m.setsToWin > 1 ? `${m.sets[i]}.${m.games[i]}` : `${m.games[i]}`;      // sets.games in a multi-set match
-  const hud = `${p1} ${sc(0)}  ${m.scoreText()}  ${sc(1)} ${p2}`;
+  const [p1, p2] = m.names.map(d => d.name.slice(0, 6));
+  const gs = i => (m.cfg.sets || 1) > 1 ? `${sc.sets[i]}.${sc.games[i]}` : `${sc.games[i]}`;
+  const hud = `${p1} ${gs(0)}  ${scoreText(sc)}  ${gs(1)} ${p2}`;
   font.draw(g, hud, Math.max(1, (W - font.width(hud)) >> 1), 2);
-  // the game's point-score sprite strip ("0 . 40", OBJ palette 1) after each point, at OAM (64,64)
-  if (m.state === "dead" && m.pointGlyphs && m.deadT > 10) {
-    const L = scoreGlyph(rom, m.pointGlyphs[0], "left", SCORE_PAL), R = scoreGlyph(rom, m.pointGlyphs[1], "right", SCORE_PAL);
-    g.drawImage(L, 56, 48); g.drawImage(R, 56 + L.width, 48);
-  }
-  if (m.msgTimer > 0 && m.message) {
-    const w = font.width(m.message) + 8;
+  const msg = m.paused ? "PAUSE" : m.message ? (m.message === 0x0174 ? "Return the serve after it bounces." : "Only the receiver may return.") :
+    banner !== null ? BANNER_TEXT[banner] : m.over ? "GAME SET  (Enter: new match)" : null;
+  if (msg) {
+    const w = font.width(msg) + 8;
     g.fillStyle = "rgba(200,40,20,0.9)"; g.fillRect((W - w) >> 1, 100, w, 12);
-    font.draw(g, m.message, ((W - w) >> 1) + 4, 102, [255, 224, 96], [96, 16, 8]);
+    font.draw(g, msg, ((W - w) >> 1) + 4, 102, [255, 224, 96], [96, 16, 8]);
   }
 }
+// events of a frame: sounds, music, banners
+function handleEvents(ev) {
+  for (const [kind, v] of ev) {
+    if (kind === "sfx") audio.sfx(v);
+    else if (kind === "bgm") playMusic(v);
+    else if (kind === "banner") banner = v < 0 ? null : v;
+  }
+}
+const padMask = k => (k.KeyZ || k.KeyA ? PAD.A : 0) | (k.KeyX || k.KeyS ? PAD.B : 0) | (k.Enter ? PAD.START : 0) | (k.ShiftRight ? PAD.SELECT : 0) |
+  (k.ArrowRight ? PAD.RIGHT : 0) | (k.ArrowLeft ? PAD.LEFT : 0) | (k.ArrowUp ? PAD.UP : 0) | (k.ArrowDown ? PAD.DOWN : 0);
 
 let paused = false;  // set by tests that drive frames themselves (__mt.step)
 function menuTick() {
@@ -191,7 +171,7 @@ function menuTick() {
 function tick(input) {
   if (menus) return menuTick();
   if (front) return frontTick();
-  match.update(input); render();
+  handleEvents(match.update(typeof input === "number" ? input : 0)); render();
 }
 // Fixed 60 Hz timestep like the Game Boy (one logic update per 1/60 s), decoupled from the display refresh:
 // a 120 Hz screen gets one update every other frame, a slow one catches up (at most 4 updates per paint).
@@ -202,12 +182,10 @@ function stepOnce() {
   if (menus) menuTick();
   else if (front) frontTick();
   else if (match) {
-    const k = keys, pr = prevKeys;
-    const input = { left: k.ArrowLeft, right: k.ArrowRight, up: k.ArrowUp, down: k.ArrowDown,
-      aPressed: (k.KeyZ || k.KeyA) && !(pr.KeyZ || pr.KeyA), bPressed: (k.KeyX || k.KeyS) && !(pr.KeyX || pr.KeyS) };
+    const k = keys;
+    if (k.Enter && !prevKeys.Enter && match.over) { prevKeys = { ...k }; start(); return; }
     prevKeys = { ...k };
-    if (k.Enter && match.over) start();
-    match.update(input);
+    handleEvents(match.update(padMask(k)));
     render();
   }
 }
