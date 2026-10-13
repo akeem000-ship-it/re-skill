@@ -187,9 +187,13 @@ export const ROUTINES = [
   ...each("SetCharTarget", 0x69AE, (E, r) => chars.setCharTarget(E, r.h << 8 | r.l, r.d << 8 | r.e), { regs: s => ({ ...hl(R16(s, 1)), d: R(s, 2), e: R(s, 3) }) }),
   ...each("SetCharFacing", 0x6A2C, (E, r) => chars.setCharFacing(E, r.a), { regs: s => ({ a: R(s, 1) }) }),
   ...each("FlipCharPositionCode", 0x6A33, (E, r) => chars.flipCharPositionCode(E, r.b), { regs: s => ({ b: R(s, 1) & 3 }) }),
+  // ForEachCharBank with hl = FlipCharPositionCode (b survives the loop)
+  { name: "ForEachCharBank", bank: 8, addr: 0x6A3A, wram: 5, regs: s => ({ h: 0x6A, l: 0x33, b: R(s, 1) & 3 }),
+    js: (E, r) => chars.forEachCharBank(E, () => chars.flipCharPositionCode(E, r.b)) },
   ...each("SetCharState", 0x6A1C, (E, r) => chars.setCharState(E, r.a), { regs: s => ({ a: R(s, 1) & 7 }) }),
-  ...BANKS.map(bank => ({ name: `LoadCharacterAttributes@${bank}`, bank: 7, addr: 0x5AB3, wram: bank, js: E => chars.loadCharacterAttributes(E) })),
+  ...BANKS.map(bank => ({ name: `LoadCharacterAttributes@${bank}`, bank: 7, addr: 0x5AB3, wram: bank, prep: m => { m.hram[0x15] = 7; liveSlot(m, bank); }, js: E => chars.loadCharacterAttributes(E) })),
   ...BANKS.map(bank => ({ name: `LoadCharacterAttributes/forced@${bank}`, bank: 7, addr: 0x5AB3, wram: bank, prep: (m, s) => {
+    m.hram[0x15] = 7; liveSlot(m, bank);                                  // hRomBank as romCall sets it
     W(m, bank, 0xDF0B, R(s, 1) & 3); G(m, 0xC4EE, R(s, 2) & 2);
     const rec = [0xCA00, 0xCA80, 0xCA40, 0xCAC0][m.wram[bank][0xF0B] & 3];
     for (const o of [0x0E, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A]) G(m, rec + o, R(s, 10 + o) % 10);
