@@ -4,7 +4,7 @@
 const SENTINEL = 0xFFF0;                     // an HRAM address no routine returns to on its own
 export function romCall(gb, bank, addr, regs = {}, { wramBank = null, maxSteps = 2_000_000 } = {}) {
   const cpu = gb.cpu, m = gb.mem;
-  if (addr >= 0x4000) { m.romBank = bank; m.updateRom(); }
+  if (addr >= 0x4000) { m.romBank = bank; m.updateRom(); m.hram[0x15] = bank; }   // MBC + hRomBank (FarCall returns to it)
   if (wramBank !== null) { m.svbk = wramBank || 1; m.hram[0x16] = wramBank; }   // rSVBK + hWramBank
   for (const r of ["a", "b", "c", "d", "e", "h", "l"]) if (r in regs) cpu[r] = regs[r] & 0xFF;
   if ("f" in regs) cpu.f = regs.f & 0xF0;

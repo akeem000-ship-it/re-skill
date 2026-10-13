@@ -74,7 +74,7 @@ export const GLOBALS = [
   ["shotSpeedFinal", 0xC458, "s16"], ["shotSpeedBallTerm", 0xC45A, "s16"], ["shotSpeedMomentumTerm", 0xC45C, "s16"], ["shotSpeedChargeTerm", 0xC45E, "s16"],
   ["bounceEffectX", 0xC460, "s16"], ["bounceEffectY", 0xC462, "s16"], ["hitEffectX", 0xC464, "s16"], ["hitEffectY", 0xC466, "s16"],
   ["ballGroundProjX", 0xC46C, "s16"], ["ballGroundProjY", 0xC46E, "s16"],
-  ["shotSolverNegHeight", 0xC470, "s16"], ["shotAimRow", 0xC472, "u16"], ["ballVelocityPolarLength", 0xC474, "u16"], ["shotPredictionEntry", 0xC476, "u16"],
+  ["shotSolverNegHeight", 0xC470, "s16"], ["shotAimRow", 0xC472, "u8"], ["ballVelocityPolarLength", 0xC474, "u16"], ["shotPredictionEntry", 0xC476, "u16"],
   ["cameraOffsetX", 0xC478, "s16"], ["cameraOffsetY", 0xC47A, "s16"],
   ["minigamesCurrentScore", 0xC47C, "u16"], ["minigamesTargetScore", 0xC47E, "u16"],
   ["landingMarkerX", 0xC480, "s16"], ["landingMarkerY", 0xC482, "s16"],

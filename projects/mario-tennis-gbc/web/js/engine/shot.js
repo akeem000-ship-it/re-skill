@@ -11,6 +11,7 @@
 // Register conventions of the ROM are kept as plain values: a routine that leaves its result in bc / de
 // returns it as an unsigned 16-bit number.
 import { advanceMatchRng, setBallVelocityPolar } from "./ball.js";
+import { predictBallXAtDepth } from "./ai.js";                         // 08:7C86, farcalled by the serve banks
 
 export const SHOTTYPE = {
   TOPSPIN: 0x00, POWER_TOPSPIN: 0x01, SLICE: 0x02, POWER_SLICE: 0x03, NEUTRAL: 0x04, REACH: 0x05,
@@ -50,7 +51,7 @@ export function executeShot(E) {
   // snapshot the hitter, so the rest of the frame does not depend on who swung
   S.lastShotCharIndex = C.index;
   S.lastShotServeRole = C.serveRole;
-  E.mem.w8(0xC4A4, E.mem.u8(0xDF4A));                                    // wLastShotAimOffset = wCharAimOffset
+  S.lastShotAimOffset = C.aimOffset;
   S.currentShotType = C.shotType;
   const b1 = C.shotButton1;
   S.lastShotButtons = ((b1 << 4) | (b1 >> 4) | C.shotButton2) & 0xFF;   // swap a / or [wCharShotButton2]
@@ -147,7 +148,7 @@ export function setBallTrailColor(E, a) {
 export function getShotAimOffsetForSide(E) {
   const C = E.C;
   const table = E.mem.u8(MINIGAME_USES_WALL) ? 0x563E : indexed(0x562E, (C.courtPos & 1) << 3);
-  const de = rd16(E, 7, indexed(table, (E.mem.u8(0xDF4A) + 1) << 1));
+  const de = rd16(E, 7, indexed(table, (C.aimOffset + 1) << 1));
   return U16(SRA16(NEG16(C.posXInt), 4) + de);
 }
 
@@ -157,7 +158,7 @@ export function computeShotTargetX(E) {
   const S = E.S;
   if (S.rallyLength === 0) return getShotAimOffsetForSide(E);
   let de = computeAimBaseOffset(E);
-  const way = (E.mem.u8(0xDF4A) + 2) & 7;
+  const way = (E.C.aimOffset + 2) & 7;
   if (way === 1) de = SRA16(de, 1);                                      // .halveShort
   if (way === 0 || way === 1) {                                          // .fromBallX: to the hitter's left
     de = clampShotTargetX(E, U16(NEG16(S.ballX) + de));
@@ -535,12 +536,6 @@ export function setBallTargetByPrediction(E, bank, ptr) {
   const depth = E.C.courtPos & 2 ? 0x02C0 : 0xFD40;
   S.ballTargetDepth = depth;
   S.ballTargetX = predictBallXAtDepth(E, depth);
-}
-
-// 08:7C86 PredictBallXAtDepth: the ball's X where the aim line reaches depth de (also used by the AI)
-export function predictBallXAtDepth(E, de) {
-  const S = E.S;
-  return U16(S.ballX + E.M.mulHLByTangent(U16(NEG16(S.ballDepth) + de), S.shotAimAngle));
 }
 
 // ---- the ShotBallPath handlers ----
