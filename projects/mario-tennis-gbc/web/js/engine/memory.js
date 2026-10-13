@@ -100,6 +100,16 @@ export const GLOBALS = [
   ["matchPointFlag", 0xC4D5, "s8"], ["setPointFlag", 0xC4D6, "s8"], ["gamePointFlag", 0xC4D7, "s8"],
   ["pointOutcome", 0xC4D8, "u8"], ["pointOutcomeSide", 0xC4D9, "s8"], ["landingMarkerActive", 0xC4DA, "u8"],
   ["courtViewOption", 0xC4DD, "u8"],
+  // chars.js: setup, minigame switches and the drawing-side pages the character code writes
+  ["linkSessionActive", 0xC33F, "u8"], ["spriteBufferPage", 0xC3A7, "u8"], ["debugMatchFlags", 0xC4EE, "u8"],
+  ["minigameUsesTennisMachine", 0xC7B8, "u8"], ["minigameUsesWall", 0xC7B9, "u8"], ["minigameIsBooBlast", 0xC7BA, "u8"],
+  ["player1CurrentMainCharacter", 0xCA0B, "u8"], ["player1MainPalette", 0xCA0C, "u8"],
+  ["player1CurrentPartnerCharacter", 0xCA4B, "u8"], ["player1PartnerPalette", 0xCA4C, "u8"],
+  ["player2CurrentMainCharacter", 0xCA8B, "u8"], ["player2MainPalette", 0xCA8C, "u8"],
+  ["player2CurrentPartnerCharacter", 0xCACB, "u8"], ["player2PartnerPalette", 0xCACC, "u8"],
+  ["romBank", 0xFF95, "u8"], ["spriteQueueIndex", 0xFF9B, "u8"], ["paletteDirtyFlags", 0xFF9D, "u8"], ["fadedOut", 0xFFBC, "u8"],
+  // the CPU serve's minigame overrides (ai.js): skip the toss gap roll, fixed aim bits ($FF = random), walk X (0 = random)
+  ["aiServeSkipToss", 0xC7A8, "u8"], ["aiServeAimOverride", 0xC7B5, "u8"], ["aiServeTargetX", 0xC7B6, "s16"],
   ["gameMode", 0xC8A6, "u8"],
   ["prevCourtPos", 0xC8CF, "u8"], ["matchRngState", 0xC8DF, "u8"],
   ["player1SetsWon", 0xC8E0, "u8"], ["player2SetsWon", 0xC8E1, "u8"], ["player1GamesWon", 0xC8E2, "u8"], ["player2GamesWon", 0xC8E3, "u8"],
@@ -143,6 +153,9 @@ export const CHAR = [
   ["aiAimAwayChance", 0xDF7C, "u8"], ["aiServeStyle", 0xDF7D, "u8"], ["spriteSetId", 0xDF7E, "u8"], ["aiPositionStrategy", 0xDF7F, "u8"],
   ["swingAttrWord", 0xDF90, "u16"], ["lobPlacementIndex", 0xDF92, "u8"], ["dropPlacementIndex", 0xDF93, "u8"],
   ["mirrorAttrMask", 0xDF94, "u8"], ["expTier", 0xDF95, "u8"], ["depthKey", 0xDF96, "u8"],
+  // chars.js: the three sprite-slot records [tile, attr, y, x] (first byte; the others follow) and the object
+  // definition SetupCharSpriteFromObjectDef copies to $DAD0 of the character's bank
+  ["spriteSlot", 0xDF80, "u8"], ["airShadowSlot", 0xDF88, "u8"], ["groundShadowSlot", 0xDF8C, "u8"], ["actorObjDef", 0xDAD0, "u8"],
 ];
 
 const READ = { u8: "u8", s8: "s8", u16: "u16", s16: "s16", u24: "u24", s24: "s24", s32: "s32" };

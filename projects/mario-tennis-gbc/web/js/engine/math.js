@@ -142,6 +142,13 @@ export class RomMath {
   }
   mulHLBySin(hl, a) { return a & 0x80 ? NEG16(this.mulHLBySinHalf(hl, a & 0x7F)) : this.mulHLBySinHalf(hl, a); }
   mulHLByCos(hl, a) { return this.mulHLBySin(hl, (a + 0x40) & 0xFF); }
+  // 00:0B32 MulHLBySinSigned / 00:0B30 MulHLByCosSigned: hl signed; (MulHLByASigned(hl, s) + $40) * 2, 16 bits
+  mulHLBySinSigned(hl, a) {
+    a &= 0xFF;
+    const half = x => { if (x & 0x40) x = (~x + 0x81) & 0xFF; return ((this.mulHLByASigned(hl, this.quarterSine[x]) + 0x40) << 1) & 0xFFFF; };
+    return a & 0x80 ? NEG16(half(a & 0x7F)) : half(a);
+  }
+  mulHLByCosSigned(hl, a) { return this.mulHLBySinSigned(hl, (a + 0x40) & 0xFF); }
   // 00:0AF8 VectorFromLengthAndAngleRaw: { de: hl*sin(a), hl: hl*cos(a) }
   vectorFromLengthAndAngleRaw(hl, a) { return { de: this.mulHLBySin(hl, a), hl: this.mulHLByCos(hl, a) }; }
   // 00:0AC5 VectorFromLengthAndAngle: the same at 1/16 precision for lengths beyond 8 bits: (hl >> 4) * sin/cos << 4
@@ -233,4 +240,10 @@ export class RomMath {
   add24ToMem24(addr, v) { const m = this.mem; m.w24(addr, (m.u24(addr) + v) & 0xFFFFFF); }                  // 08:5A9E
   addDEToMem24(addr, de) { const m = this.mem; m.w24(addr, (m.u24(addr) + ((de << 16) >> 16)) & 0xFFFFFF); } // 08:5AA7 (also BC: 08:5AB7)
   addDEToMem24IntoBC(addr, de) { return ((this.mem.u24(addr) + ((de << 16) >> 16)) >> 8) & 0xFFFF; }          // 08:5AC7 integer part, no write
+  // 08:5A51 MulHLByTangent: hl * tan(bc) as 8.8 -> de = bits 8-23 of the signed product (the high word's low
+  // byte over hMulResult+1, which MulHLByDESigned32 left negated for a negative product)
+  mulHLByTangent(hl, bc) {
+    const h = this.mulHLByDESigned32(this.getTangent(bc), hl);
+    return ((h & 0xFF) << 8 | this.mem.u8(0xFFA9)) & 0xFFFF;
+  }
 }

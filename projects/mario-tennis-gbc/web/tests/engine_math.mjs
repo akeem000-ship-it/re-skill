@@ -38,6 +38,8 @@ const T = [
   ["AngleFromVector16", 0, 0x1416, () => ({ hl: r16(), de: r16() }), i => ({ bc: M.angleFromVector16(i.hl, i.de) })],
   ["MulHLBySin", 0, 0x0B03, () => ({ hl: r16(), a: r8() }), i => ({ hl: M.mulHLBySin(i.hl, i.a) })],
   ["MulHLByCos", 0, 0x0B01, () => ({ hl: r16(), a: r8() }), i => ({ hl: M.mulHLByCos(i.hl, i.a) })],
+  ["MulHLBySinSigned", 0, 0x0B32, () => ({ hl: r16(), a: r8() }), i => ({ hl: M.mulHLBySinSigned(i.hl, i.a) })],
+  ["MulHLByCosSigned", 0, 0x0B30, () => ({ hl: r16(), a: r8() }), i => ({ hl: M.mulHLByCosSigned(i.hl, i.a) })],
   ["VectorFromLengthAndAngleRaw", 0, 0x0AF8, () => ({ hl: r16(), a: r8() }), i => M.vectorFromLengthAndAngleRaw(i.hl, i.a)],
   ["VectorFromLengthAndAngle", 0, 0x0AC5, () => ({ hl: r16(), a: r8() }), i => M.vectorFromLengthAndAngle(i.hl, i.a)],
   ["AngleFromVectorCoarse", 0, 0x0A54, () => ({ hl: r16(), de: r16() }), i => ({ a: M.angleFromVectorCoarse(i.hl, i.de) })],
@@ -46,6 +48,7 @@ const T = [
   ["DivAHLByDESigned", 0, 0x0E6C, () => ({ a: r8(), hl: r16(), de: r16() }), i => { const r = M.divAHLByDESigned(i.a, i.hl, i.de); return { a: r.a, hl: r.hl }; }],
   ["ProjectWorldToScreen", 0, 0x2D8C, () => ({ hl: r16(), de: r16(), bc: r16() }), i => M.projectWorldToScreen(i.hl, i.de, i.bc)],
   ["DivHLByDE", 0, 0x0987, () => ({ hl: r16(), de: r16() }), i => ({ hl: M.divHLByDE(i.hl, i.de) })],
+  ["MulHLByTangent", 8, 0x5A51, () => ({ hl: r16(), bc: r16() }), i => ({ de: M.mulHLByTangent(i.hl, i.bc) }), true],
 ];
 let bad = 0;
 for (const [name, bank, addr, gen, js, cmpHram] of T) {
