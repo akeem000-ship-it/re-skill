@@ -1,11 +1,12 @@
 // Routine tests for web/js/port/text, the text and window engine of bank $05 (run by web/tests/port_routines.mjs;
 // names start "text." — run them alone with `node web/tests/port_routines.mjs text. --rec out/port/story1.mtrec,
-// out/port/debug1.mtrec, out/engine/rec2.mtrec`). Registers are drawn from the state (a hash of the recording and frame); prep() sets up the
+// out/port/debug1.mtrec,out/engine/rec2.mtrec`). Registers are drawn from the state (a hash of the recording and
+// frame); prep() sets up the
 // engine's state where a branch needs it (windows, the glyph stream, queues, flags, the printer's text), and
 // switches the LCD off for routines that only wait for frames while it is on (their VRAM copies then go by DMA at
 // once). Every test runs with interrupts off on both machines (IE 0, the CPU not halted), as romCall runs the ROM.
 // Routines that wait for frames whatever the state (the button and page waits, the delays, the menus) are checked
-// by web/tests/port_lockstep.mjs over out/port/story1.mtrec and out/port/debug1.mtrec, out/engine/rec2.mtrec.
+// by web/tests/port_lockstep.mjs over out/port/story1.mtrec, out/port/debug1.mtrec and out/engine/rec2.mtrec.
 
 const ALL = ["a", "f", "b", "c", "d", "e", "h", "l"];
 const NOF = ["a", "b", "c", "d", "e", "h", "l"];
@@ -232,9 +233,8 @@ export const ROUTINES = [
   // ---- window_text.js ----
   T("SetWindowTextId", 0x55D5, { gen: r => ({ bc: r(8) << 8, hl: anyTextId(r) }) }),
   T("SetActiveWindowTextId", 0x55E6, { gen: r => ({ hl: anyTextId(r) }) }),
-  T("RenderWindowText (LCD off)", 0x55F8, { gen: r => ({ bc: r(8) << 8 }), lcd: false,
-    prep: (mem, s, r) => { queues(mem, r); for (let id = 0; id < 8; id++) if (!r(3)) w5(mem, 0xDC07 + id * 8, 0x03); w5_16(mem, 0xD84E, 0); w5(mem, 0xD850, r(2)); } ,
-    when: () => false }),                                    // (texts wait at $02 / $03: the lockstep checks it)
+  // (RenderWindowText prints game texts, which wait at $02 / $03: the lockstep checks it)
+                                   // (texts wait at $02 / $03: the lockstep checks it)
   T("FitWindowToText", 0x5654, { prep: (mem, s, r) => { queues(mem, r); writePage(mem, r); writeString(mem, 0xC900, r); writeString(mem, 0xC940, r); w5_16(mem, 0xD84E, r(2) ? 0 : 0xC600 + r(16)); } }),
   T("FitWindowToText (no dialogue window)", 0x5654, { prep: (mem, s, r) => { queues(mem, r); writePage(mem, r); w5(mem, 0xD824, 0xFF); w5_16(mem, 0xD84E, 0); } }),
   T("MeasureTextDimensions", 0x5745, { prep: (mem, s, r) => { queues(mem, r); writePage(mem, r); } }),
