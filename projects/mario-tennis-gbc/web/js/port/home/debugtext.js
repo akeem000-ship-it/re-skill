@@ -6,6 +6,7 @@
 // Not ported: Unused_00_WaitStartVRAMDMAFromHL and Unused_00_PrintDecimalByteSigned (nothing calls them).
 // Also ClearFrameTasks, at the end of this ROM file (the rest of the frame-task code is in colorfade.js).
 import { FLAG_Z, FLAG_N, FLAG_H, FLAG_C, setRegs, spAddFlags } from "./cpu.js";
+import { clearMemory16 } from "./memory.js";
 
 const rVBK = 0xFF4F, rVDMA_SRC_HIGH = 0xFF51, rVDMA_LEN = 0xFF55;
 const TEXT_COLUMNS = 32;                                          // a buffer row (and a BG map row)
@@ -13,14 +14,12 @@ const DEBUG_TEXT_ROWS = 18, DEBUG_TEXT_VRAM = 0x1D00;             // shown on th
 const PEAK_LY_VRAM = 0x9D08, PEAK_LY_CHARS = 4;                   // the peak-LY readout: row 8, column 8 of $9C00
 const STEP_MODE_CONSOLE = 3, STEP_MODE_BLINK_OFF = 1;
 const CHAR_SPACE = 0x20, CHAR_MINUS = 0x2D, CHAR_0 = 0x30, CHAR_A_MINUS_10 = 0x41 - 10;
-// routines other parts of the port own, still run as the ROM's code (they become direct calls once ported)
-const ClearMemory16 = 0x03AF;
 const FRAME_TASK_BYTES = 64;                                       // 16 entries of 4
 
-// ClearDebugTextBuffer (00:188B): blank the console (ClearMemory16; leaves its registers)
+// ClearDebugTextBuffer (00:188B): blank the console (ClearMemory16). Returns the registers ClearMemory16 leaves.
+const cleared = hl => ({ hl, a: 0, c: 0, f: FLAG_Z | FLAG_N });
 export function clearDebugTextBuffer(P) {
-  const buf = P.A.debugTextBuffer;
-  P.callRom(0, ClearMemory16, { h: buf >> 8, l: buf & 0xFF, c: DEBUG_TEXT_ROWS * TEXT_COLUMNS / 16 });
+  return cleared(clearMemory16(P, P.A.debugTextBuffer, DEBUG_TEXT_ROWS * TEXT_COLUMNS / 16));
 }
 
 // StartVRAMDMATransfer (00:18D7): a general VRAM DMA of `len + 1` 16-byte blocks from src to dest (dest $0000-
@@ -149,17 +148,17 @@ export const printHexWord = (P, x, y, hl) => printChars(P, x, y, fromList(hexCha
 export const printDecimalByte = (P, x, y, a) => printChars(P, x, y, fromList(decimalChars(a, 4, true)));
 export const printDecimalWord = (P, x, y, hl) => printChars(P, x, y, fromList(decimalChars(hl, 6, true)));
 
-// ClearFrameTasks (00:1B38): empty the frame-task table (ClearMemory16; leaves its registers, and a = 1), with
-// hFrameTasksReady clear meanwhile so AdvanceFrame does not run it half-cleared
+// ClearFrameTasks (00:1B38): empty the frame-task table, with hFrameTasksReady clear meanwhile so AdvanceFrame
+// does not run it half-cleared. Returns the registers: ClearMemory16's, and a = 1.
 export function clearFrameTasks(P) {
   P.V.frameTasksReady = 0;
-  const tasks = P.A.frameTasks;
-  P.callRom(0, ClearMemory16, { h: tasks >> 8, l: tasks & 0xFF, c: FRAME_TASK_BYTES / 16 });
+  const r = cleared(clearMemory16(P, P.A.frameTasks, FRAME_TASK_BYTES / 16));
   P.V.frameTasksReady = 1;
+  return { ...r, a: 1 };
 }
 
 export const HOOKS = [
-  [0, 0x188B, P => clearDebugTextBuffer(P)],
+  [0, 0x188B, (P, c) => setRegs(c, clearDebugTextBuffer(P))],
   [0, 0x1893, (P, c) => setRegs(c, updateDebugOverlay(P))],
   [0, 0x18D7, (P, c) => { startVRAMDMATransfer(P, c.bc, c.de, c.a); setRegs(c, { hl: rVDMA_LEN, f: c.f & FLAG_C }); }],
   [0, 0x18EB, (P, c) => {                                          // StartVRAMDMAFromHL: hl, de, c blocks
@@ -178,5 +177,5 @@ export const HOOKS = [
   [0, 0x1ACE, (P, c) => { printHexWord(P, c.d, c.e, c.hl); }],
   [0, 0x1AE4, (P, c) => { printDecimalByte(P, c.d, c.e, c.a); }],
   [0, 0x1B15, (P, c) => { printDecimalWord(P, c.d, c.e, c.hl); }],
-  [0, 0x1B38, (P, c) => { clearFrameTasks(P); c.a = 1; }],
+  [0, 0x1B38, (P, c) => setRegs(c, clearFrameTasks(P))],
 ];

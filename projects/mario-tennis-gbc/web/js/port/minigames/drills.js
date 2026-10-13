@@ -550,3 +550,55 @@ export const HOOKS = [
   ...[0x4B05, 0x4CEE, 0x5491, 0x5724, 0x5A4F, 0x67C2, 0x6A0D].map(a => [B, a, hook(P => awardPointToSide(P))]),   // *AwardPointToSide
 ];
 export { flagsOfA };
+
+// ---- pieces the drills share ----
+export const DC = n => P => P.A.drillCounters + n;           // wDrillCounters + n
+export const counter = (P, n) => P.bus.u8(P.A.drillCounters + n);
+export const setCounter = (P, n, v) => P.bus.w8(P.A.drillCounters + n, v & 0xFF);
+export const incCounter = (P, n) => setCounter(P, n, counter(P, n) + 1);
+// <Drill>Hook_PointStart's common start: the abort countdown disarmed and reset to 10 frames
+export function drillPointStartCommon(P) { P.V.drillAbortCountdownActive = 0; P.V.drillAbortCountdown = 0x0A; }
+// a match drill decided by a two-point lead (the drills' PointEnd, after an even number of points): the leader
+// wins the match (player 1 when player 2 is behind); returns whether it was decided
+export function decideByTwoPointLead(P) {
+  const d = (P.V.player2PointsWon - P.V.player1PointsWon) & 0xFF;
+  const lead = d & 0x80 ? (-d) & 0xFF : d;
+  if (lead < 2) return false;
+  P.V.pointWinLoseFlag = d & 0x80 ? 0x01 : WINLOSE_LOSE;
+  P.V.matchAbortFlag = 0x80;
+  return true;
+}
+// NetGamePractice1HandlePointEnd (0B:5CF9; the same code at NetGamePractice2 0B:5FB3, NetGamePractice3 0B:6272)
+// and StrokePractice1HandlePointEnd (0B:6C81; StrokePractice3 0B:712B), StrokePractice2HandlePointEnd (0B:6EC9):
+// a practice lesson's point: the judgement is the result; a success counts in wDrillCounters + n, shown as
+// player 1's points (player 2's: 0); the coach mirrors the result while the characters react
+export function* practiceHandlePointEnd(P, n) {
+  yield* farWait(P, ROM.UpdateScorePanelDisplay);
+  P.V.pointWinLoseFlag = P.V.drillPointJudgement;
+  if (P.V.drillPointJudgement === 1) incCounter(P, n);
+  recordDrillPointResultBits(P);
+  yield* showQueuedDrillMessage(P);
+  yield* farWait(P, ROM.UpdatePointStats);
+  yield* farWait(P, ROM.AwardPoint);
+  P.V.player1PointsWon = counter(P, n);
+  P.V.player2PointsWon = 0;
+  yield* showPointsAndEndPoint(P, true);
+}
+// a match drill's point shown from the judgement: (with counts: both sides' successes recounted into
+// wDrillCounters + 1/2), the message, the stats, then the score kept by awardPoint
+export function* matchJudgedPoint(P) {
+  yield* farWait(P, ROM.UpdateScorePanelDisplay);
+  P.V.pointWinLoseFlag = judgementAsResult(P);
+  recordDrillPointResultBits(P);
+}
+export function countBothSides(P, first) {
+  setCounter(P, first, countDrillShotSuccesses(P, 0));
+  setCounter(P, first + 1, countDrillShotSuccesses(P, 1));
+}
+// a judge hook disabled by a leading `ret` (docs/bugs.md): does nothing
+export const DISABLED = () => {};
+// the four judge hooks of a drill as [address, event] -> the hook entries (disabled ones do nothing)
+export function judgeHooks(judge, addrs, disabled = []) {
+  return addrs.map((addr, event) => [B, addr, hook(P => { if (!disabled.includes(event)) judgeOn(P, judge, event); })]);
+}
+export { B as BANK_0B };

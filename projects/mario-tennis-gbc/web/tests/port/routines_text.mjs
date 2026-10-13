@@ -335,8 +335,9 @@ export const ROUTINES = [
   T("RedrawWindowRows (LCD off)", 0x7205, { gen: r => ({ a: r(8) }), lcd: false }),
   T("RedrawWindowRowsPadded (LCD off)", 0x7214, { gen: r => ({ a: r(8) }), lcd: false }),
   T("RedrawTilemapRowRange (LCD off)", 0x7223, { gen: r => ({ de: r(0x10000) }), lcd: false }),
-  // (a menu window low on the map: its text rows would run past $DFFF into echo RAM over the stack)
-  T("RenderMenuWindowText (LCD off)", 0x7232, { lcd: false, prep: (mem, s, r) => { const id = r(7); w5(mem, 0xD82F, id); w5(mem, 0xDC01 + id * 8, r(12)); w5_16(mem, 0xDC06 + id * 8, [0x001A, 0x0132, 0x0133, 0x0137][r(4)]); } }),
+  // (a menu window high on the map and not too wide, the glyph column low: else its text rows run past $DFFF, or
+  // its pen past column $80 (negative: the glyph rows land on the stack page), and the ROM crashes)
+  T("RenderMenuWindowText (LCD off)", 0x7232, { lcd: false, prep: (mem, s, r) => { const id = r(7); w5(mem, 0xD82F, id); w5(mem, 0xDC01 + id * 8, r(12)); w5(mem, 0xDC02 + id * 8, 3 + r(8)); w(mem, 0xC3BA, r(8)); w5_16(mem, 0xDC06 + id * 8, [0x001A, 0x0132, 0x0133, 0x0137][r(4)]); } }),
   T("CloseWindow (LCD off)", 0x72BD, { gen: r => ({ a: r(8) }), lcd: false }),
   T("RedrawAllTilemapRows (LCD off)", 0x72D2, { lcd: false }),
   T("PrepareGlyphBuffer", 0x72DC),
@@ -346,7 +347,7 @@ export const ROUTINES = [
   T("GetGlyphWidthByIndex", 0x7370, { gen: r => ({ a: r(256) }) }),
 
   // ---- glyph_buffer.js ----
-  T("PlotGlyphRow", 0x737A, { gen: r => ({ a: r(256), de: r(0x10000) }), wram: 7 }),
+  T("PlotGlyphRow", 0x737A, { gen: r => ({ a: r(256), de: r(0x6000) | (r(2) ? 0 : 0x8000) }), wram: 7 }),   // (not pens $6000-$7FFF or $E000-$FFFF: echo RAM, the stack page)
   T("ClearGlyphBuffer", 0x73CB, { wram: 7 }),
   T("ClearWindowGlyphTiles", 0x73E4),
   T("UploadGlyphBufferFull (LCD off)", 0x742C, { lcd: false, prep: (mem, s, r) => flag(mem, F.SHORT_UPLOAD, r(2)) }),

@@ -52,9 +52,16 @@ export const FAR = {
 
 const hl = v => ({ h: (v >> 8) & 0xFF, l: v & 0xFF }), de = v => ({ d: (v >> 8) & 0xFF, e: v & 0xFF });
 export const callHome = (P, addr, regs = {}) => P.callRom(0, addr, regs);
-// farcall: the routine of entry `slot` of `bank`'s $4000 table, with that bank mapped (P.callRom maps it, sets
-// hRomBank, and maps the caller's bank back afterwards, as FarCall's tail does)
-export function farcall(P, [bank, slot], regs = {}) { return P.callRom(bank, P.rom.u16(bank, 0x4000 + slot), regs); }
+// farcall (`rst $18 ; db slot, bank`, FarCall 00:01B6): the routine of entry `slot` of `bank`'s $4000 table, with
+// that bank mapped (P.callRom maps it, sets hRomBank, and maps the caller's bank back afterwards, as FarCall's tail
+// does). FarCall's stack frame is built as the ROM's (the rst's return address, hl, af with the caller's bank; then
+// the callee's return address), and the callee gets the flags CallVectorEntryA leaves (its `ld hl, sp+5`).
+export function farcall(P, [bank, slot], regs = {}) {
+  const { cpu } = P, sp = cpu.sp;
+  push(P, 0); push(P, ((regs.h ?? cpu.h) << 8) | (regs.l ?? cpu.l)); push(P, ((regs.a ?? cpu.a) << 8) | P.V.romBank);
+  const at = (sp - 10) & 0xFFFF, f = ((at & 0x0F) + 5 > 0x0F ? FH : 0) | ((at & 0xFF) + 5 > 0xFF ? FC : 0);
+  try { return P.callRom(bank, P.rom.u16(bank, 0x4000 + slot), { f, ...regs }); } finally { cpu.sp = sp; }
+}
 // A call into a routine that waits, as P.runRom, but it counts the routine as returned when its `ret` takes the
 // return address off the stack, whatever address that is. (The lockstep test copies the ROM's state into the port
 // after a timing difference, the stack page with it: the return address P.runRom pushed is then the ROM's own, and
@@ -120,6 +127,12 @@ export function pop(P) { const v = P.bus.u16(P.cpu.sp); P.cpu.sp = (P.cpu.sp + 2
 export function* call(P, retAddr, gen) {
   push(P, retAddr);
   try { return yield* gen; } finally { pop(P); }
+}
+// `call routine` of a routine ported here that does not wait, where what it leaves depends on the stack (it calls
+// QueueSpriteTemplate or RegisterFrameTask, which leave stack addresses in hl): its return address pushed meanwhile
+export function callSub(P, retAddr, fn) {
+  push(P, retAddr);
+  try { return fn(); } finally { pop(P); }
 }
 // wram_bank b: hWramBank and rSVBK
 export const wramBank = (P, b) => P.wramBank(b);

@@ -10,6 +10,8 @@
 // pass while JavaScript runs (see the report); it stays the ROM's and is called with P.callRom.
 // The unused routines (Unused_00_*) are not ported.
 import { FLAG_Z, FLAG_H, FLAG_C, setRegs, spAddFlags, jumpTo, takeInlineBytes, push } from "./cpu.js";
+import { clearMemoryBC16 } from "./memory.js";
+import { clearUnusedSprites } from "./fade.js";
 
 const rROMB0 = 0x2000, rJOYP = 0xFF00, rIF = 0xFF0F, rLCDC = 0xFF40, rSPD = 0xFF4D, rVBK = 0xFF4F;
 const rIE = 0xFFFF;
@@ -20,7 +22,6 @@ export const SLOT_TABLE = 0x4000;                                  // every bank
 const VRAM_START = 0x8000, VRAM_SIZE = 0x2000;
 // routines other parts of the port own, still run as the ROM's code (they become direct calls once ported)
 export const DisableLCDSafely = 0x0346;                            // (here, but busy-waits on rLY: see above)
-const ClearMemoryBC16 = 0x03C4, ClearUnusedSprites = 0x1E22;
 // return addresses inside FarCall and CallHLInBankA: their bank-restoring tails
 const FARCALL_RETURN = 0x01D5, CALLHL_RESTORE = 0x0175;
 
@@ -75,18 +76,21 @@ function farCallReturnHook(P, c) {
   c.sp = (c.sp + 4) & 0xFFFF;
 }
 
-// ClearBothVRAMBanks (00:024E): zero all of VRAM, bank 1 then bank 0 (ClearMemoryBC16, 16 bytes a step). Leaves
-// the registers as ClearMemoryBC16 does (they are the CPU's after the call).
+// ClearBothVRAMBanks (00:024E): zero all of VRAM, bank 1 then bank 0 (ClearMemoryBC16, 16 bytes a step).
+// Returns the registers ClearMemoryBC16 leaves.
+const VRAM_CLEARED = { a: 0, bc: 0, hl: VRAM_START + VRAM_SIZE, f: FLAG_Z };
 export function clearBothVRAMBanks(P) {
   P.bus.w8(rVBK, 1);
-  P.callRom(0, ClearMemoryBC16, { a: 1, h: VRAM_START >> 8, l: 0, b: (VRAM_SIZE / 16) >> 8, c: 0 });
+  clearMemoryBC16(P, VRAM_START, VRAM_SIZE / 16);
   P.bus.w8(rVBK, 0);
-  P.callRom(0, ClearMemoryBC16, { a: 0, f: FLAG_Z, h: VRAM_START >> 8, l: 0, b: (VRAM_SIZE / 16) >> 8, c: 0 });
+  clearMemoryBC16(P, VRAM_START, VRAM_SIZE / 16);
+  return VRAM_CLEARED;
 }
 // ClearVRAMBank (00:0383): on a Game Boy Color both banks, else bank 0 only
 export function clearVRAMBank(P) {
-  if (P.bus.u8(P.A.isCGB)) { clearBothVRAMBanks(P); return; }
-  P.callRom(0, ClearMemoryBC16, { a: 0, f: FLAG_Z, h: VRAM_START >> 8, l: 0, b: (VRAM_SIZE / 16) >> 8, c: 0 });
+  if (P.V.isCGB) return clearBothVRAMBanks(P);
+  clearMemoryBC16(P, VRAM_START, VRAM_SIZE / 16);
+  return VRAM_CLEARED;
 }
 
 // SwitchCPUSpeed (00:02A3): to double speed, if not there already: arm the switch, mask all interrupts and run
@@ -108,11 +112,12 @@ export function switchCPUSpeed(P, f) {
 }
 
 // EnableLCD (00:0376): switch the LCD on, clear the sprites no one queued this frame (ClearUnusedSprites), and
-// clear hVBlankOccurred. Leaves a = 0, F = Z, and ClearUnusedSprites' bc and hl.
+// clear hVBlankOccurred. Returns the registers: a = 0, F = Z, and ClearUnusedSprites' c and hl.
 export function enableLCD(P) {
   P.bus.w8(rLCDC, P.bus.u8(rLCDC) | LCDC_ON);
-  P.callRom(0, ClearUnusedSprites);
+  const r = clearUnusedSprites(P);
   P.V.vBlankOccurred = 0;
+  return { ...r, a: 0, f: FLAG_Z };
 }
 
 // ClearBytes (00:03A7): zero bc bytes from hl (bc = 0: 64 KB). Returns hl after them.
@@ -130,10 +135,10 @@ export const HOOKS = [
   [0, 0x0018, farCallHook],                                      // rst $18 (its jp to FarCall)
   [0, 0x01B6, farCallHook],
   [0, FARCALL_RETURN, farCallReturnHook],
-  [0, 0x024E, P => clearBothVRAMBanks(P)],
+  [0, 0x024E, (P, c) => setRegs(c, clearBothVRAMBanks(P))],
   [0, 0x02A3, (P, c) => setRegs(c, switchCPUSpeed(P, c.f))],
-  [0, 0x0376, (P, c) => { enableLCD(P); setRegs(c, { a: 0, f: FLAG_Z }); }],
-  [0, 0x0383, P => clearVRAMBank(P)],
+  [0, 0x0376, (P, c) => setRegs(c, enableLCD(P))],
+  [0, 0x0383, (P, c) => setRegs(c, clearVRAMBank(P))],
   [0, 0x03A7, (P, c) => setRegs(c, { hl: clearBytes(P, c.hl, c.bc), bc: 0, a: 0, f: FLAG_Z })],
 ];
 

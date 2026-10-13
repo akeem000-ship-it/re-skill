@@ -10,6 +10,9 @@ import { FLAG_H, getRegs, setRegs, spinUntil } from "./cpu.js";
 import { readJoypad, advanceRandomSeed } from "./joypad.js";
 import { updateGameTimer } from "./flags.js";
 import { updateDebugOverlay } from "./debugtext.js";
+import { applyPendingPaletteUpdates } from "./palettes.js";
+import { processBGBlitQueue, processVRAMCopyQueues } from "./memory.js";
+import { updateFadeOut, updateFadeIn } from "./colorfade.js";
 
 const rIF = 0xFF0F, rLCDC = 0xFF40, rSCY = 0xFF42, rSCX = 0xFF43, rLY = 0xFF44, rDMA = 0xFF46, rVBK = 0xFF4F, rIE = 0xFFFF;
 const LCDC_ON = 0x80, LCDC_BG_MAP_9C00 = 0x08;
@@ -18,9 +21,8 @@ const PAD_RESET = 0x0F;                                          // A+B+SELECT+S
 const SPRITE_PAGE_FLIP = 0x05;                                   // wSpriteBufferPage alternates $C0 / $C5
 const DEBUG_CONSOLE_SCY = 0x40;                                  // the debug console's scroll (on the $9C00 map)
 export const LINKSTATE_MASTER = 0x01, LINKSTATE_SLAVE = 0x02;
-// routines other parts of the port own, still run as the ROM's code (they become direct calls once ported)
-const ApplyPendingPaletteUpdates = 0x060D, ProcessVRAMCopyQueues = 0x052E, ProcessBGBlitQueue = 0x218D;
-const UpdateFadeIn = 0x1D48, UpdateFadeOut = 0x1D5E, UpdateSoundEngine = 0x2F1A;
+// the sound driver's tick, called in the ROM (it becomes a direct call to web/js/port/audio/engine.js)
+const UpdateSoundEngine = 0x2F1A;
 
 // VBlankHandler (00:2749). Unless the link code suppresses it: the palettes the game changed go to the hardware;
 // if the frame's work is done (hVBlankOccurred clear: the game has reached AdvanceFrame), the scroll, the sprites
@@ -32,7 +34,7 @@ export function vBlankHandler(P) {
   const { V, A, bus } = P;
   if (V.vBlankSuppressed) return;
   const vbk = bus.u8(rVBK);
-  P.callRom(0, ApplyPendingPaletteUpdates);
+  applyPendingPaletteUpdates(P);
   if (!V.vBlankOccurred) {
     if (!V.showDebugConsole) {                                   // the game's own scroll, on the $9800 map
       bus.w8(rSCX, V.scrollX); bus.w8(rSCY, V.scrollY);
@@ -48,8 +50,8 @@ export function vBlankHandler(P) {
     const page = V.spriteBufferPage ^ SPRITE_PAGE_FLIP;
     bus.w8(A.oAMDMARoutine + 1, page);
     bus.w8(rDMA, page);
-    const columnBlitted = P.callRom(0, ProcessBGBlitQueue).a;
-    if (!columnBlitted) P.callRom(0, ProcessVRAMCopyQueues);   // (a BG column blit takes this VBlank's time)
+    const columnBlitted = processBGBlitQueue(P).a;
+    if (!columnBlitted) processVRAMCopyQueues(P, P.cpu.b);     // (a BG column blit takes this VBlank's time)
     if (V.debugStepMode) updateDebugOverlay(P);
     V.vBlankOccurred = 1;
     V.vBlankCounter = (V.vBlankCounter + 1) & 0xFF;
@@ -60,8 +62,8 @@ export function vBlankHandler(P) {
     advanceRandomSeed(P);
   }
   updateGameTimer(P);
-  P.callRom(0, UpdateFadeOut);
-  P.callRom(0, UpdateFadeIn);
+  updateFadeOut(P);
+  updateFadeIn(P);
   P.callRom(0, UpdateSoundEngine);
   bus.w8(rVBK, vbk);
 }

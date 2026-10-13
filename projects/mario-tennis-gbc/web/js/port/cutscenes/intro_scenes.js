@@ -13,7 +13,7 @@ import {
   wDecompBuffer, wTextTileBuffer, wTextTileBuffer_SIZE, wScreenAttrmap, wShadowTilemap, SFX_LOGO_JINGLE, FAR,
   ram, farcall, sound, queueVRAMCopy, decompressData, loadPaletteShadow, loadPalettesImmediate, queueSpriteTemplate,
   registerFrameTask, unregisterFrameTask, enableLCD, disableLCDSafely, advanceFrame, fadeIn, fadeOut, wramBank,
-  hook, FZ, FN, FH, FC, cpFlags, addFlags, andFlags,
+  callSub, hook, FZ, FN, FH, FC, cpFlags, addFlags, andFlags,
 } from "./common.js";
 
 export const BANK = 0x6B;
@@ -149,7 +149,7 @@ export function setCameraYFromScrollPos(P) {
 // wIntroCutsceneScrollY (low byte)
 export function queueScrollingSprite(P) {
   const R = ram(P), y = (R.cutsceneScrollAccum - R.introCutsceneScrollY) & 0xFF;
-  return queueIntroSpriteBlock(P, R.cutsceneSpriteAnimFrame, 0x40, y);
+  return callSub(P, 0x6114, () => queueIntroSpriteBlock(P, R.cutsceneSpriteAnimFrame, 0x40, y));
 }
 // AdvanceSpriteAnimTimer (6b:6115): the tick counts up; the frame is its bits 4-5 (a new frame every 16 ticks)
 export function advanceSpriteAnimTimer(P) {

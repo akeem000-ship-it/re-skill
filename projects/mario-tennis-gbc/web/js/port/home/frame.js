@@ -8,6 +8,10 @@ import { clearVRAMBank, switchCPUSpeed, farCallRom, DisableLCDSafely } from "./s
 import { formatHexWord, clearFrameTasks } from "./debugtext.js";
 import { initSerialLink, linkErrorReset } from "./link.js";
 import { LINKSTATE_SLAVE } from "./vblank.js";
+import { clearMemory16, clearVRAMCopyQueue } from "./memory.js";
+import { copyOAMDMARoutineToHRAM } from "./palettes.js";
+import { runFrameTasks } from "./colorfade.js";
+import { clearSpriteQueue, clearUnusedSprites } from "./fade.js";
 
 const rRAMG = 0x0000, rSB = 0xFF01, rSC = 0xFF02, rTMA = 0xFF06, rTAC = 0xFF07, rIF = 0xFF0F;
 const rLCDC = 0xFF40, rSTAT = 0xFF41, rSCY = 0xFF42, rSCX = 0xFF43, rLY = 0xFF44, rLYC = 0xFF45, rWY = 0xFF4A;
@@ -30,9 +34,7 @@ const PADF_SELECT = 0x04, PADF_START = 0x08, PAD_STEP_KEYS = 0xF3;  // d-pad, A,
 const STEP_MODES = 3;
 const LINK_ERROR_BITS = 0xE0;
 // routines other parts of the port own, still run as the ROM's code (they become direct calls once ported)
-const ClearMemory16 = 0x03AF, ClearVRAMCopyQueue = 0x0465, CopyOAMDMARoutineToHRAM = 0x06AC;
-const RunFrameTasks = 0x1BFF, ClearSpriteQueue = 0x1E1D, ClearUnusedSprites = 0x1E22, ResumeBGMAfterJingle = 0x305D;
-const InitAudioEngine = 0x3078;
+const ResumeBGMAfterJingle = 0x305D, InitAudioEngine = 0x3078;   // the sound driver's
 const BANK_GAME = 0x01, InitAndRunGame = 0x4018, ShowDmgLockoutScreen = 0x6030;
 
 // push_wram_bank ... pop_wram_bank around fn. As P.withWramBank, but hWramBank is read through the bus, as the
@@ -47,7 +49,7 @@ function withWramBank(P, bank, fn) {
 // Start (00:2578), from the cartridge entry point: note whether this is a Game Boy Color (a = $11 at power-on),
 // then SoftReset.
 export function* start(P, a) {
-  P.bus.w8(P.A.isCGB, a === CGB_BOOT_A ? 1 : 0);
+  P.V.isCGB = a === CGB_BOOT_A ? 1 : 0;
   yield* softReset(P);
 }
 
@@ -61,24 +63,24 @@ export function* softReset(P) {
   P.cpu.sp = STACK_TOP;
   P.callRom(0, DisableLCDSafely);                                // still the ROM's: it polls rLY (see system.js)
   P.di();
-  P.callRom(0, ClearMemory16, { h: SHADOW_OAM >> 8, l: 0, c: SHADOW_OAM_CLEARED_BLOCKS });
+  clearMemory16(P, SHADOW_OAM, SHADOW_OAM_CLEARED_BLOCKS);
   for (let i = 0; i < HRAM_CLEARED; i++) bus.w8(HRAM_START + i, 0);
   for (const r of [rIF, rIE, rSCY, rSCX, rSTAT]) bus.w8(r, 0);
-  if (!bus.u8(A.isCGB)) yield* farCallRom(P, BANK_GAME, ShowDmgLockoutScreen, 0x25AD);
+  if (!V.isCGB) yield* farCallRom(P, BANK_GAME, ShowDmgLockoutScreen, 0x25AD);
   bus.w8(rVBK, 0);
   bus.w8(rWBK, 0);
   bus.w8(rRP, 0);
   bus.w8(rRAMG, 0);                                              // cartridge RAM off
-  P.callRom(0, CopyOAMDMARoutineToHRAM);
+  copyOAMDMARoutineToHRAM(P);
   clearVRAMBank(P);
   V.debugStepMode = 0;
   switchCPUSpeed(P, 0);
   V.inputRepeatDelay = INPUT_REPEAT_DELAY;
-  P.callRom(0, ClearSpriteQueue);
+  clearSpriteQueue(P);
   clearFrameTasks(P);
-  P.callRom(0, ClearVRAMCopyQueue);
+  clearVRAMCopyQueue(P);
   withWramBank(P, WRAM_SOUND, () => {                            // the sound driver's WRAM bank, cleared
-    P.callRom(0, ClearMemory16, { h: WRAMX_START >> 8, l: 0, c: 0 });   // c = 0: 256 blocks, all 4 KB
+    clearMemory16(P, WRAMX_START, 0);                            // 0: 256 blocks, all 4 KB
     P.callRom(0, InitAudioEngine);
   });
   bus.w8(rWX, WX_LEFT);
@@ -98,7 +100,7 @@ export function* softReset(P) {
   V.paletteDirtyFlags = 0;
   V.fadeState = 0;
   V.fadeSpeed = 0;
-  bus.w8(A.fadeCounter, 0);
+  V.fadeCounter = 0;
   V.spriteBufferPage = SPRITE_BUFFER_FIRST;
   initSerialLink(P);
   yield* farCallRom(P, BANK_GAME, InitAndRunGame, 0x262F, { a: 0 });
@@ -173,7 +175,7 @@ function* frameWork(P) {
   if (V.linkCounter && V.linkErrorFlags & LINK_ERROR_BITS) yield* linkErrorReset(P);   // jp: it does not return
   const vbk = bus.u8(rVBK);
   V.vBlankOccurred = 0;
-  P.callRom(0, RunFrameTasks, { a: 0 });
+  runFrameTasks(P, 0);
   V.spriteBufferPage = (V.spriteBufferPage & SPRITE_PAGE_MASK) ^ SPRITE_PAGE_FLIP;
   withWramBank(P, WRAM_SOUND, () => P.callRom(0, ResumeBGMAfterJingle));
   trackPeakLY(P);
@@ -181,7 +183,7 @@ function* frameWork(P) {
   yield* waitForVBlank(P);
   P.ei();
   bus.w8(rVBK, vbk);
-  P.callRom(0, ClearUnusedSprites);
+  clearUnusedSprites(P);
 }
 // AdvanceFrame (00:2631): the game's frame barrier. All registers kept.
 export function* advanceFrame(P) {

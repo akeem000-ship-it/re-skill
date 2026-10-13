@@ -48,16 +48,17 @@ export function clearFadeTargetPalettes(P, f = 0) {
 // (ComputeGrayscaleColor) and put back
 export function desaturateFadeTargetPalettes(P) {
   const { bus } = P;
-  let red = 0;
+  let lo = 0, carry = 0;
   for (let i = 0; i < COLORS; i++) {
     const at = wPaletteFadeTarget + 2 * i, s = splitColorComponents(bus.u16(at));
     bus.w8(wPaletteColorSplit, s.a); bus.w8(wPaletteColorSplit + 1, s.b); bus.w8(wPaletteColorSplit + 2, s.c);
-    computeGrayscaleColor(P, wPaletteColorSplit);
-    red = bus.u8(wPaletteColorSplit);
-    const color = combineColorComponents(red, bus.u8(wPaletteColorSplit + 1), bus.u8(wPaletteColorSplit + 2));
+    carry = computeGrayscaleColor(P, wPaletteColorSplit).f & FC;
+    const color = combineColorComponents(bus.u8(wPaletteColorSplit), bus.u8(wPaletteColorSplit + 1), bus.u8(wPaletteColorSplit + 2));
     bus.w16(at, color);
+    lo = color & 0xFF;
   }
-  return { a: red, b: 0, de: wPaletteColorSplit, hl: wPaletteFadeTarget + PALETTES_SIZE };
+  // a = the last color's low byte; the flags of the last `dec b`, its C from ComputeGrayscaleColor's
+  return { a: lo, b: 0, de: wPaletteColorSplit, hl: wPaletteFadeTarget + PALETTES_SIZE, f: FZ | FN | carry };
 }
 // ComputeGrayscaleColor (03:7648): the components r g b at de become (sum / 2, at most $1F when it reaches $20;
 // sum / 4; sum / 8) with sum = r + g + b (8 bits). de is kept.
@@ -136,7 +137,7 @@ export function snapPalettesToTarget(P) {
     const t = advanceToPaletteEntry(wPaletteFadeTarget, i), l = advanceToPaletteEntry(wPaletteFadeLive, i);
     for (let k = 0; k < PALETTE_SIZE; k++) bus.w8(l + k, bus.u8(t + k));
   }
-  return loadPalettesImmediate(P, wPaletteFadeLive, 0, PALETTES);
+  return { ...loadPalettesImmediate(P, wPaletteFadeLive, 0, PALETTES), b: PALETTES };   // (b: the loop's count)
 }
 // AdvanceToPaletteEntry (03:7829): hl + 8 * b (leaves a = b = 0, flags of `and a`)
 export function advanceToPaletteEntry(hl, b) { return (hl + PALETTE_SIZE * b) & 0xFFFF; }
