@@ -3,9 +3,11 @@
 // repair.js with the rest of the power-on repair.
 // Port of results_03.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/mario-tennis-gbc-disasm).
 // The save format is in defs.js.
-// Tests: web/tests/port/routines_save.mjs (every routine but the editor); the editor, which never returns, by the
-// lockstep on out/port/save_editor.mtrec (a state with the CPU put at its entry; web/tests/port/routines_save.mjs
-// says how to make it).
+// Tests: web/tests/port/routines_save.mjs (every routine but the editor). The editor, which never returns, by the
+// lockstep on out/port/save_editor.mtrec: out/engine/rec2.mtrec's start played 600 frames, then the CPU put at
+// 03:5310 (bank 3 mapped), and a pad script that moves the cursor, edits words (A held), changes slots (Select),
+// saves (Start), deletes (Start with A) and presses B. Its debug overlay shows the peak-LY readout (CPU time) at
+// VRAM $9D08, which differs in the port by timing; with that pinned the run is exact.
 import {
   SAVEBLOCK_BACKUP, SAVEBLOCK_STAR_GRID, WRAM_SOUND, wSaveBlockBuffer, FZ, FH, cpFlags, hook, hookGen, fillMemory16,
 } from "./defs.js";

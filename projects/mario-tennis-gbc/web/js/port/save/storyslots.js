@@ -3,7 +3,7 @@
 // Port of storyslots_03.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/mario-tennis-gbc-disasm).
 // The save format is in defs.js.
 // Tests: web/tests/port/routines_save.mjs (every routine: valid, absent, corrupt and mismatching blocks, every
-// story slot); the story saves in out/port/story1.mtrec and out/engine/rec2.mtrec.
+// story slot); the story saves in out/port/story1.mtrec, out/port/save1.mtrec and out/engine/rec2.mtrec.
 import {
   SAVEDIR_VALID, SAVEDIR_CHECKSUM, SAVEDIR_TAG, SAVEDIR_TAG_SIZE, SAVEBLOCK_BACKUP, SAVEBLOCK_EXHIBITION,
   SAVEBLOCK_EXHIBITION_BACKUP, NUM_STORY_SLOTS, sSaveFlags, wStorySlotData, wTextBuffer,

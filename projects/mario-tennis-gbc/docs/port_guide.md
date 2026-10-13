@@ -66,6 +66,9 @@ in place.
 - **Timing.** Ported code takes no CPU time. Code that measures time (rLY polling, hPeakLY, DIV) gives other
   values. Keep reading the hardware exactly as the ROM does; the tests know which differences come from timing.
 
+- **Routine-test buffers:** keep test buffers away from $CF00-$CFFF (the stack page) and its echo at $EF00-$EFFF.
+  `P.callRom(bank, addr, regs)` takes 8-bit registers (a, b, ...) and pairs (bc, de, hl).
+
 ## Testing (both must pass before a part counts as ported)
 
 1. **Routine tests.** Run `node web/tests/port_routines.mjs [filter]`. Entries live in

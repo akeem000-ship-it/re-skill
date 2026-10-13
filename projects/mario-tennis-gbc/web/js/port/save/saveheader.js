@@ -3,7 +3,8 @@
 // checksum and tag of each entry are left alone.
 // Port of saveheader_03.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/mario-tennis-gbc-disasm);
 // the block names are its SAVEBLOCK_* constants and docs/save_format.md.
-// Tests: web/tests/port/routines_save.mjs ("Save InitSaveHeader"); reached on every save in out/port/story1.mtrec.
+// Tests: web/tests/port/routines_save.mjs ("Save InitSaveHeader"); reached on every block write in out/port/story1.mtrec
+// and out/port/save1.mtrec.
 import { sSaveSignature, sSaveFormatVersion, SAVE_FORMAT_VERSION, SAVEDIR_BANK, dirEntry, selectSramBank } from "./defs.js";
 import { copySaveSignature, SaveSignature } from "./signature.js";
 

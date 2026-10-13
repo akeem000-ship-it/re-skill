@@ -78,6 +78,7 @@ function coreTo(k) {                         // run the ROM to its k-th AdvanceF
     const bounds = []; for (let n = v0 + 1; n <= core.vblanks; n++) bounds.push(n);
     win.set(coreAt, { bounds, s: snap(), timing, vblanks: core.vblanks, workVBlanks: core.newWindow() });
     if (timing) for (let n = v0 - 1; n <= core.vblanks + 1; n++) timingFrames.add(n);
+    if (cg.mem.hram[0x1E]) for (let n = v0; n <= core.vblanks + 1; n++) timingFrames.add(n);   // the debug overlay shows CPU time
   }
 }
 
@@ -127,8 +128,11 @@ P.gb.mem.read = addr => {
 };
 const startWatch = k => { const w = win.get(k); watch = w ? w.workVBlanks.filter(v => v.a >= 0) : []; watchAt = 0; watchReads = new Map(); workAtStart = P.workVBlanks; };
 
+// not compared: the stack page; the debug peak-LY readout and hPeakLY (CPU timing), and the readout's copy on the
+// debug overlay ($9D08-$9D0B in VRAM bank 0) while the overlay is on (hDebugStepMode)
+let debugOverlay = false;
 const ignore = (bank, addr) => (bank === 0 && addr >= 0xCF00 && addr < 0xD000) || (bank === 0 && addr >= 0xC0FB && addr < 0xC100)
-  || (bank === -2 && (addr === 0xFFA0 || addr === 0xFFA1));        // the stack page; the debug peak-LY readout and hPeakLY (CPU timing)
+  || (bank === -2 && (addr === 0xFFA0 || addr === 0xFFA1)) || (debugOverlay && bank === 0x10 && addr >= 0x9D08 && addr < 0x9D0C);
 const isSound = x => x[0] === "wram7" && x[2] < 0xD300;
 class Done extends Error {}
 let courseChanged = null, lastResync = -99, lastResyncFrame = 0, suspect = [], compared = 0, bad = 0, timingDiffs = 0, soundDiffs = 0, lags = 0, injected = 0, injectedIn = -9, portLate = 0, lastTiming = -9;
@@ -159,6 +163,7 @@ P.afterAdvance = k => {
   portWin = k + 1; portIdx = 0; P.suppressVBlanks = 0;
   coreTo(k + 1); startWatch(k + 1);
   compared++;
+  debugOverlay = w.s.mem.hram[0x1E] !== 0;                             // hDebugStepMode ($FF9E)
   const all = diffMachines(w.s, P.gb, { ignore, limit: 400 });
   win.delete(k - 2);
   if (!all.length) return;

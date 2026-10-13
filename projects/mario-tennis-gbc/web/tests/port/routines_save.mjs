@@ -7,8 +7,9 @@
 // broken, the bank-1 mirror good or not; the N64 records block present (with data or empty) and the save flags and
 // records each unlockable depends on set above or below their limits; every story slot (0-2 and none); SRAM
 // enabled or not, any bank mapped at the call. The harness compares SRAM, all of WRAM and the result registers.
-// Use --rec out/engine/rec1.mtrec,out/engine/rec2.mtrec,out/port/story1.mtrec (the default recordings have no story
-// file in exh1's early states: those give the blank-save cases).
+// The default recordings work (rec1: a story file; exh1: a blank save at first); more states with
+// --rec out/engine/rec1.mtrec,out/engine/exh1.mtrec,out/engine/rec2.mtrec,out/port/story1.mtrec,out/port/save1.mtrec
+// (save1: power-on with rec1's save, file 1 loaded, saved, then erased, the N64 block cleared, everything erased).
 import { readRecording, newCore } from "../engine/corpus.mjs";
 import { loadState } from "../../js/gb/state.js";
 import { hookKey } from "../../js/port/port.js";
@@ -337,3 +338,5 @@ export const ROUTINES = ENTRIES;
 // the lockstep from a recording whose start state has the CPU put at its entry (bank 3 mapped), with a key script
 // that moves the cursor, edits, changes slots, saves and deletes (out/port/save_editor.mtrec):
 //   HOOKS=save/index node web/tests/port_lockstep.mjs out/port/save_editor.mtrec
+// The editor turns the debug overlay on, whose peak-LY readout (VRAM $9D08-$9D0B, CPU time) differs by timing; the
+// lockstep ignores its RAM source (wDebugPeakLYText) but not this copy, so those cells show as differences.

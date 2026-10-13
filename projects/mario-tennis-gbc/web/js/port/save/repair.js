@@ -6,7 +6,8 @@
 // The N64 records block ($0B): bytes +0/+1 are non-zero when an N64 Mario Tennis (Transfer Pak) wrote records
 // there; bytes +2-+7 are six unlockables, set to 1 when a minigame record beats its default and a save flag is set.
 // Tests: web/tests/port/routines_save.mjs (every routine; present and absent N64 data, records above and below
-// their defaults); the power-on repair of a blank save in out/port/story1.mtrec.
+// their defaults); the power-on repair in out/port/story1.mtrec (blank save) and out/port/save1.mtrec (a good one),
+// block 6 kept across "erase all" in out/port/save1.mtrec.
 import {
   SAVEBLOCK_BACKUP, SAVEBLOCK_PRESERVED, SAVEBLOCK_SPARE7, SAVEBLOCK_SPARE8, SAVEBLOCK_SPARE9, SAVEBLOCK_SPARE10,
   SAVEBLOCK_N64_RECORDS, SAVEBLOCK_EXHIBITION, SAVEBLOCK_EXHIBITION_BACKUP, WRAM_STAGING, WRAM_SOUND,

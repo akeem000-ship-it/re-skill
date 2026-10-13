@@ -3,7 +3,8 @@
 // Port of signature_03.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/mario-tennis-gbc-disasm).
 // The save format is in defs.js.
 // Tests: web/tests/port/routines_save.mjs (every routine; good, damaged and blank saves); the power-on check of a
-// blank save and the story saves are in out/port/story1.mtrec, a save from a mid-game state in out/engine/rec2.mtrec.
+// blank save and the story saves are in out/port/story1.mtrec, of a good save (power-on with a story file, loaded,
+// saved, erased) in out/port/save1.mtrec, saves from a mid-game state in out/engine/rec2.mtrec.
 import {
   SRAM_BASE, NUM_SRAM_BANKS, SRAM_BANK_SIZE, sSaveHeader, sSaveSignature, sSaveMasterChecksum, sSaveFlags,
   SAVE_HEADER_CHUNK, SAVE_HEADER_CHUNKS, CHECKSUM_START, CHECKSUM_END, SAVEDIR_VALID, SAVEDIR_CHECKSUM, SAVEDIR_TAG,

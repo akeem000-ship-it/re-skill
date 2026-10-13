@@ -6,7 +6,8 @@
 // are global (they live in block $38, story slot 0's). A record's value goes in and out through
 // wMinigameRecordValue (WRAM 7), the block through wMinigameRecordBlock (WRAM 7). Each block has a backup at + 3.
 // Tests: web/tests/port/routines_save.mjs (every routine, every slot, with valid, absent and corrupt blocks); the
-// new save's records in out/port/story1.mtrec, the exhibition image in out/port/debug1.mtrec.
+// new save's records in out/port/story1.mtrec, the exhibition image in out/port/debug1.mtrec, a story file erased,
+// the N64 block cleared and "erase all" (ReinitSaveRamPreservingBlock6) in out/port/save1.mtrec.
 import {
   SAVEDIR_VALID, SAVEDIR_CHECKSUM, SAVEDIR_TAG, SAVEDIR_TAG_SIZE, SAVEBLOCK_BACKUP, SAVEBLOCK_PRESERVED,
   SAVEBLOCK_N64_RECORDS, SAVEBLOCK_EXHIBITION, SAVEBLOCK_EXHIBITION_BACKUP, SAVEBLOCK_MINIGAME_RECORDS,
