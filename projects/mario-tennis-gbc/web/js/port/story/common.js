@@ -123,6 +123,12 @@ export const spAddFlags = (sp, e) => (((sp & 0x0F) + (e & 0x0F)) > 0x0F ? FH : 0
 // `bit n, r`: Z when clear, H set, C kept
 export const bitFlags = (set, carry) => (set ? 0 : FZ) | FH | carry;
 
+// ld_hl_indexed table: hl = table + a, flags of its closing `sub l`
+export function indexedHL(table, a) {
+  const sum = a + (table & 0xFF), l = sum & 0xFF, x = ((table >> 8) + l + (sum > 0xFF ? 1 : 0)) & 0xFF;
+  return { hl: (table + a) & 0xFFFF, f: subFlags(x, l) };
+}
+
 // ---- WRAM banks ----
 // push_wram_bank b ... pop_wram_bank around fn (hWramBank read through the bus, as the ROM's `ldh a, [hWramBank]`:
 // the lockstep test counts such reads to place a VBlank the ROM took mid-work)

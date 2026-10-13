@@ -9,7 +9,7 @@ import {
   ACTORF_Y, ACTORF_TARGET_X, ACTORF_LEADER, ACTORF_MODE, ACTORF_OBJECT, ACTORF_GFX_BANK, ACTORF_FRAME_TABLE,
   ACTORF_ANIM_TABLE, ACTORF_DRAW_DELAY, ACTORF_DRAWN_FACING, ACTORF_FACING_COUNT, ACTORF_OAM_ATTR,
   ACTORF_SHADOW_TABLE, ACTORFLAG_MOVING, ACTORFLAG_BLOCKED, ACTOR_MODE_DRAWN, FLAG_HIDE_OVERWORLD_ACTORS,
-  FLAG_ENDING_CREDITS_RUNNING, a8, a16, w8, w16, setBits, actorPtr, hook, testFlag, randomSeed, decFlags,
+  FLAG_ENDING_CREDITS_RUNNING, a8, a16, w8, w16, setBits, actorPtr, hook, testFlag, randomSeed, decFlags, subFlags,
 } from "./common.js";
 import { farReadByte, farReadWord, farCopyBytes, loadPalettesMasterOnly } from "../home/palettes.js";
 import { copyDataFromBank } from "../home/decompress.js";
@@ -112,9 +112,11 @@ export function computeSpriteScrollOffset(P) {
   bus.w16(P.A.actorScreenOriginX, ox);
   let de = V.cameraY;
   if (testFlag(P, FLAG_ENDING_CREDITS_RUNNING)) de = (bus.u16(P.A.rasterScrollStartLY) + de) & 0xFFFF;
-  const oy = (-(de + shake(V.screenShakeOffsetY))) & 0xFFFF;
+  const sum = (de + shake(V.screenShakeOffsetY)) & 0xFFFF, oy = (-sum) & 0xFFFF;
   bus.w16(P.A.actorScreenOriginY, oy);
-  return { a: oy & 0xFF, bc: oy, de, hl: P.A.actorScreenOriginY + 1 };
+  // the negation's flags: `xor a / sub l / ld l, a / sbc a / sub h`
+  const f = subFlags(sum & 0xFF ? 0xFF : 0, sum >> 8);
+  return { a: oy & 0xFF, f, bc: oy, de, hl: P.A.actorScreenOriginY + 1 };
 }
 
 // DrawActors (04:4A82), a frame task (unless the actors are hidden): each live actor in mode 2 is drawn and

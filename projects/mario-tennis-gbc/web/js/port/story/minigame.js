@@ -315,6 +315,7 @@ export function handleMinigameTargetHitAlt(P) {
   return { a, hl: work(T_FLAGS) };
 }
 
+const SPAWN_FORMATION_ENTRIES = [0x6C8F, 0x6CA0, 0x6CB9, 0x6CD2, 0x6CF3, 0x6D14, 0x6D21, 0x6D30, 0x6D41];
 export const HOOKS = [
   [BANK, 0x6596, hook(P => initMinigameTargets(P))],
   [BANK, 0x65AF, hook((P, c) => activateMinigameTarget(P, c.bc, c.de, c.f))],
@@ -331,6 +332,8 @@ export const HOOKS = [
   ...[...TARGET_OPS].map(([addr, fn]) => [BANK, addr, hook((P, c) => fn(P, c.de))]),
   [BANK, 0x68B7, hook(P => runMinigameTargetScript(P))],
   [BANK, 0x6C7B, hook((P, c) => spawnMinigameTargetFormation(P, c.a))],
+  // SpawnMinigameTargetFormation0-8 (0A:6C8F ...): `ld hl, MinigameTargetFormationNScriptPtrs` and the list spawned
+  ...SPAWN_FORMATION_ENTRIES.map(at => [BANK, at, hook(P => spawnMinigameTargetsFromList(P, P.rom.u16(BANK, at + 1)))]),
   [BANK, 0x6D52, hook((P, c) => spawnMinigameTargetsFromList(P, c.hl))],
   [BANK, 0x6D6E, hook(P => drawMinigameTargetAlt(P))],
   [BANK, 0x6DDE, hook(P => handleMinigameTargetHitAlt(P))],

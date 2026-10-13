@@ -11,6 +11,7 @@
 // pad released it stands, snapped to the pixel grid.
 // Tests: web/tests/port/routines_story.mjs; lockstep on out/engine/rec2.mtrec and out/port/story1.mtrec.
 import {
+  indexedHL,
   FZ, FN, FH, FC, WRAM_ACTORS, BANK_ACTORS, BANK_STORY, ACTORF_FLAGS, ACTORF_SPEED, ACTORF_TARGET_X, ACTORF_TARGET_Y,
   ACTORF_X, ACTORF_Y, ACTORF_HEADING, ACTORF_TURN_RATE, ACTORF_FACING, ACTORF_ANIM_SPEED, ACTORFLAG_MOVING,
   FLAG_PLAYER_RUNNING, FLAG_DEBUG_NOCLIP, a16, w8, w16, setBits, clearBits, actorPtr, hook, testFlag, setFlag,
@@ -33,10 +34,11 @@ const COLLISION_SLOW = 0x0B;                 // a collision kind that would slow
 const SNAP_ROUND = 0x0010, SNAP_MASK = 0xE0;
 
 // SetActorMoveTarget (04:5061): actor bc's target = (hl, de). Leaves de = x, hl = bc + 9.
-export function setActorMoveTarget(P, actor, x, y) {
+export function setActorMoveTarget(P, actor, x, y, f = 0) {
   w16(P, actor, ACTORF_TARGET_Y, y);
   w16(P, actor, ACTORF_TARGET_X, x);
-  return { de: x, hl: (actor + ACTORF_TARGET_X + 1) & 0xFFFF };
+  f = addHLFlags(ACTORF_TARGET_X, actor, addHLFlags(ACTORF_TARGET_Y, actor, f));
+  return { a: x & 0xFF, f, de: x, hl: (actor + ACTORF_TARGET_X + 1) & 0xFFFF };
 }
 
 // GetPointAheadOfActorFixed (04:50D2) / GetPointAheadOfActorRanged (04:50DC) / IndexPlayerControlTable
@@ -50,21 +52,22 @@ export function getPointAheadOfActorRanged(P, actor, angle) {
 }
 const octantOffset = angle => (((angle >> 3) | (angle << 5)) & 0x1C);   // rrca x3, and $1C: the octant * 4
 export function indexPlayerControlTable(P, actor, a, d) {
-  const at = (ActorMoveVectors_04 + ((a + d) & 0xFF)) & 0xFFFF;
-  const dx = P.rom.u16(BANK, at), dy = P.rom.u16(BANK, at + 2);
-  return { hl: (a16(P, actor, ACTORF_X) + dx) & 0xFFFF, de: (a16(P, actor, ACTORF_Y) + dy) & 0xFFFF, a: dy >> 8 };
+  const { hl: at, f: indexF } = indexedHL(ActorMoveVectors_04, (a + d) & 0xFF);
+  const dx = P.rom.u16(BANK, at), dy = P.rom.u16(BANK, at + 2), ax = a16(P, actor, ACTORF_X);
+  // a: the actor's X low byte (the last read); f: Z of the index's `sub l`, H and C of the X add
+  return { hl: (ax + dx) & 0xFFFF, de: (a16(P, actor, ACTORF_Y) + dy) & 0xFFFF, a: ax & 0xFF, f: addHLFlags(ax, dx, indexF) };
 }
 // ProjectPointFromActor (04:5113): the point hl (a length) along angle a from actor bc. Returns { hl: x, de: y }.
 export function projectPointFromActor(P, actor, length, angle) {
   const v = vectorFromLengthAndAngle(P, length, angle);
   const y = (a16(P, actor, ACTORF_Y) + v.de) & 0xFFFF, x = (a16(P, actor, ACTORF_X) + v.hl) & 0xFFFF;
-  return { hl: x, de: y, a: v.a, f: addHLFlags(a16(P, actor, ACTORF_X), v.hl, v.f) };
+  return { hl: x, de: y, a: a16(P, actor, ACTORF_X) & 0xFF, f: addHLFlags(a16(P, actor, ACTORF_X), v.hl, v.f) };
 }
 // OffsetPointByPolarVector (04:512F): the point (hl, de) moved bc (a length) along angle a. Returns hl = bc = x, de = y.
 export function offsetPointByPolarVector(P, x, y, angle, length) {
   const v = vectorFromLengthAndAngle(P, length, angle);
   const nx = (v.hl + x) & 0xFFFF;
-  return { hl: nx, bc: nx, de: (y + v.de) & 0xFFFF, a: v.a };
+  return { hl: nx, bc: nx, de: (y + v.de) & 0xFFFF, a: v.a, f: addHLFlags(y, v.de, v.f) };
 }
 
 // CheckTileTriggerAtPoint (04:5141): the behaviour cell under the point (h, d: tiles) asks for its step-on
@@ -172,7 +175,7 @@ function standStill(P, bc) {
 }
 
 export const HOOKS = [
-  [BANK, 0x5061, hook((P, c) => setActorMoveTarget(P, c.bc, c.hl, c.de))],
+  [BANK, 0x5061, hook((P, c) => setActorMoveTarget(P, c.bc, c.hl, c.de, c.f))],
   [BANK, 0x50D2, hook((P, c) => getPointAheadOfActorFixed(P, c.bc, c.a))],
   [BANK, 0x50DC, hook((P, c) => getPointAheadOfActorRanged(P, c.bc, c.a))],
   [BANK, 0x50EA, hook((P, c) => indexPlayerControlTable(P, c.bc, c.a, c.d))],

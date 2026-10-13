@@ -9,7 +9,7 @@
 // use the low 16 bits only. The save flags of a story file (A and B) are save-flag ids in two 4-entry tables, by
 // wCurrentStorySlot; they live in SRAM (bank 3's TestSaveFlag / SetSaveFlag / ClearSaveFlag).
 // Tests: web/tests/port/routines_story.mjs.
-import { FZ, FN, FH, FC, BANK_STORY_02, hook, farcall, cpFlags, subFlags, bitFlags, addHLFlags } from "./common.js";
+import { FZ, FN, FH, FC, BANK_STORY_02, hook, farcall, cpFlags, subFlags, bitFlags, indexedHL } from "./common.js";
 import { testSaveFlag, setSaveFlag, clearSaveFlag } from "../save/storyslots.js";
 import { getPlayerRecordPtr, getCa00RecordPtr } from "./story02.js";
 
@@ -19,12 +19,6 @@ const Value100000_02 = 0x4D50, CharDataPtr_02 = 0x4E78, CharGroupTable_02 = 0x5E
 const CHAR_EXTENDED_FIRST = 0x20;
 const CHARREC_LEVEL = 0x18, CHARREC_EXP = 0x2C, LEVEL_MAX = 0x63, EXP_THRESHOLD_SIZE = 3;
 const CHAR_GROUP_ROW = 0x10, CHAR_GROUP_FIND = 0x30;
-
-// ld_hl_indexed table: hl = table + a, flags of its closing `sub l`
-export function indexedHL(table, a) {
-  const sum = a + (table & 0xFF), l = sum & 0xFF, x = ((table >> 8) + l + (sum > 0xFF ? 1 : 0)) & 0xFF;
-  return { hl: (table + a) & 0xFFFF, f: subFlags(x, l) };
-}
 
 // RemapExtendedCharId (02:4C58): ids from $20 map to the base character whose name they show
 // (NameTextRemap_02[(id - $20) & $7F]); lower ids are kept. hl kept.
@@ -40,11 +34,11 @@ function storySlotFlagId(P, table) {
   return { de: P.rom.u16(BANK, hl), hl: (hl + 1) & 0xFFFF };
 }
 // SetStorySlotFlagB (02:4CB1) / SetStorySlotFlagA (02:4CED): set (a != 0) or clear the current story file's save
-// flag B / A. Returns the registers it leaves (af as at the call, de the ROM's save-flag routine's).
+// flag B / A. Returns the registers it leaves (a kept, the flags of `and a`, de the save-flag routine's).
 export function setStorySlotFlag(P, table, a) {
   const { de, hl } = storySlotFlagId(P, table);
   farcall(P, BANK_SAVE, () => (a ? setSaveFlag : clearSaveFlag)(P, de));
-  return { de: de >> 8, hl };
+  return { f: (a ? 0 : FZ) | FH, de: de >> 8, hl };
 }
 // TestStorySlotFlagB (02:4CD4) / TestStorySlotFlagA (02:4D10): a = 1 if the current story file's save flag B / A
 // is set, else 0 (the flags of the test: Z when clear, H).
@@ -116,8 +110,7 @@ export function hasReachedNextLevelExp(P, a) {
   const { bc } = getPlayerRecordPtr(a), level = P.bus.u8(bc + CHARREC_LEVEL);
   if (level >= LEVEL_MAX) return { a: 0x80, f: 0, bc, hl: bc + CHARREC_LEVEL };
   const exp = (bc & 0xFF00) | ((CHARREC_EXP + (bc & 0xFF)) & 0xFF);
-  const { de: _d, hl: _h, ...r } = compare24Bit(P, exp, thresholdAt(P, level));
-  return { ...r, bc, de: (exp + 2) & 0xFFFF, hl: (thresholdAt(P, level) + 2) & 0xFFFF };
+  return { ...compare24Bit(P, exp, thresholdAt(P, level)), bc };
 }
 // GetExpRemainingToNextLevel (02:4DC8): hl = the next level's threshold - the EXP of record a (low words);
 // 0 at level 99.
