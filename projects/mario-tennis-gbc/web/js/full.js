@@ -153,7 +153,12 @@ function loop(now) {
 let port = null, portError = null;
 // the mode: the page's selector, or #port / #portall in the link, or ?port in the URL
 const portMode = () => { const h = location.hash.slice(1), sel = $("engine") && $("engine").value; return h === "port" || h === "portall" ? h : q.has("port") ? "port" : sel || "rom"; };
-if ($("engine") && (location.hash === "#port" || location.hash === "#portall")) $("engine").value = location.hash.slice(1);
+if ($("engine")) {
+  const saved = stored("mt-engine");
+  if (location.hash === "#port" || location.hash === "#portall") $("engine").value = location.hash.slice(1);
+  else if (saved === "rom" || saved === "port" || saved === "portall") $("engine").value = saved;
+  $("engine").addEventListener("change", () => { try { localStorage.setItem("mt-engine", $("engine").value); } catch (e) { /* private mode */ } });
+}
 const PORT_VERIFIED = ["home/joypad", "home/math", "audio/index"];
 async function makePort(bytes) {
   const { GamePort } = await import("./port/port.js"), { entry } = await import("./port/entry.js");
@@ -201,7 +206,24 @@ for (const el of document.querySelectorAll("#pad [data-key]")) {
   el.addEventListener("contextmenu", e => e.preventDefault());
 }
 if (navigator.userAgent.includes("MarioTennisWrapper") || location.search.includes("touch")) document.body.classList.add("touch");
-$("file").addEventListener("change", async e => { const f = e.target.files[0]; if (f) loadRom(await f.arrayBuffer()); });
+// the ROM the player loaded, kept in this browser's IndexedDB so the next visit can start without picking it again
+const romStore = (mode, fn) => new Promise((ok, fail) => {
+  try {
+    const open = indexedDB.open("mt-rom", 1);
+    open.onupgradeneeded = () => open.result.createObjectStore("rom");
+    open.onerror = () => fail(open.error);
+    open.onsuccess = () => { const tx = open.result.transaction("rom", mode), r = fn(tx.objectStore("rom")); tx.oncomplete = () => ok(r && r.result); tx.onerror = () => fail(tx.error); };
+  } catch (e) { fail(e); }
+});
+$("file").addEventListener("change", async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const buf = await f.arrayBuffer();
+  romStore("readwrite", s => s.put(new Uint8Array(buf), "rom")).catch(() => {});
+  loadRom(buf);
+});
+romStore("readonly", s => s.get("rom")).then(b => { if (b && !gb) $("remembered").hidden = false; }).catch(() => {});
+$("startsaved").addEventListener("click", () => romStore("readonly", s => s.get("rom")).then(b => b && loadRom(b.buffer.slice(0))).catch(e => { $("romstatus").textContent = "could not read the saved ROM: " + e; }));
+$("forgetrom").addEventListener("click", () => romStore("readwrite", s => s.delete("rom")).then(() => { $("remembered").hidden = true; }).catch(() => {}));
 $("reset").addEventListener("click", () => { if (port) { location.reload(); return; } if (gb) { gb.reset(); rec.event("reset"); } });
 // ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
 // a .mtrec file (Android: Downloads/MTenn3D and the share sheet; browser: a download). Hiding the app stops and saves.

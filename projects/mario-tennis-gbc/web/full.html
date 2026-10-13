@@ -37,8 +37,11 @@
       <option value="portall">the JS port: every part, including work in progress</option>
     </select>
     <div>Load your own <code>Mario Tennis (USA).gbc</code> (SHA-1 <code>414ba583…</code>): <input type="file" id="file" accept=".gbc,.gb"></div>
+    <div id="remembered" hidden><button id="startsaved" class="k">Start with the ROM saved in this browser</button>
+      <button id="forgetrom" class="k">Forget it</button></div>
     <div class="note">The JS port runs the parts of the game already rewritten as readable JavaScript, and the original
-      code for the rest. Choose before loading the ROM; Reset reloads the page.</div>
+      code for the rest. Choose before loading the ROM; Reset reloads the page. A ROM you load is kept in this
+      browser (only here, never uploaded) so next time you can start without picking it again.</div>
     <div class="note">The whole game (story mode, tour, mini-games, link-less) runs on the project's own Game Boy Color core
       (<code>web/js/gb</code>), verified frame-for-frame against the reference emulator. Nothing from the game ships with this page.</div>
     <div class="note">Credits: game-engine names and notes cross-checked against the
