@@ -154,7 +154,7 @@ let port = null, portError = null;
 // the mode: the page's selector, or #port / #portall in the link, or ?port in the URL
 const portMode = () => { const h = location.hash.slice(1), sel = $("engine") && $("engine").value; return h === "port" || h === "portall" ? h : q.has("port") ? "port" : sel || "rom"; };
 if ($("engine") && (location.hash === "#port" || location.hash === "#portall")) $("engine").value = location.hash.slice(1);
-const PORT_VERIFIED = ["home/joypad", "audio/index"];
+const PORT_VERIFIED = ["home/joypad", "home/math", "audio/index"];
 async function makePort(bytes) {
   const { GamePort } = await import("./port/port.js"), { entry } = await import("./port/entry.js");
   const want = portMode() === "portall" ? "all" : q.get("port");
