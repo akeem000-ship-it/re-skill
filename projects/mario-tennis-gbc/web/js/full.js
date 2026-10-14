@@ -159,7 +159,8 @@ if ($("engine")) {
   else if (saved === "rom" || saved === "port" || saved === "portall") $("engine").value = saved;
   $("engine").addEventListener("change", () => { try { localStorage.setItem("mt-engine", $("engine").value); } catch (e) { /* private mode */ } });
 }
-const PORT_VERIFIED = ["home/index", "audio/index", "save/index", "cutscenes/index", "story/index", "minigames/index"];
+const PORT_VERIFIED = ["home/index", "audio/index", "save/index", "cutscenes/index", "story/index", "minigames/index",
+  "text/index", "menus/common/cursorbox", "menus/common/cursors", "menus/common/menu_lib", "menus/common/prompts", "menus/common/tilemaps", "menus/common/widgets", "menus/main_menu/boot", "menus/main_menu/erase", "menus/main_menu/main_menu", "menus/main_menu/match_format", "menus/main_menu/n64", "menus/main_menu/n64data", "menus/main_menu/n64transfer", "menus/main_menu/saved"];
 async function makePort(bytes) {
   const { GamePort } = await import("./port/port.js"), { entry } = await import("./port/entry.js");
   const want = portMode() === "portall" ? "all" : q.get("port");

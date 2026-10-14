@@ -14,9 +14,10 @@ What runs as readable JavaScript (web/js/port), checked against the ROM by the r
 | Cutscenes (intro, title, credits, story windows) | engine/cutscenes | cutscenes/ | verified: 60 tests, 0 differences on 8 recordings |
 | Story-mode engine | engine/story | story/ | verified: 194 tests, 0 differences on story1, rec2 and 6 more |
 | Minigames and drills | engine/minigames | minigames/ | verified: 248 tests, 0 differences on 40 recordings |
-| Text engine | engine/text | text/ | in progress |
+| Text engine (windows, printer and control codes, dialogue, font, debug menus) | engine/text | text/ | verified: 223 tests, 0 differences on exh1, story1, debug1, rec1, rec2 |
 | Match (engine hooks, HUD, link) | engine/match | match/ + web/js/engine | in progress |
-| Menus | engine/menus | menus/ | in progress (common, main menu, character select/data, pause/briefing/court/scenes) |
+| Menus: shared code and main menu (boot/InitAndRunGame, saved data, erase, N64 transfer and records, match format) | engine/menus/common, main_menu | menus/common, menus/main_menu | verified: 252 tests, 0 differences on 12 recordings |
+| Menus: character select and data, pause, briefing, court select, scenes, the rest | engine/menus/* | menus/ | in progress |
 | Story scripts and scenes | story/ | — | not started |
 
 Busy loops that measure CPU time (DisableLCDSafely, ShortDelay, WaitSerialTransfer) stay ROM code for now.
