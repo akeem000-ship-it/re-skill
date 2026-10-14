@@ -7,8 +7,13 @@
 // writes. Such a VBlank is placed by the first read after it of something a VBlank handler writes: "before the
 // r-th read of address a in this window" (window: from one AdvanceFrame to the next). The port can then run its
 // VBlank handler at the same point of its own work (web/tests/port_lockstep.mjs).
+//
+// And it notes how many boundaries had passed when AdvanceFrame's wait ended (00:2719): a VBlank taken in the
+// frame's work before the wait (in the frame tasks, say) does not end the wait, whose HALT then sleeps to the next
+// interrupt, so the wait can take two frames where the port's took one.
 const VECTORS = new Set([0x40, 0x48, 0x50, 0x58, 0x60]);
 const inAdvanceFrame = pc => pc >= 0x2631 && pc <= 0x2724;
+const AFTER_WAIT = 0x2719;                   // AdvanceFrame's .done: its wait for the VBlank handler is over
 
 export class CoreRunner {
   // pad(n): the pad state for the frame after boundary n; onBoundary(n, lcdOn) is called at each boundary
@@ -21,6 +26,7 @@ export class CoreRunner {
     this.window = 1; this.stamp = new Int32Array(0x10000); this.reads = new Int32Array(0x10000);
     this.workVBlanks = [];                   // this window's VBlanks taken mid-work: {a, r} (a = -1: no such read followed)
     this.pending = null;                     // a mid-work VBlank waiting for the next read to place it
+    this.waitEndVBlanks = -1;                // the boundary count when AdvanceFrame's wait last ended (00:2719)
     gb.setInput(pad(0));
     const m = gb.mem, read = m.read.bind(m), write = m.write.bind(m);
     m.read = a => {
@@ -42,6 +48,7 @@ export class CoreRunner {
     const gb = this.gb, cpu = gb.cpu, c0 = gb.cycles, pc0 = cpu.pc;
     const top = this.handlers[this.handlers.length - 1];
     if (top && pc0 === top.ret && cpu.sp === top.sp) this.handlers.pop();
+    if (pc0 === AFTER_WAIT && !this.handlers.length) this.waitEndVBlanks = this.vblanks;
     gb.stepInstruction();
     if (VECTORS.has(cpu.pc) && cpu.pc !== pc0) {                        // an interrupt taken
       const ret = gb.mem.read(cpu.sp) | gb.mem.read((cpu.sp + 1) & 0xFFFF) << 8;
@@ -71,5 +78,6 @@ export class CoreRunner {
     }
   }
   // start a new window (the harness, at each AdvanceFrame); returns the finished window's mid-work VBlanks
-  newWindow() { const w = this.workVBlanks; this.workVBlanks = []; this.pending = null; this.window++; return w; }
+  // (waitEndVBlanks: read it before; it is reset for the next window)
+  newWindow() { const w = this.workVBlanks; this.workVBlanks = []; this.pending = null; this.window++; this.waitEndVBlanks = -1; return w; }
 }

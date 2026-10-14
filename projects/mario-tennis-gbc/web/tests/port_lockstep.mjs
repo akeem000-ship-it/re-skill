@@ -78,7 +78,8 @@ function coreTo(k) {                         // run the ROM to its k-th AdvanceF
     const lcd = cg.ppu.lcdc >> 7, timing = core.offBeat >= coreAt - 1 || lcd !== lastLcd;
     lastLcd = lcd;
     const bounds = []; for (let n = v0 + 1; n <= core.vblanks; n++) bounds.push(n);
-    win.set(coreAt, { bounds, s: snap(), timing, vblanks: core.vblanks, workVBlanks: core.newWindow() });
+    const waitEnd = core.waitEndVBlanks >= v0 ? core.waitEndVBlanks - v0 : -1;   // boundaries before AdvanceFrame k-1's wait ended
+    win.set(coreAt, { bounds, s: snap(), timing, vblanks: core.vblanks, waitEnd, workVBlanks: core.newWindow() });
     if (timing) for (let n = v0 - 1; n <= core.vblanks + 1; n++) timingFrames.add(n);
     if (cg.mem.hram[0x1E]) for (let n = v0; n <= core.vblanks + 1; n++) timingFrames.add(n);   // the debug overlay shows CPU time
   }
@@ -96,13 +97,17 @@ const powerOn = rec.start.cpu.pc === 0x100;
 const P = new GamePort(loadRom(), powerOn ? prog : { ...prog, *main(P) { yield* P.continueCpu(); } });
 loadState(P.gb, rec.start);
 let portWin = 1, portIdx = 0;                // the port's window and the boundaries it has passed in it
+const STALL_FRAMES = 300;                    // frames the port may pass in a window beyond the ROM's
 const portPics = [];                         // [ROM boundary, scanline hashes]
 P.setInput(pad(0));
+class Stalled extends Error {}
 P.onVBlank = () => {
   portIdx++;
-  if (process.env.DBG && P.vblanks % 50 === 0) console.log('DBG vb', P.vblanks, 'adv', P.advances, 'portWin', portWin, 'coreAt', coreAt, 'pc', P.cpu.pc.toString(16), 'sp', P.cpu.sp.toString(16), 'bank', P.mem.romBank.toString(16), 'lcdc', P.ppu.lcdc.toString(16));
   coreTo(portWin);
   const w = win.get(portWin);
+  // the port no longer reaches its AdvanceFrames where the ROM did (it went another way): say so, don't run on
+  if (w && portIdx > w.bounds.length + STALL_FRAMES)
+    throw new Stalled(`the port passed ${portIdx} frames without reaching AdvanceFrame ${portWin} (the ROM ${w.bounds.length}); pc ${P.cpu.pc.toString(16)} sp ${P.cpu.sp.toString(16)}`);
   if (!w || !w.bounds.length) return;
   const n = w.bounds[Math.min(portIdx - 1, w.bounds.length - 1)];
   P.setInput(pad(n));
@@ -139,6 +144,18 @@ const ignore = (bank, addr) => (bank === 0 && addr >= 0xCF00 && addr < 0xD000) |
 const isSound = x => x[0] === "wram7" && x[2] < 0xD300;
 class Done extends Error {}
 let courseChanged = null, lastResync = -99, lastResyncFrame = 0, suspect = [], suspectBad = 0, compared = 0, bad = 0, timingDiffs = 0, soundDiffs = 0, lags = 0, injected = 0, injectedIn = -9, portLate = 0, lastTiming = -9;
+// The end of AdvanceFrame's wait (P.atFrameWaitEnd): the ROM's wait ended after more of the window's boundaries than
+// the port's (a VBlank in the frame's work before the wait: the ROM's HALT then slept on to the next one, while the
+// port's was woken by an interrupt that came, for the ROM, while it was still at work). Those frames pass inside
+// the wait, as for the ROM: given at the next AdvanceFrame instead, they would come after the code that tests
+// what the VBlank handler did (WaitFadeEnd's loop on hFadeState, say), and the game would go another way.
+let waitLags = 0;
+P.onFrameWaitEnd = () => {
+  const w = win.get(portWin);
+  const n = w && w.waitEnd > portIdx ? w.waitEnd - portIdx : 0;
+  if (n) { waitLags += n; lastTiming = portWin; if (process.env.LAGLOG) console.log(`advance ${portWin - 1}: its wait took ${w.waitEnd} frames in the ROM, ${portIdx} in the port`); }
+  return n;
+};
 P.onAdvance = k => {
   coreTo(k + 1);                             // the ROM one window ahead: its pads for the port's next window
   const w = win.get(k);
@@ -166,7 +183,6 @@ P.afterAdvance = k => {
   portWin = k + 1; portIdx = 0; P.suppressVBlanks = 0;
   coreTo(k + 1); startWatch(k + 1);
   compared++;
-  if (process.env.DBGK && Math.abs(k - +process.env.DBGK) <= 6) { const st = (w0, sp) => { const o = []; for (let i = 0; i < 10; i++) { const a = sp + 2 * i - 0xC000; if (a + 1 >= 0x1000) break; o.push((w0[a] | w0[a + 1] << 8).toString(16)); } return o.join(' '); }; console.log(`DBGK ${k} rom sp ${w.s.cpu.sp.toString(16)} bank ${w.s.mem.romBank.toString(16)} [${st(w.s.mem.wram[0], w.s.cpu.sp)}] fade ${w.s.mem.hram[0x22]}/${w.s.mem.hram[0x24]} port ${P.mem.hram[0x22]}/${P.mem.hram[0x24]}`); console.log(`DBGK ${k} prt sp ${P.cpu.sp.toString(16)} bank ${P.mem.romBank.toString(16)} [${st(P.mem.wram[0], P.cpu.sp)}] bounds ${w.bounds} portIdx? lag`); }
   debugOverlay = w.s.mem.hram[0x1E] !== 0;                             // hDebugStepMode ($FF9E)
   const all = diffMachines(w.s, P.gb, { ignore, limit: 400 });
   win.delete(k - 2);
@@ -203,13 +219,15 @@ P.afterAdvance = k => {
 
 coreTo(1); startWatch(1);
 const t0 = Date.now();
+let stalled = null;
 try { while (P.vblanks < frames * 2 + 600 && !coreEnded) P.frame(); }
 catch (e) {
   if (e instanceof Done) { /* the end, or stopped */ }
   else if (compared - lastResync <= 10 && lastResync > 0) {          // the port failed right after a resync: another path
     courseChanged = `the game's course changed by timing after ROM frame ${lastResyncFrame} (AdvanceFrame ${lastResync}): the port failed after the resync (${String(e.message).slice(0, 120)}); compared up to there`;
     bad -= suspectBad;
-  } else throw e;
+  } else if (e instanceof Stalled) { stalled = `FAIL: ${e.message}, after AdvanceFrame ${compared}`; bad++; }
+  else throw e;
 }
 let picCompared = 0, picBad = 0, picTiming = 0;
 for (const [n, h] of portPics) {
@@ -225,7 +243,8 @@ for (const [n, h] of portPics) {
   else { picBad++; log(`picture of ROM frame ${n} differs (${lines} scanlines)`); }
 }
 if (courseChanged) console.log(courseChanged);
+if (stalled) console.log(stalled);
 console.log(`${recPath}: ${core.vblanks} frames, ${compared} AdvanceFrames compared, ${bad} with RAM/state differences` +
   ` (+${timingDiffs} timing, +${soundDiffs} sound timing only); ${picCompared} pictures compared, ${picBad} differ (+${picTiming} timing);` +
-  ` ${lags} lag frames given to the port (${injected} VBlanks placed in its work)` + (portLate ? `, port late ${portLate}×` : "") + ` (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+  ` ${lags} lag frames given to the port (${waitLags} in AdvanceFrame's wait, ${injected} VBlanks placed in its work)` + (portLate ? `, port late ${portLate}×` : "") + ` (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
 process.exit(bad || picBad ? 1 : 0);

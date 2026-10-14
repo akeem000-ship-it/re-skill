@@ -205,6 +205,20 @@ export class GamePort {
     for (let i = 0; i < lag; i++) yield "lag";
     if (this.afterAdvance) this.afterAdvance(k);
   }
+  // The end of AdvanceFrame's wait for the VBlank handler (00:2719 in the ROM's AdvanceFrame; the ported one calls
+  // this after its wait): where a driver that keeps the port in step with the ROM can let more frames pass
+  // inside the wait. onFrameWaitEnd() returns how many: the ROM's wait can take a frame more than the port's, when
+  // a VBlank came in the frame's work before the wait (its HALT then sleeps to the next interrupt) and the
+  // interrupt that woke the port, coming at another time in the frame, came while the ROM was still at work. The
+  // frames pass as in the ROM's halt: interrupts on, the handlers run.
+  *atFrameWaitEnd() {
+    const n = this.onFrameWaitEnd ? this.onFrameWaitEnd() : 0;
+    if (!n) return;
+    const ime = this.ime;
+    this.ime = true;
+    for (let i = 0; i < n; i++) yield "lag";
+    this.ime = ime;
+  }
   // one CPU step; at a hooked address run the JS instead (returns its generator if it waits)
   // lastRet: the step just returned from a routine (a ret/reti, or a hook's return). A ROM call made by the port
   // ends when a return brings sp back to where it was called from, whatever address that return popped: a test
@@ -219,6 +233,9 @@ export class GamePort {
     // the ROM's AdvanceFrame: the probe, once per call (when its first instruction is about to run, not an interrupt)
     const atAdvance = pc === 0x2631 && (this.onAdvance || this.afterAdvance) && !this.hooks.has(0x2631) && !(cpu.ime && (m.iflag & m.ie & 0x1F));
     if (atAdvance && !this.probed) { this.probed = true; return this.atAdvanceFrame(); }
+    // the end of the ROM's AdvanceFrame wait (its .done, interrupts still off): the same probe, once per pass
+    const atWaitEnd = pc === 0x2719 && this.onFrameWaitEnd && !this.hooks.has(0x2631) && !this.inHandler;
+    if (atWaitEnd && !this.waitProbed) { this.waitProbed = true; return this.atFrameWaitEnd(); }
     if (pc < 0x8000 && !(cpu.ime && (m.iflag & m.ie & 0x1F))) {          // (an interrupt due now comes first, as on the CPU)
       const fn = pc < 0x100 && VECTORS[pc] ? (this.program[VECTORS[pc]] ? "vector" : null) : this.hooks.get(hookKey(m.romBank, pc));
       if (fn === "vector") {                                             // the CPU took an interrupt: the program's handler, then reti
@@ -237,6 +254,7 @@ export class GamePort {
     this.gb.stepInstruction();
     this.lastRet = RETS.has(op) && cpu.pc !== pc + 1;                    // (a conditional ret not taken goes on to pc + 1)
     if (atAdvance) this.probed = false;
+    if (atWaitEnd) this.waitProbed = false;
     if (VECTORS[cpu.pc] && cpu.pc !== pc && cpu.pc < 0x68) {             // the CPU took an interrupt
       const ret = m.read(cpu.sp) | m.read((cpu.sp + 1) & 0xFFFF) << 8;
       if (cpu.pc === 0x40 && this.suppressVBlanks > 0) {                 // its handler already ran (injectVBlank): reti

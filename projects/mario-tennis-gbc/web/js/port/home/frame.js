@@ -184,6 +184,7 @@ function* frameWork(P) {
   trackPeakLY(P);
   if (V.debugStepMode) yield* debugStepper(P);
   yield* waitForVBlank(P);
+  yield* P.atFrameWaitEnd();                                     // where the lockstep test may let the wait go on
   P.ei();
   bus.w8(rVBK, vbk);
   clearUnusedSprites(P);
