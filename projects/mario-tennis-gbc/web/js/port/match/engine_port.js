@@ -8,6 +8,7 @@ import * as draw from "./draw.js";
 import { advanceFrame } from "../home/frame.js";
 import * as obj from "./obj.js";
 import { callModeHook } from "./match.js";
+import * as stack from "./stack.js";
 
 // PlaySoundManaged (00:3024): the sound request `rst $08 ; db id` makes, with the id in a
 export function playSoundManaged(P, id) { P.callRom(0, 0x3024, { a: id }); }
@@ -19,11 +20,16 @@ const hl = v => ({ h: (v >> 8) & 0xFF, l: v & 0xFF }), de = v => ({ d: (v >> 8) 
 function portExt(P) {
   return {
     *advanceFrame() { yield* advanceFrame(P); },                         // AdvanceFrame (home/frame.js)
+    // the ROM's stack depth around the coroutines (stack.js)
+    *call(E, ret, gen) { return yield* stack.call(P, ret, gen); },
+    push(E, ...words) { stack.push(P, ...words); },
+    pop(E, n) { stack.pop(P, n); },
     playMusic(E, id) { playSoundManaged(P, id); },
-    *runMatchPauseMenu() { yield* P.runRom(6, 0x4074); },                // RunMatchPauseMenu
-    *showMessageWindow(E, text, cell, size) { yield* P.runRom(6, 0x44FE, { ...hl(text), ...de(cell), ...bc(size) }); },   // ShowMessageWindow
-    *runLinkMatchFrame() { yield* P.runRom(7, 0x4762); },                // RunLinkMatchFrame
-    *showMinigamePointResult(E, d) { yield* P.runRom(0x0D, 0x4412, { d }); },   // ShowMinigamePointResult
+    // the ROM's coroutines the match far-calls (from bank 8 at rst)
+    *runMatchPauseMenu() { yield* stack.farcallRom(P, 0x44AE, 6, 0x4074); },                     // RunMatchPauseMenu
+    *showMessageWindow(E, text, cell, size, rst) { yield* stack.farcallRom(P, rst, 6, 0x44FE, { ...hl(text), ...de(cell), ...bc(size) }); },   // ShowMessageWindow
+    *runLinkMatchFrame() { yield* stack.farcallRom(P, 0x4471, 7, 0x4762); },                     // RunLinkMatchFrame
+    *showMinigamePointResult(E, d, rst) { yield* stack.farcallRom(P, rst, 0x0D, 0x4412, { d }); },   // ShowMinigamePointResult
     // the HUD objects and banners (bank $09, obj.js: on the CPU's registers with the arguments given)
     loadServeGfx() { far(P, 9, 0x6C40); },                               // LoadServeGfx
     updateScorePanelDisplay() { obj.run(P, obj.updateScorePanelDisplay); },

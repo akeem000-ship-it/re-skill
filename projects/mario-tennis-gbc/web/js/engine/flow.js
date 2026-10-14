@@ -277,6 +277,9 @@ export function initTiebreakPointCounter(E) { E.S.totalPointsScoredInCurrentGame
 // and resumes; so the engine's yields line up with the frames of the real game.
 export const CHARSTATE = { INERT: 0, RALLY: 1, RECOVER: 2, SERVE: 3, AWAIT_SERVE: 4, STANDBY: 5, WALK: 6, POINT_END: 7 };
 const CHARANIM_IDLE = 0x01, MATCHABORT_POINT = 0x01, MATCHABORT_MATCH = 0x80, GAMEMODE_ISLAND_OPEN = 0x02, GAMEMODE_LINK_MATCH = 0x09;
+// `call X` into the coroutine gen, returning to 08:ret (the host keeps the ROM's stack depth: E.ext.call)
+export const call = (E, ret, gen) => E.ext.call(E, ret, gen);
+
 // 08:440D ReadMatchInputHeld / 08:4415 ReadMatchInputPressed: the pad (hPlayerInputFlags / hInputRisingEdge), or in
 // a link exchange the frame's link input (08:4425 ReadScriptedMatchInput, hLinkInput)
 export const inputHeld = E => (E.S.linkExchangeActive ? E.S.linkInput : E.mem.u8(0xFF90));
@@ -285,21 +288,23 @@ export const inputPressed = E => (E.S.linkExchangeActive ? E.S.linkInput : E.mem
 // 08:4465 StepMatchFrame (registers and the WRAM bank kept)
 export function* stepMatchFrame(E) {
   const S = E.S, bank = E.mem.u8(0xFF96);
-  if (S.linkExchangeActive) yield* E.ext.runLinkMatchFrame(E);
+  E.ext.push(E, "af", "bc", "de", "hl", "bank");                        // push af ... hl, push_wram_bank
+  if (S.linkExchangeActive) yield* E.ext.runLinkMatchFrame(E);           // (farcall at 08:4471)
   else {
-    yield* E.ext.advanceFrame(E);
+    yield* call(E, 0x4479, E.ext.advanceFrame(E));
     updateMatchFrame(E);
     S.matchFrameCounter = (S.matchFrameCounter + 1) & 0xFF;
   }
-  if (!S.matchSimFrozen) yield* handlePauseMenu(E);                      // (then CheckDebugStatsEditorHotkey: a bare ret)
+  if (!S.matchSimFrozen) yield* call(E, 0x4489, handlePauseMenu(E));     // (then CheckDebugStatsEditorHotkey: a bare ret)
   E.setBank(bank);
+  E.ext.pop(E, 5);
 }
 // 08:4428 StepMatchFrames / 08:4436 StepMatchFramesSkippable (A or B ends the wait)
-export function* stepMatchFrames(E, n) { do { if (E.S.matchFramesAbort) return; yield* stepMatchFrame(E); } while (--n & 0xFF); }
+export function* stepMatchFrames(E, n) { do { if (E.S.matchFramesAbort) return; yield* call(E, 0x4432, stepMatchFrame(E)); } while (--n & 0xFF); }
 export function* stepMatchFramesSkippable(E, n) {
   for (;;) {
     if (E.S.matchFramesAbort) return;
-    yield* stepMatchFrame(E);
+    yield* call(E, 0x4440, stepMatchFrame(E));
     if (inputHeld(E) & 0x03) return;
     if (E.mem.u8(0xC4EE) & 1) continue;                                  // wDebugMatchFlags bit 0: wait forever
     if (!(--n & 0xFF)) return;
@@ -308,7 +313,7 @@ export function* stepMatchFramesSkippable(E, n) {
 // 08:4452 RunMatchFramesUntilInput: until anything but SELECT/START is held
 export function* runMatchFramesUntilInput(E) {
   while (!E.S.matchFramesAbort) {
-    yield* stepMatchFrame(E);
+    yield* call(E, 0x445B, stepMatchFrame(E));
     if (inputHeld(E) & 0xF3) return;
   }
 }
@@ -317,8 +322,8 @@ export function* handlePauseMenu(E) {
   const S = E.S;
   if (!(inputPressed(E) & 0x08) || S.pauseDisabled || S.matchWinLoseFlag) return;
   S.matchSimFrozen = 0xFF; S.matchDrawFrozen = 0xFF;
-  yield* E.ext.runMatchPauseMenu(E);
-  yield* reinitPointAfterPause(E);
+  yield* E.ext.runMatchPauseMenu(E);                                     // (farcall at 08:44AE)
+  yield* call(E, 0x44B4, reinitPointAfterPause(E));
   S.matchDrawFrozen = 0; S.matchSimFrozen = 0;
 }
 // 08:44BD ReinitPointAfterPause: the view option may have changed
@@ -327,7 +332,7 @@ export function* reinitPointAfterPause(E) {
   if (S.courtViewLocked) return;
   assignCourtPositions(E);
   if (!S.courtViewFlipChanged) return;
-  yield* refreshCourtAfterEndChange(E);
+  yield* call(E, 0x44CD, refreshCourtAfterEndChange(E));
   resetCameraForServe(E); updateMatchCamera(E);
   chars.forEachCharBank(E, () => moveCharToBaseCourtPosition(E));
   E.ext.loadServeGfx(E);
@@ -367,15 +372,16 @@ export function* runMatchPlayLoop(E) {
   const S = E.S;
   if (S.gameMode === GAMEMODE_ISLAND_OPEN || !S.matchContext) S.changeoverSkipBanner = 1;
   do {
-    yield* playSet(E);
+    yield* call(E, 0x4729, playSet(E));
     if (S.matchAbortFlag & MATCHABORT_MATCH) return;
   } while (!S.matchWinLoseFlag);
 }
-// 08:4737 PlaySet / CheckSetComplete: games (or the tiebreak) until the set is decided
+// 08:4737 PlaySet / CheckSetComplete: games (or the tiebreak) until the set is decided (PlaySet pushes
+// CheckSetComplete, 08:4745, as the game's return address and jumps to it)
 export function* playSet(E) {
   const S = E.S;
   for (;;) {
-    if (S.tiebreakerIndicator) yield* playTiebreak(E); else yield* playGame(E);
+    yield* call(E, 0x4745, S.tiebreakerIndicator ? playTiebreak(E) : playGame(E));
     if (S.matchAbortFlag & MATCHABORT_MATCH) return;
     if (S.setWinLoseFlag) { S.changeoverSkipBanner = 1; return; }
   }
@@ -385,14 +391,14 @@ export function* playGame(E) {
   const S = E.S;
   E.mem.w8(0xC7BD, 0);                                                   // wScoreDisplayIsTiebreak
   assignCourtPositions(E);
-  yield* refreshCourtAfterEndChange(E);
-  yield* runChangeoverSequence(E);
+  yield* call(E, 0x4762, refreshCourtAfterEndChange(E));
+  yield* call(E, 0x4765, runChangeoverSequence(E));
   do {
     assignCourtPositions(E);
-    yield* playPoint(E);
+    yield* call(E, 0x476B, playPoint(E));
     if (S.matchAbortFlag & MATCHABORT_MATCH) return;
   } while (!S.gameWinLoseFlag);
-  if (S.tiebreakerIndicator) yield* walkCharsOffCourt(E);
+  if (S.tiebreakerIndicator) yield* call(E, 0x4781, walkCharsOffCourt(E));
 }
 // CheckSetComplete.tiebreak 08:4782
 export function* playTiebreak(E) {
@@ -401,13 +407,13 @@ export function* playTiebreak(E) {
   initTiebreakPointCounter(E);
   S.changeoverSkipBanner = 1;
   E.ext.playMusic(E, 0x0E);                                               // sound BGM_TIEBREAK
-  E.ext.showCourtBanner(E, 0x0F); yield* stepMatchFrames(E, 80);
-  E.ext.hideCourtBanner(E); yield* stepMatchFrames(E, 15);
+  E.ext.showCourtBanner(E, 0x0F); yield* call(E, 0x479B, stepMatchFrames(E, 80));
+  E.ext.hideCourtBanner(E); yield* call(E, 0x47A3, stepMatchFrames(E, 15));
   do {
     assignCourtPositions(E);
-    yield* refreshCourtAfterEndChange(E);
-    yield* runChangeoverSequence(E);
-    yield* playPoint(E);
+    yield* call(E, 0x47A9, refreshCourtAfterEndChange(E));
+    yield* call(E, 0x47AC, runChangeoverSequence(E));
+    yield* call(E, 0x47AF, playPoint(E));
     if (S.matchAbortFlag & MATCHABORT_MATCH) break;
     if (S.totalPointsScoredInCurrentGame >= 0x18) S.totalPointsScoredInCurrentGame = 0;
   } while (!S.gameWinLoseFlag);
@@ -433,22 +439,22 @@ export function* playPoint(E) {
   resetPointState(E);
   S.courtViewLocked &= ~2;
   E.ext.loadServeGfx(E);
-  yield* stepMatchFrame(E);
-  yield* announcePointSituation(E);
+  yield* call(E, 0x4D1D, stepMatchFrame(E));
+  yield* call(E, 0x4D20, announcePointSituation(E));
   chars.forEachCharBank(E, () => chars.setCharState(E, E.rom.u8(8, 0x4FA0 + E.C.serveRole)));   // ServeRoleCharStateTable_08: 3 5 4 5
   do {
-    yield* stepMatchFrame(E);
+    yield* call(E, 0x4D29, stepMatchFrame(E));
     if (S.matchAbortFlag & MATCHABORT_POINT) { S.matchAbortFlag &= 0xFE; return; }
   } while (!S.pointOutcome);
-  if (S.pointOutcome === POINTOUTCOME.BALL_HIT_PLAYER) yield* stepMatchFrames(E, 40);
+  if (S.pointOutcome === POINTOUTCOME.BALL_HIT_PLAYER) yield* call(E, 0x4D42, stepMatchFrames(E, 40));
   endPointBallEffects(E);
   E.ext.updateScorePanelDisplay(E);
   scorePoint(E);
-  yield* stepMatchFrame(E);
+  yield* call(E, 0x4D4E, stepMatchFrame(E));
   E.ext.updatePointDigitsDisplay(E);
-  yield* stepMatchFrame(E);
-  yield* startPointEndReactions(E);
-  yield* resolvePointOutcome(E);
+  yield* call(E, 0x4D54, stepMatchFrame(E));
+  yield* call(E, 0x4D57, startPointEndReactions(E));
+  yield* call(E, 0x4D5A, resolvePointOutcome(E));
 }
 // 08:4D8C AnnouncePointSituation: BGM (08:4D63 SetPointSituationBgm) and the match/set/game point banner, placed by
 // which end the side with the game point plays from
@@ -470,77 +476,79 @@ export function* announcePointSituation(E) {
   E.setBank(4);
   const c = E.C.courtPos, rrca = (c >> 1) | ((c & 1) << 7);
   E.ext.setObjPosition(E, ball.OBJSLOT3, (rrca ^ b) & 1 ? 0x3460 : 0x3420);
-  yield* stepMatchFrames(E, 10);
-  yield* stepMatchFramesSkippable(E, 0x1E);
+  yield* call(E, 0x4DE6, stepMatchFrames(E, 10));
+  yield* call(E, 0x4DEB, stepMatchFramesSkippable(E, 0x1E));
   E.ext.hideCourtBanner(E);
-  yield* stepMatchFrames(E, 10);
+  yield* call(E, 0x4DF3, stepMatchFrames(E, 10));
 }
-// 08:4DF4 ResolvePointOutcome: centre the camera, the outcome's banner or message, then the score sequence
+// 08:4DF4 ResolvePointOutcome: centre the camera, the outcome's banner or message, then the score sequence (it
+// pushes ResolvePointResultSequence, 08:4E22, as the outcome routine's return address and jumps to it)
 export function* resolvePointOutcome(E) {
   const S = E.S;
   setCameraTarget(E, S.matchCameraX, S.matchCameraY);
-  yield* stepMatchFrame(E);
-  const o = S.pointOutcome;
-  if (o >= 1 && o <= 5) yield* resolveCalledPoint(E);
-  else if (o === 6) yield* resolveWinnerPoint(E);
-  else if (o === 7) yield* resolveServeVolleyedPoint(E);
-  else if (o === 8) yield* resolveWrongReceiverPoint(E);
+  yield* call(E, 0x4E06, stepMatchFrame(E));
+  const o = S.pointOutcome, outcome = o >= 1 && o <= 5 ? resolveCalledPoint : o === 6 ? resolveWinnerPoint
+    : o === 7 ? resolveServeVolleyedPoint : o === 8 ? resolveWrongReceiverPoint : null;   // (0 and 9: RetStub)
+  if (outcome) yield* call(E, 0x4E22, outcome(E));
   yield* resolvePointResultSequence(E);
 }
 // 08:4E8D ResolveCalledPoint: the call's banner (FAULT, OUT, ...)
 export function* resolveCalledPoint(E) {
-  E.ext.showCourtBanner(E, E.S.pointOutcome); yield* stepMatchFrames(E, 30);
-  E.ext.hideCourtBanner(E); yield* stepMatchFrames(E, 10);
+  E.ext.showCourtBanner(E, E.S.pointOutcome); yield* call(E, 0x4E9A, stepMatchFrames(E, 30));
+  E.ext.hideCourtBanner(E); yield* call(E, 0x4EA2, stepMatchFrames(E, 10));
 }
 // 08:4E6D ResolveWinnerPoint: the winning shot's banner (SERVICE ACE, ...), if it was a special one
 export function* resolveWinnerPoint(E) {
   const S = E.S;
   if (!S.pointWinnerShotType) return;
-  E.ext.showCourtBanner(E, (S.pointWinnerShotType + 0x17) & 0xFF); yield* stepMatchFrames(E, 10); yield* stepMatchFramesSkippable(E, 0x1E);
-  E.ext.hideCourtBanner(E); yield* stepMatchFrames(E, 10);
+  E.ext.showCourtBanner(E, (S.pointWinnerShotType + 0x17) & 0xFF);
+  yield* call(E, 0x4E7F, stepMatchFrames(E, 10)); yield* call(E, 0x4E84, stepMatchFramesSkippable(E, 0x1E));
+  E.ext.hideCourtBanner(E); yield* call(E, 0x4E8C, stepMatchFrames(E, 10));
 }
 // 08:4E49 ResolveServeVolleyedPoint (text $174, a box at cell 5,4, 10 x 7) / 08:4E5B ResolveWrongReceiverPoint
 // (text $175, at cell 2,4, 15 x 7)
-export function* resolveServeVolleyedPoint(E) { yield* E.ext.showMessageWindow(E, 0x0174, 0x0504, 0x0A07); yield* stepMatchFrames(E, 10); }
-export function* resolveWrongReceiverPoint(E) { yield* E.ext.showMessageWindow(E, 0x0175, 0x0204, 0x0F07); yield* stepMatchFrames(E, 10); }
+// (the message windows: farcalls at 08:4E52 and 08:4E64)
+export function* resolveServeVolleyedPoint(E) { yield* E.ext.showMessageWindow(E, 0x0174, 0x0504, 0x0A07, 0x4E52); yield* call(E, 0x4E5A, stepMatchFrames(E, 10)); }
+export function* resolveWrongReceiverPoint(E) { yield* E.ext.showMessageWindow(E, 0x0175, 0x0204, 0x0F07, 0x4E64); yield* call(E, 0x4E6C, stepMatchFrames(E, 10)); }
 // 08:4E22 ResolvePointResultSequence: the match, set, game or point result, then 08:4E3E DelayAfterPointResolution
+// (pushed as the result routine's return address)
 export function* resolvePointResultSequence(E) {
   const S = E.S;
-  if (S.matchWinLoseFlag) yield* showMatchEndSequence(E);
-  else if (S.setWinLoseFlag) yield* showGameEndSequence(E, 0x0C);
-  else if (S.gameWinLoseFlag) yield* showGameEndSequence(E, 0x0B);
-  else yield* showPointScoreSequence(E);
+  const result = S.matchWinLoseFlag ? showMatchEndSequence(E) : S.setWinLoseFlag ? showGameEndSequence(E, 0x0C)
+    : S.gameWinLoseFlag ? showGameEndSequence(E, 0x0B) : showPointScoreSequence(E);
+  yield* call(E, 0x4E3E, result);
   yield* delayAfterPointResolution(E);
 }
 export function* delayAfterPointResolution(E) {
-  yield* stepMatchFramesSkippable(E, 0x46);
-  yield* stepMatchFrames(E, 10);
+  yield* call(E, 0x4E43, stepMatchFramesSkippable(E, 0x46));
+  yield* call(E, 0x4E48, stepMatchFrames(E, 10));
 }
 // 08:4EA3 ShowPointScoreSequence
 export function* showPointScoreSequence(E) {
   const S = E.S;
   if (!S.pointWinLoseFlag) return;
   E.ext.spawnGameScoreDisplayObjs(E);
-  yield* stepMatchFrames(E, 10);
-  yield* stepMatchFramesSkippable(E, 0x0A);
-  if (S.deuceIndicator) { E.sfx(0x69); yield* stepMatchFrame(E); }      // sound SFX_DEUCE
+  yield* call(E, 0x4EB0, stepMatchFrames(E, 10));
+  yield* call(E, 0x4EB5, stepMatchFramesSkippable(E, 0x0A));
+  if (S.deuceIndicator) { E.sfx(0x69); yield* call(E, 0x4EC0, stepMatchFrame(E)); }   // sound SFX_DEUCE
   E.ext.updateScorePanelDisplay(E);
-  yield* stepMatchFrames(E, 10);
-  yield* stepMatchFramesSkippable(E, 0x1E);
+  yield* call(E, 0x4EC8, stepMatchFrames(E, 10));
+  yield* call(E, 0x4ECD, stepMatchFramesSkippable(E, 0x1E));
   E.ext.dismissGameScoreDisplayObjs(E);
 }
 // 08:4ED1 ShowMatchEndSequence (a Mario minigame: the minigame's own result, d = $17 lost / level + $12 won)
 export function* showMatchEndSequence(E) {
   const S = E.S;
   if (S.gameMode === 0x08) {                                             // GAMEMODE_MARIO_MINIGAME
-    yield* E.ext.showMinigamePointResult(E, S.matchWinLoseFlag & 0x80 ? 0x17 : (E.mem.u8(0xC376) + 0x12) & 0xFF);   // wMinigameLevel
+    const lost = S.matchWinLoseFlag & 0x80;                              // (farcalls at 08:4EE0 / 08:4EEA)
+    yield* E.ext.showMinigamePointResult(E, lost ? 0x17 : (E.mem.u8(0xC376) + 0x12) & 0xFF, lost ? 0x4EE0 : 0x4EEA);   // wMinigameLevel
     return;
   }
   E.ext.showCourtBanner(E, 0x0D);
-  yield* stepMatchFrames(E, 10);
+  yield* call(E, 0x4EF8, stepMatchFrames(E, 10));
   E.ext.spawnWinLoseResultObj(E, S.gameWinLoseFlag & 0xFF);
-  yield* stepMatchFrames(E, 10);
-  yield* stepMatchFramesSkippable(E, 0x2D);
+  yield* call(E, 0x4F03, stepMatchFrames(E, 10));
+  yield* call(E, 0x4F08, stepMatchFramesSkippable(E, 0x2D));
   E.ext.dismissWinLoseResultObj(E); E.ext.hideCourtBanner(E);
 }
 // 08:4F0F ShowSetEndSequence (the sets won, banner $0C) / 08:4F23 ShowGameEndSequence (the games won, banner $0B):
@@ -549,17 +557,17 @@ export function* showGameEndSequence(E, banner) {
   const S = E.S, sets = banner === 0x0C;
   E.ext.loadPlayer1ScoreDigitGfx(E, sets ? S.player1SetsWon : S.player1GamesWon, 1);
   E.ext.loadPlayer2ScoreDigitGfx(E, sets ? S.player2SetsWon : S.player2GamesWon, 1);
-  yield* stepMatchFrame(E);
+  yield* call(E, 0x4F3A, stepMatchFrame(E));
   E.ext.showCourtBanner(E, banner);
-  yield* stepMatchFrames(E, 10);
+  yield* call(E, 0x4F43, stepMatchFrames(E, 10));
   E.ext.spawnWinLoseResultObj(E, S.gameWinLoseFlag & 0xFF);
-  yield* stepMatchFrames(E, 10);
-  yield* stepMatchFramesSkippable(E, 0x28);
+  yield* call(E, 0x4F4E, stepMatchFrames(E, 10));
+  yield* call(E, 0x4F53, stepMatchFramesSkippable(E, 0x28));
   E.ext.dismissWinLoseResultObj(E);
-  yield* stepMatchFrames(E, 10);
+  yield* call(E, 0x4F5B, stepMatchFrames(E, 10));
   E.ext.spawnGameResultObj(E);
-  yield* stepMatchFrames(E, 10);
-  yield* stepMatchFramesSkippable(E, 0x28);
+  yield* call(E, 0x4F63, stepMatchFrames(E, 10));
+  yield* call(E, 0x4F68, stepMatchFramesSkippable(E, 0x28));
   E.ext.dismissGameResultObj(E); E.ext.hideCourtBanner(E);
 }
 // 08:4F6F ResetCharForPoint
@@ -581,7 +589,7 @@ export function endPointBallEffects(E) {
 export function* startPointEndReactions(E) {
   chars.forEachCharBank(E, () => charPointEndReaction(E));
   spreadTeammateTargets(E);
-  yield* stepMatchFrames(E, 10);
+  yield* call(E, 0x4FC6, stepMatchFrames(E, 10));
 }
 export function charPointEndReaction(E) {
   const C = E.C, f = E.S.pointWinLoseFlag;
@@ -645,11 +653,13 @@ export function* refreshCourtAfterEndChange(E) {
   const S = E.S;
   if (!S.courtViewFlipChanged) return;
   const sim = S.matchSimFrozen, draw = S.matchDrawFrozen;
+  E.ext.push(E, sim << 8, draw << 8);                                    // push af (x2: the two flags)
   S.matchSimFrozen = 0xFF; S.matchDrawFrozen = 0xFF;
-  yield* stepMatchFrame(E);
+  yield* call(E, 0x5F5B, stepMatchFrame(E));
   E.ext.refreshCourtScoreboard(E);
-  yield* stepMatchFrame(E);
+  yield* call(E, 0x5F61, stepMatchFrame(E));
   E.ext.uploadCourtScoreboardRows(E);
+  E.ext.pop(E, 2);
   S.matchDrawFrozen = draw; S.matchSimFrozen = sim;
   E.setBank(4);
 }
@@ -660,9 +670,12 @@ export function* runChangeoverSequence(E) {
   let walk = true;
   if (!S.changeoverSkipBanner) {
     if (!S.changeEndsPending) walk = false;
-    else { yield* stepMatchFrame(E); E.ext.showCourtBanner(E, 0x00); yield* stepMatchFrame(E); }
+    else { yield* call(E, 0x5FA0, stepMatchFrame(E)); E.ext.showCourtBanner(E, 0x00); yield* call(E, 0x5FA8, stepMatchFrame(E)); }
   }
-  if (walk) { yield* stepMatchFrame(E); yield* walkCharsToNewEnds(E); E.ext.hideCourtBanner(E); yield* stepMatchFrame(E); }
+  if (walk) {
+    yield* call(E, 0x5FAB, stepMatchFrame(E)); yield* call(E, 0x5FAE, walkCharsToNewEnds(E));
+    E.ext.hideCourtBanner(E); yield* call(E, 0x5FB4, stepMatchFrame(E));
+  }
   S.changeoverSkipBanner = 0; S.changeEndsPending = 0;
 }
 // 08:5FBC WalkCharsToNewEnds
@@ -673,7 +686,7 @@ export function* walkCharsToNewEnds(E) {
   const t = getServeCameraTarget(E); snapCameraTo(E, t.x, t.y);
   chars.forEachCharBank(E, () => startCharChangeoverWalk(E));
   do {
-    yield* stepMatchFrame(E);
+    yield* call(E, 0x5FD2, stepMatchFrame(E));
     if (inputPressed(E) & 0x0B) break;
   } while (!checkAllCharsPhaseDone(E));
   chars.forEachCharBank(E, () => placeCharAtBasePosition(E));
@@ -696,10 +709,10 @@ export function* walkCharsOffCourt(E) {
   const t = getServeCameraTarget(E); setCameraTarget(E, t.x, t.y);
   chars.forEachCharBank(E, () => startCharWalkOffCourt(E));
   do {
-    yield* stepMatchFrame(E);
+    yield* call(E, 0x6028, stepMatchFrame(E));
     if (inputPressed(E) & 0x0B) break;
   } while (!checkAllCharsPhaseDone(E));
-  yield* stepMatchFrames(E, 20);
+  yield* call(E, 0x6039, stepMatchFrames(E, 20));
   const t2 = getServeCameraTarget(E); snapCameraTo(E, t2.x, t2.y);
   chars.forEachCharBank(E, () => parkCharOffCourt(E));
 }

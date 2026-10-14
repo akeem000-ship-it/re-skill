@@ -8,4 +8,9 @@ import { HOOKS as MENU_LIB } from "./common/menu_lib.js";
 import { HOOKS as WIDGETS } from "./common/widgets.js";
 import { HOOKS as CURSORBOX } from "./common/cursorbox.js";
 import { HOOKS as PROMPTS } from "./common/prompts.js";
-export const HOOKS = [...CURSORS, ...TILEMAPS, ...MENU_LIB, ...WIDGETS, ...CURSORBOX, ...PROMPTS];
+import { HOOKS as BOOT } from "./main_menu/boot.js";
+import { HOOKS as MAIN_MENU } from "./main_menu/main_menu.js";
+import { HOOKS as N64 } from "./main_menu/n64.js";
+import { HOOKS as MATCH_FORMAT } from "./main_menu/match_format.js";
+export const HOOKS = [...CURSORS, ...TILEMAPS, ...MENU_LIB, ...WIDGETS, ...CURSORBOX, ...PROMPTS,
+  ...BOOT, ...MAIN_MENU, ...N64, ...MATCH_FORMAT];

@@ -24,6 +24,11 @@ import { drawBallAndEffects } from "./ball.js";
 const event = (...e) => E => { E.events.push(e); };
 export const STANDALONE = {
   *advanceFrame() { yield "frame"; },                                    // AdvanceFrame (00:2631): one frame
+  // the ROM's stack around the coroutines, for a host that keeps its depth (the whole-game port: its lockstep test
+  // lines the two up by sp): `call` into a coroutine returning to ret, and words pushed and popped
+  *call(E, ret, gen) { return yield* gen; },
+  push() {},
+  pop() {},
   playMusic(E, id) { E.events.push(["bgm", id]); },                      // PlaySoundManaged (00:3024) with a music id
   *runMatchPauseMenu(E) {                                                // 06:4074, a menu loop of its own
     if (!E.pauseMenu) throw new Error("pause menu: no E.pauseMenu handler");

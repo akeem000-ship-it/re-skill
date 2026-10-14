@@ -14,6 +14,7 @@ import * as draw from "./draw.js";
 import * as obj from "./obj.js";
 import { loadMatchGraphics } from "./variants.js";
 import { advanceFrame } from "../home/frame.js";
+import { call, push, pop, farcallRom } from "./stack.js";
 
 const COURT_HARD = 0x00, BGM_COURT_STAR = 0x11, MATCHCONTEXT_MINIGAME = 2, GAMEMODE_ISLAND_OPEN = 0x02, GAMEMODE_MARIO_MINIGAME = 0x08;
 const GAMEMODE_LINK_MATCH = 0x09, MATCHABORT_POINT = 0x01, MATCHABORT_MATCH = 0x80, POINTOUTCOME_BALL_HIT_PLAYER = 9;
@@ -109,28 +110,28 @@ export function initMatchScene(P) {
 export function* runMatch(P) {
   const E = engine(P), S = E.S;
   yield* fadeOut(P);
-  yield* advanceFrame(P);
+  yield* call(P, 0x419B, advanceFrame(P));
   yield* P.runRom(0, 0x0346);                                            // DisableLCDSafely
   initMatchScene(P);
   P.callRom(0, 0x0376);                                                  // EnableLCD
-  yield* P.runRom(7, 0x4846);                                            // UpdateLinkSession (link play: waits)
+  yield* farcallRom(P, 0x41A4, 7, 0x4846);                               // UpdateLinkSession (link play: waits)
   playSoundManaged(P, S.matchBGM);
   clearMemory16(P, W.modeScratch, 8);
   P.bus.w8(W.aiServeAimOverride, 0xFF);
   P.callRom(0, 0x1D2E, { c: 32 });                                       // BeginFadeIn 32
   P.wramBank(WRAM_ACTORS);
-  yield* setup.playCourtIntro(E);
+  yield* call(P, 0x41C8, setup.playCourtIntro(E));
   S.matchSimFrozen = 0;
-  yield* flow.runMatchPlayLoop(E);
+  yield* call(P, 0x41CF, flow.runMatchPlayLoop(E));
   S.matchEndLinkState = S.linkState;
   endLinkSession(P);
-  if (S.gameMode === GAMEMODE_MARIO_MINIGAME) yield* showMatchResultScreens(P);
+  if (S.gameMode === GAMEMODE_MARIO_MINIGAME) yield* call(P, 0x41DF, showMatchResultScreens(P));
   yield* fadeOut(P);
-  yield* advanceFrame(P);
-  yield* P.runRom(0x16, 0x4477);                                         // RunMatchWinLoseScreen
+  yield* call(P, 0x41EA, advanceFrame(P));
+  yield* farcallRom(P, 0x41EA, 0x16, 0x4477);                            // RunMatchWinLoseScreen
   P.callRom(1, 0x50E2);                                                  // LoadMenuFontGfx
-  yield* advanceFrame(P);
-  yield* P.runRom(0x1E, 0x6534);                                         // ProcessMatchRewards
+  yield* call(P, 0x41F3, advanceFrame(P));
+  yield* farcallRom(P, 0x41F3, 0x1E, 0x6534);                            // ProcessMatchRewards
 }
 
 // 07:48F6 EndLinkSession: the link session over, the serial port reset (00:28B9 InitSerialLink)
@@ -188,9 +189,13 @@ export function callModeHook(P, d) {
   if (call) P.callRom(call.bank, call.hook, call.regs);                  // CallHLInBankA
 }
 // the same for the hooks that run frames (point start and end, the match start)
+// (push af ... hl, then `call CallHLInBankA`: 00:015E, which switches banks around the hook, run as the ROM's)
 export function* callModeHookWaiting(P, d) {
-  const call = modeHookCall(P, d);
-  if (call) yield* P.runRom(call.bank, call.hook, call.regs);
+  const hook = modeHookCall(P, d);
+  if (!hook) return;
+  push(P, "af", "bc", "de", "hl");
+  yield* P.runRom(0, 0x015E, hook.regs);                                 // CallHLInBankA
+  pop(P, 4);
 }
 // 08:671A SetModeHookTable: a = the bank, de = the table
 export function setModeHookTable(P, a, de) { P.bus.w8(W.modeHookBank, a); P.bus.w16(W.modeHookTable, de); }
@@ -198,19 +203,19 @@ export function setModeHookTable(P, a, de) { P.bus.w8(W.modeHookBank, a); P.bus.
 export function* runMinigameMatch(P) {
   const E = engine(P), S = E.S;
   yield* fadeOut(P);
-  yield* advanceFrame(P);
+  yield* call(P, 0x6562, advanceFrame(P));
   yield* P.runRom(0, 0x0346);                                            // DisableLCDSafely
   initMatchScene(P);
   P.callRom(0, 0x0376);                                                  // EnableLCD
   playSoundManaged(P, S.matchBGM);
   P.callRom(0, 0x1D2E, { c: 32 });                                       // BeginFadeIn 32
   S.matchSimFrozen = 0;
-  yield* runMinigamePointLoop(P);
-  yield* showMatchResultScreens(P);
+  yield* call(P, 0x657D, runMinigamePointLoop(P));
+  yield* call(P, 0x6580, showMatchResultScreens(P));
   yield* fadeOut(P);
-  yield* advanceFrame(P);
+  yield* call(P, 0x658B, advanceFrame(P));
   P.callRom(1, 0x50E2);                                                  // LoadMenuFontGfx
-  yield* advanceFrame(P);
+  yield* call(P, 0x6591, advanceFrame(P));
 }
 // 08:6592 ShowMatchResultScreens: unless the player quit, the minigame's end menu (a lost Mario minigame,
 // 06:400E RunMinigameEndMenu) or the scoreboard screen (06:48AD ShowMatchScoreboardScreen), the match frozen
@@ -218,8 +223,8 @@ export function* showMatchResultScreens(P) {
   const S = engine(P).S;
   if (S.matchExitRequest) return;
   S.matchSimFrozen = 0xFF; S.matchDrawFrozen = 0xFF;
-  if (S.gameMode === GAMEMODE_MARIO_MINIGAME && (S.pointWinLoseFlag & 0xFF) !== 0x01) yield* P.runRom(6, 0x400E);
-  else yield* P.runRom(6, 0x48AD);
+  if (S.gameMode === GAMEMODE_MARIO_MINIGAME && (S.pointWinLoseFlag & 0xFF) !== 0x01) yield* farcallRom(P, 0x65AD, 6, 0x400E);
+  else yield* farcallRom(P, 0x65B2, 6, 0x48AD);
   S.matchDrawFrozen = 0; S.matchSimFrozen = 0;
 }
 // 08:65BE RunMinigamePointLoop: the CPU made a sitting duck (strategy 0, no delays, never aims away), the
@@ -230,17 +235,17 @@ export function* runMinigamePointLoop(P) {
   P.wramBank(4);
   const C = E.C;
   C.aiPositionStrategy = 0; C.aiReactionDelayNear = 0; C.aiReactionDelayFar = 0; C.aiAimAwayChance = 0;
-  yield* callModeHookWaiting(P, 3);
+  yield* call(P, 0x65DA, callModeHookWaiting(P, 3));
   if (S.matchAbortFlag & MATCHABORT_MATCH) return;
   for (;;) {
     loadMinigamePointLayout(P);
     flow.resetPointState(E);
-    yield* callModeHookWaiting(P, 1);
+    yield* call(P, 0x65EC, callModeHookWaiting(P, 1));
     if (S.matchAbortFlag & MATCHABORT_MATCH) return;
     if (!S.minigameUsesTennisMachine) chars.forEachCharBank(E, () => chars.setCharState(E, P.rom.u8(8, 0x4FA0 + E.C.serveRole)));   // SetCharStateFromServeRole
-    yield* playMinigamePoint(P);
+    yield* call(P, 0x6602, playMinigamePoint(P));
     if (S.matchAbortFlag & MATCHABORT_MATCH) return;
-    yield* callModeHookWaiting(P, 2);
+    yield* call(P, 0x660E, callModeHookWaiting(P, 2));
     if (S.matchAbortFlag & MATCHABORT_MATCH) return;
     const next = u16(P.bus.u16(W.minigamePointTable) + u8(S.totalPointsScoredInCurrentGame * 8));
     if (farByte(P, P.bus.u8(W.modeHookBank), next) === 0xFF) return;     // FarReadByte
@@ -251,13 +256,13 @@ export function* runMinigamePointLoop(P) {
 export function* playMinigamePoint(P) {
   const E = engine(P), S = E.S;
   E.ext.loadServeGfx(E);
-  yield* flow.stepMatchFrame(E);
+  yield* call(P, 0x6637, flow.stepMatchFrame(E));
   S.unusedMinigamePointFlag = 1;
   do {
-    yield* flow.stepMatchFrame(E);
+    yield* call(P, 0x663F, flow.stepMatchFrame(E));
     if (S.matchAbortFlag & MATCHABORT_POINT) break;
   } while (!S.pointOutcome);
-  if (S.pointOutcome === POINTOUTCOME_BALL_HIT_PLAYER) yield* flow.stepMatchFrames(E, 40);
+  if (S.pointOutcome === POINTOUTCOME_BALL_HIT_PLAYER) yield* call(P, 0x6658, flow.stepMatchFrames(E, 40));
   flow.endPointBallEffects(E);
   flow.handleServeFault(E);
   flow.flagServiceReturnAce(E);

@@ -7,6 +7,7 @@
 import { callHome } from "./draw.js";
 import { advanceFrame } from "../home/frame.js";
 import { sub8 } from "./leftovers.js";
+import { call, push, pop } from "./stack.js";
 
 const BANK = 0x28, VRAM_BANK1 = 0x2000, TILE = 16;
 const vTiles0 = 0x8000, vTiles1 = 0x8800, vTiles2 = 0x9000;
@@ -28,7 +29,12 @@ const objPals = (P, src, first, n) => loadPalettes(P, src, 8 + first, n);
 // QueueVRAMCopy (00:0480): c 16-byte blocks from hl to VRAM de (+ VRAM_BANK1: bank 1)
 const queueVRAMCopy = (P, src, dest, c) => callHome(P, 0x0480, { ...hl(src), ...de(dest), c }, BANK);
 const decompress = (P, src, dest) => callHome(P, 0x1797, { ...hl(src), ...de(dest) }, BANK);   // DecompressData
-const advanceFrameIfLcdOn = function* (P) { if (P.bus.u8(0xFF40) & 0x80) yield* advanceFrame(P); };   // AdvanceFrame (home/frame.js)
+// push af / `call AdvanceFrame` (home/frame.js) returning to 28:ret when the LCD is on / pop af
+const advanceFrameIfLcdOn = function* (P, ret) {
+  push(P, "af");
+  if (P.bus.u8(0xFF40) & 0x80) yield* call(P, ret, advanceFrame(P));
+  pop(P, 1);
+};
 
 // 28:5EB0 LoadMatchGraphics: the match palettes (OBJ 0-2, BG 0-1), the ball and effects tiles (VRAM bank 1 tile $40),
 // the court-side tiles (decompressed; the first 128 to $9000) and the text tiles; a minigame adds its variant
@@ -117,12 +123,12 @@ export function* loadMatchStoryGfx(P) {
   objPals(P, MATCH_GFX_PALETTES_C, 1, 2);
   loadPalettes(P, MATCH_STORY_GFX_PALETTES, 0, 2);
   decompress(P, MATCH_GFX_TILES_B, DECOMP_BUFFER);
-  for (let k = 0; k < 4; k++) {
+  for (const [k, ret] of [[0, 0x60FF], [1, 0x6115], [2, 0x612B], [3, 0x6141]]) {
     queueVRAMCopy(P, DECOMP_BUFFER + k * 32 * TILE, vTiles2 + k * 0x20 * TILE, 32);
-    yield* advanceFrameIfLcdOn(P);
+    yield* advanceFrameIfLcdOn(P, ret);
   }
   queueVRAMCopy(P, TEXT_TILE_BUFFER + 96 * TILE, vTiles1 + 0x60 * TILE, 32);
-  yield* advanceFrameIfLcdOn(P);
+  yield* advanceFrameIfLcdOn(P, 0x616F);
 }
 
 // Each routine's last step is a call to a bank-0 routine (QueueVRAMCopy, LoadPaletteShadow ...) made with the

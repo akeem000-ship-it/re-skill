@@ -33,7 +33,7 @@ export function* stepMatchFrames(E, c) {
   for (;;) {
     const abort = E.S.matchFramesAbort;
     if (abort) { c.a = abort; break; }
-    yield* flow.stepMatchFrame(E);
+    yield* flow.call(E, 0x4432, flow.stepMatchFrame(E));
     b = (b - 1) & 0xFF;
     if (!b) { c.a = 0; break; }
   }
@@ -46,7 +46,7 @@ export function* stepMatchFramesSkippable(E, c) {
   for (;;) {
     const abort = E.S.matchFramesAbort;
     if (abort) { c.a = abort; break; }
-    yield* flow.stepMatchFrame(E);
+    yield* flow.call(E, 0x4440, flow.stepMatchFrame(E));
     const held = flow.inputHeld(E) & 0x03;
     if (held) { c.a = held; break; }
     const debug = E.mem.u8(DEBUG_MATCH_FLAGS);
@@ -61,7 +61,7 @@ export function* runMatchFramesUntilInput(E, c) {
   for (;;) {
     const abort = E.S.matchFramesAbort;
     if (abort) { c.a = abort; return; }
-    yield* flow.stepMatchFrame(E);
+    yield* flow.call(E, 0x445B, flow.stepMatchFrame(E));
     const held = flow.inputHeld(E) & 0xF3;
     if (held) { c.a = held; return; }
   }
@@ -74,7 +74,7 @@ export function* panCamera(E, r) {
     r.d = (r.d + r.h) & 0xFF; r.e = (r.e + r.l) & 0xFF;
     r.a = flow.inputPressed(E) & 0x0B;
     if (r.a) { r.f = 0x20; return; }                                     // and $0b: Z clear, H set
-    yield* flow.stepMatchFrame(E);
+    yield* flow.call(E, 0x618E, flow.stepMatchFrame(E));
     r.b = (r.b - 1) & 0xFF;
     if (!r.b) { r.f = 0xC0; return; }                                    // dec b: Z, N (C clear from the and)
   }

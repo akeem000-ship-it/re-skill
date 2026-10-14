@@ -67,19 +67,20 @@ export function* playCourtIntro(E) {
   E.ext.playMusic(E, S.matchContext ? 0x45 : 0x44);                       // the fanfare
   if (S.gameMode === 0x02 || !S.matchContext) {
     m.w8(0xFF8B, 0); m.w8(0xFF8A, 0);
-    yield* flow.stepMatchFrames(E, 5);
+    yield* flow.call(E, 0x6141, flow.stepMatchFrames(E, 5));
     let d = 0, e = 0;
-    const pan = function* (b, hl) {                                       // 08:6152 PanCamera: d/e += h/l per frame
+    const pan = function* (b, hl) {                                       // 08:6178 PanCamera: d/e += h/l per frame
       do {
         m.w8(0xFF8B, d); m.w8(0xFF8A, e);
         d = (d + (hl >> 8)) & 0xFF; e = (e + (hl & 0xFF)) & 0xFF;
         if (flow.inputPressed(E) & 0x0B) return true;
-        yield* flow.stepMatchFrame(E);
+        yield* flow.call(E, 0x618E, flow.stepMatchFrame(E));
       } while (--b & 0xFF);
       return false;
     };
-    for (const [b, hl] of [[0x30, 0x0200], [0x38, 0x0002], [0x30, 0xFE00], [0x1E, 0x00FE], [0x1A, 0x0200]])
-      if (yield* pan(b, hl)) break;
+    // the five pans (their calls return to 08:6149, 6153, 615D, 6167, 6171)
+    for (const [b, hl, ret] of [[0x30, 0x0200, 0x6149], [0x38, 0x0002, 0x6153], [0x30, 0xFE00, 0x615D], [0x1E, 0x00FE, 0x6167], [0x1A, 0x0200, 0x6171]])
+      if (yield* flow.call(E, ret, pan(b, hl))) break;
   }
   flow.resetCameraForServe(E);
   flow.updateMatchCamera(E);
