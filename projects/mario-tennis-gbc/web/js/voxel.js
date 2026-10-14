@@ -166,11 +166,18 @@ export class Voxel3D {
     const h = this.hdText; if (!h || !h.active || !h.has[kind]) return null;
     const T = this.hdTexs || (this.hdTexs = {}), gl = this.gl;
     if (!T[kind]) T[kind] = { tex: this.texture(1, 1, null, true), ver: -1 };
-    if (T[kind].ver !== h.version) { gl.bindTexture(gl.TEXTURE_2D, T[kind].tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, h.canvas[kind]); T[kind].ver = h.version; }
+    // premultiplied, so the smoothed edges of the text's patches fade out instead of to black (no outline round them)
+    if (T[kind].ver !== h.version) {
+      gl.bindTexture(gl.TEXTURE_2D, T[kind].tex); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, h.canvas[kind]);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false); T[kind].ver = h.version;
+    }
     return T[kind].tex;
   }
   drawHDText(model, mvp, uv = [0, 0, 1, 1], kinds = ["bg", "win"]) {
-    for (const k of kinds) { const t = this.hdTex(k); if (t) this.draw(t, model, mvp, uv, [1, 1, 1, 1], 0); }
+    const gl = this.gl; gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);          // premultiplied (hdTex)
+    for (const k of kinds) { const t = this.hdTex(k); if (t) this.draw(t, model, mvp, uv, [1, 1, 1, 1], 0.004); }
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   }
   blobTexture(n = 32) {                                    // black disc fading out to the edge (stretched into an ellipse)
     const d = new Uint8Array(n * n * 4);
@@ -1156,9 +1163,10 @@ export class Voxel3D {
     plane(tBack, 0, [1, 1, 1, 1], 0, 0, 0);
     const SH = [0, 0, 0, 0.4];
     plane(tPan, 1, [0, 0, 0, 0.22], 4, 4); plane(tPan, 1.5, SH, 2.5, 2.5); plane(tPan, 8);   // a soft two-step shadow
-    const hdBg = this.hdTex("bg"); if (hdBg) plane(hdBg, 8.05);
+    const hdPlane = (t, z) => { gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); plane(t, z, [1, 1, 1, 1], 0, 0, 0.004); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); };
+    const hdBg = this.hdTex("bg"); if (hdBg) hdPlane(hdBg, 8.05);
     plane(tWin, 9, [0, 0, 0, 0.22], 4, 4); plane(tWin, 9.5, SH, 2.5, 2.5); plane(tWin, 14);
-    const hdWin = this.hdTex("win"); if (hdWin) plane(hdWin, 14.05);
+    const hdWin = this.hdTex("win"); if (hdWin) hdPlane(hdWin, 14.05);
     // sprites: cards (or voxels) in front, each with a drop shadow; OBJ-to-BG priority sprites sit between the layers
     const sprs = this.collectSprites();
     for (const s of sprs) {
