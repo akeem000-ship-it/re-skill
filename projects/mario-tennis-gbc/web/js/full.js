@@ -74,11 +74,16 @@ function input() {
            right: k.ArrowRight, left: k.ArrowLeft, up: k.ArrowUp, down: k.ArrowDown };
 }
 const rec = new Recorder();
+// with the JS port the game's state is partly JavaScript (its coroutines), which a machine state can't hold: a
+// recording made mid-game could not be replayed. So the port keeps a log of every frame from power-on, and REC
+// saves that log with the frame REC was pressed at (meta.from); a replay runs it from power-on (web/tests).
+const session = new Recorder(); let portRecFrom = -1;
+const recording = () => rec.on || portRecFrom >= 0;
 function frame() {
   pollGamepad(keys); const inp = input(), mask = maskOf(inp); gb.setInput(inp);
   if (port) portFrame(); else gb.runFrame();
   if (view3d && voxel && voxel.mode === "3d") voxel.tick();
-  rec.frame(gb, mask);
+  rec.frame(gb, mask); session.frame(gb, mask);
   if (audioReady && anode) { const n = gb.apu.drain(abuf); if (n) anode.port.postMessage(abuf.slice(0, n)); } else gb.apu.outPos = 0;
 }
 let drawnFrame = -1;
@@ -202,6 +207,7 @@ async function loadRom(buf) {
   if (port) $("romstatus").textContent += ` · JS port (${port.hooks.size} routines ported, the rest ROM code)`;
   else try { const mod = await import("../gen/game.js"); const T = {}; mod.install(T); gb.installRecomp(T); if (mod.HRAM_SIG) gb.exec.setHramSig(mod.HRAM_SIG); $("romstatus").textContent += " · recompiled code"; } catch (e) { $("romstatus").textContent += " · interpreter"; }
   loadSave();
+  if (port) session.start(gb, recMeta());
   $("loader").hidden = true; $("hud").hidden = false; cv.focus();
   const m3 = q.has("vox") ? "vox" : q.has("3d") ? "3d" : stored("mt-3d");   // remembered view mode
   if (m3 === "3d" || m3 === "vox") setView3d(true, m3 === "vox");
@@ -240,9 +246,14 @@ $("forgetrom").addEventListener("click", () => romStore("readwrite", s => s.dele
 $("reset").addEventListener("click", () => { if (port) { location.reload(); return; } if (gb) { gb.reset(); rec.event("reset"); } });
 // ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
 // a .mtrec file (Android: Downloads/MTenn3D and the share sheet; browser: a download). Hiding the app stops and saves.
+const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), font, ua: navigator.userAgent,
+  port: port ? (portMode() === "portall" ? "all" : (q.get("port") || PORT_VERIFIED.join(","))) : undefined });
 async function saveRecording(now = false) {     // now: the app is being hidden; skip compression so it finishes at once
-  if (!rec.on) return;
-  const obj = rec.stop(gb, romHash), { bytes, gz } = now ? { bytes: new TextEncoder().encode(JSON.stringify(obj)), gz: false } : await packRecording(obj);
+  if (!recording()) return;
+  let obj;
+  if (portRecFrom >= 0) { obj = session.snapshot(gb, romHash); obj.meta = { ...recMeta(), from: portRecFrom }; portRecFrom = -1; }
+  else obj = rec.stop(gb, romHash);
+  const { bytes, gz } = now ? { bytes: new TextEncoder().encode(JSON.stringify(obj)), gz: false } : await packRecording(obj);
   const d = new Date(), pad = n => String(n).padStart(2, "0");
   const name = `mtenn3d-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.mtrec${gz ? "" : ".json"}`;
   $("rec").classList.remove("on"); $("rec").textContent = "REC";
@@ -252,12 +263,13 @@ async function saveRecording(now = false) {     // now: the app is being hidden;
 }
 $("rec").addEventListener("pointerdown", () => {
   if (!gb) return;
-  if (rec.on) { saveRecording(); return; }
-  rec.start(gb, { view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", ua: navigator.userAgent }); $("rec").classList.add("on");
+  if (recording()) { saveRecording(); return; }
+  if (port) portRecFrom = session.n; else rec.start(gb, recMeta());
+  $("rec").classList.add("on");
 });
-setInterval(() => { if (rec.on) $("rec").textContent = "REC " + Math.floor(rec.seconds / 60) + ":" + String(Math.floor(rec.seconds % 60)).padStart(2, "0"); }, 1000);
-addEventListener("visibilitychange", () => { if (document.hidden && rec.on) saveRecording(true); });
-window.__stopRec = () => { if (rec.on) saveRecording(true); };   // called by the Android wrapper from onPause
+setInterval(() => { if (!recording()) return; const t = rec.on ? rec.seconds : (session.n - portRecFrom) / 60; $("rec").textContent = "REC " + Math.floor(t / 60) + ":" + String(Math.floor(t % 60)).padStart(2, "0"); }, 1000);
+addEventListener("visibilitychange", () => { if (document.hidden && recording()) saveRecording(true); });
+window.__stopRec = () => { if (recording()) saveRecording(true); };   // called by the Android wrapper from onPause
 $("view3d").addEventListener("pointerdown", () => { if (!gb) return; const vox = voxel && voxel.voxelSprites; setView3d(!view3d || !vox, view3d && !vox); });   // off -> cards -> voxels -> off
 $("cam").addEventListener("pointerdown", () => setPreset(PRESET_ORDER[(PRESET_ORDER.indexOf(preset) + 1) % PRESET_ORDER.length]));
 $("aspect").addEventListener("pointerdown", () => { aspect = ASPECTS[(ASPECTS.indexOf(aspect) + 1) % ASPECTS.length]; drawnFrame = -1; applyAspect(); });

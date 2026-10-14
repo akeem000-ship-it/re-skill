@@ -23,8 +23,8 @@ export class Recorder {
     if (this.n % 60 === 0) this.hashes.push([this.n, gb.frameHash()]);
   }
   event(name) { if (this.on) this.events.push([this.n, name]); }
-  stop(gb, romHash) {
-    this.on = false;
+  stop(gb, romHash) { this.on = false; return this.snapshot(gb, romHash); }
+  snapshot(gb, romHash) {                            // the recording so far (it goes on)
     return { format: "mtrec", v: 1, core: CORE_TAG, rom: romHash, startedAt: this.startedAt, frames: this.n, start: this.start0,
              inputs: b64(this.buf.subarray(0, this.n)), hashes: this.hashes, events: this.events, endHash: gb.frameHash(), meta: this.meta };
   }
