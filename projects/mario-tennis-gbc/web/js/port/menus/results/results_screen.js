@@ -8,7 +8,7 @@
 // ROM.
 // Covered by the lockstep on out/engine/exh1.mtrec, rec1.mtrec and the out/port/xr_* recordings.
 import {
-  FZ, rd, wr, far, rom, home, HOME, FAR, hook, hookGen, testFlag, setFlag, clearFlag, sound, advanceFrame, fadeIn,
+  FZ, FN, FC, rd, wr, far, rom, romWait, home, HOME, FAR, hook, hookGen, testFlag, setFlag, clearFlag, sound, advanceFrame, fadeIn,
   registerFrameTask, unregisterFrameTask, queueVRAMCopy, resetScrollAndCamera, BANK_EXP, BANK_BOOT, WRAM_STAGING,
   WRAM_COURT_PLANES, WRAM_SCREEN, WRAM_SCENE, TILE_SIZE, TILEMAP_WIDTH, SCREEN_HEIGHT, VRAM_BANK1, vTiles1, vTiles2,
   vBGMap0, wDecompBuffer, wTextTileBuffer, wTextTileBuffer_BLOCKS, wShadowTilemap, wScreenAttrmap, BGM_MENU, GAMEMODE,
@@ -60,7 +60,7 @@ export function* showMatchResultsScreen(P, c) {
   clearSpriteQueue(P);
   rom(P, FAR.InitActorEngine);
   initResultsPromptState(P, c);
-  buildResultsScreenTilemap(P);
+  yield* buildResultsScreenTilemap(P);
   initResultsScreenCharacters(P);
   enableLCD(P);
   yield* advanceFrame(P);
@@ -84,7 +84,7 @@ export function initResultsPromptState(P, c) {
 }
 // BuildResultsScreenTilemap (1E:40BE): the graphics, the three prompt lines (proportional text into the glyph
 // tiles), the panels and the player's panel, both maps queued, the glyphs uploaded
-export function buildResultsScreenTilemap(P) {
+export function* buildResultsScreenTilemap(P) {
   loadResultsScreenGraphics(P);
   let r = drawProportionalTextLine(P, Text_31_210, wDecompBuffer + 4 * TILE_SIZE + 1);
   r = drawProportionalTextLine(P, Text_31_211, (r.d << 8) | r.e);
@@ -95,7 +95,7 @@ export function buildResultsScreenTilemap(P) {
   queueVRAMCopy(P, wShadowTilemap, vBGMap0, SCREEN_HEIGHT * TILEMAP_WIDTH / 16);
   P.wramBank(WRAM_COURT_PLANES);
   queueVRAMCopy(P, wScreenAttrmap, vBGMap0 + VRAM_BANK1, SCREEN_HEIGHT * TILEMAP_WIDTH / 16);
-  return rom(P, FAR.UploadGlyphBuffer);
+  return yield* romWait(P, FAR.UploadGlyphBuffer);
 }
 // LoadResultsScreenGraphics (1E:4105): palettes (BG 0-5, OBJ 0), the screen's tiles and the text tiles, its maps,
 // the panel frame tiles
@@ -197,7 +197,7 @@ export function drawResultsNameLabelRows(P, a) {
   return { a: LABEL_ATTR };
 }
 // CopyLabelTilesToTilemap (1E:440D): c label tiles from hl (WRAM 1) to de (WRAM 3), attribute 8 (WRAM 2)
-export function copyLabelTilesToTilemap(P, hl, de, c) {
+export function copyLabelTilesToTilemap(P, hl, de, c, f = 0) {
   let b = 0;
   for (let n = c || 0x100; n > 0; n--) {
     P.wramBank(WRAM_STAGING); b = P.bus.u8(hl);
@@ -205,7 +205,7 @@ export function copyLabelTilesToTilemap(P, hl, de, c) {
     P.wramBank(WRAM_COURT_PLANES); P.bus.w8(de, LABEL_ATTR);
     hl = (hl + 1) & 0xFFFF; de = (de + 1) & 0xFFFF;
   }
-  return { a: LABEL_ATTR, b, c: 0, f: FZ, hl, de };
+  return { a: LABEL_ATTR, b, c: 0, f: FZ | FN | (f & FC), hl, de };   // (`dec c`: C kept)
 }
 // UnusedClearLabelTilemapRow (1E:442B): row 13's label part blanked (nothing calls it)
 export function unusedClearLabelTilemapRow(P) {
@@ -221,9 +221,9 @@ export function unusedClearLabelTilemapRow(P) {
   return { a: LABEL_ATTR };
 }
 // FillMemoryC (1E:4461): c bytes of a from hl
-export function fillMemoryC(P, hl, a, c) {
+export function fillMemoryC(P, hl, a, c, f = 0) {
   for (let n = c || 0x100; n > 0; n--) { P.bus.w8(hl, a); hl = (hl + 1) & 0xFFFF; }
-  return { hl, c: 0, f: FZ };
+  return { hl, c: 0, f: FZ | FN | (f & FC) };                        // (`dec c`: C kept)
 }
 // DrawStoryResultsHeader (1E:4466): a story match's place: "match at" / "match in the sky" and the location's name
 // (Peach's Castle: its name alone, a row higher)
@@ -239,7 +239,7 @@ export function drawStoryResultsHeader(P) {
 export const HOOKS = [
   [BANK, 0x400E, hookGen((P, c) => showMatchResultsScreen(P, c.c))],
   [BANK, 0x40AC, hook((P, c) => initResultsPromptState(P, c.c))],
-  [BANK, 0x40BE, hook(P => { buildResultsScreenTilemap(P); })],
+  [BANK, 0x40BE, hookGen(function* (P) { yield* buildResultsScreenTilemap(P); })],
   [BANK, 0x4105, hook(P => { loadResultsScreenGraphics(P); })],
   [BANK, 0x4187, hook((P, c) => resultsCopyToTilemap(P, c.hl, c.bc))],
   [BANK, 0x419C, hook((P, c) => resultsCopyToAttrmap(P, c.hl, c.bc))],
@@ -247,8 +247,8 @@ export const HOOKS = [
   [BANK, 0x433A, hook(P => loadSinglesLabelTiles(P))],
   [BANK, 0x434A, hook(P => loadDoublesLabelTiles(P))],
   [BANK, 0x435A, hook((P, c) => drawResultsNameLabelRows(P, c.a))],
-  [BANK, 0x440D, hook((P, c) => copyLabelTilesToTilemap(P, c.hl, c.de, c.c))],
+  [BANK, 0x440D, hook((P, c) => copyLabelTilesToTilemap(P, c.hl, c.de, c.c, c.f))],
   [BANK, 0x442B, hook(P => unusedClearLabelTilemapRow(P))],
-  [BANK, 0x4461, hook((P, c) => fillMemoryC(P, c.hl, c.a, c.c))],
+  [BANK, 0x4461, hook((P, c) => fillMemoryC(P, c.hl, c.a, c.c, c.f))],
   [BANK, 0x4466, hook(P => { drawStoryResultsHeader(P); })],
 ];

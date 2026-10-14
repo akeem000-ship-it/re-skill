@@ -154,3 +154,12 @@ export const FAR = {
 // the 8-bit registers of a register set (P.callRom's result): to pass on with some of them changed (a pair given
 // to P.callRom would win over its halves)
 export const regs8 = r => ({ a: r.a, f: r.f, b: r.b, c: r.c, d: r.d, e: r.e, h: r.h, l: r.l });
+// A farcall into ROM code that may wait, with the ROM's stack below it: `words` words the caller has pushed, then
+// FarCall's frame (the rst's return address, hl, af) and the callee's return address. For the character-data
+// screens (their ROM code keeps a stack address: ComputeLevelUpStatDeltas' buffer in hStatDeltaRecordCopy).
+export function* farcallWait(P, [bank, addr], regs = {}, words = 0) {
+  const sp = P.cpu.sp;
+  for (let i = 0; i < words + 3; i++) { P.cpu.sp = (P.cpu.sp - 2) & 0xFFFF; P.bus.w16(P.cpu.sp, 0); }
+  try { return yield* P.runRom(bank, addr, regs); } finally { P.cpu.sp = sp; }
+}
+export const RunExpDistributionFlow = [0x1D, 0x682C], CharDataScreen_Show = [0x1C, 0x401A];

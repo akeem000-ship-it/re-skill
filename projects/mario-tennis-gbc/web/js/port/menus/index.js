@@ -22,6 +22,10 @@ import { HOOKS as PAUSE } from "./pause/index.js";
 import { HOOKS as BRIEFING } from "./briefing/index.js";
 import { HOOKS as COURT_SELECT } from "./court_select/index.js";
 import { HOOKS as SCENES } from "./scenes/index.js";
+import { HOOKS as EXP } from "./exp/index.js";
+import { HOOKS as RESULTS } from "./results/index.js";
+import { HOOKS as RANKING } from "./ranking/index.js";
 export const HOOKS = [...CURSORS, ...TILEMAPS, ...MENU_LIB, ...WIDGETS, ...CURSORBOX, ...PROMPTS,
   ...BOOT, ...MAIN_MENU, ...N64, ...MATCH_FORMAT, ...SAVED, ...ERASE, ...N64TRANSFER, ...N64DATA,
-  ...CHAR_SELECT, ...CHAR_DATA, ...PAUSE, ...BRIEFING, ...COURT_SELECT, ...SCENES];
+  ...CHAR_SELECT, ...CHAR_DATA, ...PAUSE, ...BRIEFING, ...COURT_SELECT, ...SCENES,
+  ...EXP, ...RESULTS, ...RANKING];

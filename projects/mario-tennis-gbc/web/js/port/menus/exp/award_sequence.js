@@ -11,14 +11,12 @@ import {
   queueVRAMCopy, romWord, testFlag, BANK_EXP, BANK_EXP_DISTRIBUTE, BANK_CHAR_DATA, BANK_SAVE, BANK_BOOT, WRAM_COURT_PLANES,
   WRAM_SCREEN, WRAM_SCENE, WRAM_ACTORS, WRAM_TEXT, VRAM_BANK1, vBGMap0, wShadowTilemap, wScreenAttrmap, TILEMAP_WIDTH,
   PADF_A, PADF_B, BGM_NONE, BGM_EXP_AWARD, SFX_MENU_MOVE, SFX_MENU_SELECT, GAMEMODE, FLAG, SAVEFLAG, WINLOSE_WIN,
-  WINLOSE_LOSE, LINKSTATE_SLAVE, addHLFlags,
+  WINLOSE_LOSE, LINKSTATE_SLAVE, addHLFlags, farcallWait, RunExpDistributionFlow, CharDataScreen_Show,
 } from "./defs.js";
 import { enableLCD } from "../../home/system.js";
 import { mulHLByAFracSigned, divAHLByE } from "../../home/math.js";
 import { saveStorySlot, setSaveFlag } from "../../save/storyslots.js";
 import { loadMenuFontGfx } from "../main_menu/boot.js";
-import { runExpDistributionFlow } from "../char_data/exp.js";
-import { charDataScreenShow } from "../char_data/screen.js";
 import { drawNextExpAwardMessage } from "./award_screen.js";
 import {
   getScoreBonus, computeMatchStatsReward, applyMatchSettingsExpBonus, awardExhibitionMatchExp, awardLinkedPlayMatchExp,
@@ -55,7 +53,7 @@ export function* runExpAwardSequence(P) {
 // BeginNextExpAward (1E:5B19): the next award's message (DrawNextExpAwardMessage) with the award jingle, its amount
 // to count (wExpAwardAmount), the message rows queued. Returns a = 1, or 0 (after 10 frames) when none is left.
 export function* beginNextExpAward(P) {
-  const m = drawNextExpAwardMessage(P);
+  const m = yield* drawNextExpAwardMessage(P);
   if (!m.a) { yield* waitFrames(P, AWARD_WAIT); return { a: 0, f: FZ }; }
   sound(P, BGM_NONE);
   sound(P, BGM_EXP_AWARD);
@@ -165,9 +163,11 @@ export function* processMatchRewards(P) {
     setRewardGameFlag(P);
   }
   if (hl) {                                                          // .runExpDistributionFlow
-    yield* farGen(P, BANK_EXP_DISTRIBUTE, runExpDistributionFlow(P, hl));
-    yield* farGen(P, BANK_CHAR_DATA, charDataScreenShow(P, 0));
-    yield* farGen(P, BANK_CHAR_DATA, charDataScreenShow(P, 1));
+    // (through the ROM's addresses, with the ROM's stack: the screens keep stack addresses; menus/char_data runs
+    // them where it is hooked)
+    yield* farcallWait(P, RunExpDistributionFlow, { hl });
+    yield* farcallWait(P, CharDataScreen_Show, { c: 0 });
+    yield* farcallWait(P, CharDataScreen_Show, { c: 1 });
     applyStatGapProgressFlag(P);
   }
   yield* showIslandOpenRankingBoard(P);                              // .showIslandOpenRankingBoard
@@ -217,7 +217,7 @@ function* linkMatchRewards(P) {
 export function getFirstClearRewardExp(P) {
   const t = testRewardGameFlag(P);
   if (!(t.f & FZ)) return { ...t, de: 0 };
-  const table = romWord(P, ix(FirstClearExpTablePtrs_1e, P.V.currentMinigameStoryMatch * 2));
+  const table = romWord(P, ix(FirstClearExpTablePtrs_1e, P.bus.u8(P.A.currentMinigameStoryMatch) * 2));
   const at = ix(table, getRewardTableIndex(P).a * 2);
   return { a: P.bus.u8(at), de: romWord(P, at) };
 }

@@ -10,7 +10,7 @@
 import {
   FZ, FN, FH, FC, rd, wr, u8, ix, far, farGen, hook, hookGen, rom, FAR, testFlag, setFlag, clearFlag, addHLFlags, cpFlags,
   romByte, BANK_EXP, BANK_EXP_DISTRIBUTE, BANK_SAVE, BANK_BRACKET, BANK_CHAR_DATA, WRAM_TEXT, WRAM_SCENE, WRAM_SOUND, CHAR,
-  GAMEMODE, FLAG, rIE,
+  GAMEMODE, FLAG, rIE, farcallWait, RunExpDistributionFlow, CharDataScreen_Show,
 } from "./defs.js";
 import { mulHLByA, divAHLByE } from "../../home/math.js";
 import { checkStorySlot, saveStorySlot } from "../../save/storyslots.js";
@@ -18,8 +18,6 @@ import { readExhibitionSaveBlock } from "../../save/saveslots.js";
 import { clearPendingExpAwards, setPendingExpAward } from "./distribute.js";
 import { computeTrophyExpAwards, applyStatGapProgressFlag } from "./reward.js";
 import { recordExhibitionVictory } from "../ranking/bracket.js";
-import { runExpDistributionFlow } from "../char_data/exp.js";
-import { charDataScreenShow } from "../char_data/screen.js";
 import { showMatchResultsScreen } from "../results/results_screen.js";
 
 export const BANK = BANK_EXP;
@@ -78,10 +76,11 @@ export function applyMatchSettingsExpBonus(P, hl, d) {
   let b = 0;
   if ((d & 0x0F) === 0x03) b++;
   if (((d >> 4) & 0x0F) === 0x01) b++;
-  if (!b) return { a: 0, b, f: FZ, hl };
-  if (b === 2) return { a: 2, b, hl: (hl * 2) & 0xFFFF, f: addHLFlags(hl, hl) };
+  if (!b) return { a: 0, b, f: FZ | FH, hl };                        // (`and a`)
+  if (b === 2) return { a: 2, b, hl: (hl * 2) & 0xFFFF, f: addHLFlags(hl, hl, FZ) };   // (Z from `cp $02`)
   const half = ((hl >> 1) | (hl & 0x8000)) & 0xFFFF;                 // `sra d / rr e`
-  return { a: 1, b, de: half, hl: (hl + half) & 0xFFFF, f: addHLFlags(hl, half) };
+  // (Z from `rr e`: add hl, de keeps it)
+  return { a: 1, b, de: half, hl: (hl + half) & 0xFFFF, f: addHLFlags(hl, half, (half & 0xFF) ? 0 : FZ) };
 }
 // GetOpponentExpTier (1E:6901): the opponent's tier (character 1, WRAM 5); in doubles the mean of both opponents'
 // (characters 1 and 3, rounded up); at most 6
@@ -111,7 +110,7 @@ export function lookupExpTierForChar(P) {
   if (id >= 4) return { a: id, c: (level - 1) & 0xFF };             // LookupExpTierForChar.ge04
   const tens = divAHLByE(P, 0, level, 10).hl & 0xFF;
   const hl = ix(LookupExpTierForCharTable, tens);
-  return { a: tens, c: romByte(P, hl), hl };
+  return { a: hl >> 8, c: romByte(P, hl), hl };                      // (ld_hl_indexed leaves a = h)
 }
 
 // ---- the awards stored in a story file ----
@@ -231,9 +230,11 @@ export function* applyPendingExpAwards(P) {
   setFlag(P, FLAG.DOUBLES);
   yield* showMatchResultsScreen(P, SHOW_EXP);
   if (wasSingles) clearFlag(P, FLAG.DOUBLES);
-  yield* farGen(P, BANK_EXP_DISTRIBUTE, runExpDistributionFlow(P, total));   // .restore
-  yield* farGen(P, BANK_CHAR_DATA, charDataScreenShow(P, 0));
-  yield* farGen(P, BANK_CHAR_DATA, charDataScreenShow(P, 1));
+  // .restore: through the ROM's addresses with the ROM's stack (af, bc, de, hl, the WRAM bank and the game mode
+  // pushed): the screens keep stack addresses; menus/char_data runs them where it is hooked
+  yield* farcallWait(P, RunExpDistributionFlow, { hl: total }, 6);
+  yield* farcallWait(P, CharDataScreen_Show, { c: 0 }, 6);
+  yield* farcallWait(P, CharDataScreen_Show, { c: 1 }, 6);
   applyStatGapProgressFlag(P);
   for (const name of ["pendingExpStory", "pendingExpTrophy", "pendingExpExhibition", "pendingExpLinked"]) setWord(P, name, 0);
   P.V.gameMode = mode;
@@ -247,15 +248,17 @@ export function* applyPendingExpAwards(P) {
 export function scaleExpByPlayerLevel(P, de) {
   const level = ((P.V.storyMainCharExpTier + P.V.storyPartnerCharExpTier) & 0xFF) >> 1;
   const half = de >> 1, add = (x, y) => ({ v: (x + y) & 0xFFFF, c: x + y > 0xFFFF });
-  let r;
+  // Z is left by the last `rr e` (de halved) or the `cp` of the level band; `add hl` keeps it
+  const halfZ = (half & 0xFF) ? 0 : FZ;
+  let r, z = 0;
   if (level < 10) return { a: level, de, f: 0 };          // (`cp $0a / ccf`: all clear)
-  if (level < 20) r = add(de, half);
+  if (level < 20) { r = add(de, half); z = halfZ; }
   else if (level < 30) r = add(de, de);
-  else if (level < 40) r = add((de * 2) & 0xFFFF, half);
+  else if (level < 40) { r = add((de * 2) & 0xFFFF, half); z = halfZ; }
   else if (level < 50) r = add((de * 2) & 0xFFFF, de);
-  else if (level < 60) r = add(add((de * 2) & 0xFFFF, de).v, half);
-  else r = add((de * 2) & 0xFFFF, (de * 2) & 0xFFFF);
-  return { a: level, de: r.v, hl: r.v, f: r.c ? FC : 0 };
+  else if (level < 60) { r = add(add((de * 2) & 0xFFFF, de).v, half); z = halfZ; }
+  else { r = add((de * 2) & 0xFFFF, (de * 2) & 0xFFFF); z = level === 60 ? FZ : 0; }
+  return { a: level, de: r.v, hl: r.v, f: z | (r.c ? FC : 0) };
 }
 export const HOOKS = [
   [BANK, 0x6807, hook(P => getScoreBonus(P))],

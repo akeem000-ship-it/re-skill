@@ -12,6 +12,7 @@
 import { project } from "./camera.js";
 import { courtTilemaps, courtImage, courtIndexMap, COURTS } from "./assets.js";
 import { FIELD_OBJECTS } from "./field_objects.js";
+import * as F3 from "./field3d.js";
 
 const VS = `#version 300 es
 in vec2 aPos; in vec2 aUV; uniform mat4 uMVP; uniform mat4 uModel; uniform vec4 uUVRect; out vec2 vUV;
@@ -27,6 +28,41 @@ in vec3 aPosV; in vec3 aColV; uniform mat4 uMVP; uniform mat4 uModel; out vec3 v
 void main() { vCol = aColV; gl_Position = uMVP * uModel * vec4(aPosV, 1.0); }`;
 const FSV = `#version 300 es
 precision mediump float; in vec3 vCol; out vec4 o; void main() { o = vec4(vCol, 1.0); }`;
+// overworld animations, all moved on the GPU from a time uniform (no per-frame buffer or texture rebuilds):
+// swaying voxels (flowers): each box slides with the wind by its sway weight (0 at the stem's foot, 1 at the top),
+// in whole steps of a quarter pixel so the motion keeps the pixel look
+const VSW = `#version 300 es
+in vec3 aPosW; in vec3 aColW; in vec2 aSwayW; uniform mat4 uMVP; uniform float uTime; uniform float uAmp; out vec3 vCol;
+void main() {
+  float ph = aSwayW.y, s = sin(uTime * 1.9 + ph) * 0.75 + sin(uTime * 3.3 + ph * 1.7) * 0.25;
+  float dx = floor(s * uAmp * aSwayW.x * 4.0 + 0.5) / 4.0;
+  vCol = aColW; gl_Position = uMVP * vec4(aPosW + vec3(dx, -abs(dx) * 0.3, dx * 0.35), 1.0);
+}`;
+// fountain jet: droplet boxes flown along their arcs (kind 0 the rising column, 1 the falling crown, 2 splashes on the
+// pool), positions snapped to half pixels; uJet = (column height, crown radius, droplet size, -)
+const VSJ = `#version 300 es
+in vec4 aCorner; in vec4 aSeed; uniform mat4 uMVP; uniform float uTime; uniform vec3 uOrigin; uniform vec4 uJet;
+uniform vec3 uC0; uniform vec3 uC1; uniform vec3 uC2; out vec3 vCol;
+void main() {
+  float kind = aSeed.w, sp = aSeed.z, a = aSeed.y, H = uJet.x * (0.8 + 0.2 * sp), R = uJet.y * (0.55 + 0.45 * sp);
+  float T = kind < 0.5 ? 0.9 : kind < 1.5 ? 1.3 : 0.5, t = fract(uTime / T + aSeed.x), r, y, size = uJet.z;
+  vec3 col;
+  if (kind < 0.5) { y = H * (1.0 - (1.0 - t) * (1.0 - t)); r = 0.35 * sp; col = mix(uC0, uC1, step(0.75, sp)); size *= 1.3; }
+  else if (kind < 1.5) { y = H * (1.0 + 0.35 * t - 1.35 * t * t); r = R * t; col = mix(uC0, uC1, step(0.4, sp) * t); }
+  else { y = 2.2 * 4.0 * t * (1.0 - t) * (0.5 + sp); r = R + 1.5 * t; col = mix(uC1, uC2, step(0.5, sp)); size *= 0.8; }
+  vec3 p = floor((vec3(cos(a) * r, y, sin(a) * r * 0.85)) * 2.0 + 0.5) / 2.0;
+  vCol = col * aCorner.w; gl_Position = uMVP * vec4(uOrigin + p + aCorner.xyz * size, 1.0);
+}`;
+// ripples on a pool: rings spreading from the middle, drawn in the pool's own pixels (the quad covers the pool
+// rectangle, uSize its size in map px), clipped to the inscribed ellipse
+const FSR = `#version 300 es
+precision mediump float; in vec2 vUV; uniform float uTime; uniform vec2 uSize; uniform vec3 uCol; out vec4 o;
+void main() {
+  vec2 px = floor(vUV * uSize) + 0.5, q = (px - uSize * 0.5) / (uSize * 0.5); float d = length(q), a = 0.0;
+  if (d > 0.97) discard;
+  for (int k = 0; k < 3; k++) { float ph = fract(uTime * 0.42 + float(k) / 3.0), rr = 0.22 + ph * 0.75; if (abs(d - rr) < 1.3 / (uSize.y * 0.5)) a = max(a, 1.0 - ph); }
+  a = floor(a * 3.0) / 3.0 * 0.8; if (a < 0.05) discard; o = vec4(uCol, a);
+}`;
 
 // Court camera presets (locked; the distance is fitted so the court fills the viewport). pitch = angle
 // above the ground, yaw = rotation around the court, lean = how far the sprite cards lean back towards the
@@ -112,7 +148,7 @@ const STANDS = [
 //  cards:  single cut-outs (fences, gate posts)
 // The ground behind cut-outs is keyed out (colours of the surrounding ground reachable from the edge) and the
 // floor under them is patched with the ground strip below.
-const WALL_SCALE = 1.25, FIELD_TILT = 0.3, HUD_SCALE = 0.6;
+const WALL_SCALE = F3.WALL_SCALE, FIELD_TILT = 0.3, HUD_SCALE = 0.6;
 // the island (map 21) is an aerial picture, not a top-down map: shown as parallax layers. The road between the courts
 // (map 19) is a side-view picture too, but it is a walkable map: a field whose sky band and cafe stand up (FIELD_OBJECTS)
 const SIDE_VIEW_MAPS = new Set([21]);
@@ -128,6 +164,10 @@ export class Voxel3D {
     this.u3 = {}; for (const n of ["uMVP", "uTex", "uTint", "uAlphaTest"]) this.u3[n] = gl.getUniformLocation(this.prog3, n);
     this.progV = this.link(VSV, FSV, ["aPosV", "aColV"]);
     this.uV = {}; for (const n of ["uMVP", "uModel"]) this.uV[n] = gl.getUniformLocation(this.progV, n);
+    const uni = (p, names) => Object.fromEntries(names.map(n => [n, gl.getUniformLocation(p, n)]));
+    this.progW = this.link(VSW, FSV, ["aPosW", "aColW", "aSwayW"]); this.uW = uni(this.progW, ["uMVP", "uTime", "uAmp"]);
+    this.progJ = this.link(VSJ, FSV, ["aCorner", "aSeed"]); this.uJ = uni(this.progJ, ["uMVP", "uTime", "uOrigin", "uJet", "uC0", "uC1", "uC2"]);
+    this.progR = this.link(VS, FSR); this.uR = uni(this.progR, ["uMVP", "uModel", "uUVRect", "uTime", "uSize", "uCol"]);
     this.voxelMeshes = new Map(); this.objectMeshes = new Map(); this.voxelSprites = false;   // voxelSprites: cubes per opaque pixel instead of cards
     this.field = { mapId: -1, floorTex: null, walls: null, wallCount: 0, palHash: 0, cards: [], blocks: null, artTex: null };
     const quad = new Float32Array([-0.5, 0, 0, 1,  0.5, 0, 1, 1,  -0.5, 1, 0, 0,  0.5, 1, 1, 0]);   // x, y(0..1 up), u, v
@@ -147,7 +187,7 @@ export class Voxel3D {
   link(vs, fs, attrs = ["aPos", "aUV"]) {
     const gl = this.gl, mk = (t, s) => { const sh = gl.createShader(t); gl.shaderSource(sh, s); gl.compileShader(sh); if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh)); return sh; };
     const p = gl.createProgram(); gl.attachShader(p, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs));
-    gl.bindAttribLocation(p, 0, attrs[0]); gl.bindAttribLocation(p, 1, attrs[1]); gl.linkProgram(p);
+    attrs.forEach((a, i) => gl.bindAttribLocation(p, i, a)); gl.linkProgram(p);
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
     return p;
   }
@@ -815,44 +855,47 @@ export class Voxel3D {
     const h = 160 / a, m = (h - 144) / 2; return { ortho: m4.ortho(0, 160, 144 + m, -m, -1, 1), l: 0, r: 160, t: -m, b: 144 + m };
   }
 
+  blankPalette() {                               // every BG colour the same (faded out): nothing to build from
+    const b = this.gb.ppu.bgPal; for (let i = 2; i < 64; i += 2) if (b[i] !== b[0] || b[i + 1] !== b[1]) return false; return true;
+  }
   // ---- RPG areas: the whole 64x64 map as a floor, solid metatiles (collision grid) as extruded boxes ----
-  composeField() {                                      // WRAM3 tilemap + WRAM2 attributes (stride 64) -> 512x512 RGBA
-    const m = this.gb.mem, p = this.gb.ppu, tm = m.wram[3], at = m.wram[2], v0 = m.vram[0], v1 = m.vram[1], lcdc = p.lcdc;
-    const img = new Uint8Array(512 * 512 * 4), w0 = m.wram[0], MW = w0[0x32B] || 64, MH = w0[0x32C] || 64;   // wMapWidth/Height (tiles)
-    for (let ty = 0; ty < 64; ty++) for (let tx = 0; tx < 64; tx++) {
-      if (tx >= MW || ty >= MH) {             // beyond the map: leftovers in WRAM, shown as dark ground
-        for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const o = ((ty * 8 + y) * 512 + tx * 8 + x) * 4; img[o] = 16; img[o + 1] = 20; img[o + 2] = 28; img[o + 3] = 255; }
-        continue;
-      }
-      const i = ty * 64 + tx, tile = tm[i], attr = at[i], bank = attr & 8 ? v1 : v0;
-      const addr = lcdc & 0x10 ? tile << 4 : 0x1000 + ((tile << 24 >> 24) << 4);
-      for (let y = 0; y < 8; y++) {
-        const row = attr & 0x40 ? 7 - y : y, lo = bank[addr + row * 2], hi = bank[addr + row * 2 + 1];
-        for (let x = 0; x < 8; x++) {
-          const bit = attr & 0x20 ? x : 7 - x, ci = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1), c = this.col5(p.bgPal, attr & 7, ci);
-          const o = ((ty * 8 + y) * 512 + tx * 8 + x) * 4; img[o] = c[0]; img[o + 1] = c[1]; img[o + 2] = c[2]; img[o + 3] = 255;
-        }
+  composeField(pal = this.gb.ppu.bgPal) {               // WRAM3 tilemap + WRAM2 attributes (stride 64) -> 512x512 RGBA
+    const img = new Uint8Array(512 * 512 * 4);
+    for (let ty = 0; ty < 64; ty++) for (let tx = 0; tx < 64; tx++) this.composeCell(img, tx, ty, pal);
+    return img;
+  }
+  // the map's own colours, whatever the fade: palettes 2-7 as LoadMap loads them from the ROM (its descriptor's
+  // palette, +$10), 0-1 live. Cut-outs are found in a picture of these, so a map entered during a fade is cut right.
+  canonPalette(id) {
+    const pal = Uint8Array.from(this.gb.ppu.bgPal); if (!this.rom || id < 17 || id > 36) return pal;
+    try { const base = 0x59D9 + id * 16, src = this.rom.rawRef(this.rom.u8(0x0A, base + 2), this.rom.u8(0x0A, base + 3), 64); pal.set(src.subarray(16, 64), 16); } catch (e) { /* live colours */ }
+    return pal;
+  }
+  mapSig() {                                     // WRAM map and size, sampled: a new or half-loaded map is built again
+    const m = this.gb.mem, tm = m.wram[3], at = m.wram[2], w0 = m.wram[0]; let h = w0[0x32B] * 131 + w0[0x32C];
+    for (let i = 0; i < 4096; i += 5) h = (Math.imul(h, 31) + tm[i] + at[i] * 7) | 0;
+    return h;
+  }
+  // one 8x8 cell of the field picture (beyond wMapWidth/Height: leftovers in WRAM, shown as dark ground)
+  composeCell(img, tx, ty, pal = this.gb.ppu.bgPal) {
+    const m = this.gb.mem, p = this.gb.ppu, w0 = m.wram[0], MW = w0[0x32B] || 64, MH = w0[0x32C] || 64;   // wMapWidth/Height (tiles)
+    if (tx >= MW || ty >= MH) {
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const o = ((ty * 8 + y) * 512 + tx * 8 + x) * 4; img[o] = 16; img[o + 1] = 20; img[o + 2] = 28; img[o + 3] = 255; }
+      return;
+    }
+    const i = ty * 64 + tx, tile = m.wram[3][i], attr = m.wram[2][i], bank = attr & 8 ? m.vram[1] : m.vram[0];
+    const addr = p.lcdc & 0x10 ? tile << 4 : 0x1000 + ((tile << 24 >> 24) << 4);
+    for (let y = 0; y < 8; y++) {
+      const row = attr & 0x40 ? 7 - y : y, lo = bank[addr + row * 2], hi = bank[addr + row * 2 + 1];
+      for (let x = 0; x < 8; x++) {
+        const bit = attr & 0x20 ? x : 7 - x, ci = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1), c = this.col5(pal, attr & 7, ci);
+        const o = ((ty * 8 + y) * 512 + tx * 8 + x) * 4; img[o] = c[0]; img[o + 1] = c[1]; img[o + 2] = c[2]; img[o + 3] = 255;
       }
     }
-    return img;
   }
   // keyed cut-out of a map rectangle: pixels of the surrounding ground colours connected to the rectangle's
   // edge become transparent (interior pixels of the same colour stay, so canopies keep their shading)
-  keyedCut(art, x0, y0, w, h) {
-    const hist = new Map(); let n = 0;
-    const col = (x, y) => { if (x < 0 || y < 0 || x >= 512 || y >= 512) return -1; const o = (y * 512 + x) * 4; return art[o] << 16 | art[o + 1] << 8 | art[o + 2]; };
-    for (let k = 1; k <= 3; k++) {
-      for (let x = x0 - 3; x < x0 + w + 3; x++) for (const y of [y0 - k, y0 + h - 1 + k]) { const c = col(x, y); if (c >= 0) { hist.set(c, (hist.get(c) || 0) + 1); n++; } }
-      for (let y = y0; y < y0 + h; y++) for (const x of [x0 - k, x0 + w - 1 + k]) { const c = col(x, y); if (c >= 0) { hist.set(c, (hist.get(c) || 0) + 1); n++; } }
-    }
-    const keys = new Set([...hist].filter(([, v]) => v >= n * 0.05).map(([c]) => c));
-    const d = new Uint8Array(w * h * 4), out = new Uint8Array(w * h), st = [];
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const o = (y * w + x) * 4, s = ((y0 + y) * 512 + x0 + x) * 4; d[o] = art[s]; d[o + 1] = art[s + 1]; d[o + 2] = art[s + 2]; d[o + 3] = 255; }
-    const push = (x, y) => { if (x < 0 || y < 0 || x >= w || y >= h) return; const i = y * w + x; if (out[i] || !keys.has(col(x0 + x, y0 + y))) return; out[i] = 1; st.push(i); };
-    for (let x = 0; x < w; x++) { push(x, 0); push(x, h - 1); } for (let y = 0; y < h; y++) { push(0, y); push(w - 1, y); }
-    while (st.length) { const i = st.pop(), x = i % w, y = (i / w) | 0; d[i * 4 + 3] = 0; push(x + 1, y); push(x - 1, y); push(x, y + 1); push(x, y - 1); }
-    return d;
-  }
+  keyedCut(art, x0, y0, w, h) { return F3.keyedCut(art, x0, y0, w, h); }
   // tile-aligned instances of a stamp: every tile position where >= 80% of the stamp's tiles (index + attributes
   // without the priority bit) are the same
   findStamps(st) {
@@ -866,52 +909,220 @@ export class Voxel3D {
     }
     return hits;
   }
+  jetColours(art, wi, bi) {                      // the jet's white, light and blue from two pixels of the pool picture
+    const white = [...art.subarray(wi * 4, wi * 4 + 3)], blue = [...art.subarray(bi * 4, bi * 4 + 3)], light = white.map((c, i) => (c * 2 + blue[i]) / 3);
+    return [white, light, blue].map(c => c.map(v => v / 255));
+  }
+  // A palette fade (or any palette change) on the same map: everything keeps its shape and takes the new colours
+  // from the same picture pixels as before (floor, building textures, cut-outs, flowers, jets). Voxel bodies are
+  // dropped and the cut-outs drawn flat until the palette settles and the map is built again (renderField).
+  recolourField() {
+    const gl = this.gl, f = this.field; if (!f.floorSrc) return;
+    const art = this.composeField(), copy = (dst, src, n) => { for (let i = 0; i < n; i++) { const o = i * 4, s = src[i] * 4; dst[o] = art[s]; dst[o + 1] = art[s + 1]; dst[o + 2] = art[s + 2]; } };
+    const up = (tex, w, h, data) => { gl.bindTexture(gl.TEXTURE_2D, tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, data); };
+    copy(f.floorData, f.floorSrc, 512 * 512); up(f.floorTex, 512, 512, f.floorData);
+    if (f.artData && f.artTex) { copy(f.artData, f.artSrc, 512 * 512); up(f.artTex, 512, 512, f.artData); }
+    const done = new Set();
+    for (const c of f.cards || []) {
+      const o = c.shared || c; if (done.has(o) || !o.src) continue; done.add(o);
+      for (let i = 0; i < o.src.length; i++) { if (!o.d[i * 4 + 3]) continue; const q = i * 4, s = o.src[i] * 4; o.d[q] = art[s]; o.d[q + 1] = art[s + 1]; o.d[q + 2] = art[s + 2]; }
+      up(o.tex, c.w, c.h, o.d); if (o.mesh) { this.freeMesh(o.mesh); o.mesh = null; }
+    }
+    if (f.roof) { const [rx, ry, rw, rh] = f.roof.art, t = new Uint8Array(rw * rh * 4); for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) { const o = (y * rw + x) * 4, s = ((ry + y) * 512 + rx + x) * 4; t[o] = art[s]; t[o + 1] = art[s + 1]; t[o + 2] = art[s + 2]; t[o + 3] = 255; } up(f.roof.tex, rw, rh, t); }
+    if (f.skirt) up(f.skirt, 1, 1, Uint8Array.from([...art.subarray(f.skirtSrc * 4, f.skirtSrc * 4 + 3), 255]));
+    if (f.clear) f.clear = [...art.subarray(f.clearSrc * 4, f.clearSrc * 4 + 3)].map(v => v / 255);
+    const fx = f.fx;
+    if (fx && fx.flowers) {
+      const S = fx.flowers.src, col = new Float32Array(S.length / 2 * 3);
+      for (let v = 0; v < S.length / 2; v++) { const s = S[v * 2] * 4, k = S[v * 2 + 1] / 255; col[v * 3] = art[s] * k; col[v * 3 + 1] = art[s + 1] * k; col[v * 3 + 2] = art[s + 2] * k; }
+      gl.bindBuffer(gl.ARRAY_BUFFER, fx.flowers.bufs[1]); gl.bufferSubData(gl.ARRAY_BUFFER, 0, col);
+    }
+    if (fx) for (const fo of fx.fountains) fo.cols = this.jetColours(art, fo.src[0], fo.src[1]);
+    f.fading = true;
+  }
+  freeFieldFx(fx) {
+    if (!fx) return; const gl = this.gl;
+    if (fx.flowers) { for (const b of fx.flowers.bufs) gl.deleteBuffer(b); gl.deleteVertexArray(fx.flowers.vao); }
+  }
+  // Builds what stands up on this map from its annotations (field_objects.js): cut-out cards (stamps, cards, sprites,
+  // the sky backdrop of a side-view map), building blocks, extruded solids (planters, fountain basins), swaying
+  // flowers and fountains; patches the floor under them. `art` is the map picture, `floor` its copy for the ground.
   buildFieldObjects(art, floor) {
     const gl = this.gl, f = this.field, def = FIELD_OBJECTS[f.mapId];
     for (const c of f.cards || []) { if (c.own) { gl.deleteTexture(c.tex); this.freeMesh(c.mesh); } }
     if (f.blocks) for (const b of [f.blocks.front, f.blocks.side]) { gl.deleteBuffer(b.pb); gl.deleteBuffer(b.ub); gl.deleteVertexArray(b.vao); }
     if (f.artTex) gl.deleteTexture(f.artTex);
-    f.cards = []; f.blocks = null; f.artTex = null; f.covered = new Uint8Array(32 * 32);
+    this.freeFieldFx(f.fx);
+    if (f.skirt) gl.deleteTexture(f.skirt); if (f.roof) { gl.deleteTexture(f.roof.tex); for (const m of [f.roof.lit, f.roof.shade]) { gl.deleteBuffer(m.pb); gl.deleteBuffer(m.ub); gl.deleteVertexArray(m.vao); } }
+    f.cards = []; f.blocks = null; f.artTex = null; f.covered = new Uint8Array(32 * 32); f.fx = null; f.clear = null; f.noWalls = false; f.skirt = null; f.roof = null;
+    f.patched = null; f.artMod = null; f.artData = null; f.floorSrc = null; f.artSrc = null; f.skirtSrc = -1;
+    if (!art) return;
+    // where each floor / building-texture pixel comes from in the map picture: palette fades only recolour (recolourField)
+    f.floorSrc = new Int32Array(512 * 512).map((_, i) => i); f.artSrc = new Int32Array(f.floorSrc);
     if (!def) return;
+    f.noWalls = def.walls === false;
+    f.patched = new Uint8Array(512 * 512); f.artMod = new Uint8Array(512 * 512);   // floor / art pixels that are no longer the map's (kept by live tile updates)
     const cover = (x0, y0, x1, y1) => {          // metatiles under annotated objects: no collision box there (it would show as a floor-textured block)
       for (let my = Math.max(0, y0 >> 4); my <= Math.min(31, (y1 - 1) >> 4); my++) for (let mx = Math.max(0, x0 >> 4); mx <= Math.min(31, (x1 - 1) >> 4); mx++) f.covered[my * 32 + mx] = 1;
     };
     const w0 = this.gb.mem.wram[0], MWp = (w0[0x32B] || 64) * 8, MHp = (w0[0x32C] || 64) * 8;
     const inMap = (x0, y0) => x0 < MWp && y0 < MHp;                       // annotations beyond the map size are never on screen
-    // cut-outs: keyed images; the floor under their opaque pixels is replaced by the ground strip below them
-    const patch = (d, x0, y0, w, h) => {
+    // cut-outs: the floor under their opaque pixels is replaced by the ground strip below them (top-down maps), or
+    // (patch "row", side-view maps) by the ground beside them in the same row, once every cut-out is known
+    const rowMode = def.patch === "row", hole = new Uint8Array(512 * 512), erase = [];   // erase: rectangles of everything cut out (for the backdrop)
+    const mark = (d, x0, y0, w, h) => { erase.push([x0, y0, x0 + w, y0 + h]); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] && x0 + x < 512 && y0 + y < 512) hole[(y0 + y) * 512 + x0 + x] = 1; };
+    const patch = (d, x0, y0, w, h, above = false) => {     // above: from the tile row above the rectangle instead
+      mark(d, x0, y0, w, h); if (rowMode) return;
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
         if (!d[(y * w + x) * 4 + 3]) continue;
-        const X = x0 + x, Y = Math.min(511, y0 + h + ((y0 + h - (y0 + y)) % 8)), s = (Y * 512 + X) * 4, o = ((y0 + y) * 512 + X) * 4;
-        floor[o] = art[s]; floor[o + 1] = art[s + 1]; floor[o + 2] = art[s + 2];
+        const X = x0 + x, Y = above ? Math.max(0, y0 - 8 + (y % 8)) : Math.min(511, y0 + h + ((y0 + h - (y0 + y)) % 8)), s = (Y * 512 + X) * 4, o = ((y0 + y) * 512 + X) * 4;
+        floor[o] = art[s]; floor[o + 1] = art[s + 1]; floor[o + 2] = art[s + 2]; f.patched[(y0 + y) * 512 + X] = 1; f.floorSrc[(y0 + y) * 512 + X] = Y * 512 + X;
       }
     };
+    const cutOpt = o => ({ cut: o.cut, only: o.only, drop: o.drop, bg: o.bg, add: o.add });
+    // with a cut mode the card stands on its lowest opaque row (the transparent rows below it are dropped)
+    const trim = (d, w, h) => { let r = h; while (r > 1 && !d.subarray((r - 1) * w * 4, r * w * 4).some((v, i) => i % 4 === 3 && v)) r--; return r < h ? { d: d.slice(0, r * w * 4), h: r } : { d, h }; };
+    const srcOf = (x0, y0, w, h) => { const a = new Int32Array(w * h); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) a[y * w + x] = Math.min(511, y0 + y) * 512 + Math.min(511, x0 + x); return a; };
+    const card = (d, x0, y0, w, h, o) => { const t = o.cut ? trim(d, w, h) : { d, h }; return { tex: this.texture(w, t.h, t.d), mesh: null, d: t.d, src: srcOf(x0, y0, w, t.h), own: true, w, h: t.h, X: x0 + w / 2, Z: o.z ?? y0 + t.h + (o.dz || 0), tilt: o.tilt ?? FIELD_TILT, flat: !!o.flat }; };
     for (const st of def.stamps || []) {
-      const d = this.keyedCut(art, st.x, st.y, st.w, st.h), shared = { tex: this.texture(st.w, st.h, d), mesh: null, d, own: true };
+      const d = F3.cutOut(art, st.x, st.y, st.w, st.h, cutOpt(st)), t = st.cut ? trim(d, st.w, st.h) : { d, h: st.h }, shared = { tex: this.texture(st.w, t.h, t.d), mesh: null, d: t.d, src: srcOf(st.x, st.y, st.w, t.h), own: true };
       let first = true;
       for (const hit of this.findStamps(st)) {
         patch(d, hit.x, hit.y, st.w, st.h); cover(hit.x, hit.y, hit.x + st.w, hit.y + st.h);
-        f.cards.push({ ...shared, own: first, w: st.w, h: st.h, X: hit.x + st.w / 2, Z: hit.y + st.h, shared }); first = false;
+        f.cards.push({ ...shared, own: first, w: st.w, h: t.h, X: hit.x + st.w / 2, Z: hit.y + t.h + (st.dz || 0), tilt: st.tilt ?? FIELD_TILT, shared }); first = false;
       }
     }
     for (const c of def.cards || []) {
       if (!inMap(c.x0, c.y0)) continue;
       cover(c.x0, c.y0, c.x1, c.y1);
-      const w = c.x1 - c.x0, h = c.y1 - c.y0, d = this.keyedCut(art, c.x0, c.y0, w, h);
+      const w = c.x1 - c.x0, h = c.y1 - c.y0, d = F3.cutOut(art, c.x0, c.y0, w, h, cutOpt(c));
       patch(d, c.x0, c.y0, w, h);
-      f.cards.push({ tex: this.texture(w, h, d), mesh: null, d, own: true, w, h, X: c.x0 + w / 2, Z: c.y1 });
+      f.cards.push(card(d, c.x0, c.y0, w, h, c));
     }
-    // buildings: one batched mesh for roofs + fronts, one for the side walls (drawn darker)
-    const front = { pos: [], uv: [] }, side = { pos: [], uv: [] };
+    // sprites: one example cut out; every pixel-exact copy anywhere in the map (not tile-aligned) stands up too
+    for (const sp of def.sprites || []) {
+      const d = F3.cutOut(art, sp.x, sp.y, sp.w, sp.h, cutOpt(sp));
+      for (const hit of F3.matchSprite(art, d, sp.x, sp.y, sp.w, sp.h, MWp, MHp, sp.match ?? 1)) {
+        patch(hit.d, hit.x, hit.y, sp.w, sp.h); cover(hit.x, hit.y, hit.x + sp.w, hit.y + sp.h);
+        f.cards.push(card(hit.d, hit.x, hit.y, sp.w, sp.h, sp));
+      }
+    }
+    // buildings: one batched mesh for roofs + fronts (+ the tops and front walls of solids), one for the side walls
+    const front = { pos: [], uv: [] }, side = { pos: [], uv: [] }, keyed = [], roofs = [{ pos: [], uv: [] }, { pos: [], uv: [] }]; let roofArt = null;
     const quad = (o, a, b, c, d, ua, ub, uc, ud) => { for (const [v, t] of [[a, ua], [b, ub], [c, uc], [a, ua], [c, uc], [d, ud]]) { o.pos.push(...v); o.uv.push(t[0] / 512, t[1] / 512); } };
     for (const b of def.blocks || []) {
       if (!inMap(b.x0, b.y0)) continue;
-      cover(b.x0, b.y0, b.x1, b.y1);
-      const H = (b.y1 - b.fold) * WALL_SCALE, { x0, x1, y0, y1, fold } = b;
-      quad(front, [x0, H, y0], [x1, H, y0], [x1, H, y1], [x0, H, y1], [x0, y0], [x1, y0], [x1, fold], [x0, fold]);   // roof
+      const { x0, x1, y0, y1, fold } = b, zb = b.back ?? y0;
+      cover(x0, zb, x1, y1);
+      if (b.key) {                      // the ground around the building transparent (keyRect: keyed as part of a bigger rectangle, so the
+        const [kx0, ky0, kx1, ky1] = b.keyRect || [x0, y0, x1, y1], kw = kx1 - kx0;   // walls of a neighbouring part do not count as ground)
+        const K = F3.cutOut(art, kx0, ky0, kw, ky1 - ky0, { cut: "outline" }), w = x1 - x0, h = y1 - y0, d = new Uint8Array(w * h * 4);
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const X = x0 + x - kx0, Y = y0 + y - ky0; if (X >= 0 && Y >= 0 && X < kw && Y < ky1 - ky0) d[(y * w + x) * 4 + 3] = K[(Y * kw + X) * 4 + 3]; }
+        keyed.push([d, x0, y0, w, h]); mark(d, x0, y0, w, h);
+      }
+      if (b.gable) {                    // a gable end facing the viewer: the whole front picture stands up, the roof slopes run back
+        const g = b.gable, S = WALL_SCALE, Ha = (y1 - g.ay) * S, He = (y1 - g.ey) * S, [rx0, ry0, rx1, ry1] = g.roof;
+        quad(front, [x0, 0, y1], [x1, 0, y1], [x1, Ha, y1], [x0, Ha, y1], [x0, y1], [x1, y1], [x1, g.ay], [x0, g.ay]);
+        // slopes: the roof tiles (art rectangle g.roof) repeated, shingle rows running along the ridge
+        const rw = rx1 - rx0, rh = ry1 - ry0, D = (y1 - zb) / rw;
+        for (const [ex, k] of [[x0, 0], [x1, 1]]) {
+          const L = Math.hypot(g.ax - ex, Ha - He) / rh, o = roofs[k];
+          for (const [v, t] of [[[ex, He, y1], [0, L]], [[g.ax, Ha, y1], [0, 0]], [[g.ax, Ha, zb], [D, 0]], [[ex, He, y1], [0, L]], [[g.ax, Ha, zb], [D, 0]], [[ex, He, zb], [D, L]]]) { o.pos.push(...v); o.uv.push(...t); }
+        }
+        roofArt = [rx0, ry0, rw, rh];
+        quad(side, [x0, 0, zb], [x0, 0, y1], [x0, He, y1], [x0, He, zb], [x0 + 6, y1], [x0 + 12, y1], [x0 + 12, g.ey], [x0 + 6, g.ey]);
+        quad(side, [x1, 0, y1], [x1, 0, zb], [x1, He, zb], [x1, He, y1], [x1 - 12, y1], [x1 - 6, y1], [x1 - 6, g.ey], [x1 - 12, g.ey]);
+        continue;
+      }
+      const H = (y1 - fold) * WALL_SCALE;
+      quad(front, [x0, H, zb], [x1, H, zb], [x1, H, y1], [x0, H, y1], [x0, y0], [x1, y0], [x1, fold], [x0, fold]);   // roof
       quad(front, [x0, 0, y1], [x1, 0, y1], [x1, H, y1], [x0, H, y1], [x0, y1], [x1, y1], [x1, fold], [x0, fold]);   // front wall
-      quad(side, [x0, 0, y0], [x0, 0, y1], [x0, H, y1], [x0, H, y0], [x0, y1], [x0 + 6, y1], [x0 + 6, fold], [x0, fold]);   // left wall
-      quad(side, [x1, 0, y1], [x1, 0, y0], [x1, H, y0], [x1, H, y1], [x1 - 6, y1], [x1, y1], [x1, fold], [x1 - 6, fold]);   // right wall
+      quad(side, [x0, 0, zb], [x0, 0, y1], [x0, H, y1], [x0, H, zb], [x0, y1], [x0 + 6, y1], [x0 + 6, fold], [x0, fold]);   // left wall
+      quad(side, [x1, 0, y1], [x1, 0, zb], [x1, H, zb], [x1, H, y1], [x1 - 6, y1], [x1, y1], [x1, fold], [x1 - 6, fold]);   // right wall
+    }
+    // solids: low prisms with the exact outline of their picture (planters, fountain basins), stacked with "on"
+    const solids = [];
+    for (const so of def.solids || []) {
+      if (!inMap(so.x0, so.y0)) { solids.push(null); continue; }
+      const w = so.x1 - so.x0, h = so.y1 - so.y0, d = F3.cutOut(art, so.x0, so.y0, w, h, { cut: so.cut || "outline", only: so.only, drop: so.drop });
+      const base = so.on != null && solids[so.on] ? solids[so.on] : null, stack = base ? base.stackTop : 0;
+      const g = F3.solidMesh(d, so.x0, so.y0, w, h, so.h, stack, { top: front, front, side });
+      solids.push({ ...g, stackTop: stack + so.h, d, so, w, h });
+      cover(so.x0, so.y0, so.x1, so.y1);
+      if (!base) patch(d, so.x0, so.y0, w, h, so.patch !== "below");   // the ground behind a low solid shows: the ground above it
+    }
+    if (rowMode) { F3.fillRows(floor, hole, 0, MWp, 0, MHp, f.floorSrc); for (let i = 0; i < hole.length; i++) if (hole[i]) f.patched[i] = 1; }
+    // side-view maps: the sky band stands up as a backdrop with everything cut out of it painted over with the sky
+    // of its row; the ground runs on behind it (the first ground rows repeated up to the top)
+    if (def.backdrop) {
+      const bd = def.backdrop, y1 = bd.y1, ext = bd.extend || 0, side = bd.side || 0, W = MWp + 2 * side, H = y1 + ext, d = new Uint8Array(W * H * 4);
+      for (const [ex0, ey0, ex1, ey1] of erase) for (let y = Math.max(0, ey0); y < Math.min(y1, ey1); y++) hole.fill(1, y * 512 + ex0, y * 512 + Math.min(512, ex1));   // whole rectangles: no stray bits of them in the sky
+      const src = new Int32Array(W * H);
+      const put = (j, i) => { const o = j * 4, s = i * 4; d[o] = art[s]; d[o + 1] = art[s + 1]; d[o + 2] = art[s + 2]; d[o + 3] = 255; src[j] = i; };
+      let top = 0;
+      for (let y = 0; y < y1; y++) {             // each row: its own pixels, the sky (its commonest colour) where things were cut out
+        const hist = new Map(), where = new Map(); for (let x = 0; x < MWp; x++) if (!hole[y * 512 + x]) { const c = F3.packAt(art, x, y); hist.set(c, (hist.get(c) || 0) + 1); where.set(c, y * 512 + x); }
+        const dom = [...hist].sort((a, b) => b[1] - a[1])[0], di = dom ? where.get(dom[0]) : y * 512; if (y === 0) top = di;
+        for (let x = 0; x < W; x++) { const X = x - side; put((y + ext) * W + x, X < 0 || X >= MWp || hole[y * 512 + X] ? di : y * 512 + X); }
+      }
+      for (let y = 0; y < ext; y++) for (let x = 0; x < W; x++) put(y * W + x, top);
+      f.cards.unshift({ tex: this.texture(W, H, d), mesh: null, d, src, own: true, w: W, h: H, X: MWp / 2, Z: bd.z, tilt: 0, flat: true });
+      // the ground behind it (and below the map): one plain ground tile repeated; the same colour reaches the horizon
+      const [gx, gy] = bd.tile || [0, y1], gh = new Map();
+      for (let y = 0; y < 512; y++) {
+        if (y >= y1 && y < MHp) continue;
+        for (let x = 0; x < 512; x++) { const si = (gy + (y & 7)) * 512 + gx + (x & 7), s = si * 4, o = (y * 512 + x) * 4; floor[o] = art[s]; floor[o + 1] = art[s + 1]; floor[o + 2] = art[s + 2]; f.patched[y * 512 + x] = 1; f.floorSrc[y * 512 + x] = si; }
+      }
+      const gw = new Map(); for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const c = F3.packAt(art, gx + x, gy + y); gh.set(c, (gh.get(c) || 0) + 1); gw.set(c, (gy + y) * 512 + gx + x); }
+      f.skirtSrc = gw.get([...gh].sort((a, b) => b[1] - a[1])[0][0]); f.skirt = this.solidTexture([...art.subarray(f.skirtSrc * 4, f.skirtSrc * 4 + 3), 255]);
+      if (def.clear === "sky") { f.clearSrc = top; f.clear = [...art.subarray(top * 4, top * 4 + 3)].map(v => v / 255); }
+    }
+    // flowers: lifted out of a solid's top (on) or out of every copy of a ground tile (tiles), swaying in the wind
+    const fl = { pos: [], col: [], sway: [], src: [] };
+    const leaf = r => {                         // the commonest green of a region: the stems' colour
+      const hist = new Map(), where = new Map();
+      for (let y = r[1]; y < r[3]; y++) for (let x = r[0]; x < r[2]; x++) { const o = (y * 512 + x) * 4; if (art[o + 1] > art[o] && art[o + 1] > art[o + 2]) { const c = F3.packAt(art, x, y); hist.set(c, (hist.get(c) || 0) + 1); where.set(c, y * 512 + x); } }
+      const t = [...hist].sort((a, b) => b[1] - a[1])[0], i = t ? where.get(t[0]) : r[1] * 512 + r[0]; return { c: [...art.subarray(i * 4, i * 4 + 3)], src: i };
+    };
+    const plant = (list, lift, shift, stem, stemC, onFloor) => {
+      for (const p of list) {
+        for (const [dx, dy] of p.px) { const i = (p.y + dy) * 512 + p.x + dx; f.artMod[i] = 1; if (onFloor) { const o = i * 4; floor[o] = art[o]; floor[o + 1] = art[o + 1]; floor[o + 2] = art[o + 2]; f.patched[i] = 1; f.floorSrc[i] = f.artSrc[i]; } }
+        const X = p.x + p.w / 2, Z = p.y + p.h + shift, rnd = Math.abs(Math.sin(X * 12.9898 + Z * 78.233) * 43758.5453) % 1;
+        F3.swayVoxels(fl, p.px, p.w, p.h, X, lift, Z - 0.5, 1, X * 0.11 + Z * 0.07 + rnd * 1.2, stem ? { h: stem, c: stemC.c, src: stemC.src } : null);
+      }
+    };
+    for (const fd of def.flowers || []) {
+      const s = fd.on != null ? solids[fd.on] : null; if (fd.on != null && !s) continue;
+      const r = fd.region || [s.so.x0, s.so.y0, s.so.x1, s.so.y1];
+      const keep = s ? (x, y) => s.d[((y - s.so.y0) * s.w + x - s.so.x0) * 4 + 3] > 0 : null;
+      plant(F3.liftFlowers(art, r, keep, f.artSrc), s ? s.lift + s.H : 0, s ? s.shift : 0, fd.stem ?? 2, leaf(r), !s);
+    }
+    for (const ft of def.flowerTiles || []) {                            // [x, y] of one cell (map px) with a flower painted on the ground
+      const tm = this.gb.mem.wram[3], at = this.gb.mem.wram[2], k = (x, y) => tm[y * 64 + x] | (at[y * 64 + x] & 0x6F) << 8, want = k(ft[0] >> 3, ft[1] >> 3);
+      for (let ty = 0; ty < MHp >> 3; ty++) for (let tx = 0; tx < MWp >> 3; tx++) if (k(tx, ty) === want && !hole[ty * 8 * 512 + tx * 8]) {
+        const r = [tx * 8, ty * 8, tx * 8 + 8, ty * 8 + 8]; plant(F3.liftFlowers(art, r, null, f.artSrc), 0, 0, ft[2] ?? 2, leaf(r), true);
+      }
+    }
+    const fx = f.fx = { flowers: null, fountains: [] };
+    if (fl.pos.length) {
+      const vao = gl.createVertexArray(); gl.bindVertexArray(vao); const bufs = [];
+      [[fl.pos, 3], [fl.col, 3], [fl.sway, 2]].forEach(([a, n], i) => { const b = gl.createBuffer(); bufs.push(b); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(a), gl.STATIC_DRAW); gl.enableVertexAttribArray(i); gl.vertexAttribPointer(i, n, gl.FLOAT, false, 0, 0); });
+      gl.bindVertexArray(this.vao); fx.flowers = { vao, bufs, count: fl.pos.length / 3, src: Float32Array.from(fl.src) };
+    }
+    // fountains: a jet from the middle of the pool (on the solid it is the top of) and rings on the water; colours
+    // from the pool picture (its lightest colour and its most saturated one)
+    for (const fo of def.fountains || []) {
+      const s = solids[fo.on]; if (!s) continue;
+      const [px0, py0, px1, py1] = fo.pool; let wi = py0 * 512 + px0, bi = wi, bl = -1, bs = -1;
+      for (let y = py0; y < py1; y++) for (let x = px0; x < px1; x++) { const o = (y * 512 + x) * 4, r = art[o], g = art[o + 1], b = art[o + 2], l = r + g + b, sat = Math.max(r, g, b) - Math.min(r, g, b); if (l > bl) { bl = l; wi = y * 512 + x; } if (b > r && sat > bs) { bs = sat; bi = y * 512 + x; } }
+      const y = s.lift + s.H;
+      fx.fountains.push({ origin: [(px0 + px1) / 2, y, (py0 + py1) / 2 + s.shift], jet: [fo.jet ?? 16, fo.spread ?? 8, fo.drop ?? 0.9, 0], src: [wi, bi], cols: this.jetColours(art, wi, bi),
+        pool: { x0: px0, x1: px1, z0: py0 + s.shift, z1: py1 + s.shift, y: y + 0.08 } });
+    }
+    if (fx.fountains.length && !this.jetMesh) {
+      const j = F3.jetDroplets(160), vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+      [[j.pos, 4], [j.seed, 4]].forEach(([a, n], i) => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, a, gl.STATIC_DRAW); gl.enableVertexAttribArray(i); gl.vertexAttribPointer(i, n, gl.FLOAT, false, 0, 0); });
+      gl.bindVertexArray(this.vao); this.jetMesh = { vao, count: j.count };
     }
     const upload = o => {
       const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
@@ -919,19 +1130,33 @@ export class Voxel3D {
       const ub = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, ub); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(o.uv), gl.STATIC_DRAW); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
       gl.bindVertexArray(this.vao); return { vao, pb, ub, count: o.pos.length / 3 };
     };
-    if (front.pos.length) { f.blocks = { front: upload(front), side: upload(side) }; f.artTex = this.texture(512, 512, art); }
+    if (roofArt) {
+      const [rx, ry, rw, rh] = roofArt, t = new Uint8Array(rw * rh * 4);
+      for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) { const o = (y * rw + x) * 4, s = ((ry + y) * 512 + rx + x) * 4; t[o] = art[s]; t[o + 1] = art[s + 1]; t[o + 2] = art[s + 2]; t[o + 3] = 255; }
+      f.roof = { tex: this.texture(rw, rh, t, false, true), lit: upload(roofs[0]), shade: upload(roofs[1]), art: roofArt };
+    }
+    if (front.pos.length) {
+      const artA = new Uint8Array(art);                                   // keyed blocks: the ground around them transparent
+      for (const [d, x0, y0, w, h] of keyed) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (!d[(y * w + x) * 4 + 3]) { const i = (y0 + y) * 512 + x0 + x; artA[i * 4 + 3] = 0; f.artMod[i] = 1; }
+      f.blocks = { front: upload(front), side: upload(side) }; f.artTex = this.texture(512, 512, artA); f.artData = artA;
+    }
   }
   buildField() {
     const gl = this.gl, f = this.field, coll = this.gb.mem.wram[6];
     if (f.floorTex) gl.deleteTexture(f.floorTex);
-    const art = this.composeField(), floor = new Uint8Array(art);
+    const id = this.mapId(), canon = this.canonPalette(id), art = this.composeField(canon), floor = new Uint8Array(art);
+    const w0 = this.gb.mem.wram[0], MW = Math.min(64, w0[0x32B] || 64), MH = Math.min(64, w0[0x32C] || 64);
+    f.lowPal = Uint8Array.from(this.gb.ppu.bgPal.subarray(0, 16)); f.usesLowPals = false;   // palettes 0-1 come live: a fade changes them
+    for (let y = 0; y < MH && !f.usesLowPals; y++) for (let x = 0; x < MW; x++) if ((this.gb.mem.wram[2][y * 64 + x] & 7) < 2) { f.usesLowPals = true; break; }
     this.buildFieldObjects(art, floor);
-    f.floorTex = this.texture(512, 512, floor);
+    f.floorTex = this.texture(512, 512, floor); f.floorData = floor;
+    this.recolourField(); f.fading = false;                // the live colours
+    this.watchTiles();
     // walls: one box (top + 4 sides) per solid 16x16 metatile, uv = the metatile's own texels; sides share them
     const H = 14, pos = [], uv = [], w0 = this.gb.mem.wram[0], MW = Math.min(32, (w0[0x32B] || 64) >> 1), MH = Math.min(32, (w0[0x32C] || 64) >> 1);   // metatiles inside wMapWidth/Height only
     const quad = (a, b, c, d, u) => { for (const [v, t] of [[a, u[0]], [b, u[1]], [c, u[2]], [a, u[0]], [c, u[2]], [d, u[3]]]) { pos.push(...v); uv.push(...t); } };
     let n = 0;
-    for (let my = 0; my < MH; my++) for (let mx = 0; mx < MW; mx++) {
+    for (let my = 0; my < MH && !f.noWalls; my++) for (let mx = 0; mx < MW; mx++) {
       if (coll[my * 32 + mx] !== 0x0F || (f.covered && f.covered[my * 32 + mx])) continue;
       const x0 = mx * 16, x1 = x0 + 16, z0 = my * 16, z1 = z0 + 16, u0 = x0 / 512, u1 = x1 / 512, v0 = z0 / 512, v1 = z1 / 512;
       const top = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]], side = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
@@ -950,17 +1175,74 @@ export class Voxel3D {
     f.walls = { vao, pb, ub, count: pos.length / 3 }; f.wallCount = n;
     gl.bindVertexArray(this.vao);
   }
+  // The game animates some map tiles by rewriting their pixels in VRAM (the fountain's water, ...). The tiles of the
+  // map's tile set (VRAM bank 1) are watched; when one changes, the cells showing it are drawn again into the floor
+  // and building textures (8x8 sub-uploads; cells under cut-outs or repainted keep what they have).
+  watchTiles() {
+    const f = this.field, m = this.gb.mem, w0 = m.wram[0], MW = Math.min(64, w0[0x32B] || 64), MH = Math.min(64, w0[0x32C] || 64), lcdc = this.gb.ppu.lcdc;
+    const byTile = new Map();
+    for (let ty = 0; ty < MH; ty++) for (let tx = 0; tx < MW; tx++) {
+      const i = ty * 64 + tx, tile = m.wram[3][i], attr = m.wram[2][i]; if (!(attr & 8)) continue;
+      const addr = lcdc & 0x10 ? tile << 4 : 0x1000 + ((tile << 24 >> 24) << 4);
+      let l = byTile.get(addr); if (!l) byTile.set(addr, l = []); l.push(tx, ty);
+    }
+    const addrs = [...byTile.keys()], snap = new Uint8Array(addrs.length * 16), v1 = m.vram[1];
+    addrs.forEach((a, k) => snap.set(v1.subarray(a, a + 16), k * 16));
+    f.live = { addrs, cells: addrs.map(a => byTile.get(a)), snap, frame: this.gb.ppu.frames };
+  }
+  updateTiles() {
+    const f = this.field, L = f.live; if (!L || L.frame === this.gb.ppu.frames) return; L.frame = this.gb.ppu.frames;
+    const v1 = this.gb.mem.vram[1], cells = new Set(); let tiles = 0;
+    for (let k = 0; k < L.addrs.length; k++) {
+      const a = L.addrs[k], o = k * 16; let same = true;
+      for (let i = 0; i < 16; i++) if (v1[a + i] !== L.snap[o + i]) { same = false; break; }
+      if (same) continue;
+      L.snap.set(v1.subarray(a, a + 16), o); tiles++; const c = L.cells[k]; for (let i = 0; i < c.length; i += 2) cells.add(c[i + 1] * 64 + c[i]);
+    }
+    if (!cells.size) return;
+    if (tiles > 32) { f.needBuild = true; return; }          // a new tile set (map loading), not an animation
+    const gl = this.gl, img = this.liveImg || (this.liveImg = new Uint8Array(512 * 512 * 4)), blk = new Uint8Array(256);
+    for (const ci of cells) {
+      const tx = ci & 63, ty = ci >> 6; this.composeCell(img, tx, ty);
+      for (const [data, keep, tex] of [[f.floorData, f.patched, f.floorTex], [f.artData, f.artMod, f.artTex]]) {
+        if (!data || !tex) continue;
+        let any = false;
+        for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+          const i = (ty * 8 + y) * 512 + tx * 8 + x, o = i * 4;
+          if (!keep || !keep[i]) { any = true; data[o] = img[o]; data[o + 1] = img[o + 1]; data[o + 2] = img[o + 2]; }
+          blk.set(data.subarray(o, o + 4), (y * 8 + x) * 4);
+        }
+        if (!any) continue;
+        gl.bindTexture(gl.TEXTURE_2D, tex); gl.texSubImage2D(gl.TEXTURE_2D, 0, tx * 8, ty * 8, 8, 8, gl.RGBA, gl.UNSIGNED_BYTE, blk);
+      }
+    }
+  }
   renderField(frame2d) {
     const gl = this.gl, cv = this.cv, m = this.gb.mem, p = this.gb.ppu, f = this.field, id = this.mapId(), c = this.cam;
     this.mode = "field";
+    // built when the map changes; a palette change only recolours it (fades: about 16 steps), and once the palette has
+    // settled for a few frames on colours it was not built with (and is not blank), it is built again
     let ph = 0; for (let i = 0; i < 64; i += 3) ph = (ph * 31 + p.bgPal[i]) | 0;
-    if (f.mapId !== id || f.palHash !== ph) { f.mapId = id; f.palHash = ph; this.buildField(); }
-    const sc = this.fieldScroll(), cx = sc.x + 80, cz = sc.y + 72, aspect = cv.width / cv.height;
+    const fr = this.gb.ppu.frames;
+    const sig = this.mapSig();
+    if (f.mapId !== id || f.sig !== sig || f.needBuild) { f.mapId = id; f.sig = sig; f.needBuild = false; f.palHash = ph; f.palAt = fr; this.buildField(); }
+    else if (f.palHash !== ph) { f.palHash = ph; f.palAt = fr; this.recolourField(); }
+    else if (f.fading && (fr - f.palAt >= 3 || fr < f.palAt)) {
+      // the palette settled: voxel bodies again; built again only if the map uses palettes 0-1 (live, not from the
+      // ROM) and they are not what it was built with
+      const lum = b => { let t = 0; for (let i = 0; i < 16; i += 2) { const c = b[i] | b[i + 1] << 8; t += (c & 31) + (c >> 5 & 31) + (c >> 10 & 31); } return t; };
+      const now = lum(this.gb.ppu.bgPal), then = lum(f.lowPal);         // (a fade, not a text box changing a colour or two)
+      if (f.usesLowPals && Math.abs(now - then) > 0.15 * Math.max(now, then) && !this.blankPalette()) this.buildField(); else f.fading = false;
+    } else this.updateTiles();
+    if (f.clear) { gl.clearColor(f.clear[0], f.clear[1], f.clear[2], 1); gl.clear(gl.COLOR_BUFFER_BIT); }
+    const sc = this.fieldScroll(), aim = this.fieldAim || [0, 0], cx = sc.x + 80 + aim[0], cz = sc.y + 72 + aim[1], aspect = cv.width / cv.height;   // fieldAim: test views
     const yaw = this.freeCam ? c.yaw : 0, pitch = this.freeCam ? c.pitch : FIELD_CAM.pitch, dist = this.freeCam ? c.dist : FIELD_CAM.dist * Math.max(1, (160 / 144) / aspect);
     const eye = [cx + dist * Math.sin(yaw) * Math.cos(pitch), dist * Math.sin(pitch), cz + dist * Math.cos(yaw) * Math.cos(pitch)];
     const mvp = m4.mul(m4.perspective(FIELD_CAM.fov, aspect, FIELD_CAM.near, FIELD_CAM.far), m4.lookAt(eye, [cx, 0, cz], [0, 1, 0]));
-    // floor (512x512 map px; +z = down the map)
+    const T = this.animClock ?? performance.now() / 1000;
+    // floor (512x512 map px; +z = down the map), on a plain ground reaching the horizon on side-view maps
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
+    if (f.skirt) this.draw(f.skirt, m4.trs(256, -0.6, 3000, 6000, 6000, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
     this.draw(f.floorTex, m4.trs(256, -0.2, 512, 512, 512, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
     // walls
     if (f.walls && f.walls.count) {
@@ -971,20 +1253,50 @@ export class Voxel3D {
     }
     // buildings (roof + front wall, then the darker side walls) and the stand-up cut-outs
     if (f.blocks) {
-      gl.useProgram(this.prog3); gl.bindTexture(gl.TEXTURE_2D, f.artTex); gl.uniformMatrix4fv(this.u3.uMVP, false, mvp); gl.uniform1f(this.u3.uAlphaTest, 0);
+      gl.useProgram(this.prog3); gl.bindTexture(gl.TEXTURE_2D, f.artTex); gl.uniformMatrix4fv(this.u3.uMVP, false, mvp); gl.uniform1f(this.u3.uAlphaTest, 0.5);
       for (const [b, k] of [[f.blocks.front, 1], [f.blocks.side, 0.68]]) { gl.bindVertexArray(b.vao); gl.uniform4fv(this.u3.uTint, [k, k, k, 1]); gl.drawArrays(gl.TRIANGLES, 0, b.count); }
+      if (f.roof) { gl.bindTexture(gl.TEXTURE_2D, f.roof.tex); for (const [b, k] of [[f.roof.lit, 1], [f.roof.shade, 0.75]]) { gl.bindVertexArray(b.vao); gl.uniform4fv(this.u3.uTint, [k, k, k, 1]); gl.drawArrays(gl.TRIANGLES, 0, b.count); } }
       gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
     }
     for (const c of f.cards || []) {
-      if (this.voxelSprites) {
+      const tilt = c.tilt ?? FIELD_TILT;
+      if (this.voxelSprites && !c.flat && !f.fading) {
         const owner = c.shared || c; if (!owner.mesh) owner.mesh = this.meshFromPixels(c.d, c.w, c.h, 4, 3.5);
-        this.drawMesh(owner.mesh, m4.trs3(c.X, 0, c.Z, 1, 1, 1, -FIELD_TILT), mvp);
-      } else this.draw(c.tex, m4.trs(c.X, 0, c.Z, c.w, c.h, -FIELD_TILT, 0), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
+        this.drawMesh(owner.mesh, m4.trs3(c.X, 0, c.Z, 1, 1, 1, -tilt), mvp);
+      } else this.draw(c.tex, m4.trs(c.X, 0, c.Z, c.w, c.h, -tilt, 0), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
     }
+    this.drawFieldFx(mvp, T);
     this.drawFieldActors(mvp);
     // dialogue boxes and menus: the game writes them into the BG tile map over the scenery (and some screens use
     // the window layer); both are cut out of the 2D frame and shown at the top middle of the view
     this.drawFieldOverlays(frame2d);
+  }
+  // swaying flowers, fountain jets and the rings on their pools: geometry built once, moved by the shaders
+  drawFieldFx(mvp, T) {
+    const gl = this.gl, fx = this.field.fx; if (!fx) return;
+    if (fx.flowers) {
+      gl.useProgram(this.progW); gl.bindVertexArray(fx.flowers.vao);
+      gl.uniformMatrix4fv(this.uW.uMVP, false, mvp); gl.uniform1f(this.uW.uTime, T); gl.uniform1f(this.uW.uAmp, 1.1);
+      gl.drawArrays(gl.TRIANGLES, 0, fx.flowers.count);
+    }
+    if (fx.fountains.length && this.jetMesh) {
+      gl.useProgram(this.progJ); gl.bindVertexArray(this.jetMesh.vao); gl.uniformMatrix4fv(this.uJ.uMVP, false, mvp); gl.uniform1f(this.uJ.uTime, T);
+      for (const fo of fx.fountains) {
+        gl.uniform3fv(this.uJ.uOrigin, fo.origin); gl.uniform4fv(this.uJ.uJet, fo.jet);
+        gl.uniform3fv(this.uJ.uC0, fo.cols[0]); gl.uniform3fv(this.uJ.uC1, fo.cols[1]); gl.uniform3fv(this.uJ.uC2, fo.cols[2]);
+        gl.drawArrays(gl.TRIANGLES, 0, this.jetMesh.count);
+      }
+      gl.useProgram(this.progR); gl.bindVertexArray(this.vao); gl.depthMask(false);
+      gl.uniformMatrix4fv(this.uR.uMVP, false, mvp); gl.uniform4fv(this.uR.uUVRect, [0, 0, 1, 1]); gl.uniform1f(this.uR.uTime, T);
+      for (const fo of fx.fountains) {
+        const q = fo.pool, w = q.x1 - q.x0, d = q.z1 - q.z0;
+        gl.uniformMatrix4fv(this.uR.uModel, false, m4.plane([w, 0, 0], [0, 0, -d], [(q.x0 + q.x1) / 2, q.y, q.z1]));
+        gl.uniform2fv(this.uR.uSize, [w, d]); gl.uniform3fv(this.uR.uCol, fo.cols[0]);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      }
+      gl.depthMask(true);
+    }
+    gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
   }
   // overworld actor slots (WRAM4 $D000, 24 x $40 bytes; a slot is in use when its script pointer's high byte is
   // non-zero): +$0C/+$0E position in 1/256 tile (= 32 per map px), +$10 height (64 per px, negative = up), +$21 object id

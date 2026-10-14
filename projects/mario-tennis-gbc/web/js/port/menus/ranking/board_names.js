@@ -5,7 +5,7 @@
 // third_party/mario-tennis-gbc-disasm); names and addresses are its own. Tables are read from the ROM.
 // Covered by the lockstep on the out/port/xr_island*.mtrec recordings.
 import {
-  FZ, ix, far, rom, FAR, hook, hookGen, advanceFrame, romWord, BANK_RANKING, BANK_MENU_LIB, WRAM_SCREEN, WRAM_TEXT,
+  FZ, ix, far, rom, romWait, FAR, hook, hookGen, advanceFrame, romWord, BANK_RANKING, BANK_MENU_LIB, WRAM_SCREEN, WRAM_TEXT,
   wShadowTilemap, wShadowAttrmap, PADF_A, PADF_B, cell,
 } from "../exp/defs.js";
 import { copyMemoryBC } from "../../home/memory.js";
@@ -29,13 +29,13 @@ export function* waitForAOrBPress(P) {
   }
 }
 // DrawSinglesRankingNames (1B:5511): the singles bracket: the player and entrants 1-11, the glyphs uploaded
-export function drawSinglesRankingNames(P) {
+export function* drawSinglesRankingNames(P) {
   initRankingNameRender(P);
   P.wramBank(WRAM_SCREEN);
   clearSinglesRankingNameRects(P);
   renderPlayerNameFitted(P, P.A.storyModeNameOfMainCharacter, tile(1, 1));
   for (let b = 1; b < ENTRIES; b++) drawRankingEntry(P, b, SinglesRankingEntryTable, SinglesRankingEntryTable1);
-  return rom(P, FAR.UploadGlyphBuffer);
+  return yield* romWait(P, FAR.UploadGlyphBuffer);
 }
 // DrawSinglesRankingEntry (1B:5536) / DrawDoublesRankingEntry (1B:55FF): entrant b's name (its text) at its cell,
 // 5 cells wide. Registers kept.
@@ -57,14 +57,14 @@ export function clearRankingNameRects(P, start, boxes, height, step) {
 const clearSinglesRankingNameRects = P => clearRankingNameRects(P, cell(wShadowAttrmap, 0, 1), 6, 2, 0x60);
 const clearDoublesRankingNameRects = P => clearRankingNameRects(P, cell(wShadowAttrmap, 1, 1), 3, 4, 0xA0);
 // DrawDoublesRankingNames (1B:55D1): the doubles bracket: the player and partner, entrants 2-11
-export function drawDoublesRankingNames(P) {
+export function* drawDoublesRankingNames(P) {
   initRankingNameRender(P);
   P.wramBank(WRAM_SCREEN);
   clearDoublesRankingNameRects(P);
   renderPlayerNameFitted(P, P.A.storyModeNameOfMainCharacter, tile(2, 1));
   renderPlayerNameFitted(P, P.A.storyModeNameOfPartnerCharacter, tile(4, 1));
   for (let b = 2; b < ENTRIES; b++) drawRankingEntry(P, b, DoublesRankingEntryTable, DoublesRankingEntryTable1);
-  return rom(P, FAR.UploadGlyphBuffer);
+  return yield* romWait(P, FAR.UploadGlyphBuffer);
 }
 // InitRankingNameRender (1B:569C): the text windows reset, glyphs stamped into WRAM 3's map (attribute 0)
 export function initRankingNameRender(P) {
@@ -83,7 +83,7 @@ export function renderPlayerNameFitted(P, hl, de) {
 export function getStringLength(P, hl) {
   let c = 0;
   while (P.bus.u8((hl + c) & 0xFFFF)) c++;
-  return { a: c & 0xFF, f: c & 0xFF ? 0 : FZ };
+  return { a: c & 0xFF, f: FZ };                                    // (the flags of the last `or a`)
 }
 // RenderNameTwoRows (1B:56CF): the name's first 4 letters and a hyphen a row above de, the rest at de
 export function renderNameTwoRows(P, hl, de) {
@@ -132,10 +132,10 @@ export function drawRankingRow(P, sr, sc, dr, dc, w, h) {
 
 export const HOOKS = [
   [BANK, 0x5507, hookGen(P => waitForAOrBPress(P))],
-  [BANK, 0x5511, hook(P => { drawSinglesRankingNames(P); })],
+  [BANK, 0x5511, hookGen(function* (P) { yield* drawSinglesRankingNames(P); })],
   [BANK, 0x5536, hook((P, c) => { drawRankingEntry(P, c.b, SinglesRankingEntryTable, SinglesRankingEntryTable1); })],
   [BANK, 0x558E, hook(P => { clearSinglesRankingNameRects(P); })],
-  [BANK, 0x55D1, hook(P => { drawDoublesRankingNames(P); })],
+  [BANK, 0x55D1, hookGen(function* (P) { yield* drawDoublesRankingNames(P); })],
   [BANK, 0x55FF, hook((P, c) => { drawRankingEntry(P, c.b, DoublesRankingEntryTable, DoublesRankingEntryTable1); })],
   [BANK, 0x5659, hook(P => { clearDoublesRankingNameRects(P); })],
   [BANK, 0x569C, hook(P => { initRankingNameRender(P); })],

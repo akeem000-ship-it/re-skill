@@ -57,18 +57,54 @@ function dropStrays(art, d, x0, y0, w, h, ground, dark, min = 4) {
 //  "key" (default)  the original keyed rule
 //  "outline"        keyed, but the outline (darkest) colour never keys, so an object whose inside has the ground's
 //                   colour (canopies on grass) keeps it; pieces with no colour of their own are dropped
+//  "enclosed"       what the outline colour encloses, with the outline (thin props over paths of their own colours)
+//  "hull"           between outline pixels on each row, below the outline in each column (planters)
 //  "dome"           per column, everything from the first outline pixel down (bushes: an arc open at the bottom)
 //  "rect"           the whole rectangle
 //  "ellipse"        the ellipse inscribed in the rectangle
-// opt.only: [[x0, y0, x1, y1], ...] absolute map rectangles outside which everything is transparent; opt.drop: the opposite
+// opt.only: [[x0, y0, x1, y1], ...] absolute map rectangles outside which everything is transparent; opt.drop: the opposite;
+// opt.add: rectangles always opaque (a sign's post); opt.bg: [[x, y], ...] map points whose colours are the ground (instead of the colours around the rectangle)
 export function cutOut(art, x0, y0, w, h, opt = {}) {
   const mode = opt.cut || "key";
   if (mode === "key" && !opt.only && !opt.drop) return keyedCut(art, x0, y0, w, h);
   const d = copyRect(art, x0, y0, w, h);
   if (mode === "key") floodKey(art, d, x0, y0, w, h, groundKeys(art, x0, y0, w, h));
   else if (mode === "outline") {
-    const ground = groundKeys(art, x0, y0, w, h), dark = darkest(art, x0, y0, w, h), pass = new Set(ground); pass.delete(dark);
+    const ground = opt.bg ? new Set(opt.bg.map(([x, y]) => packAt(art, x, y))) : groundKeys(art, x0, y0, w, h), dark = darkest(art, x0, y0, w, h), pass = new Set(ground); pass.delete(dark);
     floodKey(art, d, x0, y0, w, h, pass); dropStrays(art, d, x0, y0, w, h, ground, dark, opt.min || 4);
+  } else if (mode === "enclosed") {
+    // what the outline encloses: flood from the border through every colour but the outline's; the outline pixels
+    // that touch an enclosed pixel stay (thin outlined props standing on paths of their own colours: signs)
+    const dark = darkest(art, x0, y0, w, h), out = new Uint8Array(w * h), st = [];
+    const push = (x, y) => { if (x < 0 || y < 0 || x >= w || y >= h) return; const i = y * w + x; if (out[i] || packAt(art, x0 + x, y0 + y) === dark) return; out[i] = 1; st.push(i); };
+    for (let x = 0; x < w; x++) { push(x, 0); push(x, h - 1); } for (let y = 0; y < h; y++) { push(0, y); push(w - 1, y); }
+    while (st.length) { const i = st.pop(), x = i % w, y = (i / w) | 0; push(x + 1, y); push(x - 1, y); push(x, y + 1); push(x, y - 1); }
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x; if (out[i]) { d[i * 4 + 3] = 0; continue; }
+      if (packAt(art, x0 + x, y0 + y) !== dark) continue;
+      let near = false; for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1; dx++) { const X = x + dx, Y = y + dy; if (X >= 0 && Y >= 0 && X < w && Y < h && !out[Y * w + X] && packAt(art, x0 + X, y0 + Y) !== dark) { near = true; break; } }
+      if (!near) d[i * 4 + 3] = 0;
+    }
+    // ground-coloured bits caught between outline and border (grass beside a post): peeled off from the outside
+    const ground = new Set((opt.bg || []).map(([x, y]) => packAt(art, x, y)));   // only colours named as ground (opt.bg)
+    for (let pass = 0, changed = ground.size > 0; pass < 4 && changed; pass++) {
+      changed = false; const drop = [];
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = y * w + x; if (!d[i * 4 + 3] || !ground.has(packAt(art, x0 + x, y0 + y))) continue;
+        if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => { const X = x + dx, Y = y + dy; return X < 0 || Y < 0 || X >= w || Y >= h || !d[(Y * w + X) * 4 + 3]; })) drop.push(i);
+      }
+      for (const i of drop) { d[i * 4 + 3] = 0; changed = true; }
+    }
+    if (ground.size) dropStrays(art, d, x0, y0, w, h, ground, dark, opt.min || 4);
+  } else if (mode === "hull") {
+    // between outline pixels: on its row an outline pixel at or left of it and one at or right of it, and one at or
+    // above it in its column (convex outlined things whose inside shares the ground's colours: planters)
+    const dark = darkest(art, x0, y0, w, h), isD = (x, y) => packAt(art, x0 + x, y0 + y) === dark, top = new Int16Array(w).fill(h);
+    for (let x = 0; x < w; x++) for (let y = 0; y < h; y++) if (isD(x, y)) { top[x] = y; break; }
+    for (let y = 0; y < h; y++) {
+      let l = w, r = -1; for (let x = 0; x < w; x++) if (isD(x, y)) { l = Math.min(l, x); r = x; }
+      for (let x = 0; x < w; x++) if (x < l || x > r || y < top[x]) d[(y * w + x) * 4 + 3] = 0;
+    }
   } else if (mode === "dome") {
     const dark = opt.dark ?? darkest(art, x0, y0, w, h);
     for (let x = 0; x < w; x++) { let on = false; for (let y = 0; y < h; y++) { if (!on && packAt(art, x0 + x, y0 + y) === dark) on = true; if (!on) d[(y * w + x) * 4 + 3] = 0; } }
@@ -77,9 +113,10 @@ export function cutOut(art, x0, y0, w, h, opt = {}) {
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const u = (x + 0.5 - cx) / cx, v = (y + 0.5 - cy) / cy; if (u * u + v * v > 1) d[(y * w + x) * 4 + 3] = 0; }
   }
   const inR = (x, y, r) => x >= r[0] && x < r[2] && y >= r[1] && y < r[3];
-  if (opt.only || opt.drop) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+  if (opt.only || opt.drop || opt.add) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const X = x0 + x, Y = y0 + y;
     if ((opt.only && !opt.only.some(r => inR(X, Y, r))) || (opt.drop && opt.drop.some(r => inR(X, Y, r)))) d[(y * w + x) * 4 + 3] = 0;
+    if (opt.add && opt.add.some(r => inR(X, Y, r))) d[(y * w + x) * 4 + 3] = 255;
   }
   return d;
 }
@@ -94,8 +131,12 @@ export function matchSprite(art, d, sx, sy, w, h, MW, MH, need = 1) {
   // test the rarest-looking pixels first (those not of the most common colour of the sprite) for an early exit
   const freq = new Map(); for (const p of pts) freq.set(p[2], (freq.get(p[2]) || 0) + 1);
   pts.sort((a, b) => freq.get(a[2]) - freq.get(b[2]));
+  const probe = pts.filter((_, i) => i % Math.max(1, Math.floor(pts.length / 32)) === 0), probeMiss = Math.floor(probe.length * (1 - need)) + 1;
   for (let Y = 0; Y + h <= MH; Y++) for (let X = 0; X + w <= MW; X++) {
     let bad = 0;
+    for (const p of probe) if (packAt(art, X + p[0], Y + p[1]) !== p[2] && ++bad > probeMiss) break;   // quick reject on a spread sample
+    if (bad > probeMiss) continue;
+    bad = 0;
     for (const p of pts) if (packAt(art, X + p[0], Y + p[1]) !== p[2] && ++bad > miss) break;
     if (bad <= miss) hits.push({ x: X, y: Y, score: pts.length - bad });
   }
@@ -111,14 +152,15 @@ export function matchSprite(art, d, sx, sy, w, h, MW, MH, need = 1) {
 
 // Floor fill under cut-outs on a side-view map: each hidden pixel takes the nearest visible pixel of its row a whole
 // number of tiles (8 px) away, so horizontal paths, edges and grass patterns run on behind trees and posts
-export function fillRows(floor, hole, x0 = 0, x1 = ART, y0 = 0, y1 = ART) {
+// src (optional): per floor pixel the index of the map picture pixel it shows, kept up to date (recolouring in fades)
+export function fillRows(floor, hole, x0 = 0, x1 = ART, y0 = 0, y1 = ART, src = null) {
   for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
     if (!hole[y * ART + x]) continue;
     for (let k = 8; k < ART; k += 8) {
       let s = -1;
       for (const X of [x - k, x + k]) if (X >= x0 && X < x1 && !hole[y * ART + X]) { s = X; break; }
       if (s < 0) continue;
-      const o = (y * ART + x) * 4, so = (y * ART + s) * 4; floor[o] = floor[so]; floor[o + 1] = floor[so + 1]; floor[o + 2] = floor[so + 2]; break;
+      const o = (y * ART + x) * 4, so = (y * ART + s) * 4; floor[o] = floor[so]; floor[o + 1] = floor[so + 1]; floor[o + 2] = floor[so + 2]; if (src) src[y * ART + x] = src[y * ART + s]; break;
     }
   }
 }
@@ -142,26 +184,22 @@ export function solidMesh(mask, x0, y0, w, h, wallRows, stack, out) {
     quad(out.top, [X0, lift + H, Z0], [X1, lift + H, Z0], [X1, lift + H, Z1], [X0, lift + H, Z1], [X0, Y], [X1, Y], [X1, Y + 1], [X0, Y + 1]);
     x = e;
   }
-  // front walls: one per column at its ground line, the art of its bottom wallRows rows; steps between columns
+  // front walls: one per column at its ground line, showing the art of its bottom wallRows rows
   for (let x = 0; x < w; x++) {
     if (bot[x] < 0) continue;
     const X = x0 + x, b = y0 + bot[x] + 1, Z = b + stack, r0 = b - wallRows;
     quad(out.front, [X, lift, Z], [X + 1, lift, Z], [X + 1, lift + H, Z], [X, lift + H, Z], [X, b], [X + 1, b], [X + 1, r0], [X, r0]);
-    for (const [nx, edge] of [[x - 1, X], [x + 1, X + 1]]) {        // the side of this column's wall a neighbour does not hide
-      const nb = nx >= 0 && nx < w ? bot[nx] : -1, Zn = nb < 0 ? -1e9 : y0 + nb + 1 + stack;
-      if (Zn >= Z) continue;
-      const Zb = Math.max(Zn, Z - 1);                                  // a wall is a pixel deep where nothing is behind it
-      const a = [edge, lift, Zb], c = [edge, lift + H, Z];
-      quad(out.side, a, [edge, lift, Z], c, [edge, lift + H, Zb], [X, b], [X + 1, b], [X + 1, r0], [X, r0]);
-    }
   }
-  // sides and back of the top: where a top pixel has no top pixel beside / behind it, a wall down to the lift
+  // sides and back: where a top pixel has no top pixel beside / behind it, a wall down to the lift, textured with the
+  // front wall's art of that column (the steps between columns of different depth are such sides too)
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     if (!isTop(x, y)) continue;
-    const X = x0 + x, Y = y0 + y, Z0 = Y + sh, Z1 = Z0 + 1, wr = bot[x] >= 0 ? y0 + bot[x] - Math.floor(wallRows / 2) : Y;
-    if (!isTop(x - 1, y) && !(on(x - 1, y) && bot[x - 1] >= 0)) quad(out.side, [X, lift, Z0], [X, lift, Z1], [X, lift + H, Z1], [X, lift + H, Z0], [X, wr], [X + 1, wr], [X + 1, wr + 1], [X, wr + 1]);
-    if (!isTop(x + 1, y) && !(on(x + 1, y) && bot[x + 1] >= 0)) quad(out.side, [X + 1, lift, Z1], [X + 1, lift, Z0], [X + 1, lift + H, Z0], [X + 1, lift + H, Z1], [X, wr], [X + 1, wr], [X + 1, wr + 1], [X, wr + 1]);
-    if (!isTop(x, y - 1)) quad(out.side, [X + 1, lift, Z0], [X, lift, Z0], [X, lift + H, Z0], [X + 1, lift + H, Z0], [X, wr], [X + 1, wr], [X + 1, wr + 1], [X, wr + 1]);
+    const X = x0 + x, Y = y0 + y, Z0 = Y + sh, Z1 = Z0 + 1, b = y0 + bot[x] + 1, r0 = b - wallRows;
+    // a side wall shows the front wall's art a little inside the outline (the outline column itself is all dark)
+    const inner = dx => { let c = x; for (let k = 0; k < 3 && c + dx >= 0 && c + dx < w && bot[c + dx] >= 0; k++) c += dx; const cb = y0 + bot[c] + 1; return [x0 + c, cb, cb - wallRows]; };
+    if (!isTop(x - 1, y)) { const [u, vb, vt] = inner(1); quad(out.side, [X, lift, Z0], [X, lift, Z1], [X, lift + H, Z1], [X, lift + H, Z0], [u, vb], [u + 1, vb], [u + 1, vt], [u, vt]); }
+    if (!isTop(x + 1, y)) { const [u, vb, vt] = inner(-1); quad(out.side, [X + 1, lift, Z1], [X + 1, lift, Z0], [X + 1, lift + H, Z0], [X + 1, lift + H, Z1], [u, vb], [u + 1, vb], [u + 1, vt], [u, vt]); }
+    if (!isTop(x, y - 1)) quad(out.side, [X + 1, lift, Z0], [X, lift, Z0], [X, lift + H, Z0], [X + 1, lift + H, Z0], [X, b], [X + 1, b], [X + 1, r0], [X, r0]);
   }
   return { lift, H, shift: sh };
 }
@@ -171,7 +209,7 @@ export function solidMesh(mask, x0, y0, w, h, wallRows, stack, out) {
 // Returns [{x, y, w, h, px: [[dx, dy, r, g, b], ...]}] in map px (x, y = top-left of the flower in the picture)
 // and repaints those pixels in `art` with the surrounding soil.
 const isPetal = (r, g, b) => { const mx = Math.max(r, g, b), mn = Math.min(r, g, b); return mx - mn >= 96 && !(g >= r && g >= b) && mx >= 160; };
-export function liftFlowers(art, region, keepMask = null) {
+export function liftFlowers(art, region, keepMask = null, src = null) {   // src: as in fillRows, for the picture
   const [x0, y0, x1, y1] = region, w = x1 - x0, h = y1 - y0, pet = new Uint8Array(w * h);
   const rgb = (x, y) => { const o = ((y0 + y) * ART + x0 + x) * 4; return [art[o], art[o + 1], art[o + 2]]; };
   const inside = (x, y) => x >= 0 && y >= 0 && x < w && y < h && (!keepMask || keepMask(x0 + x, y0 + y));
@@ -182,7 +220,8 @@ export function liftFlowers(art, region, keepMask = null) {
     if (n >= 2) pet[y * w + x] = 2;
   }
   // soil: the commonest non-flower colour of the region
-  const hist = new Map(); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (inside(x, y) && !pet[y * w + x]) { const c = packAt(art, x0 + x, y0 + y); hist.set(c, (hist.get(c) || 0) + 1); }
+  const hist = new Map(), where = new Map();
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (inside(x, y) && !pet[y * w + x]) { const c = packAt(art, x0 + x, y0 + y); hist.set(c, (hist.get(c) || 0) + 1); where.set(c, (y0 + y) * ART + x0 + x); }
   const flowers = [], seen = new Uint8Array(w * h);
   for (let i = 0; i < w * h; i++) {
     if (!pet[i] || seen[i]) continue;
@@ -191,35 +230,45 @@ export function liftFlowers(art, region, keepMask = null) {
     if (comp.length < 2) continue;
     let fx0 = 1e9, fy0 = 1e9, fx1 = -1, fy1 = -1;
     for (const j of comp) { const x = j % w, y = (j / w) | 0; fx0 = Math.min(fx0, x); fy0 = Math.min(fy0, y); fx1 = Math.max(fx1, x); fy1 = Math.max(fy1, y); }
-    flowers.push({ x: x0 + fx0, y: y0 + fy0, w: fx1 - fx0 + 1, h: fy1 - fy0 + 1, px: comp.map(j => { const x = j % w, y = (j / w) | 0; return [x - fx0, y - fy0, ...rgb(x, y)]; }) });
+    flowers.push({ x: x0 + fx0, y: y0 + fy0, w: fx1 - fx0 + 1, h: fy1 - fy0 + 1, px: comp.map(j => { const x = j % w, y = (j / w) | 0; return [x - fx0, y - fy0, ...rgb(x, y), (y0 + y) * ART + x0 + x]; }) });
   }
   // repaint: each lifted pixel takes the nearest non-flower pixel of its row (else the soil colour)
-  const soil = [...hist].sort((a, b) => b[1] - a[1])[0]; const sc = soil ? soil[0] : 0;
+  const soil = [...hist].sort((a, b) => b[1] - a[1])[0]; const sc = soil ? soil[0] : 0, si = soil ? where.get(sc) : -1;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     if (!pet[y * w + x]) continue;
-    let c = sc; for (let k = 1; k < 6; k++) { if (x - k >= 0 && !pet[y * w + x - k] && inside(x - k, y)) { c = packAt(art, x0 + x - k, y0 + y); break; } if (x + k < w && !pet[y * w + x + k] && inside(x + k, y)) { c = packAt(art, x0 + x + k, y0 + y); break; } }
-    const o = ((y0 + y) * ART + x0 + x) * 4; art[o] = c >> 16 & 255; art[o + 1] = c >> 8 & 255; art[o + 2] = c & 255;
+    let c = sc, ci = si;
+    for (let k = 1; k < 6; k++) {
+      if (x - k >= 0 && !pet[y * w + x - k] && inside(x - k, y)) { ci = (y0 + y) * ART + x0 + x - k; break; }
+      if (x + k < w && !pet[y * w + x + k] && inside(x + k, y)) { ci = (y0 + y) * ART + x0 + x + k; break; }
+    }
+    if (ci >= 0) c = packAt(art, ci % ART, (ci / ART) | 0);
+    const i = (y0 + y) * ART + x0 + x, o = i * 4; art[o] = c >> 16 & 255; art[o + 1] = c >> 8 & 255; art[o + 2] = c & 255;
+    if (src && ci >= 0) src[i] = src[ci];
   }
   return flowers;
 }
 
 // Voxel geometry for swaying things: one box per pixel (front, back, sides, top), with a sway weight (0 at the
-// base, 1 at the top: the box moves with the wind by that much) and a phase. Appends to {pos, col, sway}.
+// base, 1 at the top: the box moves with the wind by that much) and a phase. Appends to {pos, col, sway, src}
+// (src: per vertex the picture pixel it is coloured from and the face shade, for recolouring).
+// px: [[dx, dy, r, g, b, srcIndex], ...]; stem: {h, c: [r, g, b], src}
 export function swayVoxels(out, px, w, h, X, Y, Z, depth, phase, stem = null) {
-  const add = (x0, y0, z0, x1, y1, z1, c, wgt) => {
-    const face = (a, b, cc, d, k) => { for (const v of [a, b, cc, a, cc, d]) { out.pos.push(...v); out.col.push(c[0] / 255 * k, c[1] / 255 * k, c[2] / 255 * k); out.sway.push(wgt, phase); } };
+  const has = new Set(px.map(([dx, dy]) => dx + "," + dy));
+  // sides: [left, right, top] shown unless a pixel of the flower is there (inner faces are never seen)
+  const add = (x0, y0, z0, x1, y1, z1, c, wgt, sides, si) => {
+    const face = (a, b, cc, d, k) => { for (const v of [a, b, cc, a, cc, d]) { out.pos.push(...v); out.col.push(c[0] / 255 * k, c[1] / 255 * k, c[2] / 255 * k); out.sway.push(wgt, phase); out.src.push(si, k); } };
     face([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], 1.0);
     face([x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], 0.6);
-    face([x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], 0.9);
-    face([x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], 0.75);
-    face([x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], 0.75);
+    if (sides[2]) face([x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], 0.9);
+    if (sides[0]) face([x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], 0.75);
+    if (sides[1]) face([x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], 0.75);
   };
   const top = h + (stem ? stem.h : 0);
-  for (const [dx, dy, r, g, b] of px) {                                  // picture row dy: 0 = top of the flower
+  for (const [dx, dy, r, g, b, si] of px) {                              // picture row dy: 0 = top of the flower
     const up = (stem ? stem.h : 0) + (h - 1 - dy), x = X - w / 2 + dx;
-    add(x, Y + up, Z - depth / 2, x + 1, Y + up + 1, Z + depth / 2, [r, g, b], (up + 0.5) / top);
+    add(x, Y + up, Z - depth / 2, x + 1, Y + up + 1, Z + depth / 2, [r, g, b], (up + 0.5) / top, [!has.has(dx - 1 + "," + dy), !has.has(dx + 1 + "," + dy), !has.has(dx + "," + (dy - 1))], si);
   }
-  if (stem) for (let k = 0; k < stem.h; k++) { const x = X - 0.5; add(x, Y + k, Z - 0.4, x + 1, Y + k + 1, Z + 0.4, stem.c, (k + 0.5) / top); }
+  if (stem) for (let k = 0; k < stem.h; k++) { const x = X - 0.5; add(x, Y + k, Z - 0.4, x + 1, Y + k + 1, Z + 0.4, stem.c, (k + 0.5) / top, [true, true, k === stem.h - 1 && !has.has(Math.floor(w / 2) + "," + (h - 1))], stem.src); }
 }
 
 // Fountain jet as droplets: one small box per droplet; each carries (phase, angle, speed, kind) for the shader,
@@ -227,12 +276,12 @@ export function swayVoxels(out, px, w, h, X, Y, Z, depth, phase, stem = null) {
 export function jetDroplets(n = 150) {
   const pos = [], seed = [];
   let s = 12345; const rnd = () => (s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
-  const cube = [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 0, 1], [1, 1, 1], [0, 1, 1], [1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0],
+  const cube = [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 0, 1], [1, 1, 1], [0, 1, 1],                 // front, top, left, right
     [0, 1, 1], [1, 1, 1], [1, 1, 0], [0, 1, 1], [1, 1, 0], [0, 1, 0], [0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 0, 0], [0, 1, 1], [0, 1, 0],
     [1, 0, 1], [1, 0, 0], [1, 1, 0], [1, 0, 1], [1, 1, 0], [1, 1, 1]];
-  const shade = [1, 1, 1, 1, 1, 1, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8];
+  const shade = [1, 1, 1, 1, 1, 1, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8];
   for (let i = 0; i < n; i++) {
-    const kind = i < n * 0.3 ? 0 : i < n * 0.8 ? 1 : 2, ph = rnd(), ang = rnd() * Math.PI * 2, sp = rnd();
+    const kind = i < n * 0.35 ? 0 : i < n * 0.82 ? 1 : 2, ph = rnd(), ang = rnd() * Math.PI * 2, sp = rnd();
     for (let k = 0; k < cube.length; k++) { pos.push(cube[k][0] - 0.5, cube[k][1] - 0.5, cube[k][2] - 0.5, shade[k]); seed.push(ph, ang, sp, kind); }
   }
   return { pos: new Float32Array(pos), seed: new Float32Array(seed), count: pos.length / 4 };

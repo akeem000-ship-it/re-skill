@@ -3,25 +3,50 @@
 // collision grid only outlines where the player can walk, so these are hand annotations (checked with
 // tools/field_objects_preview.py). Keep the object literal JSON-compatible: the preview tool parses it.
 //  blocks: a building part as a solid box: rows y0..fold are the roof (top face, stretched over the footprint),
-//          rows fold..y1 the front wall, standing on the ground line y1
+//          rows fold..y1 the front wall, standing on the ground line y1. Optional: back (the footprint's back edge,
+//          default y0), key (the ground around the building transparent; keyRect: key it as part of a bigger
+//          rectangle), gable {ax, ay, ey, roof} (a gable end facing the viewer: the whole picture y0..y1 stands up,
+//          apex (ax, ay), eaves at row ey, the roof slopes run back to `back`, tiled with the art rectangle roof)
 //  stamps: one example of a repeated tree / bush / prop (multiples of 8); every place in the map with the same
 //          tiles (>= 80%) stands up as a cut-out card (an inflated voxel body in voxel mode)
-//  cards:  single upright cut-outs (fences, posts, statues, furniture fronts; on the side-view road, map 19, the sky
-//          band and the cafe front)
+//  cards:  single upright cut-outs (fences, posts, statues, signs, furniture fronts)
+//  sprites: {x, y, w, h, match}: one example; every pixel-exact copy anywhere in the map (any alignment, >= match
+//          of its pixels equal) stands up too (bushes and trees of a side-view picture)
+//  Cut-outs (stamps, cards, sprites) may set cut: "outline" | "enclosed" | "dome" | "rect" | "ellipse" (see
+//          field3d.js cutOut), only / drop / add (map rectangles), bg (map points of the ground colours); with a cut
+//          they stand on their lowest opaque row
+//  solids: low objects with their exact outline as prisms (planters, fountain basins): the cut-out of x0..x1 x
+//          y0..y1, its bottom h rows the front wall; on: index of the solid it stands on (fountain tiers)
+//  flowers: [{on: solid}] the flowers on a solid's top stand up and sway; flowerTiles: [[x, y]] one cell with a
+//          flower painted on the ground: every copy of that tile does the same
+//  fountains: {on: solid, pool: [x0, y0, x1, y1], jet, spread}: a water jet from the middle of the pool (the top of
+//          that solid; the game animates the water tiles themselves) with rings spreading on it
+//  walls: false (no collision-grid boxes), patch: "row" (the floor under cut-outs is filled from its row),
+//  backdrop: {y1, z, extend, side, tile} (side-view maps: rows 0..y1 stand up at z as a sky backdrop, the ground
+//          behind it and around the map is the ground tile at `tile`), clear: "sky" (the view's background colour)
 export const FIELD_OBJECTS = {
  "19": {
-  "stamps": [
-   { "x": 88, "y": 32, "w": 48, "h": 96 },
-   { "x": 384, "y": 40, "w": 24, "h": 48 }
+  "walls": false,
+  "patch": "row",
+  "clear": "sky",
+  "backdrop": {"y1": 64, "z": 24, "extend": 220, "side": 512, "tile": [96, 64]},
+  "blocks": [
+   {"x0": 200, "y0": 32, "x1": 260, "y1": 72, "fold": 47, "back": 44, "key": true, "keyRect": [144, 32, 260, 80]},
+   {"x0": 144, "y0": 32, "x1": 209, "y1": 80, "fold": 64, "back": 44, "key": true, "keyRect": [144, 32, 260, 80], "gable": {"ax": 176, "ay": 32, "ey": 64, "roof": [222, 34, 234, 46]}}
+  ],
+  "sprites": [
+   {"x": 88, "y": 32, "w": 48, "h": 92, "cut": "outline", "only": [[88, 32, 136, 94], [100, 94, 124, 124]], "match": 0.9},
+   {"x": 384, "y": 40, "w": 24, "h": 48, "cut": "outline", "only": [[384, 40, 408, 70], [391, 70, 401, 88]], "match": 0.9},
+   {"x": 32, "y": 48, "w": 16, "h": 32, "cut": "outline", "match": 0.9},
+   {"x": 16, "y": 96, "w": 16, "h": 16, "cut": "dome", "match": 0.9},
+   {"x": 224, "y": 72, "w": 8, "h": 8, "cut": "dome", "match": 0.9}
   ],
   "cards": [
-   { "x0": 0, "y0": 0, "x1": 512, "y1": 64 },
-   { "x0": 144, "y0": 32, "x1": 260, "y1": 80 },
-   { "x0": 232, "y0": 80, "x1": 256, "y1": 96 },
-   { "x0": 70, "y0": 78, "x1": 87, "y1": 94 },
-   { "x0": 265, "y0": 75, "x1": 282, "y1": 94 },
-   { "x0": 408, "y0": 75, "x1": 426, "y1": 94 },
-   { "x0": 447, "y0": 103, "x1": 464, "y1": 120 }
+   {"x0": 68, "y0": 74, "x1": 90, "y1": 96, "cut": "enclosed", "add": [[79, 88, 81, 95]], "bg": [[84, 92]], "drop": [[82, 87, 90, 96]]},
+   {"x0": 262, "y0": 73, "x1": 285, "y1": 96, "cut": "enclosed", "add": [[272, 88, 274, 95]], "bg": [[262, 74]], "drop": [[262, 88, 270, 96]]},
+   {"x0": 406, "y0": 73, "x1": 429, "y1": 96, "cut": "enclosed", "bg": [[428, 74]], "drop": [[417, 87, 429, 96]]},
+   {"x0": 445, "y0": 101, "x1": 467, "y1": 123, "cut": "outline", "bg": [[442, 100], [446, 119]], "only": [[448, 103, 466, 112], [453, 112, 459, 121]]},
+   {"x0": 230, "y0": 78, "x1": 259, "y1": 98, "cut": "outline"}
   ]
  },
  "26": {
@@ -93,7 +118,15 @@ export const FIELD_OBJECTS = {
     "x1": 224,
     "y1": 416
    }
-  ]
+  ],
+  "solids": [
+   { "x0": 32, "y0": 111, "x1": 80, "y1": 128, "h": 7, "cut": "hull" },
+   { "x0": 80, "y0": 111, "x1": 128, "y1": 128, "h": 7, "cut": "hull" },
+   { "x0": 256, "y0": 111, "x1": 304, "y1": 128, "h": 7, "cut": "hull" },
+   { "x0": 304, "y0": 111, "x1": 352, "y1": 128, "h": 7, "cut": "hull" }
+  ],
+  "flowers": [ { "on": 0 }, { "on": 1 }, { "on": 2 }, { "on": 3 } ],
+  "flowerTiles": [ [40, 136], [56, 144] ]
  },
  "17": {
   "blocks": [
@@ -658,7 +691,17 @@ export const FIELD_OBJECTS = {
     "x1": 512,
     "y1": 400
    }
-  ]
+  ],
+  "solids": [
+   { "x0": 320, "y0": 256, "x1": 352, "y1": 288, "h": 6 },
+   { "x0": 416, "y0": 256, "x1": 448, "y1": 288, "h": 6 },
+   { "x0": 320, "y0": 320, "x1": 352, "y1": 352, "h": 6 },
+   { "x0": 416, "y0": 320, "x1": 448, "y1": 352, "h": 6 },
+   { "x0": 352, "y0": 280, "x1": 416, "y1": 328, "h": 7 },
+   { "x0": 367, "y0": 287, "x1": 401, "y1": 313, "h": 5, "cut": "ellipse", "on": 4 }
+  ],
+  "flowers": [ { "on": 0 }, { "on": 1 }, { "on": 2 }, { "on": 3 } ],
+  "fountains": [ { "on": 5, "pool": [369, 291, 399, 310], "jet": 18, "spread": 10 } ]
  },
  "22": {
   "blocks": [
@@ -1557,7 +1600,18 @@ export const FIELD_OBJECTS = {
     "x1": 192,
     "y1": 344
    }
-  ]
+  ],
+  "solids": [
+   { "x0": 32, "y0": 288, "x1": 96, "y1": 336, "h": 7 },
+   { "x0": 47, "y0": 295, "x1": 81, "y1": 321, "h": 5, "cut": "ellipse", "on": 0 },
+   { "x0": 192, "y0": 288, "x1": 256, "y1": 336, "h": 7 },
+   { "x0": 207, "y0": 295, "x1": 241, "y1": 321, "h": 5, "cut": "ellipse", "on": 2 }
+  ],
+  "fountains": [
+   { "on": 1, "pool": [49, 299, 79, 318], "jet": 18, "spread": 10 },
+   { "on": 3, "pool": [209, 299, 239, 318], "jet": 18, "spread": 10 }
+  ],
+  "flowerTiles": [ [16, 112] ]
  },
  "29": {
   "blocks": [

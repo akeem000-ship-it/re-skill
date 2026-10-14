@@ -98,7 +98,7 @@ export function* showRankingBoard(P, b, c, d) {
   if (mode === MODE_WON) sound(P, BGM_ISLAND_OPEN_WIN);
   else if (mode === MODE_LOST) sound(P, BGM_ISLAND_OPEN_LOSE);
   home(P, HOME.DisableLCDSafely);
-  buildRankingBoardScreen(P);
+  yield* buildRankingBoardScreen(P);
   enableLCD(P);
   yield* fadeIn(P, 4);
   P.wramBank(WRAM_SCREEN);
@@ -113,7 +113,7 @@ export function* showRankingBoard(P, b, c, d) {
 }
 // BuildRankingBoardScreen (1B:4EF2): the bracket (singles or doubles) with its names and highlighted rows, the
 // markers at their places, the icons and palettes, the marker task (and in mode 2 the cursor's)
-export function buildRankingBoardScreen(P) {
+export function* buildRankingBoardScreen(P) {
   resetScrollAndCamera(P);
   far(P, BANK_BOOT, () => loadMenuFontGfx(P));
   rom(P, FAR.PrepareGlyphBuffer);
@@ -126,8 +126,8 @@ export function buildRankingBoardScreen(P) {
   const two = rd(P, "rankingBoardDoubles");
   far(P, BANK_MENU_LIB, () => loadScreenAssetRecord(P, two ? SCREENASSET_TournamentBracketDoubles : SCREENASSET_TournamentBracketSingles));
   P.wramBank(WRAM_SCREEN);
-  if (two) { drawDoublesRankingNames(P); highlightDoublesRankingRows(P); }
-  else { drawSinglesRankingNames(P); highlightSinglesRankingRows(P); }
+  if (two) { yield* drawDoublesRankingNames(P); highlightDoublesRankingRows(P); }
+  else { yield* drawSinglesRankingNames(P); highlightSinglesRankingRows(P); }
   loadRankingBoardTiles(P);
   loadPaletteShadow(P, RankingBoardScreenPalettes, 8, 6);
   registerFrameTask(P, 1, DrawRankingMarkersTask);
@@ -144,7 +144,7 @@ export function loadRankingBoardTiles(P) {
     r = queueVRAMCopy(P, wDecompBuffer, vTiles0 + 0x10 * i * TILE_SIZE + VRAM_BANK1, 16);
   });
   P.wramBank(bank);
-  return { ...r, a: bank };
+  return { ...r, a: bank, f: undefined };                           // (pop af: the flags as at the call)
 }
 // DispatchRankingBoardAnim (1B:4FF1): unless silent or lost, the animation of the round (row): singles shown /
 // won, doubles shown / won (RankingBoardAnimHandlers1-4_1b by row)
@@ -236,7 +236,7 @@ export const HOOKS = [
   [BANK, 0x4E58, hook((P, c) => { loadIndexedPaletteThunk(P, c.a, c.d); })],
   [BANK, 0x4E5C, hook((P, c) => decompressCharMugshot(P, c.a, c.de))],
   [BANK, 0x4E81, hookGen((P, c) => showRankingBoard(P, c.b, c.c, c.d))],
-  [BANK, 0x4EF2, hook(P => { buildRankingBoardScreen(P); })],
+  [BANK, 0x4EF2, hookGen(function* (P) { yield* buildRankingBoardScreen(P); })],
   [BANK, 0x4FA6, hook(P => loadRankingBoardTiles(P))],
   [BANK, 0x4FF1, hookGen(P => dispatchRankingBoardAnim(P))],
   [BANK, 0x504E, () => {}],                                                                // RankingBoardAnimNop_1b

@@ -57,7 +57,7 @@ export function applyClassProgressFlags(P) {
 // the reward flag of the match just played: its list's entry (wCurrentMinigameStoryMatch: list, number) at
 // GetRewardTableIndex
 function rewardFlagId(P) {
-  const list = romWord(P, ix(RewardFlagListPtrs_1e, P.V.currentMinigameStoryMatch * 2));
+  const list = romWord(P, ix(RewardFlagListPtrs_1e, P.bus.u8(P.A.currentMinigameStoryMatch) * 2));
   return romWord(P, ix(list, getRewardTableIndex(P).a * 2));
 }
 // SetRewardGameFlag (1E:6CAA): the match's reward flag set. Registers kept.
@@ -70,7 +70,7 @@ export function testRewardGameFlag(P) {
 // GetRewardTableIndex (1E:6CF6): the match's number; for the training list's machine and wall high-score drills
 // ($1A, $1B) two further on once their master level is cleared
 export function getRewardTableIndex(P) {
-  const list = P.V.currentMinigameStoryMatch, a = u8(P, P.A.currentMinigameStoryMatch + 1);
+  const list = P.bus.u8(P.A.currentMinigameStoryMatch), a = u8(P, P.A.currentMinigameStoryMatch + 1);
   if (list !== MATCHLIST_TRAINING || a < MINIGAME_TENNIS_MACHINE_HIGH_SCORE) return { a };
   const master = a === MINIGAME_TENNIS_MACHINE_HIGH_SCORE ? FLAG.CLEARED_MACHINE_MASTER : FLAG.CLEARED_WALL_MASTER;
   return { a: testFlag(P, master) ? (a + 2) & 0xFF : a };
@@ -148,7 +148,7 @@ export function* showIslandOpenRankingBoard(P) {
 // SetupRankingBoardArgs (1E:6FBF): b = doubles (the match list's bit 0), c = the round's row (from match $13 on),
 // d = 1 won / 2 lost
 export function setupRankingBoardArgs(P) {
-  const b = P.V.currentMinigameStoryMatch & 0x01, round = (u8(P, P.A.currentMinigameStoryMatch + 1) - 0x13) & 0xFF;
+  const b = P.bus.u8(P.A.currentMinigameStoryMatch) & 0x01, round = (u8(P, P.A.currentMinigameStoryMatch + 1) - 0x13) & 0xFF;
   const c = b ? (round + 3) & 0x03 : (round + 4) & 0x07;
   return { b, c, d: P.V.matchWinLoseFlag === WINLOSE_WIN ? 1 : 2 };
 }

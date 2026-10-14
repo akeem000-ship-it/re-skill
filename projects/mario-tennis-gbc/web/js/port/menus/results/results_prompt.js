@@ -6,7 +6,7 @@
 // third_party/mario-tennis-gbc-disasm); names and addresses are its own. Maps and tables are read from the ROM.
 // Covered by the lockstep on out/engine/exh1.mtrec, rec1.mtrec and the out/port/xr_* recordings.
 import {
-  FZ, rd, wr, u8, w8, ix, far, rom, FAR, hook, hookGen, testFlag, sound, advanceFrame, queueVRAMCopy, queueSprite,
+  FZ, FN, FC, rd, wr, u8, w8, ix, far, rom, FAR, hook, hookGen, testFlag, sound, advanceFrame, queueVRAMCopy, queueSprite,
   formatDecimalNumberUnsigned, romByte, regs8, BANK_EXP, BANK_RANKING, WRAM_STAGING, WRAM_COURT_PLANES, WRAM_SCREEN,
   WRAM_SCENE, WRAM_ACTORS, WRAM_CHAR0, WRAM_CHAR2, TILE_SIZE, VRAM_BANK1, vTiles0, vBGMap0, wDecompBuffer, wShadowTilemap,
   wScreenAttrmap, wTextBuffer, OAM_BANK1, PADF_A, PADF_B, PADF_UP, PADF_DOWN, SFX_MENU_MOVE, SFX_MENU_SELECT,
@@ -70,15 +70,16 @@ export function fill7Bytes(P, hl, a) {
 // CopyTilesAndAttrsRun (1E:4962): c cells: the tile at hl and the attribute $C8 bytes after it (WRAM 1) to de in
 // WRAM 3 and WRAM 2
 export function copyTilesAndAttrsRun(P, hl, de, c) {
-  let b = 0;
+  let b = 0, carry = 0;
   for (let n = c || 0x100; n > 0; n--) {
     P.wramBank(WRAM_STAGING); b = P.bus.u8(hl);
     P.wramBank(WRAM_SCREEN); P.bus.w8(de, b);
     P.wramBank(WRAM_STAGING); b = P.bus.u8((hl + PANEL_ATTRS_AT) & 0xFFFF);
+    carry = (hl & 0xFF) + PANEL_ATTRS_AT > 0xFF ? FC : 0;
     P.wramBank(WRAM_COURT_PLANES); P.bus.w8(de, b);
     hl = (hl + 1) & 0xFFFF; de = (de + 1) & 0xFFFF;
   }
-  return { a: b, b, c: 0, f: FZ, hl, de };
+  return { a: b, b, c: 0, f: FZ | FN | carry, hl, de };          // (`dec c`; C from the last `add l`)
 }
 // InitResultsScreenCharacters (1E:498F): this side's character (struct bank 4, 5 for the link's second player: the
 // story character's overworld sprite in story mode) celebrating, OBJ palette 7, tiles at $8000 (bank 1); with the
@@ -199,11 +200,11 @@ export function refreshContinuePromptText(P) {
   return {};
 }
 // ClearContinuePromptRows (1E:4C15): the prompt window's top edge and three rows blanked (WRAM 3, left mapped)
-export function clearContinuePromptRows(P) {
+export function clearContinuePromptRows(P, f = 0) {
   P.wramBank(WRAM_SCREEN);
   fillMemoryC(P, cell(wShadowTilemap, 0, 1), 0x03, 0x12);
   for (let row = 1; row <= 3; row++) fillMemoryC(P, cell(wShadowTilemap, row, 1), BLANK, 0x12);
-  return { a: BLANK, hl: cell(wShadowTilemap, 3, 19), c: 0, f: FZ };
+  return { a: BLANK, hl: cell(wShadowTilemap, 3, 19), c: 0, f: FZ | FN | (f & FC) };
 }
 
 export const HOOKS = [
@@ -219,5 +220,5 @@ export const HOOKS = [
   [BANK, 0x4B2C, hookGen(P => runContinuePrompt(P))],
   [BANK, 0x4B46, hook(P => drawContinuePromptCursor(P))],
   [BANK, 0x4BCA, hook(P => { refreshContinuePromptText(P); })],
-  [BANK, 0x4C15, hook(P => clearContinuePromptRows(P))],
+  [BANK, 0x4C15, hook((P, c) => clearContinuePromptRows(P, c.f))],
 ];

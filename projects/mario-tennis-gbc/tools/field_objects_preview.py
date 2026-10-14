@@ -5,7 +5,8 @@
 Draws the RPG map (gfx/maps/map_NN.png) with an optional 8-px grid (yellow lines every 64 px, labels every 32)
 and the annotations: blocks (orange, cyan line = fold between roof and front wall), stamps (magenta: the
 example solid, every matched copy outlined; matching uses the same rule as the game view: >= 80% of the
-tile indices + attributes equal) and cards (green). Annotations come from --json (a file with
+tile indices + attributes equal), cards (green), sprite examples (white outline) and solids (blue, cyan = top of
+the front wall). Annotations come from --json (a file with
 {"blocks":[...],"stamps":[...],"cards":[...]}) or else from web/js/field_objects.js for that map.
 Prints the stamp match counts."""
 import sys, os, json, re
@@ -47,6 +48,11 @@ def main():
         d.rectangle((st["x"], st["y"], st["x"] + st["w"] - 1, st["y"] + st["h"] - 1), fill=(255, 0, 255, 90))
     for c in objs.get("cards", []):
         d.rectangle((c["x0"], c["y0"], c["x1"] - 1, c["y1"] - 1), fill=(0, 255, 0, 60), outline=(0, 255, 0, 255))
+    for sp in objs.get("sprites", []):   # pixel-matched examples (copies are found by the 3D view, not drawn here)
+        d.rectangle((sp["x"], sp["y"], sp["x"] + sp["w"] - 1, sp["y"] + sp["h"] - 1), fill=(255, 0, 255, 60), outline=(255, 255, 255, 255))
+    for so in objs.get("solids", []):    # solids: blue, the line where the front wall (bottom h rows) begins
+        d.rectangle((so["x0"], so["y0"], so["x1"] - 1, so["y1"] - 1), fill=(0, 80, 255, 60), outline=(0, 80, 255, 255))
+        d.line((so["x0"], so["y1"] - so["h"], so["x1"] - 1, so["y1"] - so["h"]), fill=(0, 255, 255, 255))
     im = Image.alpha_composite(img, ov)
     box = tuple(int(v) for v in opt("--crop", f"0,0,{im.width},{im.height}").split(","))
     im = im.crop(box).resize(((box[2] - box[0]) * scale, (box[3] - box[1]) * scale), Image.NEAREST)

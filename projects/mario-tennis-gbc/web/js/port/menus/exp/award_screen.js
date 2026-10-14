@@ -7,7 +7,7 @@
 // the ROM.
 // Covered by the lockstep on out/engine/rec2.mtrec and the out/port/xr_* recordings.
 import {
-  FZ, rd, wr, u8, w8, ix, far, rom, home, HOME, FAR, hook, hookGen, romWord, romByte, testFlag, advanceFrame,
+  FZ, FN, FC, rd, wr, u8, w8, ix, far, rom, romWait, home, HOME, FAR, hook, hookGen, romWord, romByte, testFlag, advanceFrame,
   waitFrames, fadeIn, fadeOut, registerFrameTask, unregisterFrameTask, queueVRAMCopy, queueSprite,
   formatDecimalNumberUnsigned, resetScrollAndCamera, BANK_EXP, BANK_BOOT, BANK_CHARS, WRAM_STAGING, WRAM_COURT_PLANES,
   WRAM_SCREEN, WRAM_SCENE, WRAM_ACTORS, WRAM_CHAR0, TILE_SIZE, TILEMAP_WIDTH, SCREEN_HEIGHT, VRAM_BANK1, vTiles0, vTiles1,
@@ -54,7 +54,7 @@ export function* showExpAwardScreen(P) {
   clearSpriteQueue(P);
   rom(P, FAR.InitActorEngine);
   initExpAwardScreenState(P);
-  buildExpAwardScreenTilemap(P);
+  yield* buildExpAwardScreenTilemap(P);
   initResultsScreenCharacters(P);
   enableLCD(P);
   yield* advanceFrame(P);
@@ -79,14 +79,14 @@ export function initExpAwardScreenState(P) {
   return { a: 1, hl };
 }
 // FillMemoryD (1E:54F0): d bytes of a from hl
-export function fillMemoryD(P, hl, a, d) {
+export function fillMemoryD(P, hl, a, d, f = 0) {
   for (let n = d || 0x100; n > 0; n--) { P.bus.w8(hl, a); hl = (hl + 1) & 0xFFFF; }
-  return { hl, d: 0, f: FZ };
+  return { hl, d: 0, f: FZ | FN | (f & FC) };                        // (`dec d`: C kept)
 }
 // BuildExpAwardScreenTilemap (1E:54F5): graphics, panels, both maps queued (18 rows)
-export function buildExpAwardScreenTilemap(P) {
+export function* buildExpAwardScreenTilemap(P) {
   loadExpAwardScreenGraphics(P);
-  drawExpAwardScreenPanels(P);
+  yield* drawExpAwardScreenPanels(P);
   P.wramBank(WRAM_SCREEN);
   queueVRAMCopy(P, wShadowTilemap, vBGMap0, SCREEN_HEIGHT * TILEMAP_WIDTH / 16);
   P.wramBank(WRAM_COURT_PLANES);
@@ -129,18 +129,18 @@ export function copyWram1To(P, bank, hl, bc) {
 }
 // DrawExpAwardScreenPanels (1E:55E4): the message window with the first award's message, the total's panel, the
 // player's panel (doubles: both characters')
-export function drawExpAwardScreenPanels(P) {
+export function* drawExpAwardScreenPanels(P) {
   drawExpMessageWindow(P);
-  drawNextExpAwardMessage(P);
+  yield* drawNextExpAwardMessage(P);
   drawExpTotalPanel(P);
   if (!testFlag(P, FLAG.TEMP_RESULTS_SCREEN_OPEN)) return drawExpSinglesPlayerPanel(P);
   drawExpDoublesPlayerPanel(P);
   return drawExpDoublesPartnerPanel(P);
 }
 // a framed box: rows of [tile, count] runs from (row, col) (FillTilemapRun, attribute 0)
-function box(P, row, col, rows) {
+function box(P, row, col, rows, f = 0) {
   let r;
-  rows.forEach((runs, i) => { let hl = cell(wShadowTilemap, row + i, col); for (const [b, c] of runs) { r = fillTilemapRun(P, hl, b, c); hl = r.hl; } });
+  rows.forEach((runs, i) => { let hl = cell(wShadowTilemap, row + i, col); for (const [b, c] of runs) { r = fillTilemapRun(P, hl, b, c, f); hl = r.hl; } });
   return r;
 }
 const frame = (inner, rows) => [[[2, 1], [3, inner], [4, 1]], ...Array(rows).fill([[5, 1], [BLANK, inner], [6, 1]]), [[7, 1], [8, inner], [9, 1]]];
@@ -184,15 +184,15 @@ export function drawExpTotalPanel(P) {
   return fetchAndDrawDialogueText(P, Text_31_231, cell(wShadowTilemap, 15, 3), TEXT_ROW);
 }
 // DrawExpMessageWindow (1E:5896): the message window (20 x 5) at the top
-export function drawExpMessageWindow(P) { return box(P, 0, 0, frame(0x12, 3)); }
+export function drawExpMessageWindow(P, f = 0) { return box(P, 0, 0, frame(0x12, 3), f); }
 // FillTilemapRun (1E:5900): c cells of tile b (attribute 0) from hl. Leaves WRAM 2 mapped.
-export function fillTilemapRun(P, hl, b, c) {
+export function fillTilemapRun(P, hl, b, c, f = 0) {
   for (let n = c || 0x100; n > 0; n--) {
     P.wramBank(WRAM_SCREEN); P.bus.w8(hl, b);
     P.wramBank(WRAM_COURT_PLANES); P.bus.w8(hl, 0);
     hl = (hl + 1) & 0xFFFF;
   }
-  return { a: 0, c: 0, f: FZ, hl };
+  return { a: 0, c: 0, f: FZ | FN | (f & FC), hl };               // (`dec c`: C kept)
 }
 
 // ---- the sprites ----
@@ -229,11 +229,11 @@ export function updateExpScreenCharSprite(P, a) {
 // DrawNextExpAwardMessage (1E:59BB): the message of the next pending award from wExpAwardIndex on (those of 0 EXP
 // skipped): "You got EXP" (or "You got more EXP" once some is counted), the award's line (its text by award and
 // variant), the glyphs uploaded. Returns a = 1 and bc = the amount, or a = 0 when no award is left.
-export function drawNextExpAwardMessage(P) {
+export function* drawNextExpAwardMessage(P) {
   for (;;) {
     P.wramBank(WRAM_SCENE);
     const index = rd(P, "expAwardIndex");
-    if (index === AWARDS) { rom(P, FAR.UploadGlyphBuffer); return { a: 0, f: FZ }; }
+    if (index === AWARDS) { yield* romWait(P, FAR.UploadGlyphBuffer); return { a: 0, f: FZ }; }
     const amount = P.bus.u16(ix(P.A.pendingExpAwardAmounts, index * 2));
     if (!amount) { wr(P, "expAwardIndex", index + 1); continue; }   // .zero
     const variant = P.bus.u8(ix(P.A.pendingExpAwardVariants, index));
@@ -243,7 +243,7 @@ export function drawNextExpAwardMessage(P) {
     const first = P.bus.u16(P.A.expAwardRunningTotal) ? Text_31_200 : Text_31_199;
     drawProportionalTextLine(P, first, cell(wScreenAttrmap, 1, 2), TEXT_ROW);
     drawProportionalTextLine(P, text, cell(wScreenAttrmap, 3, 2), TEXT_ROW);
-    const r = rom(P, FAR.UploadGlyphBuffer, { bc: amount });
+    const r = yield* romWait(P, FAR.UploadGlyphBuffer, { bc: amount });
     return { a: 1, bc: r.bc };
   }
 }
@@ -265,20 +265,20 @@ export function drawExpTotalDigits(P) {
 export const HOOKS = [
   [BANK, 0x5438, hookGen(P => showExpAwardScreen(P))],
   [BANK, 0x54BB, hook(P => initExpAwardScreenState(P))],
-  [BANK, 0x54F0, hook((P, c) => fillMemoryD(P, c.hl, c.a, c.d))],
-  [BANK, 0x54F5, hook(P => { buildExpAwardScreenTilemap(P); })],
+  [BANK, 0x54F0, hook((P, c) => fillMemoryD(P, c.hl, c.a, c.d, c.f))],
+  [BANK, 0x54F5, hookGen(P => buildExpAwardScreenTilemap(P))],
   [BANK, 0x551E, hook(P => { loadExpAwardScreenGraphics(P); })],
   [BANK, 0x55BA, hook((P, c) => expScreenCopyToTilemap(P, c.hl, c.bc))],
   [BANK, 0x55CF, hook((P, c) => expScreenCopyToAttrmap(P, c.hl, c.bc))],
-  [BANK, 0x55E4, hook(P => { drawExpAwardScreenPanels(P); })],
+  [BANK, 0x55E4, hookGen(function* (P) { yield* drawExpAwardScreenPanels(P); })],
   [BANK, 0x55FD, hook(P => { drawExpSinglesPlayerPanel(P); })],
   [BANK, 0x5693, hook(P => { drawExpDoublesPlayerPanel(P); })],
   [BANK, 0x5758, hook(P => { drawExpDoublesPartnerPanel(P); })],
   [BANK, 0x5814, hook(P => { drawExpTotalPanel(P); })],
-  [BANK, 0x5896, hook(P => drawExpMessageWindow(P))],
-  [BANK, 0x5900, hook((P, c) => fillTilemapRun(P, c.hl, c.b, c.c))],
+  [BANK, 0x5896, hook((P, c) => drawExpMessageWindow(P, c.f))],
+  [BANK, 0x5900, hook((P, c) => fillTilemapRun(P, c.hl, c.b, c.c, c.f))],
   [BANK, 0x5914, hook(P => { drawExpScreenCharSprites(P); })],
   [BANK, 0x5954, hook((P, c) => updateExpScreenCharSprite(P, c.a))],
-  [BANK, 0x59BB, hook(P => drawNextExpAwardMessage(P))],
+  [BANK, 0x59BB, hookGen(P => drawNextExpAwardMessage(P))],
   [BANK, 0x5A4E, hook(P => { drawExpTotalDigits(P); })],
 ];

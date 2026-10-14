@@ -79,7 +79,7 @@ export function unusedBuildMatchResultTilemap(P) {
     hl = (hl + 5) & 0xFFFF;
     copy(P, src, de, width, 0x02);
   }
-  if (P.V.currentMinigameStoryMatch === MATCHLIST_DOUBLES) copy(P, 0xD3C7, 0xD200, 6, 2);
+  if (P.bus.u8(P.A.currentMinigameStoryMatch) === MATCHLIST_DOUBLES) copy(P, 0xD3C7, 0xD200, 6, 2);
   else copy(P, 0xD3C0, 0xD200, 7, 2);
   return {};
 }
