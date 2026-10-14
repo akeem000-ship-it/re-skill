@@ -194,5 +194,5 @@ export const HOOKS = [
   [BANK_MAIN_MENU, 0x6A7E, hook(P => drawSavedDataSourceGrid(P))],
   [BANK_MAIN_MENU, 0x6B0E, hook((P, c) => { fillSavedDataSourceCell(P, c.b, c.c); })],
   [BANK_MAIN_MENU, 0x6B4E, hook((P, c) => loadSavedDataSourceCellPalette(P, c.a))],
-  [BANK_MAIN_MENU, 0x6B83, hook(P => { drawSavedDataSourceCaption(P); })],
+  [BANK_MAIN_MENU, 0x6B83, hook((P, c) => drawSavedDataSourceCaption(P, c.f))],
 ];

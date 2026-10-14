@@ -172,5 +172,5 @@ export const HOOKS = [
   [BANK_MAIN_MENU, 0x6FFB, hook(P => drawEraseSavedDataGrid(P))],
   [BANK_MAIN_MENU, 0x708B, hook((P, c) => { fillEraseSavedDataCell(P, c.b, c.c); })],
   [BANK_MAIN_MENU, 0x70CB, hook((P, c) => loadEraseSavedDataCellPalette(P, c.a))],
-  [BANK_MAIN_MENU, 0x7100, hook(P => { drawEraseSavedDataCaption(P); })],
+  [BANK_MAIN_MENU, 0x7100, hook((P, c) => drawEraseSavedDataCaption(P, c.f))],
 ];

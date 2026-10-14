@@ -179,11 +179,11 @@ export const HOOKS = [
   [BANK_MAIN_MENU, 0x73BF, hook(P => drawN64RecordTypeGrid(P))],
   [BANK_MAIN_MENU, 0x7428, hook((P, c) => { fillN64RecordTypeCell(P, c.b, c.c); })],
   [BANK_MAIN_MENU, 0x745D, hook((P, c) => loadN64RecordTypeCellPalette(P, c.a))],
-  [BANK_MAIN_MENU, 0x749A, hook(P => { drawN64RecordTypeCaption(P); })],
+  [BANK_MAIN_MENU, 0x749A, hook((P, c) => drawN64RecordTypeCaption(P, c.f))],
   [BANK_MAIN_MENU, 0x74BF, hookGen(P => runN64TransferItemSelect(P))],
   [BANK_MAIN_MENU, 0x7552, hookGen(P => loadN64TransferItemGfx(P))],
   [BANK_MAIN_MENU, 0x760C, hook(P => drawN64TransferItemGrid(P))],
   [BANK_MAIN_MENU, 0x7680, hook((P, c) => loadN64TransferItemCellPalette(P, c.a))],
-  [BANK_MAIN_MENU, 0x76C5, hook(P => { drawN64TransferItemCaption(P); })],
+  [BANK_MAIN_MENU, 0x76C5, hook((P, c) => drawN64TransferItemCaption(P, c.f))],
   [BANK_MAIN_MENU, 0x76EA, hook((P, c) => n64TransferItemCursorSpriteTask(P, c.sp - 2))],
 ];
