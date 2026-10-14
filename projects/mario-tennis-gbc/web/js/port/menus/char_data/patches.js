@@ -3,6 +3,8 @@
 // templates. Names and addresses from the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/
 // mario-tennis-gbc-disasm: src/engine/menus/char_data/confirm_1d.asm and page_patches_1d.asm); the data stays in
 // the ROM. A module of its own so the bank's other modules can share it without an import cycle at load time.
+// a story character record's fields (wStoryModeNameOfMainCharacter + 64 * slot)
+export const F = { MUGSHOT: 0x0B, PALETTE: 0x0C, LEVEL: 0x18, SKILLS: 0x20, EXP: 0x2C, STAT_LEVELS: 0x38 };
 export const PATCH = {
   DrillDisplayData_1d: 0x5C25, StatPageTilemapPatch0: 0x5C2E,
   CharDataSummaryPageTilemapPatch0: 0x5C33, CharDataSummaryPageTilemapPatch1: 0x5C68,

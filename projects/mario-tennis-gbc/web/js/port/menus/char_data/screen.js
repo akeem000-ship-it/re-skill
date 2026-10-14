@@ -31,6 +31,7 @@ import { clearSpriteQueue } from "../../home/fade.js";
 import { decompressData } from "../../home/decompress.js";
 import { loadPaletteShadow } from "../../home/palettes.js";
 import { charDataScreenBuildStats, charDataScreenLoadGfx, drawStatChangeArrows } from "./stat_arrows.js";
+import { F } from "./patches.js";
 
 export const BANK = 0x1C;
 const BANK_STAT_ARROWS = 0x1A;
@@ -73,7 +74,7 @@ const SCREEN_MAP = 0xD000, SCREEN_BACKUP = 0xD430, SCREEN_BLOCKS = SCREEN_HEIGHT
 const PAGE_NONE = 4, LEVEL_CAP = 99;
 const NUM_STATS = 11;
 // story record fields (wStoryModeNameOfMainCharacter + 64 * slot)
-export const F = { MUGSHOT: 0x0B, PALETTE: 0x0C, LEVEL: 0x18, SKILLS: 0x20, EXP: 0x2C, STAT_LEVELS: 0x38 };
+export { F };
 const slotField = (P, off) => storyField(rd(P, "storyCharacterSlot"), off);
 const rlca = a => ((a << 1) | (a >> 7)) & 0xFF;
 const word = (P, addr) => P.rom.u16(BANK, addr);

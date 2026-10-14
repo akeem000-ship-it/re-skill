@@ -17,10 +17,10 @@ import { clearSpriteQueue } from "../../home/fade.js";
 import { pop as popStack } from "../../home/cpu.js";
 import { mulHLByDESigned, divAHLByDE } from "../../home/math.js";
 import { charDataScreenLoadScreen, loadCharDataScreenTilemaps, startCharDataScreenAnimTask,
-  stopCharDataScreenAnimTask, F } from "./screen.js";
+  stopCharDataScreenAnimTask } from "./screen.js";
 import { initDrillWorkRam, buildCharDataScreenPages, CharDataValuesSyncTask } from "./pages.js";
 import { applyTilemapPatchList, buildCharStatDisplay } from "./page_slides.js";
-import { PATCH } from "./patches.js";
+import { PATCH, F } from "./patches.js";
 
 export const BANK = 0x1D;
 const BANK_SCREEN = 0x1C;

@@ -16,6 +16,7 @@ import { enableLCD } from "../../home/system.js";
 import { decompressData } from "../../home/decompress.js";
 import { loadPaletteShadow } from "../../home/palettes.js";
 import { loadCharDataScreenTilemaps, startCharDataScreenAnimTask, stopCharDataScreenAnimTask } from "./screen.js";
+import { applyTilemapPatchList } from "./page_slides.js";
 import { initCharDataScreenVideo, drawCharDataConfirmPrompt, startCharDataValuesSyncTask,
   stopCharDataValuesSyncTask } from "./confirm.js";
 
@@ -149,27 +150,10 @@ function copyBank1To(P, bank, hl, bc) {
     hl = (hl + 1) & 0xFFFF; bc = (bc - 1) & 0xFFFF;
   } while (bc);
 }
-// ApplyTilemapPatchList_1a (1A:7A67): for each entry [offset (big-endian word), source offset, count] up to $FF:
-// count tiles (WRAM 3) and attributes (WRAM 2) from bc + source offset to the screen map at wCharDataScreenCell +
-// offset. The source pointer goes through wCharDataNumberBuffer (WRAM 6).
-export function applyTilemapPatchList1a(P, hl, bc) {
-  while (u8(P, hl) !== 0xFF) {
-    let de = (wCharDataScreenCell + (u8(P, hl) << 8 | u8(P, hl + 1))) & 0xFFFF;
-    let src = idx(bc, u8(P, hl + 2));
-    P.wramBank(WRAM_SCENE);
-    wr(P, "charDataNumberBuffer", src); wr(P, "charDataNumberBuffer", src >> 8, 1);
-    let c = u8(P, hl + 3);
-    src = rd(P, "charDataNumberBuffer") | rd(P, "charDataNumberBuffer", 1) << 8;
-    do {
-      P.wramBank(WRAM_SCREEN);
-      w8(P, de, u8(P, src));
-      P.wramBank(WRAM_COURT_PLANES);
-      w8(P, de, u8(P, src));
-      src = (src + 1) & 0xFFFF; de = (de + 1) & 0xFFFF; c = (c - 1) & 0xFF;
-    } while (c);
-    hl = (hl + 4) & 0xFFFF;
-  }
-}
+// ApplyTilemapPatchList_1a (1A:7A67): instruction-identical to bank $1D's ApplyTilemapPatchList: for each entry
+// [offset (big-endian word), source offset, count] up to $FF, count tiles (WRAM 3) and attributes (WRAM 2) from bc +
+// source offset to the screen map at wCharDataScreenCell + offset
+export const applyTilemapPatchList1a = (P, hl, bc) => applyTilemapPatchList(P, hl, bc);
 
 // ---- the racket's arrows ----
 // CharDataScreen_BuildStats (1A:7AB5), on the main character's screen (slot 0) only: wCharDataRacketDeltas, what
