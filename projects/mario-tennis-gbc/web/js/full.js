@@ -176,7 +176,8 @@ if ($("engine")) {
 }
 const PORT_VERIFIED = ["home/index", "audio/index", "save/index", "cutscenes/index", "story/index", "minigames/index",
   "text/index", "menus/common/cursorbox", "menus/common/cursors", "menus/common/menu_lib", "menus/common/prompts", "menus/common/tilemaps", "menus/common/widgets", "menus/main_menu/boot", "menus/main_menu/erase", "menus/main_menu/main_menu", "menus/main_menu/match_format", "menus/main_menu/n64", "menus/main_menu/n64data", "menus/main_menu/n64transfer", "menus/main_menu/saved",
-  "menus/char_select/index", "menus/char_data/index"];
+  "menus/char_select/index", "menus/char_data/index",
+  "menus/pause/index", "menus/briefing/index", "menus/court_select/index", "menus/scenes/index"];
 async function makePort(bytes) {
   const { GamePort } = await import("./port/port.js"), { entry } = await import("./port/entry.js");
   const want = portMode() === "portall" ? "all" : q.get("port");
