@@ -24,25 +24,25 @@ function portExt(P) {
     *showMessageWindow(E, text, cell, size) { yield* P.runRom(6, 0x44FE, { ...hl(text), ...de(cell), ...bc(size) }); },   // ShowMessageWindow
     *runLinkMatchFrame() { yield* P.runRom(7, 0x4762); },                // RunLinkMatchFrame
     *showMinigamePointResult(E, d) { yield* P.runRom(0x0D, 0x4412, { d }); },   // ShowMinigamePointResult
-    // the HUD objects and banners (bank $09, obj.js)
+    // the HUD objects and banners (bank $09, obj.js: on the CPU's registers with the arguments given)
     loadServeGfx() { far(P, 9, 0x6C40); },                               // LoadServeGfx
-    updateScorePanelDisplay() { obj.updateScorePanelDisplay(P); },
-    updatePointDigitsDisplay() { obj.updatePointDigitsDisplay(P); },
-    showCourtBanner(E, id) { obj.showCourtBanner(P, id); },
-    hideCourtBanner() { obj.hideCourtBanner(P); },
-    setObjPosition(E, slot, pos) { obj.setObjPosition(P, slot, pos); },
-    spawnGameScoreDisplayObjs() { obj.spawnGameScoreDisplayObjs(P); },
-    dismissGameScoreDisplayObjs() { obj.dismissGameScoreDisplayObjs(P); },
-    spawnWinLoseResultObj(E, a) { obj.spawnWinLoseResultObj(P, a); },
-    dismissWinLoseResultObj() { obj.dismissWinLoseResultObj(P); },
-    spawnGameResultObj() { obj.spawnGameResultObj(P); },
-    dismissGameResultObj() { obj.dismissGameResultObj(P); },
+    updateScorePanelDisplay() { obj.run(P, obj.updateScorePanelDisplay); },
+    updatePointDigitsDisplay() { obj.run(P, obj.updatePointDigitsDisplay); },
+    showCourtBanner(E, id) { obj.run(P, obj.showCourtBanner, { a: id }); },
+    hideCourtBanner() { obj.run(P, obj.hideCourtBanner); },
+    setObjPosition(E, slot, pos) { obj.run(P, obj.setObjPosition, { ...bc(slot), ...de(pos) }); },
+    spawnGameScoreDisplayObjs() { obj.run(P, obj.spawnGameScoreDisplayObjs); },
+    dismissGameScoreDisplayObjs() { obj.run(P, obj.dismissGameScoreDisplayObjs); },
+    spawnWinLoseResultObj(E, a) { obj.run(P, obj.spawnWinLoseResultObj, { a }); },
+    dismissWinLoseResultObj() { obj.run(P, obj.dismissWinLoseResultObj); },
+    spawnGameResultObj() { obj.run(P, obj.spawnGameResultObj); },
+    dismissGameResultObj() { obj.run(P, obj.dismissGameResultObj); },
     loadPlayer1ScoreDigitGfx(E, a, b) { far(P, 9, 0x612A, { a, b }); },  // LoadPlayer1ScoreDigitGfx
     loadPlayer2ScoreDigitGfx(E, a, b) { far(P, 9, 0x6139, { a, b }); },  // LoadPlayer2ScoreDigitGfx
-    spawnServeIndicatorObjs() { obj.spawnServeIndicatorObjs(P); },
-    dismissServeIndicatorObjs() { obj.dismissServeIndicatorObjs(P); },
-    loadOnCourtCharacterGfx() { obj.loadOnCourtCharacterGfx(P); },
-    updateAllObjSprites() { obj.updateAllObjSprites(P); },
+    spawnServeIndicatorObjs() { obj.run(P, obj.spawnServeIndicatorObjs); },
+    dismissServeIndicatorObjs() { obj.run(P, obj.dismissServeIndicatorObjs); },
+    loadOnCourtCharacterGfx() { obj.run(P, obj.loadOnCourtCharacterGfx); },
+    updateAllObjSprites() { obj.run(P, obj.updateAllObjSprites); },
     // the court picture (court_08)
     refreshCourtScoreboard() { far(P, 8, 0x5E93); },                     // RefreshCourtScoreboard
     uploadCourtScoreboardRows() { draw.uploadCourtScoreboardRows(P); },

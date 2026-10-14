@@ -63,7 +63,6 @@ const BALL_VELOCITY_X_FRAC = 0xC420, BALL_VELOCITY_DEPTH_FRAC = 0xC423;
 const SHOTTYPE_SMASH = 0x09, SHOTTYPE_LOB = 0x0A, SHOTTYPE_DROP = 0x0B;
 const POINTOUTCOME_FAULT = 1, POINTOUTCOME_DOUBLE_FAULT = 2, POINTOUTCOME_LET = 3, POINTOUTCOME_WINNER = 6;
 const POINTOUTCOME_BALL_HIT_PLAYER = 9;
-const OBJSLOT_X = 0x06;              // OBJSLOT_X: the slot's x, then y
 
 // the setters' `ld c, l / ld b, h ... ld a, c / ld [hl+], a / ld [hl], b`: bc = the hl given, a = its low byte,
 // hl at the second word's high byte
@@ -229,8 +228,6 @@ LEFTOVERS.push([8, 0x40AB, { post(P, out) {
 } }]);
 // 08:684A InitChar: SetCharPosAndTarget($03C0, 0) last, then a = 1
 LEFTOVERS.push([8, 0x684A, { post(P, out) { out.bc = 0x03C0; out.de = 0; out.hl = CHAR_POS_HEIGHT + 3; out.a = 1; out.f = FZ; } }]);
-// 09:45C4 SetObjPosition: hl at the slot's y; f from `add hl, bc` (Z as entered)
-LEFTOVERS.push([9, 0x45C4, { post(P, out, inp) { out.hl = (inp.bc + OBJSLOT_X + 1) & 0xFFFF; out.f = addHL(OBJSLOT_X, inp.bc, inp.f).f; } }]);
 // 07:5A43 LookupCharSpriteSet: push hl ... pop hl; the flags of the table index
 LEFTOVERS.push([7, 0x5A43, { post(P, out, inp) { out.f = hlIndexed(0x5A50, inp.a & 0x3F).f; } }]);
 

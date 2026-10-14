@@ -44,3 +44,27 @@ export function keepingRegs(hooks, leftovers = []) {
   const extra = new Map(leftovers.map(([b, a, x]) => [`${b}:${a}`, x]));
   return hooks.map(([b, a, fn]) => [b, a, keepRegs(fn, extra.get(`${b}:${a}`))]);
 }
+
+// A register file for the ported routines that keep the ROM's register flow: r.a ... r.l and the pairs r.bc, r.de,
+// r.hl, as the routine has them. A routine written on it reads its arguments from r and leaves r as the ROM routine
+// leaves the CPU; `threaded(fn)` makes a hook of it (the CPU's registers in, r's out).
+export class Regs {
+  constructor(src = {}) { for (const k of REGS) this[k] = (src[k] ?? 0) & (k === "f" ? 0xF0 : 0xFF); }
+  get bc() { return this.b << 8 | this.c; } set bc(v) { this.b = (v >> 8) & 0xFF; this.c = v & 0xFF; }
+  get de() { return this.d << 8 | this.e; } set de(v) { this.d = (v >> 8) & 0xFF; this.e = v & 0xFF; }
+  get hl() { return this.h << 8 | this.l; } set hl(v) { this.h = (v >> 8) & 0xFF; this.l = v & 0xFF; }
+}
+export const regsOf = cpu => new Regs(cpu);
+export const threaded = fn => (P, c) => { const r = new Regs(c); fn(P, r); for (const k of REGS) c[k] = r[k]; };
+// call a ROM routine (bank:addr; with romBank mapped for a bank-0 routine) with all of r, and take back what it leaves
+export function romCall(P, bank, addr, r, romBank = null) {
+  const regs = {};
+  for (const k of REGS) regs[k] = r[k];
+  if (romBank === null) P.callRom(bank, addr, regs);
+  else {
+    const m = P.mem, mapped = m.romBank, hBank = m.hram[0x15];
+    m.romBank = romBank; m.updateRom(); m.hram[0x15] = romBank;
+    try { P.callRom(bank, addr, regs); } finally { m.romBank = mapped; m.updateRom(); m.hram[0x15] = hBank; }
+  }
+  for (const k of REGS) r[k] = P.cpu[k];
+}

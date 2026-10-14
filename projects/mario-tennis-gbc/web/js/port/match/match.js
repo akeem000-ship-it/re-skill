@@ -93,11 +93,11 @@ export function initMatchScene(P) {
   P.wramBank(WRAM_ACTORS);
   ball.resetBallState(E, a => setBallTrailColor(E, a));
   chars.initAllChars(E);
-  obj.initAllObjSlots(P);
+  obj.run(P, obj.initAllObjSlots);
   draw.clearSpriteSlots(P);
   flow.assignCourtPositions(E);
   E.S.changeEndsPending = 0;
-  obj.updatePointDigitsDisplay(P);
+  obj.run(P, obj.updatePointDigitsDisplay);
   refreshCourtScoreboard(P);
   uploadCourtTilemap(P);
   uploadCourtAttrmap(P);
