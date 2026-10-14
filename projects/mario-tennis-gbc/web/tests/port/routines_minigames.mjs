@@ -197,7 +197,8 @@ export const ROUTINES = [
   M("KeepMinigameCameraFixed", B0D, 0x47BE),
   M("CheckMinigameStartBannerTrigger", B0D, 0x47C3, { prep: (mem, r) => { W(mem, R.outcome, r(2) ? 0 : r(10)); W(mem, R.rally, pick(r, [4, r(6)])); W(mem, R.bounce, r(3)); } }),
   M("FreezeMinigameOpponentOnReturn", B0D, 0x47E2, { prep: (mem, r) => W(mem, R.rally, pick(r, [3, r(6)])) }),
-  M("LaunchBall", B0D, 0x47FD, { when: inMatch, prep: (mem, r) => { W(mem, R.serveSpeed, pick(r, [r(26), r(256)])); W(mem, R.serveGroup, r(3)); } }),
+  // the speeds the game makes (0-$19): past them ExecuteShot can run away
+  M("LaunchBall", B0D, 0x47FD, { when: inMatch, prep: (mem, r) => { W(mem, R.serveSpeed, r(26)); W(mem, R.serveGroup, r(3)); } }),
   M("ApplyMinigameCharTargetFromTable", B0D, 0x48B6, { when: inMatch, prep: (mem, r) => W(mem, R.serveSlot, r(9)) }),
   M("GetMinigameCharCoordsEntry", B0D, 0x4926, { gen: r => ({ a: r(9) }), out: ["d", "e", "h", "l"] }),
   M("SnapCameraTo_0d", B0D, 0x493A),
