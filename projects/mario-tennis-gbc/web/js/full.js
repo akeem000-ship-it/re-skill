@@ -10,11 +10,12 @@ import { saveState, loadState } from "./gb/state.js";
 import { composeWide, WIDE_W, WIDE_H } from "./wide.js";
 import { mountStick } from "./stick.js";
 import { Recorder, maskOf, packRecording, bytesToBase64 } from "./recorder.js";
+import { HDText, FONTS, FONT_ORDER, HD } from "./hdtext.js";
 
 const $ = id => document.getElementById(id);
 const cv = $("screen"), g = cv.getContext("2d");
 const img = g.createImageData(160, 144);
-let voxel = null, view3d = false;
+let voxel = null, view3d = false, hd = null;
 let gb = null, keys = {}, paused = false, turbo = false, romHash = "";
 const SAVE_KEY = () => "mt-sram-" + romHash.slice(0, 12);
 const q = new URLSearchParams(location.search);
@@ -86,6 +87,7 @@ const onCourt = () => gb.mem.wram[0][0x32E] <= 15;   // wCurMapID: courts (the m
 let insetAt = 0;
 function draw(alpha = 1) {                 // alpha: fraction of the next game frame already elapsed (3D interpolation)
   const f = gb.ppu.frame;
+  if (hd && hd.update()) drawnFrame = -1;    // the text on screen (HD font) changed
   if (view3d && voxel) {
     if (gb.frames >= insetAt) {               // the touch HUD bar covers the top of the view: overlays go below it
       insetAt = gb.frames + 30; const hud = $("hud"), top = $("gl").getBoundingClientRect().top;
@@ -100,11 +102,19 @@ function draw(alpha = 1) {                 // alpha: fraction of the next game f
   if (drawnFrame === gb.frames) return;      // 2D: nothing new to show between game frames
   drawnFrame = gb.frames;
   if (aspect === "4:3" && onCourt()) {       // 4:3 on a court: 192 px wide composite with the real map on both sides
-    if (cv.width !== WIDE_W) { cv.width = WIDE_W; cv.height = WIDE_H; }
-    composeWide(gb, wideBuf, wideIdx); g.putImageData(wideImg, 0, 0); return;
+    composeWide(gb, wideBuf, wideIdx); present(wideImg, WIDE_W, WIDE_H, (WIDE_W - 160) / 2); return;
   }
-  if (cv.width !== 160) { cv.width = 160; cv.height = 144; }
-  new Uint32Array(img.data.buffer).set(f); g.putImageData(img, 0, 0);
+  new Uint32Array(img.data.buffer).set(f); present(img, 160, 144, 0);
+}
+// the frame on the 2D canvas; with an HD font, at HD x the size (pixels kept sharp) with the text drawn over it
+const small = document.createElement("canvas"), sg = small.getContext("2d");
+function present(image, w, h, padX) {
+  if (!hd || !hd.active) { if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; } g.putImageData(image, 0, 0); return; }
+  if (small.width !== w || small.height !== h) { small.width = w; small.height = h; }
+  sg.putImageData(image, 0, 0);
+  if (cv.width !== w * HD || cv.height !== h * HD) { cv.width = w * HD; cv.height = h * HD; }
+  g.imageSmoothingEnabled = false; g.drawImage(small, 0, 0, w * HD, h * HD);
+  g.imageSmoothingEnabled = true; g.drawImage(hd.canvas.bg, padX * HD, 0); g.drawImage(hd.canvas.win, padX * HD, 0);
 }
 // ---- screen shape: Fill (3D fills the screen, 2D keeps 10:9), 4:3 (3D letterboxed to 4:3; 2D courts widened
 // to 192 px, elsewhere pillarboxed), 10:9 (both as the Game Boy) ----
@@ -126,7 +136,7 @@ addEventListener("resize", () => applyAspect());
 let preset = q.get("cam") || stored("mt-cam") || "low"; if (!PRESETS[preset]) preset = "low";
 function setView3d(on, vox = false) {
   view3d = on; $("view3d").classList.toggle("on", on); $("view3d").textContent = on ? (vox ? "VOX" : "3D") : "3D";
-  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.freeCam = q.has("freecam"); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
+  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.hdText = hd; voxel.freeCam = q.has("freecam"); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
   if (voxel) voxel.voxelSprites = on && vox;
   $("gl").hidden = !view3d; cv.hidden = view3d; $("cam").hidden = !view3d;
   try { localStorage.setItem("mt-3d", on ? (vox ? "vox" : "3d") : "off"); } catch (e) { /* private mode */ }
@@ -184,7 +194,8 @@ async function loadRom(buf) {
   if (portMode() !== "rom") { port = await makePort(bytes); gb = port.gb; portError = null; }
   else gb = new GBC(bytes, { sampleRate: 44100, audio: true });
   drawnFrame = -1;
-  if (voxel) voxel.attach(gb, new Rom(gb.mem.rom));      // a ROM loaded after the 3D view was created
+  hd = new HDText(gb); hd.onload = () => { drawnFrame = -1; }; hd.setFont(font);
+  if (voxel) { voxel.attach(gb, new Rom(gb.mem.rom)); voxel.hdText = hd; }      // a ROM loaded after the 3D view was created
   // the statically translated game (tools/recomp.py -> gen/game.js) runs the traced code as native
   // functions; without it everything is interpreted (same results, see web/tests/recomp_vs_interp.mjs)
   if (port) $("romstatus").textContent += ` · JS port (${port.hooks.size} routines ported, the rest ROM code)`;
@@ -260,6 +271,15 @@ function applyPadMode() {
 }
 $("padmode").addEventListener("pointerdown", () => { padMode = padMode === "stick" ? "dpad" : "stick"; applyPadMode(); });
 applyPadMode();
+// ---- text font: the game's own, or an HD font redrawn over the game's text (web/js/hdtext.js) ----
+let font = q.get("font") || stored("mt-font") || "game"; if (!FONTS[font]) font = "game";
+function applyFont() {
+  $("fontbtn").textContent = "FONT: " + FONTS[font].label;
+  if (hd) hd.setFont(font); drawnFrame = -1;
+  try { localStorage.setItem("mt-font", font); } catch (e) { /* private mode */ }
+}
+$("fontbtn").addEventListener("pointerdown", () => { font = FONT_ORDER[(FONT_ORDER.indexOf(font) + 1) % FONT_ORDER.length]; applyFont(); });
+applyFont();
 $("turbo").addEventListener("pointerdown", () => { turbo = !turbo; $("turbo").classList.toggle("on", turbo); });
 // what runs the game, switchable in play (the app loads the ROM before the loader's selector can be used):
 // remembered, then the page reloads

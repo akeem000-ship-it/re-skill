@@ -12,6 +12,7 @@ export class PPU {
     this.lineColor = new Uint8Array(160); this.linePrio = new Uint8Array(160);   // BG colour index 0-3 and attribute priority per pixel
     this.bgFrame = new Uint32Array(160 * 144);   // background + window only (no sprites), 0xAABBGGRR
     this.pixCell = new Uint16Array(160 * 144);   // per pixel: the tile-map entry shown ($1800-$1FFF offset), +$8000 when from the window
+    this.pixSub = new Uint8Array(160 * 144);     // per pixel: its place in that tile, row << 3 | column (unflipped)
     this.winX = new Uint8Array(144).fill(255);  // per scanline: first screen x drawn from the window layer (255 = none); raster splits included
     this.frames = 0;
   }
@@ -104,6 +105,7 @@ export class PPU {
       rgb5[(base + x) * 3] = c & 31; rgb5[(base + x) * 3 + 1] = (c >> 5) & 31; rgb5[(base + x) * 3 + 2] = (c >> 10) & 31;
       this.bgFrame[base + x] = 0xFF000000 | ((c >> 10 & 31) << 19) | ((c >> 5 & 31) << 11) | ((c & 31) << 3);
       this.pixCell[base + x] = inWindow ? 0x8000 | mapIdx : mapIdx;
+      this.pixSub[base + x] = (ty & 7) << 3 | (tx & 7);
       if (inWindow) windowDrawn = true;
     }
     this.winX[ly] = windowDrawn ? Math.max(0, this.wx - 7) : 255;

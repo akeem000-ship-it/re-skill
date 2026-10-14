@@ -160,6 +160,18 @@ export class Voxel3D {
     return t;
   }
   solidTexture(rgba) { return this.texture(1, 1, new Uint8Array(rgba)); }
+  // HD text (web/js/hdtext.js, set by the page as this.hdText): its background / window canvas (4x the screen) as a
+  // texture, uploaded again when the text changed; null when there is none
+  hdTex(kind) {
+    const h = this.hdText; if (!h || !h.active || !h.has[kind]) return null;
+    const T = this.hdTexs || (this.hdTexs = {}), gl = this.gl;
+    if (!T[kind]) T[kind] = { tex: this.texture(1, 1, null, true), ver: -1 };
+    if (T[kind].ver !== h.version) { gl.bindTexture(gl.TEXTURE_2D, T[kind].tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, h.canvas[kind]); T[kind].ver = h.version; }
+    return T[kind].tex;
+  }
+  drawHDText(model, mvp, uv = [0, 0, 1, 1], kinds = ["bg", "win"]) {
+    for (const k of kinds) { const t = this.hdTex(k); if (t) this.draw(t, model, mvp, uv, [1, 1, 1, 1], 0); }
+  }
   blobTexture(n = 32) {                                    // black disc fading out to the edge (stretched into an ellipse)
     const d = new Uint8Array(n * n * 4);
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const r = Math.hypot((x + 0.5) / n * 2 - 1, (y + 0.5) / n * 2 - 1); d[(y * n + x) * 4 + 3] = r >= 1 ? 0 : Math.round(150 * Math.min(1, (1 - r) * 2.5)); }
@@ -764,12 +776,14 @@ export class Voxel3D {
       this.draw(this.bgTileTexture(tile, v1[base + i]), m4.trs(sx + 4, sy + 8, 0, 8, -8, 0), ortho);
       cover[(sy >> 3) * 21 + (sx >> 3)] = 1;
     }
+    this.drawHDText(m4.trs(80, 144, 0, 160, -144, 0), ortho, [0, 0, 1, 1], ["bg"]);
     // the window layer (score panel) as a screen-space overlay from the 2D frame
     if ((p.lcdc & 0x20) && p.wy < 144 && frame2d) {
       if (!this.frameTex) this.frameTex = this.texture(160, 144, null);
       gl.bindTexture(gl.TEXTURE_2D, this.frameTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 160, 144, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(frame2d.buffer));
       const wy = p.wy, wx = Math.max(0, p.wx - 7);
       this.draw(this.frameTex, m4.trs(wx + (160 - wx) / 2, 144, 0, 160 - wx, -(144 - wy), 0), ortho, [wx / 160, wy / 144, (160 - wx) / 160, (144 - wy) / 144], [1, 1, 1, 1], 0);
+      this.drawHDText(m4.trs(wx + (160 - wx) / 2, 144, 0, 160 - wx, -(144 - wy), 0), ortho, [wx / 160, wy / 144, (160 - wx) / 160, (144 - wy) / 144], ["win"]);
       for (let y = wy >> 3; y < 18; y++) for (let x = wx >> 3; x < 20; x++) cover[y * 21 + x] = 1;
     }
     // HUD sprites last (sprites are drawn over the BG and the window). A group lying on one of those overlays (the
@@ -1078,6 +1092,7 @@ export class Voxel3D {
       const w = r.x1 - r.x0, h = r.y1 - r.y0;
       this.draw(this.boxShadowTex, m4.trs(80 + 2, y + h + 2, 0, w, -h, 0), ortho, [0, 0, 1, 1], [1, 1, 1, 0.7], 0);
       this.draw(this.frameTex, m4.trs(80, y + h, 0, w, -h, 0), ortho, [r.x0 / 160, r.y0 / 144, w / 160, h / 144], [1, 1, 1, 1], 0);
+      this.drawHDText(m4.trs(80, y + h, 0, w, -h, 0), ortho, [r.x0 / 160, r.y0 / 144, w / 160, h / 144]);
       y += h + 2;
     }
   }
@@ -1141,7 +1156,9 @@ export class Voxel3D {
     plane(tBack, 0, [1, 1, 1, 1], 0, 0, 0);
     const SH = [0, 0, 0, 0.4];
     plane(tPan, 1, [0, 0, 0, 0.22], 4, 4); plane(tPan, 1.5, SH, 2.5, 2.5); plane(tPan, 8);   // a soft two-step shadow
+    const hdBg = this.hdTex("bg"); if (hdBg) plane(hdBg, 8.05);
     plane(tWin, 9, [0, 0, 0, 0.22], 4, 4); plane(tWin, 9.5, SH, 2.5, 2.5); plane(tWin, 14);
+    const hdWin = this.hdTex("win"); if (hdWin) plane(hdWin, 14.05);
     // sprites: cards (or voxels) in front, each with a drop shadow; OBJ-to-BG priority sprites sit between the layers
     const sprs = this.collectSprites();
     for (const s of sprs) {
@@ -1161,6 +1178,7 @@ export class Voxel3D {
     gl.bindTexture(gl.TEXTURE_2D, this.frameTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 160, 144, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(frame.buffer));
     gl.disable(gl.DEPTH_TEST);
     this.draw(this.frameTex, m4.trs(0, -1, 0, 2, 2, 0), m4.identity(), [0, 0, 1, 1], [1, 1, 1, 1], 0);
+    this.drawHDText(m4.trs(0, -1, 0, 2, 2, 0), m4.identity());
   }
   // pointer position drives the menu parallax; the device's tilt (relative to how it is held) too.
   // With freeCam (?freecam): one finger / mouse orbits the court or field camera, two fingers pinch, wheel zooms.

@@ -25,6 +25,9 @@ The ROM and everything extracted from it are gitignored. Only tools and notes ar
   port (`web/js/engine/`) follows its routine names and RAM layout; this project's own analysis
   (`tools/disasm.py`, the emulator traces, `labels.csv`) is cross-checked and corrected against it, and
   where a name or fact here comes from it the label comment or note says so.
+- **Fonts** for the full-game page's HD text option (`web/js/hdtext.js`): [Itim](https://github.com/cadsondemak/itim)
+  (Cadson Demak) and [Kode Mono](https://github.com/isaozler/kode-mono) (The Kode Mono Project Authors), both under
+  the SIL Open Font License 1.1 (`web/fonts/OFL.txt`).
 
 ## Quick tour
 

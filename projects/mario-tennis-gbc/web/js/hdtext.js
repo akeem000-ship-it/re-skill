@@ -1,0 +1,166 @@
+// HD text: the game's proportional font (bank $05: 8x8 2bpp glyphs at $7920, pixel widths at $7F80) redrawn in a
+// high-resolution font. Each frame the text on screen is read back from VRAM: every visible row of background or
+// window tiles is matched, glyph by glyph, against the ROM's font the way the game rasterised it (DrawGlyph writes
+// the glyph's 8 columns at the pen, then moves the pen on by the glyph's width). Lines that read as text are
+// painted over in their box colour and written again in the chosen font, on a canvas 4x the screen's size that the
+// page lays over the picture (2D), or that the 3D view draws over its copies of the screen (web/js/voxel.js).
+// Fonts (web/fonts, SIL Open Font License): Itim (Cadson Demak), Kode Mono (The Kode Mono Project Authors).
+export const FONTS = {
+  game: { label: "Game" },
+  itim: { label: "Itim", family: "MT Itim", file: "fonts/Itim-Regular.ttf", em: 12, base: 7.25 },
+  kode: { label: "Kode Mono", family: "MT Kode Mono", file: "fonts/KodeMono.ttf", em: 9.25, base: 7 },
+};
+export const FONT_ORDER = ["game", "itim", "kode"];
+export const HD = 4;                                 // canvas pixels per screen pixel
+
+const FONT = 0x7920, WIDTHS = 0x7F80, GLYPHS = 0x66;   // glyphs $20-$85 (the width table ends at $FF entries)
+const SPACE = 0;                                     // glyph index of " "
+
+const romAt = (rom, addr) => rom[5 * 0x4000 + addr - 0x4000];
+
+export class HDText {
+  constructor(gb) {
+    this.gb = gb; this.font = "game"; this.loaded = {};
+    // the font as columns: per glyph, 8 columns of 16 bits (row r's two bit planes at bits 2r, 2r + 1)
+    const rom = gb.mem.rom; this.cols = []; this.width = []; this.ink = [];
+    for (let g = 0; g < GLYPHS; g++) {
+      const c = new Uint16Array(8); let ink = 0;
+      for (let r = 0; r < 8; r++) {
+        const lo = romAt(rom, FONT + g * 16 + r * 2), hi = romAt(rom, FONT + g * 16 + r * 2 + 1);
+        for (let x = 0; x < 8; x++) { const ci = ((lo >> (7 - x)) & 1) | (((hi >> (7 - x)) & 1) << 1); c[x] |= ci << (2 * r); if (ci === 3) ink++; }
+      }
+      const w = romAt(rom, WIDTHS + g);
+      this.cols.push(c); this.width.push(w > 0 && w <= 8 ? w : 0); this.ink.push(ink);
+    }
+    this.order = [...Array(GLYPHS).keys()].filter(g => g !== SPACE && this.width[g] && this.ink[g]).sort((a, b) => this.ink[b] - this.ink[a]);
+    this.canvas = { bg: makeCanvas(), win: makeCanvas() };
+    this.lines = []; this.key = ""; this.frame = -1; this.dirty = true; this.version = 0; this.has = { bg: false, win: false };
+  }
+  setFont(name) {
+    this.font = FONTS[name] ? name : "game"; this.key = ""; this.dirty = true;
+    const f = FONTS[this.font];
+    if (f.file && !this.loaded[this.font] && typeof FontFace !== "undefined") {
+      this.loaded[this.font] = "loading";
+      const ff = new FontFace(f.family, `url(${new URL("../" + f.file, import.meta.url)})`);
+      const name = this.font;
+      ff.load().then(x => { document.fonts.add(x); this.loaded[name] = true; this.key = ""; this.dirty = true; if (this.onload) this.onload(); }).catch(e => console.warn("font", e));
+    }
+  }
+  get active() { return this.font !== "game"; }
+
+  // read the text on screen (once per game frame) and repaint the canvases when it changed; returns true then
+  update() {
+    if (!this.active || this.loaded[this.font] !== true) { if (this.lines.length || this.dirty) { this.lines = []; this.paint(); this.dirty = false; return true; } return false; }
+    const p = this.gb.ppu;
+    if (p.frames === this.frame && !this.dirty) return false;
+    this.frame = p.frames; this.dirty = false;
+    const lines = this.read(), key = this.font + "|" + lines.map(l => `${l.x},${l.y},${l.win},${l.text},${l.c.join(",")}`).join("|");
+    if (key === this.key) return false;
+    this.key = key; this.lines = lines; this.paint(); return true;
+  }
+
+  // the visible tile rows as strips of tile columns, then the text read from each
+  read() {
+    const p = this.gb.ppu, m = this.gb.mem, v0 = m.vram[0], v1 = m.vram[1], lcdc = p.lcdc;
+    const cell = p.pixCell, sub = p.pixSub, rows = new Map();
+    // every visible map cell once, at its tile's top-left screen position
+    for (let y = 0; y < 144; y++) for (let x = 0; x < 160; x++) {
+      const i = y * 160 + x, c = cell[i]; if (rows.has(c)) continue;
+      const s = sub[i]; rows.set(c, { x: x - (s & 7), y: y - (s >> 3) });
+    }
+    // group by screen tile row: cells of one map row at one y, side by side
+    const bands = new Map();
+    for (const [c, pos] of rows) {
+      const k = `${c & 0x8000 ? "w" : "b"}${pos.y}`; let b = bands.get(k);
+      if (!b) bands.set(k, b = { win: !!(c & 0x8000), y: pos.y, cells: [] });
+      b.cells.push({ c: c & 0x7FFF, x: pos.x });
+    }
+    const out = [];
+    for (const b of bands.values()) {
+      if (b.y <= -8 || b.y >= 144) continue;
+      b.cells.sort((a, c) => a.x - c.x);
+      // runs of cells exactly 8 px apart make strips
+      let start = 0;
+      for (let i = 1; i <= b.cells.length; i++) {
+        if (i < b.cells.length && b.cells[i].x === b.cells[i - 1].x + 8) continue;
+        this.readStrip(b, b.cells.slice(start, i), v0, v1, lcdc, out); start = i;
+      }
+    }
+    return out;
+  }
+  readStrip(band, cells, v0, v1, lcdc, out) {
+    const n = cells.length * 8, s = this.strip && this.strip.length >= n ? this.strip : (this.strip = new Uint16Array(Math.max(n, 256)));
+    const BLANK = this.cols[SPACE][0];
+    let any = false;
+    for (let k = 0; k < cells.length; k++) {
+      const i = cells[k].c, tile = v0[i], attr = v1[i], bank = attr & 8 ? v1 : v0;
+      const addr = lcdc & 0x10 ? tile << 4 : 0x1000 + ((tile << 24 >> 24) << 4), flip = attr & 0x60;
+      for (let x = 0; x < 8; x++) {
+        let col = 0;
+        if (!flip) for (let r = 0; r < 8; r++) { const lo = bank[addr + r * 2], hi = bank[addr + r * 2 + 1]; col |= ((((lo >> (7 - x)) & 1) | (((hi >> (7 - x)) & 1) << 1)) << (2 * r)); }
+        s[k * 8 + x] = col; if (col !== BLANK && col) any = true;
+      }
+    }
+    if (!any) return;
+    const ws = this.width[SPACE] || 5;
+    let x = 0;
+    while (x < n) {
+      if (s[x] === BLANK || !s[x]) { x++; continue; }
+      // a line: glyphs one after another from here, each pen moved on by the glyph's width, spaces between words
+      let pen = x, text = "", letters = 0, end = x;
+      for (;;) {
+        const g = this.matchAt(s, pen, n);
+        if (g >= 0) { text += String.fromCharCode(0x20 + g); letters++; pen += this.width[g]; end = pen; continue; }
+        if (!letters) break;
+        let next = pen; while (next < n && s[next] === BLANK) next++;
+        if (next >= pen + ws && next < n && next - pen < ws * 3 && this.matchAt(s, pen + ws * Math.round((next - pen) / ws), n) >= 0) {
+          const k = Math.round((next - pen) / ws); text += " ".repeat(k); pen += ws * k; continue;
+        }
+        break;
+      }
+      const inked = text.replace(/[ .,'`"\-]/g, "").length;
+      if (letters >= 2 && inked >= 1) {
+        const c0 = cells[x >> 3], pal = v1[c0.c] & 7, ppu = this.gb.ppu;
+        out.push({ x: c0.x + (x & 7), y: band.y, w: end - x, win: band.win, text, c: [1, 2, 3].map(ci => col5(ppu.bgPal, pal, ci)) });
+        x = Math.max(end, x + 1);
+      } else x++;
+    }
+  }
+  // the glyph drawn at `pen`: DrawGlyph overwrites the 8 columns from the pen, and the next glyph overwrites all past
+  // this one's width, so its columns within its width are exactly what the strip shows; the inkiest such glyph
+  matchAt(s, pen, n) {
+    for (const g of this.order) {
+      const c = this.cols[g], w = this.width[g]; if (pen + w > n) continue;
+      let k = 0; while (k < w && c[k] === s[pen + k]) k++;
+      if (k === w) return g;
+    }
+    return -1;
+  }
+
+  // the canvases: each line's box colour over the old glyphs, then the line in the HD font with the game's shadow
+  paint() {
+    for (const k of ["bg", "win"]) { const cv = this.canvas[k]; if (cv) cv.getContext("2d").clearRect(0, 0, cv.width, cv.height); }
+    this.version++; this.has.bg = this.lines.some(l => !l.win); this.has.win = this.lines.some(l => l.win);
+    const f = FONTS[this.font]; if (!f.family) return;
+    for (const l of this.lines) {
+      const cv = this.canvas[l.win ? "win" : "bg"]; if (!cv) continue;
+      const g = cv.getContext("2d"), [bg, sh, ink] = l.c.map(css);
+      // rows of text closer than 16 px (lists) get a smaller size
+      let gap = 16; for (const o of this.lines) if (o !== l && o.win === l.win && o.x < l.x + l.w && l.x < o.x + o.w && o.y !== l.y) gap = Math.min(gap, Math.abs(o.y - l.y));
+      const em = f.em * Math.min(1, Math.max(0.7, gap / 14));
+      g.fillStyle = bg; g.fillRect(l.x * HD, l.y * HD, (l.w + 1) * HD, 8 * HD);
+      g.font = `${em * HD}px "${f.family}"`; g.textBaseline = "alphabetic";
+      const w = g.measureText(l.text).width, room = (l.w + 3) * HD, sx = w > room ? room / w : 1;
+      g.save(); g.translate(l.x * HD, (l.y + f.base) * HD); g.scale(sx, 1);
+      const o = HD * 0.75; g.fillStyle = sh; g.fillText(l.text, o, o); g.fillStyle = ink; g.fillText(l.text, 0, 0);
+      g.restore();
+    }
+  }
+}
+
+function makeCanvas() {
+  if (typeof document === "undefined") return null;
+  const c = document.createElement("canvas"); c.width = 160 * HD; c.height = 144 * HD; return c;
+}
+const col5 = (pal, p, i) => { const o = p * 8 + i * 2; return pal[o] | (pal[o + 1] << 8); };
+const css = c => `rgb(${(c & 31) * 8},${(c >> 5 & 31) * 8},${(c >> 10 & 31) * 8})`;
