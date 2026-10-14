@@ -9,7 +9,7 @@
 // use the low 16 bits only. The save flags of a story file (A and B) are save-flag ids in two 4-entry tables, by
 // wCurrentStorySlot; they live in SRAM (bank 3's TestSaveFlag / SetSaveFlag / ClearSaveFlag).
 // Tests: web/tests/port/routines_story.mjs.
-import { FZ, FN, FH, FC, BANK_STORY_02, hook, farcall, cpFlags, subFlags, bitFlags, indexedHL } from "./common.js";
+import { FZ, FN, FH, FC, BANK_STORY_02, hook, farcall, cpFlags, subFlags, bitFlags, indexedHL, spAddFlags } from "./common.js";
 import { testSaveFlag, setSaveFlag, clearSaveFlag } from "../save/storyslots.js";
 import { getPlayerRecordPtr, getCa00RecordPtr } from "./story02.js";
 
@@ -34,11 +34,12 @@ function storySlotFlagId(P, table) {
   return { de: P.rom.u16(BANK, hl), hl: (hl + 1) & 0xFFFF };
 }
 // SetStorySlotFlagB (02:4CB1) / SetStorySlotFlagA (02:4CED): set (a != 0) or clear the current story file's save
-// flag B / A. Returns the registers it leaves (a kept, the flags of `and a`, de the save-flag routine's).
-export function setStorySlotFlag(P, table, a) {
+// flag B / A. Returns the registers it leaves: a kept, de the save-flag routine's, f the flags that routine kept
+// (FarCall's: its trampoline's `ld hl, sp + 5`, 10 bytes below the caller's sp). sp: the stack pointer at the call.
+export function setStorySlotFlag(P, table, a, sp) {
   const { de, hl } = storySlotFlagId(P, table);
   farcall(P, BANK_SAVE, () => (a ? setSaveFlag : clearSaveFlag)(P, de));
-  return { f: (a ? 0 : FZ) | FH, de: de >> 8, hl };
+  return { f: spAddFlags((sp - 10) & 0xFFFF, 5), de: de >> 8, hl };
 }
 // TestStorySlotFlagB (02:4CD4) / TestStorySlotFlagA (02:4D10): a = 1 if the current story file's save flag B / A
 // is set, else 0 (the flags of the test: Z when clear, H).
@@ -160,9 +161,9 @@ function rowContains(P, a, value, counter) {
 
 export const HOOKS = [
   [BANK, 0x4C58, hook((P, c) => remapExtendedCharId(P, c.a))],
-  [BANK, 0x4CB1, hook((P, c) => setStorySlotFlag(P, StorySlotFlagBIds_02, c.a))],
+  [BANK, 0x4CB1, hook((P, c) => setStorySlotFlag(P, StorySlotFlagBIds_02, c.a, c.sp))],
   [BANK, 0x4CD4, hook(P => testStorySlotFlag(P, StorySlotFlagBIds_02))],
-  [BANK, 0x4CED, hook((P, c) => setStorySlotFlag(P, StorySlotFlagAIds_02, c.a))],
+  [BANK, 0x4CED, hook((P, c) => setStorySlotFlag(P, StorySlotFlagAIds_02, c.a, c.sp))],
   [BANK, 0x4D10, hook(P => testStorySlotFlag(P, StorySlotFlagAIds_02))],
   [BANK, 0x4D29, hook(() => unusedCheckExpAwardAllowed())],
   [BANK, 0x4D30, hook((P, c) => addExpCapped(P, c.hl, c.de))],

@@ -7,7 +7,7 @@
 import {
   FZ, FN, FH, FC, WRAM_ACTORS, BANK_STORY, wActors, ACTOR_SIZE, NUM_ACTORS, ACTORF_FLAGS,
   FLAG_ENDING_CREDITS_RUNNING, FLAG_ENDING_CREDITS_PENDING, FLAG_VRAM_UPDATE_BUSY, FLAG_ACTORS_FROZEN, hook,
-  hookGen, testFlag, setFlag, clearFlag, ClearFrameTasks, spAddFlags,
+  hookGen, testFlag, setFlag, clearFlag, ClearFrameTasks, spAddFlags, call, farcallRom,
 } from "./common.js";
 import { beginFadeOut, waitFadeEnd } from "../home/colorfade.js";
 import { loadPalettesMasterOnly } from "../home/palettes.js";
@@ -30,10 +30,10 @@ const fadeRegs = c => ({ a: 0, f: 0, b: 0, c, d: 0, e: 0, h: 0, l: 0 });
 export function* runEndingCreditsSequence(P, sp) {
   const { bus, V } = P;
   beginFadeOut(P, SCENE_FADE_SPEED);
-  yield* waitFadeEnd(P, fadeRegs(SCENE_FADE_SPEED));
+  yield* call(P, 0x6E7C, waitFadeEnd(P, fadeRegs(SCENE_FADE_SPEED)));
   setFlag(P, FLAG_ENDING_CREDITS_RUNNING);
   playSoundManaged(P, BGM_CREDITS);
-  yield* P.runRom(BANK_GAME, LoadMenuFontGfx);
+  yield* farcallRom(P, 0x6E81, BANK_GAME, LoadMenuFontGfx);
   loadPalettesMasterOnly(P, EndingCreditsSequencePalette, 0, 1);
   V.storyCharacterSlot = 0;
   for (;;) {
@@ -47,27 +47,27 @@ export function* runEndingCreditsSequence(P, sp) {
     clearFlag(P, FLAG_VRAM_UPDATE_BUSY);
     clearFlag(P, FLAG_ACTORS_FROZEN);
     V.rasterScrollStartLY = 0; V.rasterScrollEndLY = 0;
-    yield* runStoryLocation(P);
+    yield* call(P, 0x6EC3, runStoryLocation(P));
     if (!testFlag(P, FLAG_ENDING_CREDITS_PENDING)) {
       setFlag(P, FLAG_VRAM_UPDATE_BUSY);
-      freezeAllActors(P);
-      yield* P.runRom(BANK_CUTSCENE, InitGrayscalePaletteFade);
-      yield* P.runRom(BANK_CUTSCENE, SetupPaletteFadeMask, { b: GREY_PALETTES, c: GREY_MASK, d: GREY_STEPS });
-      yield* P.runRom(BANK_CUTSCENE, AnimatePaletteFadeToTarget);
-      yield* P.runRom(BANK_CUTSCENE, PlayScrollingStoryCutscene, { a: V.storyCharacterSlot });
+      freezeAllActors(P, P.cpu.sp - 2);
+      yield* farcallRom(P, 0x6ECE, BANK_CUTSCENE, InitGrayscalePaletteFade);
+      yield* farcallRom(P, 0x6ED7, BANK_CUTSCENE, SetupPaletteFadeMask, { b: GREY_PALETTES, c: GREY_MASK, d: GREY_STEPS });
+      yield* farcallRom(P, 0x6EDA, BANK_CUTSCENE, AnimatePaletteFadeToTarget);
+      yield* farcallRom(P, 0x6EE0, BANK_CUTSCENE, PlayScrollingStoryCutscene, { a: V.storyCharacterSlot });
     }
     clearFlag(P, FLAG_ENDING_CREDITS_PENDING);
     beginFadeOut(P, SCENE_FADE_SPEED);
-    yield* waitFadeEnd(P, fadeRegs(SCENE_FADE_SPEED));
+    yield* call(P, 0x6EEE, waitFadeEnd(P, fadeRegs(SCENE_FADE_SPEED)));
     bus.w8(rWY, WY_HIDDEN);
     V.storyCharacterSlot = V.storyCharacterSlot + 1;
     if (V.debugStepMode && V.playerInputFlags & PADF_SELECT) break;
   }
-  yield* P.runRom(BANK_CUTSCENE, ShowStoryResultScreen);
+  yield* farcallRom(P, 0x6F03, BANK_CUTSCENE, ShowStoryResultScreen);
   beginFadeOut(P, RESULT_FADE_SPEED);
-  yield* waitFadeEnd(P, fadeRegs(RESULT_FADE_SPEED));
+  yield* call(P, 0x6F0E, waitFadeEnd(P, fadeRegs(RESULT_FADE_SPEED)));
   V.scrollX = 0; V.scrollY = 0;
-  const r = yield* P.runRom(BANK_GAME, LoadMenuFontGfx, { a: 0 });
+  const r = yield* farcallRom(P, 0x6F13, BANK_GAME, LoadMenuFontGfx, { a: 0 });
   clearFlag(P, FLAG_ENDING_CREDITS_RUNNING);
   clearFlag(P, FLAG_ACTORS_FROZEN);
   return { a: r.a, bc: r.bc, de: r.de, hl: r.hl, f: spAddFlags((sp - 6) & 0xFFFF, 4) };

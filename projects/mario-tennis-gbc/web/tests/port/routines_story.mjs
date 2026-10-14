@@ -62,7 +62,9 @@ function T(name, bank, addr, regs = () => ({}), opt = {}) {
     name: "Story " + name, bank, addr, wram: opt.wram ?? 4, out: opt.out ?? ALL, when: opt.when ?? overworld,
     regs: s => { const { d, r } = D(s); return singles({ f: d.f(), ...regs(d, s, r) }); },
   };
-  if (opt.prep) e.prep = (mem, s) => opt.prep(mem, s, D(s).d);
+  // interrupts off on both machines (the ROM's routines that end with `ei`, PlaySound's, would take one on the ROM
+  // side only: the port's hooks run whole)
+  e.prep = (mem, s) => { if (opt.prep) opt.prep(mem, s, D(s).d); mem.ie = 0; };
   if (opt.ignore) e.ignore = opt.ignore;
   return e;
 }
@@ -211,7 +213,7 @@ export const ROUTINES = [
   T("ClearStoryEventRequests", BA, 0x50F1),
   T("CheckStoryEventRequests", BA, 0x5104),
   T("LoadStoryLocationHeader", BA, 0x5114),
-  T("WriteStoryStateWord", BA, 0x5161, d => ({ de: d.w(), hl: BUF })),
+  T("WriteStoryStateWord", BA, 0x5161, d => ({ de: d.b8() & 0x3E, hl: d.w() })),
   T("LoadStoryEntryPointRecord", BA, 0x516F),
   // ---- bank $0A: interaction (story_interact.js) ----
   T("GetPointAheadOfActor", BA, 0x51CF, d => ({ hl: d.actor, de: d.b8(), a: d.b8() })),
@@ -234,14 +236,15 @@ export const ROUTINES = [
   T("GetBehaviorMapCellAddr", BA, 0x5F31, d => ({ d: d.b8(), e: d.b8() })),
   T("ReadBehaviorMapCell", BA, 0x5F4F, d => ({ d: d.tile(), e: d.tile() })),
   T("WriteBehaviorMapCell", BA, 0x5F74, d => ({ d: d.tile(), e: d.tile(), a: d.b8() })),
-  T("CopyCollisionMapRect", BA, 0x5F90, d => ({ b: d.tile() & 31, c: d.tile() & 31, d: d.tile() & 31, e: d.tile() & 31, h: 1 + (d.b8() & 15), l: 1 + (d.b8() & 15) })),
-  T("CopyBehaviorMapRect", BA, 0x5FD6, d => ({ b: d.tile() & 31, c: d.tile() & 31, d: d.tile() & 31, e: d.tile() & 31, h: 1 + (d.b8() & 15), l: 1 + (d.b8() & 15) })),
+  T("CopyCollisionMapRect", BA, 0x5F90, d => ({ b: d.tile() & 31, c: d.tile() & 31, d: d.tile() & 31, e: d.tile() & 31, h: 2 + (d.b8() & 14), l: 2 + (d.b8() & 14) })),
+  T("CopyBehaviorMapRect", BA, 0x5FD6, d => ({ b: d.tile() & 31, c: d.tile() & 31, d: d.tile() & 31, e: d.tile() & 31, h: 2 + (d.b8() & 14), l: 2 + (d.b8() & 14) })),
   T("UnusedUpdateSceneViewerScroll", BA, 0x60C2),
   T("UnusedMoveSceneViewerCamera", BA, 0x6160),
   T("GetSceneTilemapAddr", BA, 0x621F, d => ({ hl: d.w() & 0x0FFF })),
   T("UpdateCameraFromPlayer", BA, 0x6235),
   T("UpdateSceneTileAnimations", BA, 0x6465),
-  T("AdvanceSceneTileAnimation", BA, 0x64BB, d => ({ a: d.b8() & 7 })),
+  // (AdvanceSceneTileAnimation, 0A:64BB, is checked through UpdateSceneTileAnimations: for an animation not set up
+  // it loops for ever, on the ROM as on the port)
   T("FreezeAllActors", BA, 0x6F1D),
   // ---- bank 2: characters, records, stats, EXP (story02.js, stat.js, equip.js, records.js, debug.js) ----
   ...[["UnusedValidateN64TransferRecord", 0x4044, () => ({})],

@@ -231,10 +231,10 @@ function fieldOp(P, de, add) {
   return { a: 1, bc: value, de: next, hl, f: cpFlags(type, FIELD_BYTE) };
 }
 // ActorScriptOp_Anim (04:4824), as_anim n: start animation n.
-export function actorScriptOpAnim(P, actor, de) {
+export function actorScriptOpAnim(P, actor, de, f = 0) {
   const at = (de + 1) & 0xFFFF, anim = farReadByte(P, scriptBank(P), at), me = actorPtr(P);
-  setActorAnimationChecked(P, me, anim);
-  return { a: 1, bc: me, de: (at + 1) & 0xFFFF, hl: P.A.actorPtr + 1 };
+  f = setActorAnimationChecked(P, me, anim, f);                 // (FarReadByte keeps the flags)
+  return { a: 1, f, bc: me, de: (at + 1) & 0xFFFF, hl: P.A.actorPtr + 1 };
 }
 // ActorScriptOp_Sound (04:483D), as_sound id: play sound id.
 export function actorScriptOpSound(P, actor, de) {

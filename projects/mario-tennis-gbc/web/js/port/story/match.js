@@ -8,7 +8,7 @@
 import {
   FZ, FN, FH, FC, WRAM_COURT_PLANES, WRAM_SCREEN, WRAM_CHAR1, BANK_STORY, BANK_STORY_02, FLAG_DOUBLES,
   FLAG_DEBUG_KEEP_MATCH_SETTINGS, hook, hookGen, farcall, farcallGen, testFlag, testFlagF, setFlagOp, clearFlagOp,
-  ClearFrameTasks, DisableLCDSafely, EnableLCD, addFlags, zf, cpFlags,
+  ClearFrameTasks, DisableLCDSafely, EnableLCD, addFlags, zf, cpFlags, call, farcallRom, pushWord, dropWords,
 } from "./common.js";
 import { beginFadeOut, beginFadeIn, waitFadeEnd } from "../home/colorfade.js";
 import { clearMemory16, queueVRAMCopy } from "../home/memory.js";
@@ -64,11 +64,11 @@ export function initStoryMatchSettings(P) {
 export function* runStoryMatch(P) {
   const { V } = P;
   beginFadeOut(P, MATCH_FADE_SPEED);
-  yield* waitFadeEnd(P, { a: 0, f: 0, b: 0, c: MATCH_FADE_SPEED, d: 0, e: 0, h: 0, l: 0 });
+  yield* call(P, 0x496A, waitFadeEnd(P, { a: 0, f: 0, b: 0, c: MATCH_FADE_SPEED, d: 0, e: 0, h: 0, l: 0 }));
   assignStoryMatchCharacters(P);
-  const m = yield* P.runRom(BANK_MATCH, RunMatch);
+  const m = yield* farcallRom(P, 0x496D, BANK_MATCH, RunMatch);
   if (!V.saveAndQuitRequest) { V.keepMatchStatsFlag = 0; return { a: 0, f: FZ, bc: m.bc, de: m.de, hl: m.hl }; }
-  const r = yield* P.runRom(BANK_SAVE, SaveStorySlotWithTimer);
+  const r = yield* farcallRom(P, 0x4976, BANK_SAVE, SaveStorySlotWithTimer);
   V.storyModeCurrentLocation = STORYLOC_MAIN_MENU;
   V.storyModeEntryPoint = 1;
   V.unusedExitTriggerIdMirror = 0xFF;
@@ -79,10 +79,10 @@ export function* runStoryMatch(P) {
 // the registers it leaves.
 export function* restoreOverworldAfterMatch(P) {
   beginFadeOut(P, MATCH_FADE_SPEED);
-  yield* waitFadeEnd(P, { a: 0, f: 0, b: 0, c: MATCH_FADE_SPEED, d: 0, e: 0, h: 0, l: 0 });
+  yield* call(P, 0x4999, waitFadeEnd(P, { a: 0, f: 0, b: 0, c: MATCH_FADE_SPEED, d: 0, e: 0, h: 0, l: 0 }));
   loadStoryObjPalettes(P);
   P.callRom(0, DisableLCDSafely);
-  yield* P.runRom(BANK_GAME, LoadMenuFontGfx);
+  yield* farcallRom(P, 0x499F, BANK_GAME, LoadMenuFontGfx);
   const r = P.callRom(0, EnableLCD);
   P.V.matchContext = 0;
   return { a: 0, f: FZ, bc: r.bc, de: r.de, hl: r.hl };
@@ -137,53 +137,54 @@ export function loadMatchSettingsFromTable(P) {
 // mode 0 its format (singles / doubles), class and rank; the story's progress flags are set to match. Returns
 // the result code in a (bc, de, hl kept).
 export function* runClearStatusSetupMenu(P) {
-  const { bus } = P, old = P.V.wramBank;
+  const { bus } = P, old = P.V.wramBank, c = P.cpu;
+  pushWord(P, c.bc); pushWord(P, c.de); pushWord(P, c.hl); pushWord(P, old << 8 | c.f);   // (push bc ... the WRAM bank)
   P.callRom(0, ClearFrameTasks);
   P.callRom(0, DisableLCDSafely);
-  yield* P.runRom(BANK_GAME, LoadMenuFontGfx);
+  yield* farcallRom(P, 0x4BB8, BANK_GAME, LoadMenuFontGfx);
   P.callRom(0, EnableLCD);
   P.wramBank(WRAM_CHAR1);
   clearMemory16(P, wClearStatusMode, 2);
-  yield* P.runRom(BANK_TEXT, ResetTextWindowState);
+  yield* farcallRom(P, 0x4BCC, BANK_TEXT, ResetTextWindowState);
   clearBgTilemaps(P);
-  const w = yield* P.runRom(BANK_TEXT, CreateWindowFromScreenRect, { d: 0x00, e: 0x0B, b: 0x14, c: 0x07 });
+  const w = yield* farcallRom(P, 0x4BDA, BANK_TEXT, CreateWindowFromScreenRect, { d: 0x00, e: 0x0B, b: 0x14, c: 0x07 });
   bus.w8(wClearStatusWindowId, w.a);
-  yield* P.runRom(BANK_TEXT, DrawTextWindowFrame, { a: w.a });
+  yield* farcallRom(P, 0x4BE0, BANK_TEXT, DrawTextWindowFrame, { a: w.a });
   beginFadeIn(P, MATCH_FADE_SPEED);
-  yield* waitFadeEnd(P, { a: 0, f: 0, b: 0, c: MATCH_FADE_SPEED, d: 0, e: 0, h: 0, l: 0 });
+  yield* call(P, 0x4BEB, waitFadeEnd(P, { a: 0, f: 0, b: 0, c: MATCH_FADE_SPEED, d: 0, e: 0, h: 0, l: 0 }));
   P.wramBank(WRAM_CHAR1);
-  // one step of the menu: the prompt, then a menu of text hl at row d; its choice
-  const step = function* (prompt, menu, row) {
-    yield* P.runRom(BANK_TEXT, DrawTextWindowFrame, { a: bus.u8(wClearStatusWindowId) });
-    yield* P.runRom(BANK_TEXT, RenderProportionalTextAt, { hl: prompt, de: CLEAR_STATUS_TEXT_CELL });
-    yield* P.runRom(BANK_TEXT, RedrawWindowRows, { a: bus.u8(wClearStatusWindowId) });
-    return yield* menuChoice(P, menu, row);
+  // the prompt of a step (the window redrawn, its text, the rows redrawn); at: the three far calls' addresses
+  const prompt = function* (text, at) {
+    yield* farcallRom(P, at[0], BANK_TEXT, DrawTextWindowFrame, { a: bus.u8(wClearStatusWindowId) });
+    yield* farcallRom(P, at[1], BANK_TEXT, RenderProportionalTextAt, { hl: text, de: CLEAR_STATUS_TEXT_CELL });
+    yield* farcallRom(P, at[2], BANK_TEXT, RedrawWindowRows, { a: bus.u8(wClearStatusWindowId) });
   };
   const STEP_MODE = 0, STEP_FORMAT = 1, STEP_CLASS = 2, STEP_RANK = 3;
   let s = STEP_MODE;
   for (;;) {
     if (s === STEP_MODE) {
-      const mode = yield* step(Text_34_232, Text_34_215, 1);
+      yield* prompt(Text_34_232, [0x4BF4, 0x4BFD, 0x4C03]);
+      const mode = yield* menuChoice(P, Text_34_215, 1, [0x4C0D, 0x4C10, 0x4C13, 0x4C16, 0x4C1F]);
       bus.w8(wClearStatusMode, mode);
       if (mode === 0xFF) { bus.w8(wClearStatusResultCode, RESULT_CANCELLED); break; }
       if (mode) { bus.w8(wClearStatusResultCode, RESULT_MODE_1); break; }
       bus.w8(wClearStatusDoubles, testFlag(P, FLAG_DOUBLES) ? 1 : 0);
       s = STEP_FORMAT;
     } else if (s === STEP_FORMAT) {
-      const format = yield* step(Text_34_228, Text_34_217, 3);
+      yield* prompt(Text_34_228, [0x4C4D, 0x4C56, 0x4C5C]);
+      const format = yield* menuChoice(P, Text_34_217, 3, [0x4C66, 0x4C69, 0x4C6C, 0x4C6F, 0x4C78]);
       bus.w8(wClearStatusFormat, format);
       s = format === 0xFF ? STEP_MODE : STEP_CLASS;
     } else if (s === STEP_CLASS) {
-      const cls = yield* step(Text_34_229, Text_34_218, 5);
+      yield* prompt(Text_34_229, [0x4C86, 0x4C8F, 0x4C95]);
+      const cls = yield* menuChoice(P, Text_34_218, 5, [0x4C9F, 0x4CA2, 0x4CA5, 0x4CA8, 0x4CB1]);
       bus.w8(wClearStatusClass, cls);
       s = cls === 0xFF ? STEP_FORMAT : STEP_RANK;
     } else {
-      yield* P.runRom(BANK_TEXT, DrawTextWindowFrame, { a: bus.u8(wClearStatusWindowId) });
-      yield* P.runRom(BANK_TEXT, RenderProportionalTextAt, { hl: (Text_34_230 + bus.u8(wClearStatusFormat)) & 0xFFFF, de: CLEAR_STATUS_TEXT_CELL });
-      yield* P.runRom(BANK_TEXT, RedrawWindowRows, { a: bus.u8(wClearStatusWindowId) });
+      yield* prompt((Text_34_230 + bus.u8(wClearStatusFormat)) & 0xFFFF, [0x4CBF, 0x4CD0, 0x4CD6]);
       let list = bus.u8(wClearStatusDoubles) ? RANK_LIST_DOUBLES : RANK_LIST_SINGLES;
       if (bus.u8(wClearStatusFormat)) list = (list + ((bus.u8(wClearStatusClass) + 1) & 0xFF)) & 0xFFFF;
-      const rank = yield* menuChoice(P, list, 7);
+      const rank = yield* menuChoice(P, list, 7, [0x4CFB, 0x4CFE, 0x4D01, 0x4D04, 0x4D0D]);
       bus.w8(wClearStatusRank, rank);
       if (rank === 0xFF) { s = STEP_CLASS; continue; }
       applyClearStatusFlags(P);
@@ -193,15 +194,17 @@ export function* runClearStatusSetupMenu(P) {
   }
   const b = bus.u8(wClearStatusResultCode);
   P.wramBank(old);
+  dropWords(P, 4);
   return b;
 }
-// a menu of text hl at (d, 0): created, drawn, run and closed; returns the choice ($FF: cancelled)
-function* menuChoice(P, text, row) {
-  yield* P.runRom(BANK_TEXT, CreateMenuWindowFromText, { hl: text, d: row, e: 0 });
-  yield* P.runRom(BANK_TEXT, RestoreShadowTilemap);
-  yield* P.runRom(BANK_TEXT, RenderMenuWindowText);
-  const choice = (yield* P.runRom(BANK_TEXT, RunMenuSelection)).a;
-  yield* P.runRom(BANK_TEXT, CloseWindow, { a: P.bus.u8(P.A.menuWindowId) });
+// a menu of text hl at (d, 0): created, drawn, run and closed; returns the choice ($FF: cancelled). at: the five
+// far calls' addresses
+function* menuChoice(P, text, row, at) {
+  yield* farcallRom(P, at[0], BANK_TEXT, CreateMenuWindowFromText, { hl: text, d: row, e: 0 });
+  yield* farcallRom(P, at[1], BANK_TEXT, RestoreShadowTilemap);
+  yield* farcallRom(P, at[2], BANK_TEXT, RenderMenuWindowText);
+  const choice = (yield* farcallRom(P, at[3], BANK_TEXT, RunMenuSelection)).a;
+  yield* farcallRom(P, at[4], BANK_TEXT, CloseWindow, { a: P.bus.u8(P.A.menuWindowId) });
   return choice;
 }
 // ClearBgTilemaps (0A:4D2C): with the LCD off, both screen planes blank (attributes 0, tiles $20), copied to the BG

@@ -11,7 +11,7 @@
 // Tests: web/tests/port/routines_story.mjs; lockstep on out/engine/rec2.mtrec and out/port/story1.mtrec.
 import {
   FZ, FN, FH, FC, WRAM_STAGING, WRAM_COURT_PLANES, WRAM_ACTORS, WRAM_TEXT, BANK_STORY, wActors, ACTORF_X,
-  FLAG_VRAM_UPDATE_BUSY, FLAG_DEBUG_FREEZE_TILE_ANIM, hook, testFlag, withWramBank, decFlags,
+  FLAG_VRAM_UPDATE_BUSY, FLAG_DEBUG_FREEZE_TILE_ANIM, hook, testFlag, withWramBank, decFlags, bitFlags,
 } from "./common.js";
 import { decompressDataFromBank, copyDataFromBank } from "../home/decompress.js";
 import { queueVRAMCopy } from "../home/memory.js";
@@ -39,15 +39,21 @@ export function updateCameraFromPlayer(P) {
   const { bus, V } = P;
   P.wramBank(WRAM_ACTORS);
   const x = clamp((bus.u16(wActors + ACTORF_X) + PLAYER_CAMERA_X) & 0xFFFF, V.mapScrollMinX, V.mapWidthTiles - SCREEN_WIDTH_TILES);
-  const y = clamp((bus.u16(wActors + ACTORF_X + 2) + PLAYER_CAMERA_Y) & 0xFFFF, V.mapScrollMinY, V.mapHeightTiles - SCREEN_HEIGHT_TILES);
+  const cy = clampF((bus.u16(wActors + ACTORF_X + 2) + PLAYER_CAMERA_Y) & 0xFFFF, V.mapScrollMinY, V.mapHeightTiles - SCREEN_HEIGHT_TILES);
+  const y = cy.v;
   V.cameraX = x; V.cameraY = y;
-  return { a: y >> 8, bc: x, de: y, hl: P.A.cameraY + 1 };
+  return { a: y >> 8, f: cy.f, bc: x, de: y, hl: P.A.cameraY + 1 };
 }
-function clamp(hl, min, max) {
-  if (((hl >> 8) - min) & 0x80) return min << 8;
-  if (!(((hl >> 8) - (max & 0xFF)) & 0x80)) return (max & 0xFF) << 8;
-  return hl;
+// the clamp to [min, max] tiles by the high byte's signed differences; f: the flags of its last `bit 7, a` (with the
+// carry of the `sub` before it)
+function clampF(hl, min, max) {
+  const h = hl >> 8, m = max & 0xFF;
+  const lo = (h - min) & 0xFF;
+  if (lo & 0x80) return { v: min << 8, f: bitFlags(true, h < min ? FC : 0) };
+  const hi = (h - m) & 0xFF, f = bitFlags(!!(hi & 0x80), h < m ? FC : 0);
+  return { v: hi & 0x80 ? hl : m << 8, f };
 }
+const clamp = (hl, min, max) => clampF(hl, min, max).v;
 
 // UnusedStepCourtSceneGfxStream (0A:629B): a stepper that would queue tiles from a list (its source is code
 // bytes here); nothing calls it. Returns the registers it leaves.
@@ -157,6 +163,7 @@ export function updateSceneTileAnimations(P) {
       if (c === TILE_ANIMS) break;
     }
   });
+  return { f: FZ | FH };                                        // (af pushed after the second flag test)
 }
 // AdvanceSceneTileAnimation (0A:64BB): show animation a's next frame (from its first again after its end):
 // copy its tiles from the scene's tile-animation slot (6) into wSceneTileAnimBuffer and queue them for VRAM;

@@ -11,9 +11,9 @@
 // (its "actor script", 22 opcodes, actor_ops.js) every frame from the UpdateActors frame task, walks toward its
 // move target, and is drawn by the DrawActors frame task from its object definition (sprite frames and
 // animation scripts in a walk-sprite bank). Positions are 16-bit, 1/256 tile (the high byte is the tile).
-import { FZ, FN, FH, FC, setRegs, switchRomBank } from "../home/memory.js";
+import { FZ, FN, FH, FC, setRegs, switchRomBank, pushWord, dropWords } from "../home/memory.js";
 
-export { FZ, FN, FH, FC, setRegs, switchRomBank };
+export { FZ, FN, FH, FC, setRegs, switchRomBank, pushWord, dropWords };
 
 // ---- WRAM banks (include/constants/memory.inc) ----
 export const WRAM_STAGING = 1, WRAM_COURT_PLANES = 2, WRAM_SCREEN = 3, WRAM_ACTORS = 4, WRAM_TEXT = 5;
@@ -157,6 +157,56 @@ export function* farcallGen(P, bank, gen) {
   switchRomBank(P, old);
   return r;
 }
+// ---- the ROM's stack at the frames the port waits in ----
+// The lockstep test lines the port up with the ROM at each AdvanceFrame and compares sp there (and copies the ROM's
+// state in only at the same depth), so JS that waits stands at the ROM's stack depth: what the ROM code pushed,
+// the return address of each call into JS, and a far call's words. (P.runRom pushes the return address of the
+// ROM code it calls; the hooks start with their own on top, as the ROM's call left it.)
+// register objects merged in order into single registers (a later pair overrides earlier singles: P.runRom sets the
+// pairs first and the single registers after, so a pair given over singles would otherwise be lost)
+export function regsIn(...objs) {
+  const o = {};
+  for (const r of objs) for (const [k, v] of Object.entries(r || {})) {
+    if (v === undefined) continue;
+    if (k.length === 2 && k !== "sp") { o[k[0]] = (v >> 8) & 0xFF; o[k[1]] = v & 0xFF; } else o[k] = v;
+  }
+  return o;
+}
+// `call X` into JS, ret the address after the call
+export function* call(P, ret, gen) { pushWord(P, ret); const r = yield* gen; dropWords(P, 1); return r; }
+// `farcall X` (rst $18 at rst, its slot and bank after it) into JS: FarCall's words under its callee -- the return
+// past the inline bytes, hl, a with the caller's bank, and CallVectorEntryA's return -- and the bank mapped
+const FarCallReturn = 0x01D5;
+const farFrame = (P, rst, regs) => {
+  pushWord(P, (rst + 3) & 0xFFFF);
+  pushWord(P, ((regs.h ?? P.cpu.h) << 8 | (regs.l ?? P.cpu.l)) & 0xFFFF);
+  pushWord(P, ((regs.a ?? P.cpu.a) << 8 | P.V.romBank) & 0xFFFF);
+};
+export function* farcallJs(P, rst, bank, gen, regs = {}) {
+  farFrame(P, rst, regs); pushWord(P, FarCallReturn);
+  const r = yield* farcallGen(P, bank, gen);
+  dropWords(P, 4);
+  return r;
+}
+// `farcall X` into ROM code: the same words, CallVectorEntryA's return being P.runRom's
+export function* farcallRom(P, rst, bank, addr, regs = {}) {
+  farFrame(P, rst, regs);
+  const r = yield* P.runRom(bank, addr, regsIn(regs));
+  dropWords(P, 3);
+  return r;
+}
+// `wait_frames n` (call WaitFramesCmd at at, n after it): its return past the count and its push bc, then WaitFrames
+export function* waitFramesCmd(P, at, count, regs = {}) {
+  pushWord(P, (at + 4) & 0xFFFF);
+  pushWord(P, ((regs.b ?? P.cpu.b) << 8 | (regs.c ?? P.cpu.c)) & 0xFFFF);
+  const r = yield* P.runRom(0, WaitFrames, regsIn(regs, { c: count }));
+  dropWords(P, 2);
+  return r;
+}
+// `call CallHLInBankA` (a ROM routine in another bank: a story script) at the ROM's depth
+export const CallHLInBankA = 0x015E;
+export function* callHLInBankA(P, bank, hl, regs = {}) { return yield* P.runRom(0, CallHLInBankA, regsIn(regs, { a: bank, hl })); }
+
 // FarCall to code that is still the ROM's: the target from the bank's $4000 table (`farcall X` names
 // FarPtr_X, the table entry), run on the CPU (P.runRom maps the bank and maps the caller's back).
 export const farTarget = (P, bank, slot) => P.rom.u16(bank, 0x4000 | slot);

@@ -65,14 +65,14 @@ export function initCa00RecordFromCharId(P, char, slot) {
   if (char === CHAR_EMPTY) {
     clearMemory16(P, rec, 4);
     bus.w8(rec + CHARREC_CHAR, 0xFF);
-    return { a: 0, c: 0, de: rec, hl: rec + CHARREC_CHAR, f: addHLFlags(CHARREC_CHAR, rec, FZ) };
+    return { a: 0, b: rec >> 8, c: 0, de: rec, hl: rec + CHARREC_CHAR, f: addHLFlags(CHARREC_CHAR, rec, FZ) };
   }
   if (char === CHAR_STORY_ROSTER_MAIN) {
     const end = clearMemory16(P, rec, 4);
     const a = bus.u8(wStoryMainRecord);
     bus.w8(end, a);
     bus.w8(rec + CHARREC_BUILD_KIND, BUILD_MAIN);
-    return { a, c: 0, de: rec, hl: rec + CHARREC_BUILD_KIND, f: addHLFlags(CHARREC_BUILD_KIND, rec, FZ) };
+    return { a, b: rec >> 8, c: 0, de: rec, hl: rec + CHARREC_BUILD_KIND, f: addHLFlags(CHARREC_BUILD_KIND, rec, FZ) };
   }
   if (char & CHAR_STORY_FLAG) {
     if (P.V.currentStorySlot === NO_STORY_FILE) return { a: NO_STORY_FILE, b: char, c: recLo, hl: rec, f: FZ | FN };

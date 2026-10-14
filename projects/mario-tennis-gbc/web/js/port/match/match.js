@@ -13,6 +13,7 @@ import { engine, playSoundManaged } from "./engine_port.js";
 import * as draw from "./draw.js";
 import * as obj from "./obj.js";
 import { loadMatchGraphics } from "./variants.js";
+import { advanceFrame } from "../home/frame.js";
 
 const COURT_HARD = 0x00, BGM_COURT_STAR = 0x11, MATCHCONTEXT_MINIGAME = 2, GAMEMODE_ISLAND_OPEN = 0x02, GAMEMODE_MARIO_MINIGAME = 0x08;
 const GAMEMODE_LINK_MATCH = 0x09, MATCHABORT_POINT = 0x01, MATCHABORT_MATCH = 0x80, POINTOUTCOME_BALL_HIT_PLAYER = 9;
@@ -29,7 +30,6 @@ const W = {
 const u8 = v => v & 0xFF, u16 = v => v & 0xFFFF, S16 = v => (v << 16) >> 16;
 const clearMemory16 = (P, hl, c) => { for (let i = 0; i < c * 16; i++) P.bus.w8(hl + i, 0); };   // ClearMemory16 (00:03AF)
 const copyMemoryFast = (P, hl, de, c) => { for (let i = 0; i < c * 16; i++) P.bus.w8(de + i, P.bus.u8(hl + i)); };   // CopyMemoryFast (00:03F3)
-const advanceFrame = P => P.runRom(0, 0x2631);                           // AdvanceFrame
 function* fadeOut(P) { P.callRom(0, 0x1D20, { c: 32 }); yield* P.runRom(0, 0x1DA4); }   // BeginFadeOut 32, WaitFadeEnd
 
 // ---- settings and setup (match_08, match_frames_08) ----

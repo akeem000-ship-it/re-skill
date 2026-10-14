@@ -57,7 +57,7 @@ export function unusedMoveActorTowardPointRaw(P, bc, de) {
   bus.w16(t, tx); bus.w16(t + 2, ty);
   const hl = field(P, ACTORF_FLAGS);
   bus.w8(hl, bus.u8(hl) | ACTORFLAG_MOVING);
-  return { a: hl & 0xFF, bc: (bc + ACTORF_FLAGS) & 0xFFFF, de: ty, hl };
+  return { a: hl & 0xFF, f: fieldF(P, ACTORF_FLAGS), bc: (bc + ACTORF_FLAGS) & 0xFFFF, de: ty, hl };
 }
 
 // MoveActorByDelta (0A:44CB): actor a walks by (bc, de). MoveActorByDeltaRaw (0A:44F1): from the 4 bytes at bc.

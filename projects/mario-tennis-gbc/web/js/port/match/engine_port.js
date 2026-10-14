@@ -5,6 +5,7 @@
 // the address).
 // Routine names and addresses from the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/mario-tennis-gbc-disasm).
 import * as draw from "./draw.js";
+import { advanceFrame } from "../home/frame.js";
 import * as obj from "./obj.js";
 import { callModeHook } from "./match.js";
 
@@ -17,7 +18,7 @@ const hl = v => ({ h: (v >> 8) & 0xFF, l: v & 0xFF }), de = v => ({ d: (v >> 8) 
 // E.ext for the port (see STANDALONE in web/js/engine/engine.js for the list)
 function portExt(P) {
   return {
-    *advanceFrame() { yield* P.runRom(0, 0x2631); },                    // AdvanceFrame
+    *advanceFrame() { yield* advanceFrame(P); },                         // AdvanceFrame (home/frame.js)
     playMusic(E, id) { playSoundManaged(P, id); },
     *runMatchPauseMenu() { yield* P.runRom(6, 0x4074); },                // RunMatchPauseMenu
     *showMessageWindow(E, text, cell, size) { yield* P.runRom(6, 0x44FE, { ...hl(text), ...de(cell), ...bc(size) }); },   // ShowMessageWindow

@@ -39,10 +39,10 @@ export function unusedLoadMainCharacterFromRoster(P, d) {
   return { a: P.V.wramBank, f, bc: b << 8, de, hl };       // (c: Unused_02_Copy64Bytes's count, 0)
 }
 // Unused_02_Copy64Bytes (02:447A): 64 bytes from hl to de. Returns { a, c, hl } after (de kept).
-export function unusedCopy64Bytes(P, hl, de) {
+export function unusedCopy64Bytes(P, hl, de, f = 0) {
   let a = 0;
   for (let i = 0; i < 0x40; i++) { a = P.bus.u8(hl); P.bus.w8(de + i, a); hl = (hl + 1) & 0xFFFF; }
-  return { a, c: 0, hl, f: FZ | FN };
+  return { a, c: 0, hl, f: FZ | FN | (f & FC) };                // (the last `dec c`; the carry kept)
 }
 // RefreshPlayerStatsAndGetPtr (02:4485): recompute the story file's record a; hl = its level field.
 export function refreshPlayerStatsAndGetPtr(P, a) {
@@ -69,12 +69,12 @@ export function lookupStatBarLevel(P, hl, b) {
 export function scaleStatForBarLevel(P, hl, a, bc) {
   const m = mulHLByA(P, P.bus.u8(hl), a);
   const lvl1 = (P.bus.u8(bc + CHARREC_LEVEL) - 1) & 0xFF, x = (m.hl - lvl1) & 0xFFFF;
-  const out = { a, de: lvl1, hl: x };
+  const out = { a: x >> 8, hl: x };                             // (a: the difference's high byte)
   const t1 = x + 0xFF81;
-  if (!(t1 & 0x8000)) return { ...out, b: 0x7F, f: FZ | FH | (t1 > 0xFFFF ? FC : 0) };
+  if (!(t1 & 0x8000)) return { ...out, b: 0x7F, de: 0xFF81, f: FZ | FH | (t1 > 0xFFFF ? FC : 0) };
   const t2 = x + 0x007F, c2 = t2 > 0xFFFF ? FC : 0;
-  if (t2 & 0x8000) return { ...out, b: 0x81, f: FH | c2 };
-  return { ...out, b: x & 0xFF, f: FZ | FH | c2 };
+  if (t2 & 0x8000) return { ...out, b: 0x81, de: 0x007F, f: FH | c2 };
+  return { ...out, b: x & 0xFF, de: 0x007F, f: FZ | FH | c2 };
 }
 // RecomputeCharacterStats (02:44E9): record bc's stats (above); its level's modifiers (the archetype's list at
 // $70: [level, mask index] pairs ended by $FF) OR masks into its swing word (after the first match the ROM
@@ -143,7 +143,7 @@ export function applyStatModifierRow(P, item, kind, bc) {
 
 export const HOOKS = [
   [BANK, 0x443B, hook((P, c) => unusedLoadMainCharacterFromRoster(P, c.d))],
-  [BANK, 0x447A, hook((P, c) => unusedCopy64Bytes(P, c.hl, c.de))],
+  [BANK, 0x447A, hook((P, c) => unusedCopy64Bytes(P, c.hl, c.de, c.f))],
   [BANK, 0x4485, hook((P, c) => refreshPlayerStatsAndGetPtr(P, c.a))],
   [BANK, 0x4494, hook((P, c) => lookupStatBarLevel(P, c.hl, c.b))],
   [BANK, 0x44B7, hook((P, c) => scaleStatForBarLevel(P, c.hl, c.a, c.bc))],

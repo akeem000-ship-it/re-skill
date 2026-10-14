@@ -11,7 +11,7 @@
 // Tests: web/tests/port/routines_story.mjs; lockstep on out/engine/rec2.mtrec and out/port/story1.mtrec.
 import {
   FZ, FN, FH, FC, WRAM_STAGING, WRAM_COURT_PLANES, WRAM_SCREEN, WRAM_SCENE, BANK_STORY, hook, hookGen,
-  BlitBGRowFrom64, BlitBGColumnFrom64, addFlags, subFlags,
+  BlitBGRowFrom64, BlitBGColumnFrom64, addFlags, subFlags, call, pushWord, dropWords,
 } from "./common.js";
 import { farCopyBytes, loadPaletteShadow } from "../home/palettes.js";
 import { decompressDataFromBank, copyDataFromBank } from "../home/decompress.js";
@@ -47,33 +47,42 @@ const afterCopy = P => ({ bc: 0, de: P.A.storyMapRecord + 8 });
 
 // RunFacingTileScript (0A:5574): the action of the tile the player faces (id a). Keeps the registers.
 export function* runFacingTileScript(P, id) {
+  pushAll(P, id);
   P.V.unusedStoryScriptId = id;
-  if (findRecord(P, "mapFacingScriptsPtr", id)) yield* runStoryScriptOrDialogue(P, 0, recordHandler(P), afterCopy(P));
+  if (findRecord(P, "mapFacingScriptsPtr", id)) yield* call(P, 0x55A0, runStoryScriptOrDialogue(P, 0, recordHandler(P), afterCopy(P)));
+  dropWords(P, 4);
 }
 // RunQueuedTriggerScript (0A:55A5): the step-on trigger walked onto (id a), unless it acts on A presses only.
 export function* runQueuedTriggerScript(P, id) {
+  pushAll(P, id);
   P.V.unusedStoryScriptId = id;
-  if (!findRecord(P, "mapTileTriggersPtr", id)) return;
-  if (P.bus.u8(P.A.storyMapRecord + 6) === TILETRIGGER_PRESS_ONLY) return;
-  yield* runStoryScriptOrDialogue(P, 0, recordHandler(P), afterCopy(P));
+  if (findRecord(P, "mapTileTriggersPtr", id) && P.bus.u8(P.A.storyMapRecord + 6) !== TILETRIGGER_PRESS_ONLY)
+    yield* call(P, 0x55D8, runStoryScriptOrDialogue(P, 0, recordHandler(P), afterCopy(P)));
+  dropWords(P, 4);
 }
 // RunTileTriggerScript (0A:55DD): the trigger under the player on an A press (id a).
 export function* runTileTriggerScript(P, id) {
-  if (findRecord(P, "mapTileTriggersPtr", id)) yield* runStoryScriptOrDialogue(P, 0, recordHandler(P), afterCopy(P));
+  pushAll(P, id);
+  if (findRecord(P, "mapTileTriggersPtr", id)) yield* call(P, 0x5606, runStoryScriptOrDialogue(P, 0, recordHandler(P), afterCopy(P)));
+  dropWords(P, 4);
 }
 // RunLocationExit (0A:560B): exit id a: its script, then the destination location and entry point. Always maps
 // SRAM bank 0 after.
 export function* runLocationExit(P, id) {
   const { V } = P;
+  pushAll(P, id);
   V.unusedStoryScriptId = id;
   if (findRecord(P, "mapExitTriggersPtr", id)) {
-    yield* runStoryScriptOrDialogue(P, 0, recordHandler(P), afterCopy(P));
+    yield* call(P, 0x5637, runStoryScriptOrDialogue(P, 0, recordHandler(P), afterCopy(P)));
     V.storyModeCurrentLocation = P.bus.u8(P.A.storyMapRecord + 6);
     V.storyModeEntryPoint = P.bus.u8(P.A.storyMapRecord + 7);
   }
   V.sramBank = 0;
   P.bus.w8(rRAMB, 0);
+  dropWords(P, 4);
 }
+// push af, push bc, push de, push hl, as the four start (a: the id)
+function pushAll(P, a) { const c = P.cpu; pushWord(P, a << 8 | c.f); pushWord(P, c.bc); pushWord(P, c.de); pushWord(P, c.hl); }
 
 // GetStoryLocationCount (0A:574B): $2A locations.
 export const getStoryLocationCount = () => NUM_STORY_LOCATIONS;

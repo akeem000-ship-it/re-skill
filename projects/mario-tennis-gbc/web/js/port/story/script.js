@@ -13,11 +13,11 @@ import {
   FZ, FN, FH, FC, WRAM_ACTORS, WRAM_TEXT, BANK_ACTORS, BANK_STORY, wActors, ACTOR_SIZE, NUM_ACTORS, wFollowerActor,
   ACTORF_SPEED, ACTORF_MODE, ACTORF_HEADING, FLAG_CUTSCENE_FAST_FORWARD, hook, hookGen, farcall, farcallGen,
   testFlag, setFlag, clearFlag, advanceFrame, waitFrames, withWramBank, setActorPtr, addFlags, incFlags, cpFlags,
-  spAddFlags, testFlagF,
+  spAddFlags, testFlagF, regsIn, call, farcallJs, farcallRom, WaitFrames,
 } from "./common.js";
 import { farReadByte } from "../home/palettes.js";
 import { registerFrameTask, unregisterFrameTask } from "../home/colorfade.js";
-import { pushWord } from "../home/memory.js";
+import { pushWord, dropWords } from "../home/memory.js";
 import { setActorScript, attachActorWaypointFollower } from "./actor_slots.js";
 import { waitActorMoveDone, waitActorJumpDone } from "./actor_queries.js";
 import { initLocationActors } from "./story_interact.js";
@@ -69,10 +69,12 @@ export function endCutsceneScriptMode(P, sp = P.cpu.sp) {
 // WaitScriptFrames (0A:413F): wait a frames (2 when fast-forwarding). Keeps the registers. With a = 0 (and no
 // fast-forward) the ROM returns through its pushed bc (a jump to the caller's bc, the pushed af left on the
 // stack): returns { jumpTo: bc } then.
-export function* waitScriptFrames(P, a) {
+export function* waitScriptFrames(P, a, f = 0, bc = P.cpu.bc) {
   const n = testFlag(P, FLAG_CUTSCENE_FAST_FORWARD) ? FAST_FORWARD_FRAMES : a;
   if (!n) return { jump: true };
-  yield* waitFrames(P, n);
+  pushWord(P, a << 8 | f); pushWord(P, bc);                   // (push af, push bc)
+  yield* P.runRom(0, WaitFrames, { c: n });
+  dropWords(P, 2);
   return { jump: false };
 }
 // ScriptRespawnLocationActors (0A:4152): InitLocationActors (list hl, bank a).
@@ -81,7 +83,10 @@ export function scriptRespawnLocationActors(P, bank, list) { initLocationActors(
 // InitDialogueTextCursor (0A:4156): the script's dialogue starts at text id hl (SetActiveWindowTextId, bank 5's,
 // returns it in hl). Returns that routine's bc, de, hl.
 export function* initDialogueTextCursor(P, regs) {
-  const r = yield* withWramBankGen(P, WRAM_TEXT, P.runRom(BANK_TEXT, SetActiveWindowTextId, regs));
+  const c = P.cpu;
+  pushWord(P, c.a << 8 | c.f); pushWord(P, P.V.wramBank << 8 | c.f);   // (push af, push_wram_bank)
+  const r = yield* withWramBankGen(P, WRAM_TEXT, farcallRom(P, 0x4160, BANK_TEXT, SetActiveWindowTextId, regs));
+  dropWords(P, 2);
   return r;
 }
 function* withWramBankGen(P, bank, gen) {
@@ -100,44 +105,51 @@ export function advanceDialogueTextCursor(P) {
 // next message of the dialogue spoken by actor a (unless fast-forwarding: skipped); the cursor moves on (from the
 // id the dialogue routine leaves in hl). Returns b = a and the dialogue routine's bc, de.
 export function* scriptShowSpeakerDialogue(P, regs, restoreBG = false) {
-  const { bus, V } = P, old = V.wramBank;
-  yield* waitPlayerMoveDone(P);
+  const { bus, V } = P, old = V.wramBank, c = P.cpu;
+  pushWord(P, regs.a << 8 | c.f); pushWord(P, c.hl); pushWord(P, old << 8 | c.f);   // (push af, push hl, the WRAM bank)
+  yield* call(P, restoreBG ? 0x41CA : 0x419B, waitPlayerMoveDone(P));
   P.wramBank(WRAM_TEXT);
   let hl = bus.u16(P.A.scriptDialogueTextId), out = { b: regs.a };
   if (!testFlag(P, FLAG_CUTSCENE_FAST_FORWARD)) {
-    const r = yield* P.runRom(BANK_TEXT, restoreBG ? ShowSpeakerDialogueRestoreBG : ShowSpeakerDialogue, { ...regs, b: regs.a, hl });
+    const r = yield* farcallRom(P, restoreBG ? 0x41DE : 0x41AD, BANK_TEXT,
+      restoreBG ? ShowSpeakerDialogueRestoreBG : ShowSpeakerDialogue, regsIn(regs, { b: regs.a, hl }));
     hl = r.hl; out = { bc: r.bc, de: r.de };
   }
   bus.w16(P.A.scriptDialogueTextId, hl + 1);
   P.wramBank(old);
+  dropWords(P, 3);
   return out;
 }
 // ScriptCloseDialogueWindow (0A:41F2): bank 5's CloseActiveDialogueWindow. Returns its registers.
-export function* scriptCloseDialogueWindow(P, regs) { return yield* P.runRom(BANK_TEXT, CloseActiveDialogueWindow, regs); }
+export function* scriptCloseDialogueWindow(P, regs) { return yield* farcallRom(P, 0x41F2, BANK_TEXT, CloseActiveDialogueWindow, regs); }
 
 // RunDialogueYesNoPrompt (0A:41F6): the dialogue's yes/no question: the text resumes after its choice marker; a
 // Yes/No menu near the speaker; returns the choice in a. Keeps the other registers.
 export function* runDialogueYesNoPrompt(P) {
-  const { bus, V } = P, old = V.wramBank;
+  const { bus, V } = P, old = V.wramBank, c = P.cpu;
+  pushWord(P, c.bc); pushWord(P, c.de); pushWord(P, c.hl); pushWord(P, old << 8 | c.f);   // (push bc ... the WRAM bank)
   P.wramBank(WRAM_TEXT);
-  yield* findDialogueChoiceMarker(P);
+  yield* call(P, 0x4205, findDialogueChoiceMarker(P));
   const guard = bus.u8(P.A.textRedrawGuard);
+  pushWord(P, guard << 8 | c.f);                                // (push af)
   bus.w8(P.A.textRedrawGuard, 0);
-  yield* showYesNoPromptWindow(P);
-  yield* P.runRom(BANK_TEXT, RenderMenuWindowText);
-  const choice = (yield* P.runRom(BANK_TEXT, RunMenuSelection)).a;
-  yield* findDialogueChoiceMarker(P);
-  yield* P.runRom(BANK_TEXT, CloseWindow, { a: bus.u8(P.A.menuWindowId) });
+  yield* call(P, 0x4210, showYesNoPromptWindow(P));
+  yield* farcallRom(P, 0x4210, BANK_TEXT, RenderMenuWindowText);
+  const choice = (yield* farcallRom(P, 0x4213, BANK_TEXT, RunMenuSelection)).a;
+  yield* call(P, 0x421A, findDialogueChoiceMarker(P));
+  yield* farcallRom(P, 0x421D, BANK_TEXT, CloseWindow, { a: bus.u8(P.A.menuWindowId) });
   bus.w8(P.A.textResumePtr + 1, 0);
   bus.w8(P.A.menuWindowId, 0xFF);
   bus.w8(P.A.textRedrawGuard, guard);
   P.wramBank(old);
+  dropWords(P, 5);
   return choice;
 }
 // ShowYesNoPromptWindow (0A:4237): the Yes/No menu window: in the upper rows when the speaking actor stands low on
 // the screen (10 tiles or more below the camera), else the lower; with no speaker by the speaker's low bits.
 export function* showYesNoPromptWindow(P) {
-  const { bus, V } = P, old = V.wramBank, speaker = bus.u8(P.A.dialogueSpeaker);
+  const { bus, V } = P, old = V.wramBank, speaker = bus.u8(P.A.dialogueSpeaker), c = P.cpu;
+  pushWord(P, c.a << 8 | c.f); pushWord(P, c.bc); pushWord(P, c.de); pushWord(P, c.hl); pushWord(P, old << 8 | c.f);
   let e;
   if (speaker & SPEAKER_NONE) e = (speaker & 0x7F) < SPEAKER_LOW_ROWS ? PROMPT_ROW_LOWER : PROMPT_ROW_UPPER;
   else {
@@ -148,15 +160,18 @@ export function* showYesNoPromptWindow(P) {
     e = ((bus.u8(yAt) - camY) & 0xFF) < ACTOR_LOW_ON_SCREEN ? PROMPT_ROW_UPPER : PROMPT_ROW_LOWER;
   }
   P.wramBank(old);
-  yield* P.runRom(BANK_TEXT, CreateMenuWindowFromText, { d: PROMPT_COLUMN, e, hl: Text_30_26 });
+  yield* farcallRom(P, 0x4289, BANK_TEXT, CreateMenuWindowFromText, { d: PROMPT_COLUMN, e, hl: Text_30_26 });
+  dropWords(P, 5);
 }
 // FindDialogueChoiceMarker (0A:4291): fetch the dialogue's current message into wTextBuffer and point
 // wTextResumePtr after its last page break ($02), if any. Keeps the registers.
 export function* findDialogueChoiceMarker(P) {
-  const { bus } = P;
+  const { bus } = P, c = P.cpu;
+  pushWord(P, c.a << 8 | c.f); pushWord(P, c.bc); pushWord(P, c.de); pushWord(P, c.hl);   // (push af ... push hl)
   const id = (bus.u16(P.A.scriptDialogueTextId) - 1) & 0xFFFF;
-  const r = yield* P.runRom(BANK_TEXT, AddTextIdOffset, { a: 0, hl: id });
-  yield* P.runRom(BANK_TEXT, FetchDialogueText, r);
+  const r = yield* farcallRom(P, 0x429D, BANK_TEXT, AddTextIdOffset, { a: 0, hl: id });
+  yield* farcallRom(P, 0x42A0, BANK_TEXT, FetchDialogueText, r);
+  dropWords(P, 4);
   let hl = wTextBuffer, de = 0;
   for (let bc = TEXT_SCAN_LENGTH; bc > 0; bc--) {
     const v = bus.u8(hl);
@@ -168,11 +183,14 @@ export function* findDialogueChoiceMarker(P) {
 }
 // RunMenuFromText (0A:42CF): a menu from text hl at (d, e): returns the choice (a), the window closed after.
 export function* runMenuFromText(P, regs) {
-  const w = yield* P.runRom(BANK_TEXT, CreateMenuWindowFromText, regs);
-  yield* P.runRom(BANK_TEXT, RestoreShadowTilemap);
-  yield* P.runRom(BANK_TEXT, RenderMenuWindowText);
-  const choice = (yield* P.runRom(BANK_TEXT, RunMenuSelection)).a;
-  const r = yield* P.runRom(BANK_TEXT, CloseWindow, { a: w.a, c: choice });
+  const c = P.cpu;
+  pushWord(P, c.bc); pushWord(P, c.de); pushWord(P, c.hl);       // (push bc, push de, push hl)
+  const w = yield* farcallRom(P, 0x42D2, BANK_TEXT, CreateMenuWindowFromText, regs);
+  yield* farcallRom(P, 0x42D6, BANK_TEXT, RestoreShadowTilemap);
+  yield* farcallRom(P, 0x42D9, BANK_TEXT, RenderMenuWindowText);
+  const choice = (yield* farcallRom(P, 0x42DC, BANK_TEXT, RunMenuSelection)).a;
+  const r = yield* farcallRom(P, 0x42E1, BANK_TEXT, CloseWindow, { a: w.a, c: choice });
+  dropWords(P, 3);
   return { a: choice, f: r.f };
 }
 // Unused_0a_ScriptSkipSpeakerDialogue (0A:42E9): the cursor moved on without the message. Keeps the registers.
@@ -203,7 +221,7 @@ export function scriptSetActorMoveSpeed(P, slot, speed) {
   const r = addToHL(getActorStateAddr(P, slot).hl, ACTORF_SPEED);
   P.wramBank(WRAM_ACTORS);
   P.bus.w16(r.hl, speed);
-  return { a: r.a, f: r.f, hl: (r.hl + 1) & 0xFFFF };
+  return { a: speed & 0xFF, f: r.f, hl: (r.hl + 1) & 0xFFFF };
 }
 // ScriptSetActorScript (0A:4350): actor a runs script de of bank b.
 export function scriptSetActorScript(P, slot, bank, script) {
@@ -221,10 +239,12 @@ export function setActorNullScript(P, slot) {
 // WaitActorScriptDone (0A:4372): wait (up to $258 frames) until actor a's script sits on an as_halt.
 export function* waitActorScriptDone(P, slot) {
   const r = getActorStateAddr(P, slot);
+  pushWord(P, r.a << 8 | r.f); pushWord(P, P.cpu.bc);            // (push af, push bc)
   for (let bc = SCRIPT_WAIT_TIMEOUT; bc > 0; bc--) {
     if (checkActorScriptEnd(P, r.hl).done) break;
     yield* advanceFrame(P);
   }
+  dropWords(P, 2);
   return r;
 }
 // CheckActorScriptEnd (0A:438A): Z when actor hl's next opcode is 0 (as_halt); a = the opcode. WRAM 4.
@@ -237,12 +257,12 @@ export function checkActorScriptEnd(P, actor, f = 0) {
 // ScriptWaitActorMoveDone (0A:43A4) / ScriptWaitActorJumpDone (0A:43AB): wait for actor a's walk / jump to end.
 export function* scriptWaitActorMoveDone(P, slot) {
   const r = getActorStateAddr(P, slot);
-  yield* farcallGen(P, BANK_ACTORS, waitActorMoveDone(P, r.hl));
+  yield* farcallJs(P, 0x43A7, BANK_ACTORS, waitActorMoveDone(P, r.hl), { a: r.a, hl: r.hl });
   return r;
 }
 export function* scriptWaitActorJumpDone(P, slot) {
   const r = getActorStateAddr(P, slot);
-  yield* farcallGen(P, BANK_ACTORS, waitActorJumpDone(P, r.hl));
+  yield* farcallJs(P, 0x43AE, BANK_ACTORS, waitActorJumpDone(P, r.hl), { a: r.a, hl: r.hl });
   return r;
 }
 // ScriptSetActorPosition (0A:43B2): actor a stands at (bc, de) (the point on the stack, for SetActorPositionRaw).
@@ -266,7 +286,7 @@ export const HOOKS = [
   [BANK, 0x4105, hook((P, c) => { endCutsceneScriptMode(P, c.sp); })],
   [BANK, 0x413F, function* (P, c) {
     const a = c.a, f = c.f, bc = c.bc, de = c.de, hl = c.hl;
-    const r = yield* waitScriptFrames(P, a);
+    const r = yield* waitScriptFrames(P, a, f, bc);
     Object.assign(c, { a, f, bc, de, hl });
     if (r.jump) { pushWord(P, a << 8 | f); pushWord(P, bc); c.f = FZ; }   // its ret pops the pushed bc
   }],

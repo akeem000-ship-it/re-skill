@@ -19,7 +19,7 @@ import {
   ACTORF_FACING, ACTORF_FACING_COUNT, ACTORF_TILE, ACTORFLAG_SOLID, ACTORFLAG_TALKABLE, ACTORFLAG_MOVING,
   ACTORSTATUS_FACING_LOCKED, ACTORSTATUS_ANIM_HELD, ACTORSTATUS_ANIM_OFFSCREEN, ACTORSTATUS_FRAME_DIRTY,
   ACTORSTATUS_LIVE, FLAG_ACTORS_FROZEN, a8, a16, w8, w16, setBits, clearBits, hook, hookGen, testFlag, farcall,
-  advanceFrame, cpFlags, subFlags, zf, addFlags, incFlags, addHLFlags, bitFlags,
+  advanceFrame, cpFlags, subFlags, zf, addFlags, incFlags, addHLFlags, bitFlags, pushWord, dropWords,
 } from "./common.js";
 import { farReadWord } from "../home/palettes.js";
 import { getSquareOfByte } from "../home/math.js";
@@ -34,6 +34,7 @@ const NEAR_PLAYER_LIMIT = 0x4000;             // squared half-tile distance unde
 const ACTOR_AT_POINT_LIMIT = 0x1F00;          // squared distance under $E100 (1/256 tiles, low bytes)
 const NEARBY_TILES_MASK = 0xFE;               // within 2 tiles on both axes
 const TERRAIN_BLOCKED = 0x80;
+const OAM_PAGE_END = 0xA0;
 const SCREEN_Y_BIAS = 0x0090, SCREEN_X_BIAS = 0x0010, SCREEN_ROWS = 0x14, SCREEN_COLUMNS = 0x16;
 const ANIM_LOOP = 0xFF, ANIM_SET = 0xFE, ANIM_COMMANDS = 0xF0, ANIM_FOREVER = 0xFF;
 const FRAME_TILE_BLOCKS = 4;
@@ -74,12 +75,12 @@ export function testPointInBox(P, home, x, y, halfW, halfD) {
 export function isPointNearPlayer(P, x, y) {
   const { bus } = P;
   const dy = abs16((bus.u16(wActors + ACTORF_TARGET_Y) - y) & 0xFFFF) >> 1;
-  if (dy >> 8) return { a: 0 };
+  if (dy >> 8) return { a: 0, f: FZ };
   const dx = abs16((bus.u16(wActors + ACTORF_TARGET_X) - x) & 0xFFFF) >> 1;
-  if (dx >> 8) return { a: 0 };
+  if (dx >> 8) return { a: 0, f: FZ };
   const sum = getSquareOfByte(dy) + getSquareOfByte(dx);
-  if (sum > 0xFFFF || (sum & 0xFFFF) + NEAR_PLAYER_LIMIT > 0xFFFF) return { a: 0 };
-  return { a: 1 };
+  if (sum > 0xFFFF || (sum & 0xFFFF) + NEAR_PLAYER_LIMIT > 0xFFFF) return { a: 0, f: FZ };
+  return { a: 1, f: FZ };          // (Z left from the `and a` before the squares)
 }
 // FindActorAtPoint (04:53D7): the first actor of wNearbyActorList within reach of (hl, de) (both axes' distance
 // under 256, the sum of their squares under $E100): its slot index in a, else 0. The point is kept in
@@ -164,9 +165,13 @@ export function drawActorSprite(P, actor) {
   const col = ((hl >> 8) + 1) & 0xFF;
   if (col >= SCREEN_COLUMNS) return { a: col, f: cpFlags(col, SCREEN_COLUMNS), de: y, hl };
   const x = ((hl << 3) & 0xFFFF) >> 8;
+  const index = P.V.spriteQueueIndex;
   const q = queueSprite16(P, a8(P, actor, ACTORF_TILE + 1), a8(P, actor, ACTORF_TILE), x, y);
   setBits(P, actor + ACTORF_STATUS, ACTORSTATUS_LIVE);
-  return { a: q.a, de: x << 8 | y, hl: actor + ACTORF_STATUS };
+  // f: Z when QueueSprite16 stopped with the OAM page full at or after its first sprite (its `cp $a0`), then
+  // H and C of the `add hl, bc` to the status field
+  const full = index === OAM_PAGE_END || index + 4 === OAM_PAGE_END;
+  return { a: q.a, f: addHLFlags(ACTORF_STATUS, actor, full ? FZ : 0), de: x << 8 | y, hl: actor + ACTORF_STATUS };
 }
 // AdvanceActorAnimation (04:55C1): run actor bc's animation script (above) while no frame is waiting; the frame
 // shown goes to ACTORF_ANIM_FRAME (marking the frame dirty when it changes). de: the registers' de at the call
@@ -200,7 +205,7 @@ export function advanceActorAnimation(P, actor, de = 0) {
   if (old === e) return { a: old, f: FZ | FN, de: d << 8 | e, hl: frameAt };
   bus.w8(frameAt, e);
   setBits(P, actor + ACTORF_STATUS, ACTORSTATUS_FRAME_DIRTY);
-  return { a: old, f: cpFlags(old, e), de: d << 8 | e, hl: actor + ACTORF_STATUS };
+  return { a: old, f: addHLFlags(ACTORF_STATUS, actor, cpFlags(old, e)), de: d << 8 | e, hl: actor + ACTORF_STATUS };
 }
 // UpdateActorFacingFromHeading (04:5673): unless locked, the facing follows the heading; the facing shown is
 // FACE_* of its 16th of a turn (or FACE_RIGHT for a one-facing object); a change marks the frame dirty.
@@ -217,7 +222,7 @@ export function updateActorFacingFromHeading(P, actor, de = 0) {
   if (old === d) return { a: old, f: FZ | FN, de: de2, hl: at };
   bus.w8(at, d);
   setBits(P, actor + ACTORF_STATUS, ACTORSTATUS_FRAME_DIRTY);
-  return { a: old, f: cpFlags(old, d), de: de2, hl: actor + ACTORF_STATUS };
+  return { a: old, f: addHLFlags(ACTORF_STATUS, actor, cpFlags(old, d)), de: de2, hl: actor + ACTORF_STATUS };
 }
 // QueueActorFrameTileCopy (04:56C3): when actor bc's frame is dirty (and the actors are not frozen), queue its
 // frame e's tiles for the facing d (an offset into the frame's tiles) to its VRAM slot, from its walk-sprite
@@ -250,10 +255,13 @@ export function isActorJumping(P, actor, f = 0) {
 }
 // WaitActorJumpDone (04:5726): wait (up to $B4 frames) until actor hl has landed. Keeps the registers.
 export function* waitActorJumpDone(P, actor) {
+  const cpu = P.cpu;
+  pushWord(P, cpu.a << 8 | cpu.f); pushWord(P, cpu.bc);          // (push af, push bc)
   for (let c = JUMP_WAIT_FRAMES; c > 0; c--) {
-    if (!isActorJumping(P, actor).jumping) return;
+    if (!isActorJumping(P, actor).jumping) break;
     yield* advanceFrame(P);
   }
+  dropWords(P, 2);
 }
 // IsActorMoving (04:5738): a = 1 (NZ) while actor hl walks (flags bit 7). A null hl returns Z. WRAM bank 4.
 export function isActorMoving(P, actor, f = 0) {
@@ -265,10 +273,13 @@ export function isActorMoving(P, actor, f = 0) {
 }
 // WaitActorMoveDone (04:5755): wait (up to $258 frames) until actor hl stands. Keeps the registers.
 export function* waitActorMoveDone(P, actor) {
+  const cpu = P.cpu;
+  pushWord(P, cpu.a << 8 | cpu.f); pushWord(P, cpu.bc);          // (push af, push bc)
   for (let bc = MOVE_WAIT_FRAMES; bc > 0; bc--) {
-    if (!isActorMoving(P, actor).moving) return;
+    if (!isActorMoving(P, actor).moving) break;
     yield* advanceFrame(P);
   }
+  dropWords(P, 2);
 }
 
 export const HOOKS = [

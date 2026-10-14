@@ -17,7 +17,8 @@ import {
   FZ, FN, FH, FC, WRAM_ACTORS, BANK_ACTORS, BANK_STORY, wActors, ACTORF_ANIM_SPEED, FLAG_ENDING_CREDITS_RUNNING,
   FLAG_HIDE_OVERWORLD_ACTORS, FLAG_DEBUG_SHOW_PLAYER_POS, FLAG_STORY_MENU_LOCKED, hook, hookGen, farcall,
   testFlag, setFlag, clearFlag, setFlagOp, clearFlagOp, advanceFrame, waitFrames, ClearFrameTasks,
-  DisableLCDSafely, EnableLCD, PrintHexWord, addFlags, incFlags, decFlags, zf, subFlags, testFlagF,
+  DisableLCDSafely, EnableLCD, PrintHexWord, addFlags, incFlags, decFlags, zf, subFlags, testFlagF, addHLFlags,
+  call, farcallRom, waitFramesCmd, callHLInBankA, pushWord, dropWords,
 } from "./common.js";
 import { copyMemoryBC } from "../home/memory.js";
 import { farReadByte, farCopyBytes } from "../home/palettes.js";
@@ -103,7 +104,7 @@ export function getClearStatusResultCode(P) {
   return { a: code, b, hl, f };
 }
 // ClearStatusSetupMenuEntry (0A:4EF8)
-export function* clearStatusSetupMenuEntry(P) { return yield* runClearStatusSetupMenu(P); }
+export function* clearStatusSetupMenuEntry(P) { return yield* call(P, 0x4EFB, runClearStatusSetupMenu(P)); }
 
 // DrawPlayerPositionDebugOverlay (0A:4EFC), a frame task: with the debug flag, the player's X and Y in hex at
 // (16, 0) and (16, 1). Returns the registers it leaves.
@@ -123,12 +124,18 @@ export function* runStoryModeOverworld(P) {
   for (;;) {
     P.callRom(0, ClearFrameTasks);
     registerFrameTask(P, 1, DrawPlayerPositionDebugOverlay, P.cpu.sp - 2);
-    yield* runStoryLocation(P);
+    yield* call(P, 0x4F3E, runStoryLocation(P));
   }
 }
 
 // RunStoryLocation (0A:4F40): enter the current location and run it until an exit (above). Keeps the registers.
 export function* runStoryLocation(P) {
+  const { bus, V } = P, c = P.cpu;
+  pushWord(P, c.a << 8 | c.f); pushWord(P, c.bc); pushWord(P, c.de); pushWord(P, c.hl);   // (push af ... push hl)
+  yield* runLocation(P);
+  dropWords(P, 4);
+}
+function* runLocation(P) {
   const { bus, V } = P;
   beginFadeOut(P, FADE_OUT_SPEED);
   clearTemporaryStoryFlags(P);
@@ -138,33 +145,33 @@ export function* runStoryLocation(P) {
   V.gameMode = GAMEMODE_NONE;
   yield* advanceFrame(P);
   if (!testFlag(P, FLAG_ENDING_CREDITS_RUNNING) && V.storyLocationBGM !== BGM_UNCHANGED) playSoundManaged(P, V.storyLocationBGM);
-  yield* P.runRom(BANK_TEXT, ResetTextWindowState);
+  yield* farcallRom(P, 0x4F6F, BANK_TEXT, ResetTextWindowState);
   initLocationActors(P, V.storyLocationBank, V.mapActorsPtr);
   bus.w8(wActors + ACTORF_ANIM_SPEED, ANIM_SPEED_STILL);
   setFlag(P, FLAG_HIDE_OVERWORLD_ACTORS);
-  yield* waitFadeEnd(P, cpuRegs(P));
+  yield* call(P, 0x4F8D, waitFadeEnd(P, cpuRegs(P)));
   clearFlag(P, FLAG_HIDE_OVERWORLD_ACTORS);
   loadStoryObjPalettes(P);
   P.callRom(0, DisableLCDSafely);
-  yield* P.runRom(BANK_TEXT, ResetTextWindowState);
+  yield* farcallRom(P, 0x4F96, BANK_TEXT, ResetTextWindowState);
   initSceneScroll(P);
   loadStorySceneGraphics(P, V.storyLocationScene);
   copyScrolledSceneTilemapToVram(P, 0);
-  if (!testFlag(P, FLAG_ENDING_CREDITS_RUNNING)) yield* P.runRom(BANK_GAME, LoadMenuFontGfx);
+  if (!testFlag(P, FLAG_ENDING_CREDITS_RUNNING)) yield* farcallRom(P, 0x4FAC, BANK_GAME, LoadMenuFontGfx);
   P.callRom(0, EnableLCD);
   const arrival = V.storyArrivalScript;
-  if (arrival) yield* P.runRom(V.storyLocationBank, arrival, { a: V.storyLocationBank, hl: arrival });
-  yield* runLocationInitScript(P, cpuRegs(P));
+  if (arrival) yield* callHLInBankA(P, V.storyLocationBank, arrival);
+  yield* call(P, 0x4FC7, runLocationInitScript(P, cpuRegs(P)));
   const exit = V.storyModeExitTriggerRequest;
-  if (exit) { V.storyModeExitTriggerRequest = 0; yield* runLocationExit(P, exit); return; }
+  if (exit) { V.storyModeExitTriggerRequest = 0; yield* call(P, 0x4FD3, runLocationExit(P, exit)); return; }
   beginFadeIn(P, FADE_IN_SPEED);
-  yield* waitFadeEnd(P, cpuRegs(P));
-  if (V.storyModeShowLocationName) yield* showLocationNamePopup(P, { ...cpuRegs(P), hl: V.storyModeLocationNameTextId });
-  else yield* waitFrames(P, ENTER_WAIT_FRAMES);
+  yield* call(P, 0x4FDE, waitFadeEnd(P, cpuRegs(P)));
+  if (V.storyModeShowLocationName) yield* call(P, 0x4FEF, showLocationNamePopup(P, { ...cpuRegs(P), hl: V.storyModeLocationNameTextId }));
+  else yield* waitFramesCmd(P, 0x4FF1, ENTER_WAIT_FRAMES);
   for (;;) {                                         // .frameLoop
     P.wramBank(WRAM_ACTORS);
     if (!checkStoryEventRequests(P).a) {             // nothing asked: the player walks until something is
-      yield* waitFadeEnd(P, cpuRegs(P));
+      yield* call(P, 0x50CD, waitFadeEnd(P, cpuRegs(P)));
       farcall(P, BANK_ACTORS, () => attachActorControllerScript(P, wActors));
       do yield* advanceFrame(P); while (!checkStoryEventRequests(P).a);
       continue;
@@ -173,13 +180,13 @@ export function* runStoryLocation(P) {
     farcall(P, BANK_ACTORS, () => setActorScript(P, wActors, bank, ActorScript_0a));
     bus.w8(wActors + ACTORF_ANIM_SPEED, ANIM_SPEED_STILL);
     const trigger = V.storyModeTriggerScript;
-    if (trigger) { V.storyModeTriggerScript = 0; yield* runQueuedTriggerScript(P, trigger); }
+    if (trigger) { V.storyModeTriggerScript = 0; yield* call(P, 0x5022, runQueuedTriggerScript(P, trigger)); }
     const exitId = V.storyModeExitTriggerRequest;
-    if (exitId) { V.storyModeExitTriggerRequest = 0; yield* runLocationExit(P, exitId); return; }
+    if (exitId) { V.storyModeExitTriggerRequest = 0; yield* call(P, 0x502E, runLocationExit(P, exitId)); return; }
     if (V.storyModeMenuRequest) {
       V.storyModeMenuRequest = 0;
-      yield* waitPlayerMoveDone(P);
-      if (!testFlag(P, FLAG_STORY_MENU_LOCKED)) { yield* P.runRom(BANK_MENU, RunStoryModeMenu); continue; }
+      yield* call(P, 0x503D, waitPlayerMoveDone(P));
+      if (!testFlag(P, FLAG_STORY_MENU_LOCKED)) { yield* farcallRom(P, 0x5042, BANK_MENU, RunStoryModeMenu); continue; }
     }
     V.storyAutoInteractFired = 0;
     if (V.storyAutoInteractArmed) {                  // walking into the same thing for a while talks to it
@@ -196,14 +203,14 @@ export function* runStoryLocation(P) {
     if (!V.storyModeInteractRequest) continue;
     V.storyModeInteractRequest = 0;
     const npc = findActorFacingPlayer(P).a;
-    if (npc) { yield* runNpcInteraction(P, npc); if (V.storyScriptRan) continue; }
+    if (npc) { yield* call(P, 0x5094, runNpcInteraction(P, npc)); if (V.storyScriptRan) continue; }
     const action = getFacingTileInteractionId(P).a;
-    if (action) { yield* runFacingTileScript(P, action); if (V.storyScriptRan) continue; }
+    if (action) { yield* call(P, 0x50A3, runFacingTileScript(P, action)); if (V.storyScriptRan) continue; }
     const tile = getTileTriggerAtPlayer(P).a;
-    if (tile) { yield* runTileTriggerScript(P, tile); continue; }
+    if (tile) { yield* call(P, 0x50B2, runTileTriggerScript(P, tile)); continue; }
     if (V.storyAutoInteractFired || !V.debugStepMode) continue;
-    yield* waitPlayerMoveDone(P);
-    yield* P.runRom(BANK_TEXT, RunDebugMenu);
+    yield* call(P, 0x50C2, waitPlayerMoveDone(P));
+    yield* farcallRom(P, 0x50C2, BANK_TEXT, RunDebugMenu);
   }
 }
 const cpuRegs = P => ({ a: P.cpu.a, f: P.cpu.f, b: P.cpu.b, c: P.cpu.c, d: P.cpu.d, e: P.cpu.e, h: P.cpu.h, l: P.cpu.l });
@@ -215,7 +222,7 @@ export function clearStoryEventRequests(P) { for (let i = 0; i < EVENT_REQUESTS;
 export function checkStoryEventRequests(P) {
   let a = 0;
   for (let i = 0; i < EVENT_REQUESTS; i++) a |= P.bus.u8(P.A.storyModeTriggerScript + i);
-  return { a, f: zf(a) };
+  return { a, f: FZ | FN };                                   // (the flags of the loop's last `dec b`)
 }
 // LoadStoryLocationHeader (0A:5114): the current location's record into wStoryModeCurrentLocation..+5, its map
 // scripts' 7 pointers into wMapEntryPointsPtr.., its bank, its name's text id, and whether to show the name (not
@@ -230,8 +237,12 @@ export function loadStoryLocationHeader(P) {
   V.storyModeLocationNameTextId = (V.storyModeCurrentLocation + LOCATION_NAME_TEXT_BASE) & 0xFFFF;
   V.storyModeShowLocationName = (V.storyModeEntryPoint - STORYENTRY_NONE) & 0xFF;
 }
-// WriteStoryStateWord (0A:5161): the word hl at wStoryModeCurrentLocation + de. Keeps the registers.
-export function writeStoryStateWord(P, off, value) { P.bus.w16((P.A.storyModeCurrentLocation + off) & 0xFFFF, value); }
+// WriteStoryStateWord (0A:5161): the word hl at wStoryModeCurrentLocation + de. Keeps the registers but F (its
+// `add hl, de`).
+export function writeStoryStateWord(P, off, value, f = 0) {
+  P.bus.w16((P.A.storyModeCurrentLocation + off) & 0xFFFF, value);
+  return { f: addHLFlags(P.A.storyModeCurrentLocation, off, f) };
+}
 // LoadStoryEntryPointRecord (0A:516F): the entry record of wStoryModeEntryPoint (or the first) into
 // wStoryMapRecord: the spawn facing and position, and the arrival script. Nothing with no entry point ($FF).
 // Keeps the registers.
@@ -264,6 +275,6 @@ export const HOOKS = [
   [BANK, 0x50F1, hook(P => { clearStoryEventRequests(P); })],
   [BANK, 0x5104, hook(P => checkStoryEventRequests(P))],
   [BANK, 0x5114, hook(P => { loadStoryLocationHeader(P); })],
-  [BANK, 0x5161, hook((P, c) => { writeStoryStateWord(P, c.de, c.hl); })],
+  [BANK, 0x5161, hook((P, c) => writeStoryStateWord(P, c.de, c.hl, c.f))],
   [BANK, 0x516F, hook(P => { loadStoryEntryPointRecord(P); })],
 ];

@@ -51,7 +51,8 @@ export function loadStorySlot(P, a) {
     return { a, f: FZ, bc, hl: wStorySlotData };
   }
   P.V.currentStorySlot = 0;
-  return { hl: wStorySlotData, ...initCa00RecordFromCharId(P, CHAR_STORY_MAIN, COURT_SLOT_PLAYER1), bc };
+  const { de: _de, ...init } = initCa00RecordFromCharId(P, CHAR_STORY_MAIN, COURT_SLOT_PLAYER1);   // (bc, de popped)
+  return { hl: wStorySlotData, ...init, bc };
 }
 // Unused_02_StorySlotVariant (02:5284): LoadStorySlot that leaves wCurrentStorySlot at a, and a = 0 when the
 // file was read, $FF (and court slot 0 CHAR_NONE) when not. Nothing calls it.
@@ -59,7 +60,8 @@ export function unusedStorySlotVariant(P, a) {
   const bc = (a << 8) | a;
   const r = storySlot(P, a);
   if (r.a) { P.bus.w8(wPlayer1CurrentMainCharacter, CHAR_NONE); return { a: 0xFF, f: 0, bc, hl: wStorySlotData }; }
-  return { hl: wStorySlotData, ...initCa00RecordFromCharId(P, CHAR_STORY_MAIN, COURT_SLOT_PLAYER1), a: 0, f: FZ, bc };
+  const { de: _de, ...init } = initCa00RecordFromCharId(P, CHAR_STORY_MAIN, COURT_SLOT_PLAYER1);
+  return { hl: wStorySlotData, ...init, a: 0, f: FZ, bc };
 }
 // LoadCharacterRecordToCa80 (02:52AA): court slot 2's record: for a with bit 7, story file a & $7F's main
 // character (loaded into court slot 0, then both records copied on); else roster character a. All registers kept.

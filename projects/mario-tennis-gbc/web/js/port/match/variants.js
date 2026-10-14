@@ -5,6 +5,7 @@
 // tiles: QueueVRAMCopy, compressed sets: DecompressData), called as the ROM calls them, with bank $28 mapped.
 // Covered by out/engine/exh1.mtrec and rec1.mtrec (every match start; the effects during play).
 import { callHome } from "./draw.js";
+import { advanceFrame } from "../home/frame.js";
 
 const BANK = 0x28, VRAM_BANK1 = 0x2000, TILE = 16;
 const vTiles0 = 0x8000, vTiles1 = 0x8800, vTiles2 = 0x9000;
@@ -26,7 +27,7 @@ const objPals = (P, src, first, n) => loadPalettes(P, src, 8 + first, n);
 // QueueVRAMCopy (00:0480): c 16-byte blocks from hl to VRAM de (+ VRAM_BANK1: bank 1)
 const queueVRAMCopy = (P, src, dest, c) => callHome(P, 0x0480, { ...hl(src), ...de(dest), c }, BANK);
 const decompress = (P, src, dest) => callHome(P, 0x1797, { ...hl(src), ...de(dest) }, BANK);   // DecompressData
-const advanceFrameIfLcdOn = function* (P) { if (P.bus.u8(0xFF40) & 0x80) yield* P.runRom(0, 0x2631); };   // AdvanceFrame
+const advanceFrameIfLcdOn = function* (P) { if (P.bus.u8(0xFF40) & 0x80) yield* advanceFrame(P); };   // AdvanceFrame (home/frame.js)
 
 // 28:5EB0 LoadMatchGraphics: the match palettes (OBJ 0-2, BG 0-1), the ball and effects tiles (VRAM bank 1 tile $40),
 // the court-side tiles (decompressed; the first 128 to $9000) and the text tiles; a minigame adds its variant

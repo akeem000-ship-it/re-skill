@@ -12,7 +12,7 @@ import {
   FZ, FN, FH, FC, WRAM_ACTORS, WRAM_TEXT, BANK_ACTORS, BANK_STORY, wActors, ACTORF_FLAGS, ACTORF_X, ACTORF_Y,
   ACTORF_HEADING, ACTORF_ANIM_SPEED_MOVING, ACTORF_ANIM_ID, ACTORF_STATUS, ACTORF_DRAWN_FACING,
   ACTORSTATUS_FACING_LOCKED, hook, hookGen, farcall, farcallGen, advanceFrame, withWramBank, cpFlags, testFlagOp,
-  testFlagF,
+  testFlagF, call, farcallRom, callHLInBankA, pushWord, dropWords,
 } from "./common.js";
 import { farReadWord, farCopyBytes, loadPaletteShadow } from "../home/palettes.js";
 import { copyMemoryBC } from "../home/memory.js";
@@ -99,18 +99,26 @@ export function restoreStoryReturnPoint(P) {
 // a button is held. Keeps the registers. regs: the CPU registers at the call.
 export function* showLocationNamePopup(P, regs) {
   const { V } = P, old = V.wramBank;
-  yield* waitPlayerMoveDone(P);
+  pushRegs(P, regs, old);                                      // (push af ... push hl, the WRAM bank)
+  yield* call(P, 0x52FF, waitPlayerMoveDone(P));
   P.wramBank(WRAM_TEXT);
   V.messageSpeed |= 0x80;
-  yield* P.runRom(BANK_TEXT, ShowSpeakerDialogueRestoreBG, { ...regs, a: SPEAKER_LOCATION_NAME });
+  yield* farcallRom(P, 0x530F, BANK_TEXT, ShowSpeakerDialogueRestoreBG, { ...regs, a: SPEAKER_LOCATION_NAME });
   for (let b = NAME_POPUP_FRAMES; b > 0; b--) {
     yield* advanceFrame(P);
     if (V.playerInputFlags) break;
   }
-  yield* P.runRom(BANK_TEXT, CloseActiveDialogueWindow);
+  yield* farcallRom(P, 0x531F, BANK_TEXT, CloseActiveDialogueWindow);
   P.wramBank(WRAM_TEXT);
   V.messageSpeed &= 0x7F;
   P.wramBank(old);
+  dropWords(P, 5);
+}
+// push af, push bc, push de, push hl, and the WRAM bank (ldh a, [hWramBank] / push af), as these routines start
+function pushRegs(P, regs, wram) {
+  const c = P.cpu, a = regs.a ?? c.a;
+  pushWord(P, a << 8 | (regs.f ?? c.f)); pushWord(P, regs.bc ?? c.bc); pushWord(P, regs.de ?? c.de);
+  pushWord(P, regs.hl ?? c.hl); pushWord(P, wram << 8 | (regs.f ?? c.f));
 }
 // LoadStoryObjPalettes (0A:5337): the overworld's OBJ palettes 3-7.
 export function loadStoryObjPalettes(P) {
@@ -153,21 +161,23 @@ export function findStoryScriptEntry(P, list, id) {
 // the WRAM bank). regs: the CPU registers at the call (the script gets them).
 export function* runStoryScriptOrDialogue(P, speaker, handler, regs = {}) {
   const { bus, V } = P, old = V.wramBank;
+  pushRegs(P, { ...regs, a: speaker, hl: handler }, old);
   V.storyScriptRan = 1;
   if (handler) {
     if (!(handler >> 8 & SCRIPT_ADDR_BITS)) {
-      yield* waitPlayerMoveDone(P);
-      yield* P.runRom(BANK_TEXT, ShowSpeakerDialogue, { ...regs, a: speaker, b: speaker, hl: handler });
+      yield* call(P, 0x5436, waitPlayerMoveDone(P));
+      yield* farcallRom(P, 0x5437, BANK_TEXT, ShowSpeakerDialogue, { ...regs, a: speaker, b: speaker, hl: handler });
     } else {
-      beginCutsceneScriptMode(P);
+      beginCutsceneScriptMode(P, P.cpu.sp - 8);
       P.wramBank(WRAM_ACTORS);
       bus.w8(wActors + ACTORF_STATUS, bus.u8(wActors + ACTORF_STATUS) & ~ACTORSTATUS_FACING_LOCKED);
       bus.w8(wActors + ACTORF_HEADING, bus.u8(P.A.playerMoveAngle));
-      yield* P.runRom(V.storyLocationBank, handler, { ...regs, a: V.storyLocationBank, b: speaker, hl: handler });
-      endCutsceneScriptMode(P);
+      yield* callHLInBankA(P, V.storyLocationBank, handler, { ...regs, b: speaker });
+      endCutsceneScriptMode(P, P.cpu.sp - 8);
     }
   }
   P.wramBank(old);
+  dropWords(P, 5);
 }
 // InitLocationActors (0A:5466): start the actor engine and spawn the player (at wStoryModeSpawnPosition) with its
 // follower, the partner, and the map_actor list hl in bank a. Keeps the registers.
@@ -183,9 +193,11 @@ export function initLocationActors(P, bank, list, sp = P.cpu.sp) {
 // regs: the CPU registers at the call (bc and de reach the script).
 export function* runLocationInitScript(P, regs = {}) {
   const old = P.V.wramBank;
+  pushRegs(P, regs, old);
   P.bus.w8(rWY, WY_HIDDEN);
-  yield* runStoryScriptOrDialogue(P, 0, P.bus.u16(P.A.mapInitScriptPtr), regs);
+  yield* call(P, 0x54AB, runStoryScriptOrDialogue(P, 0, P.bus.u16(P.A.mapInitScriptPtr), regs));
   P.wramBank(old);
+  dropWords(P, 5);
 }
 // RunNpcInteraction (0A:54B5): talk to actor a (not 2, the partner): its talk record's handler, with the
 // record's NPC_* behaviour round it (the actor marked busy meanwhile). Keeps the registers but F (cp 2).
@@ -193,6 +205,13 @@ export function* runNpcInteraction(P, slot) {
   const { bus, V } = P;
   V.unusedStoryScriptId = slot;
   if (slot === NO_TALK_ACTOR) return;
+  const c = P.cpu;
+  pushWord(P, slot << 8 | c.f); pushWord(P, c.bc); pushWord(P, c.de); pushWord(P, c.hl);   // (push af ... push hl)
+  yield* talk(P, slot);
+  dropWords(P, 4);
+}
+function* talk(P, slot) {
+  const { bus, V } = P;
   const at = findStoryScriptEntry(P, bus.u16(P.A.mapNpcScriptsPtr), slot);
   if (!at) return;
   const rec = P.A.storyMapRecord;
@@ -212,7 +231,9 @@ export function* runNpcInteraction(P, slot) {
     saved = bus.u8(actor + ACTORF_HEADING);
     bus.w8(actor + ACTORF_HEADING, bus.u8(P.A.playerMoveAngle) + 0x80);
   }
-  yield* runStoryScriptOrDialogue(P, bus.u8(rec), bus.u16(rec + 4), { bc: flags << 8 | saved, de: actor });
+  pushWord(P, actor);                                          // (push de)
+  yield* call(P, 0x553D, runStoryScriptOrDialogue(P, bus.u8(rec), bus.u16(rec + 4), { bc: flags << 8 | saved, de: actor }));
+  dropWords(P, 1);
   if (flags & NPC_RESTORE_FACING) bus.w8(actor + ACTORF_HEADING, saved);
   if (flags & NPC_FREEZE) bus.w8(actor + ACTORF_FLAGS, bus.u8(actor + ACTORF_FLAGS) & ~0x03);
   if (flags & NPC_IDLE_ANIM) farcall(P, BANK_ACTORS, () => setActorAnimationChecked(P, actor, bus.u8(P.A.storyScriptSavedActorAnim)));

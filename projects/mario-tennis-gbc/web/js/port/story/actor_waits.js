@@ -7,7 +7,8 @@
 import {
   FZ, FN, FH, FC, WRAM_ACTORS, BANK_ACTORS, BANK_STORY, wFollowerActor, ACTORF_FLAGS, ACTORF_SPEED, ACTORF_JUMP_VEL,
   ACTORF_LEADER, ACTORF_ANIM_ID, ACTORF_MODE, ACTORFLAG_MOVING, FLAG_CUTSCENE_FAST_FORWARD, hook, hookGen, farcall,
-  testFlag, testFlagF, advanceFrame, randomSeed, setActorPtr, cpFlags, zf, addHLFlags,
+  testFlag, testFlagF, advanceFrame, randomSeed, setActorPtr, cpFlags, zf, addHLFlags, call, farcallRom, pushWord,
+  dropWords,
 } from "./common.js";
 import { beginFadeOut, beginFadeIn, waitFadeEnd, registerFrameTask, unregisterFrameTask } from "../home/colorfade.js";
 import { setActorAnimationChecked } from "./scripted.js";
@@ -32,7 +33,7 @@ export function scriptSetActorAnimation(P, slot, anim) {
 export function* scriptWaitActorIdle(P, slot) {
   if (testFlag(P, FLAG_CUTSCENE_FAST_FORWARD)) return { f: testFlagF(true) };
   const r = getActorStateAddr(P, slot);
-  yield* waitActorIdle(P, r.hl);
+  yield* call(P, 0x4718, waitActorIdle(P, r.hl));
   return { a: r.a, f: r.f, bc: r.hl, hl: r.hl };
 }
 // ScriptSetActorJumpVelocity (0A:4719): actor a jumps with velocity de (negative: up).
@@ -40,7 +41,7 @@ export function scriptSetActorJumpVelocity(P, slot, vel) {
   const r = addToHL(getActorStateAddr(P, slot).hl, ACTORF_JUMP_VEL);
   P.wramBank(WRAM_ACTORS);
   P.bus.w16(r.hl, vel);
-  return { a: r.a, f: r.f, hl: (r.hl + 1) & 0xFFFF };
+  return { a: vel & 0xFF, f: r.f, hl: (r.hl + 1) & 0xFFFF };
 }
 // SetActorActive (0A:472E): actor a's mode = b.
 export function setActorActive(P, slot, mode) {
@@ -75,10 +76,13 @@ export function isActorBusy(P, actor) {
 }
 // WaitActorIdle (0A:478D): wait (up to $F0 frames) until it is not. Keeps the registers.
 export function* waitActorIdle(P, actor) {
+  const c = P.cpu;
+  pushWord(P, c.a << 8 | c.f); pushWord(P, c.bc);                // (push af, push bc)
   for (let bc = IDLE_WAIT_FRAMES; bc > 0; bc--) {
-    if (!isActorBusy(P, actor).busy) return;
+    if (!isActorBusy(P, actor).busy) break;
     yield* advanceFrame(P);
   }
+  dropWords(P, 2);
 }
 // SetPlayerMoveSpeed (0A:47A3): the follower's (the player's) walking speed = bc. Keeps the registers.
 export function setPlayerMoveSpeed(P, speed) {
@@ -89,17 +93,25 @@ export function setPlayerMoveSpeed(P, speed) {
 // fade out and in. MovePlayerToActor (0A:4813): to where actor a stands (b: the fade), a = $FF: nothing.
 // Keep the registers.
 export function* movePlayerToPosition(P, x, y, cut) {
-  yield* movePlayerTo(P, x, y, cut);
+  pushAll(P, cut);
+  yield* movePlayerTo(P, x, y, cut, MOVE_TO_POSITION_CALLS);
+  dropWords(P, 4);
 }
+// push af, push bc, push de, push hl (as both routines start)
+function pushAll(P, a) { const c = P.cpu; pushWord(P, a << 8 | c.f); pushWord(P, c.bc); pushWord(P, c.de); pushWord(P, c.hl); }
+// the return addresses of their cut's calls: WaitFadeEnd, the far call RestoreShadowTilemap, WaitFadeEnd
+const MOVE_TO_POSITION_CALLS = [0x47EC, 0x47FC, 0x480C], MOVE_TO_ACTOR_CALLS = [0x486B, 0x487B, 0x488B];
 export function* movePlayerToActor(P, slot, cut) {
   if (slot === 0xFF) return;
+  pushAll(P, slot);
   P.wramBank(WRAM_ACTORS);
   const actor = getActorStateAddr(P, slot).hl;
   setActorPtr(P, actor);
   const base = (actor & 0xFF00) | ((actor + 0x0C) & 0xFF);
-  yield* movePlayerTo(P, P.bus.u16(base), P.bus.u16(base + 2), cut);
+  yield* movePlayerTo(P, P.bus.u16(base), P.bus.u16(base + 2), cut, MOVE_TO_ACTOR_CALLS);
+  dropWords(P, 4);
 }
-function* movePlayerTo(P, x, y, cut) {
+function* movePlayerTo(P, x, y, cut, calls) {
   const { cpu, bus } = P, buf = (cpu.sp - 4) & 0xFFFF;
   cpu.sp = buf;                                                   // add sp, -4: the point on the stack
   bus.w16(buf, x); bus.w16(buf + 2, y);
@@ -107,28 +119,33 @@ function* movePlayerTo(P, x, y, cut) {
   P.wramBank(WRAM_ACTORS);
   if (!cut) setActorMoveTargetRaw(P, buf);
   else {
+    pushWord(P, cut << 8); pushWord(P, buf); pushWord(P, cut << 8 | (buf & 0xFF)); pushWord(P, wFollowerActor);   // (push af ... push hl)
     beginFadeOut(P, CUT_FADE_SPEED);
-    yield* waitFadeEnd(P, { a: 0, f: 0, b: 0, c: CUT_FADE_SPEED, d: 0, e: 0, h: 0, l: 0 });
+    yield* call(P, calls[0], waitFadeEnd(P, { a: 0, f: 0, b: 0, c: CUT_FADE_SPEED, d: 0, e: 0, h: 0, l: 0 }));
+    dropWords(P, 4);
     setActorPtr(P, wFollowerActor);
     setActorPositionRaw(P, buf);
     yield* advanceFrame(P);
-    yield* P.runRom(BANK_TEXT, RestoreShadowTilemap);
+    yield* farcallRom(P, calls[1], BANK_TEXT, RestoreShadowTilemap);
     yield* advanceFrame(P);
     beginFadeIn(P, CUT_FADE_SPEED);
-    yield* waitFadeEnd(P, { a: 0, f: 0, b: 5, c: CUT_FADE_SPEED, d: 0, e: 0, h: 0, l: 0 });
+    yield* call(P, calls[2], waitFadeEnd(P, { a: 0, f: 0, b: 5, c: CUT_FADE_SPEED, d: 0, e: 0, h: 0, l: 0 }));
   }
   cpu.sp = (buf + 4) & 0xFFFF;                                    // add sp, 4
 }
 // WaitPlayerMoveDone (0A:4892): wait (frame by frame, WaitScriptFrames; up to $258) until the follower stands.
 // Keeps the registers (hActorPtr = the follower; WRAM 4).
 export function* waitPlayerMoveDone(P) {
+  const c = P.cpu;
+  pushWord(P, c.a << 8 | c.f); pushWord(P, c.bc); pushWord(P, c.hl);   // (push af, push bc, push hl)
   setActorPtr(P, wFollowerActor);
   P.wramBank(WRAM_ACTORS);
   const hl = wFollowerActor + ACTORF_FLAGS;
   for (let bc = PLAYER_WAIT_FRAMES; bc > 0; bc--) {
-    yield* waitScriptFrames(P, 1);
-    if (!(P.bus.u8(hl) & ACTORFLAG_MOVING)) return;
+    yield* call(P, 0x48B3, waitScriptFrames(P, 1, 0, bc));
+    if (!(P.bus.u8(hl) & ACTORFLAG_MOVING)) break;
   }
+  dropWords(P, 3);
 }
 // SetScreenShake (0A:48C0): shake the screen with magnitude a (at most 3; 0 stops it), from the UpdateScreenShake
 // frame task (started when it was off). Keeps the registers.

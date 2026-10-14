@@ -7,7 +7,8 @@
 // Tests: web/tests/port/routines_story.mjs; lockstep on out/engine/rec2.mtrec and out/port/story1.mtrec.
 import {
   FZ, FN, FH, FC, WRAM_COURT_PLANES, WRAM_SCREEN, WRAM_SCENE, WRAM_TEXT, BANK_STORY, hook, hookGen, advanceFrame,
-  withWramBank, PrintHexByte, BlitBGRowFrom64, BlitBGColumnFrom64, zf, addHLFlags,
+  withWramBank, PrintHexByte, BlitBGRowFrom64, BlitBGColumnFrom64, zf, addHLFlags, cpFlags, farcallRom, pushWord,
+  dropWords,
 } from "./common.js";
 import { copyMemoryBC } from "../home/memory.js";
 import { registerFrameTask, unregisterFrameTask } from "../home/colorfade.js";
@@ -98,23 +99,43 @@ export function* unusedSceneViewerMainLoop(P) {
   }
 }
 // Unused_0a_UpdateSceneViewerScroll (0A:60C2): move the camera with the d-pad, blitting the BG row or column
-// that comes into view, and set the scroll registers' shadows.
-export function unusedUpdateSceneViewerScroll(P) {
+// that comes into view, and set the scroll registers' shadows. f: the flags at the call (the ROM pushes them with
+// the camera's old tiles and pops them into hl). Returns the registers it leaves.
+export function unusedUpdateSceneViewerScroll(P, f0 = 0) {
   const { V } = P;
   const oldX = V.cameraX >> 8, oldY = V.cameraY >> 8;
-  unusedMoveSceneViewerCamera(P);
+  let r = unusedMoveSceneViewerCamera(P, f0);
   const y = V.cameraY >> 8;
-  if (y !== oldY) P.callRom(0, BlitBGRowFrom64, { bc: y < oldY ? 0xFB00 : 0xFB13 });
+  let hl = oldY << 8 | f0;
+  if (y !== oldY) r = P.callRom(0, BlitBGRowFrom64, { a: y, f: cpFlags(y, oldY), bc: y < oldY ? 0xFB00 : 0xFB13, de: r.de, hl });
   const x = V.cameraX >> 8;
-  if (x !== oldX) P.callRom(0, BlitBGColumnFrom64, { bc: x < oldX ? 0x00FA : 0x15FA });
-  V.scrollY = (V.cameraY << 3) >> 8 & 0xFF;
-  V.scrollX = (V.cameraX << 3) >> 8 & 0xFF;
+  hl = oldX << 8 | f0;
+  if (x !== oldX) {
+    r = P.callRom(0, BlitBGColumnFrom64, { a: x, f: cpFlags(x, oldX), bc: x < oldX ? 0x00FA : 0x15FA, de: r.de, hl });
+    hl = r.hl;
+  }
+  V.scrollY = shadow(V.cameraY).a;
+  const sx = shadow(V.cameraX);
+  V.scrollX = sx.a;
+  return { a: sx.a, f: sx.f, b: r.bc >> 8, c: sx.c, de: r.de, hl };
 }
-// Unused_0a_MoveSceneViewerCamera (0A:6160): the camera moved by the d-pad's vector.
-export function unusedMoveSceneViewerCamera(P) {
-  const { V } = P, at = DPadMoveVectors_0a + ((V.playerInputFlags >> 2) & 0x3C);
-  V.cameraX = V.cameraX + P.rom.u16(BANK, at);
-  V.cameraY = V.cameraY + P.rom.u16(BANK, at + 2);
+// a camera word's pixel scroll: (word << 3) >> 8 by three `sla c / rla`; { a, c, f (the last rla's carry) }
+function shadow(word) {
+  let a = word >> 8, c = word & 0xFF, carry = 0;
+  for (let i = 0; i < 3; i++) { const cin = c >> 7; c = (c << 1) & 0xFF; carry = a >> 7; a = ((a << 1) | cin) & 0xFF; }
+  return { a, c, f: carry ? FC : 0 };
+}
+// Unused_0a_MoveSceneViewerCamera (0A:6160): the camera moved by the d-pad's vector. f: the flags at the call
+// (only the carry, rotated in, is lost by the mask). Returns the registers it leaves.
+export function unusedMoveSceneViewerCamera(P, f0 = 0) {
+  const { V } = P, idx = (V.playerInputFlags >> 2) & 0x3C, at = DPadMoveVectors_0a + idx;
+  const dx = P.rom.u16(BANK, at), dy = P.rom.u16(BANK, at + 2), x = V.cameraX, y = V.cameraY;
+  let f = addHLFlags(DPadMoveVectors_0a, idx, zf(idx) | FH);
+  f = addHLFlags(x, dx, f);
+  V.cameraX = (x + dx) & 0xFFFF;
+  f = addHLFlags(y, dy, f);
+  V.cameraY = (y + dy) & 0xFFFF;
+  return { a: V.cameraY >> 8, f, bc: dy, de: (at + 4) & 0xFFFF, hl: V.cameraY };
 }
 
 // CopySceneTilemapRect (0A:619E): copy a rectangle of h x l tiles of the scene map from tile (b, c) to tile (d, e),
@@ -135,20 +156,23 @@ export function* copySceneTilemapRect(P, size, from, to) {
   plane(WRAM_COURT_PLANES);
   plane(WRAM_SCREEN);
   P.wramBank(WRAM_TEXT);
-  yield* P.runRom(BANK_TEXT, RestoreShadowTilemap);
-  yield* P.runRom(BANK_TEXT, RedrawTilemapRowRange, { d: to & 0xFF, e: size & 0xFF });
+  const c = P.cpu;                                              // (push af ... push hl, the WRAM bank: 5 words left)
+  pushWord(P, c.a << 8 | c.f); pushWord(P, from); pushWord(P, to); pushWord(P, size); pushWord(P, old << 8 | c.f);
+  yield* farcallRom(P, 0x620D, BANK_TEXT, RestoreShadowTilemap);
+  yield* farcallRom(P, 0x6212, BANK_TEXT, RedrawTilemapRowRange, { d: to & 0xFF, e: size & 0xFF });
+  dropWords(P, 5);
   P.wramBank(old);
 }
 // GetSceneTilemapAddr (0A:621F): hl = the scene map cell of tile (h, l) (64 to a row; l taken as signed).
 export function getSceneTilemapAddr(hl) {
   const row = (((hl & 0xFF) << 24 >> 24) * MAP_ROW) & 0xFFFF, col = hl >> 8;
   const sum = (col + row) & 0xFFFF;
-  return { hl: (sum + wMapBuffer64) & 0xFFFF, f: addHLFlags(sum, wMapBuffer64, 0) };
+  return { hl: (sum + wMapBuffer64) & 0xFFFF, f: addHLFlags(sum, wMapBuffer64, zf((hl << 6) & 0xFF)) };   // (Z of the last `rr c`)
 }
 
 export const HOOKS = [
   [BANK, 0x5F31, hook((P, c) => getBehaviorMapCellAddr(c.d, c.e))],
-  [BANK, 0x5F4F, hook((P, c) => ({ a: readBehaviorMapCell(P, c.d, c.e), f: getBehaviorMapCellAddr(c.d, c.e).f }))],
+  [BANK, 0x5F4F, hook((P, c) => { const { d, e } = c; return { a: readBehaviorMapCell(P, d, e), f: getBehaviorMapCellAddr(d, e).f }; })],
   [BANK, 0x5F74, hook((P, c) => { writeBehaviorMapCell(P, c.d, c.e, c.a); })],
   [BANK, 0x5F90, hook((P, c) => { copyCollisionMapRect(P, c.hl, c.bc, c.de); })],
   [BANK, 0x5FD6, hook((P, c) => { copyBehaviorMapRect(P, c.hl, c.bc, c.de); })],
@@ -157,8 +181,8 @@ export const HOOKS = [
   [BANK, 0x6076, hookGen(P => unusedInitSceneViewerDefault(P))],
   [BANK, 0x60B3, hookGen(P => unusedSceneViewerMainLoop(P))],
   [BANK, 0x60C1, () => {}],
-  [BANK, 0x60C2, hook(P => { unusedUpdateSceneViewerScroll(P); })],
-  [BANK, 0x6160, hook(P => { unusedMoveSceneViewerCamera(P); })],
+  [BANK, 0x60C2, hook((P, c) => unusedUpdateSceneViewerScroll(P, c.f))],
+  [BANK, 0x6160, hook((P, c) => unusedMoveSceneViewerCamera(P, c.f))],
   [BANK, 0x619E, hookGen((P, c) => copySceneTilemapRect(P, c.hl, c.bc, c.de))],
   [BANK, 0x621F, hook((P, c) => getSceneTilemapAddr(c.hl))],
 ];
