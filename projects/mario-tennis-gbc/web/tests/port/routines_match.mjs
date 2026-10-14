@@ -198,6 +198,16 @@ const GFX = [
 // the routines other parts of the game reach through the banks' export tables (slots_07/08/09, bank $28's): every
 // register they leave, for callers that read them (the story engine's InitStoryMatchSettings reads hl, say)
 const ALL = ["a", "f", "b", "c", "d", "e", "h", "l"];
+// where not all of them are the ROM's (web/js/port/match/leftovers.js has the reasons): the results only
+const OUT = {
+  // its only caller is StepMatchFrame, which saves and restores every register around it
+  UpdateMatchFrame: [],
+  // the jump-table shot routines (ComputeShotPlacement, ExecuteShot) and the trajectory solver's long chain:
+  // callers read bc from ComputeShotPlacement and nothing else
+  ComputeShotPlacement: ["b", "c"], ExecuteShot: [], ComputeShotTrajectory: [],
+  // the queue routine it jumps to is the bank-0 port's (home/ui.js QueueSprite24x32 leaves no flags)
+  DrawCharSprite: ["a", "b", "c", "d", "e", "h", "l"],
+};
 const rnd = s => ({ a: r8(s, 91), b: r8(s, 92), c: r8(s, 93), d: r8(s, 94), e: r8(s, 95), h: r8(s, 96), l: r8(s, 97) });
 const EXPORTS = [
   ["InitDefaultMatchSettings", 8, 0x4070], ["ResetMatchState", 8, 0x40ab], ["InitMinigameMatchSettings", 8, 0x6544], ["UpdateMatchFrame", 8, 0x41f7],
@@ -226,6 +236,6 @@ const EXPORTS = [
   ["LoadBallTouchCharEffectTilesA", 0x28, 0x6044, s => ({ ...rnd(s), a: r8(s, 1) & 1 })], ["LoadBallTouchCharEffectTilesB", 0x28, 0x6058, s => ({ ...rnd(s), a: r8(s, 1) & 1 })],
   ["QueueMatchSpriteFrameA", 0x28, 0x606c, s => ({ ...rnd(s), a: r8(s, 1) % 3 })], ["LoadEffectFrameTiles_28", 0x28, 0x60a0, s => ({ ...rnd(s), a: r8(s, 1) % 8, b: r8(s, 2) & 3 })],
   ["QueueMatchSpriteFrameB", 0x28, 0x6086, s => ({ ...rnd(s), a: r8(s, 1) % 3 })],
-].map(([name, bank, addr, regs]) => E(`regs ${name}`, bank, addr, { regs: regs || rnd, out: ALL, prep: (m, s) => { if (bank === 7) m.hram[0x15] = 7; } }));
+].map(([name, bank, addr, regs]) => E(`regs ${name}`, bank, addr, { regs: regs || rnd, out: OUT[name] || ALL, prep: (m, s) => { if (bank === 7) m.hram[0x15] = 7; } }));
 
 export const ROUTINES = [...ENGINE, ...DRAW, ...OBJ, ...LOOP, ...MATCH, ...MORE, ...GFX, ...EXPORTS];

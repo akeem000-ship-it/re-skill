@@ -58,7 +58,8 @@ const CHAR_SHOT_BUTTON1 = 0xDF16, CHAR_SHOT_BUTTON2 = 0xDF17, CHAR_BALL_REACH_FL
 const CHARB_DIVING = 1, CHARB_AIRBORNE = 2, CHAR_SHOT_TYPE = 0xDF14;
 const CHAR_ANIM_TABLE_PTR = 0xDF28, CHAR_ANIM_SCRIPT_PTR = 0xDF2C, CHAR_ANIM_ID = 0xDF2E, CHAR_ANIM_FRAME = 0xDF33;
 const CHAR_SCREEN_X = 0xDF53, CHAR_SCREEN_Y = 0xDF54, CHAR_SPRITE_SLOT = 0xDF80, CHAR_GROUND_SHADOW_SLOT = 0xDF8C;
-const STANDING_SHADOWS_ENABLED = 0xC4CA, MATCH_FRAME_COUNTER = 0xFFE9;
+const STANDING_SHADOWS_ENABLED = 0xC4CA, MATCH_FRAME_COUNTER = 0xFFE9, DEBUG_MATCH_FLAGS = 0xC4EE;
+const CHAR_INDEX = 0xDF0B, CHAR_DECELERATION = 0xDF66, CHAR_SWING_ATTR_WORD = 0xDF90;
 const BALL_VELOCITY_X_FRAC = 0xC420, BALL_VELOCITY_DEPTH_FRAC = 0xC423;
 const SHOTTYPE_SMASH = 0x09, SHOTTYPE_LOB = 0x0A, SHOTTYPE_DROP = 0x0B;
 const POINTOUTCOME_FAULT = 1, POINTOUTCOME_DOUBLE_FAULT = 2, POINTOUTCOME_LET = 3, POINTOUTCOME_WINNER = 6;
@@ -264,4 +265,13 @@ LEFTOVERS.push([8, 0x7672, { post(P, out, inp) {
   const odd = u8(P, MATCH_FRAME_COUNTER) & 1;
   out.hl = CHAR_FLAGS; out.a = odd; out.f = andFlags(odd);
   if (odd) { out.bc = 0x0858; out.a = e; out.hl = CHAR_GROUND_SHADOW_SLOT + 3; }
+} }]);
+// 07:5AB3 LoadCharacterAttributes: de = the character's record (CharAttrStructPtrs_07), bc = the deceleration it set,
+// hl at wCharSwingAttrWord + 1 (the drop-shot bit), a = wDebugMatchFlags and its bit-1 test (C from the last
+// `add hl, de`, the AI params). (With that debug bit set OverrideCharStatsForDebug follows: not modelled.)
+LEFTOVERS.push([7, 0x5AB3, { post(P, out, inp) {
+  const record = P.rom.u16(7, (0x5C42 + ((u8(P, CHAR_INDEX) * 2) & 0xFF)) & 0xFFFF), debug = u8(P, DEBUG_MATCH_FLAGS);
+  if (debug & 0x02) return;
+  out.de = record; out.bc = u16(P, CHAR_DECELERATION); out.hl = CHAR_SWING_ATTR_WORD + 1; out.a = debug;
+  out.f = bitFlags(debug, 1, addHL(0x1F, record, 0).f);
 } }]);

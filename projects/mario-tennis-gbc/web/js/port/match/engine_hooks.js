@@ -10,8 +10,11 @@ import * as shot from "../../engine/shot.js";
 import * as flow from "../../engine/flow.js";
 import { engine } from "./engine_port.js";
 import { add8, addHL, bitFlags, hlIndexed, negHL, FC } from "./leftovers.js";
+import { threaded, romCall } from "./regs.js";
 
 const CHAR_SPRITE_DIRTY = 0xDF30, FACING_TILE_ROW = 0x7643;    // wCharSpriteDirty; ReloadCharFacingTilesTable (bank 8)
+const CHAR_INDEX = 0xDF0B, CHAR_GFX_BANK = 0xDF3A, CHAR_SPRITE_ATTR = 0xDF37, CHAR_TILE_BASE = 0xDF36, CHAR_FRAME_VRAM_DEST = 0xDF26;
+const CHAR_TILE_BASE_TABLE = 0x5AAF, CHAR_FRAME_GFX_DEST = 0x5AA7;   // bank 7: SetupCharacterSprite_CharTileBaseTable, CharFrameGfxDest_07
 const H_MATH_SIGN = 0xFFA7, H_MUL_RESULT = 0xFFA8, SHOT_AIM_ANGLE = 0xC43A, BALL_X = 0xC402, BALL_DEPTH = 0xC406;
 
 // [bank, addr, fn(E, cpu)]: fn runs the engine routine with the CPU's registers as arguments and writes back
@@ -76,6 +79,23 @@ function predictBallXAtDepth(P, c) {
   c.passCpu();
   const ballX = P.bus.u16(BALL_X), x = addHL(ballX, c.de, c.f);
   c.hl = x.r; c.f = x.f; c.a = ballX & 0xFF;
+}
+
+// 07:5A70 SetupCharacterSprite: the character's object definition d (04:4B68 SetupCharSpriteFromObjectDef, the
+// story's port or the ROM), gfx bank e, palette 4 + index, its tile base and frame-tile destination, then its
+// palette (ReloadCharFrameGfx); the two farcalls made as the ROM makes them, so the registers flow as there
+function setupCharacterSprite(P, r) {
+  const bus = P.bus, de = r.de;
+  romCall(P, 4, 0x4B68, r);                                                 // push de / farcall ... / pop de
+  r.de = de;
+  r.a = r.e; bus.w8(CHAR_GFX_BANK, r.e);
+  const index = bus.u8(CHAR_INDEX), attr = add8(index, 4); r.a = attr.r; r.f = attr.f; bus.w8(CHAR_SPRITE_ATTR, attr.r);
+  let at = hlIndexed(CHAR_TILE_BASE_TABLE, index); r.hl = at.hl; r.f = at.f;
+  r.a = P.rom.u8(7, r.hl); bus.w8(CHAR_TILE_BASE, r.a);
+  at = hlIndexed(CHAR_FRAME_GFX_DEST, add8(index, index).r); r.f = at.f;
+  r.e = P.rom.u8(7, at.hl); r.d = P.rom.u8(7, at.hl + 1); r.a = r.e;
+  r.hl = CHAR_FRAME_VRAM_DEST; bus.w8(r.hl, r.e); r.hl = r.hl + 1; bus.w8(r.hl, r.d);
+  romCall(P, 8, 0x69C2, r);                                                 // farcall ReloadCharFrameGfx
 }
 
 // ---- the ball (ball_effects_08, match_08, match_frames_08) ----
@@ -292,7 +312,7 @@ const MORE = [
   })),
   // character setup (char_07)
   hook(7, 0x5A43, (E, c) => A(c, chars.lookupCharSpriteSet(E, c.a))),                          // LookupCharSpriteSet
-  hook(7, 0x5A70, (E, c) => chars.setupCharacterSprite(E, c.d, c.e)),                          // SetupCharacterSprite
+  [7, 0x5A70, threaded(setupCharacterSprite)],                                                // SetupCharacterSprite
   hook(7, 0x5CF4, E => chars.overrideCharStatsForDebug(E)),                                    // OverrideCharStatsForDebug
   // the CPU player (ai_serve_08, ai_rally_08)
   ...[[0x796D, ai.aiRushToBallLanding], [0x7992, ai.aiMoveBehindBallLanding], [0x799E, ai.aiInterceptAtMidCourt], [0x79B0, ai.aiInterceptNearNet],
