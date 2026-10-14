@@ -1,6 +1,6 @@
 // The main menu (bank $3B): a 3 x 3 grid of panels over the stadium background. The middle row is the three story
 // files (with each file's character, level and play time on the caption line when chosen), the top row Exhibition,
-// Mini-games and Link, the bottom row Saved Data, N64 transfer and Erase. The panels slide in from the side
+// Mini-games and Link, the bottom row Status (the files' and the N64's records), Dictionary and Erase. The panels slide in from the side
 // (MainMenuSlideIn / SlideOut: one panel layout per frame, from TilemapAssemblyDispatch_39); the chosen cell is
 // highlighted with its own palette and a bobbing frame of sprites (MainMenuCursorSpriteTask, a frame task), with the
 // scrolling banner sprites behind.
@@ -8,6 +8,7 @@
 // the cheat-code watcher, the cursor, the selection redrawn when it moves), then A: slide out forward and return the
 // item id (MapMainMenuCursorToItemIdTable; the Link cell first tries the link handshake, and comes back to a fresh
 // main menu if it fails), or B: slide out back and return $FF (to the title screen).
+// The other menus of the bank are built the same way (picker.js has the shared pieces).
 // Port of src/engine/menus/main_menu/main_menu_3b.asm and the main menu's part of saveslots_3b.asm
 // (BuildSaveSlotSummaries .. Unused_3b_RestoreScreenAfterLinkAttempt) of the gerbiljames/mario-tennis-gbc-disasm
 // (MIT, third_party/mario-tennis-gbc-disasm). Tables are read from the ROM.
@@ -26,12 +27,16 @@ import {
   vBGMap0, wDecompBuffer, wShadowTilemap, wShadowAttrmap, OAM_BANK1, PADF_A, PADF_B, rIE, rIF, IE_TIMER,
   MENUSLIDE_BACK, MENUSLIDE_FORWARD, BGM_MENU, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_CANCEL,
 } from "../common/defs.js";
+import { ixFlags } from "../common/defs.js";
 import { moveMenuCursorGrid, getMenuCursorIndex, setMenuCursorFromIndex } from "../common/cursors.js";
 import { BANK_MENU_LIB, restoreMenuBgAndDrawPanel, flushWram3MapRows, fillTilemapRect, updateAnimatedTiles } from "../common/tilemaps.js";
 import { TILEBLOCK, farLoadTileBlock, loadIndexedPalette, initMenuBgScroll, loadMenuSpritePalettePair, tickMenuBgScroll, applySpriteBobOffset, resetScreenAndTextWindows } from "../common/menu_lib.js";
 import { updateCheatCodeEntry, resetCheatCodeBuffer } from "../common/widgets.js";
 import { BANK_CURSORBOX, loadIndexedPalette18, loadCharacterRecordToBuffer, checkCharacterUnlocked } from "../common/cursorbox.js";
-import { drawNameWithDiacritics } from "./n64.js";
+import {
+  ix, wSaveSlotSummaries, SUMMARY_SIZE, slideIn, slideOut, fillPickerCell, loadPickerCellPalette, drawCaptionFrame,
+  queuePickerRows, drawFileCaption, loadFilePalette, loadLabelSets, loadFileMugshots, RenderTextToBuffer64,
+} from "./picker.js";
 import { BANK_BOOT, loadMenuFontGfx } from "./boot.js";
 
 export const BANK_MAIN_MENU = 0x3B;
@@ -46,21 +51,18 @@ const LINK_CELL_X = 2, LINK_CELL_Y = 0;
 const FIRST_FILE_CELL = 3, FILE_CELLS = 3;
 const isFileCell = i => i >= FIRST_FILE_CELL && i < FIRST_FILE_CELL + FILE_CELLS;
 // the files' summaries (BuildSaveSlotSummaries), 16 bytes each in WRAM 3 below the screen: [character (or a lock
-// code >= 4: no file), its color, level, name (11 bytes), minutes, hours]; the empty-file code
-const wSaveSlotSummaries = cell(wShadowTilemap, 0, 24), SUMMARY_SIZE = 0x10, NO_FILE = 0x3F;
+// code >= 4: no file), its color, level, name (11 bytes), hours, minutes]
 const SUMMARY_LEVEL = 2, SUMMARY_NAME = 3, SUMMARY_NAME_SIZE = 0x0B, SUMMARY_HOURS = 0x0E, SUMMARY_MINUTES = 0x0F;
-const wNumberScratch = cell(wShadowTilemap, 16, 25);       // FormatDecimalNumber's buffer for the caption numbers
-const CAPTION_ROW = 15, CAPTION = cell(wShadowTilemap, 1, 16);
 const FRAME_TASK_PRIORITY = 0x7F;
-const RenderTextToBuffer64 = [0x05, 0x5F52], LoadCharMugshotToBuffer = [0x1B, 0x4E37], CopyMugshotBufferToVram = [0x1B, 0x4E46];
+const MAIN_MENU_SLIDE = { inPanel: 0, inSteps: 0x10, backFrom: 9, outPanel: 1, outSteps: 0x0C, backOutFrom: 0x0F, rows: 0 };
 const ShowLinkMessageScreen = [0x3E, 0x49E6], TryEstablishLink = [0x07, 0x4048], ShowLinkStatusMessage = [0x3E, 0x4BA3];
 const AnimateLinkStatusPalette = [0x3E, 0x4A54];
 const Text_30_124 = 0x007C;                                 // "no file" caption
 const LINK_RX_READY = 0xC1;                                 // hLinkRxByte: the partner is already there
 
 // ---- RunMainMenu (3B:55D1) ----
-// Returns a = the chosen item's id (0-2 a story file, 3 Exhibition, 4 Mini-games, 5 Link, 6 Saved Data, 7 N64
-// transfer, 8 Erase) or $FF (B: back to the title screen).
+// Returns a = the chosen item's id (0-2 a story file, 3 Exhibition, 4 Mini-games, 5 Link, 6 Status, 7 Dictionary,
+// 8 Erase) or $FF (B: back to the title screen).
 export function* runMainMenu(P) {
   const { V, bus } = P;
   for (;;) {                                                 // (jp RunMainMenu: after a failed link handshake)
@@ -117,35 +119,20 @@ export function* runMainMenu(P) {
 }
 // MapMainMenuCursorToItemId (3B:56B0): the item id of grid cell a. Returns a and hl = its table entry.
 export function mapMainMenuCursorToItemId(P, index) {
-  const hl = (MapMainMenuCursorToItemIdTable + index) & 0xFFFF;
-  return { a: P.bus.u8(hl), hl };
+  const hl = ix(MapMainMenuCursorToItemIdTable, index);
+  return { a: P.bus.u8(hl), hl, f: ixFlags(MapMainMenuCursorToItemIdTable, index) };
 }
 
 // LoadMainMenuGfx (3B:56C4), over 16 frames: the six label tile sets (MainMenuTable0, each to its VRAM place in
-// MainMenuTable1), the three story files' character mugshots (from the summaries: VRAM bank 1 $9680, $9710,
-// $8F00), the panel tile blocks into VRAM bank 1 $8000-$87FF, the cursor palette (IndexedPalettes $10 as OBJ
-// palette 0) and the frame tiles to $8000. The WRAM bank is kept.
-const LABEL_SETS = 6, LABEL_BLOCKS = 16;
-const MUGSHOTS = [[0, cell(wShadowTilemap, 0, 24), vTiles2 + 0x68 * TILE_SIZE], [1, cell(wShadowTilemap, 16, 24), vTiles2 + 0x71 * TILE_SIZE],
-  [2, cell(wShadowTilemap, 0, 25), vTiles1 + 0x70 * TILE_SIZE]];
+// MainMenuTable1), the three story files' character mugshots, the panel tile blocks into VRAM bank 1 $8000-$87FF,
+// the cursor palette (IndexedPalettes $10 as OBJ palette 0) and the frame tiles to $8000. The WRAM bank is kept.
+const LABEL_SETS = 6;
 const PANEL_BLOCKS = [[TILEBLOCK.MainMenuGfx0, 0x00], [TILEBLOCK.SharedMenuGfx29, 0x10], [TILEBLOCK.SharedMenuGfx30, 0x20],
   [TILEBLOCK.MainMenuGfx1, 0x32], [TILEBLOCK.MainMenuGfx2, 0x42], [TILEBLOCK.MainMenuGfx3, 0x52], [TILEBLOCK.MainMenuGfx4, 0x62]];
 export function* loadMainMenuGfx(P) {
-  const { bus } = P;
   pushWramBank(P, WRAM_STAGING);
-  for (let i = 0; i < LABEL_SETS; i++) {
-    const slot = bus.u16(MainMenuTable0 + 2 * i);
-    decompressDataFromBank(P, slot >> 8, slot & 0xFF, wDecompBuffer);
-    queueCopy(P, wDecompBuffer, bus.u16(MainMenuTable1 + 2 * i), LABEL_BLOCKS);
-    yield* advanceFrame(P);
-  }
-  for (const [slot, summary, dest] of MUGSHOTS) {
-    wramBank(P, WRAM_SCREEN);
-    P.V.currentStorySlot = slot;
-    callFar(P, LoadCharMugshotToBuffer, { a: bus.u8(summary) });
-    callFar(P, CopyMugshotBufferToVram, { de: dest + VRAM_BANK1 });
-    yield* advanceFrame(P);
-  }
+  yield* loadLabelSets(P, MainMenuTable0, MainMenuTable1, LABEL_SETS);
+  yield* loadFileMugshots(P);
   for (const [block, tile] of PANEL_BLOCKS) {
     farLoadTileBlock(P, block, vTiles0 + tile * TILE_SIZE + VRAM_BANK1);
     yield* advanceFrame(P);
@@ -159,21 +146,8 @@ export function* loadMainMenuGfx(P) {
 
 // MainMenuSlideIn (3B:5800) / MainMenuSlideOut (3B:5832): the panels slide, one step a frame: in forward (b != 0)
 // panel layout 0 steps 0-15, back layout 1 steps 9-0; out forward layout 1 steps 0-11, back layout 0 steps 15-1.
-// Leaves a = c = the last step's counter.
-function* slide(P, panel, steps) {
-  for (const step of steps) {
-    yield* advanceFrame(P);
-    withRomBank(P, BANK_MENU_LIB, () => restoreMenuBgAndDrawPanel(P, panel, step));
-    yield* farGen(P, BANK_MENU_LIB, flushWram3MapRows(P, 0));
-  }
-}
-const range = (from, to) => (from <= to ? Array.from({ length: to - from + 1 }, (_, i) => from + i) : Array.from({ length: from - to + 1 }, (_, i) => from - i));
-export function* mainMenuSlideIn(P, forward) {
-  if (forward) yield* slide(P, 0, range(0, 0x0F)); else yield* slide(P, 1, range(9, 0));
-}
-export function* mainMenuSlideOut(P, forward) {
-  if (forward) yield* slide(P, 1, range(0, 0x0B)); else yield* slide(P, 0, range(0x0F, 1));
-}
+export const mainMenuSlideIn = (P, forward) => slideIn(P, forward, MAIN_MENU_SLIDE);
+export const mainMenuSlideOut = (P, forward) => slideOut(P, forward, MAIN_MENU_SLIDE);
 
 // MainMenuCursorSpriteTask (3B:5863), a frame task: the banner sprites, then the bobbing frame around the chosen
 // cell (MainMenuCursorSpriteTaskPtrs: a wide one for Mini-games) and its corner piece.
@@ -193,96 +167,65 @@ export function mainMenuCursorSpriteTask(P, sp = P.cpu.sp - 2) {
 // DrawMainMenuSelection (3B:5968): every cell's attributes plain, the chosen one highlighted; palette 4 for it (a
 // story file: its character's palette, LoadIndexedPalette_18; else the item's); the caption line (rows 15-16: a
 // frame and the caption text) redrawn; the three rows of cells' attributes and the caption queued to VRAM.
-const CAPTION_FRAME_ATTR = 0x03, CAPTION_BLANK = 0x20, CAPTION_LEFT = 0x02, CAPTION_RIGHT = 0x04;
 export function drawMainMenuSelection(P) {
   wramBank(P, WRAM_SCREEN);
   for (let i = 0; i < CELLS; i++) fillMainMenuCellHighlight(P, i, 0);
   const index = getMenuCursorIndex(P, GRID_COLS).a;
   fillMainMenuCellHighlight(P, index, 1);
-  if (isFileCell(index)) {
-    const color = P.bus.u8(summaryOf(index) + 1);
-    withRomBank(P, BANK_CURSORBOX, () => loadIndexedPalette18(P, color, 4));
-  } else loadMainMenuItemPalette(P, index);
-  wramBank(P, WRAM_SCREEN);
-  withRomBank(P, BANK_MENU_LIB, () => fillTilemapRect(P, cell(wShadowTilemap, 0, CAPTION_ROW), 0x14, 1, CAPTION_FRAME_ATTR));
-  P.bus.w8(cell(wShadowTilemap, 0, CAPTION_ROW), CAPTION_LEFT);
-  P.bus.w8(cell(wShadowTilemap, 19, CAPTION_ROW), CAPTION_RIGHT);
-  withRomBank(P, BANK_MENU_LIB, () => fillTilemapRect(P, CAPTION, 0x12, 1, CAPTION_BLANK));
+  if (isFileCell(index)) loadFilePalette(P, index - FIRST_FILE_CELL); else loadMainMenuItemPalette(P, index);
+  drawCaptionFrame(P);
   drawMainMenuCaption(P);
-  for (const row of [3, 7, 11]) queueCopy(P, cell(wShadowAttrmap, 0, row), vBGMap0 + row * TILEMAP_WIDTH + VRAM_BANK1, 3 * TILEMAP_WIDTH / 16);
-  return queueCopy(P, cell(wShadowTilemap, 0, CAPTION_ROW), vBGMap0 + CAPTION_ROW * TILEMAP_WIDTH, 2 * TILEMAP_WIDTH / 16);
+  return queuePickerRows(P, [3, 7, 11]);
 }
-const summaryOf = index => (wSaveSlotSummaries & 0xFF00) + (((wSaveSlotSummaries & 0xFF) + ((index - FIRST_FILE_CELL) * SUMMARY_SIZE & 0xFF)) & 0x1FF);
 // FillMainMenuCellHighlight (3B:5A09): the attributes of cell b (5 x 3, a story file's 3 x 3): highlighted (c != 0,
 // palette $0C) or plain ($0D). Registers kept.
-export function fillMainMenuCellHighlight(P, index, highlighted) {
-  const width = isFileCell(index) ? 3 : 5;
-  const dest = P.bus.u16((FillMainMenuCellHighlightTable & 0xFF00) + (((FillMainMenuCellHighlightTable & 0xFF) + ((index * 2) & 0xFF)) & 0x1FF));
-  withRomBank(P, BANK_MENU_LIB, () => fillTilemapRect(P, dest, width, 3, highlighted ? 0x0C : 0x0D));
-}
+export const fillMainMenuCellHighlight = (P, index, highlighted) => fillPickerCell(P, FillMainMenuCellHighlightTable, index, highlighted, isFileCell(index) ? 3 : 5);
 // LoadMainMenuItemPalette (3B:5A57): item a's palette as BG palette 4
-export function loadMainMenuItemPalette(P, index) {
-  const at = (MainMenuItemPalettePtrs & 0xFF00) + (((MainMenuItemPalettePtrs & 0xFF) + ((index * 2) & 0xFF)) & 0x1FF);
-  return loadPalettes(P, P.bus.u16(at), 4, 1);
-}
+export const loadMainMenuItemPalette = (P, index) => loadPickerCellPalette(P, MainMenuItemPalettePtrs, index);
 
 // ---- the story files' summaries and the caption ----
 // BuildSaveSlotSummaries (3B:5AAC): for files 0-2 (records $80-$82, LoadCharacterRecordToBuffer): the file's lock
 // code when it has none (>= 4: [code, 3]), else its character, color, level, name, play time (hours, minutes) into
 // its 16 bytes of wSaveSlotSummaries. The WRAM bank is kept.
-const CHAR_RECORD_LOCK = 0xD580 + 11;
-export function buildSaveSlotSummaries(P) {
-  const { V, bus, A } = P;
+const CHAR_RECORD_LOCK = 0xD580 + 11, NO_FILE_LOCK = 4;
+export function buildSaveSlotSummaries(P, f = 0, de = 0) {
+  const { V, bus, A } = P, old = V.wramBank;
+  let bc = wSaveSlotSummaries;
   withWramBank(P, WRAM_SCREEN, () => {
     clearMemory16(P, wSaveSlotSummaries, 3);
-    let bc = wSaveSlotSummaries;
     for (let rec = 0x80; rec < 0x83; rec++) {
       wramBank(P, WRAM_COURT_PLANES);
       withRomBank(P, BANK_CURSORBOX, () => { loadCharacterRecordToBuffer(P, rec); checkCharacterUnlocked(P, rec); });
       wramBank(P, WRAM_COURT_PLANES);
       const lock = bus.u8(CHAR_RECORD_LOCK);
       wramBank(P, WRAM_SCREEN);
-      if (lock >= 4) {
+      if (lock >= NO_FILE_LOCK) {
         bus.w8(bc, lock); bus.w8(bc + 1, 3);
       } else {
         bus.w8(bc, V.storyModeMainCharacterOverworldSprite);
         bus.w8(bc + 1, V.storyModeMainCharacterOverworldSpriteColor);
         bus.w8(bc + SUMMARY_LEVEL, V.storyMainCharExpTier);
-        copyMemoryBC(P, A.storyModeNameOfMainCharacter, (bc & 0xFF00) | ((bc + SUMMARY_NAME) & 0xFF), SUMMARY_NAME_SIZE);
+        de = copyMemoryBC(P, A.storyModeNameOfMainCharacter, (bc & 0xFF00) | ((bc + SUMMARY_NAME) & 0xFF), SUMMARY_NAME_SIZE).de;
         bus.w8(bc + SUMMARY_MINUTES, bus.u8(A.savedGameTimer + 3));
         bus.w8(bc + SUMMARY_HOURS, bus.u8(A.charDataSyncValues));
       }
       bc = (bc + SUMMARY_SIZE) & 0xFFFF;
     }
   });
+  return { a: old, f, bc, de, hl: bc };                   // (pop_wram_bank: the bank and the flags of the call)
 }
-// DrawMainMenuCaption (3B:5B3E): the caption of the chosen cell on row 16: a story file's name, "L" "v" and level,
+// DrawMainMenuCaption (3B:5B3E): the caption of the chosen cell on row 16: a story file's name, "Lv" and level,
 // hours ":" minutes (or the "no file" text), or the item's caption text (RenderTextToBuffer64). The WRAM bank is
-// kept (the ":" is written after it is restored, into whichever bank that is).
-export function drawMainMenuCaption(P) {
-  const { bus } = P;
+// kept (the ":" is written after it is restored, into whichever bank that is). Returns the registers it leaves.
+export function drawMainMenuCaption(P, f = 0) {
+  const { bus } = P, index = getMenuCursorIndex(P, GRID_COLS).a;
+  if (isFileCell(index)) return drawFileCaption(P, index - FIRST_FILE_CELL, Text_30_124, true, f);
+  const de = bus.u16(ix(MainMenuCaptionTable, index * 2)), text = bus.u16(ix(MainMenuCaptionTable1, index * 2));
+  const old = P.V.wramBank;
   pushWramBank(P, WRAM_SCREEN);
-  const index = getMenuCursorIndex(P, GRID_COLS).a;
-  if (isFileCell(index)) {
-    const bc = summaryOf(index);
-    if (bus.u8(bc) === NO_FILE) {
-      callFar(P, RenderTextToBuffer64, { hl: Text_30_124, de: CAPTION, c: 0x20 });
-      popWramBank(P);
-      return;
-    }
-    withRomBank(P, BANK_MAIN_MENU, () => drawNameWithDiacritics(P, (bc + SUMMARY_NAME) & 0xFFFF, CAPTION));
-    bus.w8(cell(wShadowTilemap, 9, 16), 0x4C);                 // "Lv"
-    bus.w8(cell(wShadowTilemap, 10, 16), 0x56);
-    printNumberRightAligned(P, bus.u8(bc + SUMMARY_LEVEL), cell(wShadowTilemap, 12, 16), wNumberScratch, 0);
-    printNumberRightAligned(P, bus.u8(bc + SUMMARY_MINUTES), cell(wShadowTilemap, 15, 16), wNumberScratch, 2);
-    printNumberRightAligned(P, bus.u8(bc + SUMMARY_HOURS), cell(wShadowTilemap, 18, 16), wNumberScratch, 2);
-    popWramBank(P);
-    bus.w8(cell(wShadowTilemap, 16, 16), 0x3A);                // ":"
-    return;
-  }
-  const de = bus.u16(MainMenuCaptionTable + ((index * 2) & 0xFF)), text = bus.u16(MainMenuCaptionTable1 + ((index * 2) & 0xFF));
-  callFar(P, RenderTextToBuffer64, { hl: text, de, c: 0x20 });
+  const r = callFar(P, RenderTextToBuffer64, { a: text & 0xFF, b: index, hl: text, de, c: 0x20 });
   popWramBank(P);
+  return { ...r, a: old, f };
 }
 // PrintNumberRightAligned (3B:5C2B; width a = 0) / Print2DigitNumberRightAligned (3B:5C27; width 2): hl in decimal
 // (FormatDecimalNumber into the buffer bc), written right to left ending at de, spaces as '0'. Leaves a = the first
@@ -370,8 +313,8 @@ export const HOOKS = [
   [BANK_MAIN_MENU, 0x5968, hook(P => drawMainMenuSelection(P))],
   [BANK_MAIN_MENU, 0x5A09, hook((P, c) => { fillMainMenuCellHighlight(P, c.b, c.c); })],
   [BANK_MAIN_MENU, 0x5A57, hook((P, c) => loadMainMenuItemPalette(P, c.a))],
-  [BANK_MAIN_MENU, 0x5AAC, hook(P => { buildSaveSlotSummaries(P); })],
-  [BANK_MAIN_MENU, 0x5B3E, hook(P => { drawMainMenuCaption(P); })],
+  [BANK_MAIN_MENU, 0x5AAC, hook((P, c) => buildSaveSlotSummaries(P, c.f, c.de))],
+  [BANK_MAIN_MENU, 0x5B3E, hook((P, c) => drawMainMenuCaption(P, c.f))],
   [BANK_MAIN_MENU, 0x5C27, hook((P, c) => printNumberRightAligned(P, c.hl, c.de, c.bc, 2))],
   [BANK_MAIN_MENU, 0x5C2B, hook((P, c) => printNumberRightAligned(P, c.hl, c.de, c.bc, 0))],
   [BANK_MAIN_MENU, 0x5C52, () => {}],                        // Unused_3b_StubNop3

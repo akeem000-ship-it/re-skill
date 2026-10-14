@@ -20,7 +20,7 @@ import { getMenuCursorIndex, setMenuCursorFromIndex } from "../common/cursors.js
 import { BANK_MENU_LIB } from "../common/tilemaps.js";
 import { TILEBLOCK, initMenuBgScroll, loadMenuSpritePalettePair } from "../common/menu_lib.js";
 import {
-  ix, slideIn, slideOut, fillPickerCell, loadPickerCellPalette, drawCaptionFrame, queuePickerRows, captionText,
+  ix, slideIn, slideOut, fillPickerCell, loadPickerCellPalette, drawCaptionFrame, queuePickerRows, bankedCaptionText,
   drawFileCaption, loadFilePalette, summaryOf, NO_FILE, pickerCursorTask, loadLabelSet, loadFileMugshots, loadPanelBlocks,
 } from "./picker.js";
 import { buildSaveSlotSummaries } from "./main_menu.js";
@@ -153,12 +153,11 @@ export function drawEraseSavedDataGrid(P) {
 export const fillEraseSavedDataCell = (P, index, highlighted) => fillPickerCell(P, FillEraseSavedDataCellTable, index, highlighted, index < FILES ? 3 : 5);
 export const loadEraseSavedDataCellPalette = (P, index) => loadPickerCellPalette(P, EraseSavedDataCellPalettePtrs, index);
 // DrawEraseSavedDataCaption (3B:7100): a file's caption, or the Game Pak / N64 text
-export function drawEraseSavedDataCaption(P) {
+export function drawEraseSavedDataCaption(P, f = 0) {
   const index = getMenuCursorIndex(P, COLS).a;
-  if (index < FILES) { drawFileCaption(P, index, Text_30_206, false); return; }
-  pushWramBank(P, WRAM_SCREEN);
-  captionText(P, ix(Text_30_204, index - FILES));
-  popWramBank(P);
+  if (index < FILES) return drawFileCaption(P, index, Text_30_206, false, f);
+  const text = ix(Text_30_204, index - FILES);
+  return bankedCaptionText(P, text, text & 0xFF, index, f);
 }
 
 export const HOOKS = [

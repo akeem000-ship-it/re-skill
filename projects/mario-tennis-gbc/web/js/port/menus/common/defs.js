@@ -107,6 +107,19 @@ export function* waitFarCall(P, [bank, addr], regs = {}) {
 // AdvanceFrame (00:2631): the game's frame barrier (home's; still called through the ROM's address)
 export function* advanceFrame(P) { yield* waitRom(P, 0, HOME.AdvanceFrame); }
 
+// The flags of the ROM's table index `ld hl, table / add l / ld l, a / jr nc, .x / inc h`: the add's, or with a carry
+// those of `inc h` (C kept set).
+export function ixFlags(table, i) {
+  const l = (table & 0xFF) + (i & 0xFF);
+  return l > 0xFF ? incFlags((table >> 8) & 0xFF, FC) : addFlags(i & 0xFF, table & 0xFF);
+}
+// the flags a farcall's callee gets in F (CallVectorEntryA's `ld hl, sp + 5`, sp 10 below the caller's): what a
+// callee that keeps af returns
+export const farcallFlags = sp => {
+  const at = (sp - 10) & 0xFFFF;
+  return ((at & 0x0F) + 5 > 0x0F ? FH : 0) | ((at & 0xFF) + 5 > 0xFF ? FC : 0);
+};
+
 // ---- memory ----
 export const rd = (P, addr) => P.bus.u8(addr);
 export const wr = (P, addr, v) => P.bus.w8(addr, v);

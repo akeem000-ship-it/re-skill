@@ -11,7 +11,7 @@ import {
   SCREENASSET_MatchTypeMenu, Text_30_132, sound, advanceFrame, fadeIn, fadeOut, registerFrameTask, withWram,
   queueVRAMCopy, fillTilemapRect, loadIndexedPalette, loadCompressedTileBlock, loadScreenAssetRecord,
   queueWram3MapToVRAM, renderTextToBuffer64, getMenuCursorIndex, setMenuCursorFromIndex, drawSelectedOptionBox,
-  disableLCDSafely, drawTextWindow, romWait, hook, hookGen,
+  disableLCDSafely, drawTextWindow, romWait, hook, hookGen, beginFadeIn,
 } from "./defs.js";
 import { formatDecimalNumber } from "../../home/debugtext.js";
 import { enableLCD } from "../../home/system.js";
@@ -109,12 +109,18 @@ export function* unusedRunMatchTypeMenuLink(P) {
   registerFrameTask(P, 1, UpdateAnimatedTilesTask_38);
   enableLCD(P);
   rom(P, FAR.ResyncLinkSession);
-  P.bus.w8(0, 0);                                              // (no-op guard removed below)
-  return yield* matchTypeLinkLoop(P);
-}
-function* matchTypeLinkLoop(P) {
-  const { beginFadeIn } = yield* (function* () { return { beginFadeIn: (yield* [])?.x }; })();
-  return beginFadeIn;
+  beginFadeIn(P, 16);                                          // (script_fade_in alone: the link frames go on meanwhile)
+  for (let i = 0; i < 3; i++) yield* romWait(P, FAR.RunLinkInputFrame);
+  sound(P, BGM_COURT_WAREHOUSE);
+  for (;;) {
+    wr(P, "menuInputPressed", P.V.linkInput);
+    unusedAdjustMatchTypeSetting(P);
+    if (rom(P, FAR.Unused_38_MoveMenuCursorGridFromLinkInput, { b: 1, c: 3 }).a) unusedRefreshMatchTypeLabelRow(P);
+    yield* romWait(P, FAR.RunLinkInputFrame);
+    const input = rd(P, "menuInputPressed");
+    if (input & PADF_A) return yield* closeMatchTypeMenu(P, SFX_MENU_SELECT, 0, true);
+    if (input & PADF_B) return yield* closeMatchTypeMenu(P, SFX_MENU_CANCEL, 0xFF, true);
+  }
 }
 function* closeMatchTypeMenu(P, sfx, result, link) {
   sound(P, sfx);
@@ -196,6 +202,7 @@ export const HOOKS = [
   [BANK, 0x4445, hook((P, c) => drawDecimalNumber(P, c.hl, c.a, c.de))],
   [BANK, 0x4466, hook((P, c) => ({ de: copyDecimalStringToTilemap(P, c.hl, c.de) }))],
   [BANK, 0x4489, hookGen(P => unusedRunMatchTypeMenu(P))],
+  [BANK, 0x44F1, hookGen(P => unusedRunMatchTypeMenuLink(P))],
   [BANK, 0x458D, hook(P => unusedDrawMatchTypeOptionBoxes(P))],
   [BANK, 0x460F, hook(P => unusedSetupMatchTypeMenuScreen(P))],
   [BANK, 0x4666, hook(P => unusedRefreshMatchTypeLabelRow(P))],

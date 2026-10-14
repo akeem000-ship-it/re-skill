@@ -72,8 +72,18 @@ export function queuePickerRows(P, rows) {
   for (const row of rows) queueCopy(P, cell(wShadowAttrmap, 0, row), vBGMap0 + row * TILEMAP_WIDTH + VRAM_BANK1, 3 * TILEMAP_WIDTH / 16);
   return queueCopy(P, cell(wShadowTilemap, 0, CAPTION_ROW), vBGMap0 + CAPTION_ROW * TILEMAP_WIDTH, 2 * TILEMAP_WIDTH / 16);
 }
-// a caption text (RenderTextToBuffer64) on the caption line
-export const captionText = (P, text) => callFar(P, RenderTextToBuffer64, { hl: text, de: CAPTION, c: 0x20 });
+// a caption text (RenderTextToBuffer64) on the caption line; a, b: the registers the ROM has there (the callee
+// gets them). Returns its registers.
+export const captionText = (P, text, a, b) => callFar(P, RenderTextToBuffer64, { a, b, hl: text, de: CAPTION, c: 0x20 });
+// a menu's caption text, with WRAM 3 pushed around it: the text's registers, then a = the bank, f = the flags of the
+// call (pop_wram_bank)
+export function bankedCaptionText(P, text, a, b, f) {
+  const old = P.V.wramBank;
+  pushWramBank(P, WRAM_SCREEN);
+  const r = captionText(P, text, a, b);
+  popWramBank(P);
+  return { ...r, a: old, f };
+}
 
 // ---- the story files ----
 // the 16-byte summaries BuildSaveSlotSummaries makes (WRAM 3, below the screen)
@@ -83,21 +93,27 @@ const SUMMARY_LEVEL = 2, SUMMARY_NAME = 3, SUMMARY_HOURS = 0x0E, SUMMARY_MINUTES
 const wNumberScratch = cell(wShadowTilemap, 16, 25);
 // A story file's caption: its name, "Lv" and level, hours ":" minutes; an empty file: the text noFileText. The
 // WRAM bank is kept (push_wram_bank around); colonAfter: the ":" is written after the bank is restored (the main
-// menu's copy), else before.
-export function drawFileCaption(P, file, noFileText, colonAfter) {
-  const { bus } = P, bc = summaryOf(file);
+// menu's copy), else before. Returns the registers it leaves (f: the flags of the call).
+export function drawFileCaption(P, file, noFileText, colonAfter, f = 0) {
+  const { bus } = P, bc = summaryOf(file), old = P.V.wramBank;
   pushWramBank(P, WRAM_SCREEN);
-  if (bus.u8(bc) === NO_FILE) { captionText(P, noFileText); popWramBank(P); return; }
+  if (bus.u8(bc) === NO_FILE) {
+    const r = captionText(P, noFileText, NO_FILE, bc >> 8);
+    popWramBank(P);
+    return { ...r, a: old, f };
+  }
   withRomBank(P, BANK_MAIN_MENU, () => drawNameWithDiacritics(P, (bc + SUMMARY_NAME) & 0xFFFF, CAPTION));
   bus.w8(cell(wShadowTilemap, 9, 16), 0x4C);                   // "Lv"
   bus.w8(cell(wShadowTilemap, 10, 16), 0x56);
   printNumberRightAligned(P, bus.u8(bc + SUMMARY_LEVEL), cell(wShadowTilemap, 12, 16), wNumberScratch, 0);
   printNumberRightAligned(P, bus.u8(bc + SUMMARY_MINUTES), cell(wShadowTilemap, 15, 16), wNumberScratch, 2);
-  printNumberRightAligned(P, bus.u8(bc + SUMMARY_HOURS), cell(wShadowTilemap, 18, 16), wNumberScratch, 2);
-  if (!colonAfter) bus.w8(cell(wShadowTilemap, 16, 16), 0x3A);
+  const r = printNumberRightAligned(P, bus.u8(bc + SUMMARY_HOURS), cell(wShadowTilemap, 18, 16), wNumberScratch, 2);
+  if (!colonAfter) bus.w8(cell(wShadowTilemap, 16, 16), COLON);
   popWramBank(P);
-  if (colonAfter) bus.w8(cell(wShadowTilemap, 16, 16), 0x3A);
+  if (colonAfter) bus.w8(cell(wShadowTilemap, 16, 16), COLON);
+  return { ...r, a: colonAfter ? COLON : old, f, bc: wNumberScratch };
 }
+const COLON = 0x3A;
 // a story file's character palette as BG palette 4 (LoadIndexedPalette_18 of its color)
 export function loadFilePalette(P, file) {
   const color = P.bus.u8(summaryOf(file) + 1);

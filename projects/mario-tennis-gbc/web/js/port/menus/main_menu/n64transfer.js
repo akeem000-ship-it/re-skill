@@ -20,7 +20,7 @@ import { moveMenuCursorGrid, getMenuCursorIndex, setMenuCursorFromIndex } from "
 import { BANK_MENU_LIB } from "../common/tilemaps.js";
 import { TILEBLOCK, initMenuBgScroll, loadMenuSpritePalettePair } from "../common/menu_lib.js";
 import {
-  ix, slideIn, slideOut, fillPickerCell, loadPickerCellPalette, drawCaptionFrame, queuePickerRows, captionText,
+  ix, slideIn, slideOut, fillPickerCell, loadPickerCellPalette, drawCaptionFrame, queuePickerRows, bankedCaptionText,
   pickerCursorTask, loadLabelSets, loadPanelBlocks,
 } from "./picker.js";
 
@@ -96,10 +96,9 @@ export function drawN64RecordTypeGrid(P) {
 // FillN64RecordTypeCell (3B:7428) / LoadN64RecordTypeCellPalette (3B:745D) / DrawN64RecordTypeCaption (3B:749A)
 export const fillN64RecordTypeCell = (P, index, highlighted) => fillPickerCell(P, FillN64RecordTypeCellTable, index, highlighted, 5);
 export const loadN64RecordTypeCellPalette = (P, index) => loadPickerCellPalette(P, N64RecordTypeCellPalettePtrs, index);
-export function drawN64RecordTypeCaption(P) {
-  pushWramBank(P, WRAM_SCREEN);
-  captionText(P, ix(Text_30_207, getMenuCursorIndex(P, RECORD_TYPE_COLS).a));
-  popWramBank(P);
+export function drawN64RecordTypeCaption(P, f = 0) {
+  const index = getMenuCursorIndex(P, RECORD_TYPE_COLS).a, text = ix(Text_30_207, index);
+  return bankedCaptionText(P, text, text & 0xFF, index, f);
 }
 
 // ---- the N64 transfer item ----
@@ -162,10 +161,9 @@ export function drawN64TransferItemGrid(P) {
 }
 // LoadN64TransferItemCellPalette (3B:7680) / DrawN64TransferItemCaption (3B:76C5)
 export const loadN64TransferItemCellPalette = (P, index) => loadPickerCellPalette(P, N64TransferItemCellPalettePtrs, index);
-export function drawN64TransferItemCaption(P) {
-  pushWramBank(P, WRAM_SCREEN);
-  captionText(P, ix(Text_30_210, getMenuCursorIndex(P, ITEM_COLS).a));
-  popWramBank(P);
+export function drawN64TransferItemCaption(P, f = 0) {
+  const index = getMenuCursorIndex(P, ITEM_COLS).a, text = ix(Text_30_210, index);
+  return bankedCaptionText(P, text, text & 0xFF, index, f);
 }
 // N64TransferItemCursorSpriteTask (3B:76EA), a frame task
 export const n64TransferItemCursorSpriteTask = (P, sp = P.cpu.sp - 2) => pickerCursorTask(P, sp, getMenuCursorIndex(P, ITEM_COLS).a,

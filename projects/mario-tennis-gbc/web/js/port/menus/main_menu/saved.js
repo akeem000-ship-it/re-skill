@@ -21,7 +21,7 @@ import { BANK_MENU_LIB } from "../common/tilemaps.js";
 import { TILEBLOCK, initMenuBgScroll, loadMenuSpritePalettePair } from "../common/menu_lib.js";
 import { fillMenuGridCellTile } from "../common/widgets.js";
 import {
-  ix, slideIn, slideOut, fillPickerCell, loadPickerCellPalette, drawCaptionFrame, queuePickerRows, captionText,
+  ix, slideIn, slideOut, fillPickerCell, loadPickerCellPalette, drawCaptionFrame, queuePickerRows, bankedCaptionText,
   drawFileCaption, loadFilePalette, summaryOf, NO_FILE, pickerCursorTask, loadLabelSet, loadFileMugshots, loadPanelBlocks,
 } from "./picker.js";
 import { buildSaveSlotSummaries } from "./main_menu.js";
@@ -172,12 +172,10 @@ export const fillSavedDataSourceCell = (P, index, highlighted) => fillPickerCell
 // LoadSavedDataSourceCellPalette (3B:6B4E)
 export const loadSavedDataSourceCellPalette = (P, index) => loadPickerCellPalette(P, SavedDataSourceCellPalettePtrs, index);
 // DrawSavedDataSourceCaption (3B:6B83): a file's caption, or the Game Pak / N64 text
-export function drawSavedDataSourceCaption(P) {
+export function drawSavedDataSourceCaption(P, f = 0) {
   const index = getMenuCursorIndex(P, COLS).a;
-  if (index < FILES) { drawFileCaption(P, index, Text_30_200, false); return; }
-  pushWramBank(P, WRAM_SCREEN);
-  captionText(P, index === N64_CELL ? Text_30_199 : Text_30_201);
-  popWramBank(P);
+  if (index < FILES) return drawFileCaption(P, index, Text_30_200, false, f);
+  return bankedCaptionText(P, index === N64_CELL ? Text_30_199 : Text_30_201, index, index, f);
 }
 
 export const HOOKS = [
