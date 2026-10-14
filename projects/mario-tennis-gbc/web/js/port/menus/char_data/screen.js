@@ -553,7 +553,7 @@ function* confirmBox(P) {
     unregisterFrameTask(P, DrawRemainingPointsSprite);
     restoreCharDataScreenRow(P); drawCharStatRows(P);
     yield* flushCharDataTilemaps(P);
-    yield* wipeConfirmBox(P, [[], ["B8", 1]], [["B7", 1], ["B8", 2]], [["B7", 2], ["B8", 3]], [["B7", 3], ["B8", 4]]);
+    yield* wipeConfirmBox(P, [["B8", 1]], [["B7", 1], ["B8", 2]], [["B7", 2], ["B8", 3]], [["B7", 3], ["B8", 4]]);
   }
   for (;;) {
     drawConfirmSelectionCursor(P);

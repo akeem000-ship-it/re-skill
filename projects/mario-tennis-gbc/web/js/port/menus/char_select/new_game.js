@@ -14,6 +14,7 @@ import {
 } from "./defs.js";
 import { runCharacterSelectScreen } from "./character.js";
 import { runNameEntryScreen } from "./name_entry.js";
+import { promptCharDataConfirm } from "../char_data/confirm.js";
 import { testSaveFlag } from "../../save/storyslots.js";
 import { enableLCD } from "../../home/system.js";
 import { clearFrameTasks } from "../../home/debugtext.js";
@@ -22,7 +23,6 @@ import { loadPaletteShadow } from "../../home/palettes.js";
 
 export const BANK = 0x1B;
 const BANK_CHARS = 0x38, BANK_SAVE = 0x03, BANK_CHAR_DATA = 0x1D;
-const PromptCharDataConfirm = 0x5A63;                      // (1d: char_data/confirm.js)
 const CharSelectNavGridTable = 0x5F7C, CharSelectRosterTable = 0x5F9C, Unused_1b_UpdateCharSelectCursorTask = 0x6035;
 const NAV_GRID_SIZE = 0x20, ROSTER_ENTRY_SIZE = 8;
 const STORY_RECORD_MUGSHOT = 0x0B;                         // a story record's +$0B: its mugshot
@@ -64,7 +64,7 @@ function* selectCharacter(P, partner) {
 }
 const nameEntry = (P, slot, partner) =>
   farGen(P, BANK_CHARS, runNameEntryScreen(P, partner, u8(P, storyField(slot, STORY_RECORD_MUGSHOT))));
-const promptConfirm = (P, slot) => P.runRom(BANK_CHAR_DATA, PromptCharDataConfirm, { a: slot });
+const promptConfirm = (P, slot) => farGen(P, BANK_CHAR_DATA, promptCharDataConfirm(P, slot));
 // .loopB to .restore: returns 0 (done), $FF (backed out) or "restart"
 function* setupMainAndPartner(P, savedSlot) {
   let state = "selectMain";
