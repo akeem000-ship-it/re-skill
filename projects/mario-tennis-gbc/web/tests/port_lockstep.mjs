@@ -153,7 +153,7 @@ let waitLags = 0;
 P.onFrameWaitEnd = () => {
   const w = win.get(portWin);
   const n = w && w.waitEnd > portIdx ? w.waitEnd - portIdx : 0;
-  if (n) { waitLags += n; lastTiming = portWin; if (process.env.LAGLOG) console.log(`advance ${portWin - 1}: its wait took ${w.waitEnd} frames in the ROM, ${portIdx} in the port`); }
+  if (n) { waitLags += n; lags += n; lastTiming = portWin; if (process.env.LAGLOG) console.log(`advance ${portWin - 1}: its wait took ${w.waitEnd} frames in the ROM, ${portIdx} in the port`); }
   return n;
 };
 P.onAdvance = k => {
