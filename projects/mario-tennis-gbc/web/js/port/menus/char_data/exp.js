@@ -235,13 +235,14 @@ export function initExpScreenCharStats(P) {
 // attribute $0C); elsewhere as itself with attribute c, and there the ROM pops one word more than it pushed (its
 // slip): bc = pop() (the caller's return address: the routine then returns from its caller). Back down: de + 33.
 const noSlip = () => { throw new Error("WriteExpScreenStringTiles: a diacritic in a number"); };
+// Returns hl after the terminator and de (with b and c after a slip).
 export function writeExpScreenStringTiles(P, hl, de, c, pop) {
-  let b = 0;
+  let b = 0, slipped = false;
   for (;;) {
     P.wramBank(WRAM_SCENE);
     const ch = u8(P, hl);
     hl = (hl + 1) & 0xFFFF;
-    if (!ch) return { hl, de, b, c };
+    if (!ch) return slipped ? { hl, de, b, c } : { hl, de };
     if (ch !== 0xDE && ch !== 0xDF) {
       b = ch;
       P.wramBank(WRAM_SCREEN); w8(P, de, ch);
@@ -262,7 +263,7 @@ export function writeExpScreenStringTiles(P, hl, de, c, pop) {
       w8(P, de, b);
       P.wramBank(WRAM_COURT_PLANES); w8(P, de, c);
       const bc = pop();
-      b = bc >> 8; c = bc & 0xFF;
+      b = bc >> 8; c = bc & 0xFF; slipped = true;
     }
     de = expScreenTilePtrDownOneRow(de);
   }
@@ -354,7 +355,7 @@ export const HOOKS = [
   [BANK, 0x6AEF, hook(P => slipRegs(drawExpPoolGauge(P)))],
   [BANK, 0x6B60, hook((P, c) => ({ de: expGaugePtrUpOneRow(c.de) }))],
   [BANK, 0x6B7B, hook(P => { initExpScreenCharStats(P); })],
-  [BANK, 0x6D6A, hook((P, c) => { writeExpScreenStringTiles(P, c.hl, c.de, c.c, () => popStack(P)); })],
+  [BANK, 0x6D6A, hook((P, c) => writeExpScreenStringTiles(P, c.hl, c.de, c.c, () => popStack(P)))],
   [BANK, 0x6DD5, hook((P, c) => ({ de: expScreenTilePtrUpOneRow(c.de) }))],
   [BANK, 0x6DDF, hook((P, c) => ({ de: expScreenTilePtrDownOneRow(c.de) }))],
   [BANK, 0x6DE7, hook(P => { drawExpScreenLevelNumber(P); })],

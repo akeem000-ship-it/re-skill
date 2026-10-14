@@ -90,7 +90,7 @@ export function unusedDrawDebugStatsValues(P) {
 export function* unusedRunDebugStatsEditor(P) {
   const bank = P.V.wramBank, entryF = P.cpu.f;
   yield* stepMatchFrame(P);
-  rom(P, FAR.Unused_01_LoadMenuTilesBChunk2);
+  yield* romWait(P, FAR.Unused_01_LoadMenuTilesBChunk2);
   wram(P, WRAM_CHAR0);
   copyMemoryFast(P, wCharPosX, P.A.debugMenuWindowId, DEBUG_STAT_BACKUP_BLOCKS);
   wram(P, WRAM_COURT_PLANES);
@@ -161,7 +161,7 @@ export function getStoryMenuItemCount(P) { return rb(P, (StoryMenuDefs + ((rd(P,
 // DrawStoryMenuItems (06:6D99): each item's label at its place for this count
 export function drawStoryMenuItems(P) {
   const count = rd(P, "pauseMenuItemCount"), places = rw(P, StoryMenuItemPosPointers + 2 * count);
-  for (let i = 0; i < count; i++) drawStoryMenuItem(P, getStoryMenuItemId(P, i), rb(P, places + 2 * i), rb(P, places + 2 * i + 1));
+  for (let i = 0; i < count; i++) drawStoryMenuItem(P, getStoryMenuItemId(P, i), rb(P, places + 2 * i + 1), rb(P, places + 2 * i));   // (e = row, then d = column)
 }
 // DrawStoryMenuCursor (06:6DDD): the cursor over the chosen item
 export function drawStoryMenuCursor(P) {
@@ -182,7 +182,7 @@ export function* runStoryMenu(P) {
       const id = getStoryMenuItemId(P, rd(P, "matchMenuSelection"));
       loadStoryMenuItemGfx(P, id);
       yield* drawStoryMenuCaption(P, captionOf(id), 0x00, 0x0E);
-      redrawStoryTilemapRows(P);
+      yield* redrawStoryTilemapRows(P);
     }
     drawStoryMenuCursor(P);
     yield* advanceFrame(P);
@@ -207,18 +207,18 @@ export function* runStoryMenu(P) {
 // and the overworld's actors hide meanwhile; hLinkPayloadKind is 2.
 export function* runStoryModeMenu(P) {
   const { V } = P, bank = V.wramBank, entryF = P.cpu.f;
-  rom(P, FAR.StopSceneTileAnimations);
+  yield* romWait(P, FAR.StopSceneTileAnimations);
   const payload = V.linkPayloadKind;
   yield* advanceFrame(P);
   sound(P, SFX_PAUSE_MENU);
   wr(P, "matchMenuSelection", 0);
   V.linkPayloadKind = 2;
-  rom(P, FAR.InitTextWindows);
+  yield* romWait(P, FAR.InitTextWindows);
   wr(P, "windowTileAttr", TILEATTR_PRIORITY | TILEATTR_PAL1);
   setFlag(P, FLAG_HIDE_OVERWORLD_ACTORS);
-  rom(P, FAR.LoadMatchStoryGfx);
-  restoreStoryTilemapNoPriority(P);
-  rom(P, FAR.CreateWindowFromScreenRect, { d: 0x00, e: 0x0E, b: 0x13, c: 0x03 });
+  yield* romWait(P, FAR.LoadMatchStoryGfx);
+  yield* restoreStoryTilemapNoPriority(P);
+  yield* romWait(P, FAR.CreateWindowFromScreenRect, { d: 0x00, e: 0x0E, b: 0x13, c: 0x03 });
   yield* advanceFrame(P);
   wram(P, WRAM_TEXT);
   let result;                                                        // the item's result (b at StoryPauseMenu_AfterItem)
@@ -240,20 +240,20 @@ export function* runStoryModeMenu(P) {
       if (result === 0xFF) continue;
       V.linkPayloadKind = payload;
       clearFlag(P, FLAG_HIDE_OVERWORLD_ACTORS);
-      rom(P, FAR.InitSceneTileAnimations);
+      yield* romWait(P, FAR.InitSceneTileAnimations);
       wram(P, bank);
       return { a: bank, f: entryF };
     }
     if (rd(P, "matchAbortFlag")) break;
   }
-  restoreStoryShadowTilemap(P);
-  redrawStoryTilemapRows(P);
+  yield* restoreStoryShadowTilemap(P);
+  yield* redrawStoryTilemapRows(P);
   yield* advanceFrame(P);
   clearFlag(P, FLAG_HIDE_OVERWORLD_ACTORS);
-  rom(P, FAR.LoadMenuFontGfxStaged);
+  yield* romWait(P, FAR.LoadMenuFontGfxStaged);
   V.linkPayloadKind = payload;
-  rom(P, FAR.InitTextWindows);
-  rom(P, FAR.InitSceneTileAnimations);
+  yield* romWait(P, FAR.InitTextWindows);
+  yield* romWait(P, FAR.InitSceneTileAnimations);
   wram(P, bank);
   return { a: bank, f: entryF };
 }
@@ -267,7 +267,7 @@ export function* unusedStoryMenuRedrawReentry(P) {
     if (redraw) {
       loadStoryMenuItemGfx(P, rd(P, "matchMenuSelection"));
       yield* drawStoryMenuCaption(P, captionOf(rd(P, "matchMenuSelection")), 0x00, 0x0E);
-      redrawStoryTilemapRows(P);
+      yield* redrawStoryTilemapRows(P);
     }
     const at = StoryPauseMenuCursorPositions + 2 * rd(P, "matchMenuSelection");
     queueStoryMenuCursorSprite(P, rb(P, at + 1), rb(P, at));
@@ -298,12 +298,12 @@ function keepPlayerPosition(P) {
 }
 // StoryPauseMenu_PlayerData (06:6F42): CHAR. DATA / ITEMS. Returns a = 0 after the screen, $FF if cancelled.
 export function* storyPauseMenuPlayerData(P) {
-  restoreStoryTilemapNoPriority(P);
+  yield* restoreStoryTilemapNoPriority(P);
   wr(P, "matchMenuSelection", 0);
   wr(P, "pauseMenuId", MENU_PLAYER_DATA);
   yield* runStoryMenu(P);
   const sel = rd(P, "matchMenuSelection");
-  if (sel === MATCHMENUSEL_CANCELLED) { restoreStoryTilemapNoPriority(P); return 0xFF; }
+  if (sel === MATCHMENUSEL_CANCELLED) { yield* restoreStoryTilemapNoPriority(P); return 0xFF; }
   if (sel === 0) return yield* storyPauseMenuCharPartnerData(P);
   if (sel === 1) return yield* storyPauseMenuEquipment(P);
   throw new Error(`StoryPauseMenu_PlayerData: item ${sel} jumps off its table`);
@@ -326,7 +326,7 @@ export function* storyPauseMenuGameProgress(P) {
 }
 // StoryPauseMenu_Options (06:6FBC): MESSAGES / MUSIC until cancelled; returns a = $FF
 export function* storyPauseMenuOptions(P) {
-  restoreStoryTilemapNoPriority(P);
+  yield* restoreStoryTilemapNoPriority(P);
   wr(P, "matchMenuSelection", 0);
   for (;;) {
     wr(P, "pauseMenuId", MENU_OPTIONS);
@@ -359,13 +359,13 @@ export function* storyPauseMenuMusicToggle(P) {
   const sel = rd(P, "matchMenuSelection");
   if (sel === MATCHMENUSEL_CANCELLED) return;
   home(P, HOME.SetMusicMuted, { a: sel });
-  rom(P, FAR.SetStorySlotFlagA, { a: P.V.music & 1 });
+  yield* romWait(P, FAR.SetStorySlotFlagA, { a: P.V.music & 1 });
 }
 // StoryPauseMenu_SaveQuit (06:702F): SAVE / TO MAIN MENU / CANCEL ("save?" in the caption, the cursor on CANCEL).
 // SAVE: the story saved (with its return point), then the main menu. Returns a = 1 when it leaves for the main
 // menu, 0 if cancelled.
 export function* storyPauseMenuSaveQuit(P) {
-  restoreStoryTilemapNoPriority(P);
+  yield* restoreStoryTilemapNoPriority(P);
   yield* drawStoryMenuCaption(P, Text_30_370, 0x00, 0x0E);
   wr(P, "matchMenuSelection", SAVE_QUIT_CANCEL);
   wr(P, "pauseMenuId", MENU_SAVE_QUIT);
@@ -375,8 +375,8 @@ export function* storyPauseMenuSaveQuit(P) {
   if (sel === SAVE_QUIT_TO_MAIN_MENU) return yield* storyPauseMenuReturnToMainMenu(P);
   wr(P, "saveAndQuitRequest", 1);
   wr(P, "messageSpeed", rd(P, "messageSpeed") & ~MESSAGE_SPEED_INSTANT);
-  rom(P, FAR.SaveStoryReturnPoint, { bc: RETURN_POINT_NONE });
-  rom(P, FAR.SaveStorySlotWithTimer);
+  yield* romWait(P, FAR.SaveStoryReturnPoint, { bc: RETURN_POINT_NONE });
+  yield* romWait(P, FAR.SaveStorySlotWithTimer);
   toMainMenu(P);
   return 1;
 }
@@ -411,7 +411,7 @@ export function* runStoryTwoOptionMenu(P) {
   drawStoryMenuItem(P, first, 0x05, 0x0A);
   drawStoryMenuItem(P, (first + 1) & 0xFF, 0x0B, 0x0A);
   if (first !== ITEM_SAVE_GAME) yield* drawStoryMenuCaption(P, captionOf(chosenItem(P)), 0x00, 0x0E);
-  redrawStoryTilemapRows(P);
+  yield* redrawStoryTilemapRows(P);
   loadStoryMenuItemGfx(P, chosenItem(P));
   for (;;) {
     if (readMatchInputPressed(P) & PADF_B) {
@@ -426,7 +426,7 @@ export function* runStoryTwoOptionMenu(P) {
       sound(P, SFX_MENU_MOVE);
       if (rd(P, "storyMenuFirstItem") !== ITEM_SAVE_GAME) {
         yield* drawStoryMenuCaption(P, captionOf(chosenItem(P)), 0x00, 0x0E);
-        redrawStoryTilemapRows(P);
+        yield* redrawStoryTilemapRows(P);
       }
       loadStoryMenuItemGfx(P, chosenItem(P));
     }
@@ -439,13 +439,13 @@ export function* runStoryTwoOptionMenu(P) {
 // RunStoryThreeOptionMenu (06:717A): three labels at columns 3, 8 and $0D, the caption following the cursor; B
 // cancels, A picks; the screen's maps restored after
 export function* runStoryThreeOptionMenu(P) {
-  restoreStoryTilemapNoPriority(P);
+  yield* restoreStoryTilemapNoPriority(P);
   const first = rd(P, "storyMenuFirstItem");
   drawStoryMenuItem(P, first, 0x03, 0x0A);
   drawStoryMenuItem(P, (first + 1) & 0xFF, 0x08, 0x0A);
   drawStoryMenuItem(P, (first + 2) & 0xFF, 0x0D, 0x0A);
   yield* drawStoryMenuCaption(P, captionOf(chosenItem(P)), 0x00, 0x0E);
-  redrawStoryTilemapRows(P);
+  yield* redrawStoryTilemapRows(P);
   loadStoryMenuItemGfx(P, chosenItem(P));
   for (;;) {
     if (readMatchInputPressed(P) & PADF_B) {
@@ -459,34 +459,34 @@ export function* runStoryThreeOptionMenu(P) {
       wr(P, "matchMenuSelection", moveCursorHorizontal(rd(P, "matchMenuSelection"), pad, 3, 0).a);
       sound(P, SFX_MENU_MOVE);
       yield* drawStoryMenuCaption(P, captionOf(chosenItem(P)), 0x00, 0x0E);
-      redrawStoryTilemapRows(P);
+      yield* redrawStoryTilemapRows(P);
       loadStoryMenuItemGfx(P, chosenItem(P));
     }
     const at = StoryThreeOptionCursorPositions + 2 * rd(P, "matchMenuSelection");
     queueStoryMenuCursorSprite(P, rb(P, at + 1), rb(P, at));
     yield* advanceFrame(P);
   }
-  restoreStoryTilemapNoPriority(P);
+  yield* restoreStoryTilemapNoPriority(P);
   yield* advanceFrame(P);
 }
 // RedrawStoryTilemapRows (06:7237): the text windows' maps redrawn (WRAM 5 left mapped)
-export function redrawStoryTilemapRows(P) {
+export function* redrawStoryTilemapRows(P) {
   wram(P, WRAM_TEXT);
-  return rom(P, FAR.RedrawAllTilemapRows);
+  return yield* romWait(P, FAR.RedrawAllTilemapRows);
 }
 // RestoreStoryShadowTilemap (06:7241): the screen's maps back under the text windows
-export function restoreStoryShadowTilemap(P) { return rom(P, FAR.RestoreShadowTilemap); }
+export function* restoreStoryShadowTilemap(P) { return yield* romWait(P, FAR.RestoreShadowTilemap); }
 // RestoreStoryTilemapNoPriority (06:7245): the same, with the attributes' priority bits cleared, redrawn
-export function restoreStoryTilemapNoPriority(P) {
-  rom(P, FAR.RestoreShadowTilemap);
+export function* restoreStoryTilemapNoPriority(P) {
+  yield* romWait(P, FAR.RestoreShadowTilemap);
   clearStoryAttrPriorityBits(P);
-  return rom(P, FAR.RedrawAllTilemapRows);
+  return yield* romWait(P, FAR.RedrawAllTilemapRows);
 }
 // DrawStoryMenuCaption (06:724F): the caption window (a text window frame at screen cell (d, e)) with text hl
 export function* drawStoryMenuCaption(P, text, x, y) {
   const de = (x << 8 | y) & 0xFFFF;
   prepareGlyphBuffer(P);
-  rom(P, FAR.DrawTextWindowFrame, { a: 0, de, hl: text });
+  yield* romWait(P, FAR.DrawTextWindowFrame, { a: 0, de, hl: text });
   const inner = (de + 0x0101) & 0xFFFF;
   yield* renderProportionalTextAt(P, text, getShadowTilemapAddr(P, inner >> 8, inner & 0xFF), 0x11);
   yield* uploadGlyphBuffer(P);
@@ -581,9 +581,9 @@ export const HOOKS = [
   [B, 0x70C4, hookGen(P => unusedRunSaveQuitMenu(P))],
   [B, 0x70CC, hookGen(P => runStoryTwoOptionMenu(P))],
   [B, 0x717A, hookGen(P => runStoryThreeOptionMenu(P))],
-  [B, 0x7237, hook(P => { redrawStoryTilemapRows(P); })],
-  [B, 0x7241, hook(P => { restoreStoryShadowTilemap(P); })],
-  [B, 0x7245, hook(P => { restoreStoryTilemapNoPriority(P); })],
+  [B, 0x7237, hookGen(P => redrawStoryTilemapRows(P))],
+  [B, 0x7241, hookGen(P => restoreStoryShadowTilemap(P))],
+  [B, 0x7245, hookGen(P => restoreStoryTilemapNoPriority(P))],
   [B, 0x724F, hookGen((P, c) => drawStoryMenuCaption(P, c.hl, c.d, c.e))],
   [B, 0x726A, hook(P => clearStoryAttrPriorityBits(P))],
   [B, 0x7283, hook((P, c) => { loadStoryMenuItemGfx(P, c.a); })],

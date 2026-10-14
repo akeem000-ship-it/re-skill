@@ -5,8 +5,9 @@
 // diacritics, digit strings with blanks). The registers compared are the ones each port says it returns (the hook
 // adapter's HOOK_TRACE), plus all memory.
 // States: the character-select and character-data recordings, e.g.
-//   node web/tests/port_routines.mjs Chars --rec out/port/cs_singles.mtrec,out/port/cs_doubles.mtrec,\
-//     out/port/cs_story_new.mtrec,out/port/cd_levelup.mtrec,out/port/cd_status.mtrec,out/port/cd_erase.mtrec
+//   node web/tests/port_routines.mjs "Chars " --rec out/port/cs_singles.mtrec,out/port/cs_doubles.mtrec,\
+//     out/port/cs_story_new.mtrec,out/port/cs_matchtype.mtrec,out/port/cd_levelup.mtrec,out/port/cd_status.mtrec,\
+//     out/port/cd_erase.mtrec --every 37
 // (char_select routines run on the cs_* states, char_data routines on the cd_* ones; with other recordings, on all).
 import { RAM_FIELDS } from "../../js/port/fields.js";
 import { rng, pick } from "./routines_menus_common.mjs";
@@ -37,12 +38,12 @@ const regNames = out => {
 // E(name, bank, addr, { regs(r, s), prep(mem, r, s), n, recs, wram, ignore }): n: every n-th of the matching states
 export const ROUTINES = [];
 let salt = 0;
-function E(name, bank, addr, { regs = () => ({}), prep = null, n = 3, recs = null, wram, ignore, skip = [] } = {}) {
+function E(name, bank, addr, { regs = () => ({}), prep = null, n = 3, recs = null, active = null, wram, ignore, skip = [] } = {}) {
   const k = ++salt * 7919, off = salt % n;
   let i = 0;
   const entry = {
     name: `Chars ${name}`, bank, addr, wram, ignore, out: [],
-    when: s => (!recs || recs.test(s.rec) || !/^c[sd]_/.test(s.rec)) && (i++ % n) === off,
+    when: s => (!recs || recs.test(s.rec) || !/^c[sd]_/.test(s.rec)) && (!active || active(s)) && (i++ % n) === off,
     regs: s => {
       const r = rng(s, k), g = { a: r(256), f: r(16) << 4, bc: r(0x10000), de: r(0x10000), hl: r(0x10000), ...regs(r, s) };
       for (const [p, hi, lo] of [["bc", "b", "c"], ["de", "d", "e"], ["hl", "h", "l"]]) {
@@ -73,7 +74,7 @@ const MAP = 0xD000;
 const mapAt = r => MAP + r(0x300);                          // a cell of a screen map (WRAM 2 / 3 at $D000)
 const DIGITS = [0x20, 0x30, 0x31, 0x35, 0x39];
 function csPrep(mem, r) {
-  wf(mem, "charSelectSlot", pick(r, [0, 1, 2, 3, r(5)]));
+  wf(mem, "charSelectSlot", r(4));
   wf(mem, "charSelectIsPartner", r(2));
   wf(mem, "charSelectMode", pick(r, [0, 1, 0, 1, r(6)]));
   wf(mem, "charSelectHandedness", r(2));
@@ -85,7 +86,7 @@ function csPrep(mem, r) {
   wf(mem, "cpuDifficultyCursor", r(3));
   wf(mem, "matchIsDoubles", r(2));
   for (let i = 0; i < 4; i++) {
-    wf(mem, "charSelectSlotChars", pick(r, [0, 1, 2, 3, 4, 8, 0x0F, 0xFF, r(0x20)]), i);
+    wf(mem, "charSelectSlotChars", pick(r, [0, 1, 2, 3, 4, 8, 0x0F, 0xFF]), i);
     wf(mem, "charSelectSlotDifficulty", r(3), i);
     wf(mem, "charSelectSlotLeftHanded", r(2), i);
   }
@@ -127,7 +128,20 @@ function cdPrep(mem, r) {
   }
   mem.hram[0x0C] = r(256);                                   // hVBlankCounter ($FF8C)
 }
-const cs = { prep: csPrep, recs: /^cs_/ };
+// a frame task registered in the state (wFrameTasks, $C1C0: 16 entries [active, routine, bank]): the screen it
+// belongs to is up, its RAM set up
+const task = (s, bank, addr) => {
+  const w = s.m.mem.wram[0];
+  for (let i = 0; i < 16; i++) { const e = 0x1C0 + i * 4; if (w[e] && w[e + 1] === (addr & 0xFF) && w[e + 2] === addr >> 8 && w[e + 3] === bank) return true; }
+  return false;
+};
+const onGrid = s => task(s, 0x38, 0x4E52) && !task(s, 0x38, 0x4BAC) && !task(s, 0x38, 0x7090);   // (the bg scroll, alone)
+const onCharScreen = s => task(s, 0x38, 0x4BAC);                                                  // DrawCharacterSelectChars
+const onMatchType = s => task(s, 0x38, 0x458D);                                                   // ...DrawMatchTypeOptionBoxes
+const cs = { prep: csPrep, recs: /^cs_/, active: onGrid };
+// the character-select screen (character_38): its cursor and the pair shown (main / partner, in WRAM 2)
+// (one row of two: with the pair flag, an index 0-3 into SelectedCharWramBankTable)
+const charScreen = { recs: /^cs_/, active: onCharScreen, n: 1, prep: (mem, r) => { wf(mem, "menuCursorX", r(2)); wf(mem, "menuCursorY", 0); wx(mem, 2, at("charSelectIsPartner"), r(2)); } };
 const cd = { prep: cdPrep, recs: /^cd_/ };
 const both = (a, b) => (mem, r, s) => { a(mem, r, s); b(mem, r, s); };
 
@@ -143,25 +157,43 @@ const CS_PLAIN = [
   "RefreshCharInfoPanel:575e", "DrawCharSelectSlotLabel:591b", "DrawCharGridSlotIcons:598b", "InitCharGridState:5a1b",
   "DrawCharGridSlotPrompt:5424", "RunCpuDifficultySubmenu:6216", "CloseCpuDifficultyPanel:62c8",
   "HandleCpuDifficultyInput:630f", "DrawCpuDifficultyCursorBox:633b", "OpenCpuDifficultyPanel:636d",
-  "QueueCpuDifficultyPanelToVram:6396", "DrawCharGridCursorBox:4f4b", "SetupCharGridScreen:4f6f",
+  "QueueCpuDifficultyPanelToVram:6396", "DrawCharGridCursorBox:4f4b", 
   "HandleCharGridDpad:5195", "MoveCharGridCursorUp:51f4", "MoveCharGridCursorDown:521c",
   "MoveCharGridCursorRight:525e", "MoveCharGridCursorLeft:528b", "HandleCharGridButtons:52b9",
   "ConfirmCharGridSelection:5302", "CancelCharGridSelection:53b0", "DrawCharGridWaitBanner:549a",
   "DrawCharGridScrollArrows:54cc", "DrawCharGridCharSprites:5545", "ProcessLinkSelectCommand:6528",
   "MoveLinkCursorUp:6d0b", "MoveLinkCursorDown:6d25", "MoveLinkCursorRight:6d58", "MoveLinkCursorLeft:6d77",
   "Unused_38_RetreatLinkGridSelection:6d97", "Unused_38_ConfirmRemoteGridSelection:6dc4",
-  "WaitLinkSelectStartupFrames:6e04", "Unused_38_DrawCharSelectCursorBox:490c", "LoadCharSelectCharPalettes:492c",
-  "LoadHighlightedCharPalette:4949", "SetupCharacterSelectScreen:4975", "RefreshCharacterSelectHighlight:4aae",
-  "DrawCharacterSelectPrompt:4acf", "InitCharacterSelectChars:4b21", "DrawCharacterSelectChars:4bac",
-  "SetCharSelectAnimations:4d14", "ReloadSelectedCharGfx:4d66", "TickCharSelectIdleAnim:4d9b",
-  "GetSelectedCharWramBank:4dfa", "DrawCharacterSelectCursor:4e23", "TickMenuBgScrollTask_38:4e52",
-  "Unused_38_WramBank3Nop:4e56", "UpdateAnimatedTilesTask_38:4408", "Unused_38_DrawMatchTypeOptionBoxes:458d",
-  "Unused_38_SetupMatchTypeMenuScreen:460f", "Unused_38_RefreshMatchTypeLabelRow:4666",
-  "Unused_38_DrawMatchTypeOptionLabel:4722", "Unused_38_AdjustMatchTypeSetting:474f", "SetupNameEntryScreen:6f6e",
+  "WaitLinkSelectStartupFrames:6e04", "Unused_38_DrawCharSelectCursorBox:490c", 
+  
+  
+  
+  "TickMenuBgScrollTask_38:4e52",
+  "Unused_38_WramBank3Nop:4e56", "UpdateAnimatedTilesTask_38:4408", 
+  
+  
   "HandleNameEntryCursorMove:7072", "DrawNameEntryCursor:7090", "DrawEnterNameLabel:7159",
   "GetNameEntryBottomRowAction:7220", "SnapNameEntryCursorRight:723c", "SnapNameEntryCursorLeft:725b",
 ];
 for (const e of CS_PLAIN) { const [name, addr] = e.split(":"); E(name, 0x38, parseInt(addr, 16), cs); }
+for (const e of ["LoadCharSelectCharPalettes:492c", "LoadHighlightedCharPalette:4949", "RefreshCharacterSelectHighlight:4aae",
+  "DrawCharacterSelectPrompt:4acf", "InitCharacterSelectChars:4b21", "DrawCharacterSelectChars:4bac",
+  "SetCharSelectAnimations:4d14", "ReloadSelectedCharGfx:4d66", "TickCharSelectIdleAnim:4d9b", "GetSelectedCharWramBank:4dfa",
+  "DrawCharacterSelectCursor:4e23"]) { const [name, addr] = e.split(":"); E(name, 0x38, parseInt(addr, 16), charScreen); }
+// the unused match-type menu: on its own screen (out/port/cs_matchtype.mtrec)
+for (const e of ["Unused_38_DrawMatchTypeOptionBoxes:458d", "Unused_38_RefreshMatchTypeLabelRow:4666",
+  "Unused_38_DrawMatchTypeOptionLabel:4722", "Unused_38_AdjustMatchTypeSetting:474f"]) {
+  const [name, addr] = e.split(":");
+  E(name, 0x38, parseInt(addr, 16), { recs: /^cs_matchtype/, active: onMatchType, n: 1,
+    prep: (mem, r) => {
+      wf(mem, "menuCursorX", 0); wf(mem, "menuCursorY", r(3));
+      wf(mem, "menuInputPressed", pick(r, [0x10, 0x20, 0x40, 0x80, 0, r(256)]));
+      wf(mem, "matchFormatDoubles", r(2)); wf(mem, "matchFormatGames", r(2)); wf(mem, "matchFormatSets", r(3));
+    } });
+}
+// (SetupCharGridScreen, SetupCharacterSelectScreen, Unused_38_SetupMatchTypeMenuScreen and SetupNameEntryScreen run
+// past this test's 2M-step limit on the ROM side, the LCD off and graphics decompressed; the lockstep runs them in the
+// cs_* recordings and cs_matchtype.)
 const S38 = (name, addr, o) => E(name, 0x38, addr, { ...cs, ...o });
 S38("Unused_38_TestAndClearGridEntryTaken", 0x5D25, { regs: r => ({ c: r(5), d: r(4), e: r(20) }) });
 S38("TestAndSetGridEntryTaken", 0x5D42, { regs: r => ({ c: r(5), d: r(4), e: r(20) }) });

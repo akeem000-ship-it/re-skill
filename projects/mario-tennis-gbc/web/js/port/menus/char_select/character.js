@@ -282,12 +282,12 @@ export function tickCharSelectIdleAnim(P) {
   });
 }
 // GetSelectedCharWramBank (38:4DFA): the WRAM bank of the highlighted character (cursor + 2 for the partner pair).
-// Returns it in b; a = its index, hl at its table entry, c = the partner flag.
+// Returns it in b; hl at its table entry (a = hl's low byte, as the index is added), c = the partner flag.
 export function getSelectedCharWramBank(P) {
   const b = getMenuCursorIndex(P, 2);
   const c = withWram(P, WRAM_COURT_PLANES, () => rd(P, "charSelectIsPartner"));
-  const a = (c * 2 + b) & 0xFF, hl = idx(SelectedCharWramBankTable, a);
-  return { a, b: P.bus.u8(hl), c, hl };
+  const hl = idx(SelectedCharWramBankTable, c * 2 + b);
+  return { a: hl & 0xFF, b: P.bus.u8(hl), c, hl };
 }
 // DrawCharacterSelectCursor (38:4E23), a frame task: the hand cursor at the highlighted character (tile 2, or 0 for
 // a left-handed one)

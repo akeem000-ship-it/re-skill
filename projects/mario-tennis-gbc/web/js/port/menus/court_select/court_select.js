@@ -156,7 +156,7 @@ export const courtSelectIndexToCourtId = (P, index) => rb(P, (CourtSelectCourtId
 
 // LoadCourtSelectGraphics (3E:5D11), slot $4020: the unlock bits (ours or'ed with a link partner's) stored; each
 // court's thumbnail (a locked court's "?") into its VRAM place; the panels' tiles; the cursor palette
-export function loadCourtSelectGraphics(P) {
+export function loadCourtSelectGraphics(P, entryF = P.cpu.f) {
   const bank = P.V.wramBank;
   storeCourtUnlockBits(P, rd(P, "unlockedCourtMask") | rd(P, "linkPartnerCourtMask"));
   wram(P, WRAM_STAGING);
@@ -166,8 +166,9 @@ export function loadCourtSelectGraphics(P) {
     queueVRAMCopy(P, wDecompBuffer, rw(P, CourtSelectTable + 2 * court), THUMBNAIL_BLOCKS);
   }
   for (const [block, blocks, dest] of COURT_SELECT_TILE_BLOCKS) loadCompressedTileBlock(P, block, dest, blocks);
-  rom(P, FAR.LoadIndexedPalette, { b: 0x08, c: 0x10 });
+  const r = rom(P, FAR.LoadIndexedPalette, { b: 0x08, c: 0x10 });
   wram(P, bank);
+  return { ...r, a: bank, f: entryF };                            // (pop_wram_bank: the bank and the flags at the call)
 }
 // GetCourtThumbnailPtr (3E:5E17): the thumbnail's (bank, slot) hl, or the locked one's when court c is locked
 export function getCourtThumbnailPtr(P, court, slot) { return isCourtUnlocked(P, court) ? slot : LOCKED_THUMBNAIL; }
@@ -435,7 +436,9 @@ export function computeUnlockedCourtFlags(P) {
     if (i < BONUS_COURTS - 1) mask = (mask << 1) & 0xFF;
   }
   wr(P, "unlockedCourtMask", mask);
-  return mask;
+  // the registers it leaves: the mask, c = 5 (the flags of `cp 5`), de = the last flag id, hl after it
+  const last = CourtUnlockFlagIds_3e + 2 * (BONUS_COURTS - 1);
+  return { a: mask, b: mask, c: BONUS_COURTS, de: rw(P, last), hl: last + 1, f: FZ | 0x40 };
 }
 
 const B = BANK_COURT_SELECT;
@@ -444,7 +447,7 @@ export const HOOKS = [
   [B, 0x5B99, ret(P => runCourtSelect4Menu(P))],
   [B, 0x5C38, ret(P => runLinkCourtSelect4Menu(P))],
   [B, 0x5CFE, hook((P, c) => ({ a: courtSelectIndexToCourtId(P, c.a) }))],
-  [B, 0x5D11, hook(P => { loadCourtSelectGraphics(P); })],
+  [B, 0x5D11, hook(P => loadCourtSelectGraphics(P))],
   [B, 0x5E17, hook((P, c) => ({ hl: getCourtThumbnailPtr(P, c.c, c.hl) }))],
   [B, 0x5E2A, hookGen((P, c) => openCourtSelect4Panel(P, c.b))],
   [B, 0x5E62, hookGen((P, c) => closeCourtSelect4Panel(P, c.b))],
@@ -478,6 +481,6 @@ export const HOOKS = [
   [B, 0x68C6, hook((P, c) => { setCourtPalette(P, CourtSelect9PalettePtrs, c.a); })],
   [B, 0x695A, hook((P, c) => { storeCourtUnlockBits(P, c.b); })],
   [B, 0x697B, hook((P, c) => { const a = isCourtUnlocked(P, c.b); return { a, b: a }; })],
-  [B, 0x69A0, hook(P => ({ a: computeUnlockedCourtFlags(P) }))],
+  [B, 0x69A0, hook(P => computeUnlockedCourtFlags(P))],
   [B, 0x69D4, hook(() => {})],
 ];

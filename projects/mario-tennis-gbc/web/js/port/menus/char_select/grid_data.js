@@ -258,8 +258,9 @@ export function isMarioCastCharacter(c) {
   if (c < FIRST_MARIO_CAST || c > LAST_MARIO_CAST) return { a: 0, f: FZ };
   return { a: 1, f: cpFlags(c, LAST_MARIO_CAST + 1) };
 }
-// IsCreatedCharId (38:6013): whether id a is a created character (0-3): a = 1 or 0, the flags of `cp $04`
-export const isCreatedCharId = a => ({ a: a < NUM_CREATED_CHAR_IDS ? 1 : 0, f: cpFlags(a, NUM_CREATED_CHAR_IDS) });
+// IsCreatedCharId (38:6013): whether id a is a created character (0-3): a = 1 with the flags of `cp $04`, or a = 0
+// with those of `xor a` (Z)
+export const isCreatedCharId = a => (a < NUM_CREATED_CHAR_IDS ? { a: 1, f: cpFlags(a, NUM_CREATED_CHAR_IDS) } : { a: 0, f: FZ });
 // NeedsCpuDifficultyPrompt (38:61F7): a Mario-cast character picked for a slot other than 1P asks for a CPU
 // difficulty: a = 1, else 0 (Z)
 export function needsCpuDifficultyPrompt(P, c) {

@@ -104,11 +104,12 @@ export function unusedApplySpriteBobOffset(P, e) {
 // LoadOnCourtCharTilesA (18:5AB9), slot $4044 / LoadOnCourtCharTilesB (18:5ACE), slot $4046: character a's four
 // tiles of set A / B (64 bytes a character) queued to de; B with a = $FF: the fallback tiles
 export function loadOnCourtCharTilesA(P, ch, de) {
-  return { c: ON_COURT_TILE_BLOCKS, ...queueVRAMCopy(P, (OnCourtCharTilesAGfx + ch * 0x40) & 0xFFFF, de, ON_COURT_TILE_BLOCKS) };
+  return { b: OnCourtCharTilesAGfx >> 8, c: ON_COURT_TILE_BLOCKS, ...queueVRAMCopy(P, (OnCourtCharTilesAGfx + ch * 0x40) & 0xFFFF, de, ON_COURT_TILE_BLOCKS) };
 }
+// (b: the graphics' high byte, from `ld bc, OnCourtCharTiles?Gfx / add hl, bc`, unless QueueVRAMCopy changes it)
 export function loadOnCourtCharTilesB(P, ch, de) {
   if (ch === NO_CHARACTER) return loadOnCourtCharTilesFallback(P, de);
-  return { c: ON_COURT_TILE_BLOCKS, ...queueVRAMCopy(P, (OnCourtCharTilesBGfx + ch * 0x40) & 0xFFFF, de, ON_COURT_TILE_BLOCKS) };
+  return { b: OnCourtCharTilesBGfx >> 8, c: ON_COURT_TILE_BLOCKS, ...queueVRAMCopy(P, (OnCourtCharTilesBGfx + ch * 0x40) & 0xFFFF, de, ON_COURT_TILE_BLOCKS) };
 }
 // LoadOnCourtCharTilesFallback (18:5AE7)
 export function loadOnCourtCharTilesFallback(P, de) {

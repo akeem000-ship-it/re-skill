@@ -116,7 +116,9 @@ export function flushTilemapToVram(P) {
   wr(P, "tilemapDirtyFlag", 0);
   const off = getScrolledTilemapRowOffset(P, 0), blocks = FLUSH_ROWS * TILEMAP_WIDTH / 16;
   queueVRAMCopy(P, wCourtTilemap + off, vBGMap0 + off, blocks);
-  return queueVRAMCopy(P, wCourtAttrmap + off, vBGMap0 + off + VRAM_BANK1, blocks);
+  // (the last copy through the ROM's address: it returns every register as QueueVRAMCopy leaves them; b is still the
+  // offset's high byte)
+  return home(P, 0x0480, { hl: wCourtAttrmap + off, de: vBGMap0 + off + VRAM_BANK1, b: off >> 8, c: blocks });
 }
 export function unusedFlushTilemapToVramIfDirty(P) {
   if (!rd(P, "tilemapDirtyFlag")) return { a: 0, f: FZ };
@@ -132,7 +134,7 @@ export function getMatchMenuItemCount(P) { return rb(P, (MatchMenuDefs + ((rd(P,
 export function drawMatchMenuItems(P) {
   const count = rd(P, "pauseMenuItemCount");
   const places = rw(P, MatchMenuItemPosPointers + 2 * count);
-  for (let i = 0; i < count; i++) drawMatchMenuItem(P, getMatchMenuItemId(P, i), rb(P, places + 2 * i), rb(P, places + 2 * i + 1));
+  for (let i = 0; i < count; i++) drawMatchMenuItem(P, getMatchMenuItemId(P, i), rb(P, places + 2 * i + 1), rb(P, places + 2 * i));   // (e = row, then d = column)
 }
 // DrawMatchMenuCursor (06:4873): the cursor sprite over the chosen item (MatchMenuCursorPosPointers)
 export function drawMatchMenuCursor(P) {
@@ -510,8 +512,8 @@ export const HOOKS = [
   [B, 0x45AA, hook(P => { restoreBgTilemap(P); })],
   [B, 0x45C1, hook(P => { restoreBgTilemapRegion(P); })],
   [B, 0x45E9, hook((P, c) => ({ ...clearAttrPriorityRegion(P, c.hl, c.bc), a: 0, bc: 0, f: FZ }))],
-  [B, 0x45F3, hook(P => { unusedFlushTilemapToVramIfDirty(P); })],
-  [B, 0x45F8, hook(P => { flushTilemapToVram(P); })],
+  [B, 0x45F3, hook(P => unusedFlushTilemapToVramIfDirty(P))],
+  [B, 0x45F8, hook(P => flushTilemapToVram(P))],
   [B, 0x4624, hook((P, c) => { const a = getShadowTilemapAddr(P, c.d, c.e); return { de: a, hl: a }; })],
   [B, 0x462E, hook((P, c) => { const a = getShadowAttrmapAddr(P, c.d, c.e); return { de: a, hl: a }; })],
   [B, 0x4638, hook((P, c) => getScrolledTilemapOffset(P, c.d, c.e))],
