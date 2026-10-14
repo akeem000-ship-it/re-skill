@@ -123,8 +123,9 @@ export const ROUTINES = [
   T("DrawWindowFrameBottom", 0x2BDC, { out: NOF, gen: r => ({ hl: 0xC400 + r(0x200), bc: (r(24) << 8) | r(256) }) }),
   T("MoveCursorHorizontal", 0x2C0D, { gen: r => { const c = 1 + r(10); return { bc: (pick(r, [0x10, 0x20, 0x30, 0, 0x40, r(256)]) << 8) | c, a: r(3) ? r(c) : r(256) }; } }),
   T("TickTimer", 0x2C26, { gen: () => ({ hl: BUF }), prep: P_((mem, r) => W(mem, BUF, pick(r, [0, 1, 2, 0x10, 0x11, r(256)]))) }),
-  T("QueueSprite24x32", 0x2C2B, { out: NOF }),
-  T("QueueSprite24x32 queue", 0x2C2B, { out: NOF, prep: P_((mem, r) => { mem.hram[0x1B] = pick(r, [0, 0x40, 0x88, 0x89, 0x8C, r(0xA1)]); }) }),
+  T("QueueSprite24x32", 0x2C2B),
+  T("QueueSprite24x32 mirrored, edges", 0x2C2B, { gen: r => ({ bc: (pick(r, [0x20, 0x00, 0x60, r(256)]) << 8) | pick(r, [0xF4, 0xF0, 0xFE, r(256)]), de: (pick(r, [0x00, 0x0F, 0x10, 0xE8, 0xF0, 0xFF, r(256)]) << 8) | r(256), hl: (pick(r, [0, 8, 0x10, r(256)]) << 8) | r(256) }) }),
+  T("QueueSprite24x32 queue", 0x2C2B, { prep: P_((mem, r) => { mem.hram[0x1B] = pick(r, [0, 0x40, 0x88, 0x89, 0x8C, r(0xA1)]); }) }),
 
   // ---- bgblit.js ----
   T("GetMapBufferAddr64", 0x220E),

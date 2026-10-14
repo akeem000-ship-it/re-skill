@@ -117,7 +117,8 @@ export function tickTimer(P, at) {
 // QueueSprite24x32 (00:2C2B): queue a 24x32 sprite, six 8x16 OAM entries (three columns of two) into the sprite
 // buffer at hSpriteQueueIndex: at x + dx, y + dy (attribute bit 5, mirrored: at x - dx + 8, the columns leftward),
 // tiles from `tile` on (2 per entry), all with `attr`. Nothing when the buffer is too full. Returns the registers
-// it leaves.
+// it leaves, and the flags: too full, those of its `cp $89`; else Z and H of the last `inc c` (N clear), and C of
+// the last `add` before it, the last column's x (x + $10, mirrored x + $F0).
 export function queueSprite24x32(P, attr, tile, x, y, dx, dy, l) {
   const { V, bus } = P;
   const flipped = attr & OAM_XFLIP;
@@ -125,7 +126,9 @@ export function queueSprite24x32(P, attr, tile, x, y, dx, dy, l) {
   y = (dy + y) & 0xFF;
   const page = V.spriteBufferPage;
   let index = V.spriteQueueIndex;
-  if (index >= SPRITE_QUEUE_FULL) return { a: index, d: x, e: y, h: page, l };
+  if (index >= SPRITE_QUEUE_FULL)                                // cp $89 / ret nc
+    return { a: index, d: x, e: y, h: page, l, f: (index === SPRITE_QUEUE_FULL ? FLAG_Z : 0) | FLAG_N | ((index & 0xF) < (SPRITE_QUEUE_FULL & 0xF) ? FLAG_H : 0) };
+  const carry = (flipped ? x + 0xF0 : x + 0x10) > 0xFF ? FLAG_C : 0;
   const columns = flipped ? [0, -8, -16] : [0, 8, 16];
   for (const dxCol of columns) {
     for (const dyRow of [0, 16]) {
@@ -136,7 +139,7 @@ export function queueSprite24x32(P, attr, tile, x, y, dx, dy, l) {
     }
   }
   V.spriteQueueIndex = index;
-  return { a: index, c: tile, d: x, e: y, h: page, l: index };
+  return { a: index, c: tile, d: x, e: y, h: page, l: index, f: (tile ? 0 : FLAG_Z) | ((tile & 0xF) === 0 ? FLAG_H : 0) | carry };
 }
 
 const frameHook = attr => preserving((P, c) => {

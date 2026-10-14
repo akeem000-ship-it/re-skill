@@ -15,6 +15,10 @@
 // of its work: before the read the ROM's code made first after it of something the handler writes (the r-th
 // read of that address in the window, web/tests/port/core_runner.mjs). The hardware frame passes at AdvanceFrame
 // as above, without running the handler again. So the work sees the new pad or random seed where the ROM's did.
+// When such a VBlank came in AdvanceFrame's own work (its frame tasks), the ROM's wait can then take one frame more
+// than the port's (its HALT sleeps to the next interrupt, which the port, at another time in the frame, may get
+// earlier): the port is given the missing frames inside that wait (P.onFrameWaitEnd), before the code after
+// AdvanceFrame looks at what the VBlank handler did.
 //
 // Timing. Where a VBlank came while the code was at work (lag, or inside AdvanceFrame before its wait), or the
 // LCD was switched on or off (the timer runs the sound engine during loads, as often as the load takes time),
@@ -22,7 +26,8 @@
 // the ROM's state is copied into the port to go on. So are differences only in the sound engine's state (WRAM 7
 // $D000-$D2FF): it reads the APU's channel-on bits, which depend on the exact time it runs. If a timing event
 // changes the course of the game (differences keep coming back after the resync), the comparison stops there
-// and says so.
+// and says so. If the port stops reaching AdvanceFrame where the ROM did (it passes many more frames in a window
+// than the ROM: it went another way and runs on without coming back), the test stops and says so (FAIL).
 // usage: node web/tests/port_lockstep.mjs [a.mtrec] [--frames N] [--show K] [--stop] [--resync]
 //   --resync: after any difference, copy the ROM's state into the port and go on
 //   env HOOKS=home/joypad,audio/index: only these modules' hooks (web/js/port/<m>.js); NOHOOKS=1: none
