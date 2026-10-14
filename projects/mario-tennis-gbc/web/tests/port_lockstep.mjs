@@ -12,8 +12,9 @@
 // AdvanceFrame k is kept for the comparison) so its pads for the next window are known in time.
 //
 // Where the ROM's VBlank came in the middle of its frame's work, the port runs its VBlank handler at the same point
-// of its work: before the read the ROM's code made first after it of something the handler writes (the r-th
-// read of that address in the window, web/tests/port/core_runner.mjs). The hardware frame passes at AdvanceFrame
+// of its work: before the access the ROM's code made first after it that the handler's order matters for, a read
+// of something the handler writes or a write of something it reads (the r-th read or write of that address in the
+// window, web/tests/port/core_runner.mjs). The hardware frame passes at AdvanceFrame
 // as above, without running the handler again. So the work sees the new pad or random seed where the ROM's did.
 // When such a VBlank came in AdvanceFrame's own work (its frame tasks), the ROM's wait can then take one frame more
 // than the port's (its HALT sleeps to the next interrupt, which the port, at another time in the frame, may get
@@ -119,27 +120,27 @@ P.onVBlank = () => {
   if (P.ppu.lcdc & 0x80) portPics.push([n, rows(P.ppu.rgb5)]);
 };
 
-// the ROM's mid-work VBlanks of the port's current window: run the port's VBlank handler before its r-th read of a
-let watch = [], watchAt = 0, watchReads = new Map(), workAtStart = 0;
-const portRead = P.gb.mem.read.bind(P.gb.mem);
-P.gb.mem.read = addr => {
-  if (watchAt < watch.length && !P.inHandler) {
-    const v = watch[watchAt];
-    if (addr === v.a) {
-      const r = (watchReads.get(addr) || 0) + 1;
-      watchReads.set(addr, r);
-      if (r === v.r && P.workVBlanks - workAtStart > watchAt) watchAt++;  // the port's own ROM code already took this VBlank
-      else if (r === v.r) {
-        const w = win.get(portWin);
-        P.setInput(pad(w.bounds[Math.min(watchAt + 1, w.bounds.length - 1)]));   // the pad of the frame that VBlank began
-        watchAt++; injected++; injectedIn = portWin;
-        P.injectVBlank();
-      }
-    } else if (watch.some(x => x.a === addr)) watchReads.set(addr, (watchReads.get(addr) || 0) + 1);
-  }
-  return portRead(addr);
+// the ROM's mid-work VBlanks of the port's current window: run the port's VBlank handler before its r-th read (or
+// write, w) of a
+let watch = [], watchAt = 0, watchReads = new Map(), watchWrites = new Map(), workAtStart = 0;
+const watchAccess = (addr, w) => {
+  if (watchAt >= watch.length || P.inHandler) return;
+  const counts = w ? watchWrites : watchReads;
+  if (!watch.some(x => x.a === addr && x.w === w)) return;
+  const r = (counts.get(addr) || 0) + 1;
+  counts.set(addr, r);
+  const v = watch[watchAt];
+  if (addr !== v.a || w !== v.w || r !== v.r) return;
+  if (P.workVBlanks - workAtStart > watchAt) { watchAt++; return; }   // the port's own ROM code already took this VBlank
+  const win_ = win.get(portWin);
+  P.setInput(pad(win_.bounds[Math.min(watchAt + 1, win_.bounds.length - 1)]));   // the pad of the frame that VBlank began
+  watchAt++; injected++; injectedIn = portWin;
+  P.injectVBlank();
 };
-const startWatch = k => { const w = win.get(k); watch = w ? w.workVBlanks.filter(v => v.a >= 0) : []; watchAt = 0; watchReads = new Map(); workAtStart = P.workVBlanks; };
+const portRead = P.gb.mem.read.bind(P.gb.mem), portWrite = P.gb.mem.write.bind(P.gb.mem);
+P.gb.mem.read = addr => { watchAccess(addr, false); return portRead(addr); };
+P.gb.mem.write = (addr, v) => { watchAccess(addr, true); return portWrite(addr, v); };
+const startWatch = k => { const w = win.get(k); watch = w ? w.workVBlanks.filter(v => v.a >= 0) : []; watchAt = 0; watchReads = new Map(); watchWrites = new Map(); workAtStart = P.workVBlanks; };
 
 // not compared: the stack page; the debug peak-LY readout and hPeakLY (CPU timing), and the readout's copy on the
 // debug overlay ($9D08-$9D0B in VRAM bank 0) while the overlay is on (hDebugStepMode)

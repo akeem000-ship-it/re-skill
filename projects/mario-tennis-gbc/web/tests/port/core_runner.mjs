@@ -4,9 +4,11 @@
 //
 // It also watches where VBlanks come. One taken while the game's code is at work (not waiting in AdvanceFrame)
 // changes what that code sees from that point: the pad, the random seed, counters — what the VBlank handler
-// writes. Such a VBlank is placed by the first read after it of something a VBlank handler writes: "before the
-// r-th read of address a in this window" (window: from one AdvanceFrame to the next). The port can then run its
-// VBlank handler at the same point of its own work (web/tests/port_lockstep.mjs).
+// writes. Such a VBlank is placed by the first access after it that its order matters for: a read of something
+// a VBlank handler writes, or a write of something a VBlank handler reads (the sprite buffer page AdvanceFrame
+// flips, a scroll value, a queue): "before the r-th read (or write) of address a in this window" (window: from one
+// AdvanceFrame to the next). The port can then run its VBlank handler at the same point of its own work
+// (web/tests/port_lockstep.mjs).
 //
 // And it notes how many boundaries had passed when AdvanceFrame's wait ended (00:2719): a VBlank taken in the
 // frame's work before the wait (in the frame tasks, say) does not end the wait, whose HALT then sleeps to the next
@@ -23,24 +25,35 @@ export class CoreRunner {
     this.offBeat = -9;                       // the AdvanceFrame count at the last VBlank not taken in AdvanceFrame's wait
     this.handlers = [];                      // interrupt handlers running: {vector, ret, sp}
     this.vblankWrites = new Uint8Array(0x10000);   // addresses any VBlank handler has written
+    this.vblankReads = new Uint8Array(0x10000);    // ... and read
     this.window = 1; this.stamp = new Int32Array(0x10000); this.reads = new Int32Array(0x10000);
-    this.workVBlanks = [];                   // this window's VBlanks taken mid-work: {a, r} (a = -1: no such read followed)
+    this.wstamp = new Int32Array(0x10000); this.writes = new Int32Array(0x10000);
+    this.workVBlanks = [];                   // this window's VBlanks taken mid-work: {a, r, w} (w: by a write; a = -1: no such access followed)
     this.pending = null;                     // a mid-work VBlank waiting for the next read to place it
     this.waitEndVBlanks = -1;                // the boundary count when AdvanceFrame's wait last ended (00:2719)
     gb.setInput(pad(0));
     const m = gb.mem, read = m.read.bind(m), write = m.write.bind(m);
+    // what a VBlank handler accesses (not the stack page, nor the bank registers hRomBank/hWramBank: ported code
+    // reads and writes them differently from the ROM)
+    const tracked = a => a >= 0xC000 && (a < 0xCF00 || a >= 0xD000) && a < 0xFFFF && a !== 0xFF95 && a !== 0xFF96;
     m.read = a => {
+      const h = this.handlers[this.handlers.length - 1];
+      if (h && h.vector === 0x40 && tracked(a)) this.vblankReads[a] = 1;
       if (!this.handlers.length) {
         if (this.stamp[a] !== this.window) { this.stamp[a] = this.window; this.reads[a] = 0; }
         this.reads[a]++;
-        // (not by the bank registers hRomBank/hWramBank: ported code reads them differently from the ROM)
-        if (this.pending && this.vblankWrites[a] && a !== 0xFF95 && a !== 0xFF96) { this.pending.a = a; this.pending.r = this.reads[a]; this.pending = null; }
+        if (this.pending && this.vblankWrites[a] && tracked(a)) { this.pending.a = a; this.pending.r = this.reads[a]; this.pending = null; }
       }
       return read(a);
     };
     m.write = (a, v) => {
       const h = this.handlers[this.handlers.length - 1];
       if (h && h.vector === 0x40 && a >= 0xC000 && (a < 0xCF00 || a >= 0xD000) && a < 0xFFFF) this.vblankWrites[a] = 1;
+      if (!this.handlers.length) {
+        if (this.wstamp[a] !== this.window) { this.wstamp[a] = this.window; this.writes[a] = 0; }
+        this.writes[a]++;
+        if (this.pending && this.vblankReads[a] && tracked(a)) { this.pending.a = a; this.pending.r = this.writes[a]; this.pending.w = true; this.pending = null; }
+      }
       return write(a, v);
     };
   }
@@ -55,7 +68,7 @@ export class CoreRunner {
       this.handlers.push({ vector: cpu.pc, ret, sp: (cpu.sp + 2) & 0xFFFF });
       if (cpu.pc === 0x40 && (ret < 0x2700 || ret > 0x2711)) {
         this.offBeat = this.advances;
-        if (!inAdvanceFrame(ret) && this.handlers.length === 1) { const v = { a: -1, r: 0 }; this.workVBlanks.push(v); this.pending = v; }
+        if (!inAdvanceFrame(ret) && this.handlers.length === 1) { const v = { a: -1, r: 0, w: false }; this.workVBlanks.push(v); this.pending = v; }
       }
     }
     const ppu = gb.ppu, c = gb.cycles - c0;
