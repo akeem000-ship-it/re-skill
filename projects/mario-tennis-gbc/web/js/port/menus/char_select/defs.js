@@ -244,11 +244,15 @@ export function resetScrollAndCamera(P) {
 // ---- hook adapters ----
 // fn(P, cpu) runs the routine and returns the registers the ROM routine leaves that its callers use ({ a, f, ... });
 // the others are put back as they were at the call (the routine's calls into the ROM change the CPU's registers).
+// HOOK_TRACE.out: the registers the last hook to return gave (its routine's results; the routine tests compare
+// these with the ROM's).
+export const HOOK_TRACE = { out: null };
 export const hook = fn => (P, cpu) => {
   const saved = getRegs(cpu);
   const out = fn(P, cpu);
   setRegs(cpu, saved);
   if (out) setRegs(cpu, out);
+  HOOK_TRACE.out = out;
 };
 export const hookGen = fn => function* (P, cpu) {
   const saved = getRegs(cpu);

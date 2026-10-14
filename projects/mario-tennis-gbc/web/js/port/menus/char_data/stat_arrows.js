@@ -238,4 +238,9 @@ export const HOOKS = [
   [BANK, 0x7AB5, hook(P => charDataScreenBuildStats(P))],
   [BANK, 0x7B85, hook(P => { charDataScreenLoadGfx(P); })],
   [BANK, 0x7BE5, hook(P => { drawStatChangeArrows(P); })],
+  [BANK, 0x7DEE, hook((P, c) => ({ b: getStatArrowSpriteAttr(c.a) }))],
+  [BANK, 0x7DF5, hook((P, c) => { const t = getStatArrowTile(c.a); return { a: t.rest, c: t.tile, h: t.kind }; })],
+  [BANK, 0x7E15, hook((P, c) => { const t = getStatArrowExtraTile(c.a); return { c: t.tile, h: t.kind }; })],
+  [BANK, 0x7E23, hook((P, c) => ({ d: computeStatArrowSpriteX(P, c.a, c.h, c.d) }))],
+  [BANK, 0x7E38, hook((P, c) => ({ d: offsetStatArrowSpriteX(c.a, c.d) }))],
 ];

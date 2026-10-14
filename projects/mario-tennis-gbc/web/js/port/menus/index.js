@@ -16,5 +16,8 @@ import { HOOKS as SAVED } from "./main_menu/saved.js";
 import { HOOKS as ERASE } from "./main_menu/erase.js";
 import { HOOKS as N64TRANSFER } from "./main_menu/n64transfer.js";
 import { HOOKS as N64DATA } from "./main_menu/n64data.js";
+import { HOOKS as CHAR_SELECT } from "./char_select/index.js";
+import { HOOKS as CHAR_DATA } from "./char_data/index.js";
 export const HOOKS = [...CURSORS, ...TILEMAPS, ...MENU_LIB, ...WIDGETS, ...CURSORBOX, ...PROMPTS,
-  ...BOOT, ...MAIN_MENU, ...N64, ...MATCH_FORMAT, ...SAVED, ...ERASE, ...N64TRANSFER, ...N64DATA];
+  ...BOOT, ...MAIN_MENU, ...N64, ...MATCH_FORMAT, ...SAVED, ...ERASE, ...N64TRANSFER, ...N64DATA,
+  ...CHAR_SELECT, ...CHAR_DATA];

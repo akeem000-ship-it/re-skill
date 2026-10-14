@@ -72,11 +72,17 @@ export function drawDecimalNumber(P, value, width, de) {
 // CopyDecimalStringToTilemap (38:4466) / WriteDecimalDigitTile (38:4470): the 0-terminated string at hl to de, digits
 // only (anything below '0' leaves its cell alone). Returns de after it.
 export function copyDecimalStringToTilemap(P, hl, de) {
-  for (let ch; (ch = u8(P, hl)); hl = (hl + 1) & 0xFFFF) {
-    if (ch >= CHAR_DIGIT_0) { P.wramBank(WRAM_SCREEN); w8(P, de, ch); }
-    de = (de + 1) & 0xFFFF;
-  }
+  for (let ch; (ch = u8(P, hl)); hl = (hl + 1) & 0xFFFF) de = writeDecimalDigitTile(P, ch, de).de;
   return de;
+}
+// WriteDecimalDigitTile (38:4470): one character a: a digit goes to de (WRAM 3 mapped); either way de + 1. Returns
+// the registers it leaves (a, b the digit; a - '0' with C for anything below)
+export function writeDecimalDigitTile(P, a, de) {
+  const next = (de + 1) & 0xFFFF;
+  if (a < CHAR_DIGIT_0) return { a: (a - CHAR_DIGIT_0) & 0xFF, de: next };
+  P.wramBank(WRAM_SCREEN);
+  w8(P, de, a);
+  return { a, b: a, de: next };
 }
 
 // ---- the unused match-type menu: cursor row 0 doubles/singles, 1 games, 2 sets (1 column, 3 rows) ----
@@ -201,6 +207,7 @@ export const HOOKS = [
   [BANK, 0x440C, hook((P, c) => drawNameWithDiacritics(P, c.hl, c.de))],
   [BANK, 0x4445, hook((P, c) => drawDecimalNumber(P, c.hl, c.a, c.de))],
   [BANK, 0x4466, hook((P, c) => ({ de: copyDecimalStringToTilemap(P, c.hl, c.de) }))],
+  [BANK, 0x4470, hook((P, c) => writeDecimalDigitTile(P, c.a, c.de))],
   [BANK, 0x4489, hookGen(P => unusedRunMatchTypeMenu(P))],
   [BANK, 0x44F1, hookGen(P => unusedRunMatchTypeMenuLink(P))],
   [BANK, 0x458D, hook(P => unusedDrawMatchTypeOptionBoxes(P))],
