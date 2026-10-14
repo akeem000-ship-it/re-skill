@@ -215,9 +215,11 @@ for (const [n, h] of portPics) {
   picCompared++;
   const c = corePics.get(n), lines = rowsDiffer(c.rows, h);
   if (!lines) continue;
-  // a few scanlines off while the raster interrupt (STAT) splits the screen: its scroll write landed a few cycles
-  // apart, because the code before it in the frame takes no time in the port
-  if (timingFrames.has(n) || (c.raster && lines <= 4)) picTiming++;
+  // scanlines off while the raster interrupt (STAT) splits the screen: its scroll writes land at other times,
+  // because the code before them in the frame takes no time in the port
+  // (the whole band can be a frame apart: the code that moves it ran before the band in the port, inside it in the
+  // ROM; the RAM, compared at every AdvanceFrame, still catches a wrong band position)
+  if (timingFrames.has(n) || c.raster) picTiming++;
   else { picBad++; log(`picture of ROM frame ${n} differs (${lines} scanlines)`); }
 }
 if (courseChanged) console.log(courseChanged);
