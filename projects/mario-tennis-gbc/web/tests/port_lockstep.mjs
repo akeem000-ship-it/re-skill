@@ -169,7 +169,10 @@ P.afterAdvance = k => {
   const all = diffMachines(w.s, P.gb, { ignore, limit: 400 });
   win.delete(k - 2);
   if (!all.length) return;
-  const d = all.filter(x => !isSound(x)), timing = k - lastTiming <= 2;
+  // while the raster split is on (the STAT interrupt), SCX at AdvanceFrame depends on where in the frame the code
+  // got there: hScrollX before the band, wRasterScrollX inside it; the port's code takes no time
+  const raster = !!(w.s.mem.ie & 2);
+  const d = all.filter(x => !isSound(x) && !(raster && x[0] === "ppu.scx")), timing = k - lastTiming <= 2;
   if (!d.length) soundDiffs++; else if (timing) timingDiffs++; else bad++;
   // the two at the same call depth (the same AdvanceFrame call site, as far as the stack tells): the ROM's state
   // can be copied in. At different depths the port is on another path; copying would only corrupt it.

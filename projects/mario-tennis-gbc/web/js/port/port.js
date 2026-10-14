@@ -176,8 +176,9 @@ export class GamePort {
     const saved = { romBank: m.romBank, hRomBank: m.hram[0x15], sp: cpu.sp, pc: cpu.pc };   // pc: ROM code this call interrupted
     saved.banked = addr >= 0x4000 && addr < 0x8000;
     if (saved.banked) { m.romBank = bank; m.updateRom(); m.hram[0x15] = bank; }   // as FarCall: MBC and hRomBank (not for code in RAM)
-    for (const [r, hi, lo] of [["bc", "b", "c"], ["de", "d", "e"], ["hl", "h", "l"]]) if (r in regs) { cpu[hi] = regs[r] >> 8 & 0xFF; cpu[lo] = regs[r] & 0xFF; }
     for (const r of ["a", "b", "c", "d", "e", "h", "l"]) if (r in regs) cpu[r] = regs[r] & 0xFF;
+    // pairs after single registers: a pair given wins over its halves ({...regs, hl: x} must set hl)
+    for (const [r, hi, lo] of [["bc", "b", "c"], ["de", "d", "e"], ["hl", "h", "l"]]) if (r in regs) { cpu[hi] = regs[r] >> 8 & 0xFF; cpu[lo] = regs[r] & 0xFF; }
     if ("f" in regs) cpu.f = regs.f & 0xF0;
     if (!cpu.sp) cpu.sp = 0xCFFF;
     cpu.sp = (cpu.sp - 2) & 0xFFFF; m.write(cpu.sp, SENTINEL & 0xFF); m.write(cpu.sp + 1, SENTINEL >> 8);
