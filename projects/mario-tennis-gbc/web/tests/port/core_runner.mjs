@@ -17,6 +17,22 @@ const VECTORS = new Set([0x40, 0x48, 0x50, 0x58, 0x60]);
 const inAdvanceFrame = pc => pc >= 0x2631 && pc <= 0x2724;
 const AFTER_WAIT = 0x2719;                   // AdvanceFrame's .done: its wait for the VBlank handler is over
 
+// a byte of the machine as one index, its bank included (VRAM by rVBK, WRAM $D000-$DFFF by rSVBK; echo RAM as
+// what it mirrors): the bytes interrupt handlers write, in handlerWrites
+export const VRAM_KEY = 0x10000, WRAMX_KEY = 0x14000, KEYS = 0x1C000;
+export function byteKey(a, vbk, svbk) {
+  if (a >= 0x8000 && a < 0xA000) return VRAM_KEY + (vbk & 1) * 0x2000 + (a - 0x8000);
+  if (a >= 0xE000 && a < 0xFE00) a -= 0x2000;
+  if (a >= 0xD000 && a < 0xE000) return WRAMX_KEY + ((svbk & 7) || 1) * 0x1000 + (a - 0xD000);
+  return a;
+}
+// a write of (a, v) by an interrupt handler into handlerWrites: the byte, and for a write to rHDMA5 the VRAM bytes
+// that DMA copies (they are not CPU writes)
+export function noteHandlerWrite(hw, m, a, v) {
+  hw[byteKey(a, m.vbk, m.svbk)] = 1;
+  if (a === 0xFF55) for (let i = 0, n = ((v & 0x7F) + 1) * 16; i < n; i++) hw[VRAM_KEY + (m.vbk & 1) * 0x2000 + ((m.hdma.dst + i) & 0x1FFF)] = 1;
+}
+
 export class CoreRunner {
   // pad(n): the pad state for the frame after boundary n; onBoundary(n, lcdOn) is called at each boundary
   constructor(gb, pad, onBoundary = null) {
@@ -26,6 +42,7 @@ export class CoreRunner {
     this.handlers = [];                      // interrupt handlers running: {vector, ret, sp}
     this.vblankWrites = new Uint8Array(0x10000);   // addresses any VBlank handler has written
     this.vblankReads = new Uint8Array(0x10000);    // ... and read
+    this.handlerWrites = new Uint8Array(KEYS);     // bytes any interrupt handler has written (byteKey)
     this.window = 1; this.stamp = new Int32Array(0x10000); this.reads = new Int32Array(0x10000);
     this.wstamp = new Int32Array(0x10000); this.writes = new Int32Array(0x10000);
     this.workVBlanks = [];                   // this window's VBlanks taken mid-work: {a, r, w} (w: by a write; a = -1: no such access followed)
@@ -38,7 +55,7 @@ export class CoreRunner {
     const tracked = a => a >= 0xC000 && (a < 0xCF00 || a >= 0xD000) && a < 0xFFFF && a !== 0xFF95 && a !== 0xFF96;
     m.read = a => {
       const h = this.handlers[this.handlers.length - 1];
-      if (h && h.vector === 0x40 && tracked(a)) this.vblankReads[a] = 1;
+      if (h && h.vector === 0x40 && tracked(a) && !this.inDma) this.vblankReads[a] = 1;   // (not what a DMA it starts copies)
       if (!this.handlers.length) {
         if (this.stamp[a] !== this.window) { this.stamp[a] = this.window; this.reads[a] = 0; }
         this.reads[a]++;
@@ -49,12 +66,15 @@ export class CoreRunner {
     m.write = (a, v) => {
       const h = this.handlers[this.handlers.length - 1];
       if (h && h.vector === 0x40 && a >= 0xC000 && (a < 0xCF00 || a >= 0xD000) && a < 0xFFFF) this.vblankWrites[a] = 1;
+      if (h) noteHandlerWrite(this.handlerWrites, m, a, v);
       if (!this.handlers.length) {
         if (this.wstamp[a] !== this.window) { this.wstamp[a] = this.window; this.writes[a] = 0; }
         this.writes[a]++;
         if (this.pending && this.vblankReads[a] && tracked(a)) { this.pending.a = a; this.pending.r = this.writes[a]; this.pending.w = true; this.pending = null; }
       }
-      return write(a, v);
+      if (a !== 0xFF46 && a !== 0xFF55) return write(a, v);
+      this.inDma = true;
+      try { return write(a, v); } finally { this.inDma = false; }
     };
   }
   step() {

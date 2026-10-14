@@ -24,8 +24,10 @@
 // Timing. Where a VBlank came while the code was at work (lag, or inside AdvanceFrame before its wait), or the
 // LCD was switched on or off (the timer runs the sound engine during loads, as often as the load takes time),
 // the two can differ for a frame or two without anything being wrong: such differences are counted apart and
-// the ROM's state is copied into the port to go on. So are differences only in the sound engine's state (WRAM 7
-// $D000-$D2FF): it reads the APU's channel-on bits, which depend on the exact time it runs. If a timing event
+// the ROM's state is copied into the port to go on — as long as they are in what timing explains (the bytes an
+// interrupt handler writes, the sprite pages and OAM, the palettes); other bytes that differ there count as
+// differences. Differences only in the sound engine's state (WRAM 7 $D000-$D2FF) are counted apart and resynced
+// too: it reads the APU's channel-on bits, which depend on the exact time it runs. If a timing event
 // changes the course of the game (differences keep coming back after the resync), the comparison stops there
 // and says so. If the port stops reaching AdvanceFrame where the ROM did (it passes many more frames in a window
 // than the ROM: it went another way and runs on without coming back), the test stops and says so (FAIL).
@@ -34,7 +36,7 @@
 //   env HOOKS=home/joypad,audio/index: only these modules' hooks (web/js/port/<m>.js); NOHOOKS=1: none
 import { readRecording, newCore, loadRom } from "./engine/corpus.mjs";
 import { diffMachines } from "./port/machine.mjs";
-import { CoreRunner } from "./port/core_runner.mjs";
+import { CoreRunner, VRAM_KEY, WRAMX_KEY, KEYS, noteHandlerWrite } from "./port/core_runner.mjs";
 import { loadState } from "../js/gb/state.js";
 import { stateOf } from "../js/recorder.js";
 import { GamePort } from "../js/port/port.js";
@@ -139,7 +141,12 @@ const watchAccess = (addr, w) => {
 };
 const portRead = P.gb.mem.read.bind(P.gb.mem), portWrite = P.gb.mem.write.bind(P.gb.mem);
 P.gb.mem.read = addr => { watchAccess(addr, false); return portRead(addr); };
-P.gb.mem.write = (addr, v) => { watchAccess(addr, true); return portWrite(addr, v); };
+const portHandlerWrites = new Uint8Array(KEYS);                     // bytes the port's interrupt handlers have written
+P.gb.mem.write = (addr, v) => {
+  if (P.inHandler) noteHandlerWrite(portHandlerWrites, P.mem, addr, v);
+  watchAccess(addr, true);
+  return portWrite(addr, v);
+};
 const startWatch = k => { const w = win.get(k); watch = w ? w.workVBlanks.filter(v => v.a >= 0) : []; watchAt = 0; watchReads = new Map(); watchWrites = new Map(); workAtStart = P.workVBlanks; };
 
 // not compared: the stack page; the debug peak-LY readout and hPeakLY (CPU timing), and the readout's copy on the
@@ -148,8 +155,27 @@ let debugOverlay = false;
 const ignore = (bank, addr) => (bank === 0 && addr >= 0xCF00 && addr < 0xD000) || (bank === 0 && addr >= 0xC0FB && addr < 0xC100)
   || (bank === -2 && (addr === 0xFFA0 || addr === 0xFFA1)) || (debugOverlay && bank === 0x10 && addr >= 0x9D08 && addr < 0x9D0C);
 const isSound = x => x[0] === "wram7" && x[2] < 0xD300;
+// What a timing event explains: the bytes an interrupt handler writes (the ROM's or the port's, as far as the run
+// has seen: a handler run at another time, or once more or less, leaves other values there), and in WRAM 0 and HRAM
+// those the VBlank handler reads (queues it empties: the work had queued more or less when it ran), the sprite
+// pages and OAM (the page shown flips at every AdvanceFrame), the palettes (written from the VBlank handler). Anything else that
+// differs after a timing event is reported apart ("unexplained"): it is what the game's own code did differently.
+const IO_OF = { lcdc: 0xFF40, scy: 0xFF42, scx: 0xFF43, lyc: 0xFF45, bgp: 0xFF47, obp0: 0xFF48, obp1: 0xFF49, wy: 0xFF4A, wx: 0xFF4B,
+  bcps: 0xFF68, ocps: 0xFF6A, vbk: 0xFF4F, svbk: 0xFF70, ie: 0xFFFF };
+const explained = x => {
+  const [name, , addr] = x, hw = k => core.handlerWrites[k] || portHandlerWrites[k];
+  if (name === "oam") return true;
+  if (name === "wram0") return (addr >= 0xC000 && addr < 0xC0A0) || (addr >= 0xC500 && addr < 0xC5A0) || !!hw(addr) || !!core.vblankReads[addr];
+  if (name.startsWith("wram")) return !!hw(WRAMX_KEY + +name[4] * 0x1000 + (addr - 0xD000));
+  if (name.startsWith("vram")) return !!hw(VRAM_KEY + +name[4] * 0x2000 + (addr - 0x8000));
+  if (name === "hram") return !!hw(addr) || !!core.vblankReads[addr];
+  if (name === "bgPal") return !!hw(0xFF69);
+  if (name === "objPal") return !!hw(0xFF6B);
+  const r = name.split(".")[1];
+  return r in IO_OF && !!hw(IO_OF[r]);
+};
 class Done extends Error {}
-let courseChanged = null, lastResync = -99, lastResyncFrame = 0, suspect = [], suspectBad = 0, compared = 0, bad = 0, timingDiffs = 0, soundDiffs = 0, lags = 0, injected = 0, injectedIn = -9, portLate = 0, lastTiming = -9;
+let timingUnexplained = 0, courseChanged = null, lastResync = -99, lastResyncFrame = 0, suspect = [], suspectBad = 0, compared = 0, bad = 0, timingDiffs = 0, soundDiffs = 0, lags = 0, injected = 0, injectedIn = -9, portLate = 0, lastTiming = -9;
 // The end of AdvanceFrame's wait (P.atFrameWaitEnd): the ROM's wait ended after more of the window's boundaries than
 // the port's (a VBlank in the frame's work before the wait: the ROM's HALT then slept on to the next one, while the
 // port's was woken by an interrupt that came, for the ROM, while it was still at work). Those frames pass inside
@@ -190,20 +216,30 @@ P.afterAdvance = k => {
   coreTo(k + 1); startWatch(k + 1);
   compared++;
   debugOverlay = w.s.mem.hram[0x1E] !== 0;                             // hDebugStepMode ($FF9E)
-  const all = diffMachines(w.s, P.gb, { ignore, limit: 400 });
+  const all = diffMachines(w.s, P.gb, { ignore, limit: 1 << 20 });
   win.delete(k - 2);
   if (!all.length) return;
   // while the raster split is on (the STAT interrupt), SCX at AdvanceFrame depends on where in the frame the code
   // got there: hScrollX before the band, wRasterScrollX inside it; the port's code takes no time
   const raster = !!(w.s.mem.ie & 2);
   const d = all.filter(x => !isSound(x) && !(raster && x[0] === "ppu.scx")), timing = k - lastTiming <= 2;
-  if (!d.length) soundDiffs++; else if (timing) timingDiffs++; else bad++;
+  // After a timing event, the differences a timing event explains (above) are timing; any others are what the
+  // game's own code did differently, and count as differences (so a wrong write right after a lag frame doesn't
+  // go unseen under the resync). Unless the game's course changed there (below): then they are part of it.
+  const unexplained = timing ? d.filter(x => !explained(x)) : [];
+  if (!d.length) soundDiffs++; else if (timing && !unexplained.length) timingDiffs++; else bad++;
+  if (unexplained.length) {
+    timingUnexplained++;
+    log(`advance ${k} (ROM frame ${w.vblanks}, map ${w.s.mem.wram[0][0x32E]}) [timing, but ${unexplained.length} bytes timing doesn't explain]` +
+      (w.s.cpu.sp !== P.cpu.sp ? ` [called from elsewhere: sp rom ${w.s.cpu.sp.toString(16)} port ${P.cpu.sp.toString(16)}]` : "") + ": " +
+      unexplained.slice(0, 8).map(x => `${x[0]}${x[2] ? " $" + x[2].toString(16) : ""} rom=${x[3]} port=${x[4]}`).join(", "));
+  }
   // the two at the same call depth (the same AdvanceFrame call site, as far as the stack tells): the ROM's state
   // can be copied in. At different depths the port is on another path; copying would only corrupt it.
   // The ROM's RAM is copied in after a timing event at any call depth (ported code that waits need not keep the
   // ROM's stack); the stack page and registers only at the same depth (copyIn). If the two went different ways,
   // differences come back after the resync (below), or the port fails soon after it (the main loop).
-  if (d.length && timing) { lastResync = k; lastResyncFrame = w.vblanks; suspect = []; suspectBad = 0; }
+  if (d.length && timing) { lastResync = k; lastResyncFrame = w.vblanks; suspect = []; suspectBad = unexplained.length ? 1 : 0; }
   // The game went another way after a timing event (a button press seen a frame apart, say): copying the ROM's
   // RAM in doesn't bring the two back together, because their code is in different places. Seen as differences
   // that keep coming back, resynced each time, at 5 or more AdvanceFrames out of the 10 after the resync. The rest of the
@@ -219,7 +255,7 @@ P.afterAdvance = k => {
   if (d.length && (!timing || process.env.LAGLOG))
     log(`advance ${k} (ROM frame ${w.vblanks}, map ${w.s.mem.wram[0][0x32E]})${timing ? " [timing]" : ""}` +
       (w.s.cpu.sp !== P.cpu.sp ? ` [called from elsewhere: sp rom ${w.s.cpu.sp.toString(16)} port ${P.cpu.sp.toString(16)}]` : "") + ": " + d.slice(0, 8).map(x => `${x[0]}${x[2] ? " $" + x[2].toString(16) : ""} rom=${x[3]} port=${x[4]}`).join(", "));
-  if (stop && d.length && !timing) throw new Done();
+  if (stop && d.length && (!timing || unexplained.length)) throw new Done();
   if (!d.length || timing || resyncAll || suspect.includes(k)) copyIn(w.s);   // (suspects too: does it come back?)
 };
 
@@ -251,6 +287,6 @@ for (const [n, h] of portPics) {
 if (courseChanged) console.log(courseChanged);
 if (stalled) console.log(stalled);
 console.log(`${recPath}: ${core.vblanks} frames, ${compared} AdvanceFrames compared, ${bad} with RAM/state differences` +
-  ` (+${timingDiffs} timing, +${soundDiffs} sound timing only); ${picCompared} pictures compared, ${picBad} differ (+${picTiming} timing);` +
+  ` (${timingUnexplained} of them after a timing event; +${timingDiffs} timing, +${soundDiffs} sound timing only); ${picCompared} pictures compared, ${picBad} differ (+${picTiming} timing);` +
   ` ${lags} lag frames given to the port (${waitLags} in AdvanceFrame's wait, ${injected} VBlanks placed in its work)` + (portLate ? `, port late ${portLate}×` : "") + ` (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
 process.exit(bad || picBad ? 1 : 0);

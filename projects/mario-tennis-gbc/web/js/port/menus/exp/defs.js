@@ -151,3 +151,6 @@ export const FAR = {
   ApplySpriteBobOffsetY: [0x38, 0x40A5], IsMarioCastCharacter: [0x38, 0x6208],
   ApplyCursorBounceX: [0x3B, 0x409B], ApplyCursorBounceY: [0x3B, 0x40C5], PrintNumberRightAligned: [0x3B, 0x5C2B],
 };
+// the 8-bit registers of a register set (P.callRom's result): to pass on with some of them changed (a pair given
+// to P.callRom would win over its halves)
+export const regs8 = r => ({ a: r.a, f: r.f, b: r.b, c: r.c, d: r.d, e: r.e, h: r.h, l: r.l });
