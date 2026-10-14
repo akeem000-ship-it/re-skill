@@ -32,7 +32,8 @@ const FIRST_MARIO_CAST = 0x17, LAST_MARIO_CAST = 0x1F;
 const NUM_CREATED_CHAR_IDS = 4;                                              // ids 0-3: Alex, Nina, Harry, Kate
 const word = (P, addr) => P.rom.u16(BANK, addr);
 const byte = (P, addr) => P.rom.u8(BANK, addr);
-const entryAddr = (P, n) => (P.A.charGridEntries + n * GRID_ENTRY_SIZE) & 0xFFFF;   // (the ROM's 8-bit index math)
+// entry n's address: `add a / add a / add l`, the 8-bit index (wCharGridEntries is page-aligned)
+const entryAddr = (P, n) => (P.A.charGridEntries + ((n * GRID_ENTRY_SIZE) & 0xFF)) & 0xFFFF;
 
 // ---- the slot ring ----
 // CharSelectSlotRingTable: per wCharSelectMode a list [$FF, slot, ..., $FF] of the player slots it fills, in
@@ -268,14 +269,14 @@ export function needsCpuDifficultyPrompt(P, c) {
 
 // ---- a confirmed selection ----
 // ResolveSelectedCharIds (38:5E6E): wCharSelectSlotChars (grid entry numbers) become character ids: the entry's
-// id, or for a created character its record index | $80; up to the first empty slot ($FF).
+// id, or for a created character its record index | $80 (empty slots, $FF, stay).
 export function resolveSelectedCharIds(P) {
   withWram(P, WRAM_SCREEN, () => {
     let hl = P.A.charSelectSlotChars;
     for (let c = 0; c < 4; c++, hl = (hl + 1) & 0xFFFF) {
       let a = u8(P, hl);
       if (a !== 0xFF) {
-        const entry = entryAddr(P, a);                     // (`add a / add a / add l`: the 8-bit index)
+        const entry = entryAddr(P, a);
         a = u8(P, entry);
         if (a < NUM_CREATED_CHAR_IDS) a = u8(P, entry + 3) | 0x80;
       }

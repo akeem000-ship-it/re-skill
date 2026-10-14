@@ -1,7 +1,7 @@
 // Bank $3B helpers (the start of n64_3b.asm): cursor cells, clearing a WRAM 3 map row, the animated-tiles frame task,
-// a name with diacritics written into a tilemap, numbers as ASCII digits; then the N64 exhibition records screen
-// (RunN64ExhibData: a chart of who beat whom, scrolled by a 7 x 4 window).
-// Port of src/engine/menus/main_menu/n64_3b.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT,
+// a name with diacritics written into a tilemap, numbers as ASCII digits. (The rest of the file, the N64 exhibition
+// records screen, is in n64data.js with the other records screens.)
+// Port of the start of src/engine/menus/main_menu/n64_3b.asm ($43CB-$44A9) of the gerbiljames/mario-tennis-gbc-disasm (MIT,
 // third_party/mario-tennis-gbc-disasm). Tables are read from the ROM.
 // Tests: web/tests/port/routines_menus_main.mjs; DrawNameWithDiacritics_3b on the main menu's caption (lockstep).
 import {
