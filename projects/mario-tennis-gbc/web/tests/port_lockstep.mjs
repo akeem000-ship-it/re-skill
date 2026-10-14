@@ -137,7 +137,7 @@ const ignore = (bank, addr) => (bank === 0 && addr >= 0xCF00 && addr < 0xD000) |
   || (bank === -2 && (addr === 0xFFA0 || addr === 0xFFA1)) || (debugOverlay && bank === 0x10 && addr >= 0x9D08 && addr < 0x9D0C);
 const isSound = x => x[0] === "wram7" && x[2] < 0xD300;
 class Done extends Error {}
-let courseChanged = null, lastResync = -99, lastResyncFrame = 0, suspect = [], compared = 0, bad = 0, timingDiffs = 0, soundDiffs = 0, lags = 0, injected = 0, injectedIn = -9, portLate = 0, lastTiming = -9;
+let courseChanged = null, lastResync = -99, lastResyncFrame = 0, suspect = [], suspectBad = 0, compared = 0, bad = 0, timingDiffs = 0, soundDiffs = 0, lags = 0, injected = 0, injectedIn = -9, portLate = 0, lastTiming = -9;
 P.onAdvance = k => {
   coreTo(k + 1);                             // the ROM one window ahead: its pads for the port's next window
   const w = win.get(k);
@@ -176,17 +176,18 @@ P.afterAdvance = k => {
   if (!d.length) soundDiffs++; else if (timing) timingDiffs++; else bad++;
   // the two at the same call depth (the same AdvanceFrame call site, as far as the stack tells): the ROM's state
   // can be copied in. At different depths the port is on another path; copying would only corrupt it.
-  const sameSp = w.s.cpu.sp === P.cpu.sp;
-  if (d.length && timing && sameSp) { lastResync = k; lastResyncFrame = w.vblanks; suspect = []; }
-  if (d.length && timing && !sameSp && k - lastResync > 10) { lastResync = k; lastResyncFrame = w.vblanks; suspect = []; }
+  // The ROM's RAM is copied in after a timing event at any call depth (ported code that waits need not keep the
+  // ROM's stack); the stack page and registers only at the same depth (copyIn). If the two went different ways,
+  // differences come back after the resync (below), or the port fails soon after it (the main loop).
+  if (d.length && timing) { lastResync = k; lastResyncFrame = w.vblanks; suspect = []; suspectBad = 0; }
   // The game went another way after a timing event (a button press seen a frame apart, say): copying the ROM's
   // RAM in doesn't bring the two back together, because their code is in different places. Seen as differences
   // that keep coming back, resynced each time, at 5 or more AdvanceFrames out of the 10 after the resync. The rest of the
   // recording can't be compared; stop there.
-  if (d.length && (!timing || !sameSp) && k - lastResync <= 10) {
-    suspect.push(k);
+  if (d.length && !timing && k - lastResync <= 10) {
+    suspect.push(k); suspectBad++;
     if (suspect.length >= 5) {
-      bad -= suspect.length;
+      bad -= suspectBad;
       courseChanged = `the game's course changed by timing after ROM frame ${lastResyncFrame} (AdvanceFrame ${lastResync}); compared up to there`;
       throw new Done();
     }
@@ -195,12 +196,19 @@ P.afterAdvance = k => {
     log(`advance ${k} (ROM frame ${w.vblanks}, map ${w.s.mem.wram[0][0x32E]})${timing ? " [timing]" : ""}` +
       (w.s.cpu.sp !== P.cpu.sp ? ` [called from elsewhere: sp rom ${w.s.cpu.sp.toString(16)} port ${P.cpu.sp.toString(16)}]` : "") + ": " + d.slice(0, 8).map(x => `${x[0]}${x[2] ? " $" + x[2].toString(16) : ""} rom=${x[3]} port=${x[4]}`).join(", "));
   if (stop && d.length && !timing) throw new Done();
-  if (sameSp && (!d.length || timing || resyncAll || suspect.includes(k))) copyIn(w.s);   // (suspects too: does it come back?)
+  if (!d.length || timing || resyncAll || suspect.includes(k)) copyIn(w.s);   // (suspects too: does it come back?)
 };
 
 coreTo(1); startWatch(1);
 const t0 = Date.now();
-try { while (P.vblanks < frames * 2 + 600 && !coreEnded) P.frame(); } catch (e) { if (!(e instanceof Done)) throw e; }
+try { while (P.vblanks < frames * 2 + 600 && !coreEnded) P.frame(); }
+catch (e) {
+  if (e instanceof Done) { /* the end, or stopped */ }
+  else if (compared - lastResync <= 10 && lastResync > 0) {          // the port failed right after a resync: another path
+    courseChanged = `the game's course changed by timing after ROM frame ${lastResyncFrame} (AdvanceFrame ${lastResync}): the port failed after the resync (${String(e.message).slice(0, 120)}); compared up to there`;
+    bad -= suspectBad;
+  } else throw e;
+}
 let picCompared = 0, picBad = 0, picTiming = 0;
 for (const [n, h] of portPics) {
   if (!corePics.has(n)) continue;

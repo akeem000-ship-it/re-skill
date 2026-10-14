@@ -47,7 +47,9 @@ for (const R of ROUTINES) {
     if (!R.js && !P.hooks.has(hookKey(R.bank, R.addr))) { console.log(`FAIL ${R.name}: no port hooked at ${R.bank.toString(16)}:${R.addr.toString(16)}`); anyFail = true; break; }
     P.cpu.sp = 0xCFF0; P.cpu.halted = false;                         // (the states are taken in AdvanceFrame's halt; romCall clears it too)
     try { ret = R.js ? R.js(P, regs) : P.callRom(R.bank, R.addr, regs); } catch (e) { err = e; }
-    const out = romCall(core, R.bank, R.addr, regs, { wramBank: bank });
+    let out;
+    try { out = romCall(core, R.bank, R.addr, regs, { wramBank: bank }); }
+    catch (e) { fails++; if (shown.length < show) shown.push(`  ${s.rec}@${s.f}: the ROM side failed: ${String(e.message).slice(0, 120)}`); continue; }
     core.mem.romBank = P.gb.mem.romBank; core.mem.updateRom();
     const diffs = err ? [["exception", 0, 0, 0, String(err.message).slice(0, 300)]] : diffMachines(core, P.gb, { ignore: (b, ad) => baseIgnore(b, ad) || (R.ignore && R.ignore(b, ad)) });
     if (!err) for (const r of R.out || []) {

@@ -27,7 +27,8 @@ export class CoreRunner {
       if (!this.handlers.length) {
         if (this.stamp[a] !== this.window) { this.stamp[a] = this.window; this.reads[a] = 0; }
         this.reads[a]++;
-        if (this.pending && this.vblankWrites[a]) { this.pending.a = a; this.pending.r = this.reads[a]; this.pending = null; }
+        // (not by the bank registers hRomBank/hWramBank: ported code reads them differently from the ROM)
+        if (this.pending && this.vblankWrites[a] && a !== 0xFF95 && a !== 0xFF96) { this.pending.a = a; this.pending.r = this.reads[a]; this.pending = null; }
       }
       return read(a);
     };
