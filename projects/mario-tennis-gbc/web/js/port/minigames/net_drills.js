@@ -10,7 +10,7 @@
 // Match 1 is won by being ahead after a pair of points, Match 2 and 3 by two points (all square after eight: none).
 // Net Game Practice: four points at the net: volleys into a target area (1), a long serve then a lob answered
 // with a smash (2), a long serve then a drop shot at the net (3); graded after the fourth.
-import { ROM, farWait, POINTOUTCOME, SHOTTYPE_LOB, SHOTTYPE_SMASH, SHOTTYPE_DROP, DRILLMSG_HIDE, WINLOSE_WIN, WINLOSE_LOSE, MATCHABORT_MATCH, hook, auto, at, rb } from "./common.js";
+import { ROM, farWait, callAt, POINTOUTCOME, SHOTTYPE_LOB, SHOTTYPE_SMASH, SHOTTYPE_DROP, DRILLMSG_HIDE, WINLOSE_WIN, WINLOSE_LOSE, MATCHABORT_MATCH, hook, auto, at, rb } from "./common.js";
 import {
   BANK_0B as B, SignedTable_0b_00, SignedTable_0b_01, judgePoint, byOutcome, ZERO, abortPoint, judgeOn, judgeHooks,
   queueDrillResultMessage, showQueuedDrillMessage, updateDrillAbortCountdown, setDrillTargetZoneForPoint,
@@ -93,17 +93,21 @@ function netGameMatch3PointStart(P) {
   for (const n of [1, 2, 5, 6]) setCounter(P, n, 0);
 }
 // NetGameMatch1-3HandlePointEnd (0B:5457, 56EA, 595A): the judged result, the message, the score by sides
-function* netMatchHandlePointEnd(P) {
+// (at: where each one's code makes its waiting calls, for the ROM's stack)
+const NM1_AT = { msg: 0x546E, frame: 0x5487, reactions: 0x548A, end: 0x548D };
+const NM2_AT = { msg: 0x5701, frame: 0x571A, reactions: 0x571D, end: 0x5720 };
+const NM3_AT = { msg: 0x5971, frame: 0x598A, reactions: 0x598D, end: 0x5990 };
+const netMatchHandlePointEnd = at => function* (P) {
   yield* matchJudgedPoint(P);
-  yield* showQueuedDrillMessage(P);
+  yield* callAt(P, at.msg, showQueuedDrillMessage(P));
   yield* farWait(P, ROM.UpdatePointStats);
   awardPointToSide(P);
-  yield* showPointsAndEndPoint(P, false);
-}
+  yield* showPointsAndEndPoint(P, false, at);
+};
 // NetGameMatch1Hook_PointEnd (0B:542E): after a pair, any lead wins
 function* netGameMatch1PointEnd(P) {
   judgeOn(P, netGameMatch1JudgePoint, 0);
-  yield* netMatchHandlePointEnd(P);
+  yield* callAt(P, 0x5431, netMatchHandlePointEnd(NM1_AT)(P));
   if (P.V.totalPointsScoredInCurrentGame & 1) return;
   netGameMatch1DecideWinner(P);
   if (P.V.player2PointsWon === P.V.player1PointsWon) return;
@@ -117,7 +121,7 @@ function netGameMatch1DecideWinner(P) {
 // NetGameMatch2Hook_PointEnd (0B:569B): a two-point lead wins; after eight points, a draw
 function* netGameMatch2PointEnd(P) {
   judgeOn(P, netGameMatch2JudgePoint, 0);
-  yield* netMatchHandlePointEnd(P);
+  yield* callAt(P, 0x569E, netMatchHandlePointEnd(NM2_AT)(P));
   if (P.V.totalPointsScoredInCurrentGame & 1) return;
   if (decideByTwoPointLead(P)) return;
   if (P.V.totalPointsScoredInCurrentGame !== 8) return;
@@ -127,7 +131,7 @@ function* netGameMatch2PointEnd(P) {
 // NetGameMatch3Hook_PointEnd (0B:5908): the coach for the next point; a two-point lead wins; after eight, none
 function* netGameMatch3PointEnd(P) {
   judgeOn(P, netGameMatch3JudgePoint, 0);
-  yield* netMatchHandlePointEnd(P);
+  yield* callAt(P, 0x590B, netMatchHandlePointEnd(NM3_AT)(P));
   yield* loadDrillOpponentBySide(P, 0x594C);                  // NetGameMatch3DrillOpponent
   if (P.V.totalPointsScoredInCurrentGame & 1) return;
   if (decideByTwoPointLead(P)) return;
@@ -282,11 +286,11 @@ const netGamePracticePointStart = (clear, zones, coach) => function* (P) {
 };
 // NetGamePractice1-3Hook_PointEnd (0B:5C52, 5EFA, 61AC): a ball into the net or out counts (wDrillCounters + n);
 // after the fourth point, the grade
-const netGamePracticePointEnd = (judge, faults, evaluate) => function* (P) {
+const netGamePracticePointEnd = (judge, faults, evaluate, handleAt, handleBase) => function* (P) {
   judgeOn(P, judge, 0);
   const o = P.V.pointOutcome;
   if (o === POINTOUTCOME.NET || o === POINTOUTCOME.OUT) incCounter(P, faults);
-  yield* practiceHandlePointEnd(P, 4);
+  yield* callAt(P, handleAt, practiceHandlePointEnd(P, 4, handleBase));
   if (P.V.totalPointsScoredInCurrentGame < 4) return;
   P.V.pointWinLoseFlag = evaluate(P);
 };
@@ -341,7 +345,7 @@ export const HOOKS = [
   H(0x542E, netGameMatch1PointEnd),                                               // NetGameMatch1Hook_PointEnd
   H(0x544B, DISABLED), H(0x544F, DISABLED),                                       // NetGameMatch1Hook_RallyTick / _Bounce
   H(0x5453, P => judgeOn(P, netGameMatch1JudgePoint, 1)),                         // NetGameMatch1Hook_BallHit
-  H(0x5457, netMatchHandlePointEnd),                                              // NetGameMatch1HandlePointEnd
+  H(0x5457, netMatchHandlePointEnd(NM1_AT)),                                              // NetGameMatch1HandlePointEnd
   H(0x54BA, netGameMatch1DecideWinner),                                           // NetGameMatch1DecideWinner
   ...judgeHooks(netGameMatch1JudgePoint, [0x54D3, 0x54DC, 0x54E5, 0x54EF], [2, 3]),   // NetGameMatch1JudgeOn*
   [B, 0x54F9, hook((P, c) => netGameMatch1JudgePoint(P, c.a))],                   // NetGameMatch1JudgePoint
@@ -351,7 +355,7 @@ export const HOOKS = [
   H(0x569B, netGameMatch2PointEnd),                                               // NetGameMatch2Hook_PointEnd
   H(0x56DE, DISABLED), H(0x56E2, DISABLED),                                       // NetGameMatch2Hook_RallyTick / _Bounce
   H(0x56E6, P => judgeOn(P, netGameMatch2JudgePoint, 1)),                         // NetGameMatch2Hook_BallHit
-  H(0x56EA, netMatchHandlePointEnd),                                              // NetGameMatch2HandlePointEnd
+  H(0x56EA, netMatchHandlePointEnd(NM2_AT)),                                              // NetGameMatch2HandlePointEnd
   ...judgeHooks(netGameMatch2JudgePoint, [0x574D, 0x5756, 0x575F, 0x5769], [2, 3]),   // NetGameMatch2JudgeOn*
   [B, 0x5773, hook((P, c) => netGameMatch2JudgePoint(P, c.a))],                   // NetGameMatch2JudgePoint
   // Net Game Match 3
@@ -360,7 +364,7 @@ export const HOOKS = [
   H(0x5908, netGameMatch3PointEnd),                                               // NetGameMatch3Hook_PointEnd
   H(0x594E, DISABLED), H(0x5952, DISABLED),                                       // NetGameMatch3Hook_RallyTick / _Bounce
   H(0x5956, P => judgeOn(P, netGameMatch3JudgePoint, 1)),                         // NetGameMatch3Hook_BallHit
-  H(0x595A, netMatchHandlePointEnd),                                              // NetGameMatch3HandlePointEnd
+  H(0x595A, netMatchHandlePointEnd(NM3_AT)),                                              // NetGameMatch3HandlePointEnd
   H(0x5994, unusedNetGameMatch3JudgePoint),                                       // UnusedNetGameMatch3JudgePoint
   ...judgeHooks(netGameMatch3JudgePoint, [0x5A78, 0x5A81, 0x5A8A, 0x5A94], [2, 3]),   // NetGameMatch3JudgeOn*
   [B, 0x5A9E, hook((P, c) => netGameMatch3JudgePoint(P, c.a))],                   // NetGameMatch3JudgePoint
@@ -369,12 +373,12 @@ export const HOOKS = [
   H(0x5C00, practiceStart([2, 3, 4])),                                            // NetGamePractice1Hook_MinigameStart
   H(0x5C15, updateDrillAbortCountdown),                                           // NetGamePractice1Hook_PerFrame
   H(0x5C19, netGamePractice1PointStart),                                          // NetGamePractice1Hook_PointStart
-  H(0x5C52, netGamePracticePointEnd(netGamePractice1JudgePoint, 2, netGamePractice1EvaluateResult)),   // NetGamePractice1Hook_PointEnd
+  H(0x5C52, netGamePracticePointEnd(netGamePractice1JudgePoint, 2, netGamePractice1EvaluateResult, 0x5C66, 0x5CF9)),   // NetGamePractice1Hook_PointEnd
   H(0x5C76, netGamePractice1EvaluateResult),                                      // NetGamePractice1EvaluateResult
   H(0x5CC1, DISABLED),                                                            // NetGamePractice1Hook_RallyTick
   H(0x5CC5, P => judgeOn(P, netGamePractice1JudgePoint, 2)),                      // NetGamePractice1Hook_Bounce
   H(0x5CC9, practiceBallHit(netGamePractice1JudgePoint)),                         // NetGamePractice1Hook_BallHit
-  H(0x5CF9, P => practiceHandlePointEnd(P, 4)),                                   // NetGamePractice1HandlePointEnd
+  H(0x5CF9, P => practiceHandlePointEnd(P, 4, 0x5CF9)),                                   // NetGamePractice1HandlePointEnd
   ...judgeHooks(netGamePractice1JudgePoint, [0x5D48, 0x5D51, 0x5D5A, 0x5D63], [3]),   // NetGamePractice1JudgeOn*
   [B, 0x5D6D, hook((P, c) => netGamePractice1JudgePoint(P, c.a))],                // NetGamePractice1JudgePoint
   // Net Game Practice 2
@@ -382,12 +386,12 @@ export const HOOKS = [
   H(0x5EBB, practiceStart([3, 4])),                                               // NetGamePractice2Hook_MinigameStart
   H(0x5ECD, updateDrillAbortCountdown),                                           // NetGamePractice2Hook_PerFrame
   H(0x5ED1, netGamePracticePointStart([1, 6], 0x5F91, CHAR_DRILL_NET_GAME_PRACTICE_2)),   // NetGamePractice2Hook_PointStart
-  H(0x5EFA, netGamePracticePointEnd(netGamePractice2JudgePoint, 3, netGamePractice2EvaluateResult)),   // NetGamePractice2Hook_PointEnd
+  H(0x5EFA, netGamePracticePointEnd(netGamePractice2JudgePoint, 3, netGamePractice2EvaluateResult, 0x5F0E, 0x5FB3)),   // NetGamePractice2Hook_PointEnd
   H(0x5F1E, netGamePractice2EvaluateResult),                                      // NetGamePractice2EvaluateResult
   H(0x5F7B, DISABLED),                                                            // NetGamePractice2Hook_RallyTick
   H(0x5F7F, P => judgeOn(P, netGamePractice2JudgePoint, 2)),                      // NetGamePractice2Hook_Bounce
   H(0x5F83, practiceBallHit(netGamePractice2JudgePoint)),                         // NetGamePractice2Hook_BallHit
-  H(0x5FB3, P => practiceHandlePointEnd(P, 4)),                                   // NetGamePractice2HandlePointEnd
+  H(0x5FB3, P => practiceHandlePointEnd(P, 4, 0x5FB3)),                                   // NetGamePractice2HandlePointEnd
   ...judgeHooks(netGamePractice2JudgePoint, [0x6002, 0x600B, 0x6014, 0x601D], [3]),   // NetGamePractice2JudgeOn*
   [B, 0x6027, hook((P, c) => netGamePractice2JudgePoint(P, c.a))],                // NetGamePractice2JudgePoint
   // Net Game Practice 3
@@ -395,12 +399,12 @@ export const HOOKS = [
   H(0x6174, practiceStart([3, 4])),                                               // NetGamePractice3Hook_MinigameStart
   H(0x6186, updateDrillAbortCountdown),                                           // NetGamePractice3Hook_PerFrame
   H(0x618A, netGamePracticePointStart([], 0x6250, CHAR_DRILL_NET_GAME_PRACTICE_3)),   // NetGamePractice3Hook_PointStart
-  H(0x61AC, netGamePracticePointEnd(netGamePractice3JudgePoint, 3, netGamePractice3EvaluateResult)),   // NetGamePractice3Hook_PointEnd
+  H(0x61AC, netGamePracticePointEnd(netGamePractice3JudgePoint, 3, netGamePractice3EvaluateResult, 0x61C0, 0x6272)),   // NetGamePractice3Hook_PointEnd
   H(0x61D0, netGamePractice3EvaluateResult),                                      // NetGamePractice3EvaluateResult
   H(0x623A, DISABLED),                                                            // NetGamePractice3Hook_RallyTick
   H(0x623E, P => judgeOn(P, netGamePractice3JudgePoint, 2)),                      // NetGamePractice3Hook_Bounce
   H(0x6242, practiceBallHit(netGamePractice3JudgePoint)),                         // NetGamePractice3Hook_BallHit
-  H(0x6272, P => practiceHandlePointEnd(P, 4)),                                   // NetGamePractice3HandlePointEnd
+  H(0x6272, P => practiceHandlePointEnd(P, 4, 0x6272)),                                   // NetGamePractice3HandlePointEnd
   ...judgeHooks(netGamePractice3JudgePoint, [0x62C1, 0x62CA, 0x62D3, 0x62DC], [3]),   // NetGamePractice3JudgeOn*
   [B, 0x62E6, hook((P, c) => netGamePractice3JudgePoint(P, c.a))],                // NetGamePractice3JudgePoint
 ];

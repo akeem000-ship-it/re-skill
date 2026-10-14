@@ -21,7 +21,7 @@
 //   $23 Medallion Match: six medallions over the court; each hit in a row is worth more.
 // Level 2 (the third) of each Mario minigame is its high-score mode.
 import {
-  BANK_MINIGAMES, ROM, far, sound, pushWramBank, rb, rw, at, auto, FLAG_Z,
+  BANK_MINIGAMES, ROM, far, farcallAt, callAt, pushedWord, sound, pushWramBank, rb, rw, at, auto, FLAG_Z,
   POINTOUTCOME, SHOTTYPE_SMASH, WRAM_COURT_PLANES, WRAM_ACTORS, WRAM_CHAR0, WRAM_TEXT, CHAR,
   SFX_CHIME, SFX_THUD, SFX_BALL_CONTACT, SFX_GRID_CLEAR,
 } from "./common.js";
@@ -83,15 +83,18 @@ function initTennisMachine(level, highScore) {
 // TennisMachine1Hook_PointStart (0D:4532): the next ball from the one slot
 // TennisMachine2/3Hook_PointStart (0D:4991, 49EE), TennisMachine4Hook_PointStart / ..HighScoreHook_PointStart
 // (0D:4A4B, 4D16): the machine moves on 1-2 slots of 3, 1-4 of 6, 1-8 of 9 first
-const machinePointStart = (mask, slots) => function* (P) {
+// (site: the address of the hook's `call LaunchMinigameServe` / `call StartMinigameMatch`)
+const machinePointStart = (mask, slots, site) => function* (P) {
   if (mask) stepServeSlot(P, mask, slots);
-  yield* launchMinigameServe(P);
+  yield* callAt(P, site, launchMinigameServe(P));
 };
-const startAtSlot = (slot, extra) => function* (P) {
+const startAtSlot = (slot, site, extra) => function* (P) {
   P.V.minigameServeSlot = slot;
-  yield* startMinigameMatch(P);
+  yield* callAt(P, site, startMinigameMatch(P));
   if (extra) extra(P);
 };
+// a hook that is `call fn` (at site) then `ret`, fn waiting
+const callsAt = (site, fn) => function* (P) { return yield* callAt(P, site, fn(P)); };
 
 // ---- The Wall 1-4 and Wall Master ----
 // InitMinigame_WallPractice1-4 (0D:4A80, 4C08, 4C53, 4C9E) / _WallPracticeHighScore (0D:4D4B): the wall's
@@ -317,7 +320,7 @@ function disableOffscreenArrows(P) { P.V.offscreenArrowsEnabled = 0; }
 // ResolveAndShowMinigamePoint (0D:56C0), Boo Blast's PointEnd: banner, result; both players react, Luigi keeping
 // Mario's point result (he cheers with him)
 function* resolveAndShowMinigamePoint(P) {
-  yield* showPointOutcomeBanner(P);
+  yield* callAt(P, 0x56C0, showPointOutcomeBanner(P));
   const r = determineMinigamePointResult(P);
   const old = pushWramBank(P, WRAM_CHAR0);
   yield* P.runRom(...ROM.CharPointEndReaction);
@@ -326,7 +329,7 @@ function* resolveAndShowMinigamePoint(P) {
   yield* P.runRom(...ROM.CharPointEndReaction);
   P.bus.w8(CHAR.pointResult, result);
   P.wramBank(old);
-  yield* showMinigamePointResult(P, r.d);
+  yield* callAt(P, 0x56EA, showMinigamePointResult(P, r.d));
 }
 // UpdateBooBlastHitStreak (0D:56F0), Boo Blast's BallHit: a rally exchange with a hit grows the streak (to 7);
 // Luigi's shot after one with no hit breaks it; the Boo shows again
@@ -429,7 +432,7 @@ function* processTargetTileHit(P) {
   if (V.targetTileHit < 9) V.targetTileHit = V.targetTileHit + 1;
   old = pushWramBank(P, WRAM_COURT_PLANES);
   V.matchSimFrozen = 1;
-  yield* animateTargetGridClear(P);
+  yield* pushedWord(P, old << 8, callAt(P, 0x5934, animateTargetGridClear(P)));   // push_wram_bank's word
   V.matchSimFrozen = 0;
   P.wramBank(old);
 }
@@ -440,14 +443,15 @@ function resetTargetGrid(P) {
 }
 // AnimateTargetGridClear (0D:598B): the tiles go back to unlit one by one, 8 frames apart, with a sound each
 function* animateTargetGridClear(P) {
-  yield* P.runRom(...ROM.StepMatchFrames, { a: 2 });
+  yield* farcallAt(P, 0x598D, ROM.StepMatchFrames, { a: 2 });
   for (let cell = 0; cell < GRID_SIZE; cell++) {
     const type = rb(P, PerfectShotTargetGridLayout + cell);
     if (!type) continue;
     drawMinigameGridCell(P, cell, type);
     far(P, ROM.FlushTilemapToVram);
     sound(P, SFX_GRID_CLEAR);
-    yield* P.runRom(...ROM.StepMatchFrames, { a: 8 });
+    yield* pushedWord(P, P.cpu.b << 8 | P.cpu.c, pushedWord(P, P.cpu.h << 8 | P.cpu.l,   // push bc, push hl
+      farcallAt(P, 0x59AA, ROM.StepMatchFrames, { a: 8 })));
   }
   resetTargetGrid(P);
 }
@@ -469,7 +473,7 @@ function initTreasureBox(P) { P.V.minigameUsesTennisMachine = 1; highScoreAtLeve
 function* treasureBoxMinigameStart(P) {
   clearMinigameActors(P);
   P.V.minigameServeSlot = 1;
-  yield* startMinigameMatch(P);
+  yield* callAt(P, 0x5A05, startMinigameMatch(P));
   P.V.targetZoneEnabled = 1;
   setMinigameActorHandler(P, ACTORS, TreasureBoxTargetActorHandler);
 }
@@ -578,13 +582,13 @@ function initMedallionMatch(P) { P.V.minigameUsesTennisMachine = 1; highScoreAtL
 function* medallionMatchMinigameStart(P) {
   spawnMedallionMatchTargets(P);
   P.V.minigameServeSlot = 1;
-  yield* startMinigameMatch(P);
+  yield* callAt(P, 0x5D24, startMinigameMatch(P));
   P.V.standingShadowsEnabled = 0;
 }
 // MedallionMatchHook_PointStart (0D:5D3D)
 function* medallionMatchPointStart(P) {
   stepServeSlot(P, 1, 3);
-  yield* launchMinigameServe(P);
+  yield* callAt(P, 0x5D4E, launchMinigameServe(P));
   resetMedallionMatchHitState(P);
 }
 // SpawnMedallionMatchTargets (0D:5D65)
@@ -660,34 +664,36 @@ function game(addrs, fns) {
   // addrs: { init, perFrame, ... }: each hook entry's address (a `call X / ret` or the hook's own code)
   return Object.entries(addrs).map(([k, addr]) => [B, addr, auto(P => fns[k](P))]);
 }
+// the machine's and the wall's PointEnd hooks are `call X / ret` at the hook's address
 const machineGame = (init, start, perFrame, pointStart, slotAddrs) => game(slotAddrs, {
-  init, minigameStart: start, perFrame, pointStart, ...MACHINE,
+  init, minigameStart: start, perFrame, pointStart, ...MACHINE, pointEnd: callsAt(slotAddrs.pointEnd, awardMinigamePointAndEnd),
 });
+const wallGame = (addrs, fns) => game(addrs, { ...WALL, pointEnd: callsAt(addrs.pointEnd, handleMinigamePointEnd), ...fns });
 
 export const HOOKS = [
   // The Machine 1-4, Machine Master
-  ...machineGame(initTennisMachine(0), startAtSlot(1), drawMinigameScoreHud, machinePointStart(0, 0),
+  ...machineGame(initTennisMachine(0), startAtSlot(1, 0x452A), drawMinigameScoreHud, machinePointStart(0, 0, 0x4532),
     { init: 0x450A, minigameStart: 0x4525, perFrame: 0x452E, pointStart: 0x4532, pointEnd: 0x4536, rallyTick: 0x453A, bounce: 0x453E, ballHit: 0x4542 }),
-  ...machineGame(initTennisMachine(1), startAtSlot(1), drawMinigameScoreHud, machinePointStart(1, 3),
+  ...machineGame(initTennisMachine(1), startAtSlot(1, 0x4989), drawMinigameScoreHud, machinePointStart(1, 3, 0x49A2),
     { init: 0x4969, minigameStart: 0x4984, perFrame: 0x498D, pointStart: 0x4991, pointEnd: 0x49A6, rallyTick: 0x49AA, bounce: 0x49AE, ballHit: 0x49B2 }),
-  ...machineGame(initTennisMachine(2), startAtSlot(4), drawMinigameScoreHud, machinePointStart(3, 6),
+  ...machineGame(initTennisMachine(2), startAtSlot(4, 0x49E6), drawMinigameScoreHud, machinePointStart(3, 6, 0x49FF),
     { init: 0x49C6, minigameStart: 0x49E1, perFrame: 0x49EA, pointStart: 0x49EE, pointEnd: 0x4A03, rallyTick: 0x4A07, bounce: 0x4A0B, ballHit: 0x4A0F }),
-  ...machineGame(initTennisMachine(3), startAtSlot(4), drawMinigameScoreHud, machinePointStart(7, 9),
+  ...machineGame(initTennisMachine(3), startAtSlot(4, 0x4A43), drawMinigameScoreHud, machinePointStart(7, 9, 0x4A5C),
     { init: 0x4A23, minigameStart: 0x4A3E, perFrame: 0x4A47, pointStart: 0x4A4B, pointEnd: 0x4A60, rallyTick: 0x4A64, bounce: 0x4A68, ballHit: 0x4A6C }),
-  ...machineGame(initTennisMachine(4, true), startAtSlot(4), drawMinigameScoreHud, machinePointStart(7, 9),
+  ...machineGame(initTennisMachine(4, true), startAtSlot(4, 0x4D0E), drawMinigameScoreHud, machinePointStart(7, 9, 0x4D27),
     { init: 0x4CE9, minigameStart: 0x4D09, perFrame: 0x4D12, pointStart: 0x4D16, pointEnd: 0x4D2B, rallyTick: 0x4D2F, bounce: 0x4D33, ballHit: 0x4D37 }),
   // The Wall 1-4, Wall Master
-  ...game({ init: 0x4A80, perFrame: 0x4AA3, pointStart: 0x4AA7, pointEnd: 0x4AAB, rallyTick: 0x4AAF, bounce: 0x4AB3, ballHit: 0x4AB7 }, { init: initWall(0), ...WALL }),
-  ...game({ init: 0x4C08, perFrame: 0x4C2B, pointStart: 0x4C2F, pointEnd: 0x4C33, rallyTick: 0x4C37, bounce: 0x4C3B, ballHit: 0x4C3F }, { init: initWall(1), ...WALL }),
-  ...game({ init: 0x4C53, perFrame: 0x4C76, pointStart: 0x4C7A, pointEnd: 0x4C7E, rallyTick: 0x4C82, bounce: 0x4C86, ballHit: 0x4C8A }, { init: initWall(2), ...WALL }),
-  ...game({ init: 0x4C9E, perFrame: 0x4CC1, pointStart: 0x4CC5, pointEnd: 0x4CC9, rallyTick: 0x4CCD, bounce: 0x4CD1, ballHit: 0x4CD5 }, { init: initWall(3), ...WALL }),
-  ...game({ init: 0x4D4B, perFrame: 0x4D73, pointStart: 0x4D77, pointEnd: 0x4D7B, rallyTick: 0x4D7F, bounce: 0x4D83, ballHit: 0x4D87 }, { init: initWall(4, true), ...WALL }),
+  ...wallGame({ init: 0x4A80, perFrame: 0x4AA3, pointStart: 0x4AA7, pointEnd: 0x4AAB, rallyTick: 0x4AAF, bounce: 0x4AB3, ballHit: 0x4AB7 }, { init: initWall(0) }),
+  ...wallGame({ init: 0x4C08, perFrame: 0x4C2B, pointStart: 0x4C2F, pointEnd: 0x4C33, rallyTick: 0x4C37, bounce: 0x4C3B, ballHit: 0x4C3F }, { init: initWall(1) }),
+  ...wallGame({ init: 0x4C53, perFrame: 0x4C76, pointStart: 0x4C7A, pointEnd: 0x4C7E, rallyTick: 0x4C82, bounce: 0x4C86, ballHit: 0x4C8A }, { init: initWall(2) }),
+  ...wallGame({ init: 0x4C9E, perFrame: 0x4CC1, pointStart: 0x4CC5, pointEnd: 0x4CC9, rallyTick: 0x4CCD, bounce: 0x4CD1, ballHit: 0x4CD5 }, { init: initWall(3) }),
+  ...wallGame({ init: 0x4D4B, perFrame: 0x4D73, pointStart: 0x4D77, pointEnd: 0x4D7B, rallyTick: 0x4D7F, bounce: 0x4D83, ballHit: 0x4D87 }, { init: initWall(4, true) }),
   // Target Shot
   ...game({ init: 0x4D9B, minigameStart: 0x4DBD, perFrame: 0x4DCB, pointStart: 0x4DD2, pointEnd: 0x4DEA, rallyTick: 0x4DEE, bounce: 0x4DF2, ballHit: 0x4E18 }, {
-    init: initTargetShot, minigameStart: startAtSlot(1, P => { P.V.targetZoneEnabled = 1; }),
+    init: initTargetShot, minigameStart: startAtSlot(1, 0x4DC2, P => { P.V.targetZoneEnabled = 1; }),
     perFrame: P => { drawMinigameScoreHud(P); updateScorePopup(P); },
-    pointStart: function* (P) { selectRandomMinigameShot(P); stepServeSlot(P, 1, 3); yield* launchMinigameServe(P); },
-    pointEnd: endMinigamePoint, rallyTick: keepMinigameCameraFixed, bounce: targetShotBounce, ballHit: freezeMinigameOpponentOnReturn,
+    pointStart: function* (P) { selectRandomMinigameShot(P); stepServeSlot(P, 1, 3); yield* callAt(P, 0x4DE6, launchMinigameServe(P)); },
+    pointEnd: callsAt(0x4DEA, endMinigamePoint), rallyTick: keepMinigameCameraFixed, bounce: targetShotBounce, ballHit: freezeMinigameOpponentOnReturn,
   }),
   [B, 0x4E1C, auto(P => updateScorePopup(P))],                                     // UpdateTargetShotScorePopup
   [B, 0x4E20, auto(P => selectRandomMinigameShot(P))],                             // SelectRandomMinigameShot
@@ -695,10 +701,10 @@ export const HOOKS = [
   [B, 0x4E96, auto(P => lookupMinigameShotResult(P))],                             // LookupMinigameShotResult
   // Shooting Star
   ...game({ init: 0x51A4, minigameStart: 0x51C6, perFrame: 0x51D2, draw: 0x51D9, pointStart: 0x51DD, pointEnd: 0x51F5, rallyTick: 0x51F9, bounce: 0x51FD, ballHit: 0x5201 }, {
-    init: initShootingStar, minigameStart: function* (P) { initBallTargetActor(P); yield* startAtSlot(1)(P); },
+    init: initShootingStar, minigameStart: function* (P) { initBallTargetActor(P); yield* startAtSlot(1, 0x51CE)(P); },
     perFrame: P => { drawMinigameScoreHud(P); updateScorePopup(P); }, draw: updateMinigameActors,
-    pointStart: function* (P) { resetTargetHitState(P); stepServeSlot(P, 1, 3); yield* launchMinigameServe(P); },
-    pointEnd: endMinigamePoint, rallyTick: keepMinigameCameraFixed, bounce: checkMinigameStartBannerTrigger, ballHit: freezeMinigameOpponentOnReturn,
+    pointStart: function* (P) { resetTargetHitState(P); stepServeSlot(P, 1, 3); yield* callAt(P, 0x51F1, launchMinigameServe(P)); },
+    pointEnd: callsAt(0x51F5, endMinigamePoint), rallyTick: keepMinigameCameraFixed, bounce: checkMinigameStartBannerTrigger, ballHit: freezeMinigameOpponentOnReturn,
   }),
   [B, 0x5205, auto(P => initBallTargetActor(P))],                                  // InitBallTargetActor
   [B, 0x521E, auto(P => resetTargetHitState(P))],                                  // ResetTargetHitState
@@ -716,7 +722,7 @@ export const HOOKS = [
   ...game({ init: 0x54FC, minigameStart: 0x552B, perFrame: 0x552C, pointStart: 0x5533, pointEnd: 0x5596, rallyTick: 0x559A, bounce: 0x559E, ballHit: 0x55A2 }, {
     init: initFruitWall(5), minigameStart: () => {},
     perFrame: P => { updateMinigameHudAndBallTrail(P); scoreMinigameTargetHitOrDeflectBall(P); },
-    pointStart: fruitPointStart(BananaBunchGridLayoutsByLevel), pointEnd: handleMinigamePointEnd,
+    pointStart: fruitPointStart(BananaBunchGridLayoutsByLevel), pointEnd: callsAt(0x5596, handleMinigamePointEnd),
     rallyTick: reflectBallAndRecordCell, bounce: stubNop, ballHit: hideLandingMarkerAndExtendSoloCourt,
   }),
   [B, 0x55A6, auto(P => scoreMinigameTargetHitOrDeflectBall(P))],                  // UpdateBananaBunchTargetHits
@@ -728,7 +734,7 @@ export const HOOKS = [
     init: initBooBlast, minigameStart: P => { initMinigameControllerActor(P); initMinigameScore(P); },
     perFrame: P => { drawMinigameScore(P, 0x84, 0x03); updateScorePopup(P); }, draw: updateMinigameActors,
     pointStart: disableOffscreenArrows,
-    pointEnd: function* (P) { disableMinigameControllerActor(P); yield* resolveAndShowMinigamePoint(P); },
+    pointEnd: function* (P) { disableMinigameControllerActor(P); yield* callAt(P, 0x5681, resolveAndShowMinigamePoint(P)); },
     rallyTick: stubNop, bounce: stubNop, ballHit: updateBooBlastHitStreak,
   }),
   [B, 0x5691, auto(P => initMinigameControllerActor(P))],                          // InitMinigameControllerActor
@@ -753,7 +759,7 @@ export const HOOKS = [
   // Perfect Shot
   ...game({ init: 0x587E, perFrame: 0x58B6, pointStart: 0x58BA, pointEnd: 0x58C1, rallyTick: 0x58C5, bounce: 0x58C9, ballHit: 0x58CD }, {
     init: initPerfectShot, perFrame: updateMinigameHudAndBallTrail, pointStart: perfectShotPointStart,
-    pointEnd: handleMinigamePointEnd, rallyTick: processTargetTileHit, bounce: stubNop, ballHit: hideLandingMarkerAndExtendSoloCourt,
+    pointEnd: callsAt(0x58C1, handleMinigamePointEnd), rallyTick: callsAt(0x58C5, processTargetTileHit), bounce: stubNop, ballHit: hideLandingMarkerAndExtendSoloCourt,
   }),
   [B, 0x58D1, auto(P => processTargetTileHit(P))],                                 // ProcessTargetTileHit
   [B, 0x5979, auto(P => resetTargetGrid(P))],                                      // ResetTargetGrid
@@ -763,8 +769,8 @@ export const HOOKS = [
   ...game({ init: 0x59DB, minigameStart: 0x59FD, perFrame: 0x5A17, draw: 0x5A1E, pointStart: 0x5A22, pointEnd: 0x5A3A, rallyTick: 0x5A41, bounce: 0x5A45, ballHit: 0x5A68 }, {
     init: initTreasureBox, minigameStart: treasureBoxMinigameStart,
     perFrame: P => { drawMinigameScoreHud(P); updateScorePopup(P); }, draw: updateMinigameActors,
-    pointStart: function* (P) { selectRandomTreasureBoxTargetZone(P); stepServeSlot(P, 1, 3); yield* launchMinigameServe(P); },
-    pointEnd: endMinigamePoint,                                                    // (after StubNop_0d_3)
+    pointStart: function* (P) { selectRandomTreasureBoxTargetZone(P); stepServeSlot(P, 1, 3); yield* callAt(P, 0x5A36, launchMinigameServe(P)); },
+    pointEnd: callsAt(0x5A3D, endMinigamePoint),                                                    // (after StubNop_0d_3)
     rallyTick: keepMinigameCameraFixed, bounce: treasureBoxBounce, ballHit: freezeMinigameOpponentOnReturn,
   }),
   [B, 0x5A6C, auto(P => updateScorePopup(P))],                                     // UpdateTreasureBoxScorePopup
@@ -785,7 +791,7 @@ export const HOOKS = [
   ...game({ init: 0x5CFA, minigameStart: 0x5D1C, perFrame: 0x5D32, draw: 0x5D39, pointStart: 0x5D3D, pointEnd: 0x5D55, rallyTick: 0x5D59, bounce: 0x5D5D, ballHit: 0x5D61 }, {
     init: initMedallionMatch, minigameStart: medallionMatchMinigameStart,
     perFrame: P => { drawMinigameScoreHud(P); updateScorePopup(P); }, draw: updateMinigameActors,
-    pointStart: medallionMatchPointStart, pointEnd: endMinigamePoint, rallyTick: keepMinigameCameraFixed,
+    pointStart: medallionMatchPointStart, pointEnd: callsAt(0x5D55, endMinigamePoint), rallyTick: keepMinigameCameraFixed,
     bounce: checkMinigameStartBannerTrigger, ballHit: freezeMinigameOpponentOnReturn,
   }),
   [B, 0x5D65, auto(P => spawnMedallionMatchTargets(P))],                           // SpawnMedallionMatchTargets
@@ -806,7 +812,7 @@ export const HOOKS = [
   ...game({ init: 0x5F42, minigameStart: 0x5F71, perFrame: 0x5F72, pointStart: 0x5F79, pointEnd: 0x5FDC, rallyTick: 0x5FE0, bounce: 0x5FE4, ballHit: 0x5FE8 }, {
     init: initFruitWall(6), minigameStart: () => {},
     perFrame: P => { updateMinigameHudAndBallTrail(P); scoreMinigameTargetHitOrDeflectBall(P); },
-    pointStart: fruitPointStart(FruitFantasyGridLayoutsByLevel), pointEnd: handleMinigamePointEnd,
+    pointStart: fruitPointStart(FruitFantasyGridLayoutsByLevel), pointEnd: callsAt(0x5FDC, handleMinigamePointEnd),
     rallyTick: reflectBallAndRecordCell, bounce: stubNop, ballHit: hideLandingMarkerAndExtendSoloCourt,
   }),
   [B, 0x5FEC, auto(P => scoreMinigameTargetHitOrDeflectBall(P))],                  // UpdateFruitFantasyTargetHits

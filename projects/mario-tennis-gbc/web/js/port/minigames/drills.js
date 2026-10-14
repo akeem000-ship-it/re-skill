@@ -17,7 +17,7 @@
 // Covered by web/tests/port/routines_minigames.mjs (the routines that do not wait) and the lockstep (out/port/
 // drill_*.mtrec, made by web/tests/port/make_minigame_rec.mjs).
 import {
-  BANK_DRILLS, BANK_MINIGAMES, ROM, far, farWait, sound, pushWramBank, inBankWait, rb, rw, at, jumpTable,
+  BANK_DRILLS, BANK_MINIGAMES, ROM, far, farWait, farcallAt, callAt, sound, pushWramBank, inBankWait, rb, rw, at, jumpTable,
   rlaBit, shiftedOutBit, popcount8, hook, hookGen, flagsOfA, FLAG_Z, FLAG_N, FLAG_C,
   POINTOUTCOME, WINLOSE_LOSE, MATCHABORT_POINT, MATCHABORT_MATCH, CHARSTATE_INERT, WRAM_TEXT, WRAM_CHAR1, WRAM_COURT_PLANES, WRAM_SCREEN,
   CHAR, CHAR_NONE, MATCHLIST_TRAINING, MINIGAME_TENNIS_MACHINE_1, MINIGAME_TWO_ON_ONE, MINIGAME_SERVICE_MATCH_2,
@@ -59,13 +59,13 @@ const w16 = (P, name, v) => P.bus.w16(P.A[name], v);
 export function* runTrainingDrillByID(P, id) {
   for (;;) {
     yield* farWait(P, ROM.InitMinigameMatchSettings, { a: id });
-    if (id === MINIGAME_TWO_ON_ONE) yield* runDoublesDrillMatch(P);
+    if (id === MINIGAME_TWO_ON_ONE) yield* callAt(P, 0x47AE, runDoublesDrillMatch(P));
     else {
       if (id >= MINIGAME_TENNIS_MACHINE_1) yield* inBankWait(P, BANK_MINIGAMES, startMinigameByID(P, id));
       else yield* startDrillFromDefinition(P, rw(P, DrillDefinitionPtrs + id * 2));
       clearMemory16(P, P.A.drillAbortCountdown, 2);             // the drill's work bytes ($20 from wDrillAbortCountdown)
       resetAiServeOverrides(P);
-      yield* farWait(P, ROM.RunMinigameMatch);
+      yield* farcallAt(P, 0x473C, ROM.RunMinigameMatch);
     }
     P.V.scrollX = 0; P.V.scrollY = 0;                           // .afterMatch
     resetAiServeOverrides(P);
@@ -84,12 +84,12 @@ export function* runTrainingDrillByID(P, id) {
     yield* farWait(P, ROM.PushTextArgNumber, { a: P.V.drillLessonResult, h: 0, l: P.V.drillLessonResult });
     const won = ((P.V.pointWinLoseFlag + 1) & 0xFF) >> 1;      // +1 -> 1, -1 or 0 -> 0
     const text = at(Text_30_351, won);
-    yield* farWait(P, ROM.ShowSpeakerDialogue, { a: 0x80, h: text >> 8, l: text & 0xFF });
+    yield* farcallAt(P, 0x479C, ROM.ShowSpeakerDialogue, { a: 0x80, h: text >> 8, l: text & 0xFF });
     beginFadeOut(P, 16);
     yield* farWait(P, ROM.WaitFadeEnd, { c: 16 });
   }
   far(P, ROM.ClearGameFlag, { d: FLAG_DRILL_FROM_MENU >> 8, e: FLAG_DRILL_FROM_MENU & 0xFF });   // clear_flag
-  yield* farWait(P, ROM.ProcessMatchRewards);
+  yield* farcallAt(P, 0x47AA, ROM.ProcessMatchRewards);
 }
 // the CPU server's overrides off: no fixed aim ($FF), no fixed walk X, the toss gap rolled
 function resetAiServeOverrides(P) {
@@ -172,7 +172,7 @@ export function* runDoublesDrillMatch(P) {
   for (let i = 0; i < 4; i++) bus.w8(P.A.player2PartnerAiParams + i, rb(P, params + i));
   V.exhibitionModeCPUPartnerCharacterDifficulty = rb(P, params + 4);
   const end = params + 5;
-  yield* farWait(P, ROM.RunMatch, { a: rb(P, end - 1), h: end >> 8, l: end & 0xFF });
+  yield* farcallAt(P, 0x72DC, ROM.RunMatch, { a: rb(P, end - 1), h: end >> 8, l: end & 0xFF });
 }
 
 // ---- the per-point result bits (drill_scoring_0b) ----
@@ -318,22 +318,20 @@ export function* playDrillPointEndSequence(P) {
   const outcome = P.V.pointOutcome;
   if (outcome !== POINTOUTCOME.WINNER && outcome !== POINTOUTCOME.SERVE_VOLLEYED) {
     if (outcome === POINTOUTCOME.FAULT || outcome === POINTOUTCOME.LET) yield* farWait(P, ROM.ShowCourtBanner, { a: outcome });
-    yield* stepFrames(P, 30);
+    yield* farcallAt(P, 0x43D1, ROM.StepMatchFrames, { a: 30 });
     yield* farWait(P, ROM.HideCourtBanner);
-    yield* stepFrames(P, 15);
+    yield* farcallAt(P, 0x43D9, ROM.StepMatchFrames, { a: 15 });
   }
   yield* farWait(P, ROM.SpawnGameScoreDisplayObjs);
-  yield* stepFrames(P, 10);
-  yield* stepFramesSkippable(P, 10);
+  yield* farcallAt(P, 0x43E1, ROM.StepMatchFrames, { a: 10 });
+  yield* farcallAt(P, 0x43E6, ROM.StepMatchFramesSkippable, { a: 10 });
   yield* farWait(P, ROM.UpdateScorePanelDisplay);
-  yield* stepFrames(P, 10);
-  yield* stepFramesSkippable(P, 30);
+  yield* farcallAt(P, 0x43EE, ROM.StepMatchFrames, { a: 10 });
+  yield* farcallAt(P, 0x43F3, ROM.StepMatchFramesSkippable, { a: 30 });
   yield* farWait(P, ROM.DismissGameScoreDisplayObjs);
-  yield* stepFramesSkippable(P, 70);
-  yield* stepFrames(P, 8);
+  yield* farcallAt(P, 0x43FB, ROM.StepMatchFramesSkippable, { a: 70 });
+  yield* farcallAt(P, 0x4400, ROM.StepMatchFrames, { a: 8 });
 }
-export function* stepFrames(P, n) { yield* farWait(P, ROM.StepMatchFrames, { a: n }); }
-export function* stepFramesSkippable(P, n) { yield* farWait(P, ROM.StepMatchFramesSkippable, { a: n }); }
 
 // LoadDrillOpponentChar (0B:4404), a = a roster id: the coach (character slot 2's record, character 1's struct)
 // becomes that character — the drills swap in a "serving" variant of the coach for the coach's serves
@@ -422,7 +420,7 @@ export function setDrillMessageByRallyParity(P, msg, b) {
 // ShowQueuedDrillMessage (0B:4574): show the queued message (none queued: "there is no message for this case")
 export function* showQueuedDrillMessage(P) {
   if (!P.V.drillMessageId) P.V.drillMessageId = DRILLMSG_NO_MESSAGE_FOR_THIS_CASE;
-  yield* showDrillMessageByIndex(P, P.V.drillMessageId);
+  yield* callAt(P, 0x457F, showDrillMessageByIndex(P, P.V.drillMessageId));
 }
 // ShowDrillMessageByIndex (0B:4583): the message's text in a window over the court, as wide as the text's widest
 // line plus the frame and as tall as its lines, centred, at row 6 (ShowMessageWindow waits for a button)
@@ -436,7 +434,7 @@ export function* showDrillMessageByIndex(P, msg) {
   const lines = P.V.fitTextLineCount;
   P.wramBank(old);
   const x = ((0x14 - width) & 0xFF) >> 1;
-  yield* farWait(P, ROM.ShowMessageWindow, { a: x, b: width, c: (lines * 2 + 1) & 0xFF, d: x, e: 6, h: m.b, l: m.c });
+  yield* farcallAt(P, 0x45C0, ROM.ShowMessageWindow, { a: x, b: width, c: (lines * 2 + 1) & 0xFF, d: x, e: 6, h: m.b, l: m.c });
 }
 
 // QueueDrillMarker1_0b (0B:46A0) / QueueDrillMarker2_0b (0B:46C4), the Draw hook of the gate drills: while the
@@ -496,16 +494,17 @@ export function awardPointToSide(P) {
 
 // The end of a judged point's display, shared by the drills' HandlePointEnd: both point counters' digits, a frame,
 // the characters' reactions (optionally with the coach mirroring the player's result: a practice lesson), the
-// end-of-point sequence.
-export function* showPointsAndEndPoint(P, syncCoach) {
+// end-of-point sequence. at: where the drill's code makes the waiting calls ({ frame: farcall StepMatchFrame,
+// reactions: farcall StartPointEndReactions, end: call PlayDrillPointEndSequence }), for the ROM's stack.
+export function* showPointsAndEndPoint(P, syncCoach, at) {
   yield* farWait(P, ROM.LoadPlayer1PointsDigitGfx, { a: P.V.player1PointsWon, b: 1 });
   yield* farWait(P, ROM.LoadPlayer2PointsDigitGfx, { a: P.V.player2PointsWon, b: 1 });
-  yield* farWait(P, ROM.StepMatchFrame);
+  yield* farcallAt(P, at.frame, ROM.StepMatchFrame);
   const task = { a: 1, h: SyncPointWinLoseFlagTask_ADDR >> 8, l: SyncPointWinLoseFlagTask_ADDR & 0xFF };
   if (syncCoach) far(P, ROM.RegisterFrameTask, task);
-  yield* farWait(P, ROM.StartPointEndReactions);
+  yield* farcallAt(P, at.reactions, ROM.StartPointEndReactions);
   if (syncCoach) far(P, ROM.UnregisterFrameTask, task);
-  yield* playDrillPointEndSequence(P);
+  yield* callAt(P, at.end, playDrillPointEndSequence(P));
 }
 
 // ---- hooks ----
@@ -569,18 +568,21 @@ export function decideByTwoPointLead(P) {
 // NetGamePractice1HandlePointEnd (0B:5CF9; the same code at NetGamePractice2 0B:5FB3, NetGamePractice3 0B:6272)
 // and StrokePractice1HandlePointEnd (0B:6C81; StrokePractice3 0B:712B), StrokePractice2HandlePointEnd (0B:6EC9):
 // a practice lesson's point: the judgement is the result; a success counts in wDrillCounters + n, shown as
-// player 1's points (player 2's: 0); the coach mirrors the result while the characters react
-export function* practiceHandlePointEnd(P, n) {
+// player 1's points (player 2's: 0); the coach mirrors the result while the characters react. base: the copy's
+// address (its waiting calls at the same offsets in every copy)
+export const practicePointEndSites = base => ({ msg: base + 0x14, frame: base + 0x37, reactions: base + 0x42, end: base + 0x4B });
+export function* practiceHandlePointEnd(P, n, base) {
+  const at = practicePointEndSites(base);
   yield* farWait(P, ROM.UpdateScorePanelDisplay);
   P.V.pointWinLoseFlag = P.V.drillPointJudgement;
   if (P.V.drillPointJudgement === 1) incCounter(P, n);
   recordDrillPointResultBits(P);
-  yield* showQueuedDrillMessage(P);
+  yield* callAt(P, at.msg, showQueuedDrillMessage(P));
   yield* farWait(P, ROM.UpdatePointStats);
   yield* farWait(P, ROM.AwardPoint);
   P.V.player1PointsWon = counter(P, n);
   P.V.player2PointsWon = 0;
-  yield* showPointsAndEndPoint(P, true);
+  yield* showPointsAndEndPoint(P, true, at);
 }
 // a match drill's point shown from the judgement: (with counts: both sides' successes recounted into
 // wDrillCounters + 1/2), the message, the stats, then the score kept by awardPoint

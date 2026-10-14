@@ -11,11 +11,14 @@ import * as ball from "../../engine/ball.js";
 import * as chars from "../../engine/chars.js";
 import { setBallTrailColor } from "../../engine/shot.js";
 import { engine } from "./engine_port.js";
+import { callHome } from "./draw.js";
+import { add8, hlIndexed } from "./leftovers.js";
 
 const REGS = ["a", "f", "b", "c", "d", "e", "h", "l"];
 const save = c => REGS.map(r => c[r]);
 const restore = (c, v) => REGS.forEach((r, i) => { c[r] = v[i]; });
 const DEBUG_MATCH_FLAGS = 0xC4EE;                                        // wDebugMatchFlags (bit 0: skippable waits never end)
+const BALL_TRAIL_COLOR = 0xC4BD;                                         // wBallTrailColor
 
 // a hook for a routine that waits: the engine's generator, with the registers it keeps (push ... pop) restored
 const waits = fn => (P, c) => (function* () {
@@ -157,7 +160,14 @@ export const HOOKS = [
   [8, 0x61C9, now((E, c) => flow.setCameraTarget(E, c.hl, c.de))],                         // SetCameraTarget
   // ---- the ball's state ----
   [8, 0x511C, now(E => ball.resetBallState(E, a => setBallTrailColor(E, a)))],             // ResetBallState
-  [8, 0x5189, now((E, c) => setBallTrailColor(E, c.a))],                                   // SetBallTrailColor
+  [8, 0x5189, (P, c) => {                                                                  // SetBallTrailColor: colour a's
+    // palette (8 bytes at BallTrailPalettes 08:50DC) into OBJ slot 0 through LoadPalettesImmediate (00:05B5), the call
+    // it ends with, made with the ROM's registers (the CPU is left as it leaves it)
+    P.bus.w8(BALL_TRAIL_COLOR, c.a);
+    const a2 = add8(c.a, c.a).r, a4 = add8(a2, a2).r, at = hlIndexed(0x50DC, add8(a4, a4).r);   // add a (x3)
+    callHome(P, 0x05B5, { a: at.a, f: at.f, hl: at.hl, de: 0x0801 }, 8);
+    c.passCpu();
+  }],
   [8, 0x458B, now((E, c) => ball.setBallPosition(E, c.hl, c.de, c.bc))],                   // SetBallPosition
   [8, 0x430F, now(E => ball.setCharStateOnBallHit(E))],                                    // SetCharStateOnBallHit
   [8, 0x4326, now(E => ball.detectServeAceOutcome(E))],                                    // DetectServeAceOutcome

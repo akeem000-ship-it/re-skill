@@ -9,11 +9,74 @@ import * as ai from "../../engine/ai.js";
 import * as shot from "../../engine/shot.js";
 import * as flow from "../../engine/flow.js";
 import { engine } from "./engine_port.js";
+import { add8, addHL, bitFlags, hlIndexed, negHL, FC } from "./leftovers.js";
+
+const CHAR_SPRITE_DIRTY = 0xDF30, FACING_TILE_ROW = 0x7643;    // wCharSpriteDirty; ReloadCharFacingTilesTable (bank 8)
+const H_MATH_SIGN = 0xFFA7, H_MUL_RESULT = 0xFFA8, SHOT_AIM_ANGLE = 0xC43A, BALL_X = 0xC402, BALL_DEPTH = 0xC406;
 
 // [bank, addr, fn(E, cpu)]: fn runs the engine routine with the CPU's registers as arguments and writes back
 // its result registers
 const hook = (bank, addr, fn) => [bank, addr, (P, c) => { fn(engine(P), c); }];
 const A = (c, v) => { c.a = v & 0xFF; };
+
+// 08:7621 ReloadCharFacingTiles: when the sprite is dirty (bit 6), the frame's tiles for facing d: it ends with a jump
+// to QueueCharFrameTiles (00:2E6B), made here with the registers of that jump, so the CPU is left as the ROM leaves it
+function reloadCharFacingTiles(P, c) {
+  const C = engine(P).C, dirty = C.spriteDirty;
+  if (!(dirty & 0x40)) { c.hl = CHAR_SPRITE_DIRTY; c.f = bitFlags(dirty, 6, c.f); return; }
+  C.spriteDirty = dirty & ~0x40;
+  const row = P.rom.u8(8, hlIndexed(FACING_TILE_ROW, c.d).hl), frame = C.animFrame;
+  const x4 = add8(add8(frame, frame).r, add8(frame, frame).r), sum = add8(add8(x4.r, frame).r, row);   // frame * 5 + row
+  const de = addHL(sum.r, sum.r, sum.f);
+  P.callRom(0, 0x2E6B, { a: sum.r, f: de.f, de: de.r, hl: de.r });          // QueueCharFrameTiles; b, c the caller's
+  c.passCpu();
+}
+// 08:69C2 ReloadCharFrameGfx / 08:69D5 LoadCharChargeFlashGfx: the character's palette (its gfx bank's, 8 further on
+// for the charge flash) into OBJ slot (attr & 7) + 8, through the far-call vector to 01:519A LoadDebugMenuPalette
+// (01:4010 FarPtr_LoadDebugMenuPalette), as the ROM does: FarCallVector (00:07C5) leaves a = the ROM bank, f as
+// it was called with, the rest as the palette routine leaves them
+function loadCharPaletteThroughVector(P, c, bankOffset) {
+  const C = engine(P).C, slot = add8(C.spriteAttr & 7, 8), b = (C.gfxBank + bankOffset) & 0xFF;
+  P.callRom(0, 0x07C5, { a: b, f: bankOffset ? add8(C.gfxBank, bankOffset).f : slot.f, b, d: slot.r, hl: 0x0110 });
+  c.passCpu();
+}
+
+// The multiplications behind the CPU player's aim prediction, with the bank-0 routines they are built on (GetTangent
+// 00:1767, MulHLByDE 00:0C8F) called as the ROM calls them, so their registers flow through as in the ROM. (The
+// engine's JS calls E.M directly; these are for ROM callers.)
+// 08:59FB MulHLByDESigned32: hl * de signed, 32 bits into hMulResult and hl: hMathSign = h ^ d, MulHLByDE of the
+// magnitudes, then NegateMulResultLow (08:5A0F: the low word in hMulResult and the high word in hl, negated) when
+// the signs differ
+function mulHLByDESigned32(P, c) {
+  const sign = c.h ^ c.d;
+  P.bus.w8(H_MATH_SIGN, sign);
+  const hl = c.h & 0x80 ? negHL(c.hl).hl : c.hl, de = c.d & 0x80 ? negHL(c.de).hl : c.de;
+  P.callRom(0, 0x0C8F, { hl, de });                                         // MulHLByDE (loads a and f itself)
+  c.passCpu();
+  if (!(sign & 0x80)) { c.a = sign; c.f = bitFlags(sign, 7, c.f); return; }
+  const lo = add8(~P.bus.u8(H_MUL_RESULT) & 0xFF, 1), mid = add8(~P.bus.u8(H_MUL_RESULT + 1) & 0xFF, 0, lo.f & FC ? 1 : 0);
+  const l = add8(~c.l & 0xFF, 0, mid.f & FC ? 1 : 0), h = add8(~c.h & 0xFF, 0, l.f & FC ? 1 : 0);
+  P.bus.w8(H_MUL_RESULT, lo.r); P.bus.w8(H_MUL_RESULT + 1, mid.r);
+  c.l = l.r; c.h = h.r; c.a = h.r; c.f = h.f;
+}
+// 08:5A51 MulHLByTangent: hl * tan(bc), de = the product's middle word (/ 256)
+function mulHLByTangent(P, c) {
+  const x = c.hl;
+  P.callRom(0, 0x1767, { hl: c.bc });                                       // GetTangent
+  P.callRom(8, 0x59FB, { de: x });                                          // MulHLByDESigned32 (above)
+  c.passCpu();
+  const mid = P.bus.u8(H_MUL_RESULT + 1);
+  c.d = c.l; c.e = mid; c.a = mid;
+}
+// 08:7C86 PredictBallXAtDepth: where the ball crosses depth de on its course (wShotAimAngle): ballX + (de - ballDepth)
+// * tan(angle), in hl
+function predictBallXAtDepth(P, c) {
+  const angle = P.bus.u16(SHOT_AIM_ANGLE), back = negHL(P.bus.u16(BALL_DEPTH)), dist = addHL(back.hl, c.de, back.f);
+  P.callRom(8, 0x5A51, { a: back.a, f: dist.f, hl: dist.r, bc: angle });   // MulHLByTangent (above)
+  c.passCpu();
+  const ballX = P.bus.u16(BALL_X), x = addHL(ballX, c.de, c.f);
+  c.hl = x.r; c.f = x.f; c.a = ballX & 0xFF;
+}
 
 // ---- the ball (ball_effects_08, match_08, match_frames_08) ----
 const BALL = [
@@ -35,6 +98,7 @@ const BALL = [
   hook(8, 0x43D3, E => ball.handleBallTouchCharEvent(E)),                                     // HandleBallTouchCharEvent
   hook(8, 0x4379, E => ball.evaluateBounceOutcome(E)),                                        // EvaluateBounceOutcome
   hook(8, 0x45A9, (E, c) => ball.setBallVelocityPolar(E, c.hl, c.bc, c.de)),                  // SetBallVelocityPolar
+  hook(8, 0x45D8, (E, c) => { E.S.ballSideSpin = c.de; E.S.ballTopspin = c.bc; }),   // Unused_08_SetBallSpinComponents (leftovers.js: hl, a)
 ];
 
 // ---- scoring, court positions, camera (project_08, court_08, match_loop_08, point_08, changeover_08) ----
@@ -86,8 +150,8 @@ const CHARS = [
   hook(8, 0x78BE, (E, c) => A(c, chars.checkCharNearTarget(E))),                              // CheckCharNearTarget
   hook(8, 0x75C0, E => chars.easeCharFacing(E)),                                              // EaseCharFacing
   hook(8, 0x75E8, (E, c) => { c.d = chars.updateCharFacingOctant(E); }),                      // UpdateCharFacingOctant
-  hook(8, 0x7621, (E, c) => chars.reloadCharFacingTiles(E, c.d)),                             // ReloadCharFacingTiles
-  hook(8, 0x7791, E => chars.stepCharAnimation(E)),                                           // StepCharAnimation
+  [8, 0x7621, reloadCharFacingTiles],                                                          // ReloadCharFacingTiles
+  hook(8, 0x7791, (E, c) => { const w = chars.stepCharAnimation(E); if (w !== null) { c.bc = w; c.d = w >> 8; } }),   // StepCharAnimation (bc, d: the last script word read)
   hook(8, 0x69EA, (E, c) => chars.setCharAnimation(E, c.d)),                                  // SetCharAnimation
   hook(8, 0x764B, E => chars.updateChargeFlash(E)),                                           // UpdateChargeFlash
   hook(8, 0x7666, E => chars.endChargeFlash(E)),                                              // EndChargeFlash
@@ -110,7 +174,7 @@ const AI = [
   hook(8, 0x7908, E => ai.aiSteerTowardTarget(E)),                                            // AiSteerTowardTarget
   hook(8, 0x7944, E => ai.aiSteerTowardBall(E)),                                              // AiSteerTowardBall
   hook(8, 0x7968, E => ai.aiAdvancePhase(E)),                                                 // AiAdvancePhase
-  hook(8, 0x7C86, (E, c) => { c.hl = ai.predictBallXAtDepth(E, c.de); }),                    // PredictBallXAtDepth
+  [8, 0x7C86, predictBallXAtDepth],                                                           // PredictBallXAtDepth
   hook(8, 0x7C33, (E, c) => { c.de = ai.mirrorDepthForFarSide(E, c.de); }),                  // MirrorDepthForFarSide
   hook(8, 0x7C40, (E, c) => { c.b = ai.getCharRoleByIndex(E, c.a); }),                       // GetCharRoleByIndex
   hook(8, 0x7C70, (E, c) => ai.setCharTargetMirrored(E, c.hl, c.de)),                        // SetCharTargetMirrored
@@ -211,8 +275,8 @@ const MORE = [
   hook(8, 0x6D27, E => chars.charPointReactionPhase(E)),                                       // CharPointReactionPhase
   hook(8, 0x6D3E, E => chars.charWalkToTargetPhase(E)),                                        // CharWalkToTargetPhase
   hook(8, 0x6D4B, E => chars.updateCharRunAnimation(E)),                                       // UpdateCharRunAnimation
-  hook(8, 0x69C2, E => chars.reloadCharFrameGfx(E)),                                           // ReloadCharFrameGfx
-  hook(8, 0x69D5, E => chars.loadCharChargeFlashGfx(E)),                                       // LoadCharChargeFlashGfx
+  [8, 0x69C2, (P, c) => loadCharPaletteThroughVector(P, c, 0)],                                // ReloadCharFrameGfx
+  [8, 0x69D5, (P, c) => loadCharPaletteThroughVector(P, c, 8)],                                // LoadCharChargeFlashGfx
   // movement, input, drawing (char_movement_08, char_input_08)
   hook(8, 0x7441, E => chars.accelerateCharDepth(E)), hook(8, 0x745B, E => chars.accelerateCharX(E)),   // AccelerateCharDepth / X
   hook(8, 0x7475, E => chars.decelerateCharDepth(E)), hook(8, 0x74A1, E => chars.decelerateCharX(E)),   // DecelerateCharDepth / X
@@ -262,10 +326,10 @@ const MORE = [
   hook(7, 0x537F, (E, c) => BC(c, shot.addPlayerMomentumToShot(E, c.bc))),                     // AddPlayerMomentumToShot
   hook(7, 0x53A2, (E, c) => BC(c, shot.applyCharFlagShotSpeedPenalty(E, c.bc))),               // ApplyCharFlagShotSpeedPenalty
   // bank 8's own arithmetic helpers (project_08): results in the registers the ROM leaves them in
-  hook(8, 0x59FB, (E, c) => { c.hl = E.M.mulHLByDESigned32(c.hl, c.de); }),                   // MulHLByDESigned32
+  [8, 0x59FB, mulHLByDESigned32],                                                             // MulHLByDESigned32
   hook(8, 0x5A1D, (E, c) => { c.hl = E.M.mulHLByDEAbs(c.hl, c.de); }),                        // MulHLByDEAbs
   hook(8, 0x5A39, (E, c) => { const r = E.M.mulSignedHLByAFrac(c.hl, c.a); c.hl = r.hl; c.a = r.a; }),   // MulSignedHLByAFrac
-  hook(8, 0x5A51, (E, c) => { c.de = E.M.mulHLByTangent(c.hl, c.bc); }),                      // MulHLByTangent
+  [8, 0x5A51, mulHLByTangent],                                                                // MulHLByTangent
   hook(8, 0x5A63, (E, c) => setADE(c, E.M.negateADE(ade(c)))),                                // NegateADE
   hook(8, 0x5A60, (E, c) => { if (c.d & 0x80) setADE(c, E.M.negateADE(ade(c))); }),           // UnusedAbsADE
   hook(8, 0x5A87, (E, c) => { E.M.addVel24ToPos32(c.hl, c.de); c.a = E.mem.u8(c.hl + 2); c.hl = c.hl + 3; c.de = c.de + 2; }),   // AddVel24ToPos32

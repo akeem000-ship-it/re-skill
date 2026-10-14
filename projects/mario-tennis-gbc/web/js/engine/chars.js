@@ -816,12 +816,13 @@ export function buildAirborneShadowSlot(E) {
 // any other $Fx = hold the frame forever. A frame change marks the sprite dirty (bit 6).
 export function stepCharAnimation(E) {
   const C = E.C, rom = E.rom;
-  let e;
+  let e, word = null;                                                   // the last script word read (the ROM leaves it in bc)
   if (C.animDelay) e = C.animFrame;
   else {
     for (let guard = 0; ; guard++) {
       if (guard > 1000) throw new Error("StepCharAnimation: script loops without a frame");
       const w = rom.u16(C.objectBank, C.animScriptPtr), cmd = w & 0xFF, d = w >> 8;
+      word = w;
       if (cmd < 0xF0) { C.animDelay = d; C.animScriptPtr = U16(C.animScriptPtr + 2); e = cmd; break; }
       if (cmd === 0xFF) { C.animScriptPtr = U16(C.animScriptBase + d); continue; }
       if (cmd === 0xFE) { setCharAnimation(E, d); continue; }
@@ -831,6 +832,7 @@ export function stepCharAnimation(E) {
   }
   C.animDelay = U8(C.animDelay - 1);
   if (C.animFrame !== e) { C.animFrame = e; C.spriteDirty |= 0x40; }
+  return word;
 }
 // 08:780C ReadCharInput: this frame's wCharInputBits from the character's input source
 export function readCharInput(E) {

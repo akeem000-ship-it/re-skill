@@ -6,6 +6,7 @@
 // Covered by out/engine/exh1.mtrec and rec1.mtrec (every match start; the effects during play).
 import { callHome } from "./draw.js";
 import { advanceFrame } from "../home/frame.js";
+import { sub8 } from "./leftovers.js";
 
 const BANK = 0x28, VRAM_BANK1 = 0x2000, TILE = 16;
 const vTiles0 = 0x8000, vTiles1 = 0x8800, vTiles2 = 0x9000;
@@ -124,15 +125,23 @@ export function* loadMatchStoryGfx(P) {
   yield* advanceFrameIfLcdOn(P);
 }
 
+// Each routine's last step is a call to a bank-0 routine (QueueVRAMCopy, LoadPaletteShadow ...) made with the
+// registers the ROM gives it, the others flowing from one call to the next as in the ROM, so the registers the
+// last call leaves are the routine's (passCpu); LoadMatchGraphics outside a minigame ends on its `cp`.
+const tail = fn => (P, c) => { fn(P, c); c.passCpu(); };
 export const HOOKS = [
-  [BANK, 0x5EB0, P => loadMatchGraphics(P)],
-  [BANK, 0x5EFB, P => loadMatchVariantGraphics(P)],
-  [BANK, 0x6024, P => loadMatchSharedTiles(P)],
-  [BANK, 0x6030, (P, c) => loadSpecialHitEffectTiles(P, c.a)],
-  [BANK, 0x6044, (P, c) => loadBallTouchCharEffectTilesA(P, c.a)],
-  [BANK, 0x6058, (P, c) => loadBallTouchCharEffectTilesB(P, c.a)],
-  [BANK, 0x606C, (P, c) => queueMatchSpriteFrameA(P, c.a)],
-  [BANK, 0x6086, (P, c) => queueMatchSpriteFrameB(P, c.a)],
-  [BANK, 0x60A0, (P, c) => loadEffectFrameTiles(P, c.a, c.b)],
+  [BANK, 0x5EB0, (P, c) => {
+    loadMatchGraphics(P); c.passCpu();
+    const context = P.V.matchContext;
+    if (context !== MATCHCONTEXT_MINIGAME) { c.a = context; c.f = sub8(context, MATCHCONTEXT_MINIGAME).f; }
+  }],
+  [BANK, 0x5EFB, tail(P => loadMatchVariantGraphics(P))],
+  [BANK, 0x6024, tail(P => loadMatchSharedTiles(P))],
+  [BANK, 0x6030, tail((P, c) => loadSpecialHitEffectTiles(P, c.a))],
+  [BANK, 0x6044, tail((P, c) => loadBallTouchCharEffectTilesA(P, c.a))],
+  [BANK, 0x6058, tail((P, c) => loadBallTouchCharEffectTilesB(P, c.a))],
+  [BANK, 0x606C, tail((P, c) => queueMatchSpriteFrameA(P, c.a))],
+  [BANK, 0x6086, tail((P, c) => queueMatchSpriteFrameB(P, c.a))],
+  [BANK, 0x60A0, tail((P, c) => loadEffectFrameTiles(P, c.a, c.b))],
   [BANK, 0x60C9, P => loadMatchStoryGfx(P)],
 ];

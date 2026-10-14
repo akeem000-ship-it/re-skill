@@ -6,6 +6,7 @@
 // each character's bank ($DF80-$DF8F); like the ROM, the code reaches them through the bank mapped at the time.
 // Bank-0 helpers (the sprite queue, the VRAM copy queue) are called as the ROM's (port hooks run where ported).
 // Covered by out/engine/exh1.mtrec and rec1.mtrec (match play; port_lockstep.mjs).
+import { andFlags, FZ, FN } from "./leftovers.js";
 import { engine } from "./engine_port.js";
 import { callModeHook } from "./match.js";
 import * as variants from "./variants.js";
@@ -137,12 +138,16 @@ export function drawSlotSprite(P, hl) {
   if (c === 0xFF) return;
   queueSprite(P, bus.u8(hl + 1), c, bus.u8(hl + 3), bus.u8(hl + 2));
 }
-// 08:650A DrawCharSprite: the character of the mapped bank, 24x32 or 32x32 by its sprite descriptor
+// 08:650A DrawCharSprite: the character of the mapped bank, 24x32 or 32x32 by its sprite descriptor. It ends with a
+// jump to the queue routine, made with the registers of that jump (a = the size byte, f of its `and a`); returns
+// whether it drew
 export function drawCharSprite(P, hl) {
   const bus = P.bus, c = bus.u8(hl);
-  if (c === 0xFF) return;
-  const regs = { c, b: bus.u8(hl + 1), e: bus.u8(hl + 2), d: bus.u8(hl + 3), h: bus.u8(CHAR_SPRITE_FRAME), l: bus.u8(CHAR_SPRITE_FRAME + 1) };
-  P.callRom(0, bus.u8(CHAR_SPRITE_FRAME + 2) ? 0x2CED : 0x2C2B, regs);   // QueueSprite32x32 / QueueSprite24x32
+  if (c === 0xFF) return false;
+  const big = bus.u8(CHAR_SPRITE_FRAME + 2);
+  const regs = { a: big, f: andFlags(big), c, b: bus.u8(hl + 1), e: bus.u8(hl + 2), d: bus.u8(hl + 3), h: bus.u8(CHAR_SPRITE_FRAME), l: bus.u8(CHAR_SPRITE_FRAME + 1) };
+  P.callRom(0, big ? 0x2CED : 0x2C2B, regs);                             // QueueSprite32x32 / QueueSprite24x32
+  return true;
 }
 // 08:6527 DrawStandingShadowSlot: the three-sprite standing shadow at the slot's place
 export function drawStandingShadowSlot(P, hl) {
@@ -292,7 +297,9 @@ export const HOOKS = [
   [8, 0x528C, P => buildNetBallSlot(P)],
   [8, 0x5482, P => drawBallTouchCharEffect(P)],
   [8, 0x64FD, (P, c) => drawSlotSprite(P, c.hl)],
-  [8, 0x650A, (P, c) => drawCharSprite(P, c.hl)],
+  [8, 0x650A, (P, c) => {                                                      // (no character: a = $FF from cp $ff, hl past it)
+    if (drawCharSprite(P, c.hl)) c.passCpu(); else { c.a = 0xFF; c.f = FZ | FN; c.hl = c.hl + 1; }
+  }],
   [8, 0x6527, (P, c) => drawStandingShadowSlot(P, c.hl)],
   [8, 0x636D, P => drawNearTeamChars(P)],
   [8, 0x63BF, P => drawFarTeamChars(P)],

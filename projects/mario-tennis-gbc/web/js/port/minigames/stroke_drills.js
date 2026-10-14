@@ -10,7 +10,7 @@
 // keep the server from the net (3).
 // Stroke Practice: four returns of the coach's ball into a target area that switches on 90 frames into the point
 // (a frame task): plain returns (1, 3) or lobs (2); graded after the fourth.
-import { ROM, far, farWait, POINTOUTCOME, SHOTTYPE_LOB, WINLOSE_WIN, WINLOSE_LOSE, MATCHABORT_MATCH, FLAG_Z, hook, auto, at, rb } from "./common.js";
+import { ROM, far, farWait, callAt, POINTOUTCOME, SHOTTYPE_LOB, WINLOSE_WIN, WINLOSE_LOSE, MATCHABORT_MATCH, FLAG_Z, hook, auto, at, rb } from "./common.js";
 import {
   BANK_0B as B, SignedTable_0b_00, SignedTable_0b_01, judgePoint, byOutcome, ZERO, abortPoint, judgeOn, judgeHooks,
   queueDrillResultMessage, setDrillMessageByServer, setDrillMessageByRallyParity, showQueuedDrillMessage,
@@ -85,12 +85,13 @@ function testBallBounceDepth(P) {
   return ((abs - SERVICE_LINE_DEPTH) & 0x8000) ? 0 : 1;
 }
 // StrokeMatch1HandlePointEnd (0B:6489)
+const STM1_AT = { msg: 0x64A0, frame: 0x64B9, reactions: 0x64BC, end: 0x64BF };   // its waiting calls
 function* strokeMatch1HandlePointEnd(P) {
   yield* matchJudgedPoint(P);
-  yield* showQueuedDrillMessage(P);
+  yield* callAt(P, STM1_AT.msg, showQueuedDrillMessage(P));
   yield* farWait(P, ROM.UpdatePointStats);
   strokeMatch1AwardPointToSide(P);
-  yield* showPointsAndEndPoint(P, false);
+  yield* showPointsAndEndPoint(P, false, STM1_AT);
 }
 // StrokeMatch1AwardPointToSide (0B:64C3): the point to the side of the result (no swapping: both serve alike)
 function strokeMatch1AwardPointToSide(P) {
@@ -105,7 +106,7 @@ function strokeMatch1AwardPointToSide(P) {
 // StrokeMatch1Hook_PointEnd (0B:6441): a two-point lead wins (checked every point); after eight, a draw
 function* strokeMatch1PointEnd(P) {
   judgeOn(P, strokeMatch1JudgePoint, 0);
-  yield* strokeMatch1HandlePointEnd(P);
+  yield* callAt(P, 0x6444, strokeMatch1HandlePointEnd(P));
   if (decideByTwoPointLead(P)) return;
   if (P.V.totalPointsScoredInCurrentGame !== 8) return;
   P.V.pointWinLoseFlag = 0;
@@ -152,17 +153,19 @@ const strokeMatchPointStart = opponents => function* (P) {
   for (let n = 1; n <= 8; n++) setCounter(P, n, 0);
 };
 // StrokeMatch2/3HandlePointEnd (0B:6788, 69D3)
-function* strokeMatchHandlePointEnd(P) {
+const STM2_AT = { msg: 0x679F, frame: 0x67B8, reactions: 0x67BB, end: 0x67BE };
+const STM3_AT = { msg: 0x69EA, frame: 0x6A03, reactions: 0x6A06, end: 0x6A09 };
+const strokeMatchHandlePointEnd = at => function* (P) {
   yield* matchJudgedPoint(P);
-  yield* showQueuedDrillMessage(P);
+  yield* callAt(P, at.msg, showQueuedDrillMessage(P));
   yield* farWait(P, ROM.UpdatePointStats);
   awardPointToSide(P);
-  yield* showPointsAndEndPoint(P, false);
-}
+  yield* showPointsAndEndPoint(P, false, at);
+};
 // StrokeMatch2/3Hook_PointEnd (0B:6739, 6984): after a pair, a two-point lead wins; after eight, a draw
-const strokeMatchPointEnd = judge => function* (P) {
+const strokeMatchPointEnd = (judge, handleAt, at) => function* (P) {
   judgeOn(P, judge, 0);
-  yield* strokeMatchHandlePointEnd(P);
+  yield* callAt(P, handleAt, strokeMatchHandlePointEnd(at)(P));
   if (P.V.totalPointsScoredInCurrentGame & 1) return;
   if (decideByTwoPointLead(P)) return;
   if (P.V.totalPointsScoredInCurrentGame !== 8) return;
@@ -253,14 +256,14 @@ const strokePractice3JudgePoint = strokePracticeJudge(0x71AB, [0x71D9, 0x7213], 
 function* strokePractice1PointEnd(P) {
   judgeOn(P, strokePractice1JudgePoint, 0);
   if (P.V.pointOutcome === POINTOUTCOME.OUT) incCounter(P, 1);
-  yield* practiceHandlePointEnd(P, 2);
+  yield* callAt(P, 0x6BF1, practiceHandlePointEnd(P, 2, 0x6C81));
   if (P.V.totalPointsScoredInCurrentGame < 4) return;
   P.V.pointWinLoseFlag = strokePractice1EvaluateResult(P);
 }
 // StrokePractice2/3Hook_PointEnd (0B:6E2D, 7092)
-const strokePracticePointEnd = (judge, n, evaluate) => function* (P) {
+const strokePracticePointEnd = (judge, n, evaluate, handleAt, handleBase) => function* (P) {
   judgeOn(P, judge, 0);
-  yield* practiceHandlePointEnd(P, n);
+  yield* callAt(P, handleAt, practiceHandlePointEnd(P, n, handleBase));
   if (P.V.totalPointsScoredInCurrentGame < 4) return;
   P.V.pointWinLoseFlag = evaluate(P);
 };
@@ -289,22 +292,22 @@ export const HOOKS = [
   H(0x66FB, () => {}),                                                            // StrokeMatch2Hook_MinigameStart
   H(0x66FC, updateDrillAbortCountdown),                                           // StrokeMatch2Hook_PerFrame
   H(0x6700, strokeMatchPointStart(0x6737)),                                       // StrokeMatch2Hook_PointStart
-  H(0x6739, strokeMatchPointEnd(strokeMatch2JudgePoint)),                         // StrokeMatch2Hook_PointEnd
+  H(0x6739, strokeMatchPointEnd(strokeMatch2JudgePoint, 0x673C, STM2_AT)),                         // StrokeMatch2Hook_PointEnd
   H(0x677C, DISABLED),                                                            // StrokeMatch2Hook_RallyTick
   H(0x6780, P => judgeOn(P, strokeMatch2JudgePoint, 2)),                          // StrokeMatch2Hook_Bounce
   H(0x6784, P => judgeOn(P, strokeMatch2JudgePoint, 1)),                          // StrokeMatch2Hook_BallHit
-  H(0x6788, strokeMatchHandlePointEnd),                                           // StrokeMatch2HandlePointEnd
+  H(0x6788, strokeMatchHandlePointEnd(STM2_AT)),                                           // StrokeMatch2HandlePointEnd
   ...judgeHooks(strokeMatch2JudgePoint, [0x67EB, 0x67F4, 0x67FD, 0x6806], [3]),   // StrokeMatch2JudgeOn*
   [B, 0x6810, hook((P, c) => strokeMatch2JudgePoint(P, c.a))],                    // StrokeMatch2JudgePoint
   // Stroke Match 3
   H(0x6946, () => {}),                                                            // StrokeMatch3Hook_MinigameStart
   H(0x6947, updateDrillAbortCountdown),                                           // StrokeMatch3Hook_PerFrame
   H(0x694B, strokeMatchPointStart(0x6982)),                                       // StrokeMatch3Hook_PointStart
-  H(0x6984, strokeMatchPointEnd(strokeMatch3JudgePoint)),                         // StrokeMatch3Hook_PointEnd
+  H(0x6984, strokeMatchPointEnd(strokeMatch3JudgePoint, 0x6987, STM3_AT)),                         // StrokeMatch3Hook_PointEnd
   H(0x69C7, DISABLED),                                                            // StrokeMatch3Hook_RallyTick
   H(0x69CB, P => judgeOn(P, strokeMatch3JudgePoint, 2)),                          // StrokeMatch3Hook_Bounce
   H(0x69CF, P => judgeOn(P, strokeMatch3JudgePoint, 1)),                          // StrokeMatch3Hook_BallHit
-  H(0x69D3, strokeMatchHandlePointEnd),                                           // StrokeMatch3HandlePointEnd
+  H(0x69D3, strokeMatchHandlePointEnd(STM3_AT)),                                           // StrokeMatch3HandlePointEnd
   ...judgeHooks(strokeMatch3JudgePoint, [0x6A36, 0x6A3F, 0x6A48, 0x6A51], [3]),   // StrokeMatch3JudgeOn*
   [B, 0x6A5B, hook((P, c) => strokeMatch3JudgePoint(P, c.a))],                    // StrokeMatch3JudgePoint
   // Stroke Practice 1
@@ -318,7 +321,7 @@ export const HOOKS = [
   H(0x6C4A, DISABLED),                                                            // StrokePractice1Hook_RallyTick
   H(0x6C4E, P => judgeOn(P, strokePractice1JudgePoint, 2)),                       // StrokePractice1Hook_Bounce
   H(0x6C52, P => { judgeOn(P, strokePractice1JudgePoint, 1); if (P.V.rallyLength === 1) resetActiveCharState(P); }),   // StrokePractice1Hook_BallHit
-  H(0x6C81, P => practiceHandlePointEnd(P, 2)),                                   // StrokePractice1HandlePointEnd
+  H(0x6C81, P => practiceHandlePointEnd(P, 2, 0x6C81)),                                   // StrokePractice1HandlePointEnd
   ...judgeHooks(strokePractice1JudgePoint, [0x6CD0, 0x6CD9, 0x6CE2, 0x6CEB], [3]),   // StrokePractice1JudgeOn*
   [B, 0x6CF5, hook((P, c) => strokePractice1JudgePoint(P, c.a))],                 // StrokePractice1JudgePoint
   // Stroke Practice 2
@@ -327,12 +330,12 @@ export const HOOKS = [
   H(0x6DDC, updateDrillAbortCountdown),                                           // StrokePractice2Hook_PerFrame
   H(0x6DE0, strokePracticePointStart(0x6EA7, 0x6E1C, 0x6E18)),                    // StrokePractice2Hook_PointStart
   H(0x6E1C, targetZoneDelayTask(0x6E1C)),                                         // StrokePractice2TargetZoneDelayTask
-  H(0x6E2D, strokePracticePointEnd(strokePractice2JudgePoint, 7, strokePractice2EvaluateResult)),   // StrokePractice2Hook_PointEnd
+  H(0x6E2D, strokePracticePointEnd(strokePractice2JudgePoint, 7, strokePractice2EvaluateResult, 0x6E30, 0x6EC9)),   // StrokePractice2Hook_PointEnd
   H(0x6E40, strokePractice2EvaluateResult),                                       // StrokePractice2EvaluateResult
   H(0x6E92, practiceRallyTick),                                                   // StrokePractice2Hook_RallyTick
   H(0x6E9F, P => judgeOn(P, strokePractice2JudgePoint, 2)),                       // StrokePractice2Hook_Bounce
   H(0x6EA3, P => judgeOn(P, strokePractice2JudgePoint, 1)),                       // StrokePractice2Hook_BallHit
-  H(0x6EC9, P => practiceHandlePointEnd(P, 7)),                                   // StrokePractice2HandlePointEnd
+  H(0x6EC9, P => practiceHandlePointEnd(P, 7, 0x6EC9)),                                   // StrokePractice2HandlePointEnd
   ...judgeHooks(strokePractice2JudgePoint, [0x6F18, 0x6F21, 0x6F2A, 0x6F33], [3]),   // StrokePractice2JudgeOn*
   [B, 0x6F3D, hook((P, c) => strokePractice2JudgePoint(P, c.a))],                 // StrokePractice2JudgePoint
   // Stroke Practice 3
@@ -341,12 +344,12 @@ export const HOOKS = [
   H(0x7041, updateDrillAbortCountdown),                                           // StrokePractice3Hook_PerFrame
   H(0x7045, strokePracticePointStart(0x7109, 0x7081, 0x707D)),                    // StrokePractice3Hook_PointStart
   H(0x7081, targetZoneDelayTask(0x7081)),                                         // StrokePractice3TargetZoneDelayTask
-  H(0x7092, strokePracticePointEnd(strokePractice3JudgePoint, 2, strokePractice1EvaluateResult)),   // StrokePractice3Hook_PointEnd
+  H(0x7092, strokePracticePointEnd(strokePractice3JudgePoint, 2, strokePractice1EvaluateResult, 0x7095, 0x712B)),   // StrokePractice3Hook_PointEnd
   H(0x70A5, strokePractice1EvaluateResult),                                       // StrokePractice3EvaluateResult
   H(0x70EE, practiceRallyTick),                                                   // StrokePractice3Hook_RallyTick
   H(0x70FB, P => judgeOn(P, strokePractice3JudgePoint, 2)),                       // StrokePractice3Hook_Bounce
   H(0x70FF, P => judgeOn(P, strokePractice3JudgePoint, 1)),                       // StrokePractice3Hook_BallHit
-  H(0x712B, P => practiceHandlePointEnd(P, 2)),                                   // StrokePractice3HandlePointEnd
+  H(0x712B, P => practiceHandlePointEnd(P, 2, 0x712B)),                                   // StrokePractice3HandlePointEnd
   ...judgeHooks(strokePractice3JudgePoint, [0x717A, 0x7183, 0x718C, 0x7195], [3]),   // StrokePractice3JudgeOn*
   [B, 0x719F, hook((P, c) => strokePractice3JudgePoint(P, c.a))],                 // StrokePractice3JudgePoint
 ];

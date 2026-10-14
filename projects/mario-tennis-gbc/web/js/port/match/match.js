@@ -310,11 +310,14 @@ export function isBallInTargetZone(P) {
 const REGS = ["a", "f", "b", "c", "d", "e", "h", "l"];
 const keeping = gen => (P, c) => (function* () { const r = REGS.map(k => c[k]); yield* gen(P, c); REGS.forEach((k, i) => { c[k] = r[i]; }); })();
 // a = 1 or 0 with the flags of `xor a / inc a` (Z clear) or `xor a` (Z set)
+// what InitDefaultMatchSettings leaves: hl past the cleared wModeScratch, c = 0 and the flags of the clear's last
+// `dec c`, a = the last value stored (the BGM; InitMinigameMatchSettings: the AI aim override $FF)
+const settingsRegs = (c, a) => { c.a = a; c.f = 0xC0; c.c = 0; c.hl = 0xC800; };
 const yesNo = (c, v) => { c.a = v; c.f = v ? 0x00 : 0x80; };
 export const HOOKS = [
   [7, 0x48F6, P => endLinkSession(P)],
-  [8, 0x4070, P => initDefaultMatchSettings(P)],
-  [8, 0x6544, P => initMinigameMatchSettings(P)],
+  [8, 0x4070, (P, c) => { initDefaultMatchSettings(P); settingsRegs(c, 0x11); }],
+  [8, 0x6544, (P, c) => { initMinigameMatchSettings(P); settingsRegs(c, 0xFF); }],
   [8, 0x450E, P => initViewFlipPreference(P)],
   [8, 0x4539, P => applyMatchBgmPreference(P)],
   [8, 0x5E28, P => loadCourtSceneData(P)],

@@ -195,4 +195,37 @@ const GFX = [
   E("DrawNearTeamCharsDoubles", 8, 0x63A0, { prep: ballDraw }), E("DrawFarTeamCharsDoubles", 8, 0x63F2, { prep: ballDraw }),
 ];
 
-export const ROUTINES = [...ENGINE, ...DRAW, ...OBJ, ...LOOP, ...MATCH, ...MORE, ...GFX];
+// the routines other parts of the game reach through the banks' export tables (slots_07/08/09, bank $28's): every
+// register they leave, for callers that read them (the story engine's InitStoryMatchSettings reads hl, say)
+const ALL = ["a", "f", "b", "c", "d", "e", "h", "l"];
+const rnd = s => ({ a: r8(s, 91), b: r8(s, 92), c: r8(s, 93), d: r8(s, 94), e: r8(s, 95), h: r8(s, 96), l: r8(s, 97) });
+const EXPORTS = [
+  ["InitDefaultMatchSettings", 8, 0x4070], ["ResetMatchState", 8, 0x40ab], ["InitMinigameMatchSettings", 8, 0x6544], ["UpdateMatchFrame", 8, 0x41f7],
+  ["InitChar", 8, 0x684a, s => ({ ...rnd(s), a: r8(s, 1) & 3, d: pick(s, 2, [0, 5, 0x10, 0x17]), e: r8(s, 3) & 7 })], ["ClearSpriteSlots", 8, 0x630e],
+  ["DrawCharSprite", 8, 0x650a, s => ({ ...rnd(s), h: 0xDF, l: 0x80 })], ["StepCharAnimation", 8, 0x7791], ["ReloadCharFacingTiles", 8, 0x7621, s => ({ ...rnd(s), d: r8(s, 1) & 7 })],
+  ["BuildCharSpriteSlots", 8, 0x7672], ["UpdateCharFacingOctant", 8, 0x75e8], ["EaseCharFacing", 8, 0x75c0], ["SetCharState", 8, 0x6a1c, s => ({ ...rnd(s), a: r8(s, 1) & 7 })],
+  ["ReloadCharFrameGfx", 8, 0x69c2], ["SetCharAnimation", 8, 0x69ea, s => ({ ...rnd(s), d: r8(s, 1) % 0x13 })], ["SetCharPosAndTarget", 8, 0x6988],
+  ["SetBallTrailColor", 8, 0x5189, s => ({ ...rnd(s), a: r8(s, 1) & 7 })], ["SetBallVelocityPolar", 8, 0x45a9], ["Unused_08_SetBallSpinComponents", 8, 0x45d8],
+  ["CheckBallOutOfBounds", 8, 0x463a], ["FindServerCharBank", 8, 0x46e7], ["SetCameraTarget", 8, 0x61c9], ["PredictBallXAtDepth", 8, 0x7c86], ["MulHLByTangent", 8, 0x5a51],
+  ["StartBounceEffect", 8, 0x5383], ["AdvanceMatchRng", 8, 0x43f6], ["ReadMatchInputHeld", 8, 0x440d], ["ReadMatchInputPressed", 8, 0x4415], ["ReadMatchInputRepeat", 8, 0x441d],
+  ["ApplyCameraProjection", 8, 0x59bb], ["SetModeHookTable", 8, 0x671a], ["SetMinigamePointTable", 8, 0x6728], ["SetBallGatePoint1", 8, 0x6731], ["SetBallGatePoint2", 8, 0x6740],
+  ["DidBallCrossGate", 8, 0x676d], ["SetTargetZoneCorner1", 8, 0x674f], ["SetTargetZoneCorner2", 8, 0x675e], ["IsBallInTargetZone", 8, 0x67c2], ["ResolvePointWinner", 8, 0x5d9a],
+  ["UpdatePointStats", 8, 0x5c2b], ["AwardPoint", 8, 0x5c14], ["SetBallPosition", 8, 0x458b], ["HandleServeFault", 8, 0x5b7f], ["SetCharTarget", 8, 0x69ae],
+  ["SelectRallyShotType", 8, 0x707e], ["CharPointEndReaction", 8, 0x4fc7], ["MulMem24ByFrac", 8, 0x468b, s => ({ ...rnd(s), h: 0xC4, l: 0x20 })],
+  ["InitAllObjSlots", 9, 0x4555], ["UpdateAllObjSprites", 9, 0x4695], ["UpdatePointDigitsDisplay", 9, 0x4036], ["LoadOnCourtCharacterGfx", 9, 0x40b5], ["LoadServeGfx", 9, 0x6c40],
+  ["SpawnGameScoreDisplayObjs", 9, 0x412a], ["DismissGameScoreDisplayObjs", 9, 0x4190], ["SpawnServeIndicatorObjs", 9, 0x4242], ["DismissServeIndicatorObjs", 9, 0x4282],
+  ["ShowCourtBanner", 9, 0x4367, s => ({ ...rnd(s), a: r8(s, 1) % 29 })], ["SpawnCourtBannerObj", 9, 0x4371, s => ({ ...rnd(s), a: r8(s, 1) % 29 })], ["HideCourtBanner", 9, 0x437b],
+  ["SpawnServeIndicatorSideObj", 9, 0x4310], ["DismissServeIndicatorSideObj", 9, 0x431d], ["SpawnWinLoseResultObj", 9, 0x42d8], ["DismissWinLoseResultObj", 9, 0x42f6],
+  ["SetObjPosition", 9, 0x45c4, s => ({ ...rnd(s), b: 0xDD, c: pick(s, 1, [0x80, 0x90, 0xA0, 0xB0, 0xC0]) })], ["UpdateScorePanelDisplay", 9, 0x4098],
+  ["LoadScoreDigitGfx", 9, 0x6100, s => ({ ...rnd(s), a: r8(s, 1) % 10, b: r8(s, 2) & 1, d: 0x83, e: 0 })],
+  ...[["LoadPlayer1PointsDigitGfx", 0x610c], ["LoadPlayer2PointsDigitGfx", 0x611b], ["LoadPlayer1ScoreDigitGfx", 0x612a], ["LoadPlayer2ScoreDigitGfx", 0x6139]].map(([n, ad]) => [n, 9, ad, s => ({ ...rnd(s), a: r8(s, 1) % 9, b: r8(s, 2) & 1 })]),
+  ["SpawnGameResultObj", 9, 0x422c], ["DismissGameResultObj", 9, 0x4238],
+  ["ComputeShotPlacement", 7, 0x5161], ["ExecuteShot", 7, 0x53b0], ["ComputeShotTrajectory", 7, 0x571e], ["LookupCharSpriteSet", 7, 0x5a43],
+  ["SetupCharacterSprite", 7, 0x5a70, s => ({ ...rnd(s), d: pick(s, 1, [0, 5, 0x10, 0x17]), e: r8(s, 2) & 7 })], ["LoadCharacterAttributes", 7, 0x5ab3],
+  ["LoadMatchGraphics", 0x28, 0x5eb0], ["LoadMatchVariantGraphics", 0x28, 0x5efb, s => rnd(s)], ["LoadSpecialHitEffectTiles", 0x28, 0x6030, s => ({ ...rnd(s), a: r8(s, 1) & 3 })],
+  ["LoadBallTouchCharEffectTilesA", 0x28, 0x6044, s => ({ ...rnd(s), a: r8(s, 1) & 1 })], ["LoadBallTouchCharEffectTilesB", 0x28, 0x6058, s => ({ ...rnd(s), a: r8(s, 1) & 1 })],
+  ["QueueMatchSpriteFrameA", 0x28, 0x606c, s => ({ ...rnd(s), a: r8(s, 1) % 3 })], ["LoadEffectFrameTiles_28", 0x28, 0x60a0, s => ({ ...rnd(s), a: r8(s, 1) % 8, b: r8(s, 2) & 3 })],
+  ["QueueMatchSpriteFrameB", 0x28, 0x6086, s => ({ ...rnd(s), a: r8(s, 1) % 3 })],
+].map(([name, bank, addr, regs]) => E(`regs ${name}`, bank, addr, { regs: regs || rnd, out: ALL, prep: (m, s) => { if (bank === 7) m.hram[0x15] = 7; } }));
+
+export const ROUTINES = [...ENGINE, ...DRAW, ...OBJ, ...LOOP, ...MATCH, ...MORE, ...GFX, ...EXPORTS];

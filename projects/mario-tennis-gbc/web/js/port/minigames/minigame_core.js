@@ -19,7 +19,7 @@
 // Covered by web/tests/port/routines_minigames.mjs (the routines that do not wait) and the lockstep on
 // out/engine/rec2.mtrec (frames 5765-9814: The Machine, id $12) and out/port/minigame_*.mtrec.
 import {
-  BANK_MINIGAMES, ROM, far, farWait, sound, pushWramBank, rb, rw, at, put, hook, hookGen, keepRegs, FLAG_Z, FLAG_C,
+  BANK_MINIGAMES, ROM, far, farWait, farcallAt, callAt, pushedWord, sound, pushWramBank, rb, rw, at, put, hook, hookGen, keepRegs, FLAG_Z, FLAG_C,
   POINTOUTCOME, WINLOSE_WIN, WINLOSE_LOSE, MATCHABORT_MATCH, CHARSTATE_STANDBY, CHARSTATE_WALK, CHARSTATE_RALLY,
   CHARANIM_FOREHAND, WRAM_ACTORS, WRAM_TEXT, WRAM_SOUND, WRAM_CHAR1, CHAR, CHAR_UNUSED_15, BGM_NONE, BGM_WIN, BGM_LOSE,
   SFX_COUNTDOWN, SFX_COUNTDOWN_GO, SFX_BALL_LAUNCH, MINIGAME_TENNIS_MACHINE_1, MINIGAME_TENNIS_MACHINE_HIGH_SCORE,
@@ -193,9 +193,9 @@ export function* showPointOutcomeBanner(P) {
   const o = P.V.pointOutcome;
   if (o === POINTOUTCOME.WINNER || o === POINTOUTCOME.BALL_HIT_PLAYER || o === POINTOUTCOME.MINIGAME_CLEARED) return;
   yield* farWait(P, ROM.ShowCourtBanner, { a: o });
-  yield* farWait(P, ROM.StepMatchFrames, { a: 30 });
+  yield* farcallAt(P, 0x43D3, ROM.StepMatchFrames, { a: 30 });
   yield* farWait(P, ROM.HideCourtBanner);
-  yield* farWait(P, ROM.StepMatchFrames, { a: 10 });
+  yield* farcallAt(P, 0x43DB, ROM.StepMatchFrames, { a: 10 });
 }
 // DetermineMinigamePointResult (0D:43DF): won or lost, and the result banner (d): the level's "clear" banner
 // ($12 + level) when the target score was reached, "new record" ($16) when a high-score run beat the record,
@@ -213,13 +213,13 @@ export function determineMinigamePointResult(P) {
 // the win or lose jingle, the banner until a button (after 55 frames), then the match ends
 export function* showMinigamePointResult(P, banner) {
   sound(P, P.V.pointWinLoseFlag & 0x80 ? BGM_LOSE : BGM_WIN);
-  yield* farWait(P, ROM.StepMatchFrame);
+  yield* farcallAt(P, 0x441E, ROM.StepMatchFrame);
   yield* farWait(P, ROM.ShowCourtBanner, { a: banner, d: banner });
-  yield* farWait(P, ROM.StepMatchFrames, { a: 10 });
-  yield* farWait(P, ROM.StepMatchFramesSkippable, { a: 0x2D });
-  yield* farWait(P, ROM.RunMatchFramesUntilInput);
+  yield* farcallAt(P, 0x4427, ROM.StepMatchFrames, { a: 10 });
+  yield* farcallAt(P, 0x442C, ROM.StepMatchFramesSkippable, { a: 0x2D });
+  yield* farcallAt(P, 0x442F, ROM.RunMatchFramesUntilInput);
   yield* farWait(P, ROM.HideCourtBanner);
-  yield* farWait(P, ROM.StepMatchFrames, { a: 15 });
+  yield* farcallAt(P, 0x4437, ROM.StepMatchFrames, { a: 15 });
   P.V.matchAbortFlag = MATCHABORT_MATCH;
 }
 
@@ -294,7 +294,7 @@ export function* startMinigameMatch(P) {
   far(P, ROM.SetCharState, { a: CHARSTATE_WALK });
   P.bus.w8(CHAR.aimJitterScale, 4);
   P.V.minigameServeState = P.bus.u8(CHAR.id) === CHAR_UNUSED_15 ? 1 : 0;
-  yield* playMinigameCountdown(P);
+  yield* callAt(P, 0x46D3, playMinigameCountdown(P));
 }
 // DrawMinigameScoreHud (0D:46D7), the PerFrame hook of the machine games: the score at the top; with a ball
 // launcher, the machine's sprite slot shown in front (bit 5 of its attribute off)
@@ -320,7 +320,7 @@ export function* launchMinigameServe(P) {
   let old = pushWramBank(P, WRAM_TEXT);
   far(P, ROM.SetCharAnimation, { d: CHARANIM_FOREHAND, b: speed });
   P.wramBank(old);
-  if (V.minigameServeState) yield* farWait(P, ROM.StepMatchFrames, { a: 15 });
+  if (V.minigameServeState) yield* farcallAt(P, 0x472A, ROM.StepMatchFrames, { a: 15 });
   w16(P, "minigameServeCount", (u16(P, "minigameServeCount") + 1) & 0xFFFF);
   launchBall(P);
   V.minigameServeGroup = divHLByDE(P, V.minigameServeSlot, 3) & 0xFF;
@@ -340,10 +340,10 @@ export function* endMinigamePoint(P) {
   let old = pushWramBank(P, WRAM_ACTORS);
   far(P, ROM.SetCharState, { a: CHARSTATE_STANDBY });
   P.wramBank(old);
-  yield* showPointOutcomeBanner(P);
+  yield* callAt(P, 0x4770, showPointOutcomeBanner(P));
   if (!(far(P, ROM.ResolvePointWinner).a & 0x80)) {
     const tempo = rb(P, at(EndMinigamePoint_PointOutcomeTable, V.minigameServeSpeed * 4));
-    yield* farWait(P, ROM.StepMatchFrames, { a: rb(P, at(MinigameShotIntervalByTempo, tempo)) });
+    yield* farcallAt(P, 0x478E, ROM.StepMatchFrames, { a: rb(P, at(MinigameShotIntervalByTempo, tempo)) });
     if (!isMinigameTargetReached(P)) return;
     V.pointOutcome = POINTOUTCOME.MINIGAME_CLEARED;
   }
@@ -353,7 +353,7 @@ export function* endMinigamePoint(P) {
   P.wramBank(WRAM_TEXT);
   yield* farWait(P, ROM.CharPointEndReaction);
   P.wramBank(old);
-  yield* showMinigamePointResult(P, r.d);
+  yield* callAt(P, 0x47BA, showMinigamePointResult(P, r.d));
 }
 // KeepMinigameCameraFixed (0D:47BE), the RallyTick hook: the camera does not follow the ball
 export function keepMinigameCameraFixed(P) { P.V.cameraFollowBall = 0; }
@@ -418,18 +418,22 @@ export function* playMinigameCountdown(P) {
   P.wramBank(WRAM_ACTORS);
   V.pauseDisabled = 0;
   const bgm = V.currentBGM;
-  sound(P, BGM_NONE);
-  yield* farWait(P, ROM.StepMatchFrames, { a: 20 });
-  for (let digit = 3; digit > 0; digit--) {
-    yield* farWait(P, ROM.LoadScoreDigitGfx, { a: digit, b: 1, d: 0x82, e: 0x00 });   // into vTiles0 tile $20
-    if (!V.matchFramesAbort) sound(P, SFX_COUNTDOWN);
-    yield* farWait(P, ROM.SpawnCourtBannerObj, { a: 0x11 });
-    yield* farWait(P, ROM.StepMatchFrames, { a: 40 });
-  }
-  if (!V.matchFramesAbort) sound(P, SFX_COUNTDOWN_GO);
-  yield* farWait(P, ROM.ShowCourtBanner, { a: 0x10 });
-  yield* farWait(P, ROM.StepMatchFrames, { a: 40 });
-  yield* farWait(P, ROM.HideCourtBanner);
+  yield* pushedWord(P, bgm << 8 | P.cpu.f, (function* () {                      // push af: the music
+    sound(P, BGM_NONE);
+    yield* farcallAt(P, 0x48E0, ROM.StepMatchFrames, { a: 20 });
+    for (let digit = 3; digit > 0; digit--) {
+      yield* pushedWord(P, digit << 8 | P.cpu.f, (function* () {                 // push af: the digit
+        yield* farWait(P, ROM.LoadScoreDigitGfx, { a: digit, b: 1, d: 0x82, e: 0x00 });   // into vTiles0 tile $20
+        if (!V.matchFramesAbort) sound(P, SFX_COUNTDOWN);
+        yield* farWait(P, ROM.SpawnCourtBannerObj, { a: 0x11 });
+        yield* farcallAt(P, 0x48FD, ROM.StepMatchFrames, { a: 40 });
+      })());
+    }
+    if (!V.matchFramesAbort) sound(P, SFX_COUNTDOWN_GO);
+    yield* farWait(P, ROM.ShowCourtBanner, { a: 0x10 });
+    yield* farcallAt(P, 0x4913, ROM.StepMatchFrames, { a: 40 });
+    yield* farWait(P, ROM.HideCourtBanner);
+  })());
   if (!V.matchFramesAbort) sound(P, bgm);
 }
 // GetMinigameCharCoordsEntry (0D:4926), a = slot: hl = its x, de = its depth
@@ -477,12 +481,12 @@ export function* handleMinigamePointEnd(P) {
   let old = pushWramBank(P, WRAM_ACTORS);
   far(P, ROM.SetCharState, { a: CHARSTATE_STANDBY });
   P.wramBank(old);
-  yield* showPointOutcomeBanner(P);
+  yield* callAt(P, 0x4B3C, showPointOutcomeBanner(P));
   const r = determineMinigamePointResult(P);
   old = pushWramBank(P, WRAM_ACTORS);
   yield* farWait(P, ROM.CharPointEndReaction);
   P.wramBank(old);
-  yield* showMinigamePointResult(P, r.d);
+  yield* callAt(P, 0x4B55, showMinigamePointResult(P, r.d));
 }
 // AwardMinigamePointAndReflectBall (0D:4B59), the RallyTick hook of The Wall: the ball reached the wall: a point
 // (the target score reached clears the minigame), then ReflectBallVelocity

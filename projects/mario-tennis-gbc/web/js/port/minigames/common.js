@@ -20,6 +20,7 @@
 // ROM data. Tables are read from the ROM where the code reads them (P.bus: the bank mapped, which is the code's
 // own), never copied here, so an index past a table's end reads what the ROM's code reads.
 import { playSoundManaged } from "../audio/requests.js";
+import { pushWord, dropWords } from "../home/memory.js";
 
 export const BANK_DRILLS = 0x0B, BANK_MINIGAMES = 0x0D;
 const rROMB0 = 0x2000;
@@ -106,6 +107,34 @@ export const FARPTR_EXECUTE_SHOT = 0x073C;
 export const far = (P, [bank, addr], regs = {}) => P.callRom(bank, addr, regs);
 // The same for a routine that may wait (a generator: yield* farWait(...)).
 export function* farWait(P, [bank, addr], regs = {}) { return yield* P.runRom(bank, addr, regs); }
+
+// ---- the ROM's stack where the code waits ----
+// The lockstep test lines the port up with the ROM at each AdvanceFrame and resyncs only at the same stack depth, so
+// JavaScript that waits stands where the ROM's code would: the return address of each `call` into it, the words
+// the ROM pushed (push af/bc/de/hl, push_wram_bank) and FarCall's frame under a far callee. (The stack page itself
+// is not compared; the values pushed are the ROM's anyway.)
+// `call X` at `at` into JavaScript that waits: its return address on the stack meanwhile
+export function* callAt(P, at, gen) { pushWord(P, (at + 3) & 0xFFFF); const r = yield* gen; dropWords(P, 1); return r; }
+// a word pushed while gen runs (push rr ... pop rr, push_wram_bank ... pop_wram_bank)
+export function* pushedWord(P, word, gen) { pushWord(P, word & 0xFFFF); const r = yield* gen; dropWords(P, 1); return r; }
+// `farcall X` at `at` into the ROM's code: FarCall's frame (the return past the two operand bytes, hl, a with the
+// caller's bank in place of f) under the callee's return (CallVectorEntryA's: P.runRom's own)
+export function* farcallAt(P, at, [bank, addr], regs = {}) {
+  const r0 = { h: P.cpu.h, l: P.cpu.l, a: P.cpu.a, ...regs };
+  pushWord(P, (at + 3) & 0xFFFF); pushWord(P, r0.h << 8 | r0.l); pushWord(P, r0.a << 8 | P.V.romBank);
+  const r = yield* P.runRom(bank, addr, regs);
+  dropWords(P, 3);
+  return r;
+}
+const FARCALL_RETURN = 0x01D5;               // FarCall's tail: where a far callee returns
+// `farcall X` at `at` into JavaScript in another bank: FarCall's frame and its tail's address, the bank mapped
+export function* farcallJsAt(P, at, bank, gen, regs = {}) {
+  const r0 = { h: P.cpu.h, l: P.cpu.l, a: P.cpu.a, ...regs };
+  pushWord(P, (at + 3) & 0xFFFF); pushWord(P, r0.h << 8 | r0.l); pushWord(P, r0.a << 8 | P.V.romBank); pushWord(P, FARCALL_RETURN);
+  const r = yield* inBankWait(P, bank, gen);
+  dropWords(P, 4);
+  return r;
+}
 
 // rst $08 ; db id — and PlaySoundManaged (00:3024): request a sound (every register kept)
 export const sound = (P, id) => playSoundManaged(P, id);

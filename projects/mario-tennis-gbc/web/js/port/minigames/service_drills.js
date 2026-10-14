@@ -11,7 +11,7 @@
 // Service Practice: four serves into a target area (1), with topspin or slice to make it bounce out (2), with
 // "nice timing" (a special shot) through the poles (3); the lesson's grade (wDrillLessonResult) says what went wrong.
 import {
-  ROM, far, farWait, sound, POINTOUTCOME, SFX_BEEP, SFX_MENU_SELECT, DRILLMSG_HIDE, WINLOSE_WIN, WINLOSE_LOSE,
+  ROM, far, farWait, callAt, sound, POINTOUTCOME, SFX_BEEP, SFX_MENU_SELECT, DRILLMSG_HIDE, WINLOSE_WIN, WINLOSE_LOSE,
   MATCHABORT_MATCH, hook, auto,
 } from "./common.js";
 import {
@@ -78,40 +78,44 @@ function serviceMatch2PointStart(P) {
   P.V.drillPointJudgement = 0;
 }
 // ServiceMatch1HandlePointEnd (0B:48A6) / ServiceMatch3 (0B:4C98): the result, both sides' successes counted
-// (the points: Match 1 through AwardPoint, Match 3 through the side award), the message
+// (the points: Match 1 through AwardPoint, Match 3 through the side award), the message. (*_AT: where each one's
+// code makes its waiting calls, for the ROM's stack: see showPointsAndEndPoint)
+const SM1_AT = { msg: 0x48CD, frame: 0x48F2, reactions: 0x48F5, end: 0x48F8 };
+const SM2_AT = { msg: 0x4AD3, frame: 0x4AFB, reactions: 0x4AFE, end: 0x4B01 };
+const SM3_AT = { msg: 0x4CBF, frame: 0x4CE4, reactions: 0x4CE7, end: 0x4CEA };
 function* serviceMatch1HandlePointEnd(P) {
   yield* matchJudgedPoint(P);
   countBothSides(P, 1);
-  yield* showQueuedDrillMessage(P);
+  yield* callAt(P, SM1_AT.msg, showQueuedDrillMessage(P));
   yield* farWait(P, ROM.UpdatePointStats);
   yield* farWait(P, ROM.AwardPoint);
   setPointsFromCounts(P);
-  yield* showPointsAndEndPoint(P, false);
+  yield* showPointsAndEndPoint(P, false, SM1_AT);
 }
 function* serviceMatch3HandlePointEnd(P) {
   yield* matchJudgedPoint(P);
   countBothSides(P, 1);
-  yield* showQueuedDrillMessage(P);
+  yield* callAt(P, SM3_AT.msg, showQueuedDrillMessage(P));
   yield* farWait(P, ROM.UpdatePointStats);
   awardPointToSide(P);
   setPointsFromCounts(P);
-  yield* showPointsAndEndPoint(P, false);
+  yield* showPointsAndEndPoint(P, false, SM3_AT);
 }
 // ServiceMatch2HandlePointEnd (0B:4AAC): the stats only count a serve that reached its target (wDrillServeTargetResult)
 function* serviceMatch2HandlePointEnd(P) {
   yield* matchJudgedPoint(P);
   countBothSides(P, 1);
-  yield* showQueuedDrillMessage(P);
+  yield* callAt(P, SM2_AT.msg, showQueuedDrillMessage(P));
   if (P.bus.u8((P.A.drillServeTargetResult + P.V.currentServingPlayer) & 0xFFFF)) yield* farWait(P, ROM.UpdatePointStats);
   awardPointToSide(P);
-  yield* showPointsAndEndPoint(P, false);
+  yield* showPointsAndEndPoint(P, false, SM2_AT);
 }
 function setPointsFromCounts(P) { P.V.player1PointsWon = counter(P, 1); P.V.player2PointsWon = counter(P, 2); }
 // ServiceMatch1/2Hook_PointEnd (0B:4863, 4A27): after each pair of serves the side with more successes wins;
 // after all eight, the result (a tie: none)
-const serviceMatchPointEnd = (judge, handle) => function* (P) {
+const serviceMatchPointEnd = (judge, handle, handleAt) => function* (P) {
   judgeOn(P, judge, 0);
-  yield* handle(P);
+  yield* callAt(P, handleAt, handle(P));
   const n = P.V.totalPointsScoredInCurrentGame;
   if (n & 1) return;
   if (n === 8) {
@@ -125,7 +129,7 @@ const serviceMatchPointEnd = (judge, handle) => function* (P) {
 // ServiceMatch3Hook_PointEnd (0B:4C49): a decided point; after each pair, a two-point lead wins; after eight, none
 function* serviceMatch3PointEnd(P) {
   judgeOn(P, serviceMatch3JudgePoint, 0);
-  yield* serviceMatch3HandlePointEnd(P);
+  yield* callAt(P, 0x4C4C, serviceMatch3HandlePointEnd(P));
   if (!P.V.pointWinLoseFlag) return;
   if (P.V.totalPointsScoredInCurrentGame & 1) return;
   if (decideByTwoPointLead(P)) return;
@@ -162,8 +166,8 @@ function servicePractice3PointStart(P) {
   P.V.drillMessageId = 0;
 }
 // Service Practice 1-3 Hook_PointEnd (0B:4E25, 4FB5, 5237): after the fourth serve the lesson is graded
-const servicePracticePointEnd = (handle, evaluate) => function* (P) {
-  yield* handle(P);
+const servicePracticePointEnd = (handle, evaluate, handleAt) => function* (P) {
+  yield* callAt(P, handleAt, handle(P));
   if (P.V.totalPointsScoredInCurrentGame < 4) return;
   if (!P.V.pointWinLoseFlag) return;
   P.V.pointWinLoseFlag = evaluate(P);
@@ -235,17 +239,17 @@ function servicePractice3BallHit(P) { servicePractice3SetupShotTarget(P); servic
 
 // ServicePractice1HandlePointEnd (0B:4EC2) / 3 (0B:5324): the serve's result and message; successes in
 // wDrillCounters + 1 / + 5 as player 1's points; the coach mirrors the result
-const servicePracticeHandlePointEnd = (queueOutcome, first) => function* (P) {
+const servicePracticeHandlePointEnd = (queueOutcome, first, at) => function* (P) {
   yield* farWait(P, ROM.UpdateScorePanelDisplay);
   P.V.pointWinLoseFlag = queueOutcome(P);
   recordDrillPointResultBits(P);
   countBothSides(P, first);
-  yield* showQueuedDrillMessage(P);
+  yield* callAt(P, at.msg, showQueuedDrillMessage(P));
   yield* farWait(P, ROM.UpdatePointStats);
   yield* farWait(P, ROM.AwardPoint);
   P.V.player1PointsWon = counter(P, first);
   P.V.player2PointsWon = 0;
-  yield* showPointsAndEndPoint(P, true);
+  yield* showPointsAndEndPoint(P, true, at);
 };
 // ServicePractice2HandlePointEnd (0B:5082): the same with the shot check first, and the outcome message when none
 // was queued
@@ -256,12 +260,12 @@ function* servicePractice2HandlePointEnd(P) {
   recordDrillPointResultBits(P);
   countBothSides(P, 5);
   if (!P.V.drillMessageId) queueDrillOutcomeMessage(P);
-  yield* showDrillMessageByIndex(P, P.V.drillMessageId);
+  yield* callAt(P, 0x50AA, showDrillMessageByIndex(P, P.V.drillMessageId));
   yield* farWait(P, ROM.UpdatePointStats);
   yield* farWait(P, ROM.AwardPoint);
   P.V.player1PointsWon = counter(P, 5);
   P.V.player2PointsWon = 0;
-  yield* showPointsAndEndPoint(P, true);
+  yield* showPointsAndEndPoint(P, true, { frame: 0x50CD, reactions: 0x50D8, end: 0x50E1 });
 }
 // UnusedStoreDrillServeTargetResult (0B:4F19): wDrillServeTargetResult = +1 / -1 by the target area (unused)
 function unusedStoreDrillServeTargetResult(P, cin) {
@@ -345,10 +349,10 @@ function servicePractice3QueueOutcomeMessage(P) {
 
 // ---- hooks ----
 const H = (addr, fn) => [B, addr, auto(fn)];
-const sp1Handle = servicePracticeHandlePointEnd(servicePractice1QueueOutcomeMessage, 1);
-const sp3Handle = servicePracticeHandlePointEnd(servicePractice3QueueOutcomeMessage, 5);
-const sm1PointEnd = serviceMatchPointEnd(serviceMatch1JudgePoint, serviceMatch1HandlePointEnd);
-const sm2PointEnd = serviceMatchPointEnd(serviceMatch2JudgePoint, serviceMatch2HandlePointEnd);
+const sp1Handle = servicePracticeHandlePointEnd(servicePractice1QueueOutcomeMessage, 1, { msg: 0x4EDE, frame: 0x4F01, reactions: 0x4F0C, end: 0x4F15 });
+const sp3Handle = servicePracticeHandlePointEnd(servicePractice3QueueOutcomeMessage, 5, { msg: 0x5340, frame: 0x5363, reactions: 0x536E, end: 0x5377 });
+const sm1PointEnd = serviceMatchPointEnd(serviceMatch1JudgePoint, serviceMatch1HandlePointEnd, 0x4866);
+const sm2PointEnd = serviceMatchPointEnd(serviceMatch2JudgePoint, serviceMatch2HandlePointEnd, 0x4A2A);
 export const HOOKS = [
   // Service Match 1
   H(0x484C, () => {}),                                                            // ServiceMatch1Hook_MinigameStart
@@ -384,7 +388,7 @@ export const HOOKS = [
   H(0x4DF2, practiceInit),                                                        // ServicePractice1DrillInit
   H(0x4E08, updateDrillAbortCountdown),                                           // ServicePractice1Hook_PerFrame
   H(0x4E0C, servicePractice1PointStart),                                          // ServicePractice1Hook_PointStart
-  H(0x4E25, servicePracticePointEnd(sp1Handle, servicePractice1EvaluateResult)),  // ServicePractice1Hook_PointEnd
+  H(0x4E25, servicePracticePointEnd(sp1Handle, servicePractice1EvaluateResult, 0x4E25)),  // ServicePractice1Hook_PointEnd
   H(0x4E3F, servicePractice1EvaluateResult),                                      // ServicePractice1EvaluateResult
   H(0x4E74, () => {}),                                                            // ServicePractice1Hook_RallyTick
   H(0x4E75, servicePracticeBounce),                                               // ServicePractice1Hook_Bounce
@@ -398,7 +402,7 @@ export const HOOKS = [
   H(0x4F8F, P => { setCounter(P, 1, 2); setCounter(P, 2, 2); }),                  // ServicePractice2Hook_MinigameStart
   H(0x4F98, updateDrillAbortCountdown),                                           // ServicePractice2Hook_PerFrame
   H(0x4F9C, servicePracticePointStart(ServicePractice2PointStartDrillPositions)), // ServicePractice2Hook_PointStart
-  H(0x4FB5, servicePracticePointEnd(servicePractice2HandlePointEnd, servicePractice2EvaluateResult)),   // ServicePractice2Hook_PointEnd
+  H(0x4FB5, servicePracticePointEnd(servicePractice2HandlePointEnd, servicePractice2EvaluateResult, 0x4FB5)),   // ServicePractice2Hook_PointEnd
   H(0x4FCF, servicePractice2EvaluateResult),                                      // ServicePractice2EvaluateResult
   H(0x5031, () => {}),                                                            // ServicePractice2Hook_RallyTick
   H(0x5032, servicePractice2Bounce),                                              // ServicePractice2Hook_Bounce
@@ -413,7 +417,7 @@ export const HOOKS = [
   H(0x51FE, P => { updateDrillAbortCountdown(P); if (P.V.rallyLength === 1) recordGateCrossOnServe(P); }),   // ServicePractice3Hook_PerFrame
   H(0x520C, P => { queueDrillMarker(P, P.A.drillGate1); queueDrillMarker(P, P.A.drillGate2); }),   // ServicePractice3Hook_Draw
   H(0x5213, servicePractice3PointStart),                                          // ServicePractice3Hook_PointStart
-  H(0x5237, servicePracticePointEnd(sp3Handle, servicePractice3EvaluateResult)),  // ServicePractice3Hook_PointEnd
+  H(0x5237, servicePracticePointEnd(sp3Handle, servicePractice3EvaluateResult, 0x5237)),  // ServicePractice3Hook_PointEnd
   H(0x5251, servicePractice3EvaluateResult),                                      // ServicePractice3EvaluateResult
   H(0x52A5, () => {}),                                                            // ServicePractice3Hook_RallyTick
   H(0x52A6, servicePracticeBounce),                                               // ServicePractice3Hook_Bounce
