@@ -159,7 +159,7 @@ if ($("engine")) {
   else if (saved === "rom" || saved === "port" || saved === "portall") $("engine").value = saved;
   $("engine").addEventListener("change", () => { try { localStorage.setItem("mt-engine", $("engine").value); } catch (e) { /* private mode */ } });
 }
-const PORT_VERIFIED = ["home/index", "audio/index", "save/index", "cutscenes/index"];
+const PORT_VERIFIED = ["home/index", "audio/index", "save/index", "cutscenes/index", "story/index"];
 async function makePort(bytes) {
   const { GamePort } = await import("./port/port.js"), { entry } = await import("./port/entry.js");
   const want = portMode() === "portall" ? "all" : q.get("port");
@@ -260,6 +260,17 @@ function applyPadMode() {
 $("padmode").addEventListener("pointerdown", () => { padMode = padMode === "stick" ? "dpad" : "stick"; applyPadMode(); });
 applyPadMode();
 $("turbo").addEventListener("pointerdown", () => { turbo = !turbo; $("turbo").classList.toggle("on", turbo); });
+// what runs the game, switchable in play (the app loads the ROM before the loader's selector can be used):
+// remembered, then the page reloads
+const ENGINE_LABEL = { rom: "CODE: ROM", port: "CODE: PORT", portall: "CODE: PORT+" };
+$("engbtn").textContent = ENGINE_LABEL[portMode()] || "CODE: ROM";
+$("engbtn").addEventListener("pointerdown", () => {
+  const order = ["rom", "port", "portall"], next = order[(order.indexOf(portMode()) + 1) % order.length];
+  try { localStorage.setItem("mt-engine", next); } catch (e) { /* private mode */ }
+  if ($("engine")) $("engine").value = next;
+  if (location.hash) history.replaceState(null, "", location.pathname + location.search);
+  location.reload();
+});
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom).catch(() => {});
 window.__gb = { get gb() { return gb; }, keys, rec, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, loadSnapshot(s) { loadSnapshot(gb, s); }, saveState() { return saveState(gb); }, loadState(s) { loadState(gb, s); drawnFrame = -1; } };
 requestAnimationFrame(loop);
