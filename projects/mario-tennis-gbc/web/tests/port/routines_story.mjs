@@ -12,6 +12,14 @@ const B2 = 0x02, B4 = 0x04, BA = 0x0A;
 const ACTORS = 0xD000, ACTOR_SIZE = 0x40, NUM_ACTORS = 24;
 const BUF = 0xCE80;                               // a scratch record for the Raw routines (WRAM 0, off the stack page)
 
+import { hookKey } from "../../js/port/port.js";
+// a port call with another module's hook taken out (the ROM's code there instead)
+function withoutHook(P, bank, addr, fn) {
+  const k = hookKey(bank, addr), h = P.hooks.get(k);
+  P.hooks.delete(k);
+  try { return fn(); } finally { if (h) P.hooks.set(k, h); }
+}
+
 // ---- deterministic randomness per (state, entry) ----
 function rng(s, salt) {
   let x = 2166136261 ^ salt;
@@ -193,7 +201,9 @@ export const ROUTINES = [
   T("SetScreenShake", BA, 0x48C0, d => ({ a: d.b8() & 3 })),
   T("UpdateScreenShake", BA, 0x4908),
   // ---- bank $0A: matches from the story (match.js) ----
-  T("InitStoryMatchSettings", BA, 0x4931),
+  // (run with the ROM's InitDefaultMatchSettings, 08:4070: the match port's hook there leaves the registers as they
+  // were, where the ROM's leaves hl = $C8xx; reported to the coordinator)
+  { ...T("InitStoryMatchSettings", BA, 0x4931), js: (P, regs) => withoutHook(P, 0x08, 0x4070, () => P.callRom(BA, 0x4931, regs)) },
   T("AssignStoryMatchCharacters", BA, 0x49AA),
   T("SetMatchDoublesMode", BA, 0x4A41, d => ({ a: d.b8() & 1 })),
   T("SetMatchOpponentChar", BA, 0x4A4C, d => ({ a: d.b8() })),

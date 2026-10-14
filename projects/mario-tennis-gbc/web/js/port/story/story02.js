@@ -59,7 +59,6 @@ export const unusedCharIdRemapLookup = (P, a) => indexed(P, Unused_02_CharIdRema
 // on); $80/$81 a copy of the story file's main / partner record (not without a story file, slot $0F); else the
 // roster character b: its 29 bytes, id (remapped), palette and name, and with b's bit 6 build kind 2.
 // Returns the registers it leaves.
-export function* initCa00RecordFromCharIdGen(P, b, c) { return initCa00RecordFromCharId(P, b, c); }
 export function initCa00RecordFromCharId(P, char, slot) {
   const { bus } = P, rec = getCa00RecordPtr(slot).bc, recLo = rec & 0xFF;
   if (char === CHAR_EMPTY) {
