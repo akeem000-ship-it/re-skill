@@ -32,10 +32,10 @@ const SET_COUNTS = 3;                                          // 1, 3 or 5 sets
 export const updateAnimatedTilesTask = P => { rom(P, FAR.UpdateAnimatedTiles); };
 
 // Unused_38_ClearWram3Row64 (38:43DB) / ...Alt (38:43F1): zero 64 bytes at hl in WRAM 3. Returns hl after them;
-// a = 0 (the bank popped back in a), c = 0.
+// a = the bank at the call (popped back with its flags), c = 0.
 export function unusedClearWram3Row64(P, hl) {
   withWram(P, WRAM_SCREEN, () => { for (let i = 0; i < 0x40; i++) { w8(P, hl, 0); hl = (hl + 1) & 0xFFFF; } });
-  return { hl, c: 0, a: P.V.wramBank, f: FZ };
+  return { hl, c: 0, a: P.V.wramBank };                       // (f: the entry flags, popped with the bank)
 }
 
 // DrawNameWithDiacritics_38 (38:440C): the 0-terminated name at hl into the map at de, one letter a cell; a letter

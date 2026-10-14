@@ -42,14 +42,14 @@ const rlca = a => ((a << 1) | (a >> 7)) & 0xFF;
 // registers DrawCharSprite leaves.
 export function unusedDrawCharViewerCharSprite(P) {
   queueSprite(P, 7, 0x70, 0x46, 0x15);
-  const q = queueSprite(P, 7, 0x72, 0x4E, 0x15);
+  queueSprite(P, 7, 0x72, 0x4E, 0x15);
   P.wramBank(WRAM_CHAR0);
-  const r = rom(P, FAR.StepCharAnimation, { a: WRAM_CHAR0, bc: wCharPosX, de: 0x4E15, hl: wCharPosX, f: q.f });
+  const r = rom(P, FAR.StepCharAnimation, { a: WRAM_CHAR0, bc: wCharPosX, de: 0x4E15, hl: wCharPosX });
   P.wramBank(WRAM_SCENE);
   const d = rd(P, "charDataNewLevels");
   P.wramBank(WRAM_CHAR0);
   const e = r.e;
-  rom(P, FAR.ReloadCharFacingTiles, { ...r, a: WRAM_CHAR0, d });
+  rom(P, FAR.ReloadCharFacingTiles, { a: WRAM_CHAR0, f: r.f, b: r.b, c: r.c, d, e, h: r.h, l: r.l });
   const b0 = u8(P, idx(DrawCharViewerCharSprite_CharScreenPosTable, d));
   const c = u8(P, wCharTileBase), b = u8(P, wCharTileBase + 1) | b0;
   w8(P, wCharScreenX, 0x20); w8(P, wCharScreenY, 0x68);
