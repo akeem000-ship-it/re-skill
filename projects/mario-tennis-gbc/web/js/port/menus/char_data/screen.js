@@ -423,7 +423,7 @@ export function charDataScreenDrawPageColumns(P) {
         w8(P, de - 3, 1); w8(P, de - 2, 1);
       }
     }
-    de = ((de & 0xFF00) + (((de & 0xFF) + 0x16) & 0x100) + ((de + 0x16) & 0xFF)) & 0xFFFF;
+    de = (de + 0x16) & 0xFFFF;                               // (e + $16, the carry into d: the next row)
     c = (c - 1) & 0xFF;
     if (!c) break;
   }

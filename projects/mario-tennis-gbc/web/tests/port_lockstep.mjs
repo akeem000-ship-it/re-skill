@@ -100,6 +100,7 @@ const portPics = [];                         // [ROM boundary, scanline hashes]
 P.setInput(pad(0));
 P.onVBlank = () => {
   portIdx++;
+  if (process.env.DBG && P.vblanks % 50 === 0) console.log('DBG vb', P.vblanks, 'adv', P.advances, 'portWin', portWin, 'coreAt', coreAt, 'pc', P.cpu.pc.toString(16), 'sp', P.cpu.sp.toString(16), 'bank', P.mem.romBank.toString(16), 'lcdc', P.ppu.lcdc.toString(16));
   coreTo(portWin);
   const w = win.get(portWin);
   if (!w || !w.bounds.length) return;
@@ -165,6 +166,7 @@ P.afterAdvance = k => {
   portWin = k + 1; portIdx = 0; P.suppressVBlanks = 0;
   coreTo(k + 1); startWatch(k + 1);
   compared++;
+  if (process.env.DBGK && Math.abs(k - +process.env.DBGK) <= 6) { const st = (w0, sp) => { const o = []; for (let i = 0; i < 10; i++) { const a = sp + 2 * i - 0xC000; if (a + 1 >= 0x1000) break; o.push((w0[a] | w0[a + 1] << 8).toString(16)); } return o.join(' '); }; console.log(`DBGK ${k} rom sp ${w.s.cpu.sp.toString(16)} bank ${w.s.mem.romBank.toString(16)} [${st(w.s.mem.wram[0], w.s.cpu.sp)}] fade ${w.s.mem.hram[0x22]}/${w.s.mem.hram[0x24]} port ${P.mem.hram[0x22]}/${P.mem.hram[0x24]}`); console.log(`DBGK ${k} prt sp ${P.cpu.sp.toString(16)} bank ${P.mem.romBank.toString(16)} [${st(P.mem.wram[0], P.cpu.sp)}] bounds ${w.bounds} portIdx? lag`); }
   debugOverlay = w.s.mem.hram[0x1E] !== 0;                             // hDebugStepMode ($FF9E)
   const all = diffMachines(w.s, P.gb, { ignore, limit: 400 });
   win.delete(k - 2);
