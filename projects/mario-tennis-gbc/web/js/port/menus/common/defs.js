@@ -94,6 +94,8 @@ export function withWramBank(P, b, fn) {
 // ---- calls into the ROM ----
 export const callHome = (P, addr, regs = {}) => P.callRom(0, addr, regs);
 export const callFar = (P, [bank, addr], regs = {}) => P.callRom(bank, addr, regs);
+// the same for a farcall (rst $18): the callee starts with the flags farcallFlags gives
+export const farcall = (P, [bank, addr], regs = {}) => P.callRom(bank, addr, { ...regs, f: farcallFlags(P.cpu.sp) });
 // A call into ROM code that may wait (P.runRom: it ends when the routine's `ret` brings the stack back, whatever
 // return address that took, as the lockstep may have copied the ROM's stack page in).
 export function* waitRom(P, bank, addr, regs = {}) { return yield* P.runRom(bank, addr, regs); }
@@ -130,7 +132,8 @@ export const romWord = (P, addr) => P.bus.u16(addr);
 // the common sound request (`sound X`: rst $08): every register kept
 export const sound = (P, id) => playSoundManaged(P, id);
 // QueueVRAMCopy (00:0480) and LoadPaletteShadow (00:05B0), verified home ports
-export const queueCopy = (P, src, dest, blocks) => queueVRAMCopy(P, src, dest, blocks);
+// (c = the count the caller loaded, which a full queue leaves)
+export const queueCopy = (P, src, dest, blocks) => ({ c: blocks & 0xFF, ...queueVRAMCopy(P, src, dest, blocks) });
 // (with the registers LoadPaletteShadow leaves: d, e are kept on its usual path)
 export const loadPalettes = (P, src, first, count) => ({ d: first, e: count, ...loadPaletteShadow(P, src, first, count) });
 

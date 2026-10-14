@@ -11,7 +11,7 @@
 import { registerFrameTask } from "../../home/colorfade.js";
 import { testSaveFlag } from "../../save/storyslots.js";
 import {
-  FZ, FN, cpFlags, hook, hookGen, callGen, farGen, callHome, advanceFrame, sound, withRomBank, wramBank,
+  FZ, FN, cpFlags, ixFlags, hook, hookGen, callGen, farGen, callHome, advanceFrame, sound, withRomBank, wramBank,
   pushWramBank, popWramBank, queueCopy, cell, HOME, WRAM_STAGING, WRAM_SCREEN, TILEMAP_WIDTH, VRAM_BANK1, vBGMap0,
   vTiles1, wShadowAttrmap, PADF_A, PADF_B, rIE, IE_TIMER, MENUSLIDE_BACK, MENUSLIDE_FORWARD, BGM_MENU, SFX_MENU_MOVE,
   SFX_MENU_SELECT, SFX_MENU_LOCKED, SFX_MENU_CANCEL,
@@ -51,7 +51,7 @@ export function buildMarioCastUnlockMask(P) {
 // GetMarioCastCharAtGridSlot (3B:66DE): the character of minigame cell c. Returns a and hl = its entry.
 export function getMarioCastCharAtGridSlot(P, slot) {
   const hl = ix(MarioCastCharAtGridSlotTable, slot);
-  return { a: P.bus.u8(hl), hl };
+  return { a: P.bus.u8(hl), hl, f: ixFlags(MarioCastCharAtGridSlotTable, slot) };
 }
 // GetUnlockedMarioCastCharAtGridSlot (3B:66B5): the character of cell c, or CHAR_UNUSED_15 if it is a cast member
 // whose bit of wMarioCastUnlockMask is clear (Luigi, DK and Baby Mario are always there: Z).

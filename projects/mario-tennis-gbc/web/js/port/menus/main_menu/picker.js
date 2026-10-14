@@ -9,7 +9,7 @@
 // gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/mario-tennis-gbc-disasm).
 import { queueSpriteTemplate } from "../../home/fade.js";
 import {
-  farGen, advanceFrame, callFar, wDecompBuffer, TILE_SIZE, vTiles0, vTiles1, vTiles2, WRAM_STAGING, withRomBank, pushWramBank, popWramBank, wramBank, queueCopy, loadPalettes, cell,
+  farGen, advanceFrame, callFar, farcall, wDecompBuffer, TILE_SIZE, vTiles0, vTiles1, vTiles2, WRAM_STAGING, withRomBank, pushWramBank, popWramBank, wramBank, queueCopy, loadPalettes, cell,
   WRAM_SCREEN, TILEMAP_WIDTH, VRAM_BANK1, vBGMap0, wShadowTilemap, wShadowAttrmap, OAM_BANK1,
 } from "../common/defs.js";
 import { BANK_MENU_LIB, restoreMenuBgAndDrawPanel, flushWram3MapRows, fillTilemapRect } from "../common/tilemaps.js";
@@ -74,7 +74,7 @@ export function queuePickerRows(P, rows) {
 }
 // a caption text (RenderTextToBuffer64) on the caption line; a, b: the registers the ROM has there (the callee
 // gets them). Returns its registers.
-export const captionText = (P, text, a, b) => callFar(P, RenderTextToBuffer64, { a, b, hl: text, de: CAPTION, c: 0x20 });
+export const captionText = (P, text, a, b) => farcall(P, RenderTextToBuffer64, { a, b, hl: text, de: CAPTION, c: 0x20 });
 // a menu's caption text, with WRAM 3 pushed around it: the text's registers, then a = the bank, f = the flags of the
 // call (pop_wram_bank)
 export function bankedCaptionText(P, text, a, b, f) {
@@ -111,7 +111,7 @@ export function drawFileCaption(P, file, noFileText, colonAfter, f = 0) {
   if (!colonAfter) bus.w8(cell(wShadowTilemap, 16, 16), COLON);
   popWramBank(P);
   if (colonAfter) bus.w8(cell(wShadowTilemap, 16, 16), COLON);
-  return { ...r, a: colonAfter ? COLON : old, f, bc: wNumberScratch };
+  return { ...r, a: colonAfter ? COLON : old, f };
 }
 const COLON = 0x3A;
 // a story file's character palette as BG palette 4 (LoadIndexedPalette_18 of its color)

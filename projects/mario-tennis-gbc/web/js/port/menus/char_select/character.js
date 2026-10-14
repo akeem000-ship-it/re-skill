@@ -238,17 +238,14 @@ export function drawCharacterSelectChars(P) {
 
 // UpdateCharSelectCharSprite (38:4CE2): one character's frame (the struct at hl, its bank mapped): facing eased,
 // animation stepped, its tiles reloaded facing the front, its sprite slots built. Nothing for a struct not in use.
-// (The two CopyMemoryFast of the struct onto itself are kept: they leave the registers the calls get.)
+// (The ROM also copies the struct's first 128, then 96 bytes onto themselves with CopyMemoryFast: no change.)
 export function updateCharSelectCharSprite(P, hl) {
   if (!u8(P, hl + CHAR_ACTIVE)) return;
-  let r = home(P, 0x03F3, { hl, de: wCharPosX, c: 0x08 });                 // CopyMemoryFast
-  r = rom(P, FAR.EaseCharFacing, { ...r, bc: hl });
-  r = rom(P, FAR.StepCharAnimation, r);
+  rom(P, FAR.EaseCharFacing);
+  rom(P, FAR.StepCharAnimation);
   w8(P, wCharFacingOctant, FACING_OCTANT_FRONT);
-  const e = r.e;
-  rom(P, FAR.ReloadCharFacingTiles, { ...r, a: FACING_OCTANT_FRONT, d: FACING_OCTANT_FRONT });
-  rom(P, FAR.BuildCharSpriteSlots, { d: FACING_OCTANT_FRONT, e });
-  home(P, 0x03F3, { hl: wCharPosX, de: hl, c: 0x06 });
+  rom(P, FAR.ReloadCharFacingTiles, { a: FACING_OCTANT_FRONT, d: FACING_OCTANT_FRONT });
+  rom(P, FAR.BuildCharSpriteSlots, { d: FACING_OCTANT_FRONT });
 }
 // SetCharSelectAnimations (38:4D14): all four standing, the highlighted one swinging (forehand); the idle state reset
 export function setCharSelectAnimations(P) {

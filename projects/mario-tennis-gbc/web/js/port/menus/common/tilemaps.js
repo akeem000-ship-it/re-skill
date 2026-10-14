@@ -55,8 +55,8 @@ export function loadScreenAssetRecord(P, record) {
 // $9800 in both VRAM banks, in VBlank.
 export function queueWram3MapToVRAM(P) {
   wramBank(P, WRAM_SCREEN);
-  queueCopy(P, wShadowTilemap, vBGMap0, TILEMAP_AREA / 16);
-  return queueCopy(P, wShadowAttrmap, vBGMap0 + VRAM_BANK1, TILEMAP_AREA / 16);
+  const r = queueCopy(P, wShadowTilemap, vBGMap0, TILEMAP_AREA / 16);
+  return { ...r, ...queueCopy(P, wShadowAttrmap, vBGMap0 + VRAM_BANK1, TILEMAP_AREA / 16) };   // (b: the first's, if the queue was full)
 }
 
 // UpdateAnimatedTiles (39:4342), a frame task: every wAnimatedTilePeriod frames, the next of the 16 frames of the

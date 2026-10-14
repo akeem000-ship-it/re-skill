@@ -13,7 +13,7 @@ import { decompressDataFromBank } from "../../home/decompress.js";
 import { registerFrameTask } from "../../home/colorfade.js";
 import { queueSpriteTemplate } from "../../home/fade.js";
 import {
-  addFlags, hook, hookGen, callGen, farGen, callHome, callFar, advanceFrame, sound, withRomBank, wramBank, pushWramBank,
+  addFlags, hook, hookGen, callGen, farGen, callHome, callFar, farcall, advanceFrame, sound, withRomBank, wramBank, pushWramBank,
   popWramBank, withWramBank, queueCopy, loadPalettes, cell, HOME, WRAM_STAGING, WRAM_SCREEN, TILE_SIZE, TILEMAP_WIDTH,
   VRAM_BANK1, vTiles0, vBGMap0, wDecompBuffer, wShadowTilemap, wShadowAttrmap, OAM_BANK1, PADF_A, PADF_B, PADF_LEFT,
   PADF_RIGHT, rIE, IE_TIMER, MENUSLIDE_BACK, MENUSLIDE_FORWARD, BGM_MENU, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_CANCEL,
@@ -97,7 +97,7 @@ export function initMatchFormatOptions(P) {
   flushMatchFormatRowToVram(P, 2);
   loadPalettes(P, MatchFormatOptionsPalettes0, 4, 1);
   loadPalettes(P, MatchFormatOptionsPalettes1, 6, 1);
-  return loadPalettes(P, MatchFormatOptionsPalettes2, 7, 1);
+  return { b: 2, ...loadPalettes(P, MatchFormatOptionsPalettes2, 7, 1) };   // b: the last row flushed
 }
 
 // LoadMatchFormatGfx (3B:5DEC), over 17 frames: the seven option label sets (MatchFormatTable0 to the VRAM places of
@@ -219,7 +219,8 @@ export function renderMatchFormatOptionText(P) {
   wramBank(P, WRAM_SCREEN);
   const row = getMenuCursorIndex(P, 1).a;
   const [text, option] = row === ROW_MODE ? [Text_30_135, V.matchFormatDoubles] : row === ROW_GAMES ? [Text_30_137, V.matchFormatGames] : [Text_30_139, V.matchFormatSets];
-  return callFar(P, RenderTextToBuffer64, { hl: ix(text, option), de: CAPTION, c: 0x20 });
+  const hl = ix(text, option);
+  return farcall(P, RenderTextToBuffer64, { a: hl & 0xFF, b: row, hl, de: CAPTION, c: 0x20 });
 }
 
 export const HOOKS = [

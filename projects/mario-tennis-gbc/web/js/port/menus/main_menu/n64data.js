@@ -21,7 +21,7 @@ import { setGameFlag } from "../../home/flags.js";
 import { readSaveBlock, setSaveFlag, saveStorySlot, checkStorySlot } from "../../save/storyslots.js";
 import { setAllUnlockablesInSaveBlock } from "../../save/repair.js";
 import {
-  FZ, FN, FH, FC, addFlags, incFlags, hook, hookGen, callGen, callHome, advanceFrame, sound, withRomBank, wramBank,
+  FZ, FN, FH, FC, addFlags, incFlags, farcallFlags, hook, hookGen, callGen, callHome, advanceFrame, sound, withRomBank, wramBank,
   pushWramBank, popWramBank, withWramBank, queueCopy, getRegs, cell, HOME, WRAM_SCREEN, TILE_SIZE, TILEMAP_WIDTH,
   VRAM_BANK1, vTiles0, vTiles1, vBGMap0, wShadowTilemap, wShadowAttrmap, PADF_A, PADF_B, PADF_SELECT, PADF_LEFT,
   PADF_RIGHT, PADF_UP, PADF_DOWN, BGM_STATUS_SCREEN, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_CANCEL,
@@ -102,18 +102,23 @@ function queueMapRows(P, bands) {
   }
 }
 // the four scroll arrows (QueueStackedSpritePair frames 0-3: right, left, up, down), each bouncing outwards; WRAM 3
-// mapped meanwhile. arrowsOf() -> [[shown, x, y, frame], ...]
-function scrollArrows(P, arrowsOf) {
+// mapped meanwhile. arrowsOf() -> [[shown, x, y, frame], ...]. Leaves a = the old WRAM bank, the flags f it was
+// called with, and the last arrow's registers (b = 8, c = 0, de its place, h its frame, l the bounce entry's low byte).
+function scrollArrows(P, arrowsOf, f) {
+  const old = P.V.wramBank;
+  let regs = {};
   pushWramBank(P, WRAM_SCREEN);
   for (const [shown, x, y, frame] of arrowsOf()) {
     if (!shown) continue;
     const outwards = frame === 0 || frame === 2 ? 1 : 0;
-    let d = x, e = y;
-    if (frame >= 2) e = applyBobOffset(P, ApplyCursorBounceY, outwards, e).value;
-    else d = applyBobOffset(P, ApplyCursorBounceX, outwards, d).value;
+    let d = x, e = y, bounce;
+    if (frame >= 2) e = (bounce = applyBobOffset(P, ApplyCursorBounceY, outwards, e)).value;
+    else d = (bounce = applyBobOffset(P, ApplyCursorBounceX, outwards, d)).value;
     withRomBank(P, BANK_MENU_LIB, () => queueStackedSpritePair(P, 0x08, 0x00, d, e, frame));
+    regs = { b: 0x08, c: 0x00, d, e, h: frame, l: bounce.hl & 0xFF };
   }
   popWramBank(P);
+  return { ...regs, a: old, f };
 }
 
 // ReadN64RecordsSaveBlock (3B:493F): wN64RecordsBlock (WRAM 3) cleared and the N64 records block read into it.
@@ -145,10 +150,11 @@ export function drawChartIconColumn(P, list, dest) {
   return { a: 4, b: u8(P, list + 3), c: 4, de: list + 4, hl: (dest + 4 * TWO_ROWS) & 0xFFFF, f: FZ | FN };
 }
 // DrawChartIconRow (3B:46DA): a characters of the list at hl along from bc
-export function drawChartIconRow(P, list, dest, count) {
+// (the flags of the last `dec a`: carry kept from f)
+export function drawChartIconRow(P, list, dest, count, f = 0) {
   let i = 0;
   do { drawChartCharIcon(P, (dest + 2 * i) & 0xFFFF, u8(P, list + i)); i++; count = (count - 1) & 0xFF; } while (count);
-  return { a: 0, b: u8(P, list + i - 1), c: 0, de: list + i, hl: (dest + 2 * i) & 0xFFFF, f: FZ | FN };
+  return { a: 0, b: u8(P, list + i - 1), c: 0, de: (list + i) & 0xFFFF, hl: (dest + 2 * i) & 0xFFFF, f: FZ | FN | (f & FC) };
 }
 // DrawChartCellRows (3B:46ED): four rows of a cells (rows of the chart 16 bytes apart at hl) as marks from de, two
 // map rows apart. a and the flags kept.
@@ -196,11 +202,11 @@ export function* scrollN64ExhibDataCursor(P) {
   yield* callGen(P, redrawN64ExhibDataWindow(P));
 }
 // N64ExhibScrollArrowsTask (3B:4567), a frame task: the arrows where the window can scroll
-export function n64ExhibScrollArrowsTask(P) {
-  scrollArrows(P, () => {
+export function n64ExhibScrollArrowsTask(P, f = 0) {
+  return scrollArrows(P, () => {
     const page = u8(P, wN64ExhibPage), row = u8(P, wN64ExhibCursorRow);
     return [[page !== EXHIB_PAGES_LAST, 0x93, 0x2F, 0], [page !== 0, 0x08, 0x2F, 1], [row !== 0, 0x0A, 0x20, 2], [row !== EXHIB_ROWS_LAST, 0x0A, 0x78, 3]];
-  });
+  }, f);
 }
 // BuildN64ExhibDataScreen (3B:45D4): the screen asset, chart graphics, the records (an unreadable block hangs here,
 // as on the ROM: `jr nz` to itself), the column list and cells, drawn into the WRAM 3 map and queued.
@@ -241,7 +247,7 @@ export function buildN64ExhibColumnList(P) {
   wramBank(P, WRAM_SCREEN);
   copyMemoryFast(P, N64ExhibColumn, wChartColumnList, LIST_SIZE / 16);
   maskMissingHalves(P, wChartColumnList);
-  buildN64ExhibResultsGrid(P);
+  return { ...buildN64ExhibResultsGrid(P), c: 0 };        // (c = 0 from CopyMemoryFast)
 }
 function maskMissingHalves(P, list) {
   const halves = u8(P, N64_HALVES);
@@ -290,10 +296,10 @@ export function expandRowBytesToBits(P, src) {
   clearMemory16(P, wExhibCellBits, 4);
   for (let i = 0; i < 8; i++) expandByteToBitArray(P, wExhibCellBits + 8 * i, u8(P, src + i));
 }
-// ExpandByteToBitArray (3B:489D): byte b's bits into hl..hl+7, bit 7 first. hl, bc kept; a = the last bit.
+// ExpandByteToBitArray (3B:489D): byte b's bits into hl..hl+7, bit 7 first. hl, bc kept; a = 8 (the count).
 export function expandByteToBitArray(P, hl, b) {
   for (let i = 0; i < 8; i++) w8(P, hl + 7 - i, (b >> i) & 1);
-  return { a: (b >> 7) & 1, f: FZ | FN };
+  return { a: 8, f: FZ | FN };
 }
 // Unused_3b_FillN64RecordsPalettes (3B:48B8): eight copies of the colors $FFFF, $7777, $3333, $1111 over the
 // exhibition rows of the records block (WRAM 3, left mapped)
@@ -301,7 +307,7 @@ export function unusedFillN64RecordsPalettes(P) {
   wramBank(P, WRAM_SCREEN);
   let hl = N64_EXHIB_ROWS;
   for (let i = 0; i < 8; i++) for (const v of [0xFF, 0xFF, 0x77, 0x77, 0x33, 0x33, 0x11, 0x11]) w8(P, hl++, v);
-  return { a: 0x11, c: 8, hl, f: FZ | FN };
+  return { a: 8, c: 8, hl, f: FZ | FN };
 }
 
 // ---- the trophies (n64exhib_3b RunTrophiesScreen .., n64trophies_3b) ----
@@ -344,7 +350,7 @@ export function buildTrophiesScreen(P) {
     drawTrophiesCharSprite(P, V.storyModeMainCharacterOverworldSprite, at(13));
     drawTrophiesCharSprite(P, V.storyModePartnerCharacterOverworldSprite, at(15));
   }
-  withRomBank(P, BANK_MENU_LIB, () => queueWram3MapToVRAM(P));
+  return withRomBank(P, BANK_MENU_LIB, () => queueWram3MapToVRAM(P));
 }
 // DrawTrophiesWonRows (3B:4A71): the trophy rows, one after another from wTrophyCellsMainSet1, at rows 8, 10 (or
 // 6, 8, 13, 15)
@@ -364,20 +370,23 @@ export function drawTrophyRowPair(P, hl, de) {
 // DrawWonTrophyIcon (3B:4AC9): the trophy (tiles $60-$63, attribute $0A) at de. Registers kept.
 export function drawWonTrophyIcon(P, de) { put2x2(P, de, 0x60); fill2x2(P, (de + ATTR) & 0xFFFF, 0x0A); }
 // DrawTrophiesCharSprite (3B:4AF1): character c's 2 x 2 face (from row 18 of the map, 2c across) at de, attributes too
-export function drawTrophiesCharSprite(P, ch, de) {
+// Leaves a = src's low byte and the flags of the farcall (CopyTilemapRect keeps af).
+export function drawTrophiesCharSprite(P, ch, de, sp = P.cpu.sp) {
   const src = ix(cell(wShadowTilemap, 0, 18), ch * 2);
   withRomBank(P, BANK_MENU_LIB, () => {
     copyTilemapRect(P, src, de, 2, 2);
     copyTilemapRect(P, (src + ATTR) & 0xFFFF, (de + ATTR) & 0xFFFF, 2, 2);
   });
-  return { bc: 0x0202, hl: (src + ATTR) & 0xFFFF, de: (de + ATTR) & 0xFFFF };
+  return { a: src & 0xFF, f: farcallFlags(sp), bc: 0x0202, hl: (src + ATTR) & 0xFFFF, de: (de + ATTR) & 0xFFFF };
 }
 // CheckTrophiesCheatCode (3B:4B19): a jingle; counters at 12 and 34 unlock everything; the story file saved.
-export function checkTrophiesCheatCode(P) {
+// Leaves a = 0 (Z) and the registers SaveStorySlot (and the cheat) left.
+export function checkTrophiesCheatCode(P, sp = P.cpu.sp) {
   sound(P, BGM_SENIOR_RANKING);
-  if (u8(P, wN64RecordsBlock) === CHEAT_CODE[0] && u8(P, wN64RecordsBlock + 1) === CHEAT_CODE[1]) applyUnlockEverythingCheat(P);
-  withRomBank(P, BANK_SAVE, () => saveStorySlot(P));
-  return { a: 0, f: FZ };
+  let regs = {};
+  if (u8(P, wN64RecordsBlock) === CHEAT_CODE[0] && u8(P, wN64RecordsBlock + 1) === CHEAT_CODE[1]) regs = applyUnlockEverythingCheat(P, (sp - 2) & 0xFFFF);
+  regs = { ...regs, ...withRomBank(P, BANK_SAVE, () => saveStorySlot(P)) };
+  return { ...regs, a: 0, f: FZ };
 }
 // ApplyUnlockEverythingCheat (3B:4B33): every court, hidden character and minigame level's save flag; in each story
 // file, the 13 cheat game flags (then saved); the N64 unlockables.
@@ -386,19 +395,23 @@ const UNLOCK_SAVE_FLAGS = [0x0720, 0x0740, 0x0760, 0x0780, 0x07A0, 0x0140, 0x016
   0x0620, 0x0640, 0x0680, 0x06A0];
 const CHEAT_GAME_FLAGS = [160, 161, 162, 163, 164, 165, 166, 167, 168, 171, 172, 169, 170];   // FLAG_CHEAT_UNLOCK_0-12
 const SAVE_NO_BLOCK = 0xFE;
-export function applyUnlockEverythingCheat(P) {
+// Leaves a = the story slot, c = 3, de / hl as the last save (or SetSaveFlag) left them (b kept; the flags of the
+// last farcall, whose callee keeps af).
+export function applyUnlockEverythingCheat(P, sp = P.cpu.sp) {
   const { V } = P;
   withRomBank(P, BANK_SAVE, () => { for (const flag of UNLOCK_SAVE_FLAGS) setSaveFlag(P, flag); });
+  let regs = { d: 0, e: UNLOCK_SAVE_FLAGS.at(-1) >> 8 };   // (Set*Flag: de = the flag's byte index)
   const slot = V.currentStorySlot;
   for (let file = 0; file < 3; file++) {
     V.currentStorySlot = file;
     if (withRomBank(P, BANK_SAVE, () => checkStorySlot(P)).a === SAVE_NO_BLOCK) continue;
     for (const flag of CHEAT_GAME_FLAGS) setGameFlag(P, (flag >> 3) << 8 | (flag & 7) << 5);
-    withRomBank(P, BANK_SAVE, () => saveStorySlot(P));
+    const saved = withRomBank(P, BANK_SAVE, () => saveStorySlot(P));
+    regs = { de: saved.de, hl: saved.hl };
   }
   V.currentStorySlot = slot;
   withRomBank(P, BANK_SAVE, () => setAllUnlockablesInSaveBlock(P));
-  return { a: slot };
+  return { ...regs, a: slot, c: 3, f: farcallFlags(sp) };
 }
 // DecodeTrophyCounts (3B:4C53): the four 2-bit counts of each of wN64TrophyCounts' two bytes (bits 0-1 and 4-5:
 // the first set; 2-3 and 6-7: the second) as rows of cells; wTrophySecondSetPresent = 1 if the second set has any
@@ -406,9 +419,17 @@ export function applyUnlockEverythingCheat(P) {
 const TROPHY_FIELDS = [[0, 0, 0], [0, 4, 3], [0, 2, 0x0C], [0, 6, 0x0F], [1, 0, 6], [1, 4, 9], [1, 2, 0x12], [1, 6, 0x15]];
 export function decodeTrophyCounts(P) {
   wramBank(P, WRAM_SCREEN);
-  callHome(P, HOME.ClearBytes, { hl: wTrophyCellsMainSet1, bc: wTrophyCellsSize });
-  for (const [byte, shift, at] of TROPHY_FIELDS) fillTrophyCountCells(P, wTrophyCellsMainSet1 + at, (u8(P, P.A.n64TrophyCounts + byte) >> shift) & 3);
-  if ([wTrophyCellsMainSet2, wTrophyCellsMainSet2 + 3, wTrophyCellsPartnerSet2, wTrophyCellsPartnerSet2 + 3].some(a => u8(P, a))) w8(P, wTrophySecondSetPresent, 1);
+  const { c, hl } = callHome(P, HOME.ClearBytes, { hl: wTrophyCellsMainSet1, bc: wTrophyCellsSize });
+  let b = 0, de = 0;
+  for (const [byte, shift, at] of TROPHY_FIELDS) {
+    de = wTrophyCellsMainSet1 + at; b = (u8(P, P.A.n64TrophyCounts + byte) >> shift) & 3;
+    fillTrophyCountCells(P, de, b);
+  }
+  const regs = { b, c, de, hl };                             // (the last cells filled; hl, c from ClearBytes)
+  for (const at of [wTrophyCellsMainSet2, wTrophyCellsMainSet2 + 3, wTrophyCellsPartnerSet2, wTrophyCellsPartnerSet2 + 3]) {
+    if (u8(P, at)) { w8(P, wTrophySecondSetPresent, 1); return { ...regs, a: 1, f: 0 }; }
+  }
+  return { ...regs, a: 0, f: FZ };
 }
 // FillTrophyCountCells (3B:4ED1): b cells of 1 from de. Leaves a = 0 (Z); bc, de kept.
 export function fillTrophyCountCells(P, de, count) {
@@ -451,8 +472,8 @@ export function buildN64TnmtDataScreen(P) {
   loadChartGraphics(P);
   drawN64TnmtRowIcons(P);
   drawN64TnmtPageLabels(P);
-  drawN64TnmtTrophyRows(P);
-  withRomBank(P, BANK_MENU_LIB, () => queueWram3MapToVRAM(P));
+  const r = drawN64TnmtTrophyRows(P);
+  return { ...r, ...withRomBank(P, BANK_MENU_LIB, () => queueWram3MapToVRAM(P)) };
 }
 // LoadN64TnmtDataRecords (3B:4DFF): WRAM 3 from $D800 cleared, the character list, the records, the trophy grid;
 // wScreenScratch = 1 if there is a second page
@@ -462,13 +483,18 @@ export function loadN64TnmtDataRecords(P) {
   copyMemoryBC(P, N64TnmtData, wN64TnmtLayout, LIST_SIZE);
   readN64RecordsSaveBlock(P);
   maskMissingHalves(P, wN64TnmtLayout);
-  buildN64TnmtTrophyGrid(P);
-  if (checkN64TnmtSecondPage(P).a) w8(P, wScreenScratch, 1);
+  const regs = { ...buildN64TnmtTrophyGrid(P), ...checkN64TnmtSecondPage(P) };
+  if (regs.a) w8(P, wScreenScratch, 1);
+  return { ...regs, f: regs.a ? 0 : FZ };
 }
 // BuildN64TnmtTrophyGrid (3B:4E54): row i (12 cells) of wN64TnmtTrophyCells from the trophy byte of character i
 export function buildN64TnmtTrophyGrid(P) {
-  for (let i = 0; i < 16; i++) decodeN64CharTrophyCounts(P, getN64CharTrophyRowPtr(P, i).hl, wN64TnmtTrophyCells + TNMT_ROW * i);
-  return { a: 0x10, c: 0x10, de: wN64TnmtTrophyCells + 16 * TNMT_ROW, f: FZ | FN };
+  let hl = 0;
+  for (let i = 0; i < 16; i++) {
+    hl = getN64CharTrophyRowPtr(P, i).hl;
+    decodeN64CharTrophyCounts(P, hl, wN64TnmtTrophyCells + TNMT_ROW * i);
+  }
+  return { a: 0x10, b: 0x0F, c: 0x10, de: wN64TnmtTrophyCells + 16 * TNMT_ROW, hl: (hl + 1) & 0xFFFF, f: FZ | FN };
 }
 // GetN64CharTrophyRowPtr (3B:4E74): hl = character b's trophy byte (N64CharTrophyRowPtrTable order)
 export function getN64CharTrophyRowPtr(P, b) {
@@ -482,12 +508,24 @@ export function decodeN64CharTrophyCounts(P, hl, de) {
   [v & 3, (v >> 4) & 3, (v >> 2) & 3, (v >> 6) & 3].forEach((n, i) => fillTrophyCountCells(P, de + 3 * i, n));
 }
 // CheckN64TnmtSecondPage (3B:4EE3): whether the tournament records need the second page, by the ROM's test of
-// columns 2 and 5 of the rows: a = 1 or 0
+// columns 2 and 5 of the rows: a = 1 or 0 (hl, c where the scan stopped, de = 12)
 export function checkN64TnmtSecondPage(P) {
-  const col = (c, rows) => Array.from({ length: rows }, (_, i) => u8(P, wN64TnmtTrophyCells + c + TNMT_ROW * i));
-  if (col(2, 14).every(Boolean) && col(5, 16).some(Boolean)) return { a: 1, f: 0 };
-  if (!col(5, 14).every(Boolean)) return { a: 0, f: FZ };
-  return { a: 1, f: col(2, 16).some(Boolean) ? 0 : FZ | FN };
+  // one scan down column col: stops at the first cell that is set (stopOnSet) or clear, or after `rows` cells
+  const scan = (col, rows, stopOnSet) => {
+    let hl = wN64TnmtTrophyCells + col, c = 0;
+    for (;;) {
+      if ((u8(P, hl) !== 0) === stopOnSet) return { stopped: true, c, hl };
+      hl += TNMT_ROW; c++;
+      if (c === rows) return { stopped: false, c, hl };
+    }
+  };
+  const regs = r => ({ c: r.c, hl: r.hl, de: TNMT_ROW });
+  const one = r => ({ ...regs(r), a: 1, f: r.stopped ? 0 : FZ | FN });   // (the flags of `or a` or `cp $10`)
+  let r = scan(2, 14, false);
+  if (!r.stopped) { r = scan(5, 16, true); if (r.stopped) return one(r); }
+  r = scan(5, 14, false);
+  if (r.stopped) return { ...regs(r), a: 0, f: FZ };
+  return one(scan(2, 16, true));
 }
 // RedrawN64TnmtDataWindow (3B:4F38): icons, page labels, trophies; queued over three frames
 export function* redrawN64TnmtDataWindow(P) {
@@ -504,20 +542,25 @@ export function drawN64TnmtRowIcons(P) {
   });
 }
 // DrawN64TnmtPageLabels (3B:4F81): the two column headings (singles, doubles) of the page, from row 18 of the map
-export function drawN64TnmtPageLabels(P) {
-  withWramBank(P, WRAM_SCREEN, () => {
+// Leaves a = the old WRAM bank, the flags f, bc = $0602 and the last copy's hl / de.
+export function drawN64TnmtPageLabels(P, f = 0) {
+  const old = P.V.wramBank;
+  return withWramBank(P, WRAM_SCREEN, () => {
     const src = u8(P, wDataScreenPage) ? 6 : 0;
     withRomBank(P, BANK_MENU_LIB, () => {
       for (const map of [wShadowTilemap, wShadowAttrmap]) for (const x of [5, 12]) copyTilemapRect(P, cell(map, src, 18), cell(map, x, 5), 6, 2);
     });
+    return { a: old, f, b: 6, c: 2, hl: cell(wShadowAttrmap, src, 18), de: cell(wShadowAttrmap, 12, 5) };
   });
 }
 // DrawN64TnmtTrophyRows (3B:5000): the window's five rows of trophies (the page's six cells of each)
 export function drawN64TnmtTrophyRows(P) {
   wramBank(P, WRAM_SCREEN);
-  let hl = ix(wN64TnmtTrophyCells, u8(P, wDataScreenCursorRow) * TNMT_ROW);
+  const row = u8(P, wDataScreenCursorRow);
+  let hl = ix(wN64TnmtTrophyCells, row * TNMT_ROW);
   if (u8(P, wDataScreenPage)) hl = ix(hl, 6);
   for (let i = 0; i < TNMT_WINDOW; i++) { drawN64TnmtTrophyRow(P, hl, cell(wShadowTilemap, 5, 7 + 2 * i)); hl = ix(hl, TNMT_ROW); }
+  return { a: TNMT_WINDOW, b: (row * 2) & 0xFF, c: TNMT_WINDOW, de: cell(wShadowTilemap, 5, 7 + 2 * TNMT_WINDOW), hl, f: FZ | FN };
 }
 // DrawN64TnmtTrophyRow (3B:5042): six cells at hl (three, a gap, three): won trophies or empty cells. Registers kept.
 export function drawN64TnmtTrophyRow(P, hl, de) {
@@ -537,11 +580,11 @@ export function* flushN64TnmtWindowToVram(P) {
   queueMapRows(P, [[13, 4, true]]);
 }
 // N64TnmtScrollArrowsTask (3B:50D6), a frame task
-export function n64TnmtScrollArrowsTask(P) {
-  scrollArrows(P, () => {
+export function n64TnmtScrollArrowsTask(P, f = 0) {
+  return scrollArrows(P, () => {
     const page = u8(P, wDataScreenPage), row = u8(P, wDataScreenCursorRow);
     return [[u8(P, wScreenScratch) && !page, 0x93, 0x2F, 0], [page, 0x20, 0x2F, 1], [row, 0x0C, 0x32, 2], [row !== TNMT_ROWS_LAST, 0x0C, 0x88, 3]];
-  });
+  }, f);
 }
 
 // ---- the ring shot records (n64tnmt_3b RunN64RingShotData .., ring_3b) ----
@@ -575,8 +618,8 @@ export function buildN64RingShotScreen(P) {
   V.digitSpriteTileBase = 0x10;
   drawRingShotRowIcons(P);
   drawRingShotModeTab(P);
-  drawRingShotClearMarks(P);
-  withRomBank(P, BANK_MENU_LIB, () => queueWram3MapToVRAM(P));
+  const r = drawRingShotClearMarks(P);
+  return { ...r, ...withRomBank(P, BANK_MENU_LIB, () => queueWram3MapToVRAM(P)) };
 }
 // DrawRingShotRowIcons (3B:5202): the window's five characters down the left. Registers and the WRAM bank kept.
 export function drawRingShotRowIcons(P) {
@@ -592,21 +635,23 @@ export function loadN64RingShotRecords(P) {
   copyMemoryBC(P, N64RingShot, wRingShotEntryList, LIST_SIZE);
   maskMissingHalves(P, wRingShotEntryList);
   callHome(P, HOME.ClearBytes, { hl: wChartRows, bc: 0x140 });
-  buildRingShotResultsGrid(P);
+  return buildRingShotResultsGrid(P);
 }
 // Unused_3b_SeedDefaultRingShotRecords (3B:5288): default records copied into the block's ring-shot part
-export function unusedSeedDefaultRingShotRecords(P) {
+// (CopyMemoryBC: bc = 0, the flags of its `dec b`, carry kept from f)
+export function unusedSeedDefaultRingShotRecords(P, f = 0) {
   let r;
   for (let i = 0; i < 4; i++) r = copyMemoryBC(P, DefaultRingShot0, N64_RING_CLEARS + 16 * i, 0x10);
   for (let i = 0; i < 4; i++) r = copyMemoryBC(P, DefaultRingShot1, N64_RING_SCORES + 32 * i, 0x20);
-  return { ...r, bc: 0, f: FZ | FN };
+  return { ...r, bc: 0, f: FZ | FN | (f & FC) };
 }
 // BuildRingShotResultsGrid (3B:5319): 16 rows of 12: the clears of 4 modes (0-6 rings each), then the 4 scores
 // (words), each row a character in RingShotResultsGridTable order
 export function buildRingShotResultsGrid(P) {
   for (let i = 0; i < 16; i++) decodeRingShotCharClears(P, u8(P, RingShotResultsGridTable + i), wChartRows + RING_ROW * i);
   for (let i = 0; i < 16; i++) copyRingShotCharScores(P, u8(P, RingShotResultsGridTable + i), wChartRows + 4 + RING_ROW * i);
-  return { a: 0x10, c: 0x10, de: wChartRows + 4 + RING_ROW * 16, hl: wChartRows + 4 + RING_ROW * 16, f: FZ | FN };
+  const b = u8(P, RingShotResultsGridTable + 15);            // (the last character)
+  return { a: 0x10, b, c: 0x10, de: wChartRows + 4 + RING_ROW * 16, hl: wChartRows + 4 + RING_ROW * 16, f: FZ | FN };
 }
 // CopyRingShotCharScores (3B:5368): character b's four big-endian scores as little-endian words at de. Registers kept.
 export function copyRingShotCharScores(P, ch, de) {
@@ -643,10 +688,13 @@ export function* redrawRingShotWindow(P) {
   yield* callGen(P, flushRingShotWindowToVram(P));
 }
 // DrawRingShotModeTab (3B:5426): the mode's 8 x 2 tab (from the right of the map) at the top
-export function drawRingShotModeTab(P) {
-  withWramBank(P, WRAM_SCREEN, () => {
-    const src = P.bus.u16(ix(RingShotModeTabTable, P.V.menuCursorX * 2));
-    withRomBank(P, BANK_MENU_LIB, () => copyTilemapRect(P, src, cell(wShadowTilemap, 6, 1), 8, 2));
+// Leaves a = the old WRAM bank, the flags f, bc = $0802, de = the tab's place, hl = its source.
+export function drawRingShotModeTab(P, f = 0) {
+  const old = P.V.wramBank;
+  return withWramBank(P, WRAM_SCREEN, () => {
+    const src = P.bus.u16(ix(RingShotModeTabTable, P.V.menuCursorX * 2)), de = cell(wShadowTilemap, 6, 1);
+    withRomBank(P, BANK_MENU_LIB, () => copyTilemapRect(P, src, de, 8, 2));
+    return { a: old, f, b: 8, c: 2, de, hl: src };
   });
 }
 // FlushRingShotWindowToVram (3B:5456): the tab and the rows 6-15 queued over two frames
@@ -656,16 +704,17 @@ export function* flushRingShotWindowToVram(P) {
   queueMapRows(P, [[10, 6, true]]);
 }
 // RingShotScrollArrowsTask (3B:5491), a frame task
-export function ringShotScrollArrowsTask(P) {
-  scrollArrows(P, () => {
+export function ringShotScrollArrowsTask(P, f = 0) {
+  return scrollArrows(P, () => {
     const { V } = P;
     return [[V.menuCursorX !== RING_MODES_LAST, 0x78, 0x12, 0], [V.menuCursorX, 0x23, 0x12, 1], [V.menuCursorY, 0x0C, 0x26, 2], [V.menuCursorY !== RING_ROWS_LAST, 0x0C, 0x82, 3]];
-  });
+  }, f);
 }
 // DrawRingShotClearMarks (3B:54FE): for the window's five rows, the mode's count of rings cleared as marks
 export function drawRingShotClearMarks(P) {
-  let hl = ix((wChartRows + RING_ROW * P.V.menuCursorY) & 0xFFFF, P.V.menuCursorX);
-  for (let row = 0; row < RING_WINDOW; row++) { drawRingShotClearMarkRow(P, row, u8(P, hl)); hl = (hl + RING_ROW) & 0xFFFF; }
+  let hl = ix((wChartRows + RING_ROW * P.V.menuCursorY) & 0xFFFF, P.V.menuCursorX), c = 0;
+  for (let row = 0; row < RING_WINDOW; row++) { drawRingShotClearMarkRow(P, row, c = u8(P, hl)); hl = (hl + RING_ROW) & 0xFFFF; }
+  return { a: RING_WINDOW, b: RING_WINDOW, c, de: RING_ROW, hl, f: FZ | FN };
 }
 // DrawRingShotClearMarkRow (3B:5529): on window row b, c cleared marks then 5 - c empty ones (c = 6: 255 empty
 // ones, as on the ROM). Registers kept.
@@ -688,20 +737,20 @@ export function ringShotScoreDrawTask(P) {
     de = (de + 0x10) & 0xFFFF;
     hl = ix(hl, RING_ROW);
   }
-  return { a: 5, c: 5, de, hl, f: FZ | FN };
+  return { a: 5, b: 0, c: 5, de, hl, f: FZ | FN };
 }
 
 export const HOOKS = [
   [BANK_MAIN_MENU, 0x44AA, hookGen(P => runN64ExhibData(P))],
   [BANK_MAIN_MENU, 0x450D, hookGen(P => scrollN64ExhibDataCursor(P))],
-  [BANK_MAIN_MENU, 0x4567, hook(P => { n64ExhibScrollArrowsTask(P); })],
+  [BANK_MAIN_MENU, 0x4567, hook((P, c) => n64ExhibScrollArrowsTask(P, c.f))],
   [BANK_MAIN_MENU, 0x45D4, hookGen(P => buildN64ExhibDataScreen(P))],
   [BANK_MAIN_MENU, 0x462D, hookGen(P => redrawN64ExhibDataWindow(P))],
   [BANK_MAIN_MENU, 0x46C0, hook((P, c) => drawChartIconColumn(P, c.hl, c.bc))],
-  [BANK_MAIN_MENU, 0x46DA, hook((P, c) => drawChartIconRow(P, c.hl, c.bc, c.a))],
+  [BANK_MAIN_MENU, 0x46DA, hook((P, c) => drawChartIconRow(P, c.hl, c.bc, c.a, c.f))],
   [BANK_MAIN_MENU, 0x46ED, hook((P, c) => drawChartCellRows(P, c.hl, c.de, c.a))],
   [BANK_MAIN_MENU, 0x4718, hook((P, c) => { drawChartCellMark(P, c.de, c.b); })],
-  [BANK_MAIN_MENU, 0x4743, hook(P => { buildN64ExhibColumnList(P); })],
+  [BANK_MAIN_MENU, 0x4743, hook(P => buildN64ExhibColumnList(P))],
   [BANK_MAIN_MENU, 0x4771, () => {}],                        // Unused_3b_StubNop1
   [BANK_MAIN_MENU, 0x4783, hook(P => initChartRowFlags(P))],
   [BANK_MAIN_MENU, 0x479A, hook(P => buildN64ExhibResultsGrid(P))],
@@ -716,18 +765,18 @@ export const HOOKS = [
   [BANK_MAIN_MENU, 0x493F, hook((P, c) => readN64RecordsSaveBlock(P, c.f))],
   [BANK_MAIN_MENU, 0x4963, hookGen(P => runTrophiesScreen(P))],
   [BANK_MAIN_MENU, 0x49E4, () => {}],                        // Unused_3b_StubNop2
-  [BANK_MAIN_MENU, 0x49E5, hook(P => { buildTrophiesScreen(P); })],
+  [BANK_MAIN_MENU, 0x49E5, hook(P => buildTrophiesScreen(P))],
   [BANK_MAIN_MENU, 0x4A71, hook(P => drawTrophiesWonRows(P))],
   [BANK_MAIN_MENU, 0x4AA3, hook((P, c) => drawTrophyRowPair(P, c.hl, c.de))],
   [BANK_MAIN_MENU, 0x4AC9, hook((P, c) => { drawWonTrophyIcon(P, c.de); })],
-  [BANK_MAIN_MENU, 0x4AF1, hook((P, c) => drawTrophiesCharSprite(P, c.c, c.de))],
-  [BANK_MAIN_MENU, 0x4B19, hook(P => checkTrophiesCheatCode(P))],
-  [BANK_MAIN_MENU, 0x4B33, hook(P => applyUnlockEverythingCheat(P))],
-  [BANK_MAIN_MENU, 0x4C53, hook(P => { decodeTrophyCounts(P); })],
+  [BANK_MAIN_MENU, 0x4AF1, hook((P, c) => drawTrophiesCharSprite(P, c.c, c.de, c.sp))],
+  [BANK_MAIN_MENU, 0x4B19, hook((P, c) => checkTrophiesCheatCode(P, c.sp))],
+  [BANK_MAIN_MENU, 0x4B33, hook((P, c) => applyUnlockEverythingCheat(P, c.sp))],
+  [BANK_MAIN_MENU, 0x4C53, hook(P => decodeTrophyCounts(P))],
   [BANK_MAIN_MENU, 0x4CFA, hookGen(P => runN64TnmtData(P))],
   [BANK_MAIN_MENU, 0x4D5D, hookGen(P => scrollN64TnmtDataCursor(P))],
-  [BANK_MAIN_MENU, 0x4DBD, hook(P => { buildN64TnmtDataScreen(P); })],
-  [BANK_MAIN_MENU, 0x4DFF, hook(P => { loadN64TnmtDataRecords(P); })],
+  [BANK_MAIN_MENU, 0x4DBD, hook(P => buildN64TnmtDataScreen(P))],
+  [BANK_MAIN_MENU, 0x4DFF, hook(P => loadN64TnmtDataRecords(P))],
   [BANK_MAIN_MENU, 0x4E54, hook(P => buildN64TnmtTrophyGrid(P))],
   [BANK_MAIN_MENU, 0x4E74, hook((P, c) => getN64CharTrophyRowPtr(P, c.b))],
   [BANK_MAIN_MENU, 0x4E97, hook((P, c) => { decodeN64CharTrophyCounts(P, c.hl, c.de); })],
@@ -735,27 +784,27 @@ export const HOOKS = [
   [BANK_MAIN_MENU, 0x4EE3, hook(P => checkN64TnmtSecondPage(P))],
   [BANK_MAIN_MENU, 0x4F38, hookGen(P => redrawN64TnmtDataWindow(P))],
   [BANK_MAIN_MENU, 0x4F45, hook(P => { drawN64TnmtRowIcons(P); })],
-  [BANK_MAIN_MENU, 0x4F81, hook(P => { drawN64TnmtPageLabels(P); })],
-  [BANK_MAIN_MENU, 0x5000, hook(P => { drawN64TnmtTrophyRows(P); })],
+  [BANK_MAIN_MENU, 0x4F81, hook((P, c) => drawN64TnmtPageLabels(P, c.f))],
+  [BANK_MAIN_MENU, 0x5000, hook(P => drawN64TnmtTrophyRows(P))],
   [BANK_MAIN_MENU, 0x5042, hook((P, c) => { drawN64TnmtTrophyRow(P, c.hl, c.de); })],
   [BANK_MAIN_MENU, 0x507A, hook((P, c) => { drawEmptyTrophyCell(P, c.de); })],
   [BANK_MAIN_MENU, 0x508D, hookGen(P => flushN64TnmtWindowToVram(P))],
-  [BANK_MAIN_MENU, 0x50D6, hook(P => { n64TnmtScrollArrowsTask(P); })],
+  [BANK_MAIN_MENU, 0x50D6, hook((P, c) => n64TnmtScrollArrowsTask(P, c.f))],
   [BANK_MAIN_MENU, 0x5148, hookGen(P => runN64RingShotData(P))],
-  [BANK_MAIN_MENU, 0x51B3, hook(P => { buildN64RingShotScreen(P); })],
+  [BANK_MAIN_MENU, 0x51B3, hook(P => buildN64RingShotScreen(P))],
   [BANK_MAIN_MENU, 0x5202, hook(P => { drawRingShotRowIcons(P); })],
-  [BANK_MAIN_MENU, 0x523E, hook(P => { loadN64RingShotRecords(P); })],
-  [BANK_MAIN_MENU, 0x5288, hook(P => unusedSeedDefaultRingShotRecords(P))],
+  [BANK_MAIN_MENU, 0x523E, hook(P => loadN64RingShotRecords(P))],
+  [BANK_MAIN_MENU, 0x5288, hook((P, c) => unusedSeedDefaultRingShotRecords(P, c.f))],
   [BANK_MAIN_MENU, 0x5319, hook(P => buildRingShotResultsGrid(P))],
   [BANK_MAIN_MENU, 0x5368, hook((P, c) => { copyRingShotCharScores(P, c.b, c.de); })],
   [BANK_MAIN_MENU, 0x538E, hook((P, c) => { decodeRingShotCharClears(P, c.b, c.de); })],
   [BANK_MAIN_MENU, 0x53B2, hook((P, c) => countConsecutiveSetBits(c.b))],
   [BANK_MAIN_MENU, 0x53C6, hookGen(P => scrollRingShotCursor(P))],
   [BANK_MAIN_MENU, 0x5417, hookGen(P => redrawRingShotWindow(P))],
-  [BANK_MAIN_MENU, 0x5426, hook(P => { drawRingShotModeTab(P); })],
+  [BANK_MAIN_MENU, 0x5426, hook((P, c) => drawRingShotModeTab(P, c.f))],
   [BANK_MAIN_MENU, 0x5456, hookGen(P => flushRingShotWindowToVram(P))],
-  [BANK_MAIN_MENU, 0x5491, hook(P => { ringShotScrollArrowsTask(P); })],
-  [BANK_MAIN_MENU, 0x54FE, hook(P => { drawRingShotClearMarks(P); })],
+  [BANK_MAIN_MENU, 0x5491, hook((P, c) => ringShotScrollArrowsTask(P, c.f))],
+  [BANK_MAIN_MENU, 0x54FE, hook(P => drawRingShotClearMarks(P))],
   [BANK_MAIN_MENU, 0x5529, hook((P, c) => { drawRingShotClearMarkRow(P, c.b, c.c); })],
   [BANK_MAIN_MENU, 0x556E, hook((P, c) => { drawRingShotMarkCell(P, c.b, c.de); })],
   [BANK_MAIN_MENU, 0x558F, hook(P => ringShotScoreDrawTask(P))],

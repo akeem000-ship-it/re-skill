@@ -124,7 +124,11 @@ M("Unused_3b_ClearWram3Row64", 0x43FB, { regs: r => ({ hl: 0xD000 + r(0xF00) }),
 M("Unused_3b_ClearWram3Row64Alt", 0x4411, { regs: r => ({ hl: 0xD000 + r(0xF00) }), n: 3 });
 M("UpdateAnimatedTilesTask_3b", 0x4428, { prep: (mem, r) => { wv(mem, "animatedTileTimer", r(4)); wv(mem, "animatedTilePeriod", 1 + r(3)); wv(mem, "animatedTileSet", r(4)); } });
 M("DrawNameWithDiacritics_3b", 0x442C, {
-  wram: 3, regs: r => ({ hl: 0xD303, de: 0xD000 + 32 * (1 + r(20)) + pick(r, [1, 10, 25, 31]) }), prep: summariesPrep,
+  wram: 3, regs: r => ({ hl: 0xD303, de: 0xD000 + 32 * (1 + r(20)) + 1 + r(10) }),
+  prep: (mem, r) => {                                         // file 1's name, always terminated
+    const len = 1 + r(9);
+    for (let i = 0; i < 11; i++) mem.wram[3][0x303 + i] = i < len ? (r(5) === 0 && i ? pick(r, [0xDE, 0xDF]) : 0x41 + r(26)) : 0;
+  },
 });
 M("Unused_3b_DrawDecimalNumber", 0x4465, { regs: r => ({ a: r(5), hl: r(0x10000), de: 0xD000 + r(0x200) }), n: 2 });
 M("Unused_3b_DrawAsciiDigitString", 0x4486, { regs: r => ({ hl: 0xC800, de: 0xD000 + r(0x200) }), prep: (mem, r) => { for (let i = 0; i < 6; i++) w(mem, 0xC800 + i, i === 5 ? 0 : 0x20 + r(0x20)); }, n: 2 });

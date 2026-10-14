@@ -5,7 +5,7 @@
 // third_party/mario-tennis-gbc-disasm). Tables are read from the ROM.
 // Tests: web/tests/port/routines_menus_main.mjs; DrawNameWithDiacritics_3b on the main menu's caption (lockstep).
 import {
-  FZ, FH, addFlags, subFlags, hook, callHome, withRomBank, withWramBank, HOME, WRAM_SCREEN,
+  FZ, FH, addFlags, subFlags, farcallFlags, hook, callHome, withRomBank, withWramBank, HOME, WRAM_SCREEN,
   TILEMAP_WIDTH, wShadowTilemap,
 } from "../common/defs.js";
 import { BANK_MENU_LIB, updateAnimatedTiles } from "../common/tilemaps.js";
@@ -20,7 +20,10 @@ export function unusedClearWram3Row64(P, hl, f) {
   return { a: old, c: 0, hl, f };
 }
 // UpdateAnimatedTilesTask_3b (3B:4428): the animated tiles as a frame task of this bank (farcall UpdateAnimatedTiles)
-export function updateAnimatedTilesTask(P) { withRomBank(P, BANK_MENU_LIB, () => updateAnimatedTiles(P)); }
+export function updateAnimatedTilesTask(P, sp) {
+  withRomBank(P, BANK_MENU_LIB, () => updateAnimatedTiles(P));
+  return { f: farcallFlags(sp) };                           // UpdateAnimatedTiles keeps af
+}
 
 // DrawNameWithDiacritics_3b (3B:442C): the 0-ended name at hl into a tilemap at de; a dakuten / handakuten code
 // ($DE / $DF) after a character goes in the row above it (as $0E / $0F where that cell holds tile 3, the window
@@ -77,7 +80,7 @@ export function unusedDrawAsciiDigitChar(P, ch, de) {
 export const HOOKS = [
   [BANK_MAIN_MENU, 0x43FB, hook((P, c) => unusedClearWram3Row64(P, c.hl, c.f))],
   [BANK_MAIN_MENU, 0x4411, hook((P, c) => unusedClearWram3Row64(P, c.hl, c.f))],
-  [BANK_MAIN_MENU, 0x4428, hook(P => { updateAnimatedTilesTask(P); })],
+  [BANK_MAIN_MENU, 0x4428, hook((P, c) => updateAnimatedTilesTask(P, c.sp))],
   [BANK_MAIN_MENU, 0x442C, hook((P, c) => drawNameWithDiacritics(P, c.hl, c.de))],
   [BANK_MAIN_MENU, 0x4465, hook((P, c) => unusedDrawDecimalNumber(P, c))],
   [BANK_MAIN_MENU, 0x4486, hook((P, c) => unusedDrawAsciiDigitString(P, c.hl, c.de))],
