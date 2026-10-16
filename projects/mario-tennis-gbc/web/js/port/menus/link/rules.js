@@ -9,10 +9,10 @@
 // (the erase warning's frame task). The rules menu runs over the link only, which the emulator cannot play: the
 // menu (RunLinkMatchRulesMenu, OpenMatchRulesPanel, CloseMatchRulesPanel) is unverified.
 import {
-  FZ, FN, FAR, HOME, rom, romWait, home, wram, rd, wr, sound, advanceFrame, registerFrameTask, clearFrameTasks,
-  enableLCD, beginFadeIn, loadPaletteShadow, disableLCDSafely, hook, hookGen, regs8, near, WRAM_SCREEN, TILE_SIZE,
-  VRAM_BANK1, vTiles0, PADF_A, PADF_B, PADF_LEFT, PADF_RIGHT, rIE, IE_TIMER, BGM_MENU, SFX_MENU_MOVE, SFX_MENU_SELECT,
-  SFX_MENU_CANCEL, MENUSLIDE_BACK, MENUSLIDE_FORWARD,
+  FZ, FN, FAR, HOME, rom, romWait, home, wram, sound, advanceFrame, registerFrameTask, clearFrameTasks, enableLCD,
+  beginFadeIn, loadPaletteShadow, disableLCDSafely, hook, hookGen, regs8, WRAM_SCREEN, TILE_SIZE, VRAM_BANK1, vTiles0,
+  PADF_A, PADF_B, PADF_LEFT, PADF_RIGHT, rIE, IE_TIMER, BGM_MENU, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_CANCEL,
+  MENUSLIDE_BACK, MENUSLIDE_FORWARD,
 } from "../equipment/defs.js";
 import { moveMenuCursorGrid, getMenuCursorIndex, getMenuCursorIndexFromPtr, setMenuCursorFromIndex } from "../common/cursors.js";
 import {

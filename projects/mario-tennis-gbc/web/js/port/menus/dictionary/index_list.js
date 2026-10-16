@@ -8,7 +8,7 @@
 // Tests: lockstep on out/port/menus_saved1.mtrec, story_walk2.mtrec and out/port/dc_*.mtrec; web/tests/port/
 // routines_menus_misc.mjs.
 import {
-  FZ, FN, FAR, cpFlags, rom, romWait, wram, u8, w8, idx, ixF, sound, advanceFrame, setFlag, clearFlag, queueCopy, hook,
+  FZ, FAR, cpFlags, rom, romWait, wram, u8, w8, idx, ixF, sound, advanceFrame, setFlag, clearFlag, queueCopy, hook,
   hookGen, regs8, WRAM_SCREEN, WRAM_TEXT, WRAM_SCENE, WRAM_SOUND, TILEMAP_WIDTH, TILE_SIZE, vTiles1, vBGMap0,
   wShadowTilemap, wWindowShadowTilemap, PADF_A, PADF_B, PADF_UP, PADF_DOWN, PADF_LEFT, PADF_RIGHT, SFX_MENU_MOVE,
   SFX_MENU_SELECT, SFX_MENU_CANCEL,

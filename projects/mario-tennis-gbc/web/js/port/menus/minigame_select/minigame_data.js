@@ -9,11 +9,11 @@
 // Tests: lockstep on out/port/menus_status1.mtrec (the type select and the data screen) and out/port/ms_data9.mtrec
 // (the scrolling chart, scripted with every character unlocked); web/tests/port/routines_menus_misc.mjs.
 import {
-  FZ, FAR, rom, near, wram, rd, wr, u8, w8, idx, sound, advanceFrame, registerFrameTask, clearFrameTasks,
-  queueSpriteTemplate, enableLCD, fadeIn, fadeOut, loadPaletteShadow, loadScreenAssetRecord, queueWram3MapToVRAM,
-  queueCopy, disableLCDSafely, hook, hookGen, regs8, WRAM_SCREEN, WRAM_SOUND, TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1,
-  vTiles0, vTiles1, vBGMap0, wShadowTilemap, wShadowAttrmap, PADF_A, PADF_B, PADF_UP, PADF_DOWN, BGM_STATUS_SCREEN,
-  SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_CANCEL,
+  FZ, FAR, rom, wram, w8, idx, sound, advanceFrame, registerFrameTask, clearFrameTasks, queueSpriteTemplate,
+  enableLCD, fadeIn, fadeOut, loadPaletteShadow, loadScreenAssetRecord, queueWram3MapToVRAM, queueCopy,
+  disableLCDSafely, hook, hookGen, WRAM_SCREEN, WRAM_SOUND, TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1, vTiles0, vTiles1,
+  vBGMap0, wShadowTilemap, wShadowAttrmap, PADF_A, PADF_B, PADF_UP, PADF_DOWN, BGM_STATUS_SCREEN, SFX_MENU_MOVE,
+  SFX_MENU_SELECT, SFX_MENU_CANCEL,
 } from "../equipment/defs.js";
 import { clearBytes } from "../../home/system.js";
 import { getMenuCursorIndex } from "../common/cursors.js";

@@ -11,11 +11,11 @@
 // Tests: lockstep on out/port/mg_*.mtrec and minigame_*.mtrec (the level select of each minigame, levels cleared or
 // not) and out/port/ms_debug.mtrec (the unused screens, scripted by stub calls); web/tests/port/routines_menus_misc.mjs.
 import {
-  FZ, FN, FAR, HOME, rom, romWait, home, near, wram, rd, u8, w8, idx, ixF, sound, advanceFrame, registerFrameTask,
-  unregisterFrameTask, enableLCD, fadeIn, fadeOut, beginFadeIn, waitFadeEnd, loadPaletteShadow, loadCompressedTileBlock, queueCopy,
-  disableLCDSafely, hook, hookGen, nop, regs8, getRegs, WRAM_STAGING, WRAM_COURT_PLANES, WRAM_SCREEN, WRAM_SCENE,
-  WRAM_SOUND, TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1, vTiles0, vBGMap0, wDecompBuffer, wShadowTilemap, wScreenAttrmap,
-  PADF_A, PADF_B, SFX_MENU_SELECT, SFX_MENU_CANCEL,
+  FZ, FAR, rom, romWait, wram, u8, w8, idx, ixF, sound, advanceFrame, registerFrameTask, unregisterFrameTask,
+  enableLCD, fadeIn, fadeOut, beginFadeIn, waitFadeEnd, loadPaletteShadow, loadCompressedTileBlock, queueCopy,
+  disableLCDSafely, hook, hookGen, nop, regs8, WRAM_STAGING, WRAM_COURT_PLANES, WRAM_SCREEN, WRAM_SCENE, WRAM_SOUND,
+  TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1, vTiles0, vBGMap0, wDecompBuffer, wShadowTilemap, wScreenAttrmap, PADF_A,
+  PADF_B, SFX_MENU_SELECT, SFX_MENU_CANCEL,
 } from "../equipment/defs.js";
 import { decompressData, decompressDataFromBank } from "../../home/decompress.js";
 import { queueVRAMCopy } from "../../home/memory.js";

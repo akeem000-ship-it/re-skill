@@ -9,12 +9,12 @@
 // Tests: lockstep on out/port/menus_file1.mtrec (racket-or-shoes), save1.mtrec and out/engine/rec2.mtrec (partner
 // menu), story_pause_items.mtrec (status screen) and out/port/eq_*.mtrec; web/tests/port/routines_menus_misc.mjs.
 import {
-  FZ, FAR, rom, romWait, home, near, wram, w8, sound, advanceFrame, registerFrameTask, clearFrameTasks,
-  queueSpriteTemplate, loadPaletteShadow, enableLCD, fadeIn, fadeOut, fillTilemapRect, loadCompressedTileBlock,
-  loadScreenAssetRecord, queueWram3MapToVRAM, prepareGlyphBuffer, uploadGlyphBuffer, disableLCDSafely, setFlag,
-  clearFlag, hook, hookGen, orFlags, WRAM_SCREEN, WRAM_TEXT, TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1, vTiles0, vTiles2,
-  wShadowTilemap, wShadowAttrmap, wScreenScratch, OAM_BANK1, PADF_A, PADF_B, rIE, IE_TIMER, BGM_MENU, SFX_MENU_MOVE,
-  SFX_MENU_SELECT, SFX_MENU_CANCEL, MENUSLIDE_BACK, MENUSLIDE_FORWARD, FLAG_DOUBLES,
+  FZ, FAR, rom, romWait, near, wram, w8, sound, advanceFrame, registerFrameTask, clearFrameTasks, queueSpriteTemplate,
+  loadPaletteShadow, enableLCD, fadeIn, fadeOut, fillTilemapRect, loadCompressedTileBlock, loadScreenAssetRecord,
+  queueWram3MapToVRAM, prepareGlyphBuffer, disableLCDSafely, setFlag, clearFlag, hook, hookGen, orFlags, WRAM_SCREEN,
+  WRAM_TEXT, TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1, vTiles0, vTiles2, wShadowAttrmap, wScreenScratch, OAM_BANK1,
+  PADF_A, PADF_B, rIE, IE_TIMER, BGM_MENU, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_CANCEL, MENUSLIDE_BACK,
+  MENUSLIDE_FORWARD, FLAG_DOUBLES,
 } from "./defs.js";
 import { clearMemory16 } from "../../home/memory.js";
 import { moveMenuCursorGrid, getMenuCursorIndex } from "../common/cursors.js";

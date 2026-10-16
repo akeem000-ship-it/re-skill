@@ -9,11 +9,11 @@
 // three-level panel, scripted with the levels cleared) and menus_status1.mtrec (the saved-data type select);
 // web/tests/port/routines_menus_misc.mjs.
 import {
-  FZ, FAR, HOME, rom, romWait, home, farGen, wram, u8, w8, idx, sound, advanceFrame, registerFrameTask,
-  clearFrameTasks, queueSpriteTemplate, fillTilemapRect, queueCopy, hook, hookGen, WRAM_COURT_PLANES, WRAM_SCREEN,
-  TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1, vTiles0, vBGMap0, wShadowTilemap, wShadowAttrmap, wScreenAttrmap, OAM_BANK1,
-  PADF_A, PADF_B, rIE, IE_TIMER, BGM_MENU, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_LOCKED, SFX_MENU_CANCEL,
-  MENUSLIDE_BACK, MENUSLIDE_FORWARD,
+  FAR, rom, romWait, home, farGen, wram, u8, w8, idx, sound, advanceFrame, registerFrameTask, clearFrameTasks,
+  queueSpriteTemplate, fillTilemapRect, queueCopy, hook, hookGen, WRAM_COURT_PLANES, WRAM_SCREEN, TILEMAP_WIDTH,
+  TILE_SIZE, VRAM_BANK1, vTiles0, vBGMap0, wShadowTilemap, wShadowAttrmap, wScreenAttrmap, OAM_BANK1, PADF_A, PADF_B,
+  rIE, IE_TIMER, BGM_MENU, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_LOCKED, SFX_MENU_CANCEL, MENUSLIDE_BACK,
+  MENUSLIDE_FORWARD,
 } from "../equipment/defs.js";
 import { moveMenuCursorGrid, getMenuCursorIndex, setMenuCursorFromIndex } from "../common/cursors.js";
 import { openChoiceTabPanel, closeChoiceTabPanel } from "../equipment/choicetab.js";

@@ -10,11 +10,10 @@
 // scripted); web/tests/port/routines_menus_misc.mjs. The rules rows and cursor run only in the link rules menu
 // (unverified in the lockstep: see rules.js) and are checked by the routine tests.
 import {
-  FZ, FAR, HOME, rom, romWait, home, wram, rd, u8, w8, idx, ixF, addFlags, advanceFrame, clearFrameTasks,
-  queueSpriteTemplate, loadPaletteShadow, enableLCD, fadeIn, fillTilemapRect, loadCompressedTileBlock,
-  loadScreenAssetRecord, queueWram3MapToVRAM, prepareGlyphBuffer, uploadGlyphBuffer, renderProportionalTextAt,
-  disableLCDSafely, queueCopy, hook, hookGen, WRAM_SCREEN, WRAM_TEXT, TILEMAP_WIDTH, vTiles2, vBGMap0,
-  wShadowTilemap, OAM_BANK1,
+  FAR, rom, wram, u8, w8, idx, addFlags, advanceFrame, clearFrameTasks, queueSpriteTemplate, loadPaletteShadow,
+  enableLCD, fadeIn, fillTilemapRect, loadCompressedTileBlock, loadScreenAssetRecord, queueWram3MapToVRAM,
+  prepareGlyphBuffer, uploadGlyphBuffer, renderProportionalTextAt, disableLCDSafely, queueCopy, hook, hookGen,
+  WRAM_SCREEN, WRAM_TEXT, TILEMAP_WIDTH, vTiles2, vBGMap0, wShadowTilemap, OAM_BANK1,
 } from "../equipment/defs.js";
 import { copyMemoryBC } from "../../home/memory.js";
 import { clearBothSpriteBuffers } from "../../home/fade.js";

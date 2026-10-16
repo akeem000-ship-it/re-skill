@@ -10,7 +10,7 @@
 // picked) and out/port/ms_grid9.mtrec (the 3x3 grid, scripted with every character unlocked);
 // web/tests/port/routines_menus_misc.mjs.
 import {
-  FZ, FN, FAR, cpFlags, rom, romWait, near, nearWait, wram, rd, u8, w8, idx, ixF, sound, advanceFrame, registerFrameTask,
+  FZ, FN, FAR, cpFlags, rom, romWait, near, nearWait, wram, u8, w8, idx, sound, advanceFrame, registerFrameTask,
   clearFrameTasks, queueVRAMCopy, queueSpriteTemplate, fillTilemapRect, loadCompressedTileBlock, queueCopy, hook,
   hookGen, regs8, WRAM_STAGING, WRAM_SCREEN, TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1, vTiles0, vBGMap0, wDecompBuffer,
   wShadowTilemap, wShadowAttrmap, OAM_BANK1, PADF_A, PADF_B, rIE, IE_TIMER, SFX_MENU_MOVE, SFX_MENU_SELECT,

@@ -8,9 +8,9 @@
 // Tests: web/tests/port/routines_menus_misc.mjs (from character-select states, the link modes and slots forced).
 // The link character select needs a link partner, which the emulator does not have: no lockstep covers these.
 import {
-  FZ, FN, FAR, rom, near, wram, rd, wr, u8, w8, idx, ixF, cpFlags, addFlags, sound, queueCopy, fillTilemapRect,
-  hook, regs8, WRAM_SCREEN, TILEMAP_WIDTH, VRAM_BANK1, vBGMap0, wShadowTilemap, wShadowAttrmap, PADF_A, PADF_B,
-  PADF_START, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_CANCEL,
+  FZ, FN, rom, near, wram, rd, wr, u8, w8, idx, ixF, cpFlags, addFlags, sound, queueCopy, fillTilemapRect, hook,
+  regs8, WRAM_SCREEN, TILEMAP_WIDTH, VRAM_BANK1, vBGMap0, wShadowTilemap, wShadowAttrmap, PADF_A, PADF_B, PADF_START,
+  SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_CANCEL,
 } from "../equipment/defs.js";
 import { setGridEntryTakenByCharId, retreatRemotePlayerSlot } from "./link_cursor.js";
 

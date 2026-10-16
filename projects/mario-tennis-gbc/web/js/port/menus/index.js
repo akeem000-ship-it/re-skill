@@ -25,7 +25,13 @@ import { HOOKS as SCENES } from "./scenes/index.js";
 import { HOOKS as EXP } from "./exp/index.js";
 import { HOOKS as RESULTS } from "./results/index.js";
 import { HOOKS as RANKING } from "./ranking/index.js";
+import { HOOKS as EQUIPMENT } from "./equipment/index.js";
+import { HOOKS as DICTIONARY } from "./dictionary/index.js";
+import { HOOKS as MINIGAME_SELECT } from "./minigame_select/index.js";
+import { HOOKS as DEBUG } from "./debug/index.js";
+import { HOOKS as LINK } from "./link/index.js";
 export const HOOKS = [...CURSORS, ...TILEMAPS, ...MENU_LIB, ...WIDGETS, ...CURSORBOX, ...PROMPTS,
   ...BOOT, ...MAIN_MENU, ...N64, ...MATCH_FORMAT, ...SAVED, ...ERASE, ...N64TRANSFER, ...N64DATA,
   ...CHAR_SELECT, ...CHAR_DATA, ...PAUSE, ...BRIEFING, ...COURT_SELECT, ...SCENES,
-  ...EXP, ...RESULTS, ...RANKING];
+  ...EXP, ...RESULTS, ...RANKING,
+  ...EQUIPMENT, ...DICTIONARY, ...MINIGAME_SELECT, ...DEBUG, ...LINK];

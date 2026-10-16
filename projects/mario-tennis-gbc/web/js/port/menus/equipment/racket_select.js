@@ -12,9 +12,9 @@
 import {
   FZ, FN, FAR, rom, near, wram, u8, w8, idx, sound, advanceFrame, registerFrameTask, clearFrameTasks,
   loadPaletteShadow, enableLCD, fadeIn, fadeOut, copyTilemapRect, loadCompressedTileBlock, loadScreenAssetRecord,
-  queueWram3MapToVRAM, prepareGlyphBuffer, disableLCDSafely, testFlag, hook, hookGen, cpFlags, WRAM_SCREEN,
-  TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1, vTiles0, wShadowTilemap, wShadowAttrmap, PADF_A, PADF_B, SFX_MENU_MOVE,
-  SFX_MENU_DECIDE, SFX_MENU_CANCEL,
+  queueWram3MapToVRAM, prepareGlyphBuffer, disableLCDSafely, testFlag, hook, hookGen, WRAM_SCREEN, TILEMAP_WIDTH,
+  TILE_SIZE, VRAM_BANK1, vTiles0, wShadowTilemap, wShadowAttrmap, PADF_A, PADF_B, SFX_MENU_MOVE, SFX_MENU_DECIDE,
+  SFX_MENU_CANCEL,
 } from "./defs.js";
 import { clearMemory16 } from "../../home/memory.js";
 import { clearBytes } from "../../home/system.js";

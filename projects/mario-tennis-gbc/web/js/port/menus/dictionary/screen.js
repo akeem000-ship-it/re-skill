@@ -11,11 +11,10 @@
 // list) and out/port/dc_*.mtrec (scripted: each mode, scrolling, letters, a definition); web/tests/port/
 // routines_menus_misc.mjs.
 import {
-  FZ, FN, FAR, HOME, rom, romWait, home, wram, u8, w8, idx, ixF, cpFlags, sound, advanceFrame, waitFrames,
-  registerFrameTask, unregisterFrameTask, clearFrameTasks, queueSpriteTemplate, enableLCD, fadeIn, fadeOut,
-  disableLCDSafely, testFlag, hook, hookGen, regs8, WRAM_STAGING, WRAM_COURT_PLANES, WRAM_SCREEN, WRAM_SCENE,
-  TILE_SIZE, VRAM_BANK1, vTiles0, vTiles1, vTiles2, wDecompBuffer, wShadowTilemap, wScreenAttrmap, OAM_BANK1,
-  SFX_MENU_SELECT,
+  FZ, FN, FAR, rom, romWait, wram, u8, w8, idx, cpFlags, sound, advanceFrame, waitFrames, registerFrameTask,
+  unregisterFrameTask, clearFrameTasks, queueSpriteTemplate, enableLCD, fadeIn, fadeOut, disableLCDSafely, testFlag,
+  hook, hookGen, WRAM_STAGING, WRAM_COURT_PLANES, WRAM_SCREEN, WRAM_SCENE, TILE_SIZE, VRAM_BANK1, vTiles0, vTiles1,
+  vTiles2, wDecompBuffer, wShadowTilemap, wScreenAttrmap, OAM_BANK1, SFX_MENU_SELECT,
 } from "../equipment/defs.js";
 import { decompressData, decompressDataFromBank } from "../../home/decompress.js";
 import { queueVRAMCopy } from "../../home/memory.js";

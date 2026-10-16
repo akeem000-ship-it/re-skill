@@ -9,10 +9,10 @@
 // sequence itself needs a link partner: the emulator has none, so RunLinkMatchSequence, ExchangeLinkCharSelection
 // and ExchangeLinkUnlockFlags are unverified).
 import {
-  FZ, FN, FAR, HOME, farGen, rom, romWait, home, homeWait, near, wram, rd, wr, u8, w8, idx, cpFlags, sound, clearFrameTasks,
+  FZ, FN, FAR, HOME, farGen, rom, romWait, home, homeWait, near, wram, u8, w8, idx, cpFlags, sound, clearFrameTasks,
   enableLCD, beginFadeIn, fadeOut, setFlag, clearFlag, setFlagF, queueCopy, disableLCDSafely, hook, hookGen,
-  WRAM_SCREEN, WRAM_COURT_PLANES, TILEMAP_WIDTH, vBGMap0, wShadowTilemap, OAM_BANK1,
-  SFX_MENU_SELECT, MENUSLIDE_BACK, MENUSLIDE_FORWARD, FLAG_DOUBLES,
+  WRAM_SCREEN, WRAM_COURT_PLANES, TILEMAP_WIDTH, vBGMap0, wShadowTilemap, OAM_BANK1, SFX_MENU_SELECT, MENUSLIDE_BACK,
+  MENUSLIDE_FORWARD, FLAG_DOUBLES,
 } from "../equipment/defs.js";
 import { getMenuCursorIndex } from "../common/cursors.js";
 import { drawNameWithDiacritics } from "../char_select/matchtype.js";

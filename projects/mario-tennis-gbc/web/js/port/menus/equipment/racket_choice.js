@@ -8,18 +8,20 @@
 // Tests: lockstep on out/port/eq_erase*.mtrec and eq_choice.mtrec (scripted from a story state: each variant, each
 // answer); web/tests/port/routines_menus_misc.mjs.
 import {
-  FZ, FAR, HOME, rom, romWait, home, near, wram, withWram, u8, w8, sound, advanceFrame, registerFrameTask,
-  clearFrameTasks, queueVRAMCopy, queueSprite, loadPaletteShadow, enableLCD, fadeIn, fadeOut,
-  fillTilemapRect, loadCompressedTileBlock, loadScreenAssetRecord, queueWram3MapToVRAM, prepareGlyphBuffer,
-  uploadGlyphBuffer, renderProportionalTextAt, disableLCDSafely, hook, hookGen, WRAM_STAGING, WRAM_SCREEN, WRAM_TEXT,
-  TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1, vTiles0, vTiles2, vBGMap0, wDecompBuffer, wShadowTilemap, wShadowAttrmap,
-  OAM_BANK1, PADF_A, PADF_B, PADF_UP, PADF_DOWN, rIE, IE_TIMER, BGM_MENU, SFX_MENU_MOVE, SFX_MENU_SELECT,
-  SFX_MENU_DECIDE, SFX_MENU_CANCEL, MENUSLIDE_BACK, MENUSLIDE_FORWARD,
+  FZ, FAR, rom, near, wram, u8, w8, sound, advanceFrame, registerFrameTask, clearFrameTasks, queueVRAMCopy,
+  queueSprite, loadPaletteShadow, enableLCD, fadeIn, fadeOut, fillTilemapRect, loadCompressedTileBlock,
+  loadScreenAssetRecord, queueWram3MapToVRAM, prepareGlyphBuffer, uploadGlyphBuffer, renderProportionalTextAt,
+  disableLCDSafely, hook, hookGen, WRAM_STAGING, WRAM_SCREEN, WRAM_TEXT, TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1,
+  vTiles0, vTiles2, vBGMap0, wDecompBuffer, wShadowTilemap, wShadowAttrmap, OAM_BANK1, PADF_A, PADF_B, PADF_UP,
+  PADF_DOWN, rIE, IE_TIMER, BGM_MENU, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_DECIDE, SFX_MENU_CANCEL,
+  MENUSLIDE_BACK, MENUSLIDE_FORWARD,
 } from "./defs.js";
 import { copyMemoryBC } from "../../home/memory.js";
 import { decompressDataFromBank as homeDecompressFromBank } from "../../home/decompress.js";
 import { moveMenuCursorGrid, getMenuCursorIndex } from "../common/cursors.js";
-import { openChoiceTabPanel, closeChoiceTabPanel, choiceTabCursorSpriteTask, setChoiceTabAttrRect, ChoiceTabCursorSpriteTask } from "./choicetab.js";
+import {
+  openChoiceTabPanel, closeChoiceTabPanel, setChoiceTabAttrRect, ChoiceTabCursorSpriteTask,
+} from "./choicetab.js";
 
 export const BANK = 0x3E;
 export const UpdateAnimatedTiles_3e = 0x4438, EraseConfirmCursorSpriteTask = 0x4E0C, AnimateEraseConfirmPalette = 0x4E34;
