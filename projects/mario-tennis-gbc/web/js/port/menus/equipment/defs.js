@@ -18,6 +18,7 @@ import { HOOK_TRACE } from "../char_select/defs.js";
 import { getRegs, setRegs, spAddFlags } from "../../home/cpu.js";
 import { queueVRAMCopy } from "../../home/memory.js";
 import { FAR as FAR_PAUSE, HOME as HOME_PAUSE } from "../pause/defs.js";
+import { farcallFlags } from "../common/defs.js";
 
 export * from "../pause/defs.js";
 export { HOOK_TRACE, spAddFlags };
@@ -59,9 +60,16 @@ export const hookGen = fn => function* (P, cpu) {
 export const nop = () => {};
 
 // ---- calls ----
-// `call X` of a routine of the caller's bank that has no port (P.callRom with the bank mapped now)
-export const near = (P, addr, regs = {}) => P.callRom(P.mem.romBank, addr, regs);
-export function* nearWait(P, addr, regs = {}) { return yield* P.runRom(P.mem.romBank, addr, regs); }
+// Calls into ROM code (or other parts' hooked JS) through its address, as menus/pause/defs.js's, with the registers
+// given (undefined ones left as they are: register sets built from partial results).
+const given = regs => { const r = {}; for (const k in regs) if (regs[k] !== undefined) r[k] = regs[k]; return r; };
+export const rom = (P, [bank, a], regs = {}) => P.callRom(bank, a, { f: farcallFlags(P.cpu.sp), ...given(regs) });
+export const home = (P, a, regs = {}) => P.callRom(0, a, given(regs));
+export function* romWait(P, [bank, a], regs = {}) { return yield* P.runRom(bank, a, { f: farcallFlags(P.cpu.sp), ...given(regs) }); }
+export function* homeWait(P, a, regs = {}) { return yield* P.runRom(0, a, given(regs)); }
+// `call X` of a routine of the caller's bank (P.callRom with the bank mapped now)
+export const near = (P, addr, regs = {}) => P.callRom(P.mem.romBank, addr, given(regs));
+export function* nearWait(P, addr, regs = {}) { return yield* P.runRom(P.mem.romBank, addr, given(regs)); }
 // QueueVRAMCopy (00:0480) with every register it leaves (c = the count loaded, which a full queue keeps)
 export const queueCopy = (P, src, dest, blocks) => ({ c: blocks & 0xFF, ...queueVRAMCopy(P, src, dest, blocks) });
 // the flags the rst $20 / $28 handlers (set_flag / clear_flag) leave: their `ld hl, sp+4`, sp 4 below the caller's
@@ -69,6 +77,10 @@ export const setFlagF = P => spAddFlags((P.cpu.sp - 6) & 0xFFFF, 4);
 // the 8-bit registers of a register set (P.callRom's result): to pass on with some changed (a pair given to
 // P.callRom wins over its halves)
 export const regs8 = r => ({ a: r.a, f: r.f, b: r.b, c: r.c, d: r.d, e: r.e, h: r.h, l: r.l });
+
+// ---- constants (include/constants/*.inc) ----
+export const BGM_STATUS_SCREEN = 0x04, SFX_STOP = 0x50, BGM_NONE = 0x00;
+export const CHAR_MARIO = 0x1A;
 
 // ---- the ROM's routines, by address ----
 export const HOME = {
