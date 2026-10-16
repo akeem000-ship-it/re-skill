@@ -1,7 +1,7 @@
 // Shared pieces of the debug-screen ports (web/js/port/menus/debug): the helpers of ../equipment/defs.js, the far
 // routines these screens call, the EXP screen's variables (WRAM 6), and the ROM's 16-bit subtraction with its
 // flags. Names and addresses from the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/mario-tennis-gbc-disasm).
-import { FZ, FN, FH, FC, FAR as FAR_EQUIP } from "../equipment/defs.js";
+import { FZ, FN, FH, FC, FAR as FAR_EQUIP, subFlags } from "../equipment/defs.js";
 import { farcallFlags } from "../common/defs.js";
 
 export * from "../equipment/defs.js";
@@ -67,4 +67,10 @@ export function chain(r, x) {
     if (k.length === 2) { r[k[0]] = (v >> 8) & 0xFF; r[k[1]] = v & 0xFF; } else r[k] = v & 0xFF;
   }
   return r;
+}
+// ld_hl_indexed table: `add low / ld l, a / adc high / sub l / ld h, a`: hl = table + a, a = h, the flags of `sub l`
+export function hlIndexed(table, a) {
+  const s1 = (table & 0xFF) + (a & 0xFF), l = s1 & 0xFF, s2 = l + ((table >> 8) & 0xFF) + (s1 > 0xFF ? 1 : 0);
+  const x = s2 & 0xFF, h = (x - l) & 0xFF;
+  return { hl: h << 8 | l, a: h, f: subFlags(x, l) };
 }
