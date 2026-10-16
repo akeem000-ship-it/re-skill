@@ -35,11 +35,11 @@ export const FIELD_OBJECTS = {
    {"x0": 144, "y0": 32, "x1": 209, "y1": 80, "fold": 64, "back": 44, "key": true, "keyRect": [144, 32, 260, 80], "gable": {"ax": 176, "ay": 32, "ey": 64, "roof": [222, 34, 234, 46]}}
   ],
   "sprites": [
-   {"x": 88, "y": 32, "w": 48, "h": 92, "cut": "outline", "only": [[88, 32, 136, 94], [100, 94, 124, 124]], "match": 0.9, "plant": "tree" },
-   {"x": 384, "y": 40, "w": 24, "h": 48, "cut": "outline", "only": [[384, 40, 408, 70], [391, 70, 401, 88]], "match": 0.9, "plant": "tree" },
-   {"x": 32, "y": 48, "w": 16, "h": 32, "cut": "outline", "match": 0.9, "plant": "tree" },
-   {"x": 16, "y": 96, "w": 16, "h": 16, "cut": "dome", "match": 0.9, "plant": "bush" },
-   {"x": 224, "y": 72, "w": 8, "h": 8, "cut": "dome", "match": 0.9, "plant": "bush" }
+   {"x": 88, "y": 32, "w": 48, "h": 92, "cut": "outline", "only": [[88, 32, 136, 94], [100, 94, 124, 124]], "match": 0.9, "plant": "tree"},
+   {"x": 384, "y": 40, "w": 24, "h": 48, "cut": "outline", "only": [[384, 40, 408, 70], [391, 70, 401, 88]], "match": 0.9, "plant": "tree"},
+   {"x": 32, "y": 48, "w": 16, "h": 32, "cut": "outline", "match": 0.9, "plant": "tree"},
+   {"x": 16, "y": 96, "w": 16, "h": 16, "cut": "dome", "match": 0.9, "plant": "bush"},
+   {"x": 224, "y": 72, "w": 8, "h": 8, "cut": "dome", "match": 0.9, "plant": "bush"}
   ],
   "cards": [
    {"x0": 68, "y0": 74, "x1": 90, "y1": 96, "cut": "enclosed", "add": [[79, 88, 81, 95]], "bg": [[84, 92]], "drop": [[82, 87, 90, 96]]},
