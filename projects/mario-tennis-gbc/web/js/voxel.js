@@ -994,6 +994,14 @@ export class Voxel3D {
         floor[o] = art[s]; floor[o + 1] = art[s + 1]; floor[o + 2] = art[s + 2]; f.patched[(y0 + y) * 512 + X] = 1; f.floorSrc[(y0 + y) * 512 + X] = Y * 512 + X;
       }
     };
+    // under a plant the ground is filled once every cut-out is known (fillPlants): from the nearest visible ground a
+    // whole number of tiles away along its row or column, so grass and paths run on and no other tree is copied in
+    const plantHoles = [];
+    const plantHole = (d, x0, y0, w, h) => {      // (with the outline-coloured bits around it: its drawn shadow)
+      const dk = F3.darkest(art, x0, y0, w, h), m = new Uint8Array(d);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (F3.packAt(art, x0 + x, y0 + y) === dk) m[(y * w + x) * 4 + 3] = 255;
+      mark(m, x0, y0, w, h); plantHoles.push([m, x0, y0, w, h, F3.groundKeys(art, x0, y0, w, h, true)]);
+    };
     const cutOpt = o => ({ cut: o.cut, only: o.only, drop: o.drop, bg: o.bg, add: o.add });
     // with a cut mode the card stands on its lowest opaque row (the transparent rows below it are dropped)
     const trim = (d, w, h) => { let r = h; while (r > 1 && !d.subarray((r - 1) * w * 4, r * w * 4).some((v, i) => i % 4 === 3 && v)) r--; return r < h ? { d: d.slice(0, r * w * 4), h: r } : { d, h }; };
@@ -1015,7 +1023,7 @@ export class Voxel3D {
       if (st.plant) {                            // plants: also every pixel-exact copy off the tile grid
         for (const m of F3.matchSprite(art, d, st.x, st.y, st.w, st.h, MWp, MHp, 0.9)) if (!hits.some(q => Math.abs(q.x - m.x) < 6 && Math.abs(q.y - m.y) < 6)) hits.push(m);
         const shape = shapeOf(t.d, st.x, st.y, st.w, t.h, st.plant);
-        for (const hit of hits) { patch(d, hit.x, hit.y, st.w, st.h); cover(hit.x, hit.y, hit.x + st.w, hit.y + st.h); placePlant(shape, hit.x + st.w / 2, hit.y + t.h + (st.dz || 0), st); }
+        for (const hit of hits) { plantHole(d, hit.x, hit.y, st.w, st.h); cover(hit.x, hit.y, hit.x + st.w, hit.y + st.h); placePlant(shape, hit.x + st.w / 2, hit.y + t.h + (st.dz || 0), st); }
         continue;
       }
       const shared = { tex: this.texture(st.w, t.h, t.d), mesh: null, d: t.d, src: srcOf(st.x, st.y, st.w, t.h), own: true };
@@ -1029,7 +1037,7 @@ export class Voxel3D {
       if (!inMap(c.x0, c.y0)) continue;
       cover(c.x0, c.y0, c.x1, c.y1);
       const w = c.x1 - c.x0, h = c.y1 - c.y0, d = F3.cutOut(art, c.x0, c.y0, w, h, plantCut(c));
-      patch(d, c.x0, c.y0, w, h);
+      if (c.plant) plantHole(d, c.x0, c.y0, w, h); else patch(d, c.x0, c.y0, w, h);
       if (c.plant) { const t = trim(d, w, h); placePlant(shapeOf(t.d, c.x0, c.y0, w, t.h, c.plant), c.x0 + w / 2, c.y0 + t.h + (c.dz || 0), c); continue; }
       f.cards.push(card(d, c.x0, c.y0, w, h, c));
     }
@@ -1037,7 +1045,8 @@ export class Voxel3D {
     for (const sp of def.sprites || []) {
       const d = F3.cutOut(art, sp.x, sp.y, sp.w, sp.h, plantCut(sp)), t = sp.plant ? trim(d, sp.w, sp.h) : null, shape = sp.plant ? shapeOf(t.d, sp.x, sp.y, sp.w, t.h, sp.plant) : null;
       for (const hit of F3.matchSprite(art, d, sp.x, sp.y, sp.w, sp.h, MWp, MHp, sp.match ?? 1)) {
-        patch(hit.d, hit.x, hit.y, sp.w, sp.h); cover(hit.x, hit.y, hit.x + sp.w, hit.y + sp.h);
+        if (shape) plantHole(hit.d, hit.x, hit.y, sp.w, sp.h); else patch(hit.d, hit.x, hit.y, sp.w, sp.h);
+        cover(hit.x, hit.y, hit.x + sp.w, hit.y + sp.h);
         if (shape) { placePlant(shape, hit.x + sp.w / 2, hit.y + t.h + (sp.dz || 0), sp); continue; }
         f.cards.push(card(hit.d, hit.x, hit.y, sp.w, sp.h, sp));
       }
@@ -1086,6 +1095,7 @@ export class Voxel3D {
       cover(so.x0, so.y0, so.x1, so.y1);
       if (!base) patch(d, so.x0, so.y0, w, h, so.patch !== "below");   // the ground behind a low solid shows: the ground above it
     }
+    if (!rowMode) for (const [d, x0, y0, w, h, keys] of plantHoles) F3.fillNearest(floor, hole, d, x0, y0, w, h, keys, MWp, MHp, f.floorSrc, f.patched);
     if (rowMode) { F3.fillRows(floor, hole, 0, MWp, 0, MHp, f.floorSrc); for (let i = 0; i < hole.length; i++) if (hole[i]) f.patched[i] = 1; }
     // side-view maps: the sky band stands up as a backdrop with everything cut out of it painted over with the sky
     // of its row; the ground runs on behind it (the first ground rows repeated up to the top)
@@ -1132,10 +1142,16 @@ export class Voxel3D {
       const keep = s ? (x, y) => s.d[((y - s.so.y0) * s.w + x - s.so.x0) * 4 + 3] > 0 : null;
       plant(F3.liftFlowers(art, r, keep, f.artSrc), s ? s.lift + s.H : 0, s ? s.shift : 0, fd.stem ?? 2, leaf(r), !s);
     }
+    const tm = this.gb.mem.wram[3], at = this.gb.mem.wram[2], k = (x, y) => tm[y * 64 + x] | (at[y * 64 + x] & 0x6F) << 8;
+    const flowerKeys = new Set((def.flowerTiles || []).map(ft => k(ft[0] >> 3, ft[1] >> 3)));
     for (const ft of def.flowerTiles || []) {                            // [x, y] of one cell (map px) with a flower painted on the ground
-      const tm = this.gb.mem.wram[3], at = this.gb.mem.wram[2], k = (x, y) => tm[y * 64 + x] | (at[y * 64 + x] & 0x6F) << 8, want = k(ft[0] >> 3, ft[1] >> 3);
+      const want = k(ft[0] >> 3, ft[1] >> 3);
       for (let ty = 0; ty < MHp >> 3; ty++) for (let tx = 0; tx < MWp >> 3; tx++) if (k(tx, ty) === want && !hole[ty * 8 * 512 + tx * 8]) {
         const r = [tx * 8, ty * 8, tx * 8 + 8, ty * 8 + 8]; plant(F3.liftFlowers(art, r, null, f.artSrc), 0, 0, ft[2] ?? 2, leaf(r), true);
+        // the ground under it: a neighbouring plain cell (its stem and shadow are not left painted on the floor)
+        const plain = (x, y) => x >= 0 && y >= 0 && x < MWp >> 3 && y < MHp >> 3 && !flowerKeys.has(k(x, y)) && !hole[y * 8 * 512 + x * 8];
+        const nb = [[tx - 1, ty], [tx + 1, ty], [tx, ty - 1], [tx, ty + 1]].find(([x, y]) => plain(x, y));
+        if (nb) for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const i = (ty * 8 + y) * 512 + tx * 8 + x, j = (nb[1] * 8 + y) * 512 + nb[0] * 8 + x; floor.copyWithin(i * 4, j * 4, j * 4 + 3); f.floorSrc[i] = f.floorSrc[j]; f.patched[i] = 1; }
       }
     }
     const fx = f.fx = { flowers: null, fountains: [], shapes: [], plants };
