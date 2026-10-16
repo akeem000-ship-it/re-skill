@@ -13,7 +13,7 @@ import {
   enableLCD, fadeIn, fadeOut, loadPaletteShadow, loadScreenAssetRecord, queueWram3MapToVRAM, queueCopy,
   disableLCDSafely, hook, hookGen, WRAM_SCREEN, WRAM_SOUND, TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1, vTiles0, vTiles1,
   vBGMap0, wShadowTilemap, wShadowAttrmap, PADF_A, PADF_B, PADF_UP, PADF_DOWN, BGM_STATUS_SCREEN, SFX_MENU_MOVE,
-  SFX_MENU_SELECT, SFX_MENU_CANCEL,
+  SFX_MENU_SELECT, SFX_MENU_CANCEL, chain, nested, getRegs,
 } from "../equipment/defs.js";
 import { clearBytes } from "../../home/system.js";
 import { getMenuCursorIndex } from "../common/cursors.js";
@@ -42,7 +42,10 @@ const LoadChartWindowTiles = [0x3B, 0x48F2], DrawChartCharIcon = [0x3B, 0x48FA],
 // TickMenuBgScrollTask_1b (1B:72A4), a frame task: the menu background's scroll
 export const tickMenuBgScrollTask = P => rom(P, FAR.TickMenuBgScroll);
 // DrawSavedDataTypeSelectCursor (1B:72A8), a frame task: the cursor over the hovered tab
-export const drawSavedDataTypeSelectCursor = P => (getMenuCursorIndex(P, 2).a ? drawSavedDataCursorOption1(P) : drawSavedDataCursorOption0(P));
+export function drawSavedDataTypeSelectCursor(P) {
+  const tab = getMenuCursorIndex(P, 2).a;
+  return nested(P, 1, () => (tab ? drawSavedDataCursorOption1(P) : drawSavedDataCursorOption0(P)));
+}
 // a tab's cursor: its sprites (from tile c) at (d, e) and the label sprite at the second place, both bobbing
 function drawSavedDataCursor(P, tile, at, template, labelAt) {
   let r = rom(P, FAR.ApplySpriteBobOffset, { c: tile, b: CURSOR_ATTR, d: at >> 8, e: at & 0xFF });
@@ -56,21 +59,26 @@ export const drawSavedDataCursorOption1 = P => drawSavedDataCursor(P, 0x10, 0x50
 // RedrawSavedDataTypeSelect (1B:7352): the tabs' attributes, the type's palette, its description, the rows queued
 export function redrawSavedDataTypeSelect(P) {
   wram(P, WRAM_SCREEN);
-  for (let tab = 0; tab < 2; tab++) setSelectPanelAttrRect(P, tab, 0);
-  setSelectPanelAttrRect(P, getMenuCursorIndex(P, 2).a, 1);
-  loadSavedDataTypePalette(P, getMenuCursorIndex(P, 3).a);
-  clearMinigameLevelDescriptionRow(P);
-  drawSavedDataTypeDescription(P);
-  return flushLevelSelectTextRows(P);
+  const r = { ...getRegs(P.cpu), a: WRAM_SCREEN };
+  for (let tab = 0; tab < 2; tab++) chain(r, nested(P, 1, () => setSelectPanelAttrRect(P, tab, 0, { ...r, b: tab, c: 0 })));
+  chain(r, getMenuCursorIndex(P, 2));
+  chain(r, nested(P, 1, () => setSelectPanelAttrRect(P, r.a, 1, { ...r, b: r.a, c: 1 })));
+  chain(r, getMenuCursorIndex(P, 3));
+  chain(r, { c: 3 });
+  chain(r, loadSavedDataTypePalette(P, r.a));
+  chain(r, nested(P, 1, () => clearMinigameLevelDescriptionRow(P, r.f, r)));
+  chain(r, nested(P, 1, () => drawSavedDataTypeDescription(P, r.f, r)));
+  return chain(r, nested(P, 1, () => flushLevelSelectTextRows(P, r.f, r)));
 }
 // DrawSavedDataTypeDescription (1B:7383): the hovered type's description (Text_30_202 + type) at its place
-export function drawSavedDataTypeDescription(P, entryF = P.cpu.f) {
+export function drawSavedDataTypeDescription(P, entryF = P.cpu.f, entry = getRegs(P.cpu)) {
   const bank = P.V.wramBank;
   wram(P, WRAM_SCREEN);
-  const type = getMenuCursorIndex(P, 3).a;
-  const r = rom(P, FAR.RenderTextToBuffer64, { hl: idx(Text_30_202, type), de: rw(P, idx(SavedDataTypeDescriptionTable, type * 2)), c: 0x20 });
+  const type = getMenuCursorIndex(P, 3).a, hl = idx(Text_30_202, type);
+  const de = rw(P, idx(SavedDataTypeDescriptionTable, type * 2));
+  const r = nested(P, 1, () => rom(P, FAR.RenderTextToBuffer64, { ...entry, a: hl & 0xFF, b: type, hl, de, c: 0x20 }));
   wram(P, bank);
-  return { ...r, a: bank, b: type, f: entryF };
+  return { ...r, a: bank, f: entryF };
 }
 // LoadSavedDataTypePalette (1B:73B6): BG palette 4 from type a's entry of SavedDataTypePalettePtrs
 export const loadSavedDataTypePalette = (P, type) => loadPaletteShadow(P, rw(P, idx(SavedDataTypePalettePtrs, type * 2)), 4, 1);
@@ -138,8 +146,8 @@ export function* scrollMinigameDataList(P) {
 // does not scroll, the fifth row's data from the sixth (CompactMinigameDataRows)
 export function loadMinigameDataState(P) {
   const r = rom(P, BuildMarioCastUnlockMask);
-  chain(r, loadMinigameClearFlags(P, r));
-  chain(r, loadMinigameStarFlags(P, r));
+  chain(r, nested(P, 1, () => loadMinigameClearFlags(P, r)));
+  chain(r, nested(P, 1, () => loadMinigameStarFlags(P, r)));
   chain(r, nested(P, 1, () => loadMinigameHighScores(P, r.f)));
   chain(r, nested(P, 1, () => checkMinigameDataScrollable(P)));
   return r.a ? r : chain(r, compactMinigameDataRows(P, r.f));
@@ -150,35 +158,38 @@ function loadMinigameFlags(P, flags, table, entry) {
   let r = { ...entry, b: 0 };
   for (let c = 0; c < MINIGAMES; c++) {
     const de = rw(P, idx(table, c * 2));
-    r = rom(P, TestSaveFlag, { ...r, a: de & 0xFF, c, de, hl: flags + c });
+    r = nested(P, 1, () => rom(P, TestSaveFlag, { ...r, a: de & 0xFF, c, de, hl: flags + c }));    // (push hl)
     if (!(r.f & FZ)) w8(P, flags + c, 1);
   }
   return { ...r, a: MINIGAMES, c: MINIGAMES, hl: flags + MINIGAMES, f: FZ | 0x40 };
 }
 // LoadMinigameClearFlags (1B:74DF) / LoadMinigameStarFlags (1B:751F)
-export const loadMinigameClearFlags = (P, entry = getRegs(P.cpu)) => nested(P, 1, () => loadMinigameFlags(P, P.A.minigameDataClearFlags, MinigameClearFlagsTable, entry));
-export const loadMinigameStarFlags = (P, entry = getRegs(P.cpu)) => nested(P, 1, () => loadMinigameFlags(P, P.A.minigameDataStarFlags, MinigameStarFlagsTable, entry));
+export const loadMinigameClearFlags = (P, entry = getRegs(P.cpu)) =>
+  loadMinigameFlags(P, P.A.minigameDataClearFlags, MinigameClearFlagsTable, entry);
+export const loadMinigameStarFlags = (P, entry = getRegs(P.cpu)) =>
+  loadMinigameFlags(P, P.A.minigameDataStarFlags, MinigameStarFlagsTable, entry);
 // LoadMinigameHighScores (1B:7560): the two-on-one pair (both set when its third level is cleared), then the best
 // scores of records 2-9 (ReadMinigameRecord, its value in WRAM 7)
 export function loadMinigameHighScores(P, entryF = P.cpu.f) {
   const bank = P.V.wramBank, scores = P.A.minigameDataHighScores;
-  clearBytes(P, scores, HIGH_SCORES_SIZE);
-  if (!(rom(P, TestSaveFlag, { de: SAVEFLAG_CLEARED_TWO_ON_ONE_3 }).f & FZ)) {
+  const end = clearBytes(P, scores, HIGH_SCORES_SIZE);
+  let r = nested(P, 1, () => rom(P, TestSaveFlag, { a: 0, b: 0, c: 0, de: SAVEFLAG_CLEARED_TWO_ON_ONE_3, hl: end }));   // (push af)
+  if (!(r.f & FZ)) {
     w8(P, P.A.minigameDataTwoOnOneCleared, 1);
     w8(P, P.A.minigameDataTwoOnOneCleared + 1, 1);
+    r = { ...r, a: 1, hl: P.A.minigameDataTwoOnOneCleared + 1 };
   }
-  let de = 0, hl = 0;
   for (let c = 0; c < RECORDS; c++) {
-    rom(P, ReadMinigameRecord, { a: c + FIRST_RECORD, c });
+    r = nested(P, 1, () => rom(P, ReadMinigameRecord, { ...r, a: c + FIRST_RECORD, c }));
     wram(P, WRAM_SOUND);
-    de = P.bus.u16(P.A.minigameRecordValue);
+    const de = P.bus.u16(P.A.minigameRecordValue);
     wram(P, WRAM_SCREEN);
-    hl = idx(scores, c * 2);
+    const hl = idx(scores, c * 2);
     P.bus.w16(hl, de);
-    hl = (hl + 1) & 0xFFFF;
+    r = { ...r, c, de, hl: (hl + 1) & 0xFFFF };
   }
   wram(P, bank);
-  return { a: bank, c: RECORDS, de, hl, f: entryF };
+  return { ...r, a: bank, c: RECORDS, f: entryF };
 }
 // RedrawMinigameDataRows (1B:75AE): the rows' icons and marks redrawn and flushed (three frames)
 export function* redrawMinigameDataRows(P) {
@@ -196,27 +207,29 @@ export function* flushMinigameDataRowsToVram(P) {
   }
   return r;
 }
-// the icon of each chart row: row c's character (a locked one's icon is row 9's) in slot b
-function drawMugshotRow(P, row, slot) {
-  const ch = rom(P, GetUnlockedMarioCastCharAtGridSlot, { b: slot, c: row }).a;
-  drawMinigameDataMugshot(P, ch === CHAR_UNUSED_15 ? LOCKED_ROW_ICON : row, slot);
+// the icon of each chart row: row c's character (a locked one's icon is row 9's) in slot b (r: the registers, a
+// sequence: GetUnlockedMarioCastCharAtGridSlot's d, e, hl stay)
+function drawMugshotRow(P, row, slot, r) {
+  chain(r, nested(P, 2, () => rom(P, GetUnlockedMarioCastCharAtGridSlot, { ...r, b: slot, c: row })));
+  drawMinigameDataMugshot(P, r.a === CHAR_UNUSED_15 ? LOCKED_ROW_ICON : row, slot);
+  return chain(r, { b: slot, c: row });
 }
 // DrawMinigameDataMugshotsScrolled (1B:7604): the five rows' icons from the scroll row on
 export function drawMinigameDataMugshotsScrolled(P, entryF = P.cpu.f) {
-  const bank = P.V.wramBank;
+  const bank = P.V.wramBank, r = getRegs(P.cpu), top = P.V.menuCursorY;
   wram(P, WRAM_SCREEN);
-  for (let b = 0, c = P.V.menuCursorY; b < VISIBLE_ROWS; b++, c = (c + 1) & 0xFF) drawMugshotRow(P, c, b);
+  for (let b = 0; b < VISIBLE_ROWS; b++) drawMugshotRow(P, (top + b) & 0xFF, b, r);
   wram(P, bank);
-  return { a: bank, f: entryF };
+  return { ...r, a: bank, b: VISIBLE_ROWS, c: (top + VISIBLE_ROWS) & 0xFF, f: entryF };
 }
 // DrawMinigameDataMugshotsStatic (1B:7634): rows 0-3, and row 5's icon (the sixth minigame) in the fifth slot
 export function drawMinigameDataMugshotsStatic(P, entryF = P.cpu.f) {
-  const bank = P.V.wramBank;
+  const bank = P.V.wramBank, r = getRegs(P.cpu);
   wram(P, WRAM_SCREEN);
-  for (let b = 0; b < LAST_SCROLL_ROW; b++) drawMugshotRow(P, b, b);
+  for (let b = 0; b < LAST_SCROLL_ROW; b++) drawMugshotRow(P, b, b, r);
   drawMinigameDataMugshot(P, STATIC_FIFTH_ROW, LAST_SCROLL_ROW);
   wram(P, bank);
-  return { a: bank, f: entryF };
+  return { ...r, a: bank, b: LAST_SCROLL_ROW, c: STATIC_FIFTH_ROW, f: entryF };
 }
 // DrawMinigameDataMugshot (1B:7669): row c's character icon (bank $3b's DrawChartCharIcon) in chart slot b.
 // Registers kept.
@@ -234,7 +247,7 @@ export const HOOKS = [
   [BANK, 0x72B8, hook(P => drawSavedDataCursorOption0(P))],
   [BANK, 0x72D9, hook(P => drawSavedDataCursorOption1(P))],
   [BANK, 0x7352, hook(P => redrawSavedDataTypeSelect(P))],
-  [BANK, 0x7383, hook((P, c) => drawSavedDataTypeDescription(P, c.f))],
+  [BANK, 0x7383, hook((P, c) => drawSavedDataTypeDescription(P, c.f, getRegs(c)))],
   [BANK, 0x73B6, hook((P, c) => loadSavedDataTypePalette(P, c.a))],
   [BANK, 0x73DD, hookGen(P => showMinigameDataScreen(P))],
   [BANK, 0x7449, hook(P => buildMinigameDataScreen(P))],
