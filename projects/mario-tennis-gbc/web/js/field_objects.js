@@ -35,11 +35,11 @@ export const FIELD_OBJECTS = {
    {"x0": 144, "y0": 32, "x1": 209, "y1": 80, "fold": 64, "back": 44, "key": true, "keyRect": [144, 32, 260, 80], "gable": {"ax": 176, "ay": 32, "ey": 64, "roof": [222, 34, 234, 46]}}
   ],
   "sprites": [
-   {"x": 88, "y": 32, "w": 48, "h": 92, "cut": "outline", "only": [[88, 32, 136, 94], [100, 94, 124, 124]], "match": 0.9},
-   {"x": 384, "y": 40, "w": 24, "h": 48, "cut": "outline", "only": [[384, 40, 408, 70], [391, 70, 401, 88]], "match": 0.9},
-   {"x": 32, "y": 48, "w": 16, "h": 32, "cut": "outline", "match": 0.9},
-   {"x": 16, "y": 96, "w": 16, "h": 16, "cut": "dome", "match": 0.9},
-   {"x": 224, "y": 72, "w": 8, "h": 8, "cut": "dome", "match": 0.9}
+   {"x": 88, "y": 32, "w": 48, "h": 92, "cut": "outline", "only": [[88, 32, 136, 94], [100, 94, 124, 124]], "match": 0.9, "plant": "tree" },
+   {"x": 384, "y": 40, "w": 24, "h": 48, "cut": "outline", "only": [[384, 40, 408, 70], [391, 70, 401, 88]], "match": 0.9, "plant": "tree" },
+   {"x": 32, "y": 48, "w": 16, "h": 32, "cut": "outline", "match": 0.9, "plant": "tree" },
+   {"x": 16, "y": 96, "w": 16, "h": 16, "cut": "dome", "match": 0.9, "plant": "bush" },
+   {"x": 224, "y": 72, "w": 8, "h": 8, "cut": "dome", "match": 0.9, "plant": "bush" }
   ],
   "cards": [
    {"x0": 68, "y0": 74, "x1": 90, "y1": 96, "cut": "enclosed", "add": [[79, 88, 81, 95]], "bg": [[84, 92]], "drop": [[82, 87, 90, 96]]},
@@ -78,19 +78,22 @@ export const FIELD_OBJECTS = {
     "x": 144,
     "y": 128,
     "w": 16,
-    "h": 32
+    "h": 32,
+    "plant": "tree"
    },
    {
     "x": 0,
     "y": 64,
     "w": 16,
-    "h": 32
+    "h": 32,
+    "plant": "tree"
    },
    {
     "x": 80,
     "y": 128,
     "w": 16,
-    "h": 16
+    "h": 16,
+    "plant": "bush"
    }
   ],
   "cards": [
@@ -234,7 +237,8 @@ export const FIELD_OBJECTS = {
     "x": 64,
     "y": 72,
     "w": 16,
-    "h": 32
+    "h": 32,
+    "plant": "pot"
    },
    {
     "x": 352,
@@ -474,13 +478,15 @@ export const FIELD_OBJECTS = {
     "x0": 128,
     "y0": 64,
     "x1": 144,
-    "y1": 96
+    "y1": 96,
+    "plant": "pot"
    },
    {
     "x0": 88,
     "y0": 24,
     "x1": 104,
-    "y1": 40
+    "y1": 40,
+    "plant": "pot"
    },
    {
     "x0": 40,
@@ -561,25 +567,29 @@ export const FIELD_OBJECTS = {
     "x": 16,
     "y": 64,
     "w": 16,
-    "h": 32
+    "h": 32,
+    "plant": "tree"
    },
    {
     "x": 304,
     "y": 256,
     "w": 16,
-    "h": 32
+    "h": 32,
+    "plant": "tree"
    },
    {
     "x": 0,
     "y": 80,
     "w": 16,
-    "h": 16
+    "h": 16,
+    "plant": "bush"
    },
    {
     "x": 16,
     "y": 336,
     "w": 16,
-    "h": 16
+    "h": 16,
+    "plant": "bush"
    }
   ],
   "cards": [
@@ -767,7 +777,8 @@ export const FIELD_OBJECTS = {
     "x": 0,
     "y": 80,
     "w": 16,
-    "h": 32
+    "h": 32,
+    "plant": "tree"
    }
   ],
   "cards": [
@@ -792,7 +803,8 @@ export const FIELD_OBJECTS = {
     "x": 288,
     "y": 16,
     "w": 16,
-    "h": 32
+    "h": 32,
+    "plant": "tree"
    },
    {
     "x": 320,
@@ -950,13 +962,15 @@ export const FIELD_OBJECTS = {
     "x0": 400,
     "y0": 48,
     "x1": 416,
-    "y1": 72
+    "y1": 72,
+    "plant": "bush"
    },
    {
     "x0": 432,
     "y0": 48,
     "x1": 448,
-    "y1": 72
+    "y1": 72,
+    "plant": "bush"
    },
    {
     "x0": 32,
@@ -974,7 +988,8 @@ export const FIELD_OBJECTS = {
     "x0": 208,
     "y0": 304,
     "x1": 224,
-    "y1": 320
+    "y1": 320,
+    "plant": "bush"
    },
    {
     "x0": 224,
@@ -998,7 +1013,8 @@ export const FIELD_OBJECTS = {
     "x0": 448,
     "y0": 304,
     "x1": 464,
-    "y1": 320
+    "y1": 320,
+    "plant": "bush"
    },
    {
     "x0": 312,
@@ -1021,13 +1037,15 @@ export const FIELD_OBJECTS = {
     "x": 272,
     "y": 48,
     "w": 16,
-    "h": 32
+    "h": 32,
+    "plant": "tree"
    },
    {
     "x": 288,
     "y": 48,
     "w": 16,
-    "h": 16
+    "h": 16,
+    "plant": "bush"
    },
    {
     "x": 112,
@@ -1149,7 +1167,8 @@ export const FIELD_OBJECTS = {
     "x0": 288,
     "y0": 192,
     "x1": 304,
-    "y1": 216
+    "y1": 216,
+    "plant": "bush"
    }
   ]
  },
@@ -1294,13 +1313,15 @@ export const FIELD_OBJECTS = {
     "x": 64,
     "y": 40,
     "w": 16,
-    "h": 32
+    "h": 32,
+    "plant": "pot"
    },
    {
     "x": 176,
     "y": 96,
     "w": 16,
-    "h": 16
+    "h": 16,
+    "plant": "pot"
    },
    {
     "x": 96,
@@ -1393,19 +1414,22 @@ export const FIELD_OBJECTS = {
     "x": 48,
     "y": 128,
     "w": 16,
-    "h": 32
+    "h": 32,
+    "plant": "tree"
    },
    {
     "x": 48,
     "y": 112,
     "w": 16,
-    "h": 16
+    "h": 16,
+    "plant": "bush"
    },
    {
     "x": 256,
     "y": 96,
     "w": 16,
-    "h": 32
+    "h": 32,
+    "plant": "tree"
    },
    {
     "x": 32,
@@ -1518,13 +1542,15 @@ export const FIELD_OBJECTS = {
     "x": 176,
     "y": 208,
     "w": 16,
-    "h": 32
+    "h": 32,
+    "plant": "palm"
    },
    {
     "x": 16,
     "y": 160,
     "w": 16,
-    "h": 16
+    "h": 16,
+    "plant": "palm"
    },
    {
     "x": 48,
@@ -1598,7 +1624,8 @@ export const FIELD_OBJECTS = {
     "x0": 176,
     "y0": 320,
     "x1": 192,
-    "y1": 344
+    "y1": 344,
+    "plant": "palm"
    }
   ],
   "solids": [
@@ -1705,7 +1732,8 @@ export const FIELD_OBJECTS = {
     "x": 16,
     "y": 16,
     "w": 16,
-    "h": 32
+    "h": 32,
+    "plant": "palm"
    }
   ],
   "cards": [
@@ -1784,13 +1812,15 @@ export const FIELD_OBJECTS = {
     "x": 272,
     "y": 16,
     "w": 16,
-    "h": 32
+    "h": 32,
+    "plant": "tree"
    },
    {
     "x": 416,
     "y": 96,
     "w": 16,
-    "h": 16
+    "h": 16,
+    "plant": "bush"
    },
    {
     "x": 288,
@@ -1856,7 +1886,8 @@ export const FIELD_OBJECTS = {
     "x": 304,
     "y": 392,
     "w": 16,
-    "h": 32
+    "h": 32,
+    "plant": "tree"
    }
   ],
   "cards": [
@@ -2047,7 +2078,8 @@ export const FIELD_OBJECTS = {
     "x": 16,
     "y": 16,
     "w": 16,
-    "h": 32
+    "h": 32,
+    "plant": "palm"
    },
    {
     "x": 80,
@@ -2059,13 +2091,15 @@ export const FIELD_OBJECTS = {
     "x": 128,
     "y": 272,
     "w": 16,
-    "h": 32
+    "h": 32,
+    "plant": "palm"
    },
    {
     "x": 272,
     "y": 352,
     "w": 16,
-    "h": 32
+    "h": 32,
+    "plant": "palm"
    }
   ],
   "cards": [
@@ -2537,7 +2571,8 @@ export const FIELD_OBJECTS = {
     "x": 32,
     "y": 72,
     "w": 16,
-    "h": 32
+    "h": 32,
+    "plant": "pot"
    },
    {
     "x": 272,
@@ -2671,7 +2706,8 @@ export const FIELD_OBJECTS = {
     "x0": 32,
     "y0": 176,
     "x1": 48,
-    "y1": 192
+    "y1": 192,
+    "plant": "pot"
    }
   ]
  },
@@ -2824,7 +2860,8 @@ export const FIELD_OBJECTS = {
     "x0": 80,
     "y0": 256,
     "x1": 96,
-    "y1": 272
+    "y1": 272,
+    "plant": "pot"
    },
    {
     "x0": 176,
@@ -2842,7 +2879,8 @@ export const FIELD_OBJECTS = {
     "x0": 240,
     "y0": 104,
     "x1": 256,
-    "y1": 136
+    "y1": 136,
+    "plant": "pot"
    },
    {
     "x0": 320,
@@ -2901,7 +2939,8 @@ export const FIELD_OBJECTS = {
     "x": 48,
     "y": 320,
     "w": 16,
-    "h": 24
+    "h": 24,
+    "plant": "palm"
    }
   ],
   "cards": [
