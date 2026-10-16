@@ -11,6 +11,8 @@ import { composeWide, WIDE_W, WIDE_H } from "./wide.js";
 import { mountStick } from "./stick.js";
 import { Recorder, maskOf, packRecording, bytesToBase64 } from "./recorder.js";
 import { HDText, FONTS, FONT_ORDER, HD } from "./hdtext.js";
+import { mountCreator } from "./look/creator.js";
+import { lookEvent } from "./look/index.js";
 
 const $ = id => document.getElementById(id);
 const cv = $("screen"), g = cv.getContext("2d");
@@ -77,13 +79,17 @@ const rec = new Recorder();
 // with the JS port the game's state is partly JavaScript (its coroutines), which a machine state can't hold: a
 // recording made mid-game could not be replayed. So the port keeps a log of every frame from power-on, and REC
 // saves that log with the frame REC was pressed at (meta.from); a replay runs it from power-on (web/tests).
-const session = new Recorder(); let portRecFrom = -1;
+const session = new Recorder(); let portRecFrom = -1, sessionLook = null;
+// the player's look: the LOOK button / Create a Character offer; a change in play is a recording event
+const creator = mountCreator({ hud: $("hud"), keys, pause: p => { const was = paused; paused = p; return was; },
+  onChange: look => { rec.event(lookEvent(look)); session.event(lookEvent(look)); drawnFrame = -1; } });
 const recording = () => rec.on || portRecFrom >= 0;
 function frame() {
   pollGamepad(keys); const inp = input(), mask = maskOf(inp); gb.setInput(inp);
   if (port) portFrame(); else gb.runFrame();
   if (view3d && voxel && voxel.mode === "3d") voxel.tick();
   rec.frame(gb, mask); session.frame(gb, mask);
+  creator.frame();
   if (audioReady && anode) { const n = gb.apu.drain(abuf); if (n) anode.port.postMessage(abuf.slice(0, n)); } else gb.apu.outPos = 0;
 }
 let drawnFrame = -1;
@@ -199,8 +205,10 @@ async function loadRom(buf) {
   const bytes = new Uint8Array(buf);
   romHash = (await sha1Hex(bytes)) || "";
   $("romstatus").textContent = romHash === "" ? "ROM loaded" : romHash === EXPECTED_SHA1 ? "ROM verified (Mario Tennis USA)" : "Warning: unexpected ROM SHA-1 " + romHash;
+  creator.prepare(bytes);                      // the player's look (web/js/look) patches the ROM copy before the machine is built
   if (portMode() !== "rom") { port = await makePort(bytes); gb = port.gb; portError = null; }
   else gb = new GBC(bytes, { sampleRate: 44100, audio: true });
+  creator.attach(gb);
   drawnFrame = -1;
   hd = new HDText(gb); hd.onload = () => { drawnFrame = -1; }; hd.setFont(font);
   if (voxel) { voxel.attach(gb, new Rom(gb.mem.rom)); voxel.hdText = hd; }      // a ROM loaded after the 3D view was created
@@ -209,7 +217,7 @@ async function loadRom(buf) {
   if (port) $("romstatus").textContent += ` · JS port (${port.hooks.size} routines ported, the rest ROM code)`;
   else try { const mod = await import("../gen/game.js"); const T = {}; mod.install(T); gb.installRecomp(T); if (mod.HRAM_SIG) gb.exec.setHramSig(mod.HRAM_SIG); $("romstatus").textContent += " · recompiled code"; } catch (e) { $("romstatus").textContent += " · interpreter"; }
   loadSave();
-  if (port) session.start(gb, recMeta());
+  if (port) { session.start(gb, recMeta()); sessionLook = creator.look; }
   $("loader").hidden = true; $("hud").hidden = false; cv.focus();
   const m3 = q.has("vox") ? "vox" : q.has("3d") ? "3d" : q.has("2d") ? "off" : (stored("mt-3d") || "vox");   // remembered view mode; VOX (voxel sprites) by default
   if (m3 === "3d" || m3 === "vox") setView3d(true, m3 === "vox");
@@ -248,12 +256,12 @@ $("forgetrom").addEventListener("click", () => romStore("readwrite", s => s.dele
 $("reset").addEventListener("click", () => { if (port) { location.reload(); return; } if (gb) { gb.reset(); rec.event("reset"); } });
 // ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
 // a .mtrec file (Android: Downloads/MTenn3D and the share sheet; browser: a download). Hiding the app stops and saves.
-const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), font, ua: navigator.userAgent,
+const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), font, ua: navigator.userAgent, look: creator.look || undefined,
   port: port ? (portMode() === "portall" ? "all" : (q.get("port") || PORT_VERIFIED.join(","))) : undefined });
 async function saveRecording(now = false) {     // now: the app is being hidden; skip compression so it finishes at once
   if (!recording()) return;
   let obj;
-  if (portRecFrom >= 0) { obj = session.snapshot(gb, romHash); obj.meta = { ...recMeta(), from: portRecFrom }; portRecFrom = -1; }
+  if (portRecFrom >= 0) { obj = session.snapshot(gb, romHash); obj.meta = { ...recMeta(), look: sessionLook || undefined, from: portRecFrom }; portRecFrom = -1; }
   else obj = rec.stop(gb, romHash);
   const { bytes, gz } = now ? { bytes: new TextEncoder().encode(JSON.stringify(obj)), gz: false } : await packRecording(obj);
   const d = new Date(), pad = n => String(n).padStart(2, "0");

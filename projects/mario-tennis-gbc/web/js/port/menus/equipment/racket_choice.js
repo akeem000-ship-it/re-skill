@@ -202,15 +202,16 @@ export function* runRacketShoesChoiceMenu(P) {
   }
 }
 // The tabs' label pictures (two; decompressed and queued a frame apart), then the tab tiles, the cursor's, the
-// panel's (a frame or two each), and the cursor's palette. Shared with the play-alone partner menu (choicetab.js)
-// and the link match rules (menus/link/rules.js: seven labels).
+// panel's (a frame or two each), and the cursor's palette. Shared with the play-alone partner menu (choicetab.js),
+// the link match rules (menus/link/rules.js: seven labels) and bank $1b's saved-data type select
+// (menus/minigame_select/level_variants.js).
 export function* loadChoiceTabGraphics(P, params, dests, blocks, entryF, labels = CHOICE_TABS) {
   const bank = P.V.wramBank;
   wram(P, WRAM_STAGING);
   for (let i = 0; i < labels; i++) {
-    const slot = rw(P, params + 2 * i);
+    const slot = P.bus.u16(params + 2 * i);                      // (the tables of the bank mapped: the caller's)
     homeDecompressFromBank(P, slot >> 8, slot & 0xFF, wDecompBuffer);
-    queueVRAMCopy(P, wDecompBuffer, rw(P, dests + 2 * i), 16);
+    queueVRAMCopy(P, wDecompBuffer, P.bus.u16(dests + 2 * i), 16);
     yield* advanceFrame(P);
   }
   for (const [block, n, dest, frames] of blocks) {

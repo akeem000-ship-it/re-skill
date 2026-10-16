@@ -90,7 +90,7 @@ function heroAssets(rom, name, style) {
 }
 
 // ---------------------------------------------------------------------------------------------- the look
-// look: { boy: { style, colours: { skin, hair, hat, top, bottom, shoes } } | null, girl: ... }, colours as BGR555 ints
+// look: { boy: { style, colours: { skin, hair, hat, top, bottom, shoes, racket } } | null, girl: ... }, colours as BGR555 ints
 // -> { patches: [{ off, bytes }], tileRegions: Map(romOffset -> Uint8Array(64)), contentRegions: Map(hash -> [{bytes, plane}]),
 //      colours: Uint16Array(32) indexed by hero * 16 + region (0xFFFF: keep the game's colour), basePalettes }
 export function buildLook(rom, look) {
@@ -105,7 +105,7 @@ export function buildLook(rom, look) {
     const hid = HEROES[name].id, c = L.colours || {};
     const set = (r, v) => { if (v !== undefined && v !== null) res.colours[hid * 16 + r] = v & 0x7FFF; };
     set(REG.OUT, c.outline ?? 0x0000); set(REG.SKIN, c.skin); set(REG.SHADE, c.skin !== undefined ? shade(c.skin) : undefined);
-    set(REG.HAIR, c.hair); set(REG.HAT, c.hat); set(REG.TOP, c.top); set(REG.BOTTOM, c.bottom); set(REG.SHOES, c.shoes ?? c.bottom);
+    set(REG.HAIR, c.hair); set(REG.HAT, c.hat); set(REG.TOP, c.top); set(REG.BOTTOM, c.bottom); set(REG.SHOES, c.shoes ?? c.bottom); set(REG.RACKET, c.racket);
     const A = heroAssets(rom, name, L.style || (name === "alex" ? "cap" : "pigtails"));
     const tag = plane => { const p = new Uint8Array(64); for (let i = 0; i < 64; i++) p[i] = plane[i] ? hid * 16 + plane[i] : 0; return p; };
     for (const r of A.raw) {

@@ -1,5 +1,5 @@
 // The player's look ("create a character"): one object the page, the recorder and the replay tests share.
-//   look = { v: 1, boy: { style, colours: { skin, hair, hat, top, bottom, shoes } } | null, girl: ... | null }
+//   look = { v: 1, boy: { style, lefty, colours: { skin, hair, hat, top, bottom, shoes, racket } } | null, girl: ... | null }
 // colours are 15-bit Game Boy Color colours (BGR555). A hero left null keeps the game's own graphics.
 //
 // Two parts (see build.js / render.js): the ROM copy is patched with the restyled frames (shapes: hairstyles,
@@ -15,8 +15,8 @@ export function normalizeLook(look) {
   if (!look || typeof look !== "object") return null;
   const hero = h => {
     if (!h || typeof h !== "object") return null;
-    const c = {}; for (const k of ["skin", "hair", "hat", "top", "bottom", "shoes"]) if (Number.isInteger(h.colours && h.colours[k])) c[k] = h.colours[k] & 0x7FFF;
-    return { style: typeof h.style === "string" ? h.style : null, colours: c };
+    const c = {}; for (const k of ["skin", "hair", "hat", "top", "bottom", "shoes", "racket"]) if (Number.isInteger(h.colours && h.colours[k])) c[k] = h.colours[k] & 0x7FFF;
+    return { style: typeof h.style === "string" ? h.style : null, ...(h.lefty ? { lefty: true } : {}), colours: c };
   };
   const out = { v: LOOK_VERSION, boy: hero(look.boy), girl: hero(look.girl) };
   return out.boy || out.girl ? out : null;

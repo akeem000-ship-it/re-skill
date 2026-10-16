@@ -3,7 +3,8 @@
 // 60 frames so a replay can prove it reproduces the session exactly (web/tests/replay.mjs).
 // File format (.mtrec, gzip of JSON): { format: "mtrec", v, core, rom, startedAt, frames, start, inputs (base64,
 // one byte per frame: bit0 A, 1 B, 2 Select, 3 Start, 4 Right, 5 Left, 6 Up, 7 Down), hashes [[frame, hash]],
-// events [[frame, "reset"]], meta }.
+// events [[frame, "reset"] or [frame, "look:<json>"] (the player's look changed, web/js/look)], meta (meta.look: the look
+// at the start) }.
 import { saveState } from "./gb/state.js";
 export const CORE_TAG = "mtenn3d-core-2";
 export const maskOf = s => (s.a ? 1 : 0) | (s.b ? 2 : 0) | (s.select ? 4 : 0) | (s.start ? 8 : 0) | (s.right ? 16 : 0) | (s.left ? 32 : 0) | (s.up ? 64 : 0) | (s.down ? 128 : 0);

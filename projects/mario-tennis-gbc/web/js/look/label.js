@@ -10,13 +10,13 @@
 // trim, shorts), 2 red (all skin), 3 black (outline, hair, eyes, shoes); Nina's is 1 cream (skin and clothes),
 // 2 orange (hair, skirt), 3 black. Portraits are BG tiles: colour 0 is the visible card behind the face.
 
-export const REG = { NONE: 0, OUT: 1, SKIN: 2, HAIR: 3, HAT: 4, TOP: 5, BOTTOM: 6, SHOES: 7, KEEP: 8, SHADE: 9 };
-const { NONE, OUT, SKIN, HAIR, HAT, TOP, BOTTOM, SHOES, KEEP, SHADE } = REG;
+export const REG = { NONE: 0, OUT: 1, SKIN: 2, HAIR: 3, HAT: 4, TOP: 5, BOTTOM: 6, SHOES: 7, KEEP: 8, SHADE: 9, RACKET: 10 };
+const { NONE, OUT, SKIN, HAIR, HAT, TOP, BOTTOM, SHOES, KEEP, SHADE, RACKET } = REG;
 
 // colour index each region is written with when a pixel is edited (the hero's own palette layout)
 const LAYOUT = {
-  alex: { [OUT]: 3, [HAIR]: 3, [SKIN]: 2, [SHADE]: 2, [HAT]: 1, [TOP]: 1, [BOTTOM]: 1, [SHOES]: 3 },
-  nina: { [OUT]: 3, [HAIR]: 2, [SKIN]: 1, [SHADE]: 1, [HAT]: 1, [TOP]: 1, [BOTTOM]: 2, [SHOES]: 3 },
+  alex: { [RACKET]: 3, [OUT]: 3, [HAIR]: 3, [SKIN]: 2, [SHADE]: 2, [HAT]: 1, [TOP]: 1, [BOTTOM]: 1, [SHOES]: 3 },
+  nina: { [RACKET]: 3, [OUT]: 3, [HAIR]: 2, [SKIN]: 1, [SHADE]: 1, [HAT]: 1, [TOP]: 1, [BOTTOM]: 2, [SHOES]: 3 },
 };
 
 export const STYLES = { alex: ["cap", "headband", "ponytail", "short"], nina: ["pigtails", "cap", "bob", "ponytail"] };
@@ -130,7 +130,7 @@ export function labelSprite(im, hero, kind) {
     const cap = flood(w, h, seeds, i => px[i] === 1 && !rk[i] && ((i / w) | 0) < yh);
     for (let i = 0; i < n; i++) {
       const v = px[i], y = (i / w) | 0; if (!v) continue;
-      if (rk[i]) reg[i] = KEEP;
+      if (rk[i]) reg[i] = v === 3 ? RACKET : KEEP;
       else if (v === 3) reg[i] = OUT;
       else if (v === 2) reg[i] = SKIN;
       else if (cap[i] || y < yh) reg[i] = HAT;
@@ -146,7 +146,7 @@ export function labelSprite(im, hero, kind) {
     if (sx1 < 0) { const half = kind === "walk" ? 3 : 4; sx0 = Math.floor(st.info.cx - half); sx1 = Math.ceil(st.info.cx + half); sy0 = Math.round(waist + 1); }
     for (let i = 0; i < n; i++) {
       const v = px[i], x = i % w, y = (i / w) | 0; if (!v) continue;
-      if (rk[i]) reg[i] = KEEP;
+      if (rk[i]) reg[i] = v === 3 ? RACKET : KEEP;
       else if (v === 3) reg[i] = OUT;
       else if (v === 2) reg[i] = hair[i] ? HAIR : BOTTOM;
       else if (y < yh || kind === "head") reg[i] = SKIN;
@@ -199,9 +199,30 @@ export function labelPortrait(im, hero) {
 // ---------------------------------------------------------------------------------------------- styles
 function set(st, i, r) { st.reg[i] = r; st.idx[i] = r === NONE ? 0 : st.lay[r]; }
 
+// the dark pixels inside the head next to the cap (bangs, sides, the back of the neck) become hair, so a hair
+// colour shows under the cap; eyes (dark pixels inside the face, not touching the cap) stay outline
+function hairUnderCap(st) {
+  const { w, h, reg, info } = st; if (!info) return;
+  const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h) ? NONE : reg[y * w + x];
+  const interior = (x, y) => N4.every(([dx, dy]) => at(x + dx, y + dy) !== NONE);
+  const grow = (from, rows) => {
+    const add = [];
+    for (let y = info.y0; y < Math.min(rows, h); y++) for (let x = 0; x < w; x++) {
+      if (at(x, y) !== OUT || !interior(x, y)) continue;
+      if (N4.some(([dx, dy]) => from.includes(at(x + dx, y + dy)))) add.push(y * w + x);
+    }
+    for (const i of add) set(st, i, HAIR);
+    return add.length;
+  };
+  grow([HAT], info.yh);
+  // one more ring at the sides, above the eyes' row (the face's upper third)
+  let fy = h; for (let i = 0; i < w * h; i++) if (reg[i] === SKIN && ((i / w) | 0) < info.yh) { fy = Math.min(fy, (i / w) | 0); }
+  grow([HAIR], Math.min(info.yh, fy + 2));
+}
+
 function styleAlex(st, style) {
   const { w, h, reg } = st;
-  if (style === "cap") return;
+  if (style === "cap") { if (st.kind !== "portrait") hairUnderCap(st); return; }
   const hat = []; for (let i = 0; i < w * h; i++) if (reg[i] === HAT) hat.push(i);
   if (!hat.length) return;
   const f = facing(st);
