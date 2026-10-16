@@ -38,6 +38,7 @@ const CSS = `
 #lookpanel .note { font-size: 12px; color: #aab; }
 #lookoffer { position: fixed; left: 50%; top: 10px; transform: translateX(-50%); z-index: 15; background: #e05a2a; color: #fff; border: 2px solid #ffd0b0; border-radius: 20px; padding: 7px 16px; font: 600 14px system-ui, sans-serif; cursor: pointer; box-shadow: 0 3px 12px #0008; }
 #lookoffer[hidden] { display: none; }
+body.touch #lookoffer { top: 44px; }
 `;
 
 export function mountCreator({ hud, keys, pause, onChange }) {
