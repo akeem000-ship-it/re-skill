@@ -73,17 +73,20 @@ export function setGridEntryTakenByCharId(P, id, value) {
 export function initLinkMatchCharsFromSelection(P, entryF = P.cpu.f) {
   const bank = P.V.wramBank;
   wram(P, WRAM_SCREEN);
-  near(P, CacheStorySlotNames);
+  let r = near(P, CacheStorySlotNames, { a: WRAM_SCREEN });
   const first = isP2Mode(P) ? 2 : 0;
   for (let slot = first; slot < first + 2; slot++) {
     const id = rd(P, "charSelectSlotChars", slot);
     if (id === CHAR_NONE) continue;
     let b = id;
-    if (id >= CHAR_STORY_MAIN) b = near(P, LoadCachedStorySlotName, { a: id, b: (id & 0x07) >> 1, c: id }).a & STORY_ID_MASK;
-    rom(P, InitCa00RecordFromCharId, { b, c: slot });
+    if (id >= CHAR_STORY_MAIN) {
+      r = near(P, LoadCachedStorySlotName, { ...regs8(r), a: id, b: (id & 0x07) >> 1, c: id });
+      b = r.a & STORY_ID_MASK;
+    }
+    r = rom(P, InitCa00RecordFromCharId, { ...regs8(r), a: b, b, c: slot });
   }
   wram(P, bank);
-  return { a: bank, f: entryF };
+  return { ...regs8(r), a: bank, f: entryF };
 }
 // Unused_38_LinkCpuDifficultyDebugLoop (38:6B32): a debug loop for link doubles (it never returns; nothing calls
 // it): each link frame the partner's pad drives the CPU-difficulty submenu and wLinkCpuDifficulty (both shown as
@@ -138,15 +141,17 @@ export function unusedCheckMarioCastEquipCategory(P, ch) {
 export function unusedRunLinkCpuDifficultySubmenu(P, entryF = P.cpu.f) {
   const bank = P.V.wramBank;
   wram(P, WRAM_SCREEN);
-  let r = getRegs(P.cpu);
-  if (!rd(P, "cpuDifficultyPanelOpen")) {
+  let r = { ...regs8(getRegs(P.cpu)), a: rd(P, "cpuDifficultyPanelOpen") };
+  if (!r.a) {
     r = near(P, OpenCpuDifficultyPanel, r);
     r = near(P, QueueCpuDifficultyPanelToVram, regs8(r));
     wr(P, "cpuDifficultyPanelOpen", 1);
+    r.a = 1;
   }
   r = near(P, HandleCpuDifficultyInput, regs8(r));
   r = near(P, DrawCpuDifficultyCursorBox, regs8(r));
   const input = P.V.menuInputPressed;
+  r.a = input;
   if (input & (PADF_A | PADF_B)) {
     if (input & PADF_A) {
       r = near(P, GetGridSlotFromCursor, { ...regs8(r), a: rd(P, "cpuDifficultyCursor"), hl: P.A.charSelectSlotDifficulty });
@@ -158,8 +163,9 @@ export function unusedRunLinkCpuDifficultySubmenu(P, entryF = P.cpu.f) {
       r = near(P, ClearPlayerSlotPortrait, { ...regs8(r), a: WRAM_SCREEN });
       r = near(P, BuildVisiblePageSpriteList, regs8(r));
     }
-    near(P, DrawCharGridSlotPrompt, regs8(r));
-    r = queueCopy(P, wShadowTilemap + 2 * TILEMAP_WIDTH, vBGMap0 + 2 * TILEMAP_WIDTH, 2 * TILEMAP_WIDTH / 16);
+    r = near(P, DrawCharGridSlotPrompt, regs8(r));
+    r = chain(regs8(r), { hl: wShadowTilemap + 2 * TILEMAP_WIDTH, de: vBGMap0 + 2 * TILEMAP_WIDTH });
+    r = chain(r, queueCopy(P, wShadowTilemap + 2 * TILEMAP_WIDTH, vBGMap0 + 2 * TILEMAP_WIDTH, 2 * TILEMAP_WIDTH / 16));
   }
   wram(P, bank);
   return { ...regs8(r), a: bank, f: entryF };
