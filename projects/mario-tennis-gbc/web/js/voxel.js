@@ -5,7 +5,9 @@
 //    its ground point; the net, the umpire chair and the far fence/stands are cut out of the floor and
 //    stood upright; a locked camera preset frames the court for the viewport (see PRESETS).
 //  * field (an RPG map is on screen): the 64x64 map is a floor, solid metatiles are extruded boxes,
-//    actors are billboards, the window layer stays a 2D overlay.
+//    actors are billboards, the window layer stays a 2D overlay. Annotated objects (field_objects.js, cut out by
+//    field3d.js) stand up: buildings, cut-outs, low solids; flowers sway and fountains spout (shader-animated), and
+//    map tiles the game animates (fountain water) are redrawn into the textures. Fades only recolour.
 //  * everything else (title, menus, mini-games): the BG, window and sprite layers are stacked at
 //    different depths and a gently swaying camera gives them parallax.
 // Sprites are textured cards or, in voxel mode, one lit cube per opaque pixel.
@@ -1145,9 +1147,9 @@ export class Voxel3D {
     const gl = this.gl, f = this.field, coll = this.gb.mem.wram[6];
     if (f.floorTex) gl.deleteTexture(f.floorTex);
     const id = this.mapId(), canon = this.canonPalette(id), art = this.composeField(canon), floor = new Uint8Array(art);
-    const w0 = this.gb.mem.wram[0], MW = Math.min(64, w0[0x32B] || 64), MH = Math.min(64, w0[0x32C] || 64);
+    const tw = Math.min(64, this.gb.mem.wram[0][0x32B] || 64), th = Math.min(64, this.gb.mem.wram[0][0x32C] || 64);
     f.lowPal = Uint8Array.from(this.gb.ppu.bgPal.subarray(0, 16)); f.usesLowPals = false;   // palettes 0-1 come live: a fade changes them
-    for (let y = 0; y < MH && !f.usesLowPals; y++) for (let x = 0; x < MW; x++) if ((this.gb.mem.wram[2][y * 64 + x] & 7) < 2) { f.usesLowPals = true; break; }
+    for (let y = 0; y < th && !f.usesLowPals; y++) for (let x = 0; x < tw; x++) if ((this.gb.mem.wram[2][y * 64 + x] & 7) < 2) { f.usesLowPals = true; break; }
     this.buildFieldObjects(art, floor);
     f.floorTex = this.texture(512, 512, floor); f.floorData = floor;
     this.recolourField(); f.fading = false;                // the live colours
@@ -1224,8 +1226,13 @@ export class Voxel3D {
     // settled for a few frames on colours it was not built with (and is not blank), it is built again
     let ph = 0; for (let i = 0; i < 64; i += 3) ph = (ph * 31 + p.bgPal[i]) | 0;
     const fr = this.gb.ppu.frames;
-    const sig = this.mapSig();
-    if (f.mapId !== id || f.sig !== sig || f.needBuild) { f.mapId = id; f.sig = sig; f.needBuild = false; f.palHash = ph; f.palAt = fr; this.buildField(); }
+    // the map is loaded over several frames: built once the screen shows it, or once its WRAM map has stayed the same
+    // for two frames (until then the previous build is shown, or nothing for a new map)
+    const sig = this.mapSig(); if (sig !== f.sigSeen) { f.sigSeen = sig; f.sigAt = fr; }
+    if (f.mapId !== id || f.sig !== sig || f.needBuild) {
+      if (fr - f.sigAt < 2 && fr >= f.sigAt && this.fieldMatch() < 0.5) { if (f.mapId !== id) { this.drawFieldOverlays(frame2d); return; } }
+      else { f.mapId = id; f.sig = sig; f.needBuild = false; f.palHash = ph; f.palAt = fr; this.buildField(); }
+    }
     else if (f.palHash !== ph) { f.palHash = ph; f.palAt = fr; this.recolourField(); }
     else if (f.fading && (fr - f.palAt >= 3 || fr < f.palAt)) {
       // the palette settled: voxel bodies again; built again only if the map uses palettes 0-1 (live, not from the
