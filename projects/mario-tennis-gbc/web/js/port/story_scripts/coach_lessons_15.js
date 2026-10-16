@@ -77,24 +77,21 @@ function* netCoachLesson(P, text, questions, lines, drill) {
   yield* startLessonAfterBriefing(P, drill);
 }
 // NetCoachVolleyLessonScene (15:6FCF): its text by whether the junior singles are won; a bounce, the last line
-export function* netCoachVolleyLessonScene(P) {
-  faceToward(P, ACTOR_TRAINING_COURT_BETH, ACTOR_PARTNER);
-  yield* setText(P, testFlag(P, FLAG_WON_JUNIOR_SINGLES_RANK_1) ? Text_37_100 : Text_37_93);
-  yield* netCoachLesson(P, null, 2, function* (P, BETH) {
+export const netCoachVolleyLessonScene = P => netCoachLesson(P,
+  P => testFlag(P, FLAG_WON_JUNIOR_SINGLES_RANK_1) ? Text_37_100 : Text_37_93, 2, function* (P, BETH) {
     yield* gesture(P, BETH, ANIM_BOUNCE);
     yield* setText(P, Text_37_99);
     yield* speak(P, BETH);
   }, MINIGAME_NET_GAME_PRACTICE_1);
-}
 // NetCoachSmashLessonScene (15:706E): three questions; a bounce and a nod with their lines
-export const netCoachSmashLessonScene = P => netCoachLesson(P, Text_37_134, 3, function* (P, BETH) {
+export const netCoachSmashLessonScene = P => netCoachLesson(P, () => Text_37_134, 3, function* (P, BETH) {
   yield* gesture(P, BETH, ANIM_BOUNCE);
   yield* speak(P, BETH);
   yield* gesture(P, BETH, ANIM_NOD);
   yield* speak(P, BETH);
 }, MINIGAME_NET_GAME_PRACTICE_2);
 // NetCoachDropShotLessonScene (15:711D): three questions; a bounce with its line
-export const netCoachDropShotLessonScene = P => netCoachLesson(P, Text_37_159, 3, function* (P, BETH) {
+export const netCoachDropShotLessonScene = P => netCoachLesson(P, () => Text_37_159, 3, function* (P, BETH) {
   yield* gesture(P, BETH, ANIM_BOUNCE);
   yield* speak(P, BETH);
 }, MINIGAME_NET_GAME_PRACTICE_3);
@@ -186,7 +183,7 @@ export function* servicePractice2Result0(P) {
   yield* setText(P, Text_37_42);
   if (testFlag(P, FLAG_WON_SENIOR_SINGLES_RANK_1)) yield* setText(P, Text_37_46);
   yield* serveCoachLines(P, [ANIM_NOD, ANIM_BOUNCE, ANIM_SHAKE]);  // (.lesson1Speak)
-  yield* wait5(P);
+  yield* wait(P, 5);
   setFlag(P, FLAG_SERVE_COACH_GREETED);
 }
 // ServicePractice3Result0 (15:739C): the third practice's opening
@@ -196,8 +193,6 @@ export function* servicePractice3Result0(P) {
   yield* serveCoachLines(P, [ANIM_NOD, ANIM_BOUNCE, ANIM_NOD]);
   setFlag(P, FLAG_SERVE_COACH_GREETED);
 }
-import { wait } from "./common.js";
-const wait5 = P => wait(P, 5);
 
 // ServeCoachChainedRetryPrompt (15:7465): a no ends it (his last line); a yes goes on to ServeCoachRetryPrompt
 export function* serveCoachChainedRetryPrompt(P) {
@@ -294,4 +289,3 @@ export const HOOKS = [
   scene(BANK, 0x754E, netGamePractice2ResultScene),
   scene(BANK, 0x7563, netGamePractice3ResultScene),
 ];
-void hookGen;
