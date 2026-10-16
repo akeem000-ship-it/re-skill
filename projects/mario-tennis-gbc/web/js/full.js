@@ -211,7 +211,7 @@ async function loadRom(buf) {
   loadSave();
   if (port) session.start(gb, recMeta());
   $("loader").hidden = true; $("hud").hidden = false; cv.focus();
-  const m3 = q.has("vox") ? "vox" : q.has("3d") ? "3d" : stored("mt-3d");   // remembered view mode
+  const m3 = q.has("vox") ? "vox" : q.has("3d") ? "3d" : q.has("2d") ? "off" : (stored("mt-3d") || "vox");   // remembered view mode; VOX (voxel sprites) by default
   if (m3 === "3d" || m3 === "vox") setView3d(true, m3 === "vox");
 }
 
