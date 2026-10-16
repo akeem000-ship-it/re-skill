@@ -16,8 +16,8 @@ import { unusedMapScriptClearActiveFlag, unusedMapScriptHideLocationName } from 
 
 const BANK = 0x27;
 // actors of the main building's ending list (End1MainBldgActors_27, restaurant_27.asm)
-const ACTOR_END1_WALK_75_06_1 = 0x06, ACTOR_END1_WALK_75_06_2 = 0x08, ACTOR_END1_WALK_74_08 = 0x09;
-const ACTOR_END1_WALK_74_07 = 0x0A, ACTOR_END1_WALK_74_06 = 0x0B, ACTOR_END1_MARK = 0x0C;
+const ACTOR_END1_MAIN_BLDG_WALK_75_06_1 = 0x06, ACTOR_END1_MAIN_BLDG_WALK_75_06_2 = 0x08, ACTOR_END1_MAIN_BLDG_WALK_74_08 = 0x09;
+const ACTOR_END1_MAIN_BLDG_WALK_74_07 = 0x0A, ACTOR_END1_MAIN_BLDG_WALK_74_06 = 0x0B, ACTOR_END1_MAIN_BLDG_MARK = 0x0C;
 const OBJ_ALEX_B = 0x56, OBJ_HARRY_B = 0x58;
 const SFX_STORY_CUE = 0xA2;
 
@@ -40,13 +40,13 @@ function setCourtSprite(P, actor, objdef) {
 // shown by a stand-in) with the team; nods all round, and they walk out together (exit 5).
 export function* end1MainBldgGroupDepartureCutscene(P) {
   const { V } = P;
-  setPosition(P, ACTOR_END1_WALK_75_06_1, 63.0, 63.0);
+  setPosition(P, ACTOR_END1_MAIN_BLDG_WALK_75_06_1, 63.0, 63.0);
   if (testFlag(P, FLAG_DOUBLES)) {
     nullScript(P, ACTOR_PARTNER);
     setPosition(P, ACTOR_PARTNER, 63.0, 63.0);
-    setCourtSprite(P, ACTOR_END1_WALK_74_07, (V.storyModeGenderOfPartnerCharacter + OBJ_HARRY_B) & 0xFF);
-    setPosition(P, ACTOR_END1_MARK, 26.0, 17.0);
-    face(P, ACTOR_END1_MARK, FACE_DOWN);
+    setCourtSprite(P, ACTOR_END1_MAIN_BLDG_WALK_74_07, (V.storyModeGenderOfPartnerCharacter + OBJ_HARRY_B) & 0xFF);
+    setPosition(P, ACTOR_END1_MAIN_BLDG_MARK, 26.0, 17.0);
+    face(P, ACTOR_END1_MAIN_BLDG_MARK, FACE_DOWN);
   }
   setCourtSprite(P, ACTOR_PLAYER, (V.storyModeGenderOfMainCharacter + OBJ_ALEX_B) & 0xFF);   // .checkStoryModeGenderOfMainCharacter
   setPosition(P, ACTOR_PLAYER, 23.0, 23.0);
@@ -55,59 +55,59 @@ export function* end1MainBldgGroupDepartureCutscene(P) {
   yield* waitFadeEnd(P);
   yield* delay(P, 60);
   if (testFlag(P, FLAG_DOUBLES)) {
-    facePair(P, ACTOR_END1_WALK_74_07, ACTOR_PLAYER);
+    facePair(P, ACTOR_END1_MAIN_BLDG_WALK_74_07, ACTOR_PLAYER);
     yield* delay(P, 30);
     setAnim(P, ACTOR_PLAYER, ANIM_NOD);
-    yield* animIdle(P, ACTOR_END1_WALK_74_07, ANIM_NOD);
+    yield* animIdle(P, ACTOR_END1_MAIN_BLDG_WALK_74_07, ANIM_NOD);
     yield* delay(P, 30);
-    face(P, ACTOR_END1_WALK_74_07, FACE_UP);
+    face(P, ACTOR_END1_MAIN_BLDG_WALK_74_07, FACE_UP);
     yield* delay(P, 30);
-    yield* animIdle(P, ACTOR_END1_MARK, ANIM_BOUNCE);
+    yield* animIdle(P, ACTOR_END1_MAIN_BLDG_MARK, ANIM_BOUNCE);
     yield* delay(P, 50);
-    facePair(P, ACTOR_END1_MARK, ACTOR_END1_WALK_75_06_2);
-    setAnim(P, ACTOR_END1_WALK_75_06_2, ANIM_NOD);
-    yield* animIdle(P, ACTOR_END1_MARK, ANIM_NOD);
-    face(P, ACTOR_END1_MARK, FACE_DOWN);
-    face(P, ACTOR_END1_WALK_75_06_2, FACE_DOWN);
+    facePair(P, ACTOR_END1_MAIN_BLDG_MARK, ACTOR_END1_MAIN_BLDG_WALK_75_06_2);
+    setAnim(P, ACTOR_END1_MAIN_BLDG_WALK_75_06_2, ANIM_NOD);
+    yield* animIdle(P, ACTOR_END1_MAIN_BLDG_MARK, ANIM_NOD);
+    face(P, ACTOR_END1_MAIN_BLDG_MARK, FACE_DOWN);
+    face(P, ACTOR_END1_MAIN_BLDG_WALK_75_06_2, FACE_DOWN);
   } else {                                                            // .face
-    facePair(P, ACTOR_END1_WALK_74_06, ACTOR_PLAYER);
+    facePair(P, ACTOR_END1_MAIN_BLDG_WALK_74_06, ACTOR_PLAYER);
     yield* delay(P, 30);
     setAnim(P, ACTOR_PLAYER, ANIM_NOD);
-    yield* animIdle(P, ACTOR_END1_WALK_74_06, ANIM_NOD);
+    yield* animIdle(P, ACTOR_END1_MAIN_BLDG_WALK_74_06, ANIM_NOD);
     yield* delay(P, 10);
     face(P, ACTOR_PLAYER, FACE_UP);
-    face(P, ACTOR_END1_WALK_74_06, FACE_UP);
+    face(P, ACTOR_END1_MAIN_BLDG_WALK_74_06, FACE_UP);
     yield* delay(P, 20);
-    yield* animIdle(P, ACTOR_END1_WALK_75_06_2, ANIM_NOD);
+    yield* animIdle(P, ACTOR_END1_MAIN_BLDG_WALK_75_06_2, ANIM_NOD);
   }
   yield* delay(P, 40);                                                // .step
-  setAnim(P, ACTOR_END1_WALK_74_08, ANIM_NOD);
-  setAnim(P, ACTOR_END1_WALK_74_07, ANIM_NOD);
+  setAnim(P, ACTOR_END1_MAIN_BLDG_WALK_74_08, ANIM_NOD);
+  setAnim(P, ACTOR_END1_MAIN_BLDG_WALK_74_07, ANIM_NOD);
   setAnim(P, ACTOR_PLAYER, ANIM_NOD);
-  yield* animIdle(P, ACTOR_END1_WALK_74_06, ANIM_NOD);
+  yield* animIdle(P, ACTOR_END1_MAIN_BLDG_WALK_74_06, ANIM_NOD);
   yield* delay(P, 20);
-  facePair(P, ACTOR_END1_WALK_74_06, ACTOR_PLAYER);
-  facePair(P, ACTOR_END1_WALK_74_08, ACTOR_END1_WALK_74_07);
+  facePair(P, ACTOR_END1_MAIN_BLDG_WALK_74_06, ACTOR_PLAYER);
+  facePair(P, ACTOR_END1_MAIN_BLDG_WALK_74_08, ACTOR_END1_MAIN_BLDG_WALK_74_07);
   yield* delay(P, 10);
   // they step apart facing each other, then walk out
-  const group = [ACTOR_PLAYER, ACTOR_END1_WALK_74_06, ACTOR_END1_WALK_74_07, ACTOR_END1_WALK_74_08];
+  const group = [ACTOR_PLAYER, ACTOR_END1_MAIN_BLDG_WALK_74_06, ACTOR_END1_MAIN_BLDG_WALK_74_07, ACTOR_END1_MAIN_BLDG_WALK_74_08];
   for (const actor of group) lockFacing(P, actor);
   moveTarget(P, ACTOR_PLAYER, 22.0, 23.0);
-  moveTarget(P, ACTOR_END1_WALK_74_06, 26.0, 23.0);
-  moveTarget(P, ACTOR_END1_WALK_74_07, 21.0, 21.0);
-  moveTarget(P, ACTOR_END1_WALK_74_08, 27.0, 21.0);
-  yield* waitMove(P, ACTOR_END1_WALK_74_08);
+  moveTarget(P, ACTOR_END1_MAIN_BLDG_WALK_74_06, 26.0, 23.0);
+  moveTarget(P, ACTOR_END1_MAIN_BLDG_WALK_74_07, 21.0, 21.0);
+  moveTarget(P, ACTOR_END1_MAIN_BLDG_WALK_74_08, 27.0, 21.0);
+  yield* waitMove(P, ACTOR_END1_MAIN_BLDG_WALK_74_08);
   playerSpeed(P, 1.0);
   yield* movePlayer(P, 24.0, 47.0);
-  moveTarget(P, ACTOR_END1_WALK_75_06_2, 24.0, 25.0);
-  yield* waitMove(P, ACTOR_END1_WALK_75_06_2);
+  moveTarget(P, ACTOR_END1_MAIN_BLDG_WALK_75_06_2, 24.0, 25.0);
+  yield* waitMove(P, ACTOR_END1_MAIN_BLDG_WALK_75_06_2);
   for (const actor of group) unlockFacing(P, actor);
   moveTarget(P, ACTOR_PLAYER, 22.0, 31.0);
-  moveTarget(P, ACTOR_END1_WALK_74_06, 26.0, 31.0);
-  moveTarget(P, ACTOR_END1_WALK_74_07, 21.0, 29.0);
-  moveTarget(P, ACTOR_END1_WALK_74_08, 27.0, 29.0);
-  moveTarget(P, ACTOR_END1_WALK_75_06_2, 24.0, 33.0);
-  yield* waitMove(P, ACTOR_END1_WALK_75_06_2);
+  moveTarget(P, ACTOR_END1_MAIN_BLDG_WALK_74_06, 26.0, 31.0);
+  moveTarget(P, ACTOR_END1_MAIN_BLDG_WALK_74_07, 21.0, 29.0);
+  moveTarget(P, ACTOR_END1_MAIN_BLDG_WALK_74_08, 27.0, 29.0);
+  moveTarget(P, ACTOR_END1_MAIN_BLDG_WALK_75_06_2, 24.0, 33.0);
+  yield* waitMove(P, ACTOR_END1_MAIN_BLDG_WALK_75_06_2);
   requestExit(P, 0x05);
 }
 

@@ -80,9 +80,11 @@ export class LookRenderer {
     }
     return -1;
   }
-  // displayed colour (0xAABBGGRR) of region value v at fade d, or 0 for "keep the game's colour"
-  rgba(v, d) {
+  // displayed colour (0xAABBGGRR) of region value v at fade d, or 0 for "keep the game's colour"; the card region
+  // (a portrait pixel a hairstyle removed) takes colour 0 of the BG palette `slot` of palRAM
+  rgba(v, d, palRAM, slot) {
     if (!v) return 0;
+    if ((v & 15) === 11) { if (!palRAM) return 0; const o = slot * 8, c = palRAM[o] | palRAM[o + 1] << 8; return (0xFF000000 | ((c >> 10 & 31) << 19) | ((c >> 5 & 31) << 11) | ((c & 31) << 3)) >>> 0; }
     const c = this.colours[v]; if (c === 0xFFFF) return 0;
     const r = Math.min(31, (c & 31) + d), g = Math.min(31, ((c >> 5) & 31) + d), b = Math.min(31, ((c >> 10) & 31) + d);
     return (0xFF000000 | (b << 19) | (g << 11) | (r << 3)) >>> 0;

@@ -26,12 +26,12 @@ const ACTOR_ACADEMY_WING_WALK_75_06 = 0x03, ACTOR_ACADEMY_WING_INVISIBLE = 0x04;
 const ACTOR_ACADEMY_WING_TROPHY_1 = 0x05, ACTOR_ACADEMY_WING_TROPHY_2 = 0x06;
 const ACTOR_ACADEMY_WING_SLOT_6 = 0x06;               // (the second trophy's slot: the coach's "!" balloon here)
 // the farewell's actors (AcademyWingInitActors0_10)
-const ACTOR_INIT0_BALLOON_ANGRY = 0x03, ACTOR_INIT0_BALLOON_SWEAT = 0x04, ACTOR_INIT0_BALLOON_MUSIC = 0x05;
-const ACTOR_INIT0_WALK_75_06 = 0x06, ACTOR_INIT0_KEVIN = 0x07, ACTOR_INIT0_MARK = 0x08, ACTOR_INIT0_EMILY = 0x09;
-const ACTOR_INIT0_TROPHY_1 = 0x0A, ACTOR_INIT0_TROPHY_2 = 0x0B;
+const ACTOR_ACADEMY_WING_INIT0_BALLOON_ANGRY = 0x03, ACTOR_ACADEMY_WING_INIT0_BALLOON_SWEAT = 0x04, ACTOR_ACADEMY_WING_INIT0_BALLOON_MUSIC = 0x05;
+const ACTOR_ACADEMY_WING_INIT0_WALK_75_06 = 0x06, ACTOR_ACADEMY_WING_INIT0_KEVIN = 0x07, ACTOR_ACADEMY_WING_INIT0_MARK = 0x08, ACTOR_ACADEMY_WING_INIT0_EMILY = 0x09;
+const ACTOR_ACADEMY_WING_INIT0_TROPHY_1 = 0x0A, ACTOR_ACADEMY_WING_INIT0_TROPHY_2 = 0x0B;
 // the invitation's actors (AcademyWingInitActors1_10)
-const ACTOR_INIT1_WALK_75_06 = 0x03, ACTOR_INIT1_TROPHY_1 = 0x04, ACTOR_INIT1_TROPHY_2 = 0x05;
-const ACTOR_INIT1_BALLOON_EXCLAIM_1 = 0x06, ACTOR_INIT1_BALLOON_EXCLAIM_2 = 0x07;
+const ACTOR_ACADEMY_WING_INIT1_WALK_75_06 = 0x03, ACTOR_ACADEMY_WING_INIT1_TROPHY_1 = 0x04, ACTOR_ACADEMY_WING_INIT1_TROPHY_2 = 0x05;
+const ACTOR_ACADEMY_WING_INIT1_BALLOON_EXCLAIM_1 = 0x06, ACTOR_ACADEMY_WING_INIT1_BALLOON_EXCLAIM_2 = 0x07;
 const OBJ_BALLOON_QUESTION = 0x4D, OBJ_BALLOON_MUSIC = 0x51, OBJ_BALLOON_SWEAT = 0x53;
 const ANIM_TROPHY_SINGLES = 0x06;
 const ACTORF_OAM_ATTR = 0x37, OAM_XFLIP = 0x20;
@@ -170,8 +170,8 @@ export function* academyWingInitScript(P) {
     copyBehaviorRect(P, 0x02, 0x02, 0x1E, 0x38, 0x20, 0x38);          // the coach's door closed
     P.callRom(BANK, MapArrivalWalkPair_10);
     academyWingHideActorByProgressFlag(P);
-    setPosition(P, ACTOR_INIT1_WALK_75_06, 29.0, 48.0);
-    face(P, ACTOR_INIT1_WALK_75_06, FACE_UP);
+    setPosition(P, ACTOR_ACADEMY_WING_INIT1_WALK_75_06, 29.0, 48.0);
+    face(P, ACTOR_ACADEMY_WING_INIT1_WALK_75_06, FACE_UP);
   }
   if (V.mapSceneStage === ACADEMYWINGSTAGE_SENIOR_CHAMP) setPosition(P, ACTOR_ACADEMY_WING_WALK_75_06, 25.625, 50.75);   // .stage4
   V.mapScrollMinX = 0x16; V.mapScrollMinY = 0x28;                     // .stage5
@@ -191,13 +191,13 @@ export function* academyWingInitScript(P) {
 // Emily asks again until yes); on to the dorm room's narration (entry $0A).
 function* academyWingFarewell(P) {
   const { V } = P;
-  const COACH = ACTOR_INIT0_WALK_75_06, KEVIN = ACTOR_INIT0_KEVIN, MARK = ACTOR_INIT0_MARK, EMILY = ACTOR_INIT0_EMILY;
+  const COACH = ACTOR_ACADEMY_WING_INIT0_WALK_75_06, KEVIN = ACTOR_ACADEMY_WING_INIT0_KEVIN, MARK = ACTOR_ACADEMY_WING_INIT0_MARK, EMILY = ACTOR_ACADEMY_WING_INIT0_EMILY;
   const doubles = () => testFlag(P, FLAG_DOUBLES);
   respawnActors(P, AcademyWingInitActors0_10);
   beginCutscene(P);
-  setAnim(P, ACTOR_INIT0_TROPHY_1, ANIM_TROPHY_SINGLES);
-  if (!testFlag(P, FLAG_WON_ISLAND_OPEN_SINGLES_FINAL)) setPosition(P, ACTOR_INIT0_TROPHY_1, 1.0, 1.0);
-  if (!testFlag(P, FLAG_WON_ISLAND_OPEN_DOUBLES_FINAL)) setPosition(P, ACTOR_INIT0_TROPHY_2, 1.0, 1.0);   // .placeActors
+  setAnim(P, ACTOR_ACADEMY_WING_INIT0_TROPHY_1, ANIM_TROPHY_SINGLES);
+  if (!testFlag(P, FLAG_WON_ISLAND_OPEN_SINGLES_FINAL)) setPosition(P, ACTOR_ACADEMY_WING_INIT0_TROPHY_1, 1.0, 1.0);
+  if (!testFlag(P, FLAG_WON_ISLAND_OPEN_DOUBLES_FINAL)) setPosition(P, ACTOR_ACADEMY_WING_INIT0_TROPHY_2, 1.0, 1.0);   // .placeActors
   playerSpeed(P, 7.5);                                                // .done
   yield* movePlayer(P, 31.0, 59.0);
   yield* waitPlayerMove(P);
@@ -218,30 +218,30 @@ function* academyWingFarewell(P) {
   face(P, KEVIN, FACE_UP);
   face(P, MARK, FACE_UP);
   yield* wait(P, 40);
-  setPosition(P, ACTOR_INIT0_BALLOON_MUSIC, 35.5, 49.0);
+  setPosition(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_MUSIC, 35.5, 49.0);
   sound(P, SFX_CHIME);
   yield* speak(P, KEVIN);
-  setPosition(P, ACTOR_INIT0_BALLOON_MUSIC, 63.0, 63.0);
+  setPosition(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_MUSIC, 63.0, 63.0);
   yield* animIdle(P, COACH, ANIM_NOD);
   yield* speak(P, COACH);
   if (doubles()) {
     // Mark is angry; Kevin and Emily step to him in turn and answer
-    setPosition(P, ACTOR_INIT0_BALLOON_ANGRY, 33.5, 49.0);
+    setPosition(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_ANGRY, 33.5, 49.0);
     sound(P, SFX_APPEAR1);
     yield* wait(P, 10);
     advanceText(P);
     yield* speak(P, MARK);
-    setPosition(P, ACTOR_INIT0_BALLOON_ANGRY, 63.0, 63.0);
+    setPosition(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_ANGRY, 63.0, 63.0);
     yield* stepToMark(P, KEVIN, 33.0, 34.0, () => setAnim(P, MARK, ANIM_BOUNCE));
     yield* speak(P, KEVIN);
     yield* stepToMark(P, EMILY, 31.0, 30.0, () => setAnim(P, MARK, ANIM_BOUNCE));
     yield* speak(P, EMILY);
   } else {                                                            // .placeActors2
-    setPosition(P, ACTOR_INIT0_BALLOON_MUSIC, 33.5, 49.0);
+    setPosition(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_MUSIC, 33.5, 49.0);
     sound(P, SFX_CHIME);
     yield* wait(P, 30);
     yield* speak(P, MARK);
-    setPosition(P, ACTOR_INIT0_BALLOON_MUSIC, 63.0, 63.0);
+    setPosition(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_MUSIC, 63.0, 63.0);
   }
   yield* stepToMark(P, KEVIN, 33.0, 34.0, () => {});                  // .face
   yield* animIdle(P, MARK, ANIM_BOUNCE);
@@ -263,23 +263,23 @@ function* academyWingFarewell(P) {
   yield* setText(P, Text_30_482);
   yield* speak(P, COACH);
   // the team's reaction: sweat drops and angry marks (the music balloon becomes a sweat drop too)
-  setObjdef(P, OBJ_BALLOON_SWEAT, ACTOR_INIT0_BALLOON_ANGRY);
-  setAnim(P, ACTOR_INIT0_BALLOON_ANGRY, ANIM_WALK);
-  setObjdef(P, OBJ_BALLOON_SWEAT, ACTOR_INIT0_BALLOON_MUSIC);
-  setAnim(P, ACTOR_INIT0_BALLOON_MUSIC, ANIM_WALK);
-  setPosition(P, ACTOR_INIT0_BALLOON_ANGRY, 31.5, 49.0);
+  setObjdef(P, OBJ_BALLOON_SWEAT, ACTOR_ACADEMY_WING_INIT0_BALLOON_ANGRY);
+  setAnim(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_ANGRY, ANIM_WALK);
+  setObjdef(P, OBJ_BALLOON_SWEAT, ACTOR_ACADEMY_WING_INIT0_BALLOON_MUSIC);
+  setAnim(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_MUSIC, ANIM_WALK);
+  setPosition(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_ANGRY, 31.5, 49.0);
   sound(P, SFX_APPEAR2);
   yield* wait(P, 40);
-  setPosition(P, ACTOR_INIT0_BALLOON_SWEAT, 33.5, 49.0);
+  setPosition(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_SWEAT, 33.5, 49.0);
   sound(P, SFX_APPEAR2);
   yield* wait(P, 40);
-  setPosition(P, ACTOR_INIT0_BALLOON_ANGRY, 63.0, 63.0);
-  setPosition(P, ACTOR_INIT0_BALLOON_MUSIC, 35.5, 49.0);
+  setPosition(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_ANGRY, 63.0, 63.0);
+  setPosition(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_MUSIC, 35.5, 49.0);
   sound(P, SFX_APPEAR2);
   yield* wait(P, 40);
-  setPosition(P, ACTOR_INIT0_BALLOON_SWEAT, 63.0, 63.0);
+  setPosition(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_SWEAT, 63.0, 63.0);
   yield* wait(P, 40);
-  setPosition(P, ACTOR_INIT0_BALLOON_MUSIC, 63.0, 63.0);
+  setPosition(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_MUSIC, 63.0, 63.0);
   yield* teamFaces(P, FACE_DOWN);
   yield* wait(P, 120);
   yield* teamFaces(P, FACE_UP);
@@ -287,13 +287,13 @@ function* academyWingFarewell(P) {
   faceToward(P, KEVIN, MARK);
   yield* wait(P, 1);
   yield* animIdle(P, MARK, ANIM_BOUNCE);
-  setPosition(P, ACTOR_INIT0_BALLOON_MUSIC, 35.5, 49.0);
+  setPosition(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_MUSIC, 35.5, 49.0);
   sound(P, SFX_APPEAR2);
   yield* wait(P, 60);
   faceToward(P, EMILY, MARK);
   yield* wait(P, 1);
   yield* animIdle(P, MARK, ANIM_BOUNCE);
-  setPosition(P, ACTOR_INIT0_BALLOON_ANGRY, 31.5, 49.0);
+  setPosition(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_ANGRY, 31.5, 49.0);
   sound(P, SFX_APPEAR2);
   yield* wait(P, 60);
   // the player (and partner) walk up through the coach's door
@@ -330,8 +330,8 @@ function* academyWingFarewell(P) {
     yield* wait(P, 1);
   }
   yield* academyWingCloseDoor(P);                                     // .academyWingCloseDoor
-  setPosition(P, ACTOR_INIT0_BALLOON_ANGRY, 63.0, 63.0);
-  setPosition(P, ACTOR_INIT0_BALLOON_MUSIC, 63.0, 63.0);
+  setPosition(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_ANGRY, 63.0, 63.0);
+  setPosition(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_MUSIC, 63.0, 63.0);
   yield* wait(P, 10);
   yield* teamFaces(P, FACE_DOWN);
   yield* wait(P, 1);
@@ -372,7 +372,7 @@ function* academyWingFarewell(P) {
     moveTarget(P, ACTOR_PARTNER, 33.0, 50.0);
     yield* waitMove(P, ACTOR_PARTNER);
   } else {                                                            // .placeActors3
-    yield* balloon(P, ACTOR_INIT0_BALLOON_SWEAT, 33.5, 51.0, SFX_APPEAR2, 80);
+    yield* balloon(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_SWEAT, 33.5, 51.0, SFX_APPEAR2, 80);
     faceToward(P, EMILY, ACTOR_PLAYER);
     yield* wait(P, 40);
     faceToward(P, ACTOR_PLAYER, EMILY);
@@ -406,13 +406,13 @@ function* academyWingFarewell(P) {
   yield* animIdle(P, ACTOR_PLAYER, ANIM_BOUNCE);
   yield* speak(P, COACH);
   yield* animIdle(P, ACTOR_PLAYER, ANIM_NOD);
-  setObjdef(P, OBJ_BALLOON_MUSIC, ACTOR_INIT0_BALLOON_MUSIC);
-  setAnim(P, ACTOR_INIT0_BALLOON_MUSIC, ANIM_WALK);
-  setPosition(P, ACTOR_INIT0_BALLOON_MUSIC, 35.5, 51.0);
+  setObjdef(P, OBJ_BALLOON_MUSIC, ACTOR_ACADEMY_WING_INIT0_BALLOON_MUSIC);
+  setAnim(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_MUSIC, ANIM_WALK);
+  setPosition(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_MUSIC, 35.5, 51.0);
   sound(P, SFX_CHIME);
   yield* wait(P, 20);
   yield* speak(P, KEVIN);
-  setPosition(P, ACTOR_INIT0_BALLOON_MUSIC, 63.0, 63.0);
+  setPosition(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_MUSIC, 63.0, 63.0);
   yield* animIdle(P, COACH, ANIM_NOD);
   yield* speak(P, COACH);
   facePair(P, MARK, KEVIN);
@@ -431,9 +431,9 @@ function* academyWingFarewell(P) {
   setAnim(P, KEVIN, ANIM_NOD);
   yield* animIdle(P, MARK, ANIM_NOD);
   yield* wait(P, 60);
-  setObjdef(P, OBJ_BALLOON_QUESTION, ACTOR_INIT0_BALLOON_MUSIC);
-  setAnim(P, ACTOR_INIT0_BALLOON_MUSIC, ANIM_WALK);
-  yield* balloon(P, ACTOR_INIT0_BALLOON_MUSIC, 33.5, 45.5, SFX_EMOTE, 80);
+  setObjdef(P, OBJ_BALLOON_QUESTION, ACTOR_ACADEMY_WING_INIT0_BALLOON_MUSIC);
+  setAnim(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_MUSIC, ANIM_WALK);
+  yield* balloon(P, ACTOR_ACADEMY_WING_INIT0_BALLOON_MUSIC, 33.5, 45.5, SFX_EMOTE, 80);
   if ((yield* askYesNo(P, COACH)) !== YES) {
     yield* animIdle(P, COACH, ANIM_BOUNCE);
     yield* speak(P, COACH);
@@ -480,7 +480,7 @@ function* academyWingFarewell(P) {
 // a team member steps to Mark's side (turning Mark to it first, its facing locked for the two steps), Mark
 // reacting (between the steps) and both face each other
 function* stepToMark(P, actor, x1, x2, between) {
-  faceToward(P, ACTOR_INIT0_MARK, actor);
+  faceToward(P, ACTOR_ACADEMY_WING_INIT0_MARK, actor);
   yield* wait(P, 1);
   lockFacing(P, actor);
   moveTarget(P, actor, x1, 51.0);
@@ -489,13 +489,13 @@ function* stepToMark(P, actor, x1, x2, between) {
   moveTarget(P, actor, x2, 51.0);
   yield* waitMove(P, actor);
   unlockFacing(P, actor);
-  facePair(P, ACTOR_INIT0_MARK, actor);
+  facePair(P, ACTOR_ACADEMY_WING_INIT0_MARK, actor);
 }
 // Kevin, Mark and Emily face one way
 function* teamFaces(P, facing) {
-  face(P, ACTOR_INIT0_KEVIN, facing);
-  face(P, ACTOR_INIT0_MARK, facing);
-  face(P, ACTOR_INIT0_EMILY, facing);
+  face(P, ACTOR_ACADEMY_WING_INIT0_KEVIN, facing);
+  face(P, ACTOR_ACADEMY_WING_INIT0_MARK, facing);
+  face(P, ACTOR_ACADEMY_WING_INIT0_EMILY, facing);
 }
 
 // AcademyWingEntry0fScene (10:6FCD): the Island Open invitation: the coach (his list) with the trophy case; his
@@ -503,17 +503,17 @@ function* teamFaces(P, facing) {
 // until yes (Text_30_511 again on no); then the player (and partner) walk into the office and on to the academy
 // entrance (entry $0C).
 export function* academyWingEntry0fScene(P) {
-  const COACH = ACTOR_INIT1_WALK_75_06;
+  const COACH = ACTOR_ACADEMY_WING_INIT1_WALK_75_06;
   respawnActors(P, AcademyWingInitActors1_10);
   beginCutscene(P);
-  setAnim(P, ACTOR_INIT1_TROPHY_1, ANIM_TROPHY_SINGLES);
+  setAnim(P, ACTOR_ACADEMY_WING_INIT1_TROPHY_1, ANIM_TROPHY_SINGLES);
   if (testFlag(P, FLAG_DOUBLES)) {
     nullScript(P, ACTOR_PARTNER);
     setPosition(P, ACTOR_PLAYER, 31.0, 52.0);
     setPosition(P, ACTOR_PARTNER, 33.0, 52.0);
     face(P, ACTOR_PARTNER, FACE_UP);
-    if (!testFlag(P, FLAG_WON_ISLAND_OPEN_SINGLES_FINAL)) setPosition(P, ACTOR_INIT1_TROPHY_1, 63.0, 63.0);
-  } else if (!testFlag(P, FLAG_WON_ISLAND_OPEN_DOUBLES_FINAL)) setPosition(P, ACTOR_INIT1_TROPHY_2, 63.0, 63.0);   // .checkFlag2
+    if (!testFlag(P, FLAG_WON_ISLAND_OPEN_SINGLES_FINAL)) setPosition(P, ACTOR_ACADEMY_WING_INIT1_TROPHY_1, 63.0, 63.0);
+  } else if (!testFlag(P, FLAG_WON_ISLAND_OPEN_DOUBLES_FINAL)) setPosition(P, ACTOR_ACADEMY_WING_INIT1_TROPHY_2, 63.0, 63.0);   // .checkFlag2
   face(P, ACTOR_PLAYER, FACE_UP);                                     // .face2
   P.V.storyModeShowLocationName = 0;
   fadeIn(P, 4);
@@ -539,13 +539,13 @@ export function* academyWingEntry0fScene(P) {
   yield* setText(P, Text_30_504);
   yield* speakNpc03SinglesOrDoublesLine(P);
   if (testFlag(P, FLAG_DOUBLES)) {
-    setPosition(P, ACTOR_INIT1_BALLOON_EXCLAIM_1, 32.5, 50.0);
-    setPosition(P, ACTOR_INIT1_BALLOON_EXCLAIM_2, 34.5, 50.0);
+    setPosition(P, ACTOR_ACADEMY_WING_INIT1_BALLOON_EXCLAIM_1, 32.5, 50.0);
+    setPosition(P, ACTOR_ACADEMY_WING_INIT1_BALLOON_EXCLAIM_2, 34.5, 50.0);
     sound(P, SFX_CHIME);
     yield* wait(P, 80);
-    setPosition(P, ACTOR_INIT1_BALLOON_EXCLAIM_1, 63.0, 63.0);
-    setPosition(P, ACTOR_INIT1_BALLOON_EXCLAIM_2, 63.0, 63.0);
-  } else yield* balloon(P, ACTOR_INIT1_BALLOON_EXCLAIM_1, 33.5, 50.0, SFX_CHIME, 80);   // .placeActors4
+    setPosition(P, ACTOR_ACADEMY_WING_INIT1_BALLOON_EXCLAIM_1, 63.0, 63.0);
+    setPosition(P, ACTOR_ACADEMY_WING_INIT1_BALLOON_EXCLAIM_2, 63.0, 63.0);
+  } else yield* balloon(P, ACTOR_ACADEMY_WING_INIT1_BALLOON_EXCLAIM_1, 33.5, 50.0, SFX_CHIME, 80);   // .placeActors4
   face(P, COACH, FACE_DOWN);                                          // .face3
   yield* wait(P, 1);
   yield* speakNpc03SinglesOrDoublesLine(P);

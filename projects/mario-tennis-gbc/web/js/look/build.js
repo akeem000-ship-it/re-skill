@@ -2,8 +2,8 @@
 // recompressed portraits) and the region planes the renderer colours the hero with. Runs at ROM load; nothing
 // derived from the ROM is stored in the repository. Addresses: REVERSE.md and the creator research
 // (walk sprites banks $70/$74, match sprites banks $40/$41, portraits $16/$1B, HUD heads $18).
-import { lzDecompress, lzCompress } from "./lz.js";
-import { decodeColMajor, encodeColMajor, decodeRowMajor, encodeRowMajor, cellOf, clone } from "./gfx.js";
+import { lzDecompress } from "./lz.js";
+import { decodeColMajor, encodeColMajor, decodeRowMajor, cellOf, clone } from "./gfx.js";
 import { REG, labelSprite, labelPortrait, applyStyle, applyTouchups } from "./label.js";
 import { TOUCHUPS } from "./touchups.js";
 
@@ -17,7 +17,6 @@ export const HEROES = {
           portraits: [[0x16, 0x6A46, 0x6968, 2], [0x1B, 0x454F, 0x4CEC, 4]], winlose: [[0x16, 0x6315], [0x16, 0x6422]], heads: [0x5B30, 0x6330] },
 };
 const WINLOSE_TABLE = [0x16, 0x60F1];                       // WinLosePortraitVariantTable_16: 8 words
-const FREE = { 0x16: [0x7B4F, 0x8000], 0x1B: [0x7FB2, 0x8000] }; // unused tails of the portrait banks
 
 // sanity: the ROM is the one these addresses belong to (pointer tables point at the streams we patch)
 export function checkRom(rom) {
@@ -77,12 +76,15 @@ function heroAssets(rom, name, style) {
     out.raw.push({ off: base, bytes, regions });
   }
   // LZ portraits: 24x24 (two copies) and the 32x32 win / lose faces, row-major
+  // The LZ streams are NOT rewritten: decompressing a different stream takes a different number of cycles, which
+  // can move a lag frame and change the game's course. The restyle is done in the region plane alone (a removed
+  // pixel shows the card colour, an added one the region's colour), keyed by the original tiles' content.
   const portrait = (bank, addr, cols, key) => {
-    const { data } = lzDecompress(rom, off(bank, addr));
-    const st = finish(labelPortrait(decodeRowMajor(data, 0, cols, cols), name), key);
-    const plain = encodeRowMajor({ w: cols * 8, h: cols * 8, px: st.idx }, cols, cols);
-    const planes = []; for (let t = 0; t < cols * cols; t++) planes.push([plain.subarray(t * 16, t * 16 + 16), cellOf(st.reg, cols * 8, t % cols, (t / cols) | 0)]);
-    return { plain, planes };
+    const { data } = lzDecompress(rom, off(bank, addr)), im = decodeRowMajor(data, 0, cols, cols);
+    const st = finish(labelPortrait(im, name), key);
+    for (let i = 0; i < st.reg.length; i++) if (st.reg[i] === REG.NONE || (st.idx[i] === 0 && im.px[i] !== 0 && st.reg[i] === REG.KEEP)) st.reg[i] = REG.CARD;
+    const planes = []; for (let t = 0; t < cols * cols; t++) planes.push([data.subarray(t * 16, t * 16 + 16), cellOf(st.reg, cols * 8, t % cols, (t / cols) | 0)]);
+    return { planes };
   };
   for (const [bank, addr, table, stride] of h.portraits) out.lz.push({ bank, addr, ptr: [bank, table + stride * h.id], ...portrait(bank, addr, 3, "portrait") });
   h.winlose.forEach(([bank, addr], k) => out.lz.push({ bank, addr, ptr: [WINLOSE_TABLE[0], WINLOSE_TABLE[1] + 2 * (h.id * 2 + k)], ...portrait(bank, addr, 4, k ? "lose" : "win") }));
@@ -99,7 +101,6 @@ export function buildLook(rom, look) {
   // the five shared hero palettes (StoryObjPalettes 0a:5341 = 01:50F6 entries 3-7 = 18:4300): the renderer only
   // recolours tiles shown with one of them, so other palettes (the charge flash, menus) stay the game's
   for (let p = 0; p < 5; p++) { const o = off(0x0A, 0x5341 + p * 8), pal = []; for (let i = 0; i < 4; i++) pal.push(rom[o + 2 * i] | rom[o + 2 * i + 1] << 8); res.basePalettes.push(pal); }
-  const free = {}; for (const b in FREE) free[b] = FREE[b][0];
   for (const [key, name] of [["boy", "alex"], ["girl", "nina"]]) {
     const L = look[key]; if (!L) continue;
     const hid = HEROES[name].id, c = L.colours || {};
@@ -112,22 +113,21 @@ export function buildLook(rom, look) {
       res.patches.push({ off: r.off, bytes: r.bytes });
       for (const [o, plane] of r.regions) { res.tileRegions.set(o, tag(plane)); addContent(res, r.bytes.subarray(o - r.off, o - r.off + 16), tag(plane)); }
     }
-    for (const z of A.lz) {
-      for (const [bytes, plane] of z.planes) addContent(res, bytes, tag(plane));
-      const comp = lzCompress(z.plain), o = off(z.bank, z.addr), room = lzDecompress(rom, o).size;
-      if (comp.length <= room) { res.patches.push({ off: o, bytes: comp }); continue; }
-      // too big for its place: the bank's free tail, and its pointer moved (the stream must stay in its bank)
-      const f = free[z.bank], end = FREE[z.bank] && FREE[z.bank][1];
-      if (f !== undefined && f + comp.length <= end && blank(rom, off(z.bank, f), comp.length)) {
-        res.patches.push({ off: off(z.bank, f), bytes: comp });
-        res.patches.push({ off: off(z.ptr[0], z.ptr[1]), bytes: Uint8Array.of(f & 0xFF, f >> 8) });
-        free[z.bank] = f + comp.length;
-      } else res.notes.push(`${name} portrait ${z.bank.toString(16)}:${z.addr.toString(16)} kept (no room): recoloured only`);
-    }
+    // portrait tiles also drawn by other characters' faces (frame and card pieces) are left to the game
+    const others = otherFaceTiles(rom);
+    for (const z of A.lz) for (const [bytes, plane] of z.planes) if (!others.has(key16(bytes))) addContent(res, bytes, tag(plane));
   }
   return res;
 }
-const blank = (rom, o, n) => { const v = rom[o]; if (v !== 0xFF && v !== 0) return false; for (let i = 0; i < n; i++) if (rom[o + i] !== v) return false; return true; };
+const key16 = (b, o = 0) => { let s = ""; for (let i = 0; i < 16; i++) s += String.fromCharCode(b[o + i]); return s; };
+// the tiles of every other character's 24x24 portrait and 32x32 win/lose faces
+function otherFaceTiles(rom) {
+  const set = new Set(), heroAddr = new Set(Object.values(HEROES).flatMap(h => [h.portraits[0][1], ...h.winlose.map(w => w[1])]));
+  const add = (bank, addr) => { if (heroAddr.has(addr)) return; try { const d = lzDecompress(rom, off(bank, addr)).data; for (let o = 0; o + 16 <= d.length; o += 16) set.add(key16(d, o)); } catch (e) { /* not a stream */ } };
+  for (let c = 0; c < 32; c++) add(0x16, u16(rom, 0x16, 0x6968 + 2 * c));
+  for (let k = 0; k < 8; k++) add(WINLOSE_TABLE[0], u16(rom, WINLOSE_TABLE[0], WINLOSE_TABLE[1] + 2 * k));
+  return set;
+}
 
 export function tileHash(b, o = 0) { let h = 0x811c9dc5; for (let i = 0; i < 16; i++) { h ^= b[o + i]; h = Math.imul(h, 0x01000193); } return h >>> 0; }
 function addContent(res, bytes16, plane) {

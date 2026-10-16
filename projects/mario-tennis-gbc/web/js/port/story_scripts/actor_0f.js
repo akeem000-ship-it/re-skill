@@ -16,8 +16,8 @@ import { loadActorObjectDef } from "../story/actor_objdefs.js";
 
 const BANK = 0x0F;
 // actors of the doubles rounds (IslandOpenRoundActorsDoubles_0f, island_rounds_0f.asm)
-const ACTOR_DOUBLES_WALK_74_08 = 0x03, ACTOR_DOUBLES_WALK_74_06 = 0x04, ACTOR_DOUBLES_WALK_74_07 = 0x05;
-const ACTOR_DOUBLES_WALK_6F_07_1 = 0x06, ACTOR_DOUBLES_WALK_6F_07_2 = 0x07;
+const ACTOR_ISLAND_OPEN_ROUND_DOUBLES_WALK_74_08 = 0x03, ACTOR_ISLAND_OPEN_ROUND_DOUBLES_WALK_74_06 = 0x04, ACTOR_ISLAND_OPEN_ROUND_DOUBLES_WALK_74_07 = 0x05;
+const ACTOR_ISLAND_OPEN_ROUND_DOUBLES_WALK_6F_07_1 = 0x06, ACTOR_ISLAND_OPEN_ROUND_DOUBLES_WALK_6F_07_2 = 0x07;
 const ACTOR_ISLAND_OPEN_ROUND_WALK_74_07 = 0x05;
 const OBJ_HARRY_B = 0x58, OBJ_KATE_B = 0x59;
 const SFX_STORY_CUE = 0xA2;
@@ -48,7 +48,7 @@ export function queueFinishedRoundNameText(P) {
 // IslandOpenBreakCutscene (0F:7911): between doubles rounds: two officials walk in and announce the round finished
 // and the next one; they walk out and the player rejoins.
 export function* islandOpenBreakCutscene(P) {
-  const A = ACTOR_DOUBLES_WALK_6F_07_1, B = ACTOR_DOUBLES_WALK_6F_07_2;
+  const A = ACTOR_ISLAND_OPEN_ROUND_DOUBLES_WALK_6F_07_1, B = ACTOR_ISLAND_OPEN_ROUND_DOUBLES_WALK_6F_07_2;
   setPosition(P, A, 21.0, 23.0);
   setPosition(P, B, 23.0, 23.0);
   moveTarget(P, A, 35.0, 23.0);
@@ -57,9 +57,9 @@ export function* islandOpenBreakCutscene(P) {
   yield* setText(P, Text_25_105);
   yield* movePlayer(P, 35.0, 17.0);
   yield* waitPlayerMove(P);
-  face(P, ACTOR_DOUBLES_WALK_74_08, FACE_DOWN);
-  face(P, ACTOR_DOUBLES_WALK_74_06, FACE_DOWN);
-  face(P, ACTOR_DOUBLES_WALK_74_07, FACE_DOWN);
+  face(P, ACTOR_ISLAND_OPEN_ROUND_DOUBLES_WALK_74_08, FACE_DOWN);
+  face(P, ACTOR_ISLAND_OPEN_ROUND_DOUBLES_WALK_74_06, FACE_DOWN);
+  face(P, ACTOR_ISLAND_OPEN_ROUND_DOUBLES_WALK_74_07, FACE_DOWN);
   face(P, ACTOR_PLAYER, FACE_DOWN);
   face(P, ACTOR_PARTNER, FACE_DOWN);
   face(P, A, FACE_UP);

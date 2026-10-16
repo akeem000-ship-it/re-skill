@@ -18,14 +18,14 @@ import { checkAwardsCeremonyRivalSceneDone } from "./island_open_0f.js";
 
 const BANK = 0x0F;
 // actors of the ceremony (AwardsCeremonyActors_0f, testmaps_0f.asm)
-const ACTOR_WALK_74_08 = 0x03, ACTOR_A_COZ = 0x04, ACTOR_B_COZ = 0x05, ACTOR_SAMMI = 0x06, ACTOR_SEAN = 0x07;
-const ACTOR_SPIKE = 0x08, ACTOR_WALK_6F_06 = 0x09, ACTOR_WALK_6F_05 = 0x0A, ACTOR_WALK_6F_07_1 = 0x0B;
-const ACTOR_WALK_75_06 = 0x0C, ACTOR_TROPHY_3 = 0x0F, ACTOR_WALK_6F_07_2 = 0x10, ACTOR_WALK_74_07 = 0x11;
-const ACTOR_WALK_74_06 = 0x12, ACTOR_BALLOON_ANGRY = 0x13, ACTOR_BALLOON_SWEAT = 0x14;
-const ACTOR_BALLOON_QUESTION = 0x15, ACTOR_ALEX = 0x16;
+const ACTOR_AWARDS_CEREMONY_WALK_74_08 = 0x03, ACTOR_AWARDS_CEREMONY_A_COZ = 0x04, ACTOR_AWARDS_CEREMONY_B_COZ = 0x05, ACTOR_AWARDS_CEREMONY_SAMMI = 0x06, ACTOR_AWARDS_CEREMONY_SEAN = 0x07;
+const ACTOR_AWARDS_CEREMONY_SPIKE = 0x08, ACTOR_AWARDS_CEREMONY_WALK_6F_06 = 0x09, ACTOR_AWARDS_CEREMONY_WALK_6F_05 = 0x0A, ACTOR_AWARDS_CEREMONY_WALK_6F_07_1 = 0x0B;
+const ACTOR_AWARDS_CEREMONY_WALK_75_06 = 0x0C, ACTOR_AWARDS_CEREMONY_TROPHY_3 = 0x0F, ACTOR_AWARDS_CEREMONY_WALK_6F_07_2 = 0x10, ACTOR_AWARDS_CEREMONY_WALK_74_07 = 0x11;
+const ACTOR_AWARDS_CEREMONY_WALK_74_06 = 0x12, ACTOR_AWARDS_CEREMONY_BALLOON_ANGRY = 0x13, ACTOR_AWARDS_CEREMONY_BALLOON_SWEAT = 0x14;
+const ACTOR_AWARDS_CEREMONY_BALLOON_QUESTION = 0x15, ACTOR_AWARDS_CEREMONY_ALEX = 0x16;
 const OBJ_WALK_6F_07 = 0x25, OBJ_WALK_71_03 = 0x30, OBJ_WALK_72_03 = 0x3A, OBJ_BALLOON_ANGRY = 0x4E;
 const OBJ_BALLOON_SWEAT = 0x53, OBJ_ALEX_B = 0x56, OBJ_TROPHY = 0x74;
-const ANIM_TROPHY_SMALL = 0x07;
+const ANIM_TROPHY_SMALL = 0x08;
 const SFX_STOMP = 0x83, SFX_EMOTE = 0x98, SFX_APPEAR1 = 0x99;
 const Text_25_107 = 0x286B, Text_25_125 = 0x287D, Text_25_129 = 0x2881, Text_25_133 = 0x2885, Text_25_151 = 0x2897;
 
@@ -53,20 +53,20 @@ function changeObj(P, objdef, actor) {
 export function* awardsCeremonyNpc08(P) {
   yield* setText(P, Text_25_125);
   if (checkAwardsCeremonyRivalSceneDone(P).a & 0x01) yield* setText(P, Text_25_129);
-  yield* speak(P, ACTOR_SPIKE);
+  yield* speak(P, ACTOR_AWARDS_CEREMONY_SPIKE);
 }
 // ReplacePlayerWithStandInActor (0F:5641): the ceremony's stand-in shows the player (its court sprite by gender);
 // the player itself put away
 export function replacePlayerWithStandInActor(P) {
-  const bc = actorState(P, ACTOR_ALEX), objdef = (P.V.storyModeGenderOfMainCharacter + OBJ_ALEX_B) & 0xFF;
+  const bc = actorState(P, ACTOR_AWARDS_CEREMONY_ALEX), objdef = (P.V.storyModeGenderOfMainCharacter + OBJ_ALEX_B) & 0xFF;
   if (bc >> 8) farcall(P, BANK_ACTORS, () => loadActorObjectDef(P, bc, objdef));
-  setAnim(P, ACTOR_ALEX, ANIM_WALK);
+  setAnim(P, ACTOR_AWARDS_CEREMONY_ALEX, ANIM_WALK);
   setPosition(P, ACTOR_PLAYER, 63.0, 63.0);
 }
 // CutsceneStompScreenShake (0F:567F): Spike jumps and lands with a stomp; the screen shakes (2, then 1)
 export function* cutsceneStompScreenShake(P) {
-  jumpVelocity(P, ACTOR_SPIKE, -2.0);
-  yield* waitJump(P, ACTOR_SPIKE);
+  jumpVelocity(P, ACTOR_AWARDS_CEREMONY_SPIKE, -2.0);
+  yield* waitJump(P, ACTOR_AWARDS_CEREMONY_SPIKE);
   sound(P, SFX_STOMP);
   screenShake(P, 2);
   yield* delay(P, 8);
@@ -78,7 +78,7 @@ export function* cutsceneStompScreenShake(P) {
 // AwardsCeremonyEntry0aScene (0F:56A8): the ceremony (singles): the player's friend and the rival (A Coz) argue,
 // the chairman calls the player up to the stage and back; at the end the friend follows the player.
 export function* awardsCeremonyEntry0aScene(P) {
-  const FRIEND = ACTOR_WALK_74_08, RIVAL = ACTOR_A_COZ, CHAIRMAN = ACTOR_WALK_6F_07_1;
+  const FRIEND = ACTOR_AWARDS_CEREMONY_WALK_74_08, RIVAL = ACTOR_AWARDS_CEREMONY_A_COZ, CHAIRMAN = ACTOR_AWARDS_CEREMONY_WALK_6F_07_1;
   yield* awardsCeremonyArrivalIntro(P);
   yield* animIdle(P, FRIEND, ANIM_BOUNCE);
   faceToward(P, ACTOR_PLAYER, FRIEND);
@@ -91,8 +91,8 @@ export function* awardsCeremonyEntry0aScene(P) {
   faceToward(P, FRIEND, RIVAL);
   yield* animIdle(P, RIVAL, ANIM_BOUNCE);
   yield* speak(P, RIVAL);
-  yield* balloonAt(P, ACTOR_BALLOON_ANGRY, 12.5, 37.5, SFX_APPEAR1);
-  setPosition(P, ACTOR_BALLOON_ANGRY, 63.0, 63.0);
+  yield* balloonAt(P, ACTOR_AWARDS_CEREMONY_BALLOON_ANGRY, 12.5, 37.5, SFX_APPEAR1);
+  setPosition(P, ACTOR_AWARDS_CEREMONY_BALLOON_ANGRY, 63.0, 63.0);
   yield* animIdle(P, FRIEND, ANIM_BOUNCE);
   faceToward(P, RIVAL, FRIEND);
   yield* speak(P, FRIEND);
@@ -120,8 +120,8 @@ export function* awardsCeremonyEntry0aScene(P) {
   yield* animIdle(P, FRIEND, ANIM_BOUNCE);
   face(P, RIVAL, FACE_LEFT);
   yield* speak(P, FRIEND);
-  yield* balloonAt(P, ACTOR_BALLOON_ANGRY, 14.5, 37.5, SFX_APPEAR1);
-  setPosition(P, ACTOR_BALLOON_ANGRY, 63.0, 63.0);
+  yield* balloonAt(P, ACTOR_AWARDS_CEREMONY_BALLOON_ANGRY, 14.5, 37.5, SFX_APPEAR1);
+  setPosition(P, ACTOR_AWARDS_CEREMONY_BALLOON_ANGRY, 63.0, 63.0);
   face(P, RIVAL, FACE_UP);
   yield* delay(P, 40);
   face(P, FRIEND, FACE_DOWN);
@@ -139,8 +139,8 @@ function* toTheStageAndBack(P) {
   yield* movePlayer(P, 12.0, 19.0);
   yield* waitPlayerMove(P);
   yield* delay(P, 30);
-  yield* animIdle(P, ACTOR_WALK_6F_07_1, ANIM_BOUNCE);
-  yield* speak(P, ACTOR_WALK_6F_07_1);
+  yield* animIdle(P, ACTOR_AWARDS_CEREMONY_WALK_6F_07_1, ANIM_BOUNCE);
+  yield* speak(P, ACTOR_AWARDS_CEREMONY_WALK_6F_07_1);
   yield* delay(P, 40);
   yield* movePlayer(P, 12.0, 41.0);
   yield* waitPlayerMove(P);
@@ -149,7 +149,7 @@ function* toTheStageAndBack(P) {
 // AwardsCeremonyEntry0bScene (0F:5889): the ceremony (doubles): the partner and the Coz twins (A and B), the
 // chairman's call; at the end the partner follows the player.
 export function* awardsCeremonyEntry0bScene(P) {
-  const A = ACTOR_A_COZ, B = ACTOR_B_COZ;
+  const A = ACTOR_AWARDS_CEREMONY_A_COZ, B = ACTOR_AWARDS_CEREMONY_B_COZ;
   nullScript(P, ACTOR_PARTNER);
   setPosition(P, ACTOR_PARTNER, 11.0, 39.0);
   face(P, ACTOR_PARTNER, FACE_UP);
@@ -168,8 +168,8 @@ export function* awardsCeremonyEntry0bScene(P) {
   yield* speak(P, A);
   faceToward(P, ACTOR_PLAYER, B);
   yield* speak(P, B);
-  yield* balloonAt(P, ACTOR_BALLOON_QUESTION, 12.5, 37.5, SFX_EMOTE);
-  setPosition(P, ACTOR_BALLOON_QUESTION, 63.0, 63.0);
+  yield* balloonAt(P, ACTOR_AWARDS_CEREMONY_BALLOON_QUESTION, 12.5, 37.5, SFX_EMOTE);
+  setPosition(P, ACTOR_AWARDS_CEREMONY_BALLOON_QUESTION, 63.0, 63.0);
   face(P, ACTOR_PARTNER, FACE_RIGHT);
   yield* animIdle(P, ACTOR_PARTNER, ANIM_BOUNCE);
   yield* speakPartnerVariantLine(P);
@@ -187,7 +187,7 @@ export function* awardsCeremonyEntry0bScene(P) {
   yield* animIdle(P, A, ANIM_SHAKE);
   yield* speak(P, A);
   yield* delay(P, 40);
-  yield* speak(P, ACTOR_WALK_6F_07_1);
+  yield* speak(P, ACTOR_AWARDS_CEREMONY_WALK_6F_07_1);
   face(P, ACTOR_PLAYER, FACE_UP);
   face(P, ACTOR_PARTNER, FACE_UP);
   face(P, A, FACE_UP);
@@ -205,9 +205,9 @@ export function* awardsCeremonyEntry0bScene(P) {
   yield* speak(P, B);
   yield* animIdle(P, ACTOR_PARTNER, ANIM_BOUNCE);
   yield* speakPartnerVariantLine(P);
-  yield* balloonAt(P, ACTOR_BALLOON_ANGRY, 14.5, 37.5, SFX_APPEAR1);
-  yield* balloonAt(P, ACTOR_BALLOON_ANGRY, 14.5, 39.5, SFX_APPEAR1);
-  setPosition(P, ACTOR_BALLOON_ANGRY, 63.0, 63.0);
+  yield* balloonAt(P, ACTOR_AWARDS_CEREMONY_BALLOON_ANGRY, 14.5, 37.5, SFX_APPEAR1);
+  yield* balloonAt(P, ACTOR_AWARDS_CEREMONY_BALLOON_ANGRY, 14.5, 39.5, SFX_APPEAR1);
+  setPosition(P, ACTOR_AWARDS_CEREMONY_BALLOON_ANGRY, 63.0, 63.0);
   face(P, A, FACE_UP);
   face(P, B, FACE_UP);
   yield* delay(P, 30);
@@ -235,7 +235,7 @@ export function* speakPartnerVariantLine(P) {
 // AwardsCeremonyArrivalIntro (0F:5B4D): the player arrives at the hall; two latecomers (shown by the balloon
 // actors with walker sprites) come running, one jumps; the balloons get their own sprites back.
 export function* awardsCeremonyArrivalIntro(P) {
-  const RUNNER = ACTOR_BALLOON_ANGRY, SECOND = ACTOR_BALLOON_SWEAT;
+  const RUNNER = ACTOR_AWARDS_CEREMONY_BALLOON_ANGRY, SECOND = ACTOR_AWARDS_CEREMONY_BALLOON_SWEAT;
   playerSpeed(P, 7.96875);
   yield* movePlayer(P, 12.0, 11.0);
   yield* waitPlayerMove(P);
@@ -269,26 +269,26 @@ export function* awardsCeremonyArrivalIntro(P) {
 
 // AnnounceWinnersToPodiums (0F:5C52): the chairman and his aide nod and turn to the hall; the winners' announcement
 export function* announceWinnersToPodiums(P) {
-  facePair(P, ACTOR_WALK_75_06, ACTOR_WALK_6F_07_1);
+  facePair(P, ACTOR_AWARDS_CEREMONY_WALK_75_06, ACTOR_AWARDS_CEREMONY_WALK_6F_07_1);
   yield* delay(P, 30);
-  yield* animIdle(P, ACTOR_WALK_6F_07_1, ANIM_NOD);
-  yield* animIdle(P, ACTOR_WALK_75_06, ANIM_NOD);
+  yield* animIdle(P, ACTOR_AWARDS_CEREMONY_WALK_6F_07_1, ANIM_NOD);
+  yield* animIdle(P, ACTOR_AWARDS_CEREMONY_WALK_75_06, ANIM_NOD);
   yield* delay(P, 30);
-  face(P, ACTOR_WALK_6F_07_1, FACE_RIGHT);
-  face(P, ACTOR_WALK_75_06, FACE_RIGHT);
+  face(P, ACTOR_AWARDS_CEREMONY_WALK_6F_07_1, FACE_RIGHT);
+  face(P, ACTOR_AWARDS_CEREMONY_WALK_75_06, FACE_RIGHT);
   yield* setText(P, Text_25_133);
-  yield* speak(P, ACTOR_WALK_6F_07_1);
+  yield* speak(P, ACTOR_AWARDS_CEREMONY_WALK_6F_07_1);
 }
 // FaceAwardsCeremonyCrowdUp (0F:5C96): the audience faces the stage
 export function faceAwardsCeremonyCrowdUp(P) {
-  for (const actor of [ACTOR_B_COZ, ACTOR_SPIKE, ACTOR_WALK_6F_06, ACTOR_WALK_6F_05, ACTOR_SAMMI, ACTOR_WALK_74_06,
-    ACTOR_SEAN, ACTOR_WALK_74_07]) face(P, actor, FACE_UP);
+  for (const actor of [ACTOR_AWARDS_CEREMONY_B_COZ, ACTOR_AWARDS_CEREMONY_SPIKE, ACTOR_AWARDS_CEREMONY_WALK_6F_06, ACTOR_AWARDS_CEREMONY_WALK_6F_05, ACTOR_AWARDS_CEREMONY_SAMMI, ACTOR_AWARDS_CEREMONY_WALK_74_06,
+    ACTOR_AWARDS_CEREMONY_SEAN, ACTOR_AWARDS_CEREMONY_WALK_74_07]) face(P, actor, FACE_UP);
 }
 // AwardsCeremonyChairmanSpeech (0F:5CCF): the chairman steps aside for the president's speech (five lines), they
 // change places back; the latecomers' sprites go to Sean and the balloon (now standing at the side); the
 // president walks to the player's place below the stage.
 export function* awardsCeremonyChairmanSpeech(P) {
-  const CHAIRMAN = ACTOR_WALK_6F_07_1, PRESIDENT = ACTOR_WALK_75_06;
+  const CHAIRMAN = ACTOR_AWARDS_CEREMONY_WALK_6F_07_1, PRESIDENT = ACTOR_AWARDS_CEREMONY_WALK_75_06;
   yield* delay(P, 30);
   yield* speak(P, CHAIRMAN);
   yield* animIdle(P, CHAIRMAN, ANIM_NOD);
@@ -317,12 +317,12 @@ export function* awardsCeremonyChairmanSpeech(P) {
   face(P, CHAIRMAN, FACE_RIGHT);
   yield* delay(P, 30);
   yield* speak(P, CHAIRMAN);
-  changeObj(P, OBJ_WALK_71_03, ACTOR_SEAN);
-  changeObj(P, OBJ_WALK_72_03, ACTOR_BALLOON_SWEAT);
-  setPosition(P, ACTOR_SEAN, 7.0, 5.0);
-  setPosition(P, ACTOR_BALLOON_SWEAT, 15.0, 7.5);
-  face(P, ACTOR_SEAN, FACE_DOWN);
-  face(P, ACTOR_BALLOON_SWEAT, FACE_DOWN);
+  changeObj(P, OBJ_WALK_71_03, ACTOR_AWARDS_CEREMONY_SEAN);
+  changeObj(P, OBJ_WALK_72_03, ACTOR_AWARDS_CEREMONY_BALLOON_SWEAT);
+  setPosition(P, ACTOR_AWARDS_CEREMONY_SEAN, 7.0, 5.0);
+  setPosition(P, ACTOR_AWARDS_CEREMONY_BALLOON_SWEAT, 15.0, 7.5);
+  face(P, ACTOR_AWARDS_CEREMONY_SEAN, FACE_DOWN);
+  face(P, ACTOR_AWARDS_CEREMONY_BALLOON_SWEAT, FACE_DOWN);
   yield* delay(P, 30);
   yield* movePlayer(P, 12.0, 17.0);
   moveTarget(P, PRESIDENT, 12.0, 23.0);
@@ -333,7 +333,7 @@ export function* awardsCeremonyChairmanSpeech(P) {
 // AwardsCeremonySwapActors_0f (0F:5E4A): the trophy hand-over: the official carrying the trophy (actor and trophy
 // swap sprites as it passes from hand to hand) brings it up and steps back down.
 export function* awardsCeremonySwapActors(P) {
-  const OFFICIAL = ACTOR_WALK_6F_07_2, TROPHY = ACTOR_TROPHY_3;
+  const OFFICIAL = ACTOR_AWARDS_CEREMONY_WALK_6F_07_2, TROPHY = ACTOR_AWARDS_CEREMONY_TROPHY_3;
   changeObj(P, OBJ_TROPHY, OFFICIAL);
   changeObj(P, OBJ_WALK_6F_07, TROPHY);
   setPosition(P, TROPHY, 17.0, 22.0);

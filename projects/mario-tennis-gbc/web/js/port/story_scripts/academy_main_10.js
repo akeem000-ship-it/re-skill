@@ -23,7 +23,7 @@ const ACTOR_ACADEMY_WING_INIT1_TROPHY_2 = 0x05;
 // actors of the main building (AcademyMainBldgActors_10, AcademyMainBldgNewStudentActors_10)
 const ACTOR_ACADEMY_MAIN_BLDG_WALK_72_08_1 = 0x03, ACTOR_ACADEMY_MAIN_BLDG_WALK_73_00 = 0x04;
 const ACTOR_ACADEMY_MAIN_BLDG_WALK_72_08_2 = 0x05, ACTOR_ACADEMY_MAIN_BLDG_WALK_73_01 = 0x06;
-const ACTOR_NEW_STUDENT_EMILY = 0x03, ACTOR_NEW_STUDENT_WALK_72_08 = 0x04, ACTOR_NEW_STUDENT_BALLOON_QUESTION = 0x06;
+const ACTOR_ACADEMY_MAIN_BLDG_NEW_STUDENT_EMILY = 0x03, ACTOR_ACADEMY_MAIN_BLDG_NEW_STUDENT_WALK_72_08 = 0x04, ACTOR_ACADEMY_MAIN_BLDG_NEW_STUDENT_BALLOON_QUESTION = 0x06;
 const ANIM_TROPHY_SINGLES = 0x06;
 const SFX_EMOTE = 0x98;
 const ACADEMYWINGSTAGE_PRE_SENIOR_CHAMP = 0x00, ACADEMYWINGSTAGE_SENIOR_CHAMP = 0x01;
@@ -148,7 +148,7 @@ export function* academyMainBldgInitScript(P) {
 // her to the player (a line by the player's gender); they walk up the hall together and the player leaves by
 // exit $0F.
 export function* academyMainBldgNewStudentCutscene(P) {
-  const EMILY = ACTOR_NEW_STUDENT_EMILY, TEACHER = ACTOR_NEW_STUDENT_WALK_72_08;
+  const EMILY = ACTOR_ACADEMY_MAIN_BLDG_NEW_STUDENT_EMILY, TEACHER = ACTOR_ACADEMY_MAIN_BLDG_NEW_STUDENT_WALK_72_08;
   respawnActors(P, AcademyMainBldgNewStudentActors_10);
   beginCutscene(P);
   setPosition(P, ACTOR_PLAYER, 34.0, 37.5);
@@ -200,10 +200,10 @@ export function* academyMainBldgNewStudentCutscene(P) {
   yield* animThenIdle(P, EMILY, ANIM_BOUNCE);
   yield* speak(P, EMILY);
   faceToward(P, EMILY, ACTOR_PLAYER);
-  setPosition(P, ACTOR_NEW_STUDENT_BALLOON_QUESTION, 35.0, 23.0);
+  setPosition(P, ACTOR_ACADEMY_MAIN_BLDG_NEW_STUDENT_BALLOON_QUESTION, 35.0, 23.0);
   sound(P, SFX_EMOTE);
   yield* wait(P, 60);
-  setPosition(P, ACTOR_NEW_STUDENT_BALLOON_QUESTION, 63.0, 63.0);
+  setPosition(P, ACTOR_ACADEMY_MAIN_BLDG_NEW_STUDENT_BALLOON_QUESTION, 63.0, 63.0);
   yield* animThenIdle(P, TEACHER, ANIM_NOD);
   yield* speak(P, TEACHER);
   yield* animThenIdle(P, ACTOR_PLAYER, ANIM_BOUNCE);

@@ -112,7 +112,7 @@ export class PPU {
       if (L) {                                   // the look: hero portraits on the BG
         const key = (attr & 0x0F) << 16 | tileAddr;
         if (key !== lkKey) { lkKey = key; lkReg = L.tileRegions(attr & 0x08 ? 1 : 0, tileAddr); lkFade = lkReg ? L.fade(this.bgPal, attr & 7) : -1; }
-        if (lkReg && lkFade >= 0) { const lc = L.rgba(lkReg[row * 8 + 7 - bit], lkFade); if (lc) { lookPix[x] = lc; this.bgFrame[base + x] = lc; } }
+        if (lkReg && lkFade >= 0) { const lc = L.rgba(lkReg[row * 8 + 7 - bit], lkFade, this.bgPal, attr & 7); if (lc) { lookPix[x] = lc; this.bgFrame[base + x] = lc; } }
       }
       this.pixCell[base + x] = inWindow ? 0x8000 | mapIdx : mapIdx;
       this.pixSub[base + x] = (ty & 7) << 3 | (tx & 7);

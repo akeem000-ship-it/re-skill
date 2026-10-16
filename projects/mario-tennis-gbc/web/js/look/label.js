@@ -10,7 +10,7 @@
 // trim, shorts), 2 red (all skin), 3 black (outline, hair, eyes, shoes); Nina's is 1 cream (skin and clothes),
 // 2 orange (hair, skirt), 3 black. Portraits are BG tiles: colour 0 is the visible card behind the face.
 
-export const REG = { NONE: 0, OUT: 1, SKIN: 2, HAIR: 3, HAT: 4, TOP: 5, BOTTOM: 6, SHOES: 7, KEEP: 8, SHADE: 9, RACKET: 10 };
+export const REG = { NONE: 0, OUT: 1, SKIN: 2, HAIR: 3, HAT: 4, TOP: 5, BOTTOM: 6, SHOES: 7, KEEP: 8, SHADE: 9, RACKET: 10, CARD: 11 };
 const { NONE, OUT, SKIN, HAIR, HAT, TOP, BOTTOM, SHOES, KEEP, SHADE, RACKET } = REG;
 
 // colour index each region is written with when a pixel is edited (the hero's own palette layout)

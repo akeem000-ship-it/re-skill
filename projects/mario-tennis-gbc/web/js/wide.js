@@ -19,7 +19,7 @@ export function composeWide(gb, out, bgIdx) {          // out: Uint32Array(WIDE_
       const row = attr & 0x40 ? 7 - (py & 7) : (py & 7), bit = attr & 0x20 ? (px & 7) : 7 - (px & 7);
       const lo = bank[addr + row * 2], hi = bank[addr + row * 2 + 1], ci = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1), o = y * WIDE_W + x;
       out[o] = col5(bgPal, attr & 7, ci); bgIdx[o] = ci | (attr & 0x80 ? 4 : 0);
-      if (L) { const reg = L.tileRegions(attr & 8 ? 1 : 0, addr), d = reg ? L.fade(bgPal, attr & 7) : -1; if (d >= 0) { const lc = L.rgba(reg[row * 8 + 7 - bit], d); if (lc) out[o] = lc; } }
+      if (L) { const reg = L.tileRegions(attr & 8 ? 1 : 0, addr), d = reg ? L.fade(bgPal, attr & 7) : -1; if (d >= 0) { const lc = L.rgba(reg[row * 8 + 7 - bit], d, bgPal, attr & 7); if (lc) out[o] = lc; } }
     }
   }
   if (!(lcdc & 0x02)) return;

@@ -40,7 +40,7 @@ import { writeBehaviorMapCell, copySceneTilemapRect, copyCollisionMapRect, copyB
 import { copyScrolledSceneTilemapToVram } from "../story/scene_collision.js";
 import { writeStoryStateWord } from "../story/story_loop.js";
 import { saveStoryReturnPoint, restoreStoryReturnPoint } from "../story/story_interact.js";
-import { initStoryMatchSettings, runStoryMatch, restoreOverworldAfterMatch } from "../story/match.js";
+import { initStoryMatchSettings, runStoryMatch, restoreOverworldAfterMatch, loadMatchSettingsFromTable } from "../story/match.js";
 import { beginFadeOut, beginFadeIn, waitFadeEnd as homeWaitFadeEnd, registerFrameTask as homeRegisterFrameTask,
   unregisterFrameTask as homeUnregisterFrameTask } from "../home/colorfade.js";
 import { clearFrameTasks } from "../home/debugtext.js";
@@ -81,7 +81,7 @@ export const ACTORFLAGB_SOLID = 3, ACTORFLAGB_TALKABLE = 4;
 export const ACTORFLAG_SOLID = 1 << ACTORFLAGB_SOLID, ACTORFLAG_TALKABLE = 1 << ACTORFLAGB_TALKABLE;
 export { ACTORF_FLAGS, ACTORF_X, ACTORF_Y };
 // the behaviour map's cell values (include/constants/overworld.inc)
-export const BEHAVIOR_NONE = 0x00, BEHAVIOR_TRIGGER = 0x02;
+export const BEHAVIOR_NONE = 0x00, BEHAVIOR_TRIGGER = 0x01, BEHAVIOR_EXIT = 0x03, BEHAVIOR_ACTION = 0x08;
 
 // ---- the event flags the scenes test most (include/flag_constants.inc: wGameFlags byte n >> 3, bit n & 7) ----
 export const FLAG_DOUBLES = 47, FLAG_TEMP_SCENE_VARIANT_A = 0xE0, FLAG_TEMP_SCENE_VARIANT_B = 0xE1;
@@ -244,8 +244,25 @@ export const restoreReturnPoint = P => story(P, () => restoreStoryReturnPoint(P)
 export const initMatchSettings = P => story(P, () => initStoryMatchSettings(P));
 export function* runMatch(P) { return yield* storyGen(P, runStoryMatch(P)); }
 export function* restoreAfterMatch(P) { return yield* storyGen(P, restoreOverworldAfterMatch(P)); }
+// load_match_settings list, index: wCurrentMinigameStoryMatch = (list, index), then LoadMatchSettingsFromTable
+// (0A:4A5C): the story match's settings (opponents, court, format)
+export function loadMatchSettings(P, list, index) {
+  P.bus.w8(P.A.currentMinigameStoryMatch, list);
+  P.bus.w8(P.A.currentMinigameStoryMatch + 1, index);
+  story(P, () => loadMatchSettingsFromTable(P));
+}
+// a story match: InitStoryMatchSettings, load_match_settings list, index, RunStoryMatch, RestoreOverworldAfterMatch
+export function* playStoryMatch(P, list, index) {
+  initMatchSettings(P);
+  loadMatchSettings(P, list, index);
+  yield* runMatch(P);
+  yield* restoreAfterMatch(P);
+}
+export const MATCHLIST_SINGLES = 0x00, MATCHLIST_DOUBLES = 0x01, MATCHLIST_TRAINING = 0x02;
 // ld de, offset / ld hl, value / farcall WriteStoryStateWord (0A:5161): a word of the story state
 export const writeStoryWord = (P, off, value) => story(P, () => writeStoryStateWord(P, off, value));
+// the location's NPC talk records replaced (ld hl, list / ld de, wMapNpcScriptsPtr - wStoryModeCurrentLocation)
+export const setNpcScripts = (P, list) => writeStoryWord(P, P.A.mapNpcScriptsPtr - P.A.storyModeCurrentLocation, list);
 
 // ---- the text engine (bank 5) ----
 const text = (P, fn) => farcall(P, BANK_TEXT, fn);
@@ -278,6 +295,8 @@ export const registerFrameTask = (P, priority, routine) => homeRegisterFrameTask
 export const unregisterFrameTask = (P, routine) => homeUnregisterFrameTask(P, routine, (P.cpu.sp - 2) & 0xFFFF);
 // QueueSpriteTemplate (00:1E9D): template hl at (d, e), tile + c, attribute + b
 export const queueSpriteTemplate = (P, hl, x, y, tile, attr) => homeQueueSpriteTemplate(P, hl, x, y, tile, attr, (P.cpu.sp - 2) & 0xFFFF);
+// rst $00 (JumpTableDispatch, 00:06C4) with a, its table of words right after the rst: the entry's address
+export const jumpTableTarget = (P, bank, table, a) => P.rom.u16(bank, (table + ((a * 2) & 0xFF)) & 0xFFFF);
 // push_wram_bank b ... pop_wram_bank around fn
 export function withWram(P, bank, fn) {
   const old = P.V.wramBank;
@@ -295,6 +314,14 @@ export function goToLocation(P, location, entry) {
   P.V.storyModeCurrentLocation = location;
   P.V.storyModeEntryPoint = entry;
   requestExit(P, EXIT_REQUEST);
+}
+// ld hl, wStoryModePlayersXPosition / ld de, wStoryModeSpawnPosition / ld bc, 5 / call CopyMemoryBC / ld a,
+// STORYENTRY_NONE / ld [wStoryModeEntryPoint], a / (the exit request): come back to this very place (the player's
+// position and facing kept as the spawn point) when the scene returns (after a match)
+export function returnHereAfter(P) {
+  copyMemoryBC(P, P.A.storyModePlayersXPosition, P.A.storyModeSpawnPosition, 5);
+  P.V.storyModeEntryPoint = STORYENTRY_NONE;
+  requestExit(P, STORYENTRY_NONE);
 }
 // ld a, id / ld [wUnusedExitTriggerIdMirror], a / ld [wStoryModeExitTriggerRequest], a: take exit id (a map_script of
 // the location's exit list) when the scene returns
