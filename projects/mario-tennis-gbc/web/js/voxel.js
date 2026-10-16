@@ -1002,7 +1002,7 @@ export class Voxel3D {
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (F3.packAt(art, x0 + x, y0 + y) === dk) m[(y * w + x) * 4 + 3] = 255;
       mark(m, x0, y0, w, h); plantHoles.push([m, x0, y0, w, h, F3.groundKeys(art, x0, y0, w, h, true)]);
     };
-    const cutOpt = o => ({ cut: o.cut, only: o.only, drop: o.drop, bg: o.bg, add: o.add });
+    const cutOpt = o => ({ cut: o.cut, only: o.only, drop: o.drop, bg: o.bg, add: o.add, seal: o.seal });
     // with a cut mode the card stands on its lowest opaque row (the transparent rows below it are dropped)
     const trim = (d, w, h) => { let r = h; while (r > 1 && !d.subarray((r - 1) * w * 4, r * w * 4).some((v, i) => i % 4 === 3 && v)) r--; return r < h ? { d: d.slice(0, r * w * 4), h: r } : { d, h }; };
     const srcOf = (x0, y0, w, h) => { const a = new Int32Array(w * h); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) a[y * w + x] = Math.min(511, y0 + y) * 512 + Math.min(511, x0 + x); return a; };
@@ -1015,6 +1015,8 @@ export class Voxel3D {
       for (let k = 0; k < m.uv.length; k += 2) { m.uv[k] = (m.uv[k] + x0) / 512; m.uv[k + 1] = (m.uv[k + 1] + y0) / 512; }
       const sh = { m, r: Math.hypot(w / 2, h) }; shapes.push(sh); return sh;
     };
+    const placed = [];                          // a plant found twice (a stamp and a sprite of its top) stands once
+    const taken = (x, y, w, h) => placed.some(q => Math.abs(q[0] - x) < w * 0.5 && Math.abs(q[1] - y) < h * 0.5 + 8);
     const placePlant = (shape, X, Z, o) => { const rnd = Math.abs(Math.sin(X * 12.9898 + Z * 78.233) * 43758.5453) % 1; plants.push({ shape, model: m4.trs3(X, 0, Z, 1, 1, 1, -(o.tilt ?? FIELD_TILT)), phase: X * 0.11 + Z * 0.07 + rnd * 0.8, amp: (PLANT[o.plant] || PLANT.tree)[2] }); };
     const plantCut = o => o.plant ? { ...cutOpt(o), cut: o.cut || "outline" } : cutOpt(o);
     for (const st of def.stamps || []) {
@@ -1023,7 +1025,7 @@ export class Voxel3D {
       if (st.plant) {                            // plants: also every pixel-exact copy off the tile grid
         for (const m of F3.matchSprite(art, d, st.x, st.y, st.w, st.h, MWp, MHp, 0.9)) if (!hits.some(q => Math.abs(q.x - m.x) < 6 && Math.abs(q.y - m.y) < 6)) hits.push(m);
         const shape = shapeOf(t.d, st.x, st.y, st.w, t.h, st.plant);
-        for (const hit of hits) { plantHole(d, hit.x, hit.y, st.w, st.h); cover(hit.x, hit.y, hit.x + st.w, hit.y + st.h); placePlant(shape, hit.x + st.w / 2, hit.y + t.h + (st.dz || 0), st); }
+        for (const hit of hits) { if (taken(hit.x, hit.y, st.w, st.h)) continue; placed.push([hit.x, hit.y]); plantHole(d, hit.x, hit.y, st.w, st.h); cover(hit.x, hit.y, hit.x + st.w, hit.y + st.h); placePlant(shape, hit.x + st.w / 2, hit.y + t.h + (st.dz || 0), st); }
         continue;
       }
       const shared = { tex: this.texture(st.w, t.h, t.d), mesh: null, d: t.d, src: srcOf(st.x, st.y, st.w, t.h), own: true };
@@ -1045,6 +1047,7 @@ export class Voxel3D {
     for (const sp of def.sprites || []) {
       const d = F3.cutOut(art, sp.x, sp.y, sp.w, sp.h, plantCut(sp)), t = sp.plant ? trim(d, sp.w, sp.h) : null, shape = sp.plant ? shapeOf(t.d, sp.x, sp.y, sp.w, t.h, sp.plant) : null;
       for (const hit of F3.matchSprite(art, d, sp.x, sp.y, sp.w, sp.h, MWp, MHp, sp.match ?? 1)) {
+        if (shape) { if (taken(hit.x, hit.y, sp.w, sp.h)) continue; placed.push([hit.x, hit.y]); }
         if (shape) plantHole(hit.d, hit.x, hit.y, sp.w, sp.h); else patch(hit.d, hit.x, hit.y, sp.w, sp.h);
         cover(hit.x, hit.y, hit.x + sp.w, hit.y + sp.h);
         if (shape) { placePlant(shape, hit.x + sp.w / 2, hit.y + t.h + (sp.dz || 0), sp); continue; }

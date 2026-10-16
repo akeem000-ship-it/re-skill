@@ -238,7 +238,8 @@ export const FIELD_OBJECTS = {
     "y": 72,
     "w": 16,
     "h": 32,
-    "plant": "pot"
+    "plant": "pot",
+    "cut": "key"
    },
    {
     "x": 352,
@@ -479,14 +480,14 @@ export const FIELD_OBJECTS = {
     "y0": 64,
     "x1": 144,
     "y1": 96,
-    "plant": "pot"
+    "plant": "pot",
+    "cut": "key"
    },
    {
     "x0": 88,
     "y0": 24,
     "x1": 104,
-    "y1": 40,
-    "plant": "pot"
+    "y1": 40
    },
    {
     "x0": 40,
@@ -794,7 +795,9 @@ export const FIELD_OBJECTS = {
     "x1": 160,
     "y1": 176
    }
-  ]
+  ],
+  "flowerTiles": [[88, 96], [104, 88]],
+  "flowers": [{"region": [49, 80, 77, 91]}, {"region": [147, 80, 175, 91]}]
  },
  "23": {
   "blocks": [],
@@ -1028,7 +1031,10 @@ export const FIELD_OBJECTS = {
     "x1": 376,
     "y1": 320
    }
-  ]
+  ],
+  "flowerTiles": [[336, 32], [240, 32]],
+  "sprites": [{"x": 288, "y": 16, "w": 16, "h": 24, "cut": "outline", "seal": "b", "match": 0.85, "plant": "tree"}],
+  "flowers": [{"region": [15, 48, 44, 58]}, {"region": [196, 48, 225, 58]}, {"region": [228, 96, 252, 106]}, {"region": [324, 96, 345, 107]}, {"region": [359, 96, 380, 107]}, {"region": [452, 96, 481, 106]}, {"region": [213, 164, 235, 185]}, {"region": [213, 239, 225, 265]}, {"region": [140, 240, 172, 250]}, {"region": [20, 288, 76, 298]}, {"region": [84, 288, 140, 298]}, {"region": [148, 288, 204, 298]}, {"region": [212, 288, 268, 298]}, {"region": [276, 288, 332, 298]}, {"region": [356, 288, 412, 298]}, {"region": [420, 288, 476, 298]}]
  },
  "24": {
   "blocks": [],
@@ -1170,7 +1176,8 @@ export const FIELD_OBJECTS = {
     "y1": 216,
     "plant": "bush"
    }
-  ]
+  ],
+  "sprites": [{"x": 272, "y": 48, "w": 16, "h": 24, "cut": "outline", "seal": "b", "match": 0.85, "plant": "tree"}, {"x": 16, "y": 16, "w": 16, "h": 8, "cut": "dome", "match": 0.85, "plant": "bush"}]
  },
  "25": {
   "blocks": [
@@ -1314,7 +1321,8 @@ export const FIELD_OBJECTS = {
     "y": 40,
     "w": 16,
     "h": 32,
-    "plant": "pot"
+    "plant": "pot",
+    "cut": "key"
    },
    {
     "x": 176,
@@ -1803,7 +1811,8 @@ export const FIELD_OBJECTS = {
     "x1": 304,
     "y1": 352
    }
-  ]
+  ],
+  "flowerTiles": [[64, 88], [296, 120]]
  },
  "30": {
   "blocks": [],
@@ -1963,7 +1972,10 @@ export const FIELD_OBJECTS = {
     "x1": 480,
     "y1": 448
    }
-  ]
+  ],
+  "flowerTiles": [[312, 120], [312, 144]],
+  "sprites": [{"x": 272, "y": 16, "w": 16, "h": 24, "cut": "outline", "seal": "b", "match": 0.85, "plant": "tree"}, {"x": 16, "y": 16, "w": 16, "h": 8, "cut": "dome", "match": 0.85, "plant": "bush"}],
+  "flowers": [{"region": [116, 224, 137, 235]}, {"region": [151, 224, 172, 235]}, {"region": [340, 224, 361, 235]}, {"region": [375, 224, 396, 235]}, {"region": [460, 224, 481, 234]}, {"region": [284, 416, 305, 427]}, {"region": [319, 416, 340, 427]}, {"region": [364, 416, 385, 427]}, {"region": [399, 416, 420, 427]}]
  },
  "31": {
   "blocks": [
@@ -2211,7 +2223,8 @@ export const FIELD_OBJECTS = {
     "x1": 144,
     "y1": 432
    }
-  ]
+  ],
+  "flowerTiles": [[224, 96], [224, 216]]
  },
  "32": {
   "blocks": [
@@ -2572,7 +2585,8 @@ export const FIELD_OBJECTS = {
     "y": 72,
     "w": 16,
     "h": 32,
-    "plant": "pot"
+    "plant": "pot",
+    "cut": "key"
    },
    {
     "x": 272,
@@ -2707,7 +2721,8 @@ export const FIELD_OBJECTS = {
     "y0": 176,
     "x1": 48,
     "y1": 192,
-    "plant": "pot"
+    "plant": "pot",
+    "cut": "key"
    }
   ]
  },
@@ -2861,7 +2876,8 @@ export const FIELD_OBJECTS = {
     "y0": 256,
     "x1": 96,
     "y1": 272,
-    "plant": "pot"
+    "plant": "pot",
+    "cut": "key"
    },
    {
     "x0": 176,
@@ -2880,7 +2896,8 @@ export const FIELD_OBJECTS = {
     "y0": 104,
     "x1": 256,
     "y1": 136,
-    "plant": "pot"
+    "plant": "pot",
+    "cut": "key"
    },
    {
     "x0": 320,
@@ -3034,6 +3051,7 @@ export const FIELD_OBJECTS = {
     "x1": 176,
     "y1": 320
    }
-  ]
+  ],
+  "flowerTiles": [[112, 16]]
  }
 };
