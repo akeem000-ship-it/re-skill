@@ -10,7 +10,7 @@
 import {
   FZ, FN, FAR, HOME, rom, romWait, homeWait, home, near, wram, rd, wr, u8, w8, idx, ixF, cpFlags, sound, queueCopy,
   hook, hookGen, nop, regs8, getRegs, WRAM_SCREEN, TILEMAP_WIDTH, vBGMap0, wShadowTilemap, PADF_A, PADF_B,
-  SFX_MENU_CANCEL,
+  SFX_MENU_CANCEL, chain,
 } from "../equipment/defs.js";
 import { RemotePlayerSlotLists_38, isP2Mode } from "./remote.js";
 
@@ -203,7 +203,7 @@ export function updateMenuCursorFromLinkInput(P, input, entryF = P.cpu.f) {
     : input & 0x80 ? MoveLinkCursorDown : 0;
   if (move) r = near(P, move, { ...regs8(r), a: input });
   const code = getLinkCursorSelectionCode(P);
-  r = { ...regs8(r), ...code, b: code.a };
+  r = chain(chain(regs8(r), code), { b: code.a });
   const moved = P.V.menuCursor2X !== code.d || P.V.menuCursor2Y !== code.e;
   wram(P, bank);
   return { ...regs8(r), a: moved ? 1 : 0, f: moved ? entryF : FZ };     // (pop_wram_bank: the flags at the call)

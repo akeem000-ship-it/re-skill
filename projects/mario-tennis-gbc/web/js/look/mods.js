@@ -18,7 +18,7 @@
 // Everything is computed from the user's own ROM at load; nothing here is derived from it, and the mod file holds
 // only the user's art and choices. With no mod nothing is patched or hooked.
 import { lzDecompress } from "./lz.js";
-import { decodeColMajor, encodeColMajor, decodeTile, encodeTile, cellOf, img } from "./gfx.js";
+import { decodeColMajor, encodeColMajor, cellOf, img } from "./gfx.js";
 import { REG, labelSprite, applyStyle, applyExtras, applyTouchups, STYLES, EXTRAS } from "./label.js";
 import { TOUCHUPS } from "./touchups.js";
 import { HEROES, off, u16, addContent, shade } from "./build.js";

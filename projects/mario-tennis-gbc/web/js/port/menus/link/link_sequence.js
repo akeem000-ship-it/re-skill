@@ -12,7 +12,7 @@ import {
   FZ, FN, FAR, HOME, farGen, rom, romWait, home, homeWait, near, wram, u8, w8, idx, cpFlags, sound, clearFrameTasks,
   enableLCD, beginFadeIn, fadeOut, setFlag, clearFlag, setFlagF, queueCopy, disableLCDSafely, hook, hookGen,
   WRAM_SCREEN, WRAM_COURT_PLANES, TILEMAP_WIDTH, vBGMap0, wShadowTilemap, OAM_BANK1, SFX_MENU_SELECT, MENUSLIDE_BACK,
-  MENUSLIDE_FORWARD, FLAG_DOUBLES,
+  MENUSLIDE_FORWARD, FLAG_DOUBLES, chain, nested, getRegs,
 } from "../equipment/defs.js";
 import { getMenuCursorIndex } from "../common/cursors.js";
 import { drawNameWithDiacritics } from "../char_select/matchtype.js";
@@ -74,12 +74,14 @@ export function appendCharToName(P, entryF = P.cpu.f) {
     if (last === DAKUTEN || last === HANDAKUTEN) { w8(P, hl, 0); hl = (hl - 1) & 0xFFFF; }
   }
   w8(P, hl, ch);
-  drawEnteredName(P);
-  const r = queueCopy(P, wShadowTilemap + 5 * TILEMAP_WIDTH, vBGMap0 + 5 * TILEMAP_WIDTH, 2 * TILEMAP_WIDTH / 16);
+  const r = { ...getRegs(P.cpu), b: row, d: ch };
+  chain(r, nested(P, 1, () => drawEnteredName(P, entryF)));
+  const src = wShadowTilemap + 5 * TILEMAP_WIDTH, dest = vBGMap0 + 5 * TILEMAP_WIDTH;
+  chain(chain(r, { hl: src, de: dest }), queueCopy(P, src, dest, 2 * TILEMAP_WIDTH / 16));
   sound(P, SFX_MENU_SELECT);
   if (getEnteredNameLength(P).a === NAME_MAX) { P.V.menuCursorY = DONE_CURSOR_Y; P.V.menuCursorX = DONE_CURSOR_X; }
   wram(P, bank);
-  return { ...r, a: bank, b: row, d: ch, f: entryF };
+  return { ...r, a: bank, f: entryF };
 }
 // DeleteLastNameChar (38:7341): the last letter (and the marks after it) cleared, the name redrawn and queued
 export function deleteLastNameChar(P, entryF = P.cpu.f) {
@@ -287,13 +289,14 @@ export function storeLinkMatchCharInfo(P) {
   for (let i = 0; i < 4; i++) w8(P, to + i, u8(P, from + i));
   P.V.linkMatchRole = P.V.linkState;
   const third = u8(P, to + 2);
-  let hl = (from + 4) & 0xFFFF;
+  let hl = (from + 4) & 0xFFFF, de = (to + 3) & 0xFFFF;
   if (third & 0x80) {
-    hl = (((third & 0x07) * CREATED_RECORD_SIZE) + P.A.createdCharRecords + CREATED_RECORD_LEVEL) & 0xFFFF;
+    de = (P.A.createdCharRecords + CREATED_RECORD_LEVEL) & 0xFFFF;
+    hl = (((third & 0x07) * CREATED_RECORD_SIZE) + de) & 0xFFFF;
     P.V.linkMatchCharLevel = u8(P, hl);
   }
   wram(P, bank);
-  return { de: (to + 3) & 0xFFFF, hl };
+  return { de, hl };
 }
 // a byte of eight flags: bit i set when flags[first + i] is
 function packFlags(P, first) {
