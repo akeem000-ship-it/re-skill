@@ -5,7 +5,8 @@
 // records, and the story file saved.
 // Port of the code of src/engine/menus/exp/award_sequence_1e.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT,
 // third_party/mario-tennis-gbc-disasm); names and addresses are its own. Tables are read from the ROM.
-// Covered by the lockstep on out/engine/rec2.mtrec (a minigame) and the out/port/xr_* recordings.
+// Covered by the lockstep on out/engine/rec2.mtrec (a minigame) and the out/port/xr_* recordings (xr_rewards, xr_rw_*:
+// ProcessMatchRewards in each game mode), and by web/tests/port/routines_menus_exp.mjs.
 import {
   FZ, FH, u8, w8, rd, wr, ix, far, farGen, hook, hookGen, rom, home, HOME, FAR, sound, advanceFrame, waitFrames,
   queueVRAMCopy, romWord, testFlag, BANK_EXP, BANK_EXP_DISTRIBUTE, BANK_CHAR_DATA, BANK_SAVE, BANK_BOOT, WRAM_COURT_PLANES,

@@ -5,7 +5,9 @@
 // Port of the code of src/engine/menus/exp/reward_1e.asm and trophy_1e.asm of the gerbiljames/mario-tennis-gbc-disasm
 // (MIT, third_party/mario-tennis-gbc-disasm); names and addresses are its own. Flag lists and tables are read from
 // the ROM.
-// Covered by the lockstep on out/engine/rec2.mtrec and the out/port/xr_* recordings (story wins, a drill).
+// Covered by the lockstep on out/engine/rec2.mtrec and the out/port/xr_* recordings (xr_rewards, xr_rw_*: a drill,
+// the tennis machine, a ranking match with the unlock flags, an Island Open round, a minigame record), and by
+// web/tests/port/routines_menus_exp.mjs.
 import {
   FZ, FH, u8, ix, far, farGen, hook, hookGen, romWord, romByte, testFlag, setFlag, testGameFlag, setGameFlag,
   testFlagF, BANK_EXP, BANK_SAVE, BANK_RANKING, BANK_EXP_DISTRIBUTE, WRAM_SCENE, WRAM_SOUND, GAMEMODE, FLAG, SAVEFLAG,

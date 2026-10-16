@@ -6,7 +6,9 @@
 // Port of the code of src/engine/menus/exp/award_calc_1e.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT,
 // third_party/mario-tennis-gbc-disasm); names and addresses are its own. Tables are read from the ROM.
 // Covered by the lockstep on out/engine/rec2.mtrec (a minigame's award) and the out/port/xr_* recordings (story
-// match awards, the exhibition award); ApplyPendingExpAwards only from the story's debug map (not recorded).
+// match awards; xr_rw_exhib, xr_rw_link: the exhibition and link awards to a story file; xr_award:
+// ApplyPendingExpAwards, which in the game only the story's debug map calls), and by
+// web/tests/port/routines_menus_exp.mjs.
 import {
   FZ, FN, FH, FC, rd, wr, u8, ix, far, farGen, hook, hookGen, rom, FAR, testFlag, setFlag, clearFlag, addHLFlags, cpFlags,
   romByte, BANK_EXP, BANK_EXP_DISTRIBUTE, BANK_SAVE, BANK_BRACKET, BANK_CHAR_DATA, WRAM_TEXT, WRAM_SCENE, WRAM_SOUND, CHAR,

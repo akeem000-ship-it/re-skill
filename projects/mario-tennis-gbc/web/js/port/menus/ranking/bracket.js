@@ -7,7 +7,8 @@
 // mario-tennis-gbc-disasm (MIT, third_party/mario-tennis-gbc-disasm); names and addresses are its own. Tables are
 // read from the ROM.
 // Covered by the lockstep on out/engine/exh1.mtrec (RecordExhibitionVictory after an exhibition) and the out/port/xr_*
-// recordings (the team bracket, the exhibition chart from the main menu).
+// recordings (xr_bracket: the team bracket, the reduced chart; xr_misc: the full chart, a Mario-cast victory), and by
+// web/tests/port/routines_menus_exp.mjs.
 import {
   FZ, rd, wr, ix, far, rom, home, HOME, FAR, hook, hookGen, sound, advanceFrame, waitFrames, fadeIn, fadeOut,
   registerFrameTask, queueVRAMCopy, romWord, romByte, testFlag, regs8, BANK_BRACKET, BANK_MENU_LIB, BANK_SAVE,

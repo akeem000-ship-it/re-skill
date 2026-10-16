@@ -14,10 +14,12 @@
 // ($A8: off the screen), wExpRedrawPending (frames until the next point of a run), wExpRepeatDelay (8, then 0
 // once a run repeats), wExpInputRepeating (frames a direction is held), wExpLevelUpFanfare ($FF: a level-up just
 // happened; then the frames left of its jingle), wExpPromptCursorRow (0 yes, 1 no). wExpScreenCharStats: see exp.js.
-// Covered by the lockstep on out/port/cd_levelup.mtrec (EXP given, taken back, levels up and down, the prompt).
+// Covered by the lockstep on out/port/cd_levelup.mtrec and xr_expmove.mtrec (EXP given and taken back, one at a time
+// and in fast runs, past a level up and down; the partner selected; the prompt answered both ways), and by
+// web/tests/port/routines_menus_exp.mjs.
 import {
   FZ, FN, FH, FC, rd, wr, u8, w8, rd16, ix, far, hook, hookGen, sound, advanceFrame, waitFrames, queueVRAMCopy,
-  queueSprite, registerFrameTask, unregisterFrameTask, formatDecimalNumberUnsigned, rom, FAR, subFlags, addFlags,
+  queueSprite, registerFrameTask, unregisterFrameTask, formatDecimalNumberUnsigned, rom, FAR, subFlags,
   BANK_EXP_DISTRIBUTE, BANK_CHAR_DATA, BANK_RANKING, WRAM_STAGING, WRAM_COURT_PLANES, WRAM_SCREEN, WRAM_SCENE,
   TILEMAP_WIDTH, VRAM_BANK1, vBGMap0, wShadowTilemap, wDecompBuffer, wCharDataScreenCell, OAM_BANK1, PADF_A, PADF_B,
   PADF_RIGHT, PADF_LEFT, PADF_UP, PADF_DOWN, BGM_NONE, BGM_EXP_DISTRIBUTION, BGM_LEVEL_UP, SFX_MENU_MOVE,

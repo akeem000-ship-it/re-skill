@@ -39,12 +39,8 @@ export const BANK_CURSORBOX = 0x18, BANK_BOOT = 0x01, BANK_CHAR_DATA = 0x1C, BAN
 // ---- flags, registers ----
 export const addFlags = (a, x) => (((a + x) & 0xFF) === 0 ? FZ : 0) | ((a & 0xF) + (x & 0xF) > 0xF ? FH : 0) | (a + x > 0xFF ? FC : 0);
 export const subFlags = (a, x) => (((a - x) & 0xFF) === 0 ? FZ : 0) | FN | ((a & 0xF) < (x & 0xF) ? FH : 0) | (a < x ? FC : 0);
-export const decFlags = (v, carry = 0) => (((v - 1) & 0xFF) === 0 ? FZ : 0) | FN | ((v & 0x0F) === 0 ? FH : 0) | carry;
-export const incFlags = (v, carry = 0) => (((v + 1) & 0xFF) === 0 ? FZ : 0) | ((v & 0x0F) === 0x0F ? FH : 0) | carry;
 // `add hl, rr`: Z kept, N clear, H from bit 11, C from bit 15
 export const addHLFlags = (hl, rr, f = 0) => (f & FZ) | (((hl & 0xFFF) + (rr & 0xFFF)) > 0xFFF ? FH : 0) | (hl + rr > 0xFFFF ? FC : 0);
-// `and n`: Z, H set
-export const andFlags = v => ((v & 0xFF) ? 0 : FZ) | FH;
 // the ROM's table index `ld hl, table / add l / ld l, a / jr nc / inc h` (or ld_hl_indexed): table + a (8-bit a)
 export const ix = (table, a) => (table + (a & 0xFF)) & 0xFFFF;
 // a word of the ROM table at addr (through the bank mapped: the routine's own)

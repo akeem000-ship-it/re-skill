@@ -6,7 +6,8 @@
 //    stood upright; a locked camera preset frames the court for the viewport (see PRESETS).
 //  * field (an RPG map is on screen): the 64x64 map is a floor, solid metatiles are extruded boxes,
 //    actors are billboards, the window layer stays a 2D overlay. Annotated objects (field_objects.js, cut out by
-//    field3d.js) stand up: buildings, cut-outs, low solids; flowers sway and fountains spout (shader-animated), and
+//    field3d.js) stand up: buildings, cut-outs, low solids, trees and bushes as voxel bodies; plants and flowers
+//    rustle in a travelling wind and fountains spout (shader-animated), and
 //    map tiles the game animates (fountain water) are redrawn into the textures. Fades only recolour.
 //  * everything else (title, menus, mini-games): the BG, window and sprite layers are stacked at
 //    different depths and a gently swaying camera gives them parallax.
@@ -1018,7 +1019,7 @@ export class Voxel3D {
     const placed = [];                          // a plant found twice (a stamp and a sprite of its top) stands once
     const taken = (x, y, w, h) => placed.some(q => Math.abs(q[0] - x) < w * 0.5 && Math.abs(q[1] - y) < h * 0.5 + 8);
     const placePlant = (shape, X, Z, o) => { const rnd = Math.abs(Math.sin(X * 12.9898 + Z * 78.233) * 43758.5453) % 1; plants.push({ shape, model: m4.trs3(X, 0, Z, 1, 1, 1, -(o.tilt ?? FIELD_TILT)), phase: X * 0.11 + Z * 0.07 + rnd * 0.8, amp: (PLANT[o.plant] || PLANT.tree)[2] }); };
-    const plantCut = o => o.plant ? { ...cutOpt(o), cut: o.cut || "outline" } : cutOpt(o);
+    const plantCut = o => o.plant ? { ...cutOpt(o), cut: o.cut || "outline", seal: o.seal ?? "b" } : cutOpt(o);   // (trunks reach the bottom edge)
     for (const st of def.stamps || []) {
       const d = F3.cutOut(art, st.x, st.y, st.w, st.h, plantCut(st)), t = (st.cut || st.plant) ? trim(d, st.w, st.h) : { d, h: st.h };
       let hits = this.findStamps(st);
@@ -1348,12 +1349,14 @@ export class Voxel3D {
     }
     if (fx.plants.length && this.field.artTex) {   // trees and bushes: voxel bodies rustling in the same wind, those in view
       gl.useProgram(this.progP); gl.uniformMatrix4fv(this.uP.uMVP, false, mvp); gl.uniform1f(this.uP.uTime, T); gl.bindTexture(gl.TEXTURE_2D, this.field.artTex);
+      let drawn = 0;
       for (const p of fx.plants) {
         const c = m4.apply(mvp, [p.model[12], p.shape.r * 0.5, p.model[14], 1]), m = p.shape.r * 1.2 * Math.abs(mvp[5]) + 0.2 * c[3];   // centre in clip space, with a margin
         if (c[3] <= 0 || c[0] < -c[3] - m || c[0] > c[3] + m || c[1] < -c[3] - m || c[1] > c[3] + m) continue;
         gl.bindVertexArray(p.shape.vao); gl.uniformMatrix4fv(this.uP.uModel, false, p.model); gl.uniform1f(this.uP.uPhase, p.phase); gl.uniform1f(this.uP.uAmp, p.amp);
-        gl.drawArrays(gl.TRIANGLES, 0, p.shape.count);
+        gl.drawArrays(gl.TRIANGLES, 0, p.shape.count); drawn += p.shape.count;
       }
+      this.plantVerts = drawn;                    // (vertices drawn this frame: for tests)
       gl.useProgram(this.progW);
     }
     if (fx.fountains.length && this.jetMesh) {

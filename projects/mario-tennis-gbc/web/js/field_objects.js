@@ -15,9 +15,12 @@
 //  Cut-outs (stamps, cards, sprites) may set cut: "outline" | "enclosed" | "dome" | "rect" | "ellipse" (see
 //          field3d.js cutOut), only / drop / add (map rectangles), bg (map points of the ground colours); with a cut
 //          they stand on their lowest opaque row
+//  plant: "tree" | "bush" | "palm" | "pot" on a stamp, card or sprite: it stands as a voxel body with volume (round
+//          canopy, thin trunk) coloured from the map picture, rustling in the travelling wind; every copy found by
+//          tiles or pixels; the ground under it is filled from the ground beside it (default cut "outline", seal "b")
 //  solids: low objects with their exact outline as prisms (planters, fountain basins): the cut-out of x0..x1 x
 //          y0..y1, its bottom h rows the front wall; on: index of the solid it stands on (fountain tiers)
-//  flowers: [{on: solid}] the flowers on a solid's top stand up and sway; flowerTiles: [[x, y]] one cell with a
+//  flowers: [{on: solid, region}] the flowers on a solid's top (within region) stand up and sway; flowerTiles: [[x, y]] one cell with a
 //          flower painted on the ground: every copy of that tile does the same
 //  fountains: {on: solid, pool: [x0, y0, x1, y1], jet, spread}: a water jet from the middle of the pool (the top of
 //          that solid; the game animates the water tiles themselves) with rings spreading on it
@@ -797,7 +800,8 @@ export const FIELD_OBJECTS = {
    }
   ],
   "flowerTiles": [[88, 96], [104, 88]],
-  "flowers": [{"region": [49, 80, 77, 91]}, {"region": [147, 80, 175, 91]}]
+  "solids": [{"x0": 46, "y0": 76, "x1": 81, "y1": 96, "h": 4, "cut": "hull"}, {"x0": 143, "y0": 76, "x1": 178, "y1": 96, "h": 4, "cut": "hull"}],
+  "flowers": [{"on": 0, "region": [49, 80, 77, 91]}, {"on": 1, "region": [147, 80, 175, 91]}]
  },
  "23": {
   "blocks": [],
@@ -1033,8 +1037,9 @@ export const FIELD_OBJECTS = {
    }
   ],
   "flowerTiles": [[336, 32], [240, 32]],
-  "sprites": [{"x": 288, "y": 16, "w": 16, "h": 24, "cut": "outline", "seal": "b", "match": 0.85, "plant": "tree"}],
-  "flowers": [{"region": [15, 48, 44, 58]}, {"region": [196, 48, 225, 58]}, {"region": [228, 96, 252, 106]}, {"region": [324, 96, 345, 107]}, {"region": [359, 96, 380, 107]}, {"region": [452, 96, 481, 106]}, {"region": [213, 164, 235, 185]}, {"region": [213, 239, 225, 265]}, {"region": [140, 240, 172, 250]}, {"region": [20, 288, 76, 298]}, {"region": [84, 288, 140, 298]}, {"region": [148, 288, 204, 298]}, {"region": [212, 288, 268, 298]}, {"region": [276, 288, 332, 298]}, {"region": [356, 288, 412, 298]}, {"region": [420, 288, 476, 298]}]
+  "sprites": [{"x": 288, "y": 16, "w": 16, "h": 32, "cut": "outline", "match": 0.8, "plant": "tree"}, {"x": 288, "y": 16, "w": 16, "h": 24, "cut": "outline", "seal": "b", "match": 0.85, "plant": "tree"}],
+  "solids": [{"x0": 11, "y0": 42, "x1": 48, "y1": 64, "h": 5, "cut": "hull"}, {"x0": 192, "y0": 42, "x1": 229, "y1": 64, "h": 5, "cut": "hull"}, {"x0": 223, "y0": 96, "x1": 256, "y1": 112, "h": 5, "cut": "hull"}, {"x0": 320, "y0": 90, "x1": 350, "y1": 112, "h": 4, "cut": "hull"}, {"x0": 354, "y0": 90, "x1": 384, "y1": 112, "h": 4, "cut": "hull"}, {"x0": 448, "y0": 90, "x1": 485, "y1": 116, "h": 6, "cut": "hull"}, {"x0": 208, "y0": 160, "x1": 240, "y1": 185, "h": 3, "cut": "hull"}, {"x0": 208, "y0": 234, "x1": 229, "y1": 275, "h": 6, "cut": "hull"}, {"x0": 136, "y0": 240, "x1": 176, "y1": 256, "h": 5, "cut": "hull"}, {"x0": 16, "y0": 288, "x1": 81, "y1": 304, "h": 5, "cut": "hull"}, {"x0": 79, "y0": 288, "x1": 145, "y1": 304, "h": 5, "cut": "hull"}, {"x0": 143, "y0": 288, "x1": 209, "y1": 304, "h": 5, "cut": "hull"}, {"x0": 207, "y0": 288, "x1": 273, "y1": 304, "h": 5, "cut": "hull"}, {"x0": 271, "y0": 288, "x1": 336, "y1": 304, "h": 5, "cut": "hull"}, {"x0": 352, "y0": 288, "x1": 417, "y1": 304, "h": 5, "cut": "hull"}, {"x0": 415, "y0": 288, "x1": 480, "y1": 304, "h": 5, "cut": "hull"}],
+  "flowers": [{"on": 0, "region": [15, 48, 44, 58]}, {"on": 1, "region": [196, 48, 225, 58]}, {"on": 2, "region": [228, 96, 252, 106]}, {"on": 3, "region": [324, 96, 345, 107]}, {"on": 4, "region": [359, 96, 380, 107]}, {"on": 5, "region": [452, 96, 481, 106]}, {"on": 6, "region": [213, 164, 235, 185]}, {"on": 7, "region": [213, 239, 225, 265]}, {"on": 8, "region": [140, 240, 172, 250]}, {"on": 9, "region": [20, 288, 76, 298]}, {"on": 10, "region": [84, 288, 140, 298]}, {"on": 11, "region": [148, 288, 204, 298]}, {"on": 12, "region": [212, 288, 268, 298]}, {"on": 13, "region": [276, 288, 332, 298]}, {"on": 14, "region": [356, 288, 412, 298]}, {"on": 15, "region": [420, 288, 476, 298]}]
  },
  "24": {
   "blocks": [],
@@ -1177,7 +1182,7 @@ export const FIELD_OBJECTS = {
     "plant": "bush"
    }
   ],
-  "sprites": [{"x": 272, "y": 48, "w": 16, "h": 24, "cut": "outline", "seal": "b", "match": 0.85, "plant": "tree"}, {"x": 16, "y": 16, "w": 16, "h": 8, "cut": "dome", "match": 0.85, "plant": "bush"}]
+  "sprites": [{"x": 272, "y": 48, "w": 16, "h": 32, "cut": "outline", "match": 0.8, "plant": "tree"}, {"x": 272, "y": 48, "w": 16, "h": 24, "cut": "outline", "seal": "b", "match": 0.85, "plant": "tree"}, {"x": 16, "y": 16, "w": 16, "h": 8, "cut": "dome", "match": 0.85, "plant": "bush"}]
  },
  "25": {
   "blocks": [
@@ -1477,7 +1482,9 @@ export const FIELD_OBJECTS = {
     "x1": 128,
     "y1": 144
    }
-  ]
+  ],
+  "solids": [{"x0": 0, "y0": 112, "x1": 48, "y1": 128, "h": 6, "cut": "hull"}, {"x0": 96, "y0": 112, "x1": 144, "y1": 128, "h": 6, "cut": "hull"}, {"x0": 208, "y0": 112, "x1": 256, "y1": 128, "h": 6, "cut": "hull"}, {"x0": 288, "y0": 112, "x1": 336, "y1": 128, "h": 6, "cut": "hull"}],
+  "flowers": [{"on": 0}, {"on": 1}, {"on": 2}, {"on": 3}]
  },
  "28": {
   "blocks": [
@@ -1646,7 +1653,8 @@ export const FIELD_OBJECTS = {
    { "on": 1, "pool": [49, 299, 79, 318], "jet": 18, "spread": 10 },
    { "on": 3, "pool": [209, 299, 239, 318], "jet": 18, "spread": 10 }
   ],
-  "flowerTiles": [ [16, 112] ]
+  "flowerTiles": [ [16, 112] ],
+  "sprites": [{"x": 176, "y": 208, "w": 16, "h": 32, "match": 0.8, "plant": "palm"}]
  },
  "29": {
   "blocks": [
@@ -1974,8 +1982,9 @@ export const FIELD_OBJECTS = {
    }
   ],
   "flowerTiles": [[312, 120], [312, 144]],
-  "sprites": [{"x": 272, "y": 16, "w": 16, "h": 24, "cut": "outline", "seal": "b", "match": 0.85, "plant": "tree"}, {"x": 16, "y": 16, "w": 16, "h": 8, "cut": "dome", "match": 0.85, "plant": "bush"}],
-  "flowers": [{"region": [116, 224, 137, 235]}, {"region": [151, 224, 172, 235]}, {"region": [340, 224, 361, 235]}, {"region": [375, 224, 396, 235]}, {"region": [460, 224, 481, 234]}, {"region": [284, 416, 305, 427]}, {"region": [319, 416, 340, 427]}, {"region": [364, 416, 385, 427]}, {"region": [399, 416, 420, 427]}]
+  "sprites": [{"x": 272, "y": 16, "w": 16, "h": 32, "cut": "outline", "match": 0.8, "plant": "tree"}, {"x": 272, "y": 16, "w": 16, "h": 24, "cut": "outline", "seal": "b", "match": 0.85, "plant": "tree"}, {"x": 16, "y": 16, "w": 16, "h": 8, "cut": "dome", "match": 0.85, "plant": "bush"}],
+  "solids": [{"x0": 112, "y0": 218, "x1": 142, "y1": 240, "h": 4, "cut": "hull"}, {"x0": 146, "y0": 218, "x1": 176, "y1": 240, "h": 4, "cut": "hull"}, {"x0": 336, "y0": 218, "x1": 366, "y1": 240, "h": 4, "cut": "hull"}, {"x0": 370, "y0": 218, "x1": 400, "y1": 240, "h": 4, "cut": "hull"}, {"x0": 456, "y0": 218, "x1": 485, "y1": 240, "h": 5, "cut": "hull"}, {"x0": 280, "y0": 410, "x1": 310, "y1": 432, "h": 4, "cut": "hull"}, {"x0": 314, "y0": 410, "x1": 344, "y1": 432, "h": 4, "cut": "hull"}, {"x0": 360, "y0": 410, "x1": 390, "y1": 432, "h": 4, "cut": "hull"}, {"x0": 394, "y0": 410, "x1": 424, "y1": 432, "h": 4, "cut": "hull"}],
+  "flowers": [{"on": 0, "region": [116, 224, 137, 235]}, {"on": 1, "region": [151, 224, 172, 235]}, {"on": 2, "region": [340, 224, 361, 235]}, {"on": 3, "region": [375, 224, 396, 235]}, {"on": 4, "region": [460, 224, 481, 234]}, {"on": 5, "region": [284, 416, 305, 427]}, {"on": 6, "region": [319, 416, 340, 427]}, {"on": 7, "region": [364, 416, 385, 427]}, {"on": 8, "region": [399, 416, 420, 427]}]
  },
  "31": {
   "blocks": [

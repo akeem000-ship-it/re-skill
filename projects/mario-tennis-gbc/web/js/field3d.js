@@ -176,14 +176,15 @@ export function fillRows(floor, hole, x0 = 0, x1 = ART, y0 = 0, y1 = ART, src = 
 export function fillNearest(floor, hole, d, x0, y0, w, h, keys, W, H, src = null, patched = null) {
   const ok = (X, Y) => X >= 0 && Y >= 0 && X < W && Y < H && !hole[Y * ART + X];
   const at = q => floor[q * 4] << 16 | floor[q * 4 + 1] << 8 | floor[q * 4 + 2];
-  const from = (x, y, dx, dy) => { for (let k = 8; k <= 64; k += 8) { const X = x + dx * k, Y = y + dy * k; if (ok(X, Y)) return Y * ART + X; } return -1; };
+  const fq = q => floor[q * 4] + floor[q * 4 + 1] + floor[q * 4 + 2] < 60 ? 0 : (keys.get(at(q)) || 0);   // (black bands are not ground)
+  const from = (x, y, dx, dy) => { for (let k = 8; k <= 160; k += 8) { const X = x + dx * k, Y = y + dy * k; if (ok(X, Y)) return Y * ART + X; } return -1; };
   const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]], score = dirs.map(() => 0);
-  for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) if (d[(yy * w + xx) * 4 + 3]) dirs.forEach(([dx, dy], k) => { const q = from(x0 + xx, y0 + yy, dx, dy); score[k] += q < 0 ? -1 : (keys.get(at(q)) || 0); });
+  for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) if (d[(yy * w + xx) * 4 + 3]) dirs.forEach(([dx, dy], k) => { const q = from(x0 + xx, y0 + yy, dx, dy); score[k] += q < 0 ? -1 : fq(q); });
   const order = dirs.map((v, k) => [v, score[k] * (k < 2 ? 1.5 : 1)]).sort((a, b) => b[1] - a[1]).map(e => e[0]);   // rows preferred
   for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) {
     const x = x0 + xx, y = y0 + yy, i = y * ART + x; if (!d[(yy * w + xx) * 4 + 3] || x >= W || y >= H) continue;
     // the commonest ground colour among the four candidates; on a tie (or none of them ground) the best direction
-    let s = -1, best = 0; for (const [dx, dy] of order) { const q = from(x, y, dx, dy); if (q < 0) continue; const f = keys.get(at(q)) || 0; if (s < 0 || f > best * 2.5 + 2) { s = q; best = f; } }
+    let s = -1, best = 0; for (const [dx, dy] of order) { const q = from(x, y, dx, dy); if (q < 0) continue; const f = fq(q); if (s < 0 || f > best * 2.5 + 2) { s = q; best = f; } }
     if (s < 0) continue;
     const o = i * 4, so = s * 4; floor[o] = floor[so]; floor[o + 1] = floor[so + 1]; floor[o + 2] = floor[so + 2];
     if (src) src[i] = src[s]; if (patched) patched[i] = 1;

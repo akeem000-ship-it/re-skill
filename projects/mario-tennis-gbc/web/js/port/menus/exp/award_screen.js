@@ -5,7 +5,8 @@
 // Port of the code of src/engine/menus/exp/award_screen_1e.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT,
 // third_party/mario-tennis-gbc-disasm); names and addresses are its own. Graphics, maps and tables are read from
 // the ROM.
-// Covered by the lockstep on out/engine/rec2.mtrec and the out/port/xr_* recordings.
+// Covered by the lockstep on out/engine/rec2.mtrec and the out/port/xr_* recordings (xr_award: singles and doubles,
+// four awards, a five-digit total), and by web/tests/port/routines_menus_exp.mjs.
 import {
   FZ, FN, FC, rd, wr, u8, w8, ix, far, rom, romWait, home, HOME, FAR, hook, hookGen, romWord, romByte, testFlag, advanceFrame,
   waitFrames, fadeIn, fadeOut, registerFrameTask, unregisterFrameTask, queueVRAMCopy, queueSprite,

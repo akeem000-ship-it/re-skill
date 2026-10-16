@@ -5,7 +5,8 @@
 // Port of the code of src/engine/menus/results/exhibresults_1e.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT,
 // third_party/mario-tennis-gbc-disasm); names and addresses are its own.
 // Covered by the lockstep on out/engine/exh1.mtrec, rec1.mtrec (an exhibition's results) and the out/port/xr_*
-// recordings (story, ranking, Island Open results).
+// recordings (xr_results: each game mode's layout; xr_misc: the Island Open semifinal and final), and by
+// web/tests/port/routines_menus_exp.mjs.
 import {
   FZ, FN, far, rom, FAR, hook, testFlag, formatDecimalNumberUnsigned, regs8, cpFlags, BANK_EXP, WRAM_COURT_PLANES,
   WRAM_SCREEN, wShadowTilemap, wScreenAttrmap, wTextBuffer, FLAG, cell,
