@@ -177,10 +177,10 @@ export function fillRows(floor, hole, x0 = 0, x1 = ART, y0 = 0, y1 = ART, src = 
 // (`hole`) 8, 16, ... px away left, right, up or down: preferably the direction whose pixels are most like the ground
 // around the plant (`keys`: colour -> how often it is there), pixel by pixel a much commoner ground colour, so the
 // ground's tile pattern runs on without bringing in the wall, fence or dark band next to it
-export function fillNearest(floor, hole, d, x0, y0, w, h, keys, W, H, src = null, patched = null) {
+export function fillNearest(floor, hole, d, x0, y0, w, h, keys, W, H, src = null, patched = null, dark = -1) {
   const ok = (X, Y) => X >= 0 && Y >= 0 && X < W && Y < H && !hole[Y * ART + X];
   const at = q => floor[q * 4] << 16 | floor[q * 4 + 1] << 8 | floor[q * 4 + 2];
-  const fq = q => { const l = floor[q * 4] + floor[q * 4 + 1] + floor[q * 4 + 2]; return l < 60 || l > 690 ? 0 : (keys.get(at(q)) || 0); };   // (black bands and white rims are not ground)
+  const fq = q => { const l = floor[q * 4] + floor[q * 4 + 1] + floor[q * 4 + 2]; return l < 60 || l > 690 || at(q) === dark ? 0 : (keys.get(at(q)) || 0); };   // (black bands, white rims, outlines are not ground)
   const from = (x, y, dx, dy) => { for (let k = 8; k <= 160; k += 8) { const X = x + dx * k, Y = y + dy * k; if (ok(X, Y)) return Y * ART + X; } return -1; };
   const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]], score = dirs.map(() => 0);
   for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) if (d[(yy * w + xx) * 4 + 3]) dirs.forEach(([dx, dy], k) => { const q = from(x0 + xx, y0 + yy, dx, dy); score[k] += q < 0 ? -1 : fq(q); });
@@ -322,7 +322,8 @@ export function jetDroplets(n = 150) {
 // canopy is round and a trunk thin. The colours come from the map picture (a texture), so faces of one depth merge
 // into rectangles whatever the dithering: few vertices per plant. Local units: 1 = one pixel, origin at the
 // bottom-centre. Returns {pos, uv, sway}: uv in image pixels (the caller offsets them into the map texture),
-// sway = (weight, shade): the weight grows with the height (the foot stays put), shade darkens the back and sides.
+// sway = (weight, shade, phase): the weight grows with the height (the foot stays put), shade darkens the back and
+// sides, phase is added to the instance's place in the wind (0 here).
 export function plantMesh(rgba, w, h, R = 5, T = 4) {
   const n = w * h, op = i => rgba[i * 4 + 3] >= 128, dist = new Float32Array(n).fill(1e9);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (!op(i)) { dist[i] = 0; continue; } if (x === 0 || y === 0 || x === w - 1 || y === h - 1) dist[i] = 1; }
@@ -334,7 +335,7 @@ export function plantMesh(rgba, w, h, R = 5, T = 4) {
   const D = (x, y) => (x >= 0 && y >= 0 && x < w && y < h) ? dep[y * w + x] : 0;
   const out = { pos: [], uv: [], sway: [] };
   // quad: 4 corners [x, y(local up), z] with their texture pixel coordinates [u, v]
-  const quad = (q, t, k) => { for (const j of [0, 1, 2, 0, 2, 3]) { const [p, uv] = q[j]; out.pos.push(p[0] - w / 2, p[1], p[2]); out.uv.push(uv[0], uv[1]); out.sway.push(Math.pow(Math.max(0, Math.min(1, p[1] / h)), 1.5), k); } };
+  const quad = (q, t, k) => { for (const j of [0, 1, 2, 0, 2, 3]) { const [p, uv] = q[j]; out.pos.push(p[0] - w / 2, p[1], p[2]); out.uv.push(uv[0], uv[1]); out.sway.push(Math.pow(Math.max(0, Math.min(1, p[1] / h)), 1.5), k, 0); } };
   const Y = y => h - y;                            // image row y -> local height of its top edge
   // front and back: greedy rectangles of one depth
   const used = new Uint8Array(n);
@@ -373,4 +374,89 @@ export function plantMesh(rgba, w, h, R = 5, T = 4) {
     y = e;
   }
   return out;
+}
+
+// Hedge / foliage bank: the footprint (mask over the map rectangle x0, y0, w, h) rises as a rounded cushion, height
+// growing with the distance from its edge (a quarter circle of radius R px, up to Hmax), in whole pixels. The top is
+// the map picture itself (uv = map px), the steps between heights show the pixel next to them. Rectangles are at most
+// 8 px so the wind (sway = weight, shade, phase by place) bends the top a little at a time.
+export function hedgeMesh(mask, x0, y0, w, h, Hmax = 12, R = 6) {
+  const n = w * h, on = i => mask[i] > 0, dist = new Float32Array(n).fill(1e9);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (!on(i)) { dist[i] = 0; continue; } if (x === 0 || y === 0 || x === w - 1 || y === h - 1) dist[i] = 1; }
+  const relax = (i, j, d) => { if (dist[j] + d < dist[i]) dist[i] = dist[j] + d; };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (x > 0) relax(i, i - 1, 1); if (y > 0) { relax(i, i - w, 1); if (x > 0) relax(i, i - w - 1, 1.4); if (x < w - 1) relax(i, i - w + 1, 1.4); } }
+  for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) { const i = y * w + x; if (x < w - 1) relax(i, i + 1, 1); if (y < h - 1) { relax(i, i + w, 1); if (x < w - 1) relax(i, i + w + 1, 1.4); if (x > 0) relax(i, i + w - 1, 1.4); } }
+  const ht = new Float32Array(n);
+  for (let i = 0; i < n; i++) if (on(i)) { const u = Math.min(dist[i], R) / R; ht[i] = Math.max(2, Math.round(Hmax * Math.sqrt(1 - (1 - u) * (1 - u)))); }
+  const H = (x, y) => (x >= 0 && y >= 0 && x < w && y < h) ? ht[y * w + x] : 0;
+  const out = { pos: [], uv: [], sway: [] };
+  const quad = (q, k) => { for (const j of [0, 1, 2, 0, 2, 3]) { const [p, uv] = q[j]; out.pos.push(p[0], p[1], p[2]); out.uv.push(uv[0], uv[1]); out.sway.push(p[1] / Hmax * 0.6, k, p[0] * 0.11 + p[2] * 0.07); } };
+  const used = new Uint8Array(n);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {                 // tops: rectangles of one height, at most 8 px
+    const i = y * w + x; if (!on(i) || used[i]) continue;
+    const t = ht[i]; let e = x + 1; while (e < w && e - x < 8 && !used[y * w + e] && on(y * w + e) && ht[y * w + e] === t) e++;
+    let b = y + 1; for (; b < h && b - y < 8; b++) { let ok = true; for (let k = x; k < e; k++) { const j = b * w + k; if (used[j] || !on(j) || ht[j] !== t) { ok = false; break; } } if (!ok) break; }
+    for (let yy = y; yy < b; yy++) for (let k = x; k < e; k++) used[yy * w + k] = 1;
+    const X0 = x0 + x, X1 = x0 + e, Z0 = y0 + y, Z1 = y0 + b;
+    quad([[[X0, t, Z0], [X0, Z0]], [[X1, t, Z0], [X1, Z0]], [[X1, t, Z1], [X1, Z1]], [[X0, t, Z1], [X0, Z1]]], 1.0);
+  }
+  // steps: where a neighbour is lower, a wall from its height up, runs along the edge, showing the pixel inside
+  for (const [dx, dy, k] of [[0, 1, 0.8], [0, -1, 0.7], [-1, 0, 0.75], [1, 0, 0.75]]) {
+    if (dy) for (let y = 0; y < h; y++) for (let x = 0; x < w;) {
+      const i = y * w + x, t = ht[i], tn = H(x, y + dy); if (!on(i) || tn >= t) { x++; continue; }
+      let e = x + 1; while (e < w && e - x < 8 && on(y * w + e) && ht[y * w + e] === t && H(e, y + dy) === tn) e++;
+      const Z = y0 + (dy > 0 ? y + 1 : y), X0 = x0 + x, X1 = x0 + e, v = y0 + y;
+      quad([[[X0, tn, Z], [X0, v + 1]], [[X1, tn, Z], [X1, v + 1]], [[X1, t, Z], [X1, v]], [[X0, t, Z], [X0, v]]], k);
+      x = e;
+    } else for (let x = 0; x < w; x++) for (let y = 0; y < h;) {
+      const i = y * w + x, t = ht[i], tn = H(x + dx, y); if (!on(i) || tn >= t) { y++; continue; }
+      let e = y + 1; while (e < h && e - y < 8 && on(e * w + x) && ht[e * w + x] === t && H(x + dx, e) === tn) e++;
+      const X = x0 + (dx > 0 ? x + 1 : x), Z0 = y0 + y, Z1 = y0 + e, u = x0 + x;
+      quad([[[X, tn, Z0], [u, Z0]], [[X, tn, Z1], [u + 1, Z1]], [[X, t, Z1], [u + 1, Z1]], [[X, t, Z0], [u, Z0]]], k);
+      y = e;
+    }
+  }
+  return out;
+}
+
+// Umbrella / parasol from its picture in the rectangle (x0, y0, x1, y1): the canopy (the rows where at least half the
+// width is canopy colours: light, or strongly coloured, not green) becomes an eight-sided cone over its pole, the
+// picture laid on it apex to rim (the drawn ribs become the cone's ribs) with a band for the rim's edge; a pole stands
+// in the middle and one at each side, as drawn. Returns {mesh: {pos, uv, sway}, top, rim, ground} (uv in map px).
+export function umbrellaMesh(art, x0, y0, x1, y1, groundMax = 512) {
+  const isCanopy = (x, y) => { const o = (y * ART + x) * 4, r = art[o], g = art[o + 1], b = art[o + 2], l = r + g + b; if (g > r && g > b && l < 600) return false; return l > 500 || Math.max(r, g, b) - Math.min(r, g, b) > 120; };
+  const w = x1 - x0; let top = -1, rim = -1;
+  for (let y = y0; y < y1; y++) { let n = 0; for (let x = x0; x < x1; x++) if (isCanopy(x, y)) n++; if (top < 0 && n >= 3) top = y; if (n >= w * 0.5) rim = y; }
+  if (top < 0 || rim < 0) return null;
+  const cx = (x0 + x1) / 2, r = w / 2 - 0.5, ground = Math.min(groundMax, Math.max(y1, rim + 12)), cz = ground - 2;
+  const S = WALL_SCALE, Hr = Math.max((ground - rim) * S, 24), Ha = Hr + r * 0.4;   // (a person stands under it)
+  const out = { pos: [], uv: [], sway: [] };
+  const tri = (a, b, c, k) => { for (const [p, uv] of [a, b, c]) { out.pos.push(...p); out.uv.push(...uv); out.sway.push(0, k, 0); } };
+  const N = 8, rings = [0, 0.34, 0.67, 1];
+  // the picture's canopy half-width on each row: a point of the cone takes the pixel at the same fraction across its row
+  const half = y => {                                      // (the run through the middle, gaps of 2 px bridged: posts beside it do not count)
+    const yy = Math.max(top, Math.min(rim, Math.round(y))), c = Math.floor(cx); let l = c, r2 = c;
+    while (l - 1 >= x0 && (isCanopy(l - 1, yy) || (l - 2 >= x0 && isCanopy(l - 2, yy)))) l--;
+    while (r2 + 1 < x1 && (isCanopy(r2 + 1, yy) || (r2 + 2 < x1 && isCanopy(r2 + 2, yy)))) r2++;
+    return Math.max(1, Math.min(c - l, r2 - c) + 0.5);
+  };
+  const P = (t, rho) => { const a = (t / N) * Math.PI * 2 + Math.PI / 8, c = Math.cos(a), s = Math.sin(a), v = top + rho * (rim - top); return [[cx + rho * r * c, Ha - rho * (Ha - Hr), cz + rho * r * 0.8 * s], [cx + c * half(v) * (rho > 0 ? 1 : 0), v]]; };
+  for (let t = 0; t < N; t++) for (let k = 0; k < rings.length - 1; k++) {
+    const a0 = P(t, rings[k]), a1 = P(t + 1, rings[k]), b0 = P(t, rings[k + 1]), b1 = P(t + 1, rings[k + 1]), sh = 0.8 + 0.2 * Math.sin((t + 0.5) / N * Math.PI * 2 + Math.PI / 8);
+    if (k > 0) tri(a0, a1, b1, sh); tri(a0, b1, b0, sh);
+  }
+  for (let t = 0; t < N; t++) {                            // the rim's edge: a band 3 px deep, the picture's last canopy rows
+    const p0 = P(t, 1), p1 = P(t + 1, 1), d = 3 * S;
+    const q = [[[p0[0][0], Hr - d, p0[0][2]], [p0[1][0], rim + 1]], [[p1[0][0], Hr - d, p1[0][2]], [p1[1][0], rim + 1]], [[p1[0][0], Hr, p1[0][2]], [p1[1][0], rim - 2]], [[p0[0][0], Hr, p0[0][2]], [p0[1][0], rim - 2]]];
+    tri(q[0], q[1], q[2], 0.85); tri(q[0], q[2], q[3], 0.85);
+  }
+  const pole = (px, pz, h, u) => {                          // a 1.5 px square post, the picture's post column for colour
+    const e = 0.75, v0 = Math.min(ground - 1, rim + 2), v1 = ground - 1;
+    for (const [ax, az, bx, bz, k] of [[-e, e, e, e, 1], [e, e, e, -e, 0.75], [e, -e, -e, -e, 0.6], [-e, -e, -e, e, 0.75]]) {
+      const q = [[[px + ax, 0, pz + az], [u, v1]], [[px + bx, 0, pz + bz], [u + 1, v1]], [[px + bx, h, pz + bz], [u + 1, v0]], [[px + ax, h, pz + az], [u, v0]]];
+      tri(q[0], q[1], q[2], k); tri(q[0], q[2], q[3], k);
+    }
+  };
+  pole(cx, cz, Ha, Math.floor(cx)); pole(x0 + 1.5, cz, Hr, x0 + 1); pole(x1 - 1.5, cz, Hr, x1 - 2);
+  return { mesh: out, top, rim, ground };
 }

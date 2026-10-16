@@ -10,14 +10,15 @@
 //  stamps: one example of a repeated tree / bush / prop (multiples of 8); every place in the map with the same
 //          tiles (>= 80%) stands up as a cut-out card (an inflated voxel body in voxel mode)
 //  cards:  single upright cut-outs (fences, posts, statues, signs, furniture fronts)
-//  sprites: {x, y, w, h, match}: one example; every pixel-exact copy anywhere in the map (any alignment, >= match
-//          of its pixels equal) stands up too (bushes and trees of a side-view picture)
+//  sprites: {x, y, w, h, match, in}: one example; every pixel-exact copy anywhere in the map (any alignment, >= match
+//          of its pixels equal; in: [x0, y0, x1, y1] where copies may start) stands up too
 //  Cut-outs (stamps, cards, sprites) may set cut: "outline" | "enclosed" | "dome" | "rect" | "ellipse" (see
 //          field3d.js cutOut), only / drop / add (map rectangles), bg (map points of the ground colours); with a cut
 //          they stand on their lowest opaque row
 //  plant: "tree" | "bush" | "palm" | "pot" on a stamp, card or sprite: it stands as a voxel body with volume (round
 //          canopy, thin trunk) coloured from the map picture, rustling in the travelling wind; every copy found by
 //          tiles or pixels; the ground under it is filled from the ground beside it (default cut "outline", seal "b")
+//  umbrella: true on a card: the umbrella / parasol in it stands up as a cone canopy on poles (field3d.js umbrellaMesh)
 //  solids: low objects with their exact outline as prisms (planters, fountain basins): the cut-out of x0..x1 x
 //          y0..y1, its bottom h rows the front wall; on: index of the solid it stands on (fountain tiers)
 //  flowers: [{on: solid, region}] the flowers on a solid's top (within region) stand up and sway; flowerTiles: [[x, y]] one cell with a
@@ -1591,7 +1592,8 @@ export const FIELD_OBJECTS = {
     "x0": 32,
     "y0": 192,
     "x1": 80,
-    "y1": 240
+    "y1": 240,
+    "umbrella": true
    },
    {
     "x0": 80,
@@ -1654,7 +1656,7 @@ export const FIELD_OBJECTS = {
    { "on": 3, "pool": [209, 299, 239, 318], "jet": 18, "spread": 10 }
   ],
   "flowerTiles": [ [16, 112] ],
-  "sprites": [{"x": 176, "y": 208, "w": 16, "h": 32, "match": 0.8, "plant": "palm"}]
+  "sprites": [{"x": 176, "y": 208, "w": 16, "h": 32, "match": 0.8, "plant": "palm"}, {"x": 16, "y": 240, "w": 8, "h": 32, "cut": "outline", "seal": "lb", "match": 0.85, "in": [0, 0, 24, 512], "plant": "palm"}]
  },
  "29": {
   "blocks": [
@@ -1757,7 +1759,8 @@ export const FIELD_OBJECTS = {
     "x0": 16,
     "y0": 88,
     "x1": 64,
-    "y1": 128
+    "y1": 128,
+    "umbrella": true
    },
    {
     "x0": 80,
@@ -1793,7 +1796,8 @@ export const FIELD_OBJECTS = {
     "x0": 16,
     "y0": 208,
     "x1": 64,
-    "y1": 248
+    "y1": 248,
+    "umbrella": true
    },
    {
     "x0": 160,
@@ -2128,7 +2132,8 @@ export const FIELD_OBJECTS = {
     "x0": 256,
     "y0": 88,
     "x1": 304,
-    "y1": 128
+    "y1": 128,
+    "umbrella": true
    },
    {
     "x0": 224,
@@ -2176,7 +2181,8 @@ export const FIELD_OBJECTS = {
     "x0": 256,
     "y0": 208,
     "x1": 304,
-    "y1": 248
+    "y1": 248,
+    "umbrella": true
    },
    {
     "x0": 64,
@@ -2233,7 +2239,8 @@ export const FIELD_OBJECTS = {
     "y1": 432
    }
   ],
-  "flowerTiles": [[224, 96], [224, 216]]
+  "flowerTiles": [[224, 96], [224, 216]],
+  "sprites": [{"x": 16, "y": 96, "w": 8, "h": 32, "cut": "outline", "seal": "lb", "match": 0.85, "in": [0, 0, 24, 512], "plant": "palm"}]
  },
  "32": {
   "blocks": [
@@ -2974,19 +2981,22 @@ export const FIELD_OBJECTS = {
     "x0": 16,
     "y0": 16,
     "x1": 48,
-    "y1": 64
+    "y1": 64,
+    "umbrella": true
    },
    {
     "x0": 64,
     "y0": 16,
     "x1": 112,
-    "y1": 48
+    "y1": 48,
+    "umbrella": true
    },
    {
     "x0": 128,
     "y0": 16,
     "x1": 176,
-    "y1": 64
+    "y1": 64,
+    "umbrella": true
    },
    {
     "x0": 64,

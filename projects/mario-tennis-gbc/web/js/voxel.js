@@ -44,9 +44,9 @@ void main() {
 }`;
 // plants: the same wind on voxel bodies coloured from the map texture (aSway = weight, face shade)
 const VSP = `#version 300 es
-in vec3 aPosP; in vec2 aUVP; in vec2 aSwayP; uniform mat4 uMVP; uniform mat4 uModel; uniform float uTime; uniform float uAmp; uniform float uPhase; out vec2 vUV; out float vShade;
+in vec3 aPosP; in vec2 aUVP; in vec3 aSwayP; uniform mat4 uMVP; uniform mat4 uModel; uniform float uTime; uniform float uAmp; uniform float uPhase; out vec2 vUV; out float vShade;
 void main() {
-  float s = sin(uTime * 1.9 + uPhase) * 0.75 + sin(uTime * 3.3 + uPhase * 1.7) * 0.25, dx = floor(s * uAmp * aSwayP.x * 4.0 + 0.5) / 4.0;
+  float ph = uPhase + aSwayP.z, s = sin(uTime * 1.9 + ph) * 0.75 + sin(uTime * 3.3 + ph * 1.7) * 0.25, dx = floor(s * uAmp * aSwayP.x * 4.0 + 0.5) / 4.0;
   vUV = aUVP; vShade = aSwayP.y; gl_Position = uMVP * uModel * vec4(aPosP + vec3(dx, -abs(dx) * 0.3, dx * 0.35), 1.0);
 }`;
 const FSP = `#version 300 es
@@ -947,7 +947,7 @@ export class Voxel3D {
     if (f.skirt) up(f.skirt, 1, 1, Uint8Array.from([...art.subarray(f.skirtSrc * 4, f.skirtSrc * 4 + 3), 255]));
     if (f.clear) f.clear = [...art.subarray(f.clearSrc * 4, f.clearSrc * 4 + 3)].map(v => v / 255);
     const fx = f.fx;
-    if (fx) for (const m of [fx.flowers]) {           // (plants take their colours from the building texture)
+    if (fx) for (const m of fx.flowerGroups || []) {  // (plants take their colours from the building texture)
       if (!m) continue;
       const S = m.src, col = new Float32Array(S.length / 2 * 3);
       for (let v = 0; v < S.length / 2; v++) { const s = S[v * 2] * 4, k = S[v * 2 + 1] / 255; col[v * 3] = art[s] * k; col[v * 3 + 1] = art[s + 1] * k; col[v * 3 + 2] = art[s + 2] * k; }
@@ -958,7 +958,7 @@ export class Voxel3D {
   }
   freeFieldFx(fx) {
     if (!fx) return; const gl = this.gl;
-    for (const m of [fx.flowers, ...(fx.shapes || [])]) if (m) { for (const b of m.bufs) gl.deleteBuffer(b); gl.deleteVertexArray(m.vao); }
+    for (const m of [...(fx.flowerGroups || []), ...(fx.shapes || [])]) if (m) { for (const b of m.bufs) gl.deleteBuffer(b); gl.deleteVertexArray(m.vao); }
   }
   // Builds what stands up on this map from its annotations (field_objects.js): cut-out cards (stamps, cards, sprites,
   // the sky backdrop of a side-view map), building blocks, extruded solids (planters, fountain basins), swaying
@@ -1001,7 +1001,7 @@ export class Voxel3D {
     const plantHole = (d, x0, y0, w, h) => {      // (with the outline-coloured bits around it: its drawn shadow)
       const dk = F3.darkest(art, x0, y0, w, h), m = new Uint8Array(d);
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (F3.packAt(art, x0 + x, y0 + y) === dk) m[(y * w + x) * 4 + 3] = 255;
-      mark(m, x0, y0, w, h); plantHoles.push([m, x0, y0, w, h, F3.groundKeys(art, x0, y0, w, h, true)]);
+      mark(m, x0, y0, w, h); plantHoles.push([m, x0, y0, w, h, F3.groundKeys(art, x0, y0, w, h, true), dk]);
     };
     const cutOpt = o => ({ cut: o.cut, only: o.only, drop: o.drop, bg: o.bg, add: o.add, seal: o.seal });
     // with a cut mode the card stands on its lowest opaque row (the transparent rows below it are dropped)
@@ -1040,6 +1040,16 @@ export class Voxel3D {
       if (!inMap(c.x0, c.y0)) continue;
       cover(c.x0, c.y0, c.x1, c.y1);
       const w = c.x1 - c.x0, h = c.y1 - c.y0, d = F3.cutOut(art, c.x0, c.y0, w, h, plantCut(c));
+      if (c.umbrella) {                          // an umbrella stands up (pole and canopy), its picture is filled with ground
+        const u = F3.umbrellaMesh(art, c.x0, c.y0, c.x1, c.y1, MHp);
+        if (u) {
+          const m = new Uint8Array(w * h * 4); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) m[(y * w + x) * 4 + 3] = 255;
+          plantHole(m, c.x0, c.y0, w, h);
+          for (let k = 0; k < u.mesh.uv.length; k++) u.mesh.uv[k] /= 512;
+          const sh = { m: u.mesh, r: w }; shapes.push(sh); plants.push({ shape: sh, model: m4.identity(), phase: 0, amp: 0, centre: [(c.x0 + c.x1) / 2, 10, c.y1] });
+          continue;
+        }
+      }
       if (c.plant) plantHole(d, c.x0, c.y0, w, h); else patch(d, c.x0, c.y0, w, h);
       if (c.plant) { const t = trim(d, w, h); placePlant(shapeOf(t.d, c.x0, c.y0, w, t.h, c.plant), c.x0 + w / 2, c.y0 + t.h + (c.dz || 0), c); continue; }
       f.cards.push(card(d, c.x0, c.y0, w, h, c));
@@ -1048,6 +1058,7 @@ export class Voxel3D {
     for (const sp of def.sprites || []) {
       const d = F3.cutOut(art, sp.x, sp.y, sp.w, sp.h, plantCut(sp)), t = sp.plant ? trim(d, sp.w, sp.h) : null, shape = sp.plant ? shapeOf(t.d, sp.x, sp.y, sp.w, t.h, sp.plant) : null;
       for (const hit of F3.matchSprite(art, d, sp.x, sp.y, sp.w, sp.h, MWp, MHp, sp.match ?? 1)) {
+        if (sp.in && (hit.x < sp.in[0] || hit.y < sp.in[1] || hit.x >= sp.in[2] || hit.y >= sp.in[3])) continue;   // in: where copies may be
         if (shape) { if (taken(hit.x, hit.y, sp.w, sp.h)) continue; placed.push([hit.x, hit.y]); }
         if (shape) plantHole(hit.d, hit.x, hit.y, sp.w, sp.h); else patch(hit.d, hit.x, hit.y, sp.w, sp.h);
         cover(hit.x, hit.y, hit.x + sp.w, hit.y + sp.h);
@@ -1099,7 +1110,7 @@ export class Voxel3D {
       cover(so.x0, so.y0, so.x1, so.y1);
       if (!base) patch(d, so.x0, so.y0, w, h, so.patch !== "below");   // the ground behind a low solid shows: the ground above it
     }
-    if (!rowMode) for (const [d, x0, y0, w, h, keys] of plantHoles) F3.fillNearest(floor, hole, d, x0, y0, w, h, keys, MWp, MHp, f.floorSrc, f.patched);
+    if (!rowMode) for (const [d, x0, y0, w, h, keys, dk] of plantHoles) F3.fillNearest(floor, hole, d, x0, y0, w, h, keys, MWp, MHp, f.floorSrc, f.patched, dk);
     if (rowMode) { F3.fillRows(floor, hole, 0, MWp, 0, MHp, f.floorSrc); for (let i = 0; i < hole.length; i++) if (hole[i]) f.patched[i] = 1; }
     // side-view maps: the sky band stands up as a backdrop with everything cut out of it painted over with the sky
     // of its row; the ground runs on behind it (the first ground rows repeated up to the top)
@@ -1127,7 +1138,8 @@ export class Voxel3D {
       if (def.clear === "sky") { f.clearSrc = top; f.clear = [...art.subarray(top * 4, top * 4 + 3)].map(v => v / 255); }
     }
     // flowers: lifted out of a solid's top (on) or out of every copy of a ground tile (tiles), swaying in the wind
-    const fl = { pos: [], col: [], sway: [], src: [] };
+    // flowers in groups of 64 x 64 map px (each group one mesh, drawn only when in view)
+    const flGroups = new Map(), flOf = (X, Z) => { const key = (X >> 6) * 16 + (Z >> 6); let g = flGroups.get(key); if (!g) flGroups.set(key, g = { pos: [], col: [], sway: [], src: [], centre: [((X >> 6) + 0.5) * 64, 4, ((Z >> 6) + 0.5) * 64] }); return g; };
     const leaf = r => {                         // the commonest green of a region: the stems' colour
       const hist = new Map(), where = new Map();
       for (let y = r[1]; y < r[3]; y++) for (let x = r[0]; x < r[2]; x++) { const o = (y * 512 + x) * 4; if (art[o + 1] > art[o] && art[o + 1] > art[o + 2]) { const c = F3.packAt(art, x, y); hist.set(c, (hist.get(c) || 0) + 1); where.set(c, y * 512 + x); } }
@@ -1137,7 +1149,7 @@ export class Voxel3D {
       for (const p of list) {
         for (const [dx, dy] of p.px) { const i = (p.y + dy) * 512 + p.x + dx; f.artMod[i] = 1; if (onFloor) { const o = i * 4; floor[o] = art[o]; floor[o + 1] = art[o + 1]; floor[o + 2] = art[o + 2]; f.patched[i] = 1; f.floorSrc[i] = f.artSrc[i]; } }
         const X = p.x + p.w / 2, Z = p.y + p.h + shift, rnd = Math.abs(Math.sin(X * 12.9898 + Z * 78.233) * 43758.5453) % 1;
-        F3.swayVoxels(fl, p.px, p.w, p.h, X, lift, Z - 0.5, 1, X * 0.11 + Z * 0.07 + rnd * 1.2, stem ? { h: stem, c: stemC.c, src: stemC.src } : null);
+        F3.swayVoxels(flOf(X, Z), p.px, p.w, p.h, X, lift, Z - 0.5, 1, X * 0.11 + Z * 0.07 + rnd * 1.2, stem ? { h: stem, c: stemC.c, src: stemC.src } : null);
       }
     };
     for (const fd of def.flowers || []) {
@@ -1158,18 +1170,20 @@ export class Voxel3D {
         if (nb) for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const i = (ty * 8 + y) * 512 + tx * 8 + x, j = (nb[1] * 8 + y) * 512 + nb[0] * 8 + x; floor.copyWithin(i * 4, j * 4, j * 4 + 3); f.floorSrc[i] = f.floorSrc[j]; f.patched[i] = 1; }
       }
     }
-    const fx = f.fx = { flowers: null, fountains: [], shapes: [], plants };
+    const fx = f.fx = { flowerGroups: [], fountains: [], shapes: [], plants };
     for (const sh of shapes) {
       const m = sh.m, vao = gl.createVertexArray(); gl.bindVertexArray(vao); const bufs = [];
-      [[m.pos, 3], [m.uv, 2], [m.sway, 2]].forEach(([a, n], i) => { const b = gl.createBuffer(); bufs.push(b); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(a), gl.STATIC_DRAW); gl.enableVertexAttribArray(i); gl.vertexAttribPointer(i, n, gl.FLOAT, false, 0, 0); });
+      [[m.pos, 3], [m.uv, 2], [m.sway, 3]].forEach(([a, n], i) => { const b = gl.createBuffer(); bufs.push(b); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(a), gl.STATIC_DRAW); gl.enableVertexAttribArray(i); gl.vertexAttribPointer(i, n, gl.FLOAT, false, 0, 0); });
       Object.assign(sh, { vao, bufs, count: m.pos.length / 3 }); delete sh.m; fx.shapes.push(sh);
     }
     gl.bindVertexArray(this.vao);
-    if (fl.pos.length) {
+    fx.flowerGroups = [];
+    for (const fl of flGroups.values()) {
       const vao = gl.createVertexArray(); gl.bindVertexArray(vao); const bufs = [];
       [[fl.pos, 3], [fl.col, 3], [fl.sway, 2]].forEach(([a, n], i) => { const b = gl.createBuffer(); bufs.push(b); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(a), gl.STATIC_DRAW); gl.enableVertexAttribArray(i); gl.vertexAttribPointer(i, n, gl.FLOAT, false, 0, 0); });
-      gl.bindVertexArray(this.vao); fx.flowers = { vao, bufs, count: fl.pos.length / 3, src: Float32Array.from(fl.src) };
+      fx.flowerGroups.push({ vao, bufs, count: fl.pos.length / 3, src: Float32Array.from(fl.src), centre: fl.centre });
     }
+    gl.bindVertexArray(this.vao);
     // fountains: a jet from the middle of the pool (on the solid it is the top of) and rings on the water; colours
     // from the pool picture (its lightest colour and its most saturated one)
     for (const fo of def.fountains || []) {
@@ -1218,8 +1232,17 @@ export class Voxel3D {
     const H = 14, pos = [], uv = [], w0 = this.gb.mem.wram[0], MW = Math.min(32, (w0[0x32B] || 64) >> 1), MH = Math.min(32, (w0[0x32C] || 64) >> 1);   // metatiles inside wMapWidth/Height only
     const quad = (a, b, c, d, u) => { for (const [v, t] of [[a, u[0]], [b, u[1]], [c, u[2]], [a, u[0]], [c, u[2]], [d, u[3]]]) { pos.push(...v); uv.push(...t); } };
     let n = 0;
+    // hedges and foliage banks: solid metatiles painted with foliage (mostly greens, with dark leaf shadows) rise as
+    // rounded cushions (plant style, rustling) instead of boxes
+    const fol = new Uint8Array(32 * 32);
     for (let my = 0; my < MH && !f.noWalls; my++) for (let mx = 0; mx < MW; mx++) {
       if (coll[my * 32 + mx] !== 0x0F || (f.covered && f.covered[my * 32 + mx])) continue;
+      let g = 0, dk = 0; for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const o = ((my * 16 + y) * 512 + mx * 16 + x) * 4, r = art[o], gg = art[o + 1], b = art[o + 2]; if (gg > r && gg > b) g++; if (r + gg + b < 150) dk++; }
+      if (g >= 160 && dk >= 12) fol[my * 32 + mx] = 1;
+    }
+    this.hedgeArt = art; this.buildHedges(fol, MW, MH); this.hedgeArt = null;
+    for (let my = 0; my < MH && !f.noWalls; my++) for (let mx = 0; mx < MW; mx++) {
+      if (coll[my * 32 + mx] !== 0x0F || (f.covered && f.covered[my * 32 + mx]) || fol[my * 32 + mx]) continue;
       const x0 = mx * 16, x1 = x0 + 16, z0 = my * 16, z1 = z0 + 16, u0 = x0 / 512, u1 = x1 / 512, v0 = z0 / 512, v1 = z1 / 512;
       const top = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]], side = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
       quad([x0, H, z0], [x1, H, z0], [x1, H, z1], [x0, H, z1], top);
@@ -1235,6 +1258,28 @@ export class Voxel3D {
     const pb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, pb); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
     const ub = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, ub); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(uv), gl.STATIC_DRAW); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
     f.walls = { vao, pb, ub, count: pos.length / 3 }; f.wallCount = n;
+    gl.bindVertexArray(this.vao);
+  }
+  // one cushion mesh per connected group of foliage metatiles (drawn with the plants, coloured from the floor texture)
+  buildHedges(fol, MW, MH) {
+    const gl = this.gl, f = this.field; if (!f.fx) f.fx = { flowerGroups: [], fountains: [], shapes: [], plants: [] };
+    f.fx.hedges = [];
+    const seen = new Uint8Array(32 * 32);
+    for (let i = 0; i < 32 * 32; i++) {
+      if (!fol[i] || seen[i]) continue;
+      const st = [i], cells = []; seen[i] = 1;
+      while (st.length) { const j = st.pop(), x = j & 31, y = j >> 5; cells.push(j); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const X = x + dx, Y = y + dy; if (X < 0 || Y < 0 || X >= MW || Y >= MH) continue; const k = Y * 32 + X; if (fol[k] && !seen[k]) { seen[k] = 1; st.push(k); } } }
+      let x0 = 99, y0 = 99, x1 = -1, y1 = -1; for (const j of cells) { x0 = Math.min(x0, j & 31); x1 = Math.max(x1, j & 31); y0 = Math.min(y0, j >> 5); y1 = Math.max(y1, j >> 5); }
+      const w = (x1 - x0 + 1) * 16, h = (y1 - y0 + 1) * 16, mask = new Uint8Array(w * h);
+      const art = this.hedgeArt;                  // the foliage pixels only (greens and leaf shadows; not a kerb or fence line in the cell)
+      for (const j of cells) { const cx = ((j & 31) - x0) * 16, cy = ((j >> 5) - y0) * 16; for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const o = ((y0 * 16 + cy + y) * 512 + x0 * 16 + cx + x) * 4, r = art[o], g = art[o + 1], b = art[o + 2]; if ((g > r && g > b) || r + g + b < 150) mask[(cy + y) * w + cx + x] = 1; } }
+      const m = F3.hedgeMesh(mask, x0 * 16, y0 * 16, w, h, 12, 6);
+      for (let k = 0; k < m.uv.length; k++) m.uv[k] /= 512;
+      const vao = gl.createVertexArray(); gl.bindVertexArray(vao); const bufs = [];
+      [[m.pos, 3], [m.uv, 2], [m.sway, 3]].forEach(([a, nn], k) => { const b = gl.createBuffer(); bufs.push(b); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(a), gl.STATIC_DRAW); gl.enableVertexAttribArray(k); gl.vertexAttribPointer(k, nn, gl.FLOAT, false, 0, 0); });
+      const shape = { vao, bufs, count: m.pos.length / 3, r: Math.hypot(w, h) / 2 + 12 };
+      f.fx.shapes.push(shape); f.fx.hedges.push({ shape, centre: [x0 * 16 + w / 2, 6, y0 * 16 + h / 2] });
+    }
     gl.bindVertexArray(this.vao);
   }
   // The game animates some map tiles by rewriting their pixels in VRAM (the fountain's water, ...). The tiles of the
@@ -1343,25 +1388,35 @@ export class Voxel3D {
     const gl = this.gl, fx = this.field.fx; if (!fx) return;
     // (flowers, plants, then the jets)
     gl.useProgram(this.progW); gl.uniformMatrix4fv(this.uW.uMVP, false, mvp); gl.uniform1f(this.uW.uTime, T);
-    if (fx.flowers) {
-      gl.bindVertexArray(fx.flowers.vao); gl.uniformMatrix4fv(this.uW.uModel, false, m4.identity()); gl.uniform1f(this.uW.uPhase, 0); gl.uniform1f(this.uW.uAmp, 1.1);
-      gl.drawArrays(gl.TRIANGLES, 0, fx.flowers.count);
-    }
+    // what is in view: a point's clip position within the frustum, with a margin of r map px
+    const inView = (p, r) => { const c = m4.apply(mvp, [p[0], p[1], p[2], 1]), mg = r * 1.2 * Math.abs(mvp[5]) + 0.2 * c[3]; return c[3] <= 0 || !(c[0] < -c[3] - mg || c[0] > c[3] + mg || c[1] < -c[3] - mg || c[1] > c[3] + mg); };
+    gl.uniformMatrix4fv(this.uW.uModel, false, m4.identity()); gl.uniform1f(this.uW.uPhase, 0); gl.uniform1f(this.uW.uAmp, 1.1);
+    for (const g of fx.flowerGroups || []) if (inView(g.centre, 48)) { gl.bindVertexArray(g.vao); gl.drawArrays(gl.TRIANGLES, 0, g.count); }
     if (fx.plants.length && this.field.artTex) {   // trees and bushes: voxel bodies rustling in the same wind, those in view
       gl.useProgram(this.progP); gl.uniformMatrix4fv(this.uP.uMVP, false, mvp); gl.uniform1f(this.uP.uTime, T); gl.bindTexture(gl.TEXTURE_2D, this.field.artTex);
       let drawn = 0;
       for (const p of fx.plants) {
-        const c = m4.apply(mvp, [p.model[12], p.shape.r * 0.5, p.model[14], 1]), m = p.shape.r * 1.2 * Math.abs(mvp[5]) + 0.2 * c[3];   // centre in clip space, with a margin
+        const c = m4.apply(mvp, p.centre ? [...p.centre, 1] : [p.model[12], p.shape.r * 0.5, p.model[14], 1]), m = p.shape.r * 1.2 * Math.abs(mvp[5]) + 0.2 * c[3];   // centre in clip space, with a margin
         if (c[3] <= 0 || c[0] < -c[3] - m || c[0] > c[3] + m || c[1] < -c[3] - m || c[1] > c[3] + m) continue;
         gl.bindVertexArray(p.shape.vao); gl.uniformMatrix4fv(this.uP.uModel, false, p.model); gl.uniform1f(this.uP.uPhase, p.phase); gl.uniform1f(this.uP.uAmp, p.amp);
         gl.drawArrays(gl.TRIANGLES, 0, p.shape.count); drawn += p.shape.count;
       }
       this.plantVerts = drawn;                    // (vertices drawn this frame: for tests)
+    }
+    if (fx.hedges && fx.hedges.length) {           // hedges: coloured from the floor texture, the wind's phase by place
+      gl.useProgram(this.progP); gl.uniformMatrix4fv(this.uP.uMVP, false, mvp); gl.uniform1f(this.uP.uTime, T); gl.bindTexture(gl.TEXTURE_2D, this.field.floorTex);
+      gl.uniformMatrix4fv(this.uP.uModel, false, m4.identity()); gl.uniform1f(this.uP.uPhase, 0); gl.uniform1f(this.uP.uAmp, 0.5);
+      for (const hg of fx.hedges) {
+        const c = m4.apply(mvp, [...hg.centre, 1]), mg = hg.shape.r * 1.2 * Math.abs(mvp[5]) + 0.2 * c[3];
+        if (c[3] <= 0 ? false : (c[0] < -c[3] - mg || c[0] > c[3] + mg || c[1] < -c[3] - mg || c[1] > c[3] + mg)) continue;
+        gl.bindVertexArray(hg.shape.vao); gl.drawArrays(gl.TRIANGLES, 0, hg.shape.count);
+      }
       gl.useProgram(this.progW);
     }
     if (fx.fountains.length && this.jetMesh) {
       gl.useProgram(this.progJ); gl.bindVertexArray(this.jetMesh.vao); gl.uniformMatrix4fv(this.uJ.uMVP, false, mvp); gl.uniform1f(this.uJ.uTime, T);
       for (const fo of fx.fountains) {
+        if (!inView(fo.origin, 24)) continue;
         gl.uniform3fv(this.uJ.uOrigin, fo.origin); gl.uniform4fv(this.uJ.uJet, fo.jet);
         gl.uniform3fv(this.uJ.uC0, fo.cols[0]); gl.uniform3fv(this.uJ.uC1, fo.cols[1]); gl.uniform3fv(this.uJ.uC2, fo.cols[2]);
         gl.drawArrays(gl.TRIANGLES, 0, this.jetMesh.count);
@@ -1369,6 +1424,7 @@ export class Voxel3D {
       gl.useProgram(this.progR); gl.bindVertexArray(this.vao); gl.depthMask(false);
       gl.uniformMatrix4fv(this.uR.uMVP, false, mvp); gl.uniform4fv(this.uR.uUVRect, [0, 0, 1, 1]); gl.uniform1f(this.uR.uTime, T);
       for (const fo of fx.fountains) {
+        if (!inView(fo.origin, 24)) continue;
         const q = fo.pool, w = q.x1 - q.x0, d = q.z1 - q.z0;
         gl.uniformMatrix4fv(this.uR.uModel, false, m4.plane([w, 0, 0], [0, 0, -d], [(q.x0 + q.x1) / 2, q.y, q.z1]));
         gl.uniform2fv(this.uR.uSize, [w, d]); gl.uniform3fv(this.uR.uCol, fo.cols[0]);
