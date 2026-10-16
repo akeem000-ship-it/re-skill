@@ -19,7 +19,8 @@ What runs as readable JavaScript (web/js/port), checked against the ROM by the r
 | Menus: shared code and main menu (boot/InitAndRunGame, saved data, erase, N64 transfer and records, match format) | engine/menus/common, main_menu | menus/common, menus/main_menu | verified: 252 tests, 0 differences on 12 recordings |
 | Menus: character select and data (new game, name entry, grid, match type, stats pages, EXP distribution, confirm) | engine/menus/char_select, char_data | menus/char_select, menus/char_data | verified: 213 tests on 787 states, 0 differences on 10 recordings (link screens untestable) |
 | Menus: pause (match and story), briefing and drill scripts, rules, court select, scenes | engine/menus/pause, briefing, court_select, scenes | menus/pause, briefing, court_select, scenes | verified: 271 hooks, 164 tests, 0 differences on 29 recordings (link court select untestable) |
-| Menus: EXP, results, ranking, dictionary, equipment, minigame select, debug, link | engine/menus/* | menus/ | in progress |
+| Menus: EXP awards and distribution, results, ranking board and bracket, rewards, game progress | engine/menus/exp, results, ranking | menus/exp, results, ranking | verified: 342 hooks, 271 tests on 1238 states, 0 differences on 20 recordings; rec2 shows 2 actor-position differences on the overworld long after these screens, right after timing events (ported screens take no CPU time, so later frames lag differently) |
+| Menus: dictionary, equipment, minigame select, debug, link | engine/menus/* | menus/ | in progress |
 | Story scripts and scenes | story/ | — | not started |
 
 Busy loops that measure CPU time (DisableLCDSafely, ShortDelay, WaitSerialTransfer) stay ROM code for now.
