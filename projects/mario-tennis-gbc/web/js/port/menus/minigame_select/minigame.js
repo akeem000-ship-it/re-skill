@@ -14,7 +14,7 @@ import {
   clearFrameTasks, queueVRAMCopy, queueSpriteTemplate, fillTilemapRect, loadCompressedTileBlock, queueCopy, hook,
   hookGen, regs8, WRAM_STAGING, WRAM_SCREEN, TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1, vTiles0, vBGMap0, wDecompBuffer,
   wShadowTilemap, wShadowAttrmap, OAM_BANK1, PADF_A, PADF_B, rIE, IE_TIMER, SFX_MENU_MOVE, SFX_MENU_SELECT,
-  SFX_MENU_LOCKED, SFX_MENU_CANCEL, MENUSLIDE_BACK, MENUSLIDE_FORWARD,
+  SFX_MENU_LOCKED, SFX_MENU_CANCEL, MENUSLIDE_BACK, MENUSLIDE_FORWARD, chain, nested, getRegs,
 } from "../equipment/defs.js";
 import { decompressDataFromBank } from "../../home/decompress.js";
 import { moveMenuCursorGrid, getMenuCursorIndex, setMenuCursorFromIndex } from "../common/cursors.js";
@@ -195,11 +195,14 @@ export function drawMinigameSelectCaption(P) {
 // cell's text
 export function renderMinigameNameText(P) {
   wram(P, WRAM_SCREEN);
-  const cell = cursorCell(P);
-  if (charAtSlot(P, cell) === CHAR_UNUSED_15)
-    return rom(P, FAR.RenderTextToBuffer64, { hl: LOCKED_MINIGAME_NAME, de: wShadowTilemap + 16 * TILEMAP_WIDTH + 1, c: 0x20 });
-  const de = rw(P, idx(RenderMinigameNameTextTable, cell * 2));
-  return { ...rom(P, FAR.RenderTextToBuffer64, { hl: idx(Text_30_178, cell), de, c: 0x20 }), b: cell };
+  const r = { ...getRegs(P.cpu), a: WRAM_SCREEN, c: 3 };
+  chain(r, getMenuCursorIndex(P, 3));
+  const cell = r.a;
+  chain(r, nested(P, 2, () => near(P, GetUnlockedMarioCastCharAtGridSlot, { ...r, c: cell })));   // (push af)
+  const far = x => rom(P, FAR.RenderTextToBuffer64, { ...r, ...x, c: 0x20 });
+  if (r.a === CHAR_UNUSED_15) return far({ a: cell, hl: LOCKED_MINIGAME_NAME, de: wShadowTilemap + 16 * TILEMAP_WIDTH + 1 });
+  const hl = idx(Text_30_178, cell);
+  return far({ a: hl & 0xFF, b: cell, hl, de: rw(P, idx(RenderMinigameNameTextTable, cell * 2)) });
 }
 // DrawMinigameSelectGrid9 (3B:65EC): the nine cells' attributes plain, the cursor's active, its character's palette;
 // the grid's rows queued

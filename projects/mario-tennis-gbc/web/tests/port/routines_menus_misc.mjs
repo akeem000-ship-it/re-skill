@@ -211,10 +211,11 @@ M("DrawMinigameHighScoreNumber", 0x7847, { regs: r => ({ b: r(5), c: r(9) }), ac
 M("CheckMinigameDataScrollable", 0x787F);
 M("CompactMinigameDataRows", 0x7896, { active: onChart, n: 1, wram: 3 });
 M("TickMenuBgScrollTask_1b", 0x72A4);
-M("DrawSavedDataTypeSelectCursor", 0x72A8, { active: onType, n: 1 });
-M("DrawSavedDataCursorOption0", 0x72B8, { active: onType, n: 1 }); M("DrawSavedDataCursorOption1", 0x72D9, { active: onType, n: 1 });
-M("RedrawSavedDataTypeSelect", 0x7352, { active: onType, n: 1 });
-M("DrawSavedDataTypeDescription", 0x7383, { active: onType, n: 1 });
+const typePrep = both(mgPrep, (mem, r) => { wf(mem, "menuCursorX", r(2)); wf(mem, "menuCursorY", 0); });
+M("DrawSavedDataTypeSelectCursor", 0x72A8, { active: onType, n: 1, prep: typePrep });
+M("DrawSavedDataCursorOption0", 0x72B8, { active: onType, n: 1, prep: typePrep }); M("DrawSavedDataCursorOption1", 0x72D9, { active: onType, n: 1, prep: typePrep });
+M("RedrawSavedDataTypeSelect", 0x7352, { active: onType, n: 1, prep: typePrep });
+M("DrawSavedDataTypeDescription", 0x7383, { active: onType, n: 1, prep: typePrep });
 M("LoadSavedDataTypePalette", 0x73B6, { regs: r => ({ a: r(2) }) });
 M("BuildMinigameDataScreen", 0x7449, { lcdOff: true, n: 8 });
 M("LoadMinigameDataState", 0x74CA, { active: onChart, n: 1 });

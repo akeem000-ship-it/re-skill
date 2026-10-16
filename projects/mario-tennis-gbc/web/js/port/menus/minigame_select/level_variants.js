@@ -10,10 +10,10 @@
 // web/tests/port/routines_menus_misc.mjs.
 import {
   FAR, rom, romWait, home, farGen, wram, w8, idx, sound, advanceFrame, registerFrameTask, clearFrameTasks,
-  queueSpriteTemplate, fillTilemapRect, queueCopy, hook, hookGen, WRAM_COURT_PLANES, WRAM_SCREEN, TILEMAP_WIDTH,
-  TILE_SIZE, VRAM_BANK1, vTiles0, vBGMap0, wShadowTilemap, wShadowAttrmap, wScreenAttrmap, OAM_BANK1, PADF_A, PADF_B,
-  rIE, IE_TIMER, BGM_MENU, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_LOCKED, SFX_MENU_CANCEL, MENUSLIDE_BACK,
-  MENUSLIDE_FORWARD,
+  queueSpriteTemplate, fillTilemapRect, hook, hookGen, WRAM_COURT_PLANES, WRAM_SCREEN, TILEMAP_WIDTH, TILE_SIZE,
+  VRAM_BANK1, vTiles0, vBGMap0, wShadowTilemap, wShadowAttrmap, wScreenAttrmap, OAM_BANK1, PADF_A, PADF_B, rIE,
+  IE_TIMER, BGM_MENU, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_LOCKED, SFX_MENU_CANCEL, MENUSLIDE_BACK,
+  MENUSLIDE_FORWARD, chain, nested, getRegs, cpFlags, queueVRAMCopy,
 } from "../equipment/defs.js";
 import { moveMenuCursorGrid, getMenuCursorIndex, setMenuCursorFromIndex } from "../common/cursors.js";
 import { openChoiceTabPanel, closeChoiceTabPanel } from "../equipment/choicetab.js";
@@ -44,24 +44,26 @@ const timerInterruptOff = P => P.bus.w8(rIE, P.bus.u8(rIE) & ~IE_TIMER);
 const timerInterruptOn = P => P.bus.w8(rIE, P.bus.u8(rIE) | IE_TIMER);
 
 // FlushLevelSelectTextRows (1B:6DC6): the panel's attribute rows (7-9) and the caption rows (15-16) queued
-export function flushLevelSelectTextRows(P, entryF = P.cpu.f) {
-  const bank = P.V.wramBank;
+export function flushLevelSelectTextRows(P, entryF = P.cpu.f, entry = getRegs(P.cpu)) {
+  const bank = P.V.wramBank, r = { ...entry };
+  const queue = (src, dest, blocks) => chain(chain(r, { hl: src, de: dest, c: blocks }), queueVRAMCopy(P, src, dest, blocks));
   wram(P, WRAM_SCREEN);
-  queueCopy(P, wShadowAttrmap + 7 * TILEMAP_WIDTH, vBGMap0 + 7 * TILEMAP_WIDTH + VRAM_BANK1, 3 * TILEMAP_WIDTH / 16);
-  const r = queueCopy(P, wShadowTilemap + 15 * TILEMAP_WIDTH, vBGMap0 + 15 * TILEMAP_WIDTH, 2 * TILEMAP_WIDTH / 16);
+  queue(wShadowAttrmap + 7 * TILEMAP_WIDTH, vBGMap0 + 7 * TILEMAP_WIDTH + VRAM_BANK1, 3 * TILEMAP_WIDTH / 16);
+  queue(wShadowTilemap + 15 * TILEMAP_WIDTH, vBGMap0 + 15 * TILEMAP_WIDTH, 2 * TILEMAP_WIDTH / 16);
   wram(P, bank);
   return { ...r, a: bank, f: entryF };
 }
 // ClearMinigameLevelDescriptionRow (1B:6DEB): the caption row's frame and inside blank
-export function clearMinigameLevelDescriptionRow(P, entryF = P.cpu.f) {
+export function clearMinigameLevelDescriptionRow(P, entryF = P.cpu.f, entry = getRegs(P.cpu)) {
   const bank = P.V.wramBank;
   wram(P, WRAM_SCREEN);
-  fillTilemapRect(P, wShadowTilemap + 15 * TILEMAP_WIDTH, 0x14, 0x01, FRAME_TOP);
+  const fill = (regs, de, b, h) => nested(P, 1, () => rom(P, FAR.FillTilemapRect, { ...regs, de, b, c: 0x01, h }));   // (push af)
+  const r = fill({ ...entry, a: WRAM_SCREEN }, wShadowTilemap + 15 * TILEMAP_WIDTH, 0x14, FRAME_TOP);
   w8(P, wShadowTilemap + 15 * TILEMAP_WIDTH, FRAME_LEFT_CORNER);
   w8(P, wShadowTilemap + 15 * TILEMAP_WIDTH + 19, FRAME_RIGHT_CORNER);
-  const r = fillTilemapRect(P, wShadowTilemap + 16 * TILEMAP_WIDTH + 1, 0x12, 0x01, BLANK);
+  const r2 = fill({ ...r, a: FRAME_RIGHT_CORNER }, wShadowTilemap + 16 * TILEMAP_WIDTH + 1, 0x12, BLANK);
   wram(P, bank);
-  return { ...r, a: bank, f: entryF };
+  return { ...r2, a: bank, f: entryF };
 }
 // GetMinigameLevelColumnCount (1B:6E1C): b = the levels shown (the cursor grid's width); af kept
 export const getMinigameLevelColumnCount = P => ({ b: P.withWramBank(WRAM_COURT_PLANES, () => levelState(P, LEVEL_SHOWN)) });
@@ -134,11 +136,15 @@ export const runMinigameLevelSelect3 = P => runLevelPanel(P, {
 function redrawLevelPanel(P, tabs, setAttr) {
   wram(P, WRAM_SCREEN);
   for (let tab = 0; tab < tabs; tab++) setAttr(P, tab, 0);
-  setAttr(P, getMenuCursorIndex(P, 2).a, 1);
-  loadMinigameLevelSelectPalette(P, getMenuCursorIndex(P, LEVEL_COLUMNS).a);
-  clearMinigameLevelDescriptionRow(P);
-  drawMinigameLevelDescription(P);
-  return flushLevelSelectTextRows(P);
+  const r = { ...getRegs(P.cpu), a: tabs, b: tabs, c: 2, f: cpFlags(tabs, tabs) };
+  chain(r, getMenuCursorIndex(P, 2));
+  setAttr(P, r.a, 1);
+  chain(r, { b: r.a, c: LEVEL_COLUMNS });
+  chain(r, getMenuCursorIndex(P, LEVEL_COLUMNS));
+  chain(r, loadMinigameLevelSelectPalette(P, r.a));
+  chain(r, nested(P, 1, () => clearMinigameLevelDescriptionRow(P, r.f, r)));
+  chain(r, nested(P, 1, () => drawMinigameLevelDescription(P, r.f, r)));
+  return chain(r, nested(P, 1, () => flushLevelSelectTextRows(P, r.f, r)));
 }
 // RedrawMinigameLevelSelect2 (1B:6F04) / RedrawMinigameLevelSelect3 (1B:708D)
 export const redrawMinigameLevelSelect2 = P => redrawLevelPanel(P, 2, setSelectPanelAttrRect);

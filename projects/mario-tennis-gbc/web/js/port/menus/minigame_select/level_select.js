@@ -15,7 +15,7 @@ import {
   enableLCD, fadeIn, fadeOut, beginFadeIn, waitFadeEnd, loadPaletteShadow, loadCompressedTileBlock, queueCopy,
   disableLCDSafely, hook, hookGen, nop, regs8, WRAM_STAGING, WRAM_COURT_PLANES, WRAM_SCREEN, WRAM_SCENE, WRAM_SOUND,
   TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1, vTiles0, vBGMap0, wDecompBuffer, wShadowTilemap, wScreenAttrmap, PADF_A,
-  PADF_B, SFX_MENU_SELECT, SFX_MENU_CANCEL,
+  PADF_B, SFX_MENU_SELECT, SFX_MENU_CANCEL, chain, nested, getRegs,
 } from "../equipment/defs.js";
 import { decompressData, decompressDataFromBank } from "../../home/decompress.js";
 import { queueVRAMCopy } from "../../home/memory.js";
@@ -86,7 +86,7 @@ export function unusedLoadUnlockDebugCursorGfx(P) {
 // Unused_1b_DrawUnlockDebugFlagSprites (1B:6938), a frame task: a bobbing flag sprite for each of the six flags set
 // (wUnlockFlagsBlock + 2 on), at its place in UnlockDebugFlagSprites
 export function unusedDrawUnlockDebugFlagSprites(P, entryF = P.cpu.f) {
-  const bank = P.V.wramBank;
+  const bank = P.V.wramBank, r = getRegs(P.cpu);
   wram(P, WRAM_SCENE);
   let hl = (P.A.unlockFlagsBlock + 2) & 0xFFFF;
   for (let i = 0; i < UNLOCK_DEBUG_FLAGS; i++) {
@@ -94,16 +94,16 @@ export function unusedDrawUnlockDebugFlagSprites(P, entryF = P.cpu.f) {
     hl = (hl + 1) & 0xFFFF;
     if (!set) continue;
     const at = idx(UnlockDebugFlagSprites, i * 2);
-    unusedQueueBobbingFlagSprite(P, rb(P, at) << 8 | rb(P, at + 1));
+    chain(r, nested(P, 2, () => unusedQueueBobbingFlagSprite(P, rb(P, at) << 8 | rb(P, at + 1))));   // (push af, push af)
   }
   wram(P, bank);
-  return { a: bank, hl, f: entryF };
+  return { ...r, a: bank, hl, f: entryF };
 }
 // Unused_1b_QueueBobbingFlagSprite (1B:6974): the flag sprite at de, bobbing (bank $18's offset); hl kept
 export function unusedQueueBobbingFlagSprite(P, de) {
-  const r = regs8(rom(P, U18.ApplySpriteBobOffset, { de }));
-  queueSpriteRegs(P, r, FLAG_SPRITE_TILE, FLAG_SPRITE_ATTR);
-  return { ...r, h: undefined, l: undefined };
+  const r = nested(P, 1, () => regs8(rom(P, U18.ApplySpriteBobOffset, { de })));          // (push hl)
+  const q = queueSpriteRegs(P, r, FLAG_SPRITE_TILE, FLAG_SPRITE_ATTR);
+  return { ...r, b: FLAG_SPRITE_ATTR, c: FLAG_SPRITE_TILE, ...q, hl: undefined, h: undefined, l: undefined };
 }
 
 // ---- the unused confirm screens and prompts ----
@@ -279,17 +279,19 @@ export function* loadMinigameLevelSelectGfx(P, entryF = P.cpu.f) {
 }
 // DrawMinigameLevelDescription (1B:6D3D): the hovered level's description (Text_30_194 + level), or, with no level
 // cleared, the locked text over the second level
-export function drawMinigameLevelDescription(P, entryF = P.cpu.f) {
-  const bank = P.V.wramBank;
+export function drawMinigameLevelDescription(P, entryF = P.cpu.f, entry = getRegs(P.cpu)) {
+  const bank = P.V.wramBank, regs = { ...entry, c: LEVEL_COLUMNS };
   wram(P, WRAM_COURT_PLANES);
   let r;
-  if (!levelState(P, LEVEL_CLEARED) && getMenuCursorIndex(P, LEVEL_COLUMNS).a === 1) {
+  const far = x => nested(P, 1, () => rom(P, FAR.RenderTextToBuffer64, x));      // (push af)
+  if (!levelState(P, LEVEL_CLEARED) && chain(regs, getMenuCursorIndex(P, LEVEL_COLUMNS)).a === 1) {
     wram(P, WRAM_SCREEN);
-    r = rom(P, FAR.RenderTextToBuffer64, { hl: LOCKED_LEVEL_DESCRIPTION, de: wShadowTilemap + LEVEL_DESCRIPTION_ROW * TILEMAP_WIDTH + 1, c: 0x20 });
+    r = far({ ...regs, a: WRAM_SCREEN, hl: LOCKED_LEVEL_DESCRIPTION, de: wShadowTilemap + LEVEL_DESCRIPTION_ROW * TILEMAP_WIDTH + 1, c: 0x20 });
   } else {
     wram(P, WRAM_SCREEN);
-    const level = getMenuCursorIndex(P, LEVEL_COLUMNS).a;
-    r = { ...rom(P, FAR.RenderTextToBuffer64, { hl: idx(Text_30_194, level), de: rw(P, idx(MinigameLevelDescriptionTable, level * 2)), c: 0x20 }), b: level };
+    chain(regs, getMenuCursorIndex(P, LEVEL_COLUMNS));
+    const level = regs.a, hl = idx(Text_30_194, level);
+    r = far({ ...regs, a: hl & 0xFF, b: level, hl, de: rw(P, idx(MinigameLevelDescriptionTable, level * 2)), c: 0x20 });
   }
   wram(P, bank);
   return { ...r, a: bank, f: entryF };
