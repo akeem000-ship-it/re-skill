@@ -94,7 +94,8 @@ export function getTennisDictionaryRowFirstLetter(P, row) {
 // every byte the mask leaves 0 before the term)
 export function setTennisDictionaryIndexRowFromList(P) {
   wram(P, WRAM_SCENE);
-  let b = (getTennisDictionarySelectedIndex(P).a + 1) & 0xFF, c = 0, hl = SelectionMaskGrid_3f;
+  const { a: index, d } = getTennisDictionarySelectedIndex(P);
+  let b = (index + 1) & 0xFF, c = 0, hl = SelectionMaskGrid_3f;
   const e = P.V.tennisDictCategoryMask;
   for (;;) {
     const m = u8(P, hl) & e;
@@ -104,12 +105,12 @@ export function setTennisDictionaryIndexRowFromList(P) {
       if (!b) break;
       continue;
     }
-    if (m === GRID_END) { P.V.tennisDictCursorRow = 0; return { a: 0, b, c, e, hl, f: FZ }; }
+    if (m === GRID_END) { P.V.tennisDictCursorRow = 0; return { a: 0, b, c, d, e, hl, f: FZ }; }
     c = (c + 1) & 0xFF;
   }
   const r = getTennisDictionaryLetterRow(P, c);
   P.V.tennisDictCursorRow = r.a;
-  return { ...r, b, c, e, hl };
+  return { ...r, b, c, d, e, hl };
 }
 // GetTennisDictionaryLetterRow (3F:54A1): a = letter a's index row (hl kept)
 export function getTennisDictionaryLetterRow(P, letter) {

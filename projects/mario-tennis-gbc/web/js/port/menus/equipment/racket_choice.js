@@ -9,12 +9,12 @@
 // from a story state: the warning's three variants, the choice's two answers); web/tests/port/routines_menus_misc.mjs.
 import {
   FZ, FAR, rom, near, nested, chain, addFlags, wram, w8, sound, advanceFrame, registerFrameTask, clearFrameTasks,
-  queueVRAMCopy, queueSprite,
-  loadPaletteShadow, enableLCD, fadeIn, fadeOut, fillTilemapRect, loadCompressedTileBlock, loadScreenAssetRecord,
-  queueWram3MapToVRAM, prepareGlyphBuffer, uploadGlyphBuffer, renderProportionalTextAt, disableLCDSafely, hook,
-  hookGen, WRAM_STAGING, WRAM_SCREEN, WRAM_TEXT, TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1, vTiles0, vTiles2, vBGMap0,
-  wDecompBuffer, wShadowTilemap, wShadowAttrmap, OAM_BANK1, PADF_A, PADF_B, PADF_UP, PADF_DOWN, rIE, IE_TIMER,
-  BGM_MENU, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_DECIDE, SFX_MENU_CANCEL, MENUSLIDE_BACK, MENUSLIDE_FORWARD,
+  queueVRAMCopy, queueSprite, loadPaletteShadow, enableLCD, fadeIn, fadeOut, fillTilemapRect, loadCompressedTileBlock,
+  loadScreenAssetRecord, queueWram3MapToVRAM, prepareGlyphBuffer, uploadGlyphBuffer, renderProportionalTextAt,
+  disableLCDSafely, hook, hookGen, WRAM_STAGING, WRAM_SCREEN, WRAM_TEXT, TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1,
+  vTiles0, vTiles2, vBGMap0, wDecompBuffer, wShadowTilemap, wShadowAttrmap, OAM_BANK1, PADF_A, PADF_B, PADF_UP,
+  PADF_DOWN, rIE, IE_TIMER, BGM_MENU, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_DECIDE, SFX_MENU_CANCEL,
+  MENUSLIDE_BACK, MENUSLIDE_FORWARD,
 } from "./defs.js";
 import { copyMemoryBC } from "../../home/memory.js";
 import { decompressDataFromBank as homeDecompressFromBank } from "../../home/decompress.js";

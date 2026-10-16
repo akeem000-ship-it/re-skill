@@ -105,7 +105,7 @@ export function unusedFillBytesWithValue(P, value, hl, bc) {
 // Unused_1b_FindUnlockDebugRosterEntry (1B:65EA): Unused_18_FindRosterEntry over wCharSelectRoster (a: the
 // character, de: the field). pushed: the words below the hook's sp at the entry (a caller's pushes and `call`)
 export function unusedFindUnlockDebugRosterEntry(P, entry, pushed = 0) {
-  return rom(P, FAR.Unused_18_FindRosterEntry, { ...entry, f: farFlagsAt(P, pushed), hl: wCharSelectRoster });
+  return rom(P, FAR.Unused_18_FindRosterEntry, { ...entry, farF: farFlagsAt(P, pushed), hl: wCharSelectRoster });
 }
 // Unused_1b_GetUnlockDebugRosterField (1B:65F1): de = the word at field de of character a's roster entry (hl kept)
 export function unusedGetUnlockDebugRosterField(P, entry, pushed = 0) {
@@ -149,7 +149,7 @@ export function unusedStartUnlockDebugCursorTask(P) {
 // Unused_1b_UpdateUnlockDebugCursorTask (1B:668D), a frame task: the cursor at the hovered character's cell
 export function unusedUpdateUnlockDebugCursorTask(P, entry) {
   const r = unusedGetUnlockDebugRosterField(P, { ...entry, a: u8(P, wCharSelectChar), d: 0, e: FIELD_CURSOR }, 1);
-  return rom(P, FAR.Unused_18_DrawCharSelectCursor, { ...r, f: farFlagsAt(P, 0), a: u8(P, wCharSelectChar) });
+  return rom(P, FAR.Unused_18_DrawCharSelectCursor, { ...r, farF: farFlagsAt(P, 0), a: u8(P, wCharSelectChar) });
 }
 // Unused_1b_UpdateUnlockDebugSelectedMugshot (1B:669D): the hovered character's record (none: no mugshot) and the
 // stat task
@@ -164,12 +164,12 @@ export function unusedUpdateUnlockDebugSelectedMugshot(P, entry) {
 // updated)
 function loadHoveredRecord(P, r, char) {
   const c = r.c;
-  chain(r, rom(P, FAR.Unused_18_CheckUnlockFlag, { ...r, f: farFlagsAt(P, 1), a: char, b: char }));
+  chain(r, rom(P, FAR.Unused_18_CheckUnlockFlag, { ...r, farF: farFlagsAt(P, 1), a: char, b: char }));
   chain(r, { a: char, b: char, c });
   if (r.f & FZ) {
     w8(P, wCharRecordBuffer + RECORD_MUGSHOT, NO_MUGSHOT);
     r.a = NO_MUGSHOT;
-  } else chain(r, rom(P, FAR.LoadCharacterRecordToBuffer, { ...r, f: farFlagsAt(P, 0) }));
+  } else chain(r, rom(P, FAR.LoadCharacterRecordToBuffer, { ...r, farF: farFlagsAt(P, 0) }));
   return r;
 }
 // Unused_1b_UpdateUnlockDebugStatOnChange (1B:66C4), a frame task: on a new hovered character, its stat field read
@@ -182,8 +182,8 @@ export function unusedUpdateUnlockDebugStatOnChange(P, entry) {
 // Unused_1b_DrawUnlockDebugMugshots (1B:66D7): every unlocked roster character's mugshot to its VRAM slot with its
 // attributes; then the hovered character's record
 export function unusedDrawUnlockDebugMugshots(P, entry) {
-  const r = chain({ ...entry }, rom(P, FAR.Unused_1b_ResetMugshotPalettes, { ...entry, f: farFlagsAt(P, 0) }));
-  const far = (fn, regs = {}) => chain(r, rom(P, fn, { ...r, f: farFlagsAt(P, 0), ...regs }));
+  const r = chain({ ...entry }, rom(P, FAR.Unused_1b_ResetMugshotPalettes, { ...entry, farF: farFlagsAt(P, 0) }));
+  const far = (fn, regs = {}) => chain(r, rom(P, fn, { ...r, farF: farFlagsAt(P, 0), ...regs }));
   const hl = () => r.h << 8 | r.l, field = de => chain(r, unusedGetUnlockDebugRosterField(P, { ...r, a: u8(P, hl()), d: 0, e: de }, 1));
   chain(r, { hl: wCharSelectRoster });
   do {
@@ -235,7 +235,7 @@ export function* unusedRunMinigameFlagsDebugScreen(P, entry) {
     const edge = P.V.inputRisingEdge;
     if (edge & PADF_A) {
       const char = u8(P, wCharSelectChar);
-      const r = rom(P, FAR.Unused_18_CheckUnlockFlag, { ...getRegs(P.cpu), f: farFlagsAt(P, 1), a: char, b: char });
+      const r = rom(P, FAR.Unused_18_CheckUnlockFlag, { ...getRegs(P.cpu), farF: farFlagsAt(P, 1), a: char, b: char });
       if (r.f & FZ) return yield* P.runRom(BANK, 0x6792, { ...regs8(r), a: char, b: char, c: getRegs(P.cpu).c });   // .playSfx
       sound(P, SFX_MENU_SELECT);
       f = r.f;
@@ -299,7 +299,7 @@ export function unusedStepUnlockDebugCursor(P, b, d, e, hl) {
 export function unusedReadUnlockFlagsSaveBlock(P, entry) {
   const old = P.V.wramBank;
   wram(P, WRAM_SCENE);
-  const r = rom(P, FAR.ReadSaveBlock, { ...entry, f: farFlagsAt(P, 2), hl: wUnlockFlagsBlock, b: SAVEBLOCK_N64_RECORDS });
+  const r = rom(P, FAR.ReadSaveBlock, { ...entry, farF: farFlagsAt(P, 2), hl: wUnlockFlagsBlock, b: SAVEBLOCK_N64_RECORDS });
   wram(P, old);
   return { ...regs8(r), f: entry.f, b: entry.b, c: entry.c };
 }
@@ -307,7 +307,7 @@ export function unusedReadUnlockFlagsSaveBlock(P, entry) {
 export function unusedWriteUnlockFlagsSaveBlock(P, entry) {
   const old = P.V.wramBank;
   wram(P, WRAM_SCENE);
-  const r = rom(P, FAR.WriteSaveBlock, { ...entry, f: farFlagsAt(P, 1), hl: wUnlockFlagsBlock, de: 0, b: SAVEBLOCK_N64_RECORDS });
+  const r = rom(P, FAR.WriteSaveBlock, { ...entry, farF: farFlagsAt(P, 1), hl: wUnlockFlagsBlock, de: 0, b: SAVEBLOCK_N64_RECORDS });
   wram(P, old);
   return { ...regs8(r), a: old, f: entry.f };
 }

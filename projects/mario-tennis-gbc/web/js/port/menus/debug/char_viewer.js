@@ -58,7 +58,7 @@ export const unusedCopyBank1ToBank2Buffer = (P, hl, bc) => copyFromBank1(P, WRAM
 export function unusedInitCharViewerState(P, entry) {
   wram(P, WRAM_SCENE);
   for (const v of [wCharViewerCursor, wCharViewerRow, wCharViewerSavedCursor, wCharViewerPose]) w8(P, v, 0);
-  const r = rom(P, FAR.GetCharPaletteIndex, { ...entry, f: farFlagsAt(P, 0), a: u8(P, wCharViewerCharId) });
+  const r = rom(P, FAR.GetCharPaletteIndex, { ...entry, farF: farFlagsAt(P, 0), a: u8(P, wCharViewerCharId) });
   w8(P, wCharViewerPalette, r.a);
   return r;
 }
@@ -161,7 +161,7 @@ export function unusedRefreshCharViewerSelection(P, entry) {
   wram(P, WRAM_SCENE);
   const text = u8(P, wCharViewerRow) ? Text_34_192 : (Text_34_192 + u8(P, wCharViewerCursor) + 1) & 0xFFFF;
   wram(P, WRAM_SCREEN);
-  chain(r, rom(P, FAR.RenderTextToBuffer64, { ...r, f: farFlagsAt(P, 0), a: WRAM_SCREEN, hl: text, de: NAME_AT, c: NAME_WIDTH }));
+  chain(r, rom(P, FAR.RenderTextToBuffer64, { ...r, farF: farFlagsAt(P, 0), a: WRAM_SCREEN, hl: text, de: NAME_AT, c: NAME_WIDTH }));
   wram(P, WRAM_SCREEN);
   r.a = WRAM_SCREEN;
   return queue(NAME_ROWS, vBGMap0 + 15 * TILEMAP_WIDTH, 2 * TILEMAP_WIDTH / 16);
@@ -170,7 +170,7 @@ export function unusedRefreshCharViewerSelection(P, entry) {
 // (palette 7), and the character itself (WRAM 4's character 0: palette 7, its tiles at $8600)
 export function unusedSetupCharViewerScene(P, entry) {
   const r = { ...entry };
-  const far = (fn, regs) => chain(r, rom(P, fn, { ...r, f: farFlagsAt(P, 0), ...regs }));
+  const far = (fn, regs) => chain(r, rom(P, fn, { ...r, farF: farFlagsAt(P, 0), ...regs }));
   chain(r, near(P, Unused_1a_LoadCharViewerMugshot, r));
   wram(P, WRAM_SCENE);
   far(FAR.Unused_04_GetCharObjectId, { a: u8(P, wCharViewerCharId) });

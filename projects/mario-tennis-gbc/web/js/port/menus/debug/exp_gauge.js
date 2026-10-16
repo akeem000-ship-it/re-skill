@@ -179,7 +179,7 @@ export function* unusedDrawExpScreenCaption(P, a, entry) {
   if (a > 5) return chain(r, { a: (a - 5) & 0xFF, f: decFlags((a - 4) & 0xFF, 0) });
   if (a === CAPTION_EXP) {
     wram(P, WRAM_SCREEN);
-    chain(r, yield* romWait(P, FAR.RenderProportionalTextAt, { ...r, f: farFlagsAt(P, 0), a: WRAM_SCREEN, hl: Text_31_242, de: CAPTION_AT, c: CAPTION_WIDTH }));
+    chain(r, yield* romWait(P, FAR.RenderProportionalTextAt, { ...r, farF: farFlagsAt(P, 0), a: WRAM_SCREEN, hl: Text_31_242, de: CAPTION_AT, c: CAPTION_WIDTH }));
     sound(P, SFX_CAPTION);
     return r;
   }

@@ -10,15 +10,14 @@
 // Tests: lockstep on out/port/story_pause_items.mtrec (the status screen's panels) and out/port/eq_all.mtrec
 // (scripted from a story state, items owned: moves, equip, back); web/tests/port/routines_menus_misc.mjs.
 import {
-  FZ, FN, FAR, rom, romWait, near, wram, u8, w8, idx, sound, advanceFrame, registerFrameTask, clearFrameTasks,
+  FZ, FN, FAR, rom, romWait, near, wram, rd, wr, u8, w8, idx, sound, advanceFrame, registerFrameTask, clearFrameTasks,
   loadPaletteShadow, enableLCD, fadeIn, fadeOut, copyTilemapRect, loadCompressedTileBlock, loadScreenAssetRecord,
   queueWram3MapToVRAM, prepareGlyphBuffer, disableLCDSafely, testFlag, hook, hookGen, WRAM_SCREEN, TILEMAP_WIDTH,
   TILE_SIZE, VRAM_BANK1, vTiles0, wShadowTilemap, wShadowAttrmap, PADF_A, PADF_B, SFX_MENU_MOVE, SFX_MENU_DECIDE,
-  SFX_MENU_CANCEL,
+  SFX_MENU_CANCEL, FH, FC, orFlags, chain, nested, nestedGen, getRegs, ixF,
 } from "./defs.js";
 import { clearMemory16 } from "../../home/memory.js";
 import { clearBytes } from "../../home/system.js";
-import { moveMenuCursorGrid, getMenuCursorIndex } from "../common/cursors.js";
 import {
   loadEquipSelectCommon, clearEquipSelectTextRows, flushEquipSelectTextRows, getHoveredItemId, getEquippedItemId,
   drawEquippedItemStatMods, drawHoveredItemStatMods, renderShoesDescText, renderRacketDescText, renderShoesNameText,
@@ -43,24 +42,30 @@ const setMenuCursorFromIndex3e = (P, cols, index) => near(P, FAR.SetMenuCursorFr
 // ---- the status screen's panels ----
 // The equipped item of the kind: its icon at `icon`, its name after it, its stat changes in the rows of `rowSet`
 // (wMenuCursorX = its place in the list, for the cursor routines)
-function* drawEquippedPanel(P, kind, markOwned, rowSet, icon, renderName) {
-  P.V.equipItemKind = kind;
-  markOwned(P);
-  buildOwnedItemList(P);
-  P.V.equipStatRowSet = rowSet;
-  P.V.menuCursorX = P.V.equipEquippedIndex;
-  drawItemIcon2x2(P, getEquippedItemId(P).a, icon);
-  const r = yield* renderName(P, getEquippedItemId(P).a, (icon + 3) & 0xFFFF);
+function* drawEquippedPanel(P, kind, markOwned, rowSet, icon, renderName, r) {
+  wr(P, "equipItemKind", kind);
+  chain(r, markOwned(P));
+  chain(r, buildOwnedItemList(P));
+  wr(P, "equipStatRowSet", rowSet);
+  P.V.menuCursorX = rd(P, "equipEquippedIndex");
+  chain(r, getEquippedItemId(P));
+  chain(r, { c: r.a, de: icon });
+  drawItemIcon2x2(P, r.a, icon);
+  chain(r, getEquippedItemId(P));
+  chain(r, { c: r.a, de: (icon + 3) & 0xFFFF });
+  chain(r, yield* nestedGen(P, 1, renderName(P, r.a, (icon + 3) & 0xFFFF, r)));
   drawEquippedItemStatMods(P);
   return r;
 }
 // DrawEquippedRacketPanel (3E:5458): the upper panel
-export const drawEquippedRacketPanel = P =>
-  drawEquippedPanel(P, EQUIP_RACKET, markOwnedRackets, ROWSET_STATUS_RACKET, wShadowTilemap + 1 * TILEMAP_WIDTH + 5, renderRacketNameText);
+export const drawEquippedRacketPanel = (P, entry = getRegs(P.cpu)) => drawEquippedPanel(P, EQUIP_RACKET, markOwnedRackets,
+  ROWSET_STATUS_RACKET, wShadowTilemap + 1 * TILEMAP_WIDTH + 5, renderRacketNameText, { ...entry });
 // DrawEquippedShoesPanel (3E:5486): the lower panel (the item list cleared first)
-export function* drawEquippedShoesPanel(P) {
-  clearMemory16(P, P.A.equipItemList, STATUS_CLEAR_BLOCKS);
-  return yield* drawEquippedPanel(P, EQUIP_SHOES, markOwnedShoes, ROWSET_STATUS_SHOES, wShadowTilemap + 10 * TILEMAP_WIDTH + 5, renderShoesNameText);
+export function* drawEquippedShoesPanel(P, entry = getRegs(P.cpu)) {
+  const hl = clearMemory16(P, P.A.equipItemList, STATUS_CLEAR_BLOCKS);
+  const r = { ...entry, a: 0, b: 0, c: 0, h: hl >> 8, l: hl & 0xFF, f: FZ | FN };
+  return yield* drawEquippedPanel(P, EQUIP_SHOES, markOwnedShoes, ROWSET_STATUS_SHOES, wShadowTilemap + 10 * TILEMAP_WIDTH + 5,
+    renderShoesNameText, r);
 }
 
 // ---- the select screens ----
@@ -74,10 +79,10 @@ function* runEquipSelectScreen(P, load) {
   yield* fadeIn(P, 16);
   for (;;) {
     yield* handleEquipSelectInput(P);
-    let timer = P.V.equipSelectExitTimer;
+    let timer = rd(P, "equipSelectExitTimer");
     if (timer) {
       timer = (timer + 1) & 0xFF;
-      P.V.equipSelectExitTimer = timer;
+      wr(P, "equipSelectExitTimer", timer);
       if (timer >= EXIT_AT) {
         yield* fadeOut(P, 16);
         clearFrameTasks(P);
@@ -97,8 +102,8 @@ function* loadEquipList(P, kind, markOwned, drawInfoPanel) {
   setMenuCursorFromIndex3e(P, LIST_COLUMNS, 0);
   wram(P, WRAM_SCREEN);
   clearMemory16(P, P.A.equipItemList, LIST_CLEAR_BLOCKS);
-  P.V.equipItemKind = kind;
-  P.V.equipStatRowSet = ROWSET_HOVERED;
+  wr(P, "equipItemKind", kind);
+  wr(P, "equipStatRowSet", ROWSET_HOVERED);
   markOwned(P);
   buildOwnedItemList(P);
   drawOwnedItemIcons(P);
@@ -126,81 +131,92 @@ export function* loadShoesSelectScreen(P) {
   return yield* loadEquipList(P, EQUIP_SHOES, markOwnedShoes, drawShoesInfoPanel);
 }
 // DrawOwnedItemIcons (3E:5563): the listed items' icons in a row from (7, 1), two cells apart
-export function drawOwnedItemIcons(P) {
+export function drawOwnedItemIcons(P, entryF = P.cpu.f) {
   let hl = P.A.equipItemList, de = wShadowTilemap + 1 * TILEMAP_WIDTH + 7, c = 0;
-  for (let n = P.V.equipItemCount || 0x100; n > 0; n--) {      // (never 0: item 0 is always owned)
+  for (let n = rd(P, "equipItemCount") || 0x100; n > 0; n--) {      // (never 0: item 0 is always owned)
     c = u8(P, hl); hl = (hl + 1) & 0xFFFF;
     drawItemIcon2x2(P, c, de);
     de = (de + 2) & 0xFFFF;
   }
-  return { a: 0, b: 0, c, de, hl, f: FZ | FN };
+  return { a: 0, b: 0, c, de, hl, f: FZ | FN | (entryF & FC) };       // (C: DrawItemIcon2x2 keeps the caller's)
 }
 // DrawItemIcon2x2 (3E:557A): item c's 2x2 icon (tiles and attributes) from the kind's icon row to de. Registers kept.
 export function drawItemIcon2x2(P, item, de) {
-  const hl = idx(P.V.equipItemKind ? ICON_ROW_SHOES : ICON_ROW_RACKETS, item * 2);
+  const hl = idx(rd(P, "equipItemKind") ? ICON_ROW_SHOES : ICON_ROW_RACKETS, item * 2);
   copyTilemapRect(P, hl, de, 0x02, 0x02);
   copyTilemapRect(P, (hl + ATTRMAP_OFFSET) & 0xFFFF, (de + ATTRMAP_OFFSET) & 0xFFFF, 0x02, 0x02);
 }
 // HandleEquipSelectInput (3E:55AF): a frame's input: A (unless leaving already) equips the hovered item and starts
 // the exit timer; B starts it at $44 (cancelled); otherwise the cursor moves, redrawing the hovered item's panel
-export function* handleEquipSelectInput(P) {
+export function* handleEquipSelectInput(P, entry = getRegs(P.cpu)) {
   const input = P.V.inputPressed;
   P.V.menuInputPressed = input;
+  const r = { ...entry, a: input };
   if (input & PADF_A) {
-    if (!P.V.equipSelectExitTimer) {
+    const timer = rd(P, "equipSelectExitTimer");
+    if (!timer) {
       sound(P, SFX_MENU_DECIDE);
-      P.V.equipSelectExitTimer = EXIT_EQUIPPED;
-      P.V.equipEquippedIndex = getMenuCursorIndex(P, P.V.equipItemCount).a;
+      wr(P, "equipSelectExitTimer", EXIT_EQUIPPED);
+      const count = rd(P, "equipItemCount");
+      chain(r, near(P, FAR.GetMenuCursorIndex_3e[1], { ...r, c: count }));
+      wr(P, "equipEquippedIndex", r.a);
       const item = getEquippedItemId(P).a, old = P.V.equippedRacket;
-      const swapped = ((item << 4) | (item >> 4)) & 0xFF;              // (swap a)
-      const v = P.V.equipItemKind !== EQUIP_RACKET ? (old & 0x0F) | swapped : (old & 0xF0) | item;
-      P.V.equippedRacket = v & 0xFF;
-      return { a: v & 0xFF };
+      const b = rd(P, "equipItemKind") !== EQUIP_RACKET ? ((item << 4) | (item >> 4)) & 0xFF : item;   // (swap a)
+      const v = (b === item ? old & 0xF0 : old & 0x0F) | b;
+      P.V.equippedRacket = v;
+      return { ...r, a: v, b, f: orFlags(v) };
     }
   } else if (input & PADF_B) {
     sound(P, SFX_MENU_CANCEL);
-    P.V.equipSelectExitTimer = EXIT_CANCELLED;
-    return { a: EXIT_CANCELLED };
+    wr(P, "equipSelectExitTimer", EXIT_CANCELLED);
+    return { ...r, a: EXIT_CANCELLED, f: FH | (entry.f & FC) };
   }
-  const moved = moveMenuCursorGrid(P, P.V.equipItemCount, 1);
-  if (!moved.a) return { a: 0, f: FZ };
+  const count = rd(P, "equipItemCount");
+  chain(r, near(P, FAR.MoveMenuCursorGrid_3e[1], { ...r, a: count, b: count, c: 1 }));
+  if (!r.a) return { ...r, f: FZ };
   sound(P, SFX_MENU_MOVE);
-  clearEquipSelectTextRows(P);
-  if (P.V.equipItemKind) yield* drawShoesInfoPanel(P); else yield* drawRacketInfoPanel(P);
-  return flushEquipSelectTextRows(P);
+  chain(r, nested(P, 1, () => clearEquipSelectTextRows(P, r)));
+  const kind = rd(P, "equipItemKind");
+  chain(r, { a: kind, f: orFlags(kind) });
+  chain(r, yield* nestedGen(P, 1, kind ? drawShoesInfoPanel(P, r) : drawRacketInfoPanel(P, r)));
+  return nested(P, 1, () => flushEquipSelectTextRows(P, r));
 }
 // The hovered item's panel: its stat changes, icon, description and name (the glyphs uploaded over frames with the
 // LCD on)
-function* drawInfoPanel(P, renderDesc, renderName) {
-  prepareGlyphBuffer(P);
+function* drawInfoPanel(P, renderDesc, renderName, entry = getRegs(P.cpu)) {
+  const r = chain({ ...entry }, prepareGlyphBuffer(P, entry));
   drawHoveredItemStatMods(P);
-  const item = getHoveredItemId(P).a;
+  chain(r, getHoveredItemId(P));
+  const item = r.a, b = r.b;
+  r.c = item;
+  chain(r, { de: wShadowTilemap + 5 * TILEMAP_WIDTH + 5 });
   drawItemIcon2x2(P, item, wShadowTilemap + 5 * TILEMAP_WIDTH + 5);
-  yield* renderDesc(P, item);
-  yield* renderName(P, item, wShadowTilemap + 5 * TILEMAP_WIDTH + 8);
-  return yield* romWait(P, FAR.UploadGlyphBuffer);
+  chain(r, yield* nestedGen(P, 2, renderDesc(P, item, r)));
+  chain(r, { b, c: item });
+  chain(r, yield* nestedGen(P, 1, renderName(P, item, wShadowTilemap + 5 * TILEMAP_WIDTH + 8, r)));
+  return yield* romWait(P, FAR.UploadGlyphBuffer, r);
 }
 // DrawRacketInfoPanel (3E:5624) / DrawShoesInfoPanel (3E:5704)
-export const drawRacketInfoPanel = P => drawInfoPanel(P, renderRacketDescText, renderRacketNameText);
-export const drawShoesInfoPanel = P => drawInfoPanel(P, renderShoesDescText, renderShoesNameText);
+export const drawRacketInfoPanel = (P, entry) => drawInfoPanel(P, renderRacketDescText, renderRacketNameText, entry);
+export const drawShoesInfoPanel = (P, entry) => drawInfoPanel(P, renderShoesDescText, renderShoesNameText, entry);
 
 // ---- the items owned ----
 // BuildOwnedItemList (3E:5725): wEquipItemList = the items marked in wEquipOwnedMap, in order; wEquipItemCount their
 // number, wEquipEquippedIndex the place of the equipped one. Returns a = the count.
 export function buildOwnedItemList(P) {
-  P.V.equipEquippedIndex = 0;
-  P.V.equipItemCount = 0;
+  wr(P, "equipEquippedIndex", 0);
+  wr(P, "equipItemCount", 0);
   const list = P.A.equipItemList, map = P.A.equipOwnedMap;
   clearBytes(P, list, ITEM_SLOTS);
   let count = 0;
   for (let item = 0; item < ITEM_SLOTS; item++) {
     const mark = u8(P, map + item);
     if (!mark) continue;
-    if (mark !== OWNED) P.V.equipEquippedIndex = count;
+    if (mark !== OWNED) wr(P, "equipEquippedIndex", count);
     w8(P, list + count, item);
     count++;
   }
-  P.V.equipItemCount = count;
+  wr(P, "equipItemCount", count);
   return { a: count, b: count, c: ITEM_SLOTS, de: list + count, hl: map + ITEM_SLOTS, f: FZ | FN };
 }
 // wEquipOwnedMap: item 0 owned, item 1 + i owned when its flag (the table's) is set; then the equipped one marked
@@ -213,9 +229,9 @@ function markOwned(P, flagTable, flags, equipped) {
     e = rb(P, flagTable + i);
     if (testFlag(P, e)) w8(P, map + 1 + i, OWNED);
   }
-  const at = idx(map, equipped);
+  const { hl: at, f } = ixF(map, equipped);
   w8(P, at, EQUIPPED);
-  return { a: EQUIPPED, b: 0, c: flags, d: 0, e, hl: at };
+  return { a: EQUIPPED, b: 0, c: flags, d: 0, e, hl: at, f };
 }
 // MarkOwnedRackets (3E:575A) / MarkOwnedShoes (3E:57A8)
 export const markOwnedRackets = P => markOwned(P, RacketItemTiles_3e, RACKET_FLAGS, P.V.equippedRacket & 0x0F);

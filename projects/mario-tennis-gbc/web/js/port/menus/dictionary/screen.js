@@ -15,7 +15,7 @@ import {
   FZ, FN, FAR, rom, romWait, wram, u8, w8, idx, cpFlags, sound, advanceFrame, waitFrames, registerFrameTask,
   unregisterFrameTask, clearFrameTasks, queueSpriteTemplate, enableLCD, fadeIn, fadeOut, disableLCDSafely, testFlag,
   hook, hookGen, WRAM_STAGING, WRAM_COURT_PLANES, WRAM_SCREEN, WRAM_SCENE, TILE_SIZE, VRAM_BANK1, vTiles0, vTiles1,
-  vTiles2, wDecompBuffer, wShadowTilemap, wScreenAttrmap, OAM_BANK1, SFX_MENU_SELECT,
+  vTiles2, wDecompBuffer, wShadowTilemap, wScreenAttrmap, OAM_BANK1, SFX_MENU_SELECT, chain, getRegs,
 } from "../equipment/defs.js";
 import { decompressData, decompressDataFromBank } from "../../home/decompress.js";
 import { queueVRAMCopy } from "../../home/memory.js";
@@ -163,35 +163,38 @@ export function resetTennisDictionaryScroll(P) {
 }
 // a page's assets: its list tiles (bank $3a) and the text tiles to VRAM bank 1, its BG palettes (into the master
 // copy: the fade brings them up), its list map into WRAM 2
-function loadPageAssets(P, slot, palettes, listData) {
+function loadPageAssets(P, slot, palettes, listData, entry) {
+  const r = { ...entry, a: WRAM_STAGING };
+  const queue = (src, dest) => chain(chain(r, { hl: src, de: dest, c: LIST_TILE_BLOCKS }), queueVRAMCopy(P, src, dest, LIST_TILE_BLOCKS));
   wram(P, WRAM_STAGING);
-  decompressDataFromBank(P, slot >> 8, slot & 0xFF, wDecompBuffer);
-  queueVRAMCopy(P, wDecompBuffer, vTiles2 + VRAM_BANK1, LIST_TILE_BLOCKS);
-  queueVRAMCopy(P, wTextTileBuffer, vTiles1 + VRAM_BANK1, LIST_TILE_BLOCKS);
-  loadPalettesMasterOnly(P, palettes, 0, 8);
+  chain(r, { hl: decompressDataFromBank(P, slot >> 8, slot & 0xFF, wDecompBuffer), de: wDecompBuffer });
+  queue(wDecompBuffer, vTiles2 + VRAM_BANK1);
+  queue(wTextTileBuffer, vTiles1 + VRAM_BANK1);
+  chain(chain(r, { hl: palettes, d: 0, e: 8 }), loadPalettesMasterOnly(P, palettes, 0, 8));
   wram(P, WRAM_COURT_PLANES);
-  decompressData(P, listData, wScreenAttrmap);
+  return chain(r, { a: WRAM_COURT_PLANES, hl: decompressData(P, listData, wScreenAttrmap), de: wScreenAttrmap });
 }
 // LoadTennisDictionaryAssetsDefault (3F:425F): the list page's (its list map's cells then cleared)
-export function loadTennisDictionaryAssetsDefault(P) {
-  loadPageAssets(P, DataPtr_TennisDictionaryListTiles, TennisDictionaryPalettesDefault, TennisDictionaryListDataDefault);
-  return clearTennisDictionaryTilemap(P);
+export function loadTennisDictionaryAssetsDefault(P, entry = getRegs(P.cpu)) {
+  const r = loadPageAssets(P, DataPtr_TennisDictionaryListTiles, TennisDictionaryPalettesDefault, TennisDictionaryListDataDefault, entry);
+  return clearTennisDictionaryTilemap(P, r);
 }
 // LoadTennisDictionaryAssetsChar6 (3F:42A0): the index page's
-export function loadTennisDictionaryAssetsChar6(P) {
-  loadPageAssets(P, DataPtr_TennisDictionaryTiles, TennisDictionaryPalettesChar6, TennisDictionaryListDataChar6);
+export function loadTennisDictionaryAssetsChar6(P, entry = getRegs(P.cpu)) {
+  return loadPageAssets(P, DataPtr_TennisDictionaryTiles, TennisDictionaryPalettesChar6, TennisDictionaryListDataChar6, entry);
 }
-// the clear list's 14 records (address, count): each passed to fn
+// the clear list's 14 records (address, count): each passed to fn. Returns hl past them and the last address.
 function forClearRecords(P, fn) {
-  let hl = TennisDictionaryClearList2;
-  for (let i = 0; i < CLEAR_RECORDS; i++, hl += 4) fn(P.rom.u16(BANK, hl), P.rom.u16(BANK, hl + 2));
-  return hl;
+  let hl = TennisDictionaryClearList2, at = 0;
+  for (let i = 0; i < CLEAR_RECORDS; i++, hl += 4) { at = P.rom.u16(BANK, hl); fn(at, P.rom.u16(BANK, hl + 2)); }
+  return { hl, at };
 }
-// ClearTennisDictionaryTilemap (3F:42DE): the list cells of the WRAM 2 map zeroed (TennisDictionaryClearList2)
-export function clearTennisDictionaryTilemap(P) {
+// ClearTennisDictionaryTilemap (3F:42DE): the list cells of the WRAM 2 map zeroed (TennisDictionaryClearList2);
+// b kept (its push bc), de = the last cells' address
+export function clearTennisDictionaryTilemap(P, entry = getRegs(P.cpu)) {
   wram(P, WRAM_COURT_PLANES);
-  const hl = forClearRecords(P, (at, count) => clearBytes(P, at, count));
-  return { a: 0, bc: 0, c: 0, hl, f: FZ };
+  const { hl, at } = forClearRecords(P, (at, count) => clearBytes(P, at, count));
+  return { a: 0, b: entry.b, c: 0, d: at >> 8, e: at & 0xFF, h: hl >> 8, l: hl & 0xFF, f: FZ | FN };
 }
 // LoadTennisDictionaryScreen (3F:42FE): the camera on the mode's page, the terms counted, the graphics and palettes,
 // the page's assets, the scene map (its list cells blank, the mode's title tiles in rows 2 and 4), the map scrolled

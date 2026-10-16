@@ -81,14 +81,16 @@ function pushFarCallFrame(P, regs) {
   push(P, hl & 0xFFFF);
   push(P, (a & 0xFF) << 8 | P.V.romBank);
 }
+// (F is FarCall's: the caller's flags never reach the callee; farF: the flags for a caller that pushed words first)
+const farRegs = (P, regs) => { const { farF, ...r } = given(regs); return { ...r, f: farF ?? farcallFlags(P.cpu.sp) }; };
 export function rom(P, [bank, a], regs = {}) {
-  const sp = P.cpu.sp, r = { f: farcallFlags(sp), ...given(regs) };
+  const sp = P.cpu.sp, r = farRegs(P, regs);
   pushFarCallFrame(P, r);
   try { return out8(P.callRom(bank, a, r)); } finally { P.cpu.sp = sp; }
 }
 export const home = (P, a, regs = {}) => out8(P.callRom(0, a, given(regs)));
 export function* romWait(P, [bank, a], regs = {}) {
-  const sp = P.cpu.sp, r = { f: farcallFlags(sp), ...given(regs) };
+  const sp = P.cpu.sp, r = farRegs(P, regs);
   pushFarCallFrame(P, r);
   try { return out8(yield* P.runRom(bank, a, r)); } finally { P.cpu.sp = sp; }
 }
@@ -102,7 +104,7 @@ export const copyTilemapRect = (P, hl, de, w, h) => rom(P, FAR_PAUSE.CopyTilemap
 export const loadCompressedTileBlock = (P, block, dest, blocks) => rom(P, FAR_PAUSE.LoadCompressedTileBlock, { b: block, c: blocks, de: dest });
 export const loadScreenAssetRecord = (P, asset) => rom(P, FAR_PAUSE.LoadScreenAssetRecord, { c: asset });
 export const queueWram3MapToVRAM = P => rom(P, FAR_PAUSE.QueueWram3MapToVRAM);
-export const prepareGlyphBuffer = P => rom(P, FAR_PAUSE.PrepareGlyphBuffer);
+export const prepareGlyphBuffer = (P, regs = {}) => rom(P, FAR_PAUSE.PrepareGlyphBuffer, regs);
 export function* uploadGlyphBuffer(P) { return yield* romWait(P, FAR_PAUSE.UploadGlyphBuffer); }
 export function* renderProportionalTextAt(P, text, de, c) { return yield* romWait(P, FAR_PAUSE.RenderProportionalTextAt, { hl: text, de, c }); }
 export const disableLCDSafely = P => home(P, HOME_PAUSE.DisableLCDSafely);
@@ -124,6 +126,11 @@ export function nested(P, words, fn) {
   const sp = P.cpu.sp;
   P.cpu.sp = (sp - 2 * words) & 0xFFFF;
   try { return fn(); } finally { P.cpu.sp = sp; }
+}
+export function* nestedGen(P, words, gen) {
+  const sp = P.cpu.sp;
+  P.cpu.sp = (sp - 2 * words) & 0xFFFF;
+  try { return yield* gen; } finally { P.cpu.sp = sp; }
 }
 // QueueVRAMCopy (00:0480) with every register it leaves (c = the count loaded, which a full queue keeps)
 export const queueCopy = (P, src, dest, blocks) => ({ c: blocks & 0xFF, ...queueVRAMCopy(P, src, dest, blocks) });

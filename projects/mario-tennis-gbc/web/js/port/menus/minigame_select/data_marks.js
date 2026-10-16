@@ -8,7 +8,7 @@
 // routines_menus_misc.mjs.
 import {
   FZ, FN, rom, near, wram, u8, w8, idx, ixF, cpFlags, copyTilemapRect, hook, regs8, WRAM_SCREEN, TILEMAP_WIDTH,
-  wShadowTilemap, wShadowAttrmap,
+  wShadowTilemap, wShadowAttrmap, chain, getRegs, nested, FAR,
 } from "../equipment/defs.js";
 import { CHAR_UNUSED_15 } from "./minigame.js";
 
@@ -54,10 +54,10 @@ export function drawMinigameDataScrollArrows(P) {
 }
 // DrawMinigameDataMarks (1B:76EE): the visible rows' mark columns cleared, then their clear, star and two-on-one marks
 export function drawMinigameDataMarks(P) {
-  clearMinigameMarkColumns(P);
-  drawMinigameClearMarks(P);
-  drawMinigameStarMarks(P);
-  return drawMinigameSpecialMark(P);
+  const r = chain(getRegs(P.cpu), clearMinigameMarkColumns(P));
+  chain(r, drawMinigameClearMarks(P));
+  chain(r, drawMinigameStarMarks(P));
+  return chain(r, drawMinigameSpecialMark(P));
 }
 // one mark column: the kind's mark in each visible row whose flag is set (the flags from the scroll row on)
 function drawMarks(P, list, kind) {
@@ -101,9 +101,10 @@ export function clearMinigameMarkColumns(P) {
 export function drawStarLegendMark(P) {
   const list = flags(P, "minigameDataStarFlags");
   for (let c = 0; c < MINIGAMES; c++) {
-    if (!u8(P, list + c)) continue;
-    copyTilemapRect(P, STAR_LEGEND_TILES, STAR_LEGEND_AT, 0x02, 0x02);
-    return copyTilemapRect(P, STAR_LEGEND_TILES + ATTRMAP_OFFSET, STAR_LEGEND_AT + ATTRMAP_OFFSET, 0x02, 0x02);
+    const a = u8(P, list + c);
+    if (!a) continue;
+    const r = rom(P, FAR.CopyTilemapRect, { a, hl: STAR_LEGEND_TILES, de: STAR_LEGEND_AT, b: 0x02, c: 0x02 });
+    return rom(P, FAR.CopyTilemapRect, { ...r, hl: STAR_LEGEND_TILES + ATTRMAP_OFFSET, de: STAR_LEGEND_AT + ATTRMAP_OFFSET, b: 0x02, c: 0x02 });
   }
   return { a: MINIGAMES, c: MINIGAMES, hl: list + MINIGAMES, f: FZ | FN };
 }
@@ -111,19 +112,21 @@ export function drawStarLegendMark(P) {
 export function drawMinigameHighScoreNumbers(P, entryF = P.cpu.f) {
   const bank = P.V.wramBank;
   wram(P, WRAM_SCREEN);
-  for (let b = 0, c = P.V.menuCursorY; b < VISIBLE_ROWS; b++, c = (c + 1) & 0xFF) drawMinigameHighScoreNumber(P, b, c);
+  const r = getRegs(P.cpu);
+  for (let b = 0, c = P.V.menuCursorY; b < VISIBLE_ROWS; b++, c = (c + 1) & 0xFF)
+    chain(r, nested(P, 2, () => drawMinigameHighScoreNumber(P, b, c, { ...r, b, c })));
   wram(P, bank);
-  return { a: bank, b: VISIBLE_ROWS, c: (P.V.menuCursorY + VISIBLE_ROWS) & 0xFF, f: entryF };
+  return { ...r, a: bank, b: VISIBLE_ROWS, c: (P.V.menuCursorY + VISIBLE_ROWS) & 0xFF, f: entryF };
 }
 // DrawMinigameHighScoreNumber (1B:7847): minigame c's best score (digit sprites) at chart slot b's place, for a
 // minigame with its star (none for row 8)
-export function drawMinigameHighScoreNumber(P, slot, row) {
+export function drawMinigameHighScoreNumber(P, slot, row, regs = {}) {
   if (row === NO_RECORD_ROW) return { a: row, f: FZ | FN };
   const de = rw(P, idx(MinigameHighScoreNumberTable, slot * 2));
   const star = ixF(flags(P, "minigameDataStarFlags"), row);
   if (!u8(P, star.hl)) return { a: 0, de, hl: star.hl, f: FZ };
   const hl = P.bus.u16(idx(flags(P, "minigameDataHighScores"), row * 2));
-  return rom(P, DrawDecimalNumberSprites_39, { b: slot, c: row, de, hl });
+  return rom(P, DrawDecimalNumberSprites_39, { ...regs, a: hl & 0xFF, b: slot, c: row, de, hl });
 }
 // CheckMinigameDataScrollable (1B:787F): a = 1 when the ninth grid slot's character is unlocked (the chart scrolls),
 // else 0; bc, de, hl kept

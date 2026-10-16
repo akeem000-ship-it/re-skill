@@ -14,7 +14,7 @@ import {
   queueWram3MapToVRAM, prepareGlyphBuffer, disableLCDSafely, setFlag, clearFlag, hook, hookGen, orFlags, WRAM_SCREEN,
   WRAM_TEXT, TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1, vTiles0, vTiles2, wShadowAttrmap, wScreenScratch, OAM_BANK1,
   PADF_A, PADF_B, rIE, IE_TIMER, BGM_MENU, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_CANCEL, MENUSLIDE_BACK,
-  MENUSLIDE_FORWARD, FLAG_DOUBLES,
+  MENUSLIDE_FORWARD, FLAG_DOUBLES, nested, getRegs,
 } from "./defs.js";
 import { clearMemory16 } from "../../home/memory.js";
 import { moveMenuCursorGrid, getMenuCursorIndex } from "../common/cursors.js";
@@ -186,14 +186,14 @@ export function loadEquipmentStatusWindows(P) {
   P.V.shadowTilemapBank = WRAM_SCREEN;
   P.V.windowTileAttr = 0;
   drawTextWindow(P, 0x00, 0x00, 0x14, 0x09);
-  drawTextWindow(P, 0x00, 0x09, 0x14, 0x09);
-  return setEquipmentStatusAttrRects(P);
+  const r = drawTextWindow(P, 0x00, 0x09, 0x14, 0x09);
+  return nested(P, 1, () => setEquipmentStatusAttrRects(P, r));
 }
 // SetEquipmentStatusAttrRects (3E:5439): the two panels' stat rows (18 x 5) in attribute $08
-export function setEquipmentStatusAttrRects(P) {
+export function setEquipmentStatusAttrRects(P, entry = getRegs(P.cpu)) {
   wram(P, WRAM_SCREEN);
-  fillTilemapRect(P, wShadowAttrmap + 12 * TILEMAP_WIDTH + 1, 0x12, 0x05, STATUS_ATTR);
-  return fillTilemapRect(P, wShadowAttrmap + 3 * TILEMAP_WIDTH + 1, 0x12, 0x05, STATUS_ATTR);
+  const fill = (r, de) => rom(P, FAR.FillTilemapRect, { ...r, de, b: 0x12, c: 0x05, h: STATUS_ATTR });
+  return fill(fill({ ...entry, a: WRAM_SCREEN }, wShadowAttrmap + 12 * TILEMAP_WIDTH + 1), wShadowAttrmap + 3 * TILEMAP_WIDTH + 1);
 }
 
 export const HOOKS = [

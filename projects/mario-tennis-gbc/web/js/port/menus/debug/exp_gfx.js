@@ -177,7 +177,7 @@ export function unusedDrawCharViewerPageNames(P, page, entry) {
 // Unused_1a_RenderTextColumnToBuffer64 (1A:6A9B): c texts from id hl on, one a row (64 bytes apart) from de
 export function unusedRenderTextColumnToBuffer64(P, hl, de, c, a, b) {
   for (;;) {
-    const r = rom(P, FAR.RenderTextToBuffer64, { a, f: farFlagsAt(P, 3), b, c: NAME_WIDTH, de, hl });
+    const r = rom(P, FAR.RenderTextToBuffer64, { a, farF: farFlagsAt(P, 3), b, c: NAME_WIDTH, de, hl });
     a = r.a;
     c = (c - 1) & 0xFF;
     if (!c) return { a, b, c: 0, de, hl, f: FZ | FN | (r.f & FC) };

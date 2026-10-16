@@ -137,25 +137,27 @@ export function* scrollMinigameDataList(P) {
 // LoadMinigameDataState (1B:74CA): the unlock mask, the clear and star flags and the best scores; for a chart that
 // does not scroll, the fifth row's data from the sixth (CompactMinigameDataRows)
 export function loadMinigameDataState(P) {
-  rom(P, BuildMarioCastUnlockMask);
-  loadMinigameClearFlags(P);
-  loadMinigameStarFlags(P);
-  loadMinigameHighScores(P);
-  if (!checkMinigameDataScrollable(P).a) return compactMinigameDataRows(P);
+  const r = rom(P, BuildMarioCastUnlockMask);
+  chain(r, loadMinigameClearFlags(P, r));
+  chain(r, loadMinigameStarFlags(P, r));
+  chain(r, nested(P, 1, () => loadMinigameHighScores(P, r.f)));
+  chain(r, nested(P, 1, () => checkMinigameDataScrollable(P)));
+  return r.a ? r : chain(r, compactMinigameDataRows(P, r.f));
 }
 // one flag a minigame (1 when its save flag in the table is set)
-function loadMinigameFlags(P, flags, table) {
+function loadMinigameFlags(P, flags, table, entry) {
   clearBytes(P, flags, MINIGAMES);
-  let r;
+  let r = { ...entry, b: 0 };
   for (let c = 0; c < MINIGAMES; c++) {
-    r = rom(P, TestSaveFlag, { de: rw(P, idx(table, c * 2)), c });
+    const de = rw(P, idx(table, c * 2));
+    r = rom(P, TestSaveFlag, { ...r, a: de & 0xFF, c, de, hl: flags + c });
     if (!(r.f & FZ)) w8(P, flags + c, 1);
   }
-  return { a: MINIGAMES, c: MINIGAMES, d: r.d, e: r.e, hl: flags + MINIGAMES, f: FZ | 0x40 };
+  return { ...r, a: MINIGAMES, c: MINIGAMES, hl: flags + MINIGAMES, f: FZ | 0x40 };
 }
 // LoadMinigameClearFlags (1B:74DF) / LoadMinigameStarFlags (1B:751F)
-export const loadMinigameClearFlags = P => loadMinigameFlags(P, P.A.minigameDataClearFlags, MinigameClearFlagsTable);
-export const loadMinigameStarFlags = P => loadMinigameFlags(P, P.A.minigameDataStarFlags, MinigameStarFlagsTable);
+export const loadMinigameClearFlags = (P, entry = getRegs(P.cpu)) => nested(P, 1, () => loadMinigameFlags(P, P.A.minigameDataClearFlags, MinigameClearFlagsTable, entry));
+export const loadMinigameStarFlags = (P, entry = getRegs(P.cpu)) => nested(P, 1, () => loadMinigameFlags(P, P.A.minigameDataStarFlags, MinigameStarFlagsTable, entry));
 // LoadMinigameHighScores (1B:7560): the two-on-one pair (both set when its third level is cleared), then the best
 // scores of records 2-9 (ReadMinigameRecord, its value in WRAM 7)
 export function loadMinigameHighScores(P, entryF = P.cpu.f) {

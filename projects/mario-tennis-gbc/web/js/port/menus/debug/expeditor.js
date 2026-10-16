@@ -78,7 +78,7 @@ export function* unusedRunDebugExpEditor(P) {
 }
 // Unused_1a_DebugAddExp (1A:4473): de EXP to story character c (AddPlayerExp; bc kept)
 export function unusedDebugAddExp(P, slot, de, entry) {
-  const r = rom(P, FAR.AddPlayerExp, { ...entry, f: farFlagsAt(P, 1), a: slot, de });
+  const r = rom(P, FAR.AddPlayerExp, { ...entry, farF: farFlagsAt(P, 1), a: slot, de });
   return { ...r, b: entry.b, c: entry.c };
 }
 // Unused_1a_ShowExpGainScreen (1A:44D8): the gain screen of story character l (wStoryCharacterSlot) with layout a
@@ -119,7 +119,7 @@ export function* unusedShowExpGainScreen(P, entry) {
   w8(P, wExpNumberSpriteShiftX, 0);
   w8(P, wExpAwardSlot, slot);
   const toNext = rom(P, FAR.GetExpRemainingToNextLevel, {
-    ...getRegs(P.cpu), f: farFlagsAt(P, 4), a: slot, de: 0, b: caption, c: entry.c, h: entry.h, l: slot,
+    ...getRegs(P.cpu), farF: farFlagsAt(P, 4), a: slot, de: 0, b: caption, c: entry.c, h: entry.h, l: slot,
   }).hl;
   P.bus.w16(wExpToNextLevel, toNext);
   P.bus.w16(wExpToNextDisplayed, toNext);
@@ -138,7 +138,7 @@ export function* unusedShowExpGainScreen(P, entry) {
   wram(P, WRAM_SCENE);
   const total = P.bus.u16(wExpAwardTotal), hl = (wExpAwardTotal + 1) & 0xFFFF;
   if (!total) return { a: 0, f: FZ, b: entry.b, c: entry.c, de: 0, hl };
-  return rom(P, FAR.AddPlayerExp, { ...getRegs(P.cpu), f: farFlagsAt(P, 0), a: u8(P, wExpAwardSlot), de: total, hl, b: entry.b, c: entry.c });
+  return rom(P, FAR.AddPlayerExp, { ...getRegs(P.cpu), farF: farFlagsAt(P, 0), a: u8(P, wExpAwardSlot), de: total, hl, b: entry.b, c: entry.c });
 }
 export const showExpGainScreen = unusedShowExpGainScreen;
 // the tile buffer's maps queued, the scroll planes filled, the draw task started, the LCD on and the fade in; then

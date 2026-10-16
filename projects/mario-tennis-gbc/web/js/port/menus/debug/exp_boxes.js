@@ -70,7 +70,7 @@ export function loadExpScreenGfx(P, entry) {
   queue(wTextTileBuffer, vTiles1 + VRAM_BANK1, 0x50);
   palettes(ExpScreenGfxPalettes0, 0, 8);
   staging();
-  chain(r, rom(P, FAR.LoadIndexedPalette_18, { ...r, f: farFlagsAt(P, 1), a: u8(P, wStoryModeMainCharacterOverworldSpriteColor), d: 0x0E }));
+  chain(r, rom(P, FAR.LoadIndexedPalette_18, { ...r, farF: farFlagsAt(P, 1), a: u8(P, wStoryModeMainCharacterOverworldSpriteColor), d: 0x0E }));
   chain(r, { a: u8(P, wStoryModeMainCharacterOverworldSprite), b: 0 });
   staging();
   decompress(ExpScreenGfx6, wDecompBuffer);
