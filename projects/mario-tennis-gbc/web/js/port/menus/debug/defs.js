@@ -58,12 +58,13 @@ export const bit7F = (h, f) => (h & 0x80 ? 0 : FZ) | FH | (f & FC);
 export const addHLF = (hl, de, f) => (f & FZ) | ((hl & 0xFFF) + (de & 0xFFF) > 0xFFF ? FH : 0) | (hl + de > 0xFFFF ? FC : 0);
 // a farcall made after the routine pushed `words` words (FarCall's flags depend on sp)
 export const farFlagsAt = (P, words) => farcallFlags((P.cpu.sp - 2 * words) & 0xFFFF);
-// the registers a sequence of calls leaves: each call's result over the last (undefined ones skipped)
+// the registers a sequence of calls leaves: each call's result over the last (undefined ones skipped; pairs are
+// kept as their halves)
 export function chain(r, x) {
-  for (const k in x) if (x[k] !== undefined) {
-    r[k] = x[k];
-    if (k.length === 2) { delete r[k[0]]; delete r[k[1]]; }               // a pair given replaces its halves
-    else if ("bc de hl".includes(k)) { /* unreachable */ }
+  for (const k in x) {
+    const v = x[k];
+    if (v === undefined) continue;
+    if (k.length === 2) { r[k[0]] = (v >> 8) & 0xFF; r[k[1]] = v & 0xFF; } else r[k] = v & 0xFF;
   }
   return r;
 }

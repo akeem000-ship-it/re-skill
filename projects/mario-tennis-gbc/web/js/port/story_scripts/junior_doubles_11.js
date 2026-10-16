@@ -10,7 +10,7 @@
 // out/port/ss1_jrdoubles*.mtrec (scripted: the court by the doubles ranks).
 import {
   ACTOR_PLAYER, ACTOR_PARTNER, FACE_DOWN, FACE_UP, FACE_RIGHT, ANIM_NOD, ANIM_BOUNCE, ANIM_SHAKE, BEHAVIOR_EXIT, FLAG_DOUBLES,
-  STORYENTRY_NONE, MATCHLIST_DOUBLES, testFlag, setFlag, setText, advanceText, speak, askYesNo, setAnim, waitIdle,
+  STORYENTRY_NONE, MATCHLIST_DOUBLES, testFlag, setFlag, setText, advanceText, speak, askYesNo, question, setAnim, waitIdle,
   wait, face, faceToward, facePair, setPosition, moveTarget, waitMove, movePlayer, waitPlayerMove, setSpeed,
   playerSpeed, lockFacing, unlockFacing, nullScript, setActorScript, waitActorScript, writeBehaviorCell, respawnActors, beginCutscene, fadeIn,
   waitFadeEnd, fadeOutAndWait, goToLocation, returnHereAfter, playStoryMatch, setNpcScripts, hook, scene,
@@ -213,12 +213,6 @@ export function* juniorClassCourtDoublesNpc03FaceUp(P) {
 }
 // JuniorClassCourtDoublesNpc03_11 (11:5816): the coach: the doubles ranking match offer (doubles_11.asm)
 export function* juniorClassCourtDoublesNpc03(P) { yield* offerDoublesRankingMatch(P); }
-// a question of Pam's or Allie's (no: the other answer)
-function* question(P, text, actor) {
-  yield* setText(P, text);
-  if ((yield* askYesNo(P, actor)) !== YES) advanceText(P);
-  yield* speak(P, actor);                                             // .speak
-}
 // JuniorClassCourtDoublesCNpc07_11 (11:5946) / DNpc07 (11:596B): Pam (lists C and D)
 export const juniorClassCourtDoublesCNpc07 = P => question(P, Text_32_186, ACTOR_JUNIOR_CLASS_COURT_DOUBLES_PAM);
 export const juniorClassCourtDoublesDNpc07 = P => question(P, Text_33_24, ACTOR_JUNIOR_CLASS_COURT_DOUBLES_PAM);

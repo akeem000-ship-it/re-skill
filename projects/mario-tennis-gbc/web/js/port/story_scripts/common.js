@@ -178,6 +178,13 @@ export function* askYesNo(P, actor) {
   yield* wait(P, 5);
   return choice;
 }
+// the scenes' common question: script_set_text text, then askYesNo; on a no the other answer
+// (AdvanceDialogueTextCursor); script_speak actor
+export function* question(P, text, actor) {
+  yield* setText(P, text);
+  if ((yield* askYesNo(P, actor)) !== 0) advanceText(P);
+  yield* speak(P, actor);
+}
 // farcall RunMenuFromText (0A:42CF): a menu from text hl at (d, e); the choice
 export function* menuFromText(P, text, d, e) { return (yield* storyGen(P, runMenuFromText(P, { hl: text, d, e }))).a; }
 // script_wait_idle actor: ScriptWaitActorIdle (0A:470B), until its animation is back to still or walk
