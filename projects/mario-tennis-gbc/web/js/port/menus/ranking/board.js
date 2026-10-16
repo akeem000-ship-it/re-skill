@@ -9,7 +9,8 @@
 // The board's state (WRAM 3): wRankingBoardDoubles, wRankingBoardPlayerRow (the round: the row the player reached),
 // wRankingBoardMode, wRankingBoardSilent; the markers (wRankingMarkerSlots: 12 x [tile, x, y, -]) and the four marker
 // animation channels (board_markers.js).
-// Covered by the lockstep on the out/port/xr_island*.mtrec recordings (the board after Island Open rounds).
+// Covered by the lockstep on out/port/xr_board_s.mtrec and xr_board_d.mtrec (the singles and doubles boards: rounds
+// won, lost, shown and shown silently) and by web/tests/port/routines_menus_exp.mjs.
 import {
   FZ, FH, cpFlags, rd, wr, far, rom, home, HOME, FAR, hook, hookGen, sound, waitFrames, fadeIn, beginFadeOut, waitFadeEnd,
   registerFrameTask, queueVRAMCopy, resetScrollAndCamera, romWord, ix, getRegs, BANK_RANKING, BANK_BOOT, BANK_MENU_LIB,

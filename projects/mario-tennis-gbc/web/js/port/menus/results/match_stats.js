@@ -5,7 +5,7 @@
 // Port of the code of src/engine/menus/results/match_16.asm and winlose_16.asm of the gerbiljames/mario-tennis-gbc-disasm
 // (MIT, third_party/mario-tennis-gbc-disasm); names and addresses are its own. Graphics and tables are read from the
 // ROM.
-// Covered by the lockstep on out/port/xr_stats.mtrec (the statistics screen after an exhibition match).
+// Covered by the lockstep on out/port/xr_winlose.mtrec (the win/lose screens and the statistics screen).
 import {
   FZ, FN, FH, cpFlags, far, rom, FAR, hook, hookGen, home, HOME, testFlag, advanceFrame, fadeIn, fadeOut,
   registerFrameTask, romWord, ix, BANK_RESULT, BANK_BOOT, BANK_CURSORBOX, BANK_MENU_LIB, BANK_BRACKET, BANK_STORY,

@@ -3,7 +3,7 @@
 // the singles bracket's highlighted rows (rects from the map's hidden rows 18-24 and columns 20-27).
 // Port of the code of src/engine/menus/ranking/board_names_1b.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT,
 // third_party/mario-tennis-gbc-disasm); names and addresses are its own. Tables are read from the ROM.
-// Covered by the lockstep on the out/port/xr_island*.mtrec recordings.
+// Covered by the lockstep on out/port/xr_board_s.mtrec and xr_board_d.mtrec.
 import {
   FZ, ix, far, rom, romWait, FAR, hook, hookGen, advanceFrame, romWord, BANK_RANKING, BANK_MENU_LIB, WRAM_SCREEN, WRAM_TEXT,
   wShadowTilemap, wShadowAttrmap, PADF_A, PADF_B, cell,

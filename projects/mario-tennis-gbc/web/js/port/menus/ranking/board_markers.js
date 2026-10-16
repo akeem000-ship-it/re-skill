@@ -5,7 +5,7 @@
 // Port of the code of src/engine/menus/ranking/board_markers_1b.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT,
 // third_party/mario-tennis-gbc-disasm); names and addresses are its own. Tables, coordinates, scripts and sprite
 // templates are read from the ROM.
-// Covered by the lockstep on the out/port/xr_island*.mtrec recordings.
+// Covered by the lockstep on out/port/xr_board_s.mtrec and xr_board_d.mtrec.
 import {
   FZ, rd, wr, ix, far, hook, hookGen, advanceFrame, registerFrameTask, unregisterFrameTask, queueVRAMCopy, queueSprite,
   romWord, romByte, BANK_RANKING, BANK_MENU_LIB, VRAM_BANK1, vBGMap0, wShadowTilemap, wShadowAttrmap, OAM_BANK1, cell,
