@@ -15,7 +15,7 @@ What runs as readable JavaScript (web/js/port), checked against the ROM by the r
 | Story-mode engine | engine/story | story/ | verified: 194 tests, 0 differences on story1, rec2 and 6 more |
 | Minigames and drills | engine/minigames | minigames/ | verified: 248 tests, 0 differences on 40 recordings |
 | Text engine (windows, printer and control codes, dialogue, font, debug menus) | engine/text | text/ | verified: 223 tests, 0 differences on exh1, story1, debug1, rec1, rec2 |
-| Match (engine hooks, HUD, link) | engine/match | match/ + web/js/engine | 453 hooks; 510 tests ok, 0 differences on exh1; rec1 waits on a harness fix |
+| Match (engine hooks, HUD, link) | engine/match | match/ + web/js/engine | verified: 453 hooks, 510 tests, 0 differences on exh1, rec1, and rec2 with every verified part (link play untestable) |
 | Menus: shared code and main menu (boot/InitAndRunGame, saved data, erase, N64 transfer and records, match format) | engine/menus/common, main_menu | menus/common, menus/main_menu | verified: 252 tests, 0 differences on 12 recordings |
 | Menus: character select and data (new game, name entry, grid, match type, stats pages, EXP distribution, confirm) | engine/menus/char_select, char_data | menus/char_select, menus/char_data | verified: 213 tests on 787 states, 0 differences on 10 recordings (link screens untestable) |
 | Menus: pause (match and story), briefing and drill scripts, rules, court select, scenes | engine/menus/pause, briefing, court_select, scenes | menus/pause, briefing, court_select, scenes | verified: 271 hooks, 164 tests, 0 differences on 29 recordings (link court select untestable) |
