@@ -124,6 +124,9 @@ export function cutOut(art, x0, y0, w, h, opt = {}) {
   }
   return d;
 }
+// the picture as one packed colour per pixel (cached per picture array)
+const packCache = new WeakMap();
+function packed(art) { let P = packCache.get(art); if (P) return P; P = new Int32Array(ART * ART); for (let i = 0; i < ART * ART; i++) P[i] = art[i * 4] << 16 | art[i * 4 + 1] << 8 | art[i * 4 + 2]; packCache.set(art, P); return P; }
 // every place in the map (x < MW, y < MH px) where the opaque pixels of `d` (cut from (sx, sy)) are the same colours,
 // at least `need` of them (0..1); returns [{x, y, d}] with the mask narrowed to the matching pixels, best first,
 // overlapping matches dropped
@@ -135,13 +138,14 @@ export function matchSprite(art, d, sx, sy, w, h, MW, MH, need = 1) {
   // test the rarest-looking pixels first (those not of the most common colour of the sprite) for an early exit
   const freq = new Map(); for (const p of pts) freq.set(p[2], (freq.get(p[2]) || 0) + 1);
   pts.sort((a, b) => freq.get(a[2]) - freq.get(b[2]));
-  const probe = pts.filter((_, i) => i % Math.max(1, Math.floor(pts.length / 32)) === 0), probeMiss = Math.floor(probe.length * (1 - need)) + 1;
+  const P = packed(art), probe = pts.filter((_, i) => i % Math.max(1, Math.floor(pts.length / 32)) === 0), probeMiss = Math.floor(probe.length * (1 - need)) + 1;
+  const po = Int32Array.from(probe, p => p[1] * ART + p[0]), pc = Int32Array.from(probe, p => p[2]), ao = Int32Array.from(pts, p => p[1] * ART + p[0]), ac = Int32Array.from(pts, p => p[2]);
   for (let Y = 0; Y + h <= MH; Y++) for (let X = 0; X + w <= MW; X++) {
-    let bad = 0;
-    for (const p of probe) if (packAt(art, X + p[0], Y + p[1]) !== p[2] && ++bad > probeMiss) break;   // quick reject on a spread sample
+    const b0 = Y * ART + X; let bad = 0;
+    for (let k = 0; k < po.length; k++) if (P[b0 + po[k]] !== pc[k] && ++bad > probeMiss) break;   // quick reject on a spread sample
     if (bad > probeMiss) continue;
     bad = 0;
-    for (const p of pts) if (packAt(art, X + p[0], Y + p[1]) !== p[2] && ++bad > miss) break;
+    for (let k = 0; k < ao.length; k++) if (P[b0 + ao[k]] !== ac[k] && ++bad > miss) break;
     if (bad <= miss) hits.push({ x: X, y: Y, score: pts.length - bad });
   }
   hits.sort((a, b) => b.score - a.score);
@@ -176,7 +180,7 @@ export function fillRows(floor, hole, x0 = 0, x1 = ART, y0 = 0, y1 = ART, src = 
 export function fillNearest(floor, hole, d, x0, y0, w, h, keys, W, H, src = null, patched = null) {
   const ok = (X, Y) => X >= 0 && Y >= 0 && X < W && Y < H && !hole[Y * ART + X];
   const at = q => floor[q * 4] << 16 | floor[q * 4 + 1] << 8 | floor[q * 4 + 2];
-  const fq = q => floor[q * 4] + floor[q * 4 + 1] + floor[q * 4 + 2] < 60 ? 0 : (keys.get(at(q)) || 0);   // (black bands are not ground)
+  const fq = q => { const l = floor[q * 4] + floor[q * 4 + 1] + floor[q * 4 + 2]; return l < 60 || l > 690 ? 0 : (keys.get(at(q)) || 0); };   // (black bands and white rims are not ground)
   const from = (x, y, dx, dy) => { for (let k = 8; k <= 160; k += 8) { const X = x + dx * k, Y = y + dy * k; if (ok(X, Y)) return Y * ART + X; } return -1; };
   const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]], score = dirs.map(() => 0);
   for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) if (d[(yy * w + xx) * 4 + 3]) dirs.forEach(([dx, dy], k) => { const q = from(x0 + xx, y0 + yy, dx, dy); score[k] += q < 0 ? -1 : fq(q); });
