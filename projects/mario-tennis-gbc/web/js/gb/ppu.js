@@ -15,6 +15,8 @@ export class PPU {
     this.pixSub = new Uint8Array(160 * 144);     // per pixel: its place in that tile, row << 3 | column (unflipped)
     this.winX = new Uint8Array(144).fill(255);  // per scanline: first screen x drawn from the window layer (255 = none); raster splits included
     this.frames = 0;
+    this.look = null;                            // web/js/look: the player's look colours the hero in `frame` only (never rgb5)
+    this.lookPix = new Uint32Array(160);
   }
   read(r) {
     switch (r) {
@@ -87,6 +89,9 @@ export class PPU {
     const base = ly * 160;
     const windowOn = (lcdc & 0x20) && this.wy <= ly && this.wx <= 166;
     let windowDrawn = false;
+    const L = this.look, lookPix = this.lookPix;
+    let lkKey = -1, lkReg = null, lkFade = -1;
+    if (L) lookPix.fill(0);
     // --- background and window ---
     for (let x = 0; x < 160; x++) {
       let tx, ty, mapBase, inWindow = false;
@@ -104,6 +109,11 @@ export class PPU {
       const c = this.color5(this.bgPal, attr & 7, ci);
       rgb5[(base + x) * 3] = c & 31; rgb5[(base + x) * 3 + 1] = (c >> 5) & 31; rgb5[(base + x) * 3 + 2] = (c >> 10) & 31;
       this.bgFrame[base + x] = 0xFF000000 | ((c >> 10 & 31) << 19) | ((c >> 5 & 31) << 11) | ((c & 31) << 3);
+      if (L) {                                   // the look: hero portraits on the BG
+        const key = (attr & 0x0F) << 16 | tileAddr;
+        if (key !== lkKey) { lkKey = key; lkReg = L.tileRegions(attr & 0x08 ? 1 : 0, tileAddr); lkFade = lkReg ? L.fade(this.bgPal, attr & 7) : -1; }
+        if (lkReg && lkFade >= 0) { const lc = L.rgba(lkReg[row * 8 + 7 - bit], lkFade); if (lc) { lookPix[x] = lc; this.bgFrame[base + x] = lc; } }
+      }
       this.pixCell[base + x] = inWindow ? 0x8000 | mapIdx : mapIdx;
       this.pixSub[base + x] = (ty & 7) << 3 | (tx & 7);
       if (inWindow) windowDrawn = true;
@@ -123,6 +133,8 @@ export class PPU {
         let row = ly - sy; if (attr & 0x40) row = h - 1 - row;
         const bank = attr & 0x08 ? v1 : v0, addr = (tile << 4) + row * 2;
         const lo = bank[addr], hi = bank[addr + 1];
+        let sReg = null, sFade = -1;
+        if (L) { sReg = L.tileRegions(attr & 0x08 ? 1 : 0, (tile + (row >> 3)) << 4); if (sReg) sFade = L.fade(this.objPal, attr & 7); }
         for (let px = 0; px < 8; px++) {
           const x = sx + px; if (x < 0 || x >= 160 || drawn[x]) continue;
           const bit = attr & 0x20 ? px : 7 - px;
@@ -131,6 +143,7 @@ export class PPU {
           // CGB priority: LCDC bit 0 clear -> sprites always on top; else BG attr priority or OAM priority hide colours 1-3
           if ((lcdc & 0x01) && lineColor[x] !== 0 && (linePrio[x] || (attr & 0x80))) { drawn[x] = 1; continue; }
           drawn[x] = 1;
+          if (L) lookPix[x] = sReg && sFade >= 0 ? L.rgba(sReg[(row & 7) * 8 + 7 - bit], sFade) : 0;
           const c = this.color5(this.objPal, attr & 7, ci);
           rgb5[(base + x) * 3] = c & 31; rgb5[(base + x) * 3 + 1] = (c >> 5) & 31; rgb5[(base + x) * 3 + 2] = (c >> 10) & 31;
         }
@@ -140,5 +153,6 @@ export class PPU {
       const o = (base + x) * 3, r = rgb5[o] * 8, g = rgb5[o + 1] * 8, b = rgb5[o + 2] * 8;
       frame[base + x] = 0xFF000000 | (b << 16) | (g << 8) | r;
     }
+    if (L) for (let x = 0; x < 160; x++) if (lookPix[x]) frame[base + x] = lookPix[x];
   }
 }

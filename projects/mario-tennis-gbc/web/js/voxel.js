@@ -342,14 +342,21 @@ export class Voxel3D {
     const v = this.gb.mem.vram[bank]; let h = 0x811c9dc5;
     for (let i = 0; i < 16; i++) { h ^= v[addr + i]; h = Math.imul(h, 0x01000193); }
     for (let i = 0; i < 8; i++) { h ^= palBytes[palIndex * 8 + i]; h = Math.imul(h, 0x01000193); }
+    if (this.gb.look) { h ^= this.gb.look.gen; h = Math.imul(h, 0x01000193); }     // the player's look (web/js/look) colours the hero
     return (h >>> 0) * 4 + flipX * 2 + flipY;
   }
   // sprite tile (8 rows) as RGBA, colour 0 transparent
   spritePixels(tile, bank, pal, flipX, flipY) {
     const v = this.gb.mem.vram[bank], d = new Uint8Array(8 * 8 * 4), op = this.gb.ppu.objPal;
+    const L = this.gb.look, reg = L ? L.tileRegions(bank, tile * 16) : null, fd = reg ? L.fade(op, pal) : -1;   // the player's look
     for (let y = 0; y < 8; y++) {
       const row = flipY ? 7 - y : y, lo = v[tile * 16 + row * 2], hi = v[tile * 16 + row * 2 + 1];
-      for (let x = 0; x < 8; x++) { const bit = flipX ? x : 7 - x, ci = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1), o = (y * 8 + x) * 4; if (!ci) continue; const c = this.col5(op, pal, ci); d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = 255; }
+      for (let x = 0; x < 8; x++) {
+        const bit = flipX ? x : 7 - x, ci = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1), o = (y * 8 + x) * 4; if (!ci) continue;
+        const lc = fd >= 0 ? L.rgba(reg[row * 8 + 7 - bit], fd) : 0;
+        if (lc) { d[o] = lc & 255; d[o + 1] = (lc >> 8) & 255; d[o + 2] = (lc >> 16) & 255; d[o + 3] = 255; continue; }
+        const c = this.col5(op, pal, ci); d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = 255;
+      }
     }
     return d;
   }

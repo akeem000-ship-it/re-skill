@@ -201,12 +201,13 @@ export function* runRacketShoesChoiceMenu(P) {
     }
   }
 }
-// The two tabs' label pictures (decompressed and queued a frame apart), then the tab tiles, the cursor's, the
-// panel's (a frame each), and the cursor's palette. Shared with the play-alone partner menu (choicetab.js).
-export function* loadChoiceTabGraphics(P, params, dests, blocks, entryF) {
+// The tabs' label pictures (two; decompressed and queued a frame apart), then the tab tiles, the cursor's, the
+// panel's (a frame or two each), and the cursor's palette. Shared with the play-alone partner menu (choicetab.js)
+// and the link match rules (menus/link/rules.js: seven labels).
+export function* loadChoiceTabGraphics(P, params, dests, blocks, entryF, labels = CHOICE_TABS) {
   const bank = P.V.wramBank;
   wram(P, WRAM_STAGING);
-  for (let i = 0; i < CHOICE_TABS; i++) {
+  for (let i = 0; i < labels; i++) {
     const slot = rw(P, params + 2 * i);
     homeDecompressFromBank(P, slot >> 8, slot & 0xFF, wDecompBuffer);
     queueVRAMCopy(P, wDecompBuffer, rw(P, dests + 2 * i), 16);

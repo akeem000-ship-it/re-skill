@@ -15,11 +15,12 @@
 //     bank that has no port. Those run the ported JS where another part has hooked it.
 // Waiting routines are generators (`yield* advanceFrame(P)`); the lockstep test does not need the ROM's stack.
 import { HOOK_TRACE } from "../char_select/defs.js";
-import { getRegs, setRegs } from "../../home/cpu.js";
+import { getRegs, setRegs, spAddFlags } from "../../home/cpu.js";
+import { queueVRAMCopy } from "../../home/memory.js";
 import { FAR as FAR_PAUSE, HOME as HOME_PAUSE } from "../pause/defs.js";
 
 export * from "../pause/defs.js";
-export { HOOK_TRACE };
+export { HOOK_TRACE, spAddFlags };
 
 // ---- flags ----
 export const addFlags = (a, x) => (((a + x) & 0xFF) === 0 ? 0x80 : 0) | ((a & 0xF) + (x & 0xF) > 0xF ? 0x20 : 0) | ((a & 0xFF) + (x & 0xFF) > 0xFF ? 0x10 : 0);
@@ -61,6 +62,10 @@ export const nop = () => {};
 // `call X` of a routine of the caller's bank that has no port (P.callRom with the bank mapped now)
 export const near = (P, addr, regs = {}) => P.callRom(P.mem.romBank, addr, regs);
 export function* nearWait(P, addr, regs = {}) { return yield* P.runRom(P.mem.romBank, addr, regs); }
+// QueueVRAMCopy (00:0480) with every register it leaves (c = the count loaded, which a full queue keeps)
+export const queueCopy = (P, src, dest, blocks) => ({ c: blocks & 0xFF, ...queueVRAMCopy(P, src, dest, blocks) });
+// the flags the rst $20 / $28 handlers (set_flag / clear_flag) leave: their `ld hl, sp+4`, sp 4 below the caller's
+export const setFlagF = P => spAddFlags((P.cpu.sp - 6) & 0xFFFF, 4);
 // the 8-bit registers of a register set (P.callRom's result): to pass on with some changed (a pair given to
 // P.callRom wins over its halves)
 export const regs8 = r => ({ a: r.a, f: r.f, b: r.b, c: r.c, d: r.d, e: r.e, h: r.h, l: r.l });

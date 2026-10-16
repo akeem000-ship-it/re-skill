@@ -15,6 +15,12 @@ if (rec.format !== "mtrec") throw new Error("not a .mtrec recording");
 const out = opt("--out", "out/replay"), shots = +opt("--shots", 0), every = +opt("--states", 0), to = Math.min(+opt("--to", rec.frames), rec.frames);
 fs.mkdirSync(out, { recursive: true });
 const romBytes = new Uint8Array(fs.readFileSync("rom/mario_tennis.gbc")), engine = (rec.meta && rec.meta.engine) || "rom";
+// the player's look (web/js/look): meta.look at the start, events [frame, "look:<json>"] for changes
+let lookMgr = null, parseLookEvent = null;
+if ((rec.meta && rec.meta.look) || rec.events.some(([, e]) => typeof e === "string" && e.startsWith("look:"))) {
+  const L = await import("../js/look/index.js"); parseLookEvent = L.parseLookEvent;
+  lookMgr = new L.LookManager().prepare(romBytes, rec.meta && rec.meta.look);
+}
 let gb, port = null;
 if (engine === "rom") gb = new GBC(romBytes, { audio: false });
 else {
@@ -26,6 +32,7 @@ else {
 }
 if (!port && !a.includes("--interp")) { try { const mod = await import("../gen/game.js"); const T = {}; mod.install(T); gb.installRecomp(T); if (mod.HRAM_SIG) gb.exec.setHramSig(mod.HRAM_SIG); } catch (e) { console.log("interpreter only:", e.message); } }
 loadState(gb, rec.start);
+if (lookMgr) lookMgr.attach(gb);
 const inputs = Buffer.from(rec.inputs, "base64"), hashes = new Map(rec.hashes), events = new Map(rec.events.map(([f, e]) => [f, e]));
 const crcT = new Int32Array(256).map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c; });
 const crc = b => { let c = -1; for (const x of b) c = crcT[(c ^ x) & 255] ^ (c >>> 8); return (c ^ -1) >>> 0; };
@@ -36,6 +43,7 @@ const png = p => { const f = gb.ppu.frame, r = Buffer.alloc(144 * 481); for (let
 let checked = 0, bad = null; const maps = new Map();
 for (let f = 0; f < to; f++) {
   if (events.get(f) === "reset") gb.reset();
+  else if (lookMgr && parseLookEvent(events.get(f)) !== undefined) lookMgr.set(parseLookEvent(events.get(f)));
   gb.setInput(stateOf(inputs[f])); if (port) port.frame(); else gb.runFrame();
   const n = f + 1, h = hashes.get(n);
   if (h) { checked++; if (h !== gb.frameHash() && !bad) bad = n; }

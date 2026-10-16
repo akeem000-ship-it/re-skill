@@ -8,6 +8,7 @@ export function composeWide(gb, out, bgIdx) {          // out: Uint32Array(WIDE_
   const m = gb.mem, p = gb.ppu, v0 = m.vram[0], v1 = m.vram[1], lcdc = p.lcdc, bgPal = p.bgPal, objPal = p.objPal;
   const bgBase = lcdc & 0x08 ? 0x1C00 : 0x1800, winBase = lcdc & 0x40 ? 0x1C00 : 0x1800, tileAddr = t => lcdc & 0x10 ? t << 4 : 0x1000 + ((t << 24 >> 24) << 4);
   const winOn = (lcdc & 0x20) && p.wy < 144 && p.wx < 167, wx0 = p.wx - 7 + WIDE_PAD, wy0 = p.wy;
+  const L = gb.look;                                   // the player's look (web/js/look): the hero in its own colours
   for (let y = 0; y < WIDE_H; y++) {
     const my = (y + p.scy) & 255;
     for (let x = 0; x < WIDE_W; x++) {
@@ -18,6 +19,7 @@ export function composeWide(gb, out, bgIdx) {          // out: Uint32Array(WIDE_
       const row = attr & 0x40 ? 7 - (py & 7) : (py & 7), bit = attr & 0x20 ? (px & 7) : 7 - (px & 7);
       const lo = bank[addr + row * 2], hi = bank[addr + row * 2 + 1], ci = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1), o = y * WIDE_W + x;
       out[o] = col5(bgPal, attr & 7, ci); bgIdx[o] = ci | (attr & 0x80 ? 4 : 0);
+      if (L) { const reg = L.tileRegions(attr & 8 ? 1 : 0, addr), d = reg ? L.fade(bgPal, attr & 7) : -1; if (d >= 0) { const lc = L.rgba(reg[row * 8 + 7 - bit], d); if (lc) out[o] = lc; } }
     }
   }
   if (!(lcdc & 0x02)) return;
@@ -29,11 +31,12 @@ export function composeWide(gb, out, bgIdx) {          // out: Uint32Array(WIDE_
     for (let y = 0; y < hgt; y++) {
       const yy = sy + y; if (yy < 0 || yy >= WIDE_H) continue;
       const row = attr & 0x40 ? hgt - 1 - y : y, addr = (tile + (row >> 3)) * 16 + (row & 7) * 2, lo = bank[addr], hi = bank[addr + 1];
+      const reg = L ? L.tileRegions(attr & 8 ? 1 : 0, (tile + (row >> 3)) * 16) : null, d = reg ? L.fade(objPal, pal) : -1;
       for (let x = 0; x < 8; x++) {
         const xx = sx + x + WIDE_PAD; if (xx < WIDE_PAD || xx >= WIDE_PAD + 160) continue;
         const bit = attr & 0x20 ? x : 7 - x, ci = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1); if (!ci) continue;
         const o = yy * WIDE_W + xx; if ((attr & 0x80) && (bgIdx[o] & 3)) continue;   // behind non-zero BG
-        out[o] = col5(objPal, pal, ci);
+        out[o] = (d >= 0 && L.rgba(reg[(row & 7) * 8 + 7 - bit], d)) || col5(objPal, pal, ci);
       }
     }
   }
