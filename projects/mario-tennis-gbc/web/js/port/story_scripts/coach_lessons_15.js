@@ -11,9 +11,8 @@ import {
   ACTOR_PLAYER, ACTOR_PARTNER, FACE_DOWN, FACE_LEFT, FACE_UP, ANIM_NOD, ANIM_BOUNCE, ANIM_SHAKE, testFlag,
   testFlagF, setFlag, wr, setText, advanceText, speak, askYesNo, agrees, gesture, faceToward, face, setPosition,
   movePlayer, waitPlayerMove, playerSpeed, nullScript, setActorScript, waitActorScript, fadeInAndWait,
-  fadeOutAndWait, goToLocation, jumpTableTarget, wait, FZ, FC, hook, scene,
+  fadeOutAndWait, goToLocation, jumpTableTarget, wait, testFlagTableEntry, setFlagTableEntry, FZ, hook, scene,
 } from "./common.js";
-import { testGameFlag, setGameFlag, flagOperand } from "../home/flags.js";
 import { movePartyToNetCoachSpot, playerPartnerGesture, STORYLOC_TRAINING_COURT } from "./coach_walks_15.js";
 
 const BANK = 0x15;
@@ -97,23 +96,10 @@ export const netCoachDropShotLessonScene = P => netCoachLesson(P, () => Text_37_
 }, MINIGAME_NET_GAME_PRACTICE_3);
 
 // ---- the challengers, hidden once beaten ----
-// Test*ChallengerGameFlag: whether the flag of the table's entry for wMapSceneStage is set. Returns the ROM's
-// registers: f (Z when clear), de = the flag number, a = its low byte, hl = past the entry's first byte.
-function challengerFlagEntry(P, table) {
-  const hl = (table + ((P.V.mapSceneStage * 2) & 0xFF)) & 0xFFFF, de = P.rom.u16(BANK, hl);
-  return { a: de & 0xFF, de, hl: (hl + 1) & 0xFFFF };
-}
-export function testChallengerGameFlag(P, table) {
-  const r = challengerFlagEntry(P, table);
-  return { ...r, f: testFlagF(testGameFlag(P, flagOperand(r.de))) };
-}
-// Unused_15_Set*ChallengerGameFlag: the same entry's flag set; f from the last `rl d` of SetGameFlagByNumber
-export function unusedSetChallengerGameFlag(P, table) {
-  const r = challengerFlagEntry(P, table);
-  setGameFlag(P, flagOperand(r.de));
-  const d4 = (r.de << 4) >> 8 & 0xFF, out = (r.de << 5) >> 8 & 0xFF;
-  return { ...r, f: (out ? 0 : FZ) | (d4 & 0x80 ? FC : 0) };
-}
+// Test*ChallengerGameFlag: whether the flag of the table's entry for wMapSceneStage is set (the ROM's registers:
+// f, de = the flag's number, a, hl); Unused_15_Set*ChallengerGameFlag: that flag set
+export const testChallengerGameFlag = (P, table) => testFlagTableEntry(P, BANK, table, P.V.mapSceneStage);
+export const unusedSetChallengerGameFlag = (P, table) => setFlagTableEntry(P, BANK, table, P.V.mapSceneStage);
 // Hide*ChallengerActor: the challenger out of sight (at (63, 63)) when beaten, or when the stage's flag is set
 function hideChallenger(P, defeated, table, actor) {
   if (testFlag(P, defeated) || !(testChallengerGameFlag(P, table).f & FZ)) setPosition(P, actor, 63.0, 63.0);

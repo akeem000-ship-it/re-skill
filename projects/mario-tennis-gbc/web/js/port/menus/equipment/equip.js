@@ -107,16 +107,16 @@ export function drawHoveredItemStatMods(P) {
   wram(P, bank);
 }
 // RenderRacketDescText (3E:59A4) / RenderShoesDescText (3E:599E): item c's description in the caption window
-// (hl kept)
-function renderDesc(P, base, item) {
-  const r = rom(P, FAR.RenderProportionalTextAt, { hl: idx(base, item), de: wShadowTilemap + 14 * TILEMAP_WIDTH + 1, c: TEXT_WIDTH });
+// (hl kept). The text's line breaks upload the glyphs, over frames with the LCD on.
+function* renderDesc(P, base, item) {
+  const r = yield* romWait(P, FAR.RenderProportionalTextAt, { hl: idx(base, item), de: wShadowTilemap + 14 * TILEMAP_WIDTH + 1, c: TEXT_WIDTH });
   return { ...r, hl: undefined, h: undefined, l: undefined };
 }
 export const renderRacketDescText = (P, item) => renderDesc(P, Text_30_237, item);
 export const renderShoesDescText = (P, item) => renderDesc(P, SHOES_DESCS, item);
 // RenderRacketNameText (3E:59BE) / RenderShoesNameText (3E:59B8): item c's name at de
-export const renderRacketNameText = (P, item, de) => rom(P, FAR.RenderProportionalTextAt, { hl: idx(Text_30_229, item), de, c: TEXT_WIDTH });
-export const renderShoesNameText = (P, item, de) => rom(P, FAR.RenderProportionalTextAt, { hl: idx(SHOES_NAMES, item), de, c: TEXT_WIDTH });
+export const renderRacketNameText = (P, item, de) => romWait(P, FAR.RenderProportionalTextAt, { hl: idx(Text_30_229, item), de, c: TEXT_WIDTH });
+export const renderShoesNameText = (P, item, de) => romWait(P, FAR.RenderProportionalTextAt, { hl: idx(SHOES_NAMES, item), de, c: TEXT_WIDTH });
 
 // ---- the cursor sprites ----
 // EquipListCursorSpriteTask (3E:59CD), a frame task: the bobbing box over the hovered icon (DrawSelectionBoxCorners)
@@ -210,10 +210,10 @@ export const HOOKS = [
   [BANK, 0x595F, hook(P => getEquippedItemId(P))],
   [BANK, 0x596E, hook(P => { drawEquippedItemStatMods(P); })],
   [BANK, 0x5981, hook(P => { drawHoveredItemStatMods(P); })],
-  [BANK, 0x599E, hook((P, c) => renderShoesDescText(P, c.c))],
-  [BANK, 0x59A4, hook((P, c) => renderRacketDescText(P, c.c))],
-  [BANK, 0x59B8, hook((P, c) => renderShoesNameText(P, c.c, c.de))],
-  [BANK, 0x59BE, hook((P, c) => renderRacketNameText(P, c.c, c.de))],
+  [BANK, 0x599E, hookGen((P, c) => renderShoesDescText(P, c.c))],
+  [BANK, 0x59A4, hookGen((P, c) => renderRacketDescText(P, c.c))],
+  [BANK, 0x59B8, hookGen((P, c) => renderShoesNameText(P, c.c, c.de))],
+  [BANK, 0x59BE, hookGen((P, c) => renderRacketNameText(P, c.c, c.de))],
   [BANK, 0x59CD, hook(P => equipListCursorSpriteTask(P))],
   [BANK, 0x59EB, hook((P, c) => equippedItemMarkerSpriteTask(P, c.f))],
   [BANK, 0x5A15, hook((P, c) => drawItemStatModList(P, c.a))],

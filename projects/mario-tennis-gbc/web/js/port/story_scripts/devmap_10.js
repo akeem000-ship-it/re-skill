@@ -218,7 +218,7 @@ function* matchSelectStorySlot(P, e) {
   if (e === 0xFF) return yield* storySlotBackToTitle(P, e);
   V.currentStorySlot = e & 0x7F;
   const slot = yield* rom(P, BANK_SAVE, CheckStorySlot);
-  if (slot.a === 0xFE) return yield* storySlotBackToTitle(P, slot.e);
+  if (slot.a === 0xFE) return yield* storySlotBackToTitle(P, e);       // (CheckStorySlot keeps de)
   if ((yield* rom(P, BANK_EXP, ApplyPendingExpAwards)).a) {
     yield* resetMenuScreen(P, false);
     if (!V.saveAndQuitRequest) yield* fadeInAndWait(P, FADE_SPEED);

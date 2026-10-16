@@ -57,6 +57,7 @@ import { runPagedTextMenu } from "../text/paged.js";
 import { pushTextArgString, pushTextArgNumber } from "../text/arg.js";
 import { fetchShortTextToBuffer } from "../text/window_tilemap.js";
 import { HOOK_TRACE } from "../menus/char_select/defs.js";
+import { testGameFlag, setGameFlag, flagOperand } from "../home/flags.js";
 
 export {
   FZ, FN, FH, FC, farcall, farcallGen, wActors, ACTOR_SIZE, beginFadeOut, beginFadeIn, clearFrameTasks, enableLCD,
@@ -317,6 +318,31 @@ export const unregisterFrameTask = (P, routine) => homeUnregisterFrameTask(P, ro
 export const queueSpriteTemplate = (P, hl, x, y, tile, attr) => homeQueueSpriteTemplate(P, hl, x, y, tile, attr, (P.cpu.sp - 2) & 0xFFFF);
 // rst $00 (JumpTableDispatch, 00:06C4) with a, its table of words right after the rst: the entry's address
 export const jumpTableTarget = (P, bank, table, a) => P.rom.u16(bank, (table + ((a * 2) & 0xFF)) & 0xFFFF);
+// add a / ld_hl_indexed table / ld a, [hl+] / ld d, [hl] / ld e, a / call TestGameFlagByNumber (00:24EF): whether
+// the flag numbered by the table's entry index is set. The ROM's registers: f (Z when clear, H), de = the flag's
+// number, a = its low byte, hl = the entry + 1.
+function flagTableEntry(P, bank, table, index) {
+  const hl = (table + ((index * 2) & 0xFF)) & 0xFFFF, de = P.rom.u16(bank, hl);
+  return { a: de & 0xFF, de, hl: (hl + 1) & 0xFFFF };
+}
+export function testFlagTableEntry(P, bank, table, index) {
+  const r = flagTableEntry(P, bank, table, index);
+  return { ...r, f: testFlagF(testGameFlag(P, flagOperand(r.de))) };
+}
+// the same with SetGameFlagByNumber (00:2509): the flag set; f from its last `rl d`
+export function setFlagTableEntry(P, bank, table, index) {
+  const r = flagTableEntry(P, bank, table, index);
+  setGameFlag(P, flagOperand(r.de));
+  const d4 = (r.de << 4) >> 8 & 0xFF, out = (r.de << 5) >> 8 & 0xFF;
+  return { ...r, f: (out ? 0 : FZ) | (d4 & 0x80 ? FC : 0) };
+}
+// ld a, l / sub e / ld l, a / ld a, h / sbc d / ld h, a: hl = x - y (16 bits), a = h, f of the `sbc d`
+export function sub16(x, y) {
+  const lo = (x & 0xFF) - (y & 0xFF), borrow = lo < 0 ? 1 : 0;
+  const hiRaw = (x >> 8) - (y >> 8) - borrow, h = hiRaw & 0xFF;
+  const half = ((x >> 8) & 0xF) - ((y >> 8) & 0xF) - borrow < 0;
+  return { hl: (h << 8) | (lo & 0xFF), a: h, f: (h ? 0 : FZ) | FN | (half ? FH : 0) | (hiRaw < 0 ? FC : 0) };
+}
 // push_wram_bank b ... pop_wram_bank around fn
 export function withWram(P, bank, fn) {
   const old = P.V.wramBank;

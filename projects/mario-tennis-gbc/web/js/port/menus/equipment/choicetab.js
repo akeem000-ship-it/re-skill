@@ -156,7 +156,7 @@ export function* showEquipmentStatusScreen(P) {
   rom(P, FAR.LoadMenuFontGfx);
   P.V.scrollX = 0;
   P.V.scrollY = 0;
-  drawEquipmentStatusScreen(P);
+  yield* drawEquipmentStatusScreen(P);
   enableLCD(P);
   yield* fadeIn(P, 16);
   while (!(P.V.inputPressed & (PADF_A | PADF_B))) yield* advanceFrame(P);
@@ -166,14 +166,14 @@ export function* showEquipmentStatusScreen(P) {
 }
 // DrawEquipmentStatusScreen (3E:53CF): the windows, then the racket's and the shoes' panels (the item list buffer
 // cleared first), the glyphs uploaded and the screen queued
-export function drawEquipmentStatusScreen(P) {
+export function* drawEquipmentStatusScreen(P) {
   loadEquipmentStatusWindows(P);
   prepareGlyphBuffer(P);
   wram(P, WRAM_SCREEN);
   clearMemory16(P, wScreenScratch, 3);
-  drawEquippedRacketPanel(P);
-  drawEquippedShoesPanel(P);
-  rom(P, FAR.UploadGlyphBuffer);
+  yield* drawEquippedRacketPanel(P);
+  yield* drawEquippedShoesPanel(P);
+  yield* romWait(P, FAR.UploadGlyphBuffer);
   return queueWram3MapToVRAM(P);
 }
 // LoadEquipmentStatusWindows (3E:53F1): the equipment screen asset, the font, two 20 x 9 windows (racket over shoes)
@@ -207,7 +207,7 @@ export const HOOKS = [
   [BANK, 0x5320, hook((P, c) => setPlayAlonePartnerPalette(P, c.a))],
   [BANK, 0x5355, hook((P, c) => drawPlayAlonePartnerCaption(P, c.f))],
   [BANK, 0x5388, hookGen(P => showEquipmentStatusScreen(P))],
-  [BANK, 0x53CF, hook(P => drawEquipmentStatusScreen(P))],
+  [BANK, 0x53CF, hookGen(P => drawEquipmentStatusScreen(P))],
   [BANK, 0x53F1, hook(P => loadEquipmentStatusWindows(P))],
   [BANK, 0x5439, hook(P => setEquipmentStatusAttrRects(P))],
 ];

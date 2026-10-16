@@ -10,7 +10,7 @@
 // Tests: lockstep on out/port/story_pause_items.mtrec (the status screen's panels) and out/port/eq_racket.mtrec /
 // eq_shoes.mtrec (scripted from a story state: moves, equip, back); web/tests/port/routines_menus_misc.mjs.
 import {
-  FZ, FN, FAR, rom, near, wram, u8, w8, idx, sound, advanceFrame, registerFrameTask, clearFrameTasks,
+  FZ, FN, FAR, rom, romWait, near, wram, u8, w8, idx, sound, advanceFrame, registerFrameTask, clearFrameTasks,
   loadPaletteShadow, enableLCD, fadeIn, fadeOut, copyTilemapRect, loadCompressedTileBlock, loadScreenAssetRecord,
   queueWram3MapToVRAM, prepareGlyphBuffer, disableLCDSafely, testFlag, hook, hookGen, WRAM_SCREEN, TILEMAP_WIDTH,
   TILE_SIZE, VRAM_BANK1, vTiles0, wShadowTilemap, wShadowAttrmap, PADF_A, PADF_B, SFX_MENU_MOVE, SFX_MENU_DECIDE,
@@ -43,14 +43,14 @@ const setMenuCursorFromIndex3e = (P, cols, index) => near(P, FAR.SetMenuCursorFr
 // ---- the status screen's panels ----
 // The equipped item of the kind: its icon at `icon`, its name after it, its stat changes in the rows of `rowSet`
 // (wMenuCursorX = its place in the list, for the cursor routines)
-function drawEquippedPanel(P, kind, markOwned, rowSet, icon, renderName) {
+function* drawEquippedPanel(P, kind, markOwned, rowSet, icon, renderName) {
   P.V.equipItemKind = kind;
   markOwned(P);
   buildOwnedItemList(P);
   P.V.equipStatRowSet = rowSet;
   P.V.menuCursorX = P.V.equipEquippedIndex;
   drawItemIcon2x2(P, getEquippedItemId(P).a, icon);
-  const r = renderName(P, getEquippedItemId(P).a, (icon + 3) & 0xFFFF);
+  const r = yield* renderName(P, getEquippedItemId(P).a, (icon + 3) & 0xFFFF);
   drawEquippedItemStatMods(P);
   return r;
 }
@@ -58,22 +58,22 @@ function drawEquippedPanel(P, kind, markOwned, rowSet, icon, renderName) {
 export const drawEquippedRacketPanel = P =>
   drawEquippedPanel(P, EQUIP_RACKET, markOwnedRackets, ROWSET_STATUS_RACKET, wShadowTilemap + 1 * TILEMAP_WIDTH + 5, renderRacketNameText);
 // DrawEquippedShoesPanel (3E:5486): the lower panel (the item list cleared first)
-export function drawEquippedShoesPanel(P) {
+export function* drawEquippedShoesPanel(P) {
   clearMemory16(P, P.A.equipItemList, STATUS_CLEAR_BLOCKS);
-  return drawEquippedPanel(P, EQUIP_SHOES, markOwnedShoes, ROWSET_STATUS_SHOES, wShadowTilemap + 10 * TILEMAP_WIDTH + 5, renderShoesNameText);
+  return yield* drawEquippedPanel(P, EQUIP_SHOES, markOwnedShoes, ROWSET_STATUS_SHOES, wShadowTilemap + 10 * TILEMAP_WIDTH + 5, renderShoesNameText);
 }
 
 // ---- the select screens ----
 // RunRacketSelectScreen (3E:54BD), slot $400C / RunShoesSelectScreen (3E:5645), slot $400E: see the header
 function* runEquipSelectScreen(P, load) {
   disableLCDSafely(P);
-  load(P);
+  yield* load(P);
   registerFrameTask(P, 1, EquipListCursorSpriteTask);
   registerFrameTask(P, 1, EquippedItemMarkerSpriteTask);
   enableLCD(P);
   yield* fadeIn(P, 16);
   for (;;) {
-    handleEquipSelectInput(P);
+    yield* handleEquipSelectInput(P);
     let timer = P.V.equipSelectExitTimer;
     if (timer) {
       timer = (timer + 1) & 0xFF;
@@ -93,7 +93,7 @@ export const runRacketSelectScreen = P => runEquipSelectScreen(P, loadRacketSele
 export const runShoesSelectScreen = P => runEquipSelectScreen(P, loadShoesSelectScreen);
 // The list (the items owned of the kind) with its icons and the hovered item's panel, the marker's tiles and
 // palette, the screen queued
-function loadEquipList(P, kind, markOwned, drawInfoPanel) {
+function* loadEquipList(P, kind, markOwned, drawInfoPanel) {
   setMenuCursorFromIndex3e(P, LIST_COLUMNS, 0);
   wram(P, WRAM_SCREEN);
   clearMemory16(P, P.A.equipItemList, LIST_CLEAR_BLOCKS);
@@ -102,28 +102,28 @@ function loadEquipList(P, kind, markOwned, drawInfoPanel) {
   markOwned(P);
   buildOwnedItemList(P);
   drawOwnedItemIcons(P);
-  drawInfoPanel(P);
+  yield* drawInfoPanel(P);
   loadCompressedTileBlock(P, TILEBLOCK_SharedMenuGfx99, vTiles0 + 0x20 * TILE_SIZE + VRAM_BANK1, SharedMenuGfx99_BLOCKS);
   loadPaletteShadow(P, Palette_3e, OBJ_PALETTE_1, 1);
   return queueWram3MapToVRAM(P);
 }
 // LoadRacketSelectScreen (3E:550D)
-export function loadRacketSelectScreen(P) {
+export function* loadRacketSelectScreen(P) {
   loadScreenAssetRecord(P, SCREENASSET_EquipmentSelect);
   prepareGlyphBuffer(P);
   loadEquipSelectCommon(P);
-  return loadEquipList(P, EQUIP_RACKET, markOwnedRackets, drawRacketInfoPanel);
+  return yield* loadEquipList(P, EQUIP_RACKET, markOwnedRackets, drawRacketInfoPanel);
 }
 // LoadShoesSelectScreen (3E:5696): the same, the screen's top four rows (tiles and attributes) from rows 26-29
 // (the shoes' heading)
-export function loadShoesSelectScreen(P) {
+export function* loadShoesSelectScreen(P) {
   loadScreenAssetRecord(P, SCREENASSET_EquipmentSelect);
   prepareGlyphBuffer(P);
   loadEquipSelectCommon(P);
   wram(P, WRAM_SCREEN);
   copyTilemapRect(P, wShadowTilemap + 26 * TILEMAP_WIDTH, wShadowTilemap, 0x14, 0x04);
   copyTilemapRect(P, wShadowAttrmap + 26 * TILEMAP_WIDTH, wShadowAttrmap, 0x14, 0x04);
-  return loadEquipList(P, EQUIP_SHOES, markOwnedShoes, drawShoesInfoPanel);
+  return yield* loadEquipList(P, EQUIP_SHOES, markOwnedShoes, drawShoesInfoPanel);
 }
 // DrawOwnedItemIcons (3E:5563): the listed items' icons in a row from (7, 1), two cells apart
 export function drawOwnedItemIcons(P) {
@@ -143,7 +143,7 @@ export function drawItemIcon2x2(P, item, de) {
 }
 // HandleEquipSelectInput (3E:55AF): a frame's input: A (unless leaving already) equips the hovered item and starts
 // the exit timer; B starts it at $44 (cancelled); otherwise the cursor moves, redrawing the hovered item's panel
-export function handleEquipSelectInput(P) {
+export function* handleEquipSelectInput(P) {
   const input = P.V.inputPressed;
   P.V.menuInputPressed = input;
   if (input & PADF_A) {
@@ -166,18 +166,19 @@ export function handleEquipSelectInput(P) {
   if (!moved.a) return { a: 0, f: FZ };
   sound(P, SFX_MENU_MOVE);
   clearEquipSelectTextRows(P);
-  if (P.V.equipItemKind) drawShoesInfoPanel(P); else drawRacketInfoPanel(P);
+  if (P.V.equipItemKind) yield* drawShoesInfoPanel(P); else yield* drawRacketInfoPanel(P);
   return flushEquipSelectTextRows(P);
 }
-// The hovered item's panel: its stat changes, icon, description and name
-function drawInfoPanel(P, renderDesc, renderName) {
+// The hovered item's panel: its stat changes, icon, description and name (the glyphs uploaded over frames with the
+// LCD on)
+function* drawInfoPanel(P, renderDesc, renderName) {
   prepareGlyphBuffer(P);
   drawHoveredItemStatMods(P);
   const item = getHoveredItemId(P).a;
   drawItemIcon2x2(P, item, wShadowTilemap + 5 * TILEMAP_WIDTH + 5);
-  renderDesc(P, item);
-  renderName(P, item, wShadowTilemap + 5 * TILEMAP_WIDTH + 8);
-  return rom(P, FAR.UploadGlyphBuffer);
+  yield* renderDesc(P, item);
+  yield* renderName(P, item, wShadowTilemap + 5 * TILEMAP_WIDTH + 8);
+  return yield* romWait(P, FAR.UploadGlyphBuffer);
 }
 // DrawRacketInfoPanel (3E:5624) / DrawShoesInfoPanel (3E:5704)
 export const drawRacketInfoPanel = P => drawInfoPanel(P, renderRacketDescText, renderRacketNameText);
@@ -221,17 +222,17 @@ export const markOwnedRackets = P => markOwned(P, RacketItemTiles_3e, RACKET_FLA
 export const markOwnedShoes = P => markOwned(P, ShoeItemTiles_3e, SHOE_FLAGS, P.V.equippedRacket >> 4);
 
 export const HOOKS = [
-  [BANK, 0x5458, hook(P => drawEquippedRacketPanel(P))],
-  [BANK, 0x5486, hook(P => drawEquippedShoesPanel(P))],
+  [BANK, 0x5458, hookGen(P => drawEquippedRacketPanel(P))],
+  [BANK, 0x5486, hookGen(P => drawEquippedShoesPanel(P))],
   [BANK, 0x54BD, hookGen(P => runRacketSelectScreen(P))],
-  [BANK, 0x550D, hook(P => loadRacketSelectScreen(P))],
+  [BANK, 0x550D, hookGen(P => loadRacketSelectScreen(P))],
   [BANK, 0x5563, hook(P => drawOwnedItemIcons(P))],
   [BANK, 0x557A, hook((P, c) => { drawItemIcon2x2(P, c.c, c.de); })],
-  [BANK, 0x55AF, hook(P => handleEquipSelectInput(P))],
-  [BANK, 0x5624, hook(P => drawRacketInfoPanel(P))],
+  [BANK, 0x55AF, hookGen(P => handleEquipSelectInput(P))],
+  [BANK, 0x5624, hookGen(P => drawRacketInfoPanel(P))],
   [BANK, 0x5645, hookGen(P => runShoesSelectScreen(P))],
-  [BANK, 0x5696, hook(P => loadShoesSelectScreen(P))],
-  [BANK, 0x5704, hook(P => drawShoesInfoPanel(P))],
+  [BANK, 0x5696, hookGen(P => loadShoesSelectScreen(P))],
+  [BANK, 0x5704, hookGen(P => drawShoesInfoPanel(P))],
   [BANK, 0x5725, hook(P => buildOwnedItemList(P))],
   [BANK, 0x575A, hook(P => markOwnedRackets(P))],
   [BANK, 0x57A8, hook(P => markOwnedShoes(P))],
