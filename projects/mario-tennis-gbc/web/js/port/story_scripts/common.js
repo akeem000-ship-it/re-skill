@@ -189,6 +189,19 @@ export function* question(P, text, actor) {
 export function* menuFromText(P, text, d, e) { return (yield* storyGen(P, runMenuFromText(P, { hl: text, d, e }))).a; }
 // script_wait_idle actor: ScriptWaitActorIdle (0A:470B), until its animation is back to still or walk
 export function* waitIdle(P, actor) { return yield* storyGen(P, scriptWaitActorIdle(P, actor)); }
+// script_set_anim actor, anim / script_wait_idle actor: a gesture (nod, shake, bounce) played to its end
+export function* gesture(P, actor, anim) {
+  setAnim(P, actor, anim);
+  yield* waitIdle(P, actor);
+}
+// the scenes' run of questions: askYesNo n times, the dialogue's next message after each yes; false at a no
+export function* agrees(P, actor, n) {
+  for (let i = 0; i < n; i++) {
+    if ((yield* askYesNo(P, actor)) !== 0) return false;
+    advanceText(P);
+  }
+  return true;
+}
 // script_wait_move actor: ScriptWaitActorMoveDone (0A:43A4), until it stops walking
 export function* waitMove(P, actor) { return yield* storyGen(P, scriptWaitActorMoveDone(P, actor)); }
 // farcall ScriptWaitActorJumpDone (0A:43AB) with actor a: until it lands
