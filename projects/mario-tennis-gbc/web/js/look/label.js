@@ -164,11 +164,19 @@ export function labelPortrait(im, hero) {
   const st = { w, h, reg, idx, lay: LAYOUT[hero], hero, kind: "portrait", info: null };
   const frame = i => { const x = i % w, y = (i / w) | 0; return x === 0 || y === 0 || x === w - 1 || y === h - 1; };
   const inner = []; for (let i = 0; i < n; i++) { const x = i % w, y = (i / w) | 0; if (x === 1 || y === 1 || x === w - 2 || y === h - 2) inner.push(i); }
+  // the card behind the face: colour 0 reached from the frame; Alex's faces also use a colour-2 backdrop in the
+  // upper half (the same colour as his skin), reached from the frame's upper half
   const card = flood(w, h, inner, i => px[i] === 0 && !frame(i));
-  // the face: the largest skin-coloured blob decides the face box (Alex: colour 2; Nina: colour 1)
+  if (hero === "alex") {
+    const up = inner.filter(i => ((i / w) | 0) < h / 2 && px[i] === 2);
+    const bg = flood(w, h, up, i => px[i] === 2 && !frame(i)); for (let i = 0; i < n; i++) if (bg[i]) card[i] = 1;
+  }
+  // the face: the skin-coloured pixels' box (Alex: colour 2; Nina: colour 1), the card left out
   const skinIdx = hero === "alex" ? 2 : 1;
-  const sk = bbox(w, h, i => px[i] === skinIdx && !frame(i));
-  const faceTop = sk ? sk.y0 : (h / 3) | 0, chin = Math.round(h * 0.79);
+  const sk = bbox(w, h, i => px[i] === skinIdx && !frame(i) && !card[i] && ((i / w) | 0) > 2);
+  let faceTop = (h / 3) | 0;                                                   // the first row that is mostly face
+  for (let y = 3; y < h; y++) { let k = 0; for (let x = 1; x < w - 1; x++) if (px[y * w + x] === skinIdx && !card[y * w + x]) k++; if (k >= w / 5) { faceTop = y; break; } }
+  const chin = Math.round(h * 0.79);
   // a dark mass (colour 3 with >= 3 dark 4-neighbours) above the chin is hair, thin dark lines are outline
   const dark = i => px[i] === 3;
   const isMass = i => { const x = i % w, y = (i / w) | 0; let k = 0; for (const [dx, dy] of N4) { const X = x + dx, Y = y + dy; if (X >= 0 && Y >= 0 && X < w && Y < h && dark(Y * w + X)) k++; } return k >= 3; };
@@ -184,13 +192,21 @@ export function labelPortrait(im, hero) {
       if (v === 2) reg[i] = SKIN;
       else if (v === 3) reg[i] = (y < chin && isMass(i)) ? HAIR : OUT;
       else if (v === 1) reg[i] = cap[i] ? HAT : y >= chin - 2 ? TOP : KEEP;     // eye and teeth whites keep their colour
-      else reg[i] = KEEP;
+      else reg[i] = NONE;                                                     // inner colour 0: decided below
     } else {
       if (v === 2) reg[i] = y >= chin ? TOP : HAIR;
       else if (v === 3) reg[i] = OUT;
-      else if (v === 1) reg[i] = y >= chin ? TOP : SKIN;
-      else reg[i] = y >= chin ? TOP : SHADE;                                   // colour 0 inside the face: skin shading
+      else if (v === 1) reg[i] = y >= chin && w === 24 ? TOP : SKIN;          // the 32x32 faces show hands there, not the shirt
+      else reg[i] = y >= chin ? (w === 24 ? TOP : SKIN) : SHADE;              // colour 0 inside the face: skin shading
     }
+  }
+  // Alex's inner colour-0 pixels are highlights / shading of what they sit in: take the most common neighbour region
+  if (hero === "alex") for (let pass = 0; pass < 3; pass++) for (let i = 0; i < n; i++) {
+    if (reg[i] !== NONE || card[i] || frame(i)) continue;
+    const x = i % w, y = (i / w) | 0, cnt = {};
+    for (const [dx, dy] of N8) { const X = x + dx, Y = y + dy; if (X < 0 || Y < 0 || X >= w || Y >= h) continue; const r = reg[Y * w + X]; if (r && r !== OUT && r !== KEEP) cnt[r] = (cnt[r] || 0) + 1; }
+    let best = 0, br = 0; for (const r in cnt) if (cnt[r] > best) { best = cnt[r]; br = +r; }
+    if (br) reg[i] = br === SKIN ? SHADE : br; else if (pass === 2) reg[i] = KEEP;
   }
   st.info = { y0: sk ? sk.y0 : 0, yh: chin, faceTop, sk };
   return st;
@@ -311,11 +327,10 @@ function stylePortrait(st, style) {
   if (hero === "alex" && style !== "cap") {
     for (let i = 0; i < w * h; i++) if (reg[i] === HAT) set(st, i, HAIR);
     if (style === "headband" && sk) {
-      // a band across the forehead: in each face column, the two hair/outline pixels just above the first skin pixel
-      for (let x = sk.x0; x <= sk.x1; x++) {
-        let y = 0; while (y < h && reg[y * w + x] !== SKIN) y++;
-        if (y >= h || y > sk.y0 + 6) continue;
-        for (let k = 1; k <= 2; k++) { const j = (y - k) * w + x; if (y - k > 0 && (reg[j] === HAIR || reg[j] === OUT)) set(st, j, HAT); }
+      // a band across the forehead: the two rows above the face, over the face's width
+      const ft = info.faceTop;
+      for (let x = sk.x0; x <= sk.x1; x++) for (let y = ft - 2; y < ft; y++) {
+        const j = y * w + x; if (y > 0 && (reg[j] === HAIR || reg[j] === OUT || reg[j] === SHADE || reg[j] === HAT)) set(st, j, HAT);
       }
     }
   }

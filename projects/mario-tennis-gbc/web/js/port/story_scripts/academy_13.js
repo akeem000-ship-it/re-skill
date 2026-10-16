@@ -8,7 +8,7 @@
 // room's scenes by story stage).
 import {
   ACTOR_PLAYER, ACTOR_PARTNER, SPEAKER_NONE, FACE_DOWN, ANIM_NOD, ACTORFLAG_SOLID, ACTORFLAG_TALKABLE, WRAM_ACTORS,
-  BANK_TEXT, FLAG_DOUBLES, FLAG_TEMP_SCENE_VARIANT_A, testFlag, testFlagF, setFlag, clearFlag, setText, advanceText,
+  FLAG_DOUBLES, pagedTextMenu, FLAG_TEMP_SCENE_VARIANT_A, testFlag, testFlagF, setFlag, clearFlag, setText, advanceText,
   speak, askYesNo, setAnim, waitIdle, wait, face, setPosition, setActive, moveTarget, waitMove, nullScript,
   followPlayer, setActorFlag, copySceneRect, fadeIn, waitFadeEnd, sound, goToLocation, hook, hookGen, scene,
 } from "./common.js";
@@ -30,10 +30,9 @@ const Text_31_304 = 0x0530, Text_31_307 = 0x0533, Text_31_310 = 0x0536, Text_31_
 const Text_31_332 = 0x054C, Text_31_333 = 0x054D, Text_31_334 = 0x054E;
 // the answers' first text ids (the operands of RunAcademyQuestionsMenu's ld de): the roommate of variant A / B
 const ACADEMY_ANSWERS_A = 0x054F, ACADEMY_ANSWERS_B = 0x0808;
-// routines of this bank not ported here (src/story/varsity_courtyard_13.asm), and of bank 5
+// routines of this bank not ported here (src/story/varsity_courtyard_13.asm)
 const SetRoommateDoublesNoReplyText_13 = 0x5B8B, SetRoommateSinglesNoReplyText_13 = 0x5BA7;
 const SetRoommateSinglesYesReplyText_13 = 0x5BC3, SetRoommateDoublesYesReplyText_13 = 0x5BDF;
-const RunPagedTextMenu = 0x4944;
 const AcademyTopicHandlerTable = 0x5928;               // 7 words: the topics' handlers
 const YES = 0, MENU_CANCELLED = 0xFF;
 
@@ -129,7 +128,7 @@ export function* runAcademyQuestionsMenu(P) {
     bus.w8(hl, de & 0xFF); bus.w8((hl + 1) & 0xFFFF, de >> 8);       // .menuLoop
     let menu = Text_31_332;
     if (testFlag(P, FLAG_WON_SENIOR_SINGLES_RANK_1)) menu = testFlag(P, FLAG_WON_VARSITY_SINGLES_RANK_4) ? Text_31_334 : Text_31_333;
-    const topic = (yield* P.runRom(BANK_TEXT, RunPagedTextMenu, { hl: menu, de: 0x0101, a: 1 })).a;
+    const topic = yield* pagedTextMenu(P, menu, 1);              // (ld de, $0101: unused)
     if (topic === MENU_CANCELLED) return;
     yield* academyTopic(P, topic);
     yield* speak(P, ACTOR_DORM_ROOM_KATE);

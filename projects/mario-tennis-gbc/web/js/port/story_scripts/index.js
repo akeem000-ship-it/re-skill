@@ -2,9 +2,13 @@
 // MIT), part 1 (academy_13 .. junior_singles_11). Each module exports HOOKS = [[bank, addr, fn(P, cpu)], ...]: ROM
 // code reaching bank:addr runs fn instead (web/js/port/port.js). Add each module here.
 import { HOOKS as ACADEMY_13 } from "./academy_13.js";
+import { HOOKS as ACADEMY_MAIN_10 } from "./academy_main_10.js";
+import { HOOKS as ACADEMY_WING_10 } from "./academy_wing_10.js";
+import { HOOKS as ACTOR_0F } from "./actor_0f.js";
 import { HOOKS as DORM_13 } from "./dorm_13.js";
 
 export const MODULES = {
-  academy_13: ACADEMY_13, dorm_13: DORM_13,
+  academy_13: ACADEMY_13, academy_main_10: ACADEMY_MAIN_10, academy_wing_10: ACADEMY_WING_10, actor_0f: ACTOR_0F,
+  dorm_13: DORM_13,
 };
 export const HOOKS = Object.values(MODULES).flat();

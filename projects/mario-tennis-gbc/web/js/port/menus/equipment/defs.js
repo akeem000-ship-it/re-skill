@@ -81,6 +81,7 @@ export const regs8 = r => ({ a: r.a, f: r.f, b: r.b, c: r.c, d: r.d, e: r.e, h: 
 // ---- constants (include/constants/*.inc) ----
 export const BGM_STATUS_SCREEN = 0x04, SFX_STOP = 0x50, BGM_NONE = 0x00;
 export const CHAR_MARIO = 0x1A;
+export const wWindowShadowTilemap = 0xD000, wTextTileBuffer = 0xD800;   // WRAM 5 / WRAM 1
 
 // ---- the ROM's routines, by address ----
 export const HOME = {

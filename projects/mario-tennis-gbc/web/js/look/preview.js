@@ -56,7 +56,9 @@ export function heroPreview(rom, name, look, walkFrame = 0) {
   });
   const [pb, pa] = h.portraits[0], { data } = lzDecompress(rom, off(pb, pa));
   const portrait = paint(prep(labelPortrait(decodeRowMajor(data, 0, 3, 3), name), name, look, "portrait"), pal, cols, false);
-  return { walk, poses, portrait };
+  const faces = h.winlose.map(([b, a], k) => paint(prep(labelPortrait(decodeRowMajor(lzDecompress(rom, off(b, a)).data, 0, 4, 4), name), name, look, k ? "lose" : "win"), pal, cols, false));
+  const heads = h.heads.map(a => paint(prep(labelSprite(decodeColMajor(rom, off(0x18, a), 2, 2), name, "head"), name, look, `head:${a.toString(16)}`), pal, cols, true));
+  return { walk, poses, portrait, faces, heads };
 }
 // draw an image scaled k x onto a 2D context (mirror: flip horizontally, as a left-handed player)
 export function blit(ctx, im, x, y, k, mirror = false) {

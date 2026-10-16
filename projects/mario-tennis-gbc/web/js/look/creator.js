@@ -28,8 +28,10 @@ const CSS = `
 #lookpanel .sw { width: 26px; height: 26px; border-radius: 6px; border: 2px solid #0000; box-shadow: inset 0 0 0 1px #0006; cursor: pointer; padding: 0; }
 #lookpanel .sw.on { border-color: #fff; }
 #lookpanel .sw.none { background: repeating-linear-gradient(45deg,#555 0 4px,#333 4px 8px); }
-#lookpanel input[type=color] { width: 30px; height: 28px; border: 0; padding: 0; background: none; cursor: pointer; }
-#lookpanel canvas { width: 100%; image-rendering: pixelated; background: #4a8a58; border-radius: 8px; display: block; }
+#lookpanel .custom { position: relative; width: 26px; height: 26px; border-radius: 13px; background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); cursor: pointer; border: 2px solid #0000; box-sizing: border-box; }
+#lookpanel .custom.on { border-color: #fff; }
+#lookpanel .custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+#lookpanel canvas { position: static; transform: none; aspect-ratio: auto; width: 100%; max-width: 392px; height: auto; margin: 4px auto; image-rendering: pixelated; background: #4a8a58; border-radius: 8px; display: block; }
 #lookpanel .acts { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; flex-wrap: wrap; }
 #lookpanel .btn { background: #2c3140; border: 1px solid #666; border-radius: 8px; color: #fff; padding: 7px 14px; cursor: pointer; font-size: 14px; }
 #lookpanel .btn.go { background: #e05a2a; border-color: #ff9a6a; }
@@ -51,7 +53,7 @@ export function mountCreator({ hud, keys, pause, onChange }) {
   panel.innerHTML = `<div class="card" role="dialog" aria-label="Appearance">
     <h2>Appearance <button class="x" aria-label="close">×</button></h2>
     <div class="row" data-k="hero"></div>
-    <canvas width="392" height="232"></canvas>
+    <canvas width="392" height="196"></canvas>
     <div class="lab">Presets</div><div class="row" data-k="presets"></div>
     <div class="lab">Hairstyle</div><div class="row" data-k="style"></div>
     <div data-k="colours"></div>
@@ -78,10 +80,11 @@ export function mountCreator({ hud, keys, pause, onChange }) {
       const val = c && c.colours ? c.colours[k] : undefined;
       if (k === "shoes" || k === "racket") { const b = document.createElement("button"); b.className = "sw none" + (val === undefined ? " on" : ""); b.title = k === "shoes" ? "as the shorts" : "the game's"; b.onclick = () => { delete ensure().colours[k]; render(); }; row.appendChild(b); }
       for (const v of SWATCHES[set]) { const b = document.createElement("button"); b.className = "sw" + (val === v ? " on" : ""); b.style.background = css15(v); b.title = css15(v); b.onclick = () => { ensure().colours[k] = v; render(); }; row.appendChild(b); }
-      const inp = document.createElement("input"); inp.type = "color"; inp.title = "any colour (rounded to the Game Boy Color's 15 bits)";
+      const cust = document.createElement("label"); cust.className = "custom" + (val !== undefined && !SWATCHES[set].includes(val) ? " on" : ""); cust.title = "any colour (rounded to the Game Boy Color's 15 bits)";
+      const inp = document.createElement("input"); inp.type = "color"; cust.appendChild(inp);
       if (val !== undefined) inp.value = "#" + [val & 31, (val >> 5) & 31, (val >> 10) & 31].map(x => (x * 255 / 31 | 0).toString(16).padStart(2, "0")).join("");
       inp.oninput = () => { const h = inp.value; ensure().colours[k] = rgb15(parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)); render(); };
-      row.appendChild(inp); box.appendChild(row);
+      row.appendChild(cust); box.appendChild(row);
     }
     q("lefty").checked = !!(c && c.lefty); q("lefty").onchange = e => { ensure().lefty = e.target.checked || undefined; render(); };
     drawPreview();
@@ -91,12 +94,12 @@ export function mountCreator({ hud, keys, pause, onChange }) {
     if (!pristine) return;
     const n = name(), L = cur(), P = heroPreview(pristine, n, L, (anim >> 1) & 1);
     ctx.fillStyle = "#4a8a58"; ctx.fillRect(0, 0, cv.width, cv.height);
-    ctx.fillStyle = "#c48a3a"; ctx.fillRect(0, 0, cv.width, 84);           // a path for the overworld row
-    P.walk.forEach((im, i) => blit(ctx, im, 8 + i * 70, 10, 4));
-    blit(ctx, P.portrait, 296, 6, 3);
-    ctx.fillStyle = "#3a6e9a"; ctx.fillRect(0, 84, cv.width, cv.height - 84); ctx.fillStyle = "#e8eef4"; ctx.fillRect(0, 84 + 128, cv.width, 2);
+    ctx.fillStyle = "#c48a3a"; ctx.fillRect(0, 0, cv.width, 80);           // a path for the overworld row
+    P.walk.forEach((im, i) => blit(ctx, im, 10 + i * 66, 8, 4));
+    blit(ctx, P.portrait, 290, 4, 3);
+    ctx.fillStyle = "#3a6e9a"; ctx.fillRect(0, 80, cv.width, cv.height - 80); ctx.fillStyle = "#e8eef4"; ctx.fillRect(0, 188, cv.width, 2);
     const lefty = !!(L && L.lefty);
-    P.poses.forEach((im, i) => blit(ctx, im, 4 + i * 64 + (lefty ? 0 : 0), 92, 2.5, lefty));
+    P.poses.slice(0, 5).forEach((im, i) => blit(ctx, im, 4 + i * 78, 86, 3, lefty));
   }
   setInterval(() => { if (open) { anim++; drawPreview(); } }, 260);
 

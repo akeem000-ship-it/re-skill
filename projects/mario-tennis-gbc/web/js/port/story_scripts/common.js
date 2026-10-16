@@ -53,6 +53,9 @@ import { advanceFrame } from "../home/frame.js";
 import { playSoundManaged, waitJingleEnd } from "../audio/requests.js";
 import { resumeBGM, setMusicMuted } from "../audio/bgm.js";
 import { getRegs, setRegs } from "../home/cpu.js";
+import { runPagedTextMenu } from "../text/paged.js";
+import { pushTextArgString, pushTextArgNumber } from "../text/arg.js";
+import { fetchShortTextToBuffer } from "../text/window_tilemap.js";
 import { HOOK_TRACE } from "../menus/char_select/defs.js";
 
 export {
@@ -123,6 +126,8 @@ export const setPositionRaw = (P, actor, x, y) => story(P, () => scriptSetActorP
 export const moveTargetRaw = (P, actor, x, y) => story(P, () => scriptSetActorMoveTarget(P, actor, x, y));
 // script_move_angle actor, angle, distance: MoveActorByAngle (0A:4545)
 export const moveAngle = (P, actor, angle, dist) => story(P, () => moveActorByAngle(P, actor, angle, tiles(dist)));
+// farcall MoveActorByAngle with the angle (b) and length (de, 1/256 tile) as words
+export const moveAngleRaw = (P, actor, angle, length) => story(P, () => moveActorByAngle(P, actor, angle, length));
 // script_set_speed actor, speed: ScriptSetActorMoveSpeed (0A:433B)
 export const setSpeed = (P, actor, speed) => story(P, () => scriptSetActorMoveSpeed(P, actor, pxSpeed(speed)));
 // script_jump_velocity actor, velocity: ScriptSetActorJumpVelocity (0A:4719)
@@ -241,6 +246,16 @@ export function* runMatch(P) { return yield* storyGen(P, runStoryMatch(P)); }
 export function* restoreAfterMatch(P) { return yield* storyGen(P, restoreOverworldAfterMatch(P)); }
 // ld de, offset / ld hl, value / farcall WriteStoryStateWord (0A:5161): a word of the story state
 export const writeStoryWord = (P, off, value) => story(P, () => writeStoryStateWord(P, off, value));
+
+// ---- the text engine (bank 5) ----
+const text = (P, fn) => farcall(P, BANK_TEXT, fn);
+// farcall RunPagedTextMenu (05:4944): a menu of pages of text hl (a pages): the choice, $FF when cancelled
+export function* pagedTextMenu(P, hl, pages) { return yield* farcallGen(P, BANK_TEXT, runPagedTextMenu(P, hl, pages)); }
+// farcall PushTextArgNumber (05:5147) / PushTextArgString (05:50F7): the next message's argument
+export const pushTextNumber = (P, n) => text(P, () => pushTextArgNumber(P, n));
+export const pushTextString = (P, ptr) => text(P, () => pushTextArgString(P, ptr));
+// farcall FetchShortTextToBuffer (05:409A): short text id into the buffer at de
+export const fetchShortText = (P, id, dest) => text(P, () => fetchShortTextToBuffer(P, id, dest));
 
 // ---- bank-0 routines ----
 // script_fade_in speed: BeginFadeIn (00:1D2E) (no wait)
