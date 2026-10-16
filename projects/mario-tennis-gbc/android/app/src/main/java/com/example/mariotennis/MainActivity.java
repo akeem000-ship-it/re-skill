@@ -143,7 +143,9 @@ public class MainActivity extends Activity {
         }
         return super.dispatchGenericMotionEvent(e);
     }
-    @Override public void onBackPressed() { /* keep the game running; the page handles B */ }
+    @Override public void onBackPressed() {           // keep the game running; Back shows / hides the page's button bar
+        web.evaluateJavascript("window.__backPressed && window.__backPressed()", null);
+    }
     @Override protected void onPause() {          // write a pending cartridge save before the WebView's timers stop
         web.evaluateJavascript("window.__flushSave && window.__flushSave(); window.__stopRec && window.__stopRec();", null);
         super.onPause(); web.onPause();

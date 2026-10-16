@@ -218,7 +218,9 @@ async function loadRom(buf) {
   else try { const mod = await import("../gen/game.js"); const T = {}; mod.install(T); gb.installRecomp(T); if (mod.HRAM_SIG) gb.exec.setHramSig(mod.HRAM_SIG); $("romstatus").textContent += " · recompiled code"; } catch (e) { $("romstatus").textContent += " · interpreter"; }
   loadSave();
   if (port) { session.start(gb, recMeta()); sessionLook = creator.look; }
-  $("loader").hidden = true; $("hud").hidden = false; cv.focus();
+  $("loader").hidden = true; cv.focus();
+  showHud(!document.body.classList.contains("touch"));            // phones: the bar stays hidden until Back
+  if (document.body.classList.contains("touch")) hint("Swipe back (or press Back) for the menu");
   const m3 = q.has("vox") ? "vox" : q.has("3d") ? "3d" : q.has("2d") ? "off" : (stored("mt-3d") || "vox");   // remembered view mode; VOX (voxel sprites) by default
   if (m3 === "3d" || m3 === "vox") setView3d(true, m3 === "vox");
 }
@@ -235,6 +237,16 @@ for (const el of document.querySelectorAll("#pad [data-key]")) {
   el.addEventListener("contextmenu", e => e.preventDefault());
 }
 if (navigator.userAgent.includes("MarioTennisWrapper") || location.search.includes("touch")) document.body.classList.add("touch");
+// ---- the button bar: on phones it stays out of the way, and the Back gesture / button shows and hides it (the app
+// calls window.__backPressed from onBackPressed) ----
+function showHud(on) { $("hud").hidden = !on; insetAt = 0; applyAspect(); }
+function toggleHud() { if (!gb) return false; showHud($("hud").hidden); return true; }
+window.__backPressed = toggleHud;
+function hint(text) {                         // a short notice over the game that fades out
+  const d = document.createElement("div"); d.textContent = text;
+  d.style.cssText = "position:fixed;left:50%;top:18%;transform:translateX(-50%);z-index:9;padding:8px 14px;border-radius:8px;background:rgba(20,22,30,.85);color:#fff;font:14px sans-serif;pointer-events:none;transition:opacity .6s";
+  document.body.appendChild(d); setTimeout(() => { d.style.opacity = "0"; }, 2600); setTimeout(() => d.remove(), 3300);
+}
 // the ROM the player loaded, kept in this browser's IndexedDB so the next visit can start without picking it again
 const romStore = (mode, fn) => new Promise((ok, fail) => {
   try {
