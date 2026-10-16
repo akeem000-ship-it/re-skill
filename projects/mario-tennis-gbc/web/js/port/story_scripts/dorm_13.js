@@ -74,7 +74,10 @@ export function queueTourPointerSprite(P, x, y) {
 // bobbing up 0-7 pixels with the frame counter
 export function animateTourPointerSprite(P) {
   const x = P.V.mapSceneStage, bob = (P.V.vBlankCounter >> 1) & 0x07;
-  return queueTourPointerSprite(P, x, (P.V.mapSceneStage2 + 8 - bob) & 0xFF);
+  P.cpu.sp = (P.cpu.sp - 2) & 0xFFFF;                   // (call QueueTourPointerSprite_13: the sprite queue's
+  try {                                                 // scratch sits below that return address)
+    return queueTourPointerSprite(P, x, (P.V.mapSceneStage2 + 8 - bob) & 0xFF);
+  } finally { P.cpu.sp = (P.cpu.sp + 2) & 0xFFFF; }
 }
 
 // ---- the door ----
@@ -179,17 +182,15 @@ export function* dormRoomInitScript(P) {
 
 // SetDormRoomEventTriggerCells_13 (13:5067): the step-on trigger 15 on the nine cells in front of the door while
 // the varsity rank is won (singles rank 4, doubles rank 2) and the Island Open not reached; cleared otherwise.
-// Returns the registers it leaves: the value and the last cell (a, d, e), F of the last flag test.
+// Returns the registers it leaves: the value and the last cell (a, d, e) (F is the last far call's, from its stack
+// arithmetic: not read by the caller).
 export function setDormRoomEventTriggerCells(P) {
-  let on, last;
-  if (!testFlag(P, FLAG_DOUBLES)) {
-    on = (last = testFlag(P, FLAG_WON_VARSITY_SINGLES_RANK_4)) && !(last = testFlag(P, FLAG_REACHED_ISLAND_OPEN_SINGLES));
-  } else {
-    on = (last = testFlag(P, FLAG_WON_VARSITY_DOUBLES_RANK_2)) && !(last = testFlag(P, FLAG_REACHED_ISLAND_OPEN_DOUBLES));
-  }
+  const on = !testFlag(P, FLAG_DOUBLES)
+    ? testFlag(P, FLAG_WON_VARSITY_SINGLES_RANK_4) && !testFlag(P, FLAG_REACHED_ISLAND_OPEN_SINGLES)
+    : testFlag(P, FLAG_WON_VARSITY_DOUBLES_RANK_2) && !testFlag(P, FLAG_REACHED_ISLAND_OPEN_DOUBLES);
   const v = on ? DORM_TRIGGER : BEHAVIOR_NONE;
   for (const [col, row] of DORM_TRIGGER_CELLS) writeBehaviorCell(P, col, row, v);
-  return { a: v, d: 12, e: 18, f: testFlagF(last) };
+  return { a: v, d: 12, e: 18 };
 }
 
 // SetupDormRoomSceneVariant (13:5130): with a partner of gender 0 the room is the other dorm room (variant A: the

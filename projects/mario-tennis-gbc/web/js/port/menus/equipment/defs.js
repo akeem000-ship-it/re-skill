@@ -17,6 +17,7 @@
 import { HOOK_TRACE } from "../char_select/defs.js";
 import { getRegs, setRegs, spAddFlags, push } from "../../home/cpu.js";
 import { queueVRAMCopy } from "../../home/memory.js";
+import { loadPaletteShadow as homeLoadPaletteShadow } from "../../home/palettes.js";
 import { FAR as FAR_PAUSE, HOME as HOME_PAUSE } from "../pause/defs.js";
 import { farcallFlags } from "../common/defs.js";
 
@@ -105,6 +106,25 @@ export const prepareGlyphBuffer = P => rom(P, FAR_PAUSE.PrepareGlyphBuffer);
 export function* uploadGlyphBuffer(P) { return yield* romWait(P, FAR_PAUSE.UploadGlyphBuffer); }
 export function* renderProportionalTextAt(P, text, de, c) { return yield* romWait(P, FAR_PAUSE.RenderProportionalTextAt, { hl: text, de, c }); }
 export const disableLCDSafely = P => home(P, HOME_PAUSE.DisableLCDSafely);
+// LoadPaletteShadow (00:05B0) with the registers it leaves (d, e as given unless it changes them)
+export const loadPaletteShadow = (P, hl, d, e) => ({ d, e, ...homeLoadPaletteShadow(P, hl, d, e) });
+// the registers a sequence of calls leaves: each call's result over the last (undefined ones skipped; pairs are
+// kept as their halves)
+export function chain(r, x) {
+  for (const k in x) {
+    const v = x[k];
+    if (v === undefined) continue;
+    if (k.length === 2) { r[k[0]] = (v >> 8) & 0xFF; r[k[1]] = v & 0xFF; } else r[k] = v & 0xFF;
+  }
+  return r;
+}
+// fn run with sp `words` words lower: a routine reached by a `call` (and pushes) from another ported one, whose
+// callees keep things on the stack or return sp-based values (the stack's contents are not the ROM's)
+export function nested(P, words, fn) {
+  const sp = P.cpu.sp;
+  P.cpu.sp = (sp - 2 * words) & 0xFFFF;
+  try { return fn(); } finally { P.cpu.sp = sp; }
+}
 // QueueVRAMCopy (00:0480) with every register it leaves (c = the count loaded, which a full queue keeps)
 export const queueCopy = (P, src, dest, blocks) => ({ c: blocks & 0xFF, ...queueVRAMCopy(P, src, dest, blocks) });
 // the flags the rst $20 / $28 handlers (set_flag / clear_flag) leave: their `ld hl, sp+4`, sp 4 below the caller's

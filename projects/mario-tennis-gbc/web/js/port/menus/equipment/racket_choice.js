@@ -8,7 +8,8 @@
 // Tests: lockstep on out/port/menus_erase1.mtrec, save1.mtrec, menus_file1.mtrec and out/port/eq_all.mtrec (scripted
 // from a story state: the warning's three variants, the choice's two answers); web/tests/port/routines_menus_misc.mjs.
 import {
-  FZ, FAR, rom, near, wram, w8, sound, advanceFrame, registerFrameTask, clearFrameTasks, queueVRAMCopy, queueSprite,
+  FZ, FAR, rom, near, nested, chain, addFlags, wram, w8, sound, advanceFrame, registerFrameTask, clearFrameTasks,
+  queueVRAMCopy, queueSprite,
   loadPaletteShadow, enableLCD, fadeIn, fadeOut, fillTilemapRect, loadCompressedTileBlock, loadScreenAssetRecord,
   queueWram3MapToVRAM, prepareGlyphBuffer, uploadGlyphBuffer, renderProportionalTextAt, disableLCDSafely, hook,
   hookGen, WRAM_STAGING, WRAM_SCREEN, WRAM_TEXT, TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1, vTiles0, vTiles2, vBGMap0,
@@ -136,15 +137,18 @@ export function* loadEraseDataConfirmScreen(P) {
 }
 // EraseConfirmCursorSpriteTask (3E:4E0C), a frame task: the hand cursor by the answer under it
 export function eraseConfirmCursorSpriteTask(P) {
-  return queueEraseConfirmCursorSprites(P, P.V.menuCursorY ? CURSOR_NO : CURSOR_YES);
+  const de = P.V.menuCursorY ? CURSOR_NO : CURSOR_YES;
+  return nested(P, 1, () => queueEraseConfirmCursorSprites(P, de, P.V.menuCursorY));
 }
 // QueueEraseConfirmCursorSprites (3E:4E1C): the hand (two sprites side by side, tiles 0 and 2) at de, then the menu
-// background's scroll
-export function queueEraseConfirmCursorSprites(P, de) {
-  const x = de >> 8, y = de & 0xFF;
-  queueSprite(P, OAM_BANK1, 0x00, x, y);
-  queueSprite(P, OAM_BANK1, 0x02, (x + 8) & 0xFF, y);
-  return rom(P, FAR.TickMenuBgScroll);
+// background's scroll (a: the caller's, for the registers left)
+export function queueEraseConfirmCursorSprites(P, de, a = P.cpu.a) {
+  const x = de >> 8, y = de & 0xFF, x2 = (x + 8) & 0xFF;
+  const r = { a, b: OAM_BANK1, c: 0x00, d: x, e: y };
+  chain(r, queueSprite(P, OAM_BANK1, 0x00, x, y));
+  chain(r, { a: x2, f: addFlags(8, x), b: OAM_BANK1, c: 0x02, d: x2, e: y });
+  chain(r, queueSprite(P, OAM_BANK1, 0x02, x2, y));
+  return rom(P, FAR.TickMenuBgScroll, r);
 }
 // AnimateEraseConfirmPalette (3E:4E34), also a frame task: BG palette 4 from EraseConfirmPalette_3e with its third
 // color stepping through EraseConfirmFlashColors_3e every 4 frames (12 steps: the frame's red glow)
@@ -159,7 +163,7 @@ export function animateEraseConfirmPalette(P, entryF = P.cpu.f) {
   P.bus.w16(pal + 4, rw(P, EraseConfirmFlashColors_3e + 2 * step));
   const r = loadPaletteShadow(P, pal, BG_PALETTE_4, 1);
   wram(P, bank);
-  return { ...r, a: bank, f: entryF };
+  return { ...r, a: bank, b: 0, f: entryF };                        // (b: CopyMemoryBC's count run out)
 }
 
 // ---- the racket-or-shoes choice ----

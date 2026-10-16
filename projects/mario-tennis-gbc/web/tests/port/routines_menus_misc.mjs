@@ -4,7 +4,8 @@
 // with registers drawn from the state and prep() forcing the branches (items owned and equipped, stat lists, tabs and
 // cursors, dictionary masks, rows and letters, minigame unlocks, clears, stars and scores, level counts, link roles,
 // slots and remote inputs, debug cursors, flags and EXP counters, signed modifiers, names with diacritics). The
-// registers compared are the ones each port says it returns (the hook adapter's HOOK_TRACE), plus all memory.
+// registers compared are all eight (a hook puts back the ones the routine keeps and sets its results; F: Z and C),
+// plus all memory.
 // Routines that draw on a screen run on the states where that screen is up (its frame task registered).
 // States: the recordings of these screens, e.g.
 //   node web/tests/port_routines.mjs "Misc " --rec out/port/eq_all.mtrec,out/port/dc_a.mtrec,out/port/dc_b.mtrec,\
@@ -23,16 +24,7 @@ const rx = (mem, bank, a) => (a >= 0xD000 && a < 0xE000 ? mem.wram[bank || 1][a 
 const wf = (mem, name, v, off = 0) => wx(mem, FIELD[name] ? FIELD[name].bank : 0, at(name) + off, v);
 const rf = (mem, name, off = 0) => rx(mem, FIELD[name] ? FIELD[name].bank : 0, at(name) + off);
 const wf16 = (mem, name, v, off = 0) => { wf(mem, name, v, off); wf(mem, name, v >> 8, off + 1); };
-const REGS = new Set(["a", "f", "b", "c", "d", "e", "h", "l"]);
-const regNames = out => {
-  const r = new Set();
-  for (const [k, v] of Object.entries(out && typeof out === "object" ? out : {})) {
-    if (v === undefined) continue;
-    if (REGS.has(k)) r.add(k);
-    else if (k === "bc" || k === "de" || k === "hl") { r.add(k[0]); r.add(k[1]); }
-  }
-  return [...r];
-};
+const ALL = ["a", "f", "b", "c", "d", "e", "h", "l"];
 
 // ---- the entries ----
 export const ROUTINES = [];
@@ -62,7 +54,7 @@ function E(name, bank, addr, { regs = () => ({}), prep = null, n = 3, active = n
       HOOK_TRACE.out = null;
       P.ime = false;
       const ret = P.callRom(bank, addr, regs);
-      entry.out = regNames(HOOK_TRACE.out).filter(r => !skip.includes(r));
+      entry.out = ALL.filter(r => !skip.includes(r));         // (the hook sets every register: the saved ones and its results)
       return ret;
     },
   };
@@ -415,9 +407,3 @@ L("Unused_3e_DrawDecimalNumber", 0x3E, 0x4475, { regs: r => ({ a: pick(r, [0, 2,
 L("Unused_3e_DrawAsciiDigitString", 0x3E, 0x4496, { regs: r => ({ hl: 0xC600, de: mapAt(r) }), wram: 3, prep: both(lkPrep, (mem, r) => put(mem, 0, 0xC600, [0x31, 0x20, 0x39, 0])) });
 L("Unused_3e_DrawAsciiDigitChar", 0x3E, 0x44A0, { regs: r => ({ a: pick(r, [0x20, 0x2F, 0x30, 0x39, r(256)]), de: mapAt(r) }) });
 L("FlushMatchRuleRowAttrs", 0x3E, 0x48BB, { regs: r => ({ b: r(3) }), active: onLink, n: 2 });
-// PROBE (temporary): other parts' routines this file's callers rely on, every register compared
-for (const [n, b, a, regs] of [["PROBE RenderTextToBuffer64", 5, 0x5F52, r => ({ hl: pick(r, [0x00E0, 0x00E1, 0x00CA, 0x001B]), de: MAP + 0x40 + r(0x200), c: 0x20 })],
-  ["PROBE RenderProportionalTextAt", 5, 0x5DB3, r => ({ hl: pick(r, [0x00E0, 0x001B]), de: MAP + 0x40 + r(0x200), c: 0x20 })]]) {
-  E(n, b, a, { regs, wram: 3, n: 4, lcdOff: true });
-  ROUTINES[ROUTINES.length - 1].js = function (P, regs) { const ret = P.callRom(b, a, regs); this.out = ["a", "f", "b", "c", "d", "e", "h", "l"]; return ret; };
-}
