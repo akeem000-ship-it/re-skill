@@ -289,10 +289,11 @@ export function jetDroplets(n = 150) {
 }
 
 // Plant body (tree, bush, potted plant) as a voxel mesh with volume: each opaque pixel is a column whose half-depth
-// grows with its distance from the silhouette (a quarter circle of radius R px, up to T px, in half-pixel steps), so a
-// canopy is round and a trunk thin. Faces are merged into runs (same colour and depth) to keep the vertex count low.
-// Local units: 1 = one pixel, origin at the bottom-centre. Returns {pos, col, sway, src}: sway = (weight, 0) with the
-// weight growing with the height (the foot stays put); src = (pixel index in the image, face shade 0..1) for recolouring.
+// grows with its distance from the silhouette (a quarter circle of radius R px, up to T px, in whole pixels), so a
+// canopy is round and a trunk thin. The colours come from the map picture (a texture), so faces of one depth merge
+// into rectangles whatever the dithering: few vertices per plant. Local units: 1 = one pixel, origin at the
+// bottom-centre. Returns {pos, uv, sway}: uv in image pixels (the caller offsets them into the map texture),
+// sway = (weight, shade): the weight grows with the height (the foot stays put), shade darkens the back and sides.
 export function plantMesh(rgba, w, h, R = 5, T = 4) {
   const n = w * h, op = i => rgba[i * 4 + 3] >= 128, dist = new Float32Array(n).fill(1e9);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (!op(i)) { dist[i] = 0; continue; } if (x === 0 || y === 0 || x === w - 1 || y === h - 1) dist[i] = 1; }
@@ -300,39 +301,46 @@ export function plantMesh(rgba, w, h, R = 5, T = 4) {
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (x > 0) relax(i, i - 1, 1); if (y > 0) { relax(i, i - w, 1); if (x > 0) relax(i, i - w - 1, 1.4); if (x < w - 1) relax(i, i - w + 1, 1.4); } }
   for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) { const i = y * w + x; if (x < w - 1) relax(i, i + 1, 1); if (y < h - 1) { relax(i, i + w, 1); if (x < w - 1) relax(i, i + w + 1, 1.4); if (x > 0) relax(i, i + w - 1, 1.4); } }
   const dep = new Float32Array(n);
-  for (let i = 0; i < n; i++) if (op(i)) { const u = Math.min(dist[i], R) / R; dep[i] = Math.max(0.5, Math.round(T * Math.sqrt(1 - (1 - u) * (1 - u)) * 2) / 2); }
+  for (let i = 0; i < n; i++) if (op(i)) { const u = Math.min(dist[i], R) / R; dep[i] = Math.max(1, Math.round(T * Math.sqrt(1 - (1 - u) * (1 - u)))); }
   const D = (x, y) => (x >= 0 && y >= 0 && x < w && y < h) ? dep[y * w + x] : 0;
-  const col = i => rgba[i * 4] << 16 | rgba[i * 4 + 1] << 8 | rgba[i * 4 + 2];
-  const out = { pos: [], col: [], sway: [], src: [] };
-  const face = (a, b, c, d, i, k, wy) => {        // wy: height (local y) the sway weight is taken from
-    const wgt = Math.pow(Math.max(0, Math.min(1, wy / h)), 1.5);
-    for (const v of [a, b, c, a, c, d]) { out.pos.push(v[0] - w / 2, v[1], v[2]); out.col.push(rgba[i * 4] / 255 * k, rgba[i * 4 + 1] / 255 * k, rgba[i * 4 + 2] / 255 * k); out.sway.push(wgt, 0); out.src.push(i, k); }
-  };
+  const out = { pos: [], uv: [], sway: [] };
+  // quad: 4 corners [x, y(local up), z] with their texture pixel coordinates [u, v]
+  const quad = (q, t, k) => { for (const j of [0, 1, 2, 0, 2, 3]) { const [p, uv] = q[j]; out.pos.push(p[0] - w / 2, p[1], p[2]); out.uv.push(uv[0], uv[1]); out.sway.push(Math.pow(Math.max(0, Math.min(1, p[1] / h)), 1.5), k); } };
   const Y = y => h - y;                            // image row y -> local height of its top edge
-  // front and back: runs along rows
-  for (let y = 0; y < h; y++) for (let x = 0; x < w;) {
-    const i = y * w + x; if (!op(i)) { x++; continue; }
-    let e = x + 1; while (e < w && op(y * w + e) && col(y * w + e) === col(i) && dep[y * w + e] === dep[i]) e++;
-    const t = dep[i], y0 = Y(y + 1), y1 = Y(y);
-    face([x, y0, t], [e, y0, t], [e, y1, t], [x, y1, t], i, 1.0, y0 + 0.5);
-    face([e, y0, -t], [x, y0, -t], [x, y1, -t], [e, y1, -t], i, 0.6, y0 + 0.5);
-    x = e;
+  // front and back: greedy rectangles of one depth
+  const used = new Uint8Array(n);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x; if (!op(i) || used[i]) continue;
+    const t = dep[i]; let e = x + 1; while (e < w && !used[y * w + e] && op(y * w + e) && dep[y * w + e] === t) e++;
+    let b = y + 1; for (; b < h; b++) { let ok = true; for (let k = x; k < e; k++) { const j = b * w + k; if (used[j] || !op(j) || dep[j] !== t) { ok = false; break; } } if (!ok) break; }
+    for (let yy = y; yy < b; yy++) for (let k = x; k < e; k++) used[yy * w + k] = 1;
+    const y0 = Y(b), y1 = Y(y);
+    quad([[[x, y0, t], [x, b]], [[e, y0, t], [e, b]], [[e, y1, t], [e, y]], [[x, y1, t], [x, y]]], t, 1.0);
+    quad([[[e, y0, -t], [e, b]], [[x, y0, -t], [x, b]], [[x, y1, -t], [x, y]], [[e, y1, -t], [e, y]]], t, 0.6);
   }
-  // top and bottom: the part of a column's depth its upper / lower neighbour does not cover, runs along rows
+  // top and bottom: the part of a column's depth its upper / lower neighbour does not cover, runs along rows; the
+  // face shows that row's pixels (stretched over the depth)
   for (const [dy, k, top] of [[-1, 0.9, true], [1, 0.55, false]]) for (let y = 0; y < h; y++) for (let x = 0; x < w;) {
     const i = y * w + x, t = dep[i], tn = D(x, y + dy); if (!op(i) || tn >= t) { x++; continue; }
-    let e = x + 1; while (e < w && op(y * w + e) && col(y * w + e) === col(i) && dep[y * w + e] === t && D(e, y + dy) === tn) e++;
-    const yy = top ? Y(y) : Y(y + 1);
-    if (top) { face([x, yy, t], [e, yy, t], [e, yy, tn], [x, yy, tn], i, k, yy); face([x, yy, -tn], [e, yy, -tn], [e, yy, -t], [x, yy, -t], i, k, yy); }
-    else { face([x, yy, tn], [e, yy, tn], [e, yy, t], [x, yy, t], i, k, yy); face([x, yy, -t], [e, yy, -t], [e, yy, -tn], [x, yy, -tn], i, k, yy); }
+    let e = x + 1; while (e < w && op(y * w + e) && dep[y * w + e] === t && D(e, y + dy) === tn) e++;
+    const yy = top ? Y(y) : Y(y + 1), iy = Math.max(0, Math.min(h - 1, op((y - dy) * w + x) ? y - dy : y)), v0 = iy, v1 = iy + 1;   // the row inside the outline
+    if (!tn) {                                     // nothing beside: one face through the whole depth
+      if (top) quad([[[x, yy, t], [x, v1]], [[e, yy, t], [e, v1]], [[e, yy, -t], [e, v0]], [[x, yy, -t], [x, v0]]], t, k);
+      else quad([[[x, yy, -t], [x, v0]], [[e, yy, -t], [e, v0]], [[e, yy, t], [e, v1]], [[x, yy, t], [x, v1]]], t, k);
+    } else if (top) { quad([[[x, yy, t], [x, v1]], [[e, yy, t], [e, v1]], [[e, yy, tn], [e, v0]], [[x, yy, tn], [x, v0]]], t, k); quad([[[x, yy, -tn], [x, v0]], [[e, yy, -tn], [e, v0]], [[e, yy, -t], [e, v1]], [[x, yy, -t], [x, v1]]], t, k); }
+    else { quad([[[x, yy, tn], [x, v0]], [[e, yy, tn], [e, v0]], [[e, yy, t], [e, v1]], [[x, yy, t], [x, v1]]], t, k); quad([[[x, yy, -t], [x, v1]], [[e, yy, -t], [e, v1]], [[e, yy, -tn], [e, v0]], [[x, yy, -tn], [x, v0]]], t, k); }
     x = e;
   }
-  // left and right: runs along columns
-  for (const [dx, k] of [[-1, 0.75], [1, 0.75]]) for (let x = 0; x < w; x++) for (let y = 0; y < h;) {
+  // left and right: runs along columns, showing that column's pixels
+  for (const dx of [-1, 1]) for (let x = 0; x < w; x++) for (let y = 0; y < h;) {
     const i = y * w + x, t = dep[i], tn = D(x + dx, y); if (!op(i) || tn >= t) { y++; continue; }
-    let e = y + 1; while (e < h && op(e * w + x) && col(e * w + x) === col(i) && dep[e * w + x] === t && D(x + dx, e) === tn) e++;
-    const xx = dx < 0 ? x : x + 1, y0 = Y(e), y1 = Y(y);
-    face([xx, y0, tn], [xx, y0, t], [xx, y1, t], [xx, y1, tn], i, k, (y0 + y1) / 2); face([xx, y0, -t], [xx, y0, -tn], [xx, y1, -tn], [xx, y1, -t], i, k, (y0 + y1) / 2);
+    let e = y + 1; while (e < h && op(e * w + x) && dep[e * w + x] === t && D(x + dx, e) === tn) e++;
+    const ix = x - dx >= 0 && x - dx < w && op(y * w + x - dx) ? x - dx : x, xx = dx < 0 ? x : x + 1, y0 = Y(e), y1 = Y(y), u0 = ix, u1 = ix + 1;   // the column inside
+    if (!tn) quad([[[xx, y0, -t], [u0, e]], [[xx, y0, t], [u1, e]], [[xx, y1, t], [u1, y]], [[xx, y1, -t], [u0, y]]], t, 0.75);
+    else {
+      quad([[[xx, y0, tn], [u0, e]], [[xx, y0, t], [u1, e]], [[xx, y1, t], [u1, y]], [[xx, y1, tn], [u0, y]]], t, 0.75);
+      quad([[[xx, y0, -t], [u1, e]], [[xx, y0, -tn], [u0, e]], [[xx, y1, -tn], [u0, y]], [[xx, y1, -t], [u1, y]]], t, 0.75);
+    }
     y = e;
   }
   return out;

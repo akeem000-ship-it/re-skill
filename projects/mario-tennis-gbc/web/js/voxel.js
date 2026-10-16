@@ -41,6 +41,16 @@ void main() {
   float dx = floor(s * uAmp * aSwayW.x * 4.0 + 0.5) / 4.0;
   vCol = aColW; gl_Position = uMVP * uModel * vec4(aPosW + vec3(dx, -abs(dx) * 0.3, dx * 0.35), 1.0);
 }`;
+// plants: the same wind on voxel bodies coloured from the map texture (aSway = weight, face shade)
+const VSP = `#version 300 es
+in vec3 aPosP; in vec2 aUVP; in vec2 aSwayP; uniform mat4 uMVP; uniform mat4 uModel; uniform float uTime; uniform float uAmp; uniform float uPhase; out vec2 vUV; out float vShade;
+void main() {
+  float s = sin(uTime * 1.9 + uPhase) * 0.75 + sin(uTime * 3.3 + uPhase * 1.7) * 0.25, dx = floor(s * uAmp * aSwayP.x * 4.0 + 0.5) / 4.0;
+  vUV = aUVP; vShade = aSwayP.y; gl_Position = uMVP * uModel * vec4(aPosP + vec3(dx, -abs(dx) * 0.3, dx * 0.35), 1.0);
+}`;
+const FSP = `#version 300 es
+precision mediump float; in vec2 vUV; in float vShade; uniform sampler2D uTex; out vec4 o;
+void main() { o = vec4(texture(uTex, vUV).rgb * vShade, 1.0); }`;
 // fountain jet: droplet boxes flown along their arcs (kind 0 the rising column, 1 the falling crown, 2 splashes on the
 // pool), positions snapped to half pixels; uJet = (column height, crown radius, droplet size, -)
 const VSJ = `#version 300 es
@@ -169,6 +179,7 @@ export class Voxel3D {
     this.uV = {}; for (const n of ["uMVP", "uModel"]) this.uV[n] = gl.getUniformLocation(this.progV, n);
     const uni = (p, names) => Object.fromEntries(names.map(n => [n, gl.getUniformLocation(p, n)]));
     this.progW = this.link(VSW, FSV, ["aPosW", "aColW", "aSwayW"]); this.uW = uni(this.progW, ["uMVP", "uModel", "uTime", "uAmp", "uPhase"]);
+    this.progP = this.link(VSP, FSP, ["aPosP", "aUVP", "aSwayP"]); this.uP = uni(this.progP, ["uMVP", "uModel", "uTime", "uAmp", "uPhase", "uTex"]);
     this.progJ = this.link(VSJ, FSV, ["aCorner", "aSeed"]); this.uJ = uni(this.progJ, ["uMVP", "uTime", "uOrigin", "uJet", "uC0", "uC1", "uC2"]);
     this.progR = this.link(VS, FSR); this.uR = uni(this.progR, ["uMVP", "uModel", "uUVRect", "uTime", "uSize", "uCol"]);
     this.voxelMeshes = new Map(); this.objectMeshes = new Map(); this.voxelSprites = false;   // voxelSprites: cubes per opaque pixel instead of cards
@@ -935,7 +946,7 @@ export class Voxel3D {
     if (f.skirt) up(f.skirt, 1, 1, Uint8Array.from([...art.subarray(f.skirtSrc * 4, f.skirtSrc * 4 + 3), 255]));
     if (f.clear) f.clear = [...art.subarray(f.clearSrc * 4, f.clearSrc * 4 + 3)].map(v => v / 255);
     const fx = f.fx;
-    if (fx) for (const m of [fx.flowers, ...fx.shapes]) {
+    if (fx) for (const m of [fx.flowers]) {           // (plants take their colours from the building texture)
       if (!m) continue;
       const S = m.src, col = new Float32Array(S.length / 2 * 3);
       for (let v = 0; v < S.length / 2; v++) { const s = S[v * 2] * 4, k = S[v * 2 + 1] / 255; col[v * 3] = art[s] * k; col[v * 3 + 1] = art[s + 1] * k; col[v * 3 + 2] = art[s + 2] * k; }
@@ -990,11 +1001,11 @@ export class Voxel3D {
     const card = (d, x0, y0, w, h, o) => { const t = o.cut ? trim(d, w, h) : { d, h }; return { tex: this.texture(w, t.h, t.d), mesh: null, d: t.d, src: srcOf(x0, y0, w, t.h), own: true, w, h: t.h, X: x0 + w / 2, Z: o.z ?? y0 + t.h + (o.dz || 0), tilt: o.tilt ?? FIELD_TILT, flat: !!o.flat }; };
     // plants (plant: tree | bush | palm | pot): voxel bodies with volume, one mesh per shape drawn at every place it
     // stands, rustling in the wind; the default cut keeps their outline
-    const PLANT = { tree: [5, 4, 0.8], bush: [4, 3.5, 0.45], palm: [4, 3, 1.1], pot: [4, 3.5, 0.3] }, shapes = [], plants = [];
+    const PLANT = { tree: [4, 3, 0.8], bush: [4, 3, 0.45], palm: [4, 3, 1.1], pot: [3, 2, 0.3] }, shapes = [], plants = [];
     const shapeOf = (d, x0, y0, w, h, kind) => {
-      const [R, T] = PLANT[kind] || PLANT.tree, m = F3.plantMesh(d, w, h, R, T), src = srcOf(x0, y0, w, h);
-      for (let k = 0; k < m.src.length; k += 2) m.src[k] = src[m.src[k]];
-      const sh = { m }; shapes.push(sh); return sh;
+      const [R, T] = PLANT[kind] || PLANT.tree, m = F3.plantMesh(d, w, h, R, T);
+      for (let k = 0; k < m.uv.length; k += 2) { m.uv[k] = (m.uv[k] + x0) / 512; m.uv[k + 1] = (m.uv[k + 1] + y0) / 512; }
+      const sh = { m, r: Math.hypot(w / 2, h) }; shapes.push(sh); return sh;
     };
     const placePlant = (shape, X, Z, o) => { const rnd = Math.abs(Math.sin(X * 12.9898 + Z * 78.233) * 43758.5453) % 1; plants.push({ shape, model: m4.trs3(X, 0, Z, 1, 1, 1, -(o.tilt ?? FIELD_TILT)), phase: X * 0.11 + Z * 0.07 + rnd * 0.8, amp: (PLANT[o.plant] || PLANT.tree)[2] }); };
     const plantCut = o => o.plant ? { ...cutOpt(o), cut: o.cut || "outline" } : cutOpt(o);
@@ -1130,8 +1141,8 @@ export class Voxel3D {
     const fx = f.fx = { flowers: null, fountains: [], shapes: [], plants };
     for (const sh of shapes) {
       const m = sh.m, vao = gl.createVertexArray(); gl.bindVertexArray(vao); const bufs = [];
-      [[m.pos, 3], [m.col, 3], [m.sway, 2]].forEach(([a, n], i) => { const b = gl.createBuffer(); bufs.push(b); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(a), gl.STATIC_DRAW); gl.enableVertexAttribArray(i); gl.vertexAttribPointer(i, n, gl.FLOAT, false, 0, 0); });
-      Object.assign(sh, { vao, bufs, count: m.pos.length / 3, src: Float32Array.from(m.src) }); delete sh.m; fx.shapes.push(sh);
+      [[m.pos, 3], [m.uv, 2], [m.sway, 2]].forEach(([a, n], i) => { const b = gl.createBuffer(); bufs.push(b); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(a), gl.STATIC_DRAW); gl.enableVertexAttribArray(i); gl.vertexAttribPointer(i, n, gl.FLOAT, false, 0, 0); });
+      Object.assign(sh, { vao, bufs, count: m.pos.length / 3 }); delete sh.m; fx.shapes.push(sh);
     }
     gl.bindVertexArray(this.vao);
     if (fl.pos.length) {
@@ -1165,10 +1176,11 @@ export class Voxel3D {
       for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) { const o = (y * rw + x) * 4, s = ((ry + y) * 512 + rx + x) * 4; t[o] = art[s]; t[o + 1] = art[s + 1]; t[o + 2] = art[s + 2]; t[o + 3] = 255; }
       f.roof = { tex: this.texture(rw, rh, t, false, true), lit: upload(roofs[0]), shade: upload(roofs[1]), art: roofArt };
     }
-    if (front.pos.length) {
+    if (front.pos.length || shapes.length) {
       const artA = new Uint8Array(art);                                   // keyed blocks: the ground around them transparent
       for (const [d, x0, y0, w, h] of keyed) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (!d[(y * w + x) * 4 + 3]) { const i = (y0 + y) * 512 + x0 + x; artA[i * 4 + 3] = 0; f.artMod[i] = 1; }
-      f.blocks = { front: upload(front), side: upload(side) }; f.artTex = this.texture(512, 512, artA); f.artData = artA;
+      if (front.pos.length) f.blocks = { front: upload(front), side: upload(side) };
+      f.artTex = this.texture(512, 512, artA); f.artData = artA;
     }
   }
   buildField() {
@@ -1315,9 +1327,15 @@ export class Voxel3D {
       gl.bindVertexArray(fx.flowers.vao); gl.uniformMatrix4fv(this.uW.uModel, false, m4.identity()); gl.uniform1f(this.uW.uPhase, 0); gl.uniform1f(this.uW.uAmp, 1.1);
       gl.drawArrays(gl.TRIANGLES, 0, fx.flowers.count);
     }
-    for (const p of fx.plants) {                   // trees and bushes: voxel bodies rustling in the same wind
-      gl.bindVertexArray(p.shape.vao); gl.uniformMatrix4fv(this.uW.uModel, false, p.model); gl.uniform1f(this.uW.uPhase, p.phase); gl.uniform1f(this.uW.uAmp, p.amp);
-      gl.drawArrays(gl.TRIANGLES, 0, p.shape.count);
+    if (fx.plants.length && this.field.artTex) {   // trees and bushes: voxel bodies rustling in the same wind, those in view
+      gl.useProgram(this.progP); gl.uniformMatrix4fv(this.uP.uMVP, false, mvp); gl.uniform1f(this.uP.uTime, T); gl.bindTexture(gl.TEXTURE_2D, this.field.artTex);
+      for (const p of fx.plants) {
+        const c = m4.apply(mvp, [p.model[12], p.shape.r * 0.5, p.model[14], 1]), m = p.shape.r * 1.2 * Math.abs(mvp[5]) + 0.2 * c[3];   // centre in clip space, with a margin
+        if (c[3] <= 0 || c[0] < -c[3] - m || c[0] > c[3] + m || c[1] < -c[3] - m || c[1] > c[3] + m) continue;
+        gl.bindVertexArray(p.shape.vao); gl.uniformMatrix4fv(this.uP.uModel, false, p.model); gl.uniform1f(this.uP.uPhase, p.phase); gl.uniform1f(this.uP.uAmp, p.amp);
+        gl.drawArrays(gl.TRIANGLES, 0, p.shape.count);
+      }
+      gl.useProgram(this.progW);
     }
     if (fx.fountains.length && this.jetMesh) {
       gl.useProgram(this.progJ); gl.bindVertexArray(this.jetMesh.vao); gl.uniformMatrix4fv(this.uJ.uMVP, false, mvp); gl.uniform1f(this.uJ.uTime, T);
