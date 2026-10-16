@@ -41,13 +41,13 @@ const DECOR_AT = 0x2CFA, TASK_PRIORITY = 0x0A;
 function* runTextMenu(P, text, old, entryF) {
   wram(P, WRAM_TEXT);
   rom(P, FAR.CreateMenuWindowFromText, { d: MENU_AT >> 8, e: MENU_AT & 0xFF, hl: text });
-  rom(P, FAR.RestoreShadowTilemap);
-  rom(P, FAR.RenderMenuWindowText);
+  yield* romWait(P, FAR.RestoreShadowTilemap);
+  yield* romWait(P, FAR.RenderMenuWindowText);
   yield* fadeIn(P, 32);
   const choice = (yield* romWait(P, FAR.RunMenuSelection)).a;
   beginFadeOut(P, 32);
   yield* waitFadeEnd(P);
-  rom(P, FAR.CloseWindow, { a: u8(P, wMenuWindowId) });
+  yield* romWait(P, FAR.CloseWindow, { a: u8(P, wMenuWindowId) });
   wram(P, old);
   return { a: choice, f: entryF };
 }

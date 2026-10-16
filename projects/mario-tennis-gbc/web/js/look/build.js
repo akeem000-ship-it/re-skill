@@ -6,9 +6,10 @@ import { lzDecompress } from "./lz.js";
 import { decodeColMajor, encodeColMajor, decodeRowMajor, cellOf, clone } from "./gfx.js";
 import { REG, labelSprite, labelPortrait, applyStyle, applyTouchups } from "./label.js";
 import { TOUCHUPS } from "./touchups.js";
+import { buildMods } from "./mods.js";
 
-const off = (bank, addr) => addr < 0x4000 ? addr : bank * 0x4000 + (addr - 0x4000);
-const u16 = (rom, bank, addr) => { const o = off(bank, addr); return rom[o] | rom[o + 1] << 8; };
+export const off = (bank, addr) => addr < 0x4000 ? addr : bank * 0x4000 + (addr - 0x4000);
+export const u16 = (rom, bank, addr) => { const o = off(bank, addr); return rom[o] | rom[o + 1] << 8; };
 
 export const HEROES = {
   alex: { id: 0, walk: [0x70, 0x4040, 12], walkB: [0x74, 0x4E20, 6], match: 0x40,
@@ -96,7 +97,7 @@ function heroAssets(rom, name, style) {
 // -> { patches: [{ off, bytes }], tileRegions: Map(romOffset -> Uint8Array(64)), contentRegions: Map(hash -> [{bytes, plane}]),
 //      colours: Uint16Array(32) indexed by hero * 16 + region (0xFFFF: keep the game's colour), basePalettes }
 export function buildLook(rom, look) {
-  const res = { patches: [], tileRegions: new Map(), contentRegions: new Map(), colours: new Uint16Array(32).fill(0xFFFF), basePalettes: [], notes: [] };
+  const res = { patches: [], tileRegions: new Map(), contentRegions: new Map(), colours: new Uint16Array(256).fill(0xFFFF), poolStart: 32, basePalettes: [], notes: [] };
   if (!look || !checkRom(rom)) { if (look) res.notes.push("unexpected ROM: look not applied"); return res; }
   // the five shared hero palettes (StoryObjPalettes 0a:5341 = 01:50F6 entries 3-7 = 18:4300): the renderer only
   // recolours tiles shown with one of them, so other palettes (the charge flash, menus) stay the game's
@@ -117,9 +118,10 @@ export function buildLook(rom, look) {
     const others = otherFaceTiles(rom);
     for (const z of A.lz) for (const [bytes, plane] of z.planes) if (!others.has(key16(bytes))) addContent(res, bytes, tag(plane));
   }
+  if (look.mods && look.mods.length) buildMods(rom, look.mods, res);       // opponent mods (mods.js)
   return res;
 }
-const key16 = (b, o = 0) => { let s = ""; for (let i = 0; i < 16; i++) s += String.fromCharCode(b[o + i]); return s; };
+export const key16 = (b, o = 0) => { let s = ""; for (let i = 0; i < 16; i++) s += String.fromCharCode(b[o + i]); return s; };
 // the tiles of every other character's 24x24 portrait and 32x32 win/lose faces
 function otherFaceTiles(rom) {
   const set = new Set(), heroAddr = new Set(Object.values(HEROES).flatMap(h => [h.portraits[0][1], ...h.winlose.map(w => w[1])]));
@@ -130,14 +132,14 @@ function otherFaceTiles(rom) {
 }
 
 export function tileHash(b, o = 0) { let h = 0x811c9dc5; for (let i = 0; i < 16; i++) { h ^= b[o + i]; h = Math.imul(h, 0x01000193); } return h >>> 0; }
-function addContent(res, bytes16, plane) {
+export function addContent(res, bytes16, plane) {
   let nz = false; for (let i = 0; i < 16; i++) if (bytes16[i]) { nz = true; break; } if (!nz) return;
   const h = tileHash(bytes16), list = res.contentRegions.get(h) || [];
   if (!list.some(e => e.bytes.every((v, i) => v === bytes16[i]))) list.push({ bytes: Uint8Array.from(bytes16), plane });
   res.contentRegions.set(h, list);
 }
 // skin shading for the portraits: three quarters of the skin colour
-function shade(c) { const r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31; return ((r * 3) >> 2) | (((g * 3) >> 2) << 5) | (((b * 3) >> 2) << 10); }
+export function shade(c) { const r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31; return ((r * 3) >> 2) | (((g * 3) >> 2) << 5) | (((b * 3) >> 2) << 10); }
 
 // write the patches into the ROM copy; returns the undo list
 export function applyPatches(rom, patches) {

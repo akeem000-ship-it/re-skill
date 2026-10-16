@@ -221,7 +221,7 @@ export function unusedFillTilemapRow17(P, a, hl) {
 export function* unusedShowTrophiesPlaceholderScreen(P) { yield* showPlaceholderScreen(P, () => {}); }
 
 // ---- the level select ----
-// RunMinigameLevelSelect (1B:6B9C), slot $4026: minigame c's level select (see the header); returns the level
+// RunMinigameLevelSelect (1B:6B9C), slot $4028: minigame c's level select (see the header); returns the level
 export function* runMinigameLevelSelect(P, minigame, entryF = P.cpu.f) {
   const bank = P.V.wramBank;
   wram(P, WRAM_COURT_PLANES);

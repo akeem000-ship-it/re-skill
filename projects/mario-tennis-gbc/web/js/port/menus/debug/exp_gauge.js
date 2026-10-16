@@ -8,12 +8,12 @@
 // Tests: web/tests/port/routines_menus_misc.mjs (the routines that do not wait); lockstep on
 // out/port/dbg_expgain.mtrec (scripted: the screen and a bonus message).
 import {
-  FZ, FN, FH, FC, FAR, rom, far, u8, w8, wram, withWram, sound, advanceFrame, hook, hookGen, nop, decFlags, spAddFlags,
-  WRAM_STAGING, WRAM_SCREEN, WRAM_TEXT, WRAM_SCENE, VRAM_BANK1, vBGMap0, wDecompBuffer, wTextTileBuffer,
-  BGM_NONE, SFX_CAPTION, wTextBuffer, wCharDataAnimCounter, wExpScreenFlags, EXPSCREEN_MESSAGE, EXPSCREEN_REDRAW_CAPTION,
-  wExpAwardTotal, wExpAwardCounted, wExpCountedSprite, wExpCountDone, wExpNumberSpriteShiftX, wExpLevelUpQueued,
-  wExpToNextLevel, wExpToNextSprite, wExpToNextDisplayed, wExpToNextDigits, wExpCountedDigits, MAX_LEVEL,
-  storyRecord, STORY_RECORD_LEVEL, sub16, bit7F, cpFlags, chain, farFlagsAt,
+  FZ, FN, FH, FC, FAR, romWait, far, u8, w8, wram, withWram, sound, advanceFrame, hook, hookGen, nop, decFlags,
+  spAddFlags, WRAM_STAGING, WRAM_SCREEN, WRAM_TEXT, WRAM_SCENE, VRAM_BANK1, vBGMap0, wDecompBuffer, wTextTileBuffer,
+  BGM_NONE, SFX_CAPTION, wTextBuffer, wCharDataAnimCounter, wExpScreenFlags, EXPSCREEN_MESSAGE,
+  EXPSCREEN_REDRAW_CAPTION, wExpAwardTotal, wExpAwardCounted, wExpCountedSprite, wExpCountDone,
+  wExpNumberSpriteShiftX, wExpLevelUpQueued, wExpToNextLevel, wExpToNextSprite, wExpToNextDisplayed, wExpToNextDigits,
+  wExpCountedDigits, MAX_LEVEL, storyRecord, STORY_RECORD_LEVEL, sub16, bit7F, cpFlags, chain, farFlagsAt,
 } from "./defs.js";
 import { queueVRAMCopy } from "../../home/memory.js";
 import { queueSprite } from "../../home/fade.js";
@@ -29,7 +29,7 @@ const ExtendModifierByteTable0 = 0x4483, ExtendModifierByteGfx1 = 0x449B;
 const ExtendModifierByteTable2 = 0x44A8, ExtendModifierByteGfx3 = 0x44C1;
 const MESSAGE_BLOCKS = 8;                                         // the message box's 4 rows
 const NUMBER_DIGITS = 5, BLANK_DIGIT = 0x20, DIGIT_0 = 0x30, DIGIT_X_STEP = 8;
-const CAPTION_AT = 0xD800 + 2 * 32 + 11, CAPTION_WIDTH = 0x20, TEXT_ATTR = 1;
+const CAPTION_AT = 0xD82B, CAPTION_WIDTH = 0x20, TEXT_ATTR = 1;
 const Text_31_238 = 0x04EE, Text_31_239 = 0x04EF, Text_31_240 = 0x04F0, Text_31_241 = 0x04F1, Text_31_242 = 0x04F2;
 const Text_31_243 = 0x04F3, Text_31_244 = 0x04F4, Text_31_248 = 0x04F8, Text_31_249 = 0x04F9;
 const Text_30_31 = 0x001F;                                        // the first of the bonus kinds' names ($14-$1e, other)
@@ -172,20 +172,14 @@ export function unusedLoadDialogueTextToBuffer(P, text, de) {
   } while (ch);
   return { a: 0, b: 0, f: FZ | FH, hl, de: dest };
 }
-// a fetched text drawn into the tile buffer at (b, c), attribute 1
-function drawTextLine(P, r, [text, b, c]) {
-  chain(r, unusedLoadDialogueTextToBuffer(P, text, r.d << 8 | r.e));
-  drawStringToTileBuffer(P, wTextTileBuffer, b, c, TEXT_ATTR);
-  return chain(r, { hl: wTextTileBuffer, b, c, e: TEXT_ATTR });
-}
 // Unused_1a_DrawExpScreenCaption (1A:4FAB): caption a (0-5; others none) into the tile buffer; caption 3 ("EXP")
 // rendered into WRAM 3's screen rows with a sound; caption 5 (top level) stops the music first
-export function unusedDrawExpScreenCaption(P, a, entry) {
+export function* unusedDrawExpScreenCaption(P, a, entry) {
   const r = { ...entry };
   if (a > 5) return chain(r, { a: (a - 5) & 0xFF, f: decFlags((a - 4) & 0xFF, 0) });
   if (a === CAPTION_EXP) {
     wram(P, WRAM_SCREEN);
-    chain(r, rom(P, FAR.RenderProportionalTextAt, { ...r, f: farFlagsAt(P, 0), a: WRAM_SCREEN, hl: Text_31_242, de: CAPTION_AT, c: CAPTION_WIDTH }));
+    chain(r, yield* romWait(P, FAR.RenderProportionalTextAt, { ...r, f: farFlagsAt(P, 0), a: WRAM_SCREEN, hl: Text_31_242, de: CAPTION_AT, c: CAPTION_WIDTH }));
     sound(P, SFX_CAPTION);
     return r;
   }
@@ -240,7 +234,7 @@ export const HOOKS = [
   [BANK, 0x4F02, hook((P, c) => unusedQueueNumberSpritesShifted(P, c.a, c.hl, c.d, c.e, c.bc, c.f))],
   [BANK, 0x4F30, hook((P, c) => unusedAdvanceExpGaugeFill(P, c.de))],
   [BANK, 0x4F82, hook((P, c) => unusedQueueNumberSprites(P, c.a, c.hl, c.d, c.e, c.bc, c.f))],
-  [BANK, 0x4FAB, hook((P, c) => unusedDrawExpScreenCaption(P, c.a, getRegs(c)))],
+  [BANK, 0x4FAB, hookGen((P, c) => unusedDrawExpScreenCaption(P, c.a, getRegs(c)))],
   [BANK, 0x505E, hook((P, c) => unusedLoadDialogueTextToBuffer(P, c.hl, c.de))],
   [BANK, 0x5082, hookGen((P, c) => unusedResetCharDataScreenAnim(P, getRegs(c)))],
   [BANK, 0x50D3, hookGen((P, c) => unusedDrawExpBonusMessage(P, c.a, getRegs(c)))],

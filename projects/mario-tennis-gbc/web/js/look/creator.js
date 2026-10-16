@@ -3,6 +3,7 @@
 // and from the LOOK button. The look is kept in localStorage (the last one, and one per story save slot),
 // applied at ROM load (LookManager.prepare) and changed in play with LookManager.set.
 import { LookManager, normalizeLook, lookKey, PRESETS, SWATCHES, css15, rgb15 } from "./index.js";
+import { normalizeMod } from "./mods.js";
 import { STYLES } from "./label.js";
 import { heroPreview, blit, POSES } from "./preview.js";
 import { lzDecompress } from "./lz.js";
@@ -11,6 +12,10 @@ import { HEROES } from "./build.js";
 const KEY = "mt-look", SLOT_KEY = n => "mt-look-slot-" + n;
 const load = k => { try { return normalizeLook(JSON.parse(localStorage.getItem(k) || "null")); } catch (e) { return null; } };
 const save = (k, v) => { try { if (v) localStorage.setItem(k, JSON.stringify(v)); else localStorage.removeItem(k); } catch (e) { /* private mode */ } };
+// opponent mods (mods.js): the library (imported files are kept here; bundled ones are fetched from mods/index.json at each
+// start), and which are on. The stored looks never hold the mods: the enabled ones are merged in whenever a look is applied.
+const MODS_LIB = "mt-mods-lib", MODS_ON = "mt-mods-on";
+const stripMods = look => { if (!look) return look; const o = { ...look }; delete o.mods; return normalizeLook(o); };
 const STYLE_LABEL = { cap: "Cap", headband: "Headband", ponytail: "Ponytail", short: "Short hair", pigtails: "Pigtails", bob: "Bob" };
 const PARTS = [["skin", "Skin", "skin"], ["hair", "Hair", "hair"], ["hat", "Hat / band", "cloth"], ["top", "Top", "cloth"], ["bottom", "Shorts / skirt", "cloth"], ["shoes", "Shoes", "cloth"], ["racket", "Racket", "cloth"]];
 const WRAM_STORY_SLOT = 0x36C, WRAM_HANDEDNESS = 0xB50;   // wCurrentStorySlot $C36C, wCharSelectHandedness $CB50
@@ -45,6 +50,24 @@ export function mountCreator({ hud, keys, pause, onChange }) {
   const mgr = new LookManager();
   let gb = null, open = false, draft = null, hero = "boy", pristine = null, detectAt = 0, onPick = false, offered = false, lastSlot = -1, pressFrames = 0, wasPaused = false;
   let portraitSets = null;
+  // ---- mods: library = id -> { def, bundled } ; prefs = id -> bool (explicit choices; a bundled mod is on until switched off)
+  const library = new Map(); let prefs = {};
+  try { prefs = JSON.parse(localStorage.getItem(MODS_ON) || "{}") || {}; } catch (e) { prefs = {}; }
+  try { for (const m of JSON.parse(localStorage.getItem(MODS_LIB) || "[]")) { const d = normalizeMod(m); if (d) library.set(d.id, { def: d, bundled: false }); } } catch (e) { /* none */ }
+  const ready = (async () => {                                    // a private build bundles mods/*.json and lists them in mods/index.json
+    try {
+      const r = await fetch("mods/index.json"); if (!r.ok) return;
+      for (const n of await r.json()) { try { const d = normalizeMod(await (await fetch("mods/" + n)).json()); if (d) library.set(d.id, { def: d, bundled: true }); } catch (e) { /* skip */ } }
+    } catch (e) { /* no bundled mods */ }
+  })();
+  const isOn = id => id in prefs ? !!prefs[id] : !!(library.get(id) && library.get(id).bundled);
+  const modsNow = () => [...library].filter(([id]) => isOn(id)).map(([, v]) => v.def);
+  const withMods = look => { const o = look ? { ...look } : { boy: null, girl: null }, mods = modsNow(); if (mods.length) o.mods = mods; else delete o.mods; return normalizeLook(o); };
+  function saveMods(look) {
+    const on = new Set(((look && look.mods) || []).map(m => m.id));
+    for (const id of library.keys()) prefs[id] = on.has(id);
+    try { localStorage.setItem(MODS_ON, JSON.stringify(prefs)); localStorage.setItem(MODS_LIB, JSON.stringify([...library.values()].filter(v => !v.bundled).map(v => v.def))); } catch (e) { /* private mode */ }
+  }
   const st = document.createElement("style"); st.textContent = CSS; document.head.appendChild(st);
   const btn = document.createElement("span"); btn.className = "k"; btn.id = "lookbtn"; btn.textContent = "LOOK"; btn.title = "your player's appearance (hairstyle and colours)";
   hud.appendChild(document.createTextNode(" ")); hud.appendChild(btn);
@@ -59,6 +82,7 @@ export function mountCreator({ hud, keys, pause, onChange }) {
     <div class="lab">Hairstyle</div><div class="row" data-k="style"></div>
     <div data-k="colours"></div>
     <div class="row"><label class="note"><input type="checkbox" data-k="lefty"> Left-handed (the game's START: Change Hands on Create a Character)</label></div>
+    <div class="lab">Mods</div><div data-k="mods"></div>
     <div class="note" data-k="msg"></div>
     <div class="acts"><button class="btn" data-k="classic">Game's look</button><button class="btn" data-k="cancel">Cancel</button><button class="btn go" data-k="apply">Apply</button></div>
   </div>`;
@@ -88,7 +112,28 @@ export function mountCreator({ hud, keys, pause, onChange }) {
       row.appendChild(cust); box.appendChild(row);
     }
     q("lefty").checked = !!(c && c.lefty); q("lefty").onchange = e => { ensure().lefty = e.target.checked || undefined; render(); };
+    renderMods();
     drawPreview();
+  }
+  function renderMods() {
+    const box = q("mods"); box.replaceChildren();
+    const on = new Set((draft.mods || []).map(m => m.id));
+    for (const [id, v] of library) {
+      const row = document.createElement("div"); row.className = "row";
+      const lab = document.createElement("label"); lab.className = "note"; const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = on.has(id);
+      cb.onchange = () => { draft.mods = (draft.mods || []).filter(m => m.id !== id); if (cb.checked) draft.mods.push(v.def); render(); };
+      lab.append(cb, " " + (v.def.title || id) + " (" + v.def.chars.length + " characters)"); row.appendChild(lab); box.appendChild(row);
+    }
+    const row = document.createElement("div"); row.className = "row";
+    const imp = document.createElement("label"); imp.className = "btn"; imp.textContent = "Import a mod file…";
+    const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".json,application/json"; inp.hidden = true;
+    inp.onchange = async () => {
+      const f = inp.files[0]; if (!f) return;
+      try { const d = normalizeMod(JSON.parse(await f.text())); if (!d) throw new Error("not a mod file"); library.set(d.id, { def: d, bundled: false }); draft.mods = (draft.mods || []).filter(m => m.id !== d.id).concat([d]); q("msg").textContent = "Imported \"" + (d.title || d.id) + "\": Apply to switch it on."; }
+      catch (e) { q("msg").textContent = "Could not read that mod file: " + e.message; }
+      renderMods();
+    };
+    imp.appendChild(inp); row.appendChild(imp); box.appendChild(row);
   }
   let anim = 0;
   function drawPreview() {
@@ -129,7 +174,7 @@ export function mountCreator({ hud, keys, pause, onChange }) {
   function apply(look, store) {
     if (lookKey(look) === lookKey(mgr.look)) return;
     mgr.set(look);
-    if (store) { save(KEY, look); const s = gb ? gb.mem.wram[0][WRAM_STORY_SLOT] : -1; if (s >= 0 && s < 3) save(SLOT_KEY(s), look); }
+    if (store) { saveMods(look); save(KEY, stripMods(look)); const s = gb ? gb.mem.wram[0][WRAM_STORY_SLOT] : -1; if (s >= 0 && s < 3) save(SLOT_KEY(s), look); }
     onChange(mgr.look);
   }
   function portraitKeys(rom) {
@@ -152,7 +197,8 @@ export function mountCreator({ hud, keys, pause, onChange }) {
   return {
     manager: mgr,
     // before the machine: apply the stored look to the ROM bytes
-    prepare(bytes) { pristine = Uint8Array.from(bytes); portraitSets = portraitKeys(pristine); mgr.prepare(bytes, load(KEY)); },
+    ready,
+    prepare(bytes) { pristine = Uint8Array.from(bytes); portraitSets = portraitKeys(pristine); mgr.prepare(bytes, withMods(load(KEY))); },
     attach(machine) { gb = machine; mgr.attach(gb); lastSlot = -1; },
     get look() { return mgr.look; },
     open: openPanel,
@@ -166,7 +212,7 @@ export function mountCreator({ hud, keys, pause, onChange }) {
       if (!pick) offer.hidden = true;
       onPick = pick;
       const s = gb.mem.wram[0][WRAM_STORY_SLOT];
-      if (s !== lastSlot) { if (lastSlot >= 0 && s < 3) { const L = load(SLOT_KEY(s)); if (L) apply(L, false); } lastSlot = s; }
+      if (s !== lastSlot) { if (lastSlot >= 0 && s < 3) { const L = load(SLOT_KEY(s)); if (L) apply(withMods(L), false); } lastSlot = s; }
     },
   };
 }

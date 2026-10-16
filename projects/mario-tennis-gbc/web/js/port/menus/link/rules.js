@@ -6,8 +6,9 @@
 // the ports of the other banks' copies are used) of the gerbiljames/mario-tennis-gbc-disasm (MIT,
 // third_party/mario-tennis-gbc-disasm): names and addresses are its own; tables and graphics are read from the ROM.
 // Tests: web/tests/port/routines_menus_misc.mjs; UpdateAnimatedTiles_3e in the lockstep on out/port/save1.mtrec
-// (the erase warning's frame task). The rules menu runs over the link only, which the emulator cannot play: the
-// menu (RunLinkMatchRulesMenu, OpenMatchRulesPanel, CloseMatchRulesPanel) is unverified.
+// (the erase warning's frame task); the rules menu's start (its screen, until the link times out into the error
+// screen) in out/port/lk_rules.mtrec (scripted, wLinkMatchRole forced). The menu proper runs over the link only,
+// which the emulator cannot play: its input loop, OpenMatchRulesPanel and CloseMatchRulesPanel are unverified.
 import {
   FZ, FN, FAR, HOME, rom, romWait, home, wram, sound, advanceFrame, registerFrameTask, clearFrameTasks, enableLCD,
   beginFadeIn, loadPaletteShadow, disableLCDSafely, hook, hookGen, regs8, WRAM_SCREEN, TILE_SIZE, VRAM_BANK1, vTiles0,

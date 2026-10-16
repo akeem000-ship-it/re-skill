@@ -17,7 +17,7 @@ export class LookRenderer {
     this.rom = null; this.gen = (LookRenderer.gens = (LookRenderer.gens || 0) + 1);
     this.byOffset = built.tileRegions; this.contentRegions = built.contentRegions;
     this.base = built.basePalettes.map(p => p.map(c => [c & 31, (c >> 5) & 31, (c >> 10) & 31]));
-    this.colours = built.colours;
+    this.colours = built.colours; this.poolStart = built.poolStart || 32;
     this.tags = new Int32Array(SLOTS).fill(-1);
     this.cacheBytes = new Uint8Array(SLOTS * 16); this.cacheRes = new Array(SLOTS).fill(undefined);
     this.mem = null; this.origDma = null;
@@ -84,7 +84,7 @@ export class LookRenderer {
   // (a portrait pixel a hairstyle removed) takes colour 0 of the BG palette `slot` of palRAM
   rgba(v, d, palRAM, slot) {
     if (!v) return 0;
-    if ((v & 15) === 11) { if (!palRAM) return 0; const o = slot * 8, c = palRAM[o] | palRAM[o + 1] << 8; return (0xFF000000 | ((c >> 10 & 31) << 19) | ((c >> 5 & 31) << 11) | ((c & 31) << 3)) >>> 0; }
+    if ((v & 15) === 11 && v < this.poolStart) { if (!palRAM) return 0; const o = slot * 8, c = palRAM[o] | palRAM[o + 1] << 8; return (0xFF000000 | ((c >> 10 & 31) << 19) | ((c >> 5 & 31) << 11) | ((c & 31) << 3)) >>> 0; }
     const c = this.colours[v]; if (c === 0xFFFF) return 0;
     const r = Math.min(31, (c & 31) + d), g = Math.min(31, ((c >> 5) & 31) + d), b = Math.min(31, ((c >> 10) & 31) + d);
     return (0xFF000000 | (b << 19) | (g << 11) | (r << 3)) >>> 0;

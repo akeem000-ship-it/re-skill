@@ -5,16 +5,15 @@
 // Port of src/engine/menus/equipment/racket_choice_3e.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT,
 // third_party/mario-tennis-gbc-disasm): names and addresses are its own; palettes, tables and graphics are read
 // from the ROM.
-// Tests: lockstep on out/port/eq_erase*.mtrec and eq_choice.mtrec (scripted from a story state: each variant, each
-// answer); web/tests/port/routines_menus_misc.mjs.
+// Tests: lockstep on out/port/menus_erase1.mtrec, save1.mtrec, menus_file1.mtrec and out/port/eq_all.mtrec (scripted
+// from a story state: the warning's three variants, the choice's two answers); web/tests/port/routines_menus_misc.mjs.
 import {
-  FZ, FAR, rom, near, wram, u8, w8, sound, advanceFrame, registerFrameTask, clearFrameTasks, queueVRAMCopy,
-  queueSprite, loadPaletteShadow, enableLCD, fadeIn, fadeOut, fillTilemapRect, loadCompressedTileBlock,
-  loadScreenAssetRecord, queueWram3MapToVRAM, prepareGlyphBuffer, uploadGlyphBuffer, renderProportionalTextAt,
-  disableLCDSafely, hook, hookGen, WRAM_STAGING, WRAM_SCREEN, WRAM_TEXT, TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1,
-  vTiles0, vTiles2, vBGMap0, wDecompBuffer, wShadowTilemap, wShadowAttrmap, OAM_BANK1, PADF_A, PADF_B, PADF_UP,
-  PADF_DOWN, rIE, IE_TIMER, BGM_MENU, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_DECIDE, SFX_MENU_CANCEL,
-  MENUSLIDE_BACK, MENUSLIDE_FORWARD,
+  FZ, FAR, rom, near, wram, w8, sound, advanceFrame, registerFrameTask, clearFrameTasks, queueVRAMCopy, queueSprite,
+  loadPaletteShadow, enableLCD, fadeIn, fadeOut, fillTilemapRect, loadCompressedTileBlock, loadScreenAssetRecord,
+  queueWram3MapToVRAM, prepareGlyphBuffer, uploadGlyphBuffer, renderProportionalTextAt, disableLCDSafely, hook,
+  hookGen, WRAM_STAGING, WRAM_SCREEN, WRAM_TEXT, TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1, vTiles0, vTiles2, vBGMap0,
+  wDecompBuffer, wShadowTilemap, wShadowAttrmap, OAM_BANK1, PADF_A, PADF_B, PADF_UP, PADF_DOWN, rIE, IE_TIMER,
+  BGM_MENU, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_DECIDE, SFX_MENU_CANCEL, MENUSLIDE_BACK, MENUSLIDE_FORWARD,
 } from "./defs.js";
 import { copyMemoryBC } from "../../home/memory.js";
 import { decompressDataFromBank as homeDecompressFromBank } from "../../home/decompress.js";

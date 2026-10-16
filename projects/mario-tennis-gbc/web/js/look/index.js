@@ -7,6 +7,7 @@
 // (exclusive to the hero, any number of regions). With no look nothing is patched or hooked.
 import { buildLook, applyPatches, HEROES } from "./build.js";
 import { LookRenderer } from "./render.js";
+import { normalizeMod } from "./mods.js";
 
 export { HEROES };
 export const LOOK_VERSION = 1;
@@ -19,7 +20,9 @@ export function normalizeLook(look) {
     return { style: typeof h.style === "string" ? h.style : null, ...(h.lefty ? { lefty: true } : {}), colours: c };
   };
   const out = { v: LOOK_VERSION, boy: hero(look.boy), girl: hero(look.girl) };
-  return out.boy || out.girl ? out : null;
+  const mods = Array.isArray(look.mods) ? look.mods.map(normalizeMod).filter(Boolean) : [];       // opponent mods (mods.js)
+  if (mods.length) out.mods = mods;
+  return out.boy || out.girl || out.mods ? out : null;
 }
 export const lookKey = look => JSON.stringify(normalizeLook(look));
 

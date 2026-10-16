@@ -8,7 +8,8 @@
 // third_party/mario-tennis-gbc-disasm): names and addresses are its own; the term grid, tables, templates, palettes
 // and graphics are read from the ROM. (slots_3f.asm is the bank's slot table: data.)
 // Tests: lockstep on out/port/menus_saved1.mtrec and story_walk2.mtrec (the dictionary from the story, index and
-// list) and out/port/dc_*.mtrec (scripted: each mode, scrolling, letters, a definition); web/tests/port/
+// list) and out/port/dc_a.mtrec / dc_b.mtrec (scripted from the main menu: modes 0 and 3-6, scrolling, letters,
+// definitions; modes 1 and 2 crash the ROM itself on entry from that state, at an illegal opcode); web/tests/port/
 // routines_menus_misc.mjs.
 import {
   FZ, FN, FAR, rom, romWait, wram, u8, w8, idx, cpFlags, sound, advanceFrame, waitFrames, registerFrameTask,

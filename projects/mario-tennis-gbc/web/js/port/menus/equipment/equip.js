@@ -6,11 +6,12 @@
 // Port of src/engine/menus/equipment/equip_3e.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT,
 // third_party/mario-tennis-gbc-disasm): names and addresses are its own; the item and stat tables are read from the
 // ROM.
-// Tests: lockstep on out/port/story_pause_items.mtrec and out/port/eq_racket.mtrec / eq_shoes.mtrec;
-// web/tests/port/routines_menus_misc.mjs.
+// Tests: lockstep on out/port/story_pause_items.mtrec and out/port/eq_all.mtrec (scripted: the racket and shoes
+// selects with items owned); web/tests/port/routines_menus_misc.mjs.
 import {
   FZ, FAR, cpFlags, rom, near, wram, u8, w8, idx, ixF, addFlags, queueVRAMCopy, queueSprite, fillTilemapRect,
-  loadCompressedTileBlock, hook, WRAM_SCREEN, WRAM_TEXT, TILEMAP_WIDTH, VRAM_BANK1, vTiles0, vTiles2, vBGMap0,
+  loadCompressedTileBlock, hook, hookGen, romWait, WRAM_SCREEN, WRAM_TEXT, TILEMAP_WIDTH, VRAM_BANK1, vTiles0, vTiles2,
+  vBGMap0,
   wShadowTilemap, wShadowAttrmap, OAM_BANK1,
 } from "./defs.js";
 import { getMenuCursorIndex } from "../common/cursors.js";

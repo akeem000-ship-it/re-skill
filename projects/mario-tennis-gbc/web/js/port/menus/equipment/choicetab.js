@@ -7,9 +7,9 @@
 // third_party/mario-tennis-gbc-disasm): names and addresses are its own; templates, tables, palettes and graphics are
 // read from the ROM.
 // Tests: lockstep on out/port/menus_file1.mtrec (racket-or-shoes), save1.mtrec and out/engine/rec2.mtrec (partner
-// menu), story_pause_items.mtrec (status screen) and out/port/eq_*.mtrec; web/tests/port/routines_menus_misc.mjs.
+// menu), story_pause_items.mtrec (status screen) and out/port/eq_all.mtrec; web/tests/port/routines_menus_misc.mjs.
 import {
-  FZ, FAR, rom, romWait, near, wram, w8, sound, advanceFrame, registerFrameTask, clearFrameTasks, queueSpriteTemplate,
+  FZ, FAR, rom, romWait, near, wram, sound, advanceFrame, registerFrameTask, clearFrameTasks, queueSpriteTemplate,
   loadPaletteShadow, enableLCD, fadeIn, fadeOut, fillTilemapRect, loadCompressedTileBlock, loadScreenAssetRecord,
   queueWram3MapToVRAM, prepareGlyphBuffer, disableLCDSafely, setFlag, clearFlag, hook, hookGen, orFlags, WRAM_SCREEN,
   WRAM_TEXT, TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1, vTiles0, vTiles2, wShadowAttrmap, wScreenScratch, OAM_BANK1,

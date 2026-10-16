@@ -7,8 +7,8 @@
 // Port of src/engine/menus/equipment/racket_select_3e.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT,
 // third_party/mario-tennis-gbc-disasm): names and addresses are its own; tables, palettes and graphics are read
 // from the ROM.
-// Tests: lockstep on out/port/story_pause_items.mtrec (the status screen's panels) and out/port/eq_racket.mtrec /
-// eq_shoes.mtrec (scripted from a story state: moves, equip, back); web/tests/port/routines_menus_misc.mjs.
+// Tests: lockstep on out/port/story_pause_items.mtrec (the status screen's panels) and out/port/eq_all.mtrec
+// (scripted from a story state, items owned: moves, equip, back); web/tests/port/routines_menus_misc.mjs.
 import {
   FZ, FN, FAR, rom, romWait, near, wram, u8, w8, idx, sound, advanceFrame, registerFrameTask, clearFrameTasks,
   loadPaletteShadow, enableLCD, fadeIn, fadeOut, copyTilemapRect, loadCompressedTileBlock, loadScreenAssetRecord,

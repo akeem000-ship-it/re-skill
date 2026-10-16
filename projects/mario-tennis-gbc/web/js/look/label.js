@@ -353,6 +353,26 @@ export function applyStyle(st, style) {
   return st;
 }
 
+// extras drawn over a styled frame (mods.js): "glasses" rims the eyes in the hat colour
+export const EXTRAS = ["glasses"];
+function glasses(st) {
+  const { w, h, reg, info } = st; if (!info || st.kind === "portrait") return;
+  const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h) ? NONE : reg[y * w + x];
+  let sy0 = h, sy1 = -1; for (let i = 0; i < w * h; i++) if (reg[i] === SKIN && ((i / w) | 0) < info.yh) { const y = (i / w) | 0; sy0 = Math.min(sy0, y); sy1 = Math.max(sy1, y); }
+  if (sy1 < 0) return;
+  const limit = sy0 + (sy1 - sy0) * 0.55, eyes = [];
+  for (let y = sy0; y <= limit; y++) for (let x = 0; x < w; x++) {
+    if (at(x, y) !== OUT) continue;
+    if (N4.filter(([dx, dy]) => at(x + dx, y + dy) === SKIN).length >= 3) eyes.push([x, y]);
+  }
+  const ring = [[-1, 0], [1, 0], [0, -1], [-1, -1], [1, -1]];          // the frame: the sides and the top of each eye
+  for (const [x, y] of eyes) for (const [dx, dy] of ring) if (at(x + dx, y + dy) === SKIN) set(st, (y + dy) * w + x + dx, HAT);
+}
+export function applyExtras(st, extras) {
+  for (const e of extras || []) if (e === "glasses") glasses(st);
+  return st;
+}
+
 // touch-ups: { x, y, r } pixel overrides, coordinates relative to the frame (hand-made, no ROM data)
 export function applyTouchups(st, list) {
   for (const t of list || []) { if (t.x < 0 || t.y < 0 || t.x >= st.w || t.y >= st.h) continue; set(st, t.y * st.w + t.x, t.r); }

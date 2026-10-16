@@ -253,7 +253,7 @@ export const court2Npc05 = P => stageLine(P, Court2Npc05TextIds, ACTOR_COURT2_WA
 export const court2Npc06 = P => stageLine(P, Court2Npc06TextIds, ACTOR_ROLE_COURT2_SPECTATOR);
 
 // a balloon over a spectator for a moment: placed at (x, 33.5) with its sound; 63, 63 hides it
-const balloon = (P, actor, x) => setPosition(P, actor, x, 33.5);
+const placeBalloon = (P, actor, x) => setPosition(P, actor, x, 33.5);
 const hide = (P, actor) => setPosition(P, actor, 63.0, 63.0);
 // Court2SpectatorChat_14 (14:4BDC): the two spectators' talk by the stage, once per format (then
 // Court2SpectatorsRepeatChat): their balloons, nods and bounces
@@ -265,7 +265,7 @@ export function* court2SpectatorChat(P) {
   yield* setText(P, tableWord(P, Court2SpectatorChatTextIds, P.V.mapSceneStage));   // .step
   yield* gesture(P, A, ANIM_SHAKE);
   yield* speak(P, A);
-  balloon(P, ACTOR_COURT2_BALLOON_EXCLAIM, 12.5);
+  placeBalloon(P, ACTOR_COURT2_BALLOON_EXCLAIM, 12.5);
   sound(P, SFX_CHIME);
   yield* wait(P, 20);
   yield* speak(P, B);
@@ -276,28 +276,28 @@ export function* court2SpectatorChat(P) {
   yield* speak(P, B);
   faceToward(P, ACTOR_PLAYER, A);
   yield* wait(P, 20);
-  balloon(P, ACTOR_COURT2_BALLOON_EXCLAIM, 10.5);
+  placeBalloon(P, ACTOR_COURT2_BALLOON_EXCLAIM, 10.5);
   sound(P, SFX_CHIME);
   yield* gesture(P, A, ANIM_BOUNCE);
   hide(P, ACTOR_COURT2_BALLOON_EXCLAIM);
   yield* wait(P, 10);
-  balloon(P, ACTOR_COURT2_BALLOON_SWEAT, 10.5);
+  placeBalloon(P, ACTOR_COURT2_BALLOON_SWEAT, 10.5);
   sound(P, SFX_APPEAR2);
   yield* wait(P, 20);
   yield* speak(P, A);
   hide(P, ACTOR_COURT2_BALLOON_SWEAT);
-  balloon(P, ACTOR_COURT2_BALLOON_QUESTION, 12.5);
+  placeBalloon(P, ACTOR_COURT2_BALLOON_QUESTION, 12.5);
   sound(P, SFX_EMOTE);
   yield* wait(P, 60);
   hide(P, ACTOR_COURT2_BALLOON_QUESTION);
   faceToward(P, ACTOR_PLAYER, B);
   yield* wait(P, 20);
-  balloon(P, ACTOR_COURT2_BALLOON_EXCLAIM, 12.5);
+  placeBalloon(P, ACTOR_COURT2_BALLOON_EXCLAIM, 12.5);
   sound(P, SFX_CHIME);
   yield* gesture(P, B, ANIM_BOUNCE);
   hide(P, ACTOR_COURT2_BALLOON_EXCLAIM);
   yield* wait(P, 10);
-  balloon(P, ACTOR_COURT2_BALLOON_SWEAT, 12.5);
+  placeBalloon(P, ACTOR_COURT2_BALLOON_SWEAT, 12.5);
   sound(P, SFX_APPEAR2);
   yield* wait(P, 20);
   yield* speak(P, B);

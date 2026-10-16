@@ -1,6 +1,7 @@
 // Replay a session recording (.mtrec from the REC button) on the JS core in Node and verify it reproduces the
 // session exactly (frame hashes every 60 frames). Optional: screenshots, periodic core states for state_view.mjs.
-// usage: node web/tests/replay.mjs FILE.mtrec [--shots K] [--states N] [--out DIR] [--to FRAME] [--interp]
+// usage: node web/tests/replay.mjs FILE.mtrec [--shots K] [--states N] [--out DIR] [--to FRAME] [--interp] [--mod MOD.json]
+// (--mod: add an opponent mod file to the recording's look; the recorded frame hashes then differ where its sprites show)
 // A recording made with the JS port (meta.engine "port" / "portall") starts at power-on and is replayed through a
 // GamePort with the same modules (meta.port); meta.from is the frame its player pressed REC at. The port's modules
 // must be those of the build it was recorded with (check out that commit) for the replay to be exact.
@@ -17,9 +18,12 @@ fs.mkdirSync(out, { recursive: true });
 const romBytes = new Uint8Array(fs.readFileSync("rom/mario_tennis.gbc")), engine = (rec.meta && rec.meta.engine) || "rom";
 // the player's look (web/js/look): meta.look at the start, events [frame, "look:<json>"] for changes
 let lookMgr = null, parseLookEvent = null;
-if ((rec.meta && rec.meta.look) || rec.events.some(([, e]) => typeof e === "string" && e.startsWith("look:"))) {
+const modFile = opt("--mod", null);
+if ((rec.meta && rec.meta.look) || modFile || rec.events.some(([, e]) => typeof e === "string" && e.startsWith("look:"))) {
   const L = await import("../js/look/index.js"); parseLookEvent = L.parseLookEvent;
-  lookMgr = new L.LookManager().prepare(romBytes, rec.meta && rec.meta.look);
+  let look0 = rec.meta && rec.meta.look;
+  if (modFile) look0 = { ...(look0 || {}), mods: [...((look0 && look0.mods) || []), JSON.parse(fs.readFileSync(modFile, "utf8"))] };
+  lookMgr = new L.LookManager().prepare(romBytes, look0);
 }
 let gb, port = null;
 if (engine === "rom") gb = new GBC(romBytes, { audio: false });

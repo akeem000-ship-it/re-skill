@@ -38,7 +38,7 @@ const BLOCK_WITH_COURTS = 0x26, BLOCK_PARTNERS = 0x25;     // the block lengths 
 const UNLOCK_BYTES = 4, CHAR_FLAGS = 8, COURT_FLAGS_AT = 15, ITEM_FLAGS_AT = 23, CHAR_UNLOCK_FLAGS_SIZE = 0x28;
 const CHAR_GRID_ENTRIES_SIZE = 0x80, CREATED_RECORD_SIZE = 0x20, CREATED_RECORD_LEVEL = 2;
 // bank $38's character-select routines (menus/char_select) and the rest, by address
-const GetGridSlotFromCursor = 0x5CB7, BuildCharUnlockFlags = 0x5A82, RunLinkCharSelectScreen = [0x38, 0x63BD];
+const BuildCharUnlockFlags = 0x5A82, RunLinkCharSelectScreen = [0x38, 0x63BD];
 const ComputeUnlockedCourtFlags = [0x3E, 0x69A0], LoadCourtSelectGraphics = [0x3E, 0x5D11];
 const RunLinkCourtSelect4Menu = [0x3E, 0x5C38], RunLinkCourtSelect9Menu = [0x3E, 0x65C9];
 const RunMatch = [0x08, 0x4190], ResyncLinkSession = [0x07, 0x4A51], ExchangeLinkDataBlock = [0x07, 0x496E];

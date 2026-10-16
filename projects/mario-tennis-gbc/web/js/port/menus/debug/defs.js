@@ -68,6 +68,13 @@ export function chain(r, x) {
   }
   return r;
 }
+// a generator run to its end at once (a routine that may wait, called where the ROM's code could not wait: a frame
+// task); an error if it waits, as P.callRom's
+export function runNow(gen) {
+  const r = gen.next();
+  if (!r.done) throw new Error("a routine waited inside a frame task");
+  return r.value;
+}
 // ld_hl_indexed table: `add low / ld l, a / adc high / sub l / ld h, a`: hl = table + a, a = h, the flags of `sub l`
 export function hlIndexed(table, a) {
   const s1 = (table & 0xFF) + (a & 0xFF), l = s1 & 0xFF, s2 = l + ((table >> 8) & 0xFF) + (s1 > 0xFF ? 1 : 0);

@@ -6,10 +6,10 @@
 // read from the ROM. Nothing in the game reaches this code.
 // Tests: web/tests/port/routines_menus_misc.mjs; lockstep on out/port/dbg_expgain.mtrec (scripted).
 import {
-  FZ, FN, FAR, rom, u8, w8, wram, hook, nop, cpFlags, WRAM_STAGING, WRAM_COURT_PLANES, WRAM_SCREEN, WRAM_SCENE,
+  FZ, FN, FAR, rom, romWait, u8, w8, wram, hook, hookGen, nop, cpFlags, WRAM_STAGING, WRAM_COURT_PLANES, WRAM_SCREEN, WRAM_SCENE,
   VRAM_BANK1, TILEMAP_WIDTH, TILE_SIZE, vTiles1, vTiles2, vBGMap0, wDecompBuffer, wTextTileBuffer,
   wExpScreenFlags, EXPSCREEN_REDRAW_CAPTION, wStoryModeMainCharacterOverworldSpriteColor,
-  wStoryModeMainCharacterOverworldSprite, chain, farFlagsAt,
+  wStoryModeMainCharacterOverworldSprite, chain, farFlagsAt, runNow,
 } from "./defs.js";
 import { queueVRAMCopy, copyMemoryFast, processVRAMCopyQueues } from "../../home/memory.js";
 import { decompressData } from "../../home/decompress.js";
@@ -46,7 +46,7 @@ export function expScreenDrawTask(P) {
     queueVRAMCopy(P, CAPTION_ROWS, vBGMap0 + CAPTION_ROW * TILEMAP_WIDTH + VRAM_BANK1, CAPTION_BYTES / 16);
     wram(P, WRAM_SCREEN);
     for (let i = 0; i < CAPTION_BYTES; i++) w8(P, CAPTION_ROWS + i, CAPTION_BLANK);
-    drawExpScreenCaption(P, CAPTION_EXP);
+    runNow(drawExpScreenCaption(P, CAPTION_EXP));
     queueVRAMCopy(P, CAPTION_ROWS, vBGMap0 + CAPTION_ROW * TILEMAP_WIDTH, CAPTION_BYTES / 16);
     wram(P, WRAM_SCENE);
     w8(P, wExpScreenFlags, u8(P, wExpScreenFlags) & ~EXPSCREEN_REDRAW_CAPTION);
@@ -107,9 +107,9 @@ function drawBoxFromTable(P, table, left, top, width, height) {
 // Unused_1a_DrawExpScreenMessageBox (1A:4A18): the message box (rows 0-4, 20 columns)
 export function drawExpScreenMessageBox(P) { drawBoxFromTable(P, ExpScreenMessageBoxTilemap, 0, 0, 20, 5); }
 // Unused_1a_DrawExpScreenYesNoBox (1A:4A7D): the yes / no box (columns 0-5, rows 5-9) and its text
-export function drawExpScreenYesNoBox(P) {
+export function* drawExpScreenYesNoBox(P) {
   drawBoxFromTable(P, ExpScreenYesNoBoxTilemap, 0, 5, 6, 5);
-  rom(P, FAR.RenderProportionalTextAt, { hl: Text_31_235, de: YES_NO_TEXT_AT, c: YES_NO_TEXT_WIDTH });
+  yield* romWait(P, FAR.RenderProportionalTextAt, { hl: Text_31_235, de: YES_NO_TEXT_AT, c: YES_NO_TEXT_WIDTH });
 }
 // Unused_1a_FillTileBufferBlockFromTable (1A:4AF4): the 4x8 block at columns 1-8, rows 11-14 from its table
 export function fillTileBufferBlockFromTable(P) { drawBoxFromTable(P, TileBufferBlockCells_1a, 1, 0x0B, 8, 4); }
@@ -119,6 +119,6 @@ export const HOOKS = [
   [BANK, 0x477A, hook(P => { expScreenDrawTask(P); })],
   [BANK, 0x4852, hook((P, c) => loadExpScreenGfx(P, getRegs(c)))],
   [BANK, 0x4A18, hook(P => { drawExpScreenMessageBox(P); })],
-  [BANK, 0x4A7D, hook(P => { drawExpScreenYesNoBox(P); })],
+  [BANK, 0x4A7D, hookGen(function* (P) { yield* drawExpScreenYesNoBox(P); })],
   [BANK, 0x4AF4, hook(P => { fillTileBufferBlockFromTable(P); })],
 ];

@@ -10,7 +10,7 @@
 // picked) and out/port/ms_grid9.mtrec (the 3x3 grid, scripted with every character unlocked);
 // web/tests/port/routines_menus_misc.mjs.
 import {
-  FZ, FN, FAR, cpFlags, rom, romWait, near, nearWait, wram, u8, w8, idx, sound, advanceFrame, registerFrameTask,
+  FZ, FN, FAR, cpFlags, rom, romWait, near, nearWait, wram, w8, idx, sound, advanceFrame, registerFrameTask,
   clearFrameTasks, queueVRAMCopy, queueSpriteTemplate, fillTilemapRect, loadCompressedTileBlock, queueCopy, hook,
   hookGen, regs8, WRAM_STAGING, WRAM_SCREEN, TILEMAP_WIDTH, TILE_SIZE, VRAM_BANK1, vTiles0, vBGMap0, wDecompBuffer,
   wShadowTilemap, wShadowAttrmap, OAM_BANK1, PADF_A, PADF_B, rIE, IE_TIMER, SFX_MENU_MOVE, SFX_MENU_SELECT,
@@ -58,7 +58,7 @@ const gridExpanded = P => near(P, CheckMinigameGridExpanded).a !== 0;
 const charAtSlot = (P, slot) => near(P, GetUnlockedMarioCastCharAtGridSlot, { c: slot }).a;
 const cursorCell = P => getMenuCursorIndex(P, GRID_COLUMNS).a;
 
-// RunMinigameSelect (3B:61F0), slot $4012: see the header
+// RunMinigameSelect (3B:61F0), slot $4010: see the header
 export function* runMinigameSelect(P) {
   timerInterruptOff(P);
   sound(P, BGM_MARIO_MINIGAME);

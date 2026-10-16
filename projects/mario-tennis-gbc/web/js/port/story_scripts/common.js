@@ -318,6 +318,22 @@ export const unregisterFrameTask = (P, routine) => homeUnregisterFrameTask(P, ro
 export const queueSpriteTemplate = (P, hl, x, y, tile, attr) => homeQueueSpriteTemplate(P, hl, x, y, tile, attr, (P.cpu.sp - 2) & 0xFFFF);
 // rst $00 (JumpTableDispatch, 00:06C4) with a, its table of words right after the rst: the entry's address
 export const jumpTableTarget = (P, bank, table, a) => P.rom.u16(bank, (table + ((a * 2) & 0xFF)) & 0xFFFF);
+// ---- the scenes' sprite graphics ----
+export const vTiles0 = 0x8000, VRAM_BANK1 = 0x2000, OAM_BANK1 = 0x08, OBJ_PALETTES = 8, TILE_SIZE = 16;
+// push_wram_bank WRAM_STAGING / (ld hl, tiles / ld de, dest / ld c, blocks / call QueueVRAMCopy)... / ld hl, pals /
+// ld_obj_pals de, first, count / call LoadPaletteShadow / pop_wram_bank: sprite tiles to VRAM (copies:
+// [[tiles, dest, blocks of 16 bytes], ...]) and object palettes first .. first + count - 1
+export function loadObjGfx(P, copies, pals, first, count) {
+  withWram(P, WRAM_STAGING, () => {
+    for (const [tiles, dest, blocks] of copies) queueVRAMCopy(P, tiles, dest, blocks);
+    loadPaletteShadow(P, pals, OBJ_PALETTES + first, count);
+  });
+}
+// ld a, x / sub b: a = x - y and the flags
+export function sub8(x, y) {
+  const r = (x - y) & 0xFF;
+  return { a: r, f: (r ? 0 : FZ) | FN | ((x & 0xF) < (y & 0xF) ? FH : 0) | (x < y ? FC : 0) };
+}
 // add a / ld_hl_indexed table / ld a, [hl+] / ld d, [hl] / ld e, a / call TestGameFlagByNumber (00:24EF): whether
 // the flag numbered by the table's entry index is set. The ROM's registers: f (Z when clear, H), de = the flag's
 // number, a = its low byte, hl = the entry + 1.

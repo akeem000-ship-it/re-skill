@@ -23,7 +23,7 @@ const SLOTS_DONE = 0x04, REMOTE_SLOTS_DONE = 0x02, SLOT_NONE = 0xFF, PREVIOUS_IS
 const EXIT_LOCAL_DONE = 0x01, EXIT_ALL_CHOSEN = 0x02;           // wCharSelectExitCode
 const LINK_CMD_SELECT = 0x21, LINK_CMD_SELECT_DONE = 0x22;      // hLinkRemoteInput: the partner's command
 const GRID_ENTRY_SIZE = 4, ENTRY_TAKEN = 2;
-const HANDED_RIGHT = 0, HANDED_LEFT = 1, HANDED_STAR = 2;        // wCharGridHandedness
+const HANDED_LEFT = 1, HANDED_STAR = 2;                         // wCharGridHandedness (0: right)
 const LEFT_HANDED_MARK = 0x32, LEFT_HANDED_MARK_AT = 0x1F, MARKS_AT = 0x1E, DIFFICULTY_DIGIT_0 = 0x33;
 const PORTRAIT_ATTR = 0x08;
 // bank $38's character-select routines (menus/char_select), by address: called with the registers as the ROM

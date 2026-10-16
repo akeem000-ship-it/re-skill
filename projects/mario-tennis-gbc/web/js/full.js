@@ -205,6 +205,7 @@ async function loadRom(buf) {
   const bytes = new Uint8Array(buf);
   romHash = (await sha1Hex(bytes)) || "";
   $("romstatus").textContent = romHash === "" ? "ROM loaded" : romHash === EXPECTED_SHA1 ? "ROM verified (Mario Tennis USA)" : "Warning: unexpected ROM SHA-1 " + romHash;
+  await creator.ready;                         // bundled opponent mods (web/mods) are fetched
   creator.prepare(bytes);                      // the player's look (web/js/look) patches the ROM copy before the machine is built
   if (portMode() !== "rom") { port = await makePort(bytes); gb = port.gb; portError = null; }
   else gb = new GBC(bytes, { sampleRate: 44100, audio: true });

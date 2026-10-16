@@ -5,11 +5,11 @@
 // Port of src/engine/menus/minigame_select/level_variants_1b.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT,
 // third_party/mario-tennis-gbc-disasm): names and addresses are its own; tables, templates and graphics are read
 // from the ROM.
-// Tests: lockstep on out/port/mg_*.mtrec and minigame_*.mtrec (the two-level panel), out/port/ms_levels3.mtrec (the
-// three-level panel, scripted with the levels cleared) and menus_status1.mtrec (the saved-data type select);
+// Tests: lockstep on out/port/mg_*.mtrec and minigame_*.mtrec (the two-level panel), out/port/ms_grid9.mtrec (the
+// three-level panel, scripted with everything unlocked) and menus_status1.mtrec (the saved-data type select);
 // web/tests/port/routines_menus_misc.mjs.
 import {
-  FAR, rom, romWait, home, farGen, wram, u8, w8, idx, sound, advanceFrame, registerFrameTask, clearFrameTasks,
+  FAR, rom, romWait, home, farGen, wram, w8, idx, sound, advanceFrame, registerFrameTask, clearFrameTasks,
   queueSpriteTemplate, fillTilemapRect, queueCopy, hook, hookGen, WRAM_COURT_PLANES, WRAM_SCREEN, TILEMAP_WIDTH,
   TILE_SIZE, VRAM_BANK1, vTiles0, vBGMap0, wShadowTilemap, wShadowAttrmap, wScreenAttrmap, OAM_BANK1, PADF_A, PADF_B,
   rIE, IE_TIMER, BGM_MENU, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_LOCKED, SFX_MENU_CANCEL, MENUSLIDE_BACK,
@@ -169,7 +169,7 @@ export const drawMinigameLevelSelect3Cursor = P => drawLevelCursor(P, MinigameLe
   MinigameLevelSelect3CursorTable1, DrawMinigameLevelSelect3Cursor_SpriteTemplate0, DrawMinigameLevelSelect3Cursor_SpriteTemplate1);
 
 // ---- the saved-data type select ----
-// RunSavedDataTypeSelect (1B:715D), slot $4028: two tabs on bank $3e's choice-tab panel, the cursor on the last
+// RunSavedDataTypeSelect (1B:715D), slot $402A: two tabs on bank $3e's choice-tab panel, the cursor on the last
 // choice (wSavedDataTypeTabIndex); A returns the tab, B $FF (WRAM 2 mapped)
 export function* runSavedDataTypeSelect(P) {
   sound(P, BGM_MENU);

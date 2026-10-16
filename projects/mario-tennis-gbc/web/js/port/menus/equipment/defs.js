@@ -15,7 +15,7 @@
 //     bank that has no port. Those run the ported JS where another part has hooked it.
 // Waiting routines are generators (`yield* advanceFrame(P)`); the lockstep test does not need the ROM's stack.
 import { HOOK_TRACE } from "../char_select/defs.js";
-import { getRegs, setRegs, spAddFlags } from "../../home/cpu.js";
+import { getRegs, setRegs, spAddFlags, push } from "../../home/cpu.js";
 import { queueVRAMCopy } from "../../home/memory.js";
 import { FAR as FAR_PAUSE, HOME as HOME_PAUSE } from "../pause/defs.js";
 import { farcallFlags } from "../common/defs.js";
@@ -46,14 +46,14 @@ export const hook = fn => (P, cpu) => {
   const saved = getRegs(cpu);
   const out = fn(P, cpu);
   setRegs(cpu, saved);
-  if (out) setRegs(cpu, out);
+  if (out) setRegs(cpu, given(out));            // (registers left undefined: as the routine got them)
   HOOK_TRACE.out = out;
 };
 export const hookGen = fn => function* (P, cpu) {
   const saved = getRegs(cpu);
   const out = yield* fn(P, cpu);
   setRegs(cpu, saved);
-  if (out) setRegs(cpu, out);
+  if (out) setRegs(cpu, given(out));            // (registers left undefined: as the routine got them)
   HOOK_TRACE.out = out;
 };
 // a hook for a routine that is only `ret` (or `nop / ret`): nothing changes
@@ -61,15 +61,50 @@ export const nop = () => {};
 
 // ---- calls ----
 // Calls into ROM code (or other parts' hooked JS) through its address, as menus/pause/defs.js's, with the registers
-// given (undefined ones left as they are: register sets built from partial results).
+// given (undefined ones left as they are: register sets built from partial results). The registers returned are the
+// eight 8-bit ones; bc / de / hl read as (non-enumerable) pairs, so `{ ...r, b: x }` overrides a half safely.
 const given = regs => { const r = {}; for (const k in regs) if (regs[k] !== undefined) r[k] = regs[k]; return r; };
-export const rom = (P, [bank, a], regs = {}) => P.callRom(bank, a, { f: farcallFlags(P.cpu.sp), ...given(regs) });
-export const home = (P, a, regs = {}) => P.callRom(0, a, given(regs));
-export function* romWait(P, [bank, a], regs = {}) { return yield* P.runRom(bank, a, { f: farcallFlags(P.cpu.sp), ...given(regs) }); }
-export function* homeWait(P, a, regs = {}) { return yield* P.runRom(0, a, given(regs)); }
+export function out8(r) {
+  const o = { a: r.a, f: r.f, b: r.b, c: r.c, d: r.d, e: r.e, h: r.h, l: r.l };
+  for (const [p, hi, lo] of [["bc", "b", "c"], ["de", "d", "e"], ["hl", "h", "l"]])
+    Object.defineProperty(o, p, { get() { return (this[hi] << 8 | this[lo]) & 0xFFFF; }, enumerable: false });
+  return o;
+}
+// A farcall's callee runs below FarCall's frame (the rst's return address, the caller's hl, its a with the caller's
+// bank; then the callee's return into FarCall's tail, which P.callRom's own return stands for): callees that keep
+// things on the stack (QueueSpriteTemplate's buffer) or return sp-based values see the ROM's sp.
+function pushFarCallFrame(P, regs) {
+  const r = { ...getRegs(P.cpu), ...regs };
+  const hl = regs.hl ?? (r.h << 8 | r.l), a = regs.a ?? r.a;
+  push(P, 0);
+  push(P, hl & 0xFFFF);
+  push(P, (a & 0xFF) << 8 | P.V.romBank);
+}
+export function rom(P, [bank, a], regs = {}) {
+  const sp = P.cpu.sp, r = { f: farcallFlags(sp), ...given(regs) };
+  pushFarCallFrame(P, r);
+  try { return out8(P.callRom(bank, a, r)); } finally { P.cpu.sp = sp; }
+}
+export const home = (P, a, regs = {}) => out8(P.callRom(0, a, given(regs)));
+export function* romWait(P, [bank, a], regs = {}) {
+  const sp = P.cpu.sp, r = { f: farcallFlags(sp), ...given(regs) };
+  pushFarCallFrame(P, r);
+  try { return out8(yield* P.runRom(bank, a, r)); } finally { P.cpu.sp = sp; }
+}
+export function* homeWait(P, a, regs = {}) { return out8(yield* P.runRom(0, a, given(regs))); }
 // `call X` of a routine of the caller's bank (P.callRom with the bank mapped now)
-export const near = (P, addr, regs = {}) => P.callRom(P.mem.romBank, addr, given(regs));
-export function* nearWait(P, addr, regs = {}) { return yield* P.runRom(P.mem.romBank, addr, given(regs)); }
+export const near = (P, addr, regs = {}) => out8(P.callRom(P.mem.romBank, addr, given(regs)));
+export function* nearWait(P, addr, regs = {}) { return out8(yield* P.runRom(P.mem.romBank, addr, given(regs))); }
+// the far routines used most (as menus/pause/defs.js's, through the wrappers above)
+export const fillTilemapRect = (P, de, w, h, value) => rom(P, FAR_PAUSE.FillTilemapRect, { de, b: w, c: h, h: value });
+export const copyTilemapRect = (P, hl, de, w, h) => rom(P, FAR_PAUSE.CopyTilemapRect, { hl, de, b: w, c: h });
+export const loadCompressedTileBlock = (P, block, dest, blocks) => rom(P, FAR_PAUSE.LoadCompressedTileBlock, { b: block, c: blocks, de: dest });
+export const loadScreenAssetRecord = (P, asset) => rom(P, FAR_PAUSE.LoadScreenAssetRecord, { c: asset });
+export const queueWram3MapToVRAM = P => rom(P, FAR_PAUSE.QueueWram3MapToVRAM);
+export const prepareGlyphBuffer = P => rom(P, FAR_PAUSE.PrepareGlyphBuffer);
+export function* uploadGlyphBuffer(P) { return yield* romWait(P, FAR_PAUSE.UploadGlyphBuffer); }
+export function* renderProportionalTextAt(P, text, de, c) { return yield* romWait(P, FAR_PAUSE.RenderProportionalTextAt, { hl: text, de, c }); }
+export const disableLCDSafely = P => home(P, HOME_PAUSE.DisableLCDSafely);
 // QueueVRAMCopy (00:0480) with every register it leaves (c = the count loaded, which a full queue keeps)
 export const queueCopy = (P, src, dest, blocks) => ({ c: blocks & 0xFF, ...queueVRAMCopy(P, src, dest, blocks) });
 // the flags the rst $20 / $28 handlers (set_flag / clear_flag) leave: their `ld hl, sp+4`, sp 4 below the caller's

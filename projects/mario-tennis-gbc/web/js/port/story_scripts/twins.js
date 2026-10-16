@@ -13,13 +13,13 @@ const FLAG_WON_JUNIOR_SINGLES_RANK_1 = 0x53, FLAG_WON_SENIOR_SINGLES_RANK_1 = 0x
 const FLAG_WON_JUNIOR_DOUBLES_RANK_1 = 0x42, FLAG_WON_SENIOR_DOUBLES_RANK_1 = 0x46;
 const FLAG_REACHED_ISLAND_OPEN_SINGLES = 0xAE, FLAG_REACHED_ISLAND_OPEN_DOUBLES = 0xAF;
 const FLAG_STORY_COMPLETE_SINGLES = 0xB0, FLAG_STORY_COMPLETE_DOUBLES = 0xB1;
-const OBJ_ALEX_B = 0x56, OBJ_HARRY_B = 0x58;
+export const OBJ_ALEX_B = 0x56, OBJ_HARRY_B = 0x58;
 const PARTNER_CATCH_UP_SPEED = 7.96875, WALK_SPEED = 0.5;
 
 // academy_main_bldg_arrival01 / academy_main_bldg_arrival02 / restaurant_plaza_arrival06: the arrival walk of an
 // entry point (none with no entry point): in doubles the partner steps 2 tiles out of the door at full speed and
 // turns back; then the player walks 2 tiles in at walking speed (not waited for).
-function* arrivalWalk(P, partnerAngle, partnerFacing, playerAngle) {
+export function* arrivalWalk(P, partnerAngle, partnerFacing, playerAngle) {
   if (P.V.storyModeEntryPoint === STORYENTRY_NONE) return;
   if (testFlag(P, FLAG_DOUBLES)) {
     setSpeed(P, ACTOR_PARTNER, PARTNER_CATCH_UP_SPEED);
@@ -76,7 +76,7 @@ export function loadCourtPlayerPartnerObjDefs(P) {
   loadObjdef(P, ACTOR_PLAYER, (V.storyModeGenderOfMainCharacter + OBJ_ALEX_B) & 0xFF);
 }
 // script_get_actor_state actor / ld c, l / ld b, h / farcall LoadActorObjectDefIfValid / script_set_anim actor, ANIM_WALK
-function loadObjdef(P, actor, objdef) {
+export function loadObjdef(P, actor, objdef) {
   const bc = actorState(P, actor);
   if (bc >> 8) farcall(P, BANK_ACTORS, () => loadActorObjectDef(P, bc, objdef));
   setAnim(P, actor, ANIM_WALK);

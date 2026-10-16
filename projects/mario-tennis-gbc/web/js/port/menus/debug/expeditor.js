@@ -7,7 +7,7 @@
 // Tests: web/tests/port/routines_menus_misc.mjs (Unused_1a_DebugAddExp; the hotkey check outside debug step mode);
 // lockstep on out/port/dbg_expgain.mtrec and dbg_expedit.mtrec (scripted).
 import {
-  FZ, FAR, rom, u8, w8, wram, sound, advanceFrame, waitFrames, fadeOut, fadeIn, clearFrameTasks, disableLCDSafely,
+  FZ, FAR, rom, romWait, u8, w8, wram, sound, advanceFrame, waitFrames, fadeOut, fadeIn, clearFrameTasks, disableLCDSafely,
   enableLCD, registerFrameTask, unregisterFrameTask, hook, hookGen, WRAM_STAGING, WRAM_TEXT, WRAM_SCENE, VRAM_BANK1,
   vBGMap0, wDecompBuffer, PADF_A, PADF_B, PADF_SELECT, PADF_LEFT, PADF_RIGHT, PADF_UP, PADF_DOWN, SFX_MENU_MOVE,
   SFX_MENU_SELECT, SFX_MENU_CANCEL, wWindowShadowTilemap, wStoryMainCharExp, wStoryPartnerCharExp, wStoryCharacterSlot,
@@ -32,7 +32,7 @@ export const Unused_1a_StubNop_1a_0 = 0x4779, Unused_1a_ExpScreenDrawTask = 0x47
 export const Unused_1a_ExpScreenNumberTask = 0x4E65;
 const EDITOR_WINDOW = { x: 0, y: 0, w: 0x14, h: 0x04 }, EXP_DIGITS = 4, MAIN_EXP_CELL = 0x0801, PARTNER_EXP_CELL = 0x0802;
 const ADD_A = 100, ADD_RIGHT = 10, ADD_LEFT = 1;
-const LAYOUT_YES_NO = 0x00, LAYOUT_SINGLE = 0x01, NO_COUNTING = 0x04;
+const LAYOUT_YES_NO = 0x00, NO_COUNTING = 0x04;
 const CAPTION_COUNTING = 0x02, CAPTION_MAX_LEVEL = 0x05;
 const MAP_BLOCKS = 0x24;                                          // SCREEN_HEIGHT * TILEMAP_WIDTH / 16
 const COUNTED_SPRITE = [0x1C, 0x6C, 0xCA, 0x0F], TO_NEXT_SPRITE = [0x68, 0x84, 0xCA, 0x08];
@@ -50,7 +50,7 @@ export function* unusedRunDebugExpEditor(P) {
   wram(P, WRAM_TEXT);
   const { x, y, w, h } = EDITOR_WINDOW;
   w8(P, wPauseMenuWindowId, rom(P, FAR.CreateWindow, { d: x, e: y, b: w, c: h }).a);
-  rom(P, FAR.RestoreShadowTilemap);
+  yield* romWait(P, FAR.RestoreShadowTilemap);
   rom(P, FAR.Unused_05_StubNop_05_0);
   let slot = 0;                                                   // (c, which the window routines keep)
   for (;;) {
@@ -58,7 +58,7 @@ export function* unusedRunDebugExpEditor(P) {
       formatDecimalNumber(P, P.bus.u16(exp), EXP_DIGITS, wWindowShadowTilemap);
       slot = rom(P, FAR.WriteStringToWindow, { hl: wWindowShadowTilemap, de: cell, a: u8(P, wPauseMenuWindowId), c: slot }).c;
     }
-    slot = rom(P, FAR.RestoreShadowTilemap, { c: slot }).c;
+    slot = (yield* romWait(P, FAR.RestoreShadowTilemap, { c: slot })).c;
     slot = rom(P, FAR.Unused_05_StubNop_05_0, { c: slot }).c;
     yield* advanceFrame(P);
     const input = P.V.playerInputFlags;
@@ -69,7 +69,7 @@ export function* unusedRunDebugExpEditor(P) {
     if (input & (PADF_UP | PADF_DOWN)) { sound(P, SFX_MENU_CANCEL); slot ^= 1; continue; }
     if (input & PADF_B) break;
   }
-  rom(P, FAR.CloseWindow, { a: u8(P, wPauseMenuWindowId) });
+  yield* romWait(P, FAR.CloseWindow, { a: u8(P, wPauseMenuWindowId) });
   for (const [exp, which] of [[wStoryMainCharExp, 0], [wStoryPartnerCharExp, 1]]) {
     const de = P.bus.u16(exp);
     yield* unusedResetCharDataScreenAnim(P, { ...getRegs(P.cpu), a: de & 0xFF, d: de >> 8, e: de & 0xFF, h: exp >> 8, l: which });
@@ -98,18 +98,18 @@ export function* unusedShowExpGainScreen(P, entry) {
   P.V.scrollY = 0;
   P.V.scrollX = 0;
   loadExpScreenGfx(P, { ...getRegs(P.cpu), a: 0, h: layout, l: slot });
-  drawExpScreenNameAndLevel(P);
+  yield* drawExpScreenNameAndLevel(P);
   if (layout === LAYOUT_YES_NO) {
-    drawExpScreenYesNoBox(P);
+    yield* drawExpScreenYesNoBox(P);
     registerFrameTask(P, 0x0E, Unused_1a_StubNop_1a_0);
     yield* showExpScreen(P);
     wram(P, old);
     return { a: old, f: entryF };
   }
   wram(P, old);
-  drawExpScreenCaption(P, caption);
+  yield* drawExpScreenCaption(P, caption);
   wram(P, WRAM_SCENE);
-  drawExpScreenCaption(P, u8(P, storyRecord(P) + STORY_RECORD_LEVEL) === MAX_LEVEL ? CAPTION_MAX_LEVEL : CAPTION_COUNTING);
+  yield* drawExpScreenCaption(P, u8(P, storyRecord(P) + STORY_RECORD_LEVEL) === MAX_LEVEL ? CAPTION_MAX_LEVEL : CAPTION_COUNTING);
   wram(P, WRAM_SCENE);
   P.bus.w16(wExpAwardTotal, award);
   P.bus.w16(wExpAwardCounted, 0);

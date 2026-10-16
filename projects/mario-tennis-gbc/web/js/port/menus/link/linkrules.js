@@ -10,10 +10,10 @@
 // scripted); web/tests/port/routines_menus_misc.mjs. The rules rows and cursor run only in the link rules menu
 // (unverified in the lockstep: see rules.js) and are checked by the routine tests.
 import {
-  FAR, rom, wram, u8, w8, idx, addFlags, advanceFrame, clearFrameTasks, queueSpriteTemplate, loadPaletteShadow,
-  enableLCD, fadeIn, fillTilemapRect, loadCompressedTileBlock, loadScreenAssetRecord, queueWram3MapToVRAM,
-  prepareGlyphBuffer, uploadGlyphBuffer, renderProportionalTextAt, disableLCDSafely, queueCopy, hook, hookGen,
-  WRAM_SCREEN, WRAM_TEXT, TILEMAP_WIDTH, vTiles2, vBGMap0, wShadowTilemap, OAM_BANK1,
+  FAR, rom, wram, w8, idx, addFlags, advanceFrame, clearFrameTasks, queueSpriteTemplate, loadPaletteShadow, enableLCD,
+  fadeIn, fillTilemapRect, loadCompressedTileBlock, loadScreenAssetRecord, queueWram3MapToVRAM, prepareGlyphBuffer,
+  uploadGlyphBuffer, renderProportionalTextAt, disableLCDSafely, queueCopy, hook, hookGen, WRAM_SCREEN, WRAM_TEXT,
+  TILEMAP_WIDTH, vTiles2, vBGMap0, wShadowTilemap, OAM_BANK1,
 } from "../equipment/defs.js";
 import { copyMemoryBC } from "../../home/memory.js";
 import { clearBothSpriteBuffers } from "../../home/fade.js";
@@ -132,7 +132,7 @@ export function animateLinkStatusPalette(P) {
 }
 
 // ---- the link error screen ----
-// ShowLinkErrorScreen (3E:4AA7), slot $4002 (and LinkErrorReset's): the serial link reset, the error screen loaded
+// ShowLinkErrorScreen (3E:4AA7), slot $4012 (and LinkErrorReset's): the serial link reset, the error screen loaded
 // with the LCD off (sprites cleared, the scroll at 0, its animated tiles every 5 frames), faded in; its frame flashes
 // until a button is pressed
 export function* showLinkErrorScreen(P) {
@@ -184,7 +184,7 @@ export function animateLinkErrorPalette(P, entryF = P.cpu.f) {
   wram(P, bank);
   return { ...r, a: bank, f: entryF };
 }
-// ShowLinkStatusMessage (3E:4BA3), slot $4024: the message window's text: c = 0 "waiting", 1 "linked", else
+// ShowLinkStatusMessage (3E:4BA3), slot $4030: the message window's text: c = 0 "waiting", 1 "linked", else
 // "failed"; the window's rows queued
 export function* showLinkStatusMessage(P, status) {
   wram(P, WRAM_SCREEN);

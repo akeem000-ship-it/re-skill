@@ -7,7 +7,7 @@
 // Tests: web/tests/port/routines_menus_misc.mjs (every routine but the stubs, against the ROM); lockstep on
 // out/port/dbg_expgain.mtrec (scripted: the screen called from a stub).
 import {
-  FZ, FN, FAR, rom, u8, w8, wram, withWram, hook, nop, WRAM_STAGING, wDecompBuffer, TILEMAP_WIDTH,
+  FZ, FN, FAR, rom, romWait, u8, w8, wram, withWram, hook, hookGen, nop, WRAM_STAGING, wDecompBuffer, TILEMAP_WIDTH,
   storyRecord, STORY_RECORD_LEVEL, sub16, bit7F, cpFlags,
 } from "./defs.js";
 
@@ -40,12 +40,12 @@ export function clearExpScreenNameBox(P) {
 }
 // Unused_1a_DrawExpScreenNameAndLevel (1A:4B1F): the story character's name and level ("Lv" text with the level
 // as its argument) into the tile buffer. Leaves WRAM 1 mapped.
-export function drawExpScreenNameAndLevel(P) {
+export function* drawExpScreenNameAndLevel(P) {
   clearExpScreenNameBox(P);
   wram(P, WRAM_STAGING);
   copyNameToTileBuffer(P, storyRecord(P), NAME_AT, 0);
   rom(P, FAR.PushTextArgNumber, { hl: u8(P, storyRecord(P) + STORY_RECORD_LEVEL) });
-  rom(P, FAR.RenderProportionalTextAt, { hl: Text_31_237, de: LEVEL_AT, c: LEVEL_TEXT_WIDTH });
+  yield* romWait(P, FAR.RenderProportionalTextAt, { hl: Text_31_237, de: LEVEL_AT, c: LEVEL_TEXT_WIDTH });
 }
 // Unused_1a_CopyNameToTileBuffer (1A:4B73): the string at hl to de, a diacritic going a row up over the last
 // character. Returns hl past the end, de after the last character, b (0 after a diacritic)
@@ -136,7 +136,7 @@ export function signExtendModifierByte(a) {
 }
 
 export const HOOKS = [
-  [BANK, 0x4B1F, hook(P => { drawExpScreenNameAndLevel(P); })],
+  [BANK, 0x4B1F, hookGen(function* (P) { yield* drawExpScreenNameAndLevel(P); })],
   [BANK, 0x4B73, hook((P, c) => copyNameToTileBuffer(P, c.hl, c.de, c.b))],
   [BANK, 0x4B8F, hook((P, c) => moveTileBufferDestUpRow(c.de, c.f))],
   [BANK, 0x4B96, hook(P => { clearExpScreenNameBox(P); })],
