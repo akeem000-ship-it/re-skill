@@ -11,7 +11,7 @@ import {
   ACTOR_PLAYER, ACTOR_PARTNER, FACE_DOWN, FACE_LEFT, FACE_UP, ANIM_NOD, ANIM_BOUNCE, ANIM_SHAKE, testFlag,
   testFlagF, setFlag, wr, setText, advanceText, speak, askYesNo, agrees, gesture, faceToward, face, setPosition,
   movePlayer, waitPlayerMove, playerSpeed, nullScript, setActorScript, waitActorScript, fadeInAndWait,
-  fadeOutAndWait, goToLocation, jumpTableTarget, FZ, FC, hook, hookGen, scene,
+  fadeOutAndWait, goToLocation, jumpTableTarget, wait, FZ, FC, hook, scene,
 } from "./common.js";
 import { testGameFlag, setGameFlag, flagOperand } from "../home/flags.js";
 import { movePartyToNetCoachSpot, playerPartnerGesture, STORYLOC_TRAINING_COURT } from "./coach_walks_15.js";
