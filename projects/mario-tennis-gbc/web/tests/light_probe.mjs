@@ -1,5 +1,5 @@
 // Checks the 3D lighting layer (web/js/lighting.js, "LIGHT: Off / Day / Auto"): it is render-time only.
-//  * the HUD button cycles Off -> Day -> Auto and the choice is remembered (localStorage mt-light),
+//  * the HUD button opens the settings panel; the overworld time Off / Day / Auto is remembered (localStorage mt-light, mt-lightcfg),
 //  * on an overworld map and on a court, every hour / quality tier renders without errors, changes the picture, and
 //    keeps the emulation identical: the frame hash after the same frames is the same with the lighting off and on,
 //  * the sky is warm and low at sunset, cool and dark at night, bright at noon.
@@ -18,8 +18,8 @@ await page.waitForFunction(() => window.__gb && window.__gb.gb && document.getEl
 await page.waitForTimeout(1000);
 let bad = 0; const fail = (...m) => { bad++; console.log("FAIL", ...m); };
 // the button
-const btn = await page.evaluate(() => { const b = document.getElementById("lightbtn"); if (!b) return null; const seen = [b.textContent]; for (let i = 0; i < 3; i++) { b.dispatchEvent(new Event("pointerdown")); seen.push(b.textContent); } return { seen, stored: localStorage.getItem("mt-light") }; });
-if (!btn || btn.seen.join("|") !== "LIGHT: Off|LIGHT: Day|LIGHT: Auto|LIGHT: Off" || btn.stored !== "off") fail("button cycle", JSON.stringify(btn)); else console.log("button ok", btn.seen.join(" > "));
+const btn = await page.evaluate(() => { const b = document.getElementById("lightbtn"); if (!b) return null; const L = window.__gb.voxel.light, seen = [b.textContent]; for (const w of ["day", "clock", "off"]) { L.setWorld(w); seen.push(b.textContent); } b.dispatchEvent(new Event("pointerdown")); const panel = !document.getElementById("lightpanel").hidden; b.dispatchEvent(new Event("pointerdown")); return { seen, panel, stored: localStorage.getItem("mt-light") }; });
+if (!btn || btn.seen.join("|") !== "LIGHT: Off|LIGHT: Day|LIGHT: Auto|LIGHT: Off" || !btn.panel || btn.stored !== "off") fail("button / settings", JSON.stringify(btn)); else console.log("button ok", btn.seen.join(" > "), "(the button opens the settings panel)");
 await page.evaluate(async rec => {
   const { stateOf } = await import("/web/js/recorder.js"); const G = window.__gb; G.pause(true); G.loadState(rec.start);
   const inputs = Uint8Array.from(atob(rec.inputs), c => c.charCodeAt(0));
