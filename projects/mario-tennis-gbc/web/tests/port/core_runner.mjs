@@ -45,7 +45,7 @@ export class CoreRunner {
     this.handlerWrites = new Uint8Array(KEYS);     // bytes any interrupt handler has written (byteKey)
     this.window = 1; this.stamp = new Int32Array(0x10000); this.reads = new Int32Array(0x10000);
     this.wstamp = new Int32Array(0x10000); this.writes = new Int32Array(0x10000);
-    this.workVBlanks = [];                   // this window's VBlanks taken mid-work: {a, r, w} (w: by a write; a = -1: no such access followed)
+    this.workVBlanks = [];                   // this window's VBlanks taken mid-work: {a, r, w, n} (w: by a write; a = -1: no such access followed; n: its boundary)
     this.pending = null;                     // a mid-work VBlank waiting for the next read to place it
     this.waitEndVBlanks = -1;                // the boundary count when AdvanceFrame's wait last ended (00:2719)
     gb.setInput(pad(0));
@@ -88,7 +88,9 @@ export class CoreRunner {
       this.handlers.push({ vector: cpu.pc, ret, sp: (cpu.sp + 2) & 0xFFFF });
       if (cpu.pc === 0x40 && (ret < 0x2700 || ret > 0x2711)) {
         this.offBeat = this.advances;
-        if (!inAdvanceFrame(ret) && this.handlers.length === 1) { const v = { a: -1, r: 0, w: false }; this.workVBlanks.push(v); this.pending = v; }
+        // n: the boundary this VBlank began (the window's first one when it came in the previous AdvanceFrame's own
+        // work, its frame tasks; a later one when it came in the game's work after that AdvanceFrame returned)
+        if (!inAdvanceFrame(ret) && this.handlers.length === 1) { const v = { a: -1, r: 0, w: false, n: this.vblanks }; this.workVBlanks.push(v); this.pending = v; }
       }
     }
     const ppu = gb.ppu, c = gb.cycles - c0;

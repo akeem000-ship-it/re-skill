@@ -135,7 +135,10 @@ const watchAccess = (addr, w) => {
   if (addr !== v.a || w !== v.w || r !== v.r) return;
   if (P.workVBlanks - workAtStart > watchAt) { watchAt++; return; }   // the port's own ROM code already took this VBlank
   const win_ = win.get(portWin);
-  P.setInput(pad(win_.bounds[Math.min(watchAt + 1, win_.bounds.length - 1)]));   // the pad of the frame that VBlank began
+  // the pad of the frame that VBlank began: its boundary's (v.n). Not simply the window's next boundary: a VBlank
+  // taken in the previous AdvanceFrame's frame tasks is the window's first boundary, and its wait then ends
+  // without another one (out/port/ss1_end7_1.mtrec, AdvanceFrame 724: a button pressed on that frame only)
+  P.setInput(pad(v.n ?? win_.bounds[Math.min(watchAt + 1, win_.bounds.length - 1)]));
   watchAt++; injected++; injectedIn = portWin;
   P.injectVBlank();
 };
