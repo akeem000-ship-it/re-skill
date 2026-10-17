@@ -620,10 +620,12 @@ export class Voxel3D {
       this.draw(seats, m4.plane(ax, ay, [t[0], st.base, t[2]]), mvp, [0, 0, repeat, 1], [0.92, 0.92, 0.92, 1], 0);
     }
   }
-  collectSprites() {
+  // edge: every entry the game wrote, also those just outside the 160x144 picture (the game puts a part into OAM while it is within 8 px of
+  // the screen's left edge and up to the right edge + 8; the LCD shows only what is inside, the 3D view shows the surroundings too)
+  collectSprites(edge = false) {
     const m = this.gb.mem, p = this.gb.ppu, oam = m.oam, tall = p.lcdc & 4, sprs = [], hd = this.hdText, hid = hd && hd.active && hd.hideSprites && hd.hiddenOam.size ? hd.hiddenOam : null;
     for (let i = 0; i < 40; i++) {
-      const sy = oam[i * 4] - 16, sx = oam[i * 4 + 1] - 8; if (sy <= -16 || sy >= 144 || sx <= -8 || sx >= 160) continue;
+      const sy = oam[i * 4] - 16, sx = oam[i * 4 + 1] - 8; if (edge ? (sy <= -16 || sy >= 160 || sx < -8 || sx >= 168) : (sy <= -16 || sy >= 144 || sx <= -8 || sx >= 160)) continue;
       if (hid && hid.has(i)) continue;                              // replaced by HD art (web/js/hdui.js)
       let tile = oam[i * 4 + 2]; const attr = oam[i * 4 + 3], hgt = tall ? 16 : 8; if (tall) tile &= 0xFE;
       sprs.push({ sx, sy, h: hgt, tile, attr, owner: null });
@@ -1506,7 +1508,7 @@ export class Voxel3D {
     // sprites are placed with SCX/SCY, which can trail the field scroll by a pixel or two while walking
     const ox = sc.x + (((p.scx - sc.x) << 24) >> 24), oy = sc.y + (((p.scy - sc.y) << 24) >> 24);
     if (!this.actorMem || this.actorMem.map !== id) this.actorMem = { map: id, slots: new Map() };
-    const mem = this.actorMem.slots, sprs = this.collectSprites(), actors = this.fieldActors();
+    const mem = this.actorMem.slots, sprs = this.collectSprites(true), actors = this.fieldActors();
     for (const a of actors) { a.ax = a.x - ox; a.ay = a.y + 4 - oy; }     // screen point of the feet (sprites end 4 px below the position)
     sprs.forEach((s, i) => s.g = i);
     const find = i => { while (sprs[i].g !== i) i = sprs[i].g = sprs[sprs[i].g].g; return i; };
