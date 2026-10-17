@@ -20,16 +20,20 @@ const FAMILIES = {
 };
 const ROLES = ["TL", "T", "TR", "L", "R", "BL", "B", "BR"];
 
-// the colour indices a, b, c if the tile's rows fit the pattern ({a, b, c} or null)
+// the colour indices a, b, c if the tile's rows fit the pattern ({a, b, c} or null). a and b must match exactly (they are
+// the outline and the inner line); the fill c may have text or an icon on it (a box only one tile tall carries its text in
+// the edge tiles): it only has to be the main colour of the c places.
 function bind(rows, pat) {
-  let a = -1, b = -1, c = -1;
+  let a = -1, b = -1; const cv = [0, 0, 0, 0]; let cn = 0;
   for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
     const v = rows[y].charCodeAt(x) - 48, ch = pat[y][x];
     if (ch === "a") { if (a < 0) a = v; else if (a !== v) return null; }
     else if (ch === "b") { if (b < 0) b = v; else if (b !== v) return null; }
-    else { if (c < 0) c = v; else if (c !== v) return null; }
+    else { cv[v]++; cn++; }
   }
-  return a !== b && b !== c && a !== c ? { a, b, c } : null;
+  if (a === b) return null;
+  let c = -1, best = 0; for (let v = 0; v < 4; v++) if (v !== a && v !== b && cv[v] > best) { best = cv[v]; c = v; }
+  return c >= 0 && best * 2 >= cn - (cv[a] + cv[b]) * 0 && best >= cn * 0.45 ? { a, b, c } : null;
 }
 export function frameRole(cell) {
   if (cell._fr !== undefined) return cell._fr;
@@ -62,6 +66,7 @@ export function findPanels(scr, layer) {
     const has = {}; for (const c of list) has[c._f.role] = true;
     // at least a corner or two opposite edges: a lone strip of T tiles is a ruler, not a panel
     const top = has.TL || has.T || has.TR, bot = has.BL || has.B || has.BR, lef = has.TL || has.L || has.BL, rig = has.TR || has.R || has.BR;
+    if (list.length < 4) continue;                    // a stray tile or two (a panel mid-scroll) is not a panel
     if (!((top && bot) || (lef && rig) || (top && (lef || rig)) || (bot && (lef || rig)))) continue;
     let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const c of list) { x0 = Math.min(x0, c.x); y0 = Math.min(y0, c.y); x1 = Math.max(x1, c.x + 8); y1 = Math.max(y1, c.y + 8); }
     const OPEN = 24;                                  // a side not on screen: the panel goes on past the edge

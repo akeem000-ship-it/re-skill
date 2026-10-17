@@ -1,6 +1,6 @@
 // HD painters for agent D: character data / EXP screens, court select, minigame menus, icons, and the menu (UI) font.
 // Use the API in web/js/hdui.js (usage note at its top): registerHDPainter(name, (g, scr, layer) => {...}, { order }).
-import { registerHDPainter, drawText, shade } from "../hdui.js";
+import { registerHDPainter, drawText, shade, roundRect } from "../hdui.js";
 
 // ---- the menu font -----------------------------------------------------------------------------------------------------
 // Every menu bar and box is lettered in the game's 8x8 fixed-width UI font (bank $01 at $4410, glyphs $20-$7F, one tile per
@@ -255,3 +255,53 @@ registerHDPainter("d_smooth", (g, scr, layer) => {
   u.drawImage(cv, 0, 0);                                                              // ...with what the painters drew on it
   g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height); g.drawImage(under, 0, 0); g.restore();
 }, { order: 1000 });
+
+// ---- stat gauges --------------------------------------------------------------------------------------------------------
+// The skill page's gauges are rows of ten 3x4 pixel segments 4 px apart: black when empty, red / white when filled (the
+// filled ones come first). They are found in the picture by that shape and redrawn as glossy HD segments.
+const BLACK = 0xFF000000, RED = 0xFF0000F8, WHITE = 0xFFF8F8F8;
+export function findGauges(scr) {
+  const px = scr.px32, out = [], used = new Set();
+  const blk = (x, y) => x >= 0 && y >= 0 && x < 160 && y < 144 && px[y * 160 + x] === BLACK;
+  const block = (x, y) => {
+    for (let j = 0; j < 4; j++) for (let i = 0; i < 3; i++) if (!blk(x + i, y + j)) return false;
+    for (let i = 0; i < 3; i++) if (blk(x + i, y - 1) || blk(x + i, y + 4)) return false;
+    return !blk(x - 1, y) && !blk(x + 3, y) && !blk(x - 1, y + 3) && !blk(x + 3, y + 3);
+  };
+  const filled = (x, y) => {
+    if (x < 0 || x + 3 > 160 || y < 1 || y + 4 > 144) return false;
+    let n = 0; for (let j = 0; j < 4; j++) for (let i = 0; i < 3; i++) { const c = px[(y + j) * 160 + x + i]; if (c === RED || c === WHITE) n++; }
+    return n >= 2 && !block(x, y);
+  };
+  for (let y = 1; y < 140; y++) for (let x = 0; x < 158; x++) {
+    if (!block(x, y) || used.has(y * 160 + x)) continue;
+    let x1 = x; while (block(x1 + 4, y)) x1 += 4;
+    let x0 = x; while (filled(x0 - 4, y) && (x1 - x0) / 4 < 9) x0 -= 4;
+    for (let k = x0; k <= x1; k += 4) used.add(y * 160 + k);
+    const n = (x1 - x0) / 4 + 1; if (n < 4) continue;
+    out.push({ x: x0, y, n, on: (x - x0) / 4 });      // `on` filled segments first, then the empty ones
+  }
+  for (let y = 1; y < 140; y++) for (let x = 0; x < 158; x++) {       // a gauge with every segment filled
+    if (used.has(y * 160 + x) || !filled(x, y)) continue;
+    let k = 1; while (filled(x + 4 * k, y)) k++;
+    if (k >= 5) { out.push({ x, y, n: k, on: k }); for (let m = 0; m < k; m++) used.add(y * 160 + x + 4 * m); x += 4 * k - 1; }
+  }
+  return out;
+}
+registerHDPainter("d_gauges", (g, scr, layer) => {
+  if (layer !== "bg") return;
+  for (const G of findGauges(scr)) {
+    const w = G.n * 4 - 1, track = new Path2D();
+    // the track: a dark slot the segments sit in
+    g.save(); g.beginPath(); roundRect(g, G.x - 0.6, G.y - 0.55, w + 1.2, 5.1, 1.5); g.fillStyle = "rgba(40,10,0,0.55)"; g.fill(); g.restore();
+    for (let k = 0; k < G.n; k++) {
+      const x = G.x + k * 4, y = G.y, on = k < G.on;
+      g.save(); g.beginPath(); roundRect(g, x - 0.05, y - 0.05, 3.1, 4.1, 0.9);
+      const gr = g.createLinearGradient(0, y, 0, y + 4);
+      if (on) { gr.addColorStop(0, "#ff7a60"); gr.addColorStop(0.45, "#f01800"); gr.addColorStop(1, "#a00000"); } else { gr.addColorStop(0, "#3a3a3e"); gr.addColorStop(1, "#08080a"); }
+      g.fillStyle = gr; g.fill(); g.lineWidth = 0.3; g.strokeStyle = on ? "rgba(70,0,0,.9)" : "rgba(0,0,0,.9)"; g.stroke();
+      g.clip(); g.fillStyle = on ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.16)"; g.fillRect(x, y + 0.2, 3, 1.1);
+      g.restore();
+    }
+  }
+}, { order: 55 });
