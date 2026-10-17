@@ -1144,6 +1144,10 @@ export class Voxel3D {
     }
     for (const c of def.cards || []) {
       if (!inMap(c.x0, c.y0)) continue;
+      if (c.copy) {                              // a copy of a cut-out standing somewhere else (furniture behind the glass): the ground is left alone
+        const w = c.x1 - c.x0, h = c.y1 - c.y0, d = F3.cutOut(art, c.x0, c.y0, w, h, plantCut(c)), cd = card(d, c.x0, c.y0, w, h, c);
+        cd.X = c.copy[0] + w / 2; cd.Z = c.copy[1] + cd.h + (c.dz || 0); f.cards.push(cd); continue;
+      }
       cover(c.x0, c.y0, c.x1, c.y1);
       const w = c.x1 - c.x0, h = c.y1 - c.y0; let d = F3.cutOut(art, c.x0, c.y0, w, h, plantCut(c));
       // a net whose keyed cut came out (nearly) empty: the net's own colours were taken for ground (the ground around it is blue too): keep its outline colour
