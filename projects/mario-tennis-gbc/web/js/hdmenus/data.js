@@ -1,6 +1,8 @@
 // HD painters for agent D: character data / EXP screens, court select, minigame menus, icons, and the menu (UI) font.
 // Use the API in web/js/hdui.js (usage note at its top): registerHDPainter(name, (g, scr, layer) => {...}, { order }).
-import { registerHDPainter, drawText, shade, roundRect } from "../hdui.js";
+import { registerHDPainter as register, drawText, shade, roundRect } from "../hdui.js";
+// (painters are timed into globalThis.__dTimes: milliseconds per painter, for tests)
+const registerHDPainter = (name, fn, o) => register(name, (...a) => { const t = performance.now(); try { return fn(...a); } finally { const T = globalThis.__dTimes || (globalThis.__dTimes = {}); T[name] = (T[name] || 0) + performance.now() - t; } }, o);
 
 // ---- the menu font -----------------------------------------------------------------------------------------------------
 // Every menu bar and box is lettered in the game's 8x8 fixed-width UI font (bank $01 at $4410, glyphs $20-$7F, one tile per
