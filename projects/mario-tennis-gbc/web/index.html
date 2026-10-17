@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mario Tennis GBC — Web Port</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Mario Tennis (GBC) — exhibition match web port <span class="note">(<a href="full.html">full game</a>)</span></h1>
+  <div id="loader" class="panel">
+    Load your own <code>Mario Tennis (USA).gbc</code> (SHA-1 <code>414ba583…</code>):
+    <input type="file" id="file" accept=".gbc,.gb">
+    <div class="note">Nothing from the game ships with this page: courts, sprites, colours, stats and shot tables are
+      decoded from your ROM in the browser. When served from the project root with the ROM at
+      <code>rom/mario_tennis.gbc</code> it loads automatically.</div>
+  </div>
+  <div id="setup" class="panel" hidden>
+    P1 <select id="p1"></select> vs CPU <select id="p2"></select>
+    <select id="court"></select>
+    <select id="games"><option value="2">2-game sets</option><option value="6">6-game sets</option></select>
+    <select id="sets"><option value="1">1 set</option><option value="3">3 sets</option><option value="5">5 sets</option></select>
+    <select id="diff"><option value="0">Easy</option><option value="1" selected>Normal</option><option value="2">Hard</option><option value="3">Intense</option></select>
+    <button id="restart">Start</button>
+    <div id="romstatus" class="note"></div>
+    <div id="fps" class="note"></div>
+  </div>
+  <canvas id="screen" width="160" height="144" tabindex="0"></canvas>
+  <div id="pad">
+    <div class="dpad">
+      <div></div><div class="k" data-key="ArrowUp">&#9650;</div><div></div>
+      <div class="k" data-key="ArrowLeft">&#9664;</div><div></div><div class="k" data-key="ArrowRight">&#9654;</div>
+      <div></div><div class="k" data-key="ArrowDown">&#9660;</div><div></div>
+    </div>
+    <div class="btns">
+      <div class="k" data-key="KeyX">B</div><div class="k" data-key="KeyZ">A</div>
+      <div class="k start" data-key="Enter">START</div>
+    </div>
+  </div>
+  <div class="panel info">
+    <div id="info"></div>
+    <div class="note"><kbd>←→↑↓</kbd> move · <kbd>Z</kbd>/<kbd>A</kbd> = A button (topspin, toss/serve) ·
+      <kbd>X</kbd>/<kbd>S</kbd> = B button (slice, back in menus) · hold ←/→ while hitting to aim · <kbd>Enter</kbd> = Start / rematch</div>
+    <div class="note">Boot: logos → intro (Enter skips) → title (Enter) → the game's menus (Exhibition → singles, games, sets → characters → difficulty → court) → VS → match. The controls above skip straight to a match.</div>
+    <div class="note">Faithful parts (verified against the ROM/emulator): ball physics (drag, spin, bounce, fences, net),
+      court dimensions, serve box and in/out rules, scoring with deuce, faults and sets, character stats and the
+      movement formulas derived from them, shot aiming and trajectory tables, swing contact and lunges, CPU AI, the
+      camera, the sound driver, court maps, sprites and colours. Details: <code>docs/architecture_web.md</code>.</div>
+  </div>
+</main>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

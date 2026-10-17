@@ -1,0 +1,19 @@
+# Copyrighted inputs and anything derived from them are regenerated locally
+# from your own ROM dump with the tools (see README.md) -- never commit them.
+rom/
+*.gbc
+*.gb
+gfx/
+docs/text_dump.txt
+__pycache__/
+states/
+*.ram
+docs/scenes_dump.txt
+out/
+web/gen/
+# the vendored disassembly's build products and ROM-extracted data
+third_party/mario-tennis-gbc-disasm/data/
+third_party/mario-tennis-gbc-disasm/build/
+third_party/mario-tennis-gbc-disasm/*.gbc
+# opponent mods: private user art, never committed (the page auto-loads web/mods/index.json and the files it lists)
+web/mods/
