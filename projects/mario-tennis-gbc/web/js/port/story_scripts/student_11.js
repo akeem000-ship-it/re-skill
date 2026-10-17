@@ -373,9 +373,12 @@ export function* academyArrivalGreetingScene(P) {
 }
 
 // ArmAcademyEntranceTileTrigger (11:4F1B): the four cells before the academy's door become trigger 15 (the guide's
-// tour resumed when stepped on: AcademyArrivalTile0F_11)
+// tour resumed when stepped on: AcademyArrivalTile0F_11). Leaves a = the cell value, de = the last cell, F as
+// WriteBehaviorMapCell leaves it (0)
 export function armAcademyEntranceTileTrigger(P) {
-  for (const [col, row] of [[22, 16], [24, 16], [22, 18], [24, 18]]) writeBehaviorCell(P, col, row, BEHAVIOR_TRIGGER | 15 << 4);
+  const cells = [[22, 16], [24, 16], [22, 18], [24, 18]], v = BEHAVIOR_TRIGGER | 15 << 4;
+  for (const [col, row] of cells) writeBehaviorCell(P, col, row, v);
+  return { a: v, d: 24, e: 18, f: 0 };
 }
 
 // ResumeAcademyGuideTour (11:4F40): stepping on the armed entrance: Emily calls, the tour goes on
@@ -557,7 +560,7 @@ export const HOOKS = [
   scene(BANK, 0x4CF6, lateStudentCrashImpact),
   scene(BANK, 0x4D68, knockPlayerAirborneFlipped),
   scene(BANK, 0x4D94, academyArrivalGreetingScene),
-  [BANK, 0x4F1B, hook(P => { armAcademyEntranceTileTrigger(P); })],
+  [BANK, 0x4F1B, hook(P => armAcademyEntranceTileTrigger(P))],
   scene(BANK, 0x4F40, resumeAcademyGuideTour),
   scene(BANK, 0x4F84, followGuideIntoAcademy),
   scene(BANK, 0x4FCF, academyArrivalRespawnScene),                 // AcademyArrivalInitScript_11.scriptRespawnLocationActors

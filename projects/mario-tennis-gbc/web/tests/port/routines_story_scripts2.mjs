@@ -206,3 +206,6 @@ B(0x15, [["WaterSpriteSwingCountTask", 0x55F0], ["TogglePlayerSpriteXFlip", 0x57
 // wall_room_12 / wall_levels_12: the room's arrival, the session's actors (memory only; the level signs wait: lockstep)
 B(0x12, [["WallPracticeRoomArrival01_12", 0x46F3],
   ["RestoreWallPracticeRoomActors", 0x52C0]], { active: overworld, skip: ALL, n: 1 });
+// student_11 / training_0e: the academy entrance's tile trigger armed; the gym's two side-door tiles (exits 2, 3)
+B(0x11, [["ArmAcademyEntranceTileTrigger", 0x4F1B, OW]]);
+B(0x0E, [["TrainingGymTile02_0e", 0x4607], ["TrainingGymTile03_0e", 0x4610]]);

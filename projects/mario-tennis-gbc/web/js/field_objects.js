@@ -158,12 +158,12 @@ export const FIELD_OBJECTS = {
     "y1": 56,
     "fold": 24
    },
-   {"x0": 32, "y0": 64, "x1": 64, "y1": 104, "fold": 72, "glass": true},
-   {"x0": 96, "y0": 64, "x1": 248, "y1": 96, "fold": 72, "glass": true},
-   {"x0": 320, "y0": 80, "x1": 400, "y1": 112, "fold": 88, "glass": true},
-   {"x0": 16, "y0": 168, "x1": 208, "y1": 208, "fold": 176, "glass": true},
-   {"x0": 304, "y0": 168, "x1": 400, "y1": 208, "fold": 176, "glass": true},
-   {"x0": 408, "y0": 168, "x1": 448, "y1": 208, "fold": 176, "glass": true},
+   {"x0": 32, "y0": 64, "x1": 64, "y1": 104, "fold": 72, "glass": true, "floorTile": [136, 144]},
+   {"x0": 96, "y0": 64, "x1": 248, "y1": 96, "fold": 72, "glass": true, "floorTile": [136, 144]},
+   {"x0": 320, "y0": 80, "x1": 400, "y1": 112, "fold": 88, "glass": true, "floorTile": [136, 144]},
+   {"x0": 16, "y0": 168, "x1": 208, "y1": 208, "fold": 176, "glass": true, "floorTile": [136, 144]},
+   {"x0": 304, "y0": 168, "x1": 400, "y1": 208, "fold": 176, "glass": true, "floorTile": [136, 144]},
+   {"x0": 408, "y0": 168, "x1": 448, "y1": 208, "fold": 176, "glass": true, "floorTile": [136, 144]},
    {
     "x0": 208,
     "y0": 192,

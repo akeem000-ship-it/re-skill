@@ -23,7 +23,7 @@ export function buildDetail(kind, W, H, x0, y0, texel) {
     const ay = Math.abs(Y), baseline = Math.abs(ay - 1248) < 150 ? 1 - Math.abs(ay - 1248) / 150 : 0, inCourt = Math.abs(X) < 560 && ay < 1400;
     let l = 0, w = 0;
     if (kind === "hard") {
-      l = g * 20 + g2 * 8 + 6 * Math.sin(X / 340 + Y / 520) + (hash(i, j, 3) > 0.9985 ? 40 : 0);                       // grain, a broad sheen, specks
+      l = g * 40 + g2 * 16 + 14 * Math.sin(X / 340 + Y / 520) + 10 * Math.max(0, 1 - Math.hypot(X + 300, Y + 500) / 900) + (hash(i, j, 3) > 0.9985 ? 60 : 0);                       // grain, a broad sheen, specks
     } else if (kind === "clay") {
       const n = vnoise(X / 22, Y / 22, 4) - 0.5, r = Math.hypot(X - 0, Y + 1500) / 70, arc = Math.abs(r - Math.round(r)) < 0.06 && inCourt ? 1 : 0;   // sweep arcs (concentric about the far end)
       const scuff = baseline * (vnoise(X / 38, Y / 16, 5) > 0.5 ? 1 : 0.35), mark = hash(Math.floor(X / 90), Math.floor(Y / 90), 6) > 0.985 && inCourt && Math.hypot(((X % 90) + 90) % 90 - 45, ((Y % 90) + 90) % 90 - 45) < 5 ? 1 : 0;
@@ -54,7 +54,7 @@ export function lineColours(idx, lut) {
 export function paintFloor(rgba, src, idx, lut, W, H, detail) {
   const L = lineColours(idx, lut), { dl, dw, kind } = detail, N = W * H;
   const tint = kind === "clay" ? [0.62, 0.42, 0.22] : kind === "grass" ? [0.84, 0.70, 0.35] : [1, 1, 1];     // what a worn patch turns towards (of the texel's own colour)
-  const sat = kind === "special" ? 1.18 : 1.12, gloss = kind === "special" || kind === "hard" ? 1 : 0;
+  const sat = kind === "special" ? 1.18 : 1.2, gloss = kind === "special" || kind === "hard" ? 1 : 0;
   for (let i = 0; i < N; i++) {
     const k = idx[src[i]], o = i * 4; let r = lut[k * 4], g = lut[k * 4 + 1], b = lut[k * 4 + 2];
     if (L[k]) { rgba[o] = r; rgba[o + 1] = g; rgba[o + 2] = b; rgba[o + 3] = 255; continue; }                  // the lines: exact

@@ -16,6 +16,7 @@ import { project } from "./camera.js";
 import { courtTilemaps, courtImage, courtIndexMap, COURTS } from "./assets.js";
 import { FIELD_OBJECTS } from "./field_objects.js";
 import * as F3 from "./field3d.js";
+import { FS_SHIM, VS_GLASS, FS_GLASS, WindowShimmer } from "./shimmer.js";   // SHIMMER: window shimmer + glass walls
 import { roundedMeshData } from "./voxround.js";
 import { surfaceKind, buildDetail, paintFloor } from "./courtfloor.js";   // HD court floors   // VOXSTYLE: "VOX: Blocky / Rounded"
 
@@ -178,6 +179,9 @@ export class Voxel3D {
     this.u = {}; for (const n of ["uMVP", "uModel", "uUVRect", "uTex", "uTint", "uAlphaTest"]) this.u[n] = gl.getUniformLocation(this.prog, n);
     this.prog3 = this.link(VS3, FS, ["aPos3", "aUV3"]);
     this.u3 = {}; for (const n of ["uMVP", "uTex", "uTint", "uAlphaTest"]) this.u3[n] = gl.getUniformLocation(this.prog3, n);
+    this.shimmer = new WindowShimmer(this);                                              // SHIMMER (voxel.shimmer.on / setOn: the LIGHT panel's "Window shimmer")
+    this.progS = this.link(VS3, FS_SHIM, ["aPos3", "aUV3"]); this.uS = {}; for (const n of ["uMVP", "uTex", "uTint", "uAlphaTest", "uTime", "uShim"]) this.uS[n] = gl.getUniformLocation(this.progS, n);
+    this.progG = this.link(VS_GLASS, FS_GLASS, ["aPos3", "aUV3"]); this.uG = {}; for (const n of ["uMVP", "uTime", "uShim"]) this.uG[n] = gl.getUniformLocation(this.progG, n);
     this.progV = this.link(VSV, FSV, ["aPosV", "aColV"]);
     this.uV = {}; for (const n of ["uMVP", "uModel"]) this.uV[n] = gl.getUniformLocation(this.progV, n);
     const uni = (p, names) => Object.fromEntries(names.map(n => [n, gl.getUniformLocation(p, n)]));
@@ -1174,7 +1178,7 @@ export class Voxel3D {
       }
     }
     // buildings: one batched mesh for roofs + fronts (+ the tops and front walls of solids), one for the side walls
-    const front = { pos: [], uv: [] }, side = { pos: [], uv: [] }, glass = { pos: [], uv: [] }, keyed = [], roofs = [{ pos: [], uv: [] }, { pos: [], uv: [] }]; let roofArt = null;
+    const front = { pos: [], uv: [] }, side = { pos: [], uv: [] }, glass = { pos: [], uv: [] }, glassEdges = new Set(), keyed = [], roofs = [{ pos: [], uv: [] }, { pos: [], uv: [] }]; let roofArt = null;
     const quad = (o, a, b, c, d, ua, ub, uc, ud) => { for (const [v, t] of [[a, ua], [b, ub], [c, uc], [a, ua], [c, uc], [d, ud]]) { o.pos.push(...v); o.uv.push(t[0] / 512, t[1] / 512); } };
     for (const b of def.blocks || []) {
       if (!inMap(b.x0, b.y0)) continue;
@@ -1200,10 +1204,22 @@ export class Voxel3D {
         quad(side, [x1, 0, y1], [x1, 0, zb], [x1, He, zb], [x1, He, y1], [x1 - 12, y1], [x1 - 6, y1], [x1 - 6, g.ey], [x1 - 12, g.ey]);
         continue;
       }
-      if (b.glass) patch(new Uint8Array((x1 - x0) * (y1 - zb) * 4).fill(255), x0, zb, x1 - x0, y1 - zb);     // behind a glass pane the room's floor shows: the ground strip below the building
       const H = (y1 - fold) * WALL_SCALE;
-      quad(b.glass ? glass : front, [x0, H, zb], [x1, H, zb], [x1, H, y1], [x0, H, y1], [x0, y0], [x1, y0], [x1, fold], [x0, fold]);   // roof
-      quad(b.glass ? glass : front, [x0, 0, y1], [x1, 0, y1], [x1, H, y1], [x0, H, y1], [x0, y1], [x1, y1], [x1, fold], [x0, fold]);   // front wall (glass: a translucent pane, drawn last)
+      if (b.glass) {                    // a glass wall: thin vertical panes (32 wide, a slim frame) on the front and the two ends; no roof, no volume; the room's floor shows
+        if (b.floorTile) {              // the room's floor behind the panes: one plain floor tile (map px) repeated over the footprint
+          const [tx, ty] = b.floorTile;
+          for (let y = zb; y < y1; y++) for (let x = x0; x < x1; x++) { const s = ((ty + (y & 7)) * 512 + tx + (x & 7)) * 4, o = (y * 512 + x) * 4; floor[o] = art[s]; floor[o + 1] = art[s + 1]; floor[o + 2] = art[s + 2]; f.patched[y * 512 + x] = 1; f.floorSrc[y * 512 + x] = (ty + (y & 7)) * 512 + tx + (x & 7); hole[y * 512 + x] = 1; }
+          erase.push([x0, zb, x1, y1]);
+        } else patch(new Uint8Array((x1 - x0) * (y1 - zb) * 4).fill(255), x0, zb, x1 - x0, y1 - zb, b.floor === "above");
+        const pane = (a, c, wide) => { const n = Math.max(1, Math.round(wide / 32)); for (let k = 0; k < n; k++) { const t0 = k / n, t1 = (k + 1) / n, A = [a[0] + (c[0] - a[0]) * t0, a[2] + (c[2] - a[2]) * t0], C = [a[0] + (c[0] - a[0]) * t1, a[2] + (c[2] - a[2]) * t1];
+          for (const [p, u, w] of [[[A[0], 0, A[1]], 0, 0], [[C[0], 0, C[1]], 1, 0], [[C[0], H, C[1]], 1, 1], [[A[0], 0, A[1]], 0, 0], [[C[0], H, C[1]], 1, 1], [[A[0], H, A[1]], 0, 1]]) { glass.pos.push(...p); glass.uv.push(u, w); } } };
+        pane([x0, 0, y1], [x1, 0, y1], x1 - x0);
+        const edge = (x) => { const key = x + ":" + zb + ":" + y1; if (!glassEdges.has(key)) { glassEdges.add(key); pane([x, 0, zb], [x, 0, y1], y1 - zb); } };
+        edge(x0); edge(x1);
+        continue;
+      }
+      quad(front, [x0, H, zb], [x1, H, zb], [x1, H, y1], [x0, H, y1], [x0, y0], [x1, y0], [x1, fold], [x0, fold]);   // roof
+      quad(front, [x0, 0, y1], [x1, 0, y1], [x1, H, y1], [x0, H, y1], [x0, y1], [x1, y1], [x1, fold], [x0, fold]);   // front wall
       quad(side, [x0, 0, zb], [x0, 0, y1], [x0, H, y1], [x0, H, zb], [x0, y1], [x0 + 6, y1], [x0 + 6, fold], [x0, fold]);   // left wall
       quad(side, [x1, 0, y1], [x1, 0, zb], [x1, H, zb], [x1, H, y1], [x1 - 6, y1], [x1, y1], [x1, fold], [x1 - 6, fold]);   // right wall
     }
@@ -1475,8 +1491,10 @@ export class Voxel3D {
     }
     // buildings (roof + front wall, then the darker side walls) and the stand-up cut-outs
     if (f.blocks) {
-      gl.useProgram(this.prog3); gl.bindTexture(gl.TEXTURE_2D, f.artTex); gl.uniformMatrix4fv(this.u3.uMVP, false, mvp); gl.uniform1f(this.u3.uAlphaTest, 0.5);
-      for (const [b, k] of [[f.blocks.front, 1], [f.blocks.side, 0.68]]) { gl.bindVertexArray(b.vao); gl.uniform4fv(this.u3.uTint, [k, k, k, 1]); gl.drawArrays(gl.TRIANGLES, 0, b.count); }
+      const SU = this.uS; gl.useProgram(this.progS); gl.bindTexture(gl.TEXTURE_2D, f.artTex); gl.uniformMatrix4fv(SU.uMVP, false, mvp); gl.uniform1f(SU.uAlphaTest, 0.5);   // SHIMMER: window glints on the facades
+      gl.uniform1f(SU.uTime, T); gl.uniform1f(SU.uShim, this.shimmer.level());
+      for (const [b, k] of [[f.blocks.front, 1], [f.blocks.side, 0.68]]) { gl.bindVertexArray(b.vao); gl.uniform4fv(SU.uTint, [k, k, k, 1]); gl.drawArrays(gl.TRIANGLES, 0, b.count); }
+      gl.useProgram(this.prog3); gl.uniformMatrix4fv(this.u3.uMVP, false, mvp); gl.uniform1f(this.u3.uAlphaTest, 0.5);
       if (f.roof) { gl.bindTexture(gl.TEXTURE_2D, f.roof.tex); for (const [b, k] of [[f.roof.lit, 1], [f.roof.shade, 0.75]]) { gl.bindVertexArray(b.vao); gl.uniform4fv(this.u3.uTint, [k, k, k, 1]); gl.drawArrays(gl.TRIANGLES, 0, b.count); } }
       gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
     }
@@ -1490,8 +1508,8 @@ export class Voxel3D {
     this.drawFieldFx(mvp, T);
     this.fieldRects = this.fieldOverlayRects();                         // once per frame: the actors and the overlays both need them
     this.drawFieldActors(mvp);
-    if (f.glass && f.artTex) {                                           // translucent glass panes, after everything behind them
-      gl.useProgram(this.prog3); gl.bindTexture(gl.TEXTURE_2D, f.artTex); gl.uniformMatrix4fv(this.u3.uMVP, false, mvp); gl.uniform4fv(this.u3.uTint, [1.18, 1.18, 1.3, 0.42]); gl.uniform1f(this.u3.uAlphaTest, 0.01);
+    if (f.glass) {                                                       // glass walls (thin panes), after everything behind them
+      gl.useProgram(this.progG); gl.uniformMatrix4fv(this.uG.uMVP, false, mvp); gl.uniform1f(this.uG.uTime, T); gl.uniform1f(this.uG.uShim, this.shimmer.level());
       gl.depthMask(false); gl.bindVertexArray(f.glass.vao); gl.drawArrays(gl.TRIANGLES, 0, f.glass.count); gl.depthMask(true);
       gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
     }
