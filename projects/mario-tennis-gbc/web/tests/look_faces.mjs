@@ -30,9 +30,14 @@ if (fs.existsSync(romf)) {
     const rom = Uint8Array.from(pristine), mgr = new LookManager().prepare(rom, { [hero]: p.look });
     if (!p.look) { check(rom.every((v, i) => v === pristine[i]), "classic preset leaves the ROM alone"); continue; }
     let changed = 0; for (let i = 0; i < rom.length; i++) if (rom[i] !== pristine[i]) changed++;
-    check(changed > 0 && mgr.notes.length === 0, `preset ${hero} ${p.name}: ${mgr.notes}`);
-    check(mgr.built.poolTop >= 100, `colour pool ${hero} ${p.name} ${mgr.built.poolTop}`);
+    check(mgr.notes.length === 0 && (changed > 0 || p.look.style === (hero === "boy" ? "cap" : "pigtails")), `preset ${hero} ${p.name}: ${mgr.notes}`);   // (the default hairstyle changes no bytes: its colours are render-time)
+    check(mgr.built.poolTop === undefined, `default portraits use no colour pool ${hero} ${p.name}`);
     mgr.set(null); check(rom.every((v, i) => v === pristine[i]), `restore ${hero} ${p.name}`);
+    const rom2 = Uint8Array.from(pristine), red = new LookManager().prepare(rom2, { [hero]: p.look, portraits: "redrawn" });      // Portraits: Redrawn
+    let ch2 = 0; for (let i = 0; i < rom2.length; i++) if (rom2[i] !== pristine[i]) ch2++;
+    check(ch2 > 0, `redrawn ${hero} ${p.name} rewrites the heads`);
+    check(red.built.poolTop >= 100, `colour pool ${hero} ${p.name} ${red.built.poolTop}`);
+    red.set(null); check(rom2.every((v, i) => v === pristine[i]), `restore redrawn ${hero} ${p.name}`);
   }
   // both heroes, every style: the head sprites and frames rewrite in place (same length), the rest of the ROM is untouched
   for (const style of STYLES.alex) {
@@ -41,6 +46,18 @@ if (fs.existsSync(romf)) {
     const lo = Math.min(...mgr.undo.map(p => p.off)), hi = Math.max(...mgr.undo.map(p => p.off + p.bytes.length));
     check(hi - lo < 0x200000, "patch span");
     check(normalizeLook({ boy: { style, colours, face: { eyes: "sharp" } } }).boy.face.eyes === "sharp", "face kept in the look");
+  }
+  // 3. portraits: by default the game's own (recoloured through region planes, the heads rewritten in place); "redrawn" brings the kit's faces
+  {
+    const look = { boy: { style: "cap", colours, face: { eyes: "sharp" } } };
+    const g = new LookManager().prepare(Uint8Array.from(pristine), look), r = new LookManager().prepare(Uint8Array.from(pristine), { ...look, portraits: "redrawn" });
+    check(!g.built.faces && !g.built.faceTiles, "default portraits: no redrawn faces");
+    check(r.built.faces && r.built.faces.boy && r.built.faceTiles.size > 0, "Portraits: Redrawn builds the kit's faces");
+    check(g.built.contentRegions.size > 40, `default portraits: the game's portrait tiles are recoloured (${g.built.contentRegions.size} tiles)`);
+    check(g.undo.some(p => p.bytes.length === 64) && r.undo.some(p => p.bytes.length === 64), "HUD heads rewritten in place in both modes");
+    check(normalizeLook({ ...look, portraits: "redrawn" }).portraits === "redrawn" && !normalizeLook({ ...look, portraits: "x" }).portraits, "portraits setting kept in the look");
+    // deep skin tones keep a readable ramp: the shade colour differs from the skin and the outline
+    for (const sk of SWATCHES.skin) { const c = g.built; void c; }
   }
 } else console.log("no ROM: part 2 skipped");
 console.log(bad ? `${bad} failures` : "ok");

@@ -12,13 +12,13 @@
 
 import { NEW_STYLES, hairStyleSprite } from "./hairsprites.js";
 
-export const REG = { NONE: 0, OUT: 1, SKIN: 2, HAIR: 3, HAT: 4, TOP: 5, BOTTOM: 6, SHOES: 7, KEEP: 8, SHADE: 9, RACKET: 10, CARD: 11, HAIR2: 12, HAIR3: 13 };
-const { NONE, OUT, SKIN, HAIR, HAT, TOP, BOTTOM, SHOES, KEEP, SHADE, RACKET, HAIR2, HAIR3 } = REG;
+export const REG = { NONE: 0, OUT: 1, SKIN: 2, HAIR: 3, HAT: 4, TOP: 5, BOTTOM: 6, SHOES: 7, KEEP: 8, SHADE: 9, RACKET: 10, CARD: 11, HAIR2: 12, HAIR3: 13, HILITE: 14 };
+const { NONE, OUT, SKIN, HAIR, HAT, TOP, BOTTOM, SHOES, KEEP, SHADE, RACKET, HAIR2, HAIR3, HILITE } = REG;
 
 // colour index each region is written with when a pixel is edited (the hero's own palette layout)
 const LAYOUT = {
-  alex: { [RACKET]: 3, [OUT]: 3, [HAIR]: 3, [SKIN]: 2, [SHADE]: 2, [HAT]: 1, [TOP]: 1, [BOTTOM]: 1, [SHOES]: 3, [HAIR2]: 3, [HAIR3]: 3 },
-  nina: { [RACKET]: 3, [OUT]: 3, [HAIR]: 2, [SKIN]: 1, [SHADE]: 1, [HAT]: 1, [TOP]: 1, [BOTTOM]: 2, [SHOES]: 3, [HAIR2]: 2, [HAIR3]: 2 },
+  alex: { [RACKET]: 3, [OUT]: 3, [HAIR]: 3, [SKIN]: 2, [SHADE]: 2, [HAT]: 1, [TOP]: 1, [BOTTOM]: 1, [SHOES]: 3, [HAIR2]: 3, [HAIR3]: 3, [HILITE]: 2 },
+  nina: { [RACKET]: 3, [OUT]: 3, [HAIR]: 2, [SKIN]: 1, [SHADE]: 1, [HAT]: 1, [TOP]: 1, [BOTTOM]: 2, [SHOES]: 3, [HAIR2]: 2, [HAIR3]: 2, [HILITE]: 1 },
 };
 
 export const STYLES = { alex: ["cap", "headband", "ponytail", "short", ...NEW_STYLES], nina: ["pigtails", "cap", "bob", "ponytail", ...NEW_STYLES] };
@@ -199,7 +199,7 @@ export function labelPortrait(im, hero) {
       if (v === 2) reg[i] = y >= chin ? TOP : HAIR;
       else if (v === 3) reg[i] = OUT;
       else if (v === 1) reg[i] = y >= chin && w === 24 ? TOP : SKIN;          // the 32x32 faces show hands there, not the shirt
-      else reg[i] = y >= chin ? (w === 24 ? TOP : SKIN) : SHADE;              // colour 0 inside the face: skin shading
+      else reg[i] = y >= chin ? (w === 24 ? TOP : SKIN) : HILITE;             // colour 0 inside the face: the highlights of the game's own portrait (a lighter skin)
     }
   }
   // Alex's inner colour-0 pixels are highlights / shading of what they sit in: take the most common neighbour region
@@ -208,7 +208,7 @@ export function labelPortrait(im, hero) {
     const x = i % w, y = (i / w) | 0, cnt = {};
     for (const [dx, dy] of N8) { const X = x + dx, Y = y + dy; if (X < 0 || Y < 0 || X >= w || Y >= h) continue; const r = reg[Y * w + X]; if (r && r !== OUT && r !== KEEP) cnt[r] = (cnt[r] || 0) + 1; }
     let best = 0, br = 0; for (const r in cnt) if (cnt[r] > best) { best = cnt[r]; br = +r; }
-    if (br) reg[i] = br === SKIN ? SHADE : br; else if (pass === 2) reg[i] = KEEP;
+    if (br) reg[i] = br === SKIN ? HILITE : br; else if (pass === 2) reg[i] = KEEP;
   }
   st.info = { y0: sk ? sk.y0 : 0, yh: chin, faceTop, sk };
   return st;
@@ -332,7 +332,7 @@ function stylePortrait(st, style) {
       // a band across the forehead: the two rows above the face, over the face's width
       const ft = info.faceTop;
       for (let x = sk.x0; x <= sk.x1; x++) for (let y = ft - 2; y < ft; y++) {
-        const j = y * w + x; if (y > 0 && (reg[j] === HAIR || reg[j] === OUT || reg[j] === SHADE || reg[j] === HAT)) set(st, j, HAT);
+        const j = y * w + x; if (y > 0 && (reg[j] === HAIR || reg[j] === OUT || reg[j] === SHADE || reg[j] === HILITE || reg[j] === HAT)) set(st, j, HAT);
       }
     }
   }

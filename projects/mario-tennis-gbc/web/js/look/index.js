@@ -1,5 +1,5 @@
 // The player's look ("create a character"): one object the page, the recorder and the replay tests share.
-//   look = { v: 1, boy: { style, lefty, face: { shape, eyes, brows, mouth, extras }, colours: { skin, hair, hat, top, bottom, shoes, racket } } | null, girl: ... | null }
+//   look = { v: 1, portraits?: "redrawn", boy: { style, lefty, face: { shape, eyes, brows, mouth, extras }, colours: { skin, hair, hat, top, bottom, shoes, racket } } | null, girl: ... | null }
 // colours are 15-bit Game Boy Color colours (BGR555). A hero left null keeps the game's own graphics.
 //
 // Two parts (see build.js / render.js): the ROM copy is patched with the restyled frames (shapes: hairstyles,
@@ -25,6 +25,7 @@ export function normalizeLook(look) {
   const out = { v: LOOK_VERSION, boy: hero(look.boy, "boy"), girl: hero(look.girl, "girl") };
   const mods = Array.isArray(look.mods) ? look.mods.map(normalizeMod).filter(Boolean) : [];       // opponent mods (mods.js)
   if (mods.length) out.mods = mods;
+  if (look.portraits === "redrawn" && (out.boy || out.girl)) out.portraits = "redrawn";       // the portrait kit's faces instead of the game's recoloured portraits (default: the game's)
   return out.boy || out.girl || out.mods ? out : null;
 }
 export const lookKey = look => JSON.stringify(normalizeLook(look));

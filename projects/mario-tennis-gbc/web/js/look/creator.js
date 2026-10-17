@@ -100,6 +100,8 @@ export function mountCreator({ hud, keys, pause, onChange }) {
     <canvas class="dposes" width="392" height="100" title="Sprites: Detailed - the court frames redrawn at 3x, with the face's expression (stand, swing, point won, point lost)"></canvas>
     <div class="lab">Presets</div><div class="row" data-k="presets"></div>
     <div class="lab">Hairstyle</div><div class="row" data-k="style"></div>
+    <div class="lab">Portraits</div><div class="row" data-k="portraits"></div>
+    <div class="note" data-k="pnote"></div>
     <div data-k="face"></div>
     <div data-k="colours"></div>
     <div class="row"><label class="note"><input type="checkbox" data-k="lefty"> Left-handed (the game's START: Change Hands on Create a Character)</label></div>
@@ -122,18 +124,24 @@ export function mountCreator({ hud, keys, pause, onChange }) {
     const pr = q("presets"); pr.replaceChildren(...PRESETS[hero].map(p => chip(p.name, lookKey({ [hero]: p.look }) === lookKey({ [hero]: cur() }), () => { draft[hero] = p.look ? JSON.parse(JSON.stringify(p.look)) : null; render(); })));
     const c = cur();
     q("style").replaceChildren(...STYLES[name()].map(s => chip(STYLE_LABEL[s] || s, c && c.style === s, () => { ensure().style = s; render(); })));
+    const redrawn = draft.portraits === "redrawn";
+    q("portraits").replaceChildren(chip("Game", !redrawn, () => { delete draft.portraits; render(); }), chip("Redrawn", redrawn, () => { draft.portraits = "redrawn"; render(); }));
+    q("pnote").textContent = redrawn ? "Redrawn: the portrait kit's faces (24 / 32 / 16 px in the game, 96 px in the HD UI). Face options below." : "Game: the game's own portraits, win / lose faces and heads, recoloured by your skin, hair, hat and top colours.";
+    hcv.style.display = redrawn ? "block" : "none";
     const fb = q("face"); fb.replaceChildren();
     const face = normalizeFace(c && c.face, hero), setFace = patch => { const L = ensure(); L.face = normalizeFace({ ...normalizeFace(L.face, hero), ...patch }, hero); render(); };
-    for (const [k, label, list] of FACE_ROWS) {
+    if (redrawn) for (const [k, label, list] of FACE_ROWS) {
       const lab = document.createElement("div"); lab.className = "lab"; lab.textContent = label; fb.appendChild(lab);
       const row = document.createElement("div"); row.className = "row";
       for (const v of list) row.appendChild(chip(FACE_LABEL[v] || v, face[k] === v, () => setFace({ [k]: v })));
       fb.appendChild(row);
     }
-    const lab = document.createElement("div"); lab.className = "lab"; lab.textContent = "Extras"; fb.appendChild(lab);
-    const row = document.createElement("div"); row.className = "row";
-    for (const v of FACE.extras) row.appendChild(chip(FACE_LABEL[v] || v, face.extras.includes(v), () => setFace({ extras: face.extras.includes(v) ? face.extras.filter(e => e !== v) : [...face.extras, v] })));
-    fb.appendChild(row);
+    if (redrawn) {
+      const lab = document.createElement("div"); lab.className = "lab"; lab.textContent = "Extras"; fb.appendChild(lab);
+      const row = document.createElement("div"); row.className = "row";
+      for (const v of FACE.extras) row.appendChild(chip(FACE_LABEL[v] || v, face.extras.includes(v), () => setFace({ extras: face.extras.includes(v) ? face.extras.filter(e => e !== v) : [...face.extras, v] })));
+      fb.appendChild(row);
+    }
     const box = q("colours"); box.replaceChildren();
     for (const [k, label, set] of PARTS) {
       const lab = document.createElement("div"); lab.className = "lab"; lab.textContent = label; box.appendChild(lab);
@@ -174,7 +182,7 @@ export function mountCreator({ hud, keys, pause, onChange }) {
   let anim = 0, hdKey = "", dKey = "";
   function drawPreview() {
     if (!pristine) return;
-    const n = name(), L = cur(), P = heroPreview(pristine, n, L, (anim >> 1) & 1);
+    const n = name(), L = cur(), redrawn = draft.portraits === "redrawn", P = heroPreview(pristine, n, L, (anim >> 1) & 1, redrawn);
     ctx.fillStyle = "#4a8a58"; ctx.fillRect(0, 0, cv.width, cv.height);
     ctx.fillStyle = "#c48a3a"; ctx.fillRect(0, 0, cv.width, 80);           // a path for the overworld row
     P.walk.forEach((im, i) => blit(ctx, im, 10 + i * 66, 8, 4));
@@ -182,8 +190,8 @@ export function mountCreator({ hud, keys, pause, onChange }) {
     fctx.fillStyle = "#2a2f3e"; fctx.fillRect(0, 0, fcv.width, fcv.height);
     blit(fctx, P.portrait, 6, 6, 4); blit(fctx, P.faces[0], 108, 4, 3); blit(fctx, P.faces[1], 210, 4, 3);
     { const hero = n === "alex" ? "boy" : "girl", base = { hero, style: L && L.style || undefined, face: L && L.face, colours: faceColours(hero, L && L.colours) };
-      const key = JSON.stringify([L && base]);
-      if (key !== hdKey) {                                                  // the vector art is drawn once per change
+      const key = JSON.stringify([L && base, redrawn]);
+      if (redrawn && key !== hdKey) {                                                  // the vector art is drawn once per change
         hdKey = key; hctx.fillStyle = "#2a2f3e"; hctx.fillRect(0, 0, hcv.width, hcv.height);
         if (L) ["neutral", "win", "lose"].forEach((mood, i) => hctx.drawImage(hdFaceCanvas({ ...base, mood }, 96), 4 + i * 100, 2, 96, 96));
         else { hctx.fillStyle = "#aab"; hctx.font = "13px system-ui"; hctx.fillText("the game's own faces", 10, 50); }

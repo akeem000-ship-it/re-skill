@@ -1,10 +1,12 @@
 // Look generator: from the user's ROM bytes and a look, the edits to the in-memory ROM copy (restyled frames and
-// HUD heads; the LZ portrait streams are never rewritten) and the region planes the renderer colours the hero with
-// (the redrawn portraits and faces come from faces.js). Runs at ROM load; nothing
+// HUD heads; the LZ portrait streams are never rewritten) and the region planes the renderer colours the hero with.
+// Portraits: by default the game's own (24x24, 32x32 win / lose, HUD heads) recoloured through those region planes;
+// with look.portraits === "redrawn" the portrait kit's faces replace them (faces.js). Runs at ROM load; nothing
 // derived from the ROM is stored in the repository. Addresses: REVERSE.md and the creator research
 // (walk sprites banks $70/$74, match sprites banks $40/$41, portraits $16/$1B, HUD heads $18).
-import { decodeColMajor, encodeColMajor, cellOf, clone } from "./gfx.js";
-import { REG, labelSprite, applyStyle, applyTouchups } from "./label.js";
+import { lzDecompress } from "./lz.js";
+import { decodeColMajor, encodeColMajor, decodeRowMajor, cellOf, clone } from "./gfx.js";
+import { REG, labelSprite, labelPortrait, applyStyle, applyTouchups } from "./label.js";
 import { TOUCHUPS } from "./touchups.js";
 import { buildMods } from "./mods.js";
 import { faceAssets } from "./faces.js";
@@ -39,8 +41,8 @@ export function checkRom(rom) {
 // style null: the frames as they are (labelled only: the detailed sprites' face data for a hero without a look)
 // mood of the face by the animation group of a match frame (the game's 29 groups x 5 views): the frame ids tell what the player is doing
 export const groupMood = g => g >= 26 ? "sad" : g >= 23 ? "happy" : g === 20 || g < 5 || g === 15 || g === 16 ? "neutral" : "effort";
-function heroAssets(rom, name, style) {
-  const h = HEROES[name], out = { raw: [], frames: [] };     // raw: { off, bytes, regions: Map(tileOff -> plane) }; frames: { key, kind, cols, rows, info, mood, view }
+function heroAssets(rom, name, style, portraits = false) {
+  const h = HEROES[name], out = { raw: [], lz: [], frames: [] };     // raw: { off, bytes, regions: Map(tileOff -> plane) }; frames: { key, kind, cols, rows, info, mood, view }
   const T = TOUCHUPS[name] || {};
   const touch = (st, key) => { applyTouchups(st, (T[key] || {})["*"]); applyTouchups(st, (T[key] || {})[style]); };
   const finish = (st, key) => { if (style) { applyStyle(st, style); touch(st, key); } return st; };
@@ -76,6 +78,28 @@ function heroAssets(rom, name, style) {
     for (let c = 0; c < cols; c++) regions.set(base + cols * 64 + c * 16, cellOf(st2.reg, cols * 8, c, 3));
     out.raw.push({ off: base, bytes, regions });
   }
+  if (!portraits) return out;
+  // HUD heads (16x16, two 8x16 objects)
+  for (const a of h.heads) {
+    const base = off(0x18, a), bytes = rom.slice(base, base + 64), regions = new Map();
+    const st = finish(labelSprite(decodeColMajor(bytes, 0, 2, 2), name, "head"), `head:${a.toString(16)}`);
+    encodeColMajor({ w: 16, h: 16, px: st.idx }, 2, 2, bytes, 0);
+    for (let cx = 0; cx < 2; cx++) for (let cy = 0; cy < 2; cy++) regions.set(base + (cx * 2 + cy) * 16, cellOf(st.reg, 16, cx, cy));
+    out.raw.push({ off: base, bytes, regions });
+  }
+  // LZ portraits: 24x24 (two copies) and the 32x32 win / lose faces, row-major.
+  // The LZ streams are NOT rewritten: decompressing a different stream takes a different number of cycles, which
+  // can move a lag frame and change the game's course. The restyle is done in the region plane alone (a removed
+  // pixel shows the card colour, an added one the region's colour), keyed by the original tiles' content.
+  const portrait = (bank, addr, cols, key) => {
+    const { data } = lzDecompress(rom, off(bank, addr)), im = decodeRowMajor(data, 0, cols, cols);
+    const st = finish(labelPortrait(im, name), key);
+    for (let i = 0; i < st.reg.length; i++) if (st.reg[i] === REG.NONE || (st.idx[i] === 0 && im.px[i] !== 0 && st.reg[i] === REG.KEEP)) st.reg[i] = REG.CARD;
+    const planes = []; for (let t = 0; t < cols * cols; t++) planes.push([data.subarray(t * 16, t * 16 + 16), cellOf(st.reg, cols * 8, t % cols, (t / cols) | 0)]);
+    return { planes };
+  };
+  for (const [bank, addr] of h.portraits) out.lz.push({ bank, addr, ...portrait(bank, addr, 3, "portrait") });
+  h.winlose.forEach(([bank, addr], k) => out.lz.push({ bank, addr, ...portrait(bank, addr, 4, k ? "lose" : "win") }));
   return out;
 }
 
@@ -95,23 +119,35 @@ export function buildLook(rom, look, opts = {}) {
     for (const fr of A.frames) { const fi = res.frames.length; res.frames.push(fr); for (let t = 0; t < fr.cols * fr.rows; t++) res.tileFrame.set(fr.key + t * 16, { fi, t }); }
     for (const r of A.raw) for (const o of r.regions.keys()) { const b = r.bytes.subarray(o - r.off, o - r.off + 16), hh = tileHash(b), list = res.frameTiles.get(hh) || []; if (!list.some(e => e.off === o)) list.push({ bytes: Uint8Array.from(b), off: o }); res.frameTiles.set(hh, list); }
   };
+  const redrawn = look.portraits === "redrawn";
   for (const [key, name] of [["boy", "alex"], ["girl", "nina"]]) {
     const L = look[key]; if (!L) { if (opts.detail) addFrames(heroAssets(rom, name, null)); continue; }
     const hid = HEROES[name].id, c = L.colours || {};
     const set = (r, v) => { if (v !== undefined && v !== null) res.colours[hid * 16 + r] = v & 0x7FFF; };
-    set(REG.OUT, c.outline ?? 0x0000); set(REG.SKIN, c.skin); set(REG.SHADE, c.skin !== undefined ? shade(c.skin) : undefined);
+    set(REG.OUT, c.outline ?? 0x0000); set(REG.SKIN, c.skin); set(REG.SHADE, c.skin !== undefined ? shade(c.skin) : undefined); set(REG.HILITE, c.skin !== undefined ? hilite(c.skin) : undefined);
     set(REG.HAIR, c.hair); if (c.hair !== undefined) { const t = hairTones(c.hair); set(REG.HAIR2, t.k); set(REG.HAIR3, t.g); } set(REG.HAT, c.hat); set(REG.TOP, c.top); set(REG.BOTTOM, c.bottom); set(REG.SHOES, c.shoes ?? c.bottom); set(REG.RACKET, c.racket);
-    const A = heroAssets(rom, name, L.style || (name === "alex" ? "cap" : "pigtails")); addFrames(A);
+    const A = heroAssets(rom, name, L.style || (name === "alex" ? "cap" : "pigtails"), !redrawn); addFrames(A);
     const tag = plane => { const p = new Uint8Array(64); for (let i = 0; i < 64; i++) p[i] = plane[i] ? hid * 16 + plane[i] : 0; return p; };
     for (const r of A.raw) {
       res.patches.push({ off: r.off, bytes: r.bytes });
       for (const [o, plane] of r.regions) { res.tileRegions.set(o, tag(plane)); addContent(res, r.bytes.subarray(o - r.off, o - r.off + 16), tag(plane)); }
     }
-    // the redrawn faces (portrait.js): portraits, win / lose faces and HUD heads, through the render layer
-    faceAssets(rom, key, L, HEROES[name], res, { off, addContent, tileHash });
+    if (redrawn) faceAssets(rom, key, L, HEROES[name], res, { off, addContent, tileHash });      // the redrawn faces (portrait.js): portraits, win / lose faces and HUD heads, through the render layer
+    else {                                                                                    // the game's own portraits, recoloured: tiles also drawn by other characters' faces (frame and card pieces) are left to the game
+      const others = res.others || (res.others = otherFaceTiles(rom));
+      for (const z of A.lz) for (const [bytes, plane] of z.planes) if (!others.has(key16(bytes))) addContent(res, bytes, tag(plane));
+    }
   }
   if (look.mods && look.mods.length) buildMods(rom, look.mods, res);       // opponent mods (mods.js)
   return res;
+}
+// the tiles of every other character's 24x24 portrait and 32x32 win/lose faces
+function otherFaceTiles(rom) {
+  const set = new Set(), heroAddr = new Set(Object.values(HEROES).flatMap(h => [h.portraits[0][1], ...h.winlose.map(w => w[1])]));
+  const add = (bank, addr) => { if (heroAddr.has(addr)) return; try { const d = lzDecompress(rom, off(bank, addr)).data; for (let o = 0; o + 16 <= d.length; o += 16) set.add(key16(d, o)); } catch (e) { /* not a stream */ } };
+  for (let c = 0; c < 32; c++) add(0x16, u16(rom, 0x16, 0x6968 + 2 * c));
+  for (let k = 0; k < 8; k++) add(WINLOSE_TABLE[0], u16(rom, WINLOSE_TABLE[0], WINLOSE_TABLE[1] + 2 * k));
+  return set;
 }
 export const key16 = (b, o = 0) => { let s = ""; for (let i = 0; i < 16; i++) s += String.fromCharCode(b[o + i]); return s; };
 export function tileHash(b, o = 0) { let h = 0x811c9dc5; for (let i = 0; i < 16; i++) { h ^= b[o + i]; h = Math.imul(h, 0x01000193); } return h >>> 0; }
@@ -123,6 +159,16 @@ export function addContent(res, bytes16, plane) {
 }
 // skin shading for the portraits: three quarters of the skin colour
 export function shade(c) { const r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31; return ((r * 3) >> 2) | (((g * 3) >> 2) << 5) | (((b * 3) >> 2) << 10); }
+
+// the highlights of the game's own portraits (the lighter pixels inside the face): the skin colour lifted. Light skins towards white,
+// deep skins in their own hue (a warmer, brighter brown: toward white they would turn grey), so the face keeps a readable ramp
+// outline < skin < highlight at every tone
+export function hilite(c) {
+  const r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31, l = (0.3 * r + 0.59 * g + 0.11 * b) / 31, m = Math.max(r, g, b, 1);
+  const w = Math.max(0, Math.min(1, (0.42 - l) / 0.27));                       // 0: light skin .. 1: deep skin
+  const f = (v, k) => (1 - w) * (v + (31 - v) * 0.34) + w * (v + (Math.min(31, v * 26 / m * 0.9 + 3) - v) * (0.42 + 0.1 * k));
+  return Math.round(f(r, 1)) | (Math.round(f(g, 1)) << 5) | (Math.round(f(b, 1)) << 10);
+}
 
 // write the patches into the ROM copy; returns the undo list
 export function applyPatches(rom, patches) {

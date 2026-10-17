@@ -4,7 +4,7 @@ import { lzDecompress } from "./lz.js";
 import { decodeColMajor, decodeRowMajor } from "./gfx.js";
 import { REG, labelSprite, labelPortrait, applyStyle, applyTouchups } from "./label.js";
 import { TOUCHUPS } from "./touchups.js";
-import { HEROES } from "./build.js";
+import { HEROES, hilite } from "./build.js";
 import { hairTones, drawFace } from "./portrait.js";
 import { faceColours } from "./faces.js";
 import { detail3x } from "./detail.js";
@@ -26,7 +26,7 @@ export function basePalette(rom, name) {
 function shade(c) { const r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31; return ((r * 3) >> 2) | (((g * 3) >> 2) << 5) | (((b * 3) >> 2) << 10); }
 export function regionColours(look) {
   const c = (look && look.colours) || {}, m = new Map();
-  m.set(REG.OUT, 0); if (c.skin !== undefined) { m.set(REG.SKIN, c.skin); m.set(REG.SHADE, shade(c.skin)); }
+  m.set(REG.OUT, 0); if (c.skin !== undefined) { m.set(REG.SKIN, c.skin); m.set(REG.SHADE, shade(c.skin)); m.set(REG.HILITE, hilite(c.skin)); }
   if (c.hair !== undefined) { const t = hairTones(c.hair); m.set(REG.HAIR2, t.k); m.set(REG.HAIR3, t.g); }
   for (const [r, k] of [[REG.HAIR, "hair"], [REG.HAT, "hat"], [REG.TOP, "top"], [REG.BOTTOM, "bottom"], [REG.RACKET, "racket"]]) if (c[k] !== undefined) m.set(r, c[k]);
   m.set(REG.SHOES, c.shoes !== undefined ? c.shoes : c.bottom);
@@ -56,7 +56,7 @@ export function faceImage(spec) {
   return { w: f.w, h: f.h, data };
 }
 // look: one hero's look ({ style, colours }) or null for the game's own; -> { walk: [4], poses: [n], portrait }
-export function heroPreview(rom, name, look, walkFrame = 0) {
+export function heroPreview(rom, name, look, walkFrame = 0, redrawn = false) {
   const h = HEROES[name], pal = basePalette(rom, name), cols = look ? regionColours(look) : null;
   const walk = [];
   for (let fc = 0; fc < 4; fc++) {
@@ -68,10 +68,10 @@ export function heroPreview(rom, name, look, walkFrame = 0) {
     return paint(prep(labelSprite(decodeColMajor(rom, off(h.match, a), cols4, 4), name, "match"), name, look, `match:${a.toString(16)}`), pal, cols, true);
   });
   let portrait, faces, heads;
-  if (look) {                                          // the redrawn faces (portrait.js), as the game will show them
+  if (look && redrawn) {                               // the redrawn faces (portrait.js), as the game will show them (Portraits: Redrawn)
     const hero = name === "alex" ? "boy" : "girl", kit = (size, mood) => faceImage({ hero, style: look.style || undefined, face: look.face, colours: faceColours(hero, look.colours), size, mood });
     portrait = kit(24, "neutral"); faces = [kit(32, "win"), kit(32, "lose")]; heads = [kit(16, "neutral"), kit(16, "neutral")];
-  } else {
+  } else {                                             // the game's own portraits and heads, recoloured by the look
     const [pb, pa] = h.portraits[0], { data } = lzDecompress(rom, off(pb, pa));
     portrait = paint(prep(labelPortrait(decodeRowMajor(data, 0, 3, 3), name), name, look, "portrait"), pal, cols, false);
     faces = h.winlose.map(([b, a], k) => paint(prep(labelPortrait(decodeRowMajor(lzDecompress(rom, off(b, a)).data, 0, 4, 4), name), name, look, k ? "lose" : "win"), pal, cols, false));
