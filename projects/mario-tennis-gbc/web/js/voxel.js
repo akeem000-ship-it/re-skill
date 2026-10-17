@@ -16,7 +16,8 @@ import { project } from "./camera.js";
 import { courtTilemaps, courtImage, courtIndexMap, COURTS } from "./assets.js";
 import { FIELD_OBJECTS } from "./field_objects.js";
 import * as F3 from "./field3d.js";
-import { roundedMeshData } from "./voxround.js";   // VOXSTYLE: "VOX: Blocky / Rounded"
+import { roundedMeshData } from "./voxround.js";
+import { surfaceKind, buildDetail, paintFloor } from "./courtfloor.js";   // HD court floors   // VOXSTYLE: "VOX: Blocky / Rounded"
 
 const VS = `#version 300 es
 in vec2 aPos; in vec2 aUV; uniform mat4 uMVP; uniform mat4 uModel; uniform vec4 uUVRect; out vec2 vUV;
@@ -572,6 +573,11 @@ export class Voxel3D {
     for (let i = 0; i < 65536; i++) { const k = g.idx[i] * 4; bg[i * 4] = lut[k]; bg[i * 4 + 1] = lut[k + 1]; bg[i * 4 + 2] = lut[k + 2]; bg[i * 4 + 3] = 255; }
     const d = g.rgba, src = g.src, idx = g.idx;
     for (let i = 0, n = src.length; i < n; i++) { const k = idx[src[i]] * 4, o = i * 4; d[o] = lut[k]; d[o + 1] = lut[k + 1]; d[o + 2] = lut[k + 2]; d[o + 3] = 255; }
+    if (!(this.light && this.light.cfg.fx.floors === false)) {       // HD court floors (courtfloor.js): a surface of the court's own colours, exact lines
+      const kind = surfaceKind(this.mapId());
+      if (!g.detail || g.detail.kind !== kind) g.detail = buildDetail(kind, g.W, g.H, WORLD.x0, WORLD.y0, WORLD.texel);
+      paintFloor(d, src, idx, lut, g.W, g.H, g.detail);
+    }
     if (this.groundTex) this.gl.deleteTexture(this.groundTex);
     this.groundTex = this.texture(g.W, g.H, d, true);
     this.buildCuts(bg, g.cuts);

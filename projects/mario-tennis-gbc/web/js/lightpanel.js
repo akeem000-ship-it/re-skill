@@ -56,7 +56,7 @@ export function attachLightPanel(voxel) {
     sheet.appendChild(c);
     // effects
     c = card("Effects");
-    for (const [k, label] of [["shadows", "Sun / moon shadows"], ["bloom", "Glow (bloom) on bright lights"], ["tilt", "Tilt-shift blur at the top and bottom"], ["vignette", "Vignette (darker corners)"], ["night", "Night lights: windows, lamps, fountains, floodlights"]])
+    for (const [k, label] of [["shadows", "Sun / moon shadows"], ["bloom", "Glow (bloom) on bright lights"], ["tilt", "Tilt-shift blur at the top and bottom"], ["vignette", "Vignette (darker corners)"], ["night", "Night lights: windows, lamps, fountains, floodlights"], ["floors", "HD court floors (grain, sheen, wear)"]])
       c.appendChild(toggle(label, C.fx[k], on => L.setFx(k, on)));
     sheet.appendChild(c);
     // quality

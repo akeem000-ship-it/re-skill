@@ -26,7 +26,7 @@ export const LIGHT_MODES = ["off", "day", "auto"];
 //   fx: shadows, bloom, tilt-shift, vignette, night lights; quality: auto | low | medium | high (tier 0 / 1 / 2)
 const CFG_KEY = "mt-lightcfg";
 export const MATCH_HOURS = [8, 12, 18.4, 22], MATCH_NAMES = ["morning", "noon", "sunset", "night"];
-const defaultCfg = () => ({ world: null, customHour: 18.5, matches: "same", fx: { shadows: true, bloom: true, tilt: true, vignette: true, night: true }, quality: "auto" });
+const defaultCfg = () => ({ world: null, customHour: 18.5, matches: "same", fx: { shadows: true, bloom: true, tilt: true, vignette: true, night: true, floors: true }, quality: "auto" });
 export const hourName = h => h < 5 ? "night" : h < 7 ? "dawn" : h < 10 ? "morning" : h < 15 ? "noon" : h < 17.5 ? "afternoon" : h < 19.5 ? "sunset" : h < 21 ? "dusk" : "night";
 const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -236,7 +236,7 @@ export class Lighting {
   }
   setCustomHour(h) { this.cfg.customHour = h; if (this.cfg.world === "custom") { this.hourOverride = h; this.skyKey = null; } this.saveCfg(); }
   setMatches(m) { this.cfg.matches = m; this.matchAt = -1; this.skyKey = null; this.saveCfg(); }
-  setFx(k, on) { this.cfg.fx[k] = !!on; this.saveCfg(); }
+  setFx(k, on) { this.cfg.fx[k] = !!on; if (k === "floors") this.v.groundHash = -1; this.saveCfg(); }
   setQuality(qv) {
     this.cfg.quality = qv; const want = { low: 0, medium: 1, high: 2 }[qv];
     if (want === undefined) { this.auto = true; this.tierWant = this.defaultTier(); this.setTier(this.tierWant); }
