@@ -94,7 +94,8 @@ export function unusedDrawMatchRulesCaptionText(P) {
   wram(P, WRAM_SCREEN);
   const row = getMenuCursorIndex(P, 1).a;
   const de = rw(P, idx(MatchRulesCaptionDests_3e, row * 2));
-  return { ...rom(P, FAR.RenderTextToBuffer64, { hl: idx(Text_30_132, row), de, c: 0x20 }), b: row };
+  const text = idx(Text_30_132, row);
+  return rom(P, FAR.RenderTextToBuffer64, { a: text & 0xFF, b: row, hl: text, de, c: 0x20 });
 }
 
 // ---- the link message screen ----

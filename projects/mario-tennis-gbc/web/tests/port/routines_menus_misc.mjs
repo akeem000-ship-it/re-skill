@@ -35,7 +35,6 @@ const wx = (mem, bank, a, v) => { a &= 0xFFFF; if (a >= 0xD000 && a < 0xE000) me
 const rx = (mem, bank, a) => (a >= 0xD000 && a < 0xE000 ? mem.wram[bank || 1][a - 0xD000] : mem.read(a));
 const wf = (mem, name, v, off = 0) => wx(mem, FIELD[name] ? FIELD[name].bank : 0, at(name) + off, v);
 const rf = (mem, name, off = 0) => rx(mem, FIELD[name] ? FIELD[name].bank : 0, at(name) + off);
-const wf16 = (mem, name, v, off = 0) => { wf(mem, name, v, off); wf(mem, name, v >> 8, off + 1); };
 const ALL = ["a", "f", "b", "c", "d", "e", "h", "l"];
 
 // ---- the entries ----
@@ -251,7 +250,10 @@ M("GetMinigameLevelColumnCount", 0x6E1C, { prep: levelPrep });
 M("RedrawMinigameLevelSelect2", 0x6F04, { prep: levelPrep, active: onLevel2, n: 1 });
 M("SetSelectPanelAttrRect", 0x6F35, { regs: r => ({ b: r(2), c: r(2) }), wram: 3 });
 M("DrawMinigameLevelSelect2Cursor", 0x6F62, { prep: levelPrep, active: onLevel2, n: 1 });
-M("RedrawMinigameLevelSelect3", 0x708D, { prep: levelPrep, active: onLevel3, n: 1, lcdOff: true });
+// (its panel's cursor on one of its three options: a fourth reads past SelectPanelAttrRect3Table, and the ROM's
+// FillTilemapRect then writes the MBC's registers)
+const level3Prep = both(levelPrep, (mem, r) => { const i = r(3); wf(mem, "menuCursorX", i & 1); wf(mem, "menuCursorY", i >> 1); });
+M("RedrawMinigameLevelSelect3", 0x708D, { prep: level3Prep, active: onLevel3, n: 1 });
 M("SetSelectPanelAttrRect3", 0x70BE, { regs: r => ({ b: r(3), c: r(2) }), wram: 3 });
 M("DrawMinigameLevelSelect3Cursor", 0x70ED, { prep: levelPrep, active: onLevel3, n: 1 });
 // bank $1b's unused screens and prompts
