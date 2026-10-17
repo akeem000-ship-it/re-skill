@@ -7,6 +7,10 @@ import { TOUCHUPS } from "./touchups.js";
 import { HEROES } from "./build.js";
 import { hairTones, drawFace } from "./portrait.js";
 import { faceColours } from "./faces.js";
+import { detail3x } from "./detail.js";
+import { faceInfoOf } from "./faceinfo.js";
+import { faceCanvas, cleanFace } from "./detailface.js";
+import { groupMood } from "./build.js";
 
 const off = (bank, addr) => addr < 0x4000 ? addr : bank * 0x4000 + (addr - 0x4000);
 const u16 = (rom, bank, addr) => { const o = off(bank, addr); return rom[o] | rom[o + 1] << 8; };
@@ -82,4 +86,21 @@ export function blit(ctx, im, x, y, k, mirror = false) {
   ctx.imageSmoothingEnabled = false;
   if (mirror) { ctx.save(); ctx.translate(x + im.w * k, y); ctx.scale(-1, 1); ctx.drawImage(c, 0, 0, im.w * k, im.h * k); ctx.restore(); }
   else ctx.drawImage(c, x, y, im.w * k, im.h * k);
+}
+
+// the hero's court frames as the detailed sprites draw them (3x, outlined and shaded, with the face's expression): stand, swing, point won, point lost
+export const DETAIL_POSES = [[0, 4], [6, 3], [23, 4], [26, 4]];
+export function detailPoses(rom, name, look) {
+  const h = HEROES[name], pal = basePalette(rom, name), cols = look ? regionColours(look) : null, out = [];
+  for (const [g, v] of DETAIL_POSES) {
+    const slot = g * 5 + v, a = u16(rom, h.match, 0x400E + 2 * slot), cols4 = rom[off(h.match, 0x7CE0 + 4 * slot + 2)] ? 4 : 3;
+    const st = prep(labelSprite(decodeColMajor(rom, off(h.match, a), cols4, 4), name, "match"), name, look, `match:${a.toString(16)}`), im = paint(st, pal, cols, true);
+    const src = new Uint32Array(st.w * st.h); for (let i = 0; i < src.length; i++) if (im.data[i * 4 + 3]) src[i] = (0xFF000000 | (im.data[i * 4 + 2] << 16) | (im.data[i * 4 + 1] << 8) | im.data[i * 4]) >>> 0;
+    const info = faceInfoOf(st);
+    if (info) { const cnt = new Map(); let skin = 0, bn = 0; for (const p of info.skinIdx) { const c = src[p]; if (!c) continue; const k = (cnt.get(c) || 0) + 1; cnt.set(c, k); if (k > bn) { bn = k; skin = c; } } cleanFace(src, info, (x, y) => src[y * st.w + x] ? y * st.w + x : -1, skin); }
+    const d = detail3x(src, st.w, st.h);
+    if (info) { const f = faceCanvas(info, groupMood(g), {}); for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) { const c = f.px[y * f.w + x]; if (c) d.data[(info.y0 * 3 + y) * d.w + info.x0 * 3 + x] = c; } }
+    out.push({ w: d.w, h: d.h, data: new Uint8ClampedArray(d.data.buffer.slice(0)) });
+  }
+  return out;
 }

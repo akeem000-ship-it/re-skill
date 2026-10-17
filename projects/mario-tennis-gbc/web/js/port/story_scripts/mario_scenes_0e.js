@@ -15,7 +15,7 @@ import {
   attachStepMover, beginCutscene, endCutscene, pagedTextMenu, sound, goToLocation, farcall, scene,
 } from "./common.js";
 import { moveActorByDelta } from "../story/actor_moves.js";
-import { playStarWarpTransition } from "./mario_world_0e.js";
+import { playStarWarpTransition } from "./specialcourt_0e.js";
 
 const BANK = 0x0E;
 // Mario World's actors (MarioWorldActors_0e, mario_world_0e.asm)
@@ -184,22 +184,28 @@ export function* moveDoublesPartnerToPlayer(P) {
   yield* waitMove(P, ACTOR_PARTNER);
 }
 // MarioWorldEntry0eScene (0E:69AD): back in Mario World once it was reached: the player (in doubles walked in, with
-// the partner beside) below Peach's place, Peach at it, the crowd facing in, Toad at the side
+// the partner beside) below Peach's place, then the cast placed
 export function* marioWorldEntry0eScene(P) {
-  if (!testFlag(P, FLAG_DOUBLES)) {
-    if (!testFlag(P, FLAG_REACHED_MARIO_WORLD_SINGLES)) return;
-    setPosition(P, ACTOR_PLAYER, 18.0, 15.0);
-  } else {
-    if (!testFlag(P, FLAG_REACHED_MARIO_WORLD_DOUBLES)) return;
-    beginCutscene(P);
-    playerSpeed(P, 0.5);
-    yield* movePlayer(P, 17.0, 15.0);
-    yield* waitPlayerMove(P);
-    setPosition(P, ACTOR_PLAYER, 17.0, 15.0);
-    setPosition(P, ACTOR_PARTNER, 19.0, 15.0);
-    endCutscene(P);
-  }
-  setPosition(P, ACTOR_MARIO_WORLD_PEACH, 18.0, 11.0);              // .placeActors
+  if (!testFlag(P, FLAG_DOUBLES)) return yield* marioWorldEntry0eSingles(P);
+  if (!testFlag(P, FLAG_REACHED_MARIO_WORLD_DOUBLES)) return;
+  beginCutscene(P);
+  playerSpeed(P, 0.5);
+  yield* movePlayer(P, 17.0, 15.0);
+  yield* waitPlayerMove(P);
+  setPosition(P, ACTOR_PLAYER, 17.0, 15.0);
+  setPosition(P, ACTOR_PARTNER, 19.0, 15.0);
+  endCutscene(P);
+  placeMarioWorldActors(P);
+}
+// MarioWorldEntry0eScene.singles (0E:69B3): in singles, once reached: the player below Peach's place, the cast placed
+export function* marioWorldEntry0eSingles(P) {
+  if (!testFlag(P, FLAG_REACHED_MARIO_WORLD_SINGLES)) return;
+  setPosition(P, ACTOR_PLAYER, 18.0, 15.0);
+  placeMarioWorldActors(P);
+}
+// MarioWorldEntry0eScene.placeActors (0E:69FB): Peach at her place, the crowd facing in, Toad at the side
+export function placeMarioWorldActors(P) {
+  setPosition(P, ACTOR_MARIO_WORLD_PEACH, 18.0, 11.0);
   for (const actor of [ACTOR_MARIO_WORLD_WARIO, ACTOR_MARIO_WORLD_BOWSER, ACTOR_MARIO_WORLD_BOO,
     ACTOR_MARIO_WORLD_WALUIGI]) face(P, actor, FACE_RIGHT);
   for (const actor of [ACTOR_MARIO_WORLD_LUIGI, ACTOR_MARIO_WORLD_BABY_MARIO, ACTOR_MARIO_WORLD_YOSHI,

@@ -43,6 +43,12 @@ export const MODULES = {
   junior_singles_11: JUNIOR_SINGLES_11,
 };
 // part 2 (src/story/lessonmenu_10 .. water_15): its modules, added to MODULES
+import { HOOKS as TRAINING_0E } from "./training_0e.js";
+import { HOOKS as MATCH_SETUP_0E } from "./match_setup_0e.js";
+import { HOOKS as SPECIALCOURT_0E } from "./specialcourt_0e.js";
+import { HOOKS as REPAIR_0E } from "./repair_0e.js";
+import { HOOKS as MARIO_WORLD_0E } from "./mario_world_0e.js";
+import { HOOKS as MARIO_SCENES_0E } from "./mario_scenes_0e.js";
 import { HOOKS as MAP_STUBS_12 } from "./map_stubs_12.js";
 import { HOOKS as LESSONMENU_10 } from "./lessonmenu_10.js";
 import { HOOKS as WALKS_10 } from "./walks_10.js";
@@ -50,5 +56,11 @@ Object.assign(MODULES, {
   walks_10: WALKS_10,
   lessonmenu_10: LESSONMENU_10,
   map_stubs_12: MAP_STUBS_12,
+  mario_scenes_0e: MARIO_SCENES_0E,
+  mario_world_0e: MARIO_WORLD_0E,
+  repair_0e: REPAIR_0E,
+  specialcourt_0e: SPECIALCOURT_0E,
+  match_setup_0e: MATCH_SETUP_0E,
+  training_0e: TRAINING_0E,
 });
 export const HOOKS = Object.values(MODULES).flat();

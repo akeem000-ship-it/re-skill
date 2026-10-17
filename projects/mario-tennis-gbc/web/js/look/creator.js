@@ -5,7 +5,7 @@
 import { LookManager, normalizeLook, lookKey, PRESETS, SWATCHES, css15, rgb15 } from "./index.js";
 import { normalizeMod } from "./mods.js";
 import { STYLES } from "./label.js";
-import { heroPreview, blit, POSES } from "./preview.js";
+import { heroPreview, blit, POSES, detailPoses } from "./preview.js";
 import { FACE, FACE_LABEL, normalizeFace } from "./portrait.js";
 import { hdFaceCanvas } from "./hdface.js";
 import { SpriteDetail } from "./spritedetail.js";
@@ -97,6 +97,7 @@ export function mountCreator({ hud, keys, pause, onChange }) {
     <canvas width="392" height="196"></canvas>
     <canvas class="faces" width="392" height="104" title="the portrait, win and lose faces and HUD heads"></canvas>
     <canvas class="hdfaces" width="392" height="100" title="the same faces in the HD UI"></canvas>
+    <canvas class="dposes" width="392" height="100" title="Sprites: Detailed - the court frames redrawn at 3x, with the face's expression (stand, swing, point won, point lost)"></canvas>
     <div class="lab">Presets</div><div class="row" data-k="presets"></div>
     <div class="lab">Hairstyle</div><div class="row" data-k="style"></div>
     <div data-k="face"></div>
@@ -107,7 +108,7 @@ export function mountCreator({ hud, keys, pause, onChange }) {
     <div class="acts"><button class="btn" data-k="classic">Game's look</button><button class="btn" data-k="cancel">Cancel</button><button class="btn go" data-k="apply">Apply</button></div>
   </div>`;
   document.body.appendChild(panel);
-  const q = k => panel.querySelector(`[data-k="${k}"]`), cv = panel.querySelector("canvas"), ctx = cv.getContext("2d"), fcv = panel.querySelector("canvas.faces"), fctx = fcv.getContext("2d"), hcv = panel.querySelector("canvas.hdfaces"), hctx = hcv.getContext("2d");
+  const q = k => panel.querySelector(`[data-k="${k}"]`), cv = panel.querySelector("canvas"), ctx = cv.getContext("2d"), fcv = panel.querySelector("canvas.faces"), fctx = fcv.getContext("2d"), hcv = panel.querySelector("canvas.hdfaces"), hctx = hcv.getContext("2d"), dcv = panel.querySelector("canvas.dposes"), dctx = dcv.getContext("2d");
   const name = () => hero === "boy" ? "alex" : "nina";
 
   function cur() { return draft[hero]; }
@@ -170,7 +171,7 @@ export function mountCreator({ hud, keys, pause, onChange }) {
     };
     imp.appendChild(inp); row.appendChild(imp); box.appendChild(row);
   }
-  let anim = 0, hdKey = "";
+  let anim = 0, hdKey = "", dKey = "";
   function drawPreview() {
     if (!pristine) return;
     const n = name(), L = cur(), P = heroPreview(pristine, n, L, (anim >> 1) & 1);
@@ -186,6 +187,11 @@ export function mountCreator({ hud, keys, pause, onChange }) {
         hdKey = key; hctx.fillStyle = "#2a2f3e"; hctx.fillRect(0, 0, hcv.width, hcv.height);
         if (L) ["neutral", "win", "lose"].forEach((mood, i) => hctx.drawImage(hdFaceCanvas({ ...base, mood }, 96), 4 + i * 100, 2, 96, 96));
         else { hctx.fillStyle = "#aab"; hctx.font = "13px system-ui"; hctx.fillText("the game's own faces", 10, 50); }
+      } }
+    { const key = JSON.stringify([n, L]);
+      if (key !== dKey) {                                               // the detailed court frames, redrawn when the look changes
+        dKey = key; dctx.fillStyle = "#3a6e9a"; dctx.fillRect(0, 0, dcv.width, dcv.height);
+        detailPoses(pristine, n, L).forEach((im, i) => { const c = document.createElement("canvas"); c.width = im.w; c.height = im.h; c.getContext("2d").putImageData(new ImageData(im.data, im.w, im.h), 0, 0); dctx.imageSmoothingEnabled = false; dctx.drawImage(c, Math.round(4 + i * 98 + (94 - im.w) / 2), 2); });
       } }
     fctx.fillStyle = "#4a8a58"; fctx.fillRect(314, 6, 76, 40); blit(fctx, P.heads[0], 318, 8, 2); blit(fctx, P.heads[1], 354, 8, 2);
     ctx.fillStyle = "#3a6e9a"; ctx.fillRect(0, 80, cv.width, cv.height - 80); ctx.fillStyle = "#e8eef4"; ctx.fillRect(0, 188, cv.width, 2);

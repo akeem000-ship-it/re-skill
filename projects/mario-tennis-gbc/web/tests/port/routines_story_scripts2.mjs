@@ -93,6 +93,7 @@ function objPrep(mem, r) {                                   // the cutscene obj
   mem.write(0xFF8B, r(256)); mem.write(0xFF8C, r(256));      // hScrollX, hScrollY
   wf(mem, "inputRisingEdge", pick(r, [0, 2, r(256)]));
 }
+const both = (a, b) => (mem, r, s) => { a(mem, r, s); b(mem, r, s); };
 const all = (mem, r) => { flagsPrep(mem, r); storyPrep(mem, r); matchPrep(mem, r); objPrep(mem, r); };
 const slot = r => pick(r, [0, 1, 2, 3, 4, 5, 8, 0x0C, 0x11, r(24)]);
 const TEXT_IDS = [0x0001, 0x01AE, 0x1C1C, 0x2040, 0x246A, 0x3063];
@@ -104,3 +105,37 @@ B(0x10, [["ReadSceneTilemapTile_10", 0x7AC8, { regs: r => ({ bc: 0xD000 + r(0x40
   ["GetDoublesProgressStage_10", 0x7BB6], ["MapScriptNop_10", 0x7BF9], ["Unused_10_MapScriptClearActiveFlag", 0x7BFA],
   ["Unused_10_MapScriptPlaySoundA2", 0x7BFF], ["Unused_10_MapScriptHideLocationName", 0x7C02],
   ["SetStoryDialogueStage_10", 0x7DBD], ["Unused_10_ComputeStoryRankTier", 0x7E04]]);
+// map_stubs_12
+B(0x12, [["PushTextArgFetchedString", 0x7A68, { regs: r => ({ hl: pick(r, TEXT_IDS) }) }], ["MapScriptNop_12", 0x7AB1],
+  ["Unused_12_MapScriptClearActiveFlag", 0x7AB2], ["Unused_12_MapScriptPlaySoundA2", 0x7AB7],
+  ["Unused_12_MapScriptHideLocationName", 0x7ABA], ["ComputeRankingProgressIndex_12", 0x7C75],
+  ["Unused_12_ComputeStoryRankTier", 0x7CBC]]);
+// the training gym's runners and the repair counter (repair_0e), Mario World (mario_world_0e), the star warp
+// (specialcourt_0e), the exhibition's settings (match_setup_0e)
+const scratchPrep = both(all, (mem, r) => {
+  for (let i = 0; i < 12; i++) mem.write(at("mapScratch") + i, pick(r, [0, 1, 4, 5, 0x10, 0xFF, r(256)]));
+  wf(mem, "equippedRacket", pick(r, [0, 0x11, 0x21, 0x12, r(256)]));
+});
+const warpPrep = both(all, (mem, r) => {
+  const w6 = mem.wram[6];
+  w6[0] = r(6); w6[1] = pick(r, [0, 2, 0x40, 0xB2, r(256)]); w6[2] = pick(r, [1, 2, 0x1E, 0x5A, r(256)]);
+  for (let i = 3; i < 0x13; i++) w6[i] = pick(r, [0, 1, 2, 3, 0x10, r(256)]);
+  for (let i = 0x14; i < 0x34; i++) w6[i] = r(256);
+  w6[0x40] = r(256); w6[0x41] = r(256);
+  mem.write(0xFF8C, r(256));                                 // hVBlankCounter
+});
+B(0x0E, [["TrainingGymRunner0AWaitWaypointClear", 0x4C37, OW], ["UnusedTrainingGymRunner0AClearWaypoint", 0x4C7C, OW],
+  ["TrainingGymRunner0BWaitWaypointClear", 0x4C8E, OW], ["UnusedTrainingGymRunner0BClearWaypoint", 0x4CD3, OW],
+  ["TrainingGymRunner0CWaitWaypointClear", 0x4CE5, OW], ["UnusedTrainingGymRunner0CClearWaypoint", 0x4D2A, OW],
+  ["TrainingGymRunnerCheckClearance", 0x4D3C], ["FetchAndPushShortTextArg", 0x4F3C, { regs: r => ({ hl: pick(r, TEXT_IDS) }) }],
+  ["GetEquippedRacketNibble", 0x4F5D], ["PushEquipmentNameTextArg", 0x4F73],
+  ["CompareEquippedRacketToMinigameFlag", 0x5005], ["MirrorPlayerSpriteIfLeftHanded", 0x520F, OW],
+  ["Unused_0e_StubNop", 0x54D1], ["ComputeMarioWorldProgressIndex", 0x555D]], { prep: scratchPrep });
+B(0x0E, [["UpdateStarWarpSprite", 0x71E9, { wram: 6 }], ["OffsetStarWarpPathPoint", 0x724A, { wram: 6, regs: r => ({ d: r(256), e: r(256) }) }],
+  ["UpdateStarWarpTrailSparkles", 0x7265, { wram: 6 }]], { prep: warpPrep });
+B(0x0E, [["LoadExhibitionMatchSettings0", 0x7BB8], ["LoadExhibitionMatchSettings1", 0x7BC6],
+  ["LoadExhibitionMatchSettings2", 0x7BD4], ["LoadExhibitionMatchSettings3", 0x7BE2],
+  ["LoadExhibitionMatchSettings4", 0x7BF0], ["LoadExhibitionMatchSettings5", 0x7BFE], ["MapScriptNop_0e", 0x7C96],
+  ["Unused_0e_MapScriptClearActiveFlag", 0x7C97], ["Unused_0e_MapScriptPlaySoundA2", 0x7C9C],
+  ["Unused_0e_MapScriptHideLocationName", 0x7C9F], ["ComputeRankingProgressIndex_0e", 0x7E5A],
+  ["Unused_0e_ComputeStoryRankTier", 0x7EA1]]);
