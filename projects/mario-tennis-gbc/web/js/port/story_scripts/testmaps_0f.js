@@ -30,7 +30,7 @@ const ACTOR_RECORD_BYTE_18 = 0x18;                      // a byte of the actor r
 const OBJ_ALEX = 0x26;
 const SCENE_MODE_CEREMONY = 0x01;                       // RunStorySceneByMode's b: the ceremony's screens
 // data of this bank (read from the ROM)
-const AwardsCeremonyNpcScriptsDoubles_0f = 0x4447;
+const AwardsCeremonyNpcScriptsDoubles_0f = 0x5B04;
 const SmallCharTestButtonTask_0f = 0x41B7;
 // routines of other banks (run as the ROM's, or the JS another part hooked there)
 const GetObjectDefCount = [0x04, 0x4C0B], RunStorySceneByMode = [0x18, 0x7617];

@@ -653,11 +653,11 @@ export class Voxel3D {
   // the screen's left edge and up to the right edge + 8; the LCD shows only what is inside, the 3D view shows the surroundings too)
   // rects: (overworld) the overlay boxes of the frame: a sprite the HD art replaced counts as replaced only inside one (a cursor in a box); a character the
   // cursor finder took for an arrow, standing in the scenery, is still a character
-  collectSprites(edge = false, rects = null) {
+  collectSprites(edge = false, rects = null, isActor = null) {
     const m = this.gb.mem, p = this.gb.ppu, oam = m.oam, tall = p.lcdc & 4, sprs = [], hd = this.hdText, hid = hd && hd.active && hd.hideSprites && hd.hiddenOam.size ? hd.hiddenOam : null;
     for (let i = 0; i < 40; i++) {
       const sy = oam[i * 4] - 16, sx = oam[i * 4 + 1] - 8; if (edge ? (sy <= -16 || sy >= 160 || sx < -8 || sx >= 168) : (sy <= -16 || sy >= 144 || sx <= -8 || sx >= 160)) continue;
-      if (hid && hid.has(i) && !(rects && !rects.some(r => sx + 4 >= r.x0 && sx + 4 < r.x1 && sy + 8 >= r.y0 && sy + 8 < r.y1))) continue;   // replaced by HD art (web/js/hdui.js)
+      if (hid && hid.has(i) && !(isActor && isActor(sx, sy)) && !(rects && !rects.some(r => sx + 4 >= r.x0 && sx + 4 < r.x1 && sy + 8 >= r.y0 && sy + 8 < r.y1))) continue;   // replaced by HD art (web/js/hdui.js)
       let tile = oam[i * 4 + 2]; const attr = oam[i * 4 + 3], hgt = tall ? 16 : 8; if (tall) tile &= 0xFE;
       sprs.push({ sx, sy, h: hgt, tile, attr, owner: null });
     }
@@ -1065,7 +1065,7 @@ export class Voxel3D {
     if (f.artTex) gl.deleteTexture(f.artTex);
     this.freeFieldFx(f.fx);
     if (f.skirt) gl.deleteTexture(f.skirt); if (f.roof) { gl.deleteTexture(f.roof.tex); for (const m of [f.roof.lit, f.roof.shade]) { gl.deleteBuffer(m.pb); gl.deleteBuffer(m.ub); gl.deleteVertexArray(m.vao); } }
-    f.cards = []; f.blocks = null; f.artTex = null; f.covered = new Uint8Array(32 * 32); f.fx = null; f.clear = null; f.noWalls = false; f.skirt = null; f.roof = null;
+    f.cards = []; f.blocks = null; if (f.glass) { gl.deleteBuffer(f.glass.pb); gl.deleteBuffer(f.glass.ub); gl.deleteVertexArray(f.glass.vao); } f.glass = null; f.artTex = null; f.covered = new Uint8Array(32 * 32); f.fx = null; f.clear = null; f.noWalls = false; f.skirt = null; f.roof = null;
     f.patched = null; f.artMod = null; f.artData = null; f.floorSrc = null; f.artSrc = null; f.skirtSrc = -1;
     if (!art) return;
     // where each floor / building-texture pixel comes from in the map picture: palette fades only recolour (recolourField)
@@ -1098,14 +1098,14 @@ export class Voxel3D {
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (F3.packAt(art, x0 + x, y0 + y) === dk) m[(y * w + x) * 4 + 3] = 255;
       mark(m, x0, y0, w, h); plantHoles.push([m, x0, y0, w, h, F3.groundKeys(art, x0, y0, w, h, true), dk]);
     };
-    const cutOpt = o => ({ cut: o.cut, only: o.only, drop: o.drop, bg: o.bg, add: o.add, seal: o.seal });
+    const cutOpt = o => ({ cut: o.cut, only: o.only, drop: o.drop, bg: o.bg, add: o.add, seal: o.seal, see: o.see });
     // with a cut mode the card stands on its lowest opaque row (the transparent rows below it are dropped)
     const trim = (d, w, h) => { let r = h; while (r > 1 && !d.subarray((r - 1) * w * 4, r * w * 4).some((v, i) => i % 4 === 3 && v)) r--; return r < h ? { d: d.slice(0, r * w * 4), h: r } : { d, h }; };
     const srcOf = (x0, y0, w, h) => { const a = new Int32Array(w * h); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) a[y * w + x] = Math.min(511, y0 + y) * 512 + Math.min(511, x0 + x); return a; };
-    const card = (d, x0, y0, w, h, o) => { const t = o.cut ? trim(d, w, h) : { d, h }; return { tex: this.texture(w, t.h, t.d), mesh: null, d: t.d, src: srcOf(x0, y0, w, t.h), own: true, w, h: t.h, X: x0 + w / 2, Z: o.z ?? y0 + t.h + (o.dz || 0), tilt: o.tilt ?? FIELD_TILT, flat: !!o.flat }; };
+    const card = (d, x0, y0, w, h, o) => { const t = o.cut ? trim(d, w, h) : { d, h }; return { tex: this.texture(w, t.h, t.d), mesh: null, d: t.d, src: srcOf(x0, y0, w, t.h), own: true, w, h: t.h, X: x0 + w / 2, Z: o.z ?? y0 + t.h + (o.dz || 0), tilt: o.tilt ?? FIELD_TILT, flat: !!o.flat, hs: o.hs, R: o.R, T: o.T, lift: o.lift }; };   // hs: height scale; R / T: voxel mesh inflation (0 / 1: thin bars); lift: stands on something this high
     // plants (plant: tree | bush | palm | pot): voxel bodies with volume, one mesh per shape drawn at every place it
     // stands, rustling in the wind; the default cut keeps their outline
-    const PLANT = { tree: [4, 3, 0.8], bush: [4, 3, 0.45], palm: [4, 3, 1.1], pot: [3, 2, 0.3] }, shapes = [], plants = [];
+    const PLANT = { tree: [4, 3, 0.8], bush: [4, 3, 0.45], palm: [4, 3, 1.1], pot: [3, 2, 0.3], statue: [3, 3, 0] }, shapes = [], plants = [];
     const shapeOf = (d, x0, y0, w, h, kind) => {
       const [R, T] = PLANT[kind] || PLANT.tree, m = F3.plantMesh(d, w, h, R, T);
       for (let k = 0; k < m.uv.length; k += 2) { m.uv[k] = (m.uv[k] + x0) / 512; m.uv[k + 1] = (m.uv[k + 1] + y0) / 512; }
@@ -1113,7 +1113,7 @@ export class Voxel3D {
     };
     const placed = [];                          // a plant found twice (a stamp and a sprite of its top) stands once
     const taken = (x, y, w, h) => placed.some(q => Math.abs(q[0] - x) < w * 0.5 && Math.abs(q[1] - y) < h * 0.5 + 8);
-    const placePlant = (shape, X, Z, o) => { const rnd = Math.abs(Math.sin(X * 12.9898 + Z * 78.233) * 43758.5453) % 1; plants.push({ shape, model: m4.trs3(X, 0, Z, 1, 1, 1, -(o.tilt ?? FIELD_TILT)), phase: X * 0.11 + Z * 0.07 + rnd * 0.8, amp: (PLANT[o.plant] || PLANT.tree)[2] }); };
+    const placePlant = (shape, X, Z, o) => { const rnd = Math.abs(Math.sin(X * 12.9898 + Z * 78.233) * 43758.5453) % 1; plants.push({ shape, model: m4.trs3(X, o.lift || 0, Z, 1, 1, 1, -(o.tilt ?? FIELD_TILT)), phase: X * 0.11 + Z * 0.07 + rnd * 0.8, amp: (PLANT[o.plant] || PLANT.tree)[2] }); };
     const plantCut = o => o.plant ? { ...cutOpt(o), cut: o.cut || "outline", seal: o.seal ?? "b" } : cutOpt(o);   // (trunks reach the bottom edge)
     for (const st of def.stamps || []) {
       const d = F3.cutOut(art, st.x, st.y, st.w, st.h, plantCut(st)), t = (st.cut || st.plant) ? trim(d, st.w, st.h) : { d, h: st.h };
@@ -1145,7 +1145,10 @@ export class Voxel3D {
           continue;
         }
       }
-      if (c.plant) plantHole(d, c.x0, c.y0, w, h); else patch(d, c.x0, c.y0, w, h);
+      // nets and umpire chairs (and any prop of that size on a patterned floor): the floor under them is filled from the nearest visible ground a
+      // whole number of tiles away (plantHole), so its dither and court lines run on; the strip-below patch smeared a mirrored copy of it (the blur round the net)
+      const prop = !c.plant && !c.see && c.fill !== "below" && ((w >= 48 && w <= 80 && h >= 8 && h <= 20) || (w === 16 && h >= 28 && h <= 40));
+      if (c.plant || prop) plantHole(d, c.x0, c.y0, w, h); else patch(c.see ? new Uint8Array(w * h * 4).fill(255) : d, c.x0, c.y0, w, h);      // a see-through fence: the ground under all of it
       if (c.plant) { const t = trim(d, w, h); placePlant(shapeOf(t.d, c.x0, c.y0, w, t.h, c.plant), c.x0 + w / 2, c.y0 + t.h + (c.dz || 0), c); continue; }
       f.cards.push(card(d, c.x0, c.y0, w, h, c));
     }
@@ -1162,7 +1165,7 @@ export class Voxel3D {
       }
     }
     // buildings: one batched mesh for roofs + fronts (+ the tops and front walls of solids), one for the side walls
-    const front = { pos: [], uv: [] }, side = { pos: [], uv: [] }, keyed = [], roofs = [{ pos: [], uv: [] }, { pos: [], uv: [] }]; let roofArt = null;
+    const front = { pos: [], uv: [] }, side = { pos: [], uv: [] }, glass = { pos: [], uv: [] }, keyed = [], roofs = [{ pos: [], uv: [] }, { pos: [], uv: [] }]; let roofArt = null;
     const quad = (o, a, b, c, d, ua, ub, uc, ud) => { for (const [v, t] of [[a, ua], [b, ub], [c, uc], [a, ua], [c, uc], [d, ud]]) { o.pos.push(...v); o.uv.push(t[0] / 512, t[1] / 512); } };
     for (const b of def.blocks || []) {
       if (!inMap(b.x0, b.y0)) continue;
@@ -1188,9 +1191,10 @@ export class Voxel3D {
         quad(side, [x1, 0, y1], [x1, 0, zb], [x1, He, zb], [x1, He, y1], [x1 - 12, y1], [x1 - 6, y1], [x1 - 6, g.ey], [x1 - 12, g.ey]);
         continue;
       }
+      if (b.glass) patch(new Uint8Array((x1 - x0) * (y1 - zb) * 4).fill(255), x0, zb, x1 - x0, y1 - zb);     // behind a glass pane the room's floor shows: the ground strip below the building
       const H = (y1 - fold) * WALL_SCALE;
-      quad(front, [x0, H, zb], [x1, H, zb], [x1, H, y1], [x0, H, y1], [x0, y0], [x1, y0], [x1, fold], [x0, fold]);   // roof
-      quad(front, [x0, 0, y1], [x1, 0, y1], [x1, H, y1], [x0, H, y1], [x0, y1], [x1, y1], [x1, fold], [x0, fold]);   // front wall
+      quad(b.glass ? glass : front, [x0, H, zb], [x1, H, zb], [x1, H, y1], [x0, H, y1], [x0, y0], [x1, y0], [x1, fold], [x0, fold]);   // roof
+      quad(b.glass ? glass : front, [x0, 0, y1], [x1, 0, y1], [x1, H, y1], [x0, H, y1], [x0, y1], [x1, y1], [x1, fold], [x0, fold]);   // front wall (glass: a translucent pane, drawn last)
       quad(side, [x0, 0, zb], [x0, 0, y1], [x0, H, y1], [x0, H, zb], [x0, y1], [x0 + 6, y1], [x0 + 6, fold], [x0, fold]);   // left wall
       quad(side, [x1, 0, y1], [x1, 0, zb], [x1, H, zb], [x1, H, y1], [x1 - 6, y1], [x1, y1], [x1, fold], [x1 - 6, fold]);   // right wall
     }
@@ -1309,6 +1313,7 @@ export class Voxel3D {
       const artA = new Uint8Array(art);                                   // keyed blocks: the ground around them transparent
       for (const [d, x0, y0, w, h] of keyed) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (!d[(y * w + x) * 4 + 3]) { const i = (y0 + y) * 512 + x0 + x; artA[i * 4 + 3] = 0; f.artMod[i] = 1; }
       if (front.pos.length) f.blocks = { front: upload(front), side: upload(side) };
+      if (glass.pos.length) f.glass = upload(glass);                       // glass panes of buildings (block glass: true)
       f.artTex = this.texture(512, 512, artA); f.artData = artA;
     }
   }
@@ -1467,15 +1472,20 @@ export class Voxel3D {
       gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
     }
     for (const c of f.cards || []) {
-      const tilt = c.tilt ?? FIELD_TILT;
+      const tilt = c.tilt ?? FIELD_TILT, hs = c.hs || 1;
       if (this.voxelSprites && !c.flat && !f.fading) {
-        const owner = c.shared || c; if (!owner.mesh) owner.mesh = this.meshFromPixels(c.d, c.w, c.h, 4, 3.5);
-        this.drawMesh(owner.mesh, m4.trs3(c.X, 0, c.Z, 1, 1, 1, -tilt), mvp);
-      } else this.draw(c.tex, m4.trs(c.X, 0, c.Z, c.w, c.h, -tilt, 0), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
+        const owner = c.shared || c; if (!owner.mesh) owner.mesh = this.meshFromPixels(c.d, c.w, c.h, c.R ?? 4, c.T ?? 3.5);
+        this.drawMesh(owner.mesh, m4.trs3(c.X, c.lift || 0, c.Z, 1, hs, 1, -tilt), mvp);
+      } else this.draw(c.tex, m4.trs(c.X, c.lift || 0, c.Z, c.w, c.h * hs, -tilt, 0), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
     }
     this.drawFieldFx(mvp, T);
     this.fieldRects = this.fieldOverlayRects();                         // once per frame: the actors and the overlays both need them
     this.drawFieldActors(mvp);
+    if (f.glass && f.artTex) {                                           // translucent glass panes, after everything behind them
+      gl.useProgram(this.prog3); gl.bindTexture(gl.TEXTURE_2D, f.artTex); gl.uniformMatrix4fv(this.u3.uMVP, false, mvp); gl.uniform4fv(this.u3.uTint, [1.18, 1.18, 1.3, 0.42]); gl.uniform1f(this.u3.uAlphaTest, 0.01);
+      gl.depthMask(false); gl.bindVertexArray(f.glass.vao); gl.drawArrays(gl.TRIANGLES, 0, f.glass.count); gl.depthMask(true);
+      gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
+    }
     // dialogue boxes and menus: the game writes them into the BG tile map over the scenery (and some screens use
     // the window layer); both are cut out of the 2D frame and shown at the top middle of the view
     if (this.light) this.light.post();   // LIGHT: the lit scene goes to the canvas; the overlays below are drawn over it, unlit
@@ -1554,8 +1564,10 @@ export class Voxel3D {
     // sprites are placed with SCX/SCY, which can trail the field scroll by a pixel or two while walking
     const ox = sc.x + (((p.scx - sc.x) << 24) >> 24), oy = sc.y + (((p.scy - sc.y) << 24) >> 24);
     if (!this.actorMem || this.actorMem.map !== id) this.actorMem = { map: id, slots: new Map() };
-    const mem = this.actorMem.slots, sprs = this.collectSprites(true, this.fieldRects || this.fieldOverlayRects()), actors = this.fieldActors();
-    for (const a of actors) { a.ax = a.x - ox; a.ay = a.y + 4 - oy; }     // screen point of the feet (sprites end 4 px below the position)
+    const mem = this.actorMem.slots, actors = this.fieldActors();
+    for (const a of actors) { a.ax = a.x - ox; a.ay = a.y + 4 - oy; }
+    // HD art may have replaced sprites it took for cursors; one standing on an actor's feet is that actor's body, whatever the finder thought
+    const sprs = this.collectSprites(true, this.fieldRects || this.fieldOverlayRects(), (sx, sy) => actors.some(a => Math.abs(sx + 4 - a.ax) <= 12 && sy + 16 >= a.ay - 22 && sy <= a.ay + 4));     // screen point of the feet (sprites end 4 px below the position)
     sprs.forEach((s, i) => s.g = i);
     const find = i => { while (sprs[i].g !== i) i = sprs[i].g = sprs[sprs[i].g].g; return i; };
     for (let i = 0; i < sprs.length; i++) for (let j = i + 1; j < sprs.length; j++) { const a = sprs[i], b = sprs[j]; if (a.sx < b.sx + 10 && b.sx < a.sx + 10 && a.sy < b.sy + b.h + 2 && b.sy < a.sy + a.h + 2) sprs[find(j)].g = find(i); }

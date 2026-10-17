@@ -70,9 +70,10 @@ function dropStrays(art, d, x0, y0, w, h, ground, dark, min = 4) {
 // opt.add: rectangles always opaque (a sign's post); opt.bg: [[x, y], ...] map points whose colours are the ground (instead of the colours around the rectangle)
 export function cutOut(art, x0, y0, w, h, opt = {}) {
   const mode = opt.cut || "key";
-  if (mode === "key" && !opt.only && !opt.drop) return keyedCut(art, x0, y0, w, h);
+  if (mode === "key" && !opt.only && !opt.drop && !opt.see) return keyedCut(art, x0, y0, w, h);
   const d = copyRect(art, x0, y0, w, h);
-  if (mode === "key") floodKey(art, d, x0, y0, w, h, groundKeys(art, x0, y0, w, h));
+  if (mode === "key" && opt.see) { /* see-through: no keying, the colours named by `see` are removed below */ }
+  else if (mode === "key") floodKey(art, d, x0, y0, w, h, groundKeys(art, x0, y0, w, h));
   else if (mode === "outline") {
     const ground = opt.bg ? new Set(opt.bg.map(([x, y]) => packAt(art, x, y))) : groundKeys(art, x0, y0, w, h), dark = darkest(art, x0, y0, w, h), pass = new Set(ground); pass.delete(dark);
     floodKey(art, d, x0, y0, w, h, pass, opt.seal); dropStrays(art, d, x0, y0, w, h, ground, dark, opt.min || 4);
@@ -115,6 +116,12 @@ export function cutOut(art, x0, y0, w, h, opt = {}) {
   } else if (mode === "ellipse") {
     const cx = w / 2, cy = h / 2;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const u = (x + 0.5 - cx) / cx, v = (y + 0.5 - cy) / cy; if (u * u + v * v > 1) d[(y * w + x) * 4 + 3] = 0; }
+  }
+  // opt.see: the colours that are see-through ("green": the grass and lattice greens; or [[x, y], ...] map points whose colours): a chain-link or
+  // iron fence keeps its wires and rails, the ground between them shows
+  if (opt.see) {
+    const pts = Array.isArray(opt.see) ? new Set(opt.see.map(([x, y]) => packAt(art, x, y))) : null;
+    for (let i = 0; i < w * h; i++) { const r = d[i * 4], g = d[i * 4 + 1], b = d[i * 4 + 2]; if (pts ? pts.has(r << 16 | g << 8 | b) : (g > r + 40 && g > b + 40)) d[i * 4 + 3] = 0; }
   }
   const inR = (x, y, r) => x >= r[0] && x < r[2] && y >= r[1] && y < r[3];
   if (opt.only || opt.drop || opt.add) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
