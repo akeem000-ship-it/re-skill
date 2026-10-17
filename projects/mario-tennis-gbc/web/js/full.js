@@ -6,6 +6,7 @@ import { Rom, sha1Hex, EXPECTED_SHA1 } from "./rom.js";
 import { pollGamepad } from "./gamepad.js";
 import { Voxel3D, PRESETS, PRESET_ORDER } from "./voxel.js";
 import { attachLighting } from "./lighting.js";   // LIGHT: Off / Day / Auto
+import { attachBallFX } from "./ballfx.js";       // BALL FX: on / off (3D / VOX court)
 import { loadSnapshot } from "./gb/snapshot.js";
 import { saveState, loadState } from "./gb/state.js";
 import { composeWide, WIDE_W, WIDE_H } from "./wide.js";
@@ -187,9 +188,9 @@ addEventListener("resize", () => applyAspect());
 let preset = q.get("cam") || stored("mt-cam") || "low"; if (!PRESETS[preset]) preset = "low";
 function setView3d(on, vox = false) {
   view3d = on; $("view3d").classList.toggle("on", on); $("view3d").textContent = on ? (vox ? "VOX" : "3D") : "3D";
-  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.hdText = hd; voxel.freeCam = q.has("freecam"); attachLighting(voxel, $("hud")); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
+  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.hdText = hd; voxel.freeCam = q.has("freecam"); attachLighting(voxel, $("hud")); attachBallFX(voxel, $("hud")); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
   if (voxel) voxel.voxelSprites = on && vox;
-  $("gl").hidden = !view3d; cv.hidden = view3d; $("cam").hidden = !view3d; $("smoothbtn").hidden = !view3d;
+  $("gl").hidden = !view3d; cv.hidden = view3d; $("cam").hidden = !view3d; $("smoothbtn").hidden = !view3d; if ($("ballfxbtn")) $("ballfxbtn").hidden = !view3d; if ($("lightbtn")) $("lightbtn").hidden = !view3d;
   try { localStorage.setItem("mt-3d", on ? (vox ? "vox" : "3d") : "off"); } catch (e) { /* private mode */ }
 }
 function setPreset(name) {                  // court camera preset (CAM button cycles PRESET_ORDER)

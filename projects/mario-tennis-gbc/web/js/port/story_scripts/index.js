@@ -43,6 +43,25 @@ export const MODULES = {
   junior_singles_11: JUNIOR_SINGLES_11,
 };
 // part 2 (src/story/lessonmenu_10 .. water_15): its modules, added to MODULES
+import { HOOKS as TRAINING_MAP_15 } from "./training_map_15.js";
+import { HOOKS as TRAINING_NPCS_15 } from "./training_npcs_15.js";
+import { HOOKS as WATER_15 } from "./water_15.js";
+import { HOOKS as WALL_LEVELS_12 } from "./wall_levels_12.js";
+import { HOOKS as WALL_ROOM_12 } from "./wall_room_12.js";
+import { HOOKS as TESTMAPS_0F } from "./testmaps_0f.js";
+import { HOOKS as TENNIS_14 } from "./tennis_14.js";
+import { HOOKS as TEAM_BRACKET_13 } from "./team_bracket_13.js";
+import { HOOKS as VARSITY_TOUR_13 } from "./varsity_tour_13.js";
+import { HOOKS as VARSITY_TEAM_13 } from "./varsity_team_13.js";
+import { HOOKS as VARSITY_COURTYARD_13 } from "./varsity_courtyard_13.js";
+import { HOOKS as SERVE_COACH_15 } from "./serve_coach_15.js";
+import { HOOKS as SENIOR_VICTORY_12 } from "./senior_victory_12.js";
+import { HOOKS as SENIOR_MATCHES_12 } from "./senior_matches_12.js";
+import { HOOKS as SENIOR_INTROS_12 } from "./senior_intros_12.js";
+import { HOOKS as SENIOR_COURT_12 } from "./senior_court_12.js";
+import { HOOKS as RESTAURANT_27 } from "./restaurant_27.js";
+import { HOOKS as RESTAURANT_13 } from "./restaurant_13.js";
+import { HOOKS as PRACTICE_RESULTS_15 } from "./practice_results_15.js";
 import { HOOKS as PLANE_14 } from "./plane_14.js";
 import { HOOKS as RESTAURANT_10 } from "./restaurant_10.js";
 import { HOOKS as MODEFLOW_10 } from "./modeflow_10.js";
@@ -74,5 +93,24 @@ Object.assign(MODULES, {
   modeflow_10: MODEFLOW_10,
   restaurant_10: RESTAURANT_10,
   plane_14: PLANE_14,
+  practice_results_15: PRACTICE_RESULTS_15,
+  restaurant_13: RESTAURANT_13,
+  restaurant_27: RESTAURANT_27,
+  senior_court_12: SENIOR_COURT_12,
+  senior_intros_12: SENIOR_INTROS_12,
+  senior_matches_12: SENIOR_MATCHES_12,
+  senior_victory_12: SENIOR_VICTORY_12,
+  serve_coach_15: SERVE_COACH_15,
+  varsity_courtyard_13: VARSITY_COURTYARD_13,
+  varsity_team_13: VARSITY_TEAM_13,
+  varsity_tour_13: VARSITY_TOUR_13,
+  team_bracket_13: TEAM_BRACKET_13,
+  tennis_14: TENNIS_14,
+  testmaps_0f: TESTMAPS_0F,
+  training_map_15: TRAINING_MAP_15,
+  training_npcs_15: TRAINING_NPCS_15,
+  water_15: WATER_15,
+  wall_levels_12: WALL_LEVELS_12,
+  wall_room_12: WALL_ROOM_12,
 });
 export const HOOKS = Object.values(MODULES).flat();

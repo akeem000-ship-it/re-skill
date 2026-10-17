@@ -195,6 +195,7 @@ export class Voxel3D {
     this.boxShadowTex = this.solidTexture([0, 0, 0, 110]);   // drop shadow of the overlay boxes
     this.shadowTex = this.blobTexture();                     // soft round shadow on the ground (players, ball)
     this.light = null;                                       // LIGHT: lighting.js (attachLighting) sets this; null = off
+    this.ballfx = null;                                      // BALLFX: ballfx.js (attachBallFX) sets this; null = off
     this.preset = "low"; this.cam = { yaw: 0, pitch: 0.9, dist: 3100, fitKey: "" };
     this.freeCam = false; this.mode = "none"; this.t0 = performance.now(); this.cur = null; this.prev = null; this.lastFrame = -1; this.alpha = 1;
     this.parallax = { px: 0, py: 0, gx: 0, gy: 0, gbase: null };
@@ -537,6 +538,17 @@ export class Voxel3D {
     let idx = null; try { idx = courtIndexMap(this.rom, this.courtId); } catch (e) { console.warn("court", e); }
     this.ground = { W, H, src, cuts, rgba: new Uint8Array(W * H * 4), idx: idx || new Uint8Array(256 * 256), fromRom: !!idx, court: this.courtId };
   }
+  // the court colour under a world point (RGB 0..1), from the painted ground (BALLFX dust colour); null before it is painted
+  groundColour(X, Y) {
+    const g = this.ground; if (!g || !g.rgba) return null;
+    const tx = (WORLD.x1 - WORLD.x0) / g.W, ty = (WORLD.y1 - WORLD.y0) / g.H; let r = 0, gg = 0, b = 0, n = 0;
+    for (const [dx, dy] of [[0, 0], [30, 0], [-30, 0], [0, 30], [0, -30], [24, 24], [-24, -24]]) {
+      const i = Math.floor((X + dx - WORLD.x0) / tx), j = Math.floor((Y + dy - WORLD.y0) / ty); if (i < 0 || j < 0 || i >= g.W || j >= g.H) continue;
+      const o = (j * g.W + i) * 4, R = g.rgba[o], G = g.rgba[o + 1], B = g.rgba[o + 2]; if (R > 215 && G > 215 && B > 215) continue;   // court lines are not the surface
+      r += R; gg += G; b += B; n++;
+    }
+    return n ? [r / n / 255, gg / n / 255, b / n / 255] : null;
+  }
   paintGround() {                                        // per palette change: the ROM court picture coloured with the current palettes
     const g = this.ground, lut = new Uint8Array(33 * 4);
     if (!g.fromRom) this.composeMap(this.bgBase(), this.courtMaps[this.courtId], g.idx);
@@ -657,12 +669,13 @@ export class Voxel3D {
     }
     return { cards: [{ tex, dx: o.x0 + o.w / 2 - ax, up: ay - (o.y0 + o.h), w: o.w, h: o.h }], gen: this.texGen || 0 };
   }
-  drawBody(b, X, Yw, lift, scale, tilt, mvp) {
+  // post: an optional extra transform of the whole body in world space (BALLFX squash and stretch)
+  drawBody(b, X, Yw, lift, scale, tilt, mvp, post = null) {
     if (b.gen !== (b.mesh ? this.meshGen || 0 : this.texGen || 0)) return;   // built from evicted cache entries
-    const c = Math.cos(tilt), s = Math.sin(tilt);
-    if (b.mesh) { if (this.voxelSprites) this.drawMesh(b.mesh, m4.trs3(X + b.dx * scale, lift + b.up * scale * c, Yw - b.up * scale * s, scale * (b.ms || 1), scale * (b.ms || 1), scale * (b.ms || 1), -tilt), mvp); return; }
+    const c = Math.cos(tilt), s = Math.sin(tilt), pm = post ? m => m4.mul(post, m) : m => m;
+    if (b.mesh) { if (this.voxelSprites) this.drawMesh(b.mesh, pm(m4.trs3(X + b.dx * scale, lift + b.up * scale * c, Yw - b.up * scale * s, scale * (b.ms || 1), scale * (b.ms || 1), scale * (b.ms || 1), -tilt)), mvp); return; }
     if (this.voxelSprites) return;
-    for (const q of b.cards) this.draw(q.tex, m4.trs(X + q.dx * scale, lift + q.up * scale * c, Yw - q.up * scale * s, (q.w || 8) * scale, (q.h || 8) * scale, -tilt, 0), mvp);
+    for (const q of b.cards) this.draw(q.tex, pm(m4.trs(X + q.dx * scale, lift + q.up * scale * c, Yw - q.up * scale * s, (q.w || 8) * scale, (q.h || 8) * scale, -tilt, 0)), mvp);
   }
   // draws one OAM sprite's tiles relative to an anchor screen point (ax, ay) mapped to world (X, Yw) at height lift
   blitSprite(sp, ax, ay, X, Yw, lift, scale, tilt, mvp) {
@@ -687,6 +700,7 @@ export class Voxel3D {
     const fr = this.gb.ppu.frames, h = this.ballHist ||= [];
     if (h.length && h[h.length - 1].fr === fr) return;
     h.push({ fr, ball: ball || this.ballWorld() }); if (h.length > 40) h.shift();
+    if (this.ballfx) this.ballfx.step(this);   // BALLFX: reads the game once per game frame
   }
   // alpha: how far the display is between the last two game frames (0..1); the 3D view renders at the
   // display's refresh rate and interpolates world positions, the game itself stays at 60 Hz
@@ -752,11 +766,13 @@ export class Voxel3D {
     this.draw(this.groundTex, m4.trs(0, -0.5, WORLD.y1, gw, gh, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
     this.drawStands(mvp);                                 // bleachers with spectators beside and behind the court
     // upright cut-outs: net, chair, backdrop (cards, or voxels in voxel mode)
+    const fx = this.ballfx && this.ballfx.on ? this.ballfx : null;       // BALLFX
     for (const c of this.cuts) {
+      const np = fx && c.name === "net" ? fx.netPost(c) : null, pm = np ? m => m4.mul(np, m) : m => m;   // BALLFX: the net rocks when the ball hits it
       if (this.voxelSprites) {
-        for (const k of (c.wide ? [-1, 0, 1] : [0])) this.drawMesh(c.mesh, m4.trs3(c.X + k * c.width, 0, c.Y, c.width / c.w, c.height / c.h, c.width / c.w * 1.2, 0), mvp);
+        for (const k of (c.wide ? [-1, 0, 1] : [0])) this.drawMesh(c.mesh, pm(m4.trs3(c.X + k * c.width, 0, c.Y, c.width / c.w, c.height / c.h, c.width / c.w * 1.2, 0)), mvp);
       } else if (c.wide) this.draw(c.tex, m4.trs(c.X, 0, c.Y, c.width * 3, c.height, 0, 0), mvp, [-1, 0, 3, 1], [1, 1, 1, 1], 0.5);
-      else this.draw(c.tex, m4.trs(c.X, 0, c.Y, c.width, c.height, 0, 0), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
+      else this.draw(c.tex, pm(m4.trs(c.X, 0, c.Y, c.width, c.height, 0, 0)), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
     }
     const sprs = this.collectSprites(), players = this.players(), land = this.landing(), ball = this.ballWorld(), sm = this.interp();
     const [ballSx, ballSy] = this.screenOf(ball.X, ball.Y, ball.Z), [shSx, shSy] = this.screenOf(ball.X, ball.Y, 0);
@@ -835,9 +851,10 @@ export class Voxel3D {
     }
     if (ballGroup.length) {                               // the ball's projection point is the anchor: its tiles keep their 2D offsets
       const b = sm.ball;
-      this.blitObject(ballGroup, ballSx, ballSy, b.X, b.Y, -b.Z, SCALE, tilt, mvp);
-      this.draw(this.shadowTex, m4.trs(b.X, 0.5, b.Y, 50, 32, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
-    }
+      if (fx) fx.setBall(b);                              // BALLFX: its own shadow, squash and stretch, trail, seam
+      this.drawBody(this.bodyOf(ballGroup, ballSx, ballSy), b.X, b.Y, -b.Z, SCALE, tilt, mvp, fx && fx.ballPost());
+      if (!fx) this.draw(this.shadowTex, m4.trs(b.X, 0.5, b.Y, 50, 32, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
+    } else if (fx) fx.setBall(null);
     // ball effects: bounce dust (timer wC4A8, tiles $60/$62), hit spark (wC4A9, $68-$6E), special-shot flash
     // (wC4AA): the game projects the ball's position once when the effect starts (StartBounceEffect 08:5383,
     // StartHitEffect 08:53D0) and redraws it there through the camera; the ball's world position at the start
@@ -873,6 +890,7 @@ export class Voxel3D {
       this.blitSprite(sp, sp.sx + 4, sp.sy + sp.h, w.X, w.Y, 0, SCALE * w.upp / 8, tilt, mvp); sp.owner = "world";
     }
     if (this.debug) this.debug.push({ land, markers: markers.map(s => `${s.sx},${s.sy},${s.tile}`), ball: ballGroup.map(s => `${s.sx},${s.sy},${s.tile}`), hud: hud.map(s => `${s.sx},${s.sy},${s.tile}`) });
+    if (fx) fx.draw(mvp);   // BALLFX: shadow, dust, impact sparks, trail, spin seam (in the scene: lit and bloomed when LIGHT is on)
     // HUD: screen space, each sprite anchored to the nearest screen edge so the strips stay at the edges of
     // a wide or tall viewport
     if (this.light) this.light.post();   // LIGHT: the lit scene goes to the canvas; the HUD is drawn over it, unlit
@@ -1409,7 +1427,7 @@ export class Voxel3D {
     const yaw = this.freeCam ? c.yaw : 0, pitch = this.freeCam ? c.pitch : FIELD_CAM.pitch, dist = this.freeCam ? c.dist : FIELD_CAM.dist * Math.max(1, (160 / 144) / aspect);
     const eye = [cx + dist * Math.sin(yaw) * Math.cos(pitch), dist * Math.sin(pitch), cz + dist * Math.cos(yaw) * Math.cos(pitch)];
     const mvp = m4.mul(m4.perspective(FIELD_CAM.fov, aspect, FIELD_CAM.near, FIELD_CAM.far), m4.lookAt(eye, [cx, 0, cz], [0, 1, 0]));
-    if (this.light) this.light.camera(mvp, FIELD_CAM.near, FIELD_CAM.far, 1, "field", [cx, 0, cz]);   // LIGHT
+    if (this.light) this.light.camera(mvp, FIELD_CAM.near, FIELD_CAM.far, 1, "field", [cx, 0, cz], id);   // LIGHT
     const T = this.animClock ?? performance.now() / 1000;
     // floor (512x512 map px; +z = down the map), on a plain ground reaching the horizon on side-view maps
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao);

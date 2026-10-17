@@ -11,7 +11,7 @@ import {
   ACTOR_PARTNER, ACTOR_PLAYER, FC, FH, FLAG_DOUBLES, FZ, OAM_BANK1, OBJ_PALETTES, TILE_SIZE, VRAM_BANK1,
   WRAM_STAGING, clearFlag, clearFrameTasks, disableLCDSafely, enableLCD, fadeIn, fadeOutAndWait, goToLocation, hook,
   movePlayerToActor, nullScript, playerSpeed, queueSpriteTemplate, rd, registerFrameTask, scene, setActive,
-  setPosition, sound, sub8, testFlag, tiles, vTiles0, wait, waitFadeEnd, withWram, wr,
+  setPosition, sound, sub8, testFlag, vTiles0, wait, waitFadeEnd, withWram, wr,
 } from "./common.js";
 import { queueVRAMCopy } from "../home/memory.js";
 import { loadPaletteShadow } from "../home/palettes.js";
@@ -32,11 +32,11 @@ const PLANE_TILE_BLOCKS = 96, SPLASH_TILE_BLOCKS = (SpriteTemplate_14_1 - WaterS
 
 // push_wram_bank WRAM_STAGING / QueueVRAMCopy / LoadPaletteShadow / pop_wram_bank: tiles and object palettes
 // (first, count); a = the WRAM bank put back, F as at the call, the rest as LoadPaletteShadow leaves them
-function loadGfx(P, entryF, tiles, dest, blocks, pals, first, count) {
-  const old = P.V.wramBank;
+export function loadGfx(P, entryF, src, dest, blocks, pals, first, count) {
+  const old = P.V.wramBank, d = OBJ_PALETTES + first, e = count;
   const r = withWram(P, WRAM_STAGING, () => {
-    queueVRAMCopy(P, tiles, dest, blocks);
-    return loadPaletteShadow(P, pals, OBJ_PALETTES + first, count);
+    const q = queueVRAMCopy(P, src, dest, blocks);
+    return { ...q, d, e, ...loadPaletteShadow(P, pals, d, e) };
   });
   return { ...r, a: old, f: entryF };
 }

@@ -170,3 +170,20 @@ B(0x14, [["LoadPlaneObjGfx_14", 0x5E79], ["QueuePlaneSpriteByHeight_14", 0x5E9C]
   ["UpdateWaterSplash0_14", 0x60C4], ["AdvanceWaterSplash0Rise_14", 0x616B], ["UpdateWaterSplash1_14", 0x617E],
   ["AdvanceWaterSplash1Rise_14", 0x6225], ["LoadPlaneObjGfx2_14", 0x6238],
   ["QueuePlaneSpriteByFrameCounter_14", 0x625B], ["AdvancePlaneFrameCounter_14", 0x641F]], { prep: splashPrep, n: 1 });
+// senior_victory_12: the senior court's stage
+B(0x12, [["ComputeSeniorCourtStage", 0x7756]]);
+// varsity_courtyard_13 / varsity_tour_13 / team_bracket_13: the emote balloon and the roommate placed, the tour's
+// unused sprite routines, the stubs and story-rank copies; the reply texts and the courts' variant (memory only)
+const camPrep = both(all, (mem, r) => {
+  wf(mem, "cameraX", pick(r, [0, 0x17, 0x18, 0x20, r(256)]), 1); wf(mem, "cameraY", pick(r, [0, 0x0F, 0x10, 0x20, r(256)]), 1);
+  mem.write(0xFF8C, r(256));
+});
+B(0x13, [["ComputeEmoteActorPosition_13", 0x5BFB, { ...OW, regs: r => ({ a: slot(r) }) }],
+  ["PlaceEmoteActorAtComputedPosition_13", 0x5C27, OW], ["PlaceRoommateAtPlayerTarget_13", 0x5C39, OW],
+  ["SetRoommateDoublesNoReplyText_13", 0x5B8B, { skip: ALL }], ["SetRoommateSinglesNoReplyText_13", 0x5BA7, { skip: ALL }],
+  ["SetRoommateSinglesYesReplyText_13", 0x5BC3, { skip: ALL }], ["SetRoommateDoublesYesReplyText_13", 0x5BDF, { skip: ALL }],
+  ["SetupVarsityCourtSceneVariant", 0x61A9, { ...OW, skip: ALL }],
+  ["Unused_13_DecompressVarsityCourtTourRecords", 0x667A], ["Unused_13_QueueVarsityCourtTourSprites", 0x66C3],
+  ["MapScriptNop_13", 0x7B4D], ["Unused_13_MapScriptClearActiveFlag", 0x7B4E], ["Unused_13_MapScriptPlaySoundA2", 0x7B53],
+  ["Unused_13_MapScriptHideLocationName", 0x7B56], ["Unused_13_ComputeRankingProgressIndex", 0x7D11],
+  ["ComputeStoryRankTier_13", 0x7D58]], { prep: camPrep });

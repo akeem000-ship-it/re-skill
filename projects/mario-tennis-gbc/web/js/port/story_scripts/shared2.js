@@ -3,7 +3,9 @@
 // clear, the story cue sound, the location name hidden), the short-text argument routine, and the idioms of the
 // NPC handlers (a text id from a table by the story stage, the stage's tier).
 // Covered with the modules that use them (see each module's header for its recordings).
-import { FZ, FH, FC, sound, fetchShortText, pushTextString, hook } from "./common.js";
+import { FZ, FH, FC, BANK_ACTORS, ACTOR_SIZE, wActors, actorState, farcall, sound, fetchShortText, pushTextString, hook } from "./common.js";
+import { attachActorWaypointFollower } from "../story/actor_slots.js";
+import { pushWord, dropWords } from "../story/common.js";
 import { spAddFlags } from "../home/cpu.js";
 
 const SFX_STORY_CUE = 0xA2;
@@ -48,4 +50,21 @@ export function addToHL(base, a) {
   if (sum <= 0xFF) return { hl: (base & 0xFF00) | l, f: (l ? 0 : FZ) | (((base & 0xF) + (a & 0xF)) > 0xF ? FH : 0) };
   const h = ((base >> 8) + 1) & 0xFF;
   return { hl: h << 8 | l, f: (h ? 0 : FZ) | ((h & 0xF) === 0 ? FH : 0) | FC };
+}
+// ld bc, wActors + 1 * ACTOR_SIZE / script_get_actor_state actor / ld e, l / ld d, h / farcall
+// AttachActorWaypointFollower: the player's shadow (actor 1) follows the actor's steps
+export function shadowFollow(P, actor) {
+  const leader = actorState(P, actor);
+  farcall(P, BANK_ACTORS, () => attachActorWaypointFollower(P, wActors + ACTOR_SIZE, leader));
+}
+// `farcall X` (the rst at rst) of a JS routine at the ROM's stack depth: FarCall's words under the callee (the
+// return past the inline bytes, hl, a with the caller's bank, and FarCallReturn), so routines that keep things on
+// the stack (a point buffer at sp - 4) see the ROM's sp. regs: the a and hl at the rst.
+const FarCallReturn = 0x01D5;
+export function farcallAt(P, rst, bank, fn, regs = {}) {
+  pushWord(P, (rst + 3) & 0xFFFF);
+  pushWord(P, (regs.hl ?? P.cpu.hl) & 0xFFFF);
+  pushWord(P, ((regs.a ?? P.cpu.a) & 0xFF) << 8 | P.V.romBank);
+  pushWord(P, FarCallReturn);
+  try { return farcall(P, bank, fn); } finally { dropWords(P, 4); }
 }

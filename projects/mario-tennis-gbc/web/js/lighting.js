@@ -28,17 +28,20 @@ const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t *
 // surfaces / in shadow (1 = the game's own colours); exp, sat, con: grade; lamps: how much lamps, windows and fountains shine (0..1);
 // bloom: highlight glow; vig: vignette; tone: warm/cool split tone of the grade (r, g, b multipliers for highlights)
 const KF = [
-  { h: 0,    az: -50, el: 38, sun: [0.27, 0.35, 0.64], amb: [0.14, 0.19, 0.38], exp: 1.35, sat: 0.90, con: 1.06, lamps: 1.00, bloom: 1.0, vig: 0.62, tone: [0.90, 0.96, 1.10] },
-  { h: 5,    az: -50, el: 38, sun: [0.27, 0.35, 0.64], amb: [0.14, 0.19, 0.38], exp: 1.35, sat: 0.90, con: 1.06, lamps: 1.00, bloom: 1.0, vig: 0.62, tone: [0.90, 0.96, 1.10] },
+  { h: 0,    az: -50, el: 38, sun: [0.25, 0.33, 0.62], amb: [0.11, 0.15, 0.34], exp: 1.32, sat: 0.92, con: 1.06, lamps: 1.00, bloom: 1.0, vig: 0.62, tone: [0.90, 0.96, 1.10] },
+  { h: 5,    az: -50, el: 38, sun: [0.25, 0.33, 0.62], amb: [0.11, 0.15, 0.34], exp: 1.32, sat: 0.92, con: 1.06, lamps: 1.00, bloom: 1.0, vig: 0.62, tone: [0.90, 0.96, 1.10] },
   { h: 6.2,  az: 80,  el: 8,  sun: [1.05, 0.62, 0.52], amb: [0.40, 0.44, 0.70], exp: 1.12, sat: 1.00, con: 1.08, lamps: 0.55, bloom: 0.9, vig: 0.58, tone: [1.10, 0.94, 0.88] },
   { h: 7.8,  az: 68,  el: 26, sun: [1.16, 0.98, 0.76], amb: [0.60, 0.68, 0.92], exp: 1.03, sat: 1.10, con: 1.08, lamps: 0.00, bloom: 0.7, vig: 0.48, tone: [1.08, 1.00, 0.92] },
-  { h: 12,   az: -25, el: 60, sun: [1.08, 1.04, 0.97], amb: [0.68, 0.76, 0.97], exp: 1.02, sat: 1.12, con: 1.07, lamps: 0.00, bloom: 0.6, vig: 0.42, tone: [1.04, 1.02, 0.97] },
+  { h: 12,   az: -28, el: 50, sun: [1.10, 1.04, 0.95], amb: [0.64, 0.73, 0.98], exp: 1.03, sat: 1.16, con: 1.09, lamps: 0.00, bloom: 0.6, vig: 0.42, tone: [1.04, 1.02, 0.97] },
   { h: 16.3, az: -48, el: 38, sun: [1.17, 1.01, 0.79], amb: [0.64, 0.70, 0.94], exp: 1.03, sat: 1.12, con: 1.08, lamps: 0.00, bloom: 0.7, vig: 0.46, tone: [1.08, 1.00, 0.92] },
   { h: 18.4, az: -76, el: 13, sun: [1.38, 0.84, 0.50], amb: [0.50, 0.50, 0.80], exp: 1.00, sat: 1.15, con: 1.10, lamps: 0.28, bloom: 0.9, vig: 0.54, tone: [1.14, 0.96, 0.84] },
   { h: 19.6, az: -82, el: 4,  sun: [0.95, 0.50, 0.48], amb: [0.34, 0.38, 0.68], exp: 1.12, sat: 1.05, con: 1.08, lamps: 0.78, bloom: 1.0, vig: 0.58, tone: [1.06, 0.94, 0.96] },
-  { h: 21,   az: -50, el: 38, sun: [0.27, 0.35, 0.64], amb: [0.14, 0.19, 0.38], exp: 1.35, sat: 0.90, con: 1.06, lamps: 1.00, bloom: 1.0, vig: 0.62, tone: [0.90, 0.96, 1.10] },
-  { h: 24,   az: -50, el: 38, sun: [0.27, 0.35, 0.64], amb: [0.14, 0.19, 0.38], exp: 1.35, sat: 0.90, con: 1.06, lamps: 1.00, bloom: 1.0, vig: 0.62, tone: [0.90, 0.96, 1.10] },
+  { h: 21,   az: -50, el: 38, sun: [0.25, 0.33, 0.62], amb: [0.11, 0.15, 0.34], exp: 1.32, sat: 0.92, con: 1.06, lamps: 1.00, bloom: 1.0, vig: 0.62, tone: [0.90, 0.96, 1.10] },
+  { h: 24,   az: -50, el: 38, sun: [0.25, 0.33, 0.62], amb: [0.11, 0.15, 0.34], exp: 1.32, sat: 0.92, con: 1.06, lamps: 1.00, bloom: 1.0, vig: 0.62, tone: [0.90, 0.96, 1.10] },
 ];
+// RPG maps indoors (dorm, cafe, hall, centre ...): lit by lamps whatever the hour, so they keep one warm look
+const INDOOR_MAPS = new Set([17, 18, 25, 33, 34, 35]);
+const INDOOR = { h: 12, az: -30, el: 70, sun: [1.06, 1.0, 0.90], amb: [0.80, 0.79, 0.90], exp: 1.02, sat: 1.08, con: 1.06, lamps: 0.16, bloom: 0.6, vig: 0.50, tone: [1.06, 1.0, 0.94], shade: 0.55 };
 const mixArr = (a, b, t) => Array.isArray(a) ? a.map((v, i) => lerp(v, b[i], t)) : lerp(a, b, t);
 export function skyAt(hour) {                       // interpolated parameters for an hour of the day (0..24)
   const h = ((hour % 24) + 24) % 24; let i = 0; while (i < KF.length - 2 && h >= KF[i + 1].h) i++;
@@ -116,17 +119,19 @@ void main() { vec3 c = texture(uTex, vUV + uTexel * vec2(-1.0, -1.0)).rgb + text
 // glow source: highlights (bloom) and lamps / windows (bright spots on a darker surround) when it is dusk or night
 // glassy(): light blue panes, and warm yellow lamps; a blob (survives a 3x3 erosion) that is brighter than its surround
 const GLASS = `
-float glassy(vec3 c) { float blue = smoothstep(0.10, 0.30, c.b - c.r) * smoothstep(0.45, 0.65, c.g) * smoothstep(0.55, 0.75, c.b); float warm = smoothstep(0.75, 0.9, c.r) * smoothstep(0.65, 0.85, c.g) * (1.0 - smoothstep(0.35, 0.6, c.b)); return max(blue, warm); }
+float glassy(vec3 c) { float blue = smoothstep(0.10, 0.30, c.b - c.r) * smoothstep(0.30, 0.45, c.g) * smoothstep(0.55, 0.75, c.b); float warm = smoothstep(0.75, 0.9, c.r) * smoothstep(0.65, 0.85, c.g) * (1.0 - smoothstep(0.35, 0.6, c.b)); return max(blue, warm); }
 `;
 const FS_EXTRACT = HEAD + GLASS + `
-uniform sampler2D uQ, uB; uniform vec2 uTexel; uniform float uHi, uEm, uThr; uniform vec3 uWarm;
+uniform sampler2D uQ, uB, uS, uD; uniform mat4 uInvVP; uniform vec2 uTexel; uniform float uHi, uEm, uThr, uLL; uniform vec3 uLit;
+vec3 wpos(vec2 uv) { vec4 p = uInvVP * vec4(uv * 2.0 - 1.0, texture(uD, uv).r * 2.0 - 1.0, 1.0); return p.xyz / p.w; }
 void main() {
-  vec3 c = texture(uQ, vUV).rgb, b = texture(uB, vUV).rgb; float l = lum(c);
-  float g = glassy(c);
-  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) g = min(g, glassy(texture(uQ, vUV + vec2(float(x), float(y)) * uTexel).rgb) + 0.15);
-  float em = clamp(g, 0.0, 1.0) * smoothstep(0.02, 0.10, l - lum(b));
+  vec3 c = texture(uQ, vUV).rgb * uLL, b = texture(uB, vUV).rgb;
+  vec3 P0 = wpos(vUV); vec3 n = normalize(cross(wpos(vUV + vec2(uTexel.x, 0.0)) - P0, wpos(vUV + vec2(0.0, uTexel.y)) - P0)); float wall = 1.0 - smoothstep(0.35, 0.85, abs(n.y));
+  float dens = 0.0;                                              // how much of the area is lamp / window glass (taps on the full-resolution picture)
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) dens += glassy(texture(uS, vUV + vec2(float(x), float(y)) * uTexel * 0.8).rgb);
+  float em = smoothstep(0.10, 0.45, dens / 9.0) * wall;
   vec3 hi = max(c - uThr, 0.0) * uHi;
-  o = vec4(hi + c * uWarm * em * uEm, em);
+  o = vec4(hi + uLit * em * uEm, em);
 }`;
 const FS_COMP = HEAD + GLASS + `
 uniform sampler2D uScene, uDepth, uShadow, uBlur, uGlow, uE;
@@ -134,7 +139,7 @@ uniform mat4 uInvVP; uniform mat4 uVP; uniform vec2 uNF; uniform vec2 uRes;
 uniform vec3 uL; uniform vec3 uSun, uAmb; uniform float uShade, uWall;
 uniform float uExp, uSat, uCon, uBloom, uGlowK, uSpill, uLamps, uVig, uDof; uniform vec3 uTone, uWarm;
 uniform float uDbg; uniform vec4 uFocus;                    // y of the sharp band: centre, half height (0..1 of the screen), blur rise top, rise bottom
-uniform int uNP; uniform vec4 uPP[6]; uniform vec3 uPC[6];
+uniform int uNP; uniform vec4 uPP[6]; uniform vec3 uPC[6]; uniform vec4 uPool; uniform vec3 uPoolC;
 uniform int uNF2; uniform vec4 uFl[4]; uniform vec3 uFC[4];
 float lin(float d) { return 2.0 * uNF.x * uNF.y / ((uNF.y + uNF.x) - (d * 2.0 - 1.0) * (uNF.y - uNF.x)); }
 void main() {
@@ -155,11 +160,12 @@ void main() {
   // point lights
   vec3 add = vec3(0.0);
   for (int i = 0; i < 6; i++) { if (i >= uNP) break; vec3 dv = uPP[i].xyz - P; float r = length(dv) / uPP[i].w; float a = clamp(1.0 - r, 0.0, 1.0); a *= a; add += uPC[i] * a * (0.55 + 0.45 * clamp(dot(n, normalize(dv)), 0.0, 1.0)); }
+  if (uPool.z > 0.0) { vec2 q = (P.xz - uPool.xy) / uPool.zw; add += uPoolC * (1.0 - smoothstep(0.75, 1.5, length(q))); }
   vec4 g4 = texture(uGlow, vUV); vec3 gl = g4.rgb;
   // lamps / windows keep their own light and shine
-  float em = texture(uE, vUV).a * smoothstep(0.35, 0.75, glassy(c0) + 0.25);
+  float em = smoothstep(0.1, 0.5, texture(uE, vUV).a) * smoothstep(0.2, 0.6, glassy(c0)) * (1.0 - up);   // lit panes and lamps (on walls)
   c = c * (light + add + gl * uSpill);
-  c = mix(c, c0 * uWarm * 1.15, em * uLamps);
+  c = mix(c, uWarm * (0.75 + 0.9 * lum(c0)), em * uLamps);
   c += gl * uGlowK;
   // floodlight glare
   for (int i = 0; i < 4; i++) {
@@ -192,19 +198,26 @@ export class Lighting {
     this.on = false; this.begun = false; this.posted = false; this.cam = null; this.sky = skyAt(15);
     this.progs = {}; this.size = null; this.stats = { ms: 0, passes: 0, gpuMs: null, tier: this.tier }; this.slow = 0;
     this.empty = this.gl.createVertexArray(); this.q = null;
+    this.timer = this.gl.getExtension("EXT_disjoint_timer_query_webgl2"); this.queries = []; this.auto = !q.has("lightq"); this.lastT = 0; this.dtMin = 1e9; this.dtEma = 0; this.over = 0;
   }
   get active() { return this.mode !== "off" && !this.broken; }
   setMode(m) {
     this.mode = LIGHT_MODES.includes(m) ? m : "off";
     try { localStorage.setItem(KEY, this.mode); } catch (e) { /* private mode */ }
+    this.over = 0; if (this.auto && this.tier < this.tierWant) this.setTier(this.tierWant);       // a fresh try at full quality
     if (this.onMode) this.onMode(this.mode);
+  }
+  skyNow() {                                         // the sky for the current time (recomputed once a second)
+    const k = this.hourOverride ?? Math.floor(performance.now() / 1000) + this.mode;
+    if (this.skyKey !== k) { this.skyKey = k; this.skyVal = skyAt(this.hour()); }
+    return this.skyVal;
   }
   hour() { return this.hourOverride ?? (this.mode === "day" ? 15 : hourNow()); }
 
   // ---- GL objects ----
   prog(name, fs) {
     if (this.progs[name]) return this.progs[name];
-    const samplers = { shadow: ["uDepth"], blur: ["uTex", "uDepth"], down: ["uTex"], extract: ["uQ", "uB"], comp: ["uScene", "uDepth", "uShadow", "uBlur", "uGlow", "uE"] }[name];
+    const samplers = { shadow: ["uDepth"], blur: ["uTex", "uDepth"], down: ["uTex"], extract: ["uQ", "uB", "uS", "uD"], comp: ["uScene", "uDepth", "uShadow", "uBlur", "uGlow", "uE"] }[name];
     const gl = this.gl, mk = (t, s) => { const sh = gl.createShader(t); gl.shaderSource(sh, s); gl.compileShader(sh); if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(name + ": " + gl.getShaderInfoLog(sh)); return sh; };
     const p = gl.createProgram(); gl.attachShader(p, mk(gl.VERTEX_SHADER, VS)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(name + ": " + gl.getProgramInfoLog(p));
@@ -225,6 +238,7 @@ export class Lighting {
   target(w, h, linear = true, half = this.half) {
     const gl = this.gl, t = this.tex(w, h, linear, false, half), f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    if (half && gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) { gl.deleteTexture(t); gl.deleteFramebuffer(f); this.half = false; return this.target(w, h, linear, false); }   // no float targets: 8 bits
     return { t, f, w, h };
   }
   free() {
@@ -241,7 +255,7 @@ export class Lighting {
     const st = this.tex(W, H, false), dt = this.tex(W, H, false, true), f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, st, 0); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, dt, 0);
     q.scene = { t: st, depthTex: dt, f, w: W, h: H }; this.msaa = false;
-    if (this.tier >= 2 && gl.getParameter(gl.MAX_SAMPLES) >= 4) {
+    if (this.tier >= 2 && !this.noMsaa && gl.getParameter(gl.MAX_SAMPLES) >= 4) {
       const rc = gl.createRenderbuffer(), rd = gl.createRenderbuffer(), fm = gl.createFramebuffer();
       gl.bindRenderbuffer(gl.RENDERBUFFER, rc); gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 4, gl.RGBA8, W, H);
       gl.bindRenderbuffer(gl.RENDERBUFFER, rd); gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 4, gl.DEPTH_COMPONENT24, W, H);
@@ -268,29 +282,31 @@ export class Lighting {
   begin(W, H) {
     const gl = this.gl; this.begun = false; this.posted = false;
     try { this.ensure(W, H); } catch (e) { console.warn("light", e); this.broken = true; gl.bindFramebuffer(gl.FRAMEBUFFER, null); return false; }
-    this.W = W; this.H = H; this.begun = true; this.t0 = performance.now();
+    this.W = W; this.H = H; this.begun = true; this.t0 = performance.now(); this.watchFrames();
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.msaa ? this.q.ms.f : this.q.scene.f);
     return true;
   }
-  camera(mvp, near, far, unit, kind, at) { this.cam = { mvp, near, far, unit, kind, at }; }   // unit: world units per game pixel; at: a ground point in the middle of the view
+  camera(mvp, near, far, unit, kind, at, mapId = -1) { this.cam = { mvp, near, far, unit, kind, at, indoor: kind === "field" && INDOOR_MAPS.has(mapId) }; }   // unit: world units per game pixel; at: a ground point in the middle of the view
   finish() { if (this.begun && !this.posted) this.post(); this.begun = false; }
   // everything the passes need to know about the scene, set by voxel.js through camera() and read from its state here
   lights(P, unit, kind) {
-    const out = [], fl = [], v = this.v, night = P.lamps;
+    const out = [], fl = [], v = this.v, night = P.lamps; let pool = null;
     if (kind === "field") {
       const fx = v.field && v.field.fx;
-      if (fx && night > 0.02) for (const fo of fx.fountains || []) if (out.length < 6) out.push({ p: [fo.origin[0], fo.origin[1] + 7, fo.origin[2]], r: 62, c: [0.30 * night, 0.62 * night, 0.95 * night] });
+      if (fx && night > 0.02) for (const fo of fx.fountains || []) if (out.length < 6) out.push({ p: [fo.origin[0], fo.origin[1] + 8, fo.origin[2]], r: 100, c: [0.34 * night, 0.80 * night, 1.20 * night] });
     } else if (kind === "court" && night > 0.02) {
-      for (const [x, z] of [[-1050, -1750], [1050, -1750], [-1050, 1750], [1050, 1750]]) { out.push({ p: [x, 900, z], r: 4200, c: [0.62 * night, 0.58 * night, 0.46 * night] }); fl.push({ p: [x, 900, z], c: [0.55 * night, 0.50 * night, 0.38 * night], size: 0.16 }); }
+      pool = { v: [0, -80, 1000, 1850], c: [0.95 * night, 0.90 * night, 0.72 * night] };
+      for (const [x, z] of [[-1050, -1750], [1050, -1750], [-1050, 1750], [1050, 1750]]) { out.push({ p: [x, 900, z], r: 3300, c: [0.34 * night, 0.31 * night, 0.24 * night] }); fl.push({ p: [x, 900, z], c: [0.30 * night, 0.27 * night, 0.20 * night], size: 0.10 }); }
     }
-    return { out, fl };
+    if (kind === "court" && v.ballfx && v.ballfx.on) for (const l of v.ballfx.lights()) if (out.length < 6) out.push(l);      // impact lights of the ball effects (ballfx.js), day and night
+    return { out, fl, pool };
   }
   post() {
     if (!this.begun || this.posted) return;
     this.posted = true; const gl = this.gl, q = this.q, v = this.v, W = this.W, H = this.H, cam = this.cam, t0 = performance.now();
     if (!cam) { this.blitPlain(); return; }
-    const P = this.sky = skyAt(this.hour());
-    try { this.run(P, cam, q, W, H); } catch (e) { console.warn("light", e); this.broken = true; this.blitPlain(); }
+    const P = this.sky = cam.indoor ? INDOOR : this.skyNow();
+    try { this.run(P, cam, q, W, H); } catch (e) { console.warn("light", e); this.broken = true; try { this.timerEnd(); } catch (e2) { /* none running */ } this.blitPlain(); }
     // the overlays that follow use the voxel renderer's own state
     gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H); gl.useProgram(v.prog); gl.bindVertexArray(v.vao); gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.activeTexture(gl.TEXTURE0); gl.depthMask(true);
@@ -305,6 +321,7 @@ export class Lighting {
     const gl = this.gl; if (!this.msaa) return;
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, q.ms.f); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, q.scene.f);
     gl.blitFramebuffer(0, 0, this.W, this.H, 0, 0, this.W, this.H, gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT, gl.NEAREST);
+    if (!this.resolveOk) { this.resolveOk = true; if (gl.getError()) { this.noMsaa = true; this.size = null; } }      // a GPU that cannot resolve depth: no multisampling
   }
   pass(pg, tgt, uni, texs) {                        // one full-screen pass: program, target (null = canvas), uniforms, textures by unit
     const gl = this.gl; gl.bindFramebuffer(gl.FRAMEBUFFER, tgt ? tgt.f : null); gl.viewport(0, 0, tgt ? tgt.w : this.W, tgt ? tgt.h : this.H);
@@ -315,7 +332,7 @@ export class Lighting {
   }
   run(P, cam, q, W, H) {
     const gl = this.gl, T = this.tier, unit = cam.unit, S = q.scene;
-    this.stats.passes = 0; this.resolve(q);
+    this.stats.passes = 0; this.timerBegin(); this.resolve(q);
     // device pixels per game pixel in the middle of the view -> the chain's size
     const c0 = apply(cam.mvp, [cam.at[0], cam.at[1], cam.at[2], 1]), c1 = apply(cam.mvp, [cam.at[0] + unit, cam.at[1], cam.at[2], 1]);
     const dpp = Math.abs(c1[0] / c1[3] - c0[0] / c0[3]) * W / 2 || 4, qw = clamp(Math.round(W / Math.max(1, dpp) / 8) * 8, 64, W >> 1), qh = clamp(Math.round(H / Math.max(1, dpp) / 8) * 8, 64, H >> 1);
@@ -323,11 +340,11 @@ export class Lighting {
     gl.bindVertexArray(this.empty); gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.depthMask(false);
     // the sun (or moon): direction towards it in world space (x right, y up, -z away from the viewer)
     const az = P.az * Math.PI / 180, el = Math.max(P.el, 11) * Math.PI / 180, L = [Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el)];
-    const night = P.lamps, shade = T >= 1 ? 1 : 0, dofK = T >= 1 ? 1 : 0;
+    const night = P.lamps, shade = T >= 1 ? (P.shade ?? 1) : 0, dofK = T >= 1 ? 1 : 0;
     const progS = this.prog("shadow", FS_SHADOW), progB = this.prog("blur", FS_BLUR), progD = this.prog("down", FS_DOWN), progE = this.prog("extract", FS_EXTRACT), progC = this.prog("comp", FS_COMP);
     const NF = [cam.near, cam.far], vp = cam.mvp, invVP = invert(vp);
     // 1. shadows
-    if (shade) {
+    if (shade > 0) {
       const reach = (cam.kind === "court" ? 520 : 70) * (P.el < 20 ? 1.2 : 1), thick = [0.5 * unit, (cam.kind === "court" ? 190 : 26)];
       const dclip = apply(vp, [L[0] * reach, L[1] * reach, L[2] * reach, 0]);
       this.pass(progS, q.sh0, { uNF: NF, uDClip: dclip, uThick: thick, uSteps: T >= 2 ? 28 : 16 }, [S.depthTex]);
@@ -342,7 +359,7 @@ export class Lighting {
       this.pass(progB, q.b1, { uDir: [1 / q.q0.w * 1.3, 0], uUseDepth: 0 }, [q.q0.t, S.depthTex]);
       this.pass(progB, q.b0, { uDir: [0, 1 / q.q0.h * 1.3], uUseDepth: 0 }, [q.b1.t, S.depthTex]);
     }
-    this.pass(progE, q.e0, { uTexel: [1 / q.q0.w, 1 / q.q0.h], uHi: 1.5 * P.bloom, uEm: 1.8 * night, uThr: 0.74, uWarm: night > 0.3 ? [1.05, 0.92, 0.70] : [1.0, 0.95, 0.8] }, [q.q0.t, (needB ? q.b0 : q.q0).t]);
+    this.pass(progE, q.e0, { uInvVP: invVP, uTexel: [1 / q.q0.w, 1 / q.q0.h], uHi: 1.5 * P.bloom, uEm: 2.2 * night, uThr: 0.74, uLL: Math.min(1.4, (0.299 * (P.amb[0] + (P.sun[0] - P.amb[0]) * 0.85) + 0.587 * (P.amb[1] + (P.sun[1] - P.amb[1]) * 0.85) + 0.114 * (P.amb[2] + (P.sun[2] - P.amb[2]) * 0.85)) * P.exp), uLit: [1.0, 0.72, 0.34] }, [q.q0.t, (needB ? q.b0 : q.q0).t, S.t, S.depthTex]);
     this.pass(progB, q.g1, { uDir: [1 / q.e0.w * 2.2, 0], uUseDepth: 0 }, [q.e0.t, S.depthTex]);
     this.pass(progB, q.g0, { uDir: [0, 1 / q.e0.h * 2.2], uUseDepth: 0 }, [q.g1.t, S.depthTex]);
     this.pass(progB, q.g1, { uDir: [1 / q.e0.w * 5, 0], uUseDepth: 0 }, [q.g0.t, S.depthTex]);
@@ -359,12 +376,39 @@ export class Lighting {
     const wallK = cam.kind === "field" ? 1 : 0.6;
     gl.useProgram(progC.p);
     gl.uniform4fv(progC.u.uPP, pp); gl.uniform3fv(progC.u.uPC, pc); gl.uniform4fv(progC.u.uFl, fl); gl.uniform3fv(progC.u.uFC, fc);
+    gl.useProgram(progC.p); gl.uniform4fv(progC.u.uPool, li.pool ? li.pool.v : [0, 0, 0, 0]); gl.uniform3fv(progC.u.uPoolC, li.pool ? li.pool.c : [0, 0, 0]);
     gl.uniform1i(progC.u.uNP, li.out.length); gl.uniform1i(progC.u.uNF2, nf);
     this.pass(progC, null, {
-      uInvVP: invVP, uVP: vp, uNF: NF, uRes: [W, H], uL: L, uSun: P.sun, uAmb: P.amb, uShade: shade ? 1 : 0, uWall: wallK,
+      uInvVP: invVP, uVP: vp, uNF: NF, uRes: [W, H], uL: L, uSun: P.sun, uAmb: P.amb, uShade: shade, uWall: wallK,
       uExp: P.exp, uSat: P.sat, uCon: P.con, uBloom: P.bloom, uGlowK: 0.62 * (0.6 + 0.4 * P.bloom), uSpill: 0.55 + 0.9 * night, uLamps: night, uVig: P.vig, uDof: dofK * 0.8, uTone: P.tone,
-      uDbg: this.dbg, uWarm: [1.06, 0.93, 0.72], uFocus: [0.5, 0.17, 0.30, 0.36],
+      uDbg: this.dbg, uWarm: [1.15, 0.82, 0.42], uFocus: [0.5, 0.17, 0.30, 0.36],
     }, [S.t, S.depthTex, q.sh0.t, (needB ? q.b0 : q.q0).t, q.g0.t, q.e0.t]);
+    this.timerEnd();
+  }
+  // GPU time of the passes (where the browser has a timer): read back a few frames later; the tier drops when they cost too much for
+  // 120 fps smoothing (budget per frame: 3 ms with shadows and multisampling, 2.2 ms without). Without a timer the frame interval is watched:
+  // a display refreshing at 120 Hz whose frames keep coming much slower than its fastest ones.
+  timerBegin() {
+    const gl = this.gl, ext = this.timer; if (!ext) return;
+    while (this.queries.length) {
+      const e = this.queries[0], ok = gl.getQueryParameter(e, gl.QUERY_RESULT_AVAILABLE), dis = gl.getParameter(ext.GPU_DISJOINT_EXT);
+      if (!ok && !dis) break; this.queries.shift();
+      if (ok && !dis) { const ms = gl.getQueryParameter(e, gl.QUERY_RESULT) / 1e6; this.stats.gpuMs = this.stats.gpuMs == null ? ms : this.stats.gpuMs * 0.92 + ms * 0.08; this.judge(this.stats.gpuMs); }
+      gl.deleteQuery(e);
+    }
+    if (this.queries.length < 4) { const e = gl.createQuery(); gl.beginQuery(ext.TIME_ELAPSED_EXT, e); this.cur = e; }
+  }
+  timerEnd() { const gl = this.gl, ext = this.timer; if (ext && this.cur) { gl.endQuery(ext.TIME_ELAPSED_EXT); this.queries.push(this.cur); this.cur = null; } }
+  judge(ms) {
+    if (!this.auto || this.tier <= 0) return;
+    if (ms > (this.tier >= 2 ? 3.0 : 2.2)) { if (++this.over > 90) { this.over = 0; this.setTier(this.tier - 1); } } else this.over = Math.max(0, this.over - 2);
+  }
+  setTier(t) { this.tier = Math.max(0, t); this.stats.tier = this.tier; this.stats.gpuMs = null; if (this.onTier) this.onTier(this.tier); }
+  watchFrames() {                                   // no GPU timer: judge by the frame interval
+    const now = performance.now(), dt = now - this.lastT; this.lastT = now;
+    if (this.timer || !this.auto || dt > 100 || dt < 2) return;
+    this.dtMin = Math.min(this.dtMin * 1.0005, dt); this.dtEma = this.dtEma ? this.dtEma * 0.97 + dt * 0.03 : dt;
+    if (this.tier > 0 && this.dtMin < 10.5 && this.dtEma > this.dtMin * 1.6) { if (++this.over > 240) { this.over = 0; this.dtEma = 0; this.dtMin = 1e9; this.setTier(this.tier - 1); } } else this.over = Math.max(0, this.over - 1);
   }
 }
 
