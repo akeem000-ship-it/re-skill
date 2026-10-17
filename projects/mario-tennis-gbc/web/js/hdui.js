@@ -138,23 +138,45 @@ export function drawText(g, scr, text, x, y, o = {}) {
 // After painting a panel's fill over a region, give back the original's non-fill pixels (text, icons, portraits, digits)
 // so they show through: every pixel of the region whose BG colour differs from `fillRGB` ([r,g,b] or css) gets a hole in
 // what was painted. Pixels of text lines the HD font replaced are not given back (they are redrawn as HD text).
+let maskCv = null, maskG = null, maskImg = null, mask32 = null;
 export function punchInk(g, scr, x, y, w, h, fillRGB, tol = 12, exclude = null) {   // exclude: [[x, y, w, h], ...] pixels never given back
   const f = toRGB(fillRGB), px = scr.px32, tm = scr.textMask, fp = (0xFF000000 | f[2] << 16 | f[1] << 8 | f[0]) >>> 0;
-  const x0 = Math.max(0, x | 0), y0 = Math.max(0, y | 0), x1 = Math.min(160, Math.ceil(x + w)), y1 = Math.min(144, Math.ceil(y + h));
-  const ex = pxx => exclude && exclude.some(e => pxx[0] >= e[0] && pxx[0] < e[0] + e[2] && pxx[1] >= e[1] && pxx[1] < e[1] + e[3]), pt = [0, 0];
-  g.save(); g.globalCompositeOperation = "destination-out"; g.fillStyle = "#000"; g.beginPath();
-  for (let yy = y0; yy < y1; yy++) {
-    let run = -1;
-    for (let xx = x0; xx <= x1; xx++) {
-      let ink = false;
-      if (xx < x1) {
-        const i = yy * 160 + xx, c = px[i];
-        if (c !== fp && !tm[i] && (Math.abs((c & 255) - f[0]) > tol || Math.abs((c >> 8 & 255) - f[1]) > tol || Math.abs((c >> 16 & 255) - f[2]) > tol)) { pt[0] = xx; pt[1] = yy; ink = !ex(pt); }
-      }
-      if (ink && run < 0) run = xx; else if (!ink && run >= 0) { g.rect(run, yy, xx - run, 1); run = -1; }
-    }
+  const x0 = Math.max(0, x | 0), y0 = Math.max(0, y | 0), x1 = Math.min(160, Math.ceil(x + w)), y1 = Math.min(144, Math.ceil(y + h)), W = x1 - x0, H = y1 - y0;
+  if (W <= 0 || H <= 0) return;
+  if (!maskCv) { maskCv = document.createElement("canvas"); maskCv.width = 160; maskCv.height = 144; maskG = maskCv.getContext("2d"); maskImg = maskG.createImageData(160, 144); mask32 = new Uint32Array(maskImg.data.buffer); }
+  const ex = (xx, yy) => { for (const e of exclude) if (xx >= e[0] && xx < e[0] + e[2] && yy >= e[1] && yy < e[1] + e[3]) return true; return false; };
+  let any = false;
+  for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) {
+    const i = yy * 160 + xx, c = px[i]; let ink = false;
+    if (c !== fp && !tm[i] && (Math.abs((c & 255) - f[0]) > tol || Math.abs((c >> 8 & 255) - f[1]) > tol || Math.abs((c >> 16 & 255) - f[2]) > tol)) ink = !(exclude && ex(xx, yy));
+    mask32[i] = ink ? 0xFF000000 : 0; if (ink) any = true;
   }
-  g.fill(); g.restore();
+  if (!any) return;
+  // one image of the ink pixels, taken out of what was painted (nearest-neighbour: every pixel exactly)
+  maskG.putImageData(maskImg, 0, 0, x0, y0, W, H);
+  g.save(); g.globalCompositeOperation = "destination-out"; g.imageSmoothingEnabled = false; g.drawImage(maskCv, x0, y0, W, H, x0, y0, W, H); g.restore();
+}
+
+// A hash of the BG-only pixels (and the text mask) of a screen rectangle: equal key, equal picture there. For caching art.
+export function regionKey(scr, x, y, w, h) {
+  const px = scr.px32, tm = scr.textMask; let k = 2166136261 >>> 0;
+  const x0 = Math.max(0, x | 0), y0 = Math.max(0, y | 0), x1 = Math.min(160, Math.ceil(x + w)), y1 = Math.min(144, Math.ceil(y + h));
+  for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) { const i = yy * 160 + xx; k = Math.imul(k ^ px[i] ^ (tm[i] << 30), 16777619) >>> 0; }
+  return (k >>> 0).toString(36);
+}
+// Paint a rectangle of art through a cache: draw(ctx) is only called when `key` (plus the rectangle's pixels, see regionKey)
+// differs from the last call with this `id`; otherwise the saved bitmap is blitted. ctx is scaled like g (screen pixels) with
+// the origin at (x, y) of the screen. Use for art that is costly to build and rarely changes (a panel, a smoothed block).
+const artCache = new Map();
+export function paintCached(g, scr, id, x, y, w, h, key, draw) {
+  const full = key + "|" + regionKey(scr, x, y, w, h); let e = artCache.get(id);
+  if (!e || e.key !== full || e.w !== w || e.h !== h) {
+    if (!e) { e = { cv: document.createElement("canvas") }; artCache.set(id, e); }
+    e.cv.width = Math.ceil(w * HD); e.cv.height = Math.ceil(h * HD);
+    const c = e.cv.getContext("2d"); c.setTransform(HD, 0, 0, HD, -x * HD, -y * HD); draw(c); e.key = full; e.w = w; e.h = h;
+    if (artCache.size > 400) for (const k of artCache.keys()) { artCache.delete(k); break; }
+  }
+  g.drawImage(e.cv, x, y, w, h);
 }
 
 // Tell the text layer that screen pixels (x, y, w, h) are now covered by opaque HD fill, so it need not patch the old
@@ -167,7 +189,8 @@ export function markOpaque(scr, x, y, w, h, fillRGB = null) {
 
 // ---- the screen snapshot ------------------------------------------------------------------------------------------------
 export class Cell {
-  constructor(scr, id, x, y) {
+  constructor(scr, id, x, y, dh = 0) {
+    this.dh = dh;                                   // hash of the tile's pixel data (+ bank): equal tiles, equal shape
     this.scr = scr; this.id = id & 0x7FFF; this.layer = id & 0x8000 ? "win" : "bg"; this.x = x; this.y = y;
     const m = scr.gb.mem; this.tile = m.vram[0][this.id]; this.attr = m.vram[1][this.id]; this.pal = this.attr & 7;
     this.cx = this.id & 31; this.cy = (this.id >> 5) & 31;
@@ -193,33 +216,47 @@ export class Cell {
 }
 export class Screen {
   constructor(gb) {
-    this.gb = gb; this.cells = { bg: [], win: [] }; this.byId = new Map(); this.key = ""; this.lines = []; this.font = null;
+    this.gb = gb; this._cells = { bg: [], win: [] }; this._byId = new Map(); this._vis = []; this._nb = 0; this._nw = 0; this.key = ""; this.lines = []; this.font = null;
     this.regs = {}; this.oam = []; this.hidden = new Set(); this.hiddenStatic = new Set(); this.curSprites = false; this.canHide = true; this.claims = []; this.px32 = new Uint32Array(160 * 144); this.textMask = new Uint8Array(160 * 144); this.opaque = new Uint8Array(160 * 144); this.fillPx = new Uint32Array(160 * 144); this.panels = [];
   }
   color(pal, i) { const o = pal * 8 + i * 2, p = this.gb.ppu.bgPal; return col15(p[o] | (p[o + 1] << 8)); }
   // read the visible map cells (each once, at its tile's top-left screen position); returns a key that changes when
   // anything visible changed (cell positions, tile and attribute numbers, tile pixels, palettes)
   scan() {
-    const gb = this.gb, p = gb.ppu, m = gb.mem, v0 = m.vram[0], v1 = m.vram[1], cell = p.pixCell, sub = p.pixSub, seen = new Map();
+    const gb = this.gb, p = gb.ppu, m = gb.mem, v0 = m.vram[0], v1 = m.vram[1], cell = p.pixCell, sub = p.pixSub, seen = this._seen || (this._seen = new Map());
+    seen.clear();
     for (let y = 0; y < 144; y++) for (let x = 0; x < 160;) {
       const i = y * 160 + x, c = cell[i], s = sub[i];
-      if (!seen.has(c)) seen.set(c, [x - (s & 7), y - (s >> 3)]);
+      if (!seen.has(c)) seen.set(c, (x - (s & 7)) << 16 | ((y - (s >> 3)) & 0xFFFF));
       x += 8 - (s & 7);
     }
-    this.byId = new Map(); this.cells = { bg: [], win: [] };
     let h = 2166136261 >>> 0; const mixh = v => { h = Math.imul(h ^ v, 16777619) >>> 0; };
-    const lcdc = p.lcdc, ids = [...seen.keys()].sort((a, b) => a - b);
+    const lcdc = p.lcdc, vis = this._vis; vis.length = 0; let nb = 0, nw = 0;
     mixh(lcdc & 0x10);
-    for (const c of ids) {
-      const [x, y] = seen.get(c); if (y <= -8 || y >= 144 || x <= -8 || x >= 160) continue;
-      const cl = new Cell(this, c, x, y); this.byId.set(c, cl); this.cells[cl.layer].push(cl);
-      mixh(c); mixh((x & 255) | (y & 255) << 8); mixh(cl.tile | cl.attr << 8);
-      const bank = cl.attr & 8 ? v1 : v0, addr = lcdc & 0x10 ? cl.tile << 4 : 0x1000 + ((cl.tile << 24 >> 24) << 4);
-      for (let k = 0; k < 16; k += 4) mixh(bank[addr + k] | bank[addr + k + 1] << 8 | bank[addr + k + 2] << 16 | bank[addr + k + 3] << 24);
+    for (const [c, xy] of seen) {              // (Map order = the order the screen was scanned in: equal screens hash equally)
+      const x = xy >> 16, y = (xy << 16) >> 16; if (y <= -8 || y >= 144 || x <= -8 || x >= 160) continue;
+      const id = c & 0x7FFF, tile = v0[id], attr = v1[id];
+      mixh(c); mixh((x & 255) | (y & 255) << 8); mixh(tile | attr << 8);
+      const bank = attr & 8 ? v1 : v0, addr = lcdc & 0x10 ? tile << 4 : 0x1000 + ((tile << 24 >> 24) << 4);
+      let d = attr & 8 ? 7 : 3;
+      for (let k = 0; k < 16; k += 4) { const w = bank[addr + k] | bank[addr + k + 1] << 8 | bank[addr + k + 2] << 16 | bank[addr + k + 3] << 24; mixh(w); d = Math.imul(d ^ w, 16777619); }
+      vis.push(c, x, y, d >>> 0); if (c & 0x8000) nw++; else nb++;
     }
     const bp = p.bgPal; for (let k = 0; k < 64; k += 4) mixh(bp[k] | bp[k + 1] << 8 | bp[k + 2] << 16 | bp[k + 3] << 24);
     this.regs = { lcdc, scx: p.scx, scy: p.scy, wx: p.wx, wy: p.wy };
-    return this.key = h.toString(36) + ":" + this.cells.bg.length + ":" + this.cells.win.length;
+    this._cells = null; this._byId = null; this._nb = nb; this._nw = nw;       // the Cell objects are made when something asks (a repaint)
+    return this.key = h.toString(36) + ":" + nb + ":" + nw;
+  }
+  // visible cells as flat [id, x, y, dataHash] quadruples (cheap: what the text reader needs)
+  get vis() { return this._vis; }
+  get cells() { if (!this._cells) this._build(); return this._cells; }
+  set cells(v) { this._cells = v; }
+  get byId() { if (!this._byId) this._build(); return this._byId; }
+  set byId(v) { this._byId = v; }
+  _build() {
+    const cells = { bg: [], win: [] }, byId = new Map(), v = this._vis;
+    for (let k = 0; k < v.length; k += 4) { const cl = new Cell(this, v[k], v[k + 1], v[k + 2], v[k + 3]); byId.set(v[k], cl); cells[cl.layer].push(cl); }
+    this._cells = cells; this._byId = byId;
   }
   // a key of the visible sprites: which (index, tile, attributes) are on screen, and where for the `watch` indices (the
   // sprites painters replaced: they must follow them)

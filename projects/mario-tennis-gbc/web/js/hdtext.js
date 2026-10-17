@@ -18,6 +18,8 @@ export { HD };                                       // canvas pixels per screen
 const FONT = 0x7920, WIDTHS = 0x7F80, GLYPHS = 0x66;   // glyphs $20-$85 (the width table ends at $FF entries)
 const SPACE = 0;                                     // glyph index of " "
 
+const BUSY_MS = 6;                                   // a repaint that takes longer than this, again and again, waits for the screen to settle
+const OTHER = 0xFFFC;                                // a column of a tile that is not in the font (a colour-0 pixel in row 0: no glyph column has one)
 const romAt = (rom, addr) => rom[5 * 0x4000 + addr - 0x4000];
 
 export class HDText {
@@ -34,6 +36,8 @@ export class HDText {
       const w = romAt(rom, WIDTHS + g);
       this.cols.push(c); this.width.push(w > 0 && w <= 8 ? w : 0); this.ink.push(ink);
     }
+    // the font never uses colour index 0: a tile with a 0 pixel is no text (checked on 8 bytes, so most of the picture is skipped at once)
+    this.noZero = true; for (let g = 0; g < GLYPHS && this.noZero; g++) for (let r = 0; r < 8; r++) if ((romAt(rom, FONT + g * 16 + r * 2) | romAt(rom, FONT + g * 16 + r * 2 + 1)) !== 255) { this.noZero = false; break; }
     this.order = [...Array(GLYPHS).keys()].filter(g => g !== SPACE && this.width[g] && this.ink[g]).sort((a, b) => this.ink[b] - this.ink[a]);
     this.canvas = { bg: makeCanvas(), win: makeCanvas(), spr: makeCanvas() };    // spr: HD art for sprites (2D draws it over the sprites)
     this.lines = []; this.key = ""; this.frame = -1; this.dirty = true; this.version = 0; this.sprVersion = 0; this.has = { bg: false, win: false, spr: false };
@@ -66,17 +70,39 @@ export class HDText {
     if (p.frames === this.frame && !this.dirty) return false;
     this.frame = p.frames; this.dirty = false;
     const skey = this.screen.scan();
-    const lines = textOn ? this.read() : [], key = this.font + "|" + uiOn + "|" + (uiOn ? skey + ":" + watchKey(this.screen) : "") + "|" + lines.map(l => `${l.x},${l.y},${l.win},${l.text},${l.c.join(",")}`).join("|");
+    let lines = [];
+    if (textOn) { if (skey === this.readKey && this.readLines) lines = this.readLines; else { lines = this.read(); this.readKey = skey; this.readLines = lines; } }
+    const key = this.font + "|" + uiOn + "|" + (uiOn ? skey + ":" + watchKey(this.screen) : "") + "|" + lines.map(l => `${l.x},${l.y},${l.win},${l.text},${l.c.join(",")}`).join("|");
     const okey = uiOn ? this.screen.oamKey(true) : "";
-    if (key === this.key) { if (okey === this.okey) return false; this.okey = okey; this.paintSprites(); return true; }   // only sprites moved
-    this.key = key; this.okey = okey; this.lines = lines; this.paint(); return true;
+    if (key === this.key) {
+      this.streak = 0;
+      if (this.pending) { this.pending = false; this.lines = lines; this.timedPaint(); this.okey = okey; return true; }   // the screen settled: the HD art now
+      if (okey === this.okey) return false;
+      this.okey = okey; this.paintSprites(); return true;                                                           // only sprites moved
+    }
+    // a costly repaint on a screen that changes frame after frame (a page sliding in): show the game's own picture until it
+    // settles instead of dropping frames
+    this.streak = (this.streak || 0) + 1;
+    if (this.streak >= 3 && this.paintMs > BUSY_MS) {
+      this.key = key; this.okey = okey; this.pending = true;
+      if (this.painted) { this.lines = []; this.clearAll(); return true; }
+      return false;
+    }
+    this.key = key; this.okey = okey; this.pending = false; this.lines = lines; this.timedPaint(); return true;
+  }
+  timedPaint() { const t = performance.now(); this.paint(); this.paintMs = (this.paintMs || 0) * 0.6 + (performance.now() - t) * 0.4; }
+  // nothing drawn over the picture (the overlay canvases emptied)
+  clearAll() {
+    for (const k of ["bg", "win", "spr"]) { const cv = this.canvas[k]; if (cv) cv.getContext("2d").clearRect(0, 0, cv.width, cv.height); }
+    this.version++; this.sprVersion++; this.has.bg = this.has.win = this.has.spr = false; this.painted = false;
+    this.hiddenOam = new Set(); this.hiddenPx.fill(0); this.through = [];
   }
 
   // the visible tile rows as strips of tile columns, then the text read from each
   read() {
     const p = this.gb.ppu, m = this.gb.mem, v0 = m.vram[0], v1 = m.vram[1], lcdc = p.lcdc, rows = new Map();
     // every visible map cell once, at its tile's top-left screen position (the screen snapshot's scan)
-    for (const [c, cl] of this.screen.byId) rows.set(c, { x: cl.x, y: cl.y });
+    const vis = this.screen.vis; for (let k = 0; k < vis.length; k += 4) rows.set(vis[k], { x: vis[k + 1], y: vis[k + 2] });
     // group by screen tile row: cells of one map row at one y, side by side
     const bands = new Map();
     for (const [c, pos] of rows) {
@@ -101,20 +127,22 @@ export class HDText {
     const n = cells.length * 8, s = this.strip && this.strip.length >= n ? this.strip : (this.strip = new Uint16Array(Math.max(n, 256)));
     const BLANK = this.cols[SPACE][0];
     let any = false;
+    const noZero = this.noZero; let foreign = false, mine = false;
     for (let k = 0; k < cells.length; k++) {
       const i = cells[k].c, tile = v0[i], attr = v1[i], bank = attr & 8 ? v1 : v0;
       const addr = lcdc & 0x10 ? tile << 4 : 0x1000 + ((tile << 24 >> 24) << 4), flip = attr & 0x60;
+      if (noZero) { let z = false; for (let r = 0; r < 16; r += 2) if ((bank[addr + r] | bank[addr + r + 1]) !== 255) { z = true; break; } if (z) { for (let x = 0; x < 8; x++) s[k * 8 + x] = OTHER; foreign = true; continue; } }
       for (let x = 0; x < 8; x++) {
         let col = 0;
         if (!flip) for (let r = 0; r < 8; r++) { const lo = bank[addr + r * 2], hi = bank[addr + r * 2 + 1]; col |= ((((lo >> (7 - x)) & 1) | (((hi >> (7 - x)) & 1) << 1)) << (2 * r)); }
-        s[k * 8 + x] = col; if (col !== BLANK && col) any = true;
+        s[k * 8 + x] = col; if (col !== BLANK && col) { any = true; mine = true; }
       }
     }
-    if (!any) return;
+    if (!any || (foreign && !mine)) return;
     const ws = this.width[SPACE] || 5, found = [];
     let x = 0;
     while (x < n) {
-      if (s[x] === BLANK || !s[x]) { x++; continue; }
+      if (s[x] === BLANK || !s[x] || s[x] === OTHER) { x++; continue; }
       // a line: glyphs one after another from here, each pen moved on by the glyph's width, spaces between words
       let pen = x, text = "", letters = 0, end = x;
       for (;;) {

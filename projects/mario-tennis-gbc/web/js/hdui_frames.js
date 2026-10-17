@@ -36,27 +36,27 @@ function bind(rows, pat, weak = false) {
   if (c >= 0 && best === cn) return { a, b, c };
   return weak && c >= 0 && best >= cn * 0.3 ? { a, b, c } : weak ? { a, b, c: -1 } : null;
 }
-export function frameRole(cell) {
-  if (cell._fr !== undefined) return cell._fr;
-  let out = null; const rows = cell.rows;
-  if (!cell.blank) for (const fam in FAMILIES) {
-    for (const role of ROLES) { const b = bind(rows, FAMILIES[fam].patterns[role]); if (b) { out = { fam, role, ...b, style: fam + cell.colors[b.a].css + cell.colors[b.b].css }; break; } }
-    if (out) break;
+// what a tile's shape is does not depend on where or in which colours it is shown: remembered by the tile's data hash and flips
+const shapeCache = new Map(), weakCache = new Map();
+function shapeOf(cell, weak) {
+  const cache = weak ? weakCache : shapeCache, key = cell.dh * 4 + ((cell.attr >> 5) & 3);
+  let r = cache.get(key);
+  if (r === undefined) {
+    r = null; const rows = cell.rows;
+    if (!cell.blank) for (const fam in FAMILIES) {
+      for (const role of weak ? ["T", "B", "L", "R"] : ROLES) { const b = bind(rows, FAMILIES[fam].patterns[role], weak); if (b) { r = { fam, role, ...b }; break; } }
+      if (r) break;
+    }
+    if (cache.size > 6000) cache.clear();
+    cache.set(key, r);
   }
-  return cell._fr = out;
+  return r && { ...r, style: r.fam + cell.colors[r.a].css + cell.colors[r.b].css };
 }
+export function frameRole(cell) { return cell._fr !== undefined ? cell._fr : (cell._fr = shapeOf(cell, false)); }
 
 // an edge tile with text or an icon on its fill (a box one tile tall): only its outline and line match; it counts when it sits in a
 // run of edge tiles of the same style (findPanels)
-function weakRole(cell) {
-  if (cell._wr !== undefined) return cell._wr;
-  let out = null; const rows = cell.rows;
-  if (!cell.blank) for (const fam in FAMILIES) {
-    for (const role of ["T", "B", "L", "R"]) { const b = bind(rows, FAMILIES[fam].patterns[role], true); if (b) { out = { fam, role, ...b, style: fam + cell.colors[b.a].css + cell.colors[b.b].css }; break; } }
-    if (out) break;
-  }
-  return cell._wr = out;
-}
+function weakRole(cell) { return cell._wr !== undefined ? cell._wr : (cell._wr = shapeOf(cell, true)); }
 const H_NEXT = { TL: "T TR", T: "T TR", BL: "B BR", B: "B BR" };    // what may stand right of a tile (same row)
 const V_NEXT = { TL: "L BL", L: "L BL", TR: "R BR", R: "R BR" };    // what may stand below a tile (same column)
 
