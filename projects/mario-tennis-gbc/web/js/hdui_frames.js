@@ -44,7 +44,7 @@ function shapeOf(cell, weak) {
   if (r === undefined) {
     r = null; const rows = cell.rows;
     if (!cell.blank) for (const fam in FAMILIES) {
-      for (const role of weak ? ["T", "B", "L", "R"] : ROLES) { const b = bind(rows, FAMILIES[fam].patterns[role], weak); if (b) { r = { fam, role, ...b }; break; } }
+      for (const role of ROLES) { const b = bind(rows, FAMILIES[fam].patterns[role], weak); if (b) { r = { fam, role, ...b }; break; } }
       if (r) break;
     }
     if (cache.size > 6000) cache.clear();
@@ -56,7 +56,7 @@ export function frameRole(cell) { return cell._fr !== undefined ? cell._fr : (ce
 
 // an edge tile with text or an icon on its fill (a box one tile tall): only its outline and line match; it counts when it sits in a
 // run of edge tiles of the same style (findPanels)
-function weakRole(cell) { return cell._wr !== undefined ? cell._wr : (cell._wr = shapeOf(cell, true)); }
+export function weakRole(cell) { return cell._wr !== undefined ? cell._wr : (cell._wr = shapeOf(cell, true)); }
 const H_NEXT = { TL: "T TR", T: "T TR", BL: "B BR", B: "B BR" };    // what may stand right of a tile (same row)
 const V_NEXT = { TL: "L BL", L: "L BL", TR: "R BR", R: "R BR" };    // what may stand below a tile (same column)
 
@@ -65,13 +65,17 @@ export function findPanels(scr, layer) {
   const cells = scr.cells[layer], at = new Map(), fr = [];
   for (const cl of cells) { if (scr.claims.length && scr.claimed(cl.x, cl.y, 8, 8)) continue; const f = frameRole(cl); if (f) { cl._f = f; at.set(cl.x + "," + cl.y, cl); fr.push(cl); } }
   if (!fr.length) return [];
-  for (let pass = 0; pass < 3; pass++) {            // weak edge tiles next to accepted ones of the same style
+  for (let pass = 0; pass < 4; pass++) {            // weak tiles (text or art on the fill) next to accepted ones of the same style
     let added = false;
     for (const cl of cells) {
       if (cl._f || (scr.claims.length && scr.claimed(cl.x, cl.y, 8, 8))) continue;
       const w = weakRole(cl); if (!w) continue;
-      const nb = (w.role === "T" || w.role === "B") ? [at.get((cl.x - 8) + "," + cl.y), at.get((cl.x + 8) + "," + cl.y)] : [at.get(cl.x + "," + (cl.y - 8)), at.get(cl.x + "," + (cl.y + 8))];
-      if (nb.some(n => n && n._f.style === w.style && (w.c < 0 || n._f.c < 0 || w.c === n._f.c) && (n._f.role === w.role || n._f.role[n._f.role.length - 1] === w.role || n._f.role[0] === w.role))) { cl._f = w; at.set(cl.x + "," + cl.y, cl); fr.push(cl); added = true; }
+      const L = at.get((cl.x - 8) + "," + cl.y), R = at.get((cl.x + 8) + "," + cl.y), U = at.get(cl.x + "," + (cl.y - 8)), D = at.get(cl.x + "," + (cl.y + 8));
+      const ok = n => n && n._f.style === w.style && (w.c < 0 || n._f.c < 0 || w.c === n._f.c);
+      // the same adjacency the panels are joined by: a tile to the left may be followed by this one, this one by the tile to the right, ...
+      const fits = (L && ok(L) && (H_NEXT[L._f.role] || "").split(" ").includes(w.role)) || (R && ok(R) && (H_NEXT[w.role] || "").split(" ").includes(R._f.role)) ||
+                   (U && ok(U) && (V_NEXT[U._f.role] || "").split(" ").includes(w.role)) || (D && ok(D) && (V_NEXT[w.role] || "").split(" ").includes(D._f.role));
+      if (fits) { cl._f = w; at.set(cl.x + "," + cl.y, cl); fr.push(cl); added = true; }
     }
     if (!added) break;
   }
