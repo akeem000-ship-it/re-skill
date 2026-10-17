@@ -1,8 +1,10 @@
 // Pieces part 2 of the story scripts (src/story/lessonmenu_10 .. water_15 of the gerbiljames/mario-tennis-gbc-disasm,
 // MIT) repeats in several banks: the four map-script stubs every story bank carries (a `ret`, the active-flag
-// clear, the story cue sound, the location name hidden) and the short-text argument routine.
+// clear, the story cue sound, the location name hidden), the short-text argument routine, and the idioms of the
+// NPC handlers (a text id from a table by the story stage, the stage's tier).
 // Covered with the modules that use them (see each module's header for its recordings).
-import { FZ, sound, fetchShortText, pushTextString, hook } from "./common.js";
+import { FZ, FH, FC, sound, fetchShortText, pushTextString, hook } from "./common.js";
+import { spAddFlags } from "../home/cpu.js";
 
 const SFX_STORY_CUE = 0xA2;
 const WRAM_CHAR1 = 0x05, WRAM_CHAR3 = 0x07;
@@ -30,4 +32,20 @@ export function pushTextArgFetchedString(P, id, entryF = P.cpu.f) {
   pushTextString(P, wTextArgFetchBuffer);
   P.wramBank(old);
   return { a: old, f: entryF, de: wTextArgFetchBuffer, hl: wTextArgFetchBuffer };
+}
+
+// ld a, [index] / add a / ld_hl_indexed table / ld a, [hl+] / ld h, [hl] / ld l, a: the text id (a word) of a
+// bank's table at the index (the doubled index wraps at 8 bits, the table address carries)
+export const tableText = (P, bank, table, index) => P.rom.u16(bank, (table + ((index * 2) & 0xFF)) & 0xFFFF);
+// ld a, [wMapSceneStage] / sra a: the story stage's tier
+export const sra = v => ((v >> 1) | (v & 0x80)) & 0xFF;
+// the F a set_flag / clear_flag (rst $20 / $28) leaves in a routine running at sp (its return address on top):
+// that of the handler's `ld hl, sp+4`
+export const flagCmdF = P => spAddFlags((P.cpu.sp - 6) & 0xFFFF, 4);
+// add l / ld l, a / jr nc / inc h (hl = base + a): hl and the flags
+export function addToHL(base, a) {
+  const sum = (base & 0xFF) + a, l = sum & 0xFF;
+  if (sum <= 0xFF) return { hl: (base & 0xFF00) | l, f: (l ? 0 : FZ) | (((base & 0xF) + (a & 0xF)) > 0xF ? FH : 0) };
+  const h = ((base >> 8) + 1) & 0xFF;
+  return { hl: h << 8 | l, f: (h ? 0 : FZ) | ((h & 0xF) === 0 ? FH : 0) | FC };
 }

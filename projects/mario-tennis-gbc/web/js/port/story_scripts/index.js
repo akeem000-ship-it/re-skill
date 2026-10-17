@@ -43,6 +43,10 @@ export const MODULES = {
   junior_singles_11: JUNIOR_SINGLES_11,
 };
 // part 2 (src/story/lessonmenu_10 .. water_15): its modules, added to MODULES
+import { HOOKS as PLANE_14 } from "./plane_14.js";
+import { HOOKS as RESTAURANT_10 } from "./restaurant_10.js";
+import { HOOKS as MODEFLOW_10 } from "./modeflow_10.js";
+import { HOOKS as MATCH_10 } from "./match_10.js";
 import { HOOKS as RANKING_CHALLENGE_11 } from "./ranking_challenge_11.js";
 import { HOOKS as STUDENT_11 } from "./student_11.js";
 import { HOOKS as TRAINING_0E } from "./training_0e.js";
@@ -66,5 +70,9 @@ Object.assign(MODULES, {
   training_0e: TRAINING_0E,
   student_11: STUDENT_11,
   ranking_challenge_11: RANKING_CHALLENGE_11,
+  match_10: MATCH_10,
+  modeflow_10: MODEFLOW_10,
+  restaurant_10: RESTAURANT_10,
+  plane_14: PLANE_14,
 });
 export const HOOKS = Object.values(MODULES).flat();

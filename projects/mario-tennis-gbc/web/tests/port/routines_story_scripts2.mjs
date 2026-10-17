@@ -139,3 +139,34 @@ B(0x0E, [["LoadExhibitionMatchSettings0", 0x7BB8], ["LoadExhibitionMatchSettings
   ["Unused_0e_MapScriptClearActiveFlag", 0x7C97], ["Unused_0e_MapScriptPlaySoundA2", 0x7C9C],
   ["Unused_0e_MapScriptHideLocationName", 0x7C9F], ["ComputeRankingProgressIndex_0e", 0x7E5A],
   ["Unused_0e_ComputeStoryRankTier", 0x7EA1]]);
+// match_10: the init script, the scene animation's frame task, the match loaders
+B(0x10, [["MatchSelectInitScript_10", 0x4190], ["SceneAnimationFrameTask_10", 0x4141],
+  ...[0x4266, 0x4274, 0x4282, 0x4290, 0x429E, 0x42AC, 0x42BA, 0x42C8, 0x42D6, 0x42E4, 0x42F2, 0x4300, 0x430E, 0x431C,
+    0x432A, 0x4338, 0x4346, 0x4354, 0x4362, 0x4370, 0x437E, 0x438C, 0x439A, 0x43A8, 0x43B6, 0x43C4, 0x43D2, 0x43E0,
+    0x43EE, 0x43FC, 0x440A, 0x4418, 0x4426, 0x4434, 0x4442].map(addr => [`LoadMatch_10_${addr.toString(16)}`, addr])]);
+// restaurant_10: the main menu's helpers, the restaurant's exit, init script and the students' positions and flags
+const restPrep = both(all, (mem, r) => {
+  wf(mem, "mapSceneStage2", pick(r, [0, 1, 2, 3, 4, r(256)]));
+  wf(mem, "saveAndQuitRequest", r(2));
+  for (let i = 0; i < 4; i++) wf(mem, "matchSlotCharRefs", pick(r, [0, 0x80, 0x82, 0x84, r(256)]), i);
+  for (let i = 0; i < 4; i++) wx(mem, 3, at("charSelectSlotChars") + i, r(256));
+});
+B(0x10, [["GetMinigameDrillId", 0x56E9, { regs: r => ({ a: pick(r, [0, 1, 4, 8, 0x0C, r(256)]) }) }],
+  ["CopyExhibitionCharSlotIds", 0x56FC, { wram: 3 }], ["Unused_10_CheckAnyStorySlot", 0x571E],
+  ["GetStoryContinueDestination", 0x5752], ["RestaurantExit01_10", 0x5BEE],
+  // (script-macro routines, their registers put back: memory only)
+  ["RestaurantInitScript_10", 0x60F1, { ...OW, skip: ALL }], ["RestaurantRestoreNpc08Position_10", 0x6103, { ...OW, skip: ALL }],
+  ["RestaurantRestoreNpc12Position_10", 0x611B, { ...OW, skip: ALL }], ["TestRestaurantNpc12StageFlag_10", 0x612C],
+  ["SetRestaurantNpc12StageFlag_10", 0x613E]], { prep: restPrep });
+// plane_14: the plane's and the splashes' graphics, sprites and frame counter
+const splashPrep = both(all, (mem, r) => {
+  for (const [name, vals] of [["cutsceneObjX", [0, 0x40, 0x5E, r(256)]], ["cutsceneObjY", [0, 1, 2, 0x0F, r(256)]],
+    ["cutsceneObjActive", [0, 0, 1, r(256)]], ["cutsceneObjLimit", [0, 0x14, 0x20, 0x3C, r(256)]],
+    ["cutsceneObjPhase", [0, 0x10, 0x14, 0x18, 0x20, 0x3C, r(256)]], ["cutsceneObjRiseTimer", [0, 0, 1, 0x10, r(256)]],
+    ["cutsceneObjTimer", [0, 6, 7, 8, 9, r(256)]]]) for (const i of [0, 1]) wf(mem, name, pick(r, vals), i);
+  wf(mem, "mapSceneStage2", pick(r, [0x88, 0x91, 0x92, 0x9C, 0xA6, 0xD8, 0xFF, r(256)]));
+});
+B(0x14, [["LoadPlaneObjGfx_14", 0x5E79], ["QueuePlaneSpriteByHeight_14", 0x5E9C], ["LoadWaterSplashObjGfx_14", 0x60A1],
+  ["UpdateWaterSplash0_14", 0x60C4], ["AdvanceWaterSplash0Rise_14", 0x616B], ["UpdateWaterSplash1_14", 0x617E],
+  ["AdvanceWaterSplash1Rise_14", 0x6225], ["LoadPlaneObjGfx2_14", 0x6238],
+  ["QueuePlaneSpriteByFrameCounter_14", 0x625B], ["AdvancePlaneFrameCounter_14", 0x641F]], { prep: splashPrep, n: 1 });
