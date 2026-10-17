@@ -237,7 +237,12 @@ const PORT_VERIFIED = ["home/index", "audio/index", "save/index", "cutscenes/ind
   "story_scripts/devmap_10", "story_scripts/challenge_scenes_15", "story_scripts/challenger_15",
   "story_scripts/coach_lessons_15", "story_scripts/coach_walks_15", "story_scripts/court_sky_14",
   "story_scripts/ending_finals_27", "story_scripts/ending_jrcourt_27", "story_scripts/ending_office_27",
-  "story_scripts/firework_14", "story_scripts/gym_actors_0e", "story_scripts/island_14"];
+  "story_scripts/firework_14", "story_scripts/gym_actors_0e", "story_scripts/island_14",
+  "story_scripts/academy_13", "story_scripts/academy_main_10", "story_scripts/academy_wing_10", "story_scripts/actor_0f",
+  "story_scripts/actor_27", "story_scripts/awards_0f", "story_scripts/center_11", "story_scripts/court_machine_14",
+  "story_scripts/court_practice_11", "story_scripts/dorm_13", "story_scripts/doubles_11",
+  "story_scripts/ending_varsity_27", "story_scripts/exhibition_0e", "story_scripts/island_open_0f",
+  "story_scripts/island_rounds_0f", "story_scripts/junior_doubles_11", "story_scripts/junior_singles_11"];
 async function makePort(bytes) {
   const { GamePort } = await import("./port/port.js"), { entry } = await import("./port/entry.js");
   const want = portMode() === "portall" ? "all" : q.get("port");
