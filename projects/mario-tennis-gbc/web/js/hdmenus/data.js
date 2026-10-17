@@ -1,6 +1,6 @@
 // HD painters for agent D: character data / EXP screens, court select, minigame menus, icons, and the menu (UI) font.
 // Use the API in web/js/hdui.js (usage note at its top): registerHDPainter(name, (g, scr, layer) => {...}, { order }).
-import { registerHDPainter as register, drawText, shade, roundRect, HD } from "../hdui.js";
+import { registerHDPainter as register, drawText, shade, roundRect, panelFrame, markOpaque, HD } from "../hdui.js";
 // (painters are timed into globalThis.__dTimes: milliseconds per painter, for tests)
 const registerHDPainter = (name, fn, o) => register(name, (...a) => { const t = performance.now(); try { return fn(...a); } finally { const T = globalThis.__dTimes || (globalThis.__dTimes = {}); T[name] = (T[name] || 0) + performance.now() - t; } }, o);
 
@@ -164,7 +164,7 @@ function splitRun(P, cols, a, b, out = [], fuzzy = false) {
   return fuzzy || !FUZZY ? null : splitRun(P, cols, a, b, out, true);
 }
 function fnvCols(cols, a, b) { let h = 2166136261; for (let x = a; x < b; x++) h = Math.imul(h ^ cols[x], 16777619); return (h >>> 0).toString(16); }
-const NARROW_WORDS = { "3a75a57c": "PLACEMENT" };                                  // hash of a word's ink columns -> the word (long labels in the narrow cut)
+const NARROW_WORDS = { "3a75a57c": "PLACEMENT", "f13c035": "LOB SHOTS", "f0cc8cee": "DROP SHOTS", "5d8a2e7c": "DOUBLE FAULTS" };                                  // hash of a word's ink columns -> the word (long labels in the narrow cut)
 // lines of dialogue-font text in one layer: the ink columns of a strip fall into runs separated by blank columns; each
 // run is a glyph (or touching glyphs), the gaps decide word breaks and line ends
 export function readShadowText(scr, layer) {
@@ -427,59 +427,150 @@ const circ = (x, y, r) => g => { g.moveTo(x + r, y); g.arc(x, y, r, 0, Math.PI *
 const rrect = (x, y, w, h, r) => g => roundRect(g, x, y, w, h, r);
 function line(g, pts, w = 1, col = "#000") { g.save(); g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]); g.lineWidth = w; g.strokeStyle = col; g.lineCap = "round"; g.lineJoin = "round"; g.stroke(); g.restore(); }
 function star5(g, cx, cy, R, r) { for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, d = i % 2 ? r : R; g[i ? "lineTo" : "moveTo"](cx + Math.cos(a) * d, cy + Math.sin(a) * d); } g.closePath(); }
+const dot = (g, x, y, r, col = "#000") => { g.save(); g.fillStyle = col; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.restore(); };
+const bar = (g, x, y, w, h, col = "#000") => { g.save(); g.fillStyle = col; g.fillRect(x, y, w, h); g.restore(); };
+function ellipse(x, y, rx, ry, rot = 0) { return g => { g.moveTo(x + rx, y); g.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2); }; }
+function book(g, bg) {
+  ink(g, poly([[-9, -4.2], [-0.4, -3], [-0.4, 4.6], [-9, 3.4]]), "#fff", 1.3); ink(g, poly([[0.4, -3], [9, -4.2], [9, 3.4], [0.4, 4.6]]), "#fff", 1.3);
+  for (let k = 0; k < 3; k++) { line(g, [[1.8, -1.6 + k * 1.9], [7.2, -2.3 + k * 1.9]], 0.7); line(g, [[-7, -1.8 + k * 1.9], [-2.2, -1.2 + k * 1.9]], 0.7); }
+  line(g, [[-6.4, 3.8], [-8.6, 5.8]], 1.7); ink(g, circ(-5.2, 1.6, 2.3), bg, 1.1); dot(g, -5.9, 0.9, 0.45, "#fff");
+}
 const ICONS = {
   wrench(g, bg) {
-    ink(g, rrect(-5.5, -1.6, 11, 3.2, 1.5)); ink(g, circ(-6.6, 0, 3.5)); ink(g, circ(6.6, 0, 3.5));
-    g.save(); g.fillStyle = bg; g.beginPath(); g.moveTo(-11, -1.3); g.lineTo(-7.2, -1.3); g.lineTo(-7.2, 1.3); g.lineTo(-11, 1.3); g.closePath(); g.fill(); g.restore();
-    line(g, [[-10.2, -1.4], [-7.1, -1.4], [-7.1, 1.4], [-10.2, 1.4]], 0.9);
-    ink(g, circ(6.6, 0, 1.3), bg, 0.9);
+    ink(g, rrect(-5.5, -1.6, 11, 3.2, 1.5)); ink(g, circ(6.6, 0, 3.5)); ink(g, circ(-6.6, 0, 3.5));
+    g.save(); g.fillStyle = bg; g.beginPath(); g.moveTo(-10.4, -1.3); g.lineTo(-6.7, -1.3); g.lineTo(-6.7, 1.3); g.lineTo(-10.4, 1.3); g.closePath(); g.fill(); g.restore();
+    line(g, [[-10, -1.4], [-6.7, -1.4], [-6.7, 1.4], [-10, 1.4]], 0.9); ink(g, circ(6.6, 0, 1.3), bg, 0.9);
   },
   door(g, bg) {
-    ink(g, poly([[-6, -5.5], [3, -5.5], [3, 4.5], [-6, 4.5]]), bg, 1.2); line(g, [[-6, -5.5], [-6, 4.5]], 1.5);
-    ink(g, poly([[-5.5, -5], [-1.5, -3.5], [-1.5, 5.5], [-5.5, 4.5]]), "#000", 0.6);
-    ink(g, poly([[1, 4.5], [9, 4.5], [10, 6], [0, 6]]), "#fff", 1);
-    line(g, [[-9, 5.6], [9.5, 5.6]], 1.4);
+    ink(g, poly([[-7, -5.5], [3.5, -5.5], [3.5, 4.8], [-7, 4.8]]), bg, 1.2);
+    ink(g, poly([[-6.4, -5], [-1.4, -3.6], [-1.4, 5.6], [-6.4, 4.8]]), "#000", 0.6); dot(g, -2.6, 0.5, 0.45, "#fff");
+    ink(g, poly([[1.6, 4.8], [9.5, 4.8], [10, 6], [0.4, 6]]), "#fff", 0.9); line(g, [[-9.5, 5.4], [9.8, 5.4]], 1.3);
   },
   bulbOn(g, bg) {
-    for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + Math.PI / 8; if (Math.abs(Math.sin(a)) > 0.9 && Math.cos(a) !== 0) { } line(g, [[Math.cos(a) * 6, Math.sin(a) * 4.8 - 0.8], [Math.cos(a) * 9, Math.sin(a) * 6.8 - 0.8]], 0.9, "#fff"); }
-    ink(g, circ(0, -1.2, 4), "#fff", 1.4); ink(g, rrect(-1.9, 2.6, 3.8, 3, 0.8), "#fff", 1.2); line(g, [[-1.9, 4], [1.9, 4]], 0.6);
+    for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + Math.PI / 8, ca = Math.cos(a), sa = Math.sin(a); line(g, [[ca * 5.8, sa * 4.9 - 1], [ca * 8.8, sa * 6.4 - 1]], 0.9, "#fff"); }
+    ink(g, circ(0, -1.2, 3.9), "#fff", 1.4); ink(g, rrect(-1.9, 2.5, 3.8, 3, 0.8), "#fff", 1.2); line(g, [[-1.9, 4], [1.9, 4]], 0.6);
   },
   bulbOff(g, bg) {
-    ink(g, circ(0, -1.2, 4), bg, 1.4); line(g, [[-1.6, -2.6], [-0.2, -3.5]], 0.8, "#fff");
-    ink(g, rrect(-1.9, 2.6, 3.8, 3, 0.8), "#fff", 1.2); line(g, [[-1.9, 4], [1.9, 4]], 0.6);
+    ink(g, circ(0, -1.2, 3.9), bg, 1.4); line(g, [[-1.6, -2.6], [-0.4, -3.4]], 0.8, "#fff");
+    ink(g, rrect(-1.9, 2.5, 3.8, 3, 0.8), "#fff", 1.2); line(g, [[-1.9, 4], [1.9, 4]], 0.6);
   },
   grid(g, bg) {
     ink(g, rrect(-8.5, -5.5, 17, 11, 0.8), "#fff", 1.5);
-    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) { g.save(); g.fillStyle = "#000"; g.fillRect(-7 + c * 4.9, -4.2 + r * 2.4, 4, 1.4); g.restore(); }
-    for (let c = 0; c < 2; c++) { g.save(); g.fillStyle = "#000"; g.fillRect(-7 + c * 8.5, 3, 7.3, 0.9); g.restore(); }
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) bar(g, -7 + c * 4.9, -4.3 + r * 2.4, 4, 1.4);
+    for (let c = 0; c < 2; c++) bar(g, -7 + c * 8.5, 3, 7.3, 0.9);
   },
   hand(g, bg) {
-    const fing = (x, y0, y1, w) => ink(g, rrect(x, y1, w, y0 - y1, w / 2), "#fff", 1.3);
-    fing(-5.5, 1, -4.5, 2.2); fing(-3, 1, -6, 2.2); fing(-0.5, 1, -6.3, 2.2); fing(2, 1, -5.5, 2.2);
+    const fing = (x, y1) => ink(g, rrect(x, y1, 2.2, 1 - y1, 1.1), "#fff", 1.3);
+    fing(-5.5, -4.5); fing(-3, -6); fing(-0.5, -6.3); fing(2, -5.5);
     ink(g, poly([[-6, 0], [-6, 3], [-3.5, 6], [3, 6], [4, 2], [7.5, -1], [6, -2.5], [3, 0], [3, -3], [-6, -3]]), "#fff", 1.4);
     for (const x of [-3.2, -0.7, 1.8]) line(g, [[x + 1.1, -3], [x + 1.1, 0.5]], 0.5);
   },
   clip(g, bg) {
     ink(g, rrect(-6.5, -5, 13, 10.5, 1), "#fff", 1.5); ink(g, rrect(-2.8, -6.2, 5.6, 2.8, 1), "#fff", 1.2);
-    for (let i = 0; i < 3; i++) { g.save(); g.fillStyle = "#000"; g.fillRect(-4.5, -1.3 + i * 2.3, 9, 1.1); g.restore(); }
+    for (let i = 0; i < 3; i++) bar(g, -4.5, -1.3 + i * 2.3, 9, 1.1);
   },
-  star(g, bg) {
-    ink(g, g2 => star5(g2, 0, 0.3, 7.4, 3.1), "#fff", 1.5);
-    g.save(); g.fillStyle = "#000"; g.fillRect(-1.8, -0.6, 0.9, 1.5); g.fillRect(0.9, -0.6, 0.9, 1.5); g.restore();
-  },
+  star(g, bg) { ink(g, g2 => star5(g2, 0, 0.3, 7.4, 3.1), "#fff", 1.5); bar(g, -1.8, -0.6, 0.9, 1.5); bar(g, 0.9, -0.6, 0.9, 1.5); },
   finger(g, bg) {
-    ink(g, rrect(-1.6, -6, 3.2, 8, 1.6), "#fff", 1.4);
-    ink(g, poly([[-6, 0], [-1.8, -1], [1.8, -1], [4.5, 0], [4.5, 4], [1.5, 6.3], [-3.5, 6.3], [-6.2, 3.5]]), "#fff", 1.4);
-    line(g, [[-1.5, 2], [1.5, 2]], 0.5);
+    ink(g, rrect(-1.3, -6.3, 2.6, 8, 1.3), "#fff", 1.4);
+    ink(g, rrect(-5, 0.2, 10, 6, 2.4), "#fff", 1.4); ink(g, rrect(-6.2, 1.2, 3, 2.6, 1.3), "#fff", 1.2);
+    line(g, [[-1.6, 2.6], [1.6, 2.6]], 0.5); line(g, [[-1.6, 4.2], [1.6, 4.2]], 0.5);
   },
   flag(g, bg) {
-    line(g, [[-6.5, 5.5], [-3.5, -5.5]], 1.4, "#000"); line(g, [[-6.5, 5.5], [-3.5, -5.5]], 0.6, "#fff");
+    line(g, [[-6.5, 5.5], [-3.5, -5.5]], 1.9, "#000"); line(g, [[-6.5, 5.5], [-3.5, -5.5]], 0.7, "#fff");
     ink(g, g2 => { g2.moveTo(-3.3, -5.2); g2.quadraticCurveTo(0, -3.6, 2.5, -5.2); g2.quadraticCurveTo(4.5, -6, 6.8, -4.6); g2.lineTo(5.6, 0.2); g2.quadraticCurveTo(3, -1.2, 0.5, 0.4); g2.quadraticCurveTo(-1.6, 1.4, -2.4, -0.4); g2.closePath(); }, "#fff", 1.3);
-    g.save(); g.fillStyle = bg; g.beginPath(); g.arc(1.6, -2.6, 1.1, 0, 7); g.fill(); g.restore();
+    dot(g, 1.6, -2.6, 1.1, bg);
+  },
+  book(g, bg) { book(g, bg); },
+  book2(g, bg) { g.scale(-1, 1); book(g, bg); },
+  gamepad(g, bg) {
+    ink(g, rrect(-5, -5.6, 10, 2.6, 0.8), "#000", 0.6);
+    ink(g, rrect(-8.6, -3.2, 17.2, 9, 3.6), "#fff", 1.4); ink(g, rrect(-4.6, -2, 9.2, 5.2, 1), bg, 0.8);
+    bar(g, -7, 0.6, 3.6, 1.2); bar(g, -5.8, -0.6, 1.2, 3.6); dot(g, 5.4, 0.2, 0.9); dot(g, 3.4, 2.2, 0.9);
+    for (let k = 0; k < 3; k++) for (let m = 0; m < 3; m++) if ((k + m) % 2 === 0) bar(g, -2 + m * 1.2, -1 + k * 1.2, 1, 1, "#fff");
+  },
+  camera(g, bg) {
+    line(g, [[-1, 2], [-4.5, 5.6]], 1.4); line(g, [[1, 2], [4.5, 5.6]], 1.4); line(g, [[0, 2], [0, 5.6]], 1.4);
+    ink(g, circ(-5.2, -4.2, 1.9), "#fff", 1.1); ink(g, circ(-1.2, -4.8, 1.5), "#fff", 1.1);
+    ink(g, rrect(-8, -3.2, 10, 5.8, 1), "#fff", 1.4); ink(g, poly([[2, -1.2], [6.5, -3.4], [6.5, 1.6], [2, 0.4]]), "#fff", 1.3); ink(g, rrect(-6, -2, 6, 3.4, 0.6), bg, 0.8);
+  },
+  note(g, bg) {
+    for (let k = 0; k < 4; k++) line(g, [[-9, -4.4 + k * 2.9], [9, -4.4 + k * 2.9]], 0.7, "#fff");
+    ink(g, ellipse(-4.2, 3.2, 2.5, 1.9, -0.4), "#fff", 1.2); ink(g, ellipse(3, 1.6, 2.5, 1.9, -0.4), "#fff", 1.2);
+    line(g, [[-2.1, 2.7], [-2.1, -4.8], [5, -6]], 1.3); line(g, [[-2.1, 2.7], [-2.1, -4.8], [5, -6], [5, 1]], 0.7, "#fff");
+    ink(g, poly([[-2.1, -4.8], [5.1, -6.2], [5.1, -3.6], [-2.1, -2.2]]), "#000", 0.5);
+  },
+  figureCard(g, bg) {
+    ink(g, circ(-5, -3.8, 1.9), "#fff", 1.2);
+    ink(g, poly([[-7.4, -1.6], [-2.6, -1.6], [-2, 1.2], [-3.2, 1.4], [-3.3, 5.6], [-4.7, 5.6], [-5, 2.4], [-5.3, 5.6], [-6.7, 5.6], [-6.8, 1.4], [-8, 1.2]]), "#fff", 1.2);
+    ink(g, rrect(1, -5.2, 7.5, 10.4, 1.2), "#fff", 1.3); for (let r = 0; r < 4; r++) { bar(g, 2.4, -3.6 + r * 2.2, 2, 1.2); bar(g, 5.2, -3.6 + r * 2.2, 2, 1.2); }
+  },
+  racketShoe(g, bg) {
+    line(g, [[-5.6, 3], [-5.6, 5.8]], 1.8); ink(g, ellipse(-5.6, -1.4, 3.3, 4.2), "#fff", 1.3); line(g, [[-8, -1.4], [-3.2, -1.4]], 0.5); line(g, [[-5.6, -4.4], [-5.6, 1.6]], 0.5);
+    ink(g, poly([[0, -1], [4, -1], [4.8, 1.6], [9.2, 2.8], [9.2, 5], [0, 5]]), "#fff", 1.3); line(g, [[1, 3], [8, 3]], 0.7);
+  },
+  cardFace(g, bg) {
+    ink(g, rrect(-8.5, -5.2, 7.5, 10.4, 1.2), "#fff", 1.3); for (let r = 0; r < 4; r++) { bar(g, -7.1, -3.6 + r * 2.2, 2, 1.2); bar(g, -4.3, -3.6 + r * 2.2, 2, 1.2); }
+    ink(g, circ(4.8, -0.4, 3.6), "#fff", 1.3); ink(g, rrect(2, 3.2, 5.6, 2.4, 1), "#fff", 1.2); dot(g, 3.6, -1.2, 0.55); dot(g, 6, -1.2, 0.55); line(g, [[3.6, 1.2], [6, 1.2]], 0.6);
+  },
+  turtle(g, bg) {
+    ink(g, g2 => { g2.moveTo(-5, 3); g2.bezierCurveTo(-5, -5, 6, -5, 6, 3); g2.closePath(); }, "#fff", 1.4);
+    ink(g, ellipse(-7.4, 1.6, 2, 1.4), "#000", 0.6); line(g, [[-5, 3.6], [-6.4, 5.4]], 1.4); line(g, [[5.5, 3.6], [6.8, 5.4]], 1.4); line(g, [[6.2, 2.6], [9, 3.8]], 1.3);
+    line(g, [[-2.4, 2], [-1.6, -1.2], [2, -1.4], [3.2, 2]], 0.6); line(g, [[0, -3.2], [0, 2.8]], 0.5);
+  },
+  rabbit(g, bg) {
+    ink(g, ellipse(-1.8, -4.4, 1.1, 3.3, -0.15), "#fff", 1.1); ink(g, ellipse(0.8, -4.2, 1.1, 3.1, 0.15), "#fff", 1.1);
+    ink(g, ellipse(1.4, 3.2, 5.2, 3.2), "#fff", 1.3); ink(g, circ(-0.6, -0.4, 2.7), "#fff", 1.3); ink(g, circ(6.8, 3.4, 1.4), "#fff", 1.1); dot(g, -1.4, -0.8, 0.5);
+  },
+  cheetah(g, bg) {
+    ink(g, ellipse(0, -0.5, 5.8, 2.2), "#fff", 1.3); ink(g, circ(-6.6, -2, 2), "#fff", 1.2);
+    line(g, [[-3, 1], [-7, 5], [-9.2, 4.6]], 1.7); line(g, [[-2, 1.2], [-4.4, 5.4]], 1.7); line(g, [[3.6, 1], [7.4, 4.6], [9.8, 4]], 1.7); line(g, [[4.5, 0.4], [9, 0.6]], 1.4);
+    line(g, [[5.4, -1.6], [8.5, -4.2]], 1.4); dot(g, -2, -1.4, 0.45); dot(g, 1.4, 0.4, 0.45);
+  },
+  runner(g, bg) {
+    for (let k = 0; k < 3; k++) line(g, [[4 + k * 0.6, -4 + k * 3.4], [9.2, -4 + k * 3.4]], 0.9, "#fff");
+    g.save(); g.lineCap = "round"; g.lineJoin = "round"; g.strokeStyle = "#000"; g.fillStyle = "#000"; g.lineWidth = 1.9;
+    g.beginPath(); g.moveTo(0.5, -2.4); g.lineTo(-1.4, 1.2); g.lineTo(-4, 2.8); g.lineTo(-6.6, 1.8); g.moveTo(-1.4, 1.2); g.lineTo(0.8, 3.4); g.lineTo(1.2, 5.6);
+    g.moveTo(0.4, -2.2); g.lineTo(3.4, -0.6); g.lineTo(5, -2.4); g.moveTo(0.2, -2); g.lineTo(-3.4, -1); g.lineTo(-4.4, 0.6); g.stroke();
+    g.beginPath(); g.arc(2.2, -4.4, 1.6, 0, 7); g.fill(); g.restore();
+    g.save(); g.lineCap = "round"; g.strokeStyle = "#fff"; g.lineWidth = 0.5; g.beginPath(); g.moveTo(0.5, -2.4); g.lineTo(-1.4, 1.2); g.stroke(); g.restore();
   },
 };
 export const ICON_NAMES = Object.keys(ICONS);
 export function drawIcon(g, name, cx, cy, bg = "rgb(0,144,56)") {
   const f = ICONS[name]; if (!f) return false;
-  g.save(); g.translate(cx, cy); f(g, bg); g.restore(); return true;
+  g.save(); g.translate(cx, cy); g.scale(0.9, 0.9); f(g, bg); g.restore(); return true;
 }
+
+// the buttons are found in the picture (a white outline with black corner dots, 24 x 16) and told apart by the shape of their
+// content (black / white / other, hashed): the pictogram is drawn as a vector on a rebuilt HD button
+const ICON_HASH = { "5845648f": "book", "978f7826": "wrench", cf4e98d2: "door", a98f4d4d: "camera", "9d4469a": "note", f2f835f1: "bulbOn", f14c7b15: "bulbOff",
+  "2e93b86b": "book2", "698e7111": "grid", "89f7e76d": "hand", "9670bfd0": "clip", ee117f66: "star", "98efb280": "figureCard", "1b8e4fba": "racketShoe",
+  "6a632fb4": "cardFace", be0d4315: "turtle", ba036169: "rabbit", db11b6c: "cheetah", "9bf8355a": "finger", fd438963: "flag", "2e9260f1": "runner", d1b5607d: "gamepad" };
+const BLK = 0xFF000000, WHT = 0xFFF8F8F8;
+export function findButtons(scr) {
+  const px = scr.px32, res = [];
+  for (let y = 0; y < 140; y++) for (let x = 0; x < 150; x++) {
+    if (px[y * 160 + x] !== BLK || px[y * 160 + x + 1] !== WHT || px[(y + 1) * 160 + x] !== WHT) continue;
+    let w = 1; while (x + w < 160 && px[y * 160 + x + w] === WHT) w++; if (x + w >= 160 || px[y * 160 + x + w] !== BLK) continue;
+    let h = 1; while (y + h < 144 && px[(y + h) * 160 + x] === WHT) h++; if (y + h >= 144 || px[(y + h) * 160 + x] !== BLK) continue;
+    if (w !== 23 || h !== 15) continue;
+    let bad = 0; for (let i = 1; i < w; i++) if (px[(y + h) * 160 + x + i] !== WHT) bad++; for (let j = 1; j < h; j++) if (px[(y + j) * 160 + x + w] !== WHT) bad++;
+    if (bad > 16) continue;
+    let sgn = "", fill = 0; const hist = new Map();
+    for (let yy = y + 1; yy < y + h; yy++) for (let xx = x + 1; xx < x + w; xx++) { const c = px[yy * 160 + xx]; sgn += c === BLK ? "k" : c === WHT ? "w" : "."; if (c !== BLK && c !== WHT) hist.set(c, (hist.get(c) || 0) + 1); }
+    let best = 0; for (const [c, n] of hist) if (n > best) { best = n; fill = c; }
+    const name = ICON_HASH[fnv(24 + "x" + 16 + sgn)];
+    res.push({ x, y, w: w + 1, h: h + 1, name, fill, hash: fnv(24 + "x" + 16 + sgn) });
+  }
+  return res;
+}
+registerHDPainter("d_buttons", (g, scr, layer) => {
+  if (layer !== "bg") return;
+  for (const b of findButtons(scr)) {
+    if (!b.name) continue;
+    const c = { r: b.fill & 255, g: b.fill >> 8 & 255, b: b.fill >> 16 & 255 }, css = `rgb(${c.r},${c.g},${c.b})`;
+    panelFrame(g, b.x, b.y, b.w, b.h, { fill: css, rim: "#000", border: "#fff", radius: 2.2, shadow: false, sheen: 0.18 });
+    markOpaque(scr, b.x + 2, b.y + 2, b.w - 4, b.h - 4, css);
+    drawIcon(g, b.name, b.x + b.w / 2, b.y + b.h / 2, css);
+  }
+}, { order: 30 });

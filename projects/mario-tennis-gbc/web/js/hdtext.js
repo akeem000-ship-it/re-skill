@@ -187,7 +187,7 @@ export class HDText {
       const em = f.em * Math.min(1, Math.max(0.7, gap / 14));
       if (!(ui && this.covered(l))) { g.fillStyle = bg; g.fillRect(l.x * HD, l.y * HD, (l.w + 1) * HD, 8 * HD); }
       g.font = `${em * HD}px "${f.family}"`; g.textBaseline = "alphabetic";
-      const w = tightWidth(g, l.text), room = (l.w + 3) * HD, sx = w > room ? room / w : 1;
+      const w = tightWidth(g, l.text), room = (l.w - 1.5) * HD, sx = w > room ? room / w : 1;
       g.save(); g.translate(l.x * HD, (l.y + f.base) * HD); g.scale(sx, 1);
       const o = HD * 0.75; g.fillStyle = sh; fillTextTight(g, l.text, o, o); g.fillStyle = ink; fillTextTight(g, l.text, 0, 0);
       g.restore();

@@ -71,7 +71,7 @@ export function findPanels(scr, layer) {
       if (cl._f || (scr.claims.length && scr.claimed(cl.x, cl.y, 8, 8))) continue;
       const w = weakRole(cl); if (!w) continue;
       const nb = (w.role === "T" || w.role === "B") ? [at.get((cl.x - 8) + "," + cl.y), at.get((cl.x + 8) + "," + cl.y)] : [at.get(cl.x + "," + (cl.y - 8)), at.get(cl.x + "," + (cl.y + 8))];
-      if (nb.some(n => n && n._f.style === w.style && (n._f.role === w.role || n._f.role[n._f.role.length - 1] === w.role || n._f.role[0] === w.role))) { cl._f = w; at.set(cl.x + "," + cl.y, cl); fr.push(cl); added = true; }
+      if (nb.some(n => n && n._f.style === w.style && (w.c < 0 || n._f.c < 0 || w.c === n._f.c) && (n._f.role === w.role || n._f.role[n._f.role.length - 1] === w.role || n._f.role[0] === w.role))) { cl._f = w; at.set(cl.x + "," + cl.y, cl); fr.push(cl); added = true; }
     }
     if (!added) break;
   }

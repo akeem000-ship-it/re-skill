@@ -98,7 +98,7 @@ const onCourt = () => gb.mem.wram[0][0x32E] <= 15;   // wCurMapID: courts (the m
 let insetAt = 0;
 function draw(alpha = 1) {                 // alpha: fraction of the next game frame already elapsed (3D interpolation)
   const f = gb.ppu.frame;
-  if (hd) hd.setSpriteHide(!view3d || !!(voxel && voxel.mode === "layers"));   // sprites replaced by HD art: 2D and the 3D menu layers can leave them out
+  if (hd) hd.setSpriteHide(true);            // sprites replaced by HD art: every view leaves them out (2D, 3D court / field / menu layers)
   if (hd && hd.update()) drawnFrame = -1;    // the text on screen (HD font) changed
   if (view3d && voxel) {
     if (gb.frames >= insetAt) {               // the touch HUD bar covers the top of the view: overlays go below it
@@ -109,7 +109,7 @@ function draw(alpha = 1) {                 // alpha: fraction of the next game f
       if (touch && !document.body.classList.contains("gamepad")) for (const sel of [".btns .k:not(.start)", "#stickzone .stick-base", ".dpad"]) { const e = document.querySelector(sel); if (e && e.offsetParent !== null) ctl = Math.max(ctl, glr.bottom - e.getBoundingClientRect().top); }
       voxel.bottomInset = Math.min(glr.height * 0.4, Math.max(0, ctl));
     }
-    try { voxel.render(f, alpha); return; } catch (e) { console.warn("3d", e); setView3d(false); }
+    try { voxel.render(spriteFree(f), alpha); return; } catch (e) { console.warn("3d", e); setView3d(false); }
   }
   if (drawnFrame === gb.frames) return;      // 2D: nothing new to show between game frames
   drawnFrame = gb.frames;
@@ -117,6 +117,16 @@ function draw(alpha = 1) {                 // alpha: fraction of the next game f
     composeWide(gb, wideBuf, wideIdx); present(wideImg, WIDE_W, WIDE_H, (WIDE_W - 160) / 2); return;
   }
   new Uint32Array(img.data.buffer).set(f); present(img, 160, 144, 0);
+}
+// the 2D frame the 3D view cuts its overlays (window panel, menu boxes) from: the sprites the HD art replaced are taken
+// out of it (their pixels show the BG-only picture, or the sprite below them), like the 2D view does
+const hdFrame = new Uint32Array(160 * 144);
+function spriteFree(f) {
+  if (!hd || !hd.ui || !hd.hiddenOam.size) return f;
+  hdFrame.set(f); const bgp = gb.ppu.bgFrame, hp = hd.hiddenPx, th = hd.through;
+  for (let i = 0; i < hp.length; i++) if (hp[i]) hdFrame[i] = bgp[i];
+  for (let k = 0; k < th.length; k += 2) hdFrame[th[k]] = th[k + 1];
+  return hdFrame;
 }
 // the frame on the 2D canvas; with an HD font, at HD x the size (pixels kept sharp) with the text drawn over it
 const small = document.createElement("canvas"), sg = small.getContext("2d");

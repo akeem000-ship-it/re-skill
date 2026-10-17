@@ -15,6 +15,7 @@ function at(file, frame) {
 const cases = [   // [recording, frame, expected panels (bg + win)]
   ["out/port/cs_singles.mtrec", 1500, 4], ["out/port/xr_results.mtrec", 1100, 2],   // 2 panels: the stadium scoreboard in the backdrop is NOT one
   ["out/port/cd_status.mtrec", 1950, 3],
+  ["out/port/brief_03.mtrec", 220, 2],      // the briefing panel with the court diagram: no band inside it
   ["out/port/story_walk1.mtrec", 2136, 1], ["out/engine/rec2.mtrec", 9000, 0],
 ];
 let bad = 0;

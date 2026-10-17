@@ -230,7 +230,7 @@ export class Voxel3D {
     }
     return T[kind].tex;
   }
-  drawHDText(model, mvp, uv = [0, 0, 1, 1], kinds = ["bg", "win"]) {
+  drawHDText(model, mvp, uv = [0, 0, 1, 1], kinds = ["bg", "win", "spr"]) {
     const gl = this.gl; gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);          // premultiplied (hdTex)
     for (const k of kinds) { const t = this.hdTex(k); if (t) this.draw(t, model, mvp, uv, [1, 1, 1, 1], 0.004); }
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -857,6 +857,7 @@ export class Voxel3D {
       this.drawHDText(m4.trs(wx + (160 - wx) / 2, 144, 0, 160 - wx, -(144 - wy), 0), ortho, [wx / 160, wy / 144, (160 - wx) / 160, (144 - wy) / 144], ["win"]);
       for (let y = wy >> 3; y < 18; y++) for (let x = wx >> 3; x < 20; x++) cover[y * 21 + x] = 1;
     }
+    this.drawHDText(m4.trs(80, 144, 0, 160, -144, 0), ortho, [0, 0, 1, 1], ["spr"]);     // HD art that replaced sprites (cursors): over the window too
     // HUD sprites last (sprites are drawn over the BG and the window). A group lying on one of those overlays (the
     // digits in a mini-game's score panel, a menu cursor) stays with it at 1:1; the others go to the edges
     const covered = b => { for (let y = Math.max(0, b.y0 + 2) >> 3; y <= Math.min(143, b.y1 - 3) >> 3; y++) for (let x = Math.max(0, b.x0 + 2) >> 3; x <= Math.min(159, b.x1 - 3) >> 3; x++) if (cover[y * 21 + x]) return true; return false; };
@@ -1542,8 +1543,24 @@ export class Voxel3D {
     if (wy0 >= 0) rects.push({ x0: wx, y0: wy0, x1: 160, y1: wy1 });
     return rects;
   }
+  // sprites the HD art replaced (menu captions, cursors) that lie outside every overlay box: their art gets a box of its own
+  // in the stack (only the art is drawn there), as the game's own sprites would be cards in the scenery otherwise
+  hdSpriteRects(rects) {
+    const hd = this.hdText; if (!hd || !hd.active || !hd.ui || !hd.hiddenOam.size || !hd.has.spr) return;
+    const left = hd.screen.oam.filter(o => hd.hiddenOam.has(o.i) && !rects.some(r => o.x + 4 >= r.x0 && o.x + 4 < r.x1 && o.y + o.h / 2 >= r.y0 && o.y + o.h / 2 < r.y1));
+    const groups = [];
+    for (const o of left) {
+      const near = groups.filter(g => g.some(q => Math.abs(q.x - o.x) <= 8 && Math.abs(q.y - o.y) <= o.h));
+      const merged = [o]; for (const g of near) { merged.push(...g); groups.splice(groups.indexOf(g), 1); } groups.push(merged);
+    }
+    for (const g of groups) {
+      const x0 = Math.max(0, Math.min(...g.map(o => o.x))), y0 = Math.max(0, Math.min(...g.map(o => o.y))), x1 = Math.min(160, Math.max(...g.map(o => o.x + 8))), y1 = Math.min(144, Math.max(...g.map(o => o.y + o.h)));
+      if (x1 > x0 && y1 > y0) rects.push({ x0, y0, x1, y1, sprOnly: true });
+    }
+  }
   drawFieldOverlays(frame2d) {
     const rects = this.fieldOverlayRects(); if (this.debug) this.debug.push({ overlays: rects });
+    this.hdSpriteRects(rects);
     if (!rects.length || !frame2d) return;
     const gl = this.gl;
     if (!this.frameTex) this.frameTex = this.texture(160, 144, null);
@@ -1554,6 +1571,7 @@ export class Voxel3D {
     let y = t + 3 + (this.topInset || 0) * (b - t) / (this.cv.clientHeight || 1);   // stacked from the top edge (below the HUD bar), centred
     for (const r of rects) {
       const w = r.x1 - r.x0, h = r.y1 - r.y0;
+      if (r.sprOnly) { this.drawHDText(m4.trs(80, y + h, 0, w, -h, 0), ortho, [r.x0 / 160, r.y0 / 144, w / 160, h / 144], ["spr"]); y += h + 2; continue; }   // HD art of replaced sprites only
       this.draw(this.boxShadowTex, m4.trs(80 + 2, y + h + 2, 0, w, -h, 0), ortho, [0, 0, 1, 1], [1, 1, 1, 0.7], 0);
       this.draw(this.frameTex, m4.trs(80, y + h, 0, w, -h, 0), ortho, [r.x0 / 160, r.y0 / 144, w / 160, h / 144], [1, 1, 1, 1], 0);
       this.drawHDText(m4.trs(80, y + h, 0, w, -h, 0), ortho, [r.x0 / 160, r.y0 / 144, w / 160, h / 144]);
