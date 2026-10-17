@@ -573,3 +573,39 @@ registerHDPainter("d_buttons", (g, scr, layer) => {
     drawIcon(g, b.name, b.x + b.w / 2, b.y + b.h / 2, css);
   }
 }, { order: 30 });
+
+// ---- the corner tabs of the skill page ----------------------------------------------------------------------------------
+// Each skill panel has a red tab in its top-left corner (a band with the name, and a triangle below it with the big
+// digit), drawn over the panel's white inner line with stair-stepped diagonals. The diagonals are redrawn as straight
+// edges (through the outer corners of the steps); the name and the digit stay, smoothed, on top.
+registerHDPainter("d_tabs", (g, scr, layer) => {
+  if (layer !== "bg") return;
+  const px = scr.px32, tm = scr.textMask;
+  for (const p of scr.panels || []) {
+    if (p.layer !== "bg" || p.h < 30) continue;
+    const x0 = p.x + 1, y0 = p.y + 1, xmax = Math.min(159, p.x + p.w - 3), ext = [];
+    const f = p.fill, isFill = c => Math.abs((c & 255) - f.r) <= 12 && Math.abs((c >> 8 & 255) - f.g) <= 12 && Math.abs((c >> 16 & 255) - f.b) <= 12;
+    for (let r = 0; r < Math.min(34, p.h - 4); r++) {
+      let last = -1, gap = 0;
+      for (let x = x0; x <= xmax; x++) { const c = px[(y0 + r) * 160 + x]; if (c === RED) { last = x; gap = 0; } else if (isFill(c)) { if (++gap >= 3) break; } }
+      if (last < x0) break; ext.push(last);
+    }
+    if (ext.length < 8 || ext[0] < x0 + 8 || px[(y0 + 1) * 160 + x0] !== RED) continue;
+    const runs = []; let s = 0;
+    for (let r = 1; r <= ext.length; r++) if (r === ext.length || ext[r] - ext[r - 1] < -3) { runs.push([s, r - 1]); s = r; }
+    const pts = [[x0, y0]];
+    for (const [a, b] of runs) { pts.push([ext[a] + 1, y0 + a]); pts.push([ext[b], y0 + b + 1]); }
+    pts.push([x0, y0 + ext.length]);
+    g.save();
+    g.beginPath(); roundRect(g, p.x + 1, p.y + 1, p.w - 2, p.h - 2, 1.8); g.clip();
+    const gr = g.createLinearGradient(x0, y0, x0, y0 + ext.length); gr.addColorStop(0, "#ff4a30"); gr.addColorStop(0.5, "#f80000"); gr.addColorStop(1, "#c80000");
+    g.beginPath(); pts.forEach((q, i) => g[i ? "lineTo" : "moveTo"](q[0], q[1])); g.closePath(); g.fillStyle = gr; g.fill();
+    // the name and the digit: the picture's pixels that are neither red nor panel fill nor text, smoothed
+    const bx1 = Math.max(...pts.map(q => q[0])) | 0, w = Math.min(160, bx1 + 2) - x0, h = ext.length;
+    const buf = new Uint32Array(160 * 144); let any = false;
+    for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) { const c = px[y * 160 + x]; if (c === RED || isFill(c) || tm[y * 160 + x]) continue; if (x > ext[y - y0] + 1) continue; buf[y * 160 + x] = c; any = true; }
+    if (any) g.drawImage(smoothTabs(buf), 0, 0, 160, 144);
+    g.restore();
+  }
+}, { order: 31 });
+const smoothTabs = makeSmoother();
