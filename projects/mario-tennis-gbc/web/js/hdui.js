@@ -41,12 +41,17 @@ const painters = [];
 // fn(g, scr, layer): see the usage note. `order`: lower runs first (the built-in frame art is at 0).
 // watch(scr) -> string (optional): anything else your art depends on (a sprite's frame, a counter in RAM): it is added to the
 // repaint key, so the painters run again when that string changes.
+// under: true makes it the UNDER painter (one at most): fn(g, scr, "under") is called once per full repaint, after the others, with the
+// context of the picture canvas that lies UNDER the bg / win art (in canvas pixels, NOT scaled: 640x576) and that is NOT cleared
+// between repaints: keep its content up to date yourself (scr.underFresh is true when it was just emptied, so draw everything).
+// Return true if there is something to show (false empties it), and set scr.underChanged = true when you changed it (the 3D view
+// uploads its texture only then). The holes the frame art cuts in its fills show this picture.
 // sprites: true makes it a SPRITE painter: called as fn(g, scr, "spr") where g is the sprite canvas (drawn over the sprites in 2D),
 // and again whenever any sprite moved or changed (cheaply: nothing else is repainted), so keep it quick; it replaces sprites
 // with scr.hide(sprs) and draws its own art on g (HD units).
-export function registerHDPainter(name, fn, { order = 100, watch = null, sprites = false } = {}) {
+export function registerHDPainter(name, fn, { order = 100, watch = null, sprites = false, under = false } = {}) {
   const at = painters.findIndex(p => p.name === name);
-  const p = { name, fn, order, watch, sprites, failed: false };
+  const p = { name, fn, order, watch, sprites, under, failed: false };
   if (at >= 0) painters[at] = p; else painters.push(p);
   painters.sort((a, b) => a.order - b.order);
   for (const l of listeners) l();
@@ -76,10 +81,23 @@ export function roundRect(g, x, y, w, h, r) {            // path (does not fill)
 }
 const inner = (r, d) => Array.isArray(r) ? r.map(v => Math.max(0, v - d)) : Math.max(0, r - d);
 // the soft drop shadow of a panel (only the halo outside the panel stays; call before painting the panel). radius as roundRect
+const shadowCache = new Map();
 export function panelShadow(g, x, y, w, h, radius = 2.2, o = {}) {
-  g.save(); g.shadowColor = o.color || "rgba(0,0,0,0.42)"; g.shadowBlur = (o.blur ?? 2.4) * HD; g.shadowOffsetX = (o.dx ?? 0.9) * HD; g.shadowOffsetY = (o.dy ?? 1.5) * HD;   // shadow offsets are in canvas pixels, not scaled
-  g.fillStyle = "#000"; g.beginPath(); roundRect(g, x, y, w, h, radius); g.fill(); g.restore();
-  g.save(); g.globalCompositeOperation = "destination-out"; g.beginPath(); roundRect(g, x, y, w, h, radius); g.fill(); g.restore();   // the halo only
+  // a blurred shadow is costly to rasterise on a phone: built once per size / look and then only blitted
+  const blur = o.blur ?? 2.4, dx = o.dx ?? 0.9, dy = o.dy ?? 1.5, color = o.color || "rgba(0,0,0,0.42)";
+  const key = `${w}|${h}|${Array.isArray(radius) ? radius.join(",") : radius}|${blur}|${dx}|${dy}|${color}`;
+  const M = Math.ceil((blur + Math.max(Math.abs(dx), Math.abs(dy))) * 1.2) + 2;
+  let cv = shadowCache.get(key);
+  if (!cv) {
+    cv = document.createElement("canvas"); cv.width = Math.ceil((w + 2 * M) * HD); cv.height = Math.ceil((h + 2 * M) * HD);
+    const c = cv.getContext("2d"); c.setTransform(HD, 0, 0, HD, 0, 0);
+    c.save(); c.shadowColor = color; c.shadowBlur = blur * HD; c.shadowOffsetX = dx * HD; c.shadowOffsetY = dy * HD;   // shadow offsets are in canvas pixels, not scaled
+    c.fillStyle = "#000"; c.beginPath(); roundRect(c, M, M, w, h, radius); c.fill(); c.restore();
+    c.save(); c.globalCompositeOperation = "destination-out"; c.beginPath(); roundRect(c, M, M, w, h, radius); c.fill(); c.restore();   // the halo only
+    if (shadowCache.size > 80) shadowCache.clear();
+    shadowCache.set(key, cv);
+  }
+  g.drawImage(cv, x - M, y - M, w + 2 * M, h + 2 * M);
 }
 // The shared panel look (the reference mock-up): a darker rim, a white inner border, the fill with a soft sheen on its
 // top half, and a soft drop shadow. (x, y, w, h) is the OUTER rectangle in screen pixels. Options:
@@ -217,7 +235,7 @@ export class Cell {
 export class Screen {
   constructor(gb) {
     this.gb = gb; this._cells = { bg: [], win: [] }; this._byId = new Map(); this._vis = []; this._nb = 0; this._nw = 0; this.key = ""; this.lines = []; this.font = null;
-    this.regs = {}; this.oam = []; this.hidden = new Set(); this.hiddenStatic = new Set(); this.curSprites = false; this.canHide = true; this.claims = []; this.px32 = new Uint32Array(160 * 144); this.textMask = new Uint8Array(160 * 144); this.opaque = new Uint8Array(160 * 144); this.fillPx = new Uint32Array(160 * 144); this.panels = [];
+    this.regs = {}; this.oam = []; this.hidden = new Set(); this.hiddenStatic = new Set(); this.curSprites = false; this.canHide = true; this.claims = []; this.px32 = new Uint32Array(160 * 144); this.textMask = new Uint8Array(160 * 144); this.opaque = new Uint8Array(160 * 144); this.fillPx = new Uint32Array(160 * 144); this.panels = []; this.underFresh = true; this.underChanged = false;
   }
   color(pal, i) { const o = pal * 8 + i * 2, p = this.gb.ppu.bgPal; return col15(p[o] | (p[o + 1] << 8)); }
   // read the visible map cells (each once, at its tile's top-left screen position); returns a key that changes when
@@ -270,7 +288,9 @@ export class Screen {
     return k.toString(36);
   }
   // BG-only picture (no sprites): 0xAABBGGRR per pixel, as the 2D frame holds it
-  grabPixels() { this.px32.set(this.gb.ppu.bgFrame); return this.px32; }
+  grabPixels() { this.px32.set(this.gb.ppu.bgFrame); this._pk = null; return this.px32; }
+  // a hash of the BG-only picture (cheap: for memoising what is found in it)
+  get pixKey() { if (this._pk) return this._pk; const px = this.px32; let h = 2166136261 >>> 0; for (let i = 0; i < px.length; i++) h = Math.imul(h ^ px[i], 16777619); return this._pk = (h >>> 0).toString(36); }
   // the visible sprites: [{i (OAM index), x, y, tile, attr, h (8 or 16), pal, flipX, flipY, ci (Uint8Array 8*h colour
   // indices, flips applied), colors (4 palette colours), rows (h strings)}]
   readOam() {
@@ -323,6 +343,7 @@ export function runPainters(layers, scr, mode = "all") {
     if (p.failed) continue;
     const t0 = performance.now();
     scr.curSprites = !!p.sprites;
+    if (p.under) continue;                                   // run by runUnder, after the rest
     if (p.sprites) {
       const g = layers.spr; g.save();
       try { p.fn(g, scr, "spr"); } catch (e) { p.failed = true; console.warn("HD painter", p.name, e); }
@@ -343,6 +364,15 @@ export function runPainters(layers, scr, mode = "all") {
 export function watchKey(scr) { let k = ""; for (const p of painters) if (p.watch && !p.failed) { try { k += p.watch(scr) + ";"; } catch (e) { p.failed = true; console.warn("HD painter watch", p.name, e); } } return k; }
 // time spent in each painter since the last call (ms), for profiling
 export function painterStats(reset = true) { const o = painters.map(p => [p.name, +(p.ms || 0).toFixed(2)]); if (reset) for (const p of painters) p.ms = 0; return o; }
+// the under painter (see registerHDPainter): its canvas context g (unscaled); returns whether there is a picture to show
+export function runUnder(g, scr) {
+  for (const p of painters) if (p.under && !p.failed) {
+    const t0 = performance.now(); let show = false;
+    try { show = !!p.fn(g, scr, "under"); } catch (e) { p.failed = true; console.warn("HD painter", p.name, e); }
+    p.ms = (p.ms || 0) + performance.now() - t0; return show;
+  }
+  return false;
+}
 export const painterNames = () => painters.map(p => p.name);
 
 // the other agents' painters (empty stubs until they write theirs); a missing file is not an error

@@ -246,20 +246,14 @@ registerHDPainter("d_text", (g, scr, layer) => {
 }, { order: 60 });
 
 // ---- smoothing --------------------------------------------------------------------------------------------------------
-// the picture's smoothed 4x copy as a canvas (buffers kept between calls)
-function makeSmoother() {
-  const a = new Uint32Array(160 * 144), b = new Uint32Array(320 * 288), c = new Uint32Array(640 * 576); let cv = null, id = null;
-  return px => {
-    a.set(px); scale2xInto(a, 160, 144, b); scale2xInto(b, 320, 288, c);
-    if (!cv) { cv = document.createElement("canvas"); cv.width = 640; cv.height = 576; id = cv.getContext("2d").createImageData(640, 576); }
-    new Uint32Array(id.data.buffer).set(c); cv.getContext("2d").putImageData(id, 0, 0); return cv;
-  };
-}
-function scale2xInto(src, w, h, o) {
-  const w2 = w * 2;
-  for (let y = 0; y < h; y++) {
+// Scale2x (EPX) twice: the picture's own pixels at 4x with the stair-steps of diagonals and corners rounded off. The smoothed
+// copy of the screen is kept between repaints (buffers + canvas) and only the 8x8 tiles whose pixels changed are done again
+// (with a 1 px margin: EPX looks at the neighbours), then the changed rectangle alone goes to the canvas.
+function scale2xRegion(src, w, h, o, x0, y0, x1, y1) {
+  const w2 = w * 2; x0 = Math.max(0, x0); y0 = Math.max(0, y0); x1 = Math.min(w, x1); y1 = Math.min(h, y1);
+  for (let y = y0; y < y1; y++) {
     const ym = y > 0 ? y - 1 : 0, yp = y < h - 1 ? y + 1 : h - 1;
-    for (let x = 0; x < w; x++) {
+    for (let x = x0; x < x1; x++) {
       const xm = x > 0 ? x - 1 : 0, xp = x < w - 1 ? x + 1 : w - 1;
       const E = src[y * w + x], B = src[ym * w + x], Hh = src[yp * w + x], D = src[y * w + xm], F = src[y * w + xp];
       let e0 = E, e1 = E, e2 = E, e3 = E;
@@ -268,34 +262,83 @@ function scale2xInto(src, w, h, o) {
     }
   }
 }
-const smooth4 = makeSmoother(), smoothSprites = makeSmoother();
-// The smoothed picture goes UNDER everything the other painters drew: the frames painter cuts the original's ink
-// (portraits, icons, bars) out of its fills so "the picture shows through", and what shows through is then the smoothed
-// picture, not the plain 4x one. Only on screens that have HD panels (menus), never in a match. (Done with plain
-// source-over drawing on a copy: "destination-over" on the page's accelerated canvas left old pixels behind.)
+const scale2xInto = (src, w, h, o) => scale2xRegion(src, w, h, o, 0, 0, w, h);
+// the picture's smoothed 4x copy as a canvas (buffers kept between calls), whole-picture version (the stat tabs)
+function makeSmoother() {
+  const a = new Uint32Array(160 * 144), b = new Uint32Array(320 * 288), c = new Uint32Array(640 * 576); let cv = null, id = null;
+  return px => {
+    a.set(px); scale2xInto(a, 160, 144, b); scale2xInto(b, 320, 288, c);
+    if (!cv) { cv = document.createElement("canvas"); cv.width = 640; cv.height = 576; id = cv.getContext("2d").createImageData(640, 576); }
+    new Uint32Array(id.data.buffer).set(c); cv.getContext("2d").putImageData(id, 0, 0); return cv;
+  };
+}
+let SM = null;                                        // the incremental smoother of the screen picture
+function smoothScreen(px, fresh) {
+  if (!SM) { const cv = document.createElement("canvas"); cv.width = 640; cv.height = 576; const id = cv.getContext("2d").createImageData(640, 576); SM = { a: new Uint32Array(160 * 144), b: new Uint32Array(320 * 288), c: new Uint32Array(id.data.buffer), cv, id, valid: false }; }
+  const { a, b, c } = SM, dirty = [];
+  for (let ty = 0; ty < 18; ty++) for (let tx = 0; tx < 20; tx++) {
+    let d = fresh || !SM.valid;
+    for (let y = 0; y < 8 && !d; y++) { const o = (ty * 8 + y) * 160 + tx * 8; for (let x = 0; x < 8; x++) if (px[o + x] !== a[o + x]) { d = true; break; } }
+    if (d) dirty.push(tx, ty);
+  }
+  if (!dirty.length) return null;
+  a.set(px);
+  let X0 = 640, Y0 = 576, X1 = 0, Y1 = 0;
+  for (let k = 0; k < dirty.length; k += 2) { const x = dirty[k] * 8, y = dirty[k + 1] * 8; scale2xRegion(a, 160, 144, b, x - 1, y - 1, x + 9, y + 9); }
+  for (let k = 0; k < dirty.length; k += 2) {
+    const x = dirty[k] * 16, y = dirty[k + 1] * 16; scale2xRegion(b, 320, 288, c, x - 3, y - 3, x + 19, y + 19);
+    X0 = Math.min(X0, x * 2 - 6); Y0 = Math.min(Y0, y * 2 - 6); X1 = Math.max(X1, x * 2 + 38); Y1 = Math.max(Y1, y * 2 + 38);
+  }
+  X0 = Math.max(0, X0); Y0 = Math.max(0, Y0); X1 = Math.min(640, X1); Y1 = Math.min(576, Y1);
+  SM.cv.getContext("2d").putImageData(SM.id, 0, 0, X0, Y0, X1 - X0, Y1 - Y0); SM.valid = true;
+  return { x: X0, y: Y0, w: X1 - X0, h: Y1 - Y0 };
+}
+// the smoothed copy of a small picture (sprites): only the box the sprites lie in, +2 px of margin (edges of the screen clamp, as the whole-screen version did)
+function smoothBox(buf, bx0, by0, bx1, by1) {
+  const x0 = Math.max(0, bx0 - 2), y0 = Math.max(0, by0 - 2), x1 = Math.min(160, bx1 + 2), y1 = Math.min(144, by1 + 2), w = x1 - x0, h = y1 - y0;
+  const a = new Uint32Array(w * h), b = new Uint32Array(w * h * 4);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) a[y * w + x] = buf[(y0 + y) * 160 + x0 + x];
+  const m = new Uint32Array(w * 2 * h * 2), o = new Uint32Array(w * 4 * h * 4);
+  scale2xInto(a, w, h, m); scale2xInto(m, w * 2, h * 2, o);
+  if (!SB) SB = document.createElement("canvas"); SB.width = w * 4; SB.height = h * 4;
+  const id = SB.getContext("2d").createImageData(w * 4, h * 4); new Uint32Array(id.data.buffer).set(o); SB.getContext("2d").putImageData(id, 0, 0);
+  void b; return { cv: SB, x: x0, y: y0, w, h };
+}
+let SB = null;
+// The smoothed picture goes UNDER everything the other painters draw (the "under" canvas, below the bg / win art): the frames
+// painter cuts the original's ink (portraits, icons, bars) out of its fills so "the picture shows through", and what shows
+// through is then the smoothed picture, not the plain 4x one. Only on screens that have HD panels (menus), never in a match.
 const onCourt = scr => scr.gb.mem.wram[0][0x32E] <= 15;       // wCurMapID: a court (the match, the courts' maps)
 const SMOOTH_ALL = true;
-let under = null;
-registerHDPainter("d_smooth", (g, scr, layer) => {
-  if (!SMOOTH_ALL || layer !== "bg" || !(scr.panels && scr.panels.length)) return;
-  // a full-screen picture only where the view is a plain 2D menu; over a court or in the 3D view (where the overlay lies on
-  // the 3D scene) just the panels' own rectangles, so the court / cards behind stay
-  const part = !scr.canHide || onCourt(scr), cv = g.canvas;
-  if (!under || under.width !== cv.width || under.height !== cv.height) { under = document.createElement("canvas"); under.width = cv.width; under.height = cv.height; }
-  const u = under.getContext("2d"); u.setTransform(1, 0, 0, 1, 0, 0); u.clearRect(0, 0, under.width, under.height);
-  u.save();
-  if (part) { u.beginPath(); for (const p of scr.panels) if (p.layer === "bg") u.rect(Math.max(0, p.x) * HD, Math.max(0, p.y) * HD, p.w * HD, p.h * HD); u.clip(); }
-  u.drawImage(smooth4(scr.px32), 0, 0, under.width, under.height);   // the smoothed picture...
-  u.restore();
-  u.drawImage(cv, 0, 0);                                                              // ...with what the painters drew on it
-  g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height); g.drawImage(under, 0, 0); g.restore();
-}, { order: 1000 });
+let underPart = null;                                         // the clip the canvas was last drawn with ("" = whole screen)
+registerHDPainter("d_smooth", (g, scr) => {
+  if (!SMOOTH_ALL || !(scr.panels && scr.panels.length)) { if (SM) SM.valid = false; underPart = null; return false; }
+  // a full-screen picture only where the view is a plain 2D menu or the 3D menu layers; over a court or in the other 3D views (where
+  // the overlay lies on the 3D scene) just the panels' own rectangles, so the court / cards behind stay
+  const part = !scr.canHide || onCourt(scr);
+  const clip = part ? scr.panels.filter(p => p.layer === "bg").map(p => `${Math.max(0, p.x)},${Math.max(0, p.y)},${p.w},${p.h}`).join(";") : "";
+  const fresh = scr.underFresh || underPart !== clip, ch = smoothScreen(scr.px32, fresh);
+  if (!ch && !fresh) return true;
+  scr.underChanged = true;
+  if (!part) {                                                // the whole picture: only the part that changed is copied over
+    const r = ch || { x: 0, y: 0, w: 640, h: 576 };
+    g.drawImage(SM.cv, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+  } else {
+    g.clearRect(0, 0, 640, 576); g.save(); g.beginPath(); for (const p of scr.panels) if (p.layer === "bg") g.rect(Math.max(0, p.x) * HD, Math.max(0, p.y) * HD, p.w * HD, p.h * HD); g.clip();
+    g.drawImage(SM.cv, 0, 0); g.restore();
+  }
+  underPart = clip; return true;
+}, { order: 1000, under: true });
 
 // ---- stat gauges --------------------------------------------------------------------------------------------------------
 // The skill page's gauges are rows of ten 3x4 pixel segments 4 px apart: black when empty, red / white when filled (the
 // filled ones come first). They are found in the picture by that shape and redrawn as glossy HD segments.
 const BLACK = 0xFF000000, RED = 0xFF0000F8, WHITE = 0xFFF8F8F8;
 export function findGauges(scr) {
+  const pk = scr.pixKey; if (scr._gk === pk && scr._gout) return scr._gout;        // the same picture: the same gauges
+  const res = findGaugesIn(scr); scr._gk = pk; return scr._gout = res;
+}
+function findGaugesIn(scr) {
   const px = scr.px32, out = [], used = new Set();
   const blk = (x, y) => x >= 0 && y >= 0 && x < 160 && y < 144 && px[y * 160 + x] === BLACK;
   const block = (x, y) => {
@@ -354,16 +397,18 @@ const SMOOTH_SPRITES = true;
 registerHDPainter("d_sprites", (g, scr, layer) => {
   if (!SMOOTH_SPRITES || layer !== "spr" || !scr.canHide || !(scr.panels && scr.panels.length) || onCourt(scr)) return;
   const sprs = scr.oam.filter(s => !(s.attr & 0x80) && !scr.hidden.has(s.i)); if (!sprs.length) return;
-  const buf = new Uint32Array(160 * 144);
+  const buf = new Uint32Array(160 * 144); let bx0 = 160, by0 = 144, bx1 = 0, by1 = 0;
   for (const s of [...sprs].reverse()) {
     const ci = s.ci, col = s.colors;
     for (let y = 0; y < s.h; y++) for (let x = 0; x < 8; x++) {
       const v = ci[y * 8 + x], X = s.x + x, Y = s.y + y; if (!v || X < 0 || X >= 160 || Y < 0 || Y >= 144) continue;
       const c = col[v]; buf[Y * 160 + X] = (0xFF000000 | c.b << 16 | c.g << 8 | c.r) >>> 0;
+      if (X < bx0) bx0 = X; if (X + 1 > bx1) bx1 = X + 1; if (Y < by0) by0 = Y; if (Y + 1 > by1) by1 = Y + 1;
     }
   }
-  if (!scr.hide(sprs)) return;
-  g.drawImage(smoothSprites(buf), 0, 0, 160, 144);
+  if (bx1 <= bx0 || !scr.hide(sprs)) return;
+  const r = smoothBox(buf, bx0, by0, bx1, by1);
+  g.drawImage(r.cv, 0, 0, r.w * 4, r.h * 4, r.x, r.y, r.w, r.h);
 }, { order: 50, sprites: true });
 
 // ---- arrow buttons (MORE / BACK) ----------------------------------------------------------------------------------------

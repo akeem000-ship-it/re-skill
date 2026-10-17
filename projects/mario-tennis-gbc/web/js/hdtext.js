@@ -11,7 +11,7 @@ export const FONTS = {
   kode: { label: "Kode Mono", family: "MT Kode Mono", file: "fonts/KodeMono.ttf", em: 9.25, base: 7 },
 };
 export const FONT_ORDER = ["game", "itim", "kode"];
-import { HD, Screen, runPainters, watchKey, onPainterChange, loadMenuModules, fillTextTight, tightWidth } from "./hdui.js";
+import { HD, Screen, runPainters, runUnder, watchKey, onPainterChange, loadMenuModules, fillTextTight, tightWidth } from "./hdui.js";
 import "./hdui_frames.js"; import "./hdui_cursors.js";                        // the built-in art (boxes, cursors)
 export { HD };                                       // canvas pixels per screen pixel
 
@@ -39,14 +39,16 @@ export class HDText {
     // the font never uses colour index 0: a tile with a 0 pixel is no text (checked on 8 bytes, so most of the picture is skipped at once)
     this.noZero = true; for (let g = 0; g < GLYPHS && this.noZero; g++) for (let r = 0; r < 8; r++) if ((romAt(rom, FONT + g * 16 + r * 2) | romAt(rom, FONT + g * 16 + r * 2 + 1)) !== 255) { this.noZero = false; break; }
     this.order = [...Array(GLYPHS).keys()].filter(g => g !== SPACE && this.width[g] && this.ink[g]).sort((a, b) => this.ink[b] - this.ink[a]);
-    this.canvas = { bg: makeCanvas(), win: makeCanvas(), spr: makeCanvas() };    // spr: HD art for sprites (2D draws it over the sprites)
-    this.lines = []; this.key = ""; this.frame = -1; this.dirty = true; this.version = 0; this.sprVersion = 0; this.has = { bg: false, win: false, spr: false };
+    this.canvas = { bg: makeCanvas(), win: makeCanvas(), spr: makeCanvas(), under: makeCanvas() };    // spr: HD art for sprites (2D draws it over the sprites)
+    this.lines = []; this.key = ""; this.frame = -1; this.dirty = true; this.version = 0; this.sprVersion = 0; this.underVersion = 0; this.has = { bg: false, win: false, spr: false, under: false };
     this.ui = false; this.hideSprites = true; this.hiddenOam = new Set(); this.hiddenPx = new Uint8Array(160 * 144); this.through = []; this.okey = ""; this.screen = new Screen(gb); this.painted = false;     // HD UI (web/js/hdui.js): frames, cursors, icons
     this.offPainters = onPainterChange(() => { this.key = ""; this.dirty = true; });
     loadMenuModules();
   }
   // whether the view can leave out sprites that painters replaced (2D can; the 3D view not yet)
   setSpriteHide(on) { if (this.hideSprites !== !!on) { this.hideSprites = !!on; this.key = ""; this.dirty = true; } }
+  // whether the page shows the 3D view (menus lie on layers / cards there: the art must not hide them)
+  setView3d(on) { if (this.in3d !== !!on) { this.in3d = !!on; this.key = ""; this.dirty = true; } }
   setUI(on) { this.ui = !!on; this.key = ""; this.dirty = true; }
   setFont(name) {
     this.font = FONTS[name] ? name : "game"; this.key = ""; this.dirty = true;
@@ -67,7 +69,10 @@ export class HDText {
     const textOn = this.textOn, uiOn = this.ui;
     if (!textOn && !uiOn) { if (this.lines.length || this.dirty || this.painted) { this.lines = []; this.paint(); this.dirty = false; return true; } return false; }
     const p = this.gb.ppu;
-    if (p.frames === this.frame && !this.dirty) return false;
+    if (p.frames === this.frame && !this.dirty) {
+      if (this.pending) { this.pending = false; this.lines = textOn && this.readLines ? this.readLines : []; this.timedPaint(); return true; }   // no new frame (paused): the screen is still, draw the art
+      return false;
+    }
     this.frame = p.frames; this.dirty = false;
     const skey = this.screen.scan();
     let lines = [];
@@ -83,7 +88,7 @@ export class HDText {
     // a costly repaint on a screen that changes frame after frame (a page sliding in): show the game's own picture until it
     // settles instead of dropping frames
     this.streak = (this.streak || 0) + 1;
-    if (this.streak >= 3 && this.paintMs > BUSY_MS) {
+    if (this.streak >= 3 && (this.paintMs > BUSY_MS || this.struggling)) {
       this.key = key; this.okey = okey; this.pending = true;
       if (this.painted) { this.lines = []; this.clearAll(); return true; }
       return false;
@@ -93,8 +98,8 @@ export class HDText {
   timedPaint() { const t = performance.now(); this.paint(); this.paintMs = (this.paintMs || 0) * 0.6 + (performance.now() - t) * 0.4; }
   // nothing drawn over the picture (the overlay canvases emptied)
   clearAll() {
-    for (const k of ["bg", "win", "spr"]) { const cv = this.canvas[k]; if (cv) cv.getContext("2d").clearRect(0, 0, cv.width, cv.height); }
-    this.version++; this.sprVersion++; this.has.bg = this.has.win = this.has.spr = false; this.painted = false;
+    for (const k of ["bg", "win", "spr", "under"]) { const cv = this.canvas[k]; if (cv) cv.getContext("2d").clearRect(0, 0, cv.width, cv.height); }
+    this.version++; this.sprVersion++; this.underVersion++; this.has.bg = this.has.win = this.has.spr = this.has.under = false; this.painted = false; this.screen.underFresh = true;
     this.hiddenOam = new Set(); this.hiddenPx.fill(0); this.through = [];
   }
 
@@ -194,7 +199,7 @@ export class HDText {
     const f = FONTS[this.font], textOn = !!f.family && this.loaded[this.font] === true;
     // what the painters may need: the text lines read, the HD font, and masks of the pixels they cover
     scr.lines = this.lines; scr.font = textOn ? { family: f.family, em: f.em, base: f.base } : null;
-    scr.textMask.fill(0); scr.opaque.fill(0); scr.claims = []; scr.hiddenStatic = new Set(); scr.canHide = this.hideSprites;
+    scr.textMask.fill(0); scr.opaque.fill(0); scr.claims = []; scr.hiddenStatic = new Set(); scr.canHide = this.hideSprites; scr.in3d = !!this.in3d;
     for (const l of this.lines) for (let y = Math.max(0, l.y); y < Math.min(144, l.y + 8); y++) scr.textMask.fill(1, y * 160 + Math.max(0, l.x), y * 160 + Math.min(160, l.x + l.w + 1));
     if (ui && ctx.bg) {
       scr.grabPixels(); scr.readOam();
@@ -203,9 +208,18 @@ export class HDText {
       for (const k of ["bg", "win", "spr"]) { ctx[k].save(); ctx[k].setTransform(HD, 0, 0, HD, 0, 0); }
       try { runPainters(layers, scr, "all"); } finally { for (const k of ["bg", "win", "spr"]) ctx[k].restore(); }
       this.afterSprites();
-    } else { this.hiddenOam = new Set(); this.hiddenPx.fill(0); this.through = []; }
+      // the picture under the art (the smoothed screen): kept between repaints by its painter
+      const ug = this.canvas.under.getContext("2d"); scr.underChanged = false;
+      const show = runUnder(ug, scr);
+      if (show) { if (scr.underChanged || !this.has.under) this.underVersion++; scr.underFresh = false; }
+      else if (this.has.under) { ug.clearRect(0, 0, this.canvas.under.width, this.canvas.under.height); this.underVersion++; scr.underFresh = true; }
+      this.has.under = show;
+    } else {
+      this.hiddenOam = new Set(); this.hiddenPx.fill(0); this.through = [];
+      if (this.has.under) { const cv = this.canvas.under; cv.getContext("2d").clearRect(0, 0, cv.width, cv.height); this.underVersion++; this.has.under = false; scr.underFresh = true; }
+    }
     this.has.bg = drew.bg || this.lines.some(l => !l.win); this.has.win = drew.win || this.lines.some(l => l.win);
-    this.has.spr = drew.spr; this.painted = this.has.bg || this.has.win || this.has.spr; if (ui) this.everPainted = true;   // painters may draw through contexts of their own: with the UI on the canvases are always cleared
+    this.has.spr = drew.spr; this.painted = this.has.bg || this.has.win || this.has.spr || this.has.under; if (ui) this.everPainted = true;   // painters may draw through contexts of their own: with the UI on the canvases are always cleared
     if (!textOn) return;
     for (const l of this.lines) {
       const cv = this.canvas[l.win ? "win" : "bg"]; if (!cv) continue;

@@ -222,7 +222,7 @@ export class Voxel3D {
     const T = this.hdTexs || (this.hdTexs = {}), gl = this.gl;
     if (!T[kind]) T[kind] = { tex: this.texture(1, 1, null, true), ver: -1 };
     // premultiplied, so the smoothed edges of the text's patches fade out instead of to black (no outline round them)
-    const ver = kind === "spr" ? h.sprVersion : h.version;
+    const ver = kind === "spr" ? h.sprVersion : kind === "under" ? h.underVersion : h.version;
     if (T[kind].ver !== ver) {
       gl.bindTexture(gl.TEXTURE_2D, T[kind].tex); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
       const cv = h.canvas[kind];
@@ -232,7 +232,7 @@ export class Voxel3D {
     }
     return T[kind].tex;
   }
-  drawHDText(model, mvp, uv = [0, 0, 1, 1], kinds = ["bg", "win", "spr"]) {
+  drawHDText(model, mvp, uv = [0, 0, 1, 1], kinds = ["under", "bg", "win", "spr"]) {
     const gl = this.gl; gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);          // premultiplied (hdTex)
     for (const k of kinds) { const t = this.hdTex(k); if (t) this.draw(t, model, mvp, uv, [1, 1, 1, 1], 0.004); }
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -849,7 +849,7 @@ export class Voxel3D {
       this.draw(this.bgTileTexture(tile, v1[base + i]), m4.trs(sx + 4, sy + 8, 0, 8, -8, 0), ortho);
       cover[(sy >> 3) * 21 + (sx >> 3)] = 1;
     }
-    this.drawHDText(m4.trs(80, 144, 0, 160, -144, 0), ortho, [0, 0, 1, 1], ["bg"]);
+    this.drawHDText(m4.trs(80, 144, 0, 160, -144, 0), ortho, [0, 0, 1, 1], ["under", "bg"]);
     // the window layer (score panel) as a screen-space overlay from the 2D frame
     if ((p.lcdc & 0x20) && p.wy < 144 && frame2d) {
       if (!this.frameTex) this.frameTex = this.texture(160, 144, null);
@@ -1641,6 +1641,7 @@ export class Voxel3D {
     const SH = [0, 0, 0, 0.4];
     plane(tPan, 1, [0, 0, 0, 0.22], 4, 4); plane(tPan, 1.5, SH, 2.5, 2.5); plane(tPan, 8);   // a soft two-step shadow
     const hdPlane = (t, z) => { gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); plane(t, z, [1, 1, 1, 1], 0, 0, 0.004); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); };
+    const hdUnder = this.hdTex("under"); if (hdUnder) hdPlane(hdUnder, 8.04);          // the smoothed picture under the HD art
     const hdBg = this.hdTex("bg"); if (hdBg) hdPlane(hdBg, 8.05);
     plane(tWin, 9, [0, 0, 0, 0.22], 4, 4); plane(tWin, 9.5, SH, 2.5, 2.5); plane(tWin, 14);
     const hdWin = this.hdTex("win"); if (hdWin) hdPlane(hdWin, 14.05);

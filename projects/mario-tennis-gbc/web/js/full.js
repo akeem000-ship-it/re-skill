@@ -98,6 +98,7 @@ const onCourt = () => gb.mem.wram[0][0x32E] <= 15;   // wCurMapID: courts (the m
 let insetAt = 0;
 function draw(alpha = 1) {                 // alpha: fraction of the next game frame already elapsed (3D interpolation)
   const f = gb.ppu.frame;
+  if (hd) hd.setView3d(view3d);
   if (hd) hd.setSpriteHide(true);            // sprites replaced by HD art: every view leaves them out (2D, 3D court / field / menu layers)
   if (hd && hd.update()) drawnFrame = -1;    // the text on screen (HD font) changed
   if (view3d && voxel) {
@@ -140,7 +141,7 @@ function present(image, w, h, padX) {
   if (hid) { bg32.set(gb.ppu.bgFrame); sg.putImageData(bgImg, 0, 0); } else sg.putImageData(image, 0, 0);
   if (cv.width !== w * HD || cv.height !== h * HD) { cv.width = w * HD; cv.height = h * HD; }
   g.imageSmoothingEnabled = false; g.drawImage(small, 0, 0, w * HD, h * HD);
-  g.imageSmoothingEnabled = true; if (hd.has.bg) g.drawImage(hd.canvas.bg, padX * HD, 0); if (hd.has.win) g.drawImage(hd.canvas.win, padX * HD, 0);
+  g.imageSmoothingEnabled = true; if (hd.has.under) g.drawImage(hd.canvas.under, padX * HD, 0); if (hd.has.bg) g.drawImage(hd.canvas.bg, padX * HD, 0); if (hd.has.win) g.drawImage(hd.canvas.win, padX * HD, 0);
   if (hd.ui && hd.painted && !padX && w === 160) { drawSprites(image, w, h); if (hd.has.spr) { g.imageSmoothingEnabled = true; g.drawImage(hd.canvas.spr, 0, 0); } }
 }
 // the HD UI art covers the screen's tiles, sprites (cursors) included: the sprites' own pixels (where the frame differs
@@ -187,6 +188,7 @@ function setPreset(name) {                  // court camera preset (CAM button c
   if (!PRESETS[name]) return; preset = name; if (voxel) voxel.setPreset(name); $("cam").textContent = "CAM: " + PRESETS[name].label;
   try { localStorage.setItem("mt-cam", name); } catch (e) { /* private mode */ }
 }
+let hdLast = 0, hdDt = 16;
 function loop(now) {
   if (gb && !paused) {
     if (!last) last = now;
@@ -194,6 +196,7 @@ function loop(now) {
     const per = turbo ? 4 : 1;
     while (acc >= STEP) { for (let i = 0; i < per; i++) frame(); acc -= STEP; fps.n++; }
     draw(acc / STEP); maybeSave();
+    if (hd) { const dt = now - (hdLast || now); hdLast = now; hdDt = hdDt * 0.9 + Math.min(dt, 100) * 0.1; hd.struggling = hdDt > 24; }   // below ~40 fps the HD art waits while the screen moves
     if (now - fps.t >= 1000) { $("fps").textContent = fps.n + " fps" + (turbo ? " (turbo)" : ""); fps.n = 0; fps.t = now; }
   } else last = now;
   requestAnimationFrame(loop);

@@ -13,9 +13,11 @@ function at(file, frame) {
   const scr = new Screen(gb); scr.scan(); return scr;
 }
 const cases = [   // [recording, frame, expected panels (bg + win)]
-  ["out/port/cs_singles.mtrec", 1500, 4], ["out/port/xr_results.mtrec", 1100, 2],   // 2 panels: the stadium scoreboard in the backdrop is NOT one
+  ["out/port/cs_singles.mtrec", 1500, 4], ["out/port/xr_results.mtrec", 1100, 3],   // 3 panels (the lower one has a tab over its corner); the stadium scoreboard in the backdrop is NOT one
   ["out/port/cd_status.mtrec", 1950, 3],
   ["out/port/brief_03.mtrec", 220, 2],      // the briefing panel with the court diagram: no band inside it
+  ["out/port/court9_pick.mtrec", 520, 1],   // the court select page: its bottom info bar (text sits on its corner and edge tiles)
+  ["out/port/cd_levelup.mtrec", 480, 0],    // the EXP distribution page: no panel frames (gauges and racket art only)
   ["out/port/story_walk1.mtrec", 2136, 1], ["out/engine/rec2.mtrec", 9000, 0],
 ];
 let bad = 0;
