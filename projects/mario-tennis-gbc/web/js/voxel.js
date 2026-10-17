@@ -432,9 +432,11 @@ export class Voxel3D {
     return { vao, pb, cb, count: pos.length / 3 };
   }
   // the inflated body of a character: blocky cubes (meshFromPixels) or, in "Rounded" style, the smooth solid of voxround.js
+  // (the top-down overworld camera sees the whole front and the top of a body: a thin inflation there keeps the head and the shoulders
+  // reading as in the sprite instead of as stacked cylinders; the court cameras look from the side, where the full thickness reads best)
   bodyMesh(rgba, w, h, R, T) {
     if (!this.rounded) return this.meshFromPixels(rgba, w, h, R, T);
-    const d = roundedMeshData(rgba, w, h, R, T); return this.uploadMesh(d.pos, d.col);
+    const thin = this.mode === "field", d = thin ? roundedMeshData(rgba, w, h, R * 0.7, T * 0.42) : roundedMeshData(rgba, w, h, R, T); return this.uploadMesh(d.pos, d.col);
   }
   freeMesh(mesh) { if (!mesh) return; const gl = this.gl; gl.deleteBuffer(mesh.pb); gl.deleteBuffer(mesh.cb); gl.deleteVertexArray(mesh.vao); }
   voxelMesh(tile, bank, pal, flipX, flipY) {
@@ -455,7 +457,7 @@ export class Voxel3D {
     }
     parts.sort((a, b) => a.dy - b.dy || a.dx - b.dx);
     const dt = this.gb.detail && this.gb.detail.enabled ? this.gb.detail : null;           // "Sprites: Detailed" (web/js/look/spritedetail.js): the body redrawn at 3x
-    const key = (this.rounded ? "R" : "") + (dt ? "D" : "") + parts.map(q => `${q.key}@${q.dx},${q.dy}`).join("|");
+    const key = (this.rounded ? (this.mode === "field" ? "F" : "R") : "") + (dt ? "D" : "") + parts.map(q => `${q.key}@${q.dx},${q.dy}`).join("|");
     let mesh = this.objectMeshes.get(key);
     if (!mesh && dt) {
       const o = dt.objectImage(list, (t, b, p, fx, fy) => this.spritePixels(t, b, p, fx, fy), (t, b, p, fx, fy) => this.tileKey(t * 16, b, this.gb.ppu.objPal, p, fx, fy));
