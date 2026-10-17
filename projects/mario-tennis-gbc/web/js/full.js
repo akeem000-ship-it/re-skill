@@ -98,6 +98,7 @@ const onCourt = () => gb.mem.wram[0][0x32E] <= 15;   // wCurMapID: courts (the m
 let insetAt = 0;
 function draw(alpha = 1) {                 // alpha: fraction of the next game frame already elapsed (3D interpolation)
   const f = gb.ppu.frame;
+  if (hd) hd.setSpriteHide(!view3d || !!(voxel && voxel.mode === "layers"));   // sprites replaced by HD art: 2D and the 3D menu layers can leave them out
   if (hd && hd.update()) drawnFrame = -1;    // the text on screen (HD font) changed
   if (view3d && voxel) {
     if (gb.frames >= insetAt) {               // the touch HUD bar covers the top of the view: overlays go below it
@@ -167,7 +168,6 @@ function setView3d(on, vox = false) {
   if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.hdText = hd; voxel.freeCam = q.has("freecam"); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
   if (voxel) voxel.voxelSprites = on && vox;
   $("gl").hidden = !view3d; cv.hidden = view3d; $("cam").hidden = !view3d;
-  if (hd) hd.setSpriteHide(!view3d);                  // the 3D view draws sprites as cards in front of the HD art: HD cursors only in 2D
   try { localStorage.setItem("mt-3d", on ? (vox ? "vox" : "3d") : "off"); } catch (e) { /* private mode */ }
 }
 function setPreset(name) {                  // court camera preset (CAM button cycles PRESET_ORDER)

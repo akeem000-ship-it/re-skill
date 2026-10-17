@@ -21,9 +21,9 @@ const FAMILIES = {
 const ROLES = ["TL", "T", "TR", "L", "R", "BL", "B", "BR"];
 
 // the colour indices a, b, c if the tile's rows fit the pattern ({a, b, c} or null). a and b must match exactly (they are
-// the outline and the inner line); the fill c may have text or an icon on it (a box only one tile tall carries its text in
-// the edge tiles): it only has to be the main colour of the c places.
-function bind(rows, pat) {
+// the outline and the inner line) and so must the fill c, unless `weak` (an edge tile of a box one tile tall carries text on its
+// fill: then c is only the main colour of the c places, or unknown).
+function bind(rows, pat, weak = false) {
   let a = -1, b = -1; const cv = [0, 0, 0, 0]; let cn = 0;
   for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
     const v = rows[y].charCodeAt(x) - 48, ch = pat[y][x];
@@ -33,26 +33,48 @@ function bind(rows, pat) {
   }
   if (a === b) return null;
   let c = -1, best = 0; for (let v = 0; v < 4; v++) if (v !== a && v !== b && cv[v] > best) { best = cv[v]; c = v; }
-  return c >= 0 && best * 2 >= cn - (cv[a] + cv[b]) * 0 && best >= cn * 0.45 ? { a, b, c } : null;
+  if (c >= 0 && best === cn) return { a, b, c };
+  return weak && c >= 0 && best >= cn * 0.3 ? { a, b, c } : weak ? { a, b, c: -1 } : null;
 }
 export function frameRole(cell) {
   if (cell._fr !== undefined) return cell._fr;
   let out = null; const rows = cell.rows;
   if (!cell.blank) for (const fam in FAMILIES) {
-    for (const role of ROLES) { const b = bind(rows, FAMILIES[fam].patterns[role]); if (b) { out = { fam, role, ...b, style: fam + cell.colors[b.a].css + cell.colors[b.b].css + cell.colors[b.c].css }; break; } }
+    for (const role of ROLES) { const b = bind(rows, FAMILIES[fam].patterns[role]); if (b) { out = { fam, role, ...b, style: fam + cell.colors[b.a].css + cell.colors[b.b].css }; break; } }
     if (out) break;
   }
   return cell._fr = out;
 }
 
+// an edge tile with text or an icon on its fill (a box one tile tall): only its outline and line match; it counts when it sits in a
+// run of edge tiles of the same style (findPanels)
+function weakRole(cell) {
+  if (cell._wr !== undefined) return cell._wr;
+  let out = null; const rows = cell.rows;
+  if (!cell.blank) for (const fam in FAMILIES) {
+    for (const role of ["T", "B", "L", "R"]) { const b = bind(rows, FAMILIES[fam].patterns[role], true); if (b) { out = { fam, role, ...b, style: fam + cell.colors[b.a].css + cell.colors[b.b].css }; break; } }
+    if (out) break;
+  }
+  return cell._wr = out;
+}
 const H_NEXT = { TL: "T TR", T: "T TR", BL: "B BR", B: "B BR" };    // what may stand right of a tile (same row)
 const V_NEXT = { TL: "L BL", L: "L BL", TR: "R BR", R: "R BR" };    // what may stand below a tile (same column)
 
 // panels of one layer: [{x, y, w, h, style, a, b, c (css colours), corners: {tl, tr, br, bl}, cells}]
 export function findPanels(scr, layer) {
   const cells = scr.cells[layer], at = new Map(), fr = [];
-  for (const cl of cells) { const f = frameRole(cl); if (f) { cl._f = f; at.set(cl.x + "," + cl.y, cl); fr.push(cl); } }
+  for (const cl of cells) { if (scr.claims.length && scr.claimed(cl.x, cl.y, 8, 8)) continue; const f = frameRole(cl); if (f) { cl._f = f; at.set(cl.x + "," + cl.y, cl); fr.push(cl); } }
   if (!fr.length) return [];
+  for (let pass = 0; pass < 3; pass++) {            // weak edge tiles next to accepted ones of the same style
+    let added = false;
+    for (const cl of cells) {
+      if (cl._f || (scr.claims.length && scr.claimed(cl.x, cl.y, 8, 8))) continue;
+      const w = weakRole(cl); if (!w) continue;
+      const nb = (w.role === "T" || w.role === "B") ? [at.get((cl.x - 8) + "," + cl.y), at.get((cl.x + 8) + "," + cl.y)] : [at.get(cl.x + "," + (cl.y - 8)), at.get(cl.x + "," + (cl.y + 8))];
+      if (nb.some(n => n && n._f.style === w.style && (n._f.role === w.role || n._f.role[n._f.role.length - 1] === w.role || n._f.role[0] === w.role))) { cl._f = w; at.set(cl.x + "," + cl.y, cl); fr.push(cl); added = true; }
+    }
+    if (!added) break;
+  }
   const parent = new Map(fr.map(c => [c, c])), find = c => { while (parent.get(c) !== c) { parent.set(c, parent.get(parent.get(c))); c = parent.get(c); } return c; };
   const join = (u, v) => { if (v && v._f.style === u._f.style && (u._f.role in H_NEXT || u._f.role in V_NEXT)) parent.set(find(v), find(u)); };
   for (const u of fr) {
@@ -69,14 +91,33 @@ export function findPanels(scr, layer) {
     if (list.length < 4) continue;                    // a stray tile or two (a panel mid-scroll) is not a panel
     if (!((top && bot) || (lef && rig) || (top && (lef || rig)) || (bot && (lef || rig)))) continue;
     let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const c of list) { x0 = Math.min(x0, c.x); y0 = Math.min(y0, c.y); x1 = Math.max(x1, c.x + 8); y1 = Math.max(y1, c.y + 8); }
+    // a side that is not drawn must lie off screen (the panel is cut by the screen's edge there); a drawn side needs its corners
+    if ((!lef && x0 > 0) || (!rig && x1 < 160) || (!top && y0 > 0) || (!bot && y1 < 144)) continue;
+    if ((top && lef && !has.TL) || (top && rig && !has.TR) || (bot && lef && !has.BL) || (bot && rig && !has.BR)) continue;
     const OPEN = 24;                                  // a side not on screen: the panel goes on past the edge
     if (!lef) x0 -= OPEN; if (!rig) x1 += OPEN; if (!top) y0 -= OPEN; if (!bot) y1 += OPEN;
-    const f = list[0], cl = f.colors, ff = f._f;
+    const f = list.find(c => c._f.c >= 0); if (!f) continue;                  // no tile shows the fill colour
+    const cl = f.colors, ff = f._f;
     out.push({ layer, fam: f._f.fam, x: x0, y: y0, w: x1 - x0, h: y1 - y0, outline: cl[ff.a], line: cl[ff.b], fill: cl[ff.c], corners: { tl: !!has.TL, tr: !!has.TR, br: !!has.BR, bl: !!has.BL }, cells: list, open: { l: !lef, r: !rig, t: !top, b: !bot } });
   }
   return out;
 }
 
+// pixels in the old frame's ring that are neither its outline, line nor fill colour (a tab or label drawn over the edge) stay
+function punchRing(g, scr, p, ring) {
+  const px = scr.px32, tm = scr.textMask, ok = [p.outline, p.line, p.fill].map(c => (0xFF000000 | c.b << 16 | c.g << 8 | c.r) >>> 0);
+  const x0 = Math.max(0, p.x | 0), y0 = Math.max(0, p.y | 0), x1 = Math.min(160, Math.ceil(p.x + p.w)), y1 = Math.min(144, Math.ceil(p.y + p.h));
+  let any = false; g.save(); g.globalCompositeOperation = "destination-out"; g.fillStyle = "#000"; g.beginPath();
+  for (let y = y0; y < y1; y++) {
+    const edgeRow = y < p.y + ring || y >= p.y + p.h - ring;
+    for (let x = x0; x < x1; x++) {
+      if (!edgeRow && x >= p.x + ring && x < p.x + p.w - ring) { x = Math.max(x, Math.min(x1, Math.ceil(p.x + p.w - ring)) - 1); continue; }
+      const c = px[y * 160 + x]; if (c === ok[0] || c === ok[1] || c === ok[2] || tm[y * 160 + x]) continue;
+      g.rect(x, y, 1, 1); any = true;
+    }
+  }
+  if (any) g.fill(); g.restore();
+}
 const isDark = c => c.r + c.g + c.b < 120;
 function paintPanels(g, scr, layer) {
   const panels = findPanels(scr, layer); scr.panels = (scr.panels || []).filter(p => p.layer !== layer).concat(panels);
@@ -95,6 +136,7 @@ function paintPanels(g, scr, layer) {
     if (p.corners.tl) ex.push([p.x + ring, p.y + ring, C, C]); if (p.corners.tr) ex.push([p.x + p.w - ring - C, p.y + ring, C, C]);
     if (p.corners.bl) ex.push([p.x + ring, p.y + p.h - ring - C, C, C]); if (p.corners.br) ex.push([p.x + p.w - ring - C, p.y + p.h - ring - C, C, C]);
     punchInk(g, scr, p.x + ring, p.y + ring, p.w - 2 * ring, p.h - 2 * ring, p.fill, 12, ex);
+    punchRing(g, scr, p, ring);
     markOpaque(scr, p.x + ring, p.y + ring, p.w - 2 * ring, p.h - 2 * ring, p.fill);
   }
 }

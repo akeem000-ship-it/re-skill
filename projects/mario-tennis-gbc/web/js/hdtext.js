@@ -36,7 +36,7 @@ export class HDText {
     }
     this.order = [...Array(GLYPHS).keys()].filter(g => g !== SPACE && this.width[g] && this.ink[g]).sort((a, b) => this.ink[b] - this.ink[a]);
     this.canvas = { bg: makeCanvas(), win: makeCanvas(), spr: makeCanvas() };    // spr: HD art for sprites (2D draws it over the sprites)
-    this.lines = []; this.key = ""; this.frame = -1; this.dirty = true; this.version = 0; this.has = { bg: false, win: false, spr: false };
+    this.lines = []; this.key = ""; this.frame = -1; this.dirty = true; this.version = 0; this.sprVersion = 0; this.has = { bg: false, win: false, spr: false };
     this.ui = false; this.hideSprites = true; this.hiddenOam = new Set(); this.hiddenPx = new Uint8Array(160 * 144); this.through = []; this.okey = ""; this.screen = new Screen(gb); this.painted = false;     // HD UI (web/js/hdui.js): frames, cursors, icons
     this.offPainters = onPainterChange(() => { this.key = ""; this.dirty = true; });
     loadMenuModules();
@@ -111,7 +111,7 @@ export class HDText {
       }
     }
     if (!any) return;
-    const ws = this.width[SPACE] || 5;
+    const ws = this.width[SPACE] || 5, found = [];
     let x = 0;
     while (x < n) {
       if (s[x] === BLANK || !s[x]) { x++; continue; }
@@ -128,11 +128,22 @@ export class HDText {
         break;
       }
       const inked = text.replace(/[ .,'`"\-]/g, "").length;
-      if (letters >= 2 && inked >= 1) {
-        const c0 = cells[x >> 3], pal = v1[c0.c] & 7, ppu = this.gb.ppu;
-        out.push({ x: c0.x + (x & 7), y: band.y, w: end - x, win: band.win, text, c: [1, 2, 3].map(ci => col5(ppu.bgPal, pal, ci)) });
+      // a real line starts and ends at blank columns; ink right before or after it means a piece of something longer (other font)
+      const edgeOk = (x === 0 || s[x - 1] === BLANK || !s[x - 1]) && (end >= n || s[end] === BLANK || !s[end]);
+      if (letters >= 2 && inked >= 1 && edgeOk) {
+        found.push({ x, end, text });
         x = Math.max(end, x + 1);
       } else x++;
+    }
+    // a line with unread ink close beside it (a word of the same phrase in another font) is left as it is
+    const ink = c => c >= 0 && c < n && s[c] !== BLANK && s[c];
+    for (const f of found) {
+      let r = f.end; while (r < n && r < f.end + 9 && !ink(r)) r++;
+      let l = f.x - 1; while (l >= 0 && l > f.x - 10 && !ink(l)) l--;
+      const inLine = c => found.some(o => c >= o.x && c < o.end);
+      if ((ink(r) && !inLine(r)) || (ink(l) && !inLine(l))) continue;
+      const c0 = cells[f.x >> 3], pal = v1[c0.c] & 7, ppu = this.gb.ppu;
+      out.push({ x: c0.x + (f.x & 7), y: band.y, w: f.end - f.x, win: band.win, text: f.text, c: [1, 2, 3].map(ci => col5(ppu.bgPal, pal, ci)) });
     }
   }
   // the glyph drawn at `pen`: DrawGlyph overwrites the 8 columns from the pen, and the next glyph overwrites all past
@@ -150,12 +161,12 @@ export class HDText {
   // glyphs (unless the UI art already covers the place) and the line in the HD font with the game's shadow
   paint() {
     const scr = this.screen, ui = this.ui, ctx = {}, drew = { bg: false, win: false, spr: false };
-    for (const k of ["bg", "win", "spr"]) { const cv = this.canvas[k]; if (cv) { ctx[k] = cv.getContext("2d"); if (this.painted) ctx[k].clearRect(0, 0, cv.width, cv.height); } }
-    this.version++;
+    for (const k of ["bg", "win", "spr"]) { const cv = this.canvas[k]; if (cv) { ctx[k] = cv.getContext("2d"); if (this.painted || this.everPainted) ctx[k].clearRect(0, 0, cv.width, cv.height); } }
+    this.version++; this.sprVersion++;
     const f = FONTS[this.font], textOn = !!f.family && this.loaded[this.font] === true;
     // what the painters may need: the text lines read, the HD font, and masks of the pixels they cover
     scr.lines = this.lines; scr.font = textOn ? { family: f.family, em: f.em, base: f.base } : null;
-    scr.textMask.fill(0); scr.opaque.fill(0); scr.canHide = this.hideSprites;
+    scr.textMask.fill(0); scr.opaque.fill(0); scr.claims = []; scr.hiddenStatic = new Set(); scr.canHide = this.hideSprites;
     for (const l of this.lines) for (let y = Math.max(0, l.y); y < Math.min(144, l.y + 8); y++) scr.textMask.fill(1, y * 160 + Math.max(0, l.x), y * 160 + Math.min(160, l.x + l.w + 1));
     if (ui && ctx.bg) {
       scr.grabPixels(); scr.readOam();
@@ -166,7 +177,7 @@ export class HDText {
       this.afterSprites();
     } else { this.hiddenOam = new Set(); this.hiddenPx.fill(0); this.through = []; }
     this.has.bg = drew.bg || this.lines.some(l => !l.win); this.has.win = drew.win || this.lines.some(l => l.win);
-    this.has.spr = drew.spr; this.painted = this.has.bg || this.has.win || this.has.spr;
+    this.has.spr = drew.spr; this.painted = this.has.bg || this.has.win || this.has.spr; if (ui) this.everPainted = true;   // painters may draw through contexts of their own: with the UI on the canvases are always cleared
     if (!textOn) return;
     for (const l of this.lines) {
       const cv = this.canvas[l.win ? "win" : "bg"]; if (!cv) continue;
@@ -189,7 +200,7 @@ export class HDText {
     scr.readOam(); scr.canHide = this.hideSprites;
     const top = watch(g, () => { drew = true; }); g.save(); g.setTransform(HD, 0, 0, HD, 0, 0);
     try { runPainters({ spr: top }, scr, "spr"); } finally { g.restore(); }
-    this.afterSprites(); this.has.spr = drew; this.painted = this.painted || drew;
+    this.afterSprites(); this.has.spr = drew; this.painted = this.painted || drew; this.sprVersion++;
   }
   // which sprites the art replaced: their opaque pixels (left out in 2D), and what shows through where another sprite lies below
   afterSprites() {

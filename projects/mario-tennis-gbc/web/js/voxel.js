@@ -222,10 +222,11 @@ export class Voxel3D {
     const T = this.hdTexs || (this.hdTexs = {}), gl = this.gl;
     if (!T[kind]) T[kind] = { tex: this.texture(1, 1, null, true), ver: -1 };
     // premultiplied, so the smoothed edges of the text's patches fade out instead of to black (no outline round them)
-    if (T[kind].ver !== h.version) {
+    const ver = kind === "spr" ? h.sprVersion : h.version;
+    if (T[kind].ver !== ver) {
       gl.bindTexture(gl.TEXTURE_2D, T[kind].tex); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, h.canvas[kind]);
-      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false); T[kind].ver = h.version;
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false); T[kind].ver = ver;
     }
     return T[kind].tex;
   }
@@ -595,9 +596,10 @@ export class Voxel3D {
     }
   }
   collectSprites() {
-    const m = this.gb.mem, p = this.gb.ppu, oam = m.oam, tall = p.lcdc & 4, sprs = [];
+    const m = this.gb.mem, p = this.gb.ppu, oam = m.oam, tall = p.lcdc & 4, sprs = [], hd = this.hdText, hid = hd && hd.active && hd.hideSprites && hd.hiddenOam.size ? hd.hiddenOam : null;
     for (let i = 0; i < 40; i++) {
       const sy = oam[i * 4] - 16, sx = oam[i * 4 + 1] - 8; if (sy <= -16 || sy >= 144 || sx <= -8 || sx >= 160) continue;
+      if (hid && hid.has(i)) continue;                              // replaced by HD art (web/js/hdui.js)
       let tile = oam[i * 4 + 2]; const attr = oam[i * 4 + 3], hgt = tall ? 16 : 8; if (tall) tile &= 0xFE;
       sprs.push({ sx, sy, h: hgt, tile, attr, owner: null });
     }
@@ -1634,6 +1636,7 @@ export class Voxel3D {
         else this.draw(tex, m4.trs(X, Y, z, 8 * k, -8 * k, 0), mvp);
       }
     }
+    const hdSpr = this.hdTex("spr"); if (hdSpr) hdPlane(hdSpr, 21);       // HD art that replaced sprites (cursors)
   }
   drawFlatFrame(frame) {                            // the plain 2D frame as a textured quad filling the canvas
     const gl = this.gl;

@@ -91,7 +91,7 @@ function strips(scr, layer) {
 }
 function addStrip(out, y, cells) {
   let bg = 0; for (const cl of cells) for (const v of cl.ci) if (v === 1) bg++;
-  if (bg < cells.length * 64 * 0.5) return;                // text sits on a plain (colour 1) ground
+  if (bg < cells.length * 64 * 0.3) return;                // text sits on a plain (colour 1) ground
   const cols = new Uint8Array(cells.length * 8);
   cells.forEach((cl, k) => { const ci = cl.ci; for (let x = 0; x < 8; x++) { let m = 0; for (let r = 0; r < 8; r++) if (ci[r * 8 + x] === 3) m |= 1 << r; cols[k * 8 + x] = m; } });
   if (cols.some(m => m)) out.push({ y, cells, cols, x: cells[0].x });
@@ -148,6 +148,8 @@ function splitRun(P, cols, a, b, out = [], fuzzy = false) {
   }
   return fuzzy || !FUZZY ? null : splitRun(P, cols, a, b, out, true);
 }
+function fnvCols(cols, a, b) { let h = 2166136261; for (let x = a; x < b; x++) h = Math.imul(h ^ cols[x], 16777619); return (h >>> 0).toString(16); }
+const NARROW_WORDS = { "3a75a57c": "PLACEMENT" };                                  // hash of a word's ink columns -> the word (long labels in the narrow cut)
 // lines of dialogue-font text in one layer: the ink columns of a strip fall into runs separated by blank columns; each
 // run is a glyph (or touching glyphs), the gaps decide word breaks and line ends
 export function readShadowText(scr, layer) {
@@ -167,11 +169,17 @@ export function readShadowText(scr, layer) {
         if (!gl) { ok = false; _dbg.unmatched.push({ x: cells[0].x + a, y: st.y, cols: Array.from(cols.slice(a, b)) }); break; }
         for (const g of gl) {
           const prev = items.length ? items[items.length - 1] : null;
-          if (prev && prev.ch !== " " && g.a - prev.b >= ws - 1) items.push({ ch: " ", a: prev.b, b: g.a });
+          const gap = prev ? g.a - prev.b : 0;
+          if (prev && prev.ch !== " " && prev.ch !== "'" && (gap >= 4 || (gap === 3 && /[a-z]/.test(prev.ch + g.ch)) || (gap === 2 && prev.ch === "t" && g.ch === "l"))) items.push({ ch: " ", a: prev.b, b: g.a });
           items.push(g); if (g.exact) exact = true;
         }
       }
-      if (ok && exact && items.length) {
+      if (!ok) {                                           // a whole word in the narrow cut: known by the hash of its ink
+        const a = runs[i][0], b = runs[j - 1][1], h = fnvCols(cols, a, b), word = NARROW_WORDS[h];
+        if (_dbg.hashes) _dbg.hashes.push([h, cells[0].x + a, st.y]);
+        if (word) { const c0 = cells[a >> 3], cc = c0.colors; out.push({ x: c0.x + (a & 7), y: st.y, w: b - a, layer, text: word, cells, c: [cc[1].css, cc[2].css, cc[3].css], rgb: [cc[1], cc[2], cc[3]], shadowFont: true }); }
+      }
+      if (ok && exact && items.length && !(items.length > 1 && items.every(it => it.ch === items[0].ch))) {
         let text = "";
         for (let k = 0; k < items.length; k++) {
           let ch = items[k].ch;
@@ -186,7 +194,7 @@ export function readShadowText(scr, layer) {
   }
   return out;
 }
-export const _dbg = { propFont, strips, unmatched: [] };
+export const _dbg = { propFont, strips, unmatched: [], hashes: null };
 
 // ---- drawing the menu text ----------------------------------------------------------------------------------------------
 // Pass 1 (before the frames): read the lines and mask their pixels, so the panels' fill hides the old glyphs; pass 2 (after
@@ -212,6 +220,10 @@ registerHDPainter("d_text", (g, scr, layer) => {
     const size = f.em * Math.min(1, Math.max(0.7, gap / 14));
     let covered = true; for (let y = Math.max(0, l.y); y < Math.min(144, l.y + 8) && covered; y++) for (let x = Math.max(0, l.x); x < Math.min(160, l.x + l.w + 1); x++) if (!scr.opaque[y * 160 + x]) { covered = false; break; }
     if (!covered) { g.fillStyle = l.c[0]; g.fillRect(l.x, l.y, l.w + 1, 8); }
+    if (/^\S{1,5}( \S{1,5}){2,}$/.test(l.text.trim()) && l.cells.length === l.text.length && l.text.trim().length >= 12) {   // a letter grid (name entry): one centred character per cell
+      for (let k = 0; k < l.text.length; k++) { const ch = l.text[k]; if (ch !== " ") drawText(g, scr, ch, l.x + k * 8 + 4, l.y + 7.6, { size: 10.5, color: l.c[2], shadow: shade(l.c[1], 1), align: "center" }); }
+      continue;
+    }
     const digits = /^[0-9 ]+$/.test(l.text);
     drawText(g, scr, l.text, digits ? l.x + l.w : l.x, l.y + f.base, { size, color: l.c[2], shadow: shade(l.c[1], 1), maxW: l.w + 2.5, align: digits ? "right" : "left" });
   }
@@ -271,7 +283,10 @@ export function findGauges(scr) {
   const filled = (x, y) => {
     if (x < 0 || x + 3 > 160 || y < 1 || y + 4 > 144) return false;
     let n = 0; for (let j = 0; j < 4; j++) for (let i = 0; i < 3; i++) { const c = px[(y + j) * 160 + x + i]; if (c === RED || c === WHITE) n++; }
-    return n >= 2 && !block(x, y);
+    if (n < 2 || block(x, y)) return false;
+    for (let i = 0; i < 3; i++) for (const yy of [y - 1, y + 4]) { const c = px[yy * 160 + x + i]; if (c === RED || c === WHITE || c === BLACK) return false; }   // exactly 4 rows tall
+    for (const xx of [x - 1, x + 3]) for (let j = 0; j < 4; j++) { const c = px[(y + j) * 160 + xx]; if (c === RED || c === WHITE) return false; }       // with a gap each side
+    return true;
   };
   for (let y = 1; y < 140; y++) for (let x = 0; x < 158; x++) {
     if (!block(x, y) || used.has(y * 160 + x)) continue;
@@ -284,7 +299,7 @@ export function findGauges(scr) {
   for (let y = 1; y < 140; y++) for (let x = 0; x < 158; x++) {       // a gauge with every segment filled
     if (used.has(y * 160 + x) || !filled(x, y)) continue;
     let k = 1; while (filled(x + 4 * k, y)) k++;
-    if (k >= 5) { out.push({ x, y, n: k, on: k }); for (let m = 0; m < k; m++) used.add(y * 160 + x + 4 * m); x += 4 * k - 1; }
+    if (k >= 8) { out.push({ x, y, n: k, on: k }); for (let m = 0; m < k; m++) used.add(y * 160 + x + 4 * m); x += 4 * k - 1; }
   }
   return out;
 }
@@ -305,3 +320,26 @@ registerHDPainter("d_gauges", (g, scr, layer) => {
     }
   }
 }, { order: 55 });
+
+// ---- sprites on menus ---------------------------------------------------------------------------------------------------
+// Menu sprites (name tags, arrows, cursors, digits, icons) are drawn smoothed like the rest: all of them are composed into
+// one picture (lower OAM index on top, sprites behind the background left out), smoothed with Scale2x twice and laid on
+// the sprite canvas; the original sprites are hidden (2D only: the 3D view cannot leave sprites out). Not in a match.
+const onCourt = scr => scr.gb.mem.wram[0][0x32E] <= 15;       // wCurMapID: a court (the match, the courts' maps)
+const SMOOTH_SPRITES = true;
+registerHDPainter("d_sprites", (g, scr, layer) => {
+  if (!SMOOTH_SPRITES || layer !== "spr" || !scr.canHide || !(scr.panels && scr.panels.length) || onCourt(scr)) return;
+  const sprs = scr.oam.filter(s => !(s.attr & 0x80)); if (!sprs.length) return;
+  const buf = new Uint32Array(160 * 144);
+  for (const s of [...sprs].reverse()) {
+    const ci = s.ci, col = s.colors;
+    for (let y = 0; y < s.h; y++) for (let x = 0; x < 8; x++) {
+      const v = ci[y * 8 + x], X = s.x + x, Y = s.y + y; if (!v || X < 0 || X >= 160 || Y < 0 || Y >= 144) continue;
+      const c = col[v]; buf[Y * 160 + X] = (0xFF000000 | c.b << 16 | c.g << 8 | c.r) >>> 0;
+    }
+  }
+  if (!scr.hide(sprs)) return;
+  const b = scale2x(scale2x(buf, 160, 144), 320, 288), cv = document.createElement("canvas"); cv.width = 640; cv.height = 576;
+  const cg = cv.getContext("2d"), id = cg.createImageData(640, 576); new Uint32Array(id.data.buffer).set(b); cg.putImageData(id, 0, 0);
+  g.drawImage(cv, 0, 0, 160, 144);
+}, { order: 50, sprites: true });

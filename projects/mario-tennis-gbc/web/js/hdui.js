@@ -22,6 +22,7 @@
 //  * Identify things by TILE CONTENT, not tile numbers: cell.rows is 8 strings of colour indices ("0".."3"), e.g.
 //    cell.match(["22222222","22333333", ...]) or cell.sig; cell.colors[i] is the palette colour of index i as
 //    {r,g,b,css}. Derive shapes at runtime; never copy ROM graphics into the repo.
+//  * scr.claim(x, y, w, h) (from a painter with order < 0) keeps the built-in art out of a region (scr.claim(0,0,160,144): the whole screen).
 //  * Helpers: panelFrame / panelShadow (rounded bevel panel in the shared look), roundRect, drawText (HD text with the game's soft
 //    shadow, in the chosen font), punchInk (cut the original's non-fill pixels back out of what you painted so
 //    icons / digits / portraits inside your panel stay), shade / mix / rgbCss (colours), markOpaque (say which pixels your fill covers, and with what colour).
@@ -174,7 +175,7 @@ export class Cell {
 export class Screen {
   constructor(gb) {
     this.gb = gb; this.cells = { bg: [], win: [] }; this.byId = new Map(); this.key = ""; this.lines = []; this.font = null;
-    this.regs = {}; this.oam = []; this.hidden = new Set(); this.canHide = true; this.px32 = new Uint32Array(160 * 144); this.textMask = new Uint8Array(160 * 144); this.opaque = new Uint8Array(160 * 144); this.fillPx = new Uint32Array(160 * 144); this.panels = [];
+    this.regs = {}; this.oam = []; this.hidden = new Set(); this.hiddenStatic = new Set(); this.curSprites = false; this.canHide = true; this.claims = []; this.px32 = new Uint32Array(160 * 144); this.textMask = new Uint8Array(160 * 144); this.opaque = new Uint8Array(160 * 144); this.fillPx = new Uint32Array(160 * 144); this.panels = [];
   }
   color(pal, i) { const o = pal * 8 + i * 2, p = this.gb.ppu.bgPal; return col15(p[o] | (p[o + 1] << 8)); }
   // read the visible map cells (each once, at its tile's top-left screen position); returns a key that changes when
@@ -228,16 +229,20 @@ export class Screen {
         get rows() { const c = this.ci, r = []; for (let y = 0; y < this.h; y++) { let t = ""; for (let x = 0; x < 8; x++) t += c[y * 8 + x]; r.push(t); } return r; },
         get colors() { const p = gb.ppu.objPal, b = this.pal * 8; return [0, 1, 2, 3].map(k => col15(p[b + k * 2] | (p[b + k * 2 + 1] << 8))); } });
     }
-    this.hidden = new Set(); return this.oam = out;
+    this.hidden = new Set(this.hiddenStatic); return this.oam = out;
   }
   // Replace sprites by your own art (sprite painters only): hide(sprites) marks them as not to be shown by the view (2D
   // draws its own picture without them and what lay below them), then draw your art on g. Returns false (leave the
   // sprites alone) when the view cannot leave them out (scr.canHide false: the 3D view for now).
   hide(sprs) {
     if (!this.canHide) return false;
-    for (const s of Array.isArray(sprs) ? sprs : [sprs]) this.hidden.add(s.i);
+    for (const s of Array.isArray(sprs) ? sprs : [sprs]) { this.hidden.add(s.i); if (!this.curSprites) this.hiddenStatic.add(s.i); }   // hides by ordinary painters last until the next full repaint
     return true;
   }
+  // Take over a screen region: the built-in art (panel frames, cursors; order >= 0) leaves what lies inside alone. Call it from a
+  // painter that runs BEFORE them (order < 0); claims last until the next full repaint. claim(0, 0, 160, 144) = the whole screen.
+  claim(x, y, w, h) { this.claims.push([x, y, w, h]); }
+  claimed(x, y, w = 1, h = 1) { const cx = x + w / 2, cy = y + h / 2; for (const c of this.claims) if (cx >= c[0] && cx < c[0] + c[2] && cy >= c[1] && cy < c[1] + c[3]) return true; return false; }
   at(layer, x, y) { x |= 0; y |= 0; if (x < 0 || y < 0 || x >= 160 || y >= 144) return null; const c = this.byId.get(this.gb.ppu.pixCell[y * 160 + x]); return c && (!layer || c.layer === layer) ? c : null; }
   px(x, y) { return this.px32[(y | 0) * 160 + (x | 0)]; }            // 0xAABBGGRR (BG layers only)
   find(layer, fn) { return this.cells[layer].filter(fn); }
@@ -261,6 +266,7 @@ export function runPainters(layers, scr, mode = "all") {
   for (const p of painters) {
     if (p.failed) continue;
     const t0 = performance.now();
+    scr.curSprites = !!p.sprites;
     if (p.sprites) {
       const g = layers.spr; g.save();
       try { p.fn(g, scr, "spr"); } catch (e) { p.failed = true; console.warn("HD painter", p.name, e); }
@@ -275,6 +281,7 @@ export function runPainters(layers, scr, mode = "all") {
     }
     p.ms = (p.ms || 0) + performance.now() - t0;
   }
+  scr.curSprites = false;
 }
 // the painters' watch strings joined (HDText adds them to its repaint key)
 export function watchKey(scr) { let k = ""; for (const p of painters) if (p.watch && !p.failed) { try { k += p.watch(scr) + ";"; } catch (e) { p.failed = true; console.warn("HD painter watch", p.name, e); } } return k; }
