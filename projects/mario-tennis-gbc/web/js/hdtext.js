@@ -11,7 +11,7 @@ export const FONTS = {
   kode: { label: "Kode Mono", family: "MT Kode Mono", file: "fonts/KodeMono.ttf", em: 9.25, base: 7 },
 };
 export const FONT_ORDER = ["game", "itim", "kode"];
-import { HD, Screen, runPainters, watchKey, onPainterChange, loadMenuModules } from "./hdui.js";
+import { HD, Screen, runPainters, watchKey, onPainterChange, loadMenuModules, fillTextTight, tightWidth } from "./hdui.js";
 import "./hdui_frames.js"; import "./hdui_cursors.js";                        // the built-in art (boxes, cursors)
 export { HD };                                       // canvas pixels per screen pixel
 
@@ -187,9 +187,9 @@ export class HDText {
       const em = f.em * Math.min(1, Math.max(0.7, gap / 14));
       if (!(ui && this.covered(l))) { g.fillStyle = bg; g.fillRect(l.x * HD, l.y * HD, (l.w + 1) * HD, 8 * HD); }
       g.font = `${em * HD}px "${f.family}"`; g.textBaseline = "alphabetic";
-      const w = g.measureText(l.text).width, room = (l.w + 3) * HD, sx = w > room ? room / w : 1;
+      const w = tightWidth(g, l.text), room = (l.w + 3) * HD, sx = w > room ? room / w : 1;
       g.save(); g.translate(l.x * HD, (l.y + f.base) * HD); g.scale(sx, 1);
-      const o = HD * 0.75; g.fillStyle = sh; g.fillText(l.text, o, o); g.fillStyle = ink; g.fillText(l.text, 0, 0);
+      const o = HD * 0.75; g.fillStyle = sh; fillTextTight(g, l.text, o, o); g.fillStyle = ink; fillTextTight(g, l.text, 0, 0);
       g.restore();
     }
   }

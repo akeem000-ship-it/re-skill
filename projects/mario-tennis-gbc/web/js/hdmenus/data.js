@@ -1,6 +1,6 @@
 // HD painters for agent D: character data / EXP screens, court select, minigame menus, icons, and the menu (UI) font.
 // Use the API in web/js/hdui.js (usage note at its top): registerHDPainter(name, (g, scr, layer) => {...}, { order }).
-import { registerHDPainter as register, drawText, shade, roundRect } from "../hdui.js";
+import { registerHDPainter as register, drawText, shade, roundRect, HD } from "../hdui.js";
 // (painters are timed into globalThis.__dTimes: milliseconds per painter, for tests)
 const registerHDPainter = (name, fn, o) => register(name, (...a) => { const t = performance.now(); try { return fn(...a); } finally { const T = globalThis.__dTimes || (globalThis.__dTimes = {}); T[name] = (T[name] || 0) + performance.now() - t; } }, o);
 
@@ -137,6 +137,19 @@ function bestGlyph(P, cols, a, b, fuzzy) {
   }
   return bg && bd <= Math.max(1, Math.floor(ink * 0.16)) && ink >= 5 ? { ch: bg.ch, ink: bg.ink, exact: false } : null;
 }
+// the same, remembered by the run's ink (the screens hold the same words for long; most runs are one glyph)
+const runCache = new Map();
+function splitCached(P, cols, a, b) {
+  const key = Array.prototype.join.call(cols.subarray(a, b), ",");
+  let r = runCache.get(key);
+  if (r === undefined) {
+    r = b - a <= 26 ? splitRun(P, cols, a, b) : null;
+    if (r) r = r.map(g => ({ ...g, a: g.a - a, b: g.b - a }));
+    if (runCache.size > 4000) runCache.clear();
+    runCache.set(key, r);
+  }
+  return r && r.map(g => ({ ...g, a: g.a + a, b: g.b + a }));
+}
 // the glyphs (characters) that make the columns [a, b): the whole run as one glyph, else cut into glyphs that touch;
 // returns [{ch, a, b}] or null
 function splitRun(P, cols, a, b, out = [], fuzzy = false) {
@@ -167,7 +180,7 @@ export function readShadowText(scr, layer) {
       let j = i + 1; while (j < runs.length && runs[j] && runs[j][0] - runs[j - 1][1] < 9) j++;
       const items = []; let ok = true, exact = false;
       for (let k = i; k < j && ok; k++) {
-        const [a, b] = runs[k], gl = splitRun(P, cols, a, b);
+        const [a, b] = runs[k], gl = splitCached(P, cols, a, b);
         if (!gl) { ok = false; _dbg.unmatched.push({ x: cells[0].x + a, y: st.y, cols: Array.from(cols.slice(a, b)) }); break; }
         for (const g of gl) {
           const prev = items.length ? items[items.length - 1] : null;
@@ -217,8 +230,9 @@ registerHDPainter("d_text", (g, scr, layer) => {
   const lines = scr._dText && scr._dText[layer]; if (!lines || !lines.length) return;
   const f = scr.font; if (!f) return;
   for (const l of lines) {
-    // lines of an 8 px list sit close: a smaller size
-    let gap = 16; for (const o of lines) if (o !== l && o.x < l.x + l.w && l.x < o.x + o.w && o.y !== l.y) gap = Math.min(gap, Math.abs(o.y - l.y));
+    // lines of a list (the same left edge, or overlapping) that sit close get one smaller size
+    let gap = 16;
+    for (const o of lines) if (o !== l && o.y !== l.y && (Math.abs(o.x - l.x) <= 3 || (o.x < l.x + l.w && l.x < o.x + o.w))) gap = Math.min(gap, Math.abs(o.y - l.y));
     const size = f.em * Math.min(1, Math.max(0.7, gap / 14));
     let covered = true; for (let y = Math.max(0, l.y); y < Math.min(144, l.y + 8) && covered; y++) for (let x = Math.max(0, l.x); x < Math.min(160, l.x + l.w + 1); x++) if (!scr.opaque[y * 160 + x]) { covered = false; break; }
     if (!covered) { g.fillStyle = l.c[0]; g.fillRect(l.x, l.y, l.w + 1, 8); }
@@ -259,13 +273,20 @@ export function smooth4(px, x, y, w, h) {
 // (portraits, icons, bars) out of its fills so "the picture shows through", and what shows through is then the smoothed
 // picture, not the plain 4x one. Only on screens that have HD panels (menus), never in a match. (Done with plain
 // source-over drawing on a copy: "destination-over" on the page's accelerated canvas left old pixels behind.)
+const onCourt = scr => scr.gb.mem.wram[0][0x32E] <= 15;       // wCurMapID: a court (the match, the courts' maps)
 const SMOOTH_ALL = true;
 let under = null;
 registerHDPainter("d_smooth", (g, scr, layer) => {
   if (!SMOOTH_ALL || layer !== "bg" || !(scr.panels && scr.panels.length)) return;
-  const cv = g.canvas; if (!under || under.width !== cv.width || under.height !== cv.height) { under = document.createElement("canvas"); under.width = cv.width; under.height = cv.height; }
+  // a full-screen picture only where the view is a plain 2D menu; over a court or in the 3D view (where the overlay lies on
+  // the 3D scene) just the panels' own rectangles, so the court / cards behind stay
+  const part = !scr.canHide || onCourt(scr), cv = g.canvas;
+  if (!under || under.width !== cv.width || under.height !== cv.height) { under = document.createElement("canvas"); under.width = cv.width; under.height = cv.height; }
   const u = under.getContext("2d"); u.setTransform(1, 0, 0, 1, 0, 0); u.clearRect(0, 0, under.width, under.height);
+  u.save();
+  if (part) { u.beginPath(); for (const p of scr.panels) if (p.layer === "bg") u.rect(Math.max(0, p.x) * HD, Math.max(0, p.y) * HD, p.w * HD, p.h * HD); u.clip(); }
   u.drawImage(smooth4(scr.px32, 0, 0, 160, 144), 0, 0, under.width, under.height);   // the smoothed picture...
+  u.restore();
   u.drawImage(cv, 0, 0);                                                              // ...with what the painters drew on it
   g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height); g.drawImage(under, 0, 0); g.restore();
 }, { order: 1000 });
@@ -327,11 +348,10 @@ registerHDPainter("d_gauges", (g, scr, layer) => {
 // Menu sprites (name tags, arrows, cursors, digits, icons) are drawn smoothed like the rest: all of them are composed into
 // one picture (lower OAM index on top, sprites behind the background left out), smoothed with Scale2x twice and laid on
 // the sprite canvas; the original sprites are hidden (2D only: the 3D view cannot leave sprites out). Not in a match.
-const onCourt = scr => scr.gb.mem.wram[0][0x32E] <= 15;       // wCurMapID: a court (the match, the courts' maps)
 const SMOOTH_SPRITES = true;
 registerHDPainter("d_sprites", (g, scr, layer) => {
   if (!SMOOTH_SPRITES || layer !== "spr" || !scr.canHide || !(scr.panels && scr.panels.length) || onCourt(scr)) return;
-  const sprs = scr.oam.filter(s => !(s.attr & 0x80)); if (!sprs.length) return;
+  const sprs = scr.oam.filter(s => !(s.attr & 0x80) && !scr.hidden.has(s.i)); if (!sprs.length) return;
   const buf = new Uint32Array(160 * 144);
   for (const s of [...sprs].reverse()) {
     const ci = s.ci, col = s.colors;
@@ -345,3 +365,121 @@ registerHDPainter("d_sprites", (g, scr, layer) => {
   const cg = cv.getContext("2d"), id = cg.createImageData(640, 576); new Uint32Array(id.data.buffer).set(b); cg.putImageData(id, 0, 0);
   g.drawImage(cv, 0, 0, 160, 144);
 }, { order: 50, sprites: true });
+
+// ---- arrow buttons (MORE / BACK) ----------------------------------------------------------------------------------------
+// The character data pages' MORE and BACK arrows are rows of 4-5 sprites (an arrow head, then a black label). They are
+// found by the pixels of their sprites (hashes: a sprite's 64 colour indices are only kept as a hash) and redrawn as vector
+// buttons: a red arrow head and a black label in HD text.
+function fnv(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return (h >>> 0).toString(16); }
+const ARROWS = [
+  { label: "MORE", dir: -1, hashes: ["6b1e32bf", "47f8f77", "e71adc60", "7ce14f5f", "97dd7b4d"] },
+  { label: "MORE", dir: 1, hashes: ["b065f343", "45d0ff2", "b53785d7", "1518a3c9", "a69a1477"] },
+  { label: "BACK", dir: -1, hashes: ["fe705bbe", "aa0f53f1", "d37ce998", "f9d058b9"] },
+  { label: "BACK", dir: 1, hashes: ["2d048002", "a901c623", "42038994", "41b7ef93"] },
+];
+function findArrows(scr) {
+  const out = [], hs = new Map(); for (const s of scr.oam) hs.set(s, s._h || (s._h = fnv(s.ci.join(""))));
+  for (const def of ARROWS) for (const s0 of scr.oam) {
+    if (hs.get(s0) !== def.hashes[0]) continue;
+    const run = [s0]; let ok = true;
+    for (let k = 1; k < def.hashes.length && ok; k++) { const n = scr.oam.find(s => s.y === s0.y && s.x === s0.x + 8 * k && hs.get(s) === def.hashes[k]); if (n) run.push(n); else ok = false; }
+    if (ok) out.push({ ...def, sprites: run });
+  }
+  return out;
+}
+function arrowButton(g, scr, a) {
+  let x0 = 999, y0 = 999, x1 = -1, y1 = -1;
+  for (const s of a.sprites) for (let y = 0; y < s.h; y++) for (let x = 0; x < 8; x++) if (s.ci[y * 8 + x]) { x0 = Math.min(x0, s.x + x); x1 = Math.max(x1, s.x + x + 1); y0 = Math.min(y0, s.y + y); y1 = Math.max(y1, s.y + y + 1); }
+  const w = x1 - x0, h = y1 - y0, ym = (y0 + y1) / 2, L = a.dir < 0, headW = 8, tipX = L ? x0 : x1, baseX = L ? x0 + headW : x1 - headW;
+  const bx0 = L ? x0 + headW - 1 : x0, bx1 = L ? x1 : x1 - headW + 1, by0 = y0 + 2.3, by1 = y1 - 2.2;
+  g.save();
+  g.shadowColor = "rgba(0,0,0,0.45)"; g.shadowBlur = 2 * HD; g.shadowOffsetY = 1 * HD; g.fillStyle = "#000";
+  g.beginPath(); g.moveTo(tipX, ym); g.lineTo(baseX, y0 + 0.3); g.lineTo(baseX, y1 - 0.3); g.closePath(); g.fill();
+  g.beginPath(); roundRect(g, bx0, by0, bx1 - bx0, by1 - by0, 1.6); g.fill(); g.restore();
+  // the arrow head: dark rim, white line, red body with a gloss
+  const head = (inset, fill) => { g.beginPath(); const t = inset * 1.3; g.moveTo(tipX + (L ? t : -t), ym); g.lineTo(baseX + (L ? 0.3 : -0.3), y0 + 0.3 + inset); g.lineTo(baseX + (L ? 0.3 : -0.3), y1 - 0.3 - inset); g.closePath(); g.fillStyle = fill; g.fill(); };
+  g.lineJoin = "round"; head(0, "#300"); head(0.7, "#fff");
+  const gr = g.createLinearGradient(0, y0, 0, y1); gr.addColorStop(0, "#ff5a40"); gr.addColorStop(0.5, "#f00000"); gr.addColorStop(1, "#a00000"); head(1.5, gr);
+  // the label
+  g.beginPath(); roundRect(g, bx0, by0, bx1 - bx0, by1 - by0, 1.6); g.fillStyle = "#fff"; g.fill();
+  const lg = g.createLinearGradient(0, by0, 0, by1); lg.addColorStop(0, "#2c2c34"); lg.addColorStop(1, "#000");
+  g.beginPath(); roundRect(g, bx0 + 0.6, by0 + 0.6, bx1 - bx0 - 1.2, by1 - by0 - 1.2, 1.1); g.fillStyle = lg; g.fill();
+  const cx = (bx0 + bx1) / 2 + (L ? 0.6 : -0.6);
+  if (!drawText(g, scr, a.label, cx, ym + 2.8, { size: 8.6, color: "#fff", shadow: "rgba(0,0,0,0.6)", align: "center", maxW: bx1 - bx0 - 3 })) {
+    g.font = "bold 7.4px sans-serif"; g.textAlign = "center"; g.fillStyle = "#fff"; g.fillText(a.label, cx, ym + 2.6);
+  }
+  g.restore();
+}
+registerHDPainter("d_arrows", (g, scr, layer) => {
+  if (layer !== "spr" || !scr.canHide || !(scr.panels && scr.panels.length) || onCourt(scr)) return;
+  for (const a of findArrows(scr)) if (scr.hide(a.sprites)) arrowButton(g, scr, a);
+}, { order: 40, sprites: true });
+
+// ---- icons ------------------------------------------------------------------------------------------------------------------
+// The pictograms of the menu buttons (24x16 dark-green buttons with a white rim and black corner dots) redrawn as vectors in
+// the game's style: black outline, white fill. Each draws around (0, 0) in a box of about 20 x 12 screen px; `bg` is the
+// button's fill (for cut-outs).
+function ink(g, path, fill = "#fff", lw = 1.5) {
+  g.save(); g.beginPath(); path(g); g.lineJoin = "round"; g.lineCap = "round"; g.lineWidth = lw; g.strokeStyle = "#000"; g.stroke(); g.fillStyle = fill; g.fill(); g.restore();
+}
+const poly = pts => g => { g.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]); g.closePath(); };
+const circ = (x, y, r) => g => { g.moveTo(x + r, y); g.arc(x, y, r, 0, Math.PI * 2); };
+const rrect = (x, y, w, h, r) => g => roundRect(g, x, y, w, h, r);
+function line(g, pts, w = 1, col = "#000") { g.save(); g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]); g.lineWidth = w; g.strokeStyle = col; g.lineCap = "round"; g.lineJoin = "round"; g.stroke(); g.restore(); }
+function star5(g, cx, cy, R, r) { for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, d = i % 2 ? r : R; g[i ? "lineTo" : "moveTo"](cx + Math.cos(a) * d, cy + Math.sin(a) * d); } g.closePath(); }
+const ICONS = {
+  wrench(g, bg) {
+    ink(g, rrect(-5.5, -1.6, 11, 3.2, 1.5)); ink(g, circ(-6.6, 0, 3.5)); ink(g, circ(6.6, 0, 3.5));
+    g.save(); g.fillStyle = bg; g.beginPath(); g.moveTo(-11, -1.3); g.lineTo(-7.2, -1.3); g.lineTo(-7.2, 1.3); g.lineTo(-11, 1.3); g.closePath(); g.fill(); g.restore();
+    line(g, [[-10.2, -1.4], [-7.1, -1.4], [-7.1, 1.4], [-10.2, 1.4]], 0.9);
+    ink(g, circ(6.6, 0, 1.3), bg, 0.9);
+  },
+  door(g, bg) {
+    ink(g, poly([[-6, -5.5], [3, -5.5], [3, 4.5], [-6, 4.5]]), bg, 1.2); line(g, [[-6, -5.5], [-6, 4.5]], 1.5);
+    ink(g, poly([[-5.5, -5], [-1.5, -3.5], [-1.5, 5.5], [-5.5, 4.5]]), "#000", 0.6);
+    ink(g, poly([[1, 4.5], [9, 4.5], [10, 6], [0, 6]]), "#fff", 1);
+    line(g, [[-9, 5.6], [9.5, 5.6]], 1.4);
+  },
+  bulbOn(g, bg) {
+    for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + Math.PI / 8; if (Math.abs(Math.sin(a)) > 0.9 && Math.cos(a) !== 0) { } line(g, [[Math.cos(a) * 6, Math.sin(a) * 4.8 - 0.8], [Math.cos(a) * 9, Math.sin(a) * 6.8 - 0.8]], 0.9, "#fff"); }
+    ink(g, circ(0, -1.2, 4), "#fff", 1.4); ink(g, rrect(-1.9, 2.6, 3.8, 3, 0.8), "#fff", 1.2); line(g, [[-1.9, 4], [1.9, 4]], 0.6);
+  },
+  bulbOff(g, bg) {
+    ink(g, circ(0, -1.2, 4), bg, 1.4); line(g, [[-1.6, -2.6], [-0.2, -3.5]], 0.8, "#fff");
+    ink(g, rrect(-1.9, 2.6, 3.8, 3, 0.8), "#fff", 1.2); line(g, [[-1.9, 4], [1.9, 4]], 0.6);
+  },
+  grid(g, bg) {
+    ink(g, rrect(-8.5, -5.5, 17, 11, 0.8), "#fff", 1.5);
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) { g.save(); g.fillStyle = "#000"; g.fillRect(-7 + c * 4.9, -4.2 + r * 2.4, 4, 1.4); g.restore(); }
+    for (let c = 0; c < 2; c++) { g.save(); g.fillStyle = "#000"; g.fillRect(-7 + c * 8.5, 3, 7.3, 0.9); g.restore(); }
+  },
+  hand(g, bg) {
+    const fing = (x, y0, y1, w) => ink(g, rrect(x, y1, w, y0 - y1, w / 2), "#fff", 1.3);
+    fing(-5.5, 1, -4.5, 2.2); fing(-3, 1, -6, 2.2); fing(-0.5, 1, -6.3, 2.2); fing(2, 1, -5.5, 2.2);
+    ink(g, poly([[-6, 0], [-6, 3], [-3.5, 6], [3, 6], [4, 2], [7.5, -1], [6, -2.5], [3, 0], [3, -3], [-6, -3]]), "#fff", 1.4);
+    for (const x of [-3.2, -0.7, 1.8]) line(g, [[x + 1.1, -3], [x + 1.1, 0.5]], 0.5);
+  },
+  clip(g, bg) {
+    ink(g, rrect(-6.5, -5, 13, 10.5, 1), "#fff", 1.5); ink(g, rrect(-2.8, -6.2, 5.6, 2.8, 1), "#fff", 1.2);
+    for (let i = 0; i < 3; i++) { g.save(); g.fillStyle = "#000"; g.fillRect(-4.5, -1.3 + i * 2.3, 9, 1.1); g.restore(); }
+  },
+  star(g, bg) {
+    ink(g, g2 => star5(g2, 0, 0.3, 7.4, 3.1), "#fff", 1.5);
+    g.save(); g.fillStyle = "#000"; g.fillRect(-1.8, -0.6, 0.9, 1.5); g.fillRect(0.9, -0.6, 0.9, 1.5); g.restore();
+  },
+  finger(g, bg) {
+    ink(g, rrect(-1.6, -6, 3.2, 8, 1.6), "#fff", 1.4);
+    ink(g, poly([[-6, 0], [-1.8, -1], [1.8, -1], [4.5, 0], [4.5, 4], [1.5, 6.3], [-3.5, 6.3], [-6.2, 3.5]]), "#fff", 1.4);
+    line(g, [[-1.5, 2], [1.5, 2]], 0.5);
+  },
+  flag(g, bg) {
+    line(g, [[-6.5, 5.5], [-3.5, -5.5]], 1.4, "#000"); line(g, [[-6.5, 5.5], [-3.5, -5.5]], 0.6, "#fff");
+    ink(g, g2 => { g2.moveTo(-3.3, -5.2); g2.quadraticCurveTo(0, -3.6, 2.5, -5.2); g2.quadraticCurveTo(4.5, -6, 6.8, -4.6); g2.lineTo(5.6, 0.2); g2.quadraticCurveTo(3, -1.2, 0.5, 0.4); g2.quadraticCurveTo(-1.6, 1.4, -2.4, -0.4); g2.closePath(); }, "#fff", 1.3);
+    g.save(); g.fillStyle = bg; g.beginPath(); g.arc(1.6, -2.6, 1.1, 0, 7); g.fill(); g.restore();
+  },
+};
+export const ICON_NAMES = Object.keys(ICONS);
+export function drawIcon(g, name, cx, cy, bg = "rgb(0,144,56)") {
+  const f = ICONS[name]; if (!f) return false;
+  g.save(); g.translate(cx, cy); f(g, bg); g.restore(); return true;
+}

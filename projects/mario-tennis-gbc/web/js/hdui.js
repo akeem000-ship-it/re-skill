@@ -105,16 +105,35 @@ export function panelFrame(g, x, y, w, h, o = {}) {
   g.restore();
   return { x: ix, y: iy, w: iw, h: ih, r: ir };
 }
+// Text with the apostrophe pulled in to hug its neighbours (a font's apostrophe carries side bearings that open a gap in
+// "that's"; the game's own is a narrow cell of its own). Works on the context's current font, fill style and transform.
+const APOS = /(['\u2019])/;
+function aposLayout(g, text) {
+  const parts = text.split(APOS).filter(p => p !== ""), out = []; let x = 0;
+  const em = parseFloat(g.font) || 10;
+  for (const part of parts) {
+    if (part === "'" || part === "\u2019") {
+      const m = g.measureText(part), left = -m.actualBoundingBoxLeft, right = m.actualBoundingBoxRight, gap = 0.04 * em;
+      out.push({ s: part, x: x - left + gap }); x += right - left + 2 * gap + 0.01 * em;
+    } else { out.push({ s: part, x }); x += g.measureText(part).width; }
+  }
+  return { parts: out, width: x };
+}
+export const tightWidth = (g, text) => text.includes("'") || text.includes("\u2019") ? aposLayout(g, text).width : g.measureText(text).width;
+export function fillTextTight(g, text, x, y) {
+  if (!text.includes("'") && !text.includes("\u2019")) { g.fillText(text, x, y); return; }
+  for (const p of aposLayout(g, text).parts) g.fillText(p.s, x + p.x, y);
+}
 // HD text in the chosen HD font with the game's soft shadow. o: size (screen px em; default the font's), color, shadow
 // (css or null), align "left" | "center" | "right", maxW (squeeze to fit). (x, y) is the baseline start (like the game's
 // text rows: y of the 8-pixel row + font.base). Returns false (draws nothing) when no HD font is selected.
 export function drawText(g, scr, text, x, y, o = {}) {
   const f = scr.font; if (!f) return false;
   const em = o.size ?? f.em; g.save(); g.font = `${em}px "${f.family}"`; g.textBaseline = "alphabetic";
-  const w = g.measureText(text).width, sx = o.maxW && w > o.maxW ? o.maxW / w : 1, ax = o.align === "center" ? -w * sx / 2 : o.align === "right" ? -w * sx : 0;
+  const w = tightWidth(g, text), sx = o.maxW && w > o.maxW ? o.maxW / w : 1, ax = o.align === "center" ? -w * sx / 2 : o.align === "right" ? -w * sx : 0;
   g.translate(x + ax, y); g.scale(sx, 1);
-  if (o.shadow !== null) { g.fillStyle = o.shadow || "rgba(0,0,0,0.5)"; g.fillText(text, 0.75, 0.75); }
-  g.fillStyle = o.color || "#fff"; g.fillText(text, 0, 0); g.restore(); return true;
+  if (o.shadow !== null) { g.fillStyle = o.shadow || "rgba(0,0,0,0.5)"; fillTextTight(g, text, 0.75, 0.75); }
+  g.fillStyle = o.color || "#fff"; fillTextTight(g, text, 0, 0); g.restore(); return true;
 }
 // After painting a panel's fill over a region, give back the original's non-fill pixels (text, icons, portraits, digits)
 // so they show through: every pixel of the region whose BG colour differs from `fillRGB` ([r,g,b] or css) gets a hole in

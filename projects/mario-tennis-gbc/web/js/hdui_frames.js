@@ -89,6 +89,8 @@ export function findPanels(scr, layer) {
     // at least a corner or two opposite edges: a lone strip of T tiles is a ruler, not a panel
     const top = has.TL || has.T || has.TR, bot = has.BL || has.B || has.BR, lef = has.TL || has.L || has.BL, rig = has.TR || has.R || has.BR;
     if (list.length < 4) continue;                    // a stray tile or two (a panel mid-scroll) is not a panel
+    { let ax0 = 1e9, ax1 = -1e9, ay0 = 1e9, ay1 = -1e9; for (const c of list) { ax0 = Math.min(ax0, c.x); ax1 = Math.max(ax1, c.x + 8); ay0 = Math.min(ay0, c.y); ay1 = Math.max(ay1, c.y + 8); }
+      if ((ax1 - ax0 < 24 || ay1 - ay0 < 16) && !(ax0 <= 0 || ax1 >= 160 || ay0 <= 0 || ay1 >= 144)) continue; }   // smaller than 3x2 tiles and not cut by the screen's edge: scenery (a scoreboard), not a panel
     if (!((top && bot) || (lef && rig) || (top && (lef || rig)) || (bot && (lef || rig)))) continue;
     let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const c of list) { x0 = Math.min(x0, c.x); y0 = Math.min(y0, c.y); x1 = Math.max(x1, c.x + 8); y1 = Math.max(y1, c.y + 8); }
     // a side that is not drawn must lie off screen (the panel is cut by the screen's edge there); a drawn side needs its corners

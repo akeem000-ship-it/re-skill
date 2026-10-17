@@ -13,7 +13,8 @@ function at(file, frame) {
   const scr = new Screen(gb); scr.scan(); return scr;
 }
 const cases = [   // [recording, frame, expected panels (bg + win)]
-  ["out/port/cs_singles.mtrec", 1500, 4], ["out/port/xr_results.mtrec", 1100, 2], ["out/port/cd_status.mtrec", 1950, 3],
+  ["out/port/cs_singles.mtrec", 1500, 4], ["out/port/xr_results.mtrec", 1100, 2],   // 2 panels: the stadium scoreboard in the backdrop is NOT one
+  ["out/port/cd_status.mtrec", 1950, 3],
   ["out/port/story_walk1.mtrec", 2136, 1], ["out/engine/rec2.mtrec", 9000, 0],
 ];
 let bad = 0;
