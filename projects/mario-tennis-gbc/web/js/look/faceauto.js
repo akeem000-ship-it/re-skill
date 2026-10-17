@@ -22,6 +22,13 @@ export function findFaces(layer, w, h, minH = 11) {
   return out;
 }
 
+// the face of a crop that holds one figure (spritedetail.js cuts the sprite layer into figures): null or { info, skin }
+export function faceOfFigure(layer, w, h) {
+  let x0 = w, y0 = h, x1 = -1, y1 = -1; const lab = new Int32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (layer[y * w + x]) { lab[y * w + x] = 1; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } else lab[y * w + x] = -1;
+  if (x1 < 0 || y1 - y0 + 1 < 11 || x1 - x0 + 1 < 6 || x1 - x0 + 1 > 40) return null;
+  return faceIn(layer, w, h, null, x0, y0, x1, y1, lab, 1);
+}
 function faceIn(layer, w, h, at, x0, y0, x1, y1, lab, id) {
   const bh = y1 - y0 + 1, bw = x1 - x0 + 1, hz = y0 + Math.max(7, Math.round(bh * (bh > 20 ? 0.42 : 0.55)));        // the head zone: the top of the figure
   const mine = (x, y) => x >= 0 && y >= 0 && x < w && y < h && lab[y * w + x] === id, dark = c => lumOf(c) < 150;

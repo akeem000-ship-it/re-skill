@@ -42,4 +42,9 @@ export const MODULES = {
   island_open_0f: ISLAND_OPEN_0F, island_rounds_0f: ISLAND_ROUNDS_0F, junior_doubles_11: JUNIOR_DOUBLES_11,
   junior_singles_11: JUNIOR_SINGLES_11,
 };
+// part 2 (src/story/lessonmenu_10 .. water_15): its modules, added to MODULES
+import { HOOKS as WALKS_10 } from "./walks_10.js";
+Object.assign(MODULES, {
+  walks_10: WALKS_10,
+});
 export const HOOKS = Object.values(MODULES).flat();

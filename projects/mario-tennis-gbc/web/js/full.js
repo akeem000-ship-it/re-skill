@@ -226,7 +226,11 @@ const PORT_VERIFIED = ["home/index", "audio/index", "save/index", "cutscenes/ind
   "menus/char_select/index", "menus/char_data/index",
   "menus/pause/index", "menus/briefing/index", "menus/court_select/index", "menus/scenes/index",
   "match/index", "menus/exp/index", "menus/results/index", "menus/ranking/index",
-  "menus/equipment/index", "menus/dictionary/index", "menus/minigame_select/index", "menus/debug/index", "menus/link/index"];
+  "menus/equipment/index", "menus/dictionary/index", "menus/minigame_select/index", "menus/debug/index", "menus/link/index",
+  "story_scripts/devmap_10", "story_scripts/challenge_scenes_15", "story_scripts/challenger_15",
+  "story_scripts/coach_lessons_15", "story_scripts/coach_walks_15", "story_scripts/court_sky_14",
+  "story_scripts/ending_finals_27", "story_scripts/ending_jrcourt_27", "story_scripts/ending_office_27",
+  "story_scripts/firework_14", "story_scripts/gym_actors_0e", "story_scripts/island_14"];
 async function makePort(bytes) {
   const { GamePort } = await import("./port/port.js"), { entry } = await import("./port/entry.js");
   const want = portMode() === "portall" ? "all" : q.get("port");

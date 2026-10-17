@@ -39,25 +39,21 @@ export function scale3x(a, w, h, out = null) {
 //   other colours: a cool, darker band on the bottom-right edge of each colour region and a warm highlight on the top-left;
 //   light areas get white glints next to dark pixels.
 export function shade3(src, W, H) {
-  const out = new Uint32Array(src), at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H) ? 0 : src[y * W + x];
-  const isDark = c => c !== 0 && lumOf(c) < DARK;
+  const out = new Uint32Array(src), P = 2, PW = W + 2 * P, pad = new Uint32Array(PW * (H + 2 * P));      // a 2-pixel clear border: neighbours are plain index offsets
+  for (let y = 0; y < H; y++) pad.set(src.subarray(y * W, y * W + W), (y + P) * PW + P);
+  const dk = c => c !== 0 && lumOf(c) < DARK;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const c = src[y * W + x]; if (!c) continue;
-    const n = at(x, y - 1), s = at(x, y + 1), w = at(x - 1, y), e = at(x + 1, y);
-    if (isDark(c)) {
-      const nearClear = !n || !s || !w || !e, nearLight = (n && !isDark(n)) || (s && !isDark(s)) || (w && !isDark(w)) || (e && !isDark(e));
-      if (nearClear || nearLight) { out[y * W + x] = OUTLINE; continue; }
-      const up = at(x, y - 1), left = at(x - 1, y), up2 = at(x, y - 2);
-      out[y * W + x] = (!isDark(up) || !isDark(left) || !isDark(up2)) ? SHEEN : DEEP;
-      continue;
+    const i = (y + P) * PW + x + P, n = pad[i - PW], s = pad[i + PW], w = pad[i - 1], e = pad[i + 1];
+    if (dk(c)) {
+      const dn = dk(n), ds = dk(s), dw = dk(w), de = dk(e);
+      if (!n || !s || !w || !e || !dn || !ds || !dw || !de) { out[y * W + x] = OUTLINE; continue; }        // next to clear or a light pixel
+      out[y * W + x] = (!dk(pad[i - 2 * PW])) ? SHEEN : DEEP; continue;                                    // the inside: a faint sheen on the top-left edge
     }
-    // colour region edges
-    const dn = at(x, y + 1) !== c, rt = at(x + 1, y) !== c, dn2 = at(x, y + 2) !== c, up = at(x, y - 1) !== c, lf = at(x - 1, y) !== c;
     const r = c & 255, g = (c >> 8) & 255, b = (c >> 16) & 255;
-    if (dn || rt || dn2) out[y * W + x] = pack(r * 0.72 + 4, g * 0.72 + 2, b * 0.86 + 18);
-    else if (up || lf) out[y * W + x] = pack(r * 1.06 + 26, g * 1.04 + 22, b * 0.98 + 10);
-    // glint: light pixel with a dark pixel diagonally below-right
-    else if (lumOf(c) > 600 && isDark(at(x + 1, y + 1))) out[y * W + x] = WHITE;
+    if (s !== c || e !== c || pad[i + 2 * PW] !== c) out[y * W + x] = pack(r * 0.72 + 4, g * 0.72 + 2, b * 0.86 + 18);        // bottom-right band: cool and darker
+    else if (n !== c || w !== c) out[y * W + x] = pack(r * 1.06 + 26, g * 1.04 + 22, b * 0.98 + 10);                          // top-left band: warm highlight
+    else if (lumOf(c) > 600 && dk(pad[i + PW + 1])) out[y * W + x] = WHITE;                                                   // glint
   }
   return out;
 }
