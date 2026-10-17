@@ -244,7 +244,8 @@ const PORT_VERIFIED = ["home/index", "audio/index", "save/index", "cutscenes/ind
   "story_scripts/actor_27", "story_scripts/awards_0f", "story_scripts/center_11", "story_scripts/court_machine_14",
   "story_scripts/court_practice_11", "story_scripts/dorm_13", "story_scripts/doubles_11",
   "story_scripts/ending_varsity_27", "story_scripts/exhibition_0e", "story_scripts/island_open_0f",
-  "story_scripts/island_rounds_0f", "story_scripts/junior_doubles_11", "story_scripts/junior_singles_11"];
+  "story_scripts/island_rounds_0f", "story_scripts/junior_doubles_11", "story_scripts/junior_singles_11",
+  "twins/index"];
 async function makePort(bytes) {
   const { GamePort } = await import("./port/port.js"), { entry } = await import("./port/entry.js");
   const want = portMode() === "portall" ? "all" : q.get("port");
