@@ -14,7 +14,7 @@ import {
   arrivalWalkUp, arrivalWalkDown, arrivalWalkLeft, computeRankingProgressIndex, computeStoryRankTier,
   loadCourtPlayerPartnerObjDefs, readSceneTilemapTile,
 } from "../story_scripts/twins.js";
-import { developmentFacing01, developmentTile01 } from "../story_scripts/devmap_10.js";
+import { developmentFacing01 } from "../story_scripts/devmap_10.js";
 import { animateDoorOpen, animateDoorClose } from "../story_scripts/dorm_13.js";
 import { queueShortText } from "../story_scripts/actor_0f.js";
 import { advancePlaneFrameCounter2 } from "../story_scripts/island_14.js";
@@ -48,10 +48,10 @@ const STORY = [
   scene(0x27, 0x71BF, animateDoorClose),                               // CloseRestaurantEntDoor_27
   // SetPartnerObjDefByGender_27: a male partner's slot $0D wears Harry's sprite
   [0x13, 0x62BE, hook(P => { setPartnerObjDefByGender(P); })],         // ApplyPartnerCharacterVariant_13
-  // DevelopmentFacing01_10 / DormRoomFacing01_13 and DevelopmentTile01_10: the player's line
-  scene(0x10, 0x4B69, developmentFacing01),                            // Test2Facing01_10
+  // DevelopmentFacing01_10 / DormRoomFacing01_13: the player's line. (Test2Facing01_10 and Test2Tile01_10, the
+  // same twice more on the debug map Test 2, stay the ROM's: no recording reaches them — the map has no action
+  // cell, and its trigger cell (50, 12) was not reached.)
   scene(0x12, 0x4CA9, developmentFacing01),                            // WallPracticeRoomFacing01_12
-  scene(0x10, 0x4B89, developmentTile01),                              // Test2Tile01_10
   // read_scene_tilemap_tile (ReadSceneTilemapTile_0f)
   [0x10, 0x7AC8, hook((P, c) => readSceneTilemapTile(P, c.bc, c.d, c.e))],   // ReadSceneTilemapTile_10
 ];

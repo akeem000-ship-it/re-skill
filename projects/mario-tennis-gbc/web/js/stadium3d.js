@@ -64,7 +64,7 @@ void main() {
   if (aQ.z > uFill) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vUV = vec2(0.0); return; }
   float ph = aP.w * 6.2831, hop = aQ.w, cheering = (uCheer > 0.0 && hop > 0.5) ? 1.0 : 0.0, cell = aQ.x * 2.0 + cheering;
   vec2 cc = vec2(mod(cell, uCells.x), floor(cell / uCells.x));
-  float sz = aQ.y * 2.3 * 32.0, lift = hop > 0.5 ? uCheer * max(0.0, sin(uT * 9.0 + ph)) * 16.0 : 0.0;
+  float sz = aQ.y * 3.6 * 32.0, lift = hop > 0.5 ? uCheer * max(0.0, sin(uT * 8.0 + ph)) * 46.0 : 0.0;
   lift += sin(uT * 1.6 + ph * 3.0) * 0.6 * (1.0 + uCheer * 2.0);
   vec3 p = aP.xyz + vec3(0.0, lift, 0.0) + uRight * (c.x - 0.5) * sz + vec3(0.0, c.y * uShow * sz, 0.0);
   vUV = (cc + vec2(c.x, uShow * (1.0 - c.y))) / uCells;
@@ -260,7 +260,7 @@ export class Stadium3D {
           for (let s = 0; s < 5; s++) {
             const [x, z] = at(u + 28, v0 + s * SEAT + SEAT / 2 - 3);
             const fan = Math.floor(rnd() * (this.fans ? this.fans.n : 1));
-            crowd.push(x, y + 16, z, rnd(), fan, 0.88 + rnd() * 0.24, rnd(), this.fans && this.fans.hops[fan] ? 1 : 0);
+            crowd.push(x, y + 14, z, rnd(), fan, 0.88 + rnd() * 0.24, rnd(), this.fans && this.fans.hops[fan] ? 1 : 0);
           }
         }
       }
