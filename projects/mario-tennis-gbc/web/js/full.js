@@ -419,6 +419,8 @@ $("engbtn").addEventListener("pointerdown", () => {
   if (location.hash) history.replaceState(null, "", location.pathname + location.search);
   location.reload();
 });
-fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom).catch(() => {});
+// a private build bundles the ROM; a shared one doesn't, so the app starts with the ROM the player picked last time
+fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom)
+  .catch(() => { if (navigator.userAgent.includes("MarioTennisWrapper")) romStore("readonly", s => s.get("rom")).then(b => { if (b && !gb) loadRom(b.buffer.slice(0)); }).catch(() => {}); });
 window.__gb = { get smooth() { return smooth; }, set smooth(v) { smooth = !!v; renderedAt = -1; applySmooth(); }, get fpsInfo() { return fps; }, get gb() { return gb; }, get hd() { return hd; }, keys, rec, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, loadSnapshot(s) { loadSnapshot(gb, s); }, saveState() { return saveState(gb); }, loadState(s) { loadState(gb, s); drawnFrame = -1; } };
 requestAnimationFrame(loop);

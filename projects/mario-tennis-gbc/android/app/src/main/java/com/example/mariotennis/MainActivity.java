@@ -17,6 +17,7 @@ import androidx.webkit.WebViewAssetLoader;
  *  the AudioWorklet and crypto.subtle work) and shows it full screen with the page's touch controls. */
 public class MainActivity extends Activity {
     private WebView web;
+    private android.webkit.ValueCallback<android.net.Uri[]> pick;   // the page's "load your ROM" file input, waiting for a file
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -35,6 +36,18 @@ public class MainActivity extends Activity {
                 return loader.shouldInterceptRequest(r.getUrl());
             }
             @Override public void onPageFinished(WebView v, String url) { pushCut(); }
+        });
+        // the page's <input type=file> (load your own ROM): open the system file picker. Any type, since .gbc has no MIME type.
+        web.setWebChromeClient(new android.webkit.WebChromeClient() {
+            @Override public boolean onShowFileChooser(WebView v, android.webkit.ValueCallback<android.net.Uri[]> cb, FileChooserParams p) {
+                if (pick != null) pick.onReceiveValue(null);
+                pick = cb;
+                android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_GET_CONTENT);
+                i.addCategory(android.content.Intent.CATEGORY_OPENABLE); i.setType("*/*");
+                try { startActivityForResult(android.content.Intent.createChooser(i, "Choose your Mario Tennis ROM (.gbc)"), 1); }
+                catch (Exception e) { pick = null; cb.onReceiveValue(null); return false; }
+                return true;
+            }
         });
         web.addJavascriptInterface(new FileBridge(), "MTennApp");   // the page's REC button saves recordings through this
         setContentView(web);
@@ -85,6 +98,13 @@ public class MainActivity extends Activity {
                 }
             });
         }
+    }
+    @Override protected void onActivityResult(int req, int res, android.content.Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req != 1 || pick == null) return;
+        android.net.Uri u = res == RESULT_OK && data != null ? data.getData() : null;
+        pick.onReceiveValue(u == null ? null : new android.net.Uri[] { u });
+        pick = null;
     }
     private int[] cut = new int[4];
     private void pushCut() {
