@@ -56,8 +56,9 @@ export function attachLightPanel(voxel) {
     sheet.appendChild(c);
     // effects
     c = card("Effects");
-    for (const [k, label] of [["shadows", "Sun / moon shadows"], ["bloom", "Glow (bloom) on bright lights"], ["tilt", "Tilt-shift blur at the top and bottom"], ["vignette", "Vignette (darker corners)"], ["night", "Night lights: windows, lamps, fountains, floodlights"], ["floors", "HD court floors (grain, sheen, wear)"]])
+    for (const [k, label] of [["shadows", "Sun / moon shadows"], ["bloom", "Glow (bloom) on bright lights"], ["tilt", "Tilt-shift blur at the top and bottom"], ["vignette", "Vignette (darker corners)"], ["night", "Night lights: windows, lamps, fountains, floodlights"], ["floors", "FLOOR: HD court surfaces (grain, sheen, wear)"]])
       c.appendChild(toggle(label, C.fx[k], on => L.setFx(k, on)));
+    if (voxel.shimmer) c.appendChild(toggle("Window shimmer (glints on glass and facades)", voxel.shimmer.on, on => voxel.shimmer.setOn(on)));
     sheet.appendChild(c);
     // quality
     c = card("Quality");
@@ -73,6 +74,7 @@ export function attachLightPanel(voxel) {
         const v = el("b", null, Math.round(st.crowdSizes[k] * 100) + "%"); s.addEventListener("input", () => { st.setCrowdSize(k, +s.value); v.textContent = Math.round(+s.value * 100) + "%"; });
         r.appendChild(s); r.appendChild(v); c.appendChild(r);
       }
+      if (st.sound) c.appendChild(toggle("CROWD SOUND (cheers, groans, rattles)", st.sound.on, on => st.sound.setOn(on)));
       sheet.appendChild(c);
     }
     root.scrollTop = keep;

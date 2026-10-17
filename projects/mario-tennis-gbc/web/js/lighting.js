@@ -40,16 +40,16 @@ export const FLOOD_HEIGHT = 900;
 // surfaces / in shadow (1 = the game's own colours); exp, sat, con: grade; lamps: how much lamps, windows and fountains shine (0..1);
 // bloom: highlight glow; vig: vignette; tone: warm/cool split tone of the grade (r, g, b multipliers for highlights)
 const KF = [
-  { h: 0,    az: -50, el: 38, sun: [0.16, 0.25, 0.46], amb: [0.035, 0.09, 0.36], exp: 1.1, sat: 0.9, con: 1.06, lamps: 1.00, bloom: 0.8, vig: 0.62, tone: [0.42, 0.95, 1.2], thr: 0.96 },
-  { h: 5,    az: -50, el: 38, sun: [0.16, 0.25, 0.46], amb: [0.035, 0.09, 0.36], exp: 1.1, sat: 0.9, con: 1.06, lamps: 1.00, bloom: 0.8, vig: 0.62, tone: [0.42, 0.95, 1.2], thr: 0.96 },
+  { h: 0,    az: -50, el: 38, sun: [0.16, 0.25, 0.46], amb: [0.02, 0.08, 0.40], exp: 1.1, sat: 0.9, con: 1.06, lamps: 1.00, bloom: 0.8, vig: 0.62, tone: [0.42, 0.95, 1.2], thr: 0.96 },
+  { h: 5,    az: -50, el: 38, sun: [0.16, 0.25, 0.46], amb: [0.02, 0.08, 0.40], exp: 1.1, sat: 0.9, con: 1.06, lamps: 1.00, bloom: 0.8, vig: 0.62, tone: [0.42, 0.95, 1.2], thr: 0.96 },
   { h: 6.2,  az: 80,  el: 8,  sun: [1.05, 0.62, 0.52], amb: [0.40, 0.44, 0.70], exp: 1.12, sat: 1.00, con: 1.08, lamps: 0.55, bloom: 0.9, vig: 0.58, tone: [1.10, 0.94, 0.88] },
   { h: 7.8,  az: 68,  el: 26, sun: [1.16, 0.98, 0.76], amb: [0.60, 0.68, 0.92], exp: 1.03, sat: 1.10, con: 1.08, lamps: 0.00, bloom: 0.7, vig: 0.48, tone: [1.08, 1.00, 0.92] },
   { h: 12,   az: -28, el: 50, sun: [1.10, 1.04, 0.95], amb: [0.64, 0.73, 0.98], exp: 1.03, sat: 1.16, con: 1.09, lamps: 0.00, bloom: 0.6, vig: 0.42, tone: [1.04, 1.02, 0.97] },
   { h: 16.3, az: -48, el: 38, sun: [1.17, 1.01, 0.79], amb: [0.64, 0.70, 0.94], exp: 1.03, sat: 1.12, con: 1.08, lamps: 0.00, bloom: 0.7, vig: 0.46, tone: [1.08, 1.00, 0.92] },
   { h: 18.4, az: -76, el: 13, sun: [1.38, 0.84, 0.50], amb: [0.50, 0.50, 0.80], exp: 1.00, sat: 1.10, con: 1.10, lamps: 0.28, bloom: 0.9, vig: 0.54, tone: [1.14, 0.96, 0.84], thr: 0.80 },
   { h: 19.6, az: -82, el: 4,  sun: [0.95, 0.50, 0.48], amb: [0.34, 0.38, 0.68], exp: 1.06, sat: 1.0, con: 1.08, lamps: 0.78, bloom: 0.9, vig: 0.58, tone: [1.06, 0.94, 0.96], thr: 0.88 },
-  { h: 21,   az: -50, el: 38, sun: [0.16, 0.25, 0.46], amb: [0.035, 0.09, 0.36], exp: 1.1, sat: 0.9, con: 1.06, lamps: 1.00, bloom: 0.8, vig: 0.62, tone: [0.42, 0.95, 1.2], thr: 0.96 },
-  { h: 24,   az: -50, el: 38, sun: [0.16, 0.25, 0.46], amb: [0.035, 0.09, 0.36], exp: 1.1, sat: 0.9, con: 1.06, lamps: 1.00, bloom: 0.8, vig: 0.62, tone: [0.42, 0.95, 1.2], thr: 0.96 },
+  { h: 21,   az: -50, el: 38, sun: [0.16, 0.25, 0.46], amb: [0.02, 0.08, 0.40], exp: 1.1, sat: 0.9, con: 1.06, lamps: 1.00, bloom: 0.8, vig: 0.62, tone: [0.42, 0.95, 1.2], thr: 0.96 },
+  { h: 24,   az: -50, el: 38, sun: [0.16, 0.25, 0.46], amb: [0.02, 0.08, 0.40], exp: 1.1, sat: 0.9, con: 1.06, lamps: 1.00, bloom: 0.8, vig: 0.62, tone: [0.42, 0.95, 1.2], thr: 0.96 },
 ];
 for (const k of KF) k.thr ??= 0.74;                  // the bloom threshold: raised at night so only floodlights and genuinely bright pixels glow
 // RPG maps indoors (dorm, cafe, hall, centre ...): lit by lamps whatever the hour, so they keep one warm look
@@ -361,7 +361,7 @@ export class Lighting {
       const fx = v.field && v.field.fx;
       if (fx && night > 0.02) for (const fo of fx.fountains || []) if (out.length < 6) out.push({ p: [fo.origin[0], fo.origin[1] + 8, fo.origin[2]], r: 100, c: [0.34 * night, 0.80 * night, 1.20 * night] });
     } else if (kind === "court" && night > 0.02) {
-      pool = { v: [0, -80, 1000, 1850], c: [0.66 * night, 0.64 * night, 0.52 * night] };
+      pool = { v: [0, -80, 1000, 1850], c: [0.58 * night, 0.62 * night, 0.56 * night] };
       for (const [x, z] of FLOODS) { out.push({ p: [x, FLOOD_HEIGHT, z], r: 3300, c: [0.10 * night, 0.09 * night, 0.07 * night] }); fl.push({ p: [x, FLOOD_HEIGHT, z], c: [0.42 * night, 0.38 * night, 0.28 * night], size: 0.10 }); }
     }
     if (kind === "court" && v.ballfx && v.ballfx.on) for (const l of v.ballfx.lights()) if (out.length < 6) out.push(l);      // impact lights of the ball effects (ballfx.js), day and night
