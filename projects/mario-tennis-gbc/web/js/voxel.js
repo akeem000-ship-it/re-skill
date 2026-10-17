@@ -651,11 +651,13 @@ export class Voxel3D {
   }
   // edge: every entry the game wrote, also those just outside the 160x144 picture (the game puts a part into OAM while it is within 8 px of
   // the screen's left edge and up to the right edge + 8; the LCD shows only what is inside, the 3D view shows the surroundings too)
-  collectSprites(edge = false) {
+  // rects: (overworld) the overlay boxes of the frame: a sprite the HD art replaced counts as replaced only inside one (a cursor in a box); a character the
+  // cursor finder took for an arrow, standing in the scenery, is still a character
+  collectSprites(edge = false, rects = null) {
     const m = this.gb.mem, p = this.gb.ppu, oam = m.oam, tall = p.lcdc & 4, sprs = [], hd = this.hdText, hid = hd && hd.active && hd.hideSprites && hd.hiddenOam.size ? hd.hiddenOam : null;
     for (let i = 0; i < 40; i++) {
       const sy = oam[i * 4] - 16, sx = oam[i * 4 + 1] - 8; if (edge ? (sy <= -16 || sy >= 160 || sx < -8 || sx >= 168) : (sy <= -16 || sy >= 144 || sx <= -8 || sx >= 160)) continue;
-      if (hid && hid.has(i)) continue;                              // replaced by HD art (web/js/hdui.js)
+      if (hid && hid.has(i) && !(rects && !rects.some(r => sx + 4 >= r.x0 && sx + 4 < r.x1 && sy + 8 >= r.y0 && sy + 8 < r.y1))) continue;   // replaced by HD art (web/js/hdui.js)
       let tile = oam[i * 4 + 2]; const attr = oam[i * 4 + 3], hgt = tall ? 16 : 8; if (tall) tile &= 0xFE;
       sprs.push({ sx, sy, h: hgt, tile, attr, owner: null });
     }
@@ -1472,6 +1474,7 @@ export class Voxel3D {
       } else this.draw(c.tex, m4.trs(c.X, 0, c.Z, c.w, c.h, -tilt, 0), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
     }
     this.drawFieldFx(mvp, T);
+    this.fieldRects = this.fieldOverlayRects();                         // once per frame: the actors and the overlays both need them
     this.drawFieldActors(mvp);
     // dialogue boxes and menus: the game writes them into the BG tile map over the scenery (and some screens use
     // the window layer); both are cut out of the 2D frame and shown at the top middle of the view
@@ -1551,7 +1554,7 @@ export class Voxel3D {
     // sprites are placed with SCX/SCY, which can trail the field scroll by a pixel or two while walking
     const ox = sc.x + (((p.scx - sc.x) << 24) >> 24), oy = sc.y + (((p.scy - sc.y) << 24) >> 24);
     if (!this.actorMem || this.actorMem.map !== id) this.actorMem = { map: id, slots: new Map() };
-    const mem = this.actorMem.slots, sprs = this.collectSprites(true), actors = this.fieldActors();
+    const mem = this.actorMem.slots, sprs = this.collectSprites(true, this.fieldRects || this.fieldOverlayRects()), actors = this.fieldActors();
     for (const a of actors) { a.ax = a.x - ox; a.ay = a.y + 4 - oy; }     // screen point of the feet (sprites end 4 px below the position)
     sprs.forEach((s, i) => s.g = i);
     const find = i => { while (sprs[i].g !== i) i = sprs[i].g = sprs[sprs[i].g].g; return i; };
@@ -1663,8 +1666,7 @@ export class Voxel3D {
     }
   }
   drawFieldOverlays(frame2d) {
-    const rects = this.fieldOverlayRects(); if (this.debug) this.debug.push({ overlays: rects });
-    this.hdSpriteRects(rects);
+    const rects = this.fieldRects || this.fieldOverlayRects(); this.fieldRects = null; if (this.debug) this.debug.push({ overlays: rects });
     if (!rects.length || !frame2d) return;
     const gl = this.gl;
     this.uploadFrame(frame2d);
