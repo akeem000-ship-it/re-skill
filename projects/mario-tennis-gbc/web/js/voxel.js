@@ -436,7 +436,7 @@ export class Voxel3D {
   // reading as in the sprite instead of as stacked cylinders; the court cameras look from the side, where the full thickness reads best)
   bodyMesh(rgba, w, h, R, T) {
     if (!this.rounded) return this.meshFromPixels(rgba, w, h, R, T);
-    const thin = this.mode === "field", d = thin ? roundedMeshData(rgba, w, h, R * 0.7, T * 0.42) : roundedMeshData(rgba, w, h, R, T); return this.uploadMesh(d.pos, d.col);
+    const thin = this.mode === "field", d = thin ? roundedMeshData(rgba, w, h, R * 0.6, T * 0.3) : roundedMeshData(rgba, w, h, R, T); return this.uploadMesh(d.pos, d.col);
   }
   freeMesh(mesh) { if (!mesh) return; const gl = this.gl; gl.deleteBuffer(mesh.pb); gl.deleteBuffer(mesh.cb); gl.deleteVertexArray(mesh.vao); }
   voxelMesh(tile, bank, pal, flipX, flipY) {
