@@ -119,11 +119,12 @@ export function initStoryModeState(P) {
   cacheStorySlotSummaries(P);
   clearMemory16(P, wStorySlotData, 0x30);
   initPlayerRecordFromTemplate(P, 0, 0);
-  initPlayerRecordFromTemplate(P, 1, 2);
+  const rec = initPlayerRecordFromTemplate(P, 1, 2);
   V.storyModeCurrentLocation = 0;
   V.storyModeEntryPoint = 2;
   V.messageSpeed = 1;
-  const r = P.callRom(BANK_MATCH, InitDefaultMatchSettings);
+  // (bc and de as the second record's setup leaves them: InitDefaultMatchSettings keeps de and clears c)
+  const r = P.callRom(BANK_MATCH, InitDefaultMatchSettings, { bc: rec.bc, de: rec.de, a: 1, hl: P.A.storyModeEntryPoint });
   clearFlag(P, FLAG_NEW_GAME_CLEARED_BIT);
   setFlag(P, FLAG_NEW_GAME_SET_BIT);
   bus.w8(P.A.storySlotBlockTag, STORY_BLOCK_TAG);

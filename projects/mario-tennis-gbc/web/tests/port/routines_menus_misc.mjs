@@ -17,18 +17,6 @@ import { rng, pick } from "./routines_menus_common.mjs";
 import { HOOK_TRACE } from "../../js/port/menus/char_select/defs.js";
 import { hookKey } from "../../js/port/port.js";
 
-// own: the routine's callees in other menu folders run as the ROM's code (their hooks, which give back no
-// registers, are left out for the call): the registers are then this folder's routine's own. own: "rom" leaves the
-// text port's hooks out too (RenderTextToBuffer64's gives back none either).
-const OWN_MODULES = ["menus/equipment/index", "menus/dictionary/index", "menus/minigame_select/index", "menus/debug/index",
-  "menus/link/index", "home/index", "audio/index", "save/index"];
-const keysOf = async list => {
-  const set = new Set();
-  for (const m of list) for (const [b, a] of (await import(`../../js/port/${m}.js`)).HOOKS) set.add(hookKey(b, a));
-  return set;
-};
-const OWN_ROM = await keysOf(OWN_MODULES), OWN = await keysOf([...OWN_MODULES, "text/index"]);
-
 const FIELD = Object.fromEntries(RAM_FIELDS.map(([n, bank, addr, size]) => [n, { bank, addr, size }]));
 const at = name => { if (!FIELD[name]) throw new Error(`no field ${name}`); return FIELD[name].addr; };
 const wx = (mem, bank, a, v) => { a &= 0xFFFF; if (a >= 0xD000 && a < 0xE000) mem.wram[bank || 1][a - 0xD000] = v & 0xFF; else mem.write(a, v & 0xFF); };
@@ -40,7 +28,7 @@ const ALL = ["a", "f", "b", "c", "d", "e", "h", "l"];
 // ---- the entries ----
 export const ROUTINES = [];
 let salt = 0;
-function E(name, bank, addr, { regs = () => ({}), prep = null, n = 3, active = null, wram, ignore, skip = [], lcdOff = false, own = false } = {}) {
+function E(name, bank, addr, { regs = () => ({}), prep = null, n = 3, active = null, wram, ignore, skip = [], lcdOff = false } = {}) {
   const k = ++salt * 7919, off = salt % n;
   let i = 0;
   const entry = {
@@ -64,11 +52,7 @@ function E(name, bank, addr, { regs = () => ({}), prep = null, n = 3, active = n
       if (!P.hooks.has(hookKey(bank, addr))) throw new Error(`no port hooked at ${bank.toString(16)}:${addr.toString(16)}`);
       HOOK_TRACE.out = null;
       P.ime = false;
-      const all = P.hooks;
-      const keep = own === "rom" ? OWN_ROM : OWN;
-      if (own) P.hooks = new Map([...all].filter(([key]) => keep.has(key)));
-      let ret;
-      try { ret = P.callRom(bank, addr, regs); } finally { P.hooks = all; }
+      const ret = P.callRom(bank, addr, regs);
       entry.out = ALL.filter(r => !skip.includes(r));         // (the hook sets every register: the saved ones and its results)
       return ret;
     },
@@ -435,4 +419,13 @@ L("FlushMatchRuleRowAttrs", 0x3E, 0x48BB, { regs: r => ({ b: r(3) }), active: on
 E("Unused_18_DrawCharSelectCursor", 0x18, 0x59D6, { regs: r => ({ a: pick(r, [0x84, r(256)]), d: r(256), e: r(256) }), n: 4 });
 E("Unused_18_RenderProportionalTextAt32", 0x18, 0x439A, {
   regs: r => ({ hl: pick(r, [0x001A, 0x0132, 0x0133, 0x0134, 0x0135, 0x0136, 0x0137]), de: 0xD020 + r(0x3E0), b: r(256) }),
-  lcdOff: true, n: 6 });
+  lcdOff: true, n: 6, wram: 3,
+  // the text engine's state as routines_text.mjs's world() sets it (the shadow map in WRAM 3 at $D000, no
+  // per-character waits, no glyph buffer hold): the states of these screens leave it as their last text did
+  prep: (mem, r) => {
+    wx(mem, 0, 0xC3B3, 3); wx(mem, 0, 0xC3B4, 0x00); wx(mem, 0, 0xC3B5, 0xD0); wx(mem, 0, 0xC3B6, pick(r, [0x80, 0x00, 0x08, 0x88]));
+    wx(mem, 5, 0xD829, 0); wx(mem, 5, 0xD822, 0);
+    wx(mem, 0, 0xC3B9, 2 + r(16)); wx(mem, 0, 0xC3BA, r(0x20)); wx(mem, 0, 0xC362, 0);
+  } });
+// story/story02's InitStoryModeState (CacheStorySlotNames, char_select, reads its registers back)
+E("InitStoryModeState", 0x02, 0x421C, { n: 6 });

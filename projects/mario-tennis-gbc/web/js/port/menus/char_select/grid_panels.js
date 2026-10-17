@@ -24,7 +24,7 @@ import {
 } from "./grid_data.js";
 import { drawNameWithDiacritics, drawDecimalNumber, wrapIndex } from "./matchtype.js";
 // FarCall with its entry flags and frame, registers chained (the last menus' helpers: their results are the ROM's)
-import { rom as farcall, near, chain, regs8, ixF, getRegs, FZ, FN, FC } from "../equipment/defs.js";
+import { rom as farcall, near, chain, regs8, ixF, getRegs, addFlags, FZ, FN, FC } from "../equipment/defs.js";
 
 const PlayerSlotBoxAddrPtrs_38 = 0x56C9, CharNameAndTypeTable = 0x58FB, CharGridSlotIconListPtrs_38 = 0x59BA;
 const CharGridSlotPromptTable0 = 0x5486, CharGridSlotPromptTable1 = 0x5490;
@@ -39,6 +39,8 @@ const TILE_SLOT_ICONS = 0x50, TILE_SLOT_ICON_KINDS = 0x54;
 const cell = (base, x, y) => (base + y * TILEMAP_WIDTH + x) & 0xFFFF;
 const word = (P, addr) => P.rom.u16(BANK, addr);
 const entryAddr = (P, n) => (P.A.charGridEntries + ((n * 4) & 0xFF)) & 0xFFFF;
+// the flags of `add hl, bc` (hl a constant n): Z kept, H and C of the 16-bit add
+const addHL16Flags = (f, bc, n) => (f & FZ) | ((bc & 0xFFF) + n > 0xFFF ? 0x20 : 0) | (bc + n > 0xFFFF ? FC : 0);
 // QueueVRAMCopy of 2 rows of both shadow maps from row `row`; returns the registers left (over r: those before)
 function queueRows(P, row, rows = 2, r = {}) {
   r = queueAfter(P, r, cell(wShadowTilemap, 0, row), cell(vBGMap0, 0, row), rows * TILEMAP_WIDTH / 16);
@@ -76,21 +78,28 @@ export function drawPlayerSlotPortrait(P, entry) {
 }
 // DrawPlayerSlotLeftHandedMark (38:567A): the "L" right of the box below, for a left-handed slot
 export function drawPlayerSlotLeftHandedMark(P) {
-  if (!u8(P, idx(P.A.charSelectSlotLeftHanded, rd(P, "charSelectSlot")))) return;
-  w8(P, getPlayerSlotBoxAddress(P).bc + 0x1F, TILE_LEFT_HANDED_MARK);
+  const { hl } = ixF(P.A.charSelectSlotLeftHanded, rd(P, "charSelectSlot"));
+  if (!u8(P, hl)) return { a: 0, hl, f: FZ };
+  const box = getPlayerSlotBoxAddress(P), at = (box.bc + 0x1F) & 0xFFFF;
+  w8(P, at, TILE_LEFT_HANDED_MARK);
+  return { ...box, a: TILE_LEFT_HANDED_MARK, hl: at, f: addHL16Flags(box.f, box.bc, 0x1F) };
 }
 // DrawPlayerSlotDifficultyMark (38:5693): the CPU difficulty's mark left of it (tile $33 + difficulty; $33 = none)
 export function drawPlayerSlotDifficultyMark(P) {
-  const mark = (u8(P, idx(P.A.charSelectSlotDifficulty, rd(P, "charSelectSlot"))) + TILE_DIFFICULTY_MARKS) & 0xFF;
-  w8(P, getPlayerSlotBoxAddress(P).bc + 0x1E, mark);
+  const v = u8(P, ixF(P.A.charSelectSlotDifficulty, rd(P, "charSelectSlot")).hl), mark = (v + TILE_DIFFICULTY_MARKS) & 0xFF;
+  const box = getPlayerSlotBoxAddress(P), at = (box.bc + 0x1E) & 0xFFFF;
+  w8(P, at, mark);
+  return { a: mark, f: addFlags(v, TILE_DIFFICULTY_MARKS), bc: box.bc, hl: at };   // (af pushed around the address)
 }
 // WriteCharPortraitTiles (38:5712): character b's portrait tiles ($80 + 4b: top-left, top-right +2, bottom-left +1,
 // bottom-right +3) at de, attributes (c + 3) | 8 for the 2x2 in the attribute map ($400 on)
+// Returns the registers the attributes' FillTilemapRect leaves (a = the last tile, l the attribute cell's low byte).
 export function writeCharPortraitTiles(P, id, palette, de) {
   const tile = (PORTRAIT_FIRST_TILE + id * 4) & 0xFF;
   w8(P, de, tile); w8(P, de + 1, tile + 2);
   w8(P, de + 0x20, tile + 1); w8(P, de + 0x21, tile + 3);
-  fillTilemapRect(P, (de + 0x400) & 0xFFFF, 2, 2, ((palette + 3) | PORTRAIT_ATTR) & 0xFF);
+  const at = (de + 0x400) & 0xFFFF;
+  return farcall(P, FAR.FillTilemapRect, { a: (tile + 3) & 0xFF, b: 2, c: 2, de: at, h: ((palette + 3) | PORTRAIT_ATTR) & 0xFF, l: at & 0xFF });
 }
 // LoadAllCharPortraitTiles (38:5746): the 32 characters' portrait tiles (LoadOnCourtCharTilesA), 4 tiles each from de
 export function loadAllCharPortraitTiles(P, de) {
