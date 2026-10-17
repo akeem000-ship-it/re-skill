@@ -2,7 +2,8 @@
 // HDMA), PPU (timing, palettes, frame buffers), APU (channels, frame sequencer), timer and joypad is copied,
 // so a restored machine continues bit-identically. The ROM and the cross-references between the parts are
 // not stored. saveState(gb) -> plain object (typed arrays as base64), loadState(gb, obj).
-const SKIP = new Set(["m", "mem", "ppu", "apu", "timer", "joypad", "machine", "exec", "rom", "cpu", "gb"]);
+const SKIP = new Set(["m", "mem", "ppu", "apu", "timer", "joypad", "machine", "exec", "rom", "cpu", "gb",
+  "look", "lookPix", "spr"]);                // the display-only look layer hung on the PPU (web/js/look): never part of the machine's state
 const PARTS = ["cpu", "mem", "ppu", "apu", "timer", "joypad"];
 const b64 = u8 => { let s = ""; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return btoa(s); };
 const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
@@ -15,7 +16,7 @@ function enc(v) {
 function dec(target, v) {                       // writes v into target in place where possible
   if (v && v.$t) { const bytes = unb64(v.d); if (target && ArrayBuffer.isView(target) && target.byteLength === bytes.length) { new Uint8Array(target.buffer, target.byteOffset, target.byteLength).set(bytes); return target; } const T = globalThis[v.$t]; return new T(bytes.buffer); }
   if (Array.isArray(v)) { const a = Array.isArray(target) ? target : []; v.forEach((x, i) => { a[i] = dec(a[i], x); }); a.length = v.length; return a; }
-  if (v && typeof v === "object") { const o = target && typeof target === "object" ? target : {}; for (const k of Object.keys(v)) o[k] = dec(o[k], v[k]); return o; }
+  if (v && typeof v === "object") { const o = target && typeof target === "object" ? target : {}; for (const k of Object.keys(v)) if (!SKIP.has(k)) o[k] = dec(o[k], v[k]); return o; }   // (older states carry the skipped fields: left alone)
   return v;
 }
 export function saveState(gb) {
