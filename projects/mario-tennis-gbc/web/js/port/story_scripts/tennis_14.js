@@ -6,8 +6,8 @@
 // data; the room's other routines are court_machine_14's.
 // Port of src/story/tennis_14.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/
 // mario-tennis-gbc-disasm), whose routine names these are.
-// Recordings: out/port/ss1_machine*.mtrec (part 1's scripted machine room), out/port/ss2_machine*.mtrec
-// (scripted: each level offered, played, failed and cleared; the practice session).
+// Recordings: out/port/ss1_machine*.mtrec, ss1_mx_*.mtrec (part 1's scripted machine room), out/port/ss2_mach_*.mtrec
+// (scripted: the levels failed and cleared, the game over, the attendant's partner).
 import {
   ACTOR_PARTNER, ACTOR_PLAYER, ANIM_NOD, FACE_DOWN, FACE_LEFT, FACE_RIGHT, FACE_UP, FLAG_DOUBLES,
   FLAG_TEMP_SCENE_VARIANT_A, FLAG_TEMP_SCENE_VARIANT_B, FZ, STORYENTRY_NONE, advanceText, askYesNo, clearFlag,

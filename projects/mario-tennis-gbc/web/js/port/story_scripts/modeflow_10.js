@@ -6,8 +6,8 @@
 // menu's handler table is data (read from the ROM).
 // Port of src/story/modeflow_10.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/
 // mario-tennis-gbc-disasm), whose routine names these are.
-// Recordings: out/engine/rec1.mtrec, rec2.mtrec (the main menu), out/port/ss2_menu*.mtrec (scripted: the
-// minigame mode, the saved data and erase menus, the dictionary).
+// Recordings: out/engine/rec1.mtrec, rec2.mtrec (the main menu), out/port/ss2_talk_matchselect*.mtrec,
+// ss2_matchsel_*.mtrec (scripted: the match-select map's handlers).
 import {
   FLAG_DOUBLES, clearFlag, disableLCDSafely, enableLCD, fadeIn, fadeOutAndWait, goToLocation, hookGen, requestExit,
   saveReturnPoint, scene, testFlag, waitFadeEnd,

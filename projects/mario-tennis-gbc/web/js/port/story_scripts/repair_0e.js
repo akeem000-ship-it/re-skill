@@ -5,7 +5,7 @@
 // message's argument and the returns to the counter.
 // Port of src/story/repair_0e.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/
 // mario-tennis-gbc-disasm), whose routine names these are.
-// Recordings: out/engine/rec2.mtrec (the training gym's runners), out/port/ss2_repair*.mtrec (scripted: the counter
+// Recordings: out/engine/rec2.mtrec (the training gym's runners), out/port/ss2_gym_repair_*.mtrec (scripted: the counter
 // by the story's progress, its menus); tests: web/tests/port/routines_story_scripts2.mjs.
 import {
   ACTOR_PLAYER, ACTOR_PARTNER, FACE_RIGHT, FLAG_DOUBLES, FZ, FN, FH, FC, ACTORF_X, ACTORF_Y,

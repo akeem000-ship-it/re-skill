@@ -46,7 +46,7 @@ export function landingOf(E) {
 }
 
 export class EnhancedPhysics {
-  constructor(k = {}) { this.k = { ...PHYS, ...k }; this.rally = 0; this.solves = 0; this.fallbacks = 0; this.last = null; }
+  constructor(k = {}) { this.k = { ...PHYS, ...k }; this.rally = 0; this.solves = 0; this.fallbacks = 0; this.last = null; this.aiAware = true; this.pathKey = ""; this.path = null; }
 
   // one frame, in the order of the game's StepBallPhysics
   step(E) {
@@ -105,6 +105,45 @@ export class EnhancedPhysics {
     const J = Math.abs(s) <= 2.5 * jmax ? s / 2.5 : (s > 0 ? jmax : -jmax);       // sticks (rolls) when the slip dies inside the friction cone
     const vh2 = vh - J, f = vh > 1e-9 ? vh2 / vh : 0;
     return { vx: vx * f, vy: vy * f, up: e * w, tau: (rw + 1.5 * J) / k.RW };
+  }
+
+  // ---- what the CPU sees ----
+  // The game's AI predicts the ball with straight lines along the shot's aim (PredictBallXAtDepth) and a fixed offset beyond the landing point
+  // (OffsetFromBallLanding): right for the classic ball, off for a ball that curves and kicks or skids. With Enhanced the AI is fed the model's own
+  // forward simulation of the live ball instead (this.aiAware): where the ball will be at a depth, and where it goes after the bounce.
+  // The path of the live ball: its positions per frame through the first bounce and the flight after it (until it rests or bounces again).
+  ballPath(E) {
+    const m = E.mem, k = this.k, key = [m.u24(0xC400), m.u24(0xC404), m.u24(0xC408), m.u24(0xC420), m.u24(0xC423), m.u24(0xC426), m.u8(0xC41C), m.u8(0xC41D), m.u8(0xC41E), m.u8(0xC41F)].join();
+    if (this.pathKey === key && this.path) return this.path;
+    const S = E.S; let x = m.s32(0xC400) / 65536, y = m.s32(0xC404) / 65536, z = -m.s32(0xC408) / 65536;
+    let vx = m.s24(0xC420) / 65536, vy = m.s24(0xC423) / 65536, vz = -m.s24(0xC426) / 65536, tau = S.ballTopspin, sig = S.ballSideSpin;
+    const pts = [[x, y, z]]; let bounce = -1;
+    for (let f = 0; f < 220; f++) {
+      x += vx; y += vy; z += vz;
+      if (z < 0) {                          // through the ground: the model's bounce (position reflected as the game does)
+        z = -z;
+        const r = this.bounce(vx, vy, Math.max(-vz, 0), tau, sig, S.courtSurfaceFriction, S.courtSurfaceBounce, k);
+        vx = r.vx; vy = r.vy; tau = r.tau; sig *= k.SIDE_BOUNCE; pts.push([x, y, 0]);
+        if (bounce >= 0 || r.up < k.REST) { this.pathKey = key; return this.path = { pts, bounce: bounce >= 0 ? bounce : pts.length - 1 }; }
+        vz = r.up; bounce = pts.length - 1; continue;
+      }
+      pts.push([x, y, z]);
+      const n = this.fly(vx, vy, vz, tau, sig, k); vx = n[0]; vy = n[1]; vz = n[2]; tau -= tau * k.DECAY; sig -= sig * k.DECAY;
+    }
+    this.pathKey = key; return this.path = { pts, bounce };
+  }
+  // X where the ball crosses `depth` (an unsigned 16-bit world depth) on its way (before or after the bounce), as an unsigned 16-bit value; null = never
+  xAtDepth(E, depth) {
+    const d = (depth << 16) >> 16, P = this.ballPath(E).pts;
+    for (let i = 1; i < P.length; i++) { const a = P[i - 1], b = P[i]; if ((a[1] - d) * (b[1] - d) <= 0 && a[1] !== b[1]) return Math.round(a[0] + (b[0] - a[0]) * (d - a[1]) / (b[1] - a[1])) & 0xFFFF; }
+    return null;
+  }
+  // the point `hl` (positive) beyond the first bounce along the ball's path after it (the last point if it stops sooner): { x, depth } as unsigned words
+  beyondLanding(E, hl) {
+    const pa = this.ballPath(E); if (pa.bounce < 0) return null;
+    const P = pa.pts, L = P[pa.bounce]; let q = P[P.length - 1];
+    for (let i = pa.bounce + 1; i < P.length; i++) if (Math.hypot(P[i][0] - L[0], P[i][1] - L[1]) >= hl) { q = P[i]; break; }
+    return { x: Math.round(q[0]) & 0xFFFF, depth: Math.round(q[1]) & 0xFFFF };
   }
 
   // ---- the launch ----

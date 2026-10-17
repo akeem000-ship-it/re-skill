@@ -5,7 +5,8 @@
 // The map tables and the lists' jump tables are data (read from the ROM).
 // Port of src/story/match_10.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/
 // mario-tennis-gbc-disasm), whose routine names these are.
-// Recordings: out/port/ss2_matchsel*.mtrec (scripted: the match-select map's handlers and menus).
+// Recordings: out/port/ss2_talk_matchselect*.mtrec, ss2_talk_run*.mtrec, ss2_matchsel_*.mtrec (scripted: the
+// match-select map's handlers and menus).
 import {
   MATCHLIST_DOUBLES, MATCHLIST_SINGLES, SPEAKER_NONE, beginCutscene, clearFlag, clearFrameTasks, disableLCDSafely,
   enableLCD, endCutscene, fadeIn, fadeOutAndWait, hook, initMatchSettings, pagedTextMenu, registerFrameTask,

@@ -5,8 +5,8 @@
 // entries' scenes, Spike aside once seen, the friend following). The map tables and actor lists are data.
 // Port of src/story/testmaps_0f.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/
 // mario-tennis-gbc-disasm), whose routine names these are.
-// Recordings: out/port/ss1_end*.mtrec and ss1_awards*.mtrec (part 1's scripted ceremony), out/port/ss2_awards*.mtrec
-// (scripted: the step tiles, singles and doubles), ss2_smallchar*.mtrec (scripted: the test map).
+// Recordings: out/port/ss1_end*.mtrec and ss1_awards*.mtrec (part 1's scripted ceremony), out/port/ss2_smallchar*.mtrec,
+// ss2_talk_smallchar*.mtrec, ss2_talk_mapscriptnop.mtrec (scripted: the test map and its NPCs).
 import {
   ACTOR_PARTNER, ACTOR_PLAYER, ANIM_BOUNCE, ANIM_NOD, ANIM_SHAKE, ANIM_WALK, BANK_ACTORS, FACE_DOWN, FACE_LEFT,
   FACE_RIGHT, FACE_UP, FLAG_DOUBLES, WRAM_ACTORS, actorState, attachStepMover, beginCutscene, copyBehaviorRect,

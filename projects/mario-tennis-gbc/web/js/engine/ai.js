@@ -61,6 +61,12 @@ export function predictBallXAtDepth(E, depth) {
   return U16(S.ballX + E.M.mulHLByTangent(U16(depth - S.ballDepth), S.shotAimAngle));
 }
 
+// the AI's prediction of the ball's X at a depth: the game's straight line along the aim, or (Enhanced physics) the model's forward simulation of the live ball
+function aiPredictX(E, depth) {
+  if (E.physics && E.physics.aiAware) { const x = E.physics.xAtDepth(E, depth); if (x !== null) return x; }
+  return predictBallXAtDepth(E, depth);
+}
+
 // ---- the controller ----
 // 08:7963 AiAdvancePhase (falls into 08:796C AiPhaseNoop, a ret)
 function aiAdvancePhase(E) { E.C.aiPhase = (E.C.aiPhase + 1) & 0xFF; }
@@ -108,14 +114,14 @@ function aiMoveBehindBallLanding(E) {
 // meet the ball's line at a fixed depth on my side (08:799E AiInterceptAtMidCourt $200, 08:79B0 AiInterceptNearNet
 // $100; also the bodies of AiTrackBallPhase, AiNetPlayerPredictLanding, AiBaselinerDone)
 function targetBallLineAtDepth(E, depth) {
-  setCharTargetMirrored(E, predictBallXAtDepth(E, mirrorDepthForFarSide(E, depth)), depth);
+  setCharTargetMirrored(E, aiPredictX(E, mirrorDepthForFarSide(E, depth)), depth);
 }
 function aiInterceptAtMidCourt(E) { targetBallLineAtDepth(E, 0x0200); aiAdvancePhase(E); }   // 08:799E
 function aiInterceptNearNet(E) { targetBallLineAtDepth(E, 0x0100); aiAdvancePhase(E); }      // 08:79B0
 // 08:79C2 AiMoveLaterallyToBallLine: hold my depth, X where the ball will cross it
 function aiMoveLaterallyToBallLine(E) {
   const depth = U16(E.C.posDepthInt);
-  setCharTarget(E, predictBallXAtDepth(E, depth), depth);
+  setCharTarget(E, aiPredictX(E, depth), depth);
   aiAdvancePhase(E);
 }
 // 08:79D3 AiSetMirroredTarget
@@ -387,7 +393,7 @@ function aiNetPlayerPoachCheck(E) {
   E.setBank(saved);
   if (!(U16(mate + 0x20 - ball) & 0x8000)) return;
   const depth = U16(E.C.posDepthInt);
-  setCharTarget(E, predictBallXAtDepth(E, depth), depth);
+  setCharTarget(E, aiPredictX(E, depth), depth);
   E.C.aiPhase = 2;
 }
 // 08:7F8A AiSwingControlDoubles: as singles, but always aims, away from the opponent playing the forward role

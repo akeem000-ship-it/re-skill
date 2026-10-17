@@ -5,8 +5,8 @@
 // questions, the party at his spot, the briefing screen). The actor scripts are data.
 // Port of src/story/serve_coach_15.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/
 // mario-tennis-gbc-disasm), whose routine names these are.
-// Recordings: out/port/ss1_coach*.mtrec (part 1's scripted lessons and results), out/port/ss2_serve*.mtrec
-// (scripted: each serve challenge and lesson, accepted and declined; the matches' results).
+// Recordings: out/port/ss1_tc_*.mtrec (part 1's scripted lessons and results), out/port/ss2_tc_curt_*.mtrec,
+// ss2_tc_npc06.mtrec, ss2_tc_stm3_*.mtrec (scripted: the serve challenger and coach, the stroke match 3's results).
 import {
   ACTOR_PARTNER, ACTOR_PLAYER, ANIM_BOUNCE, ANIM_NOD, ANIM_SHAKE, FACE_RIGHT, FACE_UP, FLAG_DOUBLES, agrees, face,
   faceToward, fadeOutAndWait, followPlayer, gesture, goToLocation, movePlayer, moveTarget, nullScript, rd, scene,

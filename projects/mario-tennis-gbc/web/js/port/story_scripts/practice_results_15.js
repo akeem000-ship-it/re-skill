@@ -6,7 +6,7 @@
 // actor scripts are data.
 // Port of src/story/practice_results_15.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/
 // mario-tennis-gbc-disasm), whose routine names these are.
-// Recordings: out/port/ss1_coach*.mtrec (part 1's scripted lessons and results), out/port/ss2_lesson*.mtrec
+// Recordings: out/port/ss1_tc_*.mtrec (part 1's scripted lessons and results), out/port/ss2_tc_res_*.mtrec
 // (scripted: each net-game and stroke practice's results, retried and not).
 import {
   ACTOR_PARTNER, ACTOR_PLAYER, ANIM_BOUNCE, ANIM_NOD, ANIM_SHAKE, FACE_DOWN, FACE_RIGHT, FACE_UP, FLAG_DOUBLES,

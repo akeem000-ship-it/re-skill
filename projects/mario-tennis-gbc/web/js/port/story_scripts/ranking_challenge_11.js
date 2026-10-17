@@ -4,8 +4,8 @@
 // The actor scripts (ActorScript_11_30..44) are data.
 // Port of src/story/ranking_challenge_11.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/
 // mario-tennis-gbc-disasm), whose routine names these are.
-// Recordings: out/engine/rec1.mtrec, rec2.mtrec (the coach's offers: rank 4 and on), out/port/ss1_jrsingles*.mtrec
-// (part 1's scripted junior singles court), ss2_rank*.mtrec (scripted: each rank's challenge, accepted and declined).
+// Recordings: out/engine/rec1.mtrec, rec2.mtrec (the coach's offers: rank 4 and on), out/port/ss1_jrs_*.mtrec
+// (part 1's scripted junior singles court: each rank's challenge).
 import {
   ACTOR_PARTNER, ACTOR_PLAYER, ACTOR_SIZE, ANIM_BOUNCE, ANIM_NOD, BANK_ACTORS, FACE_DOWN, FACE_LEFT, FACE_RIGHT,
   FACE_UP, FLAG_DOUBLES, MATCHLIST_SINGLES, actorState, advanceText, askYesNo, face, faceToward, farcall,

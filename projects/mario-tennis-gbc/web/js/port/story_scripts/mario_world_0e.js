@@ -5,8 +5,8 @@
 // demand, the offer). The actor scripts, Mario World's map tables and NPC records are data.
 // Port of src/story/mario_world_0e.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/
 // mario-tennis-gbc-disasm), whose routine names these are.
-// Recordings: out/port/ss2_mw*.mtrec (scripted: Mario World, the first visit in singles, its NPCs),
-// ss2_repair*.mtrec (the counter's returns); tests: web/tests/port/routines_story_scripts2.mjs.
+// Recordings: out/port/ss2_mw_*.mtrec, ss2_talk_marioworld*.mtrec (scripted: Mario World, its entries in singles
+// and doubles, its NPCs), ss2_gym_repair_*.mtrec (the counter's returns); tests: web/tests/port/routines_story_scripts2.mjs.
 import {
   ACTOR_PLAYER, ACTOR_PARTNER, FACE_RIGHT, FACE_DOWN, FACE_LEFT, FACE_UP, ANIM_BOUNCE, ANIM_NOD, ANIM_WALK,
   FLAG_DOUBLES, SPEAKER_NONE, FZ, FN, FH, FC, testFlag, testFlagF, setFlag, setText, speak, askYesNo, setAnim,

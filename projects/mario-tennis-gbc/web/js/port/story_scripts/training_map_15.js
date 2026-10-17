@@ -5,9 +5,9 @@
 // Port of src/story/training_map_15.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/
 // mario-tennis-gbc-disasm), whose routine names these are; SetPlayerPartnerActorSprites is src/twins/
 // load_court_player_partner_obj_defs.asm (twins.js).
-// Recordings: out/engine/rec2.mtrec (the training court), out/port/ss1_coach*.mtrec, ss1_tourn*.mtrec (part 1's
-// scripted training court and tournament), out/port/ss2_tcourt*.mtrec (scripted: the courtyard's arrival and
-// rounds, the training court's students, the swing kid).
+// Recordings: out/engine/rec2.mtrec (the training court), out/port/ss1_tc_*.mtrec, ss1_tourn*.mtrec (part 1's
+// scripted training court and tournament), out/port/ss2_talk_trainingcourt*.mtrec,
+// ss2_talk_tournamentcourtyard*.mtrec, ss2_tc_*.mtrec (scripted: the courts' students, the re-entries).
 import {
   ACTOR_PARTNER, ACTOR_PLAYER, ANIM_BOUNCE, ANIM_NOD, ANIM_SHAKE, ANIM_WALK, BEHAVIOR_TRIGGER, FACE_DOWN, FACE_LEFT,
   FACE_RIGHT, FACE_UP, FLAG_DOUBLES, STORYENTRY_NONE, actorState, advanceText, askYesNo, beginCutscene, clearFlag,

@@ -5,8 +5,8 @@
 // The map tables and text tables are data.
 // Port of src/story/training_0e.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/
 // mario-tennis-gbc-disasm), whose routine names these are.
-// Recordings: out/engine/rec2.mtrec (the gym: arrival, its NPCs), out/port/ss2_repair*.mtrec, ss2_gym*.mtrec
-// (scripted: the side doors, the counter); tests: web/tests/port/routines_story_scripts2.mjs.
+// Recordings: out/engine/rec2.mtrec (the gym: arrival, its NPCs), out/port/ss2_gym_*.mtrec (scripted: the side
+// door, the counter, the NPCs); tests: web/tests/port/routines_story_scripts2.mjs.
 import {
   ACTOR_PLAYER, ACTOR_PARTNER, FACE_DOWN, FACE_UP, FLAG_DOUBLES, STORYENTRY_NONE, testFlag, setText, advanceText,
   speak, askYesNo, setAnim, wait, face, lockFacing, unlockFacing, moveTarget, waitMove, moveAngle, movePlayer,

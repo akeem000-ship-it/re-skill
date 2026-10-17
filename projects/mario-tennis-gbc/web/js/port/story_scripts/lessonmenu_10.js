@@ -5,8 +5,8 @@
 // scripts and the minigame table are data.
 // Port of src/story/lessonmenu_10.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/
 // mario-tennis-gbc-disasm), whose routine names these are.
-// Recordings: out/port/ss2_test2*.mtrec (scripted: the Test 2 map's NPCs and init); the menus are reached from the
-// match-select map (match_10.js's recordings).
+// Recordings: out/port/ss2_test2*.mtrec (scripted: the Test 2 map's init and its menu), ss2_talk_runminigame*.mtrec,
+// ss2_matchsel_lesson*.mtrec (the menus, reached from the match-select map).
 import {
   ACTOR_PLAYER, SPEAKER_NONE, setFlag, setText, speak, pagedTextMenu, pushTextNumber, beginCutscene,
   endCutscene, fadeIn, fadeOutAndWait, clearFrameTasks, returnHereAfter, requestExit, scene,

@@ -6,7 +6,7 @@
 // Port of src/story/student_11.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/
 // mario-tennis-gbc-disasm), whose routine names these are.
 // Recordings: out/engine/rec1.mtrec, rec2.mtrec (the story's start: the crash, the greeting, the tour; the singles
-// arrival), out/port/cs_story_new2.mtrec, ss2_arrival*.mtrec (scripted: the doubles arrival, the tour declined).
+// arrival), out/port/cs_story_new2.mtrec.
 import {
   ACTOR_PARTNER, ACTOR_PLAYER, ACTOR_PLAYER_SHADOW, ACTOR_SIZE, ANIM_BOUNCE, ANIM_NOD, ANIM_SHAKE, ANIM_WALK,
   BANK_ACTORS, BEHAVIOR_TRIGGER, FACE_DOWN, FACE_LEFT, FACE_RIGHT, FACE_UP, FLAG_DOUBLES, actorState, advanceText,

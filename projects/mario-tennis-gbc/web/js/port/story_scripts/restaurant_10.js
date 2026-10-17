@@ -7,8 +7,8 @@
 // Port of src/story/restaurant_10.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/
 // mario-tennis-gbc-disasm), whose routine names these are.
 // Recordings: out/engine/rec1.mtrec, rec2.mtrec (the main menu: a story slot continued), out/port/ss2_cafe*.mtrec,
-// ss2_rest*.mtrec (scripted: the cafeteria's and the restaurant's NPCs at each stage), ss2_erase*.mtrec (scripted:
-// the erase menu with a suspended exhibition match).
+// ss2_talk_cafeteria*.mtrec, ss2_talk_restaurant*.mtrec (scripted: the cafeteria's arrival, its and the
+// restaurant's NPCs).
 import {
   ACTORF_X, ACTORF_Y, ACTOR_PLAYER, ANIM_BOUNCE, ANIM_NOD, ANIM_SHAKE, FACE_DOWN, FACE_RIGHT, FACE_UP, FLAG_DOUBLES,
   FZ, WRAM_ACTORS, WRAM_SCREEN, actorState, advanceText, askYesNo, clearFlag, copySceneToVram, disableLCDSafely,

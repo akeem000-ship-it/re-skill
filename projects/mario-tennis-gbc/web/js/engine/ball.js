@@ -222,6 +222,7 @@ export function startHitEffect(E) {
 export function startBallTouchCharEffect(E) { E.S.ballTouchCharTimer = 0x28; }   // 08:547C
 // 08:7C57 OffsetFromBallLanding: the landing point moved hl along the aim angle -> { x, depth }
 export function offsetFromBallLanding(E, hl) {
+  if (E.physics && E.physics.aiAware && hl > 0 && hl < 0x8000) { const p = E.physics.beyondLanding(E, hl); if (p) return p; }   // Enhanced: where the ball really goes after the bounce
   const S = E.S, v = E.M.vectorFromLengthAndAngle(hl, S.shotAimAngle >> 8);
   return { x: (S.ballTargetX + v.hl) & 0xFFFF, depth: (S.ballTargetDepth + v.de) & 0xFFFF };
 }

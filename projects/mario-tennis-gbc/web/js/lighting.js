@@ -198,7 +198,7 @@ export class Lighting {
     let m = q.get("light"); if (m === null) { try { m = localStorage.getItem(KEY); } catch (e) { m = null; } }
     this.mode = LIGHT_MODES.includes(m) ? m : "off";
     this.hourOverride = q.has("hour") ? parseFloat(q.get("hour")) : null;
-    this.dbg = q.has("lightdbg") ? +q.get("lightdbg") : 0; this.tierWant = q.has("lightq") ? +q.get("lightq") : (typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches ? 1 : 2);   // phones start without multisampling this.tier = this.tierWant;
+    this.dbg = q.has("lightdbg") ? +q.get("lightdbg") : 0; this.tierWant = q.has("lightq") ? +q.get("lightq") : (typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches ? 1 : 2); this.tier = this.tierWant;   // phones start without multisampling
     this.on = false; this.begun = false; this.posted = false; this.cam = null; this.sky = skyAt(15);
     this.progs = {}; this.size = null; this.stats = { ms: 0, passes: 0, gpuMs: null, tier: this.tier }; this.slow = 0;
     this.empty = this.gl.createVertexArray(); this.q = null;
@@ -363,7 +363,7 @@ export class Lighting {
       this.pass(progB, q.b1, { uDir: [1 / q.q0.w * 1.3, 0], uUseDepth: 0 }, [q.q0.t, S.depthTex]);
       this.pass(progB, q.b0, { uDir: [0, 1 / q.q0.h * 1.3], uUseDepth: 0 }, [q.b1.t, S.depthTex]);
     }
-    this.pass(progE, q.e0, { uInvVP: invVP, uTexel: [1 / q.q0.w, 1 / q.q0.h], uHi: 1.5 * P.bloom, uEm: 2.2 * night, uThr: 0.74, uLL: Math.min(1.4, (0.299 * (P.amb[0] + (P.sun[0] - P.amb[0]) * 0.85) + 0.587 * (P.amb[1] + (P.sun[1] - P.amb[1]) * 0.85) + 0.114 * (P.amb[2] + (P.sun[2] - P.amb[2]) * 0.85)) * P.exp), uLit: [1.0, 0.72, 0.34] }, [q.q0.t, (needB ? q.b0 : q.q0).t, S.t, S.depthTex]);
+    this.pass(progE, q.e0, { uInvVP: invVP, uTexel: [1 / q.q0.w, 1 / q.q0.h], uHi: 1.5 * P.bloom, uEm: 2.2 * night * (cam.kind === "field" ? 1 : 0), uThr: 0.74, uLL: Math.min(1.4, (0.299 * (P.amb[0] + (P.sun[0] - P.amb[0]) * 0.85) + 0.587 * (P.amb[1] + (P.sun[1] - P.amb[1]) * 0.85) + 0.114 * (P.amb[2] + (P.sun[2] - P.amb[2]) * 0.85)) * P.exp), uLit: [1.0, 0.72, 0.34] }, [q.q0.t, (needB ? q.b0 : q.q0).t, S.t, S.depthTex]);
     this.pass(progB, q.g1, { uDir: [1 / q.e0.w * 2.2, 0], uUseDepth: 0 }, [q.e0.t, S.depthTex]);
     this.pass(progB, q.g0, { uDir: [0, 1 / q.e0.h * 2.2], uUseDepth: 0 }, [q.g1.t, S.depthTex]);
     this.pass(progB, q.g1, { uDir: [1 / q.e0.w * 5, 0], uUseDepth: 0 }, [q.g0.t, S.depthTex]);
@@ -384,7 +384,7 @@ export class Lighting {
     gl.uniform1i(progC.u.uNP, li.out.length); gl.uniform1i(progC.u.uNF2, nf);
     this.pass(progC, null, {
       uInvVP: invVP, uVP: vp, uNF: NF, uRes: [W, H], uL: L, uSun: P.sun, uAmb: P.amb, uShade: shade, uWall: wallK,
-      uExp: P.exp, uSat: P.sat, uCon: P.con, uBloom: P.bloom, uGlowK: 0.62 * (0.6 + 0.4 * P.bloom), uSpill: 0.55 + 0.9 * night, uLamps: night, uVig: P.vig, uDof: dofK * 0.8, uTone: P.tone,
+      uExp: P.exp, uSat: P.sat, uCon: P.con, uBloom: P.bloom, uGlowK: 0.62 * (0.6 + 0.4 * P.bloom), uSpill: 0.55 + 0.9 * night, uLamps: cam.kind === "field" ? night : 0, uVig: P.vig, uDof: dofK * 0.8, uTone: P.tone,
       uDbg: this.dbg, uWarm: [1.15, 0.82, 0.42], uFocus: [0.5, 0.17, 0.30, 0.36],
     }, [S.t, S.depthTex, q.sh0.t, (needB ? q.b0 : q.q0).t, q.g0.t, q.e0.t]);
     this.timerEnd();

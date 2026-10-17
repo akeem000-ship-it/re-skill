@@ -4,8 +4,8 @@
 // (ActorScript_10_1..4) are data.
 // Port of src/story/walks_10.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/
 // mario-tennis-gbc-disasm), whose routine names these are.
-// Recordings: out/engine/rec1.mtrec, rec2.mtrec (bank $10's locations: the academy and its wing); tests:
-// web/tests/port/routines_story_scripts2.mjs.
+// Recordings: out/engine/rec1.mtrec, rec2.mtrec (bank $10's locations: the academy and its wing),
+// out/port/ss2_exit_curve*.mtrec (scripted: the curving exit walk); tests: web/tests/port/routines_story_scripts2.mjs.
 import {
   ACTOR_PLAYER, ACTOR_PARTNER, FACE_UP, FACE_DOWN, FACE_LEFT, FACE_RIGHT, FLAG_DOUBLES, STORYENTRY_NONE, FZ, FH, FC,
   WRAM_COURT_PLANES, testFlag, testFlagF, setSpeed, moveAngle, waitMove, hook, scene,
