@@ -166,19 +166,22 @@ export class BallFX {
   spawnHit(h) {
     const t0 = h.fr - 1, S = h.str, c = h.c, big = h.power || h.smash, R = this.rand.bind(this);
     const hot = mix3(c, WHITE, 0.55);
-    this.add({ k: 2, add: true, t0, life: 7 + 5 * S, pos: h.pos, s0: 50 + 70 * S, s1: 110 + 150 * S, c: mix3(WHITE, c, 0.3), a: 1.6 });
-    this.add({ k: 0, add: true, t0, life: 11, pos: h.pos, s0: 80 + 90 * S, s1: 120 + 190 * S, c, a: 0.8 });
-    this.add({ k: 3, add: true, t0, life: 11 + 4 * S, pos: h.pos, s0: 20, s1: 90 + 150 * S, p: 0.78, c: hot, a: 1.4 });
+    // short and small: a flare that peaks within a frame or two and is gone after about 4 game frames (6 for power shots and smashes),
+    // a thin ring, short sparks; nothing here may hide the hitter (see occlusion() in draw)
+    const L = big ? 6 : 3.6;
+    this.add({ k: 2, add: true, t0, life: L, pos: h.pos, s0: 15 + 20 * S, s1: 37 + 50 * S, c: mix3(WHITE, c, 0.3), a: 1.5 });
+    this.add({ k: 0, add: true, t0, life: L, pos: h.pos, s0: 22 + 30 * S, s1: 40 + 63 * S, c, a: 0.6 });
+    this.add({ k: 3, add: true, t0, life: big ? 7 : 5, pos: h.pos, s0: 8, s1: 30 + 50 * S, p: 0.93, c: hot, a: 0.75 });
     if (big) {
-      this.add({ k: 2, add: true, t0: t0 + 2, life: 13, pos: h.pos, s0: 80, s1: 330 + (h.smash ? 120 : 0), c, a: 1.7, rot: 0.785 });
-      this.add({ k: 3, add: true, t0: t0 + 1, life: 18, pos: h.pos, s0: 40, s1: 250 + (h.smash ? 110 : 0), p: 0.86, c, a: 1.1 });
+      this.add({ k: 2, add: true, t0: t0 + 0.5, life: 6, pos: h.pos, s0: 24, s1: 90 + (h.smash ? 35 : 0), c, a: 1.2, rot: 0.785 });
+      this.add({ k: 3, add: true, t0: t0 + 0.5, life: 7, pos: h.pos, s0: 16, s1: 80 + (h.smash ? 30 : 0), p: 0.95, c, a: 0.6 });
     }
-    const n = Math.round(6 + 8 * S + (big ? 10 : 0));
+    const n = Math.round(5 + 5 * S + (big ? 5 : 0));
     for (let i = 0; i < n; i++) {                    // spark streaks: out of the contact, along the shot more than against it
       const th = R() * 6.2832, ph = Math.acos(2 * R() - 1), dir = [Math.sin(ph) * Math.cos(th), Math.sin(ph) * Math.sin(th), Math.cos(ph)];
-      const bias = 0.55 + 0.6 * R(), sp = (9 + 20 * R()) * (0.6 + 0.8 * S) * (big ? 1.35 : 1);
+      const bias = 0.55 + 0.6 * R(), sp = (6 + 10 * R()) * (0.6 + 0.6 * S) * (big ? 1.2 : 1);
       const d = this.norm([dir[0] + h.dir[0] * bias, dir[1] + h.dir[1] * bias + 0.12, dir[2] + h.dir[2] * bias], dir);
-      this.add({ k: 4, add: true, streak: true, t0, life: 8 + 8 * R() * (0.6 + S), pos: h.pos, v: d.map(x => x * sp), drag: 0.13, g: 0.35, s0: 3 + 3.5 * S + (big ? 2 : 0), c: R() < 0.35 ? mix3(c, WHITE, 0.7) : mix3(c, WHITE, 0.25), a: 1.6, len: 1.7 });
+      this.add({ k: 4, add: true, streak: true, t0, life: 3.5 + 3 * R() + (big ? 1.5 : 0), pos: h.pos, v: d.map(x => x * sp), drag: 0.18, g: 0.3, s0: 1.8 + 2 * S, c: R() < 0.35 ? mix3(c, WHITE, 0.7) : mix3(c, WHITE, 0.25), a: 1.5, len: 1.2 });
     }
   }
   spawnBounce(b, s) {
@@ -199,9 +202,9 @@ export class BallFX {
   }
   spawnNet(p, S, hitNet) {
     const t0 = this.net.fr - 1, R = this.rand.bind(this);
-    this.add({ k: 2, add: true, t0, life: 8, pos: p, s0: 30, s1: 60 + 70 * S, c: [1.0, 0.98, 0.9], a: 1.8 });
-    for (let i = 0; i < Math.round(4 + 6 * S); i++) { const th = R() * 6.2832; this.add({ k: 4, add: true, streak: true, t0, life: 8 + 5 * R(), pos: p, v: [Math.cos(th) * (5 + 9 * R()), 2 + 6 * R(), Math.sin(th) * (3 + 6 * R())], drag: 0.13, g: 0.4, s0: 2.6, c: [1.0, 0.96, 0.8], a: 1.4, len: 1.5 }); }
-    if (hitNet) this.add({ k: 3, add: true, t0, life: 12, pos: p, s0: 14, s1: 100, p: 0.8, c: [1, 1, 0.9], a: 1.0 });
+    this.add({ k: 2, add: true, t0, life: 4, pos: p, s0: 14, s1: 30 + 30 * S, c: [1.0, 0.98, 0.9], a: 1.5 });
+    for (let i = 0; i < Math.round(4 + 6 * S); i++) { const th = R() * 6.2832; this.add({ k: 4, add: true, streak: true, t0, life: 4 + 3 * R(), pos: p, v: [Math.cos(th) * (3 + 6 * R()), 1.5 + 4 * R(), Math.sin(th) * (2 + 4 * R())], drag: 0.18, g: 0.4, s0: 2, c: [1.0, 0.96, 0.8], a: 1.4, len: 1.5 }); }
+    if (hitNet) this.add({ k: 3, add: true, t0, life: 6, pos: p, s0: 10, s1: 55, p: 0.93, c: [1, 1, 0.9], a: 0.7 });
   }
   // the court colour under a point (voxel.js groundColour), and the surface type: clay / grass / hard by the map, else by the colour
   surfaceAt(X, Y) {
@@ -245,7 +248,7 @@ export class BallFX {
   // point lights for strong impacts (lighting.js adds them to its list): [{p: [x, y, z], r, c}]
   lights() {
     const out = []; if (!this.on) return out;
-    for (const h of this.hits) { const a = this.frameAge(h.fr); if (a < 0 || a > 9 || h.str < 0.5) continue; const k = 0.75 * h.str * Math.pow(1 - a / 9, 2); out.push({ p: [h.pos.x, h.pos.y + 20, h.pos.z], r: 330 + 380 * h.str, c: h.c.map(x => x * k) }); }
+    for (const h of this.hits) { const a = this.frameAge(h.fr); if (a < 0 || a > 5 || h.str < 0.5) continue; const k = 0.6 * h.str * Math.pow(1 - a / 5, 2); out.push({ p: [h.pos.x, h.pos.y + 20, h.pos.z], r: 330 + 380 * h.str, c: h.c.map(x => x * k) }); }
     return out.slice(-2);
   }
 
@@ -299,13 +302,28 @@ export class BallFX {
     this.vert(...a, -1, -1, k, 0, c0); this.vert(...c, 1, 1, k, 0, c1); this.vert(...e, 1, -1, k, 0, c1);
   }
 
+  // the players' bodies as screen-plane ellipses (centre in world space), from the interpolated player positions
+  bodies() {
+    const v = this.v, out = []; let pl = null; try { pl = v.interp().players; } catch (e) { return out; }
+    for (const q of pl || []) out.push([q.X, -q.Z + 85, q.Y]);
+    return out;
+  }
+  // 0..1: how much of an additive glow at (x, y, z) of size s may show: none over a character's body, full once clear of it
+  occlusion(PL, x, y, z, s) {
+    const B = this.B; let m = 1;
+    for (const c of PL) {
+      const dx = x - c[0], dy = y - c[1], dz = z - c[2], dr = dx * B.right[0] + dy * B.right[1] + dz * B.right[2], du = dx * B.up[0] + dy * B.up[1] + dz * B.up[2];
+      const e = Math.hypot(dr / (62 + 0.35 * s), du / (92 + 0.35 * s)); m = Math.min(m, 0.06 + 0.94 * sstep(0.85, 1.7, e));
+    }
+    return m;
+  }
   // draws everything; called by voxel.js after the ball, before the HUD / the lighting resolve, with the scene's view-projection
   draw(mvp) {
     if (!this.on) return; const t0 = performance.now();
     try { if (!this.prog) this.init(); } catch (e) { console.warn("ballfx", e); this.on = false; return; }
     const gl = this.gl, T = this.T = this.time(); this.n = 0; this.B = this.basis(mvp);
     const L = this.v.light; this.gk = L && L.active && L.begun && !L.broken ? 0.5 : 1;     // LIGHT is on: its bloom adds to the overbright additive colours, so they start lower
-    const B = this.B, ball = this.ball;
+    const B = this.B, ball = this.ball, PL = this.bodies();
     // 1. shadow of the ball (the court-level one the voxel view used to draw as a fixed blob)
     if (ball) {
       const h = ball.h, k = clamp(h / 420), rx = 24 * (1 + 1.5 * k), rz = 16 * (1 + 1.5 * k), soft = clamp(0.10 + 0.85 * sstep(0, 260, h)), al = 0.68 * (1 - 0.62 * sstep(0, 420, h));
@@ -317,7 +335,8 @@ export class BallFX {
       const u = age / p.life, f = p.drag ? (1 - Math.exp(-p.drag * age)) / p.drag : age, v = p.v || [0, 0, 0], g = p.g || 0;
       const x = p.pos.x + v[0] * f, z = p.pos.z + v[2] * f; let y = p.pos.y + v[1] * f - 0.5 * g * age * age; if (y < 0.6) y = 0.6;
       const s = lerp(p.s0, p.s1 === undefined ? p.s0 : p.s1, Math.sqrt(u)) * this.k.size, fade = Math.pow(1 - u, p.k === 3 || p.k === 2 ? 1.6 : 1.3) * Math.min(1, age * 3 + 0.35);
-      const c = p.c, a = p.a;
+      const c = p.c; let a = p.a;
+      if (p.add && p.k !== 5 && PL.length) a *= this.occlusion(PL, x, y, z, s);
       if (p.streak) {
         const vx = v[0] * Math.exp(-p.drag * age), vy = v[1] * Math.exp(-p.drag * age) - g * age, vz = v[2] * Math.exp(-p.drag * age), L = p.len || 1.6;
         this.ribbon([x - vx * L, y - vy * L, z - vz * L], [x, y, z], 0.2 * p.s0, p.s0 * (0.4 + 0.6 * (1 - u)), [c[0] * a * fade * this.gk, c[1] * a * fade * this.gk, c[2] * a * fade * this.gk, 0], [c[0] * a * fade * this.gk, c[1] * a * fade * this.gk, c[2] * a * fade * this.gk, 0], 4);

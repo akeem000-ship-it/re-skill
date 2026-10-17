@@ -15,7 +15,8 @@
 //   composite    full resolution: depth of field, sun / shade tint (warm light, cool shade), point lights (fountains, the
 //                court's floodlights), glow, split-tone colour grade, vignette, dither.
 // Time of day: Auto follows the device clock (morning, noon, sunset, night), Day is a fixed bright afternoon.
-// Quality tiers: 2 = shadows + depth of field + glow, 1 = the same with cheaper shadows, 0 = grade + glow + vignette only;
+// Quality tiers: 2 = shadows + depth of field + glow + 4x multisampling (desktop default), 1 = the same without multisampling and with cheaper
+// shadows (touch devices start here), 0 = grade + glow + vignette only;
 // the tier drops by itself when the GPU timer (where the browser has one) shows the passes taking too long.
 const KEY = "mt-light";
 export const LIGHT_MODES = ["off", "day", "auto"];
@@ -194,7 +195,7 @@ export class Lighting {
     let m = q.get("light"); if (m === null) { try { m = localStorage.getItem(KEY); } catch (e) { m = null; } }
     this.mode = LIGHT_MODES.includes(m) ? m : "off";
     this.hourOverride = q.has("hour") ? parseFloat(q.get("hour")) : null;
-    this.dbg = q.has("lightdbg") ? +q.get("lightdbg") : 0; this.tierWant = q.has("lightq") ? +q.get("lightq") : 2; this.tier = this.tierWant;
+    this.dbg = q.has("lightdbg") ? +q.get("lightdbg") : 0; this.tierWant = q.has("lightq") ? +q.get("lightq") : (typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches ? 1 : 2);   // phones start without multisampling this.tier = this.tierWant;
     this.on = false; this.begun = false; this.posted = false; this.cam = null; this.sky = skyAt(15);
     this.progs = {}; this.size = null; this.stats = { ms: 0, passes: 0, gpuMs: null, tier: this.tier }; this.slow = 0;
     this.empty = this.gl.createVertexArray(); this.q = null;

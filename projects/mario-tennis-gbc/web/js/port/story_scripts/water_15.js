@@ -21,6 +21,7 @@ import { printHexWord } from "../home/debugtext.js";
 import { pushWord, dropWords } from "../story/common.js";
 import { waitFramesCmd } from "../cutscenes/common.js";
 import { initNumberSpriteGfx, drawDecimalNumberSprites } from "../menus/common/widgets.js";
+import { farcallFlags } from "../menus/common/defs.js";
 import { mirrorPlayerSpriteIfLeftHanded } from "./mario_world_0e.js";
 import { loadGfx } from "./plane_14.js";
 import { enterServeChallengerCourt } from "./training_npcs_15.js";
@@ -148,7 +149,7 @@ export function drawWaterSpriteMinigameCounters(P) {
   drawNumber(P, q.hl, 0x20, 0x10);
   const swings = P.V.swingContestSwings;
   drawNumber(P, swings, 0x80, 0x10);
-  return { a: swings & 0xFF, f: q.f, hl: swings, de: 0x8010 };
+  return { a: swings & 0xFF, f: farcallFlags(P.cpu.sp), hl: swings, de: 0x8010 };   // (F: the farcall callee's, kept)
 }
 // LoadWaterSpriteMinigameHudGfx (15:5898): (WRAM 1) the HUD's tiles to VRAM bank 1's $8000, object palettes 0-1
 export const loadWaterSpriteMinigameHudGfx = (P, f) => loadGfx(P, f, WaterSpriteHudTiles_15, vTiles0 + VRAM_BANK1,

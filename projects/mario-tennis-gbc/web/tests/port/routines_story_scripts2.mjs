@@ -187,3 +187,21 @@ B(0x13, [["ComputeEmoteActorPosition_13", 0x5BFB, { ...OW, regs: r => ({ a: slot
   ["MapScriptNop_13", 0x7B4D], ["Unused_13_MapScriptClearActiveFlag", 0x7B4E], ["Unused_13_MapScriptPlaySoundA2", 0x7B53],
   ["Unused_13_MapScriptHideLocationName", 0x7B56], ["Unused_13_ComputeRankingProgressIndex", 0x7D11],
   ["ComputeStoryRankTier_13", 0x7D58]], { prep: camPrep });
+// water_15 / training_npcs_15: the swing contest's frame tasks and HUD, the mirror twin; the fountain's facing script
+// (memory only)
+const swingPrep = both(all, (mem, r) => {
+  wf16(mem, "swingContestTimer", pick(r, [0, 1, 2, 0x3C, 0x258, 0xFFFF, r(0x10000)]));
+  wf16(mem, "swingContestSwings", pick(r, [0, 1, 0x63, 0x95, 0xFF, 0x3E7, 0xFFFF, r(0x10000)]));
+  wf(mem, "swingContestPrevInput", pick(r, [0, 0, 1, 2, r(256)]));
+  wf(mem, "swingContestSwingState", pick(r, [0, 1, 2, r(256)]));
+  wf(mem, "swingContestHudMode", r(256)); wf(mem, "swingContestHudPage", r(256));
+  wf(mem, "inputRisingEdge", pick(r, [0, 1, 2, 3, 0x10, r(256)]));
+});
+B(0x15, [["WaterSpriteSwingCountTask", 0x55F0], ["TogglePlayerSpriteXFlip", 0x5777, OW],
+  ["DrawWaterSpriteMinigameCounters", 0x578D], ["LoadWaterSpriteMinigameHudGfx", 0x5898],
+  ["QueueWaterSpriteMinigameTimerPanel", 0x58BB], ["QueueWaterSpriteMinigameCounterPanel", 0x58C6],
+  ["QueueWaterSpriteMinigameHudPanels", 0x58D1], ["InitWaterSpriteMinigameHud", 0x58E4],
+  ["TrainingCourtFacing01_15", 0x5309, { skip: ALL }]], { prep: swingPrep, n: 1 });
+// wall_room_12 / wall_levels_12: the room's arrival, the session's actors (memory only; the level signs wait: lockstep)
+B(0x12, [["WallPracticeRoomArrival01_12", 0x46F3],
+  ["RestoreWallPracticeRoomActors", 0x52C0]], { active: overworld, skip: ALL, n: 1 });
