@@ -194,6 +194,7 @@ export class Voxel3D {
     this.layer = { bg: null, win: null, hash: -1, whash: -1 };
     this.boxShadowTex = this.solidTexture([0, 0, 0, 110]);   // drop shadow of the overlay boxes
     this.shadowTex = this.blobTexture();                     // soft round shadow on the ground (players, ball)
+    this.light = null;                                       // LIGHT: lighting.js (attachLighting) sets this; null = off
     this.preset = "low"; this.cam = { yaw: 0, pitch: 0.9, dist: 3100, fitKey: "" };
     this.freeCam = false; this.mode = "none"; this.t0 = performance.now(); this.cur = null; this.prev = null; this.lastFrame = -1; this.alpha = 1;
     this.parallax = { px: 0, py: 0, gx: 0, gy: 0, gbase: null };
@@ -700,10 +701,13 @@ export class Voxel3D {
     this.alpha = Math.max(0, Math.min(1, alpha));
     const dpr = Math.min(2, (typeof devicePixelRatio === "number" && devicePixelRatio) || 1), W = Math.round((cv.clientWidth || 160) * dpr), H = Math.round((cv.clientHeight || 144) * dpr);
     if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }   // render at device pixels (capped at 2x)
+    // LIGHT: field and court scenes are drawn into lighting.js's off-screen target; post() / finish() put them on the canvas
+    const LT = this.light && this.light.active && (this.isField() || this.isCourt()) && this.light.begin(cv.width, cv.height) ? this.light : null;
     gl.viewport(0, 0, cv.width, cv.height); gl.clearColor(0.05, 0.08, 0.12, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao); gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    if (this.isField()) { this.renderField(frame2d); return; }
-    if (this.isCourt()) { this.renderCourt(frame2d); return; }
+    if (this.isField()) { this.renderField(frame2d); if (LT) LT.finish(); return; }
+    if (this.isCourt()) { this.renderCourt(frame2d); if (LT) LT.finish(); return; }
+    if (LT) LT.finish();
     this.renderLayers();
   }
   // court camera: eye direction from the preset; distance fitted to the viewport (cached per aspect/preset)
@@ -742,6 +746,7 @@ export class Voxel3D {
     if (!this.ground || this.ground.court !== this.courtId) { this.buildGround(); this.groundHash = -1; }
     const h = this.palHash(); if (h !== this.groundHash) { this.groundHash = h; this.paintGround(); }
     const { mvp, tilt } = this.courtCamera(cv.width / cv.height);
+    if (this.light) this.light.camera(mvp, COURT_CLIP.near, COURT_CLIP.far, 7.5, "court", [0, 0, 0]);   // LIGHT
     // ground plane (lying flat: tilt -90deg around X so the quad's up axis becomes -Z, i.e. +Y world towards the camera)
     const gw = WORLD.x1 - WORLD.x0, gh = WORLD.y1 - WORLD.y0;
     this.draw(this.groundTex, m4.trs(0, -0.5, WORLD.y1, gw, gh, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
@@ -870,6 +875,7 @@ export class Voxel3D {
     if (this.debug) this.debug.push({ land, markers: markers.map(s => `${s.sx},${s.sy},${s.tile}`), ball: ballGroup.map(s => `${s.sx},${s.sy},${s.tile}`), hud: hud.map(s => `${s.sx},${s.sy},${s.tile}`) });
     // HUD: screen space, each sprite anchored to the nearest screen edge so the strips stay at the edges of
     // a wide or tall viewport
+    if (this.light) this.light.post();   // LIGHT: the lit scene goes to the canvas; the HUD is drawn over it, unlit
     gl.disable(gl.DEPTH_TEST);
     const { ortho, l, r, t, b } = this.hudOrtho();
     // HUD sprites at HUD_SCALE of the full-screen Game Boy scale, anchored to the nearest edge with a margin; on
@@ -1403,6 +1409,7 @@ export class Voxel3D {
     const yaw = this.freeCam ? c.yaw : 0, pitch = this.freeCam ? c.pitch : FIELD_CAM.pitch, dist = this.freeCam ? c.dist : FIELD_CAM.dist * Math.max(1, (160 / 144) / aspect);
     const eye = [cx + dist * Math.sin(yaw) * Math.cos(pitch), dist * Math.sin(pitch), cz + dist * Math.cos(yaw) * Math.cos(pitch)];
     const mvp = m4.mul(m4.perspective(FIELD_CAM.fov, aspect, FIELD_CAM.near, FIELD_CAM.far), m4.lookAt(eye, [cx, 0, cz], [0, 1, 0]));
+    if (this.light) this.light.camera(mvp, FIELD_CAM.near, FIELD_CAM.far, 1, "field", [cx, 0, cz]);   // LIGHT
     const T = this.animClock ?? performance.now() / 1000;
     // floor (512x512 map px; +z = down the map), on a plain ground reaching the horizon on side-view maps
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
@@ -1433,6 +1440,7 @@ export class Voxel3D {
     this.drawFieldActors(mvp);
     // dialogue boxes and menus: the game writes them into the BG tile map over the scenery (and some screens use
     // the window layer); both are cut out of the 2D frame and shown at the top middle of the view
+    if (this.light) this.light.post();   // LIGHT: the lit scene goes to the canvas; the overlays below are drawn over it, unlit
     this.drawFieldOverlays(frame2d);
   }
   // swaying flowers, fountain jets and the rings on their pools: geometry built once, moved by the shaders
@@ -1532,13 +1540,32 @@ export class Voxel3D {
       if (a.list.length) {
         let x0 = 999, x1 = -999, y0 = 999, y1 = -999;
         for (const sp of a.list) { x0 = Math.min(x0, sp.sx); x1 = Math.max(x1, sp.sx + 8); y0 = Math.min(y0, sp.sy); y1 = Math.max(y1, sp.sy + sp.h); }
-        const whole = x0 >= 0 && x1 <= 160 && y0 >= 0 && y1 <= 144;
+        const inside = x0 >= 0 && x1 <= 160 && y0 >= 0 && y1 <= 144;
+        // straddling the picture edge: the game still wrote every part (they sit in the OAM margin), so the current pose is whole
+        // as long as as many parts are there as when the actor was last seen inside; fewer = the game culled some -> the remembered look
+        const whole = inside || (m && a.list.length >= m.n);
         if (whole || !m) {
           const body = this.bodyOf(a.list, a.ax, a.ay);
-          if (whole) mem.set(a.slot, { obj: a.obj, body, bx0: x0 - a.ax, bx1: x1 - a.ax, by0: y0 - a.ay });
+          if (inside) mem.set(a.slot, { obj: a.obj, body, n: a.list.length, bx0: x0 - a.ax, bx1: x1 - a.ax, by0: y0 - a.ay });
           this.drawBody(body, X, Z, 0, 1, TILT, mvp); continue;
         }
         this.drawBody(m.body, X, Z, a.lift, 1, TILT, mvp); continue;   // cut by the screen edge: the whole look
+      }
+      // no sprites and never seen: a student the game culled before it was ever on screen. Its two 8x16 parts (tile t at x-8, t+2 at x,
+      // attribute from the actor table) are put together here. The game loads an actor's frame into VRAM only once (+0x32 = the frame
+      // loaded, $FF = none yet): a loaded frame is drawn as it is; for the others the tiles of another student are borrowed (all
+      // students share the same frames, only the palette differs), so the far courts are never empty
+      if (!m && a.obj === 84 && (a.ax < -8 || a.ax >= 168 || a.ay < -4 || a.ay >= 176)) {
+        const w4 = this.gb.mem.wram[4], b = a.slot * 0x40;
+        let tile = w4[b + 0x36];
+        if (w4[b + 0x32] === 0xFF) {
+          const donor = actors.find(d => d !== a && d.obj === 84 && (d.list.length || mem.has(d.slot) || w4[d.slot * 0x40 + 0x32] !== 0xFF));
+          if (!donor) continue;
+          tile = w4[donor.slot * 0x40 + 0x36];
+        }
+        const attr = w4[b + 0x37], sx = a.ax - 8, sy = a.ay - 16;
+        const list = [{ sx, sy, h: 16, tile: tile & 0xFE, attr, owner: null }, { sx: sx + 8, sy, h: 16, tile: (tile + 2) & 0xFE, attr, owner: null }];
+        this.drawBody(this.bodyOf(list, a.ax, a.ay), X, Z, a.lift, 1, TILT, mvp); continue;
       }
       // no sprites: off the Game Boy screen (culled by the game) -> the remembered look; on screen -> hidden by the game
       if (m && (a.ax + m.bx0 < 0 || a.ax + m.bx1 > 160 || a.ay + m.by0 < 0 || a.ay > 144)) this.drawBody(m.body, X, Z, a.lift, 1, TILT, mvp);
