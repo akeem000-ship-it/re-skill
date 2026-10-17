@@ -178,6 +178,25 @@ const explained = x => {
   return r in IO_OF && !!hw(IO_OF[r]);
 };
 class Done extends Error {}
+// The saved game timer: SaveGameTimer (00:2452) copies wGameTimer, which the VBlank handler counts (explained above),
+// to wSavedGameTimer, and a story save then writes that into the slot's SRAM block (bank 0, mirrored in bank 1) with
+// the block's checksum in the save header. After a timing event (the port behind or ahead on frames) the copy holds
+// another count, and its SRAM image and the header's checksum bytes follow from it. Taken as timing only in a frame
+// where wSavedGameTimer itself differs, and only SRAM bytes that are either a byte of each machine's own
+// wSavedGameTimer (its image in the block) or in the save header (the first $800 bytes of banks 0 and 1).
+const wSavedGameTimer = 0xC88E, SAVED_TIMER_SIZE = 4, SRAM_BANK_SIZE = 0x2000, SAVE_HEADER_END = 0x800;
+function savedTimerUnexplained(unexplained, rom, port) {
+  const isTimer = x => x[0] === "wram0" && x[2] >= wSavedGameTimer && x[2] < wSavedGameTimer + SAVED_TIMER_SIZE;
+  if (!unexplained.some(isTimer)) return unexplained;
+  const timerOf = m => m.mem.wram[0].slice(wSavedGameTimer - 0xC000, wSavedGameTimer - 0xC000 + SAVED_TIMER_SIZE);
+  const rt = timerOf(rom), pt = timerOf(port);
+  const image = x => { for (let j = 0; j < SAVED_TIMER_SIZE; j++) if (rt[j] !== pt[j] && x[3] === rt[j] && x[4] === pt[j]) return true; return false; };
+  const sramOk = x => {
+    const off = x[2] - 0xA000, bank = Math.floor(off / SRAM_BANK_SIZE), inBank = off % SRAM_BANK_SIZE;
+    return image(x) || (bank <= 1 && inBank < SAVE_HEADER_END);
+  };
+  return unexplained.filter(x => !(isTimer(x) || (x[0] === "sram" && sramOk(x))));
+}
 let timingUnexplained = 0, courseChanged = null, lastResync = -99, lastResyncFrame = 0, suspect = [], suspectBad = 0, compared = 0, bad = 0, timingDiffs = 0, soundDiffs = 0, lags = 0, injected = 0, injectedIn = -9, portLate = 0, lastTiming = -9;
 // The end of AdvanceFrame's wait (P.atFrameWaitEnd): the ROM's wait ended after more of the window's boundaries than
 // the port's (a VBlank in the frame's work before the wait: the ROM's HALT then slept on to the next one, while the
@@ -229,7 +248,7 @@ P.afterAdvance = k => {
   // After a timing event, the differences a timing event explains (above) are timing; any others are what the
   // game's own code did differently, and count as differences (so a wrong write right after a lag frame doesn't
   // go unseen under the resync). Unless the game's course changed there (below): then they are part of it.
-  const unexplained = timing ? d.filter(x => !explained(x)) : [];
+  const unexplained = timing ? savedTimerUnexplained(d.filter(x => !explained(x)), w.s, P.gb) : [];
   if (!d.length) soundDiffs++; else if (timing && !unexplained.length) timingDiffs++; else bad++;
   if (unexplained.length) {
     timingUnexplained++;

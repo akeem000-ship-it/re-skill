@@ -735,7 +735,7 @@ export class Voxel3D {
     const dpr = Math.min(2, (typeof devicePixelRatio === "number" && devicePixelRatio) || 1), W = Math.round((cv.clientWidth || 160) * dpr), H = Math.round((cv.clientHeight || 144) * dpr);
     if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }   // render at device pixels (capped at 2x)
     // LIGHT: field and court scenes are drawn into lighting.js's off-screen target; post() / finish() put them on the canvas
-    const LT = this.light && this.light.active && (this.isField() || this.isCourt()) && this.light.begin(cv.width, cv.height) ? this.light : null;
+    const LT = this.light && (this.isField() || this.isCourt()) && this.light.activeFor(this.isField() ? "field" : "court") && this.light.begin(cv.width, cv.height) ? this.light : null;
     gl.viewport(0, 0, cv.width, cv.height); gl.clearColor(0.05, 0.08, 0.12, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao); gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     if (this.isField()) { this.renderField(frame2d); if (LT) LT.finish(); return; }

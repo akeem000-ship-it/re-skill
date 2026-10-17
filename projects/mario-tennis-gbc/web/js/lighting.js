@@ -20,6 +20,14 @@
 // the tier drops by itself when the GPU timer (where the browser has one) shows the passes taking too long.
 const KEY = "mt-light";
 export const LIGHT_MODES = ["off", "day", "auto"];
+// the LIGHT settings (web/js/lightpanel.js is the panel), remembered in localStorage mt-lightcfg:
+//   world: the overworld's time: off | day | clock (the phone's clock) | custom (customHour), matches: same (as the overworld) | day | night | random
+//   (each match rolls morning, noon, sunset or night once, seeded by the frame the match scene starts at, so a replay rolls the same),
+//   fx: shadows, bloom, tilt-shift, vignette, night lights; quality: auto | low | medium | high (tier 0 / 1 / 2)
+const CFG_KEY = "mt-lightcfg";
+export const MATCH_HOURS = [8, 12, 18.4, 22], MATCH_NAMES = ["morning", "noon", "sunset", "night"];
+const defaultCfg = () => ({ world: null, customHour: 18.5, matches: "same", fx: { shadows: true, bloom: true, tilt: true, vignette: true, night: true }, quality: "auto" });
+export const hourName = h => h < 5 ? "night" : h < 7 ? "dawn" : h < 10 ? "morning" : h < 15 ? "noon" : h < 17.5 ? "afternoon" : h < 19.5 ? "sunset" : h < 21 ? "dusk" : "night";
 const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
 const lerp = (a, b, t) => a + (b - a) * t;
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
@@ -201,13 +209,64 @@ export class Lighting {
     let m = q.get("light"); if (m === null) { try { m = localStorage.getItem(KEY); } catch (e) { m = null; } }
     this.mode = LIGHT_MODES.includes(m) ? m : "off";
     this.hourOverride = q.has("hour") ? parseFloat(q.get("hour")) : null;
+    this.cfg = this.loadCfg(q.has("light") || q.has("hour"));
     this.dbg = q.has("lightdbg") ? +q.get("lightdbg") : 0; this.tierWant = q.has("lightq") ? +q.get("lightq") : (typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches ? 1 : 2); this.tier = this.tierWant;   // phones start without multisampling
     this.on = false; this.begun = false; this.posted = false; this.cam = null; this.sky = skyAt(15);
     this.progs = {}; this.size = null; this.stats = { ms: 0, passes: 0, gpuMs: null, tier: this.tier }; this.slow = 0;
     this.empty = this.gl.createVertexArray(); this.q = null;
     this.timer = this.gl.getExtension("EXT_disjoint_timer_query_webgl2"); this.queries = []; this.auto = !q.has("lightq"); this.lastT = 0; this.dtMin = 1e9; this.dtEma = 0; this.over = 0;
+    if (!q.has("lightq") && this.cfg.quality !== "auto") { this.tierWant = { low: 0, medium: 1, high: 2 }[this.cfg.quality]; this.tier = this.tierWant; this.stats.tier = this.tier; this.auto = false; }
   }
-  get active() { return this.mode !== "off" && !this.broken; }
+  // ---- settings ----
+  loadCfg(urlOverride) {
+    const c = defaultCfg(); let o = null; try { o = JSON.parse(localStorage.getItem(CFG_KEY) || "null"); } catch (e) { /* none */ }
+    if (o) { for (const k of ["customHour", "matches", "quality", "world"]) if (o[k] !== undefined) c[k] = o[k]; Object.assign(c.fx, o.fx || {}); }
+    if (!["off", "day", "clock", "custom", null].includes(c.world)) c.world = null;
+    if (!["same", "day", "night", "random"].includes(c.matches)) c.matches = "same";
+    if (!["auto", "low", "medium", "high"].includes(c.quality)) c.quality = "auto";
+    if (!urlOverride && c.world) { this.mode = c.world === "off" ? "off" : c.world === "day" ? "day" : "auto"; this.hourOverride = c.world === "custom" ? c.customHour : null; }   // the choice made in the panel (else the older LIGHT button's)
+    if (c.world === null) c.world = this.mode === "off" ? "off" : this.mode === "day" ? "day" : "clock";
+    return c;
+  }
+  saveCfg() { try { localStorage.setItem(CFG_KEY, JSON.stringify(this.cfg)); } catch (e) { /* private mode */ } if (this.onMode) this.onMode(this.mode); }
+  setWorld(w) {                                      // off | day | clock | custom
+    this.cfg.world = w; this.mode = w === "off" ? "off" : w === "day" ? "day" : "auto"; this.hourOverride = w === "custom" ? this.cfg.customHour : null;
+    try { localStorage.setItem(KEY, this.mode); } catch (e) { /* private mode */ }
+    this.skyKey = null; this.saveCfg();
+  }
+  setCustomHour(h) { this.cfg.customHour = h; if (this.cfg.world === "custom") { this.hourOverride = h; this.skyKey = null; } this.saveCfg(); }
+  setMatches(m) { this.cfg.matches = m; this.matchAt = -1; this.skyKey = null; this.saveCfg(); }
+  setFx(k, on) { this.cfg.fx[k] = !!on; this.saveCfg(); }
+  setQuality(qv) {
+    this.cfg.quality = qv; const want = { low: 0, medium: 1, high: 2 }[qv];
+    if (want === undefined) { this.auto = true; this.tierWant = this.defaultTier(); this.setTier(this.tierWant); }
+    else { this.auto = false; this.tierWant = want; this.setTier(want); }
+    this.saveCfg();
+  }
+  defaultTier() { return typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches ? 1 : 2; }
+  // is the lighting on for this scene ("field" | "court")? A court scene is where a new match is noticed: the roll of a random match time
+  activeFor(kind) {
+    if (this.broken) return false;
+    const m = this.cfg.matches;
+    if (kind !== "court" || m === "same") return this.mode !== "off";
+    const fr = this.v.gb.ppu.frames;
+    if (this.matchAt < 0 || fr < this.matchAt || fr - this.matchAt > 600) {         // a new match: seeded by the frame it starts at (replays roll alike)
+      let x = (fr * 2654435761) >>> 0; x ^= x >>> 15; x = Math.imul(x, 2246822519) >>> 0; x ^= x >>> 13; this.matchHour = MATCH_HOURS[x & 3]; this.skyKey = null;
+    }
+    this.matchAt = fr; return true;
+  }
+  get active() { return !this.broken && (this.mode !== "off" || this.cfg.matches !== "same"); }
+  hourFor(kind) {
+    const m = this.cfg.matches;
+    if (kind === "court" && m !== "same") return m === "day" ? 15 : m === "night" ? 22 : (this.matchHour ?? 12);
+    return this.hour();
+  }
+  skyFor(kind) {
+    const h = this.hourFor(kind), clock = this.hourOverride == null && this.mode === "auto" && !(kind === "court" && this.cfg.matches !== "same");
+    const k = kind + ":" + (clock ? Math.floor(performance.now() / 1000) : h);
+    if (this.skyKey !== k) { this.skyKey = k; this.skyVal = skyAt(h); }
+    return this.skyVal;
+  }
   setMode(m) {
     this.mode = LIGHT_MODES.includes(m) ? m : "off";
     try { localStorage.setItem(KEY, this.mode); } catch (e) { /* private mode */ }
@@ -312,7 +371,7 @@ export class Lighting {
     if (!this.begun || this.posted) return;
     this.posted = true; const gl = this.gl, q = this.q, v = this.v, W = this.W, H = this.H, cam = this.cam, t0 = performance.now();
     if (!cam) { this.blitPlain(); return; }
-    const P = this.sky = cam.indoor ? INDOOR : this.skyNow();
+    const P = this.sky = cam.indoor ? INDOOR : this.skyFor(cam.kind);
     try { this.run(P, cam, q, W, H); } catch (e) { console.warn("light", e); this.broken = true; try { this.timerEnd(); } catch (e2) { /* none running */ } this.blitPlain(); }
     // the overlays that follow use the voxel renderer's own state
     gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H); gl.useProgram(v.prog); gl.bindVertexArray(v.vao); gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -347,7 +406,7 @@ export class Lighting {
     gl.bindVertexArray(this.empty); gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.depthMask(false);
     // the sun (or moon): direction towards it in world space (x right, y up, -z away from the viewer)
     const az = P.az * Math.PI / 180, el = Math.max(P.el, 11) * Math.PI / 180, L = [Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el)];
-    const night = P.lamps, shade = T >= 1 ? (P.shade ?? 1) : 0, dofK = T >= 1 ? 1 : 0;
+    const fx = this.cfg.fx, night = P.lamps * (fx.night ? 1 : 0), shade = T >= 1 && fx.shadows ? (P.shade ?? 1) : 0, dofK = T >= 1 && fx.tilt ? 1 : 0;
     const progS = this.prog("shadow", FS_SHADOW), progB = this.prog("blur", FS_BLUR), progD = this.prog("down", FS_DOWN), progE = this.prog("extract", FS_EXTRACT), progC = this.prog("comp", FS_COMP);
     const NF = [cam.near, cam.far], vp = cam.mvp, invVP = invert(vp);
     // 1. shadows
@@ -366,13 +425,13 @@ export class Lighting {
       this.pass(progB, q.b1, { uDir: [1 / q.q0.w * 1.3, 0], uUseDepth: 0 }, [q.q0.t, S.depthTex]);
       this.pass(progB, q.b0, { uDir: [0, 1 / q.q0.h * 1.3], uUseDepth: 0 }, [q.b1.t, S.depthTex]);
     }
-    this.pass(progE, q.e0, { uInvVP: invVP, uTexel: [1 / q.q0.w, 1 / q.q0.h], uHi: 1.5 * P.bloom, uEm: 2.2 * night * (cam.kind === "field" ? 1 : 0), uThr: P.thr, uLL: Math.min(1.4, (0.299 * (P.amb[0] + (P.sun[0] - P.amb[0]) * 0.85) + 0.587 * (P.amb[1] + (P.sun[1] - P.amb[1]) * 0.85) + 0.114 * (P.amb[2] + (P.sun[2] - P.amb[2]) * 0.85)) * P.exp), uLit: [1.0, 0.72, 0.34] }, [q.q0.t, (needB ? q.b0 : q.q0).t, S.t, S.depthTex]);
+    this.pass(progE, q.e0, { uInvVP: invVP, uTexel: [1 / q.q0.w, 1 / q.q0.h], uHi: fx.bloom ? 1.5 * P.bloom : 0, uEm: 2.2 * night * (cam.kind === "field" ? 1 : 0), uThr: P.thr, uLL: Math.min(1.4, (0.299 * (P.amb[0] + (P.sun[0] - P.amb[0]) * 0.85) + 0.587 * (P.amb[1] + (P.sun[1] - P.amb[1]) * 0.85) + 0.114 * (P.amb[2] + (P.sun[2] - P.amb[2]) * 0.85)) * P.exp), uLit: [1.0, 0.72, 0.34] }, [q.q0.t, (needB ? q.b0 : q.q0).t, S.t, S.depthTex]);
     this.pass(progB, q.g1, { uDir: [1 / q.e0.w * 2.2, 0], uUseDepth: 0 }, [q.e0.t, S.depthTex]);
     this.pass(progB, q.g0, { uDir: [0, 1 / q.e0.h * 2.2], uUseDepth: 0 }, [q.g1.t, S.depthTex]);
     this.pass(progB, q.g1, { uDir: [1 / q.e0.w * 5, 0], uUseDepth: 0 }, [q.g0.t, S.depthTex]);
     this.pass(progB, q.g0, { uDir: [0, 1 / q.e0.h * 5], uUseDepth: 0 }, [q.g1.t, S.depthTex]);
     // 3. point lights, floodlight glare
-    const li = this.lights(P, unit, cam.kind), pp = new Float32Array(24), pc = new Float32Array(18), fl = new Float32Array(16), fc = new Float32Array(12);
+    const li = this.lights(night === P.lamps ? P : { ...P, lamps: 0 }, unit, cam.kind), pp = new Float32Array(24), pc = new Float32Array(18), fl = new Float32Array(16), fc = new Float32Array(12);
     li.out.forEach((l, i) => { pp.set([l.p[0], l.p[1], l.p[2], l.r], i * 4); pc.set(l.c, i * 3); });
     let nf = 0;
     for (const f of li.fl) {
@@ -387,7 +446,7 @@ export class Lighting {
     gl.uniform1i(progC.u.uNP, li.out.length); gl.uniform1i(progC.u.uNF2, nf);
     this.pass(progC, null, {
       uInvVP: invVP, uVP: vp, uNF: NF, uRes: [W, H], uL: L, uSun: P.sun, uAmb: P.amb, uShade: shade, uWall: wallK,
-      uExp: P.exp, uSat: P.sat, uCon: P.con, uBloom: P.bloom, uGlowK: 0.62 * (0.6 + 0.4 * P.bloom), uSpill: 0.5 + 0.18 * night, uLamps: cam.kind === "field" ? night : 0, uVig: P.vig, uDof: dofK * 0.8, uTone: P.tone,
+      uExp: P.exp, uSat: P.sat, uCon: P.con, uBloom: P.bloom, uGlowK: 0.62 * (0.6 + 0.4 * P.bloom), uSpill: 0.5 + 0.18 * night, uLamps: cam.kind === "field" ? night : 0, uVig: fx.vignette ? P.vig : 0, uDof: dofK * 0.8, uTone: P.tone,
       uDbg: this.dbg, uWarm: [1.15, 0.82, 0.42], uFocus: [0.5, 0.17, 0.30, 0.36],
     }, [S.t, S.depthTex, q.sh0.t, (needB ? q.b0 : q.q0).t, q.g0.t, q.e0.t]);
     this.timerEnd();
@@ -419,12 +478,13 @@ export class Lighting {
   }
 }
 
-// the HUD button: "LIGHT: Off / Day / Auto" (cycles; remembered)
+// the HUD button: "LIGHT: ..." opens the settings panel (lightpanel.js; without it the button cycles Off / Day / Auto as before)
 export function addLightButton(hud, light) {
   if (!hud || !light) return null;
-  const b = document.createElement("span"); b.className = "k"; b.id = "lightbtn"; b.title = "3D / VOX lighting: sun with soft shadows, warm and cool colour by time of day (Auto follows the clock), glow, vignette, night lamps";
-  const show = () => { const t = { off: "Off", day: "Day", auto: "Auto" }[light.mode]; b.textContent = "LIGHT: " + t; b.classList.toggle("on", light.mode !== "off"); };
-  b.addEventListener("pointerdown", () => { light.setMode(LIGHT_MODES[(LIGHT_MODES.indexOf(light.mode) + 1) % LIGHT_MODES.length]); show(); });
+  const b = document.createElement("span"); b.className = "k"; b.id = "lightbtn"; b.title = "3D / VOX lighting settings: time of day for the overworld and for matches, shadows, glow, tilt-shift, vignette, night lights, quality, crowd size";
+  const fmt = h => { const hh = Math.floor(h), mm = Math.round((h - hh) * 60); return String(hh % 24).padStart(2, "0") + ":" + String(mm === 60 ? 0 : mm).padStart(2, "0"); };
+  const show = () => { const w = light.cfg.world; const t = w === "off" ? "Off" : w === "day" ? "Day" : w === "custom" ? fmt(light.cfg.customHour) : "Auto"; b.textContent = "LIGHT: " + t; b.classList.toggle("on", light.active); };
+  b.addEventListener("pointerdown", () => { if (light.openPanel) light.openPanel(); else { light.setMode(LIGHT_MODES[(LIGHT_MODES.indexOf(light.mode) + 1) % LIGHT_MODES.length]); light.cfg.world = light.mode === "auto" ? "clock" : light.mode; show(); } });
   hud.appendChild(document.createTextNode(" ")); hud.appendChild(b); show();
   light.onMode = show;
   return b;

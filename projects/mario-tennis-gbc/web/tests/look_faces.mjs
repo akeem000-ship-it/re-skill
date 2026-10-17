@@ -63,6 +63,8 @@ if (fs.existsSync(romf)) {
   }
   // 4. the hand-pixelled portraits (hairart.js): every style but the hero's own has art for all four frames; the art draws over the
   //    game's face (the eyes' rows are the game's pixels), the LZ streams are never rewritten, each frame's plane is its own
+  const EYES = { alex: { portrait: [6, 19, 14, 18], win: [10, 24, 14, 17], lose: [18, 27, 16, 19], head: [3, 12, 9, 12] },
+                 nina: { portrait: [4, 20, 11, 17], win: [8, 19, 9, 12], lose: [13, 25, 13, 18], head: [1, 9, 7, 10] } };
   for (const [name, hero] of [["alex", "boy"], ["nina", "girl"]]) {
     const own = name === "alex" ? "cap" : "pigtails", H = HEROES[name];
     for (const style of STYLES[name]) for (const fr of FRAMES) check(hasHairArt(name, style, fr) === (style !== own), `hair art ${name} ${style} ${fr}`);
@@ -74,9 +76,9 @@ if (fs.existsSync(romf)) {
         check(applyHairArt(st, name, style, fr), `applies ${name} ${style} ${fr}`);
         let hair = 0, kept = 0; for (let i = 0; i < st.reg.length; i++) { if (st.reg[i] === REG.HAIR || st.reg[i] === REG.HAIR2 || st.reg[i] === REG.HAIR3 || st.reg[i] === REG.HAT) hair++; }
         check(hair > (fr === "head" ? 20 : 40), `hair drawn ${name} ${style} ${fr} (${hair})`);
-        const y0 = fr === "head" ? 9 : fr === "portrait" ? 15 : 19, y1 = fr === "head" ? 13 : fr === "portrait" ? 19 : 22, w = st.w;    // the eyes and mouth rows: the game's pixels, centre columns
-        for (let y = y0; y <= y1; y++) for (let x = (w * 0.38) | 0; x < ((w * 0.62) | 0); x++) if (st.idx[y * w + x] === plain.idx[y * w + x]) kept++;
-        check(kept === (y1 - y0 + 1) * (((w * 0.62) | 0) - ((w * 0.38) | 0)), `face kept ${name} ${style} ${fr} (${kept})`);
+        const [x0, x1, y0, y1] = EYES[name][fr];                                        // the eyes' rows: the game's pixels, untouched
+        let same = true; for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (st.idx[y * st.w + x] !== plain.idx[y * st.w + x]) same = false;
+        check(same, `face kept ${name} ${style} ${fr}`);
       }
       const look = { [hero]: { style, colours } }, mgr = new LookManager().prepare(Uint8Array.from(pristine), look);
       check(mgr.notes.length === 0 && mgr.built.poolTop === undefined, `builds ${name} ${style}`);

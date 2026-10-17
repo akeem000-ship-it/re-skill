@@ -164,28 +164,24 @@ export function* runClearStatusSetupMenu(P) {
   for (;;) {
     if (s === STEP_MODE) {
       yield* prompt(Text_34_232, [0x4BF4, 0x4BFD, 0x4C03]);
-      const mode = yield* menuChoice(P, Text_34_215, 1, [0x4C0D, 0x4C10, 0x4C13, 0x4C16, 0x4C1F]);
-      bus.w8(wClearStatusMode, mode);
+      const mode = yield* menuChoice(P, Text_34_215, 1, [0x4C0D, 0x4C10, 0x4C13, 0x4C16, 0x4C1F], wClearStatusMode);
       if (mode === 0xFF) { bus.w8(wClearStatusResultCode, RESULT_CANCELLED); break; }
       if (mode) { bus.w8(wClearStatusResultCode, RESULT_MODE_1); break; }
       bus.w8(wClearStatusDoubles, testFlag(P, FLAG_DOUBLES) ? 1 : 0);
       s = STEP_FORMAT;
     } else if (s === STEP_FORMAT) {
       yield* prompt(Text_34_228, [0x4C4D, 0x4C56, 0x4C5C]);
-      const format = yield* menuChoice(P, Text_34_217, 3, [0x4C66, 0x4C69, 0x4C6C, 0x4C6F, 0x4C78]);
-      bus.w8(wClearStatusFormat, format);
+      const format = yield* menuChoice(P, Text_34_217, 3, [0x4C66, 0x4C69, 0x4C6C, 0x4C6F, 0x4C78], wClearStatusFormat);
       s = format === 0xFF ? STEP_MODE : STEP_CLASS;
     } else if (s === STEP_CLASS) {
       yield* prompt(Text_34_229, [0x4C86, 0x4C8F, 0x4C95]);
-      const cls = yield* menuChoice(P, Text_34_218, 5, [0x4C9F, 0x4CA2, 0x4CA5, 0x4CA8, 0x4CB1]);
-      bus.w8(wClearStatusClass, cls);
+      const cls = yield* menuChoice(P, Text_34_218, 5, [0x4C9F, 0x4CA2, 0x4CA5, 0x4CA8, 0x4CB1], wClearStatusClass);
       s = cls === 0xFF ? STEP_FORMAT : STEP_RANK;
     } else {
       yield* prompt((Text_34_230 + bus.u8(wClearStatusFormat)) & 0xFFFF, [0x4CBF, 0x4CD0, 0x4CD6]);
       let list = bus.u8(wClearStatusDoubles) ? RANK_LIST_DOUBLES : RANK_LIST_SINGLES;
       if (bus.u8(wClearStatusFormat)) list = (list + ((bus.u8(wClearStatusClass) + 1) & 0xFF)) & 0xFFFF;
-      const rank = yield* menuChoice(P, list, 7, [0x4CFB, 0x4CFE, 0x4D01, 0x4D04, 0x4D0D]);
-      bus.w8(wClearStatusRank, rank);
+      const rank = yield* menuChoice(P, list, 7, [0x4CFB, 0x4CFE, 0x4D01, 0x4D04, 0x4D0D], wClearStatusRank);
       if (rank === 0xFF) { s = STEP_CLASS; continue; }
       applyClearStatusFlags(P);
       getClearStatusResultCode(P);
@@ -197,13 +193,14 @@ export function* runClearStatusSetupMenu(P) {
   dropWords(P, 4);
   return b;
 }
-// a menu of text hl at (d, 0): created, drawn, run and closed; returns the choice ($FF: cancelled). at: the five
-// far calls' addresses
-function* menuChoice(P, text, row, at) {
+// a menu of text hl at (d, 0): created, drawn, run, the choice stored at `store` ($FF: cancelled), closed; returns
+// the choice. at: the five far calls' addresses
+function* menuChoice(P, text, row, at, store) {
   yield* farcallRom(P, at[0], BANK_TEXT, CreateMenuWindowFromText, { hl: text, d: row, e: 0 });
   yield* farcallRom(P, at[1], BANK_TEXT, RestoreShadowTilemap);
   yield* farcallRom(P, at[2], BANK_TEXT, RenderMenuWindowText);
   const choice = (yield* farcallRom(P, at[3], BANK_TEXT, RunMenuSelection)).a;
+  P.bus.w8(store, choice);                                // (stored before the window closes: CloseWindow waits)
   yield* farcallRom(P, at[4], BANK_TEXT, CloseWindow, { a: P.bus.u8(P.A.menuWindowId) });
   return choice;
 }
