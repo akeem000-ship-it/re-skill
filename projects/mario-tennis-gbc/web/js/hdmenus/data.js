@@ -246,9 +246,17 @@ registerHDPainter("d_text", (g, scr, layer) => {
 }, { order: 60 });
 
 // ---- smoothing --------------------------------------------------------------------------------------------------------
-// Scale2x (EPX) twice: the picture's own pixels at 4x with the stair-steps of diagonals and corners rounded off
-function scale2x(src, w, h) {
-  const o = new Uint32Array(w * h * 4), w2 = w * 2;
+// the picture's smoothed 4x copy as a canvas (buffers kept between calls)
+function makeSmoother() {
+  const a = new Uint32Array(160 * 144), b = new Uint32Array(320 * 288), c = new Uint32Array(640 * 576); let cv = null, id = null;
+  return px => {
+    a.set(px); scale2xInto(a, 160, 144, b); scale2xInto(b, 320, 288, c);
+    if (!cv) { cv = document.createElement("canvas"); cv.width = 640; cv.height = 576; id = cv.getContext("2d").createImageData(640, 576); }
+    new Uint32Array(id.data.buffer).set(c); cv.getContext("2d").putImageData(id, 0, 0); return cv;
+  };
+}
+function scale2xInto(src, w, h, o) {
+  const w2 = w * 2;
   for (let y = 0; y < h; y++) {
     const ym = y > 0 ? y - 1 : 0, yp = y < h - 1 ? y + 1 : h - 1;
     for (let x = 0; x < w; x++) {
@@ -259,16 +267,8 @@ function scale2x(src, w, h) {
       const i = y * 2 * w2 + x * 2; o[i] = e0; o[i + 1] = e1; o[i + w2] = e2; o[i + w2 + 1] = e3;
     }
   }
-  return o;
 }
-// the rectangle (x, y, w, h) of the 160x144 picture (0xAABBGGRR) smoothed 4x as a canvas
-export function smooth4(px, x, y, w, h) {
-  const a = new Uint32Array(w * h);
-  for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) a[yy * w + xx] = px[(y + yy) * 160 + x + xx];
-  const b = scale2x(scale2x(a, w, h), w * 2, h * 2), c = document.createElement("canvas"); c.width = w * 4; c.height = h * 4;
-  const g = c.getContext("2d"), id = g.createImageData(w * 4, h * 4); new Uint32Array(id.data.buffer).set(b); g.putImageData(id, 0, 0);
-  return c;
-}
+const smooth4 = makeSmoother(), smoothSprites = makeSmoother();
 // The smoothed picture goes UNDER everything the other painters drew: the frames painter cuts the original's ink
 // (portraits, icons, bars) out of its fills so "the picture shows through", and what shows through is then the smoothed
 // picture, not the plain 4x one. Only on screens that have HD panels (menus), never in a match. (Done with plain
@@ -285,7 +285,7 @@ registerHDPainter("d_smooth", (g, scr, layer) => {
   const u = under.getContext("2d"); u.setTransform(1, 0, 0, 1, 0, 0); u.clearRect(0, 0, under.width, under.height);
   u.save();
   if (part) { u.beginPath(); for (const p of scr.panels) if (p.layer === "bg") u.rect(Math.max(0, p.x) * HD, Math.max(0, p.y) * HD, p.w * HD, p.h * HD); u.clip(); }
-  u.drawImage(smooth4(scr.px32, 0, 0, 160, 144), 0, 0, under.width, under.height);   // the smoothed picture...
+  u.drawImage(smooth4(scr.px32), 0, 0, under.width, under.height);   // the smoothed picture...
   u.restore();
   u.drawImage(cv, 0, 0);                                                              // ...with what the painters drew on it
   g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height); g.drawImage(under, 0, 0); g.restore();
@@ -312,6 +312,7 @@ export function findGauges(scr) {
     return true;
   };
   for (let y = 1; y < 140; y++) for (let x = 0; x < 158; x++) {
+    if (px[y * 160 + x] !== BLACK || px[y * 160 + x + 2] !== BLACK || px[(y + 3) * 160 + x] !== BLACK) continue;
     if (!block(x, y) || used.has(y * 160 + x)) continue;
     let x1 = x; while (block(x1 + 4, y)) x1 += 4;
     let x0 = x; while (filled(x0 - 4, y) && (x1 - x0) / 4 < 9) x0 -= 4;
@@ -320,6 +321,7 @@ export function findGauges(scr) {
     out.push({ x: x0, y, n, on: (x - x0) / 4 });      // `on` filled segments first, then the empty ones
   }
   for (let y = 1; y < 140; y++) for (let x = 0; x < 158; x++) {       // a gauge with every segment filled
+    const c0 = px[y * 160 + x]; if (c0 !== RED && c0 !== WHITE && c0 !== BLACK) continue;
     if (used.has(y * 160 + x) || !filled(x, y)) continue;
     let k = 1; while (filled(x + 4 * k, y)) k++;
     if (k >= 8) { out.push({ x, y, n: k, on: k }); for (let m = 0; m < k; m++) used.add(y * 160 + x + 4 * m); x += 4 * k - 1; }
@@ -361,9 +363,7 @@ registerHDPainter("d_sprites", (g, scr, layer) => {
     }
   }
   if (!scr.hide(sprs)) return;
-  const b = scale2x(scale2x(buf, 160, 144), 320, 288), cv = document.createElement("canvas"); cv.width = 640; cv.height = 576;
-  const cg = cv.getContext("2d"), id = cg.createImageData(640, 576); new Uint32Array(id.data.buffer).set(b); cg.putImageData(id, 0, 0);
-  g.drawImage(cv, 0, 0, 160, 144);
+  g.drawImage(smoothSprites(buf), 0, 0, 160, 144);
 }, { order: 50, sprites: true });
 
 // ---- arrow buttons (MORE / BACK) ----------------------------------------------------------------------------------------
@@ -406,9 +406,8 @@ function arrowButton(g, scr, a) {
   g.beginPath(); roundRect(g, bx0 + 0.6, by0 + 0.6, bx1 - bx0 - 1.2, by1 - by0 - 1.2, 1.1); g.fillStyle = lg; g.fill();
   const cx = (bx0 + bx1) / 2 + (L ? 0.6 : -0.6);
   if (!drawText(g, scr, a.label, cx, ym + 2.8, { size: 8.6, color: "#fff", shadow: "rgba(0,0,0,0.6)", align: "center", maxW: bx1 - bx0 - 3 })) {
-    g.font = "bold 7.4px sans-serif"; g.textAlign = "center"; g.fillStyle = "#fff"; g.fillText(a.label, cx, ym + 2.6);
+    g.save(); g.font = "bold 7.4px sans-serif"; g.textAlign = "center"; g.fillStyle = "#fff"; g.fillText(a.label, cx, ym + 2.6); g.restore();
   }
-  g.restore();
 }
 registerHDPainter("d_arrows", (g, scr, layer) => {
   if (layer !== "spr" || !scr.canHide || !(scr.panels && scr.panels.length) || onCourt(scr)) return;

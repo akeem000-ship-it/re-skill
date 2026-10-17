@@ -225,7 +225,9 @@ export class Voxel3D {
     const ver = kind === "spr" ? h.sprVersion : h.version;
     if (T[kind].ver !== ver) {
       gl.bindTexture(gl.TEXTURE_2D, T[kind].tex); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, h.canvas[kind]);
+      const cv = h.canvas[kind];
+      if (T[kind].w === cv.width && T[kind].h === cv.height) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, cv);      // same size: no new storage
+      else { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cv); T[kind].w = cv.width; T[kind].h = cv.height; }
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false); T[kind].ver = ver;
     }
     return T[kind].tex;
