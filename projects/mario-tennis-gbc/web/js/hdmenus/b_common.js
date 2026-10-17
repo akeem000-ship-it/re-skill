@@ -79,8 +79,8 @@ export function drawSmoothSprites(g, sprs, shadow = true) {
   const x0 = Math.min(...sprs.map(s => s.x)), y0 = Math.min(...sprs.map(s => s.y)), x1 = Math.max(...sprs.map(s => s.x + 8)), y1 = Math.max(...sprs.map(s => s.y + s.h));
   const w = x1 - x0, h = y1 - y0, a = new Uint32Array(w * h);
   for (const s of [...sprs].sort((p, q) => q.i - p.i)) {
-    const ci = s.ci, col = s.colors;
-    for (let y = 0; y < s.h; y++) for (let x = 0; x < 8; x++) { const v = ci[y * 8 + x]; if (!v) continue; const k = col[v]; a[(s.y - y0 + y) * w + s.x - x0 + x] = (0xFF000000 | k.b << 16 | k.g << 8 | k.r) >>> 0; }
+    const rg = s.rgba;
+    for (let y = 0; y < s.h; y++) for (let x = 0; x < 8; x++) { const v = rg[y * 8 + x]; if (!v) continue; a[(s.y - y0 + y) * w + s.x - x0 + x] = v; }
   }
   const b = scale2x(scale2x(a, w, h), w * 2, h * 2), c = makeCanvas(w * 4, h * 4), cg = c.getContext("2d"), id = cg.createImageData(w * 4, h * 4);
   new Uint32Array(id.data.buffer).set(b); cg.putImageData(id, 0, 0);

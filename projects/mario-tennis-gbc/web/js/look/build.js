@@ -8,6 +8,7 @@ import { REG, labelSprite, applyStyle, applyTouchups } from "./label.js";
 import { TOUCHUPS } from "./touchups.js";
 import { buildMods } from "./mods.js";
 import { faceAssets } from "./faces.js";
+import { faceInfoOf } from "./faceinfo.js";
 import { hairTones } from "./portrait.js";
 
 export const off = (bank, addr) => addr < 0x4000 ? addr : bank * 0x4000 + (addr - 0x4000);
@@ -35,11 +36,14 @@ export function checkRom(rom) {
 }
 
 // ---------------------------------------------------------------------------------------------- one hero
+// style null: the frames as they are (labelled only: the detailed sprites' face data for a hero without a look)
+// mood of the face by the animation group of a match frame (the game's 29 groups x 5 views): the frame ids tell what the player is doing
+export const groupMood = g => g >= 26 ? "sad" : g >= 23 ? "happy" : g === 20 || g < 5 || g === 15 || g === 16 ? "neutral" : "effort";
 function heroAssets(rom, name, style) {
-  const h = HEROES[name], out = { raw: [] };     // raw: { off, bytes, regions: Map(tileOff -> plane) }
+  const h = HEROES[name], out = { raw: [], frames: [] };     // raw: { off, bytes, regions: Map(tileOff -> plane) }; frames: { key, kind, cols, rows, info, mood, view }
   const T = TOUCHUPS[name] || {};
   const touch = (st, key) => { applyTouchups(st, (T[key] || {})["*"]); applyTouchups(st, (T[key] || {})[style]); };
-  const finish = (st, key) => { applyStyle(st, style); touch(st, key); return st; };
+  const finish = (st, key) => { if (style) { applyStyle(st, style); touch(st, key); } return st; };
   // overworld walk frames: 4 facings of 16x16 (two 8x16 objects) per 256-byte frame
   for (const [bank, addr, n] of [h.walk, h.walkB]) {
     const base = off(bank, addr), bytes = rom.slice(base, base + n * 256), regions = new Map();
@@ -48,6 +52,7 @@ function heroAssets(rom, name, style) {
       const st = finish(labelSprite(im, name, "walk"), `walk${bank === h.walk[0] && addr === h.walk[1] ? "" : "B"}:${f}:${fc}`);
       encodeColMajor({ w: 16, h: 16, px: st.idx }, 2, 2, bytes, o);
       for (let cx = 0; cx < 2; cx++) for (let cy = 0; cy < 2; cy++) regions.set(base + o + (cx * 2 + cy) * 16, cellOf(st.reg, 16, cx, cy));
+      out.frames.push({ key: base + o, kind: "walk", cols: 2, rows: 2, info: faceInfoOf(st), mood: "neutral", view: fc });
     }
     out.raw.push({ off: base, bytes, regions });
   }
@@ -61,6 +66,7 @@ function heroAssets(rom, name, style) {
     const st = finish(labelSprite(body, name, "match"), `match:${a.toString(16)}`);
     encodeColMajor({ w: cols * 8, h: 32, px: st.idx }, cols, 4, bytes, 0);
     for (let cx = 0; cx < cols; cx++) for (let cy = 0; cy < 4; cy++) regions.set(base + (cx * 4 + cy) * 16, cellOf(st.reg, cols * 8, cx, cy));
+    out.frames.push({ key: base, kind: "match", cols, rows: 4, info: faceInfoOf(st), mood: groupMood((slot / 5) | 0), view: slot % 5, group: (slot / 5) | 0 });
     // the standing-shadow tiles replace each column's bottom tile: label a copy with them in place
     const alt = clone(body), sh = decodeColMajor(bytes.subarray(cols * 64), 0, cols, 1);
     for (let c = 0; c < cols; c++) for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) alt.px[(24 + y) * alt.w + c * 8 + x] = sh.px[y * sh.w + c * 8 + x];
@@ -77,19 +83,25 @@ function heroAssets(rom, name, style) {
 // look: { boy: { style, colours: { skin, hair, hat, top, bottom, shoes, racket } } | null, girl: ... }, colours as BGR555 ints
 // -> { patches: [{ off, bytes }], tileRegions: Map(romOffset -> Uint8Array(64)), contentRegions: Map(hash -> [{bytes, plane}]),
 //      colours: Uint16Array(32) indexed by hero * 16 + region (0xFFFF: keep the game's colour), basePalettes }
-export function buildLook(rom, look) {
-  const res = { patches: [], tileRegions: new Map(), contentRegions: new Map(), colours: new Uint16Array(256).fill(0xFFFF), poolStart: 32, basePalettes: [], notes: [] };
+export function buildLook(rom, look, opts = {}) {
+  const res = { patches: [], tileRegions: new Map(), contentRegions: new Map(), colours: new Uint16Array(256).fill(0xFFFF), poolStart: 32, basePalettes: [], notes: [],
+                frames: [], tileFrame: new Map(), frameTiles: new Map() };        // the heroes' frames with their face data, by tile offset (detailed sprites)
   if (!look || !checkRom(rom)) { if (look) res.notes.push("unexpected ROM: look not applied"); return res; }
   // the five shared hero palettes (StoryObjPalettes 0a:5341 = 01:50F6 entries 3-7 = 18:4300): the renderer only
   // recolours tiles shown with one of them, so other palettes (the charge flash, menus) stay the game's
   for (let p = 0; p < 5; p++) { const o = off(0x0A, 0x5341 + p * 8), pal = []; for (let i = 0; i < 4; i++) pal.push(rom[o + 2 * i] | rom[o + 2 * i + 1] << 8); res.basePalettes.push(pal); }
+  // the heroes' frames (face data) and the tiles' content, to recognise them in VRAM
+  const addFrames = A => {
+    for (const fr of A.frames) { const fi = res.frames.length; res.frames.push(fr); for (let t = 0; t < fr.cols * fr.rows; t++) res.tileFrame.set(fr.key + t * 16, { fi, t }); }
+    for (const r of A.raw) for (const o of r.regions.keys()) { const b = r.bytes.subarray(o - r.off, o - r.off + 16), hh = tileHash(b), list = res.frameTiles.get(hh) || []; if (!list.some(e => e.off === o)) list.push({ bytes: Uint8Array.from(b), off: o }); res.frameTiles.set(hh, list); }
+  };
   for (const [key, name] of [["boy", "alex"], ["girl", "nina"]]) {
-    const L = look[key]; if (!L) continue;
+    const L = look[key]; if (!L) { if (opts.detail) addFrames(heroAssets(rom, name, null)); continue; }
     const hid = HEROES[name].id, c = L.colours || {};
     const set = (r, v) => { if (v !== undefined && v !== null) res.colours[hid * 16 + r] = v & 0x7FFF; };
     set(REG.OUT, c.outline ?? 0x0000); set(REG.SKIN, c.skin); set(REG.SHADE, c.skin !== undefined ? shade(c.skin) : undefined);
     set(REG.HAIR, c.hair); if (c.hair !== undefined) { const t = hairTones(c.hair); set(REG.HAIR2, t.k); set(REG.HAIR3, t.g); } set(REG.HAT, c.hat); set(REG.TOP, c.top); set(REG.BOTTOM, c.bottom); set(REG.SHOES, c.shoes ?? c.bottom); set(REG.RACKET, c.racket);
-    const A = heroAssets(rom, name, L.style || (name === "alex" ? "cap" : "pigtails"));
+    const A = heroAssets(rom, name, L.style || (name === "alex" ? "cap" : "pigtails")); addFrames(A);
     const tag = plane => { const p = new Uint8Array(64); for (let i = 0; i < 64; i++) p[i] = plane[i] ? hid * 16 + plane[i] : 0; return p; };
     for (const r of A.raw) {
       res.patches.push({ off: r.off, bytes: r.bytes });

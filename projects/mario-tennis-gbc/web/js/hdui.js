@@ -303,6 +303,22 @@ export class Screen {
           for (let y = 0; y < this.h; y++) { const yy = this.flipY ? this.h - 1 - y : y, lo = bank[(this.tile << 4) + yy * 2], hi = bank[(this.tile << 4) + yy * 2 + 1]; for (let x = 0; x < 8; x++) { const b = this.flipX ? x : 7 - x; c[y * 8 + x] = ((lo >> b) & 1) | (((hi >> b) & 1) << 1); } }
           return this._ci = c; },
         get rows() { const c = this.ci, r = []; for (let y = 0; y < this.h; y++) { let t = ""; for (let x = 0; x < 8; x++) t += c[y * 8 + x]; r.push(t); } return r; },
+        // displayed colour (0xAABBGGRR, 0 = transparent) of each pixel: the game's palette, or the player's look (web/js/look) where it recolours the hero
+        get rgba() {
+          if (this._rgba) return this._rgba;
+          const ci = this.ci, o = new Uint32Array(8 * this.h), cols = this.colors, L = gb.look, bank = this.attr & 8 ? 1 : 0, fd = L ? L.fade(gb.ppu.objPal, this.pal) : -1;
+          const regs = [];
+          for (let y = 0; y < this.h; y++) {
+            const srcRow = this.flipY ? this.h - 1 - y : y; let reg = null;
+            if (fd >= 0) { const r = regs[srcRow >> 3]; reg = r !== undefined ? r : (regs[srcRow >> 3] = L.tileRegions(bank, (this.tile + (srcRow >> 3)) << 4)); }
+            for (let x = 0; x < 8; x++) {
+              const v = ci[y * 8 + x]; if (!v) continue;
+              const lc = reg ? L.rgba(reg[(srcRow & 7) * 8 + (this.flipX ? 7 - x : x)], fd) : 0;
+              const k = cols[v]; o[y * 8 + x] = lc || (0xFF000000 | k.b << 16 | k.g << 8 | k.r) >>> 0;
+            }
+          }
+          return this._rgba = o;
+        },
         get colors() { const p = gb.ppu.objPal, b = this.pal * 8; return [0, 1, 2, 3].map(k => col15(p[b + k * 2] | (p[b + k * 2 + 1] << 8))); } });
     }
     this.hidden = new Set(this.hiddenStatic); return this.oam = out;

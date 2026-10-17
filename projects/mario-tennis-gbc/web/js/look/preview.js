@@ -14,13 +14,13 @@ const HERO_PAL = { alex: 3, nina: 2 };                     // the palette each h
 export const POSES = [[2, 4, "ready"], [2, 0, "from behind"], [0, 2, "run"], [6, 2, "forehand"], [0x0D, 0, "serve"], [0x1A, 4, "point won"]];
 
 function rgbOf(c) { return [(c & 31) * 255 / 31 | 0, ((c >> 5) & 31) * 255 / 31 | 0, ((c >> 10) & 31) * 255 / 31 | 0]; }
-function basePalette(rom, name) {
+export function basePalette(rom, name) {
   const o = off(0x0A, 0x5341 + HERO_PAL[name] * 8), p = [];
   for (let i = 0; i < 4; i++) p.push(rom[o + 2 * i] | rom[o + 2 * i + 1] << 8);
   return p;
 }
 function shade(c) { const r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31; return ((r * 3) >> 2) | (((g * 3) >> 2) << 5) | (((b * 3) >> 2) << 10); }
-function regionColours(look) {
+export function regionColours(look) {
   const c = (look && look.colours) || {}, m = new Map();
   m.set(REG.OUT, 0); if (c.skin !== undefined) { m.set(REG.SKIN, c.skin); m.set(REG.SHADE, shade(c.skin)); }
   if (c.hair !== undefined) { const t = hairTones(c.hair); m.set(REG.HAIR2, t.k); m.set(REG.HAIR3, t.g); }
@@ -29,7 +29,7 @@ function regionColours(look) {
   return m;
 }
 // st (labelled) -> { w, h, data: RGBA }; transparent: colour 0 is see-through (sprites)
-function paint(st, pal, cols, transparent) {
+export function paint(st, pal, cols, transparent) {
   const { w, h } = st, data = new Uint8ClampedArray(w * h * 4);
   for (let i = 0; i < w * h; i++) {
     const idx = st.idx[i]; if (!idx && transparent && !st.reg[i]) continue;

@@ -61,8 +61,8 @@ function paintCursors(g, scr, layer) {
     let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const { s, oy } of gr) { x0 = Math.min(x0, s.x); y0 = Math.min(y0, s.y + oy); x1 = Math.max(x1, s.x + 8); y1 = Math.max(y1, s.y + oy + 8); }
     const w = x1 - x0, h = y1 - y0, grid = new Uint32Array(w * h);
     for (const { s, oy, sub } of [...gr].sort((a, b) => b.s.i - a.s.i)) {          // lower OAM index on top
-      const cols = s.colors;
-      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const c = sub[y * 8 + x]; if (c) grid[(s.y + oy + y - y0) * w + s.x + x - x0] = pal(cols[c]); }
+      const rg = s.rgba;
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { if (sub[y * 8 + x]) grid[(s.y + oy + y - y0) * w + s.x + x - x0] = rg[(oy + y) * 8 + x]; }
     }
     // drawn on the sprite canvas (over the sprites)
     drawSmooth(g, grid, w, h, x0, y0);

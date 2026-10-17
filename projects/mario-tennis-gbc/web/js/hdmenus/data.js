@@ -399,10 +399,10 @@ registerHDPainter("d_sprites", (g, scr, layer) => {
   const sprs = scr.oam.filter(s => !(s.attr & 0x80) && !scr.hidden.has(s.i)); if (!sprs.length) return;
   const buf = new Uint32Array(160 * 144); let bx0 = 160, by0 = 144, bx1 = 0, by1 = 0;
   for (const s of [...sprs].reverse()) {
-    const ci = s.ci, col = s.colors;
+    const rg = s.rgba;                                          // the game's colours, or the player's look
     for (let y = 0; y < s.h; y++) for (let x = 0; x < 8; x++) {
-      const v = ci[y * 8 + x], X = s.x + x, Y = s.y + y; if (!v || X < 0 || X >= 160 || Y < 0 || Y >= 144) continue;
-      const c = col[v]; buf[Y * 160 + X] = (0xFF000000 | c.b << 16 | c.g << 8 | c.r) >>> 0;
+      const v = rg[y * 8 + x], X = s.x + x, Y = s.y + y; if (!v || X < 0 || X >= 160 || Y < 0 || Y >= 144) continue;
+      buf[Y * 160 + X] = v;
       if (X < bx0) bx0 = X; if (X + 1 > bx1) bx1 = X + 1; if (Y < by0) by0 = Y; if (Y + 1 > by1) by1 = Y + 1;
     }
   }

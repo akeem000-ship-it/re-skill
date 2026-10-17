@@ -30,10 +30,11 @@ export function normalizeLook(look) {
 export const lookKey = look => JSON.stringify(normalizeLook(look));
 
 export class LookManager {
-  constructor() { this.look = null; this.rom = null; this.undo = []; this.renderer = null; this.gb = null; this.built = null; this.notes = []; }
+  constructor() { this.look = null; this.rom = null; this.undo = []; this.renderer = null; this.gb = null; this.built = null; this.notes = []; this.detail = false; }
   // before the machine is built: patch the ROM bytes it will run (the same array, kept)
-  prepare(romBytes, look) {
-    this.rom = romBytes; this.look = normalizeLook(look);
+  // opts.detail: also build the heroes' face data for the detailed sprites (render.js frameTile), look or not
+  prepare(romBytes, look, opts = {}) {
+    this.rom = romBytes; this.look = normalizeLook(look); this.detail = !!opts.detail;
     this._restore(); this._build();
     return this;
   }
@@ -41,7 +42,7 @@ export class LookManager {
   attach(gb) {
     this.gb = gb;
     if (this.renderer) this.renderer.detach();
-    this.renderer = this.built && this.look ? new LookRenderer(this.built) : null;
+    this.renderer = this.built && (this.look || this.detail) ? new LookRenderer(this.built) : null;
     if (this.renderer) this.renderer.attach(gb);
     return this;
   }
@@ -68,10 +69,12 @@ export class LookManager {
     }
     return this;
   }
+  // switch the detailed sprites' face data on or off while the game runs
+  setDetail(on) { if (!!on === this.detail) return this; const look = this.look; this.detail = !!on; return this.set(look); }
   _restore() { if (this.rom) for (const p of this.undo.slice().reverse()) this.rom.set(p.bytes, p.off); this.undo = []; this.built = null; }
   _build() {
-    if (!this.rom || !this.look) { this.built = null; return; }
-    this.built = buildLook(this.rom, this.look); this.notes = this.built.notes;
+    if (!this.rom || (!this.look && !this.detail)) { this.built = null; return; }
+    this.built = buildLook(this.rom, this.look || {}, { detail: this.detail }); this.notes = this.built.notes;
     this.undo = applyPatches(this.rom, this.built.patches);
   }
   toJSON() { return this.look; }

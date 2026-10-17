@@ -254,7 +254,7 @@ export class HDText {
       for (let y = 0; y < sp.h; y++) for (let x = 0; x < 8; x++) {
         const X = sp.x + x, Y = sp.y + y; if (!ci[y * 8 + x] || X < 0 || X >= 160 || Y < 0 || Y >= 144) continue;
         this.hiddenPx[Y * 160 + X] = 1;
-        for (const o of below) { if (X < o.x || X >= o.x + 8 || Y < o.y || Y >= o.y + o.h) continue; const v = o.ci[(Y - o.y) * 8 + X - o.x]; if (v) { const k = o.colors[v]; this.through.push(Y * 160 + X, (0xFF000000 | k.b << 16 | k.g << 8 | k.r) >>> 0); break; } }
+        for (const o of below) { if (X < o.x || X >= o.x + 8 || Y < o.y || Y >= o.y + o.h) continue; const v = o.rgba[(Y - o.y) * 8 + X - o.x]; if (v) { this.through.push(Y * 160 + X, v); break; } }
       }
     }
   }

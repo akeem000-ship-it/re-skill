@@ -69,7 +69,12 @@ addEventListener("pagehide", flushSave);
 window.__flushSave = flushSave;            // also called by the Android wrapper from onPause
 
 // ---- main loop ----
-const STEP = 1000 / 60; let acc = 0, last = 0, fps = { n: 0, t: 0 };
+const STEP = 1000 / 60; let acc = 0, last = 0, fps = { n: 0, r: 0, t: 0 };
+// 3D / VOX "Smooth": the game steps at its own ~60 Hz, the view is drawn at every display refresh (120 Hz phones) with the world
+// interpolated between the last two game frames; off: drawn once per game frame, as it was
+const smoothQ = new URLSearchParams(location.search).get("smooth");
+let smooth = smoothQ ? !(smoothQ === "0" || smoothQ === "off") : (() => { try { return localStorage.getItem("mt-smooth") !== "off"; } catch (e) { return true; } })();
+let renderedAt = -1;
 function input() {
   const k = keys;
   return { a: k.KeyZ || k.KeyA, b: k.KeyX || k.KeyS, start: k.Enter, select: k.ShiftRight || k.Backspace || k.KeyQ,
@@ -110,10 +115,12 @@ function draw(alpha = 1) {                 // alpha: fraction of the next game f
       if (touch && !document.body.classList.contains("gamepad")) for (const sel of [".btns .k:not(.start)", "#stickzone .stick-base", ".dpad"]) { const e = document.querySelector(sel); if (e && e.offsetParent !== null) ctl = Math.max(ctl, glr.bottom - e.getBoundingClientRect().top); }
       voxel.bottomInset = Math.min(glr.height * 0.4, Math.max(0, ctl));
     }
+    if (!smooth) { alpha = 1; if (renderedAt === gb.frames) return; }     // no interpolation: one picture per game frame
+    renderedAt = gb.frames; fps.r++;
     try { voxel.render(spriteFree(f), alpha); return; } catch (e) { console.warn("3d", e); setView3d(false); }
   }
   if (drawnFrame === gb.frames) return;      // 2D: nothing new to show between game frames
-  drawnFrame = gb.frames;
+  drawnFrame = gb.frames; fps.r++;
   if (aspect === "4:3" && onCourt()) {       // 4:3 on a court: 192 px wide composite with the real map on both sides
     composeWide(gb, wideBuf, wideIdx); present(wideImg, WIDE_W, WIDE_H, (WIDE_W - 160) / 2); return;
   }
@@ -181,7 +188,7 @@ function setView3d(on, vox = false) {
   view3d = on; $("view3d").classList.toggle("on", on); $("view3d").textContent = on ? (vox ? "VOX" : "3D") : "3D";
   if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.hdText = hd; voxel.freeCam = q.has("freecam"); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
   if (voxel) voxel.voxelSprites = on && vox;
-  $("gl").hidden = !view3d; cv.hidden = view3d; $("cam").hidden = !view3d;
+  $("gl").hidden = !view3d; cv.hidden = view3d; $("cam").hidden = !view3d; $("smoothbtn").hidden = !view3d;
   try { localStorage.setItem("mt-3d", on ? (vox ? "vox" : "3d") : "off"); } catch (e) { /* private mode */ }
 }
 function setPreset(name) {                  // court camera preset (CAM button cycles PRESET_ORDER)
@@ -197,7 +204,7 @@ function loop(now) {
     while (acc >= STEP) { for (let i = 0; i < per; i++) frame(); acc -= STEP; fps.n++; }
     draw(acc / STEP); maybeSave();
     if (hd) { const dt = now - (hdLast || now); hdLast = now; hdDt = hdDt * 0.9 + Math.min(dt, 100) * 0.1; hd.struggling = hdDt > 24; }   // below ~40 fps the HD art waits while the screen moves
-    if (now - fps.t >= 1000) { $("fps").textContent = fps.n + " fps" + (turbo ? " (turbo)" : ""); fps.n = 0; fps.t = now; }
+    if (now - fps.t >= 1000) { $("fps").textContent = view3d ? `game ${fps.n} · view ${fps.r} fps` + (turbo ? " (turbo)" : "") : fps.n + " fps" + (turbo ? " (turbo)" : ""); fps.n = 0; fps.r = 0; fps.t = now; }
   } else last = now;
   requestAnimationFrame(loop);
 }
@@ -218,7 +225,8 @@ const PORT_VERIFIED = ["home/index", "audio/index", "save/index", "cutscenes/ind
   "text/index", "menus/common/cursorbox", "menus/common/cursors", "menus/common/menu_lib", "menus/common/prompts", "menus/common/tilemaps", "menus/common/widgets", "menus/main_menu/boot", "menus/main_menu/erase", "menus/main_menu/main_menu", "menus/main_menu/match_format", "menus/main_menu/n64", "menus/main_menu/n64data", "menus/main_menu/n64transfer", "menus/main_menu/saved",
   "menus/char_select/index", "menus/char_data/index",
   "menus/pause/index", "menus/briefing/index", "menus/court_select/index", "menus/scenes/index",
-  "match/index", "menus/exp/index", "menus/results/index", "menus/ranking/index"];
+  "match/index", "menus/exp/index", "menus/results/index", "menus/ranking/index",
+  "menus/equipment/index", "menus/dictionary/index", "menus/minigame_select/index", "menus/debug/index", "menus/link/index"];
 async function makePort(bytes) {
   const { GamePort } = await import("./port/port.js"), { entry } = await import("./port/entry.js");
   const want = portMode() === "portall" ? "all" : q.get("port");
@@ -328,6 +336,12 @@ setInterval(() => { if (!recording()) return; const t = rec.on ? rec.seconds : (
 addEventListener("visibilitychange", () => { if (document.hidden && recording()) saveRecording(true); });
 window.__stopRec = () => { if (recording()) saveRecording(true); };   // called by the Android wrapper from onPause
 $("view3d").addEventListener("pointerdown", () => { if (!gb) return; const vox = voxel && voxel.voxelSprites; setView3d(!view3d || !vox, view3d && !vox); });   // off -> cards -> voxels -> off
+function applySmooth() {
+  $("smoothbtn").textContent = "SMOOTH: " + (smooth ? "on" : "off");
+  try { localStorage.setItem("mt-smooth", smooth ? "on" : "off"); } catch (e) { /* private mode */ }
+}
+$("smoothbtn").addEventListener("pointerdown", () => { smooth = !smooth; renderedAt = -1; applySmooth(); });
+applySmooth();
 $("cam").addEventListener("pointerdown", () => setPreset(PRESET_ORDER[(PRESET_ORDER.indexOf(preset) + 1) % PRESET_ORDER.length]));
 $("aspect").addEventListener("pointerdown", () => { aspect = ASPECTS[(ASPECTS.indexOf(aspect) + 1) % ASPECTS.length]; drawnFrame = -1; applyAspect(); });
 applyAspect();
@@ -372,5 +386,5 @@ $("engbtn").addEventListener("pointerdown", () => {
   location.reload();
 });
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom).catch(() => {});
-window.__gb = { get gb() { return gb; }, get hd() { return hd; }, keys, rec, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, loadSnapshot(s) { loadSnapshot(gb, s); }, saveState() { return saveState(gb); }, loadState(s) { loadState(gb, s); drawnFrame = -1; } };
+window.__gb = { get smooth() { return smooth; }, set smooth(v) { smooth = !!v; renderedAt = -1; applySmooth(); }, get fpsInfo() { return fps; }, get gb() { return gb; }, get hd() { return hd; }, keys, rec, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, loadSnapshot(s) { loadSnapshot(gb, s); }, saveState() { return saveState(gb); }, loadState(s) { loadState(gb, s); drawnFrame = -1; } };
 requestAnimationFrame(loop);

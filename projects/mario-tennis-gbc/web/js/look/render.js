@@ -18,6 +18,7 @@ export class LookRenderer {
     this.byOffset = built.tileRegions; this.contentRegions = built.contentRegions;
     this.base = built.basePalettes.map(p => p.map(c => [c & 31, (c >> 5) & 31, (c >> 10) & 31]));
     this.colours = built.colours; this.poolStart = built.poolStart || 32;
+    this.frames = built.frames || []; this.tileFrame = built.tileFrame || new Map(); this.frameTiles = built.frameTiles || new Map();   // the heroes' frames with their face data (detailed sprites)
     this.faces = built.faces || {}; this.faceTiles = built.faceTiles || new Map();      // the redrawn faces: specs by hero, and their tiles by content (the HD UI draws them)
     this.tags = new Int32Array(SLOTS).fill(-1);
     this.cacheBytes = new Uint8Array(SLOTS * 16); this.cacheRes = new Array(SLOTS).fill(undefined);
@@ -67,6 +68,16 @@ export class LookRenderer {
     this.cacheRes[t] = res;
     return res;
   }
+  // the ROM offset of the hero frame tile held by the VRAM tile (bank, tile number): by where it was copied from, else by content
+  romOffset(bank, tile) {
+    const v = this.mem.vram[bank], a = tile * 16, o = this.tags[bank * 512 + tile], rom = this.rom;
+    if (o >= 0 && this.tileFrame.has(o)) { let same = true; for (let i = 0; i < 16; i++) if (rom[o + i] !== v[a + i]) { same = false; break; } if (same) return o; }
+    const list = this.frameTiles.get(tileHash(v, a));
+    if (list) { let hit = -1; for (const e of list) { let same = true; for (let i = 0; i < 16; i++) if (e.bytes[i] !== v[a + i]) { same = false; break; } if (same) { if (hit >= 0) return -1; hit = e.off; } } return hit; }   // two frames' tiles alike: not told apart
+    return -1;
+  }
+  // { fi, t, frame } when the VRAM tile is a tile of a hero frame (frame: key, kind, cols, rows, info, mood, view)
+  frameTile(bank, tile) { const o = this.romOffset(bank, tile); if (o < 0) return null; const e = this.tileFrame.get(o); return e ? { fi: e.fi, t: e.t, frame: this.frames[e.fi] } : null; }
   // which redrawn face tile the 16 bytes at the VRAM address are: { hero, kind: "p24" | "win" | "lose", t, cols } or null
   faceTile(bank, addr) {
     const v = this.mem.vram[bank], list = this.faceTiles.get(tileHash(v, addr));

@@ -17,6 +17,7 @@ export class PPU {
     this.frames = 0;
     this.look = null;                            // web/js/look: the player's look colours the hero in `frame` only (never rgb5)
     this.lookPix = new Uint32Array(160);
+    this.spr = null;                             // web/js/look/detail.js: { rgba, idx, hide }: the sprite layer as drawn (look colours), and the OAM index + 1 per pixel; hide = leave sprites out of `frame`
   }
   read(r) {
     switch (r) {
@@ -92,6 +93,7 @@ export class PPU {
     const L = this.look, lookPix = this.lookPix;
     let lkKey = -1, lkReg = null, lkFade = -1;
     if (L) lookPix.fill(0);
+    const SP = this.spr; if (SP) { SP.rgba.fill(0, base, base + 160); SP.idx.fill(0, base, base + 160); }
     // --- background and window ---
     for (let x = 0; x < 160; x++) {
       let tx, ty, mapBase, inWindow = false;
@@ -145,6 +147,7 @@ export class PPU {
           drawn[x] = 1;
           if (L) lookPix[x] = sReg && sFade >= 0 ? L.rgba(sReg[(row & 7) * 8 + 7 - bit], sFade) : 0;
           const c = this.color5(this.objPal, attr & 7, ci);
+          if (SP) { SP.idx[base + x] = i + 1; SP.rgba[base + x] = (L && lookPix[x]) || (0xFF000000 | ((c >> 10 & 31) << 19) | ((c >> 5 & 31) << 11) | ((c & 31) << 3)); }
           rgb5[(base + x) * 3] = c & 31; rgb5[(base + x) * 3 + 1] = (c >> 5) & 31; rgb5[(base + x) * 3 + 2] = (c >> 10) & 31;
         }
       }
@@ -154,5 +157,6 @@ export class PPU {
       frame[base + x] = 0xFF000000 | (b << 16) | (g << 8) | r;
     }
     if (L) for (let x = 0; x < 160; x++) if (lookPix[x]) frame[base + x] = lookPix[x];
+    if (SP && SP.hide) for (let x = 0; x < 160; x++) if (SP.idx[base + x]) frame[base + x] = this.bgFrame[base + x];
   }
 }

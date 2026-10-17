@@ -245,6 +245,7 @@ export class Voxel3D {
   setPreset(name) { if (PRESETS[name]) { this.preset = name; this.cam.fitKey = ""; } }
   // switch to another machine / ROM (the page loaded a new file): forget everything derived from the old one
   attach(gb, rom = null) {
+    this.attachGen = (this.attachGen || 0) + 1; this.fcur = this.fprev = null;
     const gl = this.gl;
     this.gb = gb; this.rom = rom; this.courtMaps = rom ? courtTilemaps(rom, VIEW_COURTS) : null;
     this.courtId = -1; this.detectAt = 0; this.fieldAt = 0; this.fieldOn = false; this.fieldMap = -1; this.cur = this.prev = null; this.lastFrame = -1;
@@ -319,9 +320,26 @@ export class Voxel3D {
   interp() {
     const a = this.alpha, c = this.cur, q = this.prev; if (!c) return this.sampleState(); if (!q || a >= 1) return c;
     const mix = (u, v, lim) => Math.abs(u - v) > lim ? u : v + (u - v) * a;
-    const players = c.players.map((pl, i) => { const o = q.players[i]; return o ? { X: mix(pl.X, o.X, 300), Y: mix(pl.Y, o.Y, 300), Z: mix(pl.Z, o.Z, 300) } : pl; });
+    const players = c.players.map((pl, i) => { const o = q.players.find(u => u.slot === pl.slot); return o ? { X: mix(pl.X, o.X, 300), Y: mix(pl.Y, o.Y, 300), Z: mix(pl.Z, o.Z, 300), slot: pl.slot } : pl; });
     const ball = { X: mix(c.ball.X, q.ball.X, 600), Y: mix(c.ball.Y, q.ball.Y, 600), Z: mix(c.ball.Z, q.ball.Z, 600) };
     return { players, ball, scx: mix(c.scx, q.scx, 8), scy: mix(c.scy, q.scy, 8) };
+  }
+  // the overworld at a game frame: the field scroll and the actor table (the slots' map positions), for interpolation
+  sampleField() {
+    const sc = this.fieldScroll(), act = new Map();
+    for (const a of this.fieldActors()) act.set(a.slot, { obj: a.obj, x: a.x, y: a.y, lift: a.lift });
+    return { sx: sc.x, sy: sc.y, act };
+  }
+  // the field at the current display frame: the scroll and each actor's position between the last two game frames (a map change,
+  // a teleport or a slot reused by another object is not interpolated)
+  fieldInterp() {
+    const a = this.alpha, c = this.fcur, q = this.fprev;
+    if (!c) return this.sampleField();
+    if (!q || a >= 1) return c;
+    const mix = (u, v, lim) => Math.abs(u - v) > lim ? u : v + (u - v) * a;
+    const act = new Map();
+    for (const [slot, u] of c.act) { const o = q.act.get(slot); act.set(slot, o && o.obj === u.obj ? { obj: u.obj, x: mix(u.x, o.x, 24), y: mix(u.y, o.y, 24), lift: mix(u.lift, o.lift, 24) } : u); }
+    return { sx: mix(c.sx, q.sx, 16), sy: mix(c.sy, q.sy, 16), act };
   }
   landing() { const w = this.gb.mem.wram[0], s16 = a => (w[a] | (w[a + 1] << 8)) << 16 >> 16; return { X: s16(0x450), Y: s16(0x452) }; }   // wLandingX/Y
   ballWorld() {
@@ -655,7 +673,12 @@ export class Voxel3D {
   // display's refresh rate and interpolates world positions, the game itself stays at 60 Hz
   render(frame2d, alpha = 1) {
     const gl = this.gl, cv = this.cv, fr = this.gb.ppu.frames;
-    if (fr !== this.lastFrame) { const cur = this.sampleState(); this.tick(cur.ball); this.prev = (this.cur && fr === this.lastFrame + 1) ? this.cur : cur; this.cur = cur; this.lastFrame = fr; }
+    this.frameChanged = false;
+    if (fr !== this.lastFrame) {
+      const cur = this.sampleState(); this.tick(cur.ball); this.prev = (this.cur && fr === this.lastFrame + 1) ? this.cur : cur; this.cur = cur;
+      if (this.fieldOn) { const fc = this.sampleField(); this.fprev = (this.fcur && fr === this.lastFrame + 1) ? this.fcur : null; this.fcur = fc; } else this.fcur = this.fprev = null;
+      this.lastFrame = fr; this.frameChanged = true;
+    }
     this.alpha = Math.max(0, Math.min(1, alpha));
     const dpr = Math.min(2, (typeof devicePixelRatio === "number" && devicePixelRatio) || 1), W = Math.round((cv.clientWidth || 160) * dpr), H = Math.round((cv.clientHeight || 144) * dpr);
     if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }   // render at device pixels (capped at 2x)
@@ -852,8 +875,7 @@ export class Voxel3D {
     this.drawHDText(m4.trs(80, 144, 0, 160, -144, 0), ortho, [0, 0, 1, 1], ["under", "bg"]);
     // the window layer (score panel) as a screen-space overlay from the 2D frame
     if ((p.lcdc & 0x20) && p.wy < 144 && frame2d) {
-      if (!this.frameTex) this.frameTex = this.texture(160, 144, null);
-      gl.bindTexture(gl.TEXTURE_2D, this.frameTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 160, 144, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(frame2d.buffer));
+      this.uploadFrame(frame2d);
       const wy = p.wy, wx = Math.max(0, p.wx - 7);
       this.draw(this.frameTex, m4.trs(wx + (160 - wx) / 2, 144, 0, 160 - wx, -(144 - wy), 0), ortho, [wx / 160, wy / 144, (160 - wx) / 160, (144 - wy) / 144], [1, 1, 1, 1], 0);
       this.drawHDText(m4.trs(wx + (160 - wx) / 2, 144, 0, 160 - wx, -(144 - wy), 0), ortho, [wx / 160, wy / 144, (160 - wx) / 160, (144 - wy) / 144], ["win"]);
@@ -1359,7 +1381,7 @@ export class Voxel3D {
       if (f.usesLowPals && Math.abs(now - then) > 0.15 * Math.max(now, then) && !this.blankPalette()) this.buildField(); else f.fading = false;
     } else this.updateTiles();
     if (f.clear) { gl.clearColor(f.clear[0], f.clear[1], f.clear[2], 1); gl.clear(gl.COLOR_BUFFER_BIT); }
-    const sc = this.fieldScroll(), aim = this.fieldAim || [0, 0], cx = sc.x + 80 + aim[0], cz = sc.y + 72 + aim[1], aspect = cv.width / cv.height;   // fieldAim: test views
+    const fi = this.fi = this.fieldInterp(), sc = { x: fi.sx, y: fi.sy }, aim = this.fieldAim || [0, 0], cx = sc.x + 80 + aim[0], cz = sc.y + 72 + aim[1], aspect = cv.width / cv.height;   // the camera between the last two game frames   // fieldAim: test views
     const yaw = this.freeCam ? c.yaw : 0, pitch = this.freeCam ? c.pitch : FIELD_CAM.pitch, dist = this.freeCam ? c.dist : FIELD_CAM.dist * Math.max(1, (160 / 144) / aspect);
     const eye = [cx + dist * Math.sin(yaw) * Math.cos(pitch), dist * Math.sin(pitch), cz + dist * Math.cos(yaw) * Math.cos(pitch)];
     const mvp = m4.mul(m4.perspective(FIELD_CAM.fov, aspect, FIELD_CAM.near, FIELD_CAM.far), m4.lookAt(eye, [cx, 0, cz], [0, 1, 0]));
@@ -1487,7 +1509,7 @@ export class Voxel3D {
       }
     }
     for (const a of actors) {
-      const X = a.x, Z = a.y + 4;
+      const ia = this.fi && this.fi.act.get(a.slot), X = ia ? ia.x : a.x, Z = (ia ? ia.y : a.y) + 4; a.lift = ia ? ia.lift : a.lift;
       let m = mem.get(a.slot); if (m && m.obj !== a.obj) { mem.delete(a.slot); m = null; }
       if (a.list.length) {
         let x0 = 999, x1 = -999, y0 = 999, y1 = -999;
@@ -1565,8 +1587,7 @@ export class Voxel3D {
     this.hdSpriteRects(rects);
     if (!rects.length || !frame2d) return;
     const gl = this.gl;
-    if (!this.frameTex) this.frameTex = this.texture(160, 144, null);
-    gl.bindTexture(gl.TEXTURE_2D, this.frameTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 160, 144, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(frame2d.buffer));
+    this.uploadFrame(frame2d);
     gl.disable(gl.DEPTH_TEST);
     const { ortho, t, b } = this.hudOrtho();
     rects.sort((a, b) => (b.x1 - b.x0) * (b.y1 - b.y0) - (a.x1 - a.x0) * (a.y1 - a.y0));
@@ -1607,6 +1628,16 @@ export class Voxel3D {
     }
     return mask;
   }
+  // the 2D frame as a texture for the overlays: uploaded once per game frame (the display may refresh twice as often), again when the
+  // frame the page passes changed (sprites the HD art replaced are cut out of it)
+  uploadFrame(frame2d) {
+    const gl = this.gl, hd = this.hdText, k = this.gb.ppu.frames + ":" + (hd ? hd.sprVersion + ":" + hd.version : "");
+    if (!this.frameTex) { this.frameTex = this.texture(160, 144, null); this.frameTexKey = ""; }
+    gl.bindTexture(gl.TEXTURE_2D, this.frameTex);
+    if (this.frameTexKey === k && this.frameTexSrc === frame2d && this.frameTexGen === this.attachGen) return;
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 160, 144, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(frame2d.buffer));
+    this.frameTexKey = k; this.frameTexSrc = frame2d; this.frameTexGen = this.attachGen;
+  }
   layerTexture(key, rgba) {
     const gl = this.gl, L = this.layer;
     if (!L[key]) L[key] = this.texture(160, 144, null);
@@ -1615,6 +1646,10 @@ export class Voxel3D {
   }
   renderLayers() {
     const gl = this.gl, cv = this.cv, p = this.gb.ppu, L = this.layer; this.mode = "layers";
+    // the layer pictures are made once per game frame (the display may refresh twice as often)
+    let tBack, tPan, tWin;
+    if (L.tex && !this.frameChanged && L.gen === this.attachGen) { tBack = L.tex[0]; tPan = L.tex[1]; tWin = L.tex[2]; }
+    else {
     const mask = this.menuLayers(), N = 160 * 144, src = new Uint8Array(p.bgFrame.buffer);
     const back = L.back || (L.back = new Uint8Array(N * 4)), pan = L.pan || (L.pan = new Uint8Array(N * 4)), win = L.winBuf || (L.winBuf = new Uint8Array(N * 4));
     back.set(src); pan.fill(0); win.fill(0);
@@ -1624,7 +1659,9 @@ export class Voxel3D {
       dst[o] = src[o]; dst[o + 1] = src[o + 1]; dst[o + 2] = src[o + 2]; dst[o + 3] = 255;
       back[o] = back[o] * 0.55; back[o + 1] = back[o + 1] * 0.55; back[o + 2] = back[o + 2] * 0.55;   // under a panel: in its shadow
     }
-    const tBack = this.layerTexture("tBack", back), tPan = this.layerTexture("tPan", pan), tWin = this.layerTexture("tWin", win);
+    tBack = this.layerTexture("tBack", back); tPan = this.layerTexture("tPan", pan); tWin = this.layerTexture("tWin", win);
+    L.tex = [tBack, tPan, tWin]; L.gen = this.attachGen;
+    }
     // static camera straight at the screen; each layer is scaled so its pixels stay where the game draws them
     // (the perspective then shows only in the shadows and the voxel sides)
     // fit below the touch button bar so the top row (title banners) is not hidden under it
@@ -1661,8 +1698,7 @@ export class Voxel3D {
   }
   drawFlatFrame(frame) {                            // the plain 2D frame as a textured quad filling the canvas
     const gl = this.gl;
-    if (!this.frameTex) this.frameTex = this.texture(160, 144, null);
-    gl.bindTexture(gl.TEXTURE_2D, this.frameTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 160, 144, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(frame.buffer));
+    this.uploadFrame(frame);
     gl.disable(gl.DEPTH_TEST);
     this.draw(this.frameTex, m4.trs(0, -1, 0, 2, 2, 0), m4.identity(), [0, 0, 1, 1], [1, 1, 1, 1], 0);
     this.drawHDText(m4.trs(0, -1, 0, 2, 2, 0), m4.identity());

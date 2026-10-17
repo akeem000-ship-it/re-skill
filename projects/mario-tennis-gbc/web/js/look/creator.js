@@ -8,6 +8,7 @@ import { STYLES } from "./label.js";
 import { heroPreview, blit, POSES } from "./preview.js";
 import { FACE, FACE_LABEL, normalizeFace } from "./portrait.js";
 import { hdFaceCanvas } from "./hdface.js";
+import { SpriteDetail } from "./spritedetail.js";
 import { faceColours } from "./faces.js";
 import { lzDecompress } from "./lz.js";
 import { HEROES } from "./build.js";
@@ -52,6 +53,9 @@ body.touch #lookoffer { top: 44px; }
 
 export function mountCreator({ hud, keys, pause, onChange }) {
   const mgr = new LookManager();
+  // "Sprites: Game / Detailed": the characters redrawn at 3x from their own pixels (spritedetail.js); kept per browser, ?sprites=detail|game overrides
+  const SPR_KEY = "mt-sprites", detail = new SpriteDetail();
+  let sprMode = (() => { const q = new URLSearchParams(location.search).get("sprites"); if (q === "detail" || q === "game") return q; try { return localStorage.getItem(SPR_KEY) === "detail" ? "detail" : "game"; } catch (e) { return "game"; } })();
   let gb = null, open = false, draft = null, hero = "boy", pristine = null, detectAt = 0, onPick = false, offered = false, lastSlot = -1, pressFrames = 0, wasPaused = false;
   let portraitSets = null;
   // ---- mods: library = id -> { def, bundled } ; prefs = id -> bool (explicit choices; a bundled mod is on until switched off)
@@ -76,6 +80,14 @@ export function mountCreator({ hud, keys, pause, onChange }) {
   const st = document.createElement("style"); st.textContent = CSS; document.head.appendChild(st);
   const btn = document.createElement("span"); btn.className = "k"; btn.id = "lookbtn"; btn.textContent = "LOOK"; btn.title = "your player's appearance (hairstyle and colours)";
   hud.appendChild(document.createTextNode(" ")); hud.appendChild(btn);
+  const sprBtn = document.createElement("span"); sprBtn.className = "k"; sprBtn.id = "sprbtn"; sprBtn.title = "sprites: the game's own, or redrawn at 3x resolution with outlines, shading and faces with expressions";
+  const showSpr = () => { sprBtn.textContent = "SPRITES: " + (sprMode === "detail" ? "Detailed" : "Game"); sprBtn.classList.toggle("on", sprMode === "detail"); };
+  function setSprites(mode) {
+    sprMode = mode; showSpr(); try { localStorage.setItem(SPR_KEY, mode); } catch (e) { /* private mode */ }
+    mgr.setDetail(mode === "detail"); detail.setEnabled(mode === "detail");
+  }
+  sprBtn.addEventListener("pointerdown", () => setSprites(sprMode === "detail" ? "game" : "detail"));
+  hud.appendChild(document.createTextNode(" ")); hud.appendChild(sprBtn); showSpr();
   const offer = document.createElement("button"); offer.id = "lookoffer"; offer.hidden = true; offer.textContent = "✦ Customize your player's look";
   document.body.appendChild(offer);
   const panel = document.createElement("div"); panel.id = "lookpanel"; panel.hidden = true;
@@ -231,13 +243,14 @@ export function mountCreator({ hud, keys, pause, onChange }) {
     manager: mgr,
     // before the machine: apply the stored look to the ROM bytes
     ready,
-    prepare(bytes) { pristine = Uint8Array.from(bytes); portraitSets = portraitKeys(pristine); mgr.prepare(bytes, withMods(load(KEY))); },
-    attach(machine) { gb = machine; mgr.attach(gb); lastSlot = -1; },
+    prepare(bytes) { pristine = Uint8Array.from(bytes); portraitSets = portraitKeys(pristine); mgr.prepare(bytes, withMods(load(KEY)), { detail: sprMode === "detail" }); },
+    attach(machine) { gb = machine; mgr.attach(gb); lastSlot = -1; detail.attach(gb, document.getElementById("screen")); detail.setEnabled(sprMode === "detail"); },
     get look() { return mgr.look; },
     open: openPanel,
     // once per emulated frame (after it ran)
     frame() {
       if (!gb) return;
+      detail.frame();
       if (pressFrames > 0) { keys.Enter = pressFrames > 3; pressFrames--; if (!pressFrames) keys.Enter = false; }
       if (gb.frames < detectAt) return; detectAt = gb.frames + 20;
       const pick = detect();
