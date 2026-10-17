@@ -1046,7 +1046,7 @@ export class Voxel3D {
     const done = new Set();
     for (const c of f.cards || []) {
       const o = c.shared || c; if (done.has(o) || !o.src) continue; done.add(o);
-      for (let i = 0; i < o.src.length; i++) { if (!o.d[i * 4 + 3]) continue; const q = i * 4, s = o.src[i] * 4; o.d[q] = art[s]; o.d[q + 1] = art[s + 1]; o.d[q + 2] = art[s + 2]; }
+      for (let i = 0; i < o.src.length; i++) { if (!o.d[i * 4 + 3]) continue; const q = i * 4, s = o.src[i] * 4; o.d[q] = art[s]; o.d[q + 1] = art[s + 1]; o.d[q + 2] = art[s + 2]; if (o.cmap) { const t = o.cmap.get(art[s] << 16 | art[s + 1] << 8 | art[s + 2]); if (t) { o.d[q] = t[0]; o.d[q + 1] = t[1]; o.d[q + 2] = t[2]; } } }
       up(o.tex, c.w, c.h, o.d); if (o.mesh) { this.freeMesh(o.mesh); o.mesh = null; }
     }
     if (f.roof) { const [rx, ry, rw, rh] = f.roof.art, t = new Uint8Array(rw * rh * 4); for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) { const o = (y * rw + x) * 4, s = ((ry + y) * 512 + rx + x) * 4; t[o] = art[s]; t[o + 1] = art[s + 1]; t[o + 2] = art[s + 2]; t[o + 3] = 255; } up(f.roof.tex, rw, rh, t); }
@@ -1109,11 +1109,11 @@ export class Voxel3D {
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (F3.packAt(art, x0 + x, y0 + y) === dk) m[(y * w + x) * 4 + 3] = 255;
       mark(m, x0, y0, w, h); plantHoles.push([m, x0, y0, w, h, F3.groundKeys(art, x0, y0, w, h, true), dk]);
     };
-    const cutOpt = o => ({ cut: o.cut, only: o.only, drop: o.drop, bg: o.bg, add: o.add, seal: o.seal, see: o.see });
+    const cutOpt = o => ({ cut: o.cut, only: o.only, drop: o.drop, bg: o.bg, add: o.add, seal: o.seal, see: o.see, furn: o.furn });
     // with a cut mode the card stands on its lowest opaque row (the transparent rows below it are dropped)
     const trim = (d, w, h) => { let r = h; while (r > 1 && !d.subarray((r - 1) * w * 4, r * w * 4).some((v, i) => i % 4 === 3 && v)) r--; return r < h ? { d: d.slice(0, r * w * 4), h: r } : { d, h }; };
     const srcOf = (x0, y0, w, h) => { const a = new Int32Array(w * h); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) a[y * w + x] = Math.min(511, y0 + y) * 512 + Math.min(511, x0 + x); return a; };
-    const card = (d, x0, y0, w, h, o) => { const t = o.cut ? trim(d, w, h) : { d, h }; return { tex: this.texture(w, t.h, t.d), mesh: null, d: t.d, src: srcOf(x0, y0, w, t.h), own: true, w, h: t.h, X: x0 + w / 2, Z: o.z ?? y0 + t.h + (o.dz || 0), tilt: o.tilt ?? FIELD_TILT, flat: !!o.flat, hs: o.hs, R: o.R, T: o.T, lift: o.lift }; };   // hs: height scale; R / T: voxel mesh inflation (0 / 1: thin bars); lift: stands on something this high
+    const card = (d, x0, y0, w, h, o) => { const t = o.cut ? trim(d, w, h) : { d, h }; return { tex: this.texture(w, t.h, t.d), mesh: null, d: t.d, src: srcOf(x0, y0, w, t.h), own: true, w, h: t.h, X: x0 + w / 2, Z: o.z ?? y0 + t.h + (o.dz || 0), tilt: o.tilt ?? FIELD_TILT, flat: !!o.flat, hs: o.hs, R: o.R, T: o.T, lift: o.lift, cmap: o.furn && o.furn.map ? new Map(o.furn.map.map(([f, t]) => [f[0] << 16 | f[1] << 8 | f[2], t])) : null }; };   // hs: height scale; R / T: voxel mesh inflation (0 / 1: thin bars); lift: stands on something this high
     // plants (plant: tree | bush | palm | pot): voxel bodies with volume, one mesh per shape drawn at every place it
     // stands, rustling in the wind; the default cut keeps their outline
     const PLANT = { tree: [4, 3, 0.8], bush: [4, 3, 0.45], palm: [4, 3, 1.1], pot: [3, 2, 0.3], statue: [3, 3, 0] }, shapes = [], plants = [];

@@ -70,9 +70,9 @@ function dropStrays(art, d, x0, y0, w, h, ground, dark, min = 4) {
 // opt.add: rectangles always opaque (a sign's post); opt.bg: [[x, y], ...] map points whose colours are the ground (instead of the colours around the rectangle)
 export function cutOut(art, x0, y0, w, h, opt = {}) {
   const mode = opt.cut || "key";
-  if (mode === "key" && !opt.only && !opt.drop && !opt.see) return keyedCut(art, x0, y0, w, h);
+  if (mode === "key" && !opt.only && !opt.drop && !opt.see && !opt.furn) return keyedCut(art, x0, y0, w, h);
   const d = copyRect(art, x0, y0, w, h);
-  if (mode === "key" && opt.see) { /* see-through: no keying, the colours named by `see` are removed below */ }
+  if (mode === "key" && (opt.see || opt.furn)) { /* see-through: no keying, the colours named by `see` are removed below */ }
   else if (mode === "key") floodKey(art, d, x0, y0, w, h, groundKeys(art, x0, y0, w, h));
   else if (mode === "outline") {
     const ground = opt.bg ? new Set(opt.bg.map(([x, y]) => packAt(art, x, y))) : groundKeys(art, x0, y0, w, h), dark = darkest(art, x0, y0, w, h), pass = new Set(ground); pass.delete(dark);
@@ -122,6 +122,23 @@ export function cutOut(art, x0, y0, w, h, opt = {}) {
   if (opt.see) {
     const pts = Array.isArray(opt.see) ? new Set(opt.see.map(([x, y]) => packAt(art, x, y))) : null;
     for (let i = 0; i < w * h; i++) { const r = d[i * 4], g = d[i * 4 + 1], b = d[i * 4 + 2]; if (pts ? pts.has(r << 16 | g << 8 | b) : (g > r + 40 && g > b + 40)) d[i * 4 + 3] = 0; }
+  }
+  // opt.furn: furniture painted over a coloured background (the blue glass panels of map 17): the colours of opt.furn.bg ([[x, y], ...] map points)
+  // connected to the rectangle's edge are background and become transparent; the dark outline pixels touching what is left stay; opt.furn.map
+  // ([[[r, g, b], [r, g, b]], ...]) recolours the rest (blue glass tint -> the furniture's own wood and cream)
+  if (opt.furn) {
+    const bgc = new Set(opt.furn.bg.map(([x, y]) => packAt(art, x, y))), out = new Uint8Array(w * h), st = [], P = (x, y) => packAt(art, x0 + x, y0 + y);
+    const push = (x, y) => { if (x < 0 || y < 0 || x >= w || y >= h) return; const i = y * w + x; if (out[i] || !bgc.has(P(x, y))) return; out[i] = 1; st.push(i); };
+    for (let x = 0; x < w; x++) { push(x, 0); push(x, h - 1); } for (let y = 0; y < h; y++) { push(0, y); push(w - 1, y); }
+    while (st.length) { const i = st.pop(), x = i % w, y = (i / w) | 0; push(x + 1, y); push(x - 1, y); push(x, y + 1); push(x, y - 1); }
+    const dark = packAt(art, opt.furn.bg[0][0], opt.furn.bg[0][1]);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x; if (!out[i]) continue;
+      let keep = false; if (P(x, y) === dark) for (let dy = -1; dy <= 1 && !keep; dy++) for (let dx = -1; dx <= 1; dx++) { const X = x + dx, Y = y + dy; if (X >= 0 && Y >= 0 && X < w && Y < h && !out[Y * w + X]) { keep = true; break; } }
+      if (!keep) d[i * 4 + 3] = 0;
+    }
+    const map = new Map((opt.furn.map || []).map(([f, t]) => [f[0] << 16 | f[1] << 8 | f[2], t]));
+    for (let i = 0; i < w * h; i++) { const t = map.get(d[i * 4] << 16 | d[i * 4 + 1] << 8 | d[i * 4 + 2]); if (t) { d[i * 4] = t[0]; d[i * 4 + 1] = t[1]; d[i * 4 + 2] = t[2]; } }
   }
   const inR = (x, y, r) => x >= r[0] && x < r[2] && y >= r[1] && y < r[3];
   if (opt.only || opt.drop || opt.add) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
