@@ -195,6 +195,7 @@ export class Voxel3D {
     this.layer = { bg: null, win: null, hash: -1, whash: -1 };
     this.boxShadowTex = this.solidTexture([0, 0, 0, 110]);   // drop shadow of the overlay boxes
     this.shadowTex = this.blobTexture();                     // soft round shadow on the ground (players, ball)
+    this.stadium = null;                                     // STADIUM: stadium3d.js (attachStadium) sets this; null = the flat stands
     this.light = null;                                       // LIGHT: lighting.js (attachLighting) sets this; null = off
     this.rounded = false;                                    // VOXSTYLE: voxround.js (attachVoxStyle) sets this: rounded solid bodies instead of cubes
     this.ballfx = null;                                      // BALLFX: ballfx.js (attachBallFX) sets this; null = off
@@ -250,6 +251,7 @@ export class Voxel3D {
   // switch to another machine / ROM (the page loaded a new file): forget everything derived from the old one
   attach(gb, rom = null) {
     this.attachGen = (this.attachGen || 0) + 1; this.fcur = this.fprev = null;
+    if (this.stadium) this.stadium.reset();   // STADIUM
     const gl = this.gl;
     this.gb = gb; this.rom = rom; this.courtMaps = rom ? courtTilemaps(rom, VIEW_COURTS) : null;
     this.courtId = -1; this.detectAt = 0; this.fieldAt = 0; this.fieldOn = false; this.fieldMap = -1; this.cur = this.prev = null; this.lastFrame = -1;
@@ -571,6 +573,7 @@ export class Voxel3D {
     if (this.groundTex) this.gl.deleteTexture(this.groundTex);
     this.groundTex = this.texture(g.W, g.H, d, true);
     this.buildCuts(bg, g.cuts);
+    if (this.stadium) this.stadium.paint(bg, this.courtId);   // STADIUM
   }
   // each cut-out becomes an upright card (and a voxel mesh) standing on the ground line of its bottom edge;
   // with `key`, the colours of the floor around the rectangle are made transparent (the chair against the grass)
@@ -775,10 +778,11 @@ export class Voxel3D {
     // ground plane (lying flat: tilt -90deg around X so the quad's up axis becomes -Z, i.e. +Y world towards the camera)
     const gw = WORLD.x1 - WORLD.x0, gh = WORLD.y1 - WORLD.y0;
     this.draw(this.groundTex, m4.trs(0, -0.5, WORLD.y1, gw, gh, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
-    this.drawStands(mvp);                                 // bleachers with spectators beside and behind the court
+    if (this.stadium && this.stadium.active) this.stadium.draw(mvp); else this.drawStands(mvp);   // STADIUM / bleachers with spectators beside and behind the court
     // upright cut-outs: net, chair, backdrop (cards, or voxels in voxel mode)
     const fx = this.ballfx && this.ballfx.on ? this.ballfx : null;       // BALLFX
     for (const c of this.cuts) {
+      if (this.stadium && this.stadium.active && this.stadium.cut(c)) continue;   // STADIUM: replaced (umpire chair)
       const np = fx && c.name === "net" ? fx.netPost(c) : null, pm = np ? m => m4.mul(np, m) : m => m;   // BALLFX: the net rocks when the ball hits it
       if (this.voxelSprites) {
         for (const k of (c.wide ? [-1, 0, 1] : [0])) this.drawMesh(c.mesh, pm(m4.trs3(c.X + k * c.width, 0, c.Y, c.width / c.w, c.height / c.h, c.width / c.w * 1.2, 0)), mvp);

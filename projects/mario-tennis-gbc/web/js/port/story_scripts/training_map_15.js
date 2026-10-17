@@ -12,7 +12,7 @@ import {
   ACTOR_PARTNER, ACTOR_PLAYER, ANIM_BOUNCE, ANIM_NOD, ANIM_SHAKE, ANIM_WALK, BEHAVIOR_TRIGGER, FACE_DOWN, FACE_LEFT,
   FACE_RIGHT, FACE_UP, FLAG_DOUBLES, STORYENTRY_NONE, actorState, advanceText, askYesNo, beginCutscene, clearFlag,
   face, fadeIn, fadeOutAndWait, gesture, goToLocation, lockFacing, moveAngle, moveAngleRaw, movePlayer,
-  movePlayerToActor, moveTarget, nullScript, playerSpeed, respawnActors, scene, setAnim, setFlag, setNpcScripts,
+  movePlayerToActor, moveTarget, nullScript, playerSpeed, respawnActors, hook, scene, setAnim, setFlag, setNpcScripts,
   setPosition, setSpeed, setText, sound, speak, testFlag, unlockFacing, wait, waitFadeEnd, waitIdle, waitMove,
   waitPlayerMove, writeBehaviorCell,
 } from "./common.js";
@@ -434,7 +434,7 @@ export function* trainingCourtNpc13(P) {
 }
 
 export const HOOKS = [
-  scene(BANK, 0x475F, function* (P) { loadCourtPlayerPartnerObjDefs(P); }),   // SetPlayerPartnerActorSprites (twin)
+  [BANK, 0x475F, hook(P => { loadCourtPlayerPartnerObjDefs(P); })],          // SetPlayerPartnerActorSprites (twin)
   scene(BANK, 0x4100, tournamentCourtyardNpc05),
   scene(BANK, 0x419B, tournamentCourtyardFacing01),
   scene(BANK, 0x41A5, tournamentCourtyardTile01),

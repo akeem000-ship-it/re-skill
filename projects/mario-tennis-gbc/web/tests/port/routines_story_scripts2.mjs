@@ -201,7 +201,8 @@ B(0x15, [["WaterSpriteSwingCountTask", 0x55F0], ["TogglePlayerSpriteXFlip", 0x57
   ["DrawWaterSpriteMinigameCounters", 0x578D], ["LoadWaterSpriteMinigameHudGfx", 0x5898],
   ["QueueWaterSpriteMinigameTimerPanel", 0x58BB], ["QueueWaterSpriteMinigameCounterPanel", 0x58C6],
   ["QueueWaterSpriteMinigameHudPanels", 0x58D1], ["InitWaterSpriteMinigameHud", 0x58E4],
-  ["TrainingCourtFacing01_15", 0x5309, { skip: ALL }]], { prep: swingPrep, n: 1 });
+  ["TrainingCourtFacing01_15", 0x5309, { skip: ALL }], ["SetPlayerPartnerActorSprites", 0x475F, { ...OW, skip: ALL }]],
+  { prep: swingPrep, n: 1 });
 // wall_room_12 / wall_levels_12: the room's arrival, the session's actors (memory only; the level signs wait: lockstep)
 B(0x12, [["WallPracticeRoomArrival01_12", 0x46F3],
   ["RestoreWallPracticeRoomActors", 0x52C0]], { active: overworld, skip: ALL, n: 1 });
