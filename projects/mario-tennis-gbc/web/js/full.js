@@ -120,9 +120,12 @@ function draw(alpha = 1) {                 // alpha: fraction of the next game f
 }
 // the 2D frame the 3D view cuts its overlays (window panel, menu boxes) from: the sprites the HD art replaced are taken
 // out of it (their pixels show the BG-only picture, or the sprite below them), like the 2D view does
-const hdFrame = new Uint32Array(160 * 144);
+const hdFrame = new Uint32Array(160 * 144); let hdFrameSrc = null;
+let hdFrameKey = "";
 function spriteFree(f) {
   if (!hd || !hd.ui || !hd.hiddenOam.size) return f;
+  const k = gb.frames + ":" + hd.sprVersion + ":" + hd.version; if (k === hdFrameKey && f === hdFrameSrc) return hdFrame;     // once per game frame (3D draws several times between game frames)
+  hdFrameKey = k; hdFrameSrc = f;
   hdFrame.set(f); const bgp = gb.ppu.bgFrame, hp = hd.hiddenPx, th = hd.through;
   for (let i = 0; i < hp.length; i++) if (hp[i]) hdFrame[i] = bgp[i];
   for (let k = 0; k < th.length; k += 2) hdFrame[th[k]] = th[k + 1];
