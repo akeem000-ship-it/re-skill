@@ -144,7 +144,7 @@ export function* waterSpriteRacketRewardScene(P) {
   if ((P.V.swingContestSwings & 0xFF) < GOLD_SWINGS) {
     advanceText(P);
     const attr = (actorState(P, RACKET) + ACTORF_OAM_ATTR) & 0xFFFF;
-    P.bus.w8(attr, (P.bus.r8(attr) & 0xF8) | 0x07);
+    P.bus.w8(attr, (P.bus.u8(attr) & 0xF8) | 0x07);
     setFlag(P, FLAG_HAVE_SILVER_RACKET);
     racket = RACKET_SILVER;
   } else {                                               // .goldRacket

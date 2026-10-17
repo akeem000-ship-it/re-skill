@@ -16,6 +16,7 @@ import { project } from "./camera.js";
 import { courtTilemaps, courtImage, courtIndexMap, COURTS } from "./assets.js";
 import { FIELD_OBJECTS } from "./field_objects.js";
 import * as F3 from "./field3d.js";
+import { roundedMeshData } from "./voxround.js";   // VOXSTYLE: "VOX: Blocky / Rounded"
 
 const VS = `#version 300 es
 in vec2 aPos; in vec2 aUV; uniform mat4 uMVP; uniform mat4 uModel; uniform vec4 uUVRect; out vec2 vUV;
@@ -195,6 +196,7 @@ export class Voxel3D {
     this.boxShadowTex = this.solidTexture([0, 0, 0, 110]);   // drop shadow of the overlay boxes
     this.shadowTex = this.blobTexture();                     // soft round shadow on the ground (players, ball)
     this.light = null;                                       // LIGHT: lighting.js (attachLighting) sets this; null = off
+    this.rounded = false;                                    // VOXSTYLE: voxround.js (attachVoxStyle) sets this: rounded solid bodies instead of cubes
     this.ballfx = null;                                      // BALLFX: ballfx.js (attachBallFX) sets this; null = off
     this.preset = "low"; this.cam = { yaw: 0, pitch: 0.9, dist: 3100, fitKey: "" };
     this.freeCam = false; this.mode = "none"; this.t0 = performance.now(); this.cur = null; this.prev = null; this.lastFrame = -1; this.alpha = 1;
@@ -417,11 +419,20 @@ export class Voxel3D {
       if (tl < t) { face([x0, y0, tl], [x0, y0, z1], [x0, y1, z1], [x0, y1, tl], c, 0.75); face([x0, y0, z0], [x0, y0, -tl], [x0, y1, -tl], [x0, y1, z0], c, 0.75); }  // left
       if (tr < t) { face([x1, y0, z1], [x1, y0, tr], [x1, y1, tr], [x1, y1, z1], c, 0.75); face([x1, y0, -tr], [x1, y0, z0], [x1, y1, z0], [x1, y1, -tr], c, 0.75); }  // right
     }
+    return this.uploadMesh(pos, col);
+  }
+  // GL buffers for a triangle list (positions and colours, 3 floats each)
+  uploadMesh(pos, col) {
     const gl = this.gl, vao = gl.createVertexArray(); gl.bindVertexArray(vao);
-    const pb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, pb); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
-    const cb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, cb); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(col), gl.STATIC_DRAW); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
+    const pb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, pb); gl.bufferData(gl.ARRAY_BUFFER, pos instanceof Float32Array ? pos : new Float32Array(pos), gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    const cb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, cb); gl.bufferData(gl.ARRAY_BUFFER, col instanceof Float32Array ? col : new Float32Array(col), gl.STATIC_DRAW); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
     gl.bindVertexArray(this.vao);
     return { vao, pb, cb, count: pos.length / 3 };
+  }
+  // the inflated body of a character: blocky cubes (meshFromPixels) or, in "Rounded" style, the smooth solid of voxround.js
+  bodyMesh(rgba, w, h, R, T) {
+    if (!this.rounded) return this.meshFromPixels(rgba, w, h, R, T);
+    const d = roundedMeshData(rgba, w, h, R, T); return this.uploadMesh(d.pos, d.col);
   }
   freeMesh(mesh) { if (!mesh) return; const gl = this.gl; gl.deleteBuffer(mesh.pb); gl.deleteBuffer(mesh.cb); gl.deleteVertexArray(mesh.vao); }
   voxelMesh(tile, bank, pal, flipX, flipY) {
@@ -442,16 +453,16 @@ export class Voxel3D {
     }
     parts.sort((a, b) => a.dy - b.dy || a.dx - b.dx);
     const dt = this.gb.detail && this.gb.detail.enabled ? this.gb.detail : null;           // "Sprites: Detailed" (web/js/look/spritedetail.js): the body redrawn at 3x
-    const key = (dt ? "D" : "") + parts.map(q => `${q.key}@${q.dx},${q.dy}`).join("|");
+    const key = (this.rounded ? "R" : "") + (dt ? "D" : "") + parts.map(q => `${q.key}@${q.dx},${q.dy}`).join("|");
     let mesh = this.objectMeshes.get(key);
     if (!mesh && dt) {
       const o = dt.objectImage(list, (t, b, p, fx, fy) => this.spritePixels(t, b, p, fx, fy), (t, b, p, fx, fy) => this.tileKey(t * 16, b, this.gb.ppu.objPal, p, fx, fy));
-      mesh = this.meshFromPixels(new Uint8Array(o.data.buffer, o.data.byteOffset, o.data.byteLength), o.w3, o.h3, 15, 13.5); this.objectMeshes.set(key, mesh);
+      mesh = this.bodyMesh(new Uint8Array(o.data.buffer, o.data.byteOffset, o.data.byteLength), o.w3, o.h3, 15, 13.5); this.objectMeshes.set(key, mesh);
       if (this.objectMeshes.size > 800) { for (const mm of this.objectMeshes.values()) if (mm !== mesh) this.freeMesh(mm); this.objectMeshes.clear(); this.objectMeshes.set(key, mesh); this.meshGen = (this.meshGen || 0) + 1; }
     } else if (!mesh) {
       const img = new Uint8Array(w * h * 4);
       for (const q of parts) { const d = this.spritePixels(q.tile, q.bank, q.pal, q.fx, q.fy); for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const si = (y * 8 + x) * 4; if (!d[si + 3]) continue; const o = ((q.dy + y) * w + q.dx + x) * 4; img[o] = d[si]; img[o + 1] = d[si + 1]; img[o + 2] = d[si + 2]; img[o + 3] = 255; } }
-      mesh = this.meshFromPixels(img, w, h, 5, 4.5); this.objectMeshes.set(key, mesh);
+      mesh = this.bodyMesh(img, w, h, 5, 4.5); this.objectMeshes.set(key, mesh);
       if (this.objectMeshes.size > 800) { for (const mm of this.objectMeshes.values()) if (mm !== mesh) this.freeMesh(mm); this.objectMeshes.clear(); this.objectMeshes.set(key, mesh); this.meshGen = (this.meshGen || 0) + 1; }
     }
     return { mesh, x0, y0, w, h, y1, ms: dt ? 1 / 3 : 1 };
