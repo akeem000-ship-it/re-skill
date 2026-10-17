@@ -38,6 +38,7 @@ public class MainActivity extends Activity {
         });
         web.addJavascriptInterface(new FileBridge(), "MTennApp");   // the page's REC button saves recordings through this
         setContentView(web);
+        requestHighRefreshRate();
         immersive();
         // the camera cutout: draw under it (full screen) but tell the page its size, so the controls avoid it
         if (android.os.Build.VERSION.SDK_INT >= 28) {
@@ -142,6 +143,19 @@ public class MainActivity extends Activity {
             pushMask(); return true;
         }
         return super.dispatchGenericMotionEvent(e);
+    }
+    // ask for the display's highest refresh rate (e.g. 120 Hz) at the current resolution, so the page's
+    // requestAnimationFrame (and the 3D view's smoothing between game frames) runs at it; the game itself
+    // still steps at the Game Boy's ~60 Hz
+    private void requestHighRefreshRate() {
+        if (android.os.Build.VERSION.SDK_INT < 23) return;
+        android.view.Display d = getWindowManager().getDefaultDisplay();
+        android.view.Display.Mode cur = d.getMode(), best = cur;
+        for (android.view.Display.Mode m : d.getSupportedModes())
+            if (m.getPhysicalWidth() == cur.getPhysicalWidth() && m.getPhysicalHeight() == cur.getPhysicalHeight() && m.getRefreshRate() > best.getRefreshRate()) best = m;
+        android.view.WindowManager.LayoutParams lp = getWindow().getAttributes();
+        lp.preferredDisplayModeId = best.getModeId(); lp.preferredRefreshRate = best.getRefreshRate();
+        getWindow().setAttributes(lp);
     }
     @Override public void onBackPressed() {           // keep the game running; Back shows / hides the page's button bar
         web.evaluateJavascript("window.__backPressed && window.__backPressed()", null);
