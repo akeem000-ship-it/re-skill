@@ -1150,8 +1150,12 @@ export class Voxel3D {
       }
       cover(c.x0, c.y0, c.x1, c.y1);
       const w = c.x1 - c.x0, h = c.y1 - c.y0; let d = F3.cutOut(art, c.x0, c.y0, w, h, plantCut(c));
-      // a net whose keyed cut came out (nearly) empty: the net's own colours were taken for ground (the ground around it is blue too): keep its outline colour
-      if (!c.cut && !c.plant && !c.see && w >= 48 && w <= 80 && h >= 8 && h <= 20) { let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; if (n < w * h * 0.15) d = F3.cutOut(art, c.x0, c.y0, w, h, { ...cutOpt(c), cut: "outline" }); }
+      // a tennis net (a tape row, mesh rows, posts): a see-through net, only the mesh, the tape and the posts opaque (thin bars), the floor under its whole
+      // band filled from the ground beside it so the court lines run on under it
+      if (!c.cut && !c.plant && !c.see && w >= 48 && w <= 80 && h >= 8 && h <= 20) {
+        const nt = F3.netCut(art, c.x0, c.y0, w, h);
+        if (nt) { plantHole(nt.mask, c.x0, c.y0, w, h); f.cards.push(card(nt.d, c.x0, c.y0, w, h, { ...c, cut: "net", R: 0, T: 0.8 })); continue; }
+      }
       if (c.umbrella) {                          // an umbrella stands up (pole and canopy), its picture is filled with ground
         const u = F3.umbrellaMesh(art, c.x0, c.y0, c.x1, c.y1, MHp);
         if (u) {

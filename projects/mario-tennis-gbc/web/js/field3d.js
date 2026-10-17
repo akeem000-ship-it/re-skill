@@ -484,3 +484,22 @@ export function umbrellaMesh(art, x0, y0, x1, y1, groundMax = 512) {
   pole(cx, cz, Ha, Math.floor(cx)); pole(x0 + 1.5, cz, Hr, x0 + 1); pole(x1 - 1.5, cz, Hr, x1 - 2);
   return { mesh: out, top, rim, ground };
 }
+
+// A tennis net seen from above in the map art (a tape row of the lightest colour across, then rows of mesh in the darkest colour, every other row
+// with holes, posts at both ends): the cut-out of its rectangle with the HOLES transparent: only the mesh, the tape and the posts are opaque.
+// Returns { d, mask } (mask: the whole band of rows the net covers, opaque, for filling the floor under it) or null when the rectangle is no net.
+export function netCut(art, x0, y0, w, h) {
+  const dark = darkest(art, x0, y0, w, h); let maxL = 0, white = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const o = ((y0 + y) * ART + x0 + x) * 4, l = lum(art[o], art[o + 1], art[o + 2]); if (l > maxL) { maxL = l; white = packAt(art, x0 + x, y0 + y); } }
+  const frac = (y, c) => { let n = 0; for (let x = 0; x < w; x++) if (packAt(art, x0 + x, y0 + y) === c) n++; return n / w; };
+  let tape = -1; for (let y = 0; y < h; y++) if (frac(y, white) >= 0.6) { tape = y; break; }
+  if (tape < 0) return null;
+  let last = tape; for (let y = tape + 1; y < h && frac(y, dark) >= 0.3; y++) last = y;
+  if (last - tape < 3) return null;
+  const first = tape > 0 && frac(tape - 1, dark) >= 0.1 ? tape - 1 : tape, d = new Uint8Array(w * h * 4), mask = new Uint8Array(w * h * 4);
+  for (let y = first; y <= last; y++) for (let x = 0; x < w; x++) {
+    const o = (y * w + x) * 4, s = ((y0 + y) * ART + x0 + x) * 4, c = packAt(art, x0 + x, y0 + y); mask[o + 3] = 255;
+    if (c === dark || (c === white && y >= tape)) { d[o] = art[s]; d[o + 1] = art[s + 1]; d[o + 2] = art[s + 2]; d[o + 3] = 255; }
+  }
+  return { d, mask };
+}
