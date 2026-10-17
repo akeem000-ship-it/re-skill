@@ -18,6 +18,7 @@ import {
 } from "./defs.js";
 import { clearBytes } from "../../home/system.js";
 import { checkStorySlot, testSaveFlag } from "../../save/storyslots.js";
+import { rom as farcall, regs8, getRegs } from "../equipment/defs.js";
 
 export const BANK = 0x38;
 const CharUnlockFlagsTable0 = 0x5B17, CharUnlockFlagsTable1 = 0x5B29, CharGridFromUnlockFlagsTable = 0x5B93;
@@ -339,8 +340,9 @@ export function cacheStorySlotNames(P) {
     }
   });
   wr(P, "currentStorySlot", STORYSLOT_NONE);
-  rom(P, FAR.InitStoryModeState);
-  rom(P, FAR.InitDefaultMatchSettings);
+  // (the registers back as they came, a = STORYSLOT_NONE: the two farcalls' registers are the routine's)
+  const r = farcall(P, FAR.InitStoryModeState, { ...regs8(getRegs(P.cpu)), a: STORYSLOT_NONE });
+  return farcall(P, FAR.InitDefaultMatchSettings, regs8(r));
 }
 // LoadCachedStorySlotName (38:60B9): story file b's cached records back to $C900. All registers kept.
 export function loadCachedStorySlotName(P, file) {

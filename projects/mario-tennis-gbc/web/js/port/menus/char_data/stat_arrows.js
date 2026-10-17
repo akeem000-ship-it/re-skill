@@ -13,6 +13,7 @@ import {
   advanceFrame, fadeIn, fadeOut, queueVRAMCopy, queueSprite, hook, hookGen,
 } from "../char_select/defs.js";
 import { enableLCD } from "../../home/system.js";
+import { rom as farcall, chain, regs8 } from "../equipment/defs.js";
 import { decompressData } from "../../home/decompress.js";
 import { loadPaletteShadow } from "../../home/palettes.js";
 import { loadCharDataScreenTilemaps, startCharDataScreenAnimTask, stopCharDataScreenAnimTask } from "./screen.js";
@@ -62,19 +63,22 @@ export function unusedDrawCharViewerCharSprite(P) {
 }
 // Unused_1a_LoadCharViewerMugshot (1A:7096): BG palette 7 from entry 0, and the mugshot wCharDataFlushChunk names
 // into VRAM bank 1 tile $110
+// Returns the registers it leaves (QueueVRAMCopy's over the farcalls').
 export function unusedLoadCharViewerMugshot(P) {
-  rom(P, FAR.LoadIndexedPaletteThunk, { a: 0, de: 0x0701 });
+  let r = farcall(P, FAR.LoadIndexedPaletteThunk, { a: 0, de: 0x0701 });
   P.wramBank(WRAM_SCENE);
   const mugshot = rd(P, "charDataFlushChunk");
   P.wramBank(WRAM_STAGING);
-  rom(P, FAR.DecompressCharMugshot, { a: mugshot, b: mugshot, de: wDecompBuffer });
-  queueVRAMCopy(P, wDecompBuffer, vTiles2 + 0x10 * 16 + VRAM_BANK1, 9);
+  r = farcall(P, FAR.DecompressCharMugshot, { ...regs8(r), a: mugshot, b: mugshot, de: wDecompBuffer });
+  const dest = vTiles2 + 0x10 * 16 + VRAM_BANK1;
+  return chain(chain(regs8(r), { hl: wDecompBuffer, de: dest, c: 9 }), queueVRAMCopy(P, wDecompBuffer, dest, 9));
 }
 // Unused_1a_ApplyCharViewerPalette (1A:70C0): BG and OBJ palette 7 from the entry wCharDataLevel names
+// Returns the registers the second farcall leaves.
 export function unusedApplyCharViewerPalette(P) {
   P.wramBank(WRAM_SCENE);
-  rom(P, FAR.LoadIndexedPaletteThunk, { a: rd(P, "charDataLevel"), de: 0x0701 });
-  return rom(P, FAR.LoadIndexedPaletteThunk, { a: rd(P, "charDataLevel"), de: 0x0F01 });
+  const r = farcall(P, FAR.LoadIndexedPaletteThunk, { a: rd(P, "charDataLevel"), de: 0x0701 });
+  return farcall(P, FAR.LoadIndexedPaletteThunk, { ...regs8(r), a: rd(P, "charDataLevel"), de: 0x0F01 });
 }
 
 // ---- the confirm screen ----
@@ -228,8 +232,8 @@ export const offsetStatArrowSpriteX = (rest, x) => ((rest & 0x80 ? 0xF8 : 0x08) 
 
 export const HOOKS = [
   [BANK, 0x7012, hook(P => unusedDrawCharViewerCharSprite(P))],
-  [BANK, 0x7096, hook(P => { unusedLoadCharViewerMugshot(P); })],
-  [BANK, 0x70C0, hook(P => { unusedApplyCharViewerPalette(P); })],
+  [BANK, 0x7096, hook(P => unusedLoadCharViewerMugshot(P))],
+  [BANK, 0x70C0, hook(P => unusedApplyCharViewerPalette(P))],
   [BANK, 0x7945, hookGen(P => runCharDataConfirmScreen(P))],
   [BANK, 0x7A1D, hook(P => { drawConfirmSelectionCursor1a(P); })],
   [BANK, 0x7A3D, hook((P, c) => { copyBank1ToBank3BufferAlt(P, c.h << 8 | c.l, c.b << 8 | c.c); })],

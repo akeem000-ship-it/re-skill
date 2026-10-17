@@ -34,6 +34,18 @@ const regNames = out => {
   return [...r];
 };
 
+// the routines compared on all eight registers (the hook puts back the ones the routine keeps and sets its results;
+// F: Z and C): those other ports call with their registers as the ROM leaves them
+const ALL_REGS = new Set(["ClearPlayerSlotPortrait", "DrawPlayerSlotPortrait", "DrawCharGridSlotPrompt",
+  "CloseCpuDifficultyPanel", "HandleCpuDifficultyInput", "DrawCpuDifficultyCursorBox", "OpenCpuDifficultyPanel",
+  "QueueCpuDifficultyPanelToVram", "GetGridSlotFromCursor", "BuildVisiblePageSpriteList", "CacheStorySlotNames",
+  "LoadCachedStorySlotName", "MoveLinkCursorUp", "MoveLinkCursorDown", "MoveLinkCursorRight", "MoveLinkCursorLeft",
+  "RefreshCharInfoPanel", "GetPlayerSlotBoxAddress", "DrawPlayerSlotLeftHandedMark", "DrawPlayerSlotDifficultyMark",
+  "WriteCharPortraitTiles", "AdvanceToNextPlayerSlot", "RetreatToPreviousPlayerSlot", "IsMarioCastCharacter",
+  "TestAndSetGridEntryTaken", "Unused_1a_DrawCharViewerCharSprite", "Unused_1a_LoadCharViewerMugshot",
+  "Unused_1a_ApplyCharViewerPalette"]);
+const ALL = ["a", "f", "b", "c", "d", "e", "h", "l"];
+
 // ---- the entries ----
 // E(name, bank, addr, { regs(r, s), prep(mem, r, s), n, recs, wram, ignore }): n: every n-th of the matching states
 export const ROUTINES = [];
@@ -62,7 +74,7 @@ function E(name, bank, addr, { regs = () => ({}), prep = null, n = 3, recs = nul
       HOOK_TRACE.out = null;
       P.ime = false;
       const ret = P.callRom(bank, addr, regs);
-      entry.out = regNames(HOOK_TRACE.out).filter(r => !skip.includes(r));   // the registers the port gives as its results
+      entry.out = (ALL_REGS.has(name) ? ALL : regNames(HOOK_TRACE.out)).filter(r => !skip.includes(r));   // the registers the port gives as its results
       return ret;
     },
   };

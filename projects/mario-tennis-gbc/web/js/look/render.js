@@ -76,6 +76,12 @@ export class LookRenderer {
     if (list) { let hit = -1; for (const e of list) { let same = true; for (let i = 0; i < 16; i++) if (e.bytes[i] !== v[a + i]) { same = false; break; } if (same) { if (hit >= 0) return -1; hit = e.off; } } return hit; }   // two frames' tiles alike: not told apart
     return -1;
   }
+  // the ROM offset any VRAM tile was copied from while it still holds those bytes (any character's), else -1
+  romOffsetAny(bank, tile) {
+    const o = this.tags[bank * 512 + tile]; if (o < 0) return -1;
+    const v = this.mem.vram[bank], a = tile * 16, rom = this.rom; for (let i = 0; i < 16; i++) if (rom[o + i] !== v[a + i]) return -1;
+    return o;
+  }
   // { fi, t, frame } when the VRAM tile is a tile of a hero frame (frame: key, kind, cols, rows, info, mood, view)
   frameTile(bank, tile) { const o = this.romOffset(bank, tile); if (o < 0) return null; const e = this.tileFrame.get(o); return e ? { fi: e.fi, t: e.t, frame: this.frames[e.fi] } : null; }
   // which redrawn face tile the 16 bytes at the VRAM address are: { hero, kind: "p24" | "win" | "lose", t, cols } or null

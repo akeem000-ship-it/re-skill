@@ -47,7 +47,22 @@ function faceIn(layer, w, h, at, x0, y0, x1, y1, lab, id) {
   let hx0 = w, hx1 = -1; for (let y = y0; y <= hz; y++) for (let x = x0; x <= x1; x++) if (mine(x, y)) { if (x < hx0) hx0 = x; if (x > hx1) hx1 = x; }
   const turn = Math.max(-1, Math.min(1, ((fx0 + fx1) / 2 - (hx0 + hx1) / 2) / Math.max(1, (hx1 - hx0) / 2)));
   const skinIdx = []; for (const p of best.px) if (S[p]) skinIdx.push(p);
-  return { info: { w, h, mask, x0: fx0, y0: fy0, x1: fx1, y1: fy1, head: { x0: hx0, x1: hx1, y0, y1: hz }, turn, skinIdx, hairIdx: [] }, skin: K };
+  // the sprite's own eyes: small dark clusters inside the face, in its upper rows
+  const eyes = [], seen = new Set(), darkIn = (x, y) => x >= 0 && y >= 0 && x < w && y < h && mask[y * w + x] && layer[y * w + x] && dark(layer[y * w + x]);
+  for (let y = fy0; y <= fy1; y++) for (let x = fx0; x <= fx1; x++) {
+    if (!darkIn(x, y) || seen.has(y * w + x)) continue;
+    const cl = [[x, y]]; seen.add(y * w + x);
+    for (let k = 0; k < cl.length && cl.length <= 8; k++) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const X = cl[k][0] + dx, Y = cl[k][1] + dy; if (darkIn(X, Y) && !seen.has(Y * w + X)) { seen.add(Y * w + X); cl.push([X, Y]); } }
+    if (cl.length > 4) continue;
+    const e = { x0: Math.min(...cl.map(p => p[0])), x1: Math.max(...cl.map(p => p[0])), y0: Math.min(...cl.map(p => p[1])), y1: Math.max(...cl.map(p => p[1])) };
+    if ((e.y0 + e.y1) / 2 <= fy0 + fh * 0.7 && e.x1 - e.x0 <= 2 && e.y1 - e.y0 <= 1) eyes.push(e);
+  }
+  // a face has its eyes: two clusters on one row some pixels apart, or one when it looks aside; a plain dome, a coin or a body has none
+  eyes.sort((a, b) => a.x0 - b.x0);
+  if (eyes.length > 4) return null;
+  if (eyes.length >= 2) { const a = eyes[0], b = eyes[eyes.length - 1], dx = b.x0 - a.x1; if (Math.abs(a.y0 - b.y0) > 1 || dx < 1 || dx > 9) return null; }
+  else if (!(eyes.length === 1 && Math.abs(turn) > 0.35)) return null;
+  return { info: { w, h, mask, x0: fx0, y0: fy0, x1: fx1, y1: fy1, head: { x0: hx0, x1: hx1, y0, y1: hz }, turn, skinIdx, hairIdx: [], eyes }, skin: K };
 }
 function closeMask(m, w, h, rx, ry) {
   const dil = a => { const o = new Uint8Array(w * h); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let v = 0; for (let j = -ry; j <= ry && !v; j++) for (let i = -rx; i <= rx; i++) { const X = x + i, Y = y + j; if (X >= 0 && Y >= 0 && X < w && Y < h && a[Y * w + X]) { v = 1; break; } } o[y * w + x] = v; } return o; };

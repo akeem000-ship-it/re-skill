@@ -8,8 +8,9 @@
 // Tests: web/tests/port/routines_menus_common.mjs (all of it).
 import { copyMemoryFast } from "../../home/memory.js";
 import { testSaveFlag } from "../../save/storyslots.js";
+import { romWait, nestedGen } from "../equipment/defs.js";
 import {
-  FZ, FN, FH, FC, cpFlags, addFlags, hook, callHome, callFar, queueCopy, loadPalettes, HOME, FAR,
+  FZ, FN, FH, FC, cpFlags, addFlags, hook, hookGen, callHome, callFar, queueCopy, loadPalettes, HOME, FAR,
   TILE_SIZE, TILEMAP_WIDTH, SCREEN_HEIGHT, VRAM_BANK1, vBGMap0, wTextTileBuffer,
 } from "./defs.js";
 
@@ -48,9 +49,10 @@ export function loadMenuHandCursorGfx(P, dest, first, count) {
 // never runs. Nothing to do.
 export function unusedLoadFontTiles() {}
 
-// Unused_18_RenderProportionalTextAt32 (18:439A): RenderProportionalTextAt (bank 5) with c = $20; bc kept.
-export function unusedRenderProportionalTextAt32(P) {
-  const r = callFar(P, FAR.RenderProportionalTextAt, { c: 0x20 });
+// Unused_18_RenderProportionalTextAt32 (18:439A): RenderProportionalTextAt (bank 5) with c = $20; bc kept. It waits
+// as RenderProportionalTextAt does (a frame at each line break with the LCD on): bc pushed, then FarCall's frame.
+export function* unusedRenderProportionalTextAt32(P) {
+  const r = yield* nestedGen(P, 1, romWait(P, FAR.RenderProportionalTextAt, { c: 0x20 }));
   return { a: r.a, f: r.f, de: r.de, hl: r.hl };
 }
 // Unused_18_DrawStringToTilemap (18:43A2): Unused_05_WriteStringToTilemap (bank 5), its registers returned
@@ -197,7 +199,7 @@ export const HOOKS = [
   [BANK_CURSORBOX, 0x4353, hook(P => unusedFlushBgMapShadowToVram(P))],
   [BANK_CURSORBOX, 0x437C, hook((P, c) => loadMenuHandCursorGfx(P, c.hl, c.d, c.e))],
   [BANK_CURSORBOX, 0x438D, () => {}],                        // Unused_18_LoadFontTiles: ret
-  [BANK_CURSORBOX, 0x439A, hook(P => unusedRenderProportionalTextAt32(P))],
+  [BANK_CURSORBOX, 0x439A, hookGen(P => unusedRenderProportionalTextAt32(P))],
   [BANK_CURSORBOX, 0x43A2, (P, c) => { const r = unusedDrawStringToTilemap(P, {}); for (const k of ["a", "f", "b", "c", "d", "e", "h", "l"]) c[k] = r[k]; }],
   [BANK_CURSORBOX, 0x43A6, hook((P, c) => unusedWriteTilemapByteAdvance(P, c.a, c.de))],
   [BANK_CURSORBOX, 0x43A9, hook((P, c) => unusedDrawDecimalNumberToTilemap(P, c))],

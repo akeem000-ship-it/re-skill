@@ -8,9 +8,10 @@ export const FLAG_Z = 0x80, FLAG_N = 0x40, FLAG_H = 0x20, FLAG_C = 0x10;
 export function getRegs(cpu) {
   return { a: cpu.a, f: cpu.f, b: cpu.b, c: cpu.c, d: cpu.d, e: cpu.e, h: cpu.h, l: cpu.l };
 }
-// write registers back: any of a f b c d e h l, and the pairs bc de hl
+// write registers back: any of a f b c d e h l, and the pairs bc de hl (an undefined one is left as it is)
 export function setRegs(cpu, regs) {
   for (const [r, v] of Object.entries(regs)) {
+    if (v === undefined) continue;
     if (r === "bc" || r === "de" || r === "hl") cpu[r] = v & 0xFFFF;
     else if (r === "f") cpu.f = v & 0xF0;
     else cpu[r] = v & 0xFF;

@@ -339,7 +339,7 @@ X("Unused_1a_CopyBank1ToBank2Buffer", 0x6BF6, { regs: r => ({ hl: 0xD000 + r(0x4
 X("Unused_1a_InitCharViewerState", 0x6C0B);
 X("Unused_1a_DrawCharViewerCursorSprite", 0x6C28, { active: onViewer, n: 1 });
 X("Unused_1a_RefreshCharViewerSelection", 0x6E41, { active: onViewer, n: 1 });
-X("Unused_1a_SetupCharViewerScene", 0x6F3D, { active: onViewer, n: 1, own: true });
+X("Unused_1a_SetupCharViewerScene", 0x6F3D, { active: onViewer, n: 1 });
 X("Unused_1a_LoadCharViewerGridTilemap", 0x69EB, { n: 6 });
 X("Unused_1a_DrawCharViewerPageNames", 0x6A3A, { regs: r => ({ a: pick(r, [0, 1, 2, 3, r(256)]) }), active: s => onViewerGrid(s) || onViewer(s), n: 1 });
 X("Unused_1a_RenderTextColumnToBuffer64", 0x6A9B, { regs: r => ({ hl: 0x001B + r(0x30), de: 0xD043 + r(0x40), c: pick(r, [1, 2, 8]) }), wram: 3, active: s => onViewerGrid(s) || onViewer(s), n: 1 });
@@ -358,7 +358,7 @@ Y("Unused_1b_LoadUnlockDebugNavGrid", 0x65FA); Y("Unused_1b_LoadUnlockDebugRoste
 Y("Unused_1b_LoadUnlockDebugScreenGfx", 0x6618, { lcdOff: true, n: 6, wram: 1 });
 Y("Unused_1b_UpdateBobbingDecorSprite", 0x6671);
 Y("Unused_1b_StartUnlockDebugCursorTask", 0x6681, { active: onUnlock, n: 1 });
-Y("Unused_1b_UpdateUnlockDebugCursorTask", 0x668D, { active: onUnlock, n: 1, own: true });
+Y("Unused_1b_UpdateUnlockDebugCursorTask", 0x668D, { active: onUnlock, n: 1 });
 Y("Unused_1b_UpdateUnlockDebugSelectedMugshot", 0x669D, { active: onUnlock, n: 1, wram: 1 });
 Y("Unused_1b_UpdateUnlockDebugStatOnChange", 0x66C4, { active: onUnlock, n: 1, prep: both(gridPrep, (mem, r) => wf(mem, "charSelectPrevChar", pick(r, [rf(mem, "charSelectChar"), r(0x20)]))) });
 Y("Unused_1b_DrawUnlockDebugMugshots", 0x66D7, { active: onUnlock, n: 1, wram: 1 });
@@ -386,7 +386,7 @@ function lkPrep(mem, r) {
   mem.hram[0x0C] = r(256);
 }
 const onCharGrid = s => task(s, 0x38, 0x4E52);
-const L = (name, bank, addr, o = {}) => E(name, bank, addr, { prep: lkPrep, n: 3, own: true, ...o });
+const L = (name, bank, addr, o = {}) => E(name, bank, addr, { prep: lkPrep, n: 3, ...o });
 for (const [n, a] of [["RetreatRemotePlayerSlot", 0x6A09], ["Unused_38_GetGridEntryAtCursor", 0x6A3C],
   ["InitLinkMatchCharsFromSelection", 0x6A7F], ["Unused_38_HandleLinkCpuDifficultyInput", 0x6B79],
   ["Unused_38_RunLinkCpuDifficultySubmenu", 0x6BD7], ["GetGridSlotFromLinkCursor", 0x6C37], ["GetLinkCursorSelectionCode", 0x6C64],
@@ -416,7 +416,7 @@ for (const [n, a] of [["DrawSinglesDoublesRow", 0x4817], ["DrawGameCountRow", 0x
   ["AnimateLinkStatusPalette", 0x4A54], ["AnimateLinkErrorPalette", 0x4B37], ["ClearLinkMessageWindow", 0x4BED],
   ["FlushLinkMessageRows", 0x4C06], ["DrawMatchRulesInitialState", 0x459B], ["HandleMatchRulesToggleInput", 0x475D],
   ["UpdateAnimatedTiles_3e", 0x4438]]) L(n, 0x3E, a, { active: onLink, n: 2 });
-L("Unused_3e_DrawMatchRulesCaptionText", 0x3E, 0x49B9, { active: onLink, n: 2, own: "rom" });
+L("Unused_3e_DrawMatchRulesCaptionText", 0x3E, 0x49B9, { active: onLink, n: 2 });
 L("SetMatchRuleOptionAttrRect", 0x3E, 0x486A, { regs: r => ({ b: r(3), c: r(3) }), wram: 3 });
 L("LoadLinkMessageScreen", 0x3E, 0x4A14, { lcdOff: true, n: 6 });
 L("Unused_3e_GetCellIndexFromCursorPtr", 0x3E, 0x43DB, { regs: r => ({ hl: 0xC801 + r(0x100), c: r(8) }) });
@@ -429,3 +429,10 @@ L("Unused_3e_DrawDecimalNumber", 0x3E, 0x4475, { regs: r => ({ a: pick(r, [0, 2,
 L("Unused_3e_DrawAsciiDigitString", 0x3E, 0x4496, { regs: r => ({ hl: 0xC600, de: mapAt(r) }), wram: 3, prep: both(lkPrep, (mem, r) => put(mem, 0, 0xC600, [0x31, 0x20, 0x39, 0])) });
 L("Unused_3e_DrawAsciiDigitChar", 0x3E, 0x44A0, { regs: r => ({ a: pick(r, [0x20, 0x2F, 0x30, 0x39, r(256)]), de: mapAt(r) }) });
 L("FlushMatchRuleRowAttrs", 0x3E, 0x48BB, { regs: r => ({ b: r(3) }), active: onLink, n: 2 });
+// other folders' routines these screens reach, on all registers: menus/scenes's Unused_18_DrawCharSelectCursor (the
+// unlock debug screen's cursor) and menus/common's Unused_18_RenderProportionalTextAt32 (it waits at line breaks
+// with the LCD on: run with it off)
+E("Unused_18_DrawCharSelectCursor", 0x18, 0x59D6, { regs: r => ({ a: pick(r, [0x84, r(256)]), d: r(256), e: r(256) }), n: 4 });
+E("Unused_18_RenderProportionalTextAt32", 0x18, 0x439A, {
+  regs: r => ({ hl: pick(r, [0x001A, 0x0132, 0x0133, 0x0134, 0x0135, 0x0136, 0x0137]), de: 0xD020 + r(0x3E0), b: r(256) }),
+  lcdOff: true, n: 6 });

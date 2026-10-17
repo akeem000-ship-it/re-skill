@@ -37,6 +37,7 @@ import {
   clearPlayerSlotPortrait, loadAllCharPortraitTiles, runCpuDifficultySubmenu,
 } from "./grid_panels.js";
 import { TickMenuBgScrollTask_38 } from "./character.js";
+import { FN, decFlags, cpFlags } from "../equipment/defs.js";
 import { SoftResetSignal } from "../../port.js";
 import { enableLCD, clearBytes } from "../../home/system.js";
 import { clearFrameTasks, printDecimalByte } from "../../home/debugtext.js";
@@ -453,38 +454,47 @@ export function processLinkSelectCommand(P) {
 // ---- the other player's cursor over the link (name_38.asm) ----
 // MoveLinkCursorUp / Down / Right / Left (38:6D0B / 6D25 / 6D58 / 6D77): the remote cursor (wMenuCursor2X/Y,
 // hLinkCursorPage) as the local one moves, without sounds or redraws
+// Each returns the registers it leaves (a and the flags of its last step; Down's next-page step also b and e).
 export function moveLinkCursorUp(P) {
   const y = rd(P, "menuCursor2Y");
-  if (y) { wr(P, "menuCursor2Y", y - 1); return; }
+  if (y) { wr(P, "menuCursor2Y", y - 1); return { a: y - 1, f: decFlags(y) }; }   // (`or a` cleared the carry)
   let page = P.V.linkCursorPage;
-  if (!page) return;
+  if (!page) return { a: 0, f: FZ };
   page = (page - 1) & 0xFF;
+  const f = cpFlags(page, 2);
   P.V.linkCursorPage = page === 2 ? FIRST_ROSTER_PAGE : page;
+  return { a: P.V.linkCursorPage, f };
 }
 export function moveLinkCursorDown(P) {
   const y = (rd(P, "menuCursor2Y") + 1) & 0xFF;
-  if (y !== GRID_ROWS) { wr(P, "menuCursor2Y", y); return; }
+  if (y !== GRID_ROWS) { wr(P, "menuCursor2Y", y); return { a: y, f: cpFlags(y, GRID_ROWS) }; }
   let page = P.V.linkCursorPage;
   if (page < 2) {
-    if (page === 1) return;
-    if (rd(P, "charGridCreatedCount") < 7) return;
-    page = 1;
-  } else {
-    page = (page + 1) & 0xFF;
-    const last = (rd(P, "charGridPageCount") - 1) & 0xFF;
-    if (page === last) page = (last - 1) & 0xFF;
+    if (page === 1) return { a: 1, f: FZ | FN };
+    const created = rd(P, "charGridCreatedCount");
+    if (created < 7) return { a: created, f: cpFlags(created, 7) };
+    P.V.linkCursorPage = 1;
+    return { a: 1, f: cpFlags(created, 7) };
   }
-  P.V.linkCursorPage = page;
+  const next = (page + 1) & 0xFF, last = (rd(P, "charGridPageCount") - 1) & 0xFF;
+  const out = next === last ? { a: (last - 1) & 0xFF, f: decFlags(last) } : { a: next, f: cpFlags(next, last) };
+  P.V.linkCursorPage = out.a;
+  return { ...out, b: last, e: next };
 }
 export function moveLinkCursorRight(P) {
-  let x = (rd(P, "menuCursor2X") + 1) & 0xFF;
-  if (x === GRID_COLUMNS) { linkSwitchPageKind(P); x = 0; }
-  wr(P, "menuCursor2X", x);
+  const x = (rd(P, "menuCursor2X") + 1) & 0xFF;
+  if (x !== GRID_COLUMNS) { wr(P, "menuCursor2X", x); return { a: x, f: cpFlags(x, GRID_COLUMNS) }; }
+  linkSwitchPageKind(P);
+  wr(P, "menuCursor2X", 0);
+  return { a: 0, f: FZ };
 }
 export function moveLinkCursorLeft(P) {
-  let x = (rd(P, "menuCursor2X") - 1) & 0xFF;
-  if (x === 0xFF) { linkSwitchPageKind(P); x = 2; }
-  wr(P, "menuCursor2X", x);
+  const x = (rd(P, "menuCursor2X") - 1) & 0xFF;
+  if (x !== 0xFF) { wr(P, "menuCursor2X", x); return { a: x, f: cpFlags(x, 0xFF) }; }
+  const f = P.V.linkCursorPage === 1 ? FZ | FN : FZ;               // (`cp $01` found 1; else `or a` or `xor a`)
+  linkSwitchPageKind(P);
+  wr(P, "menuCursor2X", 2);
+  return { a: 2, f };
 }
 // (the link cursor's page switch: pages 0 and 1 go to the first roster page, the others to 0)
 function linkSwitchPageKind(P) { P.V.linkCursorPage = P.V.linkCursorPage < 2 ? FIRST_ROSTER_PAGE : 0; }

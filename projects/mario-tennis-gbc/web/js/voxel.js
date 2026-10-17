@@ -439,15 +439,20 @@ export class Voxel3D {
       parts.push({ key: this.tileKey(tile * 16, bank, this.gb.ppu.objPal, pal, fx, fy), tile, bank, pal, fx, fy, dx: sp.sx - x0, dy: sp.sy + half * 8 - y0 });
     }
     parts.sort((a, b) => a.dy - b.dy || a.dx - b.dx);
-    const key = parts.map(q => `${q.key}@${q.dx},${q.dy}`).join("|");
+    const dt = this.gb.detail && this.gb.detail.enabled ? this.gb.detail : null;           // "Sprites: Detailed" (web/js/look/spritedetail.js): the body redrawn at 3x
+    const key = (dt ? "D" : "") + parts.map(q => `${q.key}@${q.dx},${q.dy}`).join("|");
     let mesh = this.objectMeshes.get(key);
-    if (!mesh) {
+    if (!mesh && dt) {
+      const o = dt.objectImage(list, (t, b, p, fx, fy) => this.spritePixels(t, b, p, fx, fy), (t, b, p, fx, fy) => this.tileKey(t * 16, b, this.gb.ppu.objPal, p, fx, fy));
+      mesh = this.meshFromPixels(new Uint8Array(o.data.buffer, o.data.byteOffset, o.data.byteLength), o.w3, o.h3, 15, 13.5); this.objectMeshes.set(key, mesh);
+      if (this.objectMeshes.size > 800) { for (const mm of this.objectMeshes.values()) if (mm !== mesh) this.freeMesh(mm); this.objectMeshes.clear(); this.objectMeshes.set(key, mesh); this.meshGen = (this.meshGen || 0) + 1; }
+    } else if (!mesh) {
       const img = new Uint8Array(w * h * 4);
       for (const q of parts) { const d = this.spritePixels(q.tile, q.bank, q.pal, q.fx, q.fy); for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const si = (y * 8 + x) * 4; if (!d[si + 3]) continue; const o = ((q.dy + y) * w + q.dx + x) * 4; img[o] = d[si]; img[o + 1] = d[si + 1]; img[o + 2] = d[si + 2]; img[o + 3] = 255; } }
       mesh = this.meshFromPixels(img, w, h, 5, 4.5); this.objectMeshes.set(key, mesh);
       if (this.objectMeshes.size > 800) { for (const mm of this.objectMeshes.values()) if (mm !== mesh) this.freeMesh(mm); this.objectMeshes.clear(); this.objectMeshes.set(key, mesh); this.meshGen = (this.meshGen || 0) + 1; }
     }
-    return { mesh, x0, y0, w, h, y1 };
+    return { mesh, x0, y0, w, h, y1, ms: dt ? 1 / 3 : 1 };
   }
   drawMesh(mesh, model, mvp) {
     const gl = this.gl; if (!mesh || !mesh.count) return;
@@ -631,19 +636,30 @@ export class Voxel3D {
   // an object's look relative to its anchor, independent of VRAM afterwards (kept for players off the 2D screen):
   // the inflated mesh in voxel mode, else one texture per 8x8 tile
   bodyOf(list, ax, ay) {
-    if (this.voxelSprites) { const o = this.objectMesh(list); return { mesh: o.mesh, dx: o.x0 + o.w / 2 - ax, up: ay - o.y1, gen: this.meshGen || 0 }; }
+    if (this.voxelSprites) { const o = this.objectMesh(list); return { mesh: o.mesh, dx: o.x0 + o.w / 2 - ax, up: ay - o.y1, ms: o.ms, gen: this.meshGen || 0 }; }
+    if (this.gb.detail && this.gb.detail.enabled) { const q = this.detailCard(list, ax, ay); if (q) return q; }          // "Sprites: Detailed": one 3x card for the whole object
     const cards = [];
     for (const sp of list) for (let half = 0; half < sp.h / 8; half++)
       cards.push({ tex: this.spriteTexture(sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half), (sp.attr >> 3) & 1, sp.attr & 7, (sp.attr >> 5) & 1, (sp.attr >> 6) & 1),
                    dx: sp.sx + 4 - ax, up: ay - (sp.sy + (half + 1) * 8) });
     return { cards, gen: this.texGen || 0 };
   }
+  // the object as one card of a 3x texture (spritedetail.js objectImage), cached by the object's tiles and layout
+  detailCard(list, ax, ay) {
+    const o = this.gb.detail.objectImage(list, (t, b, p, fx, fy) => this.spritePixels(t, b, p, fx, fy), (t, b, p, fx, fy) => this.tileKey(t * 16, b, this.gb.ppu.objPal, p, fx, fy));
+    const cache = this.detailTex || (this.detailTex = new Map()); let tex = cache.get(o.key);
+    if (!tex) {
+      if (cache.size >= 300) { for (const t of cache.values()) this.gl.deleteTexture(t); cache.clear(); this.texGen = (this.texGen || 0) + 1; }
+      tex = this.texture(o.w3, o.h3, new Uint8Array(o.data.buffer, o.data.byteOffset, o.data.byteLength)); cache.set(o.key, tex);
+    }
+    return { cards: [{ tex, dx: o.x0 + o.w / 2 - ax, up: ay - (o.y0 + o.h), w: o.w, h: o.h }], gen: this.texGen || 0 };
+  }
   drawBody(b, X, Yw, lift, scale, tilt, mvp) {
     if (b.gen !== (b.mesh ? this.meshGen || 0 : this.texGen || 0)) return;   // built from evicted cache entries
     const c = Math.cos(tilt), s = Math.sin(tilt);
-    if (b.mesh) { if (this.voxelSprites) this.drawMesh(b.mesh, m4.trs3(X + b.dx * scale, lift + b.up * scale * c, Yw - b.up * scale * s, scale, scale, scale, -tilt), mvp); return; }
+    if (b.mesh) { if (this.voxelSprites) this.drawMesh(b.mesh, m4.trs3(X + b.dx * scale, lift + b.up * scale * c, Yw - b.up * scale * s, scale * (b.ms || 1), scale * (b.ms || 1), scale * (b.ms || 1), -tilt), mvp); return; }
     if (this.voxelSprites) return;
-    for (const q of b.cards) this.draw(q.tex, m4.trs(X + q.dx * scale, lift + q.up * scale * c, Yw - q.up * scale * s, 8 * scale, 8 * scale, -tilt, 0), mvp);
+    for (const q of b.cards) this.draw(q.tex, m4.trs(X + q.dx * scale, lift + q.up * scale * c, Yw - q.up * scale * s, (q.w || 8) * scale, (q.h || 8) * scale, -tilt, 0), mvp);
   }
   // draws one OAM sprite's tiles relative to an anchor screen point (ax, ay) mapped to world (X, Yw) at height lift
   blitSprite(sp, ax, ay, X, Yw, lift, scale, tilt, mvp) {

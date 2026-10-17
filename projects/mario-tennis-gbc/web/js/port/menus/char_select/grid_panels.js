@@ -15,7 +15,7 @@ import {
   rd, wr, u8, w8, idx, rom, FAR, WRAM_SCREEN, TILEMAP_WIDTH, VRAM_BANK1, vBGMap0, wShadowTilemap, wShadowAttrmap,
   PADF_A, PADF_B, PADF_LEFT, PADF_RIGHT, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_CANCEL, CHARSELECTMODE_LINK_SINGLES_P2,
   CHARSELECTMODE_LINK_DOUBLES_P2, CHAR_NONE, Text_30_27, Text_30_149, Text_30_153, sound, withWram, queueVRAMCopy,
-  queueMapRows, fillTilemapRect, copyTilemapRect, renderTextToBuffer64, drawSelectedOptionBox, hook,
+  queueMapRows, fillTilemapRect, copyTilemapRect, renderTextToBuffer64, hook,
 } from "./defs.js";
 import {
   BANK, getGridSlotFromCursor, buildVisiblePageSpriteList, advanceToNextPlayerSlot, buildCharGridFromUnlockFlags,
@@ -23,6 +23,8 @@ import {
   countCharGridEntries, setCharGridPageCount,
 } from "./grid_data.js";
 import { drawNameWithDiacritics, drawDecimalNumber, wrapIndex } from "./matchtype.js";
+// FarCall with its entry flags and frame, registers chained (the last menus' helpers: their results are the ROM's)
+import { rom as farcall, near, chain, regs8, ixF, getRegs, FZ, FN, FC } from "../equipment/defs.js";
 
 const PlayerSlotBoxAddrPtrs_38 = 0x56C9, CharNameAndTypeTable = 0x58FB, CharGridSlotIconListPtrs_38 = 0x59BA;
 const CharGridSlotPromptTable0 = 0x5486, CharGridSlotPromptTable1 = 0x5490;
@@ -37,19 +39,21 @@ const TILE_SLOT_ICONS = 0x50, TILE_SLOT_ICON_KINDS = 0x54;
 const cell = (base, x, y) => (base + y * TILEMAP_WIDTH + x) & 0xFFFF;
 const word = (P, addr) => P.rom.u16(BANK, addr);
 const entryAddr = (P, n) => (P.A.charGridEntries + ((n * 4) & 0xFF)) & 0xFFFF;
-// QueueVRAMCopy of 2 rows of both shadow maps from row `row`
-function queueRows(P, row, rows = 2) {
-  queueMapRows(P, wShadowTilemap, vBGMap0, row, rows);
-  queueMapRows(P, wShadowAttrmap, vBGMap0 + VRAM_BANK1, row, rows);
+// QueueVRAMCopy of 2 rows of both shadow maps from row `row`; returns the registers left (over r: those before)
+function queueRows(P, row, rows = 2, r = {}) {
+  r = queueAfter(P, r, cell(wShadowTilemap, 0, row), cell(vBGMap0, 0, row), rows * TILEMAP_WIDTH / 16);
+  return queueAfter(P, r, cell(wShadowAttrmap, 0, row), cell(vBGMap0, 0, row) + VRAM_BANK1, rows * TILEMAP_WIDTH / 16);
 }
+// `ld hl, src / ld de, dest / ld c, blocks / call QueueVRAMCopy` after registers r: the registers then
+const queueAfter = (P, r, src, dest, blocks) => chain(chain(regs8(r), { hl: src, de: dest, c: blocks }), queueVRAMCopy(P, src, dest, blocks));
 
 // ---- the player-slot boxes ----
 // GetPlayerSlotBoxAddress (38:56AD): the shadow-map cell of wCharSelectSlot's box in this mode's layout
 // (PlayerSlotBoxAddrPtrs_38; NO_BOX for a slot the mode has not). Returns it in bc, a = its low byte, hl after it.
 export function getPlayerSlotBoxAddress(P) {
   const list = word(P, idx(PlayerSlotBoxAddrPtrs_38, rd(P, "charSelectMode") * 2));
-  const at = idx(list, rd(P, "charSelectSlot") * 2), bc = P.bus.u16(at);
-  return { bc, a: bc & 0xFF, hl: (at + 1) & 0xFFFF };
+  const { hl: at, f } = ixF(list, rd(P, "charSelectSlot") * 2), bc = P.bus.u16(at);
+  return { bc, a: bc & 0xFF, hl: (at + 1) & 0xFFFF, f };
 }
 // the box's rows on the screen: 6-7 for the slots on the top line (0, 1), 9-10 for the others
 const boxRow = P => (rd(P, "charSelectSlot") >= 2 ? 9 : 6);
@@ -58,9 +62,9 @@ export function clearPlayerSlotPortrait(P) {
   const box = getPlayerSlotBoxAddress(P).bc;
   fillTilemapRect(P, box, 2, 2, 0x00);
   fillTilemapRect(P, (box + 0x400) & 0xFFFF, 2, 2, 0x08);
-  const marks = (getPlayerSlotBoxAddress(P).bc + 0x1E) & 0xFFFF;
+  const again = getPlayerSlotBoxAddress(P), marks = (again.bc + 0x1E) & 0xFFFF;
   w8(P, marks, 0); w8(P, marks + 1, 0);
-  queueRows(P, boxRow(P));
+  return queueRows(P, boxRow(P), 2, { b: again.bc >> 8 });       // (b: the box's, should both copies find the queue full)
 }
 // DrawPlayerSlotPortrait (38:5612): grid entry b's portrait into the slot's box, its marks, and queue its rows
 export function drawPlayerSlotPortrait(P, entry) {
@@ -68,7 +72,7 @@ export function drawPlayerSlotPortrait(P, entry) {
   writeCharPortraitTiles(P, id, (palette - 1) & 0xFF, getPlayerSlotBoxAddress(P).bc);
   drawPlayerSlotLeftHandedMark(P);
   drawPlayerSlotDifficultyMark(P);
-  queueRows(P, boxRow(P));
+  return queueRows(P, boxRow(P), 2, { b: getPlayerSlotBoxAddress(P).bc >> 8 });   // (b: as the mark's GetPlayerSlotBoxAddress left it)
 }
 // DrawPlayerSlotLeftHandedMark (38:567A): the "L" right of the box below, for a left-handed slot
 export function drawPlayerSlotLeftHandedMark(P) {
@@ -170,13 +174,17 @@ export function writeSlotIconTiles(P, n, kind, de) {
 // second). Maps WRAM 3; nothing once all slots are chosen ($FF).
 export function drawCharGridSlotPrompt(P) {
   P.wramBank(WRAM_SCREEN);
-  if (rd(P, "charSelectSlot") === 0xFF) return;
-  fillTilemapRect(P, cell(wShadowTilemap, 1, 2), 0x12, 1, 0x03);
-  fillTilemapRect(P, cell(wShadowTilemap, 1, 3), 0x12, 1, 0x20);
-  if (rd(P, "cpuDifficultyPrompt")) { renderTextToBuffer64(P, Text_30_149, cell(wShadowTilemap, 1, 3)); return; }
+  const slot = rd(P, "charSelectSlot");
+  if (slot === 0xFF) return { a: 0xFF, f: FZ | FN };
+  let r = farcall(P, FAR.FillTilemapRect, { a: WRAM_SCREEN, de: cell(wShadowTilemap, 1, 2), b: 0x12, c: 1, h: 0x03 });
+  r = farcall(P, FAR.FillTilemapRect, { ...regs8(r), de: cell(wShadowTilemap, 1, 3), b: 0x12, c: 1, h: 0x20 });
+  const prompt = rd(P, "cpuDifficultyPrompt"), de = cell(wShadowTilemap, 1, 3);
+  // (RenderTextToBuffer64 keeps every register: they are those of the farcall, a the prompt flag or the text's low byte)
+  if (prompt) return farcall(P, FAR.RenderTextToBuffer64, { ...regs8(r), a: prompt, hl: Text_30_149, de, c: 0x20 });
   const mode = rd(P, "charSelectMode");
   const table = mode === CHARSELECTMODE_LINK_SINGLES_P2 || mode === CHARSELECTMODE_LINK_DOUBLES_P2 ? CharGridSlotPromptTable1 : CharGridSlotPromptTable0;
-  renderTextToBuffer64(P, word(P, idx(table, rd(P, "charSelectSlot") * 2)), cell(wShadowTilemap, 1, 3));
+  const text = word(P, idx(table, slot * 2));
+  return farcall(P, FAR.RenderTextToBuffer64, { ...regs8(r), a: text & 0xFF, hl: text, de, c: 0x20 });
 }
 
 // ---- the grid's state ----
@@ -240,38 +248,51 @@ export function runCpuDifficultySubmenu(P) {
 export function closeCpuDifficultyPanel(P) {
   wr(P, "cpuDifficultyPanelOpen", 0);
   wr(P, "cpuDifficultyPrompt", 0);
-  copyTilemapRect(P, cell(wShadowTilemap, 0, 22), cell(wShadowTilemap, 0, 14), 0x14, 4);
-  copyTilemapRect(P, cell(wShadowAttrmap, 0, 22), cell(wShadowAttrmap, 0, 14), 0x14, 4);
-  fillTilemapRect(P, cell(wShadowAttrmap, 1, 14), 0x12, 3, 0x00);
-  refreshCharInfoPanel(P);
-  queueMapRows(P, wShadowTilemap, vBGMap0, 17, 1);
-  queueMapRows(P, wShadowAttrmap, vBGMap0 + VRAM_BANK1, 14, 4);
+  let r = farcall(P, FAR.CopyTilemapRect, { a: 0, hl: cell(wShadowTilemap, 0, 22), de: cell(wShadowTilemap, 0, 14), b: 0x14, c: 4 });
+  r = farcall(P, FAR.CopyTilemapRect, { ...regs8(r), hl: cell(wShadowAttrmap, 0, 22), de: cell(wShadowAttrmap, 0, 14), b: 0x14, c: 4 });
+  r = farcall(P, FAR.FillTilemapRect, { ...regs8(r), de: cell(wShadowAttrmap, 1, 14), b: 0x12, c: 3, h: 0x00 });
+  refreshCharInfoPanel(P);                                     // (all registers kept)
+  r = queueAfter(P, r, cell(wShadowTilemap, 0, 17), cell(vBGMap0, 0, 17), TILEMAP_WIDTH / 16);
+  return queueAfter(P, r, cell(wShadowAttrmap, 0, 14), cell(vBGMap0, 0, 14) + VRAM_BANK1, 4 * TILEMAP_WIDTH / 16);
 }
 // HandleCpuDifficultyInput (38:630F): left/right step wCpuDifficultyCursor (0-3, wrapping)
-export function handleCpuDifficultyInput(P) {
+export function handleCpuDifficultyInput(P, entryF = P.cpu.f) {
   const input = rd(P, "menuInputPressed");
   let step;
-  if (input & PADF_LEFT) step = -1; else if (input & PADF_RIGHT) step = 1; else return;
+  if (input & PADF_LEFT) step = -1; else if (input & PADF_RIGHT) step = 1;
+  else return { a: input, f: FZ | 0x20 | (entryF & FC) };          // (its `bit 4, a`)
   sound(P, SFX_MENU_MOVE);
-  wr(P, "cpuDifficultyCursor", wrapIndex((rd(P, "cpuDifficultyCursor") + step) & 0xFF, CPU_DIFFICULTIES));
+  const v = (rd(P, "cpuDifficultyCursor") + step) & 0xFF, a = wrapIndex(v, CPU_DIFFICULTIES);
+  wr(P, "cpuDifficultyCursor", a);
+  // the flags of the ROM's wrap: `add a` carried (below 0: `ld a, 4 / dec a`), `cp 4` (in range) or `xor a`
+  const f = v & 0x80 ? FN | FC : v < CPU_DIFFICULTIES ? FN | ((v & 0xF) < 4 ? 0x20 : 0) | FC : FZ;
+  return { a, f };
 }
 // DrawCpuDifficultyCursorBox (38:633B): the selected-option box around the difficulty (its place and size by the
 // cursor: CpuDifficultyCursorBoxTable0/1)
 export function drawCpuDifficultyCursorBox(P) {
   const n = rd(P, "cpuDifficultyCursor") * 2;
   const at0 = idx(CpuDifficultyCursorBoxTable0, n), at1 = idx(CpuDifficultyCursorBoxTable1, n);
-  drawSelectedOptionBox(P, P.bus.u8(at0 + 1) << 8 | P.bus.u8(at0), P.bus.u8(at1 + 1) << 8 | P.bus.u8(at1));
+  const { f } = ixF(CpuDifficultyCursorBoxTable1, n);
+  return near(P, FAR.DrawSelectedOptionBox[1], { a: P.bus.u8(at1), f, de: P.bus.u8(at0 + 1) << 8 | P.bus.u8(at0),
+    bc: P.bus.u8(at1 + 1) << 8 | P.bus.u8(at1), hl: (at1 + 1) & 0xFFFF });
 }
 // OpenCpuDifficultyPanel (38:636D): the panel (rows 18-21) copied over rows 14-17 of both maps
-export function openCpuDifficultyPanel(P) {
-  withWram(P, WRAM_SCREEN, () => {
-    copyTilemapRect(P, cell(wShadowTilemap, 0, 18), cell(wShadowTilemap, 0, 14), 0x14, 4);
-    copyTilemapRect(P, cell(wShadowAttrmap, 0, 18), cell(wShadowAttrmap, 0, 14), 0x14, 4);
-  });
+export function openCpuDifficultyPanel(P, entryF = P.cpu.f) {
+  const bank = P.V.wramBank;
+  P.wramBank(WRAM_SCREEN);
+  let r = farcall(P, FAR.CopyTilemapRect, { a: WRAM_SCREEN, hl: cell(wShadowTilemap, 0, 18), de: cell(wShadowTilemap, 0, 14), b: 0x14, c: 4 });
+  r = farcall(P, FAR.CopyTilemapRect, { ...regs8(r), hl: cell(wShadowAttrmap, 0, 18), de: cell(wShadowAttrmap, 0, 14), b: 0x14, c: 4 });
+  P.wramBank(bank);
+  return { ...regs8(r), a: bank, f: entryF };
 }
 // QueueCpuDifficultyPanelToVram (38:6396): rows 14-17 of both maps to VRAM
-export function queueCpuDifficultyPanelToVram(P) {
-  withWram(P, WRAM_SCREEN, () => queueRows(P, 14, 4));
+export function queueCpuDifficultyPanelToVram(P, entryF = P.cpu.f) {
+  const bank = P.V.wramBank;
+  P.wramBank(WRAM_SCREEN);
+  const r = queueRows(P, 14, 4, regs8(getRegs(P.cpu)));
+  P.wramBank(bank);
+  return { ...r, a: bank, f: entryF };
 }
 
 export const HOOKS = [
@@ -292,8 +313,8 @@ export const HOOKS = [
   [BANK, 0x5424, hook(P => drawCharGridSlotPrompt(P))],
   [BANK, 0x6216, hook(P => runCpuDifficultySubmenu(P))],
   [BANK, 0x62C8, hook(P => closeCpuDifficultyPanel(P))],
-  [BANK, 0x630F, hook(P => handleCpuDifficultyInput(P))],
+  [BANK, 0x630F, hook((P, c) => handleCpuDifficultyInput(P, c.f))],
   [BANK, 0x633B, hook(P => drawCpuDifficultyCursorBox(P))],
-  [BANK, 0x636D, hook(P => openCpuDifficultyPanel(P))],
-  [BANK, 0x6396, hook(P => queueCpuDifficultyPanelToVram(P))],
+  [BANK, 0x636D, hook((P, c) => openCpuDifficultyPanel(P, c.f))],
+  [BANK, 0x6396, hook((P, c) => queueCpuDifficultyPanelToVram(P, c.f))],
 ];
