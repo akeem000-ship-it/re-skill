@@ -22,6 +22,7 @@ import { decodeColMajor, encodeColMajor, cellOf, img } from "./gfx.js";
 import { REG, labelSprite, applyStyle, applyExtras, applyTouchups, STYLES, EXTRAS } from "./label.js";
 import { TOUCHUPS } from "./touchups.js";
 import { HEROES, off, u16, addContent, shade } from "./build.js";
+import { hairTones } from "./portrait.js";
 
 const CHAR_OBJECT_TABLE = [0x04, 0x4C29], SPRITE_SET_TABLE = [0x07, 0x5A50], OBJECT_LIST = [0x04, 0x4F75];
 const PORTRAIT_TABLE = [0x16, 0x6968], HEAD_BASES = [0x5AF0, 0x62F0];       // 18:5AF0 + 64 * char, 18:62F0 + 64 * char
@@ -84,7 +85,7 @@ export function charGfx(rom, c) {
 // region slots: a block of 16 per modded character (the labelled regions), then a pool for the drawn art
 class Slots {
   constructor(res, nchars) { this.res = res; this.pool = 32 + 16 * nchars; this.next = this.pool; this.byColour = new Map(); res.poolStart = this.pool; }
-  colour(c) { let s = this.byColour.get(c); if (s === undefined) { if (this.next > 255) return 0; s = this.next++; this.byColour.set(c, s); this.res.colours[s] = c; } return s; }
+  colour(c) { let s = this.byColour.get(c); if (s === undefined) { if (this.next >= (this.res.poolTop === undefined ? 256 : this.res.poolTop)) return 0; s = this.next++; this.byColour.set(c, s); this.res.colours[s] = c; } return s; }
 }
 const lum = c => { const r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31; return (r * 0.3 + g * 0.59 + b * 0.11) / 31; };
 
@@ -194,7 +195,7 @@ export function buildMods(rom, mods, res) {
     const base = 32 + 16 * k, c = ch.colours || {};
     const set = (r, v) => { if (v !== undefined) res.colours[base + r] = v & 0x7FFF; };
     set(REG.OUT, c.outline ?? 0x0000); set(REG.SKIN, c.skin); set(REG.SHADE, c.shade ?? (c.skin !== undefined ? shade(c.skin) : undefined));
-    set(REG.HAIR, c.hair); set(REG.HAT, c.hat); set(REG.TOP, c.top); set(REG.BOTTOM, c.bottom); set(REG.SHOES, c.shoes ?? c.bottom); set(REG.RACKET, c.racket);
+    set(REG.HAIR, c.hair); if (c.hair !== undefined) { const t = hairTones(c.hair); set(REG.HAIR2, t.k); set(REG.HAIR3, t.g); } set(REG.HAT, c.hat); set(REG.TOP, c.top); set(REG.BOTTOM, c.bottom); set(REG.SHOES, c.shoes ?? c.bottom); set(REG.RACKET, c.racket);
     if (ch.body) bodyFrames(rom, ch, charGfx(rom, ch.char), res, base);
     if (ch.portrait) portraitArt(rom, ch, res, slots);
     if (ch.head) headArt(rom, ch, res, slots);

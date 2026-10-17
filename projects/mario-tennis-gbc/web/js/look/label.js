@@ -10,16 +10,18 @@
 // trim, shorts), 2 red (all skin), 3 black (outline, hair, eyes, shoes); Nina's is 1 cream (skin and clothes),
 // 2 orange (hair, skirt), 3 black. Portraits are BG tiles: colour 0 is the visible card behind the face.
 
-export const REG = { NONE: 0, OUT: 1, SKIN: 2, HAIR: 3, HAT: 4, TOP: 5, BOTTOM: 6, SHOES: 7, KEEP: 8, SHADE: 9, RACKET: 10, CARD: 11 };
-const { NONE, OUT, SKIN, HAIR, HAT, TOP, BOTTOM, SHOES, KEEP, SHADE, RACKET } = REG;
+import { NEW_STYLES, hairStyleSprite } from "./hairsprites.js";
+
+export const REG = { NONE: 0, OUT: 1, SKIN: 2, HAIR: 3, HAT: 4, TOP: 5, BOTTOM: 6, SHOES: 7, KEEP: 8, SHADE: 9, RACKET: 10, CARD: 11, HAIR2: 12, HAIR3: 13 };
+const { NONE, OUT, SKIN, HAIR, HAT, TOP, BOTTOM, SHOES, KEEP, SHADE, RACKET, HAIR2, HAIR3 } = REG;
 
 // colour index each region is written with when a pixel is edited (the hero's own palette layout)
 const LAYOUT = {
-  alex: { [RACKET]: 3, [OUT]: 3, [HAIR]: 3, [SKIN]: 2, [SHADE]: 2, [HAT]: 1, [TOP]: 1, [BOTTOM]: 1, [SHOES]: 3 },
-  nina: { [RACKET]: 3, [OUT]: 3, [HAIR]: 2, [SKIN]: 1, [SHADE]: 1, [HAT]: 1, [TOP]: 1, [BOTTOM]: 2, [SHOES]: 3 },
+  alex: { [RACKET]: 3, [OUT]: 3, [HAIR]: 3, [SKIN]: 2, [SHADE]: 2, [HAT]: 1, [TOP]: 1, [BOTTOM]: 1, [SHOES]: 3, [HAIR2]: 3, [HAIR3]: 3 },
+  nina: { [RACKET]: 3, [OUT]: 3, [HAIR]: 2, [SKIN]: 1, [SHADE]: 1, [HAT]: 1, [TOP]: 1, [BOTTOM]: 2, [SHOES]: 3, [HAIR2]: 2, [HAIR3]: 2 },
 };
 
-export const STYLES = { alex: ["cap", "headband", "ponytail", "short"], nina: ["pigtails", "cap", "bob", "ponytail"] };
+export const STYLES = { alex: ["cap", "headband", "ponytail", "short", ...NEW_STYLES], nina: ["pigtails", "cap", "bob", "ponytail", ...NEW_STYLES] };
 
 // ---------------------------------------------------------------------------------------------- helpers
 const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]], N8 = [...N4, [1, 1], [1, -1], [-1, 1], [-1, -1]];
@@ -347,7 +349,8 @@ function stylePortrait(st, style) {
 }
 
 export function applyStyle(st, style) {
-  if (st.kind === "portrait") stylePortrait(st, style);
+  if (NEW_STYLES.includes(style) && st.kind !== "portrait") hairStyleSprite(st, style, { REG, set, reoutline, facing, styleAlex, styleNina });
+  else if (st.kind === "portrait") stylePortrait(st, style);
   else if (st.hero === "alex") styleAlex(st, style);
   else styleNina(st, style);
   return st;

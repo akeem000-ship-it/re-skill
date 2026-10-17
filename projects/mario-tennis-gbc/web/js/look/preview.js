@@ -5,6 +5,8 @@ import { decodeColMajor, decodeRowMajor } from "./gfx.js";
 import { REG, labelSprite, labelPortrait, applyStyle, applyTouchups } from "./label.js";
 import { TOUCHUPS } from "./touchups.js";
 import { HEROES } from "./build.js";
+import { hairTones, drawFace } from "./portrait.js";
+import { faceColours } from "./faces.js";
 
 const off = (bank, addr) => addr < 0x4000 ? addr : bank * 0x4000 + (addr - 0x4000);
 const u16 = (rom, bank, addr) => { const o = off(bank, addr); return rom[o] | rom[o + 1] << 8; };
@@ -21,6 +23,7 @@ function shade(c) { const r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31; ret
 function regionColours(look) {
   const c = (look && look.colours) || {}, m = new Map();
   m.set(REG.OUT, 0); if (c.skin !== undefined) { m.set(REG.SKIN, c.skin); m.set(REG.SHADE, shade(c.skin)); }
+  if (c.hair !== undefined) { const t = hairTones(c.hair); m.set(REG.HAIR2, t.k); m.set(REG.HAIR3, t.g); }
   for (const [r, k] of [[REG.HAIR, "hair"], [REG.HAT, "hat"], [REG.TOP, "top"], [REG.BOTTOM, "bottom"], [REG.RACKET, "racket"]]) if (c[k] !== undefined) m.set(r, c[k]);
   m.set(REG.SHOES, c.shoes !== undefined ? c.shoes : c.bottom);
   return m;
@@ -42,6 +45,12 @@ function prep(st, name, look, key) {
   }
   return st;
 }
+// the portrait kit's drawing as an RGBA image (transparent where the kit draws nothing)
+export function faceImage(spec) {
+  const f = drawFace(spec), data = new Uint8ClampedArray(f.w * f.h * 4);
+  for (let i = 0; i < f.w * f.h; i++) { const c = f.px[i]; if (c < 0) continue; data.set([(c & 31) * 255 / 31, ((c >> 5) & 31) * 255 / 31, ((c >> 10) & 31) * 255 / 31, 255], i * 4); }
+  return { w: f.w, h: f.h, data };
+}
 // look: one hero's look ({ style, colours }) or null for the game's own; -> { walk: [4], poses: [n], portrait }
 export function heroPreview(rom, name, look, walkFrame = 0) {
   const h = HEROES[name], pal = basePalette(rom, name), cols = look ? regionColours(look) : null;
@@ -54,10 +63,16 @@ export function heroPreview(rom, name, look, walkFrame = 0) {
     const slot = g * 5 + v, a = u16(rom, h.match, 0x400E + 2 * slot), cols4 = rom[off(h.match, 0x7CE0 + 4 * slot + 2)] ? 4 : 3;
     return paint(prep(labelSprite(decodeColMajor(rom, off(h.match, a), cols4, 4), name, "match"), name, look, `match:${a.toString(16)}`), pal, cols, true);
   });
-  const [pb, pa] = h.portraits[0], { data } = lzDecompress(rom, off(pb, pa));
-  const portrait = paint(prep(labelPortrait(decodeRowMajor(data, 0, 3, 3), name), name, look, "portrait"), pal, cols, false);
-  const faces = h.winlose.map(([b, a], k) => paint(prep(labelPortrait(decodeRowMajor(lzDecompress(rom, off(b, a)).data, 0, 4, 4), name), name, look, k ? "lose" : "win"), pal, cols, false));
-  const heads = h.heads.map(a => paint(prep(labelSprite(decodeColMajor(rom, off(0x18, a), 2, 2), name, "head"), name, look, `head:${a.toString(16)}`), pal, cols, true));
+  let portrait, faces, heads;
+  if (look) {                                          // the redrawn faces (portrait.js), as the game will show them
+    const hero = name === "alex" ? "boy" : "girl", kit = (size, mood) => faceImage({ hero, style: look.style || undefined, face: look.face, colours: faceColours(hero, look.colours), size, mood });
+    portrait = kit(24, "neutral"); faces = [kit(32, "win"), kit(32, "lose")]; heads = [kit(16, "neutral"), kit(16, "neutral")];
+  } else {
+    const [pb, pa] = h.portraits[0], { data } = lzDecompress(rom, off(pb, pa));
+    portrait = paint(prep(labelPortrait(decodeRowMajor(data, 0, 3, 3), name), name, look, "portrait"), pal, cols, false);
+    faces = h.winlose.map(([b, a], k) => paint(prep(labelPortrait(decodeRowMajor(lzDecompress(rom, off(b, a)).data, 0, 4, 4), name), name, look, k ? "lose" : "win"), pal, cols, false));
+    heads = h.heads.map(a => paint(prep(labelSprite(decodeColMajor(rom, off(0x18, a), 2, 2), name, "head"), name, look, `head:${a.toString(16)}`), pal, cols, true));
+  }
   return { walk, poses, portrait, faces, heads };
 }
 // draw an image scaled k x onto a 2D context (mirror: flip horizontally, as a left-handed player)

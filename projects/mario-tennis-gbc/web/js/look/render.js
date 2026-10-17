@@ -10,7 +10,7 @@
 // The emulator's exact picture (ppu.rgb5, frameHash) is never changed: only the displayed frame is.
 import { tileHash } from "./build.js";
 
-const SLOTS = 2 * 512;                                   // VRAM banks x 16-byte tiles
+const SLOTS = 2 * 512, GREY = 64;                                   // VRAM banks x 16-byte tiles
 
 export class LookRenderer {
   constructor(built) {
@@ -18,6 +18,7 @@ export class LookRenderer {
     this.byOffset = built.tileRegions; this.contentRegions = built.contentRegions;
     this.base = built.basePalettes.map(p => p.map(c => [c & 31, (c >> 5) & 31, (c >> 10) & 31]));
     this.colours = built.colours; this.poolStart = built.poolStart || 32;
+    this.faces = built.faces || {}; this.faceTiles = built.faceTiles || new Map();      // the redrawn faces: specs by hero, and their tiles by content (the HD UI draws them)
     this.tags = new Int32Array(SLOTS).fill(-1);
     this.cacheBytes = new Uint8Array(SLOTS * 16); this.cacheRes = new Array(SLOTS).fill(undefined);
     this.mem = null; this.origDma = null;
@@ -66,6 +67,12 @@ export class LookRenderer {
     this.cacheRes[t] = res;
     return res;
   }
+  // which redrawn face tile the 16 bytes at the VRAM address are: { hero, kind: "p24" | "win" | "lose", t, cols } or null
+  faceTile(bank, addr) {
+    const v = this.mem.vram[bank], list = this.faceTiles.get(tileHash(v, addr));
+    if (list) for (const e of list) { let same = true; for (let i = 0; i < 16; i++) if (e.bytes[i] !== v[addr + i]) { same = false; break; } if (same) return e; }
+    return null;
+  }
   // fade amount (0-31) when palette `slot` of palRAM (64 bytes) is one of the hero palettes, else -1
   fade(palRAM, slot) {
     const o = slot * 8, c3 = palRAM[o + 6] | palRAM[o + 7] << 8, d = c3 & 31;
@@ -78,7 +85,9 @@ export class LookRenderer {
       }
       if (ok) return d;
     }
-    return -1;
+    // the game greys the character that is not selected (Pick a Character): a palette of greys only
+    for (let i = 0; i < 4; i++) { const c = palRAM[o + 2 * i] | palRAM[o + 2 * i + 1] << 8; if ((c & 31) !== ((c >> 5) & 31) || (c & 31) !== ((c >> 10) & 31)) return -1; }
+    return (palRAM[o] | palRAM[o + 1] << 8) !== (palRAM[o + 6] | palRAM[o + 7] << 8) ? GREY : -1;
   }
   // displayed colour (0xAABBGGRR) of region value v at fade d, or 0 for "keep the game's colour"; the card region
   // (a portrait pixel a hairstyle removed) takes colour 0 of the BG palette `slot` of palRAM
@@ -86,6 +95,7 @@ export class LookRenderer {
     if (!v) return 0;
     if ((v & 15) === 11 && v < this.poolStart) { if (!palRAM) return 0; const o = slot * 8, c = palRAM[o] | palRAM[o + 1] << 8; return (0xFF000000 | ((c >> 10 & 31) << 19) | ((c >> 5 & 31) << 11) | ((c & 31) << 3)) >>> 0; }
     const c = this.colours[v]; if (c === 0xFFFF) return 0;
+    if (d === GREY) { const l = (0.3 * (c & 31) + 0.59 * ((c >> 5) & 31) + 0.11 * ((c >> 10) & 31)) / 31, g = Math.min(31, Math.round(4 + Math.sqrt(l) * 25)); return (0xFF000000 | (g << 19) | (g << 11) | (g << 3)) >>> 0; }
     const r = Math.min(31, (c & 31) + d), g = Math.min(31, ((c >> 5) & 31) + d), b = Math.min(31, ((c >> 10) & 31) + d);
     return (0xFF000000 | (b << 19) | (g << 11) | (r << 3)) >>> 0;
   }

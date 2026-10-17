@@ -6,6 +6,9 @@ import { LookManager, normalizeLook, lookKey, PRESETS, SWATCHES, css15, rgb15 } 
 import { normalizeMod } from "./mods.js";
 import { STYLES } from "./label.js";
 import { heroPreview, blit, POSES } from "./preview.js";
+import { FACE, FACE_LABEL, normalizeFace } from "./portrait.js";
+import { hdFaceCanvas } from "./hdface.js";
+import { faceColours } from "./faces.js";
 import { lzDecompress } from "./lz.js";
 import { HEROES } from "./build.js";
 
@@ -16,7 +19,8 @@ const save = (k, v) => { try { if (v) localStorage.setItem(k, JSON.stringify(v))
 // start), and which are on. The stored looks never hold the mods: the enabled ones are merged in whenever a look is applied.
 const MODS_LIB = "mt-mods-lib", MODS_ON = "mt-mods-on";
 const stripMods = look => { if (!look) return look; const o = { ...look }; delete o.mods; return normalizeLook(o); };
-const STYLE_LABEL = { cap: "Cap", headband: "Headband", ponytail: "Ponytail", short: "Short hair", pigtails: "Pigtails", bob: "Bob" };
+const STYLE_LABEL = { cap: "Cap", headband: "Headband", ponytail: "Ponytail", short: "Short hair", pigtails: "Pigtails", bob: "Bob", afro: "Afro", puffs: "Puffs", cornrows: "Cornrows", locs: "Locs", braids: "Box braids", fade: "Fade" };
+const FACE_ROWS = [["shape", "Face shape", FACE.shapes], ["eyes", "Eyes", FACE.eyes], ["brows", "Eyebrows", FACE.brows], ["mouth", "Mouth", FACE.mouths]];
 const PARTS = [["skin", "Skin", "skin"], ["hair", "Hair", "hair"], ["hat", "Hat / band", "cloth"], ["top", "Top", "cloth"], ["bottom", "Shorts / skirt", "cloth"], ["shoes", "Shoes", "cloth"], ["racket", "Racket", "cloth"]];
 const WRAM_STORY_SLOT = 0x36C, WRAM_HANDEDNESS = 0xB50;   // wCurrentStorySlot $C36C, wCharSelectHandedness $CB50
 
@@ -68,6 +72,7 @@ export function mountCreator({ hud, keys, pause, onChange }) {
     for (const id of library.keys()) prefs[id] = on.has(id);
     try { localStorage.setItem(MODS_ON, JSON.stringify(prefs)); localStorage.setItem(MODS_LIB, JSON.stringify([...library.values()].filter(v => !v.bundled).map(v => v.def))); } catch (e) { /* private mode */ }
   }
+  import("../hdui.js").then(() => import("./hdportrait.js")).then(m => m.installHDPortraits()).catch(() => { /* no HD UI on this page */ });
   const st = document.createElement("style"); st.textContent = CSS; document.head.appendChild(st);
   const btn = document.createElement("span"); btn.className = "k"; btn.id = "lookbtn"; btn.textContent = "LOOK"; btn.title = "your player's appearance (hairstyle and colours)";
   hud.appendChild(document.createTextNode(" ")); hud.appendChild(btn);
@@ -78,8 +83,11 @@ export function mountCreator({ hud, keys, pause, onChange }) {
     <h2>Appearance <button class="x" aria-label="close">×</button></h2>
     <div class="row" data-k="hero"></div>
     <canvas width="392" height="196"></canvas>
+    <canvas class="faces" width="392" height="104" title="the portrait, win and lose faces and HUD heads"></canvas>
+    <canvas class="hdfaces" width="392" height="100" title="the same faces in the HD UI"></canvas>
     <div class="lab">Presets</div><div class="row" data-k="presets"></div>
     <div class="lab">Hairstyle</div><div class="row" data-k="style"></div>
+    <div data-k="face"></div>
     <div data-k="colours"></div>
     <div class="row"><label class="note"><input type="checkbox" data-k="lefty"> Left-handed (the game's START: Change Hands on Create a Character)</label></div>
     <div class="lab">Mods</div><div data-k="mods"></div>
@@ -87,17 +95,32 @@ export function mountCreator({ hud, keys, pause, onChange }) {
     <div class="acts"><button class="btn" data-k="classic">Game's look</button><button class="btn" data-k="cancel">Cancel</button><button class="btn go" data-k="apply">Apply</button></div>
   </div>`;
   document.body.appendChild(panel);
-  const q = k => panel.querySelector(`[data-k="${k}"]`), cv = panel.querySelector("canvas"), ctx = cv.getContext("2d");
+  const q = k => panel.querySelector(`[data-k="${k}"]`), cv = panel.querySelector("canvas"), ctx = cv.getContext("2d"), fcv = panel.querySelector("canvas.faces"), fctx = fcv.getContext("2d"), hcv = panel.querySelector("canvas.hdfaces"), hctx = hcv.getContext("2d");
   const name = () => hero === "boy" ? "alex" : "nina";
 
   function cur() { return draft[hero]; }
-  function ensure() { if (!draft[hero]) draft[hero] = { style: STYLES[name()][0], colours: {} }; return draft[hero]; }
+  function ensure() {
+    if (!draft[hero]) { const base = PRESETS[hero][1].look; draft[hero] = { style: STYLES[name()][0], colours: { ...base.colours }, face: normalizeFace(null, hero) }; }
+    return draft[hero];
+  }
   function chip(label, on, fn) { const b = document.createElement("button"); b.className = "chip" + (on ? " on" : ""); b.textContent = label; b.onclick = fn; return b; }
   function render() {
     const hn = q("hero"); hn.replaceChildren(chip("Boy", hero === "boy", () => { hero = "boy"; render(); }), chip("Girl", hero === "girl", () => { hero = "girl"; render(); }));
     const pr = q("presets"); pr.replaceChildren(...PRESETS[hero].map(p => chip(p.name, lookKey({ [hero]: p.look }) === lookKey({ [hero]: cur() }), () => { draft[hero] = p.look ? JSON.parse(JSON.stringify(p.look)) : null; render(); })));
     const c = cur();
     q("style").replaceChildren(...STYLES[name()].map(s => chip(STYLE_LABEL[s] || s, c && c.style === s, () => { ensure().style = s; render(); })));
+    const fb = q("face"); fb.replaceChildren();
+    const face = normalizeFace(c && c.face, hero), setFace = patch => { const L = ensure(); L.face = normalizeFace({ ...normalizeFace(L.face, hero), ...patch }, hero); render(); };
+    for (const [k, label, list] of FACE_ROWS) {
+      const lab = document.createElement("div"); lab.className = "lab"; lab.textContent = label; fb.appendChild(lab);
+      const row = document.createElement("div"); row.className = "row";
+      for (const v of list) row.appendChild(chip(FACE_LABEL[v] || v, face[k] === v, () => setFace({ [k]: v })));
+      fb.appendChild(row);
+    }
+    const lab = document.createElement("div"); lab.className = "lab"; lab.textContent = "Extras"; fb.appendChild(lab);
+    const row = document.createElement("div"); row.className = "row";
+    for (const v of FACE.extras) row.appendChild(chip(FACE_LABEL[v] || v, face.extras.includes(v), () => setFace({ extras: face.extras.includes(v) ? face.extras.filter(e => e !== v) : [...face.extras, v] })));
+    fb.appendChild(row);
     const box = q("colours"); box.replaceChildren();
     for (const [k, label, set] of PARTS) {
       const lab = document.createElement("div"); lab.className = "lab"; lab.textContent = label; box.appendChild(lab);
@@ -135,7 +158,7 @@ export function mountCreator({ hud, keys, pause, onChange }) {
     };
     imp.appendChild(inp); row.appendChild(imp); box.appendChild(row);
   }
-  let anim = 0;
+  let anim = 0, hdKey = "";
   function drawPreview() {
     if (!pristine) return;
     const n = name(), L = cur(), P = heroPreview(pristine, n, L, (anim >> 1) & 1);
@@ -143,6 +166,16 @@ export function mountCreator({ hud, keys, pause, onChange }) {
     ctx.fillStyle = "#c48a3a"; ctx.fillRect(0, 0, cv.width, 80);           // a path for the overworld row
     P.walk.forEach((im, i) => blit(ctx, im, 10 + i * 66, 8, 4));
     blit(ctx, P.portrait, 290, 4, 3);
+    fctx.fillStyle = "#2a2f3e"; fctx.fillRect(0, 0, fcv.width, fcv.height);
+    blit(fctx, P.portrait, 6, 6, 4); blit(fctx, P.faces[0], 108, 4, 3); blit(fctx, P.faces[1], 210, 4, 3);
+    { const hero = n === "alex" ? "boy" : "girl", base = { hero, style: L && L.style || undefined, face: L && L.face, colours: faceColours(hero, L && L.colours) };
+      const key = JSON.stringify([L && base]);
+      if (key !== hdKey) {                                                  // the vector art is drawn once per change
+        hdKey = key; hctx.fillStyle = "#2a2f3e"; hctx.fillRect(0, 0, hcv.width, hcv.height);
+        if (L) ["neutral", "win", "lose"].forEach((mood, i) => hctx.drawImage(hdFaceCanvas({ ...base, mood }, 96), 4 + i * 100, 2, 96, 96));
+        else { hctx.fillStyle = "#aab"; hctx.font = "13px system-ui"; hctx.fillText("the game's own faces", 10, 50); }
+      } }
+    fctx.fillStyle = "#4a8a58"; fctx.fillRect(314, 6, 76, 40); blit(fctx, P.heads[0], 318, 8, 2); blit(fctx, P.heads[1], 354, 8, 2);
     ctx.fillStyle = "#3a6e9a"; ctx.fillRect(0, 80, cv.width, cv.height - 80); ctx.fillStyle = "#e8eef4"; ctx.fillRect(0, 188, cv.width, 2);
     const lefty = !!(L && L.lefty);
     P.poses.slice(0, 5).forEach((im, i) => blit(ctx, im, 4 + i * 78, 86, 3, lefty));
