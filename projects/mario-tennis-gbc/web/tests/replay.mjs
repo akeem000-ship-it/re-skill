@@ -33,6 +33,7 @@ else {
   if (rec.meta.port === "all" || engine === "portall") hooks = (await import("../js/port/program.js")).program.hooks;
   else for (const m of rec.meta.port.split(",")) hooks.push(...(await import(`../js/port/${m}.js`)).HOOKS);
   port = new GamePort(romBytes, { ...entry, hooks }, { audio: false }); gb = port.gb;
+  if (rec.meta.physics === "enhanced") { const { EnhancedPhysics } = await import("../js/engine/enhanced.js"); port.physics = new EnhancedPhysics(); }   // PHYSICS: Enhanced (a recording without meta.physics is classic)
 }
 if (!port && !a.includes("--interp")) { try { const mod = await import("../gen/game.js"); const T = {}; mod.install(T); gb.installRecomp(T); if (mod.HRAM_SIG) gb.exec.setHramSig(mod.HRAM_SIG); } catch (e) { console.log("interpreter only:", e.message); } }
 loadState(gb, rec.start);

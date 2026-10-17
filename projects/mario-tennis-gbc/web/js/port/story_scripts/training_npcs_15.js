@@ -5,8 +5,10 @@
 // the party on the court it played. The map-script tables and the jump tables are data.
 // Port of src/story/training_npcs_15.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/
 // mario-tennis-gbc-disasm), whose routine names these are.
-// Recordings: out/port/ss1_coach*.mtrec, out/port/ss2_lesson*.mtrec (the coaches, the results and re-entries),
-// out/port/ss2_watersprite*.mtrec (scripted: the swing contest, the silver and the gold racket).
+// Recordings: out/port/ss1_tc_*.mtrec (part 1's scripted training court: the challengers, coaches and results),
+// out/port/ss2_water_*.mtrec (scripted: the swing contest without a reward, the silver and the gold racket),
+// ss2_tc_*.mtrec (scripted: the re-entries, the practices' results, the serve challenger and coach),
+// ss2_talk_trainingcourt*.mtrec (scripted: the court's NPCs).
 import {
   ACTOR_PARTNER, ACTOR_PLAYER, ANIM_BOUNCE, ANIM_NOD, FACE_DOWN, FACE_LEFT, FACE_RIGHT, FACE_UP, actorState,
   advanceText, face, fadeIn, fadeOutAndWait, jumpTableTarget, jumpVelocity, loadPalettesImmediate, lockFacing,

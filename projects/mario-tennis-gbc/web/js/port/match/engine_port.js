@@ -76,5 +76,6 @@ export function engine(P) {
     E.sfx = id => playSoundManaged(P, id);
     E.modeHook = d => callModeHook(P, d);                                 // CallModeHook (the minigames' hooks)
   }
+  E.physics = P.physics || null;                                          // PHYSICS: Enhanced (engine/enhanced.js); null = the game's own ball
   return E;
 }

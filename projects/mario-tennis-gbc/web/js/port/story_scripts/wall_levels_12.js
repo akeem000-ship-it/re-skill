@@ -6,8 +6,8 @@
 // launch. The text-id tables, the jump tables and the drill table are data.
 // Port of src/story/wall_levels_12.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/
 // mario-tennis-gbc-disasm), whose routine names these are.
-// Recordings: out/port/ss2_wall*.mtrec (scripted: the wall practice room, its levels won and lost, the master
-// level, the re-entries).
+// Recordings: out/port/ss2_wall_*.mtrec (scripted: the wall practice room: the attendant, the level signs, the
+// levels won and lost, the master and expert levels, the re-entries, singles and doubles).
 import {
   ACTOR_PARTNER, ACTOR_PLAYER, ANIM_BOUNCE, ANIM_NOD, FACE_DOWN, FACE_RIGHT, FACE_UP, FLAG_DOUBLES, askYesNo,
   advanceText, beginCutscene, clearFlag, copySceneRect, copySceneToVram, disableLCDSafely, enableLCD, endCutscene,

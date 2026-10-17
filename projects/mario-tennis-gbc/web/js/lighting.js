@@ -164,7 +164,7 @@ void main() {
   // point lights
   vec3 add = vec3(0.0);
   for (int i = 0; i < 6; i++) { if (i >= uNP) break; vec3 dv = uPP[i].xyz - P; float r = length(dv) / uPP[i].w; float a = clamp(1.0 - r, 0.0, 1.0); a *= a; add += uPC[i] * a * (0.55 + 0.45 * clamp(dot(n, normalize(dv)), 0.0, 1.0)); }
-  if (uPool.z > 0.0) { vec2 q = (P.xz - uPool.xy) / uPool.zw; add += uPoolC * (1.0 - smoothstep(0.75, 1.5, length(q))); }
+  if (uPool.z > 0.0) { vec2 q = (P.xz - uPool.xy) / uPool.zw; add += uPoolC * (1.0 - smoothstep(0.62, 1.22, length(q))); }
   vec4 g4 = texture(uGlow, vUV); vec3 gl = g4.rgb;
   // lamps / windows keep their own light and shine
   float em = smoothstep(0.1, 0.5, texture(uE, vUV).a) * smoothstep(0.2, 0.6, glassy(c0)) * (1.0 - up);   // lit panes and lamps (on walls)

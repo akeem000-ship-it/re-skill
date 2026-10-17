@@ -12,7 +12,7 @@
 // Static geometry (a few thousand boxes in one instanced buffer, the crowd in another) is built once per court and palette.
 // voxel.js has four small hooks (marked "STADIUM"): paint() after the court picture is painted, draw() in place of the flat
 // stands, cut() for the cut-outs it replaces (the umpire chair), and the constructor field.
-import { courtImage } from "./assets.js";
+import { palettes, tilePixel } from "./rom.js";
 import { FLOODS, FLOOD_HEIGHT } from "./lighting.js";
 const KEY = "mt-stadium";
 export const STADIUM_MODES = ["classic", "3d"];
@@ -80,6 +80,24 @@ function cubeVerts() {
   }
   return new Float32Array(out);
 }
+// the stadium map (RPG map 32) as RGBA, decoded only where the stands are (the same decoding as assets.js courtImage): the colours of
+// the seats and the concrete come from it
+function stadiumPixels(rom) {
+  const base = 0x59D9 + STADIUM_MAP * 16, ref = i => [rom.u8(0x0A, base + i * 2), rom.u8(0x0A, base + i * 2 + 1)];
+  const [pi, pb] = ref(1), [mi, mb] = ref(2), [ai, ab] = ref(3), [ti, tb] = ref(7);
+  const pal = palettes(rom.rawRef(pi, pb, 64)), tmap = rom.lzRef(mi, mb), attr = rom.lzRef(ai, ab), tiles = rom.lzRef(ti, tb), S = tmap.length >= 4096 ? 64 : 32, W = S * 8;
+  const vram = new Uint8Array(0x1800); vram.set(tiles.subarray(0, 0x800), 0x1000); vram.set(tiles.subarray(0x800, 0x1000), 0x800);
+  const d = new Uint8ClampedArray(W * W * 4);
+  for (const [x0, y0, x1, y1] of [[18, 112, 120, 296], [290, 112, 370, 296], [18, 12, 370, 96]]) {
+    for (let ty = y0 >> 3; ty < (y1 + 7) >> 3; ty++) for (let tx = x0 >> 3; tx < (x1 + 7) >> 3; tx++) {
+      const i = ty * S + tx, t = tmap[i], at = attr[i], off = 0x1000 + (t < 128 ? t : t - 256) * 16, p = pal[at & 7];
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+        const col = p[tilePixel(vram, off, at & 0x20 ? 7 - x : x, at & 0x40 ? 7 - y : y)], o = ((ty * 8 + y) * W + tx * 8 + x) * 4; d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = 255;
+      }
+    }
+  }
+  return { d, w: W };
+}
 class Boxes {
   constructor() { this.a = new Float32Array(8 * 4096); this.n = 0; }
   add(x, y, z, sx, sy, sz, rgb, jit = 0) {
@@ -140,7 +158,7 @@ export class Stadium3D {
   palette(bg, rom) {
     const P = {}, W = 256;
     let st = this.stadiumImg;
-    if (!st && rom) { try { const c = courtImage(rom, STADIUM_MAP); st = this.stadiumImg = { d: c.getContext("2d").getImageData(0, 0, c.width, c.height).data, w: c.width }; } catch (e) { st = null; } }
+    if (!st && rom) { try { st = this.stadiumImg = stadiumPixels(rom); } catch (e) { st = null; } }
     // seats and concrete from the stadium map's stands
     let seats = [[70, 140, 230], [240, 120, 40]], conc = [150, 140, 160], dark = [60, 56, 74];
     if (st) {
@@ -182,8 +200,8 @@ export class Stadium3D {
   // ---- geometry ----
   build() {
     const t0 = performance.now(), { bg, courtId } = this.pend, v = this.v, gl = this.gl; this.pend = null;
-    this.gfx(); const P = this.palette(bg, v.rom), rnd = mulberry32(0x57AD1 + courtId * 977);
-    const B = new Boxes(), crowd = [];
+    const tg = performance.now(); this.gfx(); const tp = performance.now(); const P = this.palette(bg, v.rom), rnd = mulberry32(0x57AD1 + courtId * 977);
+    const tb = performance.now(); const B = new Boxes(), crowd = [];
     const N = 8, D = 80, RISE = 38, BASE = 130, SEAT = 44;
     const STANDS = [{ id: "left", side: true, dir: -1, inner: -1180, v0: -1640, v1: 1900 }, { id: "right", side: true, dir: 1, inner: 1180, v0: -1640, v1: 1900 },
                     { id: "far", side: false, dir: -1, inner: -1800, v0: -2030, v1: 2030, skip: [2, 6, 7, 14] }];
@@ -278,7 +296,7 @@ export class Stadium3D {
     gl.bindBuffer(gl.ARRAY_BUFFER, bufC); for (const [loc, off] of [[2, 0], [3, 16]]) { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, 32, off); gl.vertexAttribDivisor(loc, 1); }
     gl.bindVertexArray(null);
     this.built = { boxBuf: bufB, boxVao: vaoB, boxN: B.n, crowdBuf: bufC, crowdVao: vaoC, crowdN: crowd.length / 8, court: courtId };
-    this.stats = { boxes: B.n, crowd: crowd.length / 8, ms: performance.now() - t0 };
+    this.stats = { boxes: B.n, crowd: crowd.length / 8, ms: performance.now() - t0, gfx: tp - tg, palette: tb - tp, geom: performance.now() - tb };
   }
 
   // the dot-matrix scoreboard: points of both players from the game's score bytes (0 15 30 40, AD)

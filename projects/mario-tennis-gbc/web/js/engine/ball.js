@@ -20,8 +20,13 @@ export function advanceMatchRng(E) {
 // 08:66F1 CallModeHook: minigames and drills hook the frame here (wModeHookBank 0 = a normal match)
 export function callModeHook(E, id) { if (E.mem.u8(MODE_HOOK_BANK) && E.modeHook) E.modeHook(id); }
 
-// 08:5767 StepBallPhysics
+// 08:5767 StepBallPhysics. E.physics (null = the game's own ball) swaps in the "PHYSICS: Enhanced" model (enhanced.js), which keeps this
+// routine's order, fields and event bytes
 export function stepBallPhysics(E) {
+  if (E.physics) return E.physics.step(E);
+  return stepBallPhysicsClassic(E);
+}
+export function stepBallPhysicsClassic(E) {
   const S = E.S, m = E.mem, M = E.M;
   S.ballBounceEvent = 0;
   for (let i = 0; i < 12; i++) m.w8(0xC410 + i, m.u8(0xC400 + i));      // wBallPrev* = the position block

@@ -6,8 +6,8 @@
 // Port of src/story/water_15.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/
 // mario-tennis-gbc-disasm), whose routine names these are; TogglePlayerSpriteXFlip is
 // src/twins/mirror_player_sprite_if_left_handed.asm (mario_world_0e.js).
-// Recordings: out/port/ss2_watersprite*.mtrec (scripted: the swing contest), out/port/ss2_tour*.mtrec (scripted:
-// the intro tour), out/port/ss1_challenger*.mtrec (part 1's scripted serve matches).
+// Recordings: out/port/ss2_water_*.mtrec (scripted: the swing contest), out/port/ss2_tc_tour.mtrec (scripted: the
+// intro tour), out/port/ss1_tc_sm*.mtrec (part 1's scripted serve matches' results).
 import {
   ACTOR_PLAYER, ANIM_BOUNCE, ANIM_NOD, FACE_DOWN, FACE_LEFT, FACE_RIGHT, FZ, OAM_BANK1, TILE_SIZE, VRAM_BANK1,
   advanceFrame, beginCutscene, endCutscene, face, faceToward, farcall, fadeIn, fadeOut,

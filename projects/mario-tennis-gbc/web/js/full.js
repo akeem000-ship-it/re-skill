@@ -218,7 +218,10 @@ function loop(now) {
 // every module in progress; ?port=a/b,c/d picks modules (paths under web/js/port).
 let port = null, portError = null;
 // the mode: the page's selector, or #port / #portall in the link, or ?port in the URL
-const portMode = () => { const h = location.hash.slice(1), sel = $("engine") && $("engine").value; return h === "port" || h === "portall" ? h : q.has("port") ? "port" : sel || "rom"; };
+// PHYSICS: Classic / Enhanced (web/js/engine/enhanced.js): ?physics=enhanced|classic, else the remembered choice; Enhanced runs only through the port
+// (the ROM's own code cannot be changed), so it turns the default CODE: ROM into the port
+const physicsMode = () => { const v = q.get("physics") || stored("mt-physics"); return v === "enhanced" ? "enhanced" : "classic"; };
+const portMode = () => { const h = location.hash.slice(1), sel = $("engine") && $("engine").value, m = h === "port" || h === "portall" ? h : q.has("port") ? "port" : sel || "rom"; return m === "rom" && physicsMode() === "enhanced" ? "port" : m; };
 if ($("engine")) {
   const saved = stored("mt-engine");
   if (location.hash === "#port" || location.hash === "#portall") $("engine").value = location.hash.slice(1);
@@ -244,7 +247,9 @@ async function makePort(bytes) {
     hooks = [];
     for (const m of want ? want.split(",") : PORT_VERIFIED) hooks.push(...(await import(`./port/${m}.js`)).HOOKS);
   }
-  return new GamePort(bytes, { ...entry, hooks }, { audio: true, sampleRate: 44100 });
+  const P = new GamePort(bytes, { ...entry, hooks }, { audio: true, sampleRate: 44100 });
+  if (physicsMode() === "enhanced") { const { EnhancedPhysics } = await import("./engine/enhanced.js"); P.physics = new EnhancedPhysics(); }
+  return P;
 }
 function portFrame() {
   if (portError) return;
@@ -319,7 +324,7 @@ $("forgetrom").addEventListener("click", () => romStore("readwrite", s => s.dele
 $("reset").addEventListener("click", () => { if (port) { location.reload(); return; } if (gb) { gb.reset(); rec.event("reset"); } });
 // ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
 // a .mtrec file (Android: Downloads/MTenn3D and the share sheet; browser: a download). Hiding the app stops and saves.
-const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), font, ua: navigator.userAgent, look: creator.look || undefined,
+const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? "enhanced" : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
   port: port ? (portMode() === "portall" ? "all" : (q.get("port") || PORT_VERIFIED.join(","))) : undefined });
 async function saveRecording(now = false) {     // now: the app is being hidden; skip compression so it finishes at once
   if (!recording()) return;
@@ -386,6 +391,19 @@ $("turbo").addEventListener("pointerdown", () => { turbo = !turbo; $("turbo").cl
 // remembered, then the page reloads
 const ENGINE_LABEL = { rom: "CODE: ROM", port: "CODE: PORT", portall: "CODE: PORT+" };
 $("engbtn").textContent = ENGINE_LABEL[portMode()] || "CODE: ROM";
+// PHYSICS: Classic / Enhanced: remembered, then the page reloads (Enhanced needs the port; a running game is lost, as with CODE)
+{
+  const b = document.createElement("span"); b.className = "k"; b.id = "physbtn"; b.title = "ball physics: the game's own, or Enhanced (Tennis-Elbow-style flight, spin and bounce on the same landing points); runs through the JS port";
+  const show = () => { b.textContent = "PHYSICS: " + (physicsMode() === "enhanced" ? "Enhanced" : "Classic"); b.classList.toggle("on", physicsMode() === "enhanced"); }; show();
+  b.addEventListener("pointerdown", () => {
+    const next = physicsMode() === "enhanced" ? "classic" : "enhanced";
+    try { localStorage.setItem("mt-physics", next); if (next === "enhanced" && portMode() === "rom") localStorage.setItem("mt-engine", "port"); } catch (e) { /* private mode */ }
+    if ($("engine") && next === "enhanced" && $("engine").value === "rom") $("engine").value = "port";
+    const u = new URL(location.href); u.searchParams.delete("physics"); history.replaceState(null, "", u.pathname + u.search + u.hash);
+    location.reload();
+  });
+  $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b);
+}
 $("engbtn").addEventListener("pointerdown", () => {
   const order = ["rom", "port", "portall"], next = order[(order.indexOf(portMode()) + 1) % order.length];
   try { localStorage.setItem("mt-engine", next); } catch (e) { /* private mode */ }

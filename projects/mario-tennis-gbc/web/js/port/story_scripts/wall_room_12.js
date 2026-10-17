@@ -8,8 +8,8 @@
 // Port of src/story/wall_room_12.asm of the gerbiljames/mario-tennis-gbc-disasm (MIT, third_party/
 // mario-tennis-gbc-disasm), whose routine names these are; DormEntranceArrival02_12 and DormEntranceArrival01_12
 // are src/twins/academy_main_bldg_arrival02.asm and academy_main_bldg_arrival01.asm (twins.js).
-// Recordings: out/port/ss2_dorm*.mtrec (scripted: the first night at the dorm entrance, both replies),
-// out/port/ss2_wall*.mtrec (scripted: the wall practice room).
+// Recordings: out/port/ss2_dorm_*.mtrec (scripted: the first night at the dorm entrance, both replies and partner
+// genders; the door; the arrivals in doubles), out/port/ss2_wall_*.mtrec (scripted: the wall practice room).
 import {
   ACTOR_PARTNER, ACTOR_PLAYER, ANIM_BOUNCE, ANIM_NOD, ANIM_SHAKE, ANIM_WALK, FACE_DOWN, FACE_UP, FLAG_DOUBLES,
   advanceText, askYesNo, clearFlag, closeDialogue, face, facePair, faceToward, fadeIn, fadeInAndWait, fadeOut,
