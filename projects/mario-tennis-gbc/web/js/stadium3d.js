@@ -70,9 +70,9 @@ void main() {
   vCol = c * aSh; gl_Position = uMVP * vec4(aP.xyz + p * s, 1.0);
 }`;
 
-// the unit cube (36 vertices: x, y, z in 0..1 and the face shade), faces wound outwards
+// the unit cube without its bottom face (30 vertices: x, y, z in 0..1 and the face shade), faces wound outwards
 function cubeVerts() {
-  const out = [], faces = [[[1, 0, 0], [0, 1, 0], [0, 0, 1], 0.74], [[-1, 0, 0], [0, 0, 1], [0, 1, 0], 0.70], [[0, 1, 0], [0, 0, 1], [1, 0, 0], 1.0], [[0, -1, 0], [1, 0, 0], [0, 0, 1], 0.45], [[0, 0, 1], [1, 0, 0], [0, 1, 0], 0.88], [[0, 0, -1], [0, 1, 0], [1, 0, 0], 0.62]];
+  const out = [], faces = [[[1, 0, 0], [0, 1, 0], [0, 0, 1], 0.74], [[-1, 0, 0], [0, 0, 1], [0, 1, 0], 0.70], [[0, 1, 0], [0, 0, 1], [1, 0, 0], 1.0], [[0, 0, 1], [1, 0, 0], [0, 1, 0], 0.88], [[0, 0, -1], [0, 1, 0], [1, 0, 0], 0.62]];
   for (const [n, t1, t2, sh] of faces) {
     const c0 = [0.5 + n[0] * 0.5 - t1[0] * 0.5 - t2[0] * 0.5, 0.5 + n[1] * 0.5 - t1[1] * 0.5 - t2[1] * 0.5, 0.5 + n[2] * 0.5 - t1[2] * 0.5 - t2[2] * 0.5];
     const P = [c0, c0.map((v, i) => v + t1[i]), c0.map((v, i) => v + t1[i] + t2[i]), c0.map((v, i) => v + t2[i])];
@@ -114,9 +114,9 @@ export class Stadium3D {
     this.pBox = v.link(VS_BOX, FS_BOX, ["aCorner", "aShade", "aA", "aB"]); this.uBox = { uMVP: gl.getUniformLocation(this.pBox, "uMVP") };
     this.pCrowd = v.link(VS_CROWD, FS_BOX, ["aV", "aSh", "aP", "aQ"]); this.uCrowd = Object.fromEntries(["uMVP", "uT", "uCheer"].map(n => [n, gl.getUniformLocation(this.pCrowd, n)]));
     this.cube = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, this.cube); gl.bufferData(gl.ARRAY_BUFFER, cubeVerts(), gl.STATIC_DRAW);
-    // crowd figure: 4 boxes (body, head, two arms) of 36 vertices: x, y, z, part, then the shade
+    // crowd figure: 4 boxes (body, head, two arms) of 30 vertices: x, y, z, part, then the shade
     const cv = cubeVerts(), fig = [], box = (cx, y0, cz, sx, sy, sz, part, armTop = false) => {
-      for (let i = 0; i < 36; i++) {
+      for (let i = 0; i < 30; i++) {
         const x = (cv[i * 4] - 0.5) * sx + cx, y = cv[i * 4 + 1] * sy + y0, z = (cv[i * 4 + 2] - 0.5) * sz + cz;
         fig.push(x, y, z, armTop ? (cv[i * 4 + 1] > 0.5 ? 3 : 2) : part, cv[i * 4 + 3]);
       }
@@ -211,7 +211,7 @@ export class Stadium3D {
           const c = ((sec * 2 + (i >> 1)) % 5 < 3) ? P.seatA : P.seatB;
           box(u + 14, u + 44, v0, v0 + SEAT * 5 - 6, y, y + 14, c, 0.05); box(u + 44, u + 51, v0, v0 + SEAT * 5 - 6, y + 14, y + 42, shade(c, 0.88), 0.05);
           for (let s = 0; s < 5; s++) {
-            if (rnd() > 0.76) continue;
+            if (rnd() > 0.7) continue;
             const [x, z] = at(u + 28, v0 + s * SEAT + SEAT / 2 - 3), tone = rnd();
             crowd.push(x, y + 12, z, rnd(), pack(P.shirts[Math.floor(rnd() * P.shirts.length)]), pack(SKIN[Math.floor(tone * tone * SKIN.length)]), 0.86 + rnd() * 0.3, 0);
           }
@@ -309,9 +309,10 @@ export class Stadium3D {
       if (!this.built) return; this.tick();
       const T = performance.now() / 1000, cheer = clamp(1 - (T - this.cheerAt) / 3.4) ** 0.7;
       gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK);
-      gl.useProgram(this.pBox); gl.uniformMatrix4fv(this.uBox.uMVP, false, mvp); gl.bindVertexArray(this.built.boxVao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, this.built.boxN);
+      gl.useProgram(this.pBox); gl.uniformMatrix4fv(this.uBox.uMVP, false, mvp); gl.bindVertexArray(this.built.boxVao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 30, this.built.boxN);
       gl.useProgram(this.pCrowd); gl.uniformMatrix4fv(this.uCrowd.uMVP, false, mvp); gl.uniform1f(this.uCrowd.uT, T); gl.uniform1f(this.uCrowd.uCheer, cheer);
-      gl.bindVertexArray(this.built.crowdVao); gl.drawArraysInstanced(gl.TRIANGLES, 0, this.figVerts, this.built.crowdN);
+      gl.bindVertexArray(this.built.crowdVao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 60, this.built.crowdN);        // bodies and heads
+      if (cheer > 0.01) gl.drawArraysInstanced(gl.TRIANGLES, 60, 60, this.built.crowdN);                                // arms, only while cheering
       gl.disable(gl.CULL_FACE);
       // the scoreboard's screen (a card in front of its frame)
       if (this.boardPos) {
