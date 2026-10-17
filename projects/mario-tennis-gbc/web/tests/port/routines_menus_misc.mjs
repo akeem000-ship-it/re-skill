@@ -251,7 +251,7 @@ M("GetMinigameLevelColumnCount", 0x6E1C, { prep: levelPrep });
 M("RedrawMinigameLevelSelect2", 0x6F04, { prep: levelPrep, active: onLevel2, n: 1 });
 M("SetSelectPanelAttrRect", 0x6F35, { regs: r => ({ b: r(2), c: r(2) }), wram: 3 });
 M("DrawMinigameLevelSelect2Cursor", 0x6F62, { prep: levelPrep, active: onLevel2, n: 1 });
-M("RedrawMinigameLevelSelect3", 0x708D, { prep: levelPrep, active: onLevel3, n: 1 });
+M("RedrawMinigameLevelSelect3", 0x708D, { prep: levelPrep, active: onLevel3, n: 1, lcdOff: true });
 M("SetSelectPanelAttrRect3", 0x70BE, { regs: r => ({ b: r(3), c: r(2) }), wram: 3 });
 M("DrawMinigameLevelSelect3Cursor", 0x70ED, { prep: levelPrep, active: onLevel3, n: 1 });
 // bank $1b's unused screens and prompts
@@ -321,7 +321,9 @@ X("Unused_1a_CopyNameToTileBuffer", 0x4B73, { regs: r => ({ hl: 0xC900, de: 0xD0
 X("Unused_1a_MoveTileBufferDestUpRow", 0x4B8F);
 X("Unused_1a_ClearExpScreenNameBox", 0x4B96);
 X("Unused_1a_DrawPositionedStringToTileBuffer", 0x4BBB, { regs: r => ({ hl: pick(r, [0x4483, 0x449B, 0x44A8, 0x44C1]) }) });
-X("Unused_1a_DrawStringToTileBuffer", 0x4BD0, { regs: r => ({ hl: 0xC940, b: r(20), c: r(18), e: r(256) }) });
+// (row 1 on: on row 0 a diacritic goes to row $FF, which the ROM's buffer address puts in echo RAM over its own
+// stack frame)
+X("Unused_1a_DrawStringToTileBuffer", 0x4BD0, { regs: r => ({ hl: 0xC940, b: r(20), c: 1 + r(17), e: r(256) }) });
 X("Unused_1a_GetTileBufferCellAddr", 0x4C22, { regs: r => ({ b: r(256), c: r(64) }) });
 X("Unused_1a_WriteTileBufferCell", 0x4C38, { regs: r => ({ b: r(32), c: r(32) }) });
 X("Unused_1a_WriteStatModifierToTileBuffer", 0x4C5C, { regs: r => ({ a: pick(r, [0, 1, 9, 10, 99, 100, 105, 0x90, 0x91, 0x92, 0x9B, 0xE3, 0xE4, 0xF6, 0xF7, 0xFF, r(256)]), b: r(16), c: r(30) }) });
@@ -335,7 +337,7 @@ X("Unused_1a_CopyBank1ToBank2Buffer", 0x6BF6, { regs: r => ({ hl: 0xD000 + r(0x4
 X("Unused_1a_InitCharViewerState", 0x6C0B);
 X("Unused_1a_DrawCharViewerCursorSprite", 0x6C28, { active: onViewer, n: 1 });
 X("Unused_1a_RefreshCharViewerSelection", 0x6E41, { active: onViewer, n: 1 });
-X("Unused_1a_SetupCharViewerScene", 0x6F3D, { active: onViewer, n: 1 });
+X("Unused_1a_SetupCharViewerScene", 0x6F3D, { active: onViewer, n: 1, own: true });
 X("Unused_1a_LoadCharViewerGridTilemap", 0x69EB, { n: 6 });
 X("Unused_1a_DrawCharViewerPageNames", 0x6A3A, { regs: r => ({ a: pick(r, [0, 1, 2, 3, r(256)]) }), active: s => onViewerGrid(s) || onViewer(s), n: 1 });
 X("Unused_1a_RenderTextColumnToBuffer64", 0x6A9B, { regs: r => ({ hl: 0x001B + r(0x30), de: 0xD043 + r(0x40), c: pick(r, [1, 2, 8]) }), wram: 3, active: s => onViewerGrid(s) || onViewer(s), n: 1 });
@@ -354,7 +356,7 @@ Y("Unused_1b_LoadUnlockDebugNavGrid", 0x65FA); Y("Unused_1b_LoadUnlockDebugRoste
 Y("Unused_1b_LoadUnlockDebugScreenGfx", 0x6618, { lcdOff: true, n: 6, wram: 1 });
 Y("Unused_1b_UpdateBobbingDecorSprite", 0x6671);
 Y("Unused_1b_StartUnlockDebugCursorTask", 0x6681, { active: onUnlock, n: 1 });
-Y("Unused_1b_UpdateUnlockDebugCursorTask", 0x668D, { active: onUnlock, n: 1 });
+Y("Unused_1b_UpdateUnlockDebugCursorTask", 0x668D, { active: onUnlock, n: 1, own: true });
 Y("Unused_1b_UpdateUnlockDebugSelectedMugshot", 0x669D, { active: onUnlock, n: 1, wram: 1 });
 Y("Unused_1b_UpdateUnlockDebugStatOnChange", 0x66C4, { active: onUnlock, n: 1, prep: both(gridPrep, (mem, r) => wf(mem, "charSelectPrevChar", pick(r, [rf(mem, "charSelectChar"), r(0x20)]))) });
 Y("Unused_1b_DrawUnlockDebugMugshots", 0x66D7, { active: onUnlock, n: 1, wram: 1 });
