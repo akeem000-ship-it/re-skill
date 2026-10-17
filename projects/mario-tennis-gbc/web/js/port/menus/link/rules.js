@@ -131,7 +131,7 @@ export function drawMatchRulesInitialState(P) {
   flushMatchRuleRowAttrs(P, 2);
   loadPaletteShadow(P, MatchRulesInitialStatePalettes0, 4, 1);
   loadPaletteShadow(P, MatchRulesInitialStatePalettes1, 6, 1);
-  return loadPaletteShadow(P, MatchRulesInitialStatePalettes2, 7, 1);
+  return { b: 2, c: 1, ...loadPaletteShadow(P, MatchRulesInitialStatePalettes2, 7, 1) };
 }
 // LoadMatchRulesMenuGraphics (3E:4607): the seven option labels, the panel's tiles (SharedMenuGfx35-41, 27, 63: a
 // frame each) and the cursor's palette
@@ -159,9 +159,9 @@ export function* openMatchRulesPanel(P, forward) {
 export const closeMatchRulesPanel = (P, forward) => matchFormatSlideOut(P, forward);
 // HandleMatchRulesToggleInput (3E:475D): left / right change the cursor's row's option (singles / doubles and the
 // games toggle; the sets step over three, wrapping); the row redrawn, the caption, the row's attributes queued
-export function handleMatchRulesToggleInput(P) {
+export function handleMatchRulesToggleInput(P, entryF = P.cpu.f) {
   const { V } = P, input = V.menuInputPressed;
-  if (!(input & (PADF_LEFT | PADF_RIGHT))) return;
+  if (!(input & (PADF_LEFT | PADF_RIGHT))) return { a: input, f: FZ | 0x20 | (entryF & 0x10) };   // (its `bit 4, a`)
   sound(P, SFX_MENU_MOVE);
   const row = getMenuCursorIndex(P, 1).a;
   if (row === ROW_MODE) { V.matchFormatDoubles ^= 1; drawSinglesDoublesRow(P); }
@@ -172,8 +172,9 @@ export function handleMatchRulesToggleInput(P) {
     V.matchFormatSets = v & 0x80 ? SET_CHOICES - 1 : v < SET_CHOICES ? v : 0;
     drawSetCountRow(P);
   }
-  drawMatchRulesCaption(P);
-  flushMatchRuleRowAttrs(P, row === ROW_MODE ? 0 : row === ROW_GAMES ? 1 : 2);
+  const r = drawMatchRulesCaption(P), b = row === ROW_MODE ? 0 : row === ROW_GAMES ? 1 : 2;
+  flushMatchRuleRowAttrs(P, b);
+  return { ...r, b };
 }
 // FlushMatchRuleRowAttrs (3E:48BB, linkrules_3e.asm): option row b's attributes queued (bank $3b's
 // FlushMatchFormatRowToVram, the same body). Registers kept.
@@ -196,6 +197,6 @@ export const HOOKS = [
   [BANK, 0x4607, hookGen((P, c) => loadMatchRulesMenuGraphics(P, c.f))],
   [BANK, 0x46F4, hookGen((P, c) => openMatchRulesPanel(P, c.b))],
   [BANK, 0x472C, hookGen((P, c) => closeMatchRulesPanel(P, c.b))],
-  [BANK, 0x475D, hook(P => { handleMatchRulesToggleInput(P); })],
+  [BANK, 0x475D, hook((P, c) => handleMatchRulesToggleInput(P, c.f))],
   [BANK, 0x48BB, hook((P, c) => { flushMatchRuleRowAttrs(P, c.b); })],
 ];

@@ -182,7 +182,7 @@ export function animateLinkErrorPalette(P, entryF = P.cpu.f) {
   P.bus.w16(pal + 2, rw(P, LinkErrorFlashColors_3e + 2 * step));
   const r = loadPaletteShadow(P, pal, BG_PALETTE_3, 1);
   wram(P, bank);
-  return { ...r, a: bank, f: entryF };
+  return { b: 0, c: 0, ...r, a: bank, f: entryF };                  // (bc counted down by CopyMemoryBC)
 }
 // ShowLinkStatusMessage (3E:4BA3), slot $4030: the message window's text: c = 0 "waiting", 1 "linked", else
 // "failed"; the window's rows queued

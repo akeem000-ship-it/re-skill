@@ -139,7 +139,7 @@ export function equippedItemMarkerSpriteTask(P, entryF = P.cpu.f) {
   const at = idx(EquippedMarkerYPositions_3e, rd(P, "equipEquippedIndex"));
   const r = queueSprite(P, MARKER_ATTR, MARKER_TILE, rb(P, at), MARKER_Y);
   wram(P, bank);
-  return { ...r, a: bank, f: entryF, b: MARKER_ATTR, c: MARKER_TILE, d: rb(P, at), e: MARKER_Y };
+  return chain(chain({ hl: at }, r), { a: bank, f: entryF, b: MARKER_ATTR, c: MARKER_TILE, d: rb(P, at), e: MARKER_Y });
 }
 
 // ---- stat changes ----
@@ -201,7 +201,9 @@ export function writeStatModValueTiles(P, value, hl) {
 // GetStatModRowAddr (3E:5B3E): hl = row b's label cell in the rows of wEquipStatRowSet; e != 0: its value cell
 export function getStatModRowAddr(P, row, value) {
   const set = (rd(P, "equipStatRowSet") * 2) & 0xFF;
-  const rows = rw(P, idx(StatModRowAddrPtrs, set)), hl = rw(P, idx(rows, row * 2));
+  // (read through the bus: an out-of-range set's pointer can lead out of the ROM)
+  const u16 = a => u8(P, a) | u8(P, (a + 1) & 0xFFFF) << 8;
+  const rows = u16(idx(StatModRowAddrPtrs, set)), hl = u16(idx(rows, row * 2));
   if (!value) return { a: 0, hl, f: FZ };
   const r = ixF(hl, VALUE_COLUMN);
   return { a: r.hl & 0xFF, hl: r.hl, f: r.f };

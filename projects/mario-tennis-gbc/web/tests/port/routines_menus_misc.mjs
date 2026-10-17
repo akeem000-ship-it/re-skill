@@ -17,6 +17,18 @@ import { rng, pick } from "./routines_menus_common.mjs";
 import { HOOK_TRACE } from "../../js/port/menus/char_select/defs.js";
 import { hookKey } from "../../js/port/port.js";
 
+// own: the routine's callees in other menu folders run as the ROM's code (their hooks, which give back no
+// registers, are left out for the call): the registers are then this folder's routine's own. own: "rom" leaves the
+// text port's hooks out too (RenderTextToBuffer64's gives back none either).
+const OWN_MODULES = ["menus/equipment/index", "menus/dictionary/index", "menus/minigame_select/index", "menus/debug/index",
+  "menus/link/index", "home/index", "audio/index", "save/index"];
+const keysOf = async list => {
+  const set = new Set();
+  for (const m of list) for (const [b, a] of (await import(`../../js/port/${m}.js`)).HOOKS) set.add(hookKey(b, a));
+  return set;
+};
+const OWN_ROM = await keysOf(OWN_MODULES), OWN = await keysOf([...OWN_MODULES, "text/index"]);
+
 const FIELD = Object.fromEntries(RAM_FIELDS.map(([n, bank, addr, size]) => [n, { bank, addr, size }]));
 const at = name => { if (!FIELD[name]) throw new Error(`no field ${name}`); return FIELD[name].addr; };
 const wx = (mem, bank, a, v) => { a &= 0xFFFF; if (a >= 0xD000 && a < 0xE000) mem.wram[bank || 1][a - 0xD000] = v & 0xFF; else mem.write(a, v & 0xFF); };
@@ -29,7 +41,7 @@ const ALL = ["a", "f", "b", "c", "d", "e", "h", "l"];
 // ---- the entries ----
 export const ROUTINES = [];
 let salt = 0;
-function E(name, bank, addr, { regs = () => ({}), prep = null, n = 3, active = null, wram, ignore, skip = [], lcdOff = false } = {}) {
+function E(name, bank, addr, { regs = () => ({}), prep = null, n = 3, active = null, wram, ignore, skip = [], lcdOff = false, own = false } = {}) {
   const k = ++salt * 7919, off = salt % n;
   let i = 0;
   const entry = {
@@ -53,7 +65,11 @@ function E(name, bank, addr, { regs = () => ({}), prep = null, n = 3, active = n
       if (!P.hooks.has(hookKey(bank, addr))) throw new Error(`no port hooked at ${bank.toString(16)}:${addr.toString(16)}`);
       HOOK_TRACE.out = null;
       P.ime = false;
-      const ret = P.callRom(bank, addr, regs);
+      const all = P.hooks;
+      const keep = own === "rom" ? OWN_ROM : OWN;
+      if (own) P.hooks = new Map([...all].filter(([key]) => keep.has(key)));
+      let ret;
+      try { ret = P.callRom(bank, addr, regs); } finally { P.hooks = all; }
       entry.out = ALL.filter(r => !skip.includes(r));         // (the hook sets every register: the saved ones and its results)
       return ret;
     },
@@ -366,7 +382,7 @@ function lkPrep(mem, r) {
   mem.hram[0x0C] = r(256);
 }
 const onCharGrid = s => task(s, 0x38, 0x4E52);
-const L = (name, bank, addr, o = {}) => E(name, bank, addr, { prep: lkPrep, n: 3, ...o });
+const L = (name, bank, addr, o = {}) => E(name, bank, addr, { prep: lkPrep, n: 3, own: true, ...o });
 for (const [n, a] of [["RetreatRemotePlayerSlot", 0x6A09], ["Unused_38_GetGridEntryAtCursor", 0x6A3C],
   ["InitLinkMatchCharsFromSelection", 0x6A7F], ["Unused_38_HandleLinkCpuDifficultyInput", 0x6B79],
   ["Unused_38_RunLinkCpuDifficultySubmenu", 0x6BD7], ["GetGridSlotFromLinkCursor", 0x6C37], ["GetLinkCursorSelectionCode", 0x6C64],
@@ -392,10 +408,11 @@ for (const [n, a] of [["ApplyMatchTypeSettingsLink", 0x74E3], ["StoreLinkMatchCh
 // the rules rows and the linking / error screens (bank $3e)
 const onLink = s => task(s, 0x3E, 0x4438);
 for (const [n, a] of [["DrawSinglesDoublesRow", 0x4817], ["DrawGameCountRow", 0x482F], ["DrawSetCountRow", 0x4849],
-  ["MatchRulesCursorSpriteTask", 0x48F1], ["DrawMatchRulesCaption", 0x4982], ["Unused_3e_DrawMatchRulesCaptionText", 0x49B9],
+  ["MatchRulesCursorSpriteTask", 0x48F1], ["DrawMatchRulesCaption", 0x4982], 
   ["AnimateLinkStatusPalette", 0x4A54], ["AnimateLinkErrorPalette", 0x4B37], ["ClearLinkMessageWindow", 0x4BED],
   ["FlushLinkMessageRows", 0x4C06], ["DrawMatchRulesInitialState", 0x459B], ["HandleMatchRulesToggleInput", 0x475D],
   ["UpdateAnimatedTiles_3e", 0x4438]]) L(n, 0x3E, a, { active: onLink, n: 2 });
+L("Unused_3e_DrawMatchRulesCaptionText", 0x3E, 0x49B9, { active: onLink, n: 2, own: "rom" });
 L("SetMatchRuleOptionAttrRect", 0x3E, 0x486A, { regs: r => ({ b: r(3), c: r(3) }), wram: 3 });
 L("LoadLinkMessageScreen", 0x3E, 0x4A14, { lcdOff: true, n: 6 });
 L("Unused_3e_GetCellIndexFromCursorPtr", 0x3E, 0x43DB, { regs: r => ({ hl: 0xC801 + r(0x100), c: r(8) }) });

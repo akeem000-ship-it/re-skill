@@ -9,7 +9,7 @@
 // The link character select needs a link partner, which the emulator does not have: no lockstep covers these.
 import {
   FZ, FN, rom, near, wram, rd, wr, u8, w8, idx, ixF, cpFlags, addFlags, sound, queueCopy, fillTilemapRect, hook,
-  regs8, WRAM_SCREEN, TILEMAP_WIDTH, VRAM_BANK1, vBGMap0, wShadowTilemap, wShadowAttrmap, PADF_A, PADF_B, PADF_START,
+  regs8, getRegs, chain, WRAM_SCREEN, TILEMAP_WIDTH, VRAM_BANK1, vBGMap0, wShadowTilemap, wShadowAttrmap, PADF_A, PADF_B, PADF_START,
   SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_CANCEL,
 } from "../equipment/defs.js";
 import { setGridEntryTakenByCharId, retreatRemotePlayerSlot } from "./link_cursor.js";
@@ -38,8 +38,6 @@ const GetCharPaletteIndex = [0x02, 0x4173];
 export const isP2Mode = P => { const m = rd(P, "charSelectMode"); return m === CHARSELECTMODE_LINK_SINGLES_P2 || m === CHARSELECTMODE_LINK_DOUBLES_P2; };
 // the partner's slot of the per-slot arrays (difficulty, left-handed): remote slot + 2, or + 0 as the second player
 const remoteSlotOffset = P => (isP2Mode(P) ? 0 : 2);
-// the grid entry of a slot (wCharGridEntries: 4 bytes an entry)
-const gridEntry = (P, slot) => idx(P.A.charGridEntries, slot * GRID_ENTRY_SIZE);
 // the box rows queued: the partner's boxes are on rows 6-7 (second player) or 9-10
 function queueRemoteSlotRows(P) {
   const row = isP2Mode(P) ? 6 : 9;
@@ -56,16 +54,19 @@ export function storeRemoteCpuDifficulty(P, c) {
 // ApplyRemoteCharSelection (38:661E): the partner picked character c: its grid entry taken (unless it is
 // already), its portrait in the partner's slot, the page's sprites rebuilt, the character noted, the slot advanced
 export function applyRemoteCharSelection(P, ch, entryF = P.cpu.f) {
-  const bank = P.V.wramBank;
+  const bank = P.V.wramBank, b = P.cpu.b;
   wram(P, WRAM_SCREEN);
-  if (setGridEntryTakenByCharId(P, ch, 1).a !== 0xFF) {
-    drawRemoteSlotPortrait(P, ch);
-    near(P, BuildVisiblePageSpriteList);
+  let r = chain({ ...regs8(getRegs(P.cpu)), a: WRAM_SCREEN, d: ch, e: 1 }, setGridEntryTakenByCharId(P, ch, 1));
+  const taken = r.a;
+  r = chain(r, { b, c: ch });                                        // (bc pushed around it)
+  if (taken !== 0xFF) {
+    r = chain(r, drawRemoteSlotPortrait(P, ch, cpFlags(taken, 0xFF)));
+    r = chain(near(P, BuildVisiblePageSpriteList, r), { b, c: ch });
     wr(P, "charSelectRemoteChars", ch, rd(P, "charSelectRemoteSlot") ? 1 : 0);
-    advanceRemotePlayerSlot(P);
+    r = chain(r, advanceRemotePlayerSlot(P));
   }
   wram(P, bank);
-  return { a: bank, f: entryF };
+  return { ...r, a: bank, f: entryF };
 }
 // ApplyRemoteCharCancel (38:6655): the partner cancelled its last pick: the slot back, its character's entry free,
 // the slot's difficulty and handedness cleared, its box emptied and the page's sprites rebuilt
@@ -103,19 +104,20 @@ export function checkLinkSelectionComplete(P, entryF = P.cpu.f) {
 // last pick, START toggles a Mario-cast character's handedness (a star character's goes to left-handed)
 export function handleLinkGridButtons(P) {
   const input = P.V.menuInputPressed;
-  if (input & 0xF0) return { a: input & 0xF0, f: 0x20 };
-  if (input & PADF_A) return confirmLinkGridSelection(P);
-  if (input & PADF_B) return cancelLinkGridSelection(P);
+  const BIT_SET = 0x20;                                             // (the flags of a `bit` that found it set)
+  if (input & 0xF0) return { a: input & 0xF0, f: 0 };
+  if (input & PADF_A) return confirmLinkGridSelection(P, BIT_SET);
+  if (input & PADF_B) return cancelLinkGridSelection(P, BIT_SET);
   if (!(input & PADF_START)) return { a: input, f: FZ | 0x20 };
-  const slot = near(P, GetGridSlotFromCursor);
-  const at = gridEntry(P, slot.a), ch = u8(P, at);
-  const cast = near(P, IsMarioCastCharacter, { ...regs8(slot), b: slot.a, c: ch, hl: at });
-  if (!cast.a) return { ...cast, b: slot.a, c: ch, hl: at };
+  const slot = near(P, GetGridSlotFromCursor, { a: input, f: BIT_SET });
+  const at = ixF(P.A.charGridEntries, slot.a * GRID_ENTRY_SIZE), ch = u8(P, at.hl);
+  const cast = near(P, IsMarioCastCharacter, { ...regs8(slot), a: ch, b: slot.a, c: ch, hl: at.hl, f: at.f });
+  if (!cast.a) return { ...regs8(cast), f: FZ };
   sound(P, SFX_MENU_MOVE);
   const h = rd(P, "charGridHandedness"), now = h === HANDED_STAR ? HANDED_LEFT : h ^ 1;
   wr(P, "charGridHandedness", now);
   const f = h === HANDED_STAR ? FZ | FN : now ? 0 : FZ;            // (the flags of its `cp $02` or `xor $01`)
-  return near(P, RefreshCharInfoPanel, { ...regs8(cast), a: now, b: slot.a, c: ch, hl: at, f });
+  return near(P, RefreshCharInfoPanel, { ...regs8(cast), a: now, f });
 }
 // ConfirmLinkGridSelection (38:676F): our pick: refused (SFX_MENU_CANCEL) when our slots are full, when the partner
 // has just sent a pick ($21, answered with $22), or when the cursor's entry is taken or empty; else the entry taken,
@@ -123,24 +125,33 @@ export function handleLinkGridButtons(P) {
 export function confirmLinkGridSelection(P, entryF = P.cpu.f) {
   const bank = P.V.wramBank;
   wram(P, WRAM_SCREEN);
-  const refuse = () => { sound(P, SFX_MENU_CANCEL); wram(P, bank); return { a: bank, f: entryF }; };
+  let r = regs8(getRegs(P.cpu));
+  const refuse = () => { sound(P, SFX_MENU_CANCEL); wram(P, bank); return { ...r, a: bank, f: entryF }; };
   if (rd(P, "charSelectSlot") === SLOTS_DONE) return refuse();
   if (P.V.linkRemoteInput === LINK_CMD_SELECT) { P.V.linkRemoteInput = LINK_CMD_SELECT_DONE; return refuse(); }
-  const taken = near(P, TestAndSetGridEntryTaken, { c: rd(P, "charGridPage"), d: P.V.menuCursorX, e: P.V.menuCursorY });
-  if (taken.a) return refuse();
+  const y = P.V.menuCursorY;
+  r = near(P, TestAndSetGridEntryTaken, { ...r, a: y, c: rd(P, "charGridPage"), d: P.V.menuCursorX, e: y, f: cpFlags(P.V.linkRemoteInput, LINK_CMD_SELECT) });
+  if (r.a) return refuse();
   sound(P, SFX_MENU_SELECT);
-  const entry = near(P, GetGridSlotFromCursor).a, ch = u8(P, gridEntry(P, entry));
+  r = near(P, GetGridSlotFromCursor, { ...regs8(r), f: FZ });
+  const entry = r.a, at = ixF(P.A.charGridEntries, entry * GRID_ENTRY_SIZE), ch = u8(P, at.hl);
+  r = chain(regs8(r), { a: ch, b: entry, hl: at.hl });
   if (ch === 0xFF) return refuse();
-  if (near(P, IsMarioCastCharacter, { c: ch }).a && rd(P, "charGridHandedness") === HANDED_LEFT)
-    wr(P, "charSelectSlotLeftHanded", 1, rd(P, "charSelectSlot"));
-  wr(P, "charSelectSlotChars", entry, rd(P, "charSelectSlot"));
-  near(P, DrawPlayerSlotPortrait, { b: entry });
-  near(P, BuildVisiblePageSpriteList);
-  near(P, AdvanceToNextPlayerSlot);
-  near(P, DrawCharGridSlotPrompt);
-  queueCopy(P, wShadowTilemap + 2 * TILEMAP_WIDTH, vBGMap0 + 2 * TILEMAP_WIDTH, 2 * TILEMAP_WIDTH / 16);
+  r = near(P, IsMarioCastCharacter, { ...r, c: ch, f: cpFlags(ch, 0xFF) });
+  if (r.a && rd(P, "charGridHandedness") === HANDED_LEFT) {
+    const lh = ixF(P.A.charSelectSlotLeftHanded, rd(P, "charSelectSlot"));
+    w8(P, lh.hl, 1);
+  }
+  const slot = rd(P, "charSelectSlot"), chars = ixF(P.A.charSelectSlotChars, slot);
+  w8(P, chars.hl, r.b);
+  r = near(P, DrawPlayerSlotPortrait, { ...regs8(r), a: slot, hl: chars.hl, f: chars.f });
+  r = near(P, BuildVisiblePageSpriteList, regs8(r));
+  r = near(P, AdvanceToNextPlayerSlot, regs8(r));
+  r = near(P, DrawCharGridSlotPrompt, { ...regs8(r), f: cpFlags(r.a, SLOTS_DONE) });
+  r = chain(regs8(r), { hl: wShadowTilemap + 2 * TILEMAP_WIDTH, de: vBGMap0 + 2 * TILEMAP_WIDTH });
+  r = chain(r, queueCopy(P, wShadowTilemap + 2 * TILEMAP_WIDTH, vBGMap0 + 2 * TILEMAP_WIDTH, 2 * TILEMAP_WIDTH / 16));
   wram(P, bank);
-  return { a: bank, f: entryF };
+  return { ...r, a: bank, f: entryF };
 }
 // CancelLinkGridSelection (38:6805): our last pick undone: the previous slot (back to the first: the cursors and
 // page reset and the info panel redrawn), its character's entry free again, its difficulty and handedness cleared,
@@ -148,27 +159,32 @@ export function confirmLinkGridSelection(P, entryF = P.cpu.f) {
 export function cancelLinkGridSelection(P, entryF = P.cpu.f) {
   const bank = P.V.wramBank;
   wram(P, WRAM_SCREEN);
-  const back = near(P, RetreatToPreviousPlayerSlot).a;
-  if (back === 0xFF) { wram(P, bank); return { a: bank, f: entryF }; }
+  let r = near(P, RetreatToPreviousPlayerSlot, { a: WRAM_SCREEN });
+  const back = r.a;
+  if (back === 0xFF) { wram(P, bank); return { ...regs8(r), a: bank, f: entryF }; }
   if (back === PREVIOUS_IS_FIRST) {
     P.V.menuCursorX = 0; P.V.menuCursorY = 0; P.V.menuCursor2X = 0; P.V.menuCursor2Y = 0;
     wr(P, "charGridPage", 0);
     P.V.linkCursorPage = 0;
-    near(P, RefreshCharInfoPanel);
+    r = near(P, RefreshCharInfoPanel, { ...regs8(r), a: 0, f: FZ });
   }
   sound(P, SFX_MENU_CANCEL);
-  const slot = rd(P, "charSelectSlot"), entry = rd(P, "charSelectSlotChars", slot);
-  wr(P, "charSelectSlotChars", 0, slot);
-  w8(P, gridEntry(P, entry) + ENTRY_TAKEN, 0);
+  const slot = rd(P, "charSelectSlot"), chars = ixF(P.A.charSelectSlotChars, slot), entry = u8(P, chars.hl);
+  w8(P, chars.hl, 0);
+  const at = ixF(P.A.charGridEntries, entry * GRID_ENTRY_SIZE);
+  w8(P, at.hl + ENTRY_TAKEN, 0);
   wram(P, WRAM_SCREEN);
   wr(P, "charSelectSlotDifficulty", 0, rd(P, "charSelectSlot"));
-  wr(P, "charSelectSlotLeftHanded", 0, rd(P, "charSelectSlot"));
-  near(P, ClearPlayerSlotPortrait);
-  near(P, BuildVisiblePageSpriteList);
-  near(P, DrawCharGridSlotPrompt);
-  queueCopy(P, wShadowTilemap + 2 * TILEMAP_WIDTH, vBGMap0 + 2 * TILEMAP_WIDTH, 2 * TILEMAP_WIDTH / 16);
+  const lh = ixF(P.A.charSelectSlotLeftHanded, rd(P, "charSelectSlot"));
+  w8(P, lh.hl, 0);
+  r = chain(regs8(r), { a: 0, b: 0, hl: lh.hl, f: FZ });
+  r = near(P, ClearPlayerSlotPortrait, r);
+  r = near(P, BuildVisiblePageSpriteList, regs8(r));
+  r = near(P, DrawCharGridSlotPrompt, regs8(r));
+  r = chain(regs8(r), { hl: wShadowTilemap + 2 * TILEMAP_WIDTH, de: vBGMap0 + 2 * TILEMAP_WIDTH });
+  r = chain(r, queueCopy(P, wShadowTilemap + 2 * TILEMAP_WIDTH, vBGMap0 + 2 * TILEMAP_WIDTH, 2 * TILEMAP_WIDTH / 16));
   wram(P, bank);
-  return { a: bank, f: entryF };
+  return { ...r, a: bank, f: entryF };
 }
 // DrawRemoteSlotPortrait (38:688D): character c's portrait (in its palette) in the partner's current slot box,
 // with its left-handed mark; the box rows queued
