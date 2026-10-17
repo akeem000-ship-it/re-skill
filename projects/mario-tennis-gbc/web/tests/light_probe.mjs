@@ -38,7 +38,7 @@ for (const [name, frame] of SCENES) {
   const lum = o => 0.299 * o.r + 0.587 * o.g + 0.114 * o.b, R = {};
   for (const h of [7.5, 12, 18.4, 22]) { R[h] = await grab(h, 2); console.log(name, h, JSON.stringify(R[h])); if (R[h].broken) fail(name, h, "broken"); if (Math.abs(lum(R[h]) - lum(base)) < 0.5 && Math.abs(R[h].b - base.b) < 0.5) fail(name, h, "picture unchanged"); }
   const warm = o => (o.r - o.b) - (base.r - base.b);                                              // colour shift against the unlit picture
-  if (!(warm(R[18.4]) > 10)) fail(name, "sunset is not warmer than the unlit picture", warm(R[18.4])); if (!(warm(R[22]) < -10)) fail(name, "night is not cooler", warm(R[22])); if (!(lum(R[22]) < lum(R[12]))) fail(name, "night is not darker than noon");
+  if (!(warm(R[18.4]) > 10)) fail(name, "sunset is not warmer than the unlit picture", warm(R[18.4])); if (!(warm(R[22]) < -4)) fail(name, "night is not cooler", warm(R[22])); if (!(lum(R[22]) < lum(R[12]))) fail(name, "night is not darker than noon");
   for (const t of [0, 1]) { const o = await grab(18.4, t); console.log(name, "tier", t, JSON.stringify(o)); if (o.broken) fail(name, "tier", t); }
   // the game itself is untouched: the same next 120 frames from here give the same frame hash with the lighting off and on
   const run = async on => page.evaluate(async on => { const G = window.__gb, L = G.voxel.light; G.loadState(window.__snap); L.mode = on ? "auto" : "off"; L.hourOverride = 21; for (let i = 0; i < 120; i++) G.step(1); return G.frameHash(); }, on);

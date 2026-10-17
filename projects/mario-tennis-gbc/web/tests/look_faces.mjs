@@ -56,8 +56,6 @@ if (fs.existsSync(romf)) {
     check(g.built.contentRegions.size > 40, `default portraits: the game's portrait tiles are recoloured (${g.built.contentRegions.size} tiles)`);
     check(g.undo.some(p => p.bytes.length === 64) && r.undo.some(p => p.bytes.length === 64), "HUD heads rewritten in place in both modes");
     check(normalizeLook({ ...look, portraits: "redrawn" }).portraits === "redrawn" && !normalizeLook({ ...look, portraits: "x" }).portraits, "portraits setting kept in the look");
-    // deep skin tones keep a readable ramp: the shade colour differs from the skin and the outline
-    for (const sk of SWATCHES.skin) { const c = g.built; void c; }
   }
 } else console.log("no ROM: part 2 skipped");
 console.log(bad ? `${bad} failures` : "ok");
