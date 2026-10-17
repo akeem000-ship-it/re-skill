@@ -2,7 +2,7 @@
 // match and HUD frames. They start from the hero's short hair (label.js), then grow, stripe or hang hair around the
 // head the frame already has; the same in-place, same-size rewrite as the other hairstyles (colour index and region
 // per pixel; nothing is stored from the ROM). label.js passes its helpers in (api) to avoid an import cycle.
-export const NEW_STYLES = ["afro", "puffs", "cornrows", "locs", "braids", "fade"];
+export const NEW_STYLES = ["afro", "puffs", "cornrows", "locs", "braids", "fade", "twists", "long"];
 
 export function hairStyleSprite(st, style, api) {
   const { REG, set, reoutline, facing, styleAlex, styleNina } = api, { NONE, OUT, SKIN, HAIR, HAT, TOP, HAIR2, HAIR3, KEEP, RACKET } = REG;
@@ -26,18 +26,26 @@ export function hairStyleSprite(st, style, api) {
   const hairAt = [];
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (reg[y * w + x] === HAIR) hairAt.push([x, y]);
 
-  if (style === "afro") {
-    const lim = f === null ? Math.min(info.yh - 1, fy1 + 1) : mid;
-    const r2 = R * R + 1, hit = new Set();
-    for (const [hx, hy] of hairAt) for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+  if (style === "afro" || style === "twists") {                 // twists: the same volume, a size smaller, knotty
+    const lim = f === null ? Math.min(info.yh - 1, fy1 + 1) : mid, RR = style === "twists" ? Math.max(1, R - 1) : R;
+    const r2 = RR * RR + 1, hit = new Set();
+    for (const [hx, hy] of hairAt) for (let dy = -RR; dy <= RR; dy++) for (let dx = -RR; dx <= RR; dx++) {
       if (dx * dx + dy * dy > r2) continue; const x = hx + dx, y = hy + dy;
       if (y > lim || y < 1 || x < 1 || x >= w - 1) continue; hit.add(y * w + x);
     }
     for (const i of hit) into(i % w, (i / w) | 0, HAIR);
-    // curl texture: a lighter pixel every few, a darker one under it
-    for (let y = top - R; y <= lim; y++) for (let x = x0 - R; x <= x1 + R; x++) {
-      if (at(x, y) !== HAIR || walk) continue;
-      const k = (x + 2 * y) % 5; if (k === 0) set(st, y * w + x, HAIR3); else if (k === 3 && at(x, y + 1) === HAIR) set(st, y * w + x, HAIR2);
+    if (style === "twists") {                                   // nubs on the silhouette and dark knots inside
+      for (let y = top - RR; y <= lim; y++) for (let x = x0 - RR; x <= x1 + RR; x++) {
+        if (at(x, y) !== HAIR) continue;
+        const k = (3 * x + 5 * y) % 7;
+        if (k === 0 && at(x, y - 1) === NONE && !walk) into(x, y - 1, HAIR);
+        else if (k === 3 && at(x, y + 1) === HAIR) set(st, y * w + x, HAIR2);
+      }
+    } else {                                                    // afro: curl texture, a lighter pixel every few, a darker one under it
+      for (let y = top - R; y <= lim; y++) for (let x = x0 - R; x <= x1 + R; x++) {
+        if (at(x, y) !== HAIR || walk) continue;
+        const k = (x + 2 * y) % 5; if (k === 0) set(st, y * w + x, HAIR3); else if (k === 3 && at(x, y + 1) === HAIR) set(st, y * w + x, HAIR2);
+      }
     }
   }
   if (style === "fade") {                                        // a flat top and faded (darker) sides
@@ -62,6 +70,13 @@ export function hairStyleSprite(st, style, api) {
     }
     // a lighter gloss row at the crown
     if (!walk) for (let x = x0 + 2; x < x1 - 1; x += 3) if (at(x, top) === HAIR) set(st, top * w + x, HAIR3);
+  }
+  if (style === "long") {                                        // long hair: solid strands down both sides, a sheet over the back
+    const L = walk ? 6 : 12, y0 = fy0 + (walk ? 1 : 2);
+    const fall = (x, yy, len) => { for (let k = 0; k < len; k++) { const y = yy + k, c = at(x, y); if (c < 0) break; if (!(free(c) || c === TOP || c === HAIR || c === HAIR2)) break; set(st, y * w + x, k % 4 === 3 && !walk ? HAIR2 : HAIR); } };
+    if (f === 0) { for (let k = 0; k < (walk ? 1 : 2); k++) { fall(x0 - 1 - k, y0 + k, L - k); fall(x1 + 1 + k, y0 + k, L - k); } }
+    else if (f === null) { for (let x = x0; x <= x1; x++) fall(x, info.yh - 2, L - 2 + ((x - x0) % 3 === 1 ? 1 : 0)); }
+    else { const bx = f < 0 ? x1 : x0, dir = f < 0 ? 1 : -1; for (let k = 0; k < (walk ? 1 : 3); k++) fall(bx + dir * (k + 1), y0 - 1 + (k >> 1), L - k); fall(bx, y0 + 2, L - 3); }
   }
   if (style === "locs" || style === "braids") {
     const braids = style === "braids", L = walk ? (braids ? 5 : 4) : (braids ? 11 : 8), wd = walk || braids ? 1 : 2, lo = [TOP, HAIR];

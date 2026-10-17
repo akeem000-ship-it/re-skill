@@ -11,6 +11,7 @@ import { detail3x } from "./detail.js";
 import { faceInfoOf } from "./faceinfo.js";
 import { faceCanvas, cleanFace } from "./detailface.js";
 import { groupMood } from "./build.js";
+import { hasHairArt, applyHairArt } from "./hairart.js";
 
 const off = (bank, addr) => addr < 0x4000 ? addr : bank * 0x4000 + (addr - 0x4000);
 const u16 = (rom, bank, addr) => { const o = off(bank, addr); return rom[o] | rom[o + 1] << 8; };
@@ -45,7 +46,9 @@ export function paint(st, pal, cols, transparent) {
 function prep(st, name, look, key) {
   if (look) {
     const style = look.style || (name === "alex" ? "cap" : "pigtails"), T = TOUCHUPS[name] || {};
-    applyStyle(st, style); applyTouchups(st, (T[key] || {})["*"]); applyTouchups(st, (T[key] || {})[style]);
+    const fr = key === "portrait" || key === "win" || key === "lose" ? key : key.startsWith("head:") ? "head" : null;   // the hand-pixelled portraits (hairart.js)
+    if (fr && hasHairArt(name, style, fr)) applyHairArt(st, name, style, fr);
+    else { applyStyle(st, style); applyTouchups(st, (T[key] || {})["*"]); applyTouchups(st, (T[key] || {})[style]); }
   }
   return st;
 }

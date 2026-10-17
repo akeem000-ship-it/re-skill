@@ -12,6 +12,7 @@ import { buildMods } from "./mods.js";
 import { faceAssets } from "./faces.js";
 import { faceInfoOf } from "./faceinfo.js";
 import { hairTones } from "./portrait.js";
+import { hasHairArt, applyHairArt } from "./hairart.js";
 
 export const off = (bank, addr) => addr < 0x4000 ? addr : bank * 0x4000 + (addr - 0x4000);
 export const u16 = (rom, bank, addr) => { const o = off(bank, addr); return rom[o] | rom[o + 1] << 8; };
@@ -45,7 +46,14 @@ function heroAssets(rom, name, style, portraits = false) {
   const h = HEROES[name], out = { raw: [], lz: [], frames: [] };     // raw: { off, bytes, regions: Map(tileOff -> plane) }; frames: { key, kind, cols, rows, info, mood, view }
   const T = TOUCHUPS[name] || {};
   const touch = (st, key) => { applyTouchups(st, (T[key] || {})["*"]); applyTouchups(st, (T[key] || {})[style]); };
-  const finish = (st, key) => { if (style) { applyStyle(st, style); touch(st, key); } return st; };
+  // portraits and HUD heads: a hairstyle with hand-pixelled art (hairart.js) draws it over the game's face; the rest restyle by rule
+  const frameOf = key => key === "portrait" || key === "win" || key === "lose" ? key : key.startsWith("head:") ? "head" : null;
+  const finish = (st, key) => {
+    if (!style) return st;
+    const fr = frameOf(key);
+    if (fr && hasHairArt(name, style, fr)) applyHairArt(st, name, style, fr); else { applyStyle(st, style); touch(st, key); }
+    return st;
+  };
   // overworld walk frames: 4 facings of 16x16 (two 8x16 objects) per 256-byte frame
   for (const [bank, addr, n] of [h.walk, h.walkB]) {
     const base = off(bank, addr), bytes = rom.slice(base, base + n * 256), regions = new Map();

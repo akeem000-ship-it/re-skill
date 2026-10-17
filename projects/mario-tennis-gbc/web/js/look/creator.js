@@ -20,7 +20,7 @@ const save = (k, v) => { try { if (v) localStorage.setItem(k, JSON.stringify(v))
 // start), and which are on. The stored looks never hold the mods: the enabled ones are merged in whenever a look is applied.
 const MODS_LIB = "mt-mods-lib", MODS_ON = "mt-mods-on";
 const stripMods = look => { if (!look) return look; const o = { ...look }; delete o.mods; return normalizeLook(o); };
-const STYLE_LABEL = { cap: "Cap", headband: "Headband", ponytail: "Ponytail", short: "Short hair", pigtails: "Pigtails", bob: "Bob", afro: "Afro", puffs: "Puffs", cornrows: "Cornrows", locs: "Locs", braids: "Box braids", fade: "Fade" };
+const STYLE_LABEL = { cap: "Cap", headband: "Headband", ponytail: "Ponytail", short: "Short hair", pigtails: "Pigtails", bob: "Bob", afro: "Afro", puffs: "Puffs", cornrows: "Cornrows", locs: "Locs", braids: "Box braids", fade: "Fade", twists: "Twists", long: "Long hair" };
 const FACE_ROWS = [["shape", "Face shape", FACE.shapes], ["eyes", "Eyes", FACE.eyes], ["brows", "Eyebrows", FACE.brows], ["mouth", "Mouth", FACE.mouths]];
 const PARTS = [["skin", "Skin", "skin"], ["hair", "Hair", "hair"], ["hat", "Hat / band", "cloth"], ["top", "Top", "cloth"], ["bottom", "Shorts / skirt", "cloth"], ["shoes", "Shoes", "cloth"], ["racket", "Racket", "cloth"]];
 const WRAM_STORY_SLOT = 0x36C, WRAM_HANDEDNESS = 0xB50;   // wCurrentStorySlot $C36C, wCharSelectHandedness $CB50

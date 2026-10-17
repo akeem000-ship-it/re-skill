@@ -140,6 +140,17 @@ const STYLES = {
         g.fillStyle = C.H; g.fill(lock); hairShade(g, lock, C); g.strokeStyle = alpha(C.k, 0.9); g.lineWidth = 0.35; g.lineCap = "round"; g.beginPath(); smooth(g, [[5.5, 9], [5.8, 12.6], [5.4, 16.4]], false); g.stroke(); g.restore(); }
     },
   },
+  twists: {
+    back(g, C) { const m = massOf(g, [E(12, 9.4, 9.8, 7.2), E(12, 6.8, 8.2, 5.4)], C.H, C.O, 0.5); hairShade(g, m, C); coils(g, m, C, 0.8); },
+    front(g, C) { fringe(g, C); },
+  },
+  long: {
+    back(g, C) {
+      const m = massOf(g, [path(p => smooth(p, [[12, 2], [18.6, 3.4], [21.6, 8], [21.8, 16], [22, 23.5], [17.8, 23.5], [17.6, 12], [6.4, 12], [6.2, 23.5], [2, 23.5], [2.2, 16], [2.4, 8], [5.4, 3.4]]))], C.H, C.O, 0.5);
+      hairShade(g, m, C);
+    },
+    front(g, C) { fringe(g, C); },
+  },
   afro: {
     back(g, C) {
       const m = massOf(g, [E(12, 9.2, 10.6, 7.8), E(12, 6.4, 8.6, 5.6)], C.H, C.O, 0.5); hairShade(g, m, C); coils(g, m, C, 1.05);

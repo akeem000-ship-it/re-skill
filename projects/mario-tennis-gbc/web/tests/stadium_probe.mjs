@@ -45,6 +45,11 @@ await session("light=off", async page => {
   // cheering: a change of the score bytes (restored afterwards)
   const ch = await page.evaluate(() => { const G = window.__gb, v = G.voxel, w = G.gb.mem.wram[0], old = w[0x8E4]; v.stadium.cheerAt = -99; w[0x8E4] = (old + 1) & 7; v.stadium.lastFr = -1; G.step(1); const t = performance.now() / 1000 - v.stadium.cheerAt; w[0x8E4] = old; return t; });
   if (!(ch >= 0 && ch < 2)) fail("no cheer on a score change", ch); else console.log("cheer started", ch.toFixed(2), "s ago");
+  // crowd size by match class and the crowd-sound events (read only)
+  const cl = await page.evaluate(() => { const v = window.__gb.voxel, st = v.stadium, w = window.__gb.gb.mem.wram[0], keep = [w[0x8A6], w[0x8F6], w[0x8F7]], r = {};
+    for (const [k, m, l, i] of [["junior", 1, 0, 1], ["junior2", 5, 0, 0], ["senior", 1, 0, 6], ["senior2", 4, 0, 0], ["major", 2, 0, 16], ["major2", 10, 0, 0]]) { w[0x8A6] = m; w[0x8F6] = l; w[0x8F7] = i; r[k] = st.crowdClass(); }
+    [w[0x8A6], w[0x8F6], w[0x8F7]] = keep; r.sizes = { ...st.crowdSizes }; r.sound = !!st.sound && typeof st.sound.cheer === "function"; return r; });
+  if (cl.junior !== "junior" || cl.junior2 !== "junior" || cl.senior !== "senior" || cl.senior2 !== "senior" || cl.major !== "major" || cl.major2 !== "major" || cl.sizes.junior > cl.sizes.senior || cl.sizes.senior > cl.sizes.major || !cl.sound) fail("crowd classes", JSON.stringify(cl)); else console.log("crowd classes ok", JSON.stringify(cl.sizes));
   for (const p of ["low", "tv", "overhead", "diorama", "original"]) { await page.evaluate(p => window.__gb.preset(p), p); const g = await grab(page, "3d"); if (g.broken) fail("preset", p); }
   await page.evaluate(() => window.__gb.preset("low"));
   await grab(page, "3d", "const L = v.light; L.mode = 'auto'; L.hourOverride = 22;");

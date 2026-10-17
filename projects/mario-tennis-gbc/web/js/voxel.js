@@ -719,6 +719,7 @@ export class Voxel3D {
     if (h.length && h[h.length - 1].fr === fr) return;
     h.push({ fr, ball: ball || this.ballWorld() }); if (h.length > 40) h.shift();
     if (this.ballfx) this.ballfx.step(this);   // BALLFX: reads the game once per game frame
+    if (this.stadium) this.stadium.step(this);   // STADIUM: crowd size by match class, cheer and crowd-sound events (read only)
   }
   // alpha: how far the display is between the last two game frames (0..1); the 3D view renders at the
   // display's refresh rate and interpolates world positions, the game itself stays at 60 Hz
@@ -1134,7 +1135,9 @@ export class Voxel3D {
     for (const c of def.cards || []) {
       if (!inMap(c.x0, c.y0)) continue;
       cover(c.x0, c.y0, c.x1, c.y1);
-      const w = c.x1 - c.x0, h = c.y1 - c.y0, d = F3.cutOut(art, c.x0, c.y0, w, h, plantCut(c));
+      const w = c.x1 - c.x0, h = c.y1 - c.y0; let d = F3.cutOut(art, c.x0, c.y0, w, h, plantCut(c));
+      // a net whose keyed cut came out (nearly) empty: the net's own colours were taken for ground (the ground around it is blue too): keep its outline colour
+      if (!c.cut && !c.plant && !c.see && w >= 48 && w <= 80 && h >= 8 && h <= 20) { let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; if (n < w * h * 0.15) d = F3.cutOut(art, c.x0, c.y0, w, h, { ...cutOpt(c), cut: "outline" }); }
       if (c.umbrella) {                          // an umbrella stands up (pole and canopy), its picture is filled with ground
         const u = F3.umbrellaMesh(art, c.x0, c.y0, c.x1, c.y1, MHp);
         if (u) {
