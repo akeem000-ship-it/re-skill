@@ -32,20 +32,21 @@ export const FLOOD_HEIGHT = 900;
 // surfaces / in shadow (1 = the game's own colours); exp, sat, con: grade; lamps: how much lamps, windows and fountains shine (0..1);
 // bloom: highlight glow; vig: vignette; tone: warm/cool split tone of the grade (r, g, b multipliers for highlights)
 const KF = [
-  { h: 0,    az: -50, el: 38, sun: [0.25, 0.33, 0.62], amb: [0.11, 0.15, 0.34], exp: 1.32, sat: 0.92, con: 1.06, lamps: 1.00, bloom: 1.0, vig: 0.62, tone: [0.90, 0.96, 1.10] },
-  { h: 5,    az: -50, el: 38, sun: [0.25, 0.33, 0.62], amb: [0.11, 0.15, 0.34], exp: 1.32, sat: 0.92, con: 1.06, lamps: 1.00, bloom: 1.0, vig: 0.62, tone: [0.90, 0.96, 1.10] },
+  { h: 0,    az: -50, el: 38, sun: [0.22, 0.27, 0.42], amb: [0.10, 0.125, 0.23], exp: 1.1, sat: 0.74, con: 1.06, lamps: 1.00, bloom: 0.8, vig: 0.62, tone: [0.95, 0.98, 1.06], thr: 0.96 },
+  { h: 5,    az: -50, el: 38, sun: [0.22, 0.27, 0.42], amb: [0.10, 0.125, 0.23], exp: 1.1, sat: 0.74, con: 1.06, lamps: 1.00, bloom: 0.8, vig: 0.62, tone: [0.95, 0.98, 1.06], thr: 0.96 },
   { h: 6.2,  az: 80,  el: 8,  sun: [1.05, 0.62, 0.52], amb: [0.40, 0.44, 0.70], exp: 1.12, sat: 1.00, con: 1.08, lamps: 0.55, bloom: 0.9, vig: 0.58, tone: [1.10, 0.94, 0.88] },
   { h: 7.8,  az: 68,  el: 26, sun: [1.16, 0.98, 0.76], amb: [0.60, 0.68, 0.92], exp: 1.03, sat: 1.10, con: 1.08, lamps: 0.00, bloom: 0.7, vig: 0.48, tone: [1.08, 1.00, 0.92] },
   { h: 12,   az: -28, el: 50, sun: [1.10, 1.04, 0.95], amb: [0.64, 0.73, 0.98], exp: 1.03, sat: 1.16, con: 1.09, lamps: 0.00, bloom: 0.6, vig: 0.42, tone: [1.04, 1.02, 0.97] },
   { h: 16.3, az: -48, el: 38, sun: [1.17, 1.01, 0.79], amb: [0.64, 0.70, 0.94], exp: 1.03, sat: 1.12, con: 1.08, lamps: 0.00, bloom: 0.7, vig: 0.46, tone: [1.08, 1.00, 0.92] },
-  { h: 18.4, az: -76, el: 13, sun: [1.38, 0.84, 0.50], amb: [0.50, 0.50, 0.80], exp: 1.00, sat: 1.15, con: 1.10, lamps: 0.28, bloom: 0.9, vig: 0.54, tone: [1.14, 0.96, 0.84] },
-  { h: 19.6, az: -82, el: 4,  sun: [0.95, 0.50, 0.48], amb: [0.34, 0.38, 0.68], exp: 1.12, sat: 1.05, con: 1.08, lamps: 0.78, bloom: 1.0, vig: 0.58, tone: [1.06, 0.94, 0.96] },
-  { h: 21,   az: -50, el: 38, sun: [0.25, 0.33, 0.62], amb: [0.11, 0.15, 0.34], exp: 1.32, sat: 0.92, con: 1.06, lamps: 1.00, bloom: 1.0, vig: 0.62, tone: [0.90, 0.96, 1.10] },
-  { h: 24,   az: -50, el: 38, sun: [0.25, 0.33, 0.62], amb: [0.11, 0.15, 0.34], exp: 1.32, sat: 0.92, con: 1.06, lamps: 1.00, bloom: 1.0, vig: 0.62, tone: [0.90, 0.96, 1.10] },
+  { h: 18.4, az: -76, el: 13, sun: [1.38, 0.84, 0.50], amb: [0.50, 0.50, 0.80], exp: 1.00, sat: 1.10, con: 1.10, lamps: 0.28, bloom: 0.9, vig: 0.54, tone: [1.14, 0.96, 0.84], thr: 0.80 },
+  { h: 19.6, az: -82, el: 4,  sun: [0.95, 0.50, 0.48], amb: [0.34, 0.38, 0.68], exp: 1.06, sat: 1.0, con: 1.08, lamps: 0.78, bloom: 0.9, vig: 0.58, tone: [1.06, 0.94, 0.96], thr: 0.88 },
+  { h: 21,   az: -50, el: 38, sun: [0.22, 0.27, 0.42], amb: [0.10, 0.125, 0.23], exp: 1.1, sat: 0.74, con: 1.06, lamps: 1.00, bloom: 0.8, vig: 0.62, tone: [0.95, 0.98, 1.06], thr: 0.96 },
+  { h: 24,   az: -50, el: 38, sun: [0.22, 0.27, 0.42], amb: [0.10, 0.125, 0.23], exp: 1.1, sat: 0.74, con: 1.06, lamps: 1.00, bloom: 0.8, vig: 0.62, tone: [0.95, 0.98, 1.06], thr: 0.96 },
 ];
+for (const k of KF) k.thr ??= 0.74;                  // the bloom threshold: raised at night so only floodlights and genuinely bright pixels glow
 // RPG maps indoors (dorm, cafe, hall, centre ...): lit by lamps whatever the hour, so they keep one warm look
 const INDOOR_MAPS = new Set([17, 18, 25, 33, 34, 35]);
-const INDOOR = { h: 12, az: -30, el: 70, sun: [1.06, 1.0, 0.90], amb: [0.80, 0.79, 0.90], exp: 1.02, sat: 1.08, con: 1.06, lamps: 0.16, bloom: 0.6, vig: 0.50, tone: [1.06, 1.0, 0.94], shade: 0.55 };
+const INDOOR = { thr: 0.74, h: 12, az: -30, el: 70, sun: [1.06, 1.0, 0.90], amb: [0.80, 0.79, 0.90], exp: 1.02, sat: 1.08, con: 1.06, lamps: 0.16, bloom: 0.6, vig: 0.50, tone: [1.06, 1.0, 0.94], shade: 0.55 };
 const mixArr = (a, b, t) => Array.isArray(a) ? a.map((v, i) => lerp(v, b[i], t)) : lerp(a, b, t);
 export function skyAt(hour) {                       // interpolated parameters for an hour of the day (0..24)
   const h = ((hour % 24) + 24) % 24; let i = 0; while (i < KF.length - 2 && h >= KF[i + 1].h) i++;
@@ -164,10 +165,12 @@ void main() {
   // point lights
   vec3 add = vec3(0.0);
   for (int i = 0; i < 6; i++) { if (i >= uNP) break; vec3 dv = uPP[i].xyz - P; float r = length(dv) / uPP[i].w; float a = clamp(1.0 - r, 0.0, 1.0); a *= a; add += uPC[i] * a * (0.55 + 0.45 * clamp(dot(n, normalize(dv)), 0.0, 1.0)); }
-  if (uPool.z > 0.0) { vec2 q = (P.xz - uPool.xy) / uPool.zw; add += uPoolC * (1.0 - smoothstep(0.62, 1.22, length(q))); }
+  float poolW = 0.0;
+  if (uPool.z > 0.0) { vec2 q = (P.xz - uPool.xy) / uPool.zw; poolW = 1.0 - smoothstep(0.62, 1.22, length(q)); add += uPoolC * poolW * mix(0.5, 1.0, mix(1.0, sh, up)); }
   vec4 g4 = texture(uGlow, vUV); vec3 gl = g4.rgb;
   // lamps / windows keep their own light and shine
   float em = smoothstep(0.1, 0.5, texture(uE, vUV).a) * smoothstep(0.2, 0.6, glassy(c0)) * (1.0 - up);   // lit panes and lamps (on walls)
+  c = mix(c, vec3(lum(c)), 0.6 * poolW * up * uLamps);                          // the court does not glow in its own colour under the warm floodlights
   c = c * (light + add + gl * uSpill);
   c = mix(c, uWarm * (0.75 + 0.9 * lum(c0)), em * uLamps);
   c += gl * uGlowK;
@@ -299,8 +302,8 @@ export class Lighting {
       const fx = v.field && v.field.fx;
       if (fx && night > 0.02) for (const fo of fx.fountains || []) if (out.length < 6) out.push({ p: [fo.origin[0], fo.origin[1] + 8, fo.origin[2]], r: 100, c: [0.34 * night, 0.80 * night, 1.20 * night] });
     } else if (kind === "court" && night > 0.02) {
-      pool = { v: [0, -80, 1000, 1850], c: [0.95 * night, 0.90 * night, 0.72 * night] };
-      for (const [x, z] of FLOODS) { out.push({ p: [x, FLOOD_HEIGHT, z], r: 3300, c: [0.34 * night, 0.31 * night, 0.24 * night] }); fl.push({ p: [x, FLOOD_HEIGHT, z], c: [0.30 * night, 0.27 * night, 0.20 * night], size: 0.10 }); }
+      pool = { v: [0, -80, 1000, 1850], c: [0.80 * night, 0.72 * night, 0.52 * night] };
+      for (const [x, z] of FLOODS) { out.push({ p: [x, FLOOD_HEIGHT, z], r: 3300, c: [0.10 * night, 0.09 * night, 0.07 * night] }); fl.push({ p: [x, FLOOD_HEIGHT, z], c: [0.42 * night, 0.38 * night, 0.28 * night], size: 0.10 }); }
     }
     if (kind === "court" && v.ballfx && v.ballfx.on) for (const l of v.ballfx.lights()) if (out.length < 6) out.push(l);      // impact lights of the ball effects (ballfx.js), day and night
     return { out, fl, pool };
@@ -363,7 +366,7 @@ export class Lighting {
       this.pass(progB, q.b1, { uDir: [1 / q.q0.w * 1.3, 0], uUseDepth: 0 }, [q.q0.t, S.depthTex]);
       this.pass(progB, q.b0, { uDir: [0, 1 / q.q0.h * 1.3], uUseDepth: 0 }, [q.b1.t, S.depthTex]);
     }
-    this.pass(progE, q.e0, { uInvVP: invVP, uTexel: [1 / q.q0.w, 1 / q.q0.h], uHi: 1.5 * P.bloom, uEm: 2.2 * night * (cam.kind === "field" ? 1 : 0), uThr: 0.74, uLL: Math.min(1.4, (0.299 * (P.amb[0] + (P.sun[0] - P.amb[0]) * 0.85) + 0.587 * (P.amb[1] + (P.sun[1] - P.amb[1]) * 0.85) + 0.114 * (P.amb[2] + (P.sun[2] - P.amb[2]) * 0.85)) * P.exp), uLit: [1.0, 0.72, 0.34] }, [q.q0.t, (needB ? q.b0 : q.q0).t, S.t, S.depthTex]);
+    this.pass(progE, q.e0, { uInvVP: invVP, uTexel: [1 / q.q0.w, 1 / q.q0.h], uHi: 1.5 * P.bloom, uEm: 2.2 * night * (cam.kind === "field" ? 1 : 0), uThr: P.thr, uLL: Math.min(1.4, (0.299 * (P.amb[0] + (P.sun[0] - P.amb[0]) * 0.85) + 0.587 * (P.amb[1] + (P.sun[1] - P.amb[1]) * 0.85) + 0.114 * (P.amb[2] + (P.sun[2] - P.amb[2]) * 0.85)) * P.exp), uLit: [1.0, 0.72, 0.34] }, [q.q0.t, (needB ? q.b0 : q.q0).t, S.t, S.depthTex]);
     this.pass(progB, q.g1, { uDir: [1 / q.e0.w * 2.2, 0], uUseDepth: 0 }, [q.e0.t, S.depthTex]);
     this.pass(progB, q.g0, { uDir: [0, 1 / q.e0.h * 2.2], uUseDepth: 0 }, [q.g1.t, S.depthTex]);
     this.pass(progB, q.g1, { uDir: [1 / q.e0.w * 5, 0], uUseDepth: 0 }, [q.g0.t, S.depthTex]);
@@ -384,7 +387,7 @@ export class Lighting {
     gl.uniform1i(progC.u.uNP, li.out.length); gl.uniform1i(progC.u.uNF2, nf);
     this.pass(progC, null, {
       uInvVP: invVP, uVP: vp, uNF: NF, uRes: [W, H], uL: L, uSun: P.sun, uAmb: P.amb, uShade: shade, uWall: wallK,
-      uExp: P.exp, uSat: P.sat, uCon: P.con, uBloom: P.bloom, uGlowK: 0.62 * (0.6 + 0.4 * P.bloom), uSpill: 0.55 + 0.9 * night, uLamps: cam.kind === "field" ? night : 0, uVig: P.vig, uDof: dofK * 0.8, uTone: P.tone,
+      uExp: P.exp, uSat: P.sat, uCon: P.con, uBloom: P.bloom, uGlowK: 0.62 * (0.6 + 0.4 * P.bloom), uSpill: 0.5 + 0.18 * night, uLamps: cam.kind === "field" ? night : 0, uVig: P.vig, uDof: dofK * 0.8, uTone: P.tone,
       uDbg: this.dbg, uWarm: [1.15, 0.82, 0.42], uFocus: [0.5, 0.17, 0.30, 0.36],
     }, [S.t, S.depthTex, q.sh0.t, (needB ? q.b0 : q.q0).t, q.g0.t, q.e0.t]);
     this.timerEnd();

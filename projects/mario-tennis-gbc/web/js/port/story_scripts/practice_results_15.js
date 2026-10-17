@@ -38,7 +38,7 @@ const BETH = ACTOR_TRAINING_COURT_BETH, BOB = ACTOR_TRAINING_COURT_BOB_2;
 
 // a coach's lines: the first, then turned to the player, each gesture played before the next line; then the coach
 // turns back (facing) and the greeting's flag is set; beforeSecond runs after the first gesture (a text set)
-function* coachLines(P, coach, anims, facing, flag, beforeSecond = () => {}) {
+function* coachLines(P, coach, anims, facing, flag, beforeSecond = function* () {}) {
   yield* speak(P, coach);
   faceToward(P, ACTOR_PLAYER, coach);
   for (let i = 0; i < anims.length; i++) {
