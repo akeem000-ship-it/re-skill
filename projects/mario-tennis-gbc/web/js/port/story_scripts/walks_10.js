@@ -8,9 +8,10 @@
 // web/tests/port/routines_story_scripts2.mjs.
 import {
   ACTOR_PLAYER, ACTOR_PARTNER, FACE_UP, FACE_DOWN, FACE_LEFT, FACE_RIGHT, FLAG_DOUBLES, STORYENTRY_NONE, FZ, FH, FC,
-  WRAM_COURT_PLANES, testFlag, testFlagF, setSpeed, moveAngle, waitMove, sound, hook, scene,
+  WRAM_COURT_PLANES, testFlag, testFlagF, setSpeed, moveAngle, waitMove, hook, scene,
 } from "./common.js";
 import { computeStoryRankTier } from "./twins.js";
+import { mapScriptStubs } from "./shared2.js";
 
 const BANK = 0x10;
 const FLAG_WON_JUNIOR_DOUBLES_RANK_1 = 0x42, FLAG_WON_SENIOR_DOUBLES_RANK_1 = 0x46, FLAG_WON_VARSITY_DOUBLES_RANK_2 = 0x48;
@@ -19,7 +20,6 @@ const FLAG_REACHED_ISLAND_OPEN_SINGLES = 0xAE, FLAG_REACHED_ISLAND_OPEN_DOUBLES 
 const FLAG_STORY_COMPLETE_SINGLES = 0xB0, FLAG_STORY_COMPLETE_DOUBLES = 0xB1;
 // the dialogue stages (STORYRANK_*: twice the tier, + 1 in doubles)
 const STORYRANK_SINGLES_ACADEMY = 0x00, STORYRANK_DOUBLES_ACADEMY = 0x01;
-const SFX_STORY_CUE = 0xA2;
 const WALK_SPEED = 0.5;
 // the headings of the curving walks' middle legs (between FACE_UP and the side)
 const HEADING_UP_RIGHT = 0xE0, HEADING_UP_LEFT = 0xA0;
@@ -99,10 +99,7 @@ export const HOOKS = [
   scene(BANK, 0x7B1F, mapExitWalkCurveLeft),
   scene(BANK, 0x7B5F, mapArrivalWalkPair),
   [BANK, 0x7BB6, hook(P => getDoublesProgressStage(P))],
-  [BANK, 0x7BF9, hook(() => {})],                                   // MapScriptNop_10
-  [BANK, 0x7BFA, hook(P => { P.V.storyScriptRan = 0; return { a: 0, f: FZ }; })],   // Unused_10_MapScriptClearActiveFlag
-  [BANK, 0x7BFF, hook(P => { sound(P, SFX_STORY_CUE); })],          // Unused_10_MapScriptPlaySoundA2
-  [BANK, 0x7C02, hook(P => { P.V.storyModeShowLocationName = 0; return { a: 0, f: FZ }; })],   // Unused_10_MapScriptHideLocationName
+  ...mapScriptStubs(BANK, 0x7BF9, 0x7BFA, 0x7BFF, 0x7C02),
   [BANK, 0x7DBD, hook(P => setStoryDialogueStage(P))],
   [BANK, 0x7E04, hook(P => computeStoryRankTier(P))],               // Unused_10_ComputeStoryRankTier
 ];

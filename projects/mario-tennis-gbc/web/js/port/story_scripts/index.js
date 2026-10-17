@@ -43,8 +43,12 @@ export const MODULES = {
   junior_singles_11: JUNIOR_SINGLES_11,
 };
 // part 2 (src/story/lessonmenu_10 .. water_15): its modules, added to MODULES
+import { HOOKS as MAP_STUBS_12 } from "./map_stubs_12.js";
+import { HOOKS as LESSONMENU_10 } from "./lessonmenu_10.js";
 import { HOOKS as WALKS_10 } from "./walks_10.js";
 Object.assign(MODULES, {
   walks_10: WALKS_10,
+  lessonmenu_10: LESSONMENU_10,
+  map_stubs_12: MAP_STUBS_12,
 });
 export const HOOKS = Object.values(MODULES).flat();
