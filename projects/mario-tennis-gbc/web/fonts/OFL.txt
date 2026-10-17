@@ -10,6 +10,11 @@ Copyright 2023 The Kode Mono Project Authors (https://github.com/isaozler/kode-m
 Both are licensed under the SIL Open Font License, Version 1.1, copied below and also available with a FAQ at:
 https://openfontlicense.org
 
+LuckiestGuy-Regular.ttf (Luckiest Guy, used for the title screen's "HD-2D" and "PRESS START")
+Copyright (c) 2010 by Brian J. Bonislawsky DBA Astigmatic (AOETI). All rights reserved.
+NOTE: this font is NOT under the OFL: its own name table says "Available under the Apache 2.0 licence"
+(http://www.apache.org/licenses/LICENSE-2.0.html); the licence text is in LICENSE-Apache-2.0.txt next to this file.
+
 -----------------------------------------------------------
 SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
 -----------------------------------------------------------

@@ -122,10 +122,27 @@ const small = document.createElement("canvas"), sg = small.getContext("2d");
 function present(image, w, h, padX) {
   if (!hd || !hd.active) { if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; } g.putImageData(image, 0, 0); return; }
   if (small.width !== w || small.height !== h) { small.width = w; small.height = h; }
-  sg.putImageData(image, 0, 0);
+  const hid = hd.ui && hd.hiddenOam.size && !padX && w === 160;      // sprites replaced by HD art: the base is the picture without sprites
+  if (hid) { bg32.set(gb.ppu.bgFrame); sg.putImageData(bgImg, 0, 0); } else sg.putImageData(image, 0, 0);
   if (cv.width !== w * HD || cv.height !== h * HD) { cv.width = w * HD; cv.height = h * HD; }
   g.imageSmoothingEnabled = false; g.drawImage(small, 0, 0, w * HD, h * HD);
-  g.imageSmoothingEnabled = true; g.drawImage(hd.canvas.bg, padX * HD, 0); g.drawImage(hd.canvas.win, padX * HD, 0);
+  g.imageSmoothingEnabled = true; if (hd.has.bg) g.drawImage(hd.canvas.bg, padX * HD, 0); if (hd.has.win) g.drawImage(hd.canvas.win, padX * HD, 0);
+  if (hd.ui && hd.painted && !padX && w === 160) { drawSprites(image, w, h); if (hd.has.spr) { g.imageSmoothingEnabled = true; g.drawImage(hd.canvas.spr, 0, 0); } }
+}
+// the HD UI art covers the screen's tiles, sprites (cursors) included: the sprites' own pixels (where the frame differs
+// from the BG-only picture) go back on top, sharp
+const sprCv = document.createElement("canvas"), sprG = sprCv.getContext("2d"); sprCv.width = 160; sprCv.height = 144;
+const sprImg = sprG.createImageData(160, 144), spr32 = new Uint32Array(sprImg.data.buffer);
+const bgImg = sprG.createImageData(160, 144), bg32 = new Uint32Array(bgImg.data.buffer);
+function drawSprites(image, w, h) {
+  const a = new Uint32Array(image.data.buffer), b = gb.ppu.bgFrame; let any = false;
+  for (let i = 0; i < a.length; i++) { if (a[i] !== b[i]) { spr32[i] = a[i]; any = true; } else spr32[i] = 0; }
+  if (hd.hiddenOam.size) {                  // sprites the HD art replaced (cursors): not drawn; what lay below them is
+    const hp = hd.hiddenPx; for (let i = 0; i < hp.length; i++) if (hp[i]) spr32[i] = 0;
+    const th = hd.through; for (let k = 0; k < th.length; k += 2) spr32[th[k]] = th[k + 1]; any = true;
+  }
+  if (!any) return;
+  sprG.putImageData(sprImg, 0, 0); g.imageSmoothingEnabled = false; g.drawImage(sprCv, 0, 0, w * HD, h * HD);
 }
 // ---- screen shape: Fill (3D fills the screen, 2D keeps 10:9), 4:3 (3D letterboxed to 4:3; 2D courts widened
 // to 192 px, elsewhere pillarboxed), 10:9 (both as the Game Boy) ----
@@ -150,6 +167,7 @@ function setView3d(on, vox = false) {
   if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.hdText = hd; voxel.freeCam = q.has("freecam"); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
   if (voxel) voxel.voxelSprites = on && vox;
   $("gl").hidden = !view3d; cv.hidden = view3d; $("cam").hidden = !view3d;
+  if (hd) hd.setSpriteHide(!view3d);                  // the 3D view draws sprites as cards in front of the HD art: HD cursors only in 2D
   try { localStorage.setItem("mt-3d", on ? (vox ? "vox" : "3d") : "off"); } catch (e) { /* private mode */ }
 }
 function setPreset(name) {                  // court camera preset (CAM button cycles PRESET_ORDER)
@@ -211,7 +229,7 @@ async function loadRom(buf) {
   else gb = new GBC(bytes, { sampleRate: 44100, audio: true });
   creator.attach(gb);
   drawnFrame = -1;
-  hd = new HDText(gb); hd.onload = () => { drawnFrame = -1; }; hd.setFont(font);
+  hd = new HDText(gb); hd.onload = () => { drawnFrame = -1; }; hd.setFont(font); hd.setUI(uiMode === "hd");
   if (voxel) { voxel.attach(gb, new Rom(gb.mem.rom)); voxel.hdText = hd; }      // a ROM loaded after the 3D view was created
   // the statically translated game (tools/recomp.py -> gen/game.js) runs the traced code as native
   // functions; without it everything is interpreted (same results, see web/tests/recomp_vs_interp.mjs)
@@ -316,6 +334,15 @@ function applyFont() {
 }
 $("fontbtn").addEventListener("pointerdown", () => { font = FONT_ORDER[(FONT_ORDER.indexOf(font) + 1) % FONT_ORDER.length]; applyFont(); });
 applyFont();
+// ---- menus: the game's own frames / cursors / icons, or HD art drawn over them (web/js/hdui.js); HD by default ----
+let uiMode = q.get("ui") || stored("mt-ui") || "hd"; if (uiMode !== "game" && uiMode !== "hd") uiMode = "hd";
+function applyUI() {
+  $("uibtn").textContent = "UI: " + (uiMode === "hd" ? "HD" : "Game");
+  if (hd) hd.setUI(uiMode === "hd"); drawnFrame = -1;
+  try { localStorage.setItem("mt-ui", uiMode); } catch (e) { /* private mode */ }
+}
+$("uibtn").addEventListener("pointerdown", () => { uiMode = uiMode === "hd" ? "game" : "hd"; applyUI(); });
+applyUI();
 $("turbo").addEventListener("pointerdown", () => { turbo = !turbo; $("turbo").classList.toggle("on", turbo); });
 // what runs the game, switchable in play (the app loads the ROM before the loader's selector can be used):
 // remembered, then the page reloads
@@ -329,5 +356,5 @@ $("engbtn").addEventListener("pointerdown", () => {
   location.reload();
 });
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom).catch(() => {});
-window.__gb = { get gb() { return gb; }, keys, rec, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, loadSnapshot(s) { loadSnapshot(gb, s); }, saveState() { return saveState(gb); }, loadState(s) { loadState(gb, s); drawnFrame = -1; } };
+window.__gb = { get gb() { return gb; }, get hd() { return hd; }, keys, rec, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, loadSnapshot(s) { loadSnapshot(gb, s); }, saveState() { return saveState(gb); }, loadState(s) { loadState(gb, s); drawnFrame = -1; } };
 requestAnimationFrame(loop);

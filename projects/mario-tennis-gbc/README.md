@@ -27,7 +27,8 @@ The ROM and everything extracted from it are gitignored. Only tools and notes ar
   where a name or fact here comes from it the label comment or note says so.
 - **Fonts** for the full-game page's HD text option (`web/js/hdtext.js`): [Itim](https://github.com/cadsondemak/itim)
   (Cadson Demak) and [Kode Mono](https://github.com/isaozler/kode-mono) (The Kode Mono Project Authors), both under
-  the SIL Open Font License 1.1 (`web/fonts/OFL.txt`).
+  the SIL Open Font License 1.1 (`web/fonts/OFL.txt`), and Luckiest Guy (Astigmatic) for the HD title, under the
+  Apache License 2.0 (`web/fonts/LICENSE-Apache-2.0.txt`).
 
 ## Quick tour
 
