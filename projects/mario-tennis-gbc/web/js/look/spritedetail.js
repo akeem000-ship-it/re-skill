@@ -23,7 +23,7 @@ export function heroFaces(L, sprs) {
   const out = new Map();
   if (!L || !L.frameTile) return [];
   for (const s of sprs) {
-    const n = s.h >> 3, bank = (s.attr >> 3) & 1, fx = !!(s.attr & 0x20), fy = !!(s.attr & 0x40);
+    const n = s.h >> 3, bank = s.vb ?? ((s.attr >> 3) & 1), fx = !!(s.attr & 0x20), fy = !!(s.attr & 0x40);
     for (let half = 0; half < n; half++) {
       const e = L.frameTile(bank, s.tile + (fy ? n - 1 - half : half)); if (!e || !e.frame.info) continue;
       const fr = e.frame, cx = (e.t / fr.rows) | 0, cy = e.t % fr.rows, tx = s.sx, ty = s.sy + half * 8;
@@ -110,7 +110,7 @@ export function moodOfList(list, L, moods) {
   if (!L || !L.romOffsetAny || !moods) return "neutral";
   const votes = {};
   for (const sp of list) for (let half = 0; half < sp.h / 8; half++) {
-    const off = L.romOffsetAny((sp.attr >> 3) & 1, sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half)); if (off < 0) continue;
+    if (sp.vb === 2) continue; const off = L.romOffsetAny((sp.attr >> 3) & 1, sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half)); if (off < 0) continue;
     const m = moods.moodAt(off); votes[m] = (votes[m] || 0) + 1;
   }
   return MOOD_VOTE(votes);
@@ -148,7 +148,7 @@ export class SpriteDetail {
     for (const sp of list) { x0 = Math.min(x0, sp.sx); y0 = Math.min(y0, sp.sy); x1 = Math.max(x1, sp.sx + 8); y1 = Math.max(y1, sp.sy + sp.h); }
     const w = x1 - x0, h = y1 - y0, parts = [];
     for (const sp of list) for (let half = 0; half < sp.h / 8; half++) {
-      const tile = sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half), bank = (sp.attr >> 3) & 1, pal = sp.attr & 7, fx = (sp.attr >> 5) & 1, fy = (sp.attr >> 6) & 1;
+      const tile = sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half), bank = sp.vb ?? ((sp.attr >> 3) & 1), pal = sp.attr & 7, fx = (sp.attr >> 5) & 1, fy = (sp.attr >> 6) & 1;
       parts.push({ key: keyFn(tile, bank, pal, fx, fy), tile, bank, pal, fx, fy, dx: sp.sx - x0, dy: sp.sy + half * 8 - y0 });
     }
     parts.sort((a, b) => a.dy - b.dy || a.dx - b.dx);

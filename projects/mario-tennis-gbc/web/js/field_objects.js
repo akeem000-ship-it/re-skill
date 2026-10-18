@@ -25,6 +25,8 @@
 //          flower painted on the ground: every copy of that tile does the same
 //  fountains: {on: solid, pool: [x0, y0, x1, y1], jet, spread}: a water jet from the middle of the pool (the top of
 //          that solid; the game animates the water tiles themselves) with rings spreading on it
+//  blank: [{to: [x0, y0, x1, y1], from: [x, y]}]: spare tiles kept outside the rooms (seen in the wider 3D picture) painted over with
+//          the map's empty ground copied from the same-sized rectangle at from
 //  walls: false (no collision-grid boxes), patch: "row" (the floor under cut-outs is filled from its row),
 //  backdrop: {y1, z, extend, side, tile} (side-view maps: rows 0..y1 stand up at z as a sky backdrop, the ground
 //          behind it and around the map is the ground tile at `tile`), clear: "sky" (the view's background colour)
@@ -3744,6 +3746,7 @@ export const FIELD_OBJECTS = {
   ]
  },
  "34": {
+  "blank": [{"to": [240, 352, 256, 480], "from": [208, 352]}, {"to": [432, 72, 512, 104], "from": [432, 216]}],
   "blocks": [
    {
     "x0": 48,

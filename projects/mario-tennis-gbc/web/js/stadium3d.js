@@ -238,7 +238,7 @@ export class Stadium3D {
 
   // ---- hooks called by voxel.js ----
   // after the court picture is painted (bg: 256x256 RGBA of the court with the live palettes); the geometry follows at the next draw
-  paint(bg, courtId) { this.pend = { bg, courtId, at: this.v.gb.ppu.frames }; }
+  paint(bg, courtId) { this.pend = this.painted = { bg, courtId, at: this.v.gb.ppu.frames }; }
 
   // ---- reading the game ----
   tick() {
@@ -275,7 +275,7 @@ export class Stadium3D {
   // once per game frame (voxel.js tick): the class of the match, the cheer after a point and the events the crowd sound plays on (read only)
   step(v) {
     if (v.replaying) { this.ev = null; if (v.matchfx) v.matchfx.prev = null; return; }   // INSTANT REPLAY: the replayed point raises no crowd events
-    const w = v.gb.mem.wram[0], fr = v.gb.ppu.frames; if (v.mode !== "3d" || v.courtId < 0 || w[0x32E] > 15) { this.ev = null; return; }
+    const w = v.gb.mem.wram[0], fr = v.gb.ppu.frames; if (v.mode !== "3d" || v.courtId < 0 || w[0x32E] > 15 || v.isDrill()) { this.ev = null; return; }   // (drills: an empty hall, no crowd to cheer)
     this.applyFill();
     if (v.matchfx) v.matchfx.step(this);                                // MATCH FX: the score's stakes, long rallies, changeovers, the end
     const E = { fr, sig: [w[0x8E4], w[0x8E5], w[0x8E6], w[0x8E7], w[0x8E8], w[0x8E9], w[0x8EA], w[0x8EB]].join(), res: w[0x4D8], fault: w[0x8EE], body: w[0x4AE], ball: w[0x4B3] }, p = this.ev;
@@ -334,12 +334,12 @@ export class Stadium3D {
     const t0 = performance.now(), { bg, courtId } = this.pend, v = this.v, gl = this.gl; this.pend = null;
     const tg = performance.now(); this.gfx(); const tp = performance.now(); const P = this.palette(bg, v.rom), rnd = mulberry32(0x57AD1 + courtId * 977);
     this.fanTexture(); const tb = performance.now(); const B = new Boxes(), crowd = [];
-    const N = 8, D = 80, RISE = 38, BASE = 130, SEAT = 44;
+    const N = 8, D = 80, RISE = 38, BASE = 130, SEAT = 44, hall = this.v.isDrill();
     const STANDS = [{ id: "left", side: true, dir: -1, inner: -1180, v0: -1640, v1: 1900 }, { id: "right", side: true, dir: 1, inner: 1180, v0: -1640, v1: 1900 },
                     { id: "far", side: false, dir: -1, inner: -1800, v0: -2030, v1: 2030, skip: [2, 6, 7, 14] }];
     const adBoards = [];
     const conc = [shade(P.conc, 1.05), shade(P.conc, 0.92)], ads = [P.seatA, P.seatB, ...P.accent, [240, 240, 236]];
-    for (const S of STANDS) {
+    for (const S of hall ? [] : STANDS) {                // (the Training Center's drills are indoors: its hall instead, below)
       if (S.skip && S.skip.includes(courtId)) continue;
       // box in stand coordinates: u = distance outward from the inner edge, vv = along the stand
       const box = (u0, u1, v0, v1, y0, y1, rgb, jit = 0) => {
@@ -412,7 +412,7 @@ export class Stadium3D {
     const fe = cut("fence");
     if (fe) { const span = fe.width * 3; B.add(fe.X, fe.height - 8, fe.Y + 6, span, 12, 16, shade(P.wallLight, 1.0)); for (let x = fe.X - span / 2; x <= fe.X + span / 2; x += 200) B.add(x, 0, fe.Y + 6, 14, fe.height, 14, shade(P.wallLight, 0.9)); }
     // umpire chair: legs, platform, ladder, seat back and the umpire
-    const jd = cut("judge"); let judge = null;
+    const jd = hall ? null : cut("judge"); let judge = null;
     if (jd) {
       const { frame, shirt } = this.chairColours(bg), cx = jd.X + 6, cz = jd.Y - 8, H = 150, f2 = shade(frame, 0.78);
       for (const [dx, dz] of [[-26, -22], [26, -22], [-26, 22], [26, 22]]) B.add(cx + dx, 0, cz + dz, 9, H, 9, f2);
@@ -423,7 +423,8 @@ export class Stadium3D {
       judge = { x: cx, y: H + 9, z: cz, w: jd.width, h: jd.height };   // the umpire: the game's own picture of them, seated here (draw)
     }
     // floodlight towers (lighting.js hangs its lights at the same x / z, FLOOD_HEIGHT up)
-    for (const [x, z] of FLOODS) {
+    if (hall) this.buildHall(B, P);
+    for (const [x, z] of hall ? [] : FLOODS) {
       if (z > 0) continue;                                   // the near towers stand behind the camera: only their light (lighting.js) shows
       const fz = z < 0 ? 1 : -1, px = x < 0 ? 1 : -1;
       B.add(x, 0, z, 30, FLOOD_HEIGHT + 20, 30, [150, 152, 160], 0.02); B.add(x, 0, z, 56, 60, 56, [110, 112, 120]);
@@ -432,8 +433,10 @@ export class Stadium3D {
     }
     // scoreboard above the far stands
     const far = !(courtId === 2 || courtId === 6 || courtId === 7 || courtId === 14), bz = far ? -2150 : -2000, by = 540;
-    B.add(-230, 0, bz - 6, 30, by, 30, [88, 90, 100]); B.add(230, 0, bz - 6, 30, by, 30, [88, 90, 100]); B.add(0, by - 16, bz - 6, 720, 250, 48, [38, 40, 48]); B.add(0, by + 232, bz - 6, 740, 14, 56, [120, 122, 134]);
-    this.boardPos = { x: 0, y: by + 12, z: bz + 20, w: 640, h: 210 }; this.boardDirty = true;
+    if (!hall) {
+      B.add(-230, 0, bz - 6, 30, by, 30, [88, 90, 100]); B.add(230, 0, bz - 6, 30, by, 30, [88, 90, 100]); B.add(0, by - 16, bz - 6, 720, 250, 48, [38, 40, 48]); B.add(0, by + 232, bz - 6, 740, 14, 56, [120, 122, 134]);
+      this.boardPos = { x: 0, y: by + 12, z: bz + 20, w: 640, h: 210 }; this.boardDirty = true;
+    } else this.boardPos = null;
     // upload
     const boxes = B.data(); this.free();
     const bufB = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bufB); gl.bufferData(gl.ARRAY_BUFFER, boxes, gl.STATIC_DRAW);
@@ -444,10 +447,31 @@ export class Stadium3D {
     const vaoC = gl.createVertexArray(); gl.bindVertexArray(vaoC);
     gl.bindBuffer(gl.ARRAY_BUFFER, bufC); for (const [loc, off] of [[0, 0], [1, 16]]) { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, 32, off); gl.vertexAttribDivisor(loc, 1); }
     gl.bindVertexArray(null);
-    this.built = { boxBuf: bufB, boxVao: vaoB, boxN: B.n, crowdBuf: bufC, crowdVao: vaoC, crowdN: crowd.length / 8, court: courtId, judge, adBoards };
+    this.built = { boxBuf: bufB, boxVao: vaoB, boxN: B.n, crowdBuf: bufC, crowdVao: vaoC, crowdN: crowd.length / 8, court: courtId, judge, adBoards, hall };
     this.stats = { boxes: B.n, crowd: crowd.length / 8, ms: performance.now() - t0, gfx: tp - tg, palette: tb - tp, geom: performance.now() - tb };
   }
 
+  // the Training Center's hall around a drill court (no stands, crowd, scoreboard or floodlight towers): cream walls on a dark wooden
+  // skirting with a handrail, a row of high windows down each side with wall lamps between them, and the far wall behind the court's own
+  // backdrop (the Training Center's own colours: its walls, wood and window glass). No ceiling: the camera looks in from above.
+  buildHall(B, P) {
+    const wall = [226, 212, 180], skirt = [132, 98, 66], rail = [176, 140, 96], glass = [150, 196, 236], frame = [238, 234, 222], lamp = [255, 248, 214], cap = [204, 188, 156];
+    const X = 1320, Z0 = -2500, Z1 = 1900, H = 600, T = 40;
+    for (const sx of [-1, 1]) {
+      const x = sx * (X + T / 2);
+      B.add(x, 0, (Z0 + Z1) / 2, T, H, Z1 - Z0, wall, 0.02);                                     // the side wall
+      B.add(x, H, (Z0 + Z1) / 2, T + 16, 14, Z1 - Z0, cap, 0.02);                                // its coping
+      B.add(x - sx * 6, 0, (Z0 + Z1) / 2, T, 110, Z1 - Z0, skirt, 0.04);                         // its wooden skirting
+      B.add(x - sx * 14, 104, (Z0 + Z1) / 2, 14, 12, Z1 - Z0, rail, 0.02);                      // and handrail
+      for (let z = Z0 + 260; z < Z1 - 200; z += 460) {                                            // high windows in white frames
+        B.add(x - sx * 4, 300, z, T + 4, 200, 300, frame); B.add(x - sx * 8, 312, z, T + 4, 176, 276, glass, 0.03);
+        B.add(x - sx * 10, 312, z, T + 4, 176, 10, frame);
+        B.add(x - sx * 14, 470, z + 230, 18, 30, 46, lamp);                                       // a wall lamp between the windows
+      }
+    }
+    B.add(0, 0, Z0 - T / 2, 2 * X + 2 * T, H, T, wall, 0.02); B.add(0, H, Z0 - T / 2, 2 * X + 2 * T, 14, T + 16, cap, 0.02);   // the far wall
+    B.add(0, 0, Z0 - T / 2 + 6, 2 * X, 110, T, skirt, 0.04);
+  }
   // the dot-matrix scoreboard: points of both players from the game's score bytes (0 15 30 40, AD)
   boardTexture() {
     const gl = this.gl;
@@ -483,6 +507,7 @@ export class Stadium3D {
   draw(mvp) {
     const gl = this.gl, v = this.v;
     try {
+      if (this.built && this.built.hall !== v.isDrill() && this.painted && !this.pend) this.pend = this.painted;   // a drill starts or ends on the same court
       if (this.pend && (!this.built || v.gb.ppu.frames - this.buildAt >= 6 || v.gb.ppu.frames < this.buildAt)) { this.buildAt = v.gb.ppu.frames; this.build(); }
       if (!this.built) return; this.tick(); this.applyFill();
       const T = performance.now() / 1000, cheer = clamp(1 - (T - this.cheerAt) / 3.4) ** 0.7;
@@ -518,7 +543,7 @@ export class Stadium3D {
   // the floodlight beams (night only: as strong as the lighting's lamps are on, lighting.js sky.lamps). Light, not a surface: drawn after
   // the lighting pass (voxel.js renderCourt), so the night grade does not darken them, as a soft haze over the scene
   drawBeams(mvp) {
-    const v = this.v, L = v.light; if (!L || L.broken || !L.cfg || !L.cfg.fx.night || !L.activeFor("court")) return;
+    const v = this.v, L = v.light; if (!L || L.broken || !L.cfg || !L.cfg.fx.night || !L.activeFor("court") || (this.built && this.built.hall)) return;   // (indoors: no floodlights)
     const k = (L.skyFor ? L.skyFor("court") : L.sky || {}).lamps || 0; if (k < 0.05) return;
     const gl = this.gl;
     if (!this.pBeam) { this.pBeam = v.link(VS_BEAM, FS_BEAM, ["aP", "aT"]); this.uBeam = { uMVP: gl.getUniformLocation(this.pBeam, "uMVP"), uK: gl.getUniformLocation(this.pBeam, "uK") }; this.beamBuf = gl.createBuffer(); this.beamVao = gl.createVertexArray(); }
@@ -542,7 +567,7 @@ export class Stadium3D {
     gl.depthMask(true); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.bindVertexArray(null);
   }
   // cut-outs this layer replaces: the umpire chair (built from boxes above)
-  cut(c) { return c.name === "judge" && !!this.built && this.built.court === this.v.courtId; }
+  cut(c) { return c.name === "judge" && !!this.built && this.built.court === this.v.courtId && !this.built.hall; }
 }
 
 // the HUD button: "STADIUM: Classic / 3D" (remembered)

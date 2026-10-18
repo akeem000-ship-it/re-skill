@@ -158,9 +158,12 @@ const NET = { x0: -640, x1: 640, height: 96 };                           // post
 // BG-pixel rectangles of the court map that stand upright instead of lying on the floor
 const CUTS = [
   { name: "net",      x0: 40,  y0: 116, x1: 216, y1: 130, fill: "below" },              // the net band (top of the tape .. ground line)
-  { name: "judge",    x0: 208, y0: 104, x1: 226, y1: 136, fill: "tile", key: true, skip: [6] },   // umpire chair / referee right of the net post
-  { name: "backdrop", x0: 0,   y0: 0,   x1: 256, y1: 50,  fill: "below", skip: [6] },   // far fence, stands, castle
+  { name: "judge",    x0: 208, y0: 104, x1: 226, y1: 136, fill: "tile", key: true, skip: [6, 14] },   // umpire chair / referee right of the net post
+  { name: "backdrop", x0: 0,   y0: 0,   x1: 256, y1: 50,  fill: "below", skip: [6, 14] },   // far fence, stands, castle
   { name: "backdrop", x0: 0,   y0: 0,   x1: 256, y1: 64,  fill: "below", courts: [6] }, // training court: sky and the stands band
+  // Wall Practice: the practice wall stands right behind the net (its face rows 44-118), with the sky and the side buildings above
+  // it; the game's target arrows (sprites) are drawn on its face (decal)
+  { name: "backdrop", x0: 0,   y0: 0,   x1: 256, y1: 118, fill: "below", courts: [14], decal: [60, 40, 196, 118] },
   { name: "fence",    x0: 0,   y0: 206, x1: 256, y1: 256, fill: "above", courts: [2, 3, 4, 5, 7, 8] },   // near chain-link fence (courts that have one)
 ];
 const BG_CENTRE = 128.5;                       // BG px of the projection centre: (0x1010 + 0) / 32 + 0.5
@@ -191,6 +194,7 @@ const STANDS = [
 //  grassFrom: {map, block: [x, y]}: the plain grass drawn with that map's grass pattern (16x16 at block); patchFrom: [{from, to}]
 //          rectangles of that map's picture painted over this one's; floorSwap: [{from: [pal, colour], to: [map, pal, colour]}] a
 //          colour of the ground drawn as another map's
+//  blank: [{to: [x0, y0, x1, y1], from: [x, y]}]: spare tiles outside the rooms painted over with the map's empty ground from (x, y)
 //  recolour: {from: [pal, colour], to: [map, pal, colour]}: one of the map's colours drawn as another map's (the side-view road in the
 //          courtyard paths' colour)
 // The ground behind cut-outs is keyed out (colours of the surrounding ground reachable from the edge) and the
@@ -354,6 +358,8 @@ export class Voxel3D {
     return this.courtId >= 0;
   }
   // players: one bank per match slot (WRAM4 P1, WRAM5 P2, WRAM6/7 the partners in doubles); wPlayerX/Y/Z at $DF01/04/07
+  // a drill or mini-game of the Training Center (gameMode $C8A6 5-8: drills, the Tennis Machine, Wall Practice, mini-games)
+  isDrill() { const m = this.gb.mem.wram[0][0x8A6]; return m >= 5 && m <= 8; }
   players() {
     const m = this.gb.mem, n = m.wram[0][0x8F3] >= 4 ? 4 : 2, out = [];
     for (let k = 4; k < 4 + n; k++) {
@@ -409,16 +415,28 @@ export class Voxel3D {
   // cache key for an 8x8 tile: its 16 bytes and its 8 palette bytes hashed (tile slots are reloaded with other
   // graphics between scenes and digits, and palettes fade), plus the flips
   tileKey(addr, bank, palBytes, palIndex, flipX, flipY) {
-    const v = this.gb.mem.vram[bank]; let h = 0x811c9dc5;
+    const v = this.tileBank(bank); let h = 0x811c9dc5;
     for (let i = 0; i < 16; i++) { h ^= v[addr + i]; h = Math.imul(h, 0x01000193); }
     for (let i = 0; i < 8; i++) { h ^= palBytes[palIndex * 8 + i]; h = Math.imul(h, 0x01000193); }
     if (this.gb.look) { h ^= this.gb.look.gen; h = Math.imul(h, 0x01000193); }     // the player's look (web/js/look) colours the hero
     return (h >>> 0) * 4 + flipX * 2 + flipY;
   }
+  // VRAM bank 0 / 1, or 2: tiles read from the ROM for actors the game has not loaded into VRAM yet (romFrameTiles)
+  tileBank(bank) { return bank === 2 ? this.romFrames.tiles : this.gb.mem.vram[bank]; }
+  // a field actor's frame (4 tiles, 64 bytes at bank:src, as the game copies them to the actor's VRAM slot) put in bank 2:
+  // its first tile number there
+  romFrameTiles(bank, src) {
+    const R = this.romFrames || (this.romFrames = { tiles: new Uint8Array(256 * 16), at: new Map(), next: 0 }), k = bank << 16 | src;
+    let t = R.at.get(k); if (t !== undefined) return t;
+    if (R.next >= 256) { R.at.clear(); R.next = 0; }
+    t = R.next; R.next += 4; R.at.set(k, t);
+    const rom = this.gb.mem.rom, o = bank * 0x4000 + (src & 0x3FFF); R.tiles.set(rom.subarray(o, o + 64), t * 16);
+    return t;
+  }
   // sprite tile (8 rows) as RGBA, colour 0 transparent
   spritePixels(tile, bank, pal, flipX, flipY) {
-    const v = this.gb.mem.vram[bank], d = new Uint8Array(8 * 8 * 4), op = this.objPal();
-    const L = this.gb.look, reg = L ? L.tileRegions(bank, tile * 16) : null, fd = reg ? L.fade(op, pal) : -1;   // the player's look
+    const v = this.tileBank(bank), d = new Uint8Array(8 * 8 * 4), op = this.objPal();
+    const L = this.gb.look, reg = L && bank < 2 ? L.tileRegions(bank, tile * 16) : null, fd = reg ? L.fade(op, pal) : -1;   // the player's look
     for (let y = 0; y < 8; y++) {
       const row = flipY ? 7 - y : y, lo = v[tile * 16 + row * 2], hi = v[tile * 16 + row * 2 + 1];
       for (let x = 0; x < 8; x++) {
@@ -495,7 +513,7 @@ export class Voxel3D {
     for (const sp of list) { x0 = Math.min(x0, sp.sx); y0 = Math.min(y0, sp.sy); x1 = Math.max(x1, sp.sx + 8); y1 = Math.max(y1, sp.sy + sp.h); }
     const w = x1 - x0, h = y1 - y0, parts = [];
     for (const sp of list) for (let half = 0; half < sp.h / 8; half++) {
-      const tile = sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half), bank = (sp.attr >> 3) & 1, pal = sp.attr & 7, fx = (sp.attr >> 5) & 1, fy = (sp.attr >> 6) & 1;
+      const tile = sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half), bank = sp.vb ?? ((sp.attr >> 3) & 1), pal = sp.attr & 7, fx = (sp.attr >> 5) & 1, fy = (sp.attr >> 6) & 1;
       parts.push({ key: this.tileKey(tile * 16, bank, this.objPal(), pal, fx, fy), tile, bank, pal, fx, fy, dx: sp.sx - x0, dy: sp.sy + half * 8 - y0 });
     }
     parts.sort((a, b) => a.dy - b.dy || a.dx - b.dx);
@@ -656,7 +674,7 @@ export class Voxel3D {
       let X = g.X, Yw = g.Y, width = w * g.upp, height = h * g.upp;
       if (c.name === "net") { X = (NET.x0 + NET.x1) / 2; Yw = 0; width = (NET.x1 - NET.x0) * w / 160; height = NET.height; }
       const wide = c.name === "backdrop" || c.name === "fence";   // the stands and the fence continue sideways
-      this.cuts.push({ name: c.name, tex: this.texture(w, h, d, false, wide), mesh: this.meshFromPixels(d, w, h, c.key ? 3 : 0, c.key ? 2.5 : 0.5), w, h, X, Y: Yw, width, height, wide });
+      this.cuts.push({ name: c.name, tex: this.texture(w, h, d, false, wide), mesh: this.meshFromPixels(d, w, h, c.key ? 3 : 0, c.key ? 2.5 : 0.5), w, h, X, Y: Yw, width, height, wide, x0: c.x0, y0: c.y0, x1: c.x1, y1: c.y1, decal: c.decal });
     }
   }
   // the stadium's bleachers as textures: u runs along the court (repeats), v across the stand with the
@@ -718,12 +736,12 @@ export class Voxel3D {
   blitObject(list, ax, ay, X, Yw, lift, scale, tilt, mvp) { this.drawBody(this.bodyOf(list, ax, ay), X, Yw, lift, scale, tilt, mvp); }
   // an object's look relative to its anchor, independent of VRAM afterwards (kept for players off the 2D screen):
   // the inflated mesh in voxel mode, else one texture per 8x8 tile
-  bodyOf(list, ax, ay) {
-    if (this.voxelSprites) { const o = this.objectMesh(list); return { mesh: o.mesh, dx: o.x0 + o.w / 2 - ax, up: ay - o.y1, ms: o.ms, gen: this.meshGen || 0 }; }
+  bodyOf(list, ax, ay, vox = false) {
+    if (this.voxelSprites || vox) { const o = this.objectMesh(list); return { mesh: o.mesh, dx: o.x0 + o.w / 2 - ax, up: ay - o.y1, ms: o.ms, gen: this.meshGen || 0, vox }; }
     if (this.gb.detail && this.gb.detail.enabled) { const q = this.detailCard(list, ax, ay); if (q) return q; }          // "Sprites: Detailed": one 3x card for the whole object
     const cards = [];
     for (const sp of list) for (let half = 0; half < sp.h / 8; half++)
-      cards.push({ tex: this.spriteTexture(sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half), (sp.attr >> 3) & 1, sp.attr & 7, (sp.attr >> 5) & 1, (sp.attr >> 6) & 1),
+      cards.push({ tex: this.spriteTexture(sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half), sp.vb ?? ((sp.attr >> 3) & 1), sp.attr & 7, (sp.attr >> 5) & 1, (sp.attr >> 6) & 1),
                    dx: sp.sx + 4 - ax, up: ay - (sp.sy + (half + 1) * 8) });
     return { cards, gen: this.texGen || 0 };
   }
@@ -741,7 +759,7 @@ export class Voxel3D {
   drawBody(b, X, Yw, lift, scale, tilt, mvp, post = null) {
     if (b.gen !== (b.mesh ? this.meshGen || 0 : this.texGen || 0)) return;   // built from evicted cache entries
     const c = Math.cos(tilt), s = Math.sin(tilt), pm = post ? m => m4.mul(post, m) : m => m;
-    if (b.mesh) { if (this.voxelSprites) this.drawMesh(b.mesh, pm(m4.trs3(X + b.dx * scale, lift + b.up * scale * c, Yw - b.up * scale * s, scale * (b.ms || 1), scale * (b.ms || 1), scale * (b.ms || 1), -tilt)), mvp); return; }
+    if (b.mesh) { if (this.voxelSprites || b.vox) this.drawMesh(b.mesh, pm(m4.trs3(X + b.dx * scale, lift + b.up * scale * c, Yw - b.up * scale * s, scale * (b.ms || 1), scale * (b.ms || 1), scale * (b.ms || 1), -tilt)), mvp); return; }
     if (this.voxelSprites) return;
     for (const q of b.cards) this.draw(q.tex, pm(m4.trs(X + q.dx * scale, lift + q.up * scale * c, Yw - q.up * scale * s, (q.w || 8) * scale, (q.h || 8) * scale, -tilt, 0)), mvp);
   }
@@ -836,7 +854,7 @@ export class Voxel3D {
     // ground plane (lying flat: tilt -90deg around X so the quad's up axis becomes -Z, i.e. +Y world towards the camera)
     const gw = WORLD.x1 - WORLD.x0, gh = WORLD.y1 - WORLD.y0;
     this.draw(this.groundTex, m4.trs(0, -0.5, WORLD.y1, gw, gh, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
-    if (this.stadium && this.stadium.active) this.stadium.draw(mvp); else this.drawStands(mvp);   // STADIUM / bleachers with spectators beside and behind the court
+    if (this.stadium && this.stadium.active) this.stadium.draw(mvp); else if (!this.isDrill()) this.drawStands(mvp);   // STADIUM / bleachers with spectators beside and behind the court (none at the Training Center's drills)
     if (this.matchfx && this.stadium && this.stadium.active) this.matchfx.draw(mvp, m4);   // MATCH FX: confetti and fireworks (the end of the match, the intro)
     // upright cut-outs: net, chair, backdrop (cards, or voxels in voxel mode)
     const fx = this.ballfx && this.ballfx.on ? this.ballfx : null;       // BALLFX
@@ -930,7 +948,9 @@ export class Voxel3D {
       else if (had && n < base) for (const q of had) if (f.fy + q.dy < 0 && !f.list.some(sp => sp.tile === q.tile)) f.list.push({ sx: f.fx + q.dx, sy: f.fy + q.dy, tile: q.tile, attr: q.attr, h: q.h, owner: f });
       const pl = sm.players[k] || f.pl, upp = 1024 / (project(pl.X, pl.Y, 0).s || 128), scale = SCALE * upp / 8;   // world units per px at that depth
       this.draw(this.shadowTex, m4.trs(pl.X, 0.6, pl.Y + 4, 150, 70, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 0.75], 0);
-      const run = this.intro && this.intro.walkBody(pl), body = run || this.bodyOf(f.list, f.fx, f.fy); this.drawBody(body, pl.X, pl.Y, -pl.Z, scale, tilt, mvp);   // INTRO: running on
+      // the Tennis Machine's robot (the far player on the training court) is always a solid voxel body, in 3D as in VOX
+      const robot = this.courtId === 6 && pl.Y < 0 && this.isDrill();
+      const run = this.intro && this.intro.walkBody(pl), body = run || this.bodyOf(f.list, f.fx, f.fy, robot); this.drawBody(body, pl.X, pl.Y, -pl.Z, scale, tilt, mvp);   // INTRO: running on
       // the last whole body seen (feet on screen) stands in while the player is off the Game Boy screen
       if (!run && f.fy <= 144 && f.fy >= 16) (this.lastBody ||= [])[f.pl.slot] = body;
       if (this.debug) this.debug.push({ X: pl.X, Y: pl.Y, Z: pl.Z, n: f.list.length, tiles: f.list.map(s => `${s.sx},${s.sy},${s.tile}`) });
@@ -964,6 +984,21 @@ export class Voxel3D {
       const upp = 1024 / (project(e.pos.X, e.pos.Y, 0).s || 128);
       this.blitObject(grp, ex, ey, e.pos.X, e.pos.Y, Math.max(0, -e.pos.Z), SCALE * upp / 8, tilt, mvp);
       if (this.debug) this.debug.push({ effect: e.a, n: grp.length });
+    }
+    // sprites painted on an upright cut-out's face (Wall Practice: the target arrows on the wall): drawn on it, where they are on its picture
+    const dc = this.cuts.find(c => c.decal);
+    if (dc) {
+      const [qx0, qy0, qx1, qy1] = dc.decal, upx = dc.width / dc.w, upy = dc.height / dc.h, grp = [];
+      for (const sp of sprs) {
+        if (sp.owner || isBallTile(sp)) continue;
+        const bx = (sp.sx + 4 + p.scx) & 255, by = (sp.sy + sp.h / 2 + p.scy) & 255; if (bx < qx0 || bx >= qx1 || by < qy0 || by >= qy1) continue;
+        sp.owner = "decal"; grp.push(sp);
+      }
+      for (const sp of grp) {
+        const bx = (sp.sx + 4 + p.scx) & 255, bot = (sp.sy + sp.h + p.scy) & 255;
+        this.blitSprite(sp, sp.sx + 4, sp.sy + sp.h, dc.X + (bx - (dc.x0 + dc.x1) / 2) * upx, dc.Y + 3, (dc.y1 - bot) * upy, upx, 0, mvp);
+      }
+      if (this.debug && grp.length) this.debug.push({ decals: grp.map(s => `${s.sx},${s.sy},${s.tile}`) });
     }
     // other ball-range sprites inside the picture (bounce marks, a second ball) stand at their un-projected feet;
     // everything else (score strip, point faces, "1ST P1" labels) is HUD in screen space
@@ -1234,6 +1269,15 @@ export class Voxel3D {
         const c5 = (pal, [p, i]) => { const [r, g, b] = this.col5(pal, p, i); return r << 16 | g << 8 | b; };
         const from = c5(this.romPal(this.mapId()), sw.from), to = c5(this.romPal(sw.to[0]), sw.to.slice(1));
         for (let y = 0; y < MHp; y++) for (let x = 0; x < MWp; x++) { const i = y * 512 + x; if (pack(floor, i * 4) === from) paint(i, to); }
+      }
+    }
+    // blank: spare tiles the map keeps outside its rooms (never on the Game Boy screen, but in the 3D view's wider picture) painted over
+    // with this map's own empty ground, copied pixel for pixel from the same-sized rectangle at from (so its pattern runs on)
+    for (const bl of def.blank || []) {
+      const [tx0, ty0, tx1, ty1] = bl.to, [fx0, fy0] = bl.from;
+      for (let y = ty0; y < ty1; y++) for (let x = tx0; x < tx1; x++) {
+        const i = y * 512 + x, src = (fy0 + y - ty0) * 512 + fx0 + x - tx0, o = i * 4;
+        floor[o] = art[src * 4]; floor[o + 1] = art[src * 4 + 1]; floor[o + 2] = art[src * 4 + 2]; f.floorSrc[i] = src; f.patched[i] = 1;
       }
     }
     // cut-outs: the floor under their opaque pixels is replaced by the ground strip below them (top-down maps), or
@@ -1968,20 +2012,15 @@ export class Voxel3D {
         this.drawBody(m.body, X, Z, a.lift + sl, 1, TILT, mvp); continue;   // cut by the screen edge: the whole look
       }
       // no sprites and never seen: someone the game culled before they were ever on screen. Every person is two 8x16 parts (tile t at
-      // x-8, t+2 at x, attribute from the actor table), put together here. The game loads an actor's frame into its VRAM tiles only once
-      // (+0x32 = the frame loaded, $FF = none yet): a loaded frame is drawn as it is; for the others the tiles of another actor of the
-      // same kind are borrowed (they share the frames, only the palette differs), or its remembered look, so the far parts of the map are
-      // never empty and nobody pops in at the screen edge
+      // x-8, t+2 at x, attribute from the actor table), put together here. A frame the game has loaded into the actor's VRAM slot
+      // (+0x32 drawn facing, $FF = none yet) is drawn as it is; otherwise the frame is read from the ROM as the game would load it
+      // (QueueActorFrameTileCopy 04:56C3: frame table [frame] + facing, from the actor's sprite bank), so the far parts of the map
+      // are never empty and nobody pops in at the screen edge
       if (!m && (a.ax < -8 || a.ax >= 168 || a.ay < -4 || a.ay >= 176)) {
-        const w4 = this.gb.mem.wram[4], b = a.slot * 0x40;
-        let tile = w4[b + 0x36];
-        if (w4[b + 0x32] === 0xFF) {
-          const donor = actors.find(d => d !== a && d.obj === a.obj && (d.list.length || w4[d.slot * 0x40 + 0x32] !== 0xFF));
-          if (!donor) { const look = [...mem.values()].find(l => l.obj === a.obj); if (look) this.drawBody(look.body, X, Z, a.lift, 1, TILT, mvp); continue; }
-          tile = w4[donor.slot * 0x40 + 0x36];
-        }
-        const attr = w4[b + 0x37], sx = a.ax - 8, sy = a.ay - 16;
-        const list = [{ sx, sy, h: 16, tile: tile & 0xFE, attr, owner: null }, { sx: sx + 8, sy, h: 16, tile: (tile + 2) & 0xFE, attr, owner: null }];
+        const w4 = this.gb.mem.wram[4], b = a.slot * 0x40, attr = w4[b + 0x37], sx = a.ax - 8, sy = a.ay - 16;
+        let tile = w4[b + 0x36], vb;
+        if (w4[b + 0x32] === 0xFF) { tile = this.actorRomFrame(b); vb = 2; if (tile < 0) continue; }
+        const list = [{ sx, sy, h: 16, tile: tile & 0xFE, attr, vb, owner: null }, { sx: sx + 8, sy, h: 16, tile: (tile + 2) & 0xFE, attr, vb, owner: null }];
         this.drawBody(this.bodyOf(list, a.ax, a.ay), X, Z, a.lift, 1, TILT, mvp); continue;
       }
       // no sprites: off the Game Boy screen (culled by the game) -> the remembered look; on screen -> hidden by the game
@@ -1989,6 +2028,23 @@ export class Voxel3D {
     }
     for (const g of loose) { const cx2 = (g.x0 + g.x1) / 2; this.blitObject(g.list, cx2, g.y1, cx2 + ox, g.y1 + oy, 0, 1, TILT, mvp); }
     if (this.debug) this.debug.push({ actors: actors.map(a => `${a.slot}:${a.obj}@${Math.round(a.ax)},${Math.round(a.ay)}/${a.list.length}${mem.has(a.slot) ? "m" : ""}`).join(" "), loose: loose.length });
+  }
+  // the frame actor b (its offset in the actor table) would show, read from the ROM into bank 2 (romFrameTiles): the animation's
+  // frame (+0x33, or the first frame of its script at +0x2C) and the facing (+0x34 through DirectionToFacing 04:56B3, unless the
+  // object has one facing, +0x35 = 1). -> its first tile there, or -1
+  actorRomFrame(b) {
+    const w4 = this.gb.mem.wram[4], rom = this.gb.mem.rom, bank = w4[b + 0x22], at = a => bank * 0x4000 + (a & 0x3FFF), w = o => w4[b + o] | w4[b + o + 1] << 8;
+    if (bank < 1 || bank >= rom.length / 0x4000) return -1;
+    let e = w4[b + 0x33];
+    if (e === 0xFF) {
+      let ptr = w(0x2C);
+      for (let k = 0; k < 8; k++) { e = rom[at(ptr)]; if (e < 0xF0) break; if (e !== 0xFF) return -1; ptr = w(0x2A) + rom[at(ptr) + 1]; }
+      if (e >= 0xF0) return -1;
+    }
+    const d = w4[b + 0x35] === 1 ? 0 : rom[4 * 0x4000 + (0x56B3 & 0x3FFF) + ((((w4[b + 0x34] + 8) & 0xFF) >> 4) & 15)];
+    const entry = at((w(0x24) + ((e * 2) & 0xFF)) & 0xFFFF), frame = rom[entry] | rom[entry + 1] << 8;
+    if (frame < 0x4000 || frame >= 0x8000) return -1;
+    return this.romFrameTiles(bank, (frame + d) & 0xFFFF);
   }
   // screen rectangles (px) of BG tiles that differ from the WRAM3 map at the field scroll, and of window rows
   fieldOverlayRects() {

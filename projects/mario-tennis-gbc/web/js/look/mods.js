@@ -19,8 +19,9 @@
 //             the message number in it, the new text ("\n" a new line; {XX} a control code, e.g. {02} next page, {03} end, {07}
 //             your name); written in place when it fits, else in the bank's free tail with its table word repointed
 //   matchSet  a match sprite set of its own (an index into CharSpriteSetTable 07:5A50, for a character that shares its set with
-//             another: Kevin and A. Coz both use set 10); the set must have the hero's frame layout and no other user among the
-//             playable roster, e.g. 26 (the unused roster slot $15's). The table entry is repointed and the body drawn into that set
+//             another: Kevin and A. Coz both use set 10); the set must have the hero's frame layout and no other user. Every one
+//             of the 30 sets has one: set 26 is roster slot $15's, the robot of the training drills (its first ~40 frames), so it
+//             is refused like any other set in use. The table entry is repointed and the body drawn into that set
 //   stats     a play style: 11 weights (0-9) for Top, Slice, Serve, Stroke, Volley, Angle, Placement, Speed, Dash, Reaction,
 //             Stop. Every record the character is shown as (its own, and the story's rankers and other opponents that
 //             NameTextRemap_02 shows as it) keeps its own total of stat points, shared out by these weights (bars capped at 9),
@@ -239,8 +240,8 @@ export function buildMods(rom, mods, res) {
     const set = (r, v) => { if (v !== undefined) res.colours[base + r] = v & 0x7FFF; };
     set(REG.OUT, c.outline ?? 0x0000); set(REG.SKIN, c.skin); set(REG.SHADE, c.shade ?? (c.skin !== undefined ? shade(c.skin) : undefined));
     set(REG.HAIR, c.hair); if (c.hair !== undefined) { const t = hairTones(c.hair); set(REG.HAIR2, t.k); set(REG.HAIR3, t.g); } set(REG.HAT, c.hat); set(REG.TOP, c.top); set(REG.BOTTOM, c.bottom); set(REG.SHOES, c.shoes ?? c.bottom); set(REG.RACKET, c.racket); set(REG.TRIM, c.trim);
-    if (ch.matchSet !== undefined) {                               // its own match sprite set: only if no other playable character uses that set
-      const used = []; for (let c = 0; c < 32; c++) if (c !== ch.char && rom[off(SPRITE_SET_TABLE[0], SPRITE_SET_TABLE[1]) + c] === ch.matchSet && c !== 0x15 && c !== 0x16) used.push(c);
+    if (ch.matchSet !== undefined) {                               // its own match sprite set: only if no other character (the robot, $15, included) uses that set
+      const used = []; for (let c = 0; c < 32; c++) if (c !== ch.char && rom[off(SPRITE_SET_TABLE[0], SPRITE_SET_TABLE[1]) + c] === ch.matchSet && c !== 0x16) used.push(c);
       if (used.length) { res.notes.push(`matchSet ${ch.matchSet} is in use (character ${used.join(", ")}): not moved`); delete ch.matchSet; }
       else res.patches.push({ off: off(SPRITE_SET_TABLE[0], SPRITE_SET_TABLE[1]) + ch.char, bytes: Uint8Array.from([ch.matchSet]) });
     }

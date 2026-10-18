@@ -1,6 +1,6 @@
 # MTenn3D — full changelog (every version)
 
-**0.35.4 is the shareable build: it contains no game data** (it does carry a little surprise for the [REDACTED] and the [REDACTED]; 0.35.5 is your own build with the ROM inside: keep it on your phone). On first start, tap the file box and pick your
+**0.35.6 is the shareable build: it contains no game data** (it does carry a little surprise for the [REDACTED] and the [REDACTED]; 0.35.7 is your own build with the ROM inside: keep it on your phone). On first start, tap the file box and pick your
 own legal dump of *Mario Tennis (USA)* for Game Boy Color (`.gbc`, SHA-1 starting `414ba583`). The app
 checks it, keeps it on the phone (never uploaded), and starts with it by itself after that. Builds up to
 0.24 were private builds with the ROM inside; keep those to yourself. Newest first.
@@ -28,6 +28,10 @@ checks it, keeps it on the phone (never uploaded), and starts with it by itself 
 - **An easter egg** waits in the [REDACTED] and the [REDACTED]. (LOOK > Mods switches it off.)
 - 0.35.4: the easter egg got a wardrobe pass (costumes, a bow, a headband, trim on an outfit, new portraits) and a few new lines.
 - Character mods can now add a bow, a headband and outfit trim in a colour of their own.
+- 0.35.6, the Training Center in 3D: everyone in a room is there the moment you walk in (people the game had not drawn yet are read from the cartridge; this works on every map, so nobody pops in at the edge any more), and the spare signs kept outside the rooms are gone.
+- The drills (Wall Practice, the Tennis Machine and the other mini-games) are played in an indoor hall instead of a stadium: no crowd, scoreboard or floodlight towers.
+- Wall Practice: the wall stands up right behind the net, with the target arrows on it (they used to float in a corner of the screen).
+- The Tennis Machine's robot is back (a character mod had drawn a player over it) and stands as a solid 3D figure.
 
 ## 0.34 — replays, weather and a better grass court
 - **Instant replay:** after a rally of 5 shots or more a REPLAY button shows for a few seconds; tap it to watch the
