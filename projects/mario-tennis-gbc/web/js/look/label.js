@@ -288,6 +288,25 @@ function styleAlex(st, style) {
       const i = y * w + x; if (reg[i] !== OUT) continue;
       if (!N4.some(([dx, dy]) => { const X = x + dx, Y = y + dy; return X >= 0 && Y >= 0 && X < w && Y < h && coloured(reg[Y * w + X]); })) set(st, i, NONE);
     }
+    // fill: the cap's band and seams left as outline inside the hair (outline that touches only hair, not the face or the background)
+    const hairy = r => r === HAIR || r === HAIR2 || r === HAIR3, at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h) ? NONE : reg[y * w + x];
+    for (let pass = 0; pass < 3; pass++) for (let y = 0; y <= Math.min(h - 1, yb + 1); y++) for (let x = 0; x < w; x++) {
+      if (at(x, y) !== OUT) continue;
+      const nb = N4.map(([dx, dy]) => at(x + dx, y + dy));
+      if (nb.some(r => r === NONE || (coloured(r) && !hairy(r)))) continue;
+      if (nb.filter(hairy).length >= 2) set(st, y * w + x, HAIR);
+    }
+    // detail: darker strand tips along the fringe, a darker edge on the side away from the light, a highlight streak near the top-left
+    const cells = []; for (let y = 0; y <= Math.min(h - 1, yb + 1); y++) for (let x = 0; x < w; x++) if (at(x, y) === HAIR) cells.push([x, y]);
+    if (!cells.length) return;
+    const hy0 = Math.min(...cells.map(c => c[1])), hx0 = Math.min(...cells.map(c => c[0])), hx1 = Math.max(...cells.map(c => c[0]));
+    for (const [x, y] of cells) {
+      const below = at(x, y + 1), right = at(x + 1, y);
+      if ((below === OUT || below === SKIN) && y > hy0 + 1 && (x & 1)) set(st, y * w + x, HAIR2);              // fringe tips
+      else if (right === OUT && x === hx1 - 1 + (at(hx1, y) === HAIR ? 1 : 0) && y > hy0) set(st, y * w + x, HAIR2);   // the shaded side
+    }
+    const span = hx1 - hx0, hlx = hx0 + Math.max(1, Math.round(span * 0.28));
+    for (const [dx, dy] of [[0, 1], [1, 1], [1, 2]]) if (at(hlx + dx, hy0 + dy) === HAIR) set(st, (hy0 + dy) * w + hlx + dx, HAIR3);  // highlight
     return;
   }
   if (style === "ponytail" && f !== 0) {
