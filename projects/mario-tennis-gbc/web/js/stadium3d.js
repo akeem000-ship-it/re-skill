@@ -129,6 +129,74 @@ const BOARD_FONT = { 0: "111101101101111", 1: "010110010010111", 2: "11100111110
   M: "101111111101101", N: "110101101101101", O: "010101101101010", P: "111101111100100", Q: "010101101110011", R: "110101110101101",
   S: "011100010001110", T: "111010010010010", U: "101101101101111", V: "101101101101010", W: "101101111111101", X: "101101010101101",
   Y: "101101010010010", Z: "111001010100111" };
+
+// ---- ADS: the boards along the stands carry Mushroom Kingdom adverts, painted here at run time (simple shapes and text; nothing is
+// taken from the ROM or stored as a picture) ----
+const AD_W = 384, AD_H = 104;
+const ADS = [
+  { bg: ["#e52521", "#a30f12"], fg: "#ffffff", text: "MARIO TENNIS", icon: "ball" },
+  { bg: ["#ffffff", "#e8e8ee"], fg: "#e52521", text: "SUPER MUSHROOM", icon: "mushroom" },
+  { bg: ["#1d2b7a", "#0b1240"], fg: "#ffd21f", text: "STAR POWER", icon: "star" },
+  { bg: ["#ff8fc7", "#e0559c"], fg: "#ffffff", text: "PEACH'S CASTLE", icon: "crown" },
+  { bg: ["#43b047", "#1f7a26"], fg: "#ffffff", text: "YOSHI'S ISLAND", icon: "egg" },
+  { bg: ["#ffd21f", "#e0a800"], fg: "#6b3a12", text: "DK BANANAS", icon: "banana" },
+  { bg: ["#2a2a2e", "#111114"], fg: "#ff7a1a", text: "BOWSER'S CASTLE", icon: "flame" },
+  { bg: ["#ffffff", "#e8e8ee"], fg: "#2e9e3e", text: "1-UP", icon: "oneup" },
+  { bg: ["#7a2ec8", "#4a1585"], fg: "#ffe14a", text: "WARIO GOLD", icon: "coin" },
+  { bg: ["#f0f0f4", "#d0d0d8"], fg: "#e52521", text: "NINTENDO", icon: null },
+  { bg: ["#ff7a1a", "#c94d00"], fg: "#ffffff", text: "FIRE FLOWER", icon: "flower" },
+  { bg: ["#55d0ff", "#1f8fd0"], fg: "#ffffff", text: "GAME BOY COLOR", icon: null },
+];
+const AD_COUNT = ADS.length;
+function adIcon(g, kind, x, y, s) {
+  const circle = (cx, cy, r, c) => { g.fillStyle = c; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill(); };
+  g.save(); g.translate(x, y); g.lineWidth = s * 0.06; g.strokeStyle = "rgba(0,0,0,.55)";
+  if (kind === "ball") { circle(0, 0, s * 0.42, "#e4f44a"); g.strokeStyle = "#fff"; g.lineWidth = s * 0.05; g.beginPath(); g.arc(-s * 0.42, 0, s * 0.36, -0.9, 0.9); g.stroke(); g.beginPath(); g.arc(s * 0.42, 0, s * 0.36, Math.PI - 0.9, Math.PI + 0.9); g.stroke(); }
+  else if (kind === "mushroom" || kind === "oneup") {
+    const cap = kind === "oneup" ? "#2e9e3e" : "#e52521";
+    g.fillStyle = "#f6e2b8"; g.fillRect(-s * 0.2, -s * 0.05, s * 0.4, s * 0.42); g.strokeRect(-s * 0.2, -s * 0.05, s * 0.4, s * 0.42);
+    circle(-s * 0.08, s * 0.14, s * 0.04, "#222"); circle(s * 0.08, s * 0.14, s * 0.04, "#222");
+    g.fillStyle = cap; g.beginPath(); g.arc(0, 0, s * 0.42, Math.PI, 0); g.closePath(); g.fill(); g.stroke();
+    circle(0, -s * 0.24, s * 0.1, "#fff"); circle(-s * 0.28, -s * 0.08, s * 0.08, "#fff"); circle(s * 0.28, -s * 0.08, s * 0.08, "#fff");
+  } else if (kind === "star") {
+    g.fillStyle = "#ffd21f"; g.beginPath(); for (let i = 0; i < 10; i++) { const r = i & 1 ? s * 0.2 : s * 0.46, a = -Math.PI / 2 + i * Math.PI / 5; g.lineTo(Math.cos(a) * r, Math.sin(a) * r); } g.closePath(); g.fill(); g.stroke();
+    circle(-s * 0.08, -s * 0.02, s * 0.035, "#222"); circle(s * 0.08, -s * 0.02, s * 0.035, "#222");
+  } else if (kind === "crown") {
+    g.fillStyle = "#ffd21f"; g.beginPath(); g.moveTo(-s * 0.4, s * 0.25); g.lineTo(-s * 0.4, -s * 0.2); g.lineTo(-s * 0.2, 0); g.lineTo(0, -s * 0.32); g.lineTo(s * 0.2, 0); g.lineTo(s * 0.4, -s * 0.2); g.lineTo(s * 0.4, s * 0.25); g.closePath(); g.fill(); g.stroke();
+    circle(0, s * 0.1, s * 0.07, "#3a9cff"); circle(-s * 0.24, s * 0.12, s * 0.05, "#e52521"); circle(s * 0.24, s * 0.12, s * 0.05, "#e52521");
+  } else if (kind === "egg") {
+    g.fillStyle = "#fff"; g.beginPath(); g.ellipse(0, 0, s * 0.3, s * 0.4, 0, 0, Math.PI * 2); g.fill(); g.stroke();
+    circle(-s * 0.1, -s * 0.12, s * 0.08, "#43b047"); circle(s * 0.12, s * 0.06, s * 0.09, "#43b047"); circle(-s * 0.06, s * 0.22, s * 0.06, "#43b047");
+  } else if (kind === "banana") {
+    g.strokeStyle = "#ffe14a"; g.lineWidth = s * 0.2; g.lineCap = "round"; g.beginPath(); g.arc(s * 0.15, -s * 0.15, s * 0.36, 1.7, 3.3); g.stroke();
+    g.strokeStyle = "#6b3a12"; g.lineWidth = s * 0.05; g.beginPath(); g.arc(s * 0.15, -s * 0.15, s * 0.46, 1.75, 3.25); g.stroke();
+  } else if (kind === "flame") {
+    g.fillStyle = "#ff7a1a"; g.beginPath(); g.moveTo(0, -s * 0.45); g.quadraticCurveTo(s * 0.4, 0, s * 0.2, s * 0.35); g.quadraticCurveTo(0, s * 0.45, -s * 0.2, s * 0.35); g.quadraticCurveTo(-s * 0.4, 0, 0, -s * 0.45); g.fill();
+    g.fillStyle = "#ffd21f"; g.beginPath(); g.moveTo(0, -s * 0.15); g.quadraticCurveTo(s * 0.2, s * 0.1, s * 0.1, s * 0.3); g.quadraticCurveTo(0, s * 0.36, -s * 0.1, s * 0.3); g.quadraticCurveTo(-s * 0.2, s * 0.1, 0, -s * 0.15); g.fill();
+  } else if (kind === "coin") {
+    circle(0, 0, s * 0.4, "#ffd21f"); g.stroke(); g.fillStyle = "#e0a800"; g.fillRect(-s * 0.06, -s * 0.24, s * 0.12, s * 0.48);
+  } else if (kind === "flower") {
+    for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2; circle(Math.cos(a) * s * 0.2, Math.sin(a) * s * 0.2 - s * 0.08, s * 0.16, i & 1 ? "#ffd21f" : "#ff7a1a"); }
+    circle(0, -s * 0.08, s * 0.12, "#fff"); g.fillStyle = "#43b047"; g.fillRect(-s * 0.04, s * 0.1, s * 0.08, s * 0.32);
+  }
+  g.restore();
+}
+function adTextures(gl) {
+  return ADS.map(a => {
+    const c = document.createElement("canvas"); c.width = AD_W; c.height = AD_H; const g = c.getContext("2d");
+    const gr = g.createLinearGradient(0, 0, 0, AD_H); gr.addColorStop(0, a.bg[0]); gr.addColorStop(1, a.bg[1]); g.fillStyle = gr; g.fillRect(0, 0, AD_W, AD_H);
+    g.fillStyle = "rgba(255,255,255,.18)"; g.fillRect(0, 0, AD_W, AD_H * 0.42);                       // a gloss across the top
+    const iconW = a.icon ? AD_H : 0; if (a.icon) adIcon(g, a.icon, AD_H * 0.55, AD_H / 2, AD_H * 0.9);
+    let size = 54; g.font = `900 ${size}px "Arial Black", Impact, sans-serif`;
+    const room = AD_W - iconW - 24; while (g.measureText(a.text).width > room && size > 20) { size -= 2; g.font = `900 ${size}px "Arial Black", Impact, sans-serif`; }
+    g.textAlign = "center"; g.textBaseline = "middle"; const tx = iconW + (AD_W - iconW) / 2, ty = AD_H / 2 + 3;
+    g.lineWidth = Math.max(3, size * 0.12); g.strokeStyle = "rgba(0,0,0,.35)"; g.strokeText(a.text, tx + 2, ty + 2); g.fillStyle = a.fg; g.fillText(a.text, tx, ty);
+    const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+    return t;
+  });
+}
 export class Stadium3D {
   constructor(voxel) {
     this.v = voxel; this.gl = voxel.gl;
@@ -265,6 +333,7 @@ export class Stadium3D {
     const N = 8, D = 80, RISE = 38, BASE = 130, SEAT = 44;
     const STANDS = [{ id: "left", side: true, dir: -1, inner: -1180, v0: -1640, v1: 1900 }, { id: "right", side: true, dir: 1, inner: 1180, v0: -1640, v1: 1900 },
                     { id: "far", side: false, dir: -1, inner: -1800, v0: -2030, v1: 2030, skip: [2, 6, 7, 14] }];
+    const adBoards = [];
     const conc = [shade(P.conc, 1.05), shade(P.conc, 0.92)], ads = [P.seatA, P.seatB, ...P.accent, [240, 240, 236]];
     for (const S of STANDS) {
       if (S.skip && S.skip.includes(courtId)) continue;
@@ -276,7 +345,12 @@ export class Stadium3D {
       const at = (u, vv) => S.side ? [S.inner + S.dir * u, vv] : [vv, S.inner + S.dir * u];
       for (let i = 0; i < N; i++) box(i * D, (i + 1) * D, S.v0, S.v1, 0, BASE + (i + 1) * RISE, conc[i & 1], 0.03);
       // advertising boards on the base wall, a railing on its top
-      const adLen = 230; let k = 0; for (let v0 = S.v0 + 20; v0 + adLen < S.v1; v0 += adLen + 14, k++) box(-7, 0, v0, v0 + adLen, 22, 92, ads[k % ads.length], 0.04);
+      const adLen = 230; let k = 0; for (let v0 = S.v0 + 20; v0 + adLen < S.v1; v0 += adLen + 14, k++) {
+        box(-7, 0, v0, v0 + adLen, 22, 92, ads[k % ads.length], 0.04);
+        // the ad on its front (ADS: drawn by draw()), a little inside the board's edge so the board frames it
+        const vc = v0 + adLen / 2, [x, z] = at(-7.6, vc), r = S.side ? [0, 0, S.dir] : [1, 0, 0], n = S.side ? [-S.dir, 0, 0] : [0, 0, 1];
+        adBoards.push({ m: new Float32Array([r[0] * (adLen - 8), 0, r[2] * (adLen - 8), 0, 0, 62, 0, 0, n[0], 0, n[2], 0, x, 26, z, 1]), ad: (k * 5 + (S.id === "far" ? 7 : S.id === "left" ? 0 : 3)) % AD_COUNT });
+      }
       for (let v0 = S.v0 + 10; v0 < S.v1; v0 += 150) box(2, 8, v0, v0 + 7, BASE + RISE, BASE + RISE + 46, shade(P.conc, 1.2));
       box(2, 8, S.v0, S.v1, BASE + RISE + 42, BASE + RISE + 50, shade(P.conc, 1.25));
       // seats: sections of 5, aisles between; crowd on the seats
@@ -353,7 +427,7 @@ export class Stadium3D {
     const vaoC = gl.createVertexArray(); gl.bindVertexArray(vaoC);
     gl.bindBuffer(gl.ARRAY_BUFFER, bufC); for (const [loc, off] of [[0, 0], [1, 16]]) { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, 32, off); gl.vertexAttribDivisor(loc, 1); }
     gl.bindVertexArray(null);
-    this.built = { boxBuf: bufB, boxVao: vaoB, boxN: B.n, crowdBuf: bufC, crowdVao: vaoC, crowdN: crowd.length / 8, court: courtId, judge };
+    this.built = { boxBuf: bufB, boxVao: vaoB, boxN: B.n, crowdBuf: bufC, crowdVao: vaoC, crowdN: crowd.length / 8, court: courtId, judge, adBoards };
     this.stats = { boxes: B.n, crowd: crowd.length / 8, ms: performance.now() - t0, gfx: tp - tg, palette: tb - tp, geom: performance.now() - tb };
   }
 
@@ -409,6 +483,12 @@ export class Stadium3D {
       // the umpire on the chair: the top of the game's chair picture (the umpire as the game draws them), standing up on the seat
       const J = this.built.judge, jc = J && v.cuts.find(c => c.name === "judge");
       if (jc) { gl.useProgram(v.prog); gl.bindVertexArray(v.vao); v.draw(jc.tex, new Float32Array([J.w * 1.15, 0, 0, 0, 0, J.h * JUDGE_TOP * 1.15, 0, 0, 0, 0, 1, 0, J.x, J.y - 6, J.z + 4, 1]), mvp, [0, 0, 1, JUDGE_TOP], [1, 1, 1, 1], 0.5); }
+      // ADS: the advertising boards along the stands
+      if (this.built.adBoards && this.built.adBoards.length) {
+        if (!this.adTex) this.adTex = adTextures(gl);
+        gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
+        for (const b of this.built.adBoards) v.draw(this.adTex[b.ad], b.m, mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
+      }
       // the scoreboard's screen (a card in front of its frame)
       if (this.boardPos) {
         if (this.boardDirty || !this.board) this.boardTexture();
