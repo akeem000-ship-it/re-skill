@@ -346,7 +346,7 @@ export function jetDroplets(n = 150) {
 // canopy is round and a trunk thin. The colours come from the map picture (a texture), so faces of one depth merge
 // into rectangles whatever the dithering: few vertices per plant. Local units: 1 = one pixel, origin at the
 // bottom-centre. Returns {pos, uv, sway}: uv in image pixels (the caller offsets them into the map texture),
-// sway = (weight, shade, phase): the weight grows with the height (the foot stays put), shade darkens the back and
+// sway = (weight, shade, phase): the weight grows linearly with the height (the foot stays put), shade darkens the back and
 // sides, phase is added to the instance's place in the wind (0 here).
 export function plantMesh(rgba, w, h, R = 5, T = 4) {
   const n = w * h, op = i => rgba[i * 4 + 3] >= 128, dist = new Float32Array(n).fill(1e9);
@@ -359,7 +359,7 @@ export function plantMesh(rgba, w, h, R = 5, T = 4) {
   const D = (x, y) => (x >= 0 && y >= 0 && x < w && y < h) ? dep[y * w + x] : 0;
   const out = { pos: [], uv: [], sway: [] };
   // quad: 4 corners [x, y(local up), z] with their texture pixel coordinates [u, v]
-  const quad = (q, t, k) => { for (const j of [0, 1, 2, 0, 2, 3]) { const [p, uv] = q[j]; out.pos.push(p[0] - w / 2, p[1], p[2]); out.uv.push(uv[0], uv[1]); out.sway.push(Math.pow(Math.max(0, Math.min(1, p[1] / h)), 1.5), k, 0); } };
+  const quad = (q, t, k) => { for (const j of [0, 1, 2, 0, 2, 3]) { const [p, uv] = q[j]; out.pos.push(p[0] - w / 2, p[1], p[2]); out.uv.push(uv[0], uv[1]); out.sway.push(Math.max(0, Math.min(1, p[1] / h)), k, 0); } };   // linear in height: faces stay joined as they bend
   const Y = y => h - y;                            // image row y -> local height of its top edge
   // front and back: greedy rectangles of one depth
   const used = new Uint8Array(n);
@@ -403,7 +403,7 @@ export function plantMesh(rgba, w, h, R = 5, T = 4) {
 // Hedge / foliage bank: the footprint (mask over the map rectangle x0, y0, w, h) rises as a rounded cushion, height
 // growing with the distance from its edge (a quarter circle of radius R px, up to Hmax), in whole pixels. The top is
 // the map picture itself (uv = map px), the steps between heights show the pixel next to them. Rectangles are at most
-// 8 px so the wind (sway = weight, shade, phase by place) bends the top a little at a time.
+// 8 px; the wind (sway = weight, shade, phase) bends the bank as one, by height.
 export function hedgeMesh(mask, x0, y0, w, h, Hmax = 12, R = 6) {
   const n = w * h, on = i => mask[i] > 0, dist = new Float32Array(n).fill(1e9);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (!on(i)) { dist[i] = 0; continue; } if (x === 0 || y === 0 || x === w - 1 || y === h - 1) dist[i] = 1; }
@@ -414,7 +414,7 @@ export function hedgeMesh(mask, x0, y0, w, h, Hmax = 12, R = 6) {
   for (let i = 0; i < n; i++) if (on(i)) { const u = Math.min(dist[i], R) / R; ht[i] = Math.max(2, Math.round(Hmax * Math.sqrt(1 - (1 - u) * (1 - u)))); }
   const H = (x, y) => (x >= 0 && y >= 0 && x < w && y < h) ? ht[y * w + x] : 0;
   const out = { pos: [], uv: [], sway: [] };
-  const quad = (q, k) => { for (const j of [0, 1, 2, 0, 2, 3]) { const [p, uv] = q[j]; out.pos.push(p[0], p[1], p[2]); out.uv.push(uv[0], uv[1]); out.sway.push(p[1] / Hmax * 0.6, k, p[0] * 0.11 + p[2] * 0.07); } };
+  const quad = (q, k) => { for (const j of [0, 1, 2, 0, 2, 3]) { const [p, uv] = q[j]; out.pos.push(p[0], p[1], p[2]); out.uv.push(uv[0], uv[1]); out.sway.push(p[1] / Hmax * 0.6, k, 0); } };   // one phase for the bank (a phase by place opens cracks where faces meet mid-edge)
   const used = new Uint8Array(n);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {                 // tops: rectangles of one height, at most 8 px
     const i = y * w + x; if (!on(i) || used[i]) continue;

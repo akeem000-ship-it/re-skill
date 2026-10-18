@@ -37,6 +37,9 @@ const deck = attachPortrait(() => gb);
 const SAVE_KEY = () => "mt-sram-" + romHash.slice(0, 12);
 const q = new URLSearchParams(location.search);
 const stored = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+// once (0.35.18): characters back to the game's own sprites as blocky voxels (SPRITES: Game, 3D view VOX, VOX: Blocky); the buttons still
+// change them afterwards
+try { if (!localStorage.getItem("mt-reset-0.35.18")) { localStorage.setItem("mt-sprites", "game"); localStorage.setItem("mt-3d", "vox"); localStorage.setItem("mt-voxstyle2", "blocky"); localStorage.setItem("mt-reset-0.35.18", "1"); } } catch (e) { /* private mode */ }
 
 // ---- audio: the worklet plays whatever sample chunks the main thread posts ----
 let actx = null, anode = null, audioReady = false;

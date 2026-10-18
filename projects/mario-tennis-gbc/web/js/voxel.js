@@ -55,11 +55,13 @@ void main() {
   float dx = floor(s * uAmp * aSwayW.x * 4.0 + 0.5) / 4.0;
   vCol = aColW; gl_Position = uMVP * uModel * vec4(aPosW + vec3(dx, -abs(dx) * 0.3, dx * 0.35), 1.0);
 }`;
-// plants: the same wind on voxel bodies coloured from the map texture (aSway = weight, face shade)
+// plants: the same wind on voxel bodies coloured from the map texture (aSway = weight, face shade). Not snapped to quarter pixels
+// as the flowers are: a plant is one mesh of greedy faces whose corners meet mid-edge, so every point must move by the same
+// smooth (linear) rule or thin cracks open between the faces
 const VSP = `#version 300 es
 in vec3 aPosP; in vec2 aUVP; in vec3 aSwayP; uniform mat4 uMVP; uniform mat4 uModel; uniform float uTime; uniform float uAmp; uniform float uPhase; out vec2 vUV; out float vShade;
 void main() {
-  float ph = uPhase + aSwayP.z, s = sin(uTime * 1.9 + ph) * 0.75 + sin(uTime * 3.3 + ph * 1.7) * 0.25, dx = floor(s * uAmp * aSwayP.x * 4.0 + 0.5) / 4.0;
+  float ph = uPhase + aSwayP.z, s = sin(uTime * 1.9 + ph) * 0.75 + sin(uTime * 3.3 + ph * 1.7) * 0.25, dx = s * uAmp * aSwayP.x;
   vUV = aUVP; vShade = aSwayP.y; gl_Position = uMVP * uModel * vec4(aPosP + vec3(dx, -abs(dx) * 0.3, dx * 0.35), 1.0);
 }`;
 const FSP = `#version 300 es
