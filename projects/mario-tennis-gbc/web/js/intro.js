@@ -61,7 +61,7 @@ export class MatchIntro {
     const v = this.v, fr = v.gb.ppu.frames, st = v.stadium, w = v.gb.mem.wram[0];
     const fresh = this.lastCourt < 0 || fr < this.lastCourt || fr - this.lastCourt > 600; this.lastCourt = fr;
     if (fresh && this.on && st && st.active && MODES[w[0x8A6]]) {
-      this.start = fr; this.fr0 = fr; this.t0 = performance.now() / 1000; this.cheered = false; this.whistled = false; this.runTex = new Map();
+      this.start = fr; this.fr0 = fr; this.t0 = performance.now() / 1000; this.cheered = false; this.whistled = false; this.freeRun(); this.runTex = new Map();
       const name = a => { let o = ""; for (let i = 0; i < 16; i++) { const c = w[a + i]; if (c < 0x20 || c > 0x7E) break; o += String.fromCharCode(c); } return o.trim(); };
       this.names = [name(0xA00) || "YOU", name(0xA80) || "OPPONENT"];
       this.cls = st.crowdClass(); this.mode = w[0x8A6];
@@ -83,20 +83,24 @@ export class MatchIntro {
     return { lv: w[a + 0x18], type, sprite, pal, bars: [["POWER", avg(2, 3, 4)], ["SPIN", avg(0, 1)], ["SPEED", avg(7, 8, 9, 10)], ["CONTROL", avg(5, 6)]], pic: this.picture(sprite, pal) };
   }
   // the running player during the walk-on: one card of the match's running frame (voxel.js draws it in place of the game's sprites)
+  freeRun() { const v = this.v; for (const e of (this.runTex || new Map()).values()) { if (e.tex) v.gl.deleteTexture(e.tex); if (e.mesh) v.freeMesh(e.mesh); } }
   // each player's walk in their close-up: [start, end] seconds, and how much of it is left at t (1 before, 0 after)
   walkIn(side, t) { const a = side ? T_B : T_A, b = (side ? T_O : T_B) - 0.4; return { a, left: 1 - Math.max(0, Math.min(1, (t - a) / (b - a))) }; }
   walkBody(pl) {
-    const v = this.v, t = this.t; if (this.start < 0 || v.voxelSprites || !this.who) return null;
+    const v = this.v, t = this.t; if (this.start < 0 || !this.who) return null;
     const side = pl.Y >= 0 ? 0 : 1, p = this.who[side], w = this.walkIn(side, t), walking = w.left > 0 && w.left < 1;
     if (!walking && (t < T_VS || t >= T_WALK)) return null;
-    const k = walking ? FRONT[Math.floor((t - w.a) * 6) % 4] : RUN[Math.floor((t - T_VS) * 9) % 4], flip = !walking && side === 1, key = side + ":" + k + (flip ? "f" : ""), gen = v.texGen || 0;
+    // VOX: a voxel body of the frame (bodyMesh, as the game's own sprites get; Rounded or Blocky), else one card
+    const vox = !!v.voxelSprites, k = walking ? FRONT[Math.floor((t - w.a) * 6) % 4] : RUN[Math.floor((t - T_VS) * 9) % 4], flip = !walking && side === 1;
+    const key = side + ":" + k + (flip ? "f" : "") + (vox ? (v.rounded ? "R" : "V") : ""), gen = vox ? v.meshGen || 0 : v.texGen || 0;
     let e = this.runTex.get(key);
     if (!e || e.gen !== gen) {
       const cv = this.picture(p.sprite, p.pal, k, flip); if (!cv) return null;
-      const d = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data;
-      e = { gen, w: cv.width, h: cv.height, tex: v.texture(cv.width, cv.height, new Uint8Array(d.buffer)) }; this.runTex.set(key, e);
+      const d = new Uint8Array(cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data.buffer);
+      e = vox ? { gen, mesh: v.bodyMesh(d, cv.width, cv.height, 5, 4.5) } : { gen, w: cv.width, h: cv.height, tex: v.texture(cv.width, cv.height, d) };
+      this.runTex.set(key, e);
     }
-    return { cards: [{ tex: e.tex, dx: 0, up: 0, w: e.w, h: e.h }], gen };
+    return vox ? { mesh: e.mesh, dx: 0, up: 0, ms: 1, gen } : { cards: [{ tex: e.tex, dx: 0, up: 0, w: e.w, h: e.h }], gen };
   }
   // match frame k of sprite set c (9: the stance waiting for a serve), coloured with OBJ palette pal and, on your own player, your look
   picture(c, pal, k = 9, flip = false) {
