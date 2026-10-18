@@ -279,6 +279,17 @@ function styleAlex(st, style) {
     // tufts: every other column of the head's top a pixel higher
     const top = new Map(); for (let y = 0; y < yTop; y++) for (let x = 0; x < w; x++) if (reg[y * w + x] === HAIR && !top.has(x)) top.set(x, y);
     [...top].sort((a, b) => a[0] - b[0]).slice(1, -1).forEach(([x, y], k) => { if (!(k % 2) && y >= 2 && reg[(y - 1) * w + x] === OUT) set(st, (y - 1) * w + x, HAIR); });
+    // the cap's edge that the labels took for the shirt (both are colour 1 in Alex's frames): the shirt pixels of the first row under the
+    // cap that sit right under a cap pixel, and the rest of their run along that row
+    {
+      const hatSet = new Set(hat); let yb = -1; for (const i of hat) yb = Math.max(yb, (i / w) | 0);
+      const y = yb + 1;
+      if (y < h) {
+        const strip = new Set(); for (let x = 0; x < w; x++) if (reg[y * w + x] === TOP && hatSet.has(yb * w + x)) strip.add(x);
+        for (const x0 of [...strip]) for (const d of [-1, 1]) for (let x = x0 + d; x >= 0 && x < w && reg[y * w + x] === TOP; x += d) strip.add(x);
+        if (strip.size) { removed = removed || new Uint8Array(w * h); for (const x of strip) { set(st, y * w + x, NONE); removed[y * w + x] = 1; } }
+      }
+    }
     // a rounded head: below its widest row the hair does not widen again (the brim's last rows hang down at the back of the neck)
     {
       const hairRow = y => { let a = w, b = -1; for (let x = 0; x < w; x++) if (reg[y * w + x] === HAIR) { a = Math.min(a, x); b = Math.max(b, x); } return [a, b]; };
