@@ -66,9 +66,17 @@ public class MainActivity extends Activity {
         }
         web.loadUrl("https://appassets.androidplatform.net/assets/web/full.html");
     }
-    /** Saves a file from the page (base64) to Downloads/MTenn3D and offers the share sheet. */
+    /** Saves a file from the page (base64) to Downloads/MTenn3D (recordings: and offers the share sheet); buzzes the phone. */
     private class FileBridge {
-        @android.webkit.JavascriptInterface public void saveFile(String name, String base64) {
+        @android.webkit.JavascriptInterface public void saveFile(String name, String base64) { save(name, base64, "application/octet-stream", true); }
+        @android.webkit.JavascriptInterface public void saveImage(String name, String base64) { save(name, base64, "image/png", false); }
+        @android.webkit.JavascriptInterface public void vibrate(int ms) {
+            android.os.Vibrator v = (android.os.Vibrator) getSystemService(VIBRATOR_SERVICE);
+            if (v == null || !v.hasVibrator()) return;
+            if (android.os.Build.VERSION.SDK_INT >= 26) v.vibrate(android.os.VibrationEffect.createOneShot(Math.max(1, Math.min(ms, 400)), android.os.VibrationEffect.DEFAULT_AMPLITUDE));
+            else v.vibrate(Math.max(1, Math.min(ms, 400)));
+        }
+        private void save(String name, String base64, String mime, boolean share) {
             final byte[] data = android.util.Base64.decode(base64, android.util.Base64.DEFAULT);
             runOnUiThread(() -> {
                 try {
@@ -76,7 +84,7 @@ public class MainActivity extends Activity {
                     if (android.os.Build.VERSION.SDK_INT >= 29) {
                         android.content.ContentValues v = new android.content.ContentValues();
                         v.put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name);
-                        v.put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/octet-stream");
+                        v.put(android.provider.MediaStore.Downloads.MIME_TYPE, mime);
                         v.put(android.provider.MediaStore.Downloads.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/MTenn3D");
                         uri = getContentResolver().insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
                         try (java.io.OutputStream o = getContentResolver().openOutputStream(uri)) { o.write(data); }
@@ -87,7 +95,7 @@ public class MainActivity extends Activity {
                         uri = null;
                     }
                     android.widget.Toast.makeText(MainActivity.this, "Saved Downloads/MTenn3D/" + name, android.widget.Toast.LENGTH_LONG).show();
-                    if (uri != null) {
+                    if (uri != null && share) {
                         android.content.Intent send = new android.content.Intent(android.content.Intent.ACTION_SEND);
                         send.setType("application/octet-stream"); send.putExtra(android.content.Intent.EXTRA_STREAM, uri);
                         send.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
