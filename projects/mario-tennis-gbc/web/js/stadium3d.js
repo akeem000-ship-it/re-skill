@@ -451,26 +451,52 @@ export class Stadium3D {
     this.stats = { boxes: B.n, crowd: crowd.length / 8, ms: performance.now() - t0, gfx: tp - tg, palette: tb - tp, geom: performance.now() - tb };
   }
 
-  // the Training Center's hall around a drill court (no stands, crowd, scoreboard or floodlight towers): cream walls on a dark wooden
-  // skirting with a handrail, a row of high windows down each side with wall lamps between them, and the far wall behind the court's own
-  // backdrop (the Training Center's own colours: its walls, wood and window glass). No ceiling: the camera looks in from above.
+  // the Training Center's hall around a drill court (no stands, crowd, scoreboard or floodlight towers): on the right a cream wall on a
+  // dark wooden skirting with a handrail, high windows and wall lamps; on the left, as beside the Training Center's own courts, a glass
+  // wall in blue frames with benches behind it, where the Training Center's people sit and watch (drawn by draw); the far wall behind the
+  // court's own backdrop. No ceiling: the camera looks in from above.
   buildHall(B, P) {
     const wall = [226, 212, 180], skirt = [132, 98, 66], rail = [176, 140, 96], glass = [150, 196, 236], frame = [238, 234, 222], lamp = [255, 248, 214], cap = [204, 188, 156];
-    const X = 1320, Z0 = -2500, Z1 = 1900, H = 600, T = 40;
-    for (const sx of [-1, 1]) {
-      const x = sx * (X + T / 2);
-      B.add(x, 0, (Z0 + Z1) / 2, T, H, Z1 - Z0, wall, 0.02);                                     // the side wall
-      B.add(x, H, (Z0 + Z1) / 2, T + 16, 14, Z1 - Z0, cap, 0.02);                                // its coping
-      B.add(x - sx * 6, 0, (Z0 + Z1) / 2, T, 110, Z1 - Z0, skirt, 0.04);                         // its wooden skirting
-      B.add(x - sx * 14, 104, (Z0 + Z1) / 2, 14, 12, Z1 - Z0, rail, 0.02);                      // and handrail
-      for (let z = Z0 + 260; z < Z1 - 200; z += 460) {                                            // high windows in white frames
-        B.add(x - sx * 4, 300, z, T + 4, 200, 300, frame); B.add(x - sx * 8, 312, z, T + 4, 176, 276, glass, 0.03);
-        B.add(x - sx * 10, 312, z, T + 4, 176, 10, frame);
-        B.add(x - sx * 14, 470, z + 230, 18, 30, 46, lamp);                                       // a wall lamp between the windows
+    const blue = [52, 92, 196], blueDark = [34, 62, 150], bench = [150, 106, 62], floor = [118, 186, 112];
+    const X = 1320, Z0 = -2500, Z1 = 1900, H = 600, T = 40, zc = (Z0 + Z1) / 2, L = Z1 - Z0;
+    { const x = X + T / 2;                                                                        // the right: a solid wall
+      B.add(x, 0, zc, T, H, L, wall, 0.02); B.add(x, H, zc, T + 16, 14, L, cap, 0.02);
+      B.add(x - 6, 0, zc, T, 110, L, skirt, 0.04); B.add(x - 14, 104, zc, 14, 12, L, rail, 0.02);
+      for (let z = Z0 + 260; z < Z1 - 200; z += 460) {
+        B.add(x - 4, 300, z, T + 4, 200, 300, frame); B.add(x - 8, 312, z, T + 4, 176, 276, glass, 0.03); B.add(x - 10, 312, z, T + 4, 176, 10, frame);
+        B.add(x - 14, 470, z + 230, 18, 30, 46, lamp);
       }
     }
-    B.add(0, 0, Z0 - T / 2, 2 * X + 2 * T, H, T, wall, 0.02); B.add(0, H, Z0 - T / 2, 2 * X + 2 * T, 14, T + 16, cap, 0.02);   // the far wall
-    B.add(0, 0, Z0 - T / 2 + 6, 2 * X, 110, T, skirt, 0.04);
+    { const x = -X - 10, GH = 380;                                                               // the left: the glass wall's blue frame
+      B.add(x, 0, zc, 30, 46, L, blueDark, 0.03); B.add(x, GH, zc, 34, 22, L, blue, 0.02);
+      for (let z = Z0; z <= Z1; z += 300) B.add(x, 0, z, 26, GH, 26, blue, 0.02);
+      B.add(-X - 340, -2, zc, 640, 4, L, floor, 0.04);                                              // the room behind it: its floor,
+      for (let z = Z0 + 200; z < Z1 - 100; z += 520) { B.add(-X - 190, 0, z, 70, 44, 400, bench, 0.05); B.add(-X - 222, 44, z, 10, 40, 400, shade(bench, 0.85)); }   // benches
+      B.add(-X - 660, 0, zc, T, H, L, wall, 0.02); B.add(-X - 654, 0, zc, T, 110, L, skirt, 0.04);  // and its back wall
+      this.glassWall = { x, y0: 46, y1: GH, z0: Z0, z1: Z1 };
+      this.seats = []; for (let z = Z0 + 200, k = 0; z < Z1 - 100; z += 520) for (const dz of [-130, 0, 130]) this.seats.push({ x: -X - 190, y: 44, z: z + dz, k: k++ });
+    }
+    B.add(0, 0, Z0 - T / 2, 2 * X + 2 * T + 700, H, T, wall, 0.02); B.add(X / 2, H, Z0 - T / 2, X + 2 * T, 14, T + 16, cap, 0.02);   // the far wall
+    B.add(0, 0, Z0 - T / 2 + 6, 2 * X + 700, 110, T, skirt, 0.04);
+  }
+  // the spectators on the benches behind the glass and the glass itself (translucent, drawn last, without writing depth)
+  drawHall(mvp) {
+    const v = this.v, gl = this.gl, W = v.watchers;
+    gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
+    if (W && W.size && this.seats) {
+      if (!this.watchTex || this.watchTex.n !== W.size) { if (this.watchTex) for (const t of this.watchTex.list) gl.deleteTexture(t.tex); this.watchTex = { n: W.size, list: [...W.values()].map(p => ({ tex: v.texture(p.w, p.h, p.img), w: p.w, h: p.h })) }; }
+      const S = 13, list = this.watchTex.list, rnd = mulberry32(0x5EA7);
+      for (const st of this.seats) {
+        if (rnd() < 0.3) continue;                                                       // a few empty seats
+        const p = list[Math.floor(rnd() * list.length)];
+        v.draw(p.tex, new Float32Array([p.w * S, 0, 0, 0, 0, p.h * S, 0, 0, 0, 0, 1, 0, st.x, st.y - 30, st.z, 1]), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
+      }
+    }
+    const g = this.glassWall; if (!g) return;
+    if (!this.whiteTex) this.whiteTex = v.texture(1, 1, new Uint8Array([255, 255, 255, 255]));
+    gl.depthMask(false);
+    v.draw(this.whiteTex, new Float32Array([0, 0, g.z1 - g.z0, 0, 0, g.y1 - g.y0, 0, 0, 1, 0, 0, 0, g.x + 4, g.y0, (g.z0 + g.z1) / 2, 1]), mvp, [0, 0, 1, 1], [0.70, 0.86, 1.0, 0.22], 0);
+    gl.depthMask(true);
   }
   // the dot-matrix scoreboard: points of both players from the game's score bytes (0 15 30 40, AD)
   boardTexture() {
@@ -531,6 +557,7 @@ export class Stadium3D {
         gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
         for (const b of this.built.adBoards) v.draw(this.adTex[b.ad], b.m, mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
       }
+      if (this.built.hall) this.drawHall(mvp);                                                    // the drill hall's spectators and glass
       // the scoreboard's screen (a card in front of its frame)
       if (this.boardPos) {
         if (this.boardDirty || !this.board) this.boardTexture();

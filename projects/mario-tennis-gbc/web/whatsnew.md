@@ -1,6 +1,6 @@
 # MTenn3D — full changelog (every version)
 
-**0.35.6 is the shareable build: it contains no game data** (it does carry a little surprise for the [REDACTED] and the [REDACTED]; 0.35.7 is your own build with the ROM inside: keep it on your phone). On first start, tap the file box and pick your
+**0.35.8 is the shareable build: it contains no game data** (it does carry a little surprise for the [REDACTED] and the [REDACTED]; 0.35.9 is your own build with the ROM inside: keep it on your phone). On first start, tap the file box and pick your
 own legal dump of *Mario Tennis (USA)* for Game Boy Color (`.gbc`, SHA-1 starting `414ba583`). The app
 checks it, keeps it on the phone (never uploaded), and starts with it by itself after that. Builds up to
 0.24 were private builds with the ROM inside; keep those to yourself. Newest first.
@@ -32,6 +32,7 @@ checks it, keeps it on the phone (never uploaded), and starts with it by itself 
 - The drills (Wall Practice, the Tennis Machine and the other mini-games) are played in an indoor hall instead of a stadium: no crowd, scoreboard or floodlight towers.
 - Wall Practice: the wall stands up right behind the net, with the target arrows on it (they used to float in a corner of the screen).
 - The Tennis Machine's robot is back (a character mod had drawn a player over it) and stands as a solid 3D figure.
+- 0.35.8: the drill hall's left side is a glass wall in blue frames, like the one beside the Training Center's own courts, with the Training Center's people sitting on benches behind it, watching (the ones you walked past on the way in).
 
 ## 0.34 — replays, weather and a better grass court
 - **Instant replay:** after a rally of 5 shots or more a REPLAY button shows for a few seconds; tap it to watch the

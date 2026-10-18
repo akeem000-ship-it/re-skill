@@ -2007,6 +2007,7 @@ export class Voxel3D {
         if (whole || !m) {
           const body = this.bodyOf(a.list, a.ax, a.ay);
           if (inside) mem.set(a.slot, { obj: a.obj, body, n: a.list.length, bx0: x0 - a.ax, bx1: x1 - a.ax, by0: y0 - a.ay });
+          if (inside && id === 34 && a.slot && !a.lift) this.noteWatcher(a);         // the Training Center's people: the drills' spectators
           this.drawBody(body, X, Z, sl, 1, TILT, mvp); continue;
         }
         this.drawBody(m.body, X, Z, a.lift + sl, 1, TILT, mvp); continue;   // cut by the screen edge: the whole look
@@ -2028,6 +2029,20 @@ export class Voxel3D {
     }
     for (const g of loose) { const cx2 = (g.x0 + g.x1) / 2; this.blitObject(g.list, cx2, g.y1, cx2 + ox, g.y1 + oy, 0, 1, TILT, mvp); }
     if (this.debug) this.debug.push({ actors: actors.map(a => `${a.slot}:${a.obj}@${Math.round(a.ax)},${Math.round(a.ay)}/${a.list.length}${mem.has(a.slot) ? "m" : ""}`).join(" "), loose: loose.length });
+  }
+  // the Training Center's people (map 34) as pictures, one per kind of person, kept for the drill hall (stadium3d.js): they watch the
+  // drills from behind its glass wall. Taken while one stands wholly on the Game Boy screen, in the field's own palettes.
+  noteWatcher(a) {
+    const W = this.watchers || (this.watchers = new Map()); if (W.has(a.obj) || W.size >= 12) return;
+    let x0 = 999, y0 = 999, x1 = -999, y1 = -999;
+    for (const sp of a.list) { x0 = Math.min(x0, sp.sx); y0 = Math.min(y0, sp.sy); x1 = Math.max(x1, sp.sx + 8); y1 = Math.max(y1, sp.sy + sp.h); }
+    const w = x1 - x0, h = y1 - y0; if (w > 24 || h > 32) return;
+    const img = new Uint8Array(w * h * 4);
+    for (const sp of a.list) for (let half = 0; half < sp.h / 8; half++) {
+      const d = this.spritePixels(sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half), sp.vb ?? ((sp.attr >> 3) & 1), sp.attr & 7, (sp.attr >> 5) & 1, (sp.attr >> 6) & 1);
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const si = (y * 8 + x) * 4; if (!d[si + 3]) continue; const o = ((sp.sy - y0 + half * 8 + y) * w + sp.sx - x0 + x) * 4; img.set(d.subarray(si, si + 4), o); }
+    }
+    W.set(a.obj, { w, h, img });
   }
   // the frame actor b (its offset in the actor table) would show, read from the ROM into bank 2 (romFrameTiles): the animation's
   // frame (+0x33, or the first frame of its script at +0x2C) and the facing (+0x34 through DirectionToFacing 04:56B3, unless the
