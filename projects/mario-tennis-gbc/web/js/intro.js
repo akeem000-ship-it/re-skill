@@ -8,6 +8,23 @@
 const KEY = "mt-intro", RUN_IN = 40;             // game frames the court fades in before the hold
 const T_A = 2.6, T_B = 5.0, T_C = 6.9, T_PLAY = 7.5, T_END = 8.1;
 const ease = u => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
+// READY? / PLAY! in the style of the game's own score captions ("0-15", "NICE!"): chunky 2-px strokes, yellow, orange on the right and lower
+// edges of each stroke, a black outline. Glyphs 5x7, drawn at 2x onto a small canvas that is shown pixelated.
+const GLYPHS = { R: "11110100011000111110101001001010001", E: "11111100001000011110100001000011111", A: "01110100011000111111100011000110001",
+  D: "11110100011000110001100011000111110", Y: "10001100010101000100001000010000100", "?": "01110100010000100110001000000000100",
+  P: "11110100011000111110100001000010000", L: "10000100001000010000100001000011111", "!": "00100001000010000100001000000000100" };
+function captionImage(word) {
+  const S = 2, gw = 5 * S, gh = 7 * S, gap = 2, W = word.length * (gw + gap) - gap + 2, H = gh + 2, on = new Uint8Array(W * H);
+  [...word].forEach((ch, k) => { const g = GLYPHS[ch]; if (g) for (let i = 0; i < 35; i++) if (g[i] === "1") for (let dy = 0; dy < S; dy++) for (let dx = 0; dx < S; dx++) on[(1 + Math.floor(i / 5) * S + dy) * W + 1 + k * (gw + gap) + (i % 5) * S + dx] = 1; });
+  const c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d"), img = g.createImageData(W, H), d = img.data, at = (x, y) => x >= 0 && y >= 0 && x < W && y < H && on[y * W + x];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    let col = null;
+    if (at(x, y)) col = !at(x + 1, y) || !at(x, y + 1) ? [232, 80, 32] : [248, 248, 96];
+    else if (at(x - 1, y) || at(x + 1, y) || at(x, y - 1) || at(x, y + 1) || at(x - 1, y - 1) || at(x + 1, y + 1) || at(x - 1, y + 1) || at(x + 1, y - 1)) col = [16, 16, 24];
+    if (col) { const o = (y * W + x) * 4; d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = 255; }
+  }
+  g.putImageData(img, 0, 0); return c.toDataURL();
+}
 const MODES = { 1: "RANKING MATCH", 2: "TOURNAMENT", 3: "PRACTICE MATCH", 4: "EXHIBITION", 10: "SPECIAL MATCH" };
 
 export class MatchIntro {
@@ -81,15 +98,16 @@ export class MatchIntro {
 #matchintro .plate { position: absolute; left: 4%; bottom: 13%; transition: transform .45s cubic-bezier(.2,.9,.3,1.2); }
 #matchintro .plate b { display: block; background: #c81e28; color: #fff; font-size: clamp(20px, 5vw, 38px); font-weight: normal; padding: 2px 34px 2px 16px; clip-path: polygon(0 0, 100% 0, 93% 100%, 0 100%); }
 #matchintro .plate i { display: block; background: #14141e; color: #ffdc5a; font-style: normal; font-size: clamp(12px, 2.6vw, 18px); padding: 2px 16px; }
-#matchintro .big { position: absolute; left: 0; right: 0; top: 40%; text-align: center; color: #ffdc3c; font-size: clamp(36px, 10vw, 72px); text-shadow: 3px 3px 0 #14141e; opacity: 0; transition: opacity .15s; }
-</style><div class="bar" style="top:0"></div><div class="bar" style="bottom:0"></div><div class="flare" style="left:14%;top:12%">✦</div><div class="flare" style="right:12%;top:8%;font-size:46px;animation-direction:reverse">✦</div><div class="plate"><b></b><i></i></div><div class="big"></div>`;
+#matchintro .big { position: absolute; left: 50%; top: 38%; height: 16%; transform: translateX(-50%); image-rendering: pixelated; opacity: 0; transition: opacity .15s; }
+</style><div class="bar" style="top:0"></div><div class="bar" style="bottom:0"></div><div class="flare" style="left:14%;top:12%">✦</div><div class="flare" style="right:12%;top:8%;font-size:46px;animation-direction:reverse">✦</div><div class="plate"><b></b><i></i></div><img class="big" alt="">`;
       document.body.appendChild(root);
       const q = s => root.querySelectorAll(s);
       this.ui = { root, bars: q(".bar"), flares: q(".flare"), plate: q(".plate")[0], big: q(".big")[0] };
     }
     const u = this.ui, title = this.mode === 4 ? "EXHIBITION" : this.cls === "junior" ? "JUNIOR CLASS" : this.cls === "senior" ? "SENIOR CLASS" : this.mode === 10 ? "DREAM MATCH" : "ISLAND OPEN";
     u.plate.children[0].textContent = title; u.plate.children[1].textContent = this.mode === 4 ? "LET'S PLAY!" : MODES[this.mode];
-    u.root.hidden = false; u.big.textContent = "";
+    u.root.hidden = false; u.word = ""; u.big.style.opacity = 0;
+    u.img ||= { "READY?": captionImage("READY?"), "PLAY!": captionImage("PLAY!") };
   }
   overlay() {
     const u = this.ui, t = this.t, r = this.v.cv.getBoundingClientRect();
@@ -98,7 +116,7 @@ export class MatchIntro {
     const lit = t >= T_A && t < T_B; for (const f of u.flares) f.style.opacity = lit ? 0.95 : 0;
     u.plate.style.transform = t >= T_A + 0.5 && t < T_B ? "none" : "translateX(-120%)";
     const word = t >= T_C && t < T_PLAY ? "READY?" : t >= T_PLAY && t < T_END ? "PLAY!" : "";
-    if (u.big.textContent !== word) u.big.textContent = word; u.big.style.opacity = word ? 1 : 0;
+    if (u.word !== word) { u.word = word; if (word) u.big.src = u.img[word]; } u.big.style.opacity = word ? 1 : 0;
   }
 }
 

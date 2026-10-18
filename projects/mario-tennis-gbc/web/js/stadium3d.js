@@ -17,7 +17,7 @@ import { buildFanAtlas, CELL } from "./crowdfans.js";
 import { FLOODS, FLOOD_HEIGHT } from "./lighting.js";
 const KEY = "mt-stadium";
 export const STADIUM_MODES = ["classic", "3d"];
-const STADIUM_MAP = 32, SIZES_KEY = "mt-crowd";
+const STADIUM_MAP = 32, SIZES_KEY = "mt-crowd", JUDGE_TOP = 0.5;   // the part of the chair picture (from the top) that is the umpire
 
 // ---- small helpers ----
 function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -152,7 +152,7 @@ export class Stadium3D {
   // ---- reading the game ----
   tick() {
     const v = this.v, fr = v.gb.ppu.frames; if (this.lastFr === fr) return; this.lastFr = fr;
-    const w = v.gb.mem.wram[0], sig = [w[0x8E4], w[0x8E5], w[0x8E6], w[0x8E7], w[0x8E8], w[0x8E9], w[0x8EA], w[0x8EB]].join();
+    const w = v.gb.mem.wram[0], sig = Array.from(w.subarray(0x8E0, 0x8EC)).join();
     if (sig !== this.scoreSig) { this.scoreSig = sig; this.boardDirty = true; }
   }
   // ---- crowd size by class of match ----
@@ -290,7 +290,7 @@ export class Stadium3D {
     const fe = cut("fence");
     if (fe) { const span = fe.width * 3; B.add(fe.X, fe.height - 8, fe.Y + 6, span, 12, 16, shade(P.wallLight, 1.0)); for (let x = fe.X - span / 2; x <= fe.X + span / 2; x += 200) B.add(x, 0, fe.Y + 6, 14, fe.height, 14, shade(P.wallLight, 0.9)); }
     // umpire chair: legs, platform, ladder, seat back and the umpire
-    const jd = cut("judge");
+    const jd = cut("judge"); let judge = null;
     if (jd) {
       const { frame, shirt } = this.chairColours(bg), cx = jd.X + 6, cz = jd.Y - 8, H = 150, f2 = shade(frame, 0.78);
       for (const [dx, dz] of [[-26, -22], [26, -22], [-26, 22], [26, 22]]) B.add(cx + dx, 0, cz + dz, 9, H, 9, f2);
@@ -298,8 +298,7 @@ export class Stadium3D {
       B.add(cx, H, cz, 72, 9, 62, frame); B.add(cx + 30, H + 9, cz, 9, 50, 56, frame); B.add(cx - 36, H + 9, cz - 26, 8, 22, 8, f2); B.add(cx - 36, H + 9, cz + 26, 8, 22, 8, f2);
       for (let s = 0; s < 5; s++) B.add(cx - 40 - s * 6, s * 30, cz + 48, 34, 7, 30, frame);                // ladder steps towards the viewer
       B.add(cx - 22, 0, cz + 66, 6, 150, 6, f2); B.add(cx - 56, 0, cz + 66, 6, 150, 6, f2);
-      const sk = SKIN[1]; B.add(cx + 6, H + 9, cz, 34, 36, 26, shirt); B.add(cx + 6, H + 9 + 36, cz, 24, 24, 24, sk); B.add(cx + 6, H + 9 + 54, cz, 26, 9, 26, shade(shirt, 0.7));
-      B.add(cx - 18, H + 15, cz - 20, 30, 10, 9, sk); B.add(cx - 18, H + 15, cz + 20, 30, 10, 9, sk); B.add(cx - 22, H + 9, cz - 10, 30, 11, 11, shade(shirt, 0.6)); B.add(cx - 22, H + 9, cz + 10, 30, 11, 11, shade(shirt, 0.6));
+      judge = { x: cx, y: H + 9, z: cz, w: jd.width, h: jd.height };   // the umpire: the game's own picture of them, seated here (draw)
     }
     // floodlight towers (lighting.js hangs its lights at the same x / z, FLOOD_HEIGHT up)
     for (const [x, z] of FLOODS) {
@@ -323,7 +322,7 @@ export class Stadium3D {
     const vaoC = gl.createVertexArray(); gl.bindVertexArray(vaoC);
     gl.bindBuffer(gl.ARRAY_BUFFER, bufC); for (const [loc, off] of [[0, 0], [1, 16]]) { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, 32, off); gl.vertexAttribDivisor(loc, 1); }
     gl.bindVertexArray(null);
-    this.built = { boxBuf: bufB, boxVao: vaoB, boxN: B.n, crowdBuf: bufC, crowdVao: vaoC, crowdN: crowd.length / 8, court: courtId };
+    this.built = { boxBuf: bufB, boxVao: vaoB, boxN: B.n, crowdBuf: bufC, crowdVao: vaoC, crowdN: crowd.length / 8, court: courtId, judge };
     this.stats = { boxes: B.n, crowd: crowd.length / 8, ms: performance.now() - t0, gfx: tp - tg, palette: tb - tp, geom: performance.now() - tb };
   }
 
@@ -331,16 +330,23 @@ export class Stadium3D {
   boardTexture() {
     const gl = this.gl;
     if (!this.board) {
-      const c = document.createElement("canvas"); c.width = 160; c.height = 56; const tex = gl.createTexture();
+      const c = document.createElement("canvas"); c.width = 168; c.height = 56; const tex = gl.createTexture();
       this.board = { c, tex, g: c.getContext("2d") };
     }
-    const w = this.v.gb.mem.wram[0], p1 = w[0x8E4], p2 = w[0x8E5], lab = (a, b) => (a >= 3 && b >= 3) ? (a === b ? "40" : a > b ? "AD" : "40") : ["0", "15", "30", "40"][Math.min(a, 3)];
-    const rows = [["P1", lab(p1, p2)], ["P2", lab(p2, p1)]], g = this.board.g;
-    g.fillStyle = "#14161c"; g.fillRect(0, 0, 160, 56);
+    // sets, games and points ($C8E0-$C8E5). In a game the points stop at 40-40: the game sets the deuce flag ($C8E6) and takes both back
+    // to 30-30, so with the flag on, level is 40-40 and one ahead is AD. In a tiebreak ($C8E7) the points are plain numbers.
+    const w = this.v.gb.mem.wram[0], deuce = w[0x8E6], tb = w[0x8E7];
+    const lab = (a, b) => tb ? String(Math.min(a, 99)) : deuce ? (a > b ? "AD" : "40") : ["0", "15", "30", "40"][Math.min(a, 3)];
+    const rows = [["P1", w[0x8E0], w[0x8E2], lab(w[0x8E4], w[0x8E5])], ["P2", w[0x8E1], w[0x8E3], lab(w[0x8E5], w[0x8E4])]], g = this.board.g;
+    g.fillStyle = "#14161c"; g.fillRect(0, 0, 168, 56);
     const F = { 0: "111101101101111", 1: "010110010010111", 2: "111001111100111", 3: "111001111001111", 4: "101101111001001", 5: "111100111001111", 6: "111100111101111", 7: "111001001001001", 8: "111101111101111", 9: "111101111001111", A: "010101111101101", D: "110101101101110", P: "111101111100100", " ": "000000000000000" };
-    rows.forEach(([name, pts], r) => {
-      const s = name + " " + pts.padStart(2, " "); let x = 8;
-      for (const ch of s) { const bits = F[ch] || F[" "]; for (let i = 0; i < 15; i++) { if (bits[i] === "1") { g.fillStyle = r ? "#7cf0a0" : "#ffc24a"; g.fillRect(x + (i % 3) * 7, 5 + r * 26 + Math.floor(i / 3) * 4, 5, 3); } } x += 25; }
+    rows.forEach(([name, sets, games, pts], r) => {               // "P1 1 4 AD": name, sets, games, points
+      const s = name + " " + Math.min(sets, 9) + Math.min(games, 9) + " " + pts.padStart(2, " "); let x = 6;
+      for (let j = 0; j < s.length; j++) {
+        const bits = F[s[j]] || F[" "], col = j === 3 || j === 4 ? "#e8ecf4" : r ? "#7cf0a0" : "#ffc24a";
+        for (let i = 0; i < 15; i++) if (bits[i] === "1") { g.fillStyle = col; g.fillRect(x + (i % 3) * 5, 5 + r * 26 + Math.floor(i / 3) * 4, 4, 3); }
+        x += j === 4 ? 24 : 19;
+      }
     });
     gl.bindTexture(gl.TEXTURE_2D, this.board.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.board.c);
     for (const [k, val] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, val);
@@ -365,6 +371,9 @@ export class Stadium3D {
         gl.bindVertexArray(this.built.crowdVao); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.built.crowdN);
       }
       gl.disable(gl.CULL_FACE);
+      // the umpire on the chair: the top of the game's chair picture (the umpire as the game draws them), standing up on the seat
+      const J = this.built.judge, jc = J && v.cuts.find(c => c.name === "judge");
+      if (jc) { gl.useProgram(v.prog); gl.bindVertexArray(v.vao); v.draw(jc.tex, new Float32Array([J.w * 1.15, 0, 0, 0, 0, J.h * JUDGE_TOP * 1.15, 0, 0, 0, 0, 1, 0, J.x, J.y - 6, J.z + 4, 1]), mvp, [0, 0, 1, JUDGE_TOP], [1, 1, 1, 1], 0.5); }
       // the scoreboard's screen (a card in front of its frame)
       if (this.boardPos) {
         if (this.boardDirty || !this.board) this.boardTexture();

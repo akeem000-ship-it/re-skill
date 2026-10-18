@@ -199,7 +199,7 @@ export class HDText {
     const f = FONTS[this.font], textOn = !!f.family && this.loaded[this.font] === true;
     // what the painters may need: the text lines read, the HD font, and masks of the pixels they cover
     scr.lines = this.lines; scr.font = textOn ? { family: f.family, em: f.em, base: f.base } : null;
-    scr.textMask.fill(0); scr.opaque.fill(0); scr.claims = []; scr.hiddenStatic = new Set(); scr.canHide = this.hideSprites; scr.in3d = !!this.in3d;
+    scr.textMask.fill(0); scr.opaque.fill(0); scr.claims = []; scr.hiddenStatic = new Set(); scr.canHide = this.hideSprites; scr.in3d = !!this.in3d; scr.actorOam = this.in3d ? this.actorOam || null : null;
     for (const l of this.lines) for (let y = Math.max(0, l.y); y < Math.min(144, l.y + 8); y++) scr.textMask.fill(1, y * 160 + Math.max(0, l.x), y * 160 + Math.min(160, l.x + l.w + 1));
     if (ui && ctx.bg) {
       scr.grabPixels(); scr.readOam();
@@ -239,7 +239,7 @@ export class HDText {
   paintSprites() {
     const scr = this.screen, cv = this.canvas.spr, g = cv.getContext("2d"); let drew = false;
     if (this.has.spr) g.clearRect(0, 0, cv.width, cv.height);
-    scr.readOam(); scr.canHide = this.hideSprites;
+    scr.readOam(); scr.canHide = this.hideSprites; scr.actorOam = this.in3d ? this.actorOam || null : null;   // (3D field: the OAM entries of the people in the scene)
     const top = watch(g, () => { drew = true; }); g.save(); g.setTransform(HD, 0, 0, HD, 0, 0);
     try { runPainters({ spr: top }, scr, "spr"); } finally { g.restore(); }
     this.afterSprites(); this.has.spr = drew; this.painted = this.painted || drew; this.sprVersion++;

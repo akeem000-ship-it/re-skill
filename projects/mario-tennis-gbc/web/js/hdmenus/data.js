@@ -396,7 +396,8 @@ registerHDPainter("d_gauges", (g, scr, layer) => {
 const SMOOTH_SPRITES = true;
 registerHDPainter("d_sprites", (g, scr, layer) => {
   if (!SMOOTH_SPRITES || layer !== "spr" || !scr.canHide || !(scr.panels && scr.panels.length) || onCourt(scr)) return;
-  const sprs = scr.oam.filter(s => !(s.attr & 0x80) && !scr.hidden.has(s.i)); if (!sprs.length) return;
+  // in the 3D field the people stand in the scene: their sprites are not menu art (they were smoothed over the text boxes)
+  const sprs = scr.oam.filter(s => !(s.attr & 0x80) && !scr.hidden.has(s.i) && !(scr.actorOam && scr.actorOam.has(s.i))); if (!sprs.length) return;
   const buf = new Uint32Array(160 * 144); let bx0 = 160, by0 = 144, bx1 = 0, by1 = 0;
   for (const s of [...sprs].reverse()) {
     const rg = s.rgba;                                          // the game's colours, or the player's look

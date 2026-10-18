@@ -137,7 +137,7 @@ const NET = { x0: -640, x1: 640, height: 96 };                           // post
 // BG-pixel rectangles of the court map that stand upright instead of lying on the floor
 const CUTS = [
   { name: "net",      x0: 40,  y0: 116, x1: 216, y1: 130, fill: "below" },              // the net band (top of the tape .. ground line)
-  { name: "judge",    x0: 208, y0: 104, x1: 226, y1: 136, fill: "left", key: true, skip: [6] },   // umpire chair / referee right of the net post
+  { name: "judge",    x0: 208, y0: 104, x1: 226, y1: 136, fill: "tile", key: true, skip: [6] },   // umpire chair / referee right of the net post
   { name: "backdrop", x0: 0,   y0: 0,   x1: 256, y1: 50,  fill: "below", skip: [6] },   // far fence, stands, castle
   { name: "backdrop", x0: 0,   y0: 0,   x1: 256, y1: 64,  fill: "below", courts: [6] }, // training court: sky and the stands band
   { name: "fence",    x0: 0,   y0: 206, x1: 256, y1: 256, fill: "above", courts: [2, 3, 4, 5, 7, 8] },   // near chain-link fence (courts that have one)
@@ -552,7 +552,9 @@ export class Voxel3D {
         if (bx < 0) bx = bx & (BAND - 1); else if (bx > 255) bx = 256 - BAND + ((bx - 256) & (BAND - 1));
         if (by < 0) by = by & (BAND - 1); else if (by > 255) by = 256 - BAND + ((by - 256) & (BAND - 1));
         const c = inCut(bx, by);
-        if (c) { if (c.fill === "below") by = c.y1; else if (c.fill === "above") by = c.y0 - 1; else bx = c.x0 - 1; }
+        if (c && c.fill === "tile") {          // the floor a whole number of tiles to the side (right first): its dither and pattern run on unbroken
+          for (let k = 1; k <= 8; k++) { const r = bx + 8 * k, l = bx - 8 * k; if (r < 256 && !inCut(r, by)) { bx = r; break; } if (l >= 0 && !inCut(l, by)) { bx = l; break; } }
+        } else if (c) { if (c.fill === "below") by = c.y1; else if (c.fill === "above") by = c.y0 - 1; else bx = c.x0 - 1; }
         src[j * W + i] = by * 256 + bx;
       }
     }
@@ -670,7 +672,7 @@ export class Voxel3D {
       const sy = oam[i * 4] - 16, sx = oam[i * 4 + 1] - 8; if (edge ? (sy <= -16 || sy >= 160 || sx < -8 || sx >= 168) : (sy <= -16 || sy >= 144 || sx <= -8 || sx >= 160)) continue;
       if (hid && hid.has(i) && !(isActor && isActor(sx, sy)) && !(rects && !rects.some(r => sx + 4 >= r.x0 && sx + 4 < r.x1 && sy + 8 >= r.y0 && sy + 8 < r.y1))) continue;   // replaced by HD art (web/js/hdui.js)
       let tile = oam[i * 4 + 2]; const attr = oam[i * 4 + 3], hgt = tall ? 16 : 8; if (tall) tile &= 0xFE;
-      sprs.push({ sx, sy, h: hgt, tile, attr, owner: null });
+      sprs.push({ sx, sy, h: hgt, tile, attr, owner: null, i });
     }
     return sprs;
   }
@@ -817,6 +819,9 @@ export class Voxel3D {
     //     but float free, so they are never pulled onto the court
     //  3. the landing marker (flat decal), 4. other ball-range tiles in the picture (world), 5. the rest is HUD
     const isBallTile = sp => sp.tile >= 0x40 && sp.tile < 0x50;
+    // the score and point captions ("0-15", "NICE!") slide across the screen with sprites from VRAM bank 0; the players' bodies always use
+    // bank 1. Captions never join a body (they used to be taken in as they passed a player and drawn beside them on the court): HUD.
+    const isCaption = sp => sp.tile < 0x40 && !(sp.attr & 8);
     const near = (a, b, gap) => a.sx < b.sx + 8 + gap && b.sx < a.sx + 8 + gap && a.sy < b.sy + b.h + gap && b.sy < a.sy + a.h + gap;
     const ballGroup = [];
     for (const sp of sprs) if (isBallTile(sp) && Math.hypot(sp.sx + 4 - ballSx, sp.sy + sp.h / 2 - ballSy) < 12) { sp.owner = "ball"; ballGroup.push(sp); }
@@ -831,7 +836,7 @@ export class Voxel3D {
     // upright at the feet and blinked at 30 Hz
     for (const sp of sprs) if (!sp.owner && sp.tile >= 0x58 && sp.tile < 0x5E && feet.some(f => Math.abs(sp.sx + 4 - f.fx) <= 20 && Math.abs(sp.sy + sp.h - f.fy) <= 10)) sp.owner = "pshadow";
     for (const sp of sprs) {                              // seeds: the lowest body tiles (the player banks' tiles $00-$3F), standing on the feet
-      if (sp.owner || isBallTile(sp) || sp.tile >= 0x40) continue;
+      if (sp.owner || isBallTile(sp) || sp.tile >= 0x40 || isCaption(sp)) continue;
       let best = null, d0 = 1e9;
       for (const f of feet) {
         // feet above the screen: the lowest visible tiles are higher up the body; feet below it: the body is cut
@@ -845,7 +850,7 @@ export class Voxel3D {
     for (let grew = true; grew;) {                        // grow each body by touching sprites
       grew = false;
       for (const sp of sprs) {
-        if (sp.owner || isBallTile(sp)) continue;
+        if (sp.owner || isBallTile(sp) || isCaption(sp)) continue;
         for (const f of feet) if (f.list.some(b => near(sp, b, 2)) && Math.abs(sp.sx + 4 - f.fx) <= 28 && sp.sy + sp.h <= f.fy + 6) { f.list.push(sp); sp.owner = f; grew = true; break; }
       }
     }
@@ -1621,6 +1626,11 @@ export class Voxel3D {
         best.list.push(sp);
       }
     }
+    this.actorSprs = actors.flatMap(a => a.list);                     // (drawFieldOverlays: people are left out of the text boxes)
+    if (this.hdText) {                                                 // and the HD layer leaves their sprites alone (it smooths menu sprites)
+      const ids = new Set(this.actorSprs.map(sp => sp.i)), was = this.hdText.actorOam;
+      if (!was || was.size !== ids.size || [...ids].some(i => !was.has(i))) { this.hdText.actorOam = ids; this.hdText.dirty = true; this.hdText.key = ""; }
+    }
     for (const a of actors) {
       const ia = this.fi && this.fi.act.get(a.slot), X = ia ? ia.x : a.x, Z = (ia ? ia.y : a.y) + 4; a.lift = ia ? ia.lift : a.lift;
       let m = mem.get(a.slot); if (m && m.obj !== a.obj) { mem.delete(a.slot); m = null; }
@@ -1718,6 +1728,17 @@ export class Voxel3D {
     const rects = this.fieldRects || this.fieldOverlayRects(); this.fieldRects = null; if (this.debug) this.debug.push({ overlays: rects });
     if (!rects.length || !frame2d) return;
     const gl = this.gl;
+    // a person standing where a text box opens is drawn over it by the Game Boy (sprites lie above the window); they stand in the 3D
+    // scene already, so inside the boxes their sprites are taken out (the background-and-window picture shows there instead)
+    const hit = (this.actorSprs || []).filter(sp => rects.some(r => !r.sprOnly && sp.sx < r.x1 && sp.sx + 8 > r.x0 && sp.sy < r.y1 && sp.sy + sp.h > r.y0));
+    if (hit.length) {
+      const o = this.ovFrame ||= new Uint32Array(160 * 144), bg = this.gb.ppu.bgFrame; o.set(frame2d);
+      for (const sp of hit) for (let y = Math.max(0, sp.sy); y < Math.min(144, sp.sy + sp.h); y++) for (let x = Math.max(0, sp.sx); x < Math.min(160, sp.sx + 8); x++) {
+        if (rects.some(r => !r.sprOnly && x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1)) o[y * 160 + x] = bg[y * 160 + x];
+      }
+      frame2d = o; this.frameTexKey = "";
+    }
+    this.actorSprs = null;
     this.uploadFrame(frame2d);
     gl.disable(gl.DEPTH_TEST);
     const { ortho, t, b } = this.hudOrtho();
