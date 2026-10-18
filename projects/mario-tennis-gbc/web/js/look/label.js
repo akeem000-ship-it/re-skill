@@ -262,12 +262,13 @@ function styleAlex(st, style) {
   }
   if (style === "spiky") {                            // short hair: no brim, a ragged fringe and tufts on top (the cap's dome reads as a hat)
     const yTop = st.info ? st.info.yh : h; let removed = null;
-    if (f === 1 || f === -1) {                          // side views: the brim, the hair in front of the face in the cap's two lowest rows
-      let yb = -1, front = f > 0 ? -1 : w;
-      for (const i of hat) yb = Math.max(yb, (i / w) | 0);
-      for (let i = 0; i < w * h; i++) if (reg[i] === SKIN && ((i / w) | 0) < yTop) { const x = i % w; front = f > 0 ? Math.max(front, x) : Math.min(front, x); }
-      removed = new Uint8Array(w * h);
-      for (const i of hat) { const x = i % w, y = (i / w) | 0; if (y >= yb - 1 && (f > 0 ? x > front : x < front)) { set(st, i, NONE); removed[i] = 1; } }
+    {                                                   // the brim (in front or, turned, behind): the cap's two lowest rows wider than its dome
+      let yb = -1; for (const i of hat) yb = Math.max(yb, (i / w) | 0);
+      let x0 = w, x1 = -1; for (const i of hat) { const y = (i / w) | 0; if (y < yb - 1) { const x = i % w; x0 = Math.min(x0, x); x1 = Math.max(x1, x); } }
+      if (x1 >= 0) {
+        removed = new Uint8Array(w * h);
+        for (const i of hat) { const x = i % w, y = (i / w) | 0; if (y >= yb - 1 && (x < x0 || x > x1)) { set(st, i, NONE); removed[i] = 1; } }
+      }
     }
     // the fringe: every other column over the face, the outline under the hair becomes hair, so the brim's straight edge breaks up
     const low = new Map(); for (const i of hat) { if (reg[i] !== HAIR) continue; const x = i % w, y = (i / w) | 0; if (!low.has(x) || low.get(x) < y) low.set(x, y); }
@@ -278,7 +279,16 @@ function styleAlex(st, style) {
     // tufts: every other column of the head's top a pixel higher
     const top = new Map(); for (let y = 0; y < yTop; y++) for (let x = 0; x < w; x++) if (reg[y * w + x] === HAIR && !top.has(x)) top.set(x, y);
     [...top].sort((a, b) => a[0] - b[0]).slice(1, -1).forEach(([x, y], k) => { if (!(k % 2) && y >= 2 && reg[(y - 1) * w + x] === OUT) set(st, (y - 1) * w + x, HAIR); });
-    reoutline(st, removed); return;
+    reoutline(st, removed);
+    // round off the head: outline in the cap's rows that touches nothing coloured (the cap's doubled edges and the stubs left where its
+    // back and brim stuck out) goes
+    let yb = -1; for (const i of hat) yb = Math.max(yb, (i / w) | 0);
+    const coloured = r => r !== NONE && r !== OUT && r !== KEEP;
+    for (let pass = 0; pass < 2; pass++) for (let y = 0; y <= Math.min(h - 1, yb + 1); y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x; if (reg[i] !== OUT) continue;
+      if (!N4.some(([dx, dy]) => { const X = x + dx, Y = y + dy; return X >= 0 && Y >= 0 && X < w && Y < h && coloured(reg[Y * w + X]); })) set(st, i, NONE);
+    }
+    return;
   }
   if (style === "ponytail" && f !== 0) {
     let xl = w, xr = -1, yt = h, yb = -1;
