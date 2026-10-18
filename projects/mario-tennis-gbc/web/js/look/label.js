@@ -488,8 +488,9 @@ export function applyStyle(st, style) {
 
 // extras drawn over a styled frame (mods.js): "glasses" turns the eyes into lenses in the hat colour (at 16-32 px the eyes are small
 // dark blobs inside the face with hardly any skin round them, so the face's own outline is the frame)
-// "bow" ties a bow in the hat colour where a ponytail meets the head (seen from the side or from behind)
-export const EXTRAS = ["glasses", "bow"];
+// "bow" ties a bow in the hat colour where a ponytail meets the head (or, with no tail, at the back of the head), seen from the
+// side or from behind; "headband" is a band in the hat colour across the hair, a row above the face
+export const EXTRAS = ["glasses", "bow", "headband"];
 function glasses(st) {
   const { w, h, reg, info } = st; if (!info || st.kind === "portrait") return;
   const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h) ? NONE : reg[y * w + x];
@@ -503,14 +504,39 @@ function glasses(st) {
   }
   for (const i of lens) set(st, i, HAT);
 }
+// the head's hair: its bounds above the shoulders, or null
+function headHair(st) {
+  const { w, reg, info } = st; if (!info) return null;
+  let xl = w, xr = -1, yt = Infinity, yb = -1;
+  for (let y = 0; y < info.yh; y++) for (let x = 0; x < w; x++) {
+    const r = reg[y * w + x]; if (r !== HAIR && r !== HAIR2 && r !== HAIR3) continue;
+    xl = Math.min(xl, x); xr = Math.max(xr, x); yt = Math.min(yt, y); yb = Math.max(yb, y);
+  }
+  return xr < 0 ? null : { xl, xr, yt, yb };
+}
 function bow(st) {
-  const { w, h, reg } = st, t = st.tailRoot; if (!t || st.kind === "portrait") return;
+  const { w, h, reg } = st; if (st.kind === "portrait") return;
+  let t = st.tailRoot;
+  if (!t) {
+    const f = facing(st), H = headHair(st); if (f === 0 || !H) return;
+    t = f === null ? { x: (H.xl + H.xr) >> 1, y: H.yt + 3, side: 0 } : { x: f < 0 ? H.xr : H.xl, y: H.yt + 2, side: f < 0 ? 1 : -1 };
+  }
   const px = t.side ? [[t.x, t.y - 1], [t.x, t.y], [t.x + t.side, t.y - 1]] : [[t.x - 1, t.y], [t.x, t.y], [t.x + 1, t.y], [t.x + 2, t.y]];
   for (const [x, y] of px) if (x >= 0 && y >= 0 && x < w && y < h && reg[y * w + x] !== SKIN) set(st, y * w + x, HAT);
   reoutline(st);
 }
+function headband(st) {
+  const { w, reg, info } = st; if (!info || st.kind === "portrait") return;
+  const H = headHair(st); if (!H) return;
+  let sy0 = Infinity; for (let i = 0; i < w * info.yh; i++) if (reg[i] === SKIN) sy0 = Math.min(sy0, (i / w) | 0);
+  const isHair = r => r === HAIR || r === HAIR2 || r === HAIR3, count = y => { let n = 0; for (let x = H.xl; x <= H.xr; x++) if (isHair(reg[y * w + x])) n++; return n; };
+  let y = H.yt + 2;                                                     // from behind: near the crown
+  if (sy0 < Infinity) { y = -1; for (let yy = sy0 - 1; yy > H.yt; yy--) if (count(yy) >= 3) { y = yy; break; } }   // the lowest hair row above the face
+  if (y <= H.yt) return;
+  for (let x = H.xl; x <= H.xr; x++) if (isHair(reg[y * w + x])) set(st, y * w + x, HAT);
+}
 export function applyExtras(st, extras) {
-  for (const e of extras || []) if (e === "glasses") glasses(st); else if (e === "bow") bow(st);
+  for (const e of extras || []) if (e === "glasses") glasses(st); else if (e === "bow") bow(st); else if (e === "headband") headband(st);
   return st;
 }
 

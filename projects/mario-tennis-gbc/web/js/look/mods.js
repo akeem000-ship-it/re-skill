@@ -9,7 +9,7 @@
 //             data rewrites of the character's own frame blocks; the frame, placement and animation tables stay as
 //             they are, so every pose lands on the pose with the same number). Omitted: the character's frames stay.
 //   style     the hero hairstyle / hat (label.js MOD_STYLES) applied to the frames
-//   extras    ['glasses', 'bow'] drawn over the styled frames
+//   extras    ['glasses', 'bow', 'headband'] drawn over the styled frames
 //   colours   region colours { skin, hair, hat, top, bottom, shoes, racket, outline } ("#rrggbb" or a 15-bit number)
 //   touchups  { "walk:<frame>:<facing>" | "match:<frame address hex>": [{ x, y, r: "hair" ... }] } pixel overrides
 //   portrait  { pal: ["#rrggbb", ...], rows: [24 strings of 24 chars] } the 24x24 face (result screens...), drawn
