@@ -32,9 +32,10 @@ const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
 const lerp = (a, b, t) => a + (b - a) * t;
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
 
-// the court's floodlight towers (x, z; the lamps hang 900 above the ground): stadium3d.js builds its towers here
-export const FLOODS = [[-1050, -1750], [1050, -1750], [-1050, 1750], [1050, 1750]];
-export const FLOOD_HEIGHT = 900;
+// the court's floodlight towers (x, z; the lamps hang 820 above the ground), behind the corners of the stands so they light the court,
+// the stands and the crowd from above and behind: stadium3d.js builds its towers here
+export const FLOODS = [[-1980, -2580], [1980, -2580], [-2080, 2050], [2080, 2050]];
+export const FLOOD_HEIGHT = 820;
 // ---- time of day ----
 // az: where the sun is, degrees from "behind the scene" (+ = to the right of the view); el: its height; sun / amb: light colour on lit
 // surfaces / in shadow (1 = the game's own colours); exp, sat, con: grade; lamps: how much lamps, windows and fountains shine (0..1);
@@ -368,7 +369,7 @@ export class Lighting {
       }
     } else if (kind === "court" && night > 0.02) {
       pool = { v: [0, -80, 1000, 1850], c: [0.58 * night, 0.62 * night, 0.56 * night] };
-      for (const [x, z] of FLOODS) { out.push({ p: [x, FLOOD_HEIGHT, z], r: 3300, c: [0.10 * night, 0.09 * night, 0.07 * night] }); fl.push({ p: [x, FLOOD_HEIGHT, z], c: [0.42 * night, 0.38 * night, 0.28 * night], size: 0.10 }); }
+      for (const [x, z] of FLOODS) { out.push({ p: [x, FLOOD_HEIGHT, z], r: 4800, c: [0.10 * night, 0.09 * night, 0.07 * night] }); fl.push({ p: [x, FLOOD_HEIGHT, z], c: [0.42 * night, 0.38 * night, 0.28 * night], size: 0.10 }); }
     }
     if (kind === "court" && v.ballfx && v.ballfx.on) for (const l of v.ballfx.lights()) if (out.length < 6) out.push(l);      // impact lights of the ball effects (ballfx.js), day and night
     return { out, fl, pool };

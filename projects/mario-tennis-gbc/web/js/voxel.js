@@ -184,6 +184,11 @@ const STANDS = [
 //  stamps: one example of a repeated plant / prop (tile aligned); every place in the map with the same tiles
 //          stands up as a cut-out card (an inflated voxel body in voxel mode) on the ground line of its bottom
 //  cards:  single cut-outs (fences, gate posts)
+//  pitch: {rise, eave, trim}: a pitched roof instead of the flat top (rise px at the ridge, eaves overhanging eave px, gable ends
+//         in the art colour at trim)
+//  plainSide: art points of a building's colours (wall, trim, line, leaf, leaf2): its ends get a painted plain wall
+//  stands: bleacher rows painted flat, raised into steps (row: px per row, seat: its seat rows, rise: px a step rises; gaps: [x0, x1]
+//          walkways through it)
 // The ground behind cut-outs is keyed out (colours of the surrounding ground reachable from the edge) and the
 // floor under them is patched with the ground strip below.
 const WALL_SCALE = F3.WALL_SCALE, FIELD_TILT = 0.3, HUD_SCALE = 0.6;
@@ -1122,7 +1127,7 @@ export class Voxel3D {
     if (f.artTex) gl.deleteTexture(f.artTex);
     this.freeFieldFx(f.fx);
     if (f.skirt) gl.deleteTexture(f.skirt); if (f.roof) { gl.deleteTexture(f.roof.tex); for (const m of [f.roof.lit, f.roof.shade]) { gl.deleteBuffer(m.pb); gl.deleteBuffer(m.ub); gl.deleteVertexArray(m.vao); } }
-    f.cards = []; f.blocks = null; if (f.glass) { gl.deleteBuffer(f.glass.pb); gl.deleteBuffer(f.glass.ub); gl.deleteVertexArray(f.glass.vao); } f.glass = null; f.artTex = null; f.covered = new Uint8Array(32 * 32); f.fx = null; f.clear = null; f.noWalls = false; f.skirt = null; f.roof = null;
+    f.cards = []; f.blocks = null; if (f.glass) { gl.deleteBuffer(f.glass.pb); gl.deleteBuffer(f.glass.ub); gl.deleteVertexArray(f.glass.vao); } f.glass = null; f.artTex = null; f.covered = new Uint8Array(32 * 32); f.fx = null; f.clear = null; f.noWalls = false; f.skirt = null; f.roof = null; if (f.plainSide) { gl.deleteTexture(f.plainSide.tex); gl.deleteBuffer(f.plainSide.mesh.pb); gl.deleteBuffer(f.plainSide.mesh.ub); gl.deleteVertexArray(f.plainSide.mesh.vao); } f.plainSide = null;
     f.patched = null; f.artMod = null; f.artData = null; f.floorSrc = null; f.artSrc = null; f.skirtSrc = -1;
     if (!art) return;
     // where each floor / building-texture pixel comes from in the map picture: palette fades only recolour (recolourField)
@@ -1239,7 +1244,7 @@ export class Voxel3D {
       }
     }
     // buildings: one batched mesh for roofs + fronts (+ the tops and front walls of solids), one for the side walls
-    const front = { pos: [], uv: [] }, side = { pos: [], uv: [] }, glass = { pos: [], uv: [] }, glassEdges = new Set(), keyed = [], roofs = [{ pos: [], uv: [] }, { pos: [], uv: [] }]; let roofArt = null;
+    const front = { pos: [], uv: [] }, side = { pos: [], uv: [] }, glass = { pos: [], uv: [] }, glassEdges = new Set(), keyed = [], roofs = [{ pos: [], uv: [] }, { pos: [], uv: [] }], plainSides = []; let roofArt = null;
     const quad = (o, a, b, c, d, ua, ub, uc, ud) => { for (const [v, t] of [[a, ua], [b, ub], [c, uc], [a, ua], [c, uc], [d, ud]]) { o.pos.push(...v); o.uv.push(t[0] / 512, t[1] / 512); } };
     for (const b of def.blocks || []) {
       if (!inMap(b.x0, b.y0)) continue;
@@ -1279,10 +1284,44 @@ export class Voxel3D {
         edge(x0); edge(x1);
         continue;
       }
-      quad(front, [x0, H, zb], [x1, H, zb], [x1, H, y1], [x0, H, y1], [x0, y0], [x1, y0], [x1, fold], [x0, fold]);   // roof
+      if (b.pitch) {                    // a pitched roof: the roof picture folded along a ridge across the middle, eaves overhanging the walls,
+        const R = b.pitch.rise * WALL_SCALE, e = b.pitch.eave || 0, zm = (zb + y1) / 2, vm = (y0 + fold) / 2, dr = e * R / (zm - zb);   // gable ends in the trim colour
+        quad(front, [x0 - e, H + R, zm], [x1 + e, H + R, zm], [x1 + e, H - dr, y1 + e], [x0 - e, H - dr, y1 + e], [x0, vm], [x1, vm], [x1, fold], [x0, fold]);
+        quad(front, [x0 - e, H - dr, zb - e], [x1 + e, H - dr, zb - e], [x1 + e, H + R, zm], [x0 - e, H + R, zm], [x0, y0], [x1, y0], [x1, vm], [x0, vm]);
+        const [tx, ty] = b.pitch.trim || [x0 + 2, fold];
+        for (const [x, a, c] of [[x0, zb, y1], [x1, y1, zb]]) quad(side, [x, H, a], [x, H, c], [x, H + R, zm], [x, H + R, zm], [tx, ty], [tx + 1, ty], [tx + 1, ty + 1], [tx, ty + 1]);
+      } else quad(front, [x0, H, zb], [x1, H, zb], [x1, H, y1], [x0, H, y1], [x0, y0], [x1, y0], [x1, fold], [x0, fold]);   // roof
       quad(front, [x0, 0, y1], [x1, 0, y1], [x1, H, y1], [x0, H, y1], [x0, y1], [x1, y1], [x1, fold], [x0, fold]);   // front wall
+      if (b.plainSide) { plainSides.push({ b, H }); continue; }   // the game never drew the ends: a plain wall painted for them (below)
       quad(side, [x0, 0, zb], [x0, 0, y1], [x0, H, y1], [x0, H, zb], [x0, y1], [x0 + 6, y1], [x0 + 6, fold], [x0, fold]);   // left wall
       quad(side, [x1, 0, y1], [x1, 0, zb], [x1, H, zb], [x1, H, y1], [x1 - 6, y1], [x1, y1], [x1, fold], [x1 - 6, fold]);   // right wall
+    }
+    // stands: a band of bleacher rows painted flat (row px a row: the seat on top, the riser below it) raised into steps, the
+    // front row lowest; the ends are closed with the riser colour
+    for (const st of def.stands || []) {
+      if (!inMap(st.x0, st.y0)) continue;
+      const { y0, y1, row, rise, seat } = st, n = Math.round((y1 - y0) / row), S = rise * WALL_SCALE;
+      cover(st.x0, y0, st.x1, y1);
+      // gaps: a walkway through the stand (the path below it carried on over the floor there)
+      const spans = []; let sx = st.x0;
+      for (const [g0, g1] of st.gaps || []) {
+        spans.push([sx, g0]); sx = g1;
+        for (let y = y0; y < y1; y++) for (let x = g0; x < g1; x++) { const Y = y1 + ((y - y0) % 16), s0 = (Y * 512 + x) * 4, o = (y * 512 + x) * 4; floor[o] = art[s0]; floor[o + 1] = art[s0 + 1]; floor[o + 2] = art[s0 + 2]; f.patched[y * 512 + x] = 1; f.floorSrc[y * 512 + x] = Y * 512 + x; }
+      }
+      spans.push([sx, st.x1]);
+      for (const [x0, x1] of spans) {
+        const top = n * S, P = 2 * S;                                    // a parapet along the back of the top row
+        quad(front, [x0, top, y0], [x1, top, y0], [x1, top + P, y0], [x0, top + P, y0], [x0, y0 + row], [x1, y0 + row], [x1, y0 + seat], [x0, y0 + seat]);
+        for (const [ex, a, b] of [[x0, [x0, top, y0 - 2], [x0, top, y0]], [x1, [x1, top, y0], [x1, top, y0 - 2]]]) quad(side, a, b, [b[0], top + P, b[2]], [a[0], top + P, a[2]], [ex + 2, y0 + row], [ex + 2, y0 + row], [ex + 2, y0 + seat], [ex + 2, y0 + seat]);
+        quad(front, [x0, top + P, y0 - 2], [x1, top + P, y0 - 2], [x1, top + P, y0], [x0, top + P, y0], [x0, y0 + seat - 1], [x1, y0 + seat - 1], [x1, y0 + seat], [x0, y0 + seat]);
+        for (let k = 0; k < n; k++) {
+          const z0 = y0 + k * row, z1 = z0 + row, h = (n - k) * S, hb = (n - k - 1) * S;
+          quad(front, [x0, h, z0], [x1, h, z0], [x1, h, z1], [x0, h, z1], [x0, z0], [x1, z0], [x1, z0 + seat], [x0, z0 + seat]);   // seat
+          quad(front, [x0, hb, z1], [x1, hb, z1], [x1, h, z1], [x0, h, z1], [x0, z1], [x1, z1], [x1, z0 + seat], [x0, z0 + seat]);   // riser
+          for (const [ex, a, b] of [[x0, [x0, 0, z0], [x0, 0, z1]], [x1, [x1, 0, z1], [x1, 0, z0]]])   // end walls
+            quad(side, a, b, [b[0], h, b[2]], [a[0], h, a[2]], [ex + 2, z1], [ex + 2, z1], [ex + 2, z0 + seat], [ex + 2, z0 + seat]);
+        }
+      }
     }
     // solids: low prisms with the exact outline of their picture (planters, fountain basins), stacked with "on"
     const solids = [];
@@ -1418,6 +1457,37 @@ export class Voxel3D {
       const ub = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, ub); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(o.uv), gl.STATIC_DRAW); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
       gl.bindVertexArray(this.vao); return { vao, pb, ub, count: o.pos.length / 3 };
     };
+    // a building's ends the game never drew (block plainSide: art points of its colours): a plain wall with a trim along the top,
+    // a darker plinth, a drainpipe at the front corner and a vine climbing it, painted once in the facade's own colours
+    if (plainSides.length) {
+      const W = 128, Hh = 96, t = new Uint8Array(W * Hh * 4), { b: b0 } = plainSides[0], ps = b0.plainSide;
+      const col = k => { const [x, y] = ps[k], o = (y * 512 + x) * 4; return [art[o], art[o + 1], art[o + 2]]; };
+      const wall = col("wall"), trim = col("trim"), line = col("line"), leaf = col("leaf"), leaf2 = col("leaf2");
+      const put = (x, y, c) => { if (x < 0 || y < 0 || x >= W || y >= Hh) return; const o = (y * W + x) * 4; t[o] = c[0]; t[o + 1] = c[1]; t[o + 2] = c[2]; t[o + 3] = 255; };
+      for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) put(x, y, y < 5 ? (y === 4 ? line : trim) : y >= Hh - 8 ? (y === Hh - 8 ? line : trim) : (y % 24 === 0 && (x + 1) % 4) ? trim : wall);
+      const px = W - 22;                                           // the drainpipe: a gutter along the top, the pipe down near the front corner
+      for (let y = 5; y < Hh; y++) { put(px, y, line); for (let x = 1; x < 9; x++) put(px + x, y, x < 3 ? wall : x < 7 ? trim : line); put(px + 9, y, line); if (y % 16 === 8) for (let x = px - 2; x <= px + 11; x++) { put(x, y, line); put(x, y + 1, line); } }
+      for (let x = 0; x < W; x++) { put(x, 5, line); put(x, 6, trim); }
+      let s0 = 7; const rnd = () => (s0 = (s0 * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+      for (const [vx, top] of [[24, 14], [64, 44]]) {              // vines: a stem wandering up from the plinth, leaves along it
+        let x = vx;
+        for (let y = Hh - 9; y > top; y--) {
+          if (y % 2) x += rnd() < 0.35 ? -2 : rnd() < 0.5 ? 2 : 0; put(x, y, line);
+          put(x + 1, y, line);
+          if (y % 2 === 0) { const d = rnd() < 0.5 ? -1 : 1, L = 3 + (rnd() * 4 | 0); for (let i = 1; i <= L; i++) for (let j = -1; j <= 1; j++) if (rnd() < 0.8) put(x + (d > 0 ? 1 + i : -i), y + j, (i + j) % 3 ? leaf : leaf2); }
+        }
+      }
+      const g = { pos: [], uv: [] }, q = (A, B, C, D, ua, ub) => { for (const [v, u] of [[A, [ua, 1]], [B, [ub, 1]], [C, [ub, 0]], [A, [ua, 1]], [C, [ub, 0]], [D, [ua, 0]]]) { g.pos.push(...v); g.uv.push(...u); } };
+      for (const { b, H } of plainSides) {
+        const zb = b.back ?? b.y0, { x0, x1, y1 } = b, n = Math.max(1, Math.round((y1 - zb) / W * 1.6));   // the texture is 80 px of wall a repeat
+        for (let k = 0; k < n; k++) {
+          const za = zb + (y1 - zb) * k / n, zc = zb + (y1 - zb) * (k + 1) / n;
+          q([x0, 0, za], [x0, 0, zc], [x0, H, zc], [x0, H, za], 0, 1);     // drainpipe at the front end of each repeat
+          q([x1, 0, zc], [x1, 0, za], [x1, H, za], [x1, H, zc], 1, 0);
+        }
+      }
+      f.plainSide = { tex: this.texture(W, Hh, t), mesh: upload(g) };
+    }
     if (roofArt) {
       const [rx, ry, rw, rh] = roofArt, t = new Uint8Array(rw * rh * 4);
       for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) { const o = (y * rw + x) * 4, s = ((ry + y) * 512 + rx + x) * 4; t[o] = art[s]; t[o + 1] = art[s + 1]; t[o + 2] = art[s + 2]; t[o + 3] = 255; }
@@ -1584,6 +1654,7 @@ export class Voxel3D {
       gl.uniform1f(SU.uTime, T); gl.uniform1f(SU.uShim, this.shimmer.level());
       for (const [b, k] of [[f.blocks.front, 1], [f.blocks.side, 0.68]]) { gl.bindVertexArray(b.vao); gl.uniform4fv(SU.uTint, [k, k, k, 1]); gl.drawArrays(gl.TRIANGLES, 0, b.count); }
       gl.useProgram(this.prog3); gl.uniformMatrix4fv(this.u3.uMVP, false, mvp); gl.uniform1f(this.u3.uAlphaTest, 0.5);
+      if (f.plainSide) { gl.bindTexture(gl.TEXTURE_2D, f.plainSide.tex); gl.bindVertexArray(f.plainSide.mesh.vao); gl.uniform4fv(this.u3.uTint, [0.8, 0.8, 0.8, 1]); gl.drawArrays(gl.TRIANGLES, 0, f.plainSide.mesh.count); }
       if (f.roof) { gl.bindTexture(gl.TEXTURE_2D, f.roof.tex); for (const [b, k] of [[f.roof.lit, 1], [f.roof.shade, 0.75]]) { gl.bindVertexArray(b.vao); gl.uniform4fv(this.u3.uTint, [k, k, k, 1]); gl.drawArrays(gl.TRIANGLES, 0, b.count); } }
       gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
     }
