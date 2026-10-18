@@ -1,6 +1,6 @@
 # MTenn3D — full changelog (every version)
 
-**0.35 is a shareable build: it contains no game data** (0.35.1 adds the private [REDACTED] Senior Class and Island Open mods: keep that one to trusted friends; 0.35.2 is your own build with the ROM inside: keep it on your phone). On first start, tap the file box and pick your
+**0.35.3 is the shareable build: it contains no game data** (it does carry a little surprise for the [REDACTED] and the [REDACTED]; 0.35.2 is your own build with the ROM inside: keep it on your phone). On first start, tap the file box and pick your
 own legal dump of *Mario Tennis (USA)* for Game Boy Color (`.gbc`, SHA-1 starting `414ba583`). The app
 checks it, keeps it on the phone (never uploaded), and starts with it by itself after that. Builds up to
 0.24 were private builds with the ROM inside; keep those to yourself. Newest first.
@@ -25,6 +25,7 @@ checks it, keeps it on the phone (never uploaded), and starts with it by itself 
   on your side, your opponent's in blue on theirs), then run to their places.
 - **Mods with photos:** an opponent mod can carry a picture for each character, shown as their portrait (in full
   detail with UI: HD), and many more modded characters can now have full-colour portraits.
+- **An easter egg** waits in the [REDACTED] and the [REDACTED]. (LOOK > Mods switches it off.)
 
 ## 0.34 — replays, weather and a better grass court
 - **Instant replay:** after a rally of 5 shots or more a REPLAY button shows for a few seconds; tap it to watch the
