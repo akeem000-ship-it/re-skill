@@ -97,6 +97,17 @@ export const PRESETS = {
 export const PRESET_ORDER = ["low", "tv", "overhead", "diorama", "original"];   // "low" is the default
 const FIELD_CAM = { dist: 300, pitch: 0.95, fov: 0.8, near: 4, far: 3000 };
 const COURT_CLIP = { near: 40, far: 40000 };
+// a street lamp, 10 x 44 px (RGBA): a dark post on a foot, a lantern with warm glass under a cap
+function lampArt() {
+  const W = 12, H = 46, d = new Uint8Array(W * H * 4), px = (x, y, c) => { const o = (y * W + x) * 4; d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = 255; };
+  const dark = [40, 44, 56], mid = [78, 84, 100], glass = [255, 214, 100], glow = [255, 244, 190];
+  for (let x = 2; x < 10; x++) px(x, 0, dark); for (let x = 1; x < 11; x++) px(x, 1, mid);       // cap
+  for (let y = 2; y < 12; y++) { px(1, y, dark); px(10, y, dark); for (let x = 2; x < 10; x++) px(x, y, (x > 3 && x < 8 && y > 3 && y < 9) ? glow : glass); }
+  for (let x = 1; x < 11; x++) px(x, 12, dark);
+  for (let y = 13; y < 42; y++) { px(5, y, dark); px(6, y, mid); }                                 // post
+  for (let y = 42; y < 46; y++) for (let x = 3; x < 9; x++) px(x, y, y === 42 ? mid : dark);      // foot
+  return d;
+}
 
 // --- small matrix helpers (column-major Float32Array(16)) ---
 const m4 = {
@@ -879,6 +890,15 @@ export class Voxel3D {
         continue;
       }
       if (!f.list.length) continue;
+      // the far player near the top of the Game Boy screen: the game leaves out the sprites above it (head and shoulders), the 3D view
+      // shows the whole court. The body's layout from the last frame it was whole fills them in, with the tiles as they are now (the
+      // game streams the current pose into the same tiles), so the player is never cut in half
+      // (only the usual body is remembered: the sprite count the player shows most often, not a swing with the racket out)
+      const lay = (this.wholeLayout ||= []), hist = ((this.bodyCounts ||= [])[f.pl.slot] ||= new Map()), n = f.list.length;
+      hist.set(n, (hist.get(n) || 0) + 1); let base = n, top = 0; for (const [c, k] of hist) if (k > top) { top = k; base = c; }
+      const had = lay[f.pl.slot];
+      if (n === base) lay[f.pl.slot] = f.list.map(sp => ({ dx: sp.sx - f.fx, dy: sp.sy - f.fy, tile: sp.tile, attr: sp.attr, h: sp.h }));
+      else if (had && n < base) for (const q of had) if (f.fy + q.dy < 0 && !f.list.some(sp => sp.tile === q.tile)) f.list.push({ sx: f.fx + q.dx, sy: f.fy + q.dy, tile: q.tile, attr: q.attr, h: q.h, owner: f });
       const pl = sm.players[k] || f.pl, upp = 1024 / (project(pl.X, pl.Y, 0).s || 128), scale = SCALE * upp / 8;   // world units per px at that depth
       this.draw(this.shadowTex, m4.trs(pl.X, 0.6, pl.Y + 4, 150, 70, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 0.75], 0);
       const body = this.bodyOf(f.list, f.fx, f.fy); this.drawBody(body, pl.X, pl.Y, -pl.Z, scale, tilt, mvp);
@@ -931,6 +951,7 @@ export class Voxel3D {
     // HUD: screen space, each sprite anchored to the nearest screen edge so the strips stay at the edges of
     // a wide or tall viewport
     if (this.light) this.light.post();   // LIGHT: the lit scene goes to the canvas; the HUD is drawn over it, unlit
+    if (this.stadium && this.stadium.active) { try { this.stadium.drawBeams(mvp); } catch (e) { /* no beams */ } gl.useProgram(this.prog); gl.bindVertexArray(this.vao); }   // STADIUM: floodlight beams at night
     gl.disable(gl.DEPTH_TEST);
     const { ortho, l, r, t, b } = this.hudOrtho();
     // HUD sprites at HUD_SCALE of the full-screen Game Boy scale, anchored to the nearest edge with a margin; on
@@ -1179,6 +1200,13 @@ export class Voxel3D {
       if (c.plant || prop) plantHole(d, c.x0, c.y0, w, h); else patch(c.see ? new Uint8Array(w * h * 4).fill(255) : d, c.x0, c.y0, w, h);      // a see-through fence: the ground under all of it
       if (c.plant) { const t = trim(d, w, h); placePlant(shapeOf(t.d, c.x0, c.y0, w, t.h, c.plant), c.x0 + w / 2, c.y0 + t.h + (c.dz || 0), c); continue; }
       f.cards.push(card(d, c.x0, c.y0, w, h, c));
+    }
+    // street lamps (lamps: [[x, y], ...] map px of the foot): a post with a lantern, drawn here (not in the map); the lantern's warm glass
+    // glows at night (lighting.js finds warm lamps) and each lamp is a point light (lighting.js lights)
+    f.lamps = [];
+    for (const [lx, ly] of def.lamps || []) {
+      if (!inMap(lx, ly)) continue;
+      const d = lampArt(), cd = card(d, lx - 6, ly - 46, 12, 46, {}); cd.src = null; f.cards.push(cd); f.lamps.push({ x: lx, y: ly, h: 40 });
     }
     // sprites: one example cut out; every pixel-exact copy anywhere in the map (not tile-aligned) stands up too
     for (const sp of def.sprites || []) {

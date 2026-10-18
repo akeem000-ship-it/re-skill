@@ -1,6 +1,6 @@
 // Screenshots of a session recording (.mtrec / .mtrec.json) at given frames, in the 3D view, as the player saw it
 // (the recording's look applied; LIGHT follows the clock of the time zone given).
-// usage: (python3 -m http.server 8765 from the project root) node web/tests/rec_shots.mjs FILE OUTDIR F1,F2,.. [--tz Area/City] [--q "query"]
+// usage: (python3 -m http.server 8765 from the project root) node web/tests/rec_shots.mjs FILE OUTDIR F1,F2,.. [--tz Area/City] [--q "query"] [--eval EXPR] [--dbg] [--2d]
 import fs from "fs"; import zlib from "zlib"; import { createRequire } from "module";
 const { chromium } = createRequire(import.meta.url)("playwright");
 const a = process.argv.slice(2), opt = (n, d) => (a.includes(n) ? a[a.indexOf(n) + 1] : d);
@@ -25,6 +25,7 @@ for (const f of frames) {
   for (let k = 0; k < 8; k++) await page.evaluate(() => { window.__rp.run(1); window.__gb.voxel.debug = []; window.__gb.step(0); });
   const info = await page.evaluate(dbg => { const v = window.__gb.voxel, w = window.__gb.gb.mem.wram[0], p = window.__gb.gb.ppu; if (!v || !window.__gb.voxel.mode || window.__two) return { map: w[0x32E], oam: Array.from(window.__gb.gb.mem.oam.subarray(0, 64)).join(",") };
     return { map: w[0x32E], mode: v.mode, ...(dbg ? { scx: p.scx, scy: p.scy, hud: (v.debug.find(d => d.hud) || {}).hud, hdspr: window.__gb.hd && window.__gb.hd.has.spr, aoam: window.__gb.hd && [...(window.__gb.hd.actorOam || [])].join(","), hid: window.__gb.hd && [...window.__gb.hd.hiddenOam].join(","), act: (v.debug.find(d => d.actors) || {}).actors, loose: (v.debug.find(d => d.actors) || {}).loose, ov: JSON.stringify((v.debug.find(d => d.overlays) || {}).overlays), sc: Array.from(w.subarray(0x8E0, 0x8F0)).join(","), spr0: v.collectSprites().map(s => [s.sx, s.sy, s.tile, s.attr.toString(16), s.oam ?? ""].join(",")).join(" "), bgt: v.mode !== "3d" ? "" : (() => { const m = window.__gb.gb.mem, base = v.bgBase(), pr = v.courtMaps[v.courtId], o = []; for (let i = 0; i < 1024; i++) if (m.vram[0][base + i] !== pr[i]) o.push((i & 31) + "/" + (i >> 5)); return o.join(" "); })() } : {}) }; }, a.includes("--dbg"));
+  if (opt("--eval")) console.log("eval", JSON.stringify(await page.evaluate(e => { try { return (0, eval)(e); } catch (x) { return "ERR " + x.message; } }, opt("--eval"))));
   const m = Math.floor(f / 3600), s = ((f / 60) % 60).toFixed(1);
   await page.screenshot({ path: `${out}/f${f}_${m}m${s}s.png` }); console.log(f, `${m}:${s}`, JSON.stringify(info));
 }

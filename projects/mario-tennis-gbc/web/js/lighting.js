@@ -359,7 +359,13 @@ export class Lighting {
     const out = [], fl = [], v = this.v, night = P.lamps; let pool = null;
     if (kind === "field") {
       const fx = v.field && v.field.fx;
-      if (fx && night > 0.02) for (const fo of fx.fountains || []) if (out.length < 6) out.push({ p: [fo.origin[0], fo.origin[1] + 8, fo.origin[2]], r: 100, c: [0.34 * night, 0.80 * night, 1.20 * night] });
+      if (night > 0.02) {
+        // fountains (cool) and street lamps (warm, field_objects lamps), the six nearest the middle of the view
+        const all = [], sc = v.fieldScroll ? v.fieldScroll() : { x: 0, y: 0 }, cx = sc.x + 80, cz = sc.y + 72;
+        for (const fo of (fx && fx.fountains) || []) all.push({ p: [fo.origin[0], fo.origin[1] + 8, fo.origin[2]], r: 100, c: [0.34 * night, 0.80 * night, 1.20 * night] });
+        for (const l of (v.field && v.field.lamps) || []) all.push({ p: [l.x, l.h, l.y], r: 110, c: [1.5 * night, 1.15 * night, 0.62 * night] });
+        all.sort((a, b) => Math.hypot(a.p[0] - cx, a.p[2] - cz) - Math.hypot(b.p[0] - cx, b.p[2] - cz)); out.push(...all.slice(0, 6));
+      }
     } else if (kind === "court" && night > 0.02) {
       pool = { v: [0, -80, 1000, 1850], c: [0.58 * night, 0.62 * night, 0.56 * night] };
       for (const [x, z] of FLOODS) { out.push({ p: [x, FLOOD_HEIGHT, z], r: 3300, c: [0.10 * night, 0.09 * night, 0.07 * night] }); fl.push({ p: [x, FLOOD_HEIGHT, z], c: [0.42 * night, 0.38 * night, 0.28 * night], size: 0.10 }); }

@@ -44,6 +44,14 @@ const SKIN = [[255, 214, 176], [236, 184, 140], [205, 148, 104], [150, 100, 68],
 
 // ---- shaders ----
 // boxes: one unit cube drawn per instance (aA = x, y(bottom), z, packed colour; aB = size x, y, z, colour jitter amplitude)
+// the floodlights' beams at night: soft additive cones from each tower's lamp head down onto the court (aT.x: 0 at the lamp .. 1 on the
+// ground, aT.y: -1 .. 1 across), brightest near the lamp and in the middle, fading out towards the ground and the edges
+const VS_BEAM = `#version 300 es
+in vec3 aP; in vec2 aT; uniform mat4 uMVP; out vec2 vT;
+void main() { vT = aT; gl_Position = uMVP * vec4(aP, 1.0); }`;
+const FS_BEAM = `#version 300 es
+precision mediump float; in vec2 vT; uniform float uK; out vec4 o;
+void main() { float a = pow(1.0 - vT.x, 1.15) * (1.0 - vT.y * vT.y) * uK; o = vec4(1.0, 0.95, 0.80, a); }`;
 const VS_BOX = `#version 300 es
 in vec3 aCorner; in float aShade; in vec4 aA; in vec4 aB; uniform mat4 uMVP; out vec3 vCol;
 void main() {
@@ -382,6 +390,32 @@ export class Stadium3D {
       }
     } catch (e) { console.warn("stadium", e); this.broken = true; gl.disable(gl.CULL_FACE); }
     gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
+  }
+  // the floodlight beams (night only: as strong as the lighting's lamps are on, lighting.js sky.lamps). Light, not a surface: drawn after
+  // the lighting pass (voxel.js renderCourt), so the night grade does not darken them, as a soft haze over the scene
+  drawBeams(mvp) {
+    const v = this.v, L = v.light; if (!L || L.broken || !L.cfg || !L.cfg.fx.night || !L.activeFor("court")) return;
+    const k = (L.skyFor ? L.skyFor("court") : L.sky || {}).lamps || 0; if (k < 0.05) return;
+    const gl = this.gl;
+    if (!this.pBeam) { this.pBeam = v.link(VS_BEAM, FS_BEAM, ["aP", "aT"]); this.uBeam = { uMVP: gl.getUniformLocation(this.pBeam, "uMVP"), uK: gl.getUniformLocation(this.pBeam, "uK") }; this.beamBuf = gl.createBuffer(); this.beamVao = gl.createVertexArray(); }
+    const F = [mvp[3], mvp[7], mvp[11]], out = [];                  // the view direction (the clip w row)
+    const quad = (A, B, wA, wB) => {                       // two triangles across the beam as the camera sees it: side = beam x view direction
+      const d = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], c = [d[1] * F[2] - d[2] * F[1], d[2] * F[0] - d[0] * F[2], d[0] * F[1] - d[1] * F[0]], n = Math.hypot(...c) || 1, R = c.map(x => x / n);
+      const p = (P, w, sgn) => [P[0] + R[0] * w * sgn, P[1] + R[1] * w * sgn, P[2] + R[2] * w * sgn];
+      const a0 = p(A, wA, -1), a1 = p(A, wA, 1), b0 = p(B, wB, -1), b1 = p(B, wB, 1);
+      for (const [P, t, u] of [[a0, 0, -1], [a1, 0, 1], [b1, 1, 1], [a0, 0, -1], [b1, 1, 1], [b0, 1, -1]]) out.push(P[0], P[1], P[2], t, u);
+    };
+    for (const [x, z] of FLOODS) {
+      const head = [x * 0.96, FLOOD_HEIGHT - 20, z + (z < 0 ? 30 : -30)];
+      for (const dx of [-260, 260]) quad(head, [x * 0.28 + dx, 0, z * 0.3], 60, 520);
+    }
+    const data = new Float32Array(out);
+    gl.useProgram(this.pBeam); gl.uniformMatrix4fv(this.uBeam.uMVP, false, mvp); gl.uniform1f(this.uBeam.uK, 0.30 * k);
+    gl.bindVertexArray(this.beamVao); gl.bindBuffer(gl.ARRAY_BUFFER, this.beamBuf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 20, 0); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 20, 12);
+    gl.depthMask(false); gl.blendFunc(gl.SRC_ALPHA, gl.ONE); gl.disable(gl.DEPTH_TEST);
+    gl.drawArrays(gl.TRIANGLES, 0, data.length / 5);
+    gl.depthMask(true); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.bindVertexArray(null);
   }
   // cut-outs this layer replaces: the umpire chair (built from boxes above)
   cut(c) { return c.name === "judge" && !!this.built && this.built.court === this.v.courtId; }
