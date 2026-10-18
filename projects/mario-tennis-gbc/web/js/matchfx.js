@@ -4,15 +4,29 @@
 //   long rally          from the 10th shot on, an "ooh" every few shots, rising the longer it lasts
 //   changeover          after an odd game (the players change ends) the camera sweeps slowly round the stadium, until a button
 //   end of the match    the camera circles the winner, two cheers, and confetti falls over the stands
+//   claps               before a big point (or now and then) the crowd claps in rhythm, faster and faster, until the serve
+//   pause               while the game's pause menu is up (its labels written over the court: many BG tiles off the court map)
+//                       TV shots of the court and the crowd cut one after another, each a slow pan
 const KEY = "mt-matchfx";
 const ease = u => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
 const SWEEP = 3.2, CELEB = 2.6;                             // seconds (the game leaves the court for its results about 2.3 s after match point)
 const CONFETTI = [[255, 70, 80], [255, 200, 40], [80, 200, 255], [120, 230, 110], [250, 250, 250], [230, 110, 230]];
 
+// the pause camera's shots (u: 0..1 through the shot): [eye, look at], world units (the court X +-432, Y +-1248; the side stands from
+// |X| 1180 out to 1860 and up to ~660, the far stand behind Y -1800); every eye stays above the stands' top rows
+const PAUSE_SHOT = 5.5, lerp = (a, b, u) => a + (b - a) * u;
+const PAUSE_SHOTS = [
+  u => [[lerp(-3000, 3000, u), 1700, 3600], [0, 0, -300]],                                        // wide, high behind the near end, tracking across
+  u => [[-1050, 1150, lerp(1500, -1300, u)], [1500, 380, lerp(1100, -1600, u)]],                  // over the left stand, along the right-hand crowd
+  u => [[1050, 1150, lerp(-1300, 1500, u)], [-1500, 380, lerp(-1600, 1100, u)]],                  // over the right stand, along the left-hand crowd
+  u => [[lerp(-900, 900, u), 1000, -2300], [0, 60, 600]],                                         // high behind the far stand, down the court
+  u => [[lerp(1600, 1300, u), 1050, lerp(400, -400, u)], [0, 90, 0]],                            // the net from the umpire's side, drifting
+  u => [[lerp(-1200, 1200, u), 1250, 300], [lerp(-900, 900, u), 420, -2300]],                     // over the court, panning the far stand's crowd
+];
 export class MatchFX {
   constructor(voxel) {
     this.v = voxel; this.on = (() => { try { return localStorage.getItem(KEY) !== "off"; } catch (e) { return true; } })();
-    this.prev = null; this.cine = null; this.confetti = null; this.tense = false; this.oohAt = 0;
+    this.prev = null; this.cine = null; this.confetti = null; this.tense = false; this.oohAt = 0; this.claps = null; this.pauseN = 0;
     this.skip = () => { if (this.cine && this.cine.kind === "sweep") this.cine = null; };
     addEventListener("pointerdown", this.skip, true); addEventListener("keydown", this.skip, true);
   }
@@ -42,9 +56,24 @@ export class MatchFX {
       if (gameDone && (S.games[0] + S.games[1]) % 2 === 1 && !setDone) this.cine = { kind: "sweep", t0: now, a0: Math.random() < 0.5 ? -1 : 1 };
       const k = Math.max(this.stakes(S, 0), this.stakes(S, 1)); this.tense = k > 0;
       if (k && snd) setTimeout(() => snd.hush(st.fill), 1400);
+      if (!S.won && (k || Math.random() < 0.3)) this.claps = { next: now + (k ? 3.2 : 1.6), n: 0, until: now + 9 };   // (after the hush on a big point)
     }
+    // claps in rhythm until the serve is hit (the rally's shot count leaves 0)
+    const C = this.claps;
+    if (C && (S.hits > 0 || now > C.until)) this.claps = null;
+    else if (C && now >= C.next && snd) { snd.clap(st.fill); C.n++; C.next = now + Math.max(0.26, 0.55 - C.n * 0.025); }
+    // the pause menu: the camera circles the stadium while it is up
+    const pz = this.pausedNow(v);
+    if (pz && (!this.cine || this.cine.kind !== "pause")) { if (++this.pauseN > 20) this.cine = { kind: "pause", t0: now, first: Math.floor(Math.random() * PAUSE_SHOTS.length) }; }
+    else if (!pz) { this.pauseN = 0; if (this.cine && this.cine.kind === "pause") this.cine = null; }
     if (S.hits > p.hits && S.hits >= 10 && now - this.oohAt > 1.2 && (S.hits - 10) % 3 === 0 && snd) { this.oohAt = now; snd.ooh(st.fill, Math.min(1, (S.hits - 10) / 15)); }
-    if (this.cine && now - this.cine.t0 > (this.cine.kind === "sweep" ? SWEEP : CELEB)) this.cine = null;
+    if (this.cine && this.cine.kind !== "pause" && now - this.cine.t0 > (this.cine.kind === "sweep" ? SWEEP : CELEB)) this.cine = null;
+  }
+  pausedNow(v) {
+    if (!v.courtMaps || v.courtId < 0) return false;
+    const m = v.gb.mem, base = v.bgBase(), pr = v.courtMaps[v.courtId]; if (!pr) return false; let n = 0;
+    for (let k = 0; k < 1024; k += 2) if (m.vram[0][base + k] !== pr[k] && ++n > 50) return true;
+    return false;
   }
   celebrate(side, st) {
     const now = performance.now() / 1000, snd = st.sound;
@@ -63,7 +92,10 @@ export class MatchFX {
     const c = this.cine; if (!c || !this.on) return null;
     const t = performance.now() / 1000 - c.t0;
     let eye, at;
-    if (c.kind === "sweep") {                               // a slow arc high round the stadium, centred on the court
+    if (c.kind === "pause") {                               // TV shots cut one after another, each a slow pan (PAUSE_SHOTS)
+      const k = Math.floor(t / PAUSE_SHOT), u = (t % PAUSE_SHOT) / PAUSE_SHOT, sh = PAUSE_SHOTS[(k + c.first) % PAUSE_SHOTS.length](u);
+      eye = sh[0]; at = sh[1];
+    } else if (c.kind === "sweep") {                               // a slow arc high round the stadium, centred on the court
       const u = ease(t / SWEEP), a = c.a0 * (-0.55 + 1.1 * u), R = 4200;
       eye = [R * Math.sin(a), 1500 - 200 * Math.sin(Math.PI * u), R * Math.cos(a)]; at = [0, 0, -200];
     } else {                                                // circling the winner, coming in

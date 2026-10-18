@@ -14,6 +14,7 @@ import { attachBallFX } from "./ballfx.js";
 import { attachIntro } from "./intro.js";
 import { attachMatchFx } from "./matchfx.js";
 import { attachFieldLife } from "./fieldlife.js";
+import { attachWeather } from "./weather.js";   // WEATHER: rain or a sunset over a match (the look only)
 import { attachPhone } from "./phone.js";
 import { InstantReplay } from "./replay.js";   // INSTANT REPLAY: the last long rally again under a TV camera   // GAME: vibrate, screenshot, quick save / load, battery saver, what's new   // FIELD LIFE: birds, cloud shadows, fountain glints in the overworld   // MATCH FX: set / match point hush, rally ooh, changeover sweep, the winner's celebration
 import { organizeHud } from "./hudmenu.js";      // the button bar in categories (VIEW / STADIUM / LOOK / GAME)         // INTRO: walk-out before each match (3D stadium)       // BALL FX: on / off (3D / VOX court)
@@ -219,7 +220,7 @@ addEventListener("resize", () => applyAspect());
 let preset = q.get("cam") || stored("mt-cam") || "low"; if (!PRESETS[preset]) preset = "low";
 function setView3d(on, vox = false) {
   view3d = on; $("view3d").classList.toggle("on", on); $("view3d").textContent = on ? (vox ? "VOX" : "3D") : "3D";
-  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.hdText = hd; voxel.freeCam = q.has("freecam"); attachLighting(voxel, $("hud")); attachLightPanel(voxel); if (phone) phone.applyBattery(); attachStadium(voxel, $("hud")); attachCrowdSound(voxel.stadium, $("hud"), () => actx); attachBallFX(voxel, $("hud")); attachIntro(voxel, $("hud")); attachMatchFx(voxel, $("hud")); attachFieldLife(voxel, $("hud")); attachVoxStyle(voxel, $("hud")); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
+  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.hdText = hd; voxel.freeCam = q.has("freecam"); attachLighting(voxel, $("hud")); attachLightPanel(voxel); if (phone) phone.applyBattery(); attachStadium(voxel, $("hud")); attachCrowdSound(voxel.stadium, $("hud"), () => actx); attachBallFX(voxel, $("hud")); attachIntro(voxel, $("hud")); attachMatchFx(voxel, $("hud")); attachFieldLife(voxel, $("hud")); attachWeather(voxel, $("hud")); attachVoxStyle(voxel, $("hud")); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
   if (voxel) voxel.voxelSprites = on && vox;
   $("gl").hidden = !view3d; cv.hidden = view3d; $("cam").hidden = !view3d; $("smoothbtn").hidden = !view3d; if ($("ballfxbtn")) $("ballfxbtn").hidden = !view3d; if ($("voxstylebtn")) $("voxstylebtn").hidden = !(view3d && vox); if ($("lightbtn")) $("lightbtn").hidden = !view3d; if ($("stadiumbtn")) $("stadiumbtn").hidden = !view3d; if ($("crowdsndbtn")) $("crowdsndbtn").hidden = !view3d;
   try { localStorage.setItem("mt-3d", on ? (vox ? "vox" : "3d") : "off"); } catch (e) { /* private mode */ }
@@ -293,8 +294,6 @@ const PORT_VERIFIED = ["home/index", "audio/index", "save/index", "cutscenes/ind
   "story_scripts/court_practice_11", "story_scripts/dorm_13", "story_scripts/doubles_11",
   "story_scripts/ending_varsity_27", "story_scripts/exhibition_0e", "story_scripts/island_open_0f",
   "story_scripts/island_rounds_0f", "story_scripts/junior_doubles_11", "story_scripts/junior_singles_11",
-  // story scripts part 2 (lessonmenu_10 … wall_room_12): strict lockstep 0 differences on 371 ss2_* and 115 ss1_* recordings
-  "story_scripts/lessonmenu_10", "story_scripts/map_stubs_12", "story_scripts/mario_scenes_0e", "story_scripts/mario_world_0e", "story_scripts/match_10", "story_scripts/match_setup_0e", "story_scripts/modeflow_10", "story_scripts/plane_14", "story_scripts/practice_results_15", "story_scripts/ranking_challenge_11", "story_scripts/repair_0e", "story_scripts/restaurant_10", "story_scripts/restaurant_13", "story_scripts/restaurant_27", "story_scripts/senior_court_12", "story_scripts/senior_intros_12", "story_scripts/senior_matches_12", "story_scripts/senior_victory_12", "story_scripts/serve_coach_15", "story_scripts/specialcourt_0e", "story_scripts/student_11", "story_scripts/team_bracket_13", "story_scripts/tennis_14", "story_scripts/testmaps_0f", "story_scripts/training_0e", "story_scripts/training_map_15", "story_scripts/training_npcs_15", "story_scripts/varsity_courtyard_13", "story_scripts/varsity_team_13", "story_scripts/varsity_tour_13", "story_scripts/walks_10", "story_scripts/wall_levels_12", "story_scripts/wall_room_12", "story_scripts/water_15",
   "twins/index"];
 async function makePort(bytes) {
   const { GamePort } = await import("./port/port.js"), { entry } = await import("./port/entry.js");

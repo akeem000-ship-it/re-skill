@@ -789,6 +789,7 @@ export class Voxel3D {
     const LT = this.light && (this.isField() || this.isCourt()) && this.light.activeFor(this.isField() ? "field" : "court") && this.light.begin(cv.width, cv.height) ? this.light : null;
     gl.viewport(0, 0, cv.width, cv.height); gl.clearColor(0.05, 0.08, 0.12, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao); gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    if (this.weather && this.mode === "3d" && !this.isCourt()) this.weather.leftCourt();   // WEATHER: the hiss stops off the court
     if (this.isField()) { this.renderField(frame2d); if (LT) LT.finish(); return; }
     if (this.isCourt()) { this.renderCourt(frame2d); if (LT) LT.finish(); return; }
     if (LT) LT.finish();
@@ -980,6 +981,7 @@ export class Voxel3D {
     // a wide or tall viewport
     if (this.light) this.light.post();   // LIGHT: the lit scene goes to the canvas; the HUD is drawn over it, unlit
     if (this.stadium && this.stadium.active) { try { this.stadium.drawBeams(mvp); } catch (e) { /* no beams */ } gl.useProgram(this.prog); gl.bindVertexArray(this.vao); }   // STADIUM: floodlight beams at night
+    if (this.weather) { this.weather.draw(mvp, m4); gl.useProgram(this.prog); gl.bindVertexArray(this.vao); }   // WEATHER: rain over the court, a sunset
     gl.disable(gl.DEPTH_TEST);
     const { ortho, l, r, t, b } = this.hudOrtho();
     // HUD sprites at HUD_SCALE of the full-screen Game Boy scale, anchored to the nearest edge with a margin; on

@@ -264,13 +264,18 @@ export class Lighting {
   get active() { return !this.broken && (this.mode !== "off" || this.cfg.matches !== "same"); }
   hourFor(kind) {
     const m = this.cfg.matches;
+    if (kind === "court" && this.weatherHour != null) return this.weatherHour;   // WEATHER: Sunset
     if (kind === "court" && m !== "same") return m === "day" ? 15 : m === "night" ? 22 : (this.matchHour ?? 12);
     return this.hour();
   }
   skyFor(kind) {
-    const h = this.hourFor(kind), clock = this.hourOverride == null && this.mode === "auto" && !(kind === "court" && this.cfg.matches !== "same");
-    const k = kind + ":" + (clock ? Math.floor(performance.now() / 1000) : h);
-    if (this.skyKey !== k) { this.skyKey = k; this.skyVal = skyAt(h); }
+    const h = this.hourFor(kind), clock = this.hourOverride == null && this.mode === "auto" && !(kind === "court" && (this.cfg.matches !== "same" || this.weatherHour != null));
+    const rain = kind === "court" && !!this.weatherRain, k = kind + ":" + (clock ? Math.floor(performance.now() / 1000) : h) + (rain ? "r" : "");
+    if (this.skyKey !== k) {
+      this.skyKey = k; let P = skyAt(h);
+      if (rain) P = { ...P, sun: P.sun.map(x => x * 0.5), amb: P.amb.map(x => x * 0.9), sat: P.sat * 0.78, shade: (P.shade ?? 1) * 0.35, bloom: P.bloom * 0.6 };   // WEATHER: Rain: overcast
+      this.skyVal = P;
+    }
     return this.skyVal;
   }
   setMode(m) {

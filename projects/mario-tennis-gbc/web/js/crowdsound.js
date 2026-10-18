@@ -5,6 +5,7 @@
 //   aww     "aaaw": a dozen detuned sawtooth voices (a crowd of voices around 150-300 Hz) gliding down a fifth, through three formant
 //           filters moving from /a/ to /o/, with a little breath noise; about 1.5 s
 //   ooh     a long rally (matchfx.js): voices rising through /u/ to /o/, louder the longer the rally (level 0..1); about 1.4 s
+//   clap    one beat of the crowd clapping (matchfx.js: claps in rhythm before a serve): many short hand claps spread over 40 ms
 //   hush    set / match point (matchfx.js): a soft "shhh" that dies away into quiet; about 1.6 s
 //   rattle  a chain-link fence rattle: bursts of noise through four high, inharmonic resonators (2.1, 3.3, 5.0, 7.4 kHz) at a ragged
 //           rate that slows down, plus a short low clang (two decaying sines) as the ball hits the wire; about 0.9 s
@@ -13,7 +14,7 @@ const KEY = "mt-crowdsound";
 export class CrowdSound {
   constructor(getCtx) {
     this.getCtx = getCtx; this.on = (() => { try { return localStorage.getItem(KEY) !== "off"; } catch (e) { return true; } })();
-    this.noise = null; this.last = { cheer: -9, aww: -9, rattle: -9, whistle: -9, ooh: -9, hush: -9 }; this.onChange = null; this.volume = 1;
+    this.noise = null; this.last = { cheer: -9, aww: -9, rattle: -9, whistle: -9, ooh: -9, hush: -9, clap: -9 }; this.onChange = null; this.volume = 1;
   }
   setOn(on) { this.on = !!on; try { localStorage.setItem(KEY, this.on ? "on" : "off"); } catch (e) { /* private mode */ } if (this.onChange) this.onChange(this.on); }
   ctx() { const c = this.getCtx && this.getCtx(); return c && c.state === "running" ? c : null; }
@@ -73,6 +74,17 @@ export class CrowdSound {
       o.connect(sum); o.start(t); o.stop(t + 1.55);
     }
     for (const f of form) { sum.connect(f); f.connect(out); }
+  }
+  clap(fill = 0.6) {
+    const c = this.on && this.ctx(); if (!c || fill <= 0.01 || !this.gate("clap", 0.2)) return;
+    const t = c.currentTime, V = 0.5 * this.vol(fill), out = c.createGain(); out.gain.value = V; out.connect(c.destination);
+    const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 1500; bp.Q.value = 0.9; bp.connect(out);
+    const n = 6 + Math.round(18 * Math.min(1, fill));
+    for (let i = 0; i < n; i++) {
+      const at = t + Math.random() * 0.045, s = c.createBufferSource(); s.buffer = this.buffer(c); const g = c.createGain(), a = 0.35 + Math.random() * 0.5;
+      g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(a, at + 0.002); g.gain.exponentialRampToValueAtTime(0.001, at + 0.03 + Math.random() * 0.02);
+      s.connect(g); g.connect(bp); s.start(at, Math.random() * 1.8, 0.07);
+    }
   }
   hush(fill = 0.6) {
     const c = this.on && this.ctx(); if (!c || fill <= 0.01 || !this.gate("hush", 2)) return;
