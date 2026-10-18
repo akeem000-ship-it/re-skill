@@ -12,13 +12,13 @@
 
 import { NEW_STYLES, hairStyleSprite } from "./hairsprites.js";
 
-export const REG = { NONE: 0, OUT: 1, SKIN: 2, HAIR: 3, HAT: 4, TOP: 5, BOTTOM: 6, SHOES: 7, KEEP: 8, SHADE: 9, RACKET: 10, CARD: 11, HAIR2: 12, HAIR3: 13, HILITE: 14 };
-const { NONE, OUT, SKIN, HAIR, HAT, TOP, BOTTOM, SHOES, KEEP, SHADE, RACKET, HAIR2, HAIR3, HILITE } = REG;
+export const REG = { NONE: 0, OUT: 1, SKIN: 2, HAIR: 3, HAT: 4, TOP: 5, BOTTOM: 6, SHOES: 7, KEEP: 8, SHADE: 9, RACKET: 10, CARD: 11, HAIR2: 12, HAIR3: 13, HILITE: 14, TRIM: 15 };
+const { NONE, OUT, SKIN, HAIR, HAT, TOP, BOTTOM, SHOES, KEEP, SHADE, RACKET, HAIR2, HAIR3, HILITE, TRIM } = REG;
 
 // colour index each region is written with when a pixel is edited (the hero's own palette layout)
 const LAYOUT = {
-  alex: { [RACKET]: 3, [OUT]: 3, [HAIR]: 3, [SKIN]: 2, [SHADE]: 2, [HAT]: 1, [TOP]: 1, [BOTTOM]: 1, [SHOES]: 3, [HAIR2]: 3, [HAIR3]: 3, [HILITE]: 2 },
-  nina: { [RACKET]: 3, [OUT]: 3, [HAIR]: 2, [SKIN]: 1, [SHADE]: 1, [HAT]: 1, [TOP]: 1, [BOTTOM]: 2, [SHOES]: 3, [HAIR2]: 2, [HAIR3]: 2, [HILITE]: 1 },
+  alex: { [RACKET]: 3, [OUT]: 3, [HAIR]: 3, [SKIN]: 2, [SHADE]: 2, [HAT]: 1, [TOP]: 1, [BOTTOM]: 1, [SHOES]: 3, [HAIR2]: 3, [HAIR3]: 3, [HILITE]: 2, [TRIM]: 2 },
+  nina: { [RACKET]: 3, [OUT]: 3, [HAIR]: 2, [SKIN]: 1, [SHADE]: 1, [HAT]: 1, [TOP]: 1, [BOTTOM]: 2, [SHOES]: 3, [HAIR2]: 2, [HAIR3]: 2, [HILITE]: 1, [TRIM]: 2 },
 };
 
 export const STYLES = { alex: ["cap", "headband", "ponytail", "short", ...NEW_STYLES], nina: ["pigtails", "cap", "bob", "ponytail", ...NEW_STYLES] };
@@ -489,8 +489,9 @@ export function applyStyle(st, style) {
 // extras drawn over a styled frame (mods.js): "glasses" turns the eyes into lenses in the hat colour (at 16-32 px the eyes are small
 // dark blobs inside the face with hardly any skin round them, so the face's own outline is the frame)
 // "bow" ties a bow in the hat colour where a ponytail meets the head (or, with no tail, at the back of the head), seen from the
-// side or from behind; "headband" is a band in the hat colour across the hair, a row above the face
-export const EXTRAS = ["glasses", "bow", "headband"];
+// side or from behind; "headband" is a band in the hat colour across the hair, a row above the face; "trim" edges the outfit in the
+// trim colour (the shirt where it meets the skin: neckline and armholes; the hem of the shorts or skirt above the legs)
+export const EXTRAS = ["glasses", "bow", "headband", "trim"];
 function glasses(st) {
   const { w, h, reg, info } = st; if (!info || st.kind === "portrait") return;
   const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h) ? NONE : reg[y * w + x];
@@ -535,8 +536,18 @@ function headband(st) {
   if (y <= H.yt) return;
   for (let x = H.xl; x <= H.xr; x++) if (isHair(reg[y * w + x])) set(st, y * w + x, HAT);
 }
+function trim(st) {
+  const { w, h, reg } = st; if (!st.info || st.kind === "portrait") return;
+  const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h) ? NONE : reg[y * w + x], edge = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const r = reg[y * w + x];
+    if (r === TOP && N4.some(([dx, dy]) => at(x + dx, y + dy) === SKIN)) edge.push(y * w + x);
+    else if (r === BOTTOM && at(x, y + 1) === SKIN) edge.push(y * w + x);
+  }
+  for (const i of edge) set(st, i, TRIM);
+}
 export function applyExtras(st, extras) {
-  for (const e of extras || []) if (e === "glasses") glasses(st); else if (e === "bow") bow(st); else if (e === "headband") headband(st);
+  for (const e of extras || []) if (e === "glasses") glasses(st); else if (e === "bow") bow(st); else if (e === "headband") headband(st); else if (e === "trim") trim(st);
   return st;
 }
 

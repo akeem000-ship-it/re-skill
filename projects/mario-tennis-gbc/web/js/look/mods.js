@@ -9,8 +9,8 @@
 //             data rewrites of the character's own frame blocks; the frame, placement and animation tables stay as
 //             they are, so every pose lands on the pose with the same number). Omitted: the character's frames stay.
 //   style     the hero hairstyle / hat (label.js MOD_STYLES) applied to the frames
-//   extras    ['glasses', 'bow', 'headband'] drawn over the styled frames
-//   colours   region colours { skin, hair, hat, top, bottom, shoes, racket, outline } ("#rrggbb" or a 15-bit number)
+//   extras    ['glasses', 'bow', 'headband', 'trim'] drawn over the styled frames
+//   colours   region colours { skin, hair, hat, top, bottom, shoes, racket, trim, outline } ("#rrggbb" or a 15-bit number)
 //   touchups  { "walk:<frame>:<facing>" | "match:<frame address hex>": [{ x, y, r: "hair" ... }] } pixel overrides
 //   portrait  { pal: ["#rrggbb", ...], rows: [24 strings of 24 chars] } the 24x24 face (result screens...), drawn
 //             in the render layer over the game's own portrait tiles; "." keeps the game's pixel
@@ -43,7 +43,7 @@ const NAME_REMAP = [0x02, 0x4C6A], NAME_REMAP_COUNT = 71;                       
 const NAME_BANK = 0x30, NAME_TABLE = 0x4004, NAME_COUNT = 560, NAME_FIRST = 27;       // text id $1b + char; the pool follows the offset table
 const NAME_FREE = [0x7DCD, 0x8000];                                                    // the 0xFF tail of the text bank
 const MAX_NAME = 9;                                                                    // the 11-byte name field of a character record, minus the terminator and a spare
-const REGION_NAMES = { outline: REG.OUT, skin: REG.SKIN, hair: REG.HAIR, hat: REG.HAT, top: REG.TOP, bottom: REG.BOTTOM, shoes: REG.SHOES, racket: REG.RACKET, shade: REG.SHADE, keep: REG.KEEP, none: REG.NONE };
+const REGION_NAMES = { outline: REG.OUT, skin: REG.SKIN, hair: REG.HAIR, hat: REG.HAT, top: REG.TOP, bottom: REG.BOTTOM, shoes: REG.SHOES, racket: REG.RACKET, trim: REG.TRIM, shade: REG.SHADE, keep: REG.KEEP, none: REG.NONE };
 const PAL_CHARS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 // ---------------------------------------------------------------------------------------------- the definition
@@ -69,7 +69,7 @@ export function normalizeMod(m) {
     if (c.body === "alex" || c.body === "nina") o.body = c.body;
     if (typeof c.style === "string" && o.body && MOD_STYLES[o.body].includes(c.style)) o.style = c.style;
     if (Array.isArray(c.extras)) { const e = c.extras.filter(x => EXTRAS.includes(x)); if (e.length) o.extras = e; }
-    if (c.colours && typeof c.colours === "object") { o.colours = {}; for (const k of ["skin", "hair", "hat", "top", "bottom", "shoes", "racket", "outline", "shade"]) { const v = c15(c.colours[k]); if (v !== undefined) o.colours[k] = v; } }
+    if (c.colours && typeof c.colours === "object") { o.colours = {}; for (const k of ["skin", "hair", "hat", "top", "bottom", "shoes", "racket", "trim", "outline", "shade"]) { const v = c15(c.colours[k]); if (v !== undefined) o.colours[k] = v; } }
     if (c.touchups && typeof c.touchups === "object") {
       o.touchups = {};
       for (const [k, list] of Object.entries(c.touchups)) if (Array.isArray(list)) o.touchups[k] = list.filter(t => t && Number.isInteger(t.x) && Number.isInteger(t.y) && t.r in REGION_NAMES).map(t => ({ x: t.x, y: t.y, r: t.r }));
@@ -238,7 +238,7 @@ export function buildMods(rom, mods, res) {
     const base = 32 + 16 * k, c = ch.colours || {};
     const set = (r, v) => { if (v !== undefined) res.colours[base + r] = v & 0x7FFF; };
     set(REG.OUT, c.outline ?? 0x0000); set(REG.SKIN, c.skin); set(REG.SHADE, c.shade ?? (c.skin !== undefined ? shade(c.skin) : undefined));
-    set(REG.HAIR, c.hair); if (c.hair !== undefined) { const t = hairTones(c.hair); set(REG.HAIR2, t.k); set(REG.HAIR3, t.g); } set(REG.HAT, c.hat); set(REG.TOP, c.top); set(REG.BOTTOM, c.bottom); set(REG.SHOES, c.shoes ?? c.bottom); set(REG.RACKET, c.racket);
+    set(REG.HAIR, c.hair); if (c.hair !== undefined) { const t = hairTones(c.hair); set(REG.HAIR2, t.k); set(REG.HAIR3, t.g); } set(REG.HAT, c.hat); set(REG.TOP, c.top); set(REG.BOTTOM, c.bottom); set(REG.SHOES, c.shoes ?? c.bottom); set(REG.RACKET, c.racket); set(REG.TRIM, c.trim);
     if (ch.matchSet !== undefined) {                               // its own match sprite set: only if no other playable character uses that set
       const used = []; for (let c = 0; c < 32; c++) if (c !== ch.char && rom[off(SPRITE_SET_TABLE[0], SPRITE_SET_TABLE[1]) + c] === ch.matchSet && c !== 0x15 && c !== 0x16) used.push(c);
       if (used.length) { res.notes.push(`matchSet ${ch.matchSet} is in use (character ${used.join(", ")}): not moved`); delete ch.matchSet; }
