@@ -13,7 +13,7 @@
 // It grows with the match (tier, by STADIUM crowdClass): junior plain; senior and exhibition louder (a cheer as each player steps out);
 // the big matches (Island Open, dream matches, the tour's last matches) add a second camera pass high round the stadium under fireworks
 // with a big title banner, confetti over each player as they walk out of the tunnel and roars from the crowd. The players walk out of
-// the stadium's tunnels (stadium3d.js TUNNELS) in every tier.
+// the stadium's tunnels (stadium3d.js TUNNELS: in the side stands beside the net) onto the court in every tier.
 // A tap or key press skips it. The players' drawn positions are moved (voxel.js interp -> adjust) only while it runs; the game is never touched.
 // Remembered in localStorage mt-intro; ?intro=off turns it off for a page load.
 const KEY = "mt-intro", RUN_IN = 40;             // game frames the court fades in before the hold
@@ -137,17 +137,18 @@ export class MatchIntro {
     if (this.ui) this.ui.root.hidden = true;
   }
   // where the players stand: the near side walks in from beside the left stand, the far side from beside the right one
-  from(p) { return { X: p.Y >= 0 ? -1050 : 1050, Y: p.Y }; }
+  // where a player steps out to: on the court in front of their tunnel's mouth
+  from(p) { const T = TUNNELS[p.Y >= 0 ? 0 : 1]; return { X: T.x - T.dir * 150, Y: T.z }; }
   hero(players) { return players.find(p => p.slot === 0) || players.reduce((a, b) => (b.Y > a.Y ? b : a), players[0]); }
   rival(players) { const far = players.filter(p => p.Y < 0); return far.find(p => p.slot === 1) || far[0] || players.reduce((a, b) => (b.Y < a.Y ? b : a), players[0]); }
   // voxel.js interp(): the drawn positions while the intro runs (a new object; the sampled state is left alone)
   adjust(s) {
     if (this.start < 0 || !s || !s.players || !s.players.length) return s;
     const t = this.t, e = Math.max(0, Math.min(1, (t - T_VS) / (T_WALK - T_VS)));   // an even run
-    // in their close-up each walks out of their tunnel (from inside its dark passage) to their side's spot, then runs to their place
+    // in their close-up each walks out of their tunnel (from inside its dark passage) onto the court, then runs to their place
     const players = s.players.map(p => {
-      const side = p.Y >= 0 ? 0 : 1, f = this.from(p), T = TUNNELS[side], y0 = T.z - T.d * 0.8, left = this.walkIn(side, t).left, y = f.Y + (y0 - f.Y) * left;
-      return { ...p, X: f.X + (p.X - f.X) * e, Y: y + (p.Y - y) * e };
+      const side = p.Y >= 0 ? 0 : 1, f = this.from(p), T = TUNNELS[side], x0 = T.x + T.dir * T.d * 0.8, left = this.walkIn(side, t).left, x = f.X + (x0 - f.X) * left;
+      return { ...p, X: x + (p.X - x) * e, Y: f.Y + (p.Y - f.Y) * e };
     });
     return { ...s, players };
   }
@@ -159,8 +160,8 @@ export class MatchIntro {
       once("roar1", T_A, () => { if (snd) { snd.cheer(1); setTimeout(() => snd.cheer(1), 900); } });
     }
     if (this.tier >= 1) {
-      once("out0", T_A + this.pass + 0.35, () => { if (snd) snd.cheer(this.tier === 2 ? 1 : st.fill); if (this.tier === 2 && mf) mf.confettiAt(TUNNELS[0].x + 15, TUNNELS[0].z + 250, 110, 330, 380, true); });
-      once("out1", T_B + this.pass + 0.35, () => { if (snd) snd.cheer(this.tier === 2 ? 1 : st.fill); if (this.tier === 2 && mf) mf.confettiAt(TUNNELS[1].x - 15, TUNNELS[1].z + 300, 110, 330, 380, true); });
+      once("out0", T_A + this.pass + 0.35, () => { if (snd) snd.cheer(this.tier === 2 ? 1 : st.fill); if (this.tier === 2 && mf) mf.confettiAt(TUNNELS[0].x + 150, TUNNELS[0].z, 110, 330, 380, true); });
+      once("out1", T_B + this.pass + 0.35, () => { if (snd) snd.cheer(this.tier === 2 ? 1 : st.fill); if (this.tier === 2 && mf) mf.confettiAt(TUNNELS[1].x - 150, TUNNELS[1].z, 110, 330, 380, true); });
     }
   }
   // the camera while the intro runs ({ mvp, tilt }), or null for the usual one
@@ -174,12 +175,11 @@ export class MatchIntro {
     } else if (t < T_A) {                                // A: low along the right-hand stand
       const u = ease(t / T_A), z = 1500 - 2400 * u;
       eye = [350, 170, z]; at = [1500, 300, z - 260];
-    } else if (t < T_B) {                         // B: on the player by the left-hand stand
-      const h = this.hero(players || []) || { X: 0, Y: 1200, Z: 0 }, f = this.from(h), u = ease((t - T_A) / (T_B - T_A)), d = 820 - 260 * u;
-      eye = [f.X + 260, 175, f.Y + d]; at = [f.X, 115, f.Y]; fov = 0.62; this.head = [f.X, 215, f.Y];
-    } else if (t < T_O) {                         // O: on the opponent by the right-hand stand at the far end
-      const h = this.rival(players || []) || { X: 0, Y: -1200, Z: 0 }, f = this.from(h), u = ease((t - T_B) / (T_O - T_B)), d = 820 - 260 * u;
-      eye = [f.X - 260, 175, f.Y + d]; at = [f.X, 115, f.Y]; fov = 0.62; this.head = [f.X, 215, f.Y];
+    } else if (t < T_O) {                         // B / O: on each player stepping out of their tunnel (yours in the left-hand stand, the
+      const near = t < T_B, T = TUNNELS[near ? 0 : 1];                                       // opponent's in the right-hand one): from the court, on their side of the net
+      const h = near ? this.hero(players || []) || { X: 0, Y: 1200 } : this.rival(players || []) || { X: 0, Y: -1200 }, f = this.from(h);
+      const u = ease(near ? (t - T_A) / (T_B - T_A) : (t - T_B) / (T_O - T_B)), d = 820 - 260 * u;
+      eye = [f.X - T.dir * d * 0.8, 175, f.Y + (near ? 1 : -1) * d * 0.6]; at = [f.X + T.dir * 40, 120, f.Y]; fov = 0.62; this.head = [f.X, 215, f.Y];
     } else {                                      // C: high behind the near baseline, drifting in
       const u = ease((t - T_O) / (T_C - T_O));
       eye = [-500 + 500 * u, 1700 - 200 * u, 4200 - 500 * u]; at = [0, 0, -150];

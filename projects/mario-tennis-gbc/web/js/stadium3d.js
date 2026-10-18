@@ -197,9 +197,10 @@ function adTextures(gl) {
     return t;
   });
 }
-// the players' tunnels (x, z: the centre of the mouth, facing the near end; w wide, d deep, h high): stadium3d.js builds them, intro.js walks
-// the players out of them
-export const TUNNELS = [{ side: 0, x: -1065, z: 800, w: 230, d: 240, h: 260, col: [200, 30, 40] }, { side: 1, x: 1065, z: -1470, w: 230, d: 240, h: 260, col: [30, 80, 200] }];
+// the players' tunnels, through the bottom rows of the side stands beside the net, opening onto the court (x, z: the centre of the mouth at
+// the stand's inner edge; dir: into the stand along x; w wide, d deep, h high): stadium3d.js builds them, intro.js walks the players out of them
+// (yours in the left stand on the near side of the net, your opponent's in the right stand on the far side, clear of the umpire's chair)
+export const TUNNELS = [{ side: 0, x: -1180, z: 260, dir: -1, w: 200, d: 240, h: 250, col: [200, 30, 40] }, { side: 1, x: 1180, z: -260, dir: 1, w: 200, d: 240, h: 250, col: [30, 80, 200] }];
 export class Stadium3D {
   constructor(voxel) {
     this.v = voxel; this.gl = voxel.gl;
@@ -346,16 +347,28 @@ export class Stadium3D {
         if (S.side) B.add(S.inner + S.dir * uc, y0, vc, a, y1 - y0, l, rgb, jit); else B.add(vc, y0, S.inner + S.dir * uc, l, y1 - y0, a, rgb, jit);
       };
       const at = (u, vv) => S.side ? [S.inner + S.dir * u, vv] : [vv, S.inner + S.dir * u];
-      for (let i = 0; i < N; i++) box(i * D, (i + 1) * D, S.v0, S.v1, 0, BASE + (i + 1) * RISE, conc[i & 1], 0.03);
+      // a tunnel through this stand's bottom rows: the rows, boards, railing and seats in front of it leave its opening (walls included) free
+      const T = S.side ? TUNNELS.find(t => t.dir === S.dir) : null, TW = 24, K = T ? Math.ceil(T.d / D) : 0;
+      const open = T ? [T.z - T.w / 2 - TW, T.z + T.w / 2 + TW] : null, inOpen = (a, b) => open && b > open[0] && a < open[1];
+      const span = (a, b, fn) => { if (!inOpen(a, b)) return fn(a, b); if (open[0] > a) fn(a, open[0]); if (b > open[1]) fn(open[1], b); };
+      for (let i = 0; i < N; i++) { const top = BASE + (i + 1) * RISE; if (i < K) span(S.v0, S.v1, (a, b) => box(i * D, (i + 1) * D, a, b, 0, top, conc[i & 1], 0.03)); else box(i * D, (i + 1) * D, S.v0, S.v1, 0, top, conc[i & 1], 0.03); }
+      if (T) {
+        const col = shade(P.conc, 0.85), [o0, o1] = open;
+        box(0, K * D, o0, o0 + TW, 0, T.h, col, 0.03); box(0, K * D, o1 - TW, o1, 0, T.h, col, 0.03);              // the side walls
+        box(-6, K * D, o0, o1, T.h, T.h + 28, shade(P.conc, 1.1), 0.03);                                          // the roof (the next row rises behind it)
+        box(18, K * D, o0 + TW, o1 - TW, 0, T.h - 2, [14, 14, 20]);                                              // the dark passage (its front just inside the mouth)
+        box(-14, -6, o0, o1, T.h - 44, T.h, T.col);                                                               // the banner over the mouth
+      }
       // advertising boards on the base wall, a railing on its top
       const adLen = 230; let k = 0; for (let v0 = S.v0 + 20; v0 + adLen < S.v1; v0 += adLen + 14, k++) {
+        if (inOpen(v0, v0 + adLen)) continue;
         box(-7, 0, v0, v0 + adLen, 22, 92, ads[k % ads.length], 0.04);
         // the ad on its front (ADS: drawn by draw()), a little inside the board's edge so the board frames it
         const vc = v0 + adLen / 2, [x, z] = at(-7.6, vc), r = S.side ? [0, 0, S.dir] : [1, 0, 0], n = S.side ? [-S.dir, 0, 0] : [0, 0, 1];
         adBoards.push({ m: new Float32Array([r[0] * (adLen - 8), 0, r[2] * (adLen - 8), 0, 0, 62, 0, 0, n[0], 0, n[2], 0, x, 26, z, 1]), ad: (k * 5 + (S.id === "far" ? 7 : S.id === "left" ? 0 : 3)) % AD_COUNT });
       }
-      for (let v0 = S.v0 + 10; v0 < S.v1; v0 += 150) box(2, 8, v0, v0 + 7, BASE + RISE, BASE + RISE + 46, shade(P.conc, 1.2));
-      box(2, 8, S.v0, S.v1, BASE + RISE + 42, BASE + RISE + 50, shade(P.conc, 1.25));
+      for (let v0 = S.v0 + 10; v0 < S.v1; v0 += 150) if (!inOpen(v0, v0 + 7)) box(2, 8, v0, v0 + 7, BASE + RISE, BASE + RISE + 46, shade(P.conc, 1.2));
+      span(S.v0, S.v1, (a, b) => box(2, 8, a, b, BASE + RISE + 42, BASE + RISE + 50, shade(P.conc, 1.25)));
       // seats: sections of 5, aisles between; crowd on the seats
       const top = BASE + N * RISE + 110;
       box(N * D, N * D + 34, S.v0 - 30, S.v1 + 30, 0, top, shade(P.dark, 0.9), 0.03); box(N * D - 4, N * D + 38, S.v0 - 30, S.v1 + 30, top, top + 14, shade(P.conc, 1.1));
@@ -363,6 +376,7 @@ export class Stadium3D {
       for (let i = 0; i < N; i++) {
         const y = BASE + (i + 1) * RISE, u = i * D;
         for (let sec = 0, v0 = S.v0 + 60; v0 + SEAT * 5 < S.v1 - 40; sec++, v0 += SEAT * 5 + 36) {
+          if (i < K && inOpen(v0, v0 + SEAT * 5)) continue;                                                  // (the tunnel's roof)
           const c = ((sec * 2 + (i >> 1)) % 5 < 3) ? P.seatA : P.seatB;
           box(u + 14, u + 44, v0, v0 + SEAT * 5 - 6, y, y + 14, c, 0.05); box(u + 44, u + 51, v0, v0 + SEAT * 5 - 6, y + 14, y + 42, shade(c, 0.88), 0.05);
           for (let s = 0; s < 5; s++) {
@@ -407,15 +421,6 @@ export class Stadium3D {
       for (let s = 0; s < 5; s++) B.add(cx - 40 - s * 6, s * 30, cz + 48, 34, 7, 30, frame);                // ladder steps towards the viewer
       B.add(cx - 22, 0, cz + 66, 6, 150, 6, f2); B.add(cx - 56, 0, cz + 66, 6, 150, 6, f2);
       judge = { x: cx, y: H + 9, z: cz, w: jd.width, h: jd.height };   // the umpire: the game's own picture of them, seated here (draw)
-    }
-    // the players' tunnels (intro.js: the walk-out starts inside them): an opening in a block against the left stand on the near half and one
-    // against the right stand on the far half (in front of the court's backdrop), a dark passage behind each mouth (it hides a player until they step out) and a banner over it
-    for (const T of TUNNELS) {
-      const { x, z, w, d, h } = T, zc = z - d / 2, col = shade(P.conc, 0.85), top = shade(P.conc, 1.1);
-      B.add(x - w / 2 + 15, 0, zc, 30, h, d, col, 0.03); B.add(x + w / 2 - 15, 0, zc, 30, h, d, col, 0.03);          // the side walls
-      B.add(x, h, zc, w + 10, 36, d + 10, top, 0.03);                                                           // the roof
-      B.add(x, 0, zc - 4, w - 60, h, d - 18, [14, 14, 20]);                                                     // the dark passage (its front just inside the mouth)
-      B.add(x, h - 42, z + 3, w + 10, 42, 8, T.col);                                                            // the banner over the mouth
     }
     // floodlight towers (lighting.js hangs its lights at the same x / z, FLOOD_HEIGHT up)
     for (const [x, z] of FLOODS) {
