@@ -8,7 +8,7 @@
 //   body      "alex" | "nina": the hero whose overworld and match frames replace the character's own (same-size, in-place
 //             data rewrites of the character's own frame blocks; the frame, placement and animation tables stay as
 //             they are, so every pose lands on the pose with the same number). Omitted: the character's frames stay.
-//   style     the hero hairstyle / hat (label.js STYLES) applied to the frames
+//   style     the hero hairstyle / hat (label.js MOD_STYLES) applied to the frames
 //   extras    ['glasses'] drawn over the styled frames
 //   colours   region colours { skin, hair, hat, top, bottom, shoes, racket, outline } ("#rrggbb" or a 15-bit number)
 //   touchups  { "walk:<frame>:<facing>" | "match:<frame address hex>": [{ x, y, r: "hair" ... }] } pixel overrides
@@ -24,7 +24,7 @@
 // only the user's art and choices. With no mod nothing is patched or hooked.
 import { lzDecompress } from "./lz.js";
 import { decodeColMajor, encodeColMajor, cellOf, img } from "./gfx.js";
-import { REG, labelSprite, applyStyle, applyExtras, applyTouchups, STYLES, EXTRAS } from "./label.js";
+import { REG, labelSprite, applyStyle, applyExtras, applyTouchups, MOD_STYLES, EXTRAS } from "./label.js";
 import { TOUCHUPS } from "./touchups.js";
 import { HEROES, off, u16, addContent, shade, tileHash } from "./build.js";
 import { hairTones } from "./portrait.js";
@@ -58,7 +58,7 @@ export function normalizeMod(m) {
     const o = { char: c.char };
     if (typeof c.name === "string" && /^[ -~]{1,9}$/.test(c.name)) o.name = c.name;
     if (c.body === "alex" || c.body === "nina") o.body = c.body;
-    if (typeof c.style === "string" && o.body && STYLES[o.body].includes(c.style)) o.style = c.style;
+    if (typeof c.style === "string" && o.body && MOD_STYLES[o.body].includes(c.style)) o.style = c.style;
     if (Array.isArray(c.extras)) { const e = c.extras.filter(x => EXTRAS.includes(x)); if (e.length) o.extras = e; }
     if (c.colours && typeof c.colours === "object") { o.colours = {}; for (const k of ["skin", "hair", "hat", "top", "bottom", "shoes", "racket", "outline", "shade"]) { const v = c15(c.colours[k]); if (v !== undefined) o.colours[k] = v; } }
     if (c.touchups && typeof c.touchups === "object") {

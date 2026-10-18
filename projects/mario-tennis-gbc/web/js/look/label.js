@@ -21,7 +21,9 @@ const LAYOUT = {
   nina: { [RACKET]: 3, [OUT]: 3, [HAIR]: 2, [SKIN]: 1, [SHADE]: 1, [HAT]: 1, [TOP]: 1, [BOTTOM]: 2, [SHOES]: 3, [HAIR2]: 2, [HAIR3]: 2, [HILITE]: 1 },
 };
 
-export const STYLES = { alex: ["cap", "headband", "ponytail", "short", "spiky", ...NEW_STYLES], nina: ["pigtails", "cap", "bob", "ponytail", ...NEW_STYLES] };
+export const STYLES = { alex: ["cap", "headband", "ponytail", "short", ...NEW_STYLES], nina: ["pigtails", "cap", "bob", "ponytail", ...NEW_STYLES] };
+// the styles an opponent mod may use: the creator's, plus sprite-only ones (a mod brings its own portrait art)
+export const MOD_STYLES = { alex: [...STYLES.alex, "spiky"], nina: STYLES.nina };
 
 // ---------------------------------------------------------------------------------------------- helpers
 const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]], N8 = [...N4, [1, 1], [1, -1], [-1, 1], [-1, -1]];
