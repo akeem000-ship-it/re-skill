@@ -1,11 +1,12 @@
 # MTenn3D — full changelog (every version)
 
-**0.33 is a shareable build: it contains no game data** (0.33.1 adds the private [REDACTED] Senior Class mod: keep that one to trusted friends; 0.33.2 is your own build with the ROM inside: keep it on your phone). On first start, tap the file box and pick your
+**0.34 is a shareable build: it contains no game data** (0.34.1 adds the private [REDACTED] Senior Class mod: keep that one to trusted friends; 0.34.2 is your own build with the ROM inside: keep it on your phone). On first start, tap the file box and pick your
 own legal dump of *Mario Tennis (USA)* for Game Boy Color (`.gbc`, SHA-1 starting `414ba583`). The app
 checks it, keeps it on the phone (never uploaded), and starts with it by itself after that. Builds up to
 0.24 were private builds with the ROM inside; keep those to yourself. Newest first.
 
-## Known issues (as of 0.33)
+## Known issues (as of 0.34)
+- Next week: the second half of the story scripts in the JS port, practice mode (a ball machine on any court) and a check of doubles in 3D (a recording of a doubles match would help).
 - Characters fading during power shots: not reproduced yet; a screenshot or a timestamp in a recording would help.
 - The cafeteria's seated people were set up without a recording of them sitting: tell me if anyone still sinks into a seat.
 - The shared builds run the game on the built-in interpreter (slower than your private build); set LIGHT
@@ -14,6 +15,19 @@ checks it, keeps it on the phone (never uploaded), and starts with it by itself 
 - Recordings made with a custom look before 0.18 no longer replay exactly.
 
 ---
+
+## 0.34 — replays, weather and a better grass court
+- **Instant replay:** after a rally of 5 shots or more a REPLAY button shows for a few seconds; tap it to watch the
+  point again from a TV camera above the stand, then the match carries on exactly where it was (tap to skip).
+- **Pause menu:** while paused in a match the camera cuts between TV shots of the court and the crowd.
+- **Crowd claps** in rhythm before big points (and now and then) until the serve.
+- **Weather** (STADIUM > WEATHER): Clear, Rain (rain over the court, an overcast sky and the sound of it), Sunset,
+  or Random for each match. The look only: the game plays the same.
+- **Grass court:** repainted: soft mowing stripes and a fine lawn instead of the noisy stretched pattern.
+- **Victory screen** waits for A (B or a stray tap no longer skips it; it ignores presses for its first second).
+- **Menus:** the smoothing over menus and character pictures is off: the game's own pixel art again.
+- **NET: Even** (GAME menu): the original game stops the far-side player further from the net than the near side;
+  Even lets both sides come equally close. Runs through the JS port (no run-ahead with it).
 
 ## 0.33 — one campus, match atmosphere and phone extras
 **The road and the courtyard**
