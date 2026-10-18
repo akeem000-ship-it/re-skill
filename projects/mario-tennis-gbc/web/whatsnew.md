@@ -1,21 +1,58 @@
 # MTenn3D — full changelog (every version)
 
-**0.32 is a shareable build: it contains no game data** (0.32.1 adds the private [REDACTED] Senior Class mod: keep that one to trusted friends; 0.32.2 is your own build with the ROM inside: keep it on your phone). On first start, tap the file box and pick your
+**0.33 is a shareable build: it contains no game data** (0.33.1 adds the private [REDACTED] Senior Class mod: keep that one to trusted friends; 0.33.2 is your own build with the ROM inside: keep it on your phone). On first start, tap the file box and pick your
 own legal dump of *Mario Tennis (USA)* for Game Boy Color (`.gbc`, SHA-1 starting `414ba583`). The app
 checks it, keeps it on the phone (never uploaded), and starts with it by itself after that. Builds up to
 0.24 were private builds with the ROM inside; keep those to yourself. Newest first.
 
-## Known issues (as of 0.32)
-- Intro: your own play style isn't shown on your stats panel yet (only your level); the opponent's is.
-- Still to look at (need a timestamp or screenshot): white outlines around characters at night, characters fading during power shots, the slight blur at the start of a match.
-- Next week (bigger jobs): dorm furniture and flowers in 3D, thinner dorm gates, the missing desk, floating
-  benches, the transition areas (white lines at the top, the road, time of day) and people popping in.
+## Known issues (as of 0.33)
+- Characters fading during power shots: not reproduced yet; a screenshot or a timestamp in a recording would help.
+- The cafeteria's seated people were set up without a recording of them sitting: tell me if anyone still sinks into a seat.
 - The shared builds run the game on the built-in interpreter (slower than your private build); set LIGHT
-  quality to Low if a phone struggles.
+  quality to Low (or BATTERY: saver) if a phone struggles.
 - Enhanced physics only applies to matches (not mini-games or drills).
 - Recordings made with a custom look before 0.18 no longer replay exactly.
 
 ---
+
+## 0.33 — one campus, match atmosphere and phone extras
+**The road and the courtyard**
+- **Joined up:** the side-view road and the courtyard are drawn as one place. From the courtyard you see the road,
+  its trees and the cafe beyond it in 3D; from the road you see the courtyard in front. The road's path runs
+  straight into the courtyard's, the same width, colour and grey stone edging, and the grass is the same all round.
+- **No more white flash between them:** walking from one to the other keeps the picture on screen while the game
+  loads, then the camera glides into the next area.
+- **Courtyard building:** a pitched roof with eaves, and plain side walls with a drainpipe and a vine.
+
+**Night**
+- **Lamps** on the junior and senior courts (brighter, to light the courts) and along the paths of the other
+  outdoor areas.
+- **No white glow** around people standing on pale courts at night.
+- **Floodlights** stand behind the corners of the stands.
+
+**Inside**
+- **Cafeteria:** the chairs are proper seats (people sitting in them sit on top instead of sinking in), the food
+  trays and the ketchup and mustard dispensers stand on the counters, and the smaller cafeteria is in 3D too.
+- **VOX characters** are Blocky again by default (Rounded is still on the VOX button).
+
+**Matches** (STADIUM > MATCH FX)
+- **Set and match point:** the crowd hushes before the point, and roars again when a set is won.
+- **Long rallies:** from the 10th shot the crowd goes "ooh", louder the longer it lasts.
+- **Changeovers:** the camera sweeps slowly round the stadium while the players change ends (any button ends it).
+- **The end of the match:** the camera circles the winner, two big cheers, and confetti.
+- **Scoreboard** shows both players' names.
+- **Stats panel** in the intro shows your own play style next to your level.
+- **No blur on the players** at the start of a match (the tilt-shift keeps both baselines sharp).
+
+**Overworld** (VIEW > FIELD LIFE)
+- Birds cross the sky now and then, cloud shadows drift over the ground, and fountains glint by day and glow at night.
+
+**Phone** (GAME menu)
+- **VIBRATE:** a short buzz when you hit the ball, a longer one when you win a point.
+- **SHOT:** saves a picture to Downloads/MTenn3D.
+- **SAVE 1 / 2 and LOAD 1 / 2:** quick save slots for the exact moment.
+- **BATTERY: saver:** the 3D view at 60 fps and low-quality lighting.
+- **WHAT'S NEW:** this changelog, in the app.
 
 ## 0.32 — overworld 3D fixes
 - **Dorms:** the blue boy's dorm has its own furniture layout instead of borrowing the other dorm's. The dorm fence
@@ -210,8 +247,8 @@ checks it, keeps it on the phone (never uploaded), and starts with it by itself 
 - Asks the phone for its highest refresh rate (120 Hz); the court camera and ball already blended between
   game frames. The game itself still runs at normal speed.
 
-## 0.16 — Senior Class anime pack
-- Senior Class anime characters (private pack; LOOK → Mods to switch off): [REDACTED] replaces [REDACTED]
+## 0.16 — Senior Class [REDACTED] pack
+- Senior Class [REDACTED] characters (private pack; LOOK → Mods to switch off): [REDACTED] replaces [REDACTED]
   (final boss), [REDACTED] replaces [REDACTED], [REDACTED] replaces [REDACTED], [REDACTED] replaces
   [REDACTED], [REDACTED] replaces [REDACTED], [REDACTED] replaces [REDACTED]. New overworld and match
   sprites, hand-drawn portraits, scoreboard heads and names. Matches play exactly as the original.
