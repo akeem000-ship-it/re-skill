@@ -356,20 +356,21 @@ export function applyStyle(st, style) {
   return st;
 }
 
-// extras drawn over a styled frame (mods.js): "glasses" rims the eyes in the hat colour
+// extras drawn over a styled frame (mods.js): "glasses" turns the eyes into lenses in the hat colour (at 16-32 px the eyes are small
+// dark blobs inside the face with hardly any skin round them, so the face's own outline is the frame)
 export const EXTRAS = ["glasses"];
 function glasses(st) {
   const { w, h, reg, info } = st; if (!info || st.kind === "portrait") return;
   const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h) ? NONE : reg[y * w + x];
-  let sy0 = h, sy1 = -1; for (let i = 0; i < w * h; i++) if (reg[i] === SKIN && ((i / w) | 0) < info.yh) { const y = (i / w) | 0; sy0 = Math.min(sy0, y); sy1 = Math.max(sy1, y); }
-  if (sy1 < 0) return;
-  const limit = sy0 + (sy1 - sy0) * 0.55, eyes = [];
-  for (let y = sy0; y <= limit; y++) for (let x = 0; x < w; x++) {
-    if (at(x, y) !== OUT) continue;
-    if (N4.filter(([dx, dy]) => at(x + dx, y + dy) === SKIN).length >= 3) eyes.push([x, y]);
+  let sy0 = h; for (let i = 0; i < w * h; i++) if (reg[i] === SKIN && ((i / w) | 0) < info.yh) sy0 = Math.min(sy0, (i / w) | 0);
+  if (sy0 >= h) return;
+  const edge = r => r === NONE || r === HAIR || r === HAIR2 || r === HAIR3 || r === HAT;
+  const lens = [];
+  for (let y = sy0; y <= Math.min(info.yh, sy0 + 2); y++) for (let x = 0; x < w; x++) {
+    if (at(x, y) !== OUT || N8.some(([dx, dy]) => edge(at(x + dx, y + dy)))) continue;     // inside the face: not its border with the hair or the background
+    if (N4.some(([dx, dy]) => at(x + dx, y + dy) === SKIN)) lens.push(y * w + x);
   }
-  const ring = [[-1, 0], [1, 0], [0, -1], [-1, -1], [1, -1]];          // the frame: the sides and the top of each eye
-  for (const [x, y] of eyes) for (const [dx, dy] of ring) if (at(x + dx, y + dy) === SKIN) set(st, (y + dy) * w + x + dx, HAT);
+  for (const i of lens) set(st, i, HAT);
 }
 export function applyExtras(st, extras) {
   for (const e of extras || []) if (e === "glasses") glasses(st);

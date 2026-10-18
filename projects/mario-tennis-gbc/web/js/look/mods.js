@@ -15,6 +15,9 @@
 //   portrait  { pal: ["#rrggbb", ...], rows: [24 strings of 24 chars] } the 24x24 face (result screens...), drawn
 //             in the render layer over the game's own portrait tiles; "." keeps the game's pixel
 //   head      the same for the 16x16 head of the character-select / score displays
+//   (and per mod, not per character) texts: [ { bank, id, text } ] a line of dialogue replaced: the text bank (hex string or number),
+//             the message number in it, the new text ("\n" a new line; {XX} a control code, e.g. {02} next page, {03} end, {07}
+//             your name); written in place when it fits, else in the bank's free tail with its table word repointed
 //   photo     a picture ("data:image/png|jpeg|webp;base64,...", square) the HD UI draws in place of the 24x24 face, at full
 //             resolution (with `portrait` for the Game Boy picture: the same picture made small)
 // Everything is computed from the user's own ROM at load; nothing here is derived from it, and the mod file holds
@@ -67,7 +70,27 @@ export function normalizeMod(m) {
     if (typeof c.photo === "string" && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(c.photo) && c.photo.length < 400000) o.photo = c.photo;
     chars.push(o);
   }
-  return chars.length ? { v: 1, id: typeof m.id === "string" ? m.id.slice(0, 40) : "mod", title: typeof m.title === "string" ? m.title.slice(0, 60) : "", chars } : null;
+  const texts = [];
+  if (Array.isArray(m.texts)) for (const t of m.texts) {
+    const bank = typeof t.bank === "string" ? parseInt(t.bank, 16) : t.bank, bytes = t && encodeText(t.text);
+    if (TEXT_BANKS.includes(bank) && Number.isInteger(t.id) && t.id >= 0 && bytes) texts.push({ bank, id: t.id, bytes });
+  }
+  return chars.length || texts.length ? { v: 1, id: typeof m.id === "string" ? m.id.slice(0, 40) : "mod", title: typeof m.title === "string" ? m.title.slice(0, 60) : "", chars, ...(texts.length ? { texts } : {}) } : null;
+}
+
+// a line of dialogue as the text banks hold it: ASCII, $01 a new line, control codes as {XX}, $00 the end; at most 159 bytes (the
+// message buffer at $C600), or null
+const TEXT_BANKS = [0x1F, 0x25, 0x26, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37];
+function encodeText(s) {
+  if (typeof s !== "string") return null;
+  const out = [];
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === "\n") out.push(1);
+    else if (c === "{") { const m = /^\{([0-9a-fA-F]{2})\}/.exec(s.slice(i)); if (!m) return null; const v = parseInt(m[1], 16); if (v < 2 || v >= 0x20) return null; out.push(v); i += 3; }
+    else { const v = c.charCodeAt(0); if (v < 0x20 || v > 0x7E) return null; out.push(v); }
+  }
+  return out.length && out.length < 160 ? Uint8Array.from([...out, 0]) : null;
 }
 
 // ---------------------------------------------------------------------------------------------- the game's tables
@@ -209,4 +232,27 @@ export function buildMods(rom, mods, res) {
     if (ch.head) headArt(rom, ch, res, slots);
   });
   patchNames(rom, chars, res);
+  for (const m of mods) if (m.texts) patchTexts(rom, m.texts, res);
+}
+// a text bank's message table ($4004) and the base its offsets count from (the immediate of the `ld hl, base` in the bank's GetMsg
+// routine, as tools/dump_text.py reads it), and the free 0xFF tail at its end
+function textBank(rom, b) {
+  const stub = u16(rom, b, 0x4000), o = off(b, stub), call = rom[o + 4] | rom[o + 5] << 8, p = off(b, call);
+  let base = -1; for (let i = 0; i < 0x20; i++) if (rom[p + i] === 0x56 && rom[p + i + 1] === 0x21) { base = rom[p + i + 2] | rom[p + i + 3] << 8; break; }
+  let end = 0x8000; while (end > 0x4000 && rom[off(b, end - 1)] === 0xFF) end--;
+  return base < 0x4004 ? null : { base, count: (base - 0x4004) >> 1, free: end + 1, end: 0x8000 };      // (one 0xFF kept after the last message)
+}
+function patchTexts(rom, texts, res) {
+  res.textBanks = res.textBanks || new Map();
+  for (const t of texts) {
+    let B = res.textBanks.get(t.bank); if (B === undefined) res.textBanks.set(t.bank, B = textBank(rom, t.bank));
+    if (!B || t.id >= B.count) { res.notes.push(`texts: bank ${t.bank.toString(16)} message ${t.id} not found`); continue; }
+    const at = B.base + u16(rom, t.bank, 0x4004 + 2 * t.id);
+    let old = 0; while (rom[off(t.bank, at) + old] !== 0 && old < 400) old++;
+    if (t.bytes.length <= old + 1) { res.patches.push({ off: off(t.bank, at), bytes: t.bytes }); continue; }   // fits: in place
+    if (B.free + t.bytes.length > B.end) { res.notes.push(`texts: no room in bank ${t.bank.toString(16)}`); continue; }
+    res.patches.push({ off: off(t.bank, B.free), bytes: t.bytes });
+    const rel = B.free - B.base; res.patches.push({ off: off(t.bank, 0x4004 + 2 * t.id), bytes: Uint8Array.from([rel & 255, rel >> 8]) });
+    B.free += t.bytes.length;
+  }
 }
