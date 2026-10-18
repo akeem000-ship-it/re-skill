@@ -187,11 +187,12 @@ const STANDS = [
 //  pitch: {rise, eave, trim}: a pitched roof instead of the flat top (rise px at the ridge, eaves overhanging eave px, gable ends
 //         in the art colour at trim)
 //  plainSide: art points of a building's colours (wall, trim, line, leaf, leaf2): its ends get a painted plain wall
-//  stands: bleacher rows painted flat, raised into steps (row: px per row, seat: its seat rows, rise: px a step rises; gaps: [x0, x1]
-//          walkways through it)
+//  backdropMap: {map, dx, strip, grass, path}: the neighbouring map's 3D scenery beyond the top edge (see buildFieldObjects)
+//  recolour: {from: [pal, colour], to: [map, pal, colour]}: one of the map's colours drawn as another map's (the side-view road in the
+//          courtyard paths' colour)
 // The ground behind cut-outs is keyed out (colours of the surrounding ground reachable from the edge) and the
 // floor under them is patched with the ground strip below.
-const WALL_SCALE = F3.WALL_SCALE, FIELD_TILT = 0.3, HUD_SCALE = 0.6;
+const WALL_SCALE = F3.WALL_SCALE, FIELD_TILT = 0.3, HUD_SCALE = 0.6, SEAM_GLIDE = 1100;   // SEAM_GLIDE: ms of the camera's glide into the next map
 // the island (map 21) is an aerial picture, not a top-down map: shown as parallax layers. The road between the courts
 // (map 19) is a side-view picture too, but it is a walkable map: a field whose sky band and cafe stand up (FIELD_OBJECTS)
 const SIDE_VIEW_MAPS = new Set([21]);
@@ -413,7 +414,7 @@ export class Voxel3D {
   }
   // sprite tile (8 rows) as RGBA, colour 0 transparent
   spritePixels(tile, bank, pal, flipX, flipY) {
-    const v = this.gb.mem.vram[bank], d = new Uint8Array(8 * 8 * 4), op = this.gb.ppu.objPal;
+    const v = this.gb.mem.vram[bank], d = new Uint8Array(8 * 8 * 4), op = this.objPal();
     const L = this.gb.look, reg = L ? L.tileRegions(bank, tile * 16) : null, fd = reg ? L.fade(op, pal) : -1;   // the player's look
     for (let y = 0; y < 8; y++) {
       const row = flipY ? 7 - y : y, lo = v[tile * 16 + row * 2], hi = v[tile * 16 + row * 2 + 1];
@@ -427,7 +428,7 @@ export class Voxel3D {
     return d;
   }
   spriteTexture(tile, bank, pal, flipX, flipY) {
-    const key = this.tileKey(tile * 16, bank, this.gb.ppu.objPal, pal, flipX, flipY);
+    const key = this.tileKey(tile * 16, bank, this.objPal(), pal, flipX, flipY);
     let t = this.spriteTex.get(key); if (t) return t;
     if (this.spriteTex.size >= 4000) { for (const tx of this.spriteTex.values()) this.gl.deleteTexture(tx); this.spriteTex.clear(); this.texGen = (this.texGen || 0) + 1; }   // evict before adding (the new one survives)
     t = this.texture(8, 8, this.spritePixels(tile, bank, pal, flipX, flipY)); this.spriteTex.set(key, t);
@@ -479,7 +480,7 @@ export class Voxel3D {
   }
   freeMesh(mesh) { if (!mesh) return; const gl = this.gl; gl.deleteBuffer(mesh.pb); gl.deleteBuffer(mesh.cb); gl.deleteVertexArray(mesh.vao); }
   voxelMesh(tile, bank, pal, flipX, flipY) {
-    const key = this.tileKey(tile * 16, bank, this.gb.ppu.objPal, pal, flipX, flipY);
+    const key = this.tileKey(tile * 16, bank, this.objPal(), pal, flipX, flipY);
     let mesh = this.voxelMeshes.get(key); if (mesh) return mesh;
     if (this.voxelMeshes.size >= 3000) { for (const mm of this.voxelMeshes.values()) this.freeMesh(mm); this.voxelMeshes.clear(); }   // evict before adding
     mesh = this.meshFromPixels(this.spritePixels(tile, bank, pal, flipX, flipY), 8, 8); this.voxelMeshes.set(key, mesh);
@@ -492,14 +493,14 @@ export class Voxel3D {
     const w = x1 - x0, h = y1 - y0, parts = [];
     for (const sp of list) for (let half = 0; half < sp.h / 8; half++) {
       const tile = sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half), bank = (sp.attr >> 3) & 1, pal = sp.attr & 7, fx = (sp.attr >> 5) & 1, fy = (sp.attr >> 6) & 1;
-      parts.push({ key: this.tileKey(tile * 16, bank, this.gb.ppu.objPal, pal, fx, fy), tile, bank, pal, fx, fy, dx: sp.sx - x0, dy: sp.sy + half * 8 - y0 });
+      parts.push({ key: this.tileKey(tile * 16, bank, this.objPal(), pal, fx, fy), tile, bank, pal, fx, fy, dx: sp.sx - x0, dy: sp.sy + half * 8 - y0 });
     }
     parts.sort((a, b) => a.dy - b.dy || a.dx - b.dx);
     const dt = this.gb.detail && this.gb.detail.enabled ? this.gb.detail : null;           // "Sprites: Detailed" (web/js/look/spritedetail.js): the body redrawn at 3x
     const key = (this.rounded ? (this.mode === "field" ? "F" : "R") : "") + (dt ? "D" : "") + parts.map(q => `${q.key}@${q.dx},${q.dy}`).join("|");
     let mesh = this.objectMeshes.get(key);
     if (!mesh && dt) {
-      const o = dt.objectImage(list, (t, b, p, fx, fy) => this.spritePixels(t, b, p, fx, fy), (t, b, p, fx, fy) => this.tileKey(t * 16, b, this.gb.ppu.objPal, p, fx, fy));
+      const o = dt.objectImage(list, (t, b, p, fx, fy) => this.spritePixels(t, b, p, fx, fy), (t, b, p, fx, fy) => this.tileKey(t * 16, b, this.objPal(), p, fx, fy));
       mesh = this.bodyMesh(new Uint8Array(o.data.buffer, o.data.byteOffset, o.data.byteLength), o.w3, o.h3, 15, 13.5); this.objectMeshes.set(key, mesh);
       if (this.objectMeshes.size > 800) { for (const mm of this.objectMeshes.values()) if (mm !== mesh) this.freeMesh(mm); this.objectMeshes.clear(); this.objectMeshes.set(key, mesh); this.meshGen = (this.meshGen || 0) + 1; }
     } else if (!mesh) {
@@ -725,7 +726,7 @@ export class Voxel3D {
   }
   // the object as one card of a 3x texture (spritedetail.js objectImage), cached by the object's tiles and layout
   detailCard(list, ax, ay) {
-    const o = this.gb.detail.objectImage(list, (t, b, p, fx, fy) => this.spritePixels(t, b, p, fx, fy), (t, b, p, fx, fy) => this.tileKey(t * 16, b, this.gb.ppu.objPal, p, fx, fy));
+    const o = this.gb.detail.objectImage(list, (t, b, p, fx, fy) => this.spritePixels(t, b, p, fx, fy), (t, b, p, fx, fy) => this.tileKey(t * 16, b, this.objPal(), p, fx, fy));
     const cache = this.detailTex || (this.detailTex = new Map()); let tex = cache.get(o.key);
     if (!tex) {
       if (cache.size >= 300) { for (const t of cache.values()) this.gl.deleteTexture(t); cache.clear(); this.texGen = (this.texGen || 0) + 1; }
@@ -769,7 +770,8 @@ export class Voxel3D {
   }
   // alpha: how far the display is between the last two game frames (0..1); the 3D view renders at the
   // display's refresh rate and interpolates world positions, the game itself stays at 60 Hz
-  render(frame2d, alpha = 1) {
+  render(frame2d, alpha = 1) { this.renderFrame(frame2d, alpha); this.seamAfter(); }
+  renderFrame(frame2d, alpha) {
     const gl = this.gl, cv = this.cv, fr = this.gb.ppu.frames;
     this.frameChanged = false;
     if (fr !== this.lastFrame) {
@@ -1031,7 +1033,7 @@ export class Voxel3D {
   }
   // ---- RPG areas: the whole 64x64 map as a floor, solid metatiles (collision grid) as extruded boxes ----
   composeField(pal = this.gb.ppu.bgPal) {               // WRAM3 tilemap + WRAM2 attributes (stride 64) -> 512x512 RGBA
-    const img = new Uint8Array(512 * 512 * 4);
+    const img = new Uint8Array(512 * 512 * 4); pal = this.recolourPal(pal);
     for (let ty = 0; ty < 64; ty++) for (let tx = 0; tx < 64; tx++) this.composeCell(img, tx, ty, pal);
     return img;
   }
@@ -1041,6 +1043,58 @@ export class Voxel3D {
     const pal = Uint8Array.from(this.gb.ppu.bgPal); if (!this.rom || id < 17 || id > 36) return pal;
     try { const base = 0x59D9 + id * 16, src = this.rom.rawRef(this.rom.u8(0x0A, base + 2), this.rom.u8(0x0A, base + 3), 64); pal.set(src.subarray(16, 64), 16); } catch (e) { /* live colours */ }
     return pal;
+  }
+  romPal(id) {                                   // a map's 8 BG palettes as LoadMap finds them in the ROM (64 bytes)
+    try { const base = 0x59D9 + id * 16; return this.rom.rawRef(this.rom.u8(0x0A, base + 2), this.rom.u8(0x0A, base + 3), 64); } catch (e) { return null; }
+  }
+  // field_objects recolour: every entry of the map's own (ROM) palettes 2-7 holding a "from" colour is drawn as its "to" colour, a fade
+  // carried over channel by channel (towards white or black from the new colour as it was from the old)
+  recolourPal(pal, id = this.mapId()) {
+    const list = FIELD_OBJECTS[id] && FIELD_OBJECTS[id].recolour; if (!list || !this.rom) return pal;
+    const own = this.recolourSrc && this.recolourSrc.id === id ? this.recolourSrc : (this.recolourSrc = { id, own: this.romPal(id), to: new Map(list.map(d => [d.to[0], this.romPal(d.to[0])])) });
+    if (!own.own) return pal;
+    const w = (b, k) => b[k * 2] | b[k * 2 + 1] << 8, out = Uint8Array.from(pal);
+    for (const d of list) { const to = own.to.get(d.to[0]); if (!to) continue; const from = w(own.own, d.from[0] * 4 + d.from[1]), tgt = w(to, d.to[1] * 4 + d.to[2]);
+    for (let k = 8; k < 32; k++) {
+      if (w(own.own, k) !== from) continue;
+      const cur = w(pal, k); let c = 0;
+      for (const sh of [0, 5, 10]) {
+        const f0 = from >> sh & 31, t0 = tgt >> sh & 31, v = cur >> sh & 31;
+        c |= Math.round(v >= f0 ? t0 + (v - f0) * (31 - t0) / Math.max(1, 31 - f0) : v * t0 / Math.max(1, f0)) << sh;
+      }
+      out[k * 2] = c & 255; out[k * 2 + 1] = c >> 8;
+    } }
+    return out;
+  }
+  // another map as LoadMap leaves it, straight from the ROM (tilemap, attributes, collision grid, tiles, palettes), in a stand-in for the
+  // core that the field builder can read like the live one
+  romMapCore(id) {
+    const rom = this.rom, real = this.gb, base = 0x59D9 + id * 16, ref = i => [rom.u8(0x0A, base + i * 2), rom.u8(0x0A, base + i * 2 + 1)];
+    try {
+      const hdr = rom.rawRef(...ref(0), 6), tmap = rom.lzRef(...ref(2)), attr = rom.lzRef(...ref(3)), coll = rom.lzRef(...ref(4)), tiles = rom.lzRef(...ref(7));
+      const wram = real.mem.wram.map(b => new Uint8Array(b.length)); wram[0].set(real.mem.wram[0]);
+      wram[0][0x32B] = hdr[4] || 64; wram[0][0x32C] = hdr[5] || 64; wram[0][0x32E] = id; wram[0].fill(0, 0x320, 0x324);
+      wram[3].set(tmap.subarray(0, 4096)); wram[2].set(attr.subarray(0, 4096)); wram[6].set(coll.subarray(0, 1024));
+      const vram = [new Uint8Array(0x2000), new Uint8Array(0x2000)];
+      for (const v of vram) { v.set(tiles.subarray(0, 0x800), 0x1000); v.set(tiles.subarray(0x800, 0x1000), 0x800); }
+      return { mem: { wram, vram, oam: real.mem.oam }, ppu: { bgPal: Uint8Array.from(this.romPal(id)), objPal: real.ppu.objPal, lcdc: real.ppu.lcdc & ~0x10, frames: real.ppu.frames, scx: 0, scy: 0, winX: new Uint8Array(144).fill(255) } };
+    } catch (e) { return null; }
+  }
+  // a neighbouring map's 3D scenery (built once: it comes from the ROM), placed dx across and with its bottom row at z (below: its top row)
+  neighbourField(id, dx, z, below = false) {
+    const cache = this.neighbours || (this.neighbours = new Map());
+    if (!cache.has(id)) {
+      const core = this.romMapCore(id), real = this.gb, own = this.field;
+      let nf = null;
+      if (core) {
+        nf = { mapId: id, floorTex: null, walls: null, wallCount: 0, palHash: 0, cards: [], blocks: null, artTex: null };
+        this.gb = core; this.field = nf; this.inNeighbour = true;      // (its own neighbours are not built: that would be this map again)
+        try { this.buildField(); } catch (e) { console.warn("neighbour map", id, e); nf = null; }
+        finally { this.gb = real; this.field = own; this.inNeighbour = false; }
+      }
+      cache.set(id, nf);
+    }
+    const nf = cache.get(id); return nf ? { f: nf, dx, dz: below ? z : z - nf.mapH } : null;
   }
   mapSig() {                                     // WRAM map and size, sampled: a new or half-loaded map is built again
     const m = this.gb.mem, tm = m.wram[3], at = m.wram[2], w0 = m.wram[0]; let h = w0[0x32B] * 131 + w0[0x32C];
@@ -1127,7 +1181,7 @@ export class Voxel3D {
     if (f.artTex) gl.deleteTexture(f.artTex);
     this.freeFieldFx(f.fx);
     if (f.skirt) gl.deleteTexture(f.skirt); if (f.roof) { gl.deleteTexture(f.roof.tex); for (const m of [f.roof.lit, f.roof.shade]) { gl.deleteBuffer(m.pb); gl.deleteBuffer(m.ub); gl.deleteVertexArray(m.vao); } }
-    f.cards = []; f.blocks = null; if (f.glass) { gl.deleteBuffer(f.glass.pb); gl.deleteBuffer(f.glass.ub); gl.deleteVertexArray(f.glass.vao); } f.glass = null; f.artTex = null; f.covered = new Uint8Array(32 * 32); f.fx = null; f.clear = null; f.noWalls = false; f.skirt = null; f.roof = null; if (f.plainSide) { gl.deleteTexture(f.plainSide.tex); gl.deleteBuffer(f.plainSide.mesh.pb); gl.deleteBuffer(f.plainSide.mesh.ub); gl.deleteVertexArray(f.plainSide.mesh.vao); } f.plainSide = null;
+    f.cards = []; f.blocks = null; f.neighbour = null; if (f.glass) { gl.deleteBuffer(f.glass.pb); gl.deleteBuffer(f.glass.ub); gl.deleteVertexArray(f.glass.vao); } f.glass = null; f.artTex = null; f.covered = new Uint8Array(32 * 32); f.fx = null; f.clear = null; f.noWalls = false; f.skirt = null; f.roof = null; if (f.plainSide) { gl.deleteTexture(f.plainSide.tex); gl.deleteBuffer(f.plainSide.mesh.pb); gl.deleteBuffer(f.plainSide.mesh.ub); gl.deleteVertexArray(f.plainSide.mesh.vao); } f.plainSide = null;
     f.patched = null; f.artMod = null; f.artData = null; f.floorSrc = null; f.artSrc = null; f.skirtSrc = -1;
     if (!art) return;
     // where each floor / building-texture pixel comes from in the map picture: palette fades only recolour (recolourField)
@@ -1296,33 +1350,19 @@ export class Voxel3D {
       quad(side, [x0, 0, zb], [x0, 0, y1], [x0, H, y1], [x0, H, zb], [x0, y1], [x0 + 6, y1], [x0 + 6, fold], [x0, fold]);   // left wall
       quad(side, [x1, 0, y1], [x1, 0, zb], [x1, H, zb], [x1, H, y1], [x1 - 6, y1], [x1, y1], [x1, fold], [x1 - 6, fold]);   // right wall
     }
-    // stands: a band of bleacher rows painted flat (row px a row: the seat on top, the riser below it) raised into steps, the
-    // front row lowest; the ends are closed with the riser colour
-    for (const st of def.stands || []) {
-      if (!inMap(st.x0, st.y0)) continue;
-      const { y0, y1, row, rise, seat } = st, n = Math.round((y1 - y0) / row), S = rise * WALL_SCALE;
-      cover(st.x0, y0, st.x1, y1);
-      // gaps: a walkway through the stand (the path below it carried on over the floor there)
-      const spans = []; let sx = st.x0;
-      for (const [g0, g1] of st.gaps || []) {
-        spans.push([sx, g0]); sx = g1;
-        for (let y = y0; y < y1; y++) for (let x = g0; x < g1; x++) { const Y = y1 + ((y - y0) % 16), s0 = (Y * 512 + x) * 4, o = (y * 512 + x) * 4; floor[o] = art[s0]; floor[o + 1] = art[s0 + 1]; floor[o + 2] = art[s0 + 2]; f.patched[y * 512 + x] = 1; f.floorSrc[y * 512 + x] = Y * 512 + x; }
-      }
-      spans.push([sx, st.x1]);
-      for (const [x0, x1] of spans) {
-        const top = n * S, P = 2 * S;                                    // a parapet along the back of the top row
-        quad(front, [x0, top, y0], [x1, top, y0], [x1, top + P, y0], [x0, top + P, y0], [x0, y0 + row], [x1, y0 + row], [x1, y0 + seat], [x0, y0 + seat]);
-        for (const [ex, a, b] of [[x0, [x0, top, y0 - 2], [x0, top, y0]], [x1, [x1, top, y0], [x1, top, y0 - 2]]]) quad(side, a, b, [b[0], top + P, b[2]], [a[0], top + P, a[2]], [ex + 2, y0 + row], [ex + 2, y0 + row], [ex + 2, y0 + seat], [ex + 2, y0 + seat]);
-        quad(front, [x0, top + P, y0 - 2], [x1, top + P, y0 - 2], [x1, top + P, y0], [x0, top + P, y0], [x0, y0 + seat - 1], [x1, y0 + seat - 1], [x1, y0 + seat], [x0, y0 + seat]);
-        for (let k = 0; k < n; k++) {
-          const z0 = y0 + k * row, z1 = z0 + row, h = (n - k) * S, hb = (n - k - 1) * S;
-          quad(front, [x0, h, z0], [x1, h, z0], [x1, h, z1], [x0, h, z1], [x0, z0], [x1, z0], [x1, z0 + seat], [x0, z0 + seat]);   // seat
-          quad(front, [x0, hb, z1], [x1, hb, z1], [x1, h, z1], [x0, h, z1], [x0, z1], [x1, z1], [x1, z0 + seat], [x0, z0 + seat]);   // riser
-          for (const [ex, a, b] of [[x0, [x0, 0, z0], [x0, 0, z1]], [x1, [x1, 0, z1], [x1, 0, z0]]])   // end walls
-            quad(side, a, b, [b[0], h, b[2]], [a[0], h, a[2]], [ex + 2, z1], [ex + 2, z1], [ex + 2, z0 + seat], [ex + 2, z0 + seat]);
-        }
+    // backdropMap: the neighbouring map beyond this one's top edge (the courtyard's: the side-view road it joins), built in 3D from the
+    // ROM (the game never has both maps loaded) and drawn there, its bottom row meeting this map's top; the band of this map along the
+    // edge (strip rows) is grass with the path carried on through it, so the path runs on into the other map's
+    const bm = def.backdropMap;
+    if (bm && bm.strip) {
+      const [s0, s1] = bm.strip, [gx, gy] = bm.grass, [p0, p1] = bm.path;
+      cover(0, s0, MWp, s1);
+      for (let y = s0; y < s1; y++) for (let x = 0; x < MWp; x++) {
+        const src = x >= p0 && x < p1 ? (s1 + ((y - s0) & 15)) * 512 + x : (gy + (y & 15)) * 512 + gx + (x & 15), o = (y * 512 + x) * 4;
+        floor[o] = art[src * 4]; floor[o + 1] = art[src * 4 + 1]; floor[o + 2] = art[src * 4 + 2]; f.patched[y * 512 + x] = 1; f.floorSrc[y * 512 + x] = src;
       }
     }
+    if (bm && this.rom && !this.inNeighbour) f.neighbour = this.neighbourField(bm.map, bm.dx, bm.side === "bottom" ? MHp : bm.strip[0], bm.side === "bottom");
     // solids: low prisms with the exact outline of their picture (planters, fountain basins), stacked with "on"
     const solids = [];
     for (const so of def.solids || []) {
@@ -1505,12 +1545,12 @@ export class Voxel3D {
     const gl = this.gl, f = this.field, coll = this.gb.mem.wram[6];
     if (f.floorTex) gl.deleteTexture(f.floorTex);
     const id = this.mapId(), canon = this.canonPalette(id), art = this.composeField(canon), floor = new Uint8Array(art);
-    const tw = Math.min(64, this.gb.mem.wram[0][0x32B] || 64), th = Math.min(64, this.gb.mem.wram[0][0x32C] || 64);
+    const tw = Math.min(64, this.gb.mem.wram[0][0x32B] || 64), th = Math.min(64, this.gb.mem.wram[0][0x32C] || 64); f.mapH = th * 8;
     f.lowPal = Uint8Array.from(this.gb.ppu.bgPal.subarray(0, 16)); f.usesLowPals = false;   // palettes 0-1 come live: a fade changes them
     for (let y = 0; y < th && !f.usesLowPals; y++) for (let x = 0; x < tw; x++) if ((this.gb.mem.wram[2][y * 64 + x] & 7) < 2) { f.usesLowPals = true; break; }
     this.buildFieldObjects(art, floor);
     f.floorTex = this.texture(512, 512, floor); f.floorData = floor;
-    this.recolourField(); f.fading = false;                // the live colours
+    if (!this.seam) this.recolourField(); f.fading = false;   // the live colours (SEAM: the map's own)
     this.watchTiles();
     // walls: one box (top + 4 sides) per solid 16x16 metatile, uv = the metatile's own texels; sides share them
     const H = 14, pos = [], uv = [], w0 = this.gb.mem.wram[0], MW = Math.min(32, (w0[0x32B] || 64) >> 1), MH = Math.min(32, (w0[0x32C] || 64) >> 1);   // metatiles inside wMapWidth/Height only
@@ -1594,7 +1634,7 @@ export class Voxel3D {
     if (tiles > 32) { f.needBuild = true; return; }          // a new tile set (map loading), not an animation
     const gl = this.gl, img = this.liveImg || (this.liveImg = new Uint8Array(512 * 512 * 4)), blk = new Uint8Array(256);
     for (const ci of cells) {
-      const tx = ci & 63, ty = ci >> 6; this.composeCell(img, tx, ty);
+      const tx = ci & 63, ty = ci >> 6; this.composeCell(img, tx, ty, this.recolourPal(this.gb.ppu.bgPal));
       for (const [data, keep, tex] of [[f.floorData, f.patched, f.floorTex], [f.artData, f.artMod, f.artTex]]) {
         if (!data || !tex) continue;
         let any = false;
@@ -1607,6 +1647,64 @@ export class Voxel3D {
         gl.bindTexture(gl.TEXTURE_2D, tex); gl.texSubImage2D(gl.TEXTURE_2D, 0, tx * 8, ty * 8, 8, 8, gl.RGBA, gl.UNSIGNED_BYTE, blk);
       }
     }
+  }
+  // SEAM: walking between two maps that are drawn as neighbours (field_objects backdropMap: the side-view road and the courtyard) has no
+  // white fade and no cut. Near the exit (backdropMap seam: the zone, map px) each finished frame is kept; once the game starts its fade
+  // that frame stays on screen while the game fades and loads the next map, which then comes in with its own colours (the fade is not
+  // drawn), its camera starting where the old one was (the old map is part of the new one's scenery) and gliding to the player while the
+  // kept frame dissolves into it
+  objPal() { const S = this.seam; return S && S.obj && S.fading ? S.obj : this.gb.ppu.objPal; }
+  fadeLevel(id) {                                 // how far the live palettes 2-7 are from the map's own (0: settled)
+    const a = this.gb.ppu.bgPal, b = this.seamCanon && this.seamCanon.id === id ? this.seamCanon.pal : (this.seamCanon = { id, pal: this.canonPalette(id) }).pal;
+    let t = 0; for (let k = 8; k < 32; k++) { const x = a[k * 2] | a[k * 2 + 1] << 8, y = b[k * 2] | b[k * 2 + 1] << 8; for (const sh of [0, 5, 10]) t += Math.abs((x >> sh & 31) - (y >> sh & 31)); }
+    return t / (24 * 3 * 31);
+  }
+  seamTrack(id, f, cam) {                         // per field frame: start a crossing, or remember where the camera is
+    const bm = this.fieldDef(id) && this.fieldDef(id).backdropMap, S = this.seam, fade = this.fadeLevel(id);
+    if (S) { S.fading = fade > 0.02; return; }
+    if (!bm || !bm.seam || this.freeCam) { this.seamKeep = false; return; }
+    const pl = this.fieldActors()[0];
+    if (fade < 0.02) {
+      // the game hides the player, then puts them at the next map's entrance, a frame or two before its fade starts: the last
+      // frame and camera are kept through that (unless the jump lasts: a warp within the map)
+      const q = this.seamPos, fr = this.gb.ppu.frames, jump = pl && q && Math.hypot(pl.x - q[0], pl.y - q[1]) > 24;
+      if (!pl || (jump && fr - (this.seamJumpAt ??= fr) < 30)) { this.seamFrozen = true; return; }   // (hidden for a frame as well)
+      this.seamJumpAt = null; this.seamFrozen = false; this.seamPos = [pl.x, pl.y];
+      const [x0, y0, x1, y1] = bm.seam; this.seamKeep = pl.x >= x0 && pl.x < x1 && pl.y >= y0 && pl.y < y1;
+      this.seamCam = { id, cam, obj: Uint8Array.from(this.gb.ppu.objPal) };
+    } else if (this.seamKeep && this.seamTex && this.seamCam && this.seamCam.id === id) {
+      this.seam = { from: id, to: bm.map, cam: this.seamCam.cam, obj: this.seamCam.obj, phase: "hold", at: performance.now(), fading: true }; this.seamKeep = false;
+    }
+  }
+  seamAfter() {                                   // after each display frame: keep it, or put the kept frame over it
+    const gl = this.gl, S = this.seam, cv = this.cv;
+    if (!S) {
+      if (this.seamKeep && !this.seamFrozen && this.mode === "field") {
+        if (!this.seamTex) this.seamTex = this.texture(1, 1, new Uint8Array(4), true);
+        gl.bindTexture(gl.TEXTURE_2D, this.seamTex); gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGB, 0, 0, cv.width, cv.height, 0);   // (the canvas has no alpha)
+      }
+      return;
+    }
+    const now = performance.now(), f = this.field;
+    if (S.phase === "hold") {
+      if (this.mapId() === S.to && f.mapId === S.to && this.fieldOn) { S.phase = "in"; S.at = now; }
+      else if (now - S.at > 4000 || (this.mapId() !== S.from && this.mapId() !== S.to) || (this.mapId() === S.from && !S.fading)) { this.seamEnd(); return; }   // (a fade that came back: not a crossing)
+    }
+    if (S.phase === "in" && this.mapId() !== S.to) { this.seamEnd(); return; }
+    const k = S.phase === "hold" ? 1 : Math.max(0, 1 - (now - S.at) / 350);
+    if (k > 0) {
+      gl.disable(gl.DEPTH_TEST); gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
+      this.draw(this.seamTex, m4.trs(0, -1, 0, 2, 2), m4.identity(), [0, 1, 1, -1], [1, 1, 1, k], 0); gl.enable(gl.DEPTH_TEST);
+    }
+    if (S.phase === "in" && now - S.at > SEAM_GLIDE && !S.fading) this.seamEnd();
+  }
+  seamEnd() { this.seam = null; this.seamKeep = false; this.seamFrozen = false; this.seamJumpAt = null; this.seamPos = null; this.field.palHash = 0; }   // (the live colours again on the next frame)
+  // the camera of the crossing: from where the old map's camera was (in this map's coordinates: the old map is drawn here as a neighbour)
+  // to the player, eased
+  seamCamera(cx, cz) {
+    const S = this.seam, nb = this.field.neighbour; if (!S || S.phase !== "in" || !nb || nb.f.mapId !== S.from) return [cx, cz];
+    const t = Math.min(1, (performance.now() - S.at) / SEAM_GLIDE), e = t * t * (3 - 2 * t), sx = S.cam[0] + nb.dx, sz = S.cam[1] + nb.dz;
+    return [sx + (cx - sx) * e, sz + (cz - sz) * e];
   }
   renderField(frame2d) {
     const gl = this.gl, cv = this.cv, m = this.gb.mem, p = this.gb.ppu, f = this.field, id = this.mapId(), c = this.cam;
@@ -1622,7 +1720,7 @@ export class Voxel3D {
       if (fr - f.sigAt < 2 && fr >= f.sigAt && this.fieldMatch() < 0.5) { if (f.mapId !== id) { this.drawFieldOverlays(frame2d); return; } }
       else { f.mapId = id; f.sig = sig; f.needBuild = false; f.palHash = ph; f.palAt = fr; this.buildField(); }
     }
-    else if (f.palHash !== ph) { f.palHash = ph; f.palAt = fr; this.recolourField(); }
+    else if (f.palHash !== ph && !this.seam) { f.palHash = ph; f.palAt = fr; this.recolourField(); }   // (SEAM: no fade drawn)
     else if (f.fading && (fr - f.palAt >= 3 || fr < f.palAt)) {
       // the palette settled: voxel bodies again; built again only if the map uses palettes 0-1 (live, not from the
       // ROM) and they are not what it was built with
@@ -1631,16 +1729,37 @@ export class Voxel3D {
       if (f.usesLowPals && Math.abs(now - then) > 0.15 * Math.max(now, then) && !this.blankPalette()) this.buildField(); else f.fading = false;
     } else this.updateTiles();
     if (f.clear) { gl.clearColor(f.clear[0], f.clear[1], f.clear[2], 1); gl.clear(gl.COLOR_BUFFER_BIT); }
-    const fi = this.fi = this.fieldInterp(), sc = { x: fi.sx, y: fi.sy }, aim = this.fieldAim || [0, 0], cx = sc.x + 80 + aim[0], cz = sc.y + 72 + aim[1], aspect = cv.width / cv.height;   // the camera between the last two game frames   // fieldAim: test views
+    const fi = this.fi = this.fieldInterp(), sc = { x: fi.sx, y: fi.sy }, aim = this.fieldAim || [0, 0], aspect = cv.width / cv.height;   // the camera between the last two game frames   // fieldAim: test views
+    this.seamTrack(id, f, [sc.x + 80, sc.y + 72]);
+    const [cx, cz] = this.seamCamera(sc.x + 80 + aim[0], sc.y + 72 + aim[1]);
     const yaw = this.freeCam ? c.yaw : 0, pitch = this.freeCam ? c.pitch : FIELD_CAM.pitch, dist = this.freeCam ? c.dist : FIELD_CAM.dist * Math.max(1, (160 / 144) / aspect);
     const eye = [cx + dist * Math.sin(yaw) * Math.cos(pitch), dist * Math.sin(pitch), cz + dist * Math.cos(yaw) * Math.cos(pitch)];
     const mvp = m4.mul(m4.perspective(FIELD_CAM.fov, aspect, FIELD_CAM.near, FIELD_CAM.far), m4.lookAt(eye, [cx, 0, cz], [0, 1, 0]));
     if (this.light) this.light.camera(mvp, FIELD_CAM.near, FIELD_CAM.far, 1, "field", [cx, 0, cz], id);   // LIGHT
     const T = this.animClock ?? performance.now() / 1000;
+    if (f.neighbour) this.drawFieldScene(f.neighbour.f, m4.mul(mvp, m4.translate(f.neighbour.dx, 0, f.neighbour.dz)), T, true);   // the map beyond the top edge
+    this.drawFieldScene(f, mvp, T);
+    this.fieldRects = this.fieldOverlayRects();                         // once per frame: the actors and the overlays both need them
+    this.drawFieldActors(mvp);
+    if (f.glass) {                                                       // glass walls (thin panes), after everything behind them
+      gl.useProgram(this.progG); gl.uniformMatrix4fv(this.uG.uMVP, false, mvp); gl.uniform1f(this.uG.uTime, T); gl.uniform1f(this.uG.uShim, this.shimmer.level());
+      gl.depthMask(false); gl.bindVertexArray(f.glass.vao); gl.drawArrays(gl.TRIANGLES, 0, f.glass.count); gl.depthMask(true);
+      gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
+    }
+    // dialogue boxes and menus: the game writes them into the BG tile map over the scenery (and some screens use
+    // the window layer); both are cut out of the 2D frame and shown at the top middle of the view
+    if (this.light) this.light.post();   // LIGHT: the lit scene goes to the canvas; the overlays below are drawn over it, unlit
+    this.drawStars(mvp, T);
+    this.drawFieldOverlays(frame2d);
+  }
+  // one field's scenery (floor, walls, buildings, cut-outs, plants): the map's own, or (part) a neighbouring map drawn beyond its edge
+  drawFieldScene(f, mvp, T, part = false) {
+    const gl = this.gl;
     // floor (512x512 map px; +z = down the map), on a plain ground reaching the horizon on side-view maps
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
     if (f.skirt) this.draw(f.skirt, m4.trs(256, -0.6, 3000, 6000, 6000, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
-    this.draw(f.floorTex, m4.trs(256, -0.2, 512, 512, 512, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
+    const FH = part || f.neighbour ? f.mapH : 512;                      // (with a neighbour: only the map's own rows, not the leftovers below them)
+    this.draw(f.floorTex, m4.trs(256, -0.2, FH, 512, FH, -Math.PI / 2), mvp, [0, 0, 1, FH / 512], [1, 1, 1, 1], 0);
     // walls
     if (f.walls && f.walls.count) {
       gl.useProgram(this.prog3); gl.bindVertexArray(f.walls.vao); gl.bindTexture(gl.TEXTURE_2D, f.floorTex);
@@ -1665,19 +1784,7 @@ export class Voxel3D {
         this.drawMesh(owner.mesh, m4.trs3(c.X, c.lift || 0, c.Z, 1, hs, 1, -tilt), mvp);
       } else this.draw(f.nightBand && f.nightBand.card === c && this.nightLevel() > 0.45 ? f.nightBand.tex : c.tex, m4.trs(c.X, c.lift || 0, c.Z, c.w, c.h * hs, -tilt, 0), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);   // (side-view sky: no clouds at night)
     }
-    this.drawFieldFx(mvp, T);
-    this.fieldRects = this.fieldOverlayRects();                         // once per frame: the actors and the overlays both need them
-    this.drawFieldActors(mvp);
-    if (f.glass) {                                                       // glass walls (thin panes), after everything behind them
-      gl.useProgram(this.progG); gl.uniformMatrix4fv(this.uG.uMVP, false, mvp); gl.uniform1f(this.uG.uTime, T); gl.uniform1f(this.uG.uShim, this.shimmer.level());
-      gl.depthMask(false); gl.bindVertexArray(f.glass.vao); gl.drawArrays(gl.TRIANGLES, 0, f.glass.count); gl.depthMask(true);
-      gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
-    }
-    // dialogue boxes and menus: the game writes them into the BG tile map over the scenery (and some screens use
-    // the window layer); both are cut out of the 2D frame and shown at the top middle of the view
-    if (this.light) this.light.post();   // LIGHT: the lit scene goes to the canvas; the overlays below are drawn over it, unlit
-    this.drawStars(mvp, T);
-    this.drawFieldOverlays(frame2d);
+    this.drawFieldFx(mvp, T, f);
   }
   // how far into the night it is for the overworld's lighting (0 day .. 1 night; 0 with LIGHT off)
   nightLevel() { const L = this.light; if (!L || L.broken || !L.activeFor || !L.activeFor("field")) return 0; return (L.skyFor("field") || {}).lamps || 0; }
@@ -1695,16 +1802,16 @@ export class Voxel3D {
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.enable(gl.DEPTH_TEST); gl.useProgram(this.prog);
   }
   // swaying flowers, fountain jets and the rings on their pools: geometry built once, moved by the shaders
-  drawFieldFx(mvp, T) {
-    const gl = this.gl, fx = this.field.fx; if (!fx) return;
+  drawFieldFx(mvp, T, f = this.field) {
+    const gl = this.gl, fx = f.fx; if (!fx) return;
     // (flowers, plants, then the jets)
     gl.useProgram(this.progW); gl.uniformMatrix4fv(this.uW.uMVP, false, mvp); gl.uniform1f(this.uW.uTime, T);
     // what is in view: a point's clip position within the frustum, with a margin of r map px
     const inView = (p, r) => { const c = m4.apply(mvp, [p[0], p[1], p[2], 1]), mg = r * 1.2 * Math.abs(mvp[5]) + 0.2 * c[3]; return c[3] <= 0 || !(c[0] < -c[3] - mg || c[0] > c[3] + mg || c[1] < -c[3] - mg || c[1] > c[3] + mg); };
     gl.uniformMatrix4fv(this.uW.uModel, false, m4.identity()); gl.uniform1f(this.uW.uPhase, 0); gl.uniform1f(this.uW.uAmp, 1.1);
     for (const g of fx.flowerGroups || []) if (inView(g.centre, 48)) { gl.bindVertexArray(g.vao); gl.drawArrays(gl.TRIANGLES, 0, g.count); }
-    if (fx.plants.length && this.field.artTex) {   // trees and bushes: voxel bodies rustling in the same wind, those in view
-      gl.useProgram(this.progP); gl.uniformMatrix4fv(this.uP.uMVP, false, mvp); gl.uniform1f(this.uP.uTime, T); gl.bindTexture(gl.TEXTURE_2D, this.field.artTex);
+    if (fx.plants.length && f.artTex) {   // trees and bushes: voxel bodies rustling in the same wind, those in view
+      gl.useProgram(this.progP); gl.uniformMatrix4fv(this.uP.uMVP, false, mvp); gl.uniform1f(this.uP.uTime, T); gl.bindTexture(gl.TEXTURE_2D, f.artTex);
       let drawn = 0;
       for (const p of fx.plants) {
         const c = m4.apply(mvp, p.centre ? [...p.centre, 1] : [p.model[12], p.shape.r * 0.5, p.model[14], 1]), m = p.shape.r * 1.2 * Math.abs(mvp[5]) + 0.2 * c[3];   // centre in clip space, with a margin
@@ -1715,7 +1822,7 @@ export class Voxel3D {
       this.plantVerts = drawn;                    // (vertices drawn this frame: for tests)
     }
     if (fx.hedges && fx.hedges.length) {           // hedges: coloured from the floor texture, the wind's phase by place
-      gl.useProgram(this.progP); gl.uniformMatrix4fv(this.uP.uMVP, false, mvp); gl.uniform1f(this.uP.uTime, T); gl.bindTexture(gl.TEXTURE_2D, this.field.floorTex);
+      gl.useProgram(this.progP); gl.uniformMatrix4fv(this.uP.uMVP, false, mvp); gl.uniform1f(this.uP.uTime, T); gl.bindTexture(gl.TEXTURE_2D, f.floorTex);
       gl.uniformMatrix4fv(this.uP.uModel, false, m4.identity()); gl.uniform1f(this.uP.uPhase, 0); gl.uniform1f(this.uP.uAmp, 0.5);
       for (const hg of fx.hedges) {
         const c = m4.apply(mvp, [...hg.centre, 1]), mg = hg.shape.r * 1.2 * Math.abs(mvp[5]) + 0.2 * c[3];
