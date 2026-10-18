@@ -1,8 +1,8 @@
 // "INTRO: on / off": a walk-out introduction before each match in the 3D stadium (3D / VOX court, STADIUM: 3D). A view effect: the game is
 // held (the page simply runs no frames, as with pause) while the camera
 //   A  pans low along the right-hand stand (the real stadium crowd, so its size follows the class of the match: STADIUM crowdClass),
-//   B  pushes in on you, standing by the left-hand stand, with two spotlight flares and your name plate (your name, the class and the match),
-//   O  the same on your opponent, by the right-hand stand at the far end (their name plate on the right),
+//   B  you walk in along the left-hand side towards the camera (the match's walking frames), spotlights, your name plate and stats,
+//   O  the same for your opponent along the right-hand side at the far end (their name plate and stats on the right),
 //   VS a VS screen: you in the top half, your opponent in the bottom half, each in their waiting-for-serve stance (match frame 9 of their
 //      sprite set, from the ROM, coloured as on the court: their palette, and your look), a moving background (VS BG: stripes / rays /
 //      balls / energy, one at random per match), a fire line through the middle and a VS badge; it then splits open along the line onto the
@@ -15,6 +15,7 @@
 const KEY = "mt-intro", RUN_IN = 40;             // game frames the court fades in before the hold
 const T_A = 2.4, T_B = 4.5, T_O = 6.6, T_C = 6.6, T_VS = 8.8, T_SPLIT = 0.6, T_WALK = 10.5, T_PLAY = 10.8, T_END = 11.4;
 const RUN = [2, 7, 12, 17];                     // match frames: running sideways (four steps; facing right, mirrored to run left)
+const FRONT = [4, 9, 14, 19], WALK_IN = 650;    // walking towards the camera; how far each player walks in along their side in their close-up
 const VS_BGS = ["stripes", "rays", "balls", "energy"];   // one at random per match
 const TYPES = ["POWER", "TECHNIQUE", "ALL-AROUND", "TRICKY", "SPEED"];
 import { matchFrameRaw } from "./crowdfans.js";
@@ -82,9 +83,13 @@ export class MatchIntro {
     return { lv: w[a + 0x18], type, sprite, pal, bars: [["POWER", avg(2, 3, 4)], ["SPIN", avg(0, 1)], ["SPEED", avg(7, 8, 9, 10)], ["CONTROL", avg(5, 6)]], pic: this.picture(sprite, pal) };
   }
   // the running player during the walk-on: one card of the match's running frame (voxel.js draws it in place of the game's sprites)
+  // each player's walk in their close-up: [start, end] seconds, and how much of it is left at t (1 before, 0 after)
+  walkIn(side, t) { const a = side ? T_B : T_A, b = (side ? T_O : T_B) - 0.4; return { a, left: 1 - Math.max(0, Math.min(1, (t - a) / (b - a))) }; }
   walkBody(pl) {
-    const v = this.v, t = this.t; if (this.start < 0 || v.voxelSprites || t < T_VS || t >= T_WALK || !this.who) return null;
-    const side = pl.Y >= 0 ? 0 : 1, p = this.who[side], k = RUN[Math.floor((t - T_VS) * 9) % 4], flip = side === 1, key = side + ":" + k, gen = v.texGen || 0;
+    const v = this.v, t = this.t; if (this.start < 0 || v.voxelSprites || !this.who) return null;
+    const side = pl.Y >= 0 ? 0 : 1, p = this.who[side], w = this.walkIn(side, t), walking = w.left > 0 && w.left < 1;
+    if (!walking && (t < T_VS || t >= T_WALK)) return null;
+    const k = walking ? FRONT[Math.floor((t - w.a) * 6) % 4] : RUN[Math.floor((t - T_VS) * 9) % 4], flip = !walking && side === 1, key = side + ":" + k + (flip ? "f" : ""), gen = v.texGen || 0;
     let e = this.runTex.get(key);
     if (!e || e.gen !== gen) {
       const cv = this.picture(p.sprite, p.pal, k, flip); if (!cv) return null;
@@ -122,7 +127,7 @@ export class MatchIntro {
   adjust(s) {
     if (this.start < 0 || !s || !s.players || !s.players.length) return s;
     const t = this.t, e = Math.max(0, Math.min(1, (t - T_VS) / (T_WALK - T_VS)));   // an even run
-    const players = s.players.map(p => { const f = this.from(p); return { ...p, X: f.X + (p.X - f.X) * e, Y: f.Y + (p.Y - f.Y) * e }; });
+    const players = s.players.map(p => { const f = this.from(p), off = -WALK_IN * this.walkIn(p.Y >= 0 ? 0 : 1, t).left; return { ...p, X: f.X + (p.X - f.X) * e, Y: f.Y + off + (p.Y - f.Y) * e }; });
     return { ...s, players };
   }
   // the camera while the intro runs ({ mvp, tilt }), or null for the usual one
@@ -135,15 +140,16 @@ export class MatchIntro {
       eye = [350, 170, z]; at = [1500, 300, z - 260];
     } else if (t < T_B) {                         // B: on the player by the left-hand stand
       const h = this.hero(players || []) || { X: 0, Y: 1200, Z: 0 }, f = this.from(h), u = ease((t - T_A) / (T_B - T_A)), d = 820 - 260 * u;
-      eye = [f.X + 260, 175, f.Y + d]; at = [f.X, 115, f.Y]; fov = 0.62;
+      eye = [f.X + 260, 175, f.Y + d]; at = [f.X, 115, f.Y]; fov = 0.62; this.head = [f.X, 215, f.Y];
     } else if (t < T_O) {                         // O: on the opponent by the right-hand stand at the far end
       const h = this.rival(players || []) || { X: 0, Y: -1200, Z: 0 }, f = this.from(h), u = ease((t - T_B) / (T_O - T_B)), d = 820 - 260 * u;
-      eye = [f.X - 260, 175, f.Y + d]; at = [f.X, 115, f.Y]; fov = 0.62;
+      eye = [f.X - 260, 175, f.Y + d]; at = [f.X, 115, f.Y]; fov = 0.62; this.head = [f.X, 215, f.Y];
     } else {                                      // C: high behind the near baseline, drifting in
       const u = ease((t - T_O) / (T_C - T_O));
       eye = [-500 + 500 * u, 1700 - 200 * u, 4200 - 500 * u]; at = [0, 0, -150];
     }
-    return { mvp: m4.mul(m4.perspective(fov, aspect, clip.near, clip.far), m4.lookAt(eye, at, [0, 1, 0])), tilt: 0 };
+    const mvp = m4.mul(m4.perspective(fov, aspect, clip.near, clip.far), m4.lookAt(eye, at, [0, 1, 0])); this.mvp = mvp;
+    return { mvp, tilt: 0 };
   }
 
   // ---- the overlay: letterbox bars, spotlight flares, the name plate, READY? / PLAY! ----
@@ -160,8 +166,8 @@ export class MatchIntro {
 #matchintro .plate.r b { background: #1e50c8; padding: 2px 16px 2px 34px; clip-path: polygon(0 0, 100% 0, 100% 100%, 7% 100%); }
 #matchintro .plate b { display: block; background: #c81e28; color: #fff; font-size: clamp(20px, 5vw, 38px); font-weight: normal; padding: 2px 34px 2px 16px; clip-path: polygon(0 0, 100% 0, 93% 100%, 0 100%); }
 #matchintro .plate i { display: block; background: #14141e; color: #ffdc5a; font-style: normal; font-size: clamp(12px, 2.6vw, 18px); padding: 2px 16px; }
-#matchintro .stats { position: absolute; left: 4%; top: 12%; width: clamp(130px, 19vw, 190px); padding: 6px 9px 7px; border-radius: 9px; background: rgba(14,16,26,.78); border: 1px solid rgba(255,255,255,.18); color: #e9ecf4; font-size: clamp(9px, 1.4vw, 12px); transition: transform .45s cubic-bezier(.2,.9,.3,1.2); }
-#matchintro .stats.r { left: auto; right: 4%; }
+#matchintro .stats { position: absolute; left: 0; top: 0; opacity: 0; transition: opacity .3s; width: clamp(130px, 19vw, 190px); padding: 6px 9px 7px; border-radius: 9px; background: rgba(14,16,26,.78); border: 1px solid rgba(255,255,255,.18); color: #e9ecf4; font-size: clamp(9px, 1.4vw, 12px); }
+#matchintro .stats.r { }
 #matchintro .stats .t { color: #ffdc5a; margin-bottom: 3px; font-size: 1.1em; }
 #matchintro .stats .row { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
 #matchintro .stats .row span { width: 4.6em; }
@@ -196,8 +202,15 @@ export class MatchIntro {
     const lit = t >= T_A && t < T_O; for (const f of u.flares) f.style.opacity = lit ? 0.95 : 0;
     u.plate.style.transform = t >= T_A + 0.5 && t < T_B ? "none" : "translateX(-120%)";
     u.plate2.style.transform = t >= T_B + 0.5 && t < T_O ? "none" : "translateX(120%)";
-    u.stats[0].style.transform = t >= T_A + 0.7 && t < T_B ? "none" : "translateX(-130%)";
-    u.stats[1].style.transform = t >= T_B + 0.7 && t < T_O ? "none" : "translateX(130%)";
+    // the stats panel beside the walking player's head (projected each frame): right of yours, left of your opponent's
+    for (const i of [0, 1]) {
+      const el = u.stats[i], on = i ? t >= T_B + 0.5 && t < T_O : t >= T_A + 0.5 && t < T_B; el.style.opacity = on ? 1 : 0;
+      if (!on || !this.mvp || !this.head) continue;
+      const m = this.mvp, [x, y, z] = this.head, cw = m[3] * x + m[7] * y + m[11] * z + m[15]; if (cw <= 0) continue;
+      const sx = ((m[0] * x + m[4] * y + m[8] * z + m[12]) / cw * 0.5 + 0.5) * r.width, sy = (1 - ((m[1] * x + m[5] * y + m[9] * z + m[13]) / cw * 0.5 + 0.5)) * r.height;
+      const w = el.offsetWidth, h = el.offsetHeight, gap = r.width * 0.06, left = i ? sx - gap - w : sx + gap;
+      el.style.left = Math.max(4, Math.min(r.width - w - 4, left)) + "px"; el.style.top = Math.max(r.height * 0.1, Math.min(r.height * 0.9 - h, sy - h * 0.5)) + "px";
+    }
     const vsOn = t >= T_C && t < T_VS + T_SPLIT; u.vs.style.display = vsOn ? "block" : "none"; if (vsOn) this.drawVS(t - T_C, r);
     const word = t >= T_VS && t < T_WALK + 0.1 ? "READY?" : t >= T_PLAY && t < T_END ? "PLAY!" : "";
     if (u.word !== word) { u.word = word; if (word) u.big.src = u.img[word]; } u.big.style.opacity = word ? 1 : 0;
