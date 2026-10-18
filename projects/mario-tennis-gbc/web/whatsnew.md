@@ -1,6 +1,6 @@
 # MTenn3D — full changelog (every version)
 
-**0.35.12 is the shareable build: it contains no game data** (it does carry a little surprise for the [REDACTED] and the [REDACTED]; 0.35.13 is your own build with the ROM inside: keep it on your phone). On first start, tap the file box and pick your
+**0.35.14 is the shareable build: it contains no game data** (it does carry a little surprise for the [REDACTED] and the [REDACTED]; 0.35.15 is your own build with the ROM inside: keep it on your phone). On first start, tap the file box and pick your
 own legal dump of *Mario Tennis (USA)* for Game Boy Color (`.gbc`, SHA-1 starting `414ba583`). The app
 checks it, keeps it on the phone (never uploaded), and starts with it by itself after that. Builds up to
 0.24 were private builds with the ROM inside; keep those to yourself. Newest first.
@@ -35,6 +35,7 @@ checks it, keeps it on the phone (never uploaded), and starts with it by itself 
 - 0.35.8: the drill hall's left side is a glass wall in blue frames, like the one beside the Training Center's own courts, with the Training Center's people sitting on benches behind it, watching (the ones you walked past on the way in).
 - 0.35.10: the glass is one clear pane with the same shimmer as the Training Center's other glass walls. Clear a drill and the watchers jump up and cheer, while your face pops up cheering beside the result (the match's win face); fail and they groan "oh no", slumped, and your face cries (the lose face).
 - 0.35.12: Yes / No choices no longer flicker between the old and the new font: the blinking cursor in front of the word made it unreadable every other blink.
+- 0.35.14: a look mod can give a character a match sprite set of their own by borrowing Bowser's (the N64-transfer character), so a [REDACTED] no longer shares a sprite set with another mod character. Until more sets are added, an unlocked Bowser shows that mod character's look.
 
 ## 0.34 — replays, weather and a better grass court
 - **Instant replay:** after a rally of 5 shots or more a REPLAY button shows for a few seconds; tap it to watch the

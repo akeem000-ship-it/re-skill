@@ -12,7 +12,7 @@ val syncWebAssets by tasks.registering(Sync::class) {
 android {
     namespace = "com.example.mariotennis"
     compileSdk = 34
-    defaultConfig { applicationId = "com.example.mariotennis"; minSdk = 24; targetSdk = 34; versionCode = 66; versionName = "0.35.12" }
+    defaultConfig { applicationId = "com.example.mariotennis"; minSdk = 24; targetSdk = 34; versionCode = 68; versionName = "0.35.14" }
     setProperty("archivesBaseName", "MTenn3D")
     sourceSets["main"].assets.srcDir(webAssets)
     buildTypes { release { isMinifyEnabled = false } }

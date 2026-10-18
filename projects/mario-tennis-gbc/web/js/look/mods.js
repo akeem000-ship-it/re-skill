@@ -21,7 +21,9 @@
 //   matchSet  a match sprite set of its own (an index into CharSpriteSetTable 07:5A50, for a character that shares its set with
 //             another: Kevin and A. Coz both use set 10); the set must have the hero's frame layout and no other user. Every one
 //             of the 30 sets has one: set 26 is roster slot $15's, the robot of the training drills (its first ~40 frames), so it
-//             is refused like any other set in use. The table entry is repointed and the body drawn into that set
+//             is refused like any other set in use; the exception is a donor set (DONOR_SETS: 19, Bowser's, who plays only once
+//             unlocked from the N64 game), which is first made a copy of the hero's own set. The table entry is repointed and the
+//             body drawn into that set
 //   stats     a play style: 11 weights (0-9) for Top, Slice, Serve, Stroke, Volley, Angle, Placement, Speed, Dash, Reaction,
 //             Stop. Every record the character is shown as (its own, and the story's rankers and other opponents that
 //             NameTextRemap_02 shows as it) keeps its own total of stat points, shared out by these weights (bars capped at 9),
@@ -43,7 +45,10 @@ const RECORDS = [0x02, 0x52CF], RECORD_SIZE = 29, RECORD_COUNT = 100, STATS_AT =
 const NAME_REMAP = [0x02, 0x4C6A], NAME_REMAP_COUNT = 71;                              // NameTextRemap_02: the character an extended id ($20+) is shown as
 const NAME_BANK = 0x30, NAME_TABLE = 0x4004, NAME_COUNT = 560, NAME_FIRST = 27;       // text id $1b + char; the pool follows the offset table
 const NAME_FREE = [0x7DCD, 0x8000];                                                    // the 0xFF tail of the text bank
-const MAX_NAME = 9;                                                                    // the 11-byte name field of a character record, minus the terminator and a spare
+const MAX_NAME = 9;
+// sets a mod's character may take although another character has them (matchSet): set 19 is Bowser's alone, and Bowser (roster 29) is in
+// no story match; he only plays in exhibition once unlocked from the N64 game (Transfer Pak). Taking it, Bowser would show the mod's body.
+const DONOR_SETS = { 19: [29] };                                                                    // the 11-byte name field of a character record, minus the terminator and a spare
 const REGION_NAMES = { outline: REG.OUT, skin: REG.SKIN, hair: REG.HAIR, hat: REG.HAT, top: REG.TOP, bottom: REG.BOTTOM, shoes: REG.SHOES, racket: REG.RACKET, trim: REG.TRIM, shade: REG.SHADE, keep: REG.KEEP, none: REG.NONE };
 const PAL_CHARS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
@@ -240,12 +245,20 @@ export function buildMods(rom, mods, res) {
     const set = (r, v) => { if (v !== undefined) res.colours[base + r] = v & 0x7FFF; };
     set(REG.OUT, c.outline ?? 0x0000); set(REG.SKIN, c.skin); set(REG.SHADE, c.shade ?? (c.skin !== undefined ? shade(c.skin) : undefined));
     set(REG.HAIR, c.hair); if (c.hair !== undefined) { const t = hairTones(c.hair); set(REG.HAIR2, t.k); set(REG.HAIR3, t.g); } set(REG.HAT, c.hat); set(REG.TOP, c.top); set(REG.BOTTOM, c.bottom); set(REG.SHOES, c.shoes ?? c.bottom); set(REG.RACKET, c.racket); set(REG.TRIM, c.trim);
+    let gfxRom = rom;
     if (ch.matchSet !== undefined) {                               // its own match sprite set: only if no other character (the robot, $15, included) uses that set
-      const used = []; for (let c = 0; c < 32; c++) if (c !== ch.char && rom[off(SPRITE_SET_TABLE[0], SPRITE_SET_TABLE[1]) + c] === ch.matchSet && c !== 0x16) used.push(c);
+      const table = off(SPRITE_SET_TABLE[0], SPRITE_SET_TABLE[1]), donors = DONOR_SETS[ch.matchSet] || [];
+      const used = []; for (let c = 0; c < 32; c++) if (c !== ch.char && rom[table + c] === ch.matchSet && c !== 0x16 && !donors.includes(c)) used.push(c);
       if (used.length) { res.notes.push(`matchSet ${ch.matchSet} is in use (character ${used.join(", ")}): not moved`); delete ch.matchSet; }
-      else res.patches.push({ off: off(SPRITE_SET_TABLE[0], SPRITE_SET_TABLE[1]) + ch.char, bytes: Uint8Array.from([ch.matchSet]) });
+      else {
+        res.patches.push({ off: table + ch.char, bytes: Uint8Array.from([ch.matchSet]) });
+        if (donors.length && ch.body) {                            // a donor's set: first a copy of the hero's whole set bank (frame layout, frame sizes, animations), then the body drawn into it
+          const hb = objHeader(rom, rom[table + HEROES[ch.body].id]).bank, tb = objHeader(rom, ch.matchSet).bank, bytes = rom.slice(hb * 0x4000, hb * 0x4000 + 0x4000);
+          res.patches.push({ off: tb * 0x4000, bytes }); gfxRom = rom.slice(); gfxRom.set(bytes, tb * 0x4000);
+        }
+      }
     }
-    if (ch.body) bodyFrames(rom, ch, charGfx(rom, ch.char, ch.matchSet), res, base);
+    if (ch.body) bodyFrames(gfxRom, ch, charGfx(gfxRom, ch.char, ch.matchSet), res, base);
     if (ch.portrait) { res.faceTiles = res.faceTiles || new Map(); portraitArt(rom, ch, res, slots); }
     if (ch.head) headArt(rom, ch, res, slots);
   });
