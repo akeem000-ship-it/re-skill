@@ -18,6 +18,10 @@
 //   (and per mod, not per character) texts: [ { bank, id, text } ] a line of dialogue replaced: the text bank (hex string or number),
 //             the message number in it, the new text ("\n" a new line; {XX} a control code, e.g. {02} next page, {03} end, {07}
 //             your name); written in place when it fits, else in the bank's free tail with its table word repointed
+//   stats     a play style: 11 weights (0-9) for Top, Slice, Serve, Stroke, Volley, Angle, Placement, Speed, Dash, Reaction,
+//             Stop. Every record the character is shown as (its own, and the story's rankers and other opponents that
+//             NameTextRemap_02 shows as it) keeps its own total of stat points, shared out by these weights (bars capped at 9),
+//             so each match stays as hard as before but plays in the character's style
 //   photo     a picture ("data:image/png|jpeg|webp;base64,...", square) the HD UI draws in place of the 24x24 face, at full
 //             resolution (with `portrait` for the Game Boy picture: the same picture made small)
 // Everything is computed from the user's own ROM at load; nothing here is derived from it, and the mod file holds
@@ -31,6 +35,8 @@ import { hairTones } from "./portrait.js";
 
 const CHAR_OBJECT_TABLE = [0x04, 0x4C29], SPRITE_SET_TABLE = [0x07, 0x5A50], OBJECT_LIST = [0x04, 0x4F75];
 const PORTRAIT_TABLE = [0x16, 0x6968], HEAD_BASES = [0x5AF0, 0x62F0];       // 18:5AF0 + 64 * char, 18:62F0 + 64 * char
+const RECORDS = [0x02, 0x52CF], RECORD_SIZE = 29, RECORD_COUNT = 100, STATS_AT = 17;       // StoryCharacterRecords_02: the 11 stat bars at +17
+const NAME_REMAP = [0x02, 0x4C6A], NAME_REMAP_COUNT = 71;                              // NameTextRemap_02: the character an extended id ($20+) is shown as
 const NAME_BANK = 0x30, NAME_TABLE = 0x4004, NAME_COUNT = 560, NAME_FIRST = 27;       // text id $1b + char; the pool follows the offset table
 const NAME_FREE = [0x7DCD, 0x8000];                                                    // the 0xFF tail of the text bank
 const MAX_NAME = 9;                                                                    // the 11-byte name field of a character record, minus the terminator and a spare
@@ -65,6 +71,7 @@ export function normalizeMod(m) {
       o.touchups = {};
       for (const [k, list] of Object.entries(c.touchups)) if (Array.isArray(list)) o.touchups[k] = list.filter(t => t && Number.isInteger(t.x) && Number.isInteger(t.y) && t.r in REGION_NAMES).map(t => ({ x: t.x, y: t.y, r: t.r }));
     }
+    if (Array.isArray(c.stats) && c.stats.length === 11 && c.stats.every(v => Number.isInteger(v) && v >= 0 && v <= 9) && c.stats.some(v => v > 0)) o.stats = c.stats.slice();
     const p = artOf(c.portrait, 24, 24); if (p) o.portrait = p;
     const h = artOf(c.head, 16, 16); if (h) o.head = h;
     if (typeof c.photo === "string" && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(c.photo) && c.photo.length < 400000) o.photo = c.photo;
@@ -232,7 +239,23 @@ export function buildMods(rom, mods, res) {
     if (ch.head) headArt(rom, ch, res, slots);
   });
   patchNames(rom, chars, res);
+  for (const ch of chars) if (ch.stats) patchStats(rom, ch, res);
   for (const m of mods) if (m.texts) patchTexts(rom, m.texts, res);
+}
+// a play style: every record shown as the character keeps its total of stat points, shared out by the weights (largest remainders first)
+function patchStats(rom, ch, res) {
+  const recs = [ch.char];
+  for (let e = 0; e < NAME_REMAP_COUNT; e++) if (rom[off(NAME_REMAP[0], NAME_REMAP[1]) + e] === ch.char && 0x20 + e < RECORD_COUNT) recs.push(0x20 + e);
+  const W = ch.stats.reduce((a, b) => a + b, 0);
+  for (const r of recs) {
+    const o = off(RECORDS[0], RECORDS[1]) + RECORD_SIZE * r + STATS_AT, T = rom.subarray(o, o + 11).reduce((a, b) => a + b, 0);
+    if (!T) continue;                                                       // (unused records: no points to share)
+    const raw = ch.stats.map(v => v * T / W), s = raw.map(v => Math.min(9, Math.floor(v)));
+    let left = T - s.reduce((a, b) => a + b, 0);
+    const order = raw.map((v, i) => [v - Math.floor(v), i]).sort((a, b) => b[0] - a[0]).map(e => e[1]);
+    for (let pass = 0; left > 0 && pass < 9; pass++) for (const i of order) if (left > 0 && s[i] < 9) { s[i]++; left--; }
+    res.patches.push({ off: o, bytes: Uint8Array.from(s) });
+  }
 }
 // a text bank's message table ($4004) and the base its offsets count from (the immediate of the `ld hl, base` in the bank's GetMsg
 // routine, as tools/dump_text.py reads it), and the free 0xFF tail at its end
