@@ -9,7 +9,7 @@
 //             data rewrites of the character's own frame blocks; the frame, placement and animation tables stay as
 //             they are, so every pose lands on the pose with the same number). Omitted: the character's frames stay.
 //   style     the hero hairstyle / hat (label.js MOD_STYLES) applied to the frames
-//   extras    ['glasses'] drawn over the styled frames
+//   extras    ['glasses', 'bow'] drawn over the styled frames
 //   colours   region colours { skin, hair, hat, top, bottom, shoes, racket, outline } ("#rrggbb" or a 15-bit number)
 //   touchups  { "walk:<frame>:<facing>" | "match:<frame address hex>": [{ x, y, r: "hair" ... }] } pixel overrides
 //   portrait  { pal: ["#rrggbb", ...], rows: [24 strings of 24 chars] } the 24x24 face (result screens...), drawn
@@ -91,7 +91,7 @@ export function normalizeMod(m) {
 
 // a line of dialogue as the text banks hold it: ASCII, $01 a new line, control codes as {XX}, $00 the end; at most 159 bytes (the
 // message buffer at $C600), or null
-const TEXT_BANKS = [0x1F, 0x25, 0x26, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37];
+const TEXT_BANKS = [0x1F, 0x25, 0x26, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37];
 function encodeText(s) {
   if (typeof s !== "string") return null;
   const out = [];
@@ -227,6 +227,7 @@ function patchNames(rom, chars, res) {
     res.patches.push({ off: T.tableAddr(idx), bytes: Uint8Array.from([(free - T.pool) & 255, (free - T.pool) >> 8]) });
     free += bytes.length;
   }
+  res.nameFree = free;                                                  // (texts in this bank go after the names: patchTexts)
 }
 
 // ---------------------------------------------------------------------------------------------- the mods
@@ -277,7 +278,7 @@ function textBank(rom, b) {
 function patchTexts(rom, texts, res) {
   res.textBanks = res.textBanks || new Map();
   for (const t of texts) {
-    let B = res.textBanks.get(t.bank); if (B === undefined) res.textBanks.set(t.bank, B = textBank(rom, t.bank));
+    let B = res.textBanks.get(t.bank); if (B === undefined) { res.textBanks.set(t.bank, B = textBank(rom, t.bank)); if (B && t.bank === NAME_BANK && res.nameFree) B.free = Math.max(B.free, res.nameFree + 1); }
     if (!B || t.id >= B.count) { res.notes.push(`texts: bank ${t.bank.toString(16)} message ${t.id} not found`); continue; }
     const at = B.base + u16(rom, t.bank, 0x4004 + 2 * t.id);
     let old = 0; while (rom[off(t.bank, at) + old] !== 0 && old < 400) old++;

@@ -393,10 +393,10 @@ function styleAlex(st, style) {
     for (const i of hat) { const x = i % w, y = (i / w) | 0; xl = Math.min(xl, x); xr = Math.max(xr, x); yt = Math.min(yt, y); yb = Math.max(yb, y); }
     const tail = [];
     if (f === null) {                                   // from behind: the tail hangs down the middle
-      const cx = (xl + xr) >> 1;
+      const cx = (xl + xr) >> 1; st.tailRoot = { x: cx, y: yb, side: 0 };
       for (let y = yb; y < Math.min(yb + 5, h - 1); y++) { tail.push([cx, y]); if (y < yb + 3) tail.push([cx + 1, y]); }
     } else {                                            // side view: out behind the head, then down
-      const side = f < 0 ? 1 : -1, bx = side > 0 ? xr + 1 : xl - 1, yy = Math.max(yt + 2, yb - 2);
+      const side = f < 0 ? 1 : -1, bx = side > 0 ? xr + 1 : xl - 1, yy = Math.max(yt + 2, yb - 2); st.tailRoot = { x: bx, y: yy, side };
       for (let k = 0; k < 3; k++) tail.push([bx + side * k, yy], [bx + side * k, yy + 1]);
       tail.push([bx + side * 2, yy + 2], [bx + side * 2, yy + 3], [bx + side * 3, yy + 2]);
     }
@@ -441,9 +441,9 @@ function styleNina(st, style) {
     let xl = w, xr = -1, yt = h, yb = -1;
     for (let i = 0; i < w * h; i++) if (reg[i] === HAIR) { const x = i % w, y = (i / w) | 0; xl = Math.min(xl, x); xr = Math.max(xr, x); yt = Math.min(yt, y); yb = Math.max(yb, y); }
     const tail = [];
-    if (f === null) { const cx = (xl + xr) >> 1; for (let y = yb; y < Math.min(yb + 5, h - 1); y++) { tail.push([cx, y]); if (y < yb + 3) tail.push([cx + 1, y]); } }
+    if (f === null) { const cx = (xl + xr) >> 1; st.tailRoot = { x: cx, y: yb, side: 0 }; for (let y = yb; y < Math.min(yb + 5, h - 1); y++) { tail.push([cx, y]); if (y < yb + 3) tail.push([cx + 1, y]); } }
     else {
-      const side = f < 0 ? 1 : -1, bx = side > 0 ? xr + 1 : xl - 1, yy = Math.max(yt + 2, Math.min(yb, info.yh) - 3);
+      const side = f < 0 ? 1 : -1, bx = side > 0 ? xr + 1 : xl - 1, yy = Math.max(yt + 2, Math.min(yb, info.yh) - 3); st.tailRoot = { x: bx, y: yy, side };
       for (let k = 0; k < 3; k++) tail.push([bx + side * k, yy], [bx + side * k, yy + 1]);
       tail.push([bx + side * 2, yy + 2], [bx + side * 2, yy + 3], [bx + side * 3, yy + 2]);
     }
@@ -488,7 +488,8 @@ export function applyStyle(st, style) {
 
 // extras drawn over a styled frame (mods.js): "glasses" turns the eyes into lenses in the hat colour (at 16-32 px the eyes are small
 // dark blobs inside the face with hardly any skin round them, so the face's own outline is the frame)
-export const EXTRAS = ["glasses"];
+// "bow" ties a bow in the hat colour where a ponytail meets the head (seen from the side or from behind)
+export const EXTRAS = ["glasses", "bow"];
 function glasses(st) {
   const { w, h, reg, info } = st; if (!info || st.kind === "portrait") return;
   const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h) ? NONE : reg[y * w + x];
@@ -502,8 +503,14 @@ function glasses(st) {
   }
   for (const i of lens) set(st, i, HAT);
 }
+function bow(st) {
+  const { w, h, reg } = st, t = st.tailRoot; if (!t || st.kind === "portrait") return;
+  const px = t.side ? [[t.x, t.y - 1], [t.x, t.y], [t.x + t.side, t.y - 1]] : [[t.x - 1, t.y], [t.x, t.y], [t.x + 1, t.y], [t.x + 2, t.y]];
+  for (const [x, y] of px) if (x >= 0 && y >= 0 && x < w && y < h && reg[y * w + x] !== SKIN) set(st, y * w + x, HAT);
+  reoutline(st);
+}
 export function applyExtras(st, extras) {
-  for (const e of extras || []) if (e === "glasses") glasses(st);
+  for (const e of extras || []) if (e === "glasses") glasses(st); else if (e === "bow") bow(st);
   return st;
 }
 
