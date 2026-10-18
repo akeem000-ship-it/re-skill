@@ -78,7 +78,8 @@ export class MatchIntro {
   player(a, side) {
     const v = this.v, w = v.gb.mem.wram[0], rom = v.gb.mem.rom, roster = w[a + 0x0B] & 0x3F, s = Array.from(w.subarray(a + 0x20, a + 0x2B));
     const avg = (...i) => i.reduce((t, k) => t + s[k], 0) / i.length;
-    const type = roster > 1 ? TYPES[rom[0xE18FB + roster]] || "" : "";      // CharTypeTable 38:58FB (your own player: the level only)
+    // CharTypeTable 38:58FB; your own tour player (Alex / Nina): the play style chosen for them, tour record wC90B & 3 (styles 0-3 are types 0-3)
+    const type = roster > 1 ? TYPES[rom[0xE18FB + roster]] || "" : TYPES[w[0x90B] & 3];
     const sprite = rom[0x1DA50 + roster], pal = side ? 5 : 4;                // RosterToSprite 07:5A50; the court's OBJ palette of each side
     return { lv: w[a + 0x18], type, sprite, pal, bars: [["POWER", avg(2, 3, 4)], ["SPIN", avg(0, 1)], ["SPEED", avg(7, 8, 9, 10)], ["CONTROL", avg(5, 6)]], pic: this.picture(sprite, pal) };
   }
