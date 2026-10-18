@@ -15,8 +15,7 @@
 import { palettes, tilePixel } from "./rom.js";
 import { buildFanAtlas, CELL } from "./crowdfans.js";
 import { FLOODS, FLOOD_HEIGHT } from "./lighting.js";
-import { hdFaceCanvas } from "./look/hdface.js";
-import { normalizeFace } from "./look/portrait.js";
+import { poseCanvas, POSE_FRAMES } from "./look/poses.js";
 const KEY = "mt-stadium";
 export const STADIUM_MODES = ["classic", "3d"];
 const STADIUM_MAP = 32, SIZES_KEY = "mt-crowd2", JUDGE_TOP = 0.5;   // the part of the chair picture (from the top) that is the umpire
@@ -523,25 +522,26 @@ export class Stadium3D {
     gl.depthMask(false); gl.bindVertexArray(this.glassVao); gl.drawArrays(gl.TRIANGLES, 0, 6); gl.depthMask(true);
     gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
   }
-  // after a drill: the player's face as the results screen shows it (cheering when it was cleared, crying when not), popping up beside the
-  // game's result panel for a few seconds: in the margin left of the Game Boy picture on a wide screen, else at its top. The look's redrawn
-  // face when it has one, else the hero's own face drawn the same way. (ortho: the HUD's 160x144 space, l r top bot its visible edges)
+  // after a drill: the player's own match sprite on a card (look/poses.js), cheering with a fist pump when it was cleared, slumped and
+  // in tears when not, popping up beside the game's result panel for a few seconds: in the margin left of the Game Boy picture on a
+  // wide screen, else at its top. (ortho: the HUD's 160x144 space, l r top bot its visible edges)
   drawResultFace(ortho, l, r, top, bot) {
     const age = this.resultAge(), R = this.result; if (!R || age > 4) return;
-    const v = this.v, gl = this.gl, hero = v.gb.mem.wram[4][0xF78] === 1 ? "girl" : "boy", mood = R.win ? "win" : "lose";
-    const L = v.gb.look, spec = L && L.faces && L.faces[hero] ? L.faces[hero] : { hero, face: normalizeFace(null, hero) }, key = hero + mood + (L ? L.gen : 0);
-    if (!this.faceTex || this.faceTex.key !== key) {
-      let c = null; try { c = hdFaceCanvas({ ...spec, mood }, 128); } catch (e) { c = null; }
-      if (this.faceTex) gl.deleteTexture(this.faceTex.tex); this.faceTex = null; if (!c) return;
-      const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
-      for (const [k, val] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, val);
-      this.faceTex = { key, tex };
+    const v = this.v, gl = this.gl, ch = v.gb.mem.wram[4][0xF78], mood = R.win ? "win" : "lose", L = v.gb.look;
+    const frames = POSE_FRAMES[mood], slot = frames[Math.floor(age * 5) % frames.length], gen = ch + ":" + (L ? L.gen : 0);
+    if (!this.poseTex || this.poseTex.gen !== gen) { if (this.poseTex) for (const t of this.poseTex.map.values()) gl.deleteTexture(t); this.poseTex = { gen, map: new Map() }; }
+    let tex = this.poseTex.map.get(mood + slot);
+    if (!tex) {
+      let c = null; try { c = poseCanvas(v.gb, ch, slot, mood, 128); } catch (e) { c = null; } if (!c) return;
+      tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+      for (const [k, val] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, val);
+      this.poseTex.map.set(mood + slot, tex);
     }
     const T = performance.now() / 1000, pop = Math.min(1, age * 6) * Math.min(1, (4 - age) * 3), margin = -l;
     const size = (margin >= 40 ? Math.min(margin - 6, 56) : 40) * pop, bob = R.win ? -Math.abs(Math.sin(T * 7)) * 4 : Math.min(age, 1) * 2;
     const cx = margin >= 40 ? l + margin / 2 : 80, yb = (margin >= 40 ? (top + bot) / 2 + size / 2 : top + 4 + size) + bob;
     gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
-    v.draw(this.faceTex.tex, new Float32Array([size, 0, 0, 0, 0, -size, 0, 0, 0, 0, 1, 0, cx, yb, 0, 1]), ortho, [0, 0, 1, 1], [1, 1, 1, 1], 0.05);
+    v.draw(tex, new Float32Array([size, 0, 0, 0, 0, -size, 0, 0, 0, 0, 1, 0, cx, yb, 0, 1]), ortho, [0, 0, 1, 1], [1, 1, 1, 1], 0.05);
   }
   // the dot-matrix scoreboard: points of both players from the game's score bytes (0 15 30 40, AD)
   boardTexture() {

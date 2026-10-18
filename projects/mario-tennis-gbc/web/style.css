@@ -34,3 +34,51 @@
   body.touch .k.on { opacity: 0.95; }
   body.touch .btns .k.start { position: fixed; left: 50%; bottom: calc(10px + max(env(safe-area-inset-bottom, 0px), var(--cut-b, 0px))); transform: translateX(-50%); width: 120px; height: 30px; font-size: 12px; }
   body.gamepad #pad { display: none !important; }
+  .btns .k.select, #deck { display: none; }
+  /* portrait (web/js/portrait.js): a touch screen held upright. The game fills the top (--game-h), the controls sit on a
+     deck below it (--deck-h): plain, or themed in a match / the Training Center (body.deck-court / body.deck-hall) */
+  body.touch.portrait #gl { inset: auto; left: 0; top: 0; width: 100vw; height: var(--game-h); }
+  body.touch.portrait canvas#screen { top: calc(var(--game-h) / 2); width: min(100vw, calc(var(--game-h) * 160 / 144)); }
+  body.touch.portrait #deck { display: block; position: fixed; left: 0; right: 0; top: var(--game-h); bottom: 0; z-index: 1; background: #14161c;
+                              border-top: 3px solid rgba(0,0,0,0.55); overflow: hidden; }
+  body.touch #deck canvas { position: absolute; left: 0; top: 0; transform: none; width: 100%; height: 100%; max-width: none; aspect-ratio: auto; image-rendering: pixelated; }
+  #decklabel { position: absolute; left: 10px; top: 6px; color: #fff; font: 600 13px system-ui; text-shadow: 0 0 3px #000, 0 1px 2px #000; pointer-events: none; }
+  .deckpills { position: absolute; left: 0; right: 0; top: calc(var(--deck-h) * 0.11); transform: translateY(-50%); display: flex; justify-content: center; gap: 4vw; z-index: 3; }
+  .deckpills .dk, body.touch.portrait .btns .k.start, body.touch.portrait .btns .k.select {
+    width: min(19vw, 120px); height: clamp(28px, calc(var(--deck-h) * 0.058), 44px); border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    font: 600 clamp(11px, 3.4vw, 16px) system-ui; color: #fff; background: rgba(36,40,52,0.92); border: 2px solid #555; user-select: none; touch-action: none; }
+  .deckpills .dk[hidden] { display: none; }
+  body.touch.portrait #pad { inset: auto; left: 0; right: 0; top: var(--game-h); bottom: 0; }
+  body.touch.portrait .k { opacity: 0.92; }
+  body.touch.portrait .dpad { left: 27%; top: 52%; bottom: auto; transform: translate(-50%, -50%); grid-template-columns: repeat(3, min(15vw, 68px)); grid-template-rows: repeat(3, min(15vw, 68px)); }
+  body.touch.portrait .btns { position: absolute; inset: 0; display: block; }
+  body.touch.portrait .btns .k { position: absolute; transform: translate(-50%, -50%); width: var(--ball); height: var(--ball); font-size: calc(var(--ball) * 0.42); --ball: min(24vw, calc(var(--deck-h) * 0.24), 150px); }
+  body.touch.portrait .btns .k[data-key="KeyZ"] { left: 80%; top: 44%; }
+  body.touch.portrait .btns .k[data-key="KeyX"] { left: 61%; top: 62%; }
+  body.touch.portrait .btns .k.start, body.touch.portrait .btns .k.select { position: absolute; bottom: auto; top: 87%; transform: translate(-50%, -50%); width: min(22vw, 140px); }
+  body.touch.portrait .btns .k.start { left: 64%; }
+  body.touch.portrait .btns .k.select { left: 36%; }
+  body.touch.portrait #stickzone { left: 0; top: calc(var(--game-h) + var(--deck-h) * 0.18); bottom: auto; width: 54vw; height: calc(var(--deck-h) * 0.82); }   /* below the deck's top row */
+  body.touch.portrait .stick-base { left: 50%; top: 41.5%; width: min(40vw, calc(var(--deck-h) * 0.38), 240px); height: min(40vw, calc(var(--deck-h) * 0.38), 240px); }
+  /* themed: A and B are tennis balls (the text above two white seams), the stick and the small buttons follow the place */
+  body.portrait:not(.deck-plain) .btns .k:not(.start):not(.select), body.portrait.deck-court .stick-knob {
+    isolation: isolate; overflow: hidden; border-radius: 50%; color: #2a3c0a; border: 3px solid #78901a; text-shadow: 0 1px 0 rgba(255,255,255,0.5);
+    background: radial-gradient(circle at 34% 28%, #f2faa8 0 10%, #d8ea44 34%, #b4c82c 100%); box-shadow: 0 6px 12px rgba(0,0,0,0.45); }
+  body.portrait:not(.deck-plain) .btns .k:not(.start):not(.select)::before, body.portrait:not(.deck-plain) .btns .k:not(.start):not(.select)::after,
+  body.portrait.deck-court .stick-knob::before, body.portrait.deck-court .stick-knob::after {
+    content: ""; position: absolute; z-index: -1; top: 4%; width: 100%; height: 92%; border-radius: 50%; border: 0.15em solid rgba(255,255,255,0.95); box-sizing: border-box; }
+  body.portrait:not(.deck-plain) .btns .k:not(.start):not(.select)::before, body.portrait.deck-court .stick-knob::before { left: -66%; }
+  body.portrait:not(.deck-plain) .btns .k:not(.start):not(.select)::after, body.portrait.deck-court .stick-knob::after { left: 66%; }
+  body.portrait:not(.deck-plain) .btns .k.on:not(.start):not(.select) { filter: brightness(0.82); transform: translate(-50%, -48%) scale(0.95); }
+  body.portrait.deck-court .stick-knob { font-size: 22px; border-width: 2px; }
+  body.portrait.deck-court .stick-base { border: 4px solid rgba(255,255,255,0.9); background: linear-gradient(rgba(255,255,255,0.5), rgba(255,255,255,0.5)) center / 2px 100% no-repeat,
+    linear-gradient(rgba(255,255,255,0.5), rgba(255,255,255,0.5)) center / 100% 2px no-repeat, rgba(30,90,160,0.62); }
+  body.portrait.deck-court .stick-base::before { content: ""; position: absolute; inset: 22%; border: 2px solid rgba(255,255,255,0.45); }
+  body.portrait.deck-court .deckpills .dk { background: rgba(22,24,30,0.94); border-color: #78798a; color: #ffc24a; font-family: ui-monospace, monospace; letter-spacing: 1px; }
+  body.portrait.deck-court .btns .k.start, body.portrait.deck-court .btns .k.select { background: #f6f6f0; border: 3px solid #d83a2c; color: #d83a2c; box-shadow: inset 0 -5px 0 -1px #d83a2c; }
+  body.portrait.deck-court .btns .k.select { border-color: #2a6ec8; color: #2a6ec8; box-shadow: inset 0 -5px 0 -1px #2a6ec8; }
+  body.portrait.deck-hall .stick-base { border: 7px solid #22409a; background: rgba(90,150,220,0.66); }
+  body.portrait.deck-hall .stick-base::before { content: ""; position: absolute; inset: 5%; border-radius: 50%; border: 5px dotted rgba(225,234,248,0.95); }
+  body.portrait.deck-hall .stick-knob { border: 4px solid #783c0a; background: radial-gradient(circle at 35% 30%, #ffe6b4 0 12%, transparent 13%), radial-gradient(circle, #3c1e0a 0 24%, #f8a028 26% 100%); }
+  body.portrait.deck-hall .deckpills .dk, body.portrait.deck-hall .btns .k.start, body.portrait.deck-hall .btns .k.select {
+    background: linear-gradient(115deg, transparent 0 14%, rgba(255,255,255,0.55) 15% 18%, transparent 19%), rgba(150,196,236,0.85); border: 3px solid #22409a; color: #142864; }

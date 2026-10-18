@@ -22,6 +22,7 @@ import { loadSnapshot } from "./gb/snapshot.js";
 import { saveState, loadState, snapshot, restore } from "./gb/state.js";
 import { composeWide, WIDE_W, WIDE_H } from "./wide.js";
 import { mountStick } from "./stick.js";
+import { portraitArea, attachPortrait } from "./portrait.js";   // touch screens held upright: the game on top, a control deck below
 import { Recorder, maskOf, packRecording, bytesToBase64, stateOf } from "./recorder.js";
 import { HDText, FONTS, FONT_ORDER, HD } from "./hdtext.js";
 import { mountCreator } from "./look/creator.js";
@@ -32,6 +33,7 @@ const cv = $("screen"), g = cv.getContext("2d");
 const img = g.createImageData(160, 144);
 let voxel = null, view3d = false, hd = null;
 let gb = null, keys = {}, paused = false, turbo = false, romHash = "", phone = null, replay = null;   // phone: phone.js (GAME menu conveniences)
+const deck = attachPortrait(() => gb);
 const SAVE_KEY = () => "mt-sram-" + romHash.slice(0, 12);
 const q = new URLSearchParams(location.search);
 const stored = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
@@ -128,7 +130,7 @@ function frame() {
   if (phone) phone.frame(gb);                // VIBRATE: hits and points
   if (replay && !port) replay.afterFrame(gb, inp);   // INSTANT REPLAY: the buttons of the point
   rec.frame(gb, mask); session.frame(gb, mask);
-  creator.frame();
+  creator.frame(); deck.frame();
   if (audioReady && anode) { const n = gb.apu.drain(abuf); if (n) anode.port.postMessage(abuf.slice(0, n)); } else gb.apu.outPos = 0;
 }
 let drawnFrame = -1;
@@ -206,15 +208,17 @@ const ASPECTS = ["fill", "4:3", "10:9"];
 let aspect = q.get("aspect") || stored("mt-aspect") || "fill"; if (!ASPECTS.includes(aspect)) aspect = "fill";
 function applyAspect() {
   $("aspect").textContent = "VIEW: " + (aspect === "fill" ? "Fill" : aspect);
-  const touch = document.body.classList.contains("touch"), gl = $("gl");
-  const box = r => {                          // CSS size of an r-aspect box fitted to the viewport (touch) or 480 px wide (desktop)
+  const touch = document.body.classList.contains("touch"), gl = $("gl"), area = portraitArea();   // area: the game's part of an upright screen
+  const vw = area ? area.w : innerWidth, vh = area ? area.h : innerHeight;
+  const box = r => {                          // CSS size of an r-aspect box fitted to the viewport / the portrait game area (touch) or 480 px wide (desktop)
     if (!touch) return { w: 480, h: 480 / r };
-    const vw = innerWidth, vh = innerHeight; return vw / vh > r ? { w: vh * r, h: vh } : { w: vw, h: vw / r };
+    return vw / vh > r ? { w: vh * r, h: vh } : { w: vw, h: vw / r };
   };
-  const set = (el, b) => { if (!b) { el.style.cssText = ""; return; } el.style.width = b.w + "px"; el.style.height = b.h + "px"; if (touch) { el.style.left = (innerWidth - b.w) / 2 + "px"; el.style.top = (innerHeight - b.h) / 2 + "px"; el.style.transform = "none"; el.style.inset = "auto"; el.style.position = "fixed"; } };
+  const set = (el, b) => { if (!b) { el.style.cssText = ""; return; } el.style.width = b.w + "px"; el.style.height = b.h + "px"; if (touch) { el.style.left = (vw - b.w) / 2 + "px"; el.style.top = (vh - b.h) / 2 + "px"; el.style.transform = "none"; el.style.inset = "auto"; el.style.position = "fixed"; } };
   if (aspect === "fill") { set(gl, null); set(cv, null); }
   else { const r = aspect === "4:3" ? 4 / 3 : 160 / 144; set(gl, box(r)); set(cv, box(r)); }
   try { localStorage.setItem("mt-aspect", aspect); } catch (e) { /* private mode */ }
+  deck.resize(); insetAt = 0;
 }
 addEventListener("resize", () => applyAspect());
 let preset = q.get("cam") || stored("mt-cam") || "low"; if (!PRESETS[preset]) preset = "low";
@@ -493,6 +497,6 @@ $("engbtn").addEventListener("pointerdown", () => {
 // a private build bundles the ROM; a shared one doesn't, so the app starts with the ROM the player picked last time
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom)
   .catch(() => { if (navigator.userAgent.includes("MarioTennisWrapper")) romStore("readonly", s => s.get("rom")).then(b => { if (b && !gb) loadRom(b.buffer.slice(0)); }).catch(() => {}); });
-window.__gb = { get port() { return port; }, get smooth() { return smooth; }, set smooth(v) { smooth = !!v; renderedAt = -1; applySmooth(); }, get fpsInfo() { return fps; }, get gb() { return gb; }, get hd() { return hd; }, keys, rec, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { if (n) settle(); for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, get replay() { return replay; }, loadSnapshot(s) { raSnap = null; loadSnapshot(gb, s); }, saveState() { settle(); return saveState(gb); }, loadState(s) { raSnap = null; loadState(gb, s); drawnFrame = -1; }, get runAhead() { return runAhead; }, settle };
+window.__gb = { get port() { return port; }, get deck() { return deck; }, get smooth() { return smooth; }, set smooth(v) { smooth = !!v; renderedAt = -1; applySmooth(); }, get fpsInfo() { return fps; }, get gb() { return gb; }, get hd() { return hd; }, keys, rec, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { if (n) settle(); for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, get replay() { return replay; }, loadSnapshot(s) { raSnap = null; loadSnapshot(gb, s); }, saveState() { settle(); return saveState(gb); }, loadState(s) { raSnap = null; loadState(gb, s); drawnFrame = -1; }, get runAhead() { return runAhead; }, settle };
 organizeHud($("hud"));
 requestAnimationFrame(loop);

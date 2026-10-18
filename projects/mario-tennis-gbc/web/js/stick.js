@@ -13,7 +13,7 @@ export function mountStick(zone, keys) {
   base.className = "stick-base"; knob.className = "stick-knob"; base.appendChild(knob); zone.appendChild(base);
   let id = null, cx = 0, cy = 0, R = 60, enabled = true;
   const set = d => { keys.ArrowRight = d.right; keys.ArrowLeft = d.left; keys.ArrowUp = d.up; keys.ArrowDown = d.down; };
-  const home = () => { base.style.left = ""; base.style.top = ""; base.classList.remove("active"); knob.style.transform = "translate(-50%, -50%)"; };
+  const home = () => { base.style.left = ""; base.style.top = ""; base.style.width = base.style.height = ""; base.classList.remove("active"); knob.style.transform = "translate(-50%, -50%)"; };
   const move = e => {
     let dx = e.clientX - cx, dy = e.clientY - cy; const m = Math.hypot(dx, dy);
     if (m > R) { dx *= R / m; dy *= R / m; }
@@ -23,7 +23,8 @@ export function mountStick(zone, keys) {
   zone.addEventListener("pointerdown", e => {
     if (!enabled || id !== null) return; e.preventDefault();
     id = e.pointerId; try { zone.setPointerCapture(id); } catch (err) { /* ignore */ }
-    const r = zone.getBoundingClientRect(); R = Math.max(40, Math.min(80, Math.min(innerWidth, innerHeight) * 0.11));
+    const r = zone.getBoundingClientRect(), rest = base.getBoundingClientRect().width;
+    R = document.body.classList.contains("portrait") ? rest / 2 : Math.max(40, Math.min(80, Math.min(innerWidth, innerHeight) * 0.11));   // portrait: the deck's stick keeps its size
     cx = e.clientX; cy = e.clientY; base.style.left = (cx - r.left) + "px"; base.style.top = (cy - r.top) + "px"; base.classList.add("active");
     base.style.width = base.style.height = 2 * R + "px"; move(e);
   });

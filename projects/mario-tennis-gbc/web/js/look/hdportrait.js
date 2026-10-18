@@ -1,11 +1,13 @@
 // HD UI painter: with "UI: HD" on, the player's redrawn faces (portraits, win / lose faces) are drawn as the smooth
 // 96x96 / 128x128 art of hdface.js over the Game Boy picture, wherever the hero's face tiles are on screen.
+// The win / lose faces show the player's own match sprite instead, cheering or dejected, on a card (poses.js).
 // Registered by creator.js (the look's owner): nothing is painted without a look, and the pixel version underneath
 // is still the one every other renderer (and the recorded frames) use. An opponent mod's face with a `photo` (mods.js) is
 // drawn the same way, from its picture.
 import { registerHDPainter } from "../hdui.js";
 import { hdFaceCanvas } from "./hdface.js";
 import { LookRenderer } from "./render.js";
+import { poseCanvas, heroChar, POSE_STILL } from "./poses.js";
 
 const MOOD = { p24: "neutral", win: "win", lose: "lose" };
 const cache = new Map(), photos = new Map();
@@ -17,11 +19,12 @@ function photoCanvas(src, px, look) {
   const c = document.createElement("canvas"); c.width = c.height = px; const g = c.getContext("2d"); g.imageSmoothingQuality = "high"; g.drawImage(im, 0, 0, px, px); return c;
 }
 function make(spec, kind, d, look) {
-  const key = (spec.photo ? spec.photo.slice(-64) + spec.photo.length : JSON.stringify(spec)) + kind + ":" + d;
+  const pose = !spec.photo && POSE_STILL[kind] !== undefined && look && look.gb;   // the player's win / lose face: their own sprite cheering / dejected
+  const key = (spec.photo ? spec.photo.slice(-64) + spec.photo.length : JSON.stringify(spec)) + kind + ":" + d + (pose ? ":pose" + look.gen : "");
   let c = cache.get(key); if (c) return c;
   if (cache.size > 40) cache.clear();
   const px = kind === "p24" ? 96 : 128;
-  c = spec.photo ? photoCanvas(spec.photo, px, look) : hdFaceCanvas({ ...spec, mood: MOOD[kind] }, px);
+  c = spec.photo ? photoCanvas(spec.photo, px, look) : pose ? poseCanvas(look.gb, heroChar(spec.hero), POSE_STILL[kind], kind, px) : hdFaceCanvas({ ...spec, mood: MOOD[kind] }, px);
   if (!c) return null;
   if (d !== 0) {                                                  // the game's fade (to white) or its grey for the character not selected
     const o = document.createElement("canvas"); o.width = o.height = px; const g = o.getContext("2d"); g.drawImage(c, 0, 0);
