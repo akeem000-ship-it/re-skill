@@ -23,7 +23,7 @@ export const faceColours = (hero, c) => {
 
 // a slot of the renderer's colour table for this exact colour (taken from the top down: the opponent mods' pool grows up)
 export function poolSlot(res, c) {
-  if (res.poolTop === undefined) res.poolTop = 256;
+  if (res.poolTop === undefined) res.poolTop = res.colours.length;
   const m = res.slotOf || (res.slotOf = new Map());
   let s = m.get(c); if (s !== undefined) return s;
   if (res.poolTop - 1 <= (res.poolStart || 32)) return 0;
@@ -35,7 +35,7 @@ const lum = c => ((c & 31) * 0.3 + ((c >> 5) & 31) * 0.59 + ((c >> 10) & 31) * 0
 export function faceAssets(rom, hero, L, heroDef, res, deps) {
   const { off, addContent, tileHash } = deps;
   const spec = { hero, style: L.style, face: normalizeFace(L.face, hero), colours: faceColours(hero, L.colours) };
-  const plane = (im, cx, cy, n) => { const p = new Uint8Array(64); for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const c = im.px[(cy * 8 + y) * im.w + cx * 8 + x]; p[y * 8 + x] = c < 0 ? 0 : poolSlot(res, c); } return p; };
+  const plane = (im, cx, cy, n) => { const p = new Uint16Array(64); for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const c = im.px[(cy * 8 + y) * im.w + cx * 8 + x]; p[y * 8 + x] = c < 0 ? 0 : poolSlot(res, c); } return p; };
   res.faces = res.faces || {}; res.faces[hero] = { hero, style: L.style || undefined, face: spec.face, colours: spec.colours };
   res.faceTiles = res.faceTiles || new Map();
   const stream = (bank, addr, im, cols, kind) => {          // the HD UI finds the portraits on screen by these tiles (renderer.faceTile)

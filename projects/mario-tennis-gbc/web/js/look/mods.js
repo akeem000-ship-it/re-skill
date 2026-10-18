@@ -15,13 +15,15 @@
 //   portrait  { pal: ["#rrggbb", ...], rows: [24 strings of 24 chars] } the 24x24 face (result screens...), drawn
 //             in the render layer over the game's own portrait tiles; "." keeps the game's pixel
 //   head      the same for the 16x16 head of the character-select / score displays
+//   photo     a picture ("data:image/png|jpeg|webp;base64,...", square) the HD UI draws in place of the 24x24 face, at full
+//             resolution (with `portrait` for the Game Boy picture: the same picture made small)
 // Everything is computed from the user's own ROM at load; nothing here is derived from it, and the mod file holds
 // only the user's art and choices. With no mod nothing is patched or hooked.
 import { lzDecompress } from "./lz.js";
 import { decodeColMajor, encodeColMajor, cellOf, img } from "./gfx.js";
 import { REG, labelSprite, applyStyle, applyExtras, applyTouchups, STYLES, EXTRAS } from "./label.js";
 import { TOUCHUPS } from "./touchups.js";
-import { HEROES, off, u16, addContent, shade } from "./build.js";
+import { HEROES, off, u16, addContent, shade, tileHash } from "./build.js";
 import { hairTones } from "./portrait.js";
 
 const CHAR_OBJECT_TABLE = [0x04, 0x4C29], SPRITE_SET_TABLE = [0x07, 0x5A50], OBJECT_LIST = [0x04, 0x4F75];
@@ -62,6 +64,7 @@ export function normalizeMod(m) {
     }
     const p = artOf(c.portrait, 24, 24); if (p) o.portrait = p;
     const h = artOf(c.head, 16, 16); if (h) o.head = h;
+    if (typeof c.photo === "string" && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(c.photo) && c.photo.length < 400000) o.photo = c.photo;
     chars.push(o);
   }
   return chars.length ? { v: 1, id: typeof m.id === "string" ? m.id.slice(0, 40) : "mod", title: typeof m.title === "string" ? m.title.slice(0, 60) : "", chars } : null;
@@ -85,7 +88,7 @@ export function charGfx(rom, c) {
 // region slots: a block of 16 per modded character (the labelled regions), then a pool for the drawn art
 class Slots {
   constructor(res, nchars) { this.res = res; this.pool = 32 + 16 * nchars; this.next = this.pool; this.byColour = new Map(); res.poolStart = this.pool; }
-  colour(c) { let s = this.byColour.get(c); if (s === undefined) { if (this.next >= (this.res.poolTop === undefined ? 256 : this.res.poolTop)) return 0; s = this.next++; this.byColour.set(c, s); this.res.colours[s] = c; } return s; }
+  colour(c) { let s = this.byColour.get(c); if (s === undefined) { if (this.next >= (this.res.poolTop === undefined ? this.res.colours.length : this.res.poolTop)) return 0; s = this.next++; this.byColour.set(c, s); this.res.colours[s] = c; } return s; }
 }
 const lum = c => { const r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31; return (r * 0.3 + g * 0.59 + b * 0.11) / 31; };
 
@@ -98,7 +101,7 @@ function bodyFrames(rom, ch, G, res, base) {
     applyTouchups(st, (mine[key] || []).map(t => ({ x: t.x, y: t.y, r: REGION_NAMES[t.r] })));
   };
   const finish = (st, key) => { applyStyle(st, style); applyExtras(st, ch.extras); touch(st, key); return st; };
-  const tag = plane => { const p = new Uint8Array(64); for (let i = 0; i < 64; i++) p[i] = plane[i] ? base + plane[i] : 0; return p; };
+  const tag = plane => { const p = new Uint16Array(64); for (let i = 0; i < 64; i++) p[i] = plane[i] ? base + plane[i] : 0; return p; };
   // overworld frames: each distinct frame block of the character takes the hero's frame of the highest number among
   // the frames that share it (the characters' own blocks are shared by frames they never differ in)
   const groups = new Map(); G.walk.forEach((p, i) => groups.set(p, Math.max(groups.get(p) ?? -1, i)));
@@ -143,16 +146,21 @@ function portraitArt(rom, ch, res, slots) {
   const { data } = lzDecompress(rom, off(PORTRAIT_TABLE[0], ptr));
   if (data.length < 144) return;
   for (let t = 0; t < 9; t++) {
-    const plane = new Uint8Array(64);
+    const plane = new Uint16Array(64);
     for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const chr = a.rows[(t / 3 | 0) * 8 + y][(t % 3) * 8 + x]; plane[y * 8 + x] = chr === "." ? 0 : slots.colour(a.pal[PAL_CHARS.indexOf(chr)]); }
     addContent(res, data.subarray(t * 16, t * 16 + 16), plane);
+    if (ch.photo) {                                    // the HD UI finds the face on screen by these tiles (renderer.faceTile) and draws the photo
+      const bytes = data.subarray(t * 16, t * 16 + 16), h = tileHash(bytes), list = res.faceTiles.get(h) || [];
+      list.push({ bytes: Uint8Array.from(bytes), hero: "mod" + ch.char, kind: "p24", t, cols: 3 }); res.faceTiles.set(h, list);
+    }
   }
+  if (ch.photo) { res.faces = res.faces || {}; res.faces["mod" + ch.char] = { photo: ch.photo }; }
 }
 // the 16x16 heads (raw 2bpp, two 8x16 objects: column-major): new pixels written in place, drawn in the render layer
 function headArt(rom, ch, res, slots) {
   const a = ch.head;
   for (const hb of HEAD_BASES) {
-    const dst = off(0x18, hb + 64 * ch.char), bytes = new Uint8Array(64), im = img(16, 16), plane = new Uint8Array(256);
+    const dst = off(0x18, hb + 64 * ch.char), bytes = new Uint8Array(64), im = img(16, 16), plane = new Uint16Array(256);
     for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
       const chr = a.rows[y][x]; if (chr === ".") continue;
       const c = a.pal[PAL_CHARS.indexOf(chr)], l = lum(c);
@@ -197,7 +205,7 @@ export function buildMods(rom, mods, res) {
     set(REG.OUT, c.outline ?? 0x0000); set(REG.SKIN, c.skin); set(REG.SHADE, c.shade ?? (c.skin !== undefined ? shade(c.skin) : undefined));
     set(REG.HAIR, c.hair); if (c.hair !== undefined) { const t = hairTones(c.hair); set(REG.HAIR2, t.k); set(REG.HAIR3, t.g); } set(REG.HAT, c.hat); set(REG.TOP, c.top); set(REG.BOTTOM, c.bottom); set(REG.SHOES, c.shoes ?? c.bottom); set(REG.RACKET, c.racket);
     if (ch.body) bodyFrames(rom, ch, charGfx(rom, ch.char), res, base);
-    if (ch.portrait) portraitArt(rom, ch, res, slots);
+    if (ch.portrait) { res.faceTiles = res.faceTiles || new Map(); portraitArt(rom, ch, res, slots); }
     if (ch.head) headArt(rom, ch, res, slots);
   });
   patchNames(rom, chars, res);

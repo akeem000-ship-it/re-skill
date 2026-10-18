@@ -116,7 +116,7 @@ function heroAssets(rom, name, style, portraits = false) {
 // -> { patches: [{ off, bytes }], tileRegions: Map(romOffset -> Uint8Array(64)), contentRegions: Map(hash -> [{bytes, plane}]),
 //      colours: Uint16Array(32) indexed by hero * 16 + region (0xFFFF: keep the game's colour), basePalettes }
 export function buildLook(rom, look, opts = {}) {
-  const res = { patches: [], tileRegions: new Map(), contentRegions: new Map(), colours: new Uint16Array(256).fill(0xFFFF), poolStart: 32, basePalettes: [], notes: [],
+  const res = { patches: [], tileRegions: new Map(), contentRegions: new Map(), colours: new Uint16Array(4096).fill(0xFFFF), poolStart: 32, basePalettes: [], notes: [],
                 frames: [], tileFrame: new Map(), frameTiles: new Map() };        // the heroes' frames with their face data, by tile offset (detailed sprites)
   if (!look || !checkRom(rom)) { if (look) res.notes.push("unexpected ROM: look not applied"); return res; }
   // the five shared hero palettes (StoryObjPalettes 0a:5341 = 01:50F6 entries 3-7 = 18:4300): the renderer only

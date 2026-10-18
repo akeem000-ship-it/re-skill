@@ -45,7 +45,7 @@ export function encodeRowMajor(im, cols, rows8) {
 
 // the 64 values of cell (cx, cy) of a plane (Uint8Array w*h), row-major within the tile
 export function cellOf(plane, w, cx, cy) {
-  const out = new Uint8Array(64);
+  const out = new plane.constructor(64);              // (a Uint16Array plane: colour slots past 255)
   for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) out[y * 8 + x] = plane[(cy * 8 + y) * w + cx * 8 + x];
   return out;
 }
