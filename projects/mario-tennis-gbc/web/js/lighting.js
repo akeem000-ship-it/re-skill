@@ -363,7 +363,8 @@ export class Lighting {
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.msaa ? this.q.ms.f : this.q.scene.f);
     return true;
   }
-  camera(mvp, near, far, unit, kind, at, mapId = -1) { this.cam = { mvp, near, far, unit, kind, at, indoor: kind === "field" && INDOOR_MAPS.has(mapId) }; }   // unit: world units per game pixel; at: a ground point in the middle of the view
+  // indoor: the RPG maps indoors, and the Training Center's drill courts (a hall without windows: its own lamps, whatever the hour)
+  camera(mvp, near, far, unit, kind, at, mapId = -1) { this.cam = { mvp, near, far, unit, kind, at, indoor: (kind === "field" && INDOOR_MAPS.has(mapId)) || (kind === "court" && !!(this.v.isDrill && this.v.isDrill())) }; }   // unit: world units per game pixel; at: a ground point in the middle of the view
   finish() { if (this.begun && !this.posted) this.post(); this.begun = false; }
   // everything the passes need to know about the scene, set by voxel.js through camera() and read from its state here
   lights(P, unit, kind) {
@@ -377,7 +378,7 @@ export class Lighting {
         for (const l of (v.field && v.field.lamps) || []) all.push({ p: [l.x, l.h, l.y], r: l.r || 110, c: [1.5 * night * (l.k || 1), 1.15 * night * (l.k || 1), 0.62 * night * (l.k || 1)] });
         all.sort((a, b) => Math.hypot(a.p[0] - cx, a.p[2] - cz) - Math.hypot(b.p[0] - cx, b.p[2] - cz)); out.push(...all.slice(0, 6));
       }
-    } else if (kind === "court" && night > 0.02) {
+    } else if (kind === "court" && night > 0.02 && !(this.cam && this.cam.indoor)) {   // (no floodlights in the drill hall)
       pool = { v: [0, -80, 1000, 1850], c: [0.58 * night, 0.62 * night, 0.56 * night] };
       for (const [x, z] of FLOODS) { out.push({ p: [x, FLOOD_HEIGHT, z], r: 4800, c: [0.10 * night, 0.09 * night, 0.07 * night] }); fl.push({ p: [x, FLOOD_HEIGHT, z], c: [0.42 * night, 0.38 * night, 0.28 * night], size: 0.10 }); }
     }

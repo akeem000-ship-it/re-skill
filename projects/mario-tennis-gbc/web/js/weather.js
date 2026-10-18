@@ -20,6 +20,7 @@ export class Weather {
       this.cur = this.mode !== "random" ? this.mode : r < 0.2 ? "rain" : r < 0.4 ? "sunset" : "clear";
     }
     if (!v.replaying) this.lastFr = fr;
+    if (v.isDrill && v.isDrill()) { if (L) { L.weatherHour = null; L.weatherRain = false; } this.sound(false); return; }   // the drill hall is indoors
     if (L) { L.weatherHour = this.cur === "sunset" ? 18.3 : null; L.weatherRain = this.cur === "rain"; }
     this.sound(this.cur === "rain");
     if (this.cur !== "rain") return;

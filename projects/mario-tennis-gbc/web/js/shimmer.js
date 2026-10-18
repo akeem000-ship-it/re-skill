@@ -26,16 +26,17 @@ export const VS_GLASS = `#version 300 es
 in vec3 aPos3; in vec2 aUV3; uniform mat4 uMVP; out vec2 vUV; out vec3 vW;
 void main() { vUV = aUV3; vW = aPos3; gl_Position = uMVP * vec4(aPos3, 1.0); }`;
 export const FS_GLASS = `#version 300 es
-precision highp float; in vec2 vUV; in vec3 vW; uniform float uTime, uShim; out vec4 o;
+precision highp float; in vec2 vUV; in vec3 vW; uniform float uTime, uShim, uK; out vec4 o;   // uK: how strongly the glass shows (1 = faint, the first building)
 float h21(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 void main() {
   float frame = max(step(vUV.x, 0.05) + step(0.95, vUV.x), step(vUV.y, 0.035) + step(0.965, vUV.y));
-  vec3 col = mix(vec3(0.70, 0.86, 1.0), vec3(0.88, 0.96, 1.0), clamp(frame, 0.0, 1.0));
-  float a = 0.07 + 0.05 * vUV.y + 0.5 * clamp(frame, 0.0, 1.0);
+  vec3 col = mix(mix(vec3(0.70, 0.86, 1.0), vec3(0.52, 0.74, 0.98), clamp(uK - 1.0, 0.0, 1.0)), vec3(0.88, 0.96, 1.0), clamp(frame, 0.0, 1.0));
+  float a = (0.07 + 0.05 * vUV.y) * uK + 0.5 * min(1.6, uK) * clamp(frame, 0.0, 1.0);
+  a += 0.10 * (uK - 1.0) * smoothstep(0.55, 1.0, vUV.y);   // a brighter top edge on the stronger glass
   float ph = h21(floor(vec2(vW.x, vW.z) / 32.0));
   float x = fract((vW.x + vW.z) * 0.02 + vUV.y * 0.35 - uTime * 0.17 + ph);
   float band = smoothstep(0.0, 0.05, x) * (1.0 - smoothstep(0.05, 0.15, x));
-  a += uShim * band * 0.16; col = mix(col, vec3(1.0), uShim * band * 0.6);
+  a += uShim * band * 0.16 * uK; col = mix(col, vec3(1.0), uShim * band * 0.6);
   o = vec4(col, a);
 }`;
 

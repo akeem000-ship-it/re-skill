@@ -217,7 +217,7 @@ export class Voxel3D {
     this.u3 = {}; for (const n of ["uMVP", "uTex", "uTint", "uAlphaTest"]) this.u3[n] = gl.getUniformLocation(this.prog3, n);
     this.shimmer = new WindowShimmer(this);                                              // SHIMMER (voxel.shimmer.on / setOn: the LIGHT panel's "Window shimmer")
     this.progS = this.link(VS3, FS_SHIM, ["aPos3", "aUV3"]); this.uS = {}; for (const n of ["uMVP", "uTex", "uTint", "uAlphaTest", "uTime", "uShim"]) this.uS[n] = gl.getUniformLocation(this.progS, n);
-    this.progG = this.link(VS_GLASS, FS_GLASS, ["aPos3", "aUV3"]); this.uG = {}; for (const n of ["uMVP", "uTime", "uShim"]) this.uG[n] = gl.getUniformLocation(this.progG, n);
+    this.progG = this.link(VS_GLASS, FS_GLASS, ["aPos3", "aUV3"]); this.uG = {}; for (const n of ["uMVP", "uTime", "uShim", "uK"]) this.uG[n] = gl.getUniformLocation(this.progG, n);
     this.progV = this.link(VSV, FSV, ["aPosV", "aColV"]);
     this.uV = {}; for (const n of ["uMVP", "uModel"]) this.uV[n] = gl.getUniformLocation(this.progV, n);
     const uni = (p, names) => Object.fromEntries(names.map(n => [n, gl.getUniformLocation(p, n)]));
@@ -611,6 +611,8 @@ export class Voxel3D {
         const c = inCut(bx, by);
         if (c && c.fill === "tile") {          // the floor a whole number of tiles to the side (right first): its dither and pattern run on unbroken
           for (let k = 1; k <= 8; k++) { const r = bx + 8 * k, l = bx - 8 * k; if (r < 256 && !inCut(r, by)) { bx = r; break; } if (l >= 0 && !inCut(l, by)) { bx = l; break; } }
+        } else if (c && c.name === "net") {    // the floor behind the net: the court below it a whole number of tiles down, so its dither and lines
+          by += 8 * Math.ceil((c.y1 - by) / 8);   // run on (one row repeated smeared them into streaks)
         } else if (c) { if (c.fill === "below") by = c.y1; else if (c.fill === "above") by = c.y0 - 1; else bx = c.x0 - 1; }
         src[j * W + i] = by * 256 + bx;
       }
@@ -883,6 +885,9 @@ export class Voxel3D {
     // bank 1. Captions never join a body (they used to be taken in as they passed a player and drawn beside them on the court): HUD.
     const isCaption = sp => sp.tile < 0x40 && !(sp.attr & 8);
     const near = (a, b, gap) => a.sx < b.sx + 8 + gap && b.sx < a.sx + 8 + gap && a.sy < b.sy + b.h + gap && b.sy < a.sy + a.h + gap;
+    // ball-range tiles in a row of three or more side by side are a caption the game drew with them (the pause menu's "MUSIC" label): HUD
+    const inRow = sp => { let n = 1; for (const d of [-8, 8]) for (let x = sp.sx + d; sprs.some(o => o.sy === sp.sy && o.sx === x); x += d) n++; return n >= 3; };
+    for (const sp of sprs) if (isBallTile(sp) && inRow(sp)) sp.owner = "caption";
     const ballGroup = [];
     for (const sp of sprs) if (isBallTile(sp) && Math.hypot(sp.sx + 4 - ballSx, sp.sy + sp.h / 2 - ballSy) < 12) { sp.owner = "ball"; ballGroup.push(sp); }
     for (let grew = true; grew && ballGroup.length;) {   // the trail: a chain of ball-range tiles behind the ball
@@ -1006,6 +1011,7 @@ export class Voxel3D {
     // everything else (score strip, point faces, "1ST P1" labels) is HUD in screen space
     const hud = [];
     for (const sp of sprs) {
+      if (sp.owner === "caption") { hud.push(sp); continue; }
       if (sp.owner) continue;
       if (!isBallTile(sp) || sp.sx >= 140 || sp.sx < 12 || sp.sy >= 126 || sp.sy < 2) { hud.push(sp); continue; }
       const w = this.unproject(sp.sx + 4, sp.sy + sp.h);
@@ -1048,7 +1054,6 @@ export class Voxel3D {
       this.drawHDText(m4.trs(wx + (160 - wx) / 2, 144, 0, 160 - wx, -(144 - wy), 0), ortho, [wx / 160, wy / 144, (160 - wx) / 160, (144 - wy) / 144], ["win"]);
       for (let y = wy >> 3; y < 18; y++) for (let x = wx >> 3; x < 20; x++) cover[y * 21 + x] = 1;
     }
-    this.drawHDText(m4.trs(80, 144, 0, 160, -144, 0), ortho, [0, 0, 1, 1], ["spr"]);     // HD art that replaced sprites (cursors): over the window too
     // HUD sprites last (sprites are drawn over the BG and the window). A group lying on one of those overlays (the
     // digits in a mini-game's score panel, a menu cursor) stays with it at 1:1; the others go to the edges
     const covered = b => { for (let y = Math.max(0, b.y0 + 2) >> 3; y <= Math.min(143, b.y1 - 3) >> 3; y++) for (let x = Math.max(0, b.x0 + 2) >> 3; x <= Math.min(159, b.x1 - 3) >> 3; x++) if (cover[y * 21 + x]) return true; return false; };
@@ -1065,7 +1070,8 @@ export class Voxel3D {
         this.draw(tex, m4.trs(x, y0 + (half + 1) * 8 * kk, 0, 8 * kk, -8 * kk, 0), ortho);
       }
     });
-  }
+    this.drawHDText(m4.trs(80, 144, 0, 160, -144, 0), ortho, [0, 0, 1, 1], ["spr"]);     // HD art that replaced sprites (cursors): over the window and the
+  }                                                                                        // HUD sprites (menu icons), as in 2D
   hudOrtho() {                                             // 160x144 screen space letterboxed into the canvas (+ its edges)
     const a = this.cv.width / this.cv.height, g = 160 / 144;
     if (a >= g) { const w = 144 * a, m = (w - 160) / 2; return { ortho: m4.ortho(-m, 160 + m, 144, 0, -1, 1), l: -m, r: 160 + m, t: 0, b: 144 }; }
@@ -1242,7 +1248,7 @@ export class Voxel3D {
     // where each floor / building-texture pixel comes from in the map picture: palette fades only recolour (recolourField)
     f.floorSrc = new Int32Array(512 * 512).map((_, i) => i); f.artSrc = new Int32Array(f.floorSrc);
     if (!def) return;
-    f.noWalls = def.walls === false; f.noGlow = def.glass === false;   // glass: false: no window glow at night (no buildings: pale fences and courts are not windows)
+    f.noWalls = def.walls === false; f.noGlow = def.glass === false; f.glassK = def.glassK || 1;   // glassK: how strongly its glass walls show   // glass: false: no window glow at night (no buildings: pale fences and courts are not windows)
     f.patched = new Uint8Array(512 * 512); f.artMod = new Uint8Array(512 * 512);   // floor / art pixels that are no longer the map's (kept by live tile updates)
     const cover = (x0, y0, x1, y1) => {          // metatiles under annotated objects: no collision box there (it would show as a floor-textured block)
       for (let my = Math.max(0, y0 >> 4); my <= Math.min(31, (y1 - 1) >> 4); my++) for (let mx = Math.max(0, x0 >> 4); mx <= Math.min(31, (x1 - 1) >> 4); mx++) f.covered[my * 32 + mx] = 1;
@@ -1837,7 +1843,7 @@ export class Voxel3D {
     this.fieldRects = this.fieldOverlayRects();                         // once per frame: the actors and the overlays both need them
     this.drawFieldActors(mvp);
     if (f.glass) {                                                       // glass walls (thin panes), after everything behind them
-      gl.useProgram(this.progG); gl.uniformMatrix4fv(this.uG.uMVP, false, mvp); gl.uniform1f(this.uG.uTime, T); gl.uniform1f(this.uG.uShim, this.shimmer.level());
+      gl.useProgram(this.progG); gl.uniformMatrix4fv(this.uG.uMVP, false, mvp); gl.uniform1f(this.uG.uTime, T); gl.uniform1f(this.uG.uShim, this.shimmer.level()); gl.uniform1f(this.uG.uK, f.glassK || 1);
       gl.depthMask(false); gl.bindVertexArray(f.glass.vao); gl.drawArrays(gl.TRIANGLES, 0, f.glass.count); gl.depthMask(true);
       gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
     }
@@ -2037,6 +2043,16 @@ export class Voxel3D {
   // drills from behind its glass wall. Taken while one stands wholly on the Game Boy screen, in the field's own palettes.
   noteWatcher(a) {
     const W = this.watchers || (this.watchers = new Map()); if (W.has(a.obj) || W.size >= 12) return;
+    // facing the viewer (frame offset 0x40, read from the ROM), whatever way they face in the room: in the hall they look out at the court
+    const b = a.slot * 0x40, t = a.list.length ? this.actorRomFrame(b, 0x40) : -1;
+    if (t >= 0) {
+      const img = new Uint8Array(16 * 16 * 4), pal = a.list[0].attr & 7;
+      for (let half = 0; half < 2; half++) for (let h8 = 0; h8 < 2; h8++) {
+        const d = this.spritePixels((t & 0xFE) + half * 2 + h8, 2, pal, 0, 0);
+        for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const si = (y * 8 + x) * 4; if (d[si + 3]) img.set(d.subarray(si, si + 4), ((h8 * 8 + y) * 16 + half * 8 + x) * 4); }
+      }
+      W.set(a.obj, { w: 16, h: 16, img }); return;
+    }
     let x0 = 999, y0 = 999, x1 = -999, y1 = -999;
     for (const sp of a.list) { x0 = Math.min(x0, sp.sx); y0 = Math.min(y0, sp.sy); x1 = Math.max(x1, sp.sx + 8); y1 = Math.max(y1, sp.sy + sp.h); }
     const w = x1 - x0, h = y1 - y0; if (w > 24 || h > 32) return;
@@ -2049,8 +2065,8 @@ export class Voxel3D {
   }
   // the frame actor b (its offset in the actor table) would show, read from the ROM into bank 2 (romFrameTiles): the animation's
   // frame (+0x33, or the first frame of its script at +0x2C) and the facing (+0x34 through DirectionToFacing 04:56B3, unless the
-  // object has one facing, +0x35 = 1). -> its first tile there, or -1
-  actorRomFrame(b) {
+  // object has one facing, +0x35 = 1; or `facing`, a frame offset 0x00 / 0x40 / 0x80 / 0xC0, when given). -> its first tile there, or -1
+  actorRomFrame(b, facing) {
     const w4 = this.gb.mem.wram[4], rom = this.gb.mem.rom, bank = w4[b + 0x22], at = a => bank * 0x4000 + (a & 0x3FFF), w = o => w4[b + o] | w4[b + o + 1] << 8;
     if (bank < 1 || bank >= rom.length / 0x4000) return -1;
     let e = w4[b + 0x33];
@@ -2059,7 +2075,7 @@ export class Voxel3D {
       for (let k = 0; k < 8; k++) { e = rom[at(ptr)]; if (e < 0xF0) break; if (e !== 0xFF) return -1; ptr = w(0x2A) + rom[at(ptr) + 1]; }
       if (e >= 0xF0) return -1;
     }
-    const d = w4[b + 0x35] === 1 ? 0 : rom[4 * 0x4000 + (0x56B3 & 0x3FFF) + ((((w4[b + 0x34] + 8) & 0xFF) >> 4) & 15)];
+    const d = w4[b + 0x35] === 1 ? 0 : facing !== undefined ? facing : rom[4 * 0x4000 + (0x56B3 & 0x3FFF) + ((((w4[b + 0x34] + 8) & 0xFF) >> 4) & 15)];
     const entry = at((w(0x24) + ((e * 2) & 0xFF)) & 0xFFFF), frame = rom[entry] | rom[entry + 1] << 8;
     if (frame < 0x4000 || frame >= 0x8000) return -1;
     return this.romFrameTiles(bank, (frame + d) & 0xFFFF);

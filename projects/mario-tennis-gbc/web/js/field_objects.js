@@ -27,6 +27,7 @@
 //          that solid; the game animates the water tiles themselves) with rings spreading on it
 //  blank: [{to: [x0, y0, x1, y1], from: [x, y]}]: spare tiles kept outside the rooms (seen in the wider 3D picture) painted over with
 //          the map's empty ground copied from the same-sized rectangle at from
+//  glassK: how strongly the map's glass walls (blocks with glass: true) show: 1 faint (default), more for a clearly visible pane
 //  walls: false (no collision-grid boxes), patch: "row" (the floor under cut-outs is filled from its row),
 //  backdrop: {y1, z, extend, side, tile} (side-view maps: rows 0..y1 stand up at z as a sky backdrop, the ground
 //          behind it and around the map is the ground tile at `tile`), clear: "sky" (the view's background colour)
@@ -3760,6 +3761,7 @@ export const FIELD_OBJECTS = {
   ]
  },
  "34": {
+  "glassK": 2.2,
   "blank": [{"to": [240, 352, 256, 480], "from": [208, 352]}, {"to": [432, 72, 512, 104], "from": [432, 216]}],
   "blocks": [
    {
@@ -3843,24 +3845,9 @@ export const FIELD_OBJECTS = {
     "plant": "pot",
     "cut": "key"
    },
-   {
-    "x": 272,
-    "y": 96,
-    "w": 16,
-    "h": 16
-   },
-   {
-    "x": 272,
-    "y": 128,
-    "w": 16,
-    "h": 16
-   },
-   {
-    "x": 320,
-    "y": 144,
-    "w": 16,
-    "h": 16
-   }
+   {"x": 272, "y": 96, "w": 16, "h": 16, "solid": 5, "seat": true, "cut": "outline"},
+   {"x": 272, "y": 128, "w": 16, "h": 16, "solid": 5, "seat": true, "cut": "outline"},
+   {"x": 320, "y": 144, "w": 16, "h": 16, "solid": 5, "seat": true, "cut": "outline"}
   ],
   "cards": [
    {

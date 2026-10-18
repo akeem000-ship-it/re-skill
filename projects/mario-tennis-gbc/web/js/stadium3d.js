@@ -455,18 +455,18 @@ export class Stadium3D {
   }
 
   // the Training Center's hall around a drill court (no stands, crowd, scoreboard or floodlight towers): on the right a cream wall on a
-  // dark wooden skirting with a handrail, high windows and wall lamps; on the left, as beside the Training Center's own courts, a glass
+  // dark wooden skirting with a handrail, framed wall panels and wall lamps (the hall has no windows: lighting.js lights it as indoors); on the left, as beside the Training Center's own courts, a glass
   // wall in blue frames with benches behind it, where the Training Center's people sit and watch (drawn by draw); the far wall behind the
   // court's own backdrop. No ceiling: the camera looks in from above.
   buildHall(B, P) {
-    const wall = [226, 212, 180], skirt = [132, 98, 66], rail = [176, 140, 96], glass = [150, 196, 236], frame = [238, 234, 222], lamp = [255, 248, 214], cap = [204, 188, 156];
+    const wall = [226, 212, 180], skirt = [132, 98, 66], rail = [176, 140, 96], panel = [210, 194, 160], frame = [238, 234, 222], lamp = [255, 248, 214], cap = [204, 188, 156];
     const blueDark = [34, 62, 150], bench = [150, 106, 62], floor = [118, 186, 112];
     const X = 1320, Z0 = -2500, Z1 = 1900, H = 600, T = 40, zc = (Z0 + Z1) / 2, L = Z1 - Z0;
     { const x = X + T / 2;                                                                        // the right: a solid wall
       B.add(x, 0, zc, T, H, L, wall, 0.02); B.add(x, H, zc, T + 16, 14, L, cap, 0.02);
       B.add(x - 6, 0, zc, T, 110, L, skirt, 0.04); B.add(x - 14, 104, zc, 14, 12, L, rail, 0.02);
       for (let z = Z0 + 260; z < Z1 - 200; z += 460) {
-        B.add(x - 4, 300, z, T + 4, 200, 300, frame); B.add(x - 8, 312, z, T + 4, 176, 276, glass, 0.03); B.add(x - 10, 312, z, T + 4, 176, 10, frame);
+        B.add(x - 4, 300, z, T + 4, 200, 300, frame); B.add(x - 8, 312, z, T + 4, 176, 276, panel, 0.03);
         B.add(x - 14, 470, z + 230, 18, 30, 46, lamp);
       }
     }
@@ -501,14 +501,16 @@ export class Stadium3D {
     gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
     if (W && W.size && this.seats) {
       if (!this.watchTex || this.watchTex.n !== W.size) { if (this.watchTex) for (const t of this.watchTex.list) gl.deleteTexture(t.tex); this.watchTex = { n: W.size, list: [...W.values()].map(p => ({ tex: v.texture(p.w, p.h, p.img), w: p.w, h: p.h })) }; }
-      const S = 13, list = this.watchTex.list, rnd = mulberry32(0x5EA7);
+      const S2 = 10, list = this.watchTex.list, rnd = mulberry32(0x5EA7);
       for (const st of this.seats) {
         if (rnd() < 0.3) continue;                                                       // a few empty seats
         const p = list[Math.floor(rnd() * list.length)];
         let dy = 0, tint = [1, 1, 1, 1];
         if (R && R.win) dy = 46 * Math.abs(Math.sin(T * 9 + st.k * 1.7)) * Math.min(1, (4 - age) * 1.5);   // on their feet, jumping
         else if (R) { dy = -10; tint = [0.82, 0.82, 0.9, 1]; }                                            // oh no: slumped
-        v.draw(p.tex, new Float32Array([p.w * S, 0, 0, 0, 0, p.h * S, 0, 0, 0, 0, 1, 0, st.x + (R && !R.win ? Math.sin(T * 3 + st.k) * 4 : 0), st.y - 30 + dy, st.z, 1]), mvp, [0, 0, 1, 1], tint, 0.5);
+        // on the bench's front edge, turned 30 degrees from the camera towards the court, clear of the seat, the backrest and the glass
+        const cw = p.w * S2 * 0.866, sw = p.w * S2 * 0.5, x = st.x + 35 + cw / 2 + 3 + (R && !R.win ? Math.sin(T * 3 + st.k) * 4 : 0);
+        v.draw(p.tex, new Float32Array([cw, 0, -sw, 0, 0, p.h * S2, 0, 0, 0.5, 0, 0.866, 0, x, st.y - 30 + dy, st.z, 1]), mvp, [0, 0, 1, 1], tint, 0.5);
       }
     }
     const g = this.glassWall; if (!g || !v.progG) return;
@@ -518,7 +520,7 @@ export class Stadium3D {
       for (const [loc, data, n] of [[0, pos, 3], [1, uv, 2]]) { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, n, gl.FLOAT, false, 0, 0); }
       gl.bindVertexArray(null);
     }
-    gl.useProgram(v.progG); gl.uniformMatrix4fv(v.uG.uMVP, false, mvp); gl.uniform1f(v.uG.uTime, T); gl.uniform1f(v.uG.uShim, v.shimmer ? v.shimmer.level() : 0.8);
+    gl.useProgram(v.progG); gl.uniformMatrix4fv(v.uG.uMVP, false, mvp); gl.uniform1f(v.uG.uTime, T); gl.uniform1f(v.uG.uShim, v.shimmer ? v.shimmer.level() : 0.8); gl.uniform1f(v.uG.uK, 2.2);   // the Training Center's glass: clearly there
     gl.depthMask(false); gl.bindVertexArray(this.glassVao); gl.drawArrays(gl.TRIANGLES, 0, 6); gl.depthMask(true);
     gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
   }

@@ -16,6 +16,9 @@ import "./hdui_frames.js"; import "./hdui_cursors.js";                        //
 export { HD };                                       // canvas pixels per screen pixel
 
 const FONT = 0x7920, WIDTHS = 0x7F80, GLYPHS = 0x66;   // glyphs $20-$85 (the width table ends at $FF entries)
+// the bold fixed-width font of the menus (EXP and level screens, name plates): 8x8 tiles in ASCII order from $20 at 01:4410, colour 1 the
+// ground, 2 the shadow, 3 the ink; a tile with exactly a glyph's bytes reads as that letter
+const BOLD = 0x4410, BOLD_N = 0x5F;
 const SPACE = 0;                                     // glyph index of " "
 
 const BUSY_MS = 6;                                   // a repaint that takes longer than this, again and again, waits for the screen to settle
@@ -38,6 +41,11 @@ export class HDText {
     }
     // the font never uses colour index 0: a tile with a 0 pixel is no text (checked on 8 bytes, so most of the picture is skipped at once)
     this.noZero = true; for (let g = 0; g < GLYPHS && this.noZero; g++) for (let r = 0; r < 8; r++) if ((romAt(rom, FONT + g * 16 + r * 2) | romAt(rom, FONT + g * 16 + r * 2 + 1)) !== 255) { this.noZero = false; break; }
+    this.bold = new Map();
+    for (let g = 0; g < BOLD_N; g++) {                    // (glyphs without ink, the space aside, are fillers: no letters)
+      let k = "", ink = false; for (let i = 0; i < 16; i++) { const v = rom[0x4000 + BOLD - 0x4000 + g * 16 + i]; k += String.fromCharCode(v); if (i & 1 && v & rom[0x4000 + BOLD - 0x4000 + g * 16 + i - 1]) ink = true; }
+      if ((ink || g === 0) && !this.bold.has(k)) this.bold.set(k, String.fromCharCode(0x20 + g));
+    }
     this.order = [...Array(GLYPHS).keys()].filter(g => g !== SPACE && this.width[g] && this.ink[g]).sort((a, b) => this.ink[b] - this.ink[a]);
     this.canvas = { bg: makeCanvas(), win: makeCanvas(), spr: makeCanvas(), under: makeCanvas() };    // spr: HD art for sprites (2D draws it over the sprites)
     this.lines = []; this.key = ""; this.frame = -1; this.dirty = true; this.version = 0; this.sprVersion = 0; this.underVersion = 0; this.has = { bg: false, win: false, spr: false, under: false };
@@ -128,7 +136,28 @@ export class HDText {
     }
     return out;
   }
+  // the bold font's words in a strip (runs of its tiles, single spaces inside): lines of their own; -> the cells they take
+  readBold(band, cells, v0, v1, lcdc, out) {
+    const taken = new Set(), ch = cells.map(cell => {
+      const i = cell.c, attr = v1[i]; if (attr & 0x60) return null;
+      const tile = v0[i], bank = attr & 8 ? v1 : v0, addr = lcdc & 0x10 ? tile << 4 : 0x1000 + ((tile << 24 >> 24) << 4);
+      let k = ""; for (let r = 0; r < 16; r++) k += String.fromCharCode(bank[addr + r]); return this.bold.get(k) ?? null;
+    });
+    for (let k = 0; k < cells.length;) {
+      if (ch[k] === null || ch[k] === " ") { k++; continue; }
+      let e = k; while (e < cells.length && ch[e] !== null && !(ch[e] === " " && (e + 1 >= cells.length || ch[e + 1] === " " || ch[e + 1] === null))) e++;
+      const text = ch.slice(k, e).join("");
+      if (/[A-Za-z0-9]/.test(text) && cells[e - 1].x - cells[k].x === (e - 1 - k) * 8) {
+        const c0 = cells[k], pal = v1[c0.c] & 7, ppu = this.gb.ppu;
+        out.push({ x: c0.x, y: band.y, w: (e - k) * 8, win: band.win, text, c: [1, 2, 3].map(ci => col5(ppu.bgPal, pal, ci)), bold: true });
+        for (let j = k; j < e; j++) taken.add(j);
+      }
+      k = e;
+    }
+    return taken;
+  }
   readStrip(band, cells, v0, v1, lcdc, out) {
+    const taken = this.readBold(band, cells, v0, v1, lcdc, out);
     const n = cells.length * 8, s = this.strip && this.strip.length >= n ? this.strip : (this.strip = new Uint16Array(Math.max(n, 256)));
     const BLANK = this.cols[SPACE][0];
     let any = false;
@@ -136,6 +165,7 @@ export class HDText {
     for (let k = 0; k < cells.length; k++) {
       const i = cells[k].c, tile = v0[i], attr = v1[i], bank = attr & 8 ? v1 : v0;
       const addr = lcdc & 0x10 ? tile << 4 : 0x1000 + ((tile << 24 >> 24) << 4), flip = attr & 0x60;
+      if (taken.has(k)) { for (let x = 0; x < 8; x++) s[k * 8 + x] = OTHER; foreign = true; continue; }   // read as the bold font
       if (noZero) { let z = false; for (let r = 0; r < 16; r += 2) if ((bank[addr + r] | bank[addr + r + 1]) !== 255) { z = true; break; } if (z) { for (let x = 0; x < 8; x++) s[k * 8 + x] = OTHER; foreign = true; continue; } }
       for (let x = 0; x < 8; x++) {
         let col = 0;
