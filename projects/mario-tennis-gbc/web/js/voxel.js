@@ -187,7 +187,10 @@ const STANDS = [
 //  pitch: {rise, eave, trim}: a pitched roof instead of the flat top (rise px at the ridge, eaves overhanging eave px, gable ends
 //         in the art colour at trim)
 //  plainSide: art points of a building's colours (wall, trim, line, leaf, leaf2): its ends get a painted plain wall
-//  backdropMap: {map, dx, strip, grass, path}: the neighbouring map's 3D scenery beyond the top edge (see buildFieldObjects)
+//  backdropMap: {map, dx, strip, side, seam}: the neighbouring map's 3D scenery beyond the top (or bottom) edge (see buildFieldObjects)
+//  grassFrom: {map, block: [x, y]}: the plain grass drawn with that map's grass pattern (16x16 at block); patchFrom: [{from, to}]
+//          rectangles of that map's picture painted over this one's; floorSwap: [{from: [pal, colour], to: [map, pal, colour]}] a
+//          colour of the ground drawn as another map's
 //  recolour: {from: [pal, colour], to: [map, pal, colour]}: one of the map's colours drawn as another map's (the side-view road in the
 //          courtyard paths' colour)
 // The ground behind cut-outs is keyed out (colours of the surrounding ground reachable from the edge) and the
@@ -1080,7 +1083,18 @@ export class Voxel3D {
       return { mem: { wram, vram, oam: real.mem.oam }, ppu: { bgPal: Uint8Array.from(this.romPal(id)), objPal: real.ppu.objPal, lcdc: real.ppu.lcdc & ~0x10, frames: real.ppu.frames, scx: 0, scy: 0, winX: new Uint8Array(144).fill(255) } };
     } catch (e) { return null; }
   }
-  // a neighbouring map's 3D scenery (built once: it comes from the ROM), placed dx across and with its bottom row at z (below: its top row)
+  grassTile(art, src) { const t = new Uint8Array(16 * 16 * 4); src.forEach((si, i) => { t.set(art.subarray(si * 4, si * 4 + 3), i * 4); t[i * 4 + 3] = 255; }); return t; }
+  // another map's picture from the ROM in its own colours (512x512 RGBA, as composeField makes the live one), kept
+  romArt(id) {
+    const cache = this.romArts || (this.romArts = new Map());
+    if (!cache.has(id)) {
+      const core = this.romMapCore(id), real = this.gb; let art = null;
+      if (core) { this.gb = core; try { art = this.composeField(this.canonPalette(id)); } finally { this.gb = real; } }
+      cache.set(id, art);
+    }
+    return cache.get(id);
+  }
+  // a neighbouring map's 3D scenery (built once: it comes from the ROM), placed dx across and with its bottom row at z (below: its first drawn row)
   neighbourField(id, dx, z, below = false) {
     const cache = this.neighbours || (this.neighbours = new Map());
     if (!cache.has(id)) {
@@ -1094,7 +1108,7 @@ export class Voxel3D {
       }
       cache.set(id, nf);
     }
-    const nf = cache.get(id); return nf ? { f: nf, dx, dz: below ? z : z - nf.mapH } : null;
+    const nf = cache.get(id); return nf ? { f: nf, dx, dz: below ? z - (nf.floorY0 || 0) : z - nf.mapH } : null;
   }
   mapSig() {                                     // WRAM map and size, sampled: a new or half-loaded map is built again
     const m = this.gb.mem, tm = m.wram[3], at = m.wram[2], w0 = m.wram[0]; let h = w0[0x32B] * 131 + w0[0x32C];
@@ -1154,7 +1168,7 @@ export class Voxel3D {
       up(o.tex, c.w, c.h, o.d); if (o.mesh) { this.freeMesh(o.mesh); o.mesh = null; }
     }
     if (f.roof) { const [rx, ry, rw, rh] = f.roof.art, t = new Uint8Array(rw * rh * 4); for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) { const o = (y * rw + x) * 4, s = ((ry + y) * 512 + rx + x) * 4; t[o] = art[s]; t[o + 1] = art[s + 1]; t[o + 2] = art[s + 2]; t[o + 3] = 255; } up(f.roof.tex, rw, rh, t); }
-    if (f.skirt) up(f.skirt, 1, 1, Uint8Array.from([...art.subarray(f.skirtSrc * 4, f.skirtSrc * 4 + 3), 255]));
+    if (f.skirt) { if (f.grassSrc) up(f.skirt, 16, 16, this.grassTile(art, f.grassSrc)); else up(f.skirt, 1, 1, Uint8Array.from([...art.subarray(f.skirtSrc * 4, f.skirtSrc * 4 + 3), 255])); }
     if (f.clear) f.clear = [...art.subarray(f.clearSrc * 4, f.clearSrc * 4 + 3)].map(v => v / 255);
     const fx = f.fx;
     if (fx) for (const m of fx.flowerGroups || []) {  // (plants take their colours from the building texture)
@@ -1181,8 +1195,8 @@ export class Voxel3D {
     if (f.artTex) gl.deleteTexture(f.artTex);
     this.freeFieldFx(f.fx);
     if (f.skirt) gl.deleteTexture(f.skirt); if (f.roof) { gl.deleteTexture(f.roof.tex); for (const m of [f.roof.lit, f.roof.shade]) { gl.deleteBuffer(m.pb); gl.deleteBuffer(m.ub); gl.deleteVertexArray(m.vao); } }
-    f.cards = []; f.blocks = null; f.neighbour = null; if (f.glass) { gl.deleteBuffer(f.glass.pb); gl.deleteBuffer(f.glass.ub); gl.deleteVertexArray(f.glass.vao); } f.glass = null; f.artTex = null; f.covered = new Uint8Array(32 * 32); f.fx = null; f.clear = null; f.noWalls = false; f.skirt = null; f.roof = null; if (f.plainSide) { gl.deleteTexture(f.plainSide.tex); gl.deleteBuffer(f.plainSide.mesh.pb); gl.deleteBuffer(f.plainSide.mesh.ub); gl.deleteVertexArray(f.plainSide.mesh.vao); } f.plainSide = null;
-    f.patched = null; f.artMod = null; f.artData = null; f.floorSrc = null; f.artSrc = null; f.skirtSrc = -1;
+    f.cards = []; f.blocks = null; f.neighbour = null; f.floorY0 = 0; if (f.glass) { gl.deleteBuffer(f.glass.pb); gl.deleteBuffer(f.glass.ub); gl.deleteVertexArray(f.glass.vao); } f.glass = null; f.artTex = null; f.covered = new Uint8Array(32 * 32); f.fx = null; f.clear = null; f.noWalls = false; f.skirt = null; f.roof = null; if (f.plainSide) { gl.deleteTexture(f.plainSide.tex); gl.deleteBuffer(f.plainSide.mesh.pb); gl.deleteBuffer(f.plainSide.mesh.ub); gl.deleteVertexArray(f.plainSide.mesh.vao); } f.plainSide = null;
+    f.patched = null; f.artMod = null; f.artData = null; f.floorSrc = null; f.artSrc = null; f.skirtSrc = -1; f.grassSrc = null;
     if (!art) return;
     // where each floor / building-texture pixel comes from in the map picture: palette fades only recolour (recolourField)
     f.floorSrc = new Int32Array(512 * 512).map((_, i) => i); f.artSrc = new Int32Array(f.floorSrc);
@@ -1194,6 +1208,31 @@ export class Voxel3D {
     };
     const w0 = this.gb.mem.wram[0], MWp = (w0[0x32B] || 64) * 8, MHp = (w0[0x32C] || 64) * 8;
     const inMap = (x0, y0) => x0 < MWp && y0 < MHp;                       // annotations beyond the map size are never on screen
+    // grassFrom: the map's plain grass painted with another map's grass pattern (a 16x16 block of it), and patchFrom: rectangles of
+    // another map's picture painted over this one's (the road's path where it runs into the courtyard drawn as the courtyard's path),
+    // so neighbouring maps look like one ground; each pixel still comes from a pixel of this map's picture of the same colour (fades)
+    const gf = def.grassFrom, other = gf && this.rom && this.romArt(gf.map);
+    if (other) {
+      const own = new Map(), pack = (a, o) => a[o] << 16 | a[o + 1] << 8 | a[o + 2];
+      for (let y = 0; y < MHp; y++) for (let x = 0; x < MWp; x++) { const c = pack(art, (y * 512 + x) * 4); if (!own.has(c)) own.set(c, y * 512 + x); }
+      const paint = (i, c) => { const src = own.get(c); if (src == null) return; const o = i * 4; floor[o] = art[src * 4]; floor[o + 1] = art[src * 4 + 1]; floor[o + 2] = art[src * 4 + 2]; f.floorSrc[i] = src; f.patched[i] = 1; };
+      const [bx, by] = gf.block, pat = [], counts = new Map();
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const c = pack(other, ((by + y) * 512 + bx + x) * 4); pat.push(c); counts.set(c, (counts.get(c) || 0) + 1); }
+      const base = [...counts].sort((a, b) => b[1] - a[1])[0][0];
+      if (own.has(base)) {
+        f.grassSrc = pat.map(c => own.get(c) ?? own.get(base));                      // (also the plain ground beyond the map: the skirt)
+        for (let y = 0; y < MHp; y++) for (let x = 0; x < MWp; x++) if (pack(art, (y * 512 + x) * 4) === base) paint(y * 512 + x, pat[(y & 15) * 16 + (x & 15)]);
+      }
+      for (const pf of def.patchFrom || []) {                                          // (from: the source rectangle, repeated down from its top row at to's bottom)
+        const [sx0, sy0, , sy1] = pf.from, [tx0, ty0, tx1, ty1] = pf.to, H = sy1 - sy0;
+        for (let y = ty0; y < ty1; y++) for (let x = tx0; x < tx1; x++) paint(y * 512 + x, pack(other, ((sy0 + (((y - ty1) % H) + H) % H) * 512 + sx0 + x - tx0) * 4));
+      }
+      for (const sw of def.floorSwap || []) {                                         // (one colour of this map's ground drawn as another map's: brick edges as stone)
+        const c5 = (pal, [p, i]) => { const [r, g, b] = this.col5(pal, p, i); return r << 16 | g << 8 | b; };
+        const from = c5(this.romPal(this.mapId()), sw.from), to = c5(this.romPal(sw.to[0]), sw.to.slice(1));
+        for (let y = 0; y < MHp; y++) for (let x = 0; x < MWp; x++) { const i = y * 512 + x; if (pack(floor, i * 4) === from) paint(i, to); }
+      }
+    }
     // cut-outs: the floor under their opaque pixels is replaced by the ground strip below them (top-down maps), or
     // (patch "row", side-view maps) by the ground beside them in the same row, once every cut-out is known
     const rowMode = def.patch === "row", hole = new Uint8Array(512 * 512), erase = [];   // erase: rectangles of everything cut out (for the backdrop)
@@ -1350,19 +1389,12 @@ export class Voxel3D {
       quad(side, [x0, 0, zb], [x0, 0, y1], [x0, H, y1], [x0, H, zb], [x0, y1], [x0 + 6, y1], [x0 + 6, fold], [x0, fold]);   // left wall
       quad(side, [x1, 0, y1], [x1, 0, zb], [x1, H, zb], [x1, H, y1], [x1 - 6, y1], [x1, y1], [x1, fold], [x1 - 6, fold]);   // right wall
     }
-    // backdropMap: the neighbouring map beyond this one's top edge (the courtyard's: the side-view road it joins), built in 3D from the
-    // ROM (the game never has both maps loaded) and drawn there, its bottom row meeting this map's top; the band of this map along the
-    // edge (strip rows) is grass with the path carried on through it, so the path runs on into the other map's
+    // backdropMap: the neighbouring map beyond this one's top edge (the courtyard's: the side-view road it joins) or below its bottom
+    // edge, built in 3D from the ROM (the game never has both maps loaded) and drawn there. The band of this map along the edge that
+    // only fills the screen (strip rows) is left out: the neighbour's last row meets the first real one, its path running on into this one's
     const bm = def.backdropMap;
-    if (bm && bm.strip) {
-      const [s0, s1] = bm.strip, [gx, gy] = bm.grass, [p0, p1] = bm.path;
-      cover(0, s0, MWp, s1);
-      for (let y = s0; y < s1; y++) for (let x = 0; x < MWp; x++) {
-        const src = x >= p0 && x < p1 ? (s1 + ((y - s0) & 15)) * 512 + x : (gy + (y & 15)) * 512 + gx + (x & 15), o = (y * 512 + x) * 4;
-        floor[o] = art[src * 4]; floor[o + 1] = art[src * 4 + 1]; floor[o + 2] = art[src * 4 + 2]; f.patched[y * 512 + x] = 1; f.floorSrc[y * 512 + x] = src;
-      }
-    }
-    if (bm && this.rom && !this.inNeighbour) f.neighbour = this.neighbourField(bm.map, bm.dx, bm.side === "bottom" ? MHp : bm.strip[0], bm.side === "bottom");
+    if (bm && bm.strip) { cover(0, bm.strip[0], MWp, bm.strip[1]); f.floorY0 = bm.strip[1]; }   // (the band is not drawn: the neighbour lies there)
+    if (bm && this.rom && !this.inNeighbour) f.neighbour = this.neighbourField(bm.map, bm.dx, bm.side === "bottom" ? MHp : f.floorY0 || 0, bm.side === "bottom");
     // solids: low prisms with the exact outline of their picture (planters, fountain basins), stacked with "on"
     const solids = [];
     for (const so of def.solids || []) {
@@ -1426,7 +1458,7 @@ export class Voxel3D {
       }
       f.noGlass = true;                         // (lighting.js: no window glow on a side-view map: its sky is light blue too)
       const gw = new Map(); for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const c = F3.packAt(art, gx + x, gy + y); gh.set(c, (gh.get(c) || 0) + 1); gw.set(c, (gy + y) * 512 + gx + x); }
-      f.skirtSrc = gw.get([...gh].sort((a, b) => b[1] - a[1])[0][0]); f.skirt = this.solidTexture([...art.subarray(f.skirtSrc * 4, f.skirtSrc * 4 + 3), 255]);
+      f.skirtSrc = gw.get([...gh].sort((a, b) => b[1] - a[1])[0][0]); f.skirt = f.grassSrc ? this.texture(16, 16, this.grassTile(art, f.grassSrc), false, true) : this.solidTexture([...art.subarray(f.skirtSrc * 4, f.skirtSrc * 4 + 3), 255]);
       if (def.clear === "sky") { f.clearSrc = top; f.clear = [...art.subarray(top * 4, top * 4 + 3)].map(v => v / 255); }
     }
     // flowers: lifted out of a solid's top (on) or out of every copy of a ground tile (tiles), swaying in the wind
@@ -1757,9 +1789,9 @@ export class Voxel3D {
     const gl = this.gl;
     // floor (512x512 map px; +z = down the map), on a plain ground reaching the horizon on side-view maps
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
-    if (f.skirt) this.draw(f.skirt, m4.trs(256, -0.6, 3000, 6000, 6000, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
-    const FH = part || f.neighbour ? f.mapH : 512;                      // (with a neighbour: only the map's own rows, not the leftovers below them)
-    this.draw(f.floorTex, m4.trs(256, -0.2, FH, 512, FH, -Math.PI / 2), mvp, [0, 0, 1, FH / 512], [1, 1, 1, 1], 0);
+    if (f.skirt) this.draw(f.skirt, m4.trs(256, -0.6, 3000, 6000, 6000, -Math.PI / 2), mvp, f.grassSrc ? [-171.5, -187.5, 375, 375] : [0, 0, 1, 1], [1, 1, 1, 1], 0);   // (grass: the 16 px pattern repeated, in step with the map's)
+    const FH = part || f.neighbour ? f.mapH : 512, F0 = f.floorY0 || 0;   // (with a neighbour: only the map's own rows, not the leftovers below them)
+    this.draw(f.floorTex, m4.trs(256, -0.2, FH, 512, FH - F0, -Math.PI / 2), mvp, [0, F0 / 512, 1, (FH - F0) / 512], [1, 1, 1, 1], 0);
     // walls
     if (f.walls && f.walls.count) {
       gl.useProgram(this.prog3); gl.bindVertexArray(f.walls.vao); gl.bindTexture(gl.TEXTURE_2D, f.floorTex);

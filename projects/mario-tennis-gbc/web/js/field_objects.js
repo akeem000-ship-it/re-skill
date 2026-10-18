@@ -30,8 +30,11 @@
 //          behind it and around the map is the ground tile at `tile`), clear: "sky" (the view's background colour)
 export const FIELD_OBJECTS = {
  "19": {
-  "backdropMap": {"map": 20, "dx": 125, "side": "bottom", "seam": [352, 96, 432, 144]},
-  "recolour": [{"from": [2, 2], "to": [20, 4, 0]}, {"from": [2, 0], "to": [20, 3, 0]}, {"from": [3, 0], "to": [20, 3, 1]}],
+  "grassFrom": {"map": 20, "block": [208, 128]},
+  "patchFrom": [{"from": [240, 64, 304, 96], "to": [364, 116, 428, 144]}],
+  "floorSwap": [{"from": [2, 1], "to": [20, 5, 2]}],
+  "backdropMap": {"map": 20, "dx": 124, "side": "bottom", "seam": [352, 96, 432, 144]},
+  "recolour": [{"from": [2, 2], "to": [20, 4, 0]}, {"from": [2, 0], "to": [20, 3, 0]}, {"from": [3, 0], "to": [20, 3, 1]}, {"from": [5, 1], "to": [20, 5, 3]}, {"from": [5, 2], "to": [20, 5, 2]}],
   "walls": false,
   "patch": "row",
   "clear": "sky",
@@ -1151,7 +1154,7 @@ export const FIELD_OBJECTS = {
   ]
  },
  "20": {
-  "backdropMap": {"map": 19, "dx": -125, "strip": [0, 64], "grass": [208, 128], "path": [248, 296], "seam": [232, 40, 312, 120]},
+  "backdropMap": {"map": 19, "dx": -124, "strip": [0, 64], "seam": [232, 40, 312, 120]},
   "lamps": [[250, 112], [296, 112], [250, 196], [250, 300], [296, 300], [250, 384], [296, 384], [348, 218], [436, 218]],
   "blocks": [
    {

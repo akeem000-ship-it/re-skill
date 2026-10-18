@@ -10,7 +10,7 @@
 //     it leaves in the depth buffer (no step faces, so no stripes in the sun shadows or the glow).
 // A mesh is built once per unique sprite frame (voxel.js caches it by the tile bytes and palettes, plus the Detailed flag) and never
 // rebuilt per frame.
-const KEY = "mt-voxstyle";
+const KEY = "mt-voxstyle2";   // (a new key: the default went back to Blocky, an earlier remembered Rounded is not carried over)
 const LIGHT_DIR = (() => { const l = [-0.35, 0.55, 0.75], n = Math.hypot(...l); return l.map(x => x / n); })();
 const shadeOf = (nx, ny, nz) => { const d = nx * LIGHT_DIR[0] + ny * LIGHT_DIR[1] + nz * LIGHT_DIR[2]; return Math.max(0.68, Math.min(1.14, 1 + 1.0 * (d - LIGHT_DIR[2]))); };
 
@@ -73,11 +73,11 @@ export function roundedMeshData(rgba, w, h, R = 5, T = 4.5) {
 }
 
 export const VOX_STYLES = ["blocky", "rounded"];
-// the HUD button: "VOX: Blocky / Rounded" (remembered; default Rounded). voxel.rounded is read by Voxel3D.objectMesh.
+// the HUD button: "VOX: Blocky / Rounded" (remembered; default Blocky). voxel.rounded is read by Voxel3D.objectMesh.
 export function attachVoxStyle(voxel, hud) {
   let m = null; try { m = new URLSearchParams(location.search).get("voxstyle"); } catch (e) { /* no location */ }
   if (m === null) { try { m = localStorage.getItem(KEY); } catch (e) { m = null; } }
-  voxel.rounded = m !== "blocky";
+  voxel.rounded = m === "rounded";
   if (!hud) return null;
   const b = document.createElement("span"); b.className = "k"; b.id = "voxstylebtn"; b.title = "VOX view: characters as blocky cubes, or as rounded solid figures (smooth thickness, soft shading, darker back)";
   const show = () => { b.textContent = "VOX: " + (voxel.rounded ? "Rounded" : "Blocky"); b.classList.toggle("on", voxel.rounded); };
