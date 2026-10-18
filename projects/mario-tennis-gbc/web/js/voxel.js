@@ -1051,6 +1051,7 @@ export class Voxel3D {
     // digits in a mini-game's score panel, a menu cursor) stays with it at 1:1; the others go to the edges
     const covered = b => { for (let y = Math.max(0, b.y0 + 2) >> 3; y <= Math.min(143, b.y1 - 3) >> 3; y++) for (let x = Math.max(0, b.x0 + 2) >> 3; x <= Math.min(159, b.x1 - 3) >> 3; x++) if (cover[y * 21 + x]) return true; return false; };
     const midX = (l + r) / 2, midY = (top + bot) / 2;
+    if (this.stadium && this.stadium.active && this.isDrill()) this.stadium.drawResultFace(ortho, l, r, top, bot);   // STADIUM: after a drill, the player's win / lose face
     hud.forEach((s, i) => {
       const b = box.get(root(i)), bcx = (b.x0 + b.x1) / 2, bcy = (b.y0 + b.y1) / 2, cx = s.sx + 4;
       if (b.onPanel === undefined) b.onPanel = covered(b);

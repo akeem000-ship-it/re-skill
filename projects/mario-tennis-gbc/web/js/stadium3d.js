@@ -15,6 +15,8 @@
 import { palettes, tilePixel } from "./rom.js";
 import { buildFanAtlas, CELL } from "./crowdfans.js";
 import { FLOODS, FLOOD_HEIGHT } from "./lighting.js";
+import { hdFaceCanvas } from "./look/hdface.js";
+import { normalizeFace } from "./look/portrait.js";
 const KEY = "mt-stadium";
 export const STADIUM_MODES = ["classic", "3d"];
 const STADIUM_MAP = 32, SIZES_KEY = "mt-crowd2", JUDGE_TOP = 0.5;   // the part of the chair picture (from the top) that is the umpire
@@ -275,7 +277,9 @@ export class Stadium3D {
   // once per game frame (voxel.js tick): the class of the match, the cheer after a point and the events the crowd sound plays on (read only)
   step(v) {
     if (v.replaying) { this.ev = null; if (v.matchfx) v.matchfx.prev = null; return; }   // INSTANT REPLAY: the replayed point raises no crowd events
-    const w = v.gb.mem.wram[0], fr = v.gb.ppu.frames; if (v.mode !== "3d" || v.courtId < 0 || w[0x32E] > 15 || v.isDrill()) { this.ev = null; return; }   // (drills: an empty hall, no crowd to cheer)
+    const w = v.gb.mem.wram[0], fr = v.gb.ppu.frames;
+    if (v.mode === "3d" && v.courtId >= 0 && w[0x32E] <= 15 && v.isDrill()) { this.drillStep(w); this.ev = null; return; }   // (drills: the hall's watchers)
+    if (v.mode !== "3d" || v.courtId < 0 || w[0x32E] > 15) { this.ev = null; return; }
     this.applyFill();
     if (v.matchfx) v.matchfx.step(this);                                // MATCH FX: the score's stakes, long rallies, changeovers, the end
     const E = { fr, sig: [w[0x8E4], w[0x8E5], w[0x8E6], w[0x8E7], w[0x8E8], w[0x8E9], w[0x8EA], w[0x8EB]].join(), res: w[0x4D8], fault: w[0x8EE], body: w[0x4AE], ball: w[0x4B3] }, p = this.ev;
@@ -457,7 +461,7 @@ export class Stadium3D {
   // court's own backdrop. No ceiling: the camera looks in from above.
   buildHall(B, P) {
     const wall = [226, 212, 180], skirt = [132, 98, 66], rail = [176, 140, 96], glass = [150, 196, 236], frame = [238, 234, 222], lamp = [255, 248, 214], cap = [204, 188, 156];
-    const blue = [52, 92, 196], blueDark = [34, 62, 150], bench = [150, 106, 62], floor = [118, 186, 112];
+    const blueDark = [34, 62, 150], bench = [150, 106, 62], floor = [118, 186, 112];
     const X = 1320, Z0 = -2500, Z1 = 1900, H = 600, T = 40, zc = (Z0 + Z1) / 2, L = Z1 - Z0;
     { const x = X + T / 2;                                                                        // the right: a solid wall
       B.add(x, 0, zc, T, H, L, wall, 0.02); B.add(x, H, zc, T + 16, 14, L, cap, 0.02);
@@ -467,21 +471,34 @@ export class Stadium3D {
         B.add(x - 14, 470, z + 230, 18, 30, 46, lamp);
       }
     }
-    { const x = -X - 10, GH = 380;                                                               // the left: the glass wall's blue frame
-      B.add(x, 0, zc, 30, 46, L, blueDark, 0.03); B.add(x, GH, zc, 34, 22, L, blue, 0.02);
-      for (let z = Z0; z <= Z1; z += 300) B.add(x, 0, z, 26, GH, 26, blue, 0.02);
+    { const x = -X - 10, GH = 380;                                                               // the left: one pane of glass (drawHall) on a slim curb
+      B.add(x, 0, zc, 22, 10, L, blueDark, 0.02);
       B.add(-X - 340, -2, zc, 640, 4, L, floor, 0.04);                                              // the room behind it: its floor,
       for (let z = Z0 + 200; z < Z1 - 100; z += 520) { B.add(-X - 190, 0, z, 70, 44, 400, bench, 0.05); B.add(-X - 222, 44, z, 10, 40, 400, shade(bench, 0.85)); }   // benches
       B.add(-X - 660, 0, zc, T, H, L, wall, 0.02); B.add(-X - 654, 0, zc, T, 110, L, skirt, 0.04);  // and its back wall
-      this.glassWall = { x, y0: 46, y1: GH, z0: Z0, z1: Z1 };
+      this.glassWall = { x, y0: 10, y1: GH, z0: Z0, z1: Z1 };
       this.seats = []; for (let z = Z0 + 200, k = 0; z < Z1 - 100; z += 520) for (const dz of [-130, 0, 130]) this.seats.push({ x: -X - 190, y: 44, z: z + dz, k: k++ });
     }
     B.add(0, 0, Z0 - T / 2, 2 * X + 2 * T + 700, H, T, wall, 0.02); B.add(X / 2, H, Z0 - T / 2, X + 2 * T, 14, T + 16, cap, 0.02);   // the far wall
     B.add(0, 0, Z0 - T / 2 + 6, 2 * X + 700, 110, T, skirt, 0.04);
   }
-  // the spectators on the benches behind the glass and the glass itself (translucent, drawn last, without writing depth)
+  // a drill's result (wPointWinLoseFlag $C8EB: 0 while it runs, 1 cleared, $FF failed): the watchers cheer or groan, and the player's
+  // win / lose face shows over them (drawResultFace) for a few seconds
+  drillStep(w) {
+    const f = w[0x8EB];
+    if (f !== this.drillWL) {
+      if (this.drillWL === 0 && (f === 1 || f === 0xFF)) {
+        this.result = { win: f === 1, at: performance.now() / 1000 };
+        const s = this.sound; if (s) { if (f === 1) { s.cheer(0.5); s.clap(0.5); } else s.aww(0.5); }
+      }
+      this.drillWL = f;
+    }
+  }
+  resultAge() { return this.result ? performance.now() / 1000 - this.result.at : 99; }
+  // the spectators on the benches behind the glass (hopping with their arms up after a clear, slumped after a miss) and the glass: one
+  // pane with a slim frame, a faint tint and the shimmer sweep of the Training Center's other glass walls (shimmer.js FS_GLASS), drawn last
   drawHall(mvp) {
-    const v = this.v, gl = this.gl, W = v.watchers;
+    const v = this.v, gl = this.gl, W = v.watchers, T = performance.now() / 1000, age = this.resultAge(), R = age < 4 ? this.result : null;
     gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
     if (W && W.size && this.seats) {
       if (!this.watchTex || this.watchTex.n !== W.size) { if (this.watchTex) for (const t of this.watchTex.list) gl.deleteTexture(t.tex); this.watchTex = { n: W.size, list: [...W.values()].map(p => ({ tex: v.texture(p.w, p.h, p.img), w: p.w, h: p.h })) }; }
@@ -489,14 +506,42 @@ export class Stadium3D {
       for (const st of this.seats) {
         if (rnd() < 0.3) continue;                                                       // a few empty seats
         const p = list[Math.floor(rnd() * list.length)];
-        v.draw(p.tex, new Float32Array([p.w * S, 0, 0, 0, 0, p.h * S, 0, 0, 0, 0, 1, 0, st.x, st.y - 30, st.z, 1]), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
+        let dy = 0, tint = [1, 1, 1, 1];
+        if (R && R.win) dy = 46 * Math.abs(Math.sin(T * 9 + st.k * 1.7)) * Math.min(1, (4 - age) * 1.5);   // on their feet, jumping
+        else if (R) { dy = -10; tint = [0.82, 0.82, 0.9, 1]; }                                            // oh no: slumped
+        v.draw(p.tex, new Float32Array([p.w * S, 0, 0, 0, 0, p.h * S, 0, 0, 0, 0, 1, 0, st.x + (R && !R.win ? Math.sin(T * 3 + st.k) * 4 : 0), st.y - 30 + dy, st.z, 1]), mvp, [0, 0, 1, 1], tint, 0.5);
       }
     }
-    const g = this.glassWall; if (!g) return;
-    if (!this.whiteTex) this.whiteTex = v.texture(1, 1, new Uint8Array([255, 255, 255, 255]));
-    gl.depthMask(false);
-    v.draw(this.whiteTex, new Float32Array([0, 0, g.z1 - g.z0, 0, 0, g.y1 - g.y0, 0, 0, 1, 0, 0, 0, g.x + 4, g.y0, (g.z0 + g.z1) / 2, 1]), mvp, [0, 0, 1, 1], [0.70, 0.86, 1.0, 0.22], 0);
-    gl.depthMask(true);
+    const g = this.glassWall; if (!g || !v.progG) return;
+    if (!this.glassVao) {
+      const pos = new Float32Array([g.x, g.y0, g.z0, g.x, g.y0, g.z1, g.x, g.y1, g.z1, g.x, g.y0, g.z0, g.x, g.y1, g.z1, g.x, g.y1, g.z0]), uv = new Float32Array([0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1]);
+      this.glassVao = gl.createVertexArray(); gl.bindVertexArray(this.glassVao);
+      for (const [loc, data, n] of [[0, pos, 3], [1, uv, 2]]) { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, n, gl.FLOAT, false, 0, 0); }
+      gl.bindVertexArray(null);
+    }
+    gl.useProgram(v.progG); gl.uniformMatrix4fv(v.uG.uMVP, false, mvp); gl.uniform1f(v.uG.uTime, T); gl.uniform1f(v.uG.uShim, v.shimmer ? v.shimmer.level() : 0.8);
+    gl.depthMask(false); gl.bindVertexArray(this.glassVao); gl.drawArrays(gl.TRIANGLES, 0, 6); gl.depthMask(true);
+    gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
+  }
+  // after a drill: the player's face as the results screen shows it (cheering when it was cleared, crying when not), popping up beside the
+  // game's result panel for a few seconds: in the margin left of the Game Boy picture on a wide screen, else at its top. The look's redrawn
+  // face when it has one, else the hero's own face drawn the same way. (ortho: the HUD's 160x144 space, l r top bot its visible edges)
+  drawResultFace(ortho, l, r, top, bot) {
+    const age = this.resultAge(), R = this.result; if (!R || age > 4) return;
+    const v = this.v, gl = this.gl, hero = v.gb.mem.wram[4][0xF78] === 1 ? "girl" : "boy", mood = R.win ? "win" : "lose";
+    const L = v.gb.look, spec = L && L.faces && L.faces[hero] ? L.faces[hero] : { hero, face: normalizeFace(null, hero) }, key = hero + mood + (L ? L.gen : 0);
+    if (!this.faceTex || this.faceTex.key !== key) {
+      let c = null; try { c = hdFaceCanvas({ ...spec, mood }, 128); } catch (e) { c = null; }
+      if (this.faceTex) gl.deleteTexture(this.faceTex.tex); this.faceTex = null; if (!c) return;
+      const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+      for (const [k, val] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, val);
+      this.faceTex = { key, tex };
+    }
+    const T = performance.now() / 1000, pop = Math.min(1, age * 6) * Math.min(1, (4 - age) * 3), margin = -l;
+    const size = (margin >= 40 ? Math.min(margin - 6, 56) : 40) * pop, bob = R.win ? -Math.abs(Math.sin(T * 7)) * 4 : Math.min(age, 1) * 2;
+    const cx = margin >= 40 ? l + margin / 2 : 80, yb = (margin >= 40 ? (top + bot) / 2 + size / 2 : top + 4 + size) + bob;
+    gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
+    v.draw(this.faceTex.tex, new Float32Array([size, 0, 0, 0, 0, -size, 0, 0, 0, 0, 1, 0, cx, yb, 0, 1]), ortho, [0, 0, 1, 1], [1, 1, 1, 1], 0.05);
   }
   // the dot-matrix scoreboard: points of both players from the game's score bytes (0 15 30 40, AD)
   boardTexture() {
