@@ -1784,6 +1784,7 @@ export class Voxel3D {
     const T = this.animClock ?? performance.now() / 1000;
     if (f.neighbour) this.drawFieldScene(f.neighbour.f, m4.mul(mvp, m4.translate(f.neighbour.dx, 0, f.neighbour.dz)), T, true);   // the map beyond the top edge
     this.drawFieldScene(f, mvp, T);
+    if (this.life) this.life.draw(mvp, m4, T, cx, cz);                     // FIELD LIFE: birds, cloud shadows, fountain glints
     this.fieldRects = this.fieldOverlayRects();                         // once per frame: the actors and the overlays both need them
     this.drawFieldActors(mvp);
     if (f.glass) {                                                       // glass walls (thin panes), after everything behind them

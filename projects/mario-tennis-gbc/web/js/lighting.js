@@ -54,7 +54,7 @@ const KF = [
 ];
 for (const k of KF) k.thr ??= 0.74;                  // the bloom threshold: raised at night so only floodlights and genuinely bright pixels glow
 // RPG maps indoors (dorm, cafe, hall, centre ...): lit by lamps whatever the hour, so they keep one warm look
-const INDOOR_MAPS = new Set([17, 18, 25, 33, 34, 35]);
+export const INDOOR_MAPS = new Set([17, 18, 25, 33, 34, 35]);
 const INDOOR = { thr: 0.74, h: 12, az: -30, el: 70, sun: [1.06, 1.0, 0.90], amb: [0.80, 0.79, 0.90], exp: 1.02, sat: 1.08, con: 1.06, lamps: 0.16, bloom: 0.6, vig: 0.50, tone: [1.06, 1.0, 0.94], shade: 0.55 };
 const mixArr = (a, b, t) => Array.isArray(a) ? a.map((v, i) => lerp(v, b[i], t)) : lerp(a, b, t);
 export function skyAt(hour) {                       // interpolated parameters for an hour of the day (0..24)
