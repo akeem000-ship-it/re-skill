@@ -1,11 +1,11 @@
 # MTenn3D — full changelog (every version)
 
-**0.34 is a shareable build: it contains no game data** (0.34.1 adds the private [REDACTED] Senior Class mod: keep that one to trusted friends; 0.34.2 is your own build with the ROM inside: keep it on your phone). On first start, tap the file box and pick your
+**0.35 is a shareable build: it contains no game data** (0.35.1 adds the private [REDACTED] Senior Class and Island Open mods: keep that one to trusted friends; 0.35.2 is your own build with the ROM inside: keep it on your phone). On first start, tap the file box and pick your
 own legal dump of *Mario Tennis (USA)* for Game Boy Color (`.gbc`, SHA-1 starting `414ba583`). The app
 checks it, keeps it on the phone (never uploaded), and starts with it by itself after that. Builds up to
 0.24 were private builds with the ROM inside; keep those to yourself. Newest first.
 
-## Known issues (as of 0.34)
+## Known issues (as of 0.35)
 - Next week: the second half of the story scripts in the JS port, practice mode (a ball machine on any court) and a check of doubles in 3D (a recording of a doubles match would help).
 - Characters fading during power shots: not reproduced yet; a screenshot or a timestamp in a recording would help.
 - The cafeteria's seated people were set up without a recording of them sitting: tell me if anyone still sinks into a seat.
@@ -15,6 +15,16 @@ checks it, keeps it on the phone (never uploaded), and starts with it by itself 
 - Recordings made with a custom look before 0.18 no longer replay exactly.
 
 ---
+
+## 0.35 — stadium adverts and grander big-match intros
+- **Stadium adverts:** the boards along the stands carry Mushroom Kingdom adverts instead of plain coloured blocks.
+- **Grander intros for the big matches** (the Island Open and the Dream Matches): fireworks over the stadium, a
+  sweep of the camera high round the stands, a big gold title banner, roars from the crowd, and confetti as each
+  player walks on. Senior and exhibition matches get a cheer as each player walks on.
+- **Players' tunnels:** both players walk out of tunnels in the middle of the side stands, by the net (yours in red
+  on your side, your opponent's in blue on theirs), then run to their places.
+- **Mods with photos:** an opponent mod can carry a picture for each character, shown as their portrait (in full
+  detail with UI: HD), and many more modded characters can now have full-colour portraits.
 
 ## 0.34 — replays, weather and a better grass court
 - **Instant replay:** after a rally of 5 shots or more a REPLAY button shows for a few seconds; tap it to watch the
