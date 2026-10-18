@@ -279,6 +279,34 @@ function styleAlex(st, style) {
     // tufts: every other column of the head's top a pixel higher
     const top = new Map(); for (let y = 0; y < yTop; y++) for (let x = 0; x < w; x++) if (reg[y * w + x] === HAIR && !top.has(x)) top.set(x, y);
     [...top].sort((a, b) => a[0] - b[0]).slice(1, -1).forEach(([x, y], k) => { if (!(k % 2) && y >= 2 && reg[(y - 1) * w + x] === OUT) set(st, (y - 1) * w + x, HAIR); });
+    // a rounded head: below its widest row the hair does not widen again (the brim's last rows hang down at the back of the neck)
+    {
+      const hairRow = y => { let a = w, b = -1; for (let x = 0; x < w; x++) if (reg[y * w + x] === HAIR) { a = Math.min(a, x); b = Math.max(b, x); } return [a, b]; };
+      let yb = -1, wide = -1, yw = -1; for (const i of hat) yb = Math.max(yb, (i / w) | 0);
+      for (let y = 0; y <= yb; y++) { const [a, b] = hairRow(y); if (b >= a && b - a > wide) { wide = b - a; yw = y; } }
+      if (yw >= 0) {
+        removed = removed || new Uint8Array(w * h);
+        let [L, R] = hairRow(yw);
+        for (let y = yw + 1; y <= yb; y++) {
+          for (let x = 0; x < w; x++) { const i = y * w + x; if (reg[i] === HAIR && (x < L || x > R)) { set(st, i, NONE); removed[i] = 1; } }
+          const [a, b] = hairRow(y); if (b >= a) { L = Math.max(L, a); R = Math.min(R, b); }
+        }
+      }
+    }
+    // round the square corners the cap left (its flat back and top): a hair pixel with the outside both above or below it and beside it
+    {
+      let yb = -1; for (const i of hat) yb = Math.max(yb, (i / w) | 0);
+      const out = (x, y) => { const r = (x < 0 || y < 0 || x >= w || y >= h) ? NONE : reg[y * w + x]; return r === NONE || r === OUT; };
+      const outside = (x, y) => out(x, y) && (x < 0 || y < 0 || x >= w || y >= h || reg[y * w + x] === NONE || [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => { const X = x + dx, Y = y + dy; return X < 0 || Y < 0 || X >= w || Y >= h || reg[Y * w + X] === NONE; }));
+      const corners = [];
+      for (let y = 0; y <= yb; y++) for (let x = 0; x < w; x++) {
+        if (reg[y * w + x] !== HAIR) continue;
+        const v = outside(x, y - 1) ? -1 : outside(x, y + 1) ? 1 : 0, s = outside(x - 1, y) ? -1 : outside(x + 1, y) ? 1 : 0;
+        if (v && s && !outside(x - s, y) && !outside(x, y - v) && (v < 0 || y >= yb - 2)) corners.push(y * w + x);   // the top corners, and the bottom ones at the neck
+      }
+      removed = removed || new Uint8Array(w * h);
+      for (const i of corners) { set(st, i, NONE); removed[i] = 1; }
+    }
     reoutline(st, removed);
     // round off the head: outline in the cap's rows that touches nothing coloured (the cap's doubled edges and the stubs left where its
     // back and brim stuck out) goes
