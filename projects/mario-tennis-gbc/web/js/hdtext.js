@@ -145,6 +145,10 @@ export class HDText {
     }
     if (!any || (foreign && !mine)) return;
     const ws = this.width[SPACE] || 5, found = [];
+    // a cursor printed against a word ("\u25B6Yes" in a choice box, blinking): a small mark of ink right before it (at most 8 columns,
+    // blank before it, not a letter) is not part of the line and does not make it a piece of another font; the mark is left as drawn
+    const isBlank = c => c < 0 || s[c] === BLANK || !s[c];
+    const markBefore = x => { let l = x - 1; while (l >= 0 && !isBlank(l) && s[l] !== OTHER) l--; const w = x - 1 - l; return w > 0 && w <= 8 && isBlank(l) && this.matchAt(s, l + 1, n) < 0; };
     let x = 0;
     while (x < n) {
       if (s[x] === BLANK || !s[x] || s[x] === OTHER) { x++; continue; }
@@ -162,7 +166,7 @@ export class HDText {
       }
       const inked = text.replace(/[ .,'`"\-]/g, "").length;
       // a real line starts and ends at blank columns; ink right before or after it means a piece of something longer (other font)
-      const edgeOk = (x === 0 || s[x - 1] === BLANK || !s[x - 1]) && (end >= n || s[end] === BLANK || !s[end]);
+      const edgeOk = (x === 0 || s[x - 1] === BLANK || !s[x - 1] || markBefore(x)) && (end >= n || s[end] === BLANK || !s[end]);
       if (letters >= 2 && inked >= 1 && edgeOk) {
         found.push({ x, end, text });
         x = Math.max(end, x + 1);
@@ -174,7 +178,7 @@ export class HDText {
       let r = f.end; while (r < n && r < f.end + 9 && !ink(r)) r++;
       let l = f.x - 1; while (l >= 0 && l > f.x - 10 && !ink(l)) l--;
       const inLine = c => found.some(o => c >= o.x && c < o.end);
-      if ((ink(r) && !inLine(r)) || (ink(l) && !inLine(l))) continue;
+      if ((ink(r) && !inLine(r)) || (ink(l) && !inLine(l) && !markBefore(f.x))) continue;
       const c0 = cells[f.x >> 3], pal = v1[c0.c] & 7, ppu = this.gb.ppu;
       out.push({ x: c0.x + (f.x & 7), y: band.y, w: f.end - f.x, win: band.win, text: f.text, c: [1, 2, 3].map(ci => col5(ppu.bgPal, pal, ci)) });
     }
