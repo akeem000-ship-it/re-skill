@@ -23,7 +23,7 @@ const LAYOUT = {
 
 export const STYLES = { alex: ["cap", "headband", "ponytail", "short", ...NEW_STYLES], nina: ["pigtails", "cap", "bob", "ponytail", ...NEW_STYLES] };
 // the styles an opponent mod may use: the creator's, plus sprite-only ones (a mod brings its own portrait art)
-export const MOD_STYLES = { alex: [...STYLES.alex, "spiky", "neat"], nina: STYLES.nina };
+export const MOD_STYLES = { alex: [...STYLES.alex, "spiky", "neat", "visor"], nina: STYLES.nina };
 
 // ---------------------------------------------------------------------------------------------- helpers
 const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]], N8 = [...N4, [1, 1], [1, -1], [-1, 1], [-1, -1]];
@@ -259,14 +259,35 @@ function capBand(st, hat) {
   }
   return [...band];
 }
+// under a cap or a visor band: the shirt pixels right under it become hair (the nape), and the head's square corners are trimmed
+function napeAndRound(st) {
+  const { w, h, reg } = st, head = r => r === HAT || r === HAIR || r === HAIR2 || r === HAIR3;
+  let yb = -1; for (let i = 0; i < w * h; i++) if (reg[i] === HAT) yb = Math.max(yb, (i / w) | 0);
+  if (yb < 0) return;
+  let x0 = w, x1 = -1; for (let i = 0; i < w * h; i++) if (reg[i] === HAT && ((i / w) | 0) >= yb - 1) { x0 = Math.min(x0, i % w); x1 = Math.max(x1, i % w); }
+  for (let x = x0; x <= x1; x++) {                                    // down each column under the cap: past its outline, the first shirt pixel is hair
+    let y = yb + 1; while (y < h && y <= yb + 2 && reg[y * w + x] === OUT) y++;
+    if (y < h && y <= yb + 3 && reg[y * w + x] === TOP) set(st, y * w + x, HAIR);
+  }
+  const outside = (x, y) => x < 0 || y < 0 || x >= w || y >= h || reg[y * w + x] === NONE || (reg[y * w + x] === OUT && N4.some(([dx, dy]) => { const X = x + dx, Y = y + dy; return X < 0 || Y < 0 || X >= w || Y >= h || reg[Y * w + X] === NONE; }));
+  const corners = [];
+  for (let y = 0; y <= yb; y++) for (let x = 0; x < w; x++) {
+    if (!head(reg[y * w + x])) continue;
+    const v = outside(x, y - 1) ? -1 : outside(x, y + 1) ? 1 : 0, s = outside(x - 1, y) ? -1 : outside(x + 1, y) ? 1 : 0;
+    if (v < 0 && s && !outside(x - s, y) && !outside(x, y - v) && outside(x - s, y + v)) corners.push(y * w + x);   // a square top corner
+  }
+  if (!corners.length) return;
+  const removed = new Uint8Array(w * h); for (const i of corners) { set(st, i, NONE); removed[i] = 1; }
+  reoutline(st, removed);
+}
 function styleAlex(st, style) {
   const { w, h, reg } = st;
-  if (style === "cap") { if (st.kind !== "portrait") { hairUnderCap(st); for (const i of capBand(st, Array.from(st.reg.keys()).filter(i => st.reg[i] === HAT))) set(st, i, HAT); } return; }
+  if (style === "cap") { if (st.kind !== "portrait") { hairUnderCap(st); for (const i of capBand(st, Array.from(st.reg.keys()).filter(i => st.reg[i] === HAT))) set(st, i, HAT); napeAndRound(st); } return; }
   const hat = []; for (let i = 0; i < w * h; i++) if (reg[i] === HAT) hat.push(i);
   if (!hat.length) return;
   const f = facing(st);
   for (const i of hat) set(st, i, HAIR);
-  if (style === "headband") {
+  if (style === "headband" || style === "visor") {           // (visor: the headband over a smooth, round head: no tufts)
     if (st.kind !== "portrait") { const band = capBand(st, hat); if (band.length) { const rm = new Uint8Array(w * h); for (const i of band) { set(st, i, NONE); rm[i] = 1; } reoutline(st, rm); } }   // (the cap's back band, taken for the shirt: gone, a visor is open at the back)
     // the band: the lowest hair pixel of every column above the face (two rows seen from behind)
     const low = new Map(); for (const i of hat) { const x = i % w, y = (i / w) | 0; if (!low.has(x) || low.get(x) < y) low.set(x, y); }
@@ -274,7 +295,7 @@ function styleAlex(st, style) {
     // spiky top: every other column of the head's top gets a two-pixel tuft
     const top = new Map(); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (reg[y * w + x] !== NONE && reg[y * w + x] !== KEEP && !top.has(x)) top.set(x, y);
     const xs = [...top.keys()].sort((a, b) => a - b).slice(1, -1);
-    xs.forEach((x, k) => {
+    if (style === "headband") xs.forEach((x, k) => {
       const y = top.get(x); if (k % 2 || y < 2) return;
       if (reg[(y + 1) * w + x] !== HAIR && reg[(y + 1) * w + x] !== OUT) return;
       set(st, y * w + x, HAIR); set(st, (y - 1) * w + x, HAIR);
@@ -366,6 +387,7 @@ function styleAlex(st, style) {
     for (const [dx, dy] of [[0, 1], [1, 1], [1, 2]]) if (at(hlx + dx, hy0 + dy) === HAIR) set(st, (hy0 + dy) * w + hlx + dx, HAIR3);  // highlight
     return;
   }
+  if ((style === "headband" || style === "visor") && st.kind !== "portrait") napeAndRound(st);
   if (style === "ponytail" && f !== 0) {
     let xl = w, xr = -1, yt = h, yb = -1;
     for (const i of hat) { const x = i % w, y = (i / w) | 0; xl = Math.min(xl, x); xr = Math.max(xr, x); yt = Math.min(yt, y); yb = Math.max(yb, y); }
