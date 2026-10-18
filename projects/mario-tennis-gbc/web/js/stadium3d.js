@@ -17,10 +17,13 @@ import { buildFanAtlas, CELL } from "./crowdfans.js";
 import { FLOODS, FLOOD_HEIGHT } from "./lighting.js";
 const KEY = "mt-stadium";
 export const STADIUM_MODES = ["classic", "3d"];
-const STADIUM_MAP = 32, SIZES_KEY = "mt-crowd", JUDGE_TOP = 0.5;   // the part of the chair picture (from the top) that is the umpire
+const STADIUM_MAP = 32, SIZES_KEY = "mt-crowd2", JUDGE_TOP = 0.5;   // the part of the chair picture (from the top) that is the umpire
 
 // ---- small helpers ----
 function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+// the tour's matches in order ($C8F7: 0 junior practice, 1-4 junior ranking, 5 senior practice, 6-9 senior ranking, $0A-$0D varsity, $10-$13
+// the Island Open rounds, $16-$18 dream matches)
+const TOUR = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0x0A, 0x0B, 0x0C, 0x0D, 0x10, 0x11, 0x12, 0x13, 0x16, 0x17, 0x18];
 const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
 const pack = c => ((clamp(Math.round(c[0]), 0, 255) << 16) | (clamp(Math.round(c[1]), 0, 255) << 8) | clamp(Math.round(c[2]), 0, 255));
 const lum = c => (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) / 255;
@@ -174,11 +177,21 @@ export class Stadium3D {
     if (mode === 1 || mode === 3) { if (list <= 1 && idx <= 4) return "junior"; if (list <= 1 && idx <= 0x0D) return "senior"; if (list <= 1 && idx >= 0x10) return "major"; }
     return "senior";                                                                // exhibition and everything else
   }
+  // ---- crowd size: it grows with your progress through the tour, one step per match, from a nearly empty stadium at the first junior
+  // practice match to full stands at the Island Open and the dream matches; exhibition matches are full; drills and mini-games have the
+  // first match's crowd. The three points are the LIGHT panel's sliders (setCrowdSize("start" | "end" | "exhibition", 0..1)).
+  progress(w = this.v.gb.mem.wram[0]) {
+    const mode = w[0x8A6], idx = w[0x8F7];
+    if (mode === 4) return null;                                                      // exhibition
+    if (mode === 5 || mode === 6 || mode === 7 || mode === 8) return 0;               // drills, mini-games
+    let k = 0; for (let i = 0; i < TOUR.length; i++) if (TOUR[i] <= idx) k = i;       // the match's place in the tour
+    return k / (TOUR.length - 1);
+  }
   get crowdSizes() { return this._sizes ||= this.loadSizes(); }
-  loadSizes() { const d = { junior: 0.08, senior: 0.45, major: 1 }; try { const o = JSON.parse(localStorage.getItem(SIZES_KEY) || "{}"); for (const k of Object.keys(d)) if (typeof o[k] === "number") d[k] = clamp(o[k]); } catch (e) { /* defaults */ } return d; }
-  // for the LIGHT / settings panel: setCrowdSize("junior" | "senior" | "major", 0..1); remembered in localStorage mt-crowd
+  loadSizes() { const d = { start: 0.04, end: 1, exhibition: 1 }; try { const o = JSON.parse(localStorage.getItem(SIZES_KEY) || "{}"); for (const k of Object.keys(d)) if (typeof o[k] === "number") d[k] = clamp(o[k]); } catch (e) { /* defaults */ } return d; }
+  // for the LIGHT / settings panel: setCrowdSize("start" | "end" | "exhibition", 0..1); remembered in localStorage mt-crowd2
   setCrowdSize(cls, v) { const z = this.crowdSizes; if (!(cls in z)) return; z[cls] = clamp(+v); try { localStorage.setItem(SIZES_KEY, JSON.stringify(z)); } catch (e) { /* private mode */ } this.applyFill(); if (this.onSizes) this.onSizes(z); }
-  applyFill() { this.cls = this.crowdClass(); this.fill = this.crowdSizes[this.cls]; }
+  applyFill() { const z = this.crowdSizes, p = this.progress(); this.cls = this.crowdClass(); this.fill = p === null ? z.exhibition : z.start + (z.end - z.start) * p; }
   // once per game frame (voxel.js tick): the class of the match, the cheer after a point and the events the crowd sound plays on (read only)
   step(v) {
     const w = v.gb.mem.wram[0], fr = v.gb.ppu.frames; if (v.mode !== "3d" || v.courtId < 0 || w[0x32E] > 15) { this.ev = null; return; }

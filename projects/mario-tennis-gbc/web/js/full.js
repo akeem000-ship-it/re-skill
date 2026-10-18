@@ -11,7 +11,8 @@ import { attachLighting } from "./lighting.js";
 import { attachLightPanel } from "./lightpanel.js";   // LIGHT settings panel   // LIGHT: Off / Day / Auto
 import { attachVoxStyle } from "./voxround.js";   // VOX: Blocky / Rounded
 import { attachBallFX } from "./ballfx.js";
-import { attachIntro } from "./intro.js";         // INTRO: walk-out before each match (3D stadium)       // BALL FX: on / off (3D / VOX court)
+import { attachIntro } from "./intro.js";
+import { organizeHud } from "./hudmenu.js";      // the button bar in categories (VIEW / STADIUM / LOOK / GAME)         // INTRO: walk-out before each match (3D stadium)       // BALL FX: on / off (3D / VOX court)
 import { loadSnapshot } from "./gb/snapshot.js";
 import { saveState, loadState, snapshot, restore } from "./gb/state.js";
 import { composeWide, WIDE_W, WIDE_H } from "./wide.js";
@@ -457,4 +458,5 @@ $("engbtn").addEventListener("pointerdown", () => {
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom)
   .catch(() => { if (navigator.userAgent.includes("MarioTennisWrapper")) romStore("readonly", s => s.get("rom")).then(b => { if (b && !gb) loadRom(b.buffer.slice(0)); }).catch(() => {}); });
 window.__gb = { get smooth() { return smooth; }, set smooth(v) { smooth = !!v; renderedAt = -1; applySmooth(); }, get fpsInfo() { return fps; }, get gb() { return gb; }, get hd() { return hd; }, keys, rec, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { if (n) settle(); for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, loadSnapshot(s) { raSnap = null; loadSnapshot(gb, s); }, saveState() { settle(); return saveState(gb); }, loadState(s) { raSnap = null; loadState(gb, s); drawnFrame = -1; }, get runAhead() { return runAhead; }, settle };
+organizeHud($("hud"));
 requestAnimationFrame(loop);

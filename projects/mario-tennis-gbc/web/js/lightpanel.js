@@ -1,6 +1,6 @@
 // The LIGHT settings panel (tap LIGHT): overworld time of day (Off / Day / the phone's clock / Custom with a slider), match time (same as the
 // overworld / Day / Night / Random: each match rolls morning, noon, sunset or night once), effect toggles (shadows, glow, tilt-shift,
-// vignette, night lights), quality (Auto / Low / Medium / High) and the crowd size by class of match (STADIUM: 3D). Everything is remembered
+// vignette, night lights), quality (Auto / Low / Medium / High) and the crowd size (STADIUM: 3D: from the tour's first match to its finals, and exhibitions). Everything is remembered
 // (lighting.js saveCfg -> localStorage mt-lightcfg; the crowd sizes by stadium3d.js in mt-crowd). Render-time settings only: the game never changes.
 import { hourName, MATCH_NAMES } from "./lighting.js";
 
@@ -24,7 +24,7 @@ const CSS = `
 #lightpanel .sl { display: grid; grid-template-columns: 1fr 1.3fr 44px; gap: 8px; align-items: center; padding: 5px 0; }
 #lightpanel .sl b { font-weight: 500; text-align: right; color: #98a0b8; font-size: 12px; }
 `;
-const CLASSES = [["junior", "Junior class courts"], ["senior", "Senior class courts"], ["major", "Tournaments / Island Open / finals"]];
+const CLASSES = [["start", "Tour: the first match"], ["end", "Tour: the finals"], ["exhibition", "Exhibition matches"]];
 const fmt = h => { const hh = Math.floor(h), mm = Math.round((h - hh) * 60); return String(hh % 24).padStart(2, "0") + ":" + String(mm === 60 ? 0 : mm).padStart(2, "0"); };
 
 export function attachLightPanel(voxel) {
@@ -68,7 +68,7 @@ export function attachLightPanel(voxel) {
     // crowd
     const st = voxel.stadium;
     if (st && st.crowdSizes) {
-      c = card("Crowd size by class (STADIUM: 3D)");
+      c = card("Crowd size (STADIUM: 3D): it grows with every tour match");
       for (const [k, label] of CLASSES) {
         const r = el("div", "sl"); r.appendChild(el("span", null, label)); const s = el("input"); s.type = "range"; s.min = 0; s.max = 1; s.step = 0.05; s.value = st.crowdSizes[k];
         const v = el("b", null, Math.round(st.crowdSizes[k] * 100) + "%"); s.addEventListener("input", () => { st.setCrowdSize(k, +s.value); v.textContent = Math.round(+s.value * 100) + "%"; });
