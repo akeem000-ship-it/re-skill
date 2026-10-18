@@ -1195,7 +1195,7 @@ export class Voxel3D {
     if (f.artTex) gl.deleteTexture(f.artTex);
     this.freeFieldFx(f.fx);
     if (f.skirt) gl.deleteTexture(f.skirt); if (f.roof) { gl.deleteTexture(f.roof.tex); for (const m of [f.roof.lit, f.roof.shade]) { gl.deleteBuffer(m.pb); gl.deleteBuffer(m.ub); gl.deleteVertexArray(m.vao); } }
-    f.cards = []; f.blocks = null; f.neighbour = null; f.floorY0 = 0; if (f.glass) { gl.deleteBuffer(f.glass.pb); gl.deleteBuffer(f.glass.ub); gl.deleteVertexArray(f.glass.vao); } f.glass = null; f.artTex = null; f.covered = new Uint8Array(32 * 32); f.fx = null; f.clear = null; f.noWalls = false; f.skirt = null; f.roof = null; if (f.plainSide) { gl.deleteTexture(f.plainSide.tex); gl.deleteBuffer(f.plainSide.mesh.pb); gl.deleteBuffer(f.plainSide.mesh.ub); gl.deleteVertexArray(f.plainSide.mesh.vao); } f.plainSide = null;
+    f.cards = []; f.blocks = null; f.neighbour = null; f.seats = null; f.floorY0 = 0; if (f.glass) { gl.deleteBuffer(f.glass.pb); gl.deleteBuffer(f.glass.ub); gl.deleteVertexArray(f.glass.vao); } f.glass = null; f.artTex = null; f.covered = new Uint8Array(32 * 32); f.fx = null; f.clear = null; f.noWalls = false; f.skirt = null; f.roof = null; if (f.plainSide) { gl.deleteTexture(f.plainSide.tex); gl.deleteBuffer(f.plainSide.mesh.pb); gl.deleteBuffer(f.plainSide.mesh.ub); gl.deleteVertexArray(f.plainSide.mesh.vao); } f.plainSide = null;
     f.patched = null; f.artMod = null; f.artData = null; f.floorSrc = null; f.artSrc = null; f.skirtSrc = -1; f.grassSrc = null;
     if (!art) return;
     // where each floor / building-texture pixel comes from in the map picture: palette fades only recolour (recolourField)
@@ -1270,6 +1270,7 @@ export class Voxel3D {
     const taken = (x, y, w, h) => placed.some(q => Math.abs(q[0] - x) < w * 0.5 && Math.abs(q[1] - y) < h * 0.5 + 8);
     const placePlant = (shape, X, Z, o) => { const rnd = Math.abs(Math.sin(X * 12.9898 + Z * 78.233) * 43758.5453) % 1; plants.push({ shape, model: m4.trs3(X, o.lift || 0, Z, 1, 1, 1, -(o.tilt ?? FIELD_TILT)), phase: X * 0.11 + Z * 0.07 + rnd * 0.8, amp: (PLANT[o.plant] || PLANT.tree)[2] }); };
     const plantCut = o => o.plant ? { ...cutOpt(o), cut: o.cut || "outline", seal: o.seal ?? "b" } : cutOpt(o);   // (trunks reach the bottom edge)
+    const stampSolids = [];
     for (const st of def.stamps || []) {
       const d = F3.cutOut(art, st.x, st.y, st.w, st.h, plantCut(st)), t = (st.cut || st.plant) ? trim(d, st.w, st.h) : { d, h: st.h };
       let hits = this.findStamps(st);
@@ -1277,6 +1278,10 @@ export class Voxel3D {
         for (const m of F3.matchSprite(art, d, st.x, st.y, st.w, st.h, MWp, MHp, 0.9)) if (!hits.some(q => Math.abs(q.x - m.x) < 6 && Math.abs(q.y - m.y) < 6)) hits.push(m);
         const shape = shapeOf(t.d, st.x, st.y, st.w, t.h, st.plant);
         for (const hit of hits) { if (taken(hit.x, hit.y, st.w, st.h)) continue; placed.push([hit.x, hit.y]); plantHole(d, hit.x, hit.y, st.w, st.h); cover(hit.x, hit.y, hit.x + st.w, hit.y + st.h); placePlant(shape, hit.x + st.w / 2, hit.y + t.h + (st.dz || 0), st); }
+        continue;
+      }
+      if (st.solid) {                            // a low solid at every copy (chairs: seat: people sitting on them are drawn on top)
+        for (const hit of hits) stampSolids.push({ x0: hit.x, y0: hit.y, x1: hit.x + st.w, y1: hit.y + st.h, h: st.solid, cut: st.cut || "outline", seat: st.seat });
         continue;
       }
       const shared = { tex: this.texture(st.w, t.h, t.d), mesh: null, d: t.d, src: srcOf(st.x, st.y, st.w, t.h), own: true };
@@ -1294,6 +1299,11 @@ export class Voxel3D {
       }
       cover(c.x0, c.y0, c.x1, c.y1);
       const w = c.x1 - c.x0, h = c.y1 - c.y0; let d = F3.cutOut(art, c.x0, c.y0, w, h, plantCut(c));
+      if (c.onTop) {                             // standing on a counter (a block's top, lift its height): its picture there is painted over with the top's colour (onTop: an art point)
+        const bi = c.onTop[1] * 512 + c.onTop[0];
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3]) { const i = (c.y0 + y) * 512 + c.x0 + x; art[i * 4] = art[bi * 4]; art[i * 4 + 1] = art[bi * 4 + 1]; art[i * 4 + 2] = art[bi * 4 + 2]; f.artSrc[i] = bi; f.artMod[i] = 1; }
+        f.cards.push(card(d, c.x0, c.y0, w, h, c)); continue;
+      }
       // a tennis net (a tape row, mesh rows, posts): a see-through net, only the mesh, the tape and the posts opaque (thin bars), the floor under its whole
       // band filled from the ground beside it so the court lines run on under it
       if (!c.cut && !c.plant && !c.see && w >= 48 && w <= 80 && h >= 8 && h <= 20) {
@@ -1397,8 +1407,9 @@ export class Voxel3D {
     if (bm && bm.strip) { cover(0, bm.strip[0], MWp, bm.strip[1]); f.floorY0 = bm.strip[1]; }   // (the band is not drawn: the neighbour lies there)
     if (bm && this.rom && !this.inNeighbour) f.neighbour = this.neighbourField(bm.map, bm.dx, bm.side === "bottom" ? MHp : f.floorY0 || 0, bm.side === "bottom");
     // solids: low prisms with the exact outline of their picture (planters, fountain basins), stacked with "on"
-    const solids = [];
-    for (const so of def.solids || []) {
+    const solids = []; f.seats = [];
+    for (const so of [...(def.solids || []), ...stampSolids]) {
+      if (so.seat) f.seats.push({ x0: so.x0, y0: so.y0, x1: so.x1, y1: so.y1, h: so.h });
       if (!inMap(so.x0, so.y0)) { solids.push(null); continue; }
       const w = so.x1 - so.x0, h = so.y1 - so.y0, d = F3.cutOut(art, so.x0, so.y0, w, h, { cut: so.cut || "outline", only: so.only, drop: so.drop });
       const base = so.on != null && solids[so.on] ? solids[so.on] : null, stack = base ? base.stackTop : 0;
@@ -1933,7 +1944,10 @@ export class Voxel3D {
       if (!was || was.size !== ids.size || [...ids].some(i => !was.has(i))) { this.hdText.actorOam = ids; this.hdText.dirty = true; this.hdText.key = ""; }
     }
     for (const a of actors) {
-      const ia = this.fi && this.fi.act.get(a.slot), X = ia ? ia.x : a.x, Z = (ia ? ia.y : a.y) + 4; a.lift = ia ? ia.lift : a.lift;
+      const ia = this.fi && this.fi.act.get(a.slot), X = ia ? ia.x : a.x; let Z = (ia ? ia.y : a.y) + 4; a.lift = ia ? ia.lift : a.lift;
+      // sitting on a seat (field_objects stamps seat): on top of it, at its front, instead of standing inside it
+      const seat = this.field.seats && this.field.seats.find(q => a.x >= q.x0 && a.x < q.x1 && a.y >= q.y0 && a.y < q.y1 + 6), sl = seat ? seat.h * WALL_SCALE : 0;
+      if (seat) Z = seat.y1 - seat.h + 1;
       let m = mem.get(a.slot); if (m && m.obj !== a.obj) { mem.delete(a.slot); m = null; }
       if (a.list.length) {
         let x0 = 999, x1 = -999, y0 = 999, y1 = -999;
@@ -1945,9 +1959,9 @@ export class Voxel3D {
         if (whole || !m) {
           const body = this.bodyOf(a.list, a.ax, a.ay);
           if (inside) mem.set(a.slot, { obj: a.obj, body, n: a.list.length, bx0: x0 - a.ax, bx1: x1 - a.ax, by0: y0 - a.ay });
-          this.drawBody(body, X, Z, 0, 1, TILT, mvp); continue;
+          this.drawBody(body, X, Z, sl, 1, TILT, mvp); continue;
         }
-        this.drawBody(m.body, X, Z, a.lift, 1, TILT, mvp); continue;   // cut by the screen edge: the whole look
+        this.drawBody(m.body, X, Z, a.lift + sl, 1, TILT, mvp); continue;   // cut by the screen edge: the whole look
       }
       // no sprites and never seen: someone the game culled before they were ever on screen. Every person is two 8x16 parts (tile t at
       // x-8, t+2 at x, attribute from the actor table), put together here. The game loads an actor's frame into its VRAM tiles only once
