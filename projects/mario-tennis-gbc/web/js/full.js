@@ -14,7 +14,8 @@ import { attachBallFX } from "./ballfx.js";
 import { attachIntro } from "./intro.js";
 import { attachMatchFx } from "./matchfx.js";
 import { attachFieldLife } from "./fieldlife.js";
-import { attachPhone } from "./phone.js";   // GAME: vibrate, screenshot, quick save / load, battery saver, what's new   // FIELD LIFE: birds, cloud shadows, fountain glints in the overworld   // MATCH FX: set / match point hush, rally ooh, changeover sweep, the winner's celebration
+import { attachPhone } from "./phone.js";
+import { InstantReplay } from "./replay.js";   // INSTANT REPLAY: the last long rally again under a TV camera   // GAME: vibrate, screenshot, quick save / load, battery saver, what's new   // FIELD LIFE: birds, cloud shadows, fountain glints in the overworld   // MATCH FX: set / match point hush, rally ooh, changeover sweep, the winner's celebration
 import { organizeHud } from "./hudmenu.js";      // the button bar in categories (VIEW / STADIUM / LOOK / GAME)         // INTRO: walk-out before each match (3D stadium)       // BALL FX: on / off (3D / VOX court)
 import { loadSnapshot } from "./gb/snapshot.js";
 import { saveState, loadState, snapshot, restore } from "./gb/state.js";
@@ -29,7 +30,7 @@ const $ = id => document.getElementById(id);
 const cv = $("screen"), g = cv.getContext("2d");
 const img = g.createImageData(160, 144);
 let voxel = null, view3d = false, hd = null;
-let gb = null, keys = {}, paused = false, turbo = false, romHash = "", phone = null;   // phone: phone.js (GAME menu conveniences)
+let gb = null, keys = {}, paused = false, turbo = false, romHash = "", phone = null, replay = null;   // phone: phone.js (GAME menu conveniences)
 const SAVE_KEY = () => "mt-sram-" + romHash.slice(0, 12);
 const q = new URLSearchParams(location.search);
 const stored = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
@@ -124,6 +125,7 @@ function frame() {
   if (port) portFrame(); else gb.runFrame();
   if (view3d && voxel && voxel.mode === "3d") voxel.tick();
   if (phone) phone.frame(gb);                // VIBRATE: hits and points
+  if (replay && !port) replay.afterFrame(gb, inp);   // INSTANT REPLAY: the buttons of the point
   rec.frame(gb, mask); session.frame(gb, mask);
   creator.frame();
   if (audioReady && anode) { const n = gb.apu.drain(abuf); if (n) anode.port.postMessage(abuf.slice(0, n)); } else gb.apu.outPos = 0;
@@ -250,7 +252,8 @@ function loop(now) {
     if (!last) last = now;
     acc = Math.min(acc + (now - last), STEP * 4); last = now;
     const per = turbo ? 4 : 1;
-    if (acc >= STEP) { settle(); while (acc >= STEP) { for (let i = 0; i < per; i++) frame(); acc -= STEP; fps.n++; } maybeSave(); lookAhead(); }
+    if (replay && replay.playing) { while (acc >= STEP) { replay.step(); acc -= STEP; fps.n++; } }   // INSTANT REPLAY: the point again (no saves, no run-ahead)
+    else if (acc >= STEP) { settle(); while (acc >= STEP) { for (let i = 0; i < per; i++) frame(); acc -= STEP; fps.n++; } maybeSave(); lookAhead(); }
     if (!phone || phone.allowDraw(now)) draw(acc / STEP);   // (BATTERY saver: at most 60 pictures a second)
     if (hd) { const dt = now - (hdLast || now); hdLast = now; hdDt = hdDt * 0.9 + Math.min(dt, 100) * 0.1; hd.struggling = hdDt > 24; }   // below ~40 fps the HD art waits while the screen moves
     if (now - fps.t >= 1000) { $("fps").textContent = view3d ? `game ${fps.n} · view ${fps.r} fps` + (turbo ? " (turbo)" : "") : fps.n + " fps" + (turbo ? " (turbo)" : ""); fps.n = 0; fps.r = 0; fps.t = now; }
@@ -290,6 +293,8 @@ const PORT_VERIFIED = ["home/index", "audio/index", "save/index", "cutscenes/ind
   "story_scripts/court_practice_11", "story_scripts/dorm_13", "story_scripts/doubles_11",
   "story_scripts/ending_varsity_27", "story_scripts/exhibition_0e", "story_scripts/island_open_0f",
   "story_scripts/island_rounds_0f", "story_scripts/junior_doubles_11", "story_scripts/junior_singles_11",
+  // story scripts part 2 (lessonmenu_10 … wall_room_12): strict lockstep 0 differences on 371 ss2_* and 115 ss1_* recordings
+  "story_scripts/lessonmenu_10", "story_scripts/map_stubs_12", "story_scripts/mario_scenes_0e", "story_scripts/mario_world_0e", "story_scripts/match_10", "story_scripts/match_setup_0e", "story_scripts/modeflow_10", "story_scripts/plane_14", "story_scripts/practice_results_15", "story_scripts/ranking_challenge_11", "story_scripts/repair_0e", "story_scripts/restaurant_10", "story_scripts/restaurant_13", "story_scripts/restaurant_27", "story_scripts/senior_court_12", "story_scripts/senior_intros_12", "story_scripts/senior_matches_12", "story_scripts/senior_victory_12", "story_scripts/serve_coach_15", "story_scripts/specialcourt_0e", "story_scripts/student_11", "story_scripts/team_bracket_13", "story_scripts/tennis_14", "story_scripts/testmaps_0f", "story_scripts/training_0e", "story_scripts/training_map_15", "story_scripts/training_npcs_15", "story_scripts/varsity_courtyard_13", "story_scripts/varsity_team_13", "story_scripts/varsity_tour_13", "story_scripts/walks_10", "story_scripts/wall_levels_12", "story_scripts/wall_room_12", "story_scripts/water_15",
   "twins/index"];
 async function makePort(bytes) {
   const { GamePort } = await import("./port/port.js"), { entry } = await import("./port/entry.js");
@@ -403,6 +408,7 @@ $("rec").addEventListener("pointerdown", () => {
 setInterval(() => { if (!recording()) return; const t = rec.on ? rec.seconds : (session.n - portRecFrom) / 60; $("rec").textContent = "REC " + Math.floor(t / 60) + ":" + String(Math.floor(t % 60)).padStart(2, "0"); }, 1000);
 addEventListener("visibilitychange", () => { if (document.hidden && recording()) saveRecording(true); });
 window.__stopRec = () => { if (recording()) saveRecording(true); };   // called by the Android wrapper from onPause
+replay = new InstantReplay({ gb: () => gb, voxel: () => voxel, canRun: () => !port && view3d && !!voxel && voxel.mode === "3d", settle });
 phone = attachPhone($("hud"), { gb: () => gb, voxel: () => voxel, view3d: () => view3d, redraw: () => { renderedAt = -1; drawnFrame = -1; if (gb) draw(1); },
   saveState: () => { settle(); return saveState(gb); }, loadState: st => { raSnap = null; loadState(gb, st); drawnFrame = -1; }, romHash: () => romHash, hint });
 $("view3d").addEventListener("pointerdown", () => { if (!gb) return; const vox = voxel && voxel.voxelSprites; setView3d(!view3d || !vox, view3d && !vox); });   // off -> cards -> voxels -> off
@@ -488,6 +494,6 @@ $("engbtn").addEventListener("pointerdown", () => {
 // a private build bundles the ROM; a shared one doesn't, so the app starts with the ROM the player picked last time
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom)
   .catch(() => { if (navigator.userAgent.includes("MarioTennisWrapper")) romStore("readonly", s => s.get("rom")).then(b => { if (b && !gb) loadRom(b.buffer.slice(0)); }).catch(() => {}); });
-window.__gb = { get smooth() { return smooth; }, set smooth(v) { smooth = !!v; renderedAt = -1; applySmooth(); }, get fpsInfo() { return fps; }, get gb() { return gb; }, get hd() { return hd; }, keys, rec, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { if (n) settle(); for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, loadSnapshot(s) { raSnap = null; loadSnapshot(gb, s); }, saveState() { settle(); return saveState(gb); }, loadState(s) { raSnap = null; loadState(gb, s); drawnFrame = -1; }, get runAhead() { return runAhead; }, settle };
+window.__gb = { get smooth() { return smooth; }, set smooth(v) { smooth = !!v; renderedAt = -1; applySmooth(); }, get fpsInfo() { return fps; }, get gb() { return gb; }, get hd() { return hd; }, keys, rec, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { if (n) settle(); for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, get replay() { return replay; }, loadSnapshot(s) { raSnap = null; loadSnapshot(gb, s); }, saveState() { settle(); return saveState(gb); }, loadState(s) { raSnap = null; loadState(gb, s); drawnFrame = -1; }, get runAhead() { return runAhead; }, settle };
 organizeHud($("hud"));
 requestAnimationFrame(loop);

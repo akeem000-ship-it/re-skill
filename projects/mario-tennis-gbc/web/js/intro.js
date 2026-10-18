@@ -59,6 +59,7 @@ export class MatchIntro {
   // called by voxel.js renderCourt each display frame: notices a new match, ends a finished intro
   update() {
     const v = this.v, fr = v.gb.ppu.frames, st = v.stadium, w = v.gb.mem.wram[0];
+    if (v.replaying) { this.lastCourt = fr; return; }                  // INSTANT REPLAY: no intro for the replayed point
     const fresh = this.lastCourt < 0 || fr < this.lastCourt || fr - this.lastCourt > 600; this.lastCourt = fr;
     if (fresh && this.on && st && st.active && MODES[w[0x8A6]]) {
       this.start = fr; this.fr0 = fr; this.t0 = performance.now() / 1000; this.cheered = false; this.whistled = false; this.freeRun(); this.runTex = new Map();

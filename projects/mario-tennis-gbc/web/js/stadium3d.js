@@ -202,6 +202,7 @@ export class Stadium3D {
   applyFill() { const z = this.crowdSizes, p = this.progress(); this.cls = this.crowdClass(); this.fill = p === null ? z.exhibition : z.start + (z.end - z.start) * p; }
   // once per game frame (voxel.js tick): the class of the match, the cheer after a point and the events the crowd sound plays on (read only)
   step(v) {
+    if (v.replaying) { this.ev = null; if (v.matchfx) v.matchfx.prev = null; return; }   // INSTANT REPLAY: the replayed point raises no crowd events
     const w = v.gb.mem.wram[0], fr = v.gb.ppu.frames; if (v.mode !== "3d" || v.courtId < 0 || w[0x32E] > 15) { this.ev = null; return; }
     this.applyFill();
     if (v.matchfx) v.matchfx.step(this);                                // MATCH FX: the score's stakes, long rallies, changeovers, the end

@@ -830,7 +830,7 @@ export class Voxel3D {
     if (!this.ground || this.ground.court !== this.courtId) { this.buildGround(); this.groundHash = -1; }
     const h = this.palHash(); if (h !== this.groundHash) { this.groundHash = h; this.paintGround(); }
     if (this.intro) this.intro.update();      // INTRO: the walk-out before a match (its own camera while it runs)
-    const { mvp, tilt } = (this.intro && this.intro.camera(cv.width / cv.height, m4, COURT_CLIP, this.interp().players)) || (this.matchfx && this.matchfx.camera(cv.width / cv.height, m4, COURT_CLIP, this.interp().players)) || this.courtCamera(cv.width / cv.height);   // MATCH FX: changeover sweep, the winner
+    const { mvp, tilt } = (this.replayCam && this.replayCam(cv.width / cv.height, m4, COURT_CLIP, this.interp())) || (this.intro && this.intro.camera(cv.width / cv.height, m4, COURT_CLIP, this.interp().players)) || (this.matchfx && this.matchfx.camera(cv.width / cv.height, m4, COURT_CLIP, this.interp().players)) || this.courtCamera(cv.width / cv.height);   // MATCH FX: changeover sweep, the winner
     if (this.light) this.light.camera(mvp, COURT_CLIP.near, COURT_CLIP.far, 7.5, "court", [0, 0, 0]);   // LIGHT
     // ground plane (lying flat: tilt -90deg around X so the quad's up axis becomes -Z, i.e. +Y world towards the camera)
     const gw = WORLD.x1 - WORLD.x0, gh = WORLD.y1 - WORLD.y0;
