@@ -18,6 +18,9 @@
 //   (and per mod, not per character) texts: [ { bank, id, text } ] a line of dialogue replaced: the text bank (hex string or number),
 //             the message number in it, the new text ("\n" a new line; {XX} a control code, e.g. {02} next page, {03} end, {07}
 //             your name); written in place when it fits, else in the bank's free tail with its table word repointed
+//   matchSet  a match sprite set of its own (an index into CharSpriteSetTable 07:5A50, for a character that shares its set with
+//             another: Kevin and A. Coz both use set 10); the set must have the hero's frame layout and no other user among the
+//             playable roster, e.g. 26 (the unused roster slot $15's). The table entry is repointed and the body drawn into that set
 //   stats     a play style: 11 weights (0-9) for Top, Slice, Serve, Stroke, Volley, Angle, Placement, Speed, Dash, Reaction,
 //             Stop. Every record the character is shown as (its own, and the story's rankers and other opponents that
 //             NameTextRemap_02 shows as it) keeps its own total of stat points, shared out by these weights (bars capped at 9),
@@ -71,6 +74,7 @@ export function normalizeMod(m) {
       o.touchups = {};
       for (const [k, list] of Object.entries(c.touchups)) if (Array.isArray(list)) o.touchups[k] = list.filter(t => t && Number.isInteger(t.x) && Number.isInteger(t.y) && t.r in REGION_NAMES).map(t => ({ x: t.x, y: t.y, r: t.r }));
     }
+    if (Number.isInteger(c.matchSet) && c.matchSet >= 0 && c.matchSet < 64) o.matchSet = c.matchSet;
     if (Array.isArray(c.stats) && c.stats.length === 11 && c.stats.every(v => Number.isInteger(v) && v >= 0 && v <= 9) && c.stats.some(v => v > 0)) o.stats = c.stats.slice();
     const p = artOf(c.portrait, 24, 24); if (p) o.portrait = p;
     const h = artOf(c.head, 16, 16); if (h) o.head = h;
@@ -106,8 +110,8 @@ function objHeader(rom, obj) {
   const w = u16(rom, OBJECT_LIST[0], OBJECT_LIST[1] + 2 * obj), bank = w >> 8, hdr = u16(rom, bank, 0x4000 + (w & 0xFF));
   return { bank, hdr, frames: u16(rom, bank, hdr + 4), info: u16(rom, bank, hdr + 10) };
 }
-export function charGfx(rom, c) {
-  const wobj = rom[off(CHAR_OBJECT_TABLE[0], CHAR_OBJECT_TABLE[1]) + c], mobj = rom[off(SPRITE_SET_TABLE[0], SPRITE_SET_TABLE[1]) + c];
+export function charGfx(rom, c, matchSet) {
+  const wobj = rom[off(CHAR_OBJECT_TABLE[0], CHAR_OBJECT_TABLE[1]) + c], mobj = matchSet ?? rom[off(SPRITE_SET_TABLE[0], SPRITE_SET_TABLE[1]) + c];
   const W = objHeader(rom, wobj), M = objHeader(rom, mobj);
   const walk = []; for (let i = 0; i < 16; i++) { const p = u16(rom, W.bank, W.frames + 2 * i); if (p < 0x4000 || p >= 0x8000) break; walk.push(p); }
   const match = []; for (let s = 0; s < 145; s++) match.push(u16(rom, M.bank, M.frames + 2 * s));
@@ -234,7 +238,12 @@ export function buildMods(rom, mods, res) {
     const set = (r, v) => { if (v !== undefined) res.colours[base + r] = v & 0x7FFF; };
     set(REG.OUT, c.outline ?? 0x0000); set(REG.SKIN, c.skin); set(REG.SHADE, c.shade ?? (c.skin !== undefined ? shade(c.skin) : undefined));
     set(REG.HAIR, c.hair); if (c.hair !== undefined) { const t = hairTones(c.hair); set(REG.HAIR2, t.k); set(REG.HAIR3, t.g); } set(REG.HAT, c.hat); set(REG.TOP, c.top); set(REG.BOTTOM, c.bottom); set(REG.SHOES, c.shoes ?? c.bottom); set(REG.RACKET, c.racket);
-    if (ch.body) bodyFrames(rom, ch, charGfx(rom, ch.char), res, base);
+    if (ch.matchSet !== undefined) {                               // its own match sprite set: only if no other playable character uses that set
+      const used = []; for (let c = 0; c < 32; c++) if (c !== ch.char && rom[off(SPRITE_SET_TABLE[0], SPRITE_SET_TABLE[1]) + c] === ch.matchSet && c !== 0x15 && c !== 0x16) used.push(c);
+      if (used.length) { res.notes.push(`matchSet ${ch.matchSet} is in use (character ${used.join(", ")}): not moved`); delete ch.matchSet; }
+      else res.patches.push({ off: off(SPRITE_SET_TABLE[0], SPRITE_SET_TABLE[1]) + ch.char, bytes: Uint8Array.from([ch.matchSet]) });
+    }
+    if (ch.body) bodyFrames(rom, ch, charGfx(rom, ch.char, ch.matchSet), res, base);
     if (ch.portrait) { res.faceTiles = res.faceTiles || new Map(); portraitArt(rom, ch, res, slots); }
     if (ch.head) headArt(rom, ch, res, slots);
   });
