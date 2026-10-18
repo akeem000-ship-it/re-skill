@@ -10,7 +10,8 @@ import { attachCrowdSound } from "./crowdsound.js";   // CROWD SOUND: on / off (
 import { attachLighting } from "./lighting.js";
 import { attachLightPanel } from "./lightpanel.js";   // LIGHT settings panel   // LIGHT: Off / Day / Auto
 import { attachVoxStyle } from "./voxround.js";   // VOX: Blocky / Rounded
-import { attachBallFX } from "./ballfx.js";       // BALL FX: on / off (3D / VOX court)
+import { attachBallFX } from "./ballfx.js";
+import { attachIntro } from "./intro.js";         // INTRO: walk-out before each match (3D stadium)       // BALL FX: on / off (3D / VOX court)
 import { loadSnapshot } from "./gb/snapshot.js";
 import { saveState, loadState } from "./gb/state.js";
 import { composeWide, WIDE_W, WIDE_H } from "./wide.js";
@@ -192,7 +193,7 @@ addEventListener("resize", () => applyAspect());
 let preset = q.get("cam") || stored("mt-cam") || "low"; if (!PRESETS[preset]) preset = "low";
 function setView3d(on, vox = false) {
   view3d = on; $("view3d").classList.toggle("on", on); $("view3d").textContent = on ? (vox ? "VOX" : "3D") : "3D";
-  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.hdText = hd; voxel.freeCam = q.has("freecam"); attachLighting(voxel, $("hud")); attachLightPanel(voxel); attachStadium(voxel, $("hud")); attachCrowdSound(voxel.stadium, $("hud"), () => actx); attachBallFX(voxel, $("hud")); attachVoxStyle(voxel, $("hud")); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
+  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.hdText = hd; voxel.freeCam = q.has("freecam"); attachLighting(voxel, $("hud")); attachLightPanel(voxel); attachStadium(voxel, $("hud")); attachCrowdSound(voxel.stadium, $("hud"), () => actx); attachBallFX(voxel, $("hud")); attachIntro(voxel, $("hud")); attachVoxStyle(voxel, $("hud")); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
   if (voxel) voxel.voxelSprites = on && vox;
   $("gl").hidden = !view3d; cv.hidden = view3d; $("cam").hidden = !view3d; $("smoothbtn").hidden = !view3d; if ($("ballfxbtn")) $("ballfxbtn").hidden = !view3d; if ($("voxstylebtn")) $("voxstylebtn").hidden = !(view3d && vox); if ($("lightbtn")) $("lightbtn").hidden = !view3d; if ($("stadiumbtn")) $("stadiumbtn").hidden = !view3d; if ($("crowdsndbtn")) $("crowdsndbtn").hidden = !view3d;
   try { localStorage.setItem("mt-3d", on ? (vox ? "vox" : "3d") : "off"); } catch (e) { /* private mode */ }
@@ -203,7 +204,8 @@ function setPreset(name) {                  // court camera preset (CAM button c
 }
 let hdLast = 0, hdDt = 16;
 function loop(now) {
-  if (gb && !paused) {
+  if (gb && !paused && voxel && view3d && voxel.intro && voxel.intro.holding) { last = now; acc = 0; renderedAt = -1; draw(1); }   // INTRO: the game waits, the camera moves
+  else if (gb && !paused) {
     if (!last) last = now;
     acc = Math.min(acc + (now - last), STEP * 4); last = now;
     const per = turbo ? 4 : 1;

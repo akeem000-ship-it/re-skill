@@ -328,7 +328,8 @@ export class Voxel3D {
   }
   sampleState() { const p = this.gb.ppu; return { players: this.players(), ball: this.ballWorld(), scx: p.scx, scy: p.scy }; }
   // interpolated world state for the current display frame (positions that jumped are not interpolated)
-  interp() {
+  interp() { const r = this.interp0(); return this.intro ? this.intro.adjust(r) : r; }   // INTRO: the walk-out moves the drawn players
+  interp0() {
     const a = this.alpha, c = this.cur, q = this.prev; if (!c) return this.sampleState(); if (!q || a >= 1) return c;
     const mix = (u, v, lim) => Math.abs(u - v) > lim ? u : v + (u - v) * a;
     const players = c.players.map((pl, i) => { const o = q.players.find(u => u.slot === pl.slot); return o ? { X: mix(pl.X, o.X, 300), Y: mix(pl.Y, o.Y, 300), Z: mix(pl.Z, o.Z, 300), slot: pl.slot } : pl; });
@@ -788,7 +789,8 @@ export class Voxel3D {
     const gl = this.gl, cv = this.cv, p = this.gb.ppu; this.mode = "3d"; if (this.debug) this.debug.length = 0;
     if (!this.ground || this.ground.court !== this.courtId) { this.buildGround(); this.groundHash = -1; }
     const h = this.palHash(); if (h !== this.groundHash) { this.groundHash = h; this.paintGround(); }
-    const { mvp, tilt } = this.courtCamera(cv.width / cv.height);
+    if (this.intro) this.intro.update();      // INTRO: the walk-out before a match (its own camera while it runs)
+    const { mvp, tilt } = (this.intro && this.intro.camera(cv.width / cv.height, m4, COURT_CLIP, this.interp().players)) || this.courtCamera(cv.width / cv.height);
     if (this.light) this.light.camera(mvp, COURT_CLIP.near, COURT_CLIP.far, 7.5, "court", [0, 0, 0]);   // LIGHT
     // ground plane (lying flat: tilt -90deg around X so the quad's up axis becomes -Z, i.e. +Y world towards the camera)
     const gw = WORLD.x1 - WORLD.x0, gh = WORLD.y1 - WORLD.y0;
