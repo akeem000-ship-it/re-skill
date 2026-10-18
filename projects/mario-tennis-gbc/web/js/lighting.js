@@ -461,7 +461,7 @@ export class Lighting {
     this.pass(progC, null, {
       uInvVP: invVP, uVP: vp, uNF: NF, uRes: [W, H], uL: L, uSun: P.sun, uAmb: P.amb, uShade: shade, uWall: wallK,
       uExp: P.exp, uSat: P.sat, uCon: P.con, uBloom: P.bloom, uGlowK: 0.62 * (0.6 + 0.4 * P.bloom), uSpill: 0.5 + 0.18 * night, uLamps: cam.kind === "field" ? night : 0, uVig: fx.vignette ? P.vig : 0, uDof: dofK * 0.8, uTone: P.tone,
-      uDbg: this.dbg, uWarm: [1.15, 0.82, 0.42], uFocus: [0.5, 0.17, 0.30, 0.36],
+      uDbg: this.dbg, uWarm: [1.15, 0.82, 0.42], uFocus: cam.kind === "court" ? [0.5, 0.36, 0.22, 0.26] : [0.5, 0.17, 0.30, 0.36],   // (a court: the players at both baselines stay sharp)
     }, [S.t, S.depthTex, q.sh0.t, (needB ? q.b0 : q.q0).t, q.g0.t, q.e0.t]);
     this.timerEnd();
   }

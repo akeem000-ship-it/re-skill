@@ -4,6 +4,8 @@
 //           applause on top (random short noise grains, thinning out); length about 2.3 s
 //   aww     "aaaw": a dozen detuned sawtooth voices (a crowd of voices around 150-300 Hz) gliding down a fifth, through three formant
 //           filters moving from /a/ to /o/, with a little breath noise; about 1.5 s
+//   ooh     a long rally (matchfx.js): voices rising through /u/ to /o/, louder the longer the rally (level 0..1); about 1.4 s
+//   hush    set / match point (matchfx.js): a soft "shhh" that dies away into quiet; about 1.6 s
 //   rattle  a chain-link fence rattle: bursts of noise through four high, inharmonic resonators (2.1, 3.3, 5.0, 7.4 kHz) at a ragged
 //           rate that slows down, plus a short low clang (two decaying sines) as the ball hits the wire; about 0.9 s
 // Loudness of cheer / aww follows the crowd size (stadium3d.js fill: 0 empty .. 1 full).
@@ -11,7 +13,7 @@ const KEY = "mt-crowdsound";
 export class CrowdSound {
   constructor(getCtx) {
     this.getCtx = getCtx; this.on = (() => { try { return localStorage.getItem(KEY) !== "off"; } catch (e) { return true; } })();
-    this.noise = null; this.last = { cheer: -9, aww: -9, rattle: -9, whistle: -9 }; this.onChange = null; this.volume = 1;
+    this.noise = null; this.last = { cheer: -9, aww: -9, rattle: -9, whistle: -9, ooh: -9, hush: -9 }; this.onChange = null; this.volume = 1;
   }
   setOn(on) { this.on = !!on; try { localStorage.setItem(KEY, this.on ? "on" : "off"); } catch (e) { /* private mode */ } if (this.onChange) this.onChange(this.on); }
   ctx() { const c = this.getCtx && this.getCtx(); return c && c.state === "running" ? c : null; }
@@ -59,6 +61,25 @@ export class CrowdSound {
     }
     for (const f of form) { sum.connect(f); const g = c.createGain(); g.gain.value = 1; f.connect(g); g.connect(out); }
     const n = this.src(c), nb = c.createBiquadFilter(); nb.type = "bandpass"; nb.frequency.value = 1100; nb.Q.value = 0.8; const ng = c.createGain(); ng.gain.value = 0.35; n.connect(nb); nb.connect(ng); ng.connect(out); n.stop(t + 1.7);
+  }
+  ooh(fill = 0.6, level = 0) {
+    const c = this.on && this.ctx(); if (!c || fill <= 0.01 || !this.gate("ooh", 0.9)) return;
+    const t = c.currentTime, V = (0.3 + 0.35 * level) * this.vol(fill), out = c.createGain(); out.gain.setValueAtTime(0, t); out.gain.linearRampToValueAtTime(V, t + 0.35);
+    out.gain.setValueAtTime(V, t + 0.8); out.gain.exponentialRampToValueAtTime(0.0008, t + 1.5); out.connect(c.destination);
+    const form = [[320, 480, 7], [800, 900, 8], [2300, 2500, 10]].map(([a, b, q]) => { const f = c.createBiquadFilter(); f.type = "bandpass"; f.Q.value = q; f.frequency.setValueAtTime(a, t); f.frequency.linearRampToValueAtTime(b, t + 1.2); return f; });
+    const sum = c.createGain(); sum.gain.value = 0.36;
+    for (let i = 0; i < 10; i++) {
+      const o = c.createOscillator(), f0 = 130 + Math.random() * 120; o.type = "sawtooth"; o.frequency.setValueAtTime(f0, t + Math.random() * 0.1); o.frequency.exponentialRampToValueAtTime(f0 * (1.25 + 0.15 * level), t + 1.1);
+      o.connect(sum); o.start(t); o.stop(t + 1.55);
+    }
+    for (const f of form) { sum.connect(f); f.connect(out); }
+  }
+  hush(fill = 0.6) {
+    const c = this.on && this.ctx(); if (!c || fill <= 0.01 || !this.gate("hush", 2)) return;
+    const t = c.currentTime, V = 0.16 * this.vol(fill), out = c.createGain(); out.gain.setValueAtTime(0, t); out.gain.linearRampToValueAtTime(V, t + 0.25);
+    out.gain.exponentialRampToValueAtTime(0.0006, t + 1.6); out.connect(c.destination);
+    const n = this.src(c), hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 2600; const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 4200; bp.Q.value = 0.9;
+    n.connect(hp); hp.connect(bp); bp.connect(out); n.stop(t + 1.7);
   }
   rattle(strength = 1) {
     const c = this.on && this.ctx(); if (!c || !this.gate("rattle", 0.25)) return;

@@ -5,7 +5,7 @@
 // ones added later (the 3D view's buttons appear when it is first turned on), by watching the bar. A button nobody listed goes to GAME.
 const CATS = [
   ["VIEW", "3D view, camera, picture", ["view3d", "cam", "aspect", "smoothbtn", "voxstylebtn"]],
-  ["STADIUM", "lighting, stadium, crowd, effects, intro", ["lightbtn", "stadiumbtn", "crowdsndbtn", "ballfxbtn", "introbtn"]],
+  ["STADIUM", "lighting, stadium, crowd, effects, intro", ["lightbtn", "stadiumbtn", "crowdsndbtn", "ballfxbtn", "introbtn", "matchfxbtn"]],
   ["LOOK", "your character, sprites, menus and text", ["lookbtn", "sprbtn", "uibtn", "fontbtn"]],
   ["GAME", "physics, code, run-ahead, controls", ["physbtn", "engbtn", "runaheadbtn", "padmode", "turbo", "reset"]],
 ];

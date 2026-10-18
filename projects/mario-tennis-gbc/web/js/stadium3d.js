@@ -121,6 +121,14 @@ class Boxes {
   data() { return this.a.subarray(0, this.n * 8); }
 }
 
+// the scoreboard's dot-matrix letters: 3 x 5 dots, rows top to bottom
+const BOARD_FONT = { 0: "111101101101111", 1: "010110010010111", 2: "111001111100111", 3: "111001111001111", 4: "101101111001001", 5: "111100111001111",
+  6: "111100111101111", 7: "111001001001001", 8: "111101111101111", 9: "111101111001111", " ": "000000000000000",
+  A: "010101111101101", B: "110101110101110", C: "011100100100011", D: "110101101101110", E: "111100110100111", F: "111100110100100",
+  G: "011100101101011", H: "101101111101101", I: "111010010010111", J: "001001001101010", K: "101101110101101", L: "100100100100111",
+  M: "101111111101101", N: "110101101101101", O: "010101101101010", P: "111101111100100", Q: "010101101110011", R: "110101110101101",
+  S: "011100010001110", T: "111010010010010", U: "101101101101111", V: "101101101101010", W: "101101111111101", X: "101101010101101",
+  Y: "101101010010010", Z: "111001010100111" };
 export class Stadium3D {
   constructor(voxel) {
     this.v = voxel; this.gl = voxel.gl;
@@ -196,6 +204,7 @@ export class Stadium3D {
   step(v) {
     const w = v.gb.mem.wram[0], fr = v.gb.ppu.frames; if (v.mode !== "3d" || v.courtId < 0 || w[0x32E] > 15) { this.ev = null; return; }
     this.applyFill();
+    if (v.matchfx) v.matchfx.step(this);                                // MATCH FX: the score's stakes, long rallies, changeovers, the end
     const E = { fr, sig: [w[0x8E4], w[0x8E5], w[0x8E6], w[0x8E7], w[0x8E8], w[0x8E9], w[0x8EA], w[0x8EB]].join(), res: w[0x4D8], fault: w[0x8EE], body: w[0x4AE], ball: w[0x4B3] }, p = this.ev;
     this.ev = E; if (!p || fr < p.fr || fr > p.fr + 8) return;          // first frame, a reload, or frames skipped: no events
     const when = performance.now() / 1000, ballY = (v.ballHist && v.ballHist.length ? v.ballHist[v.ballHist.length - 1].ball.Y : 0), sound = this.sound;
@@ -358,15 +367,19 @@ export class Stadium3D {
     // to 30-30, so with the flag on, level is 40-40 and one ahead is AD. In a tiebreak ($C8E7) the points are plain numbers.
     const w = this.v.gb.mem.wram[0], deuce = w[0x8E6], tb = w[0x8E7];
     const lab = (a, b) => tb ? String(Math.min(a, 99)) : deuce ? (a > b ? "AD" : "40") : ["0", "15", "30", "40"][Math.min(a, 3)];
-    const rows = [["P1", w[0x8E0], w[0x8E2], lab(w[0x8E4], w[0x8E5])], ["P2", w[0x8E1], w[0x8E3], lab(w[0x8E5], w[0x8E4])]], g = this.board.g;
+    // each side's name (the match records wCA00 / wCA80: up to 4 letters; P1 / P2 if there is none)
+    const nm = (a, d) => { let o = ""; for (let i = 0; i < 16; i++) { const c = w[a + i]; if (c < 0x20 || c > 0x7E) break; o += String.fromCharCode(c); } o = o.trim().toUpperCase().replace(/[^A-Z0-9 ]/g, ""); return (o || d).slice(0, 4); };
+    const rows = [[nm(0xA00, "P1"), w[0x8E0], w[0x8E2], lab(w[0x8E4], w[0x8E5])], [nm(0xA80, "P2"), w[0x8E1], w[0x8E3], lab(w[0x8E5], w[0x8E4])]], g = this.board.g;
     g.fillStyle = "#14161c"; g.fillRect(0, 0, 168, 56);
-    const F = { 0: "111101101101111", 1: "010110010010111", 2: "111001111100111", 3: "111001111001111", 4: "101101111001001", 5: "111100111001111", 6: "111100111101111", 7: "111001001001001", 8: "111101111101111", 9: "111101111001111", A: "010101111101101", D: "110101101101110", P: "111101111100100", " ": "000000000000000" };
-    rows.forEach(([name, sets, games, pts], r) => {               // "P1 1 4 AD": name, sets, games, points
-      const s = name + " " + Math.min(sets, 9) + Math.min(games, 9) + " " + pts.padStart(2, " "); let x = 6;
-      for (let j = 0; j < s.length; j++) {
-        const bits = F[s[j]] || F[" "], col = j === 3 || j === 4 ? "#e8ecf4" : r ? "#7cf0a0" : "#ffc24a";
+    rows.forEach(([name, sets, games, pts], r) => {               // "ALEX 14 AD": name, sets and games, points
+      const cells = [...name.padEnd(4, " ")].map(ch => [ch, r ? "#7cf0a0" : "#ffc24a", 17]);
+      cells[3][2] = 27; cells.push([String(Math.min(sets, 9)), "#e8ecf4", 17], [String(Math.min(games, 9)), "#e8ecf4", 27]);
+      for (const ch of pts.padStart(2, " ")) cells.push([ch, r ? "#7cf0a0" : "#ffc24a", 17]);
+      let x = 4;
+      for (const [ch, col, adv] of cells) {
+        const bits = BOARD_FONT[ch] || BOARD_FONT[" "];
         for (let i = 0; i < 15; i++) if (bits[i] === "1") { g.fillStyle = col; g.fillRect(x + (i % 3) * 5, 5 + r * 26 + Math.floor(i / 3) * 4, 4, 3); }
-        x += j === 4 ? 24 : 19;
+        x += adv;
       }
     });
     gl.bindTexture(gl.TEXTURE_2D, this.board.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.board.c);

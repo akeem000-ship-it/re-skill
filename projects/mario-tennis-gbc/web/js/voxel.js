@@ -830,12 +830,13 @@ export class Voxel3D {
     if (!this.ground || this.ground.court !== this.courtId) { this.buildGround(); this.groundHash = -1; }
     const h = this.palHash(); if (h !== this.groundHash) { this.groundHash = h; this.paintGround(); }
     if (this.intro) this.intro.update();      // INTRO: the walk-out before a match (its own camera while it runs)
-    const { mvp, tilt } = (this.intro && this.intro.camera(cv.width / cv.height, m4, COURT_CLIP, this.interp().players)) || this.courtCamera(cv.width / cv.height);
+    const { mvp, tilt } = (this.intro && this.intro.camera(cv.width / cv.height, m4, COURT_CLIP, this.interp().players)) || (this.matchfx && this.matchfx.camera(cv.width / cv.height, m4, COURT_CLIP, this.interp().players)) || this.courtCamera(cv.width / cv.height);   // MATCH FX: changeover sweep, the winner
     if (this.light) this.light.camera(mvp, COURT_CLIP.near, COURT_CLIP.far, 7.5, "court", [0, 0, 0]);   // LIGHT
     // ground plane (lying flat: tilt -90deg around X so the quad's up axis becomes -Z, i.e. +Y world towards the camera)
     const gw = WORLD.x1 - WORLD.x0, gh = WORLD.y1 - WORLD.y0;
     this.draw(this.groundTex, m4.trs(0, -0.5, WORLD.y1, gw, gh, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
     if (this.stadium && this.stadium.active) this.stadium.draw(mvp); else this.drawStands(mvp);   // STADIUM / bleachers with spectators beside and behind the court
+    if (this.matchfx && this.stadium && this.stadium.active) this.matchfx.draw(mvp, m4);   // MATCH FX: confetti at the end of the match
     // upright cut-outs: net, chair, backdrop (cards, or voxels in voxel mode)
     const fx = this.ballfx && this.ballfx.on ? this.ballfx : null;       // BALLFX
     for (const c of this.cuts) {
