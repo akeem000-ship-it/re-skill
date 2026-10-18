@@ -23,7 +23,7 @@ const LAYOUT = {
 
 export const STYLES = { alex: ["cap", "headband", "ponytail", "short", ...NEW_STYLES], nina: ["pigtails", "cap", "bob", "ponytail", ...NEW_STYLES] };
 // the styles an opponent mod may use: the creator's, plus sprite-only ones (a mod brings its own portrait art)
-export const MOD_STYLES = { alex: [...STYLES.alex, "spiky"], nina: STYLES.nina };
+export const MOD_STYLES = { alex: [...STYLES.alex, "spiky", "neat"], nina: STYLES.nina };
 
 // ---------------------------------------------------------------------------------------------- helpers
 const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]], N8 = [...N4, [1, 1], [1, -1], [-1, 1], [-1, -1]];
@@ -260,7 +260,7 @@ function styleAlex(st, style) {
       set(st, y * w + x, HAIR); set(st, (y - 1) * w + x, HAIR);
     });
   }
-  if (style === "spiky") {                            // short hair: no brim, a ragged fringe and tufts on top (the cap's dome reads as a hat)
+  if (style === "spiky" || style === "neat") {        // short hair: no brim, a ragged fringe, and tufts on top (spiky) or a smooth top (neat)
     const yTop = st.info ? st.info.yh : h; let removed = null;
     {                                                   // the brim (in front or, turned, behind): the cap's two lowest rows wider than its dome
       let yb = -1; for (const i of hat) yb = Math.max(yb, (i / w) | 0);
@@ -278,7 +278,7 @@ function styleAlex(st, style) {
     });
     // tufts: every other column of the head's top a pixel higher
     const top = new Map(); for (let y = 0; y < yTop; y++) for (let x = 0; x < w; x++) if (reg[y * w + x] === HAIR && !top.has(x)) top.set(x, y);
-    [...top].sort((a, b) => a[0] - b[0]).slice(1, -1).forEach(([x, y], k) => { if (!(k % 2) && y >= 2 && reg[(y - 1) * w + x] === OUT) set(st, (y - 1) * w + x, HAIR); });
+    if (style === "spiky") [...top].sort((a, b) => a[0] - b[0]).slice(1, -1).forEach(([x, y], k) => { if (!(k % 2) && y >= 2 && reg[(y - 1) * w + x] === OUT) set(st, (y - 1) * w + x, HAIR); });
     // the cap's edge that the labels took for the shirt (both are colour 1 in Alex's frames): the shirt pixels of the first row under the
     // cap that sit right under a cap pixel, and the rest of their run along that row
     {
@@ -313,10 +313,17 @@ function styleAlex(st, style) {
       for (let y = 0; y <= yb; y++) for (let x = 0; x < w; x++) {
         if (reg[y * w + x] !== HAIR) continue;
         const v = outside(x, y - 1) ? -1 : outside(x, y + 1) ? 1 : 0, s = outside(x - 1, y) ? -1 : outside(x + 1, y) ? 1 : 0;
-        if (v && s && !outside(x - s, y) && !outside(x, y - v) && (v < 0 || y >= yb - 2)) corners.push(y * w + x);   // the top corners, and the bottom ones at the neck
+        if (v && s && !outside(x - s, y) && !outside(x, y - v) && outside(x - s, y + v) && (v < 0 || y >= yb - 2)) corners.push(y * w + x);   // (a square corner only: a stepped, already round edge stays)   // the top corners, and the bottom ones at the neck
       }
       removed = removed || new Uint8Array(w * h);
       for (const i of corners) { set(st, i, NONE); removed[i] = 1; }
+      // neat: the cap's button off (a top row much narrower than the one under it reads as a point)
+      if (style === "neat") for (let y = 0; y + 1 < h; y++) {
+        const row = yy => { const xs = []; for (let x = 0; x < w; x++) if (reg[yy * w + x] === HAIR) xs.push(x); return xs; };
+        const a = row(y); if (!a.length) continue;
+        const b = row(y + 1); if (a.length <= 3 && b.length >= a.length + 3) for (const x of a) { set(st, y * w + x, NONE); removed[y * w + x] = 1; }
+        break;
+      }
     }
     reoutline(st, removed);
     // round off the head: outline in the cap's rows that touches nothing coloured (the cap's doubled edges and the stubs left where its
