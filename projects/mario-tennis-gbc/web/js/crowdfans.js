@@ -14,6 +14,15 @@ export const SKIN = [[255, 228, 196], [248, 204, 164], [226, 172, 124], [196, 13
 export const HAIR = [[24, 20, 24], [64, 40, 24], [120, 72, 32], [216, 168, 72], [200, 64, 40], [240, 120, 40], [64, 88, 208], [48, 152, 80], [208, 88, 168], [208, 208, 220]];
 export const SHIRT = [[224, 48, 48], [240, 136, 40], [248, 208, 56], [56, 168, 80], [48, 112, 224], [128, 72, 200], [240, 240, 240], [48, 48, 64], [232, 104, 160], [40, 176, 184]];
 
+// the match frame k of character sprite set c as it is in the ROM: { im: {w, h, px}, base } (column-major 8x8 tiles, 4 rows: the tile of
+// pixel (x, y) is at base + ((x >> 3) * 4 + (y >> 3)) * 16), or null (intro.js: the VS screen, coloured like the match)
+export function matchFrameRaw(rom, c, k) {
+  const w = u16(rom, OBJECT_LIST[0], OBJECT_LIST[1] + 2 * c), bank = w >> 8, hdr = u16(rom, bank, 0x4000 + (w & 0xFF));
+  const frames = u16(rom, bank, hdr + 4), info = u16(rom, bank, hdr + 10);
+  const ptr = u16(rom, bank, frames + 2 * k); if (ptr < 0x4000 || ptr >= 0x8000) return null;
+  const ntiles = info ? rom[off(bank, info + 4 * k + 3)] : 12, cols = Math.max(1, Math.min(4, ((ntiles || 12) + 3) >> 2));
+  return { im: decodeColMajor(rom, off(bank, ptr), cols, 4), base: off(bank, ptr) };
+}
 // the match frame k of character sprite set c as { w, h, px (indices 0-3), pal (4 x rgb) } trimmed to its pixels
 function matchFrame(rom, c, k) {
   const w = u16(rom, OBJECT_LIST[0], OBJECT_LIST[1] + 2 * c), bank = w >> 8, hdr = u16(rom, bank, 0x4000 + (w & 0xFF));

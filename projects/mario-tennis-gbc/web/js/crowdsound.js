@@ -11,7 +11,7 @@ const KEY = "mt-crowdsound";
 export class CrowdSound {
   constructor(getCtx) {
     this.getCtx = getCtx; this.on = (() => { try { return localStorage.getItem(KEY) !== "off"; } catch (e) { return true; } })();
-    this.noise = null; this.last = { cheer: -9, aww: -9, rattle: -9 }; this.onChange = null; this.volume = 1;
+    this.noise = null; this.last = { cheer: -9, aww: -9, rattle: -9, whistle: -9 }; this.onChange = null; this.volume = 1;
   }
   setOn(on) { this.on = !!on; try { localStorage.setItem(KEY, this.on ? "on" : "off"); } catch (e) { /* private mode */ } if (this.onChange) this.onChange(this.on); }
   ctx() { const c = this.getCtx && this.getCtx(); return c && c.state === "running" ? c : null; }
@@ -72,6 +72,20 @@ export class CrowdSound {
     for (const [f, d, a] of [[392, 0.45, 0.5], [588, 0.3, 0.3]]) {                // the clang of the frame
       const o = c.createOscillator(); o.type = "sine"; o.frequency.value = f * (0.98 + Math.random() * 0.04); const g = c.createGain(); g.gain.setValueAtTime(a * strength * this.volume * 0.5, t); g.gain.exponentialRampToValueAtTime(0.0005, t + d); o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + d + 0.05);
     }
+  }
+  // the umpire's whistle (intro.js: the match starts): a pea whistle, two close tones with the pea's fast trill and a little breath
+  whistle() {
+    const c = this.on && this.ctx(); if (!c || !this.gate("whistle", 1)) return;
+    const t = c.currentTime, out = c.createGain(); out.gain.setValueAtTime(0, t); out.gain.linearRampToValueAtTime(0.22 * this.volume, t + 0.03);
+    out.gain.setValueAtTime(0.22 * this.volume, t + 0.5); out.gain.exponentialRampToValueAtTime(0.001, t + 0.62); out.connect(c.destination);
+    const trill = c.createOscillator(); trill.frequency.value = 27; const tg = c.createGain(); tg.gain.value = 0.45; trill.connect(tg);
+    const am = c.createGain(); am.gain.value = 0.55; tg.connect(am.gain); am.connect(out);
+    for (const f of [2850, 3020]) {
+      const o = c.createOscillator(); o.type = "triangle"; o.frequency.setValueAtTime(f * 0.97, t); o.frequency.linearRampToValueAtTime(f, t + 0.06);
+      const fm = c.createGain(); fm.gain.value = 60; tg.connect(fm); fm.connect(o.frequency); o.connect(am); o.start(t); o.stop(t + 0.65);
+    }
+    const n = this.src(c), bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 3000; bp.Q.value = 4; const ng = c.createGain(); ng.gain.value = 0.25;
+    n.connect(bp); bp.connect(ng); ng.connect(out); n.stop(t + 0.65); trill.start(t); trill.stop(t + 0.65);
   }
 }
 

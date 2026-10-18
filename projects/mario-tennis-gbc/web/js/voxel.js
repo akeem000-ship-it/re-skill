@@ -901,9 +901,9 @@ export class Voxel3D {
       else if (had && n < base) for (const q of had) if (f.fy + q.dy < 0 && !f.list.some(sp => sp.tile === q.tile)) f.list.push({ sx: f.fx + q.dx, sy: f.fy + q.dy, tile: q.tile, attr: q.attr, h: q.h, owner: f });
       const pl = sm.players[k] || f.pl, upp = 1024 / (project(pl.X, pl.Y, 0).s || 128), scale = SCALE * upp / 8;   // world units per px at that depth
       this.draw(this.shadowTex, m4.trs(pl.X, 0.6, pl.Y + 4, 150, 70, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 0.75], 0);
-      const body = this.bodyOf(f.list, f.fx, f.fy); this.drawBody(body, pl.X, pl.Y, -pl.Z, scale, tilt, mvp);
+      const run = this.intro && this.intro.walkBody(pl), body = run || this.bodyOf(f.list, f.fx, f.fy); this.drawBody(body, pl.X, pl.Y, -pl.Z, scale, tilt, mvp);   // INTRO: running on
       // the last whole body seen (feet on screen) stands in while the player is off the Game Boy screen
-      if (f.fy <= 144 && f.fy >= 16) (this.lastBody ||= [])[f.pl.slot] = body;
+      if (!run && f.fy <= 144 && f.fy >= 16) (this.lastBody ||= [])[f.pl.slot] = body;
       if (this.debug) this.debug.push({ X: pl.X, Y: pl.Y, Z: pl.Z, n: f.list.length, tiles: f.list.map(s => `${s.sx},${s.sy},${s.tile}`) });
     }
     if (ballGroup.length) {                               // the ball's projection point is the anchor: its tiles keep their 2D offsets
