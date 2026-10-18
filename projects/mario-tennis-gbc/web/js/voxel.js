@@ -26,6 +26,16 @@ void main() { vUV = uUVRect.xy + aUV * uUVRect.zw; gl_Position = uMVP * uModel *
 const FS = `#version 300 es
 precision mediump float; in vec2 vUV; uniform sampler2D uTex; uniform vec4 uTint; uniform float uAlphaTest; out vec4 o;
 void main() { vec4 c = texture(uTex, vUV) * uTint; if (c.a < uAlphaTest) discard; o = c; }`;
+// the night sky's stars on a side-view map (drawn after the lighting pass, so the night grade does not dim them): each star a texel of
+// its texture (a: brightness, g: twinkle phase), hidden where the lit scene is nearer than the backdrop (the scene's own depth, uDepth)
+const FS_STAR = `#version 300 es
+precision mediump float; in vec2 vUV; uniform sampler2D uTex, uDepth; uniform vec2 uRes; uniform float uK, uT; out vec4 o;
+void main() {
+  vec4 s = texture(uTex, vUV); if (s.a < 0.02) discard;
+  if (texture(uDepth, gl_FragCoord.xy / uRes).r < gl_FragCoord.z - 0.0004) discard;
+  float tw = 0.55 + 0.45 * sin(uT * (1.3 + s.g * 2.0) + s.g * 40.0);
+  o = vec4(vec3(1.0, 0.97, 0.88), s.a * tw * uK);
+}`;
 const VS3 = `#version 300 es
 in vec3 aPos3; in vec2 aUV3; uniform mat4 uMVP; out vec2 vUV;
 void main() { vUV = aUV3; gl_Position = uMVP * vec4(aPos3, 1.0); }`;
@@ -283,7 +293,14 @@ export class Voxel3D {
 
   // ---- game state helpers ----
   col5(pal, p, i) { const o = p * 8 + i * 2, c = pal[o] | (pal[o + 1] << 8); return [(c & 31) * 8, ((c >> 5) & 31) * 8, ((c >> 10) & 31) * 8]; }
-  mapId() { return this.gb.mem.wram[0][0x32E]; }                       // wCurMapID: 0-15 courts, 17-36 RPG areas
+  mapId() { return this.gb.mem.wram[0][0x32E]; }
+  // the annotations of a map (field_objects.js); a map with more than one layout (map 18: the boy's and the girl's dorm room) lists
+  // variants { use, tile: [tx, ty, tile id] }: the first whose tile is in the live map (WRAM3, 64 tiles a row) is used instead
+  fieldDef(id) {
+    const d = FIELD_OBJECTS[id], tm = this.gb.mem.wram[3]; if (!d || !d.variants) return d;
+    for (const v of d.variants) { const [tx, ty, t] = v.tile; if (tm[ty * 64 + tx] === t && FIELD_OBJECTS[v.use]) return FIELD_OBJECTS[v.use]; }
+    return d;
+  }                       // wCurMapID: 0-15 courts, 17-36 RPG areas
   fieldScroll() { const w = this.gb.mem.wram[0]; return { x: w[0x321] * 8 + (w[0x320] >> 5), y: w[0x323] * 8 + (w[0x322] >> 5) }; }
   // an RPG map is on screen when the VRAM tilemap shows the WRAM3 map at the field scroll (checked every 5 frames).
   // While walking, the field scroll (wC320-23) runs a pixel ahead of SCX for a frame each time it crosses a tile
@@ -1098,7 +1115,8 @@ export class Voxel3D {
   // the sky backdrop of a side-view map), building blocks, extruded solids (planters, fountain basins), swaying
   // flowers and fountains; patches the floor under them. `art` is the map picture, `floor` its copy for the ground.
   buildFieldObjects(art, floor) {
-    const gl = this.gl, f = this.field, def = FIELD_OBJECTS[f.mapId];
+    const gl = this.gl, f = this.field, def = this.fieldDef(f.mapId);
+    f.noGlass = false; if (f.stars) { gl.deleteTexture(f.stars.tex); f.stars = null; } if (f.nightBand) { gl.deleteTexture(f.nightBand.tex); f.nightBand = null; }
     for (const c of f.cards || []) { if (c.own) { gl.deleteTexture(c.tex); this.freeMesh(c.mesh); } }
     if (f.blocks) for (const b of [f.blocks.front, f.blocks.side]) { gl.deleteBuffer(b.pb); gl.deleteBuffer(b.ub); gl.deleteVertexArray(b.vao); }
     if (f.artTex) gl.deleteTexture(f.artTex);
@@ -1289,17 +1307,45 @@ export class Voxel3D {
       let top = 0;
       for (let y = 0; y < y1; y++) {             // each row: its own pixels, the sky (its commonest colour) where things were cut out
         const hist = new Map(), where = new Map(); for (let x = 0; x < MWp; x++) if (!hole[y * 512 + x]) { const c = F3.packAt(art, x, y); hist.set(c, (hist.get(c) || 0) + 1); where.set(c, y * 512 + x); }
-        const dom = [...hist].sort((a, b) => b[1] - a[1])[0], di = dom ? where.get(dom[0]) : y * 512; if (y === 0) top = di;
-        for (let x = 0; x < W; x++) { const X = x - side; put((y + ext) * W + x, X < 0 || X >= MWp || hole[y * 512 + X] ? di : y * 512 + X); }
+        let di = (([...hist].sort((a, b) => b[1] - a[1])[0] || [])[0]); di = di !== undefined ? where.get(di) : y * 512; if (y === 0) top = di;
+        // the original's sky rows alternate between two close shades (lines across the 3D sky): a row whose sky is close to the top row's
+        // takes the top row's colour, so the sky is one even colour
+        else if (Math.abs(art[di * 4] - art[top * 4]) + Math.abs(art[di * 4 + 1] - art[top * 4 + 1]) + Math.abs(art[di * 4 + 2] - art[top * 4 + 2]) < 60) di = top;
+        const skyRow = (([...hist].sort((a, b) => b[1] - a[1])[0] || [])[0]);
+        for (let x = 0; x < W; x++) { const X = x - side, i = y * 512 + X; put((y + ext) * W + x, X < 0 || X >= MWp || hole[i] || F3.packAt(art, X, y) === skyRow ? di : i); }
       }
       for (let y = 0; y < ext; y++) for (let x = 0; x < W; x++) put(y * W + x, top);
       f.cards.unshift({ tex: this.texture(W, H, d), mesh: null, d, src, own: true, w: W, h: H, X: MWp / 2, Z: bd.z, tilt: 0, flat: true });
+      // the night version of the band without its clouds: the shapes in the sky that do not reach down to the horizon (trees and roofs do)
+      { const dn = d.slice(), seen = new Uint8Array(W * H), st = [];
+        for (let j0 = 0; j0 < W * H; j0++) {
+          if (seen[j0] || src[j0] === top) continue;
+          const comp = []; let low = 0; st.push(j0); seen[j0] = 1;
+          while (st.length) { const j = st.pop(), x = j % W, y = (j / W) | 0; comp.push(j); low = Math.max(low, y);
+            for (const q of [x > 0 ? j - 1 : -1, x < W - 1 ? j + 1 : -1, j - W, j + W]) if (q >= 0 && q < W * H && !seen[q] && src[q] !== top) { seen[q] = 1; st.push(q); } }
+          if (low < ext + y1 - 6) for (const j of comp) { dn[j * 4] = art[top * 4]; dn[j * 4 + 1] = art[top * 4 + 1]; dn[j * 4 + 2] = art[top * 4 + 2]; }
+        }
+        if (f.nightBand) this.gl.deleteTexture(f.nightBand.tex);
+        f.nightBand = { card: f.cards[0], tex: this.texture(W, H, dn) }; }
+      // stars for the night: scattered over the sky's own pixels (not the clouds or anything standing in the band), fixed per map
+      const st = new Uint8Array(W * H * 4); let seed = 0x5EED + this.field.mapId * 977; const rnd = () => ((seed = (Math.imul(seed, 1103515245) + 12345) | 0) >>> 0) / 4294967296;
+      for (let j = 0; j < W * H; j++) {
+        if (src[j] !== top || rnd() > 1 / 70) continue;
+        const b = 90 + rnd() * 165, ph = rnd() * 255, o = j * 4; st[o] = 255; st[o + 1] = ph; st[o + 3] = b;
+        if (b > 225) for (const q of [j - 1, j + 1, j - W, j + W]) if (q >= 0 && q < W * H && src[q] === top) { st[q * 4] = 255; st[q * 4 + 1] = ph; st[q * 4 + 3] = b * 0.45; }   // the brightest: a small cross
+      }
+      if (f.stars) this.gl.deleteTexture(f.stars.tex);
+      f.stars = { tex: this.texture(W, H, st), w: W, h: H, X: MWp / 2, Z: bd.z + 0.2 };
       // the ground behind it (and below the map): one plain ground tile repeated; the same colour reaches the horizon
       const [gx, gy] = bd.tile || [0, y1], gh = new Map();
       for (let y = 0; y < 512; y++) {
         if (y >= y1 && y < MHp) continue;
-        for (let x = 0; x < 512; x++) { const si = (gy + (y & 7)) * 512 + gx + (x & 7), s = si * 4, o = (y * 512 + x) * 4; floor[o] = art[s]; floor[o + 1] = art[s + 1]; floor[o + 2] = art[s + 2]; f.patched[y * 512 + x] = 1; f.floorSrc[y * 512 + x] = si; }
+        for (let x = 0; x < 512; x++) {
+          const si = (gy + (y & 7)) * 512 + gx + (x & 7), s = si * 4, o = (y * 512 + x) * 4;
+          floor[o] = art[s]; floor[o + 1] = art[s + 1]; floor[o + 2] = art[s + 2]; f.patched[y * 512 + x] = 1; f.floorSrc[y * 512 + x] = si;
+        }
       }
+      f.noGlass = true;                         // (lighting.js: no window glow on a side-view map: its sky is light blue too)
       const gw = new Map(); for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const c = F3.packAt(art, gx + x, gy + y); gh.set(c, (gh.get(c) || 0) + 1); gw.set(c, (gy + y) * 512 + gx + x); }
       f.skirtSrc = gw.get([...gh].sort((a, b) => b[1] - a[1])[0][0]); f.skirt = this.solidTexture([...art.subarray(f.skirtSrc * 4, f.skirtSrc * 4 + 3), 255]);
       if (def.clear === "sky") { f.clearSrc = top; f.clear = [...art.subarray(top * 4, top * 4 + 3)].map(v => v / 255); }
@@ -1546,7 +1592,7 @@ export class Voxel3D {
       if (this.voxelSprites && !c.flat && !f.fading) {
         const owner = c.shared || c; if (!owner.mesh) owner.mesh = this.meshFromPixels(c.d, c.w, c.h, c.R ?? 4, c.T ?? 3.5);
         this.drawMesh(owner.mesh, m4.trs3(c.X, c.lift || 0, c.Z, 1, hs, 1, -tilt), mvp);
-      } else this.draw(c.tex, m4.trs(c.X, c.lift || 0, c.Z, c.w, c.h * hs, -tilt, 0), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
+      } else this.draw(f.nightBand && f.nightBand.card === c && this.nightLevel() > 0.45 ? f.nightBand.tex : c.tex, m4.trs(c.X, c.lift || 0, c.Z, c.w, c.h * hs, -tilt, 0), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);   // (side-view sky: no clouds at night)
     }
     this.drawFieldFx(mvp, T);
     this.fieldRects = this.fieldOverlayRects();                         // once per frame: the actors and the overlays both need them
@@ -1559,7 +1605,23 @@ export class Voxel3D {
     // dialogue boxes and menus: the game writes them into the BG tile map over the scenery (and some screens use
     // the window layer); both are cut out of the 2D frame and shown at the top middle of the view
     if (this.light) this.light.post();   // LIGHT: the lit scene goes to the canvas; the overlays below are drawn over it, unlit
+    this.drawStars(mvp, T);
     this.drawFieldOverlays(frame2d);
+  }
+  // how far into the night it is for the overworld's lighting (0 day .. 1 night; 0 with LIGHT off)
+  nightLevel() { const L = this.light; if (!L || L.broken || !L.activeFor || !L.activeFor("field")) return 0; return (L.skyFor("field") || {}).lamps || 0; }
+  // the stars of a side-view map's night sky (LIGHT on, as strong as its lamps are lit: dusk to night)
+  drawStars(mvp, T) {
+    const f = this.field, L = this.light, S = L && L.q && L.q.scene; if (!f.stars || !S || !S.depthTex || L.broken || !L.cfg || !L.cfg.fx.night || !L.activeFor("field")) return;
+    const k = (L.skyFor("field") || {}).lamps || 0; if (k < 0.05) return;
+    const gl = this.gl; if (!this.progStar) { this.progStar = this.link(VS, FS_STAR); this.uStar = Object.fromEntries(["uMVP", "uModel", "uUVRect", "uTex", "uDepth", "uRes", "uK", "uT"].map(n => [n, gl.getUniformLocation(this.progStar, n)])); }
+    const U = this.uStar, st = f.stars; gl.useProgram(this.progStar); gl.bindVertexArray(this.vao);
+    gl.uniformMatrix4fv(U.uMVP, false, mvp); gl.uniformMatrix4fv(U.uModel, false, m4.trs(st.X, 0, st.Z, st.w, st.h, 0, 0)); gl.uniform4fv(U.uUVRect, [0, 0, 1, 1]);
+    gl.uniform2f(U.uRes, this.cv.width, this.cv.height); gl.uniform1f(U.uK, Math.min(1, k * 1.2)); gl.uniform1f(U.uT, T);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, S.depthTex); gl.uniform1i(U.uDepth, 1);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, st.tex); gl.uniform1i(U.uTex, 0);
+    gl.disable(gl.DEPTH_TEST); gl.blendFunc(gl.SRC_ALPHA, gl.ONE); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.enable(gl.DEPTH_TEST); gl.useProgram(this.prog);
   }
   // swaying flowers, fountain jets and the rings on their pools: geometry built once, moved by the shaders
   drawFieldFx(mvp, T) {
@@ -1676,16 +1738,17 @@ export class Voxel3D {
         }
         this.drawBody(m.body, X, Z, a.lift, 1, TILT, mvp); continue;   // cut by the screen edge: the whole look
       }
-      // no sprites and never seen: a student the game culled before it was ever on screen. Its two 8x16 parts (tile t at x-8, t+2 at x,
-      // attribute from the actor table) are put together here. The game loads an actor's frame into VRAM only once (+0x32 = the frame
-      // loaded, $FF = none yet): a loaded frame is drawn as it is; for the others the tiles of another student are borrowed (all
-      // students share the same frames, only the palette differs), so the far courts are never empty
-      if (!m && a.obj === 84 && (a.ax < -8 || a.ax >= 168 || a.ay < -4 || a.ay >= 176)) {
+      // no sprites and never seen: someone the game culled before they were ever on screen. Every person is two 8x16 parts (tile t at
+      // x-8, t+2 at x, attribute from the actor table), put together here. The game loads an actor's frame into its VRAM tiles only once
+      // (+0x32 = the frame loaded, $FF = none yet): a loaded frame is drawn as it is; for the others the tiles of another actor of the
+      // same kind are borrowed (they share the frames, only the palette differs), or its remembered look, so the far parts of the map are
+      // never empty and nobody pops in at the screen edge
+      if (!m && (a.ax < -8 || a.ax >= 168 || a.ay < -4 || a.ay >= 176)) {
         const w4 = this.gb.mem.wram[4], b = a.slot * 0x40;
         let tile = w4[b + 0x36];
         if (w4[b + 0x32] === 0xFF) {
-          const donor = actors.find(d => d !== a && d.obj === 84 && (d.list.length || mem.has(d.slot) || w4[d.slot * 0x40 + 0x32] !== 0xFF));
-          if (!donor) continue;
+          const donor = actors.find(d => d !== a && d.obj === a.obj && (d.list.length || w4[d.slot * 0x40 + 0x32] !== 0xFF));
+          if (!donor) { const look = [...mem.values()].find(l => l.obj === a.obj); if (look) this.drawBody(look.body, X, Z, a.lift, 1, TILT, mvp); continue; }
           tile = w4[donor.slot * 0x40 + 0x36];
         }
         const attr = w4[b + 0x37], sx = a.ax - 8, sy = a.ay - 16;

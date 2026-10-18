@@ -135,14 +135,14 @@ const GLASS = `
 float glassy(vec3 c) { float blue = smoothstep(0.10, 0.30, c.b - c.r) * smoothstep(0.30, 0.45, c.g) * smoothstep(0.55, 0.75, c.b); float warm = smoothstep(0.75, 0.9, c.r) * smoothstep(0.65, 0.85, c.g) * (1.0 - smoothstep(0.35, 0.6, c.b)); return max(blue, warm); }
 `;
 const FS_EXTRACT = HEAD + GLASS + `
-uniform sampler2D uQ, uB, uS, uD; uniform mat4 uInvVP; uniform vec2 uTexel; uniform float uHi, uEm, uThr, uLL; uniform vec3 uLit;
+uniform sampler2D uQ, uB, uS, uD; uniform mat4 uInvVP; uniform vec2 uTexel; uniform float uHi, uEm, uThr, uLL, uGlass; uniform vec3 uLit;
 vec3 wpos(vec2 uv) { vec4 p = uInvVP * vec4(uv * 2.0 - 1.0, texture(uD, uv).r * 2.0 - 1.0, 1.0); return p.xyz / p.w; }
 void main() {
   vec3 c = texture(uQ, vUV).rgb * uLL, b = texture(uB, vUV).rgb;
   vec3 P0 = wpos(vUV); vec3 n = normalize(cross(wpos(vUV + vec2(uTexel.x, 0.0)) - P0, wpos(vUV + vec2(0.0, uTexel.y)) - P0)); float wall = 1.0 - smoothstep(0.35, 0.85, abs(n.y));
   float dens = 0.0;                                              // how much of the area is lamp / window glass (taps on the full-resolution picture)
   for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) dens += glassy(texture(uS, vUV + vec2(float(x), float(y)) * uTexel * 0.8).rgb);
-  float em = smoothstep(0.10, 0.45, dens / 9.0) * wall;
+  float em = smoothstep(0.10, 0.45, dens / 9.0) * wall * uGlass;              // uGlass 0: a side-view map, whose sky would be taken for glass
   vec3 hi = max(c - uThr, 0.0) * uHi;
   o = vec4(hi + uLit * em * uEm, em);
 }`;
@@ -377,7 +377,9 @@ export class Lighting {
     if (!this.begun || this.posted) return;
     this.posted = true; const gl = this.gl, q = this.q, v = this.v, W = this.W, H = this.H, cam = this.cam, t0 = performance.now();
     if (!cam) { this.blitPlain(); return; }
-    const P = this.sky = cam.indoor ? INDOOR : this.skyFor(cam.kind);
+    let P = this.sky = cam.indoor ? INDOOR : this.skyFor(cam.kind);
+    // a side-view map at night (the road): soft cool moonlight over it, so the road stays readable under the stars
+    if (cam.kind === "field" && v.field && v.field.noGlass && P.lamps > 0.02) P = { ...P, amb: P.amb.map((a, i) => a + [0.13, 0.16, 0.22][i] * P.lamps) };
     try { this.run(P, cam, q, W, H); } catch (e) { console.warn("light", e); this.broken = true; try { this.timerEnd(); } catch (e2) { /* none running */ } this.blitPlain(); }
     // the overlays that follow use the voxel renderer's own state
     gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H); gl.useProgram(v.prog); gl.bindVertexArray(v.vao); gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -431,7 +433,7 @@ export class Lighting {
       this.pass(progB, q.b1, { uDir: [1 / q.q0.w * 1.3, 0], uUseDepth: 0 }, [q.q0.t, S.depthTex]);
       this.pass(progB, q.b0, { uDir: [0, 1 / q.q0.h * 1.3], uUseDepth: 0 }, [q.b1.t, S.depthTex]);
     }
-    this.pass(progE, q.e0, { uInvVP: invVP, uTexel: [1 / q.q0.w, 1 / q.q0.h], uHi: fx.bloom ? 1.5 * P.bloom : 0, uEm: 2.2 * night * (cam.kind === "field" ? 1 : 0), uThr: P.thr, uLL: Math.min(1.4, (0.299 * (P.amb[0] + (P.sun[0] - P.amb[0]) * 0.85) + 0.587 * (P.amb[1] + (P.sun[1] - P.amb[1]) * 0.85) + 0.114 * (P.amb[2] + (P.sun[2] - P.amb[2]) * 0.85)) * P.exp), uLit: [1.0, 0.72, 0.34] }, [q.q0.t, (needB ? q.b0 : q.q0).t, S.t, S.depthTex]);
+    this.pass(progE, q.e0, { uGlass: cam.kind === "field" && this.v.field && this.v.field.noGlass ? 0 : 1, uInvVP: invVP, uTexel: [1 / q.q0.w, 1 / q.q0.h], uHi: fx.bloom ? 1.5 * P.bloom : 0, uEm: 2.2 * night * (cam.kind === "field" ? 1 : 0), uThr: P.thr, uLL: Math.min(1.4, (0.299 * (P.amb[0] + (P.sun[0] - P.amb[0]) * 0.85) + 0.587 * (P.amb[1] + (P.sun[1] - P.amb[1]) * 0.85) + 0.114 * (P.amb[2] + (P.sun[2] - P.amb[2]) * 0.85)) * P.exp), uLit: [1.0, 0.72, 0.34] }, [q.q0.t, (needB ? q.b0 : q.q0).t, S.t, S.depthTex]);
     this.pass(progB, q.g1, { uDir: [1 / q.e0.w * 2.2, 0], uUseDepth: 0 }, [q.e0.t, S.depthTex]);
     this.pass(progB, q.g0, { uDir: [0, 1 / q.e0.h * 2.2], uUseDepth: 0 }, [q.g1.t, S.depthTex]);
     this.pass(progB, q.g1, { uDir: [1 / q.e0.w * 5, 0], uUseDepth: 0 }, [q.g0.t, S.depthTex]);
