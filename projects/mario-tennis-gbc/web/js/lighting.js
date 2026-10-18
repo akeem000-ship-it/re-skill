@@ -140,10 +140,15 @@ uniform sampler2D uQ, uB, uS, uD; uniform mat4 uInvVP; uniform vec2 uTexel; unif
 vec3 wpos(vec2 uv) { vec4 p = uInvVP * vec4(uv * 2.0 - 1.0, texture(uD, uv).r * 2.0 - 1.0, 1.0); return p.xyz / p.w; }
 void main() {
   vec3 c = texture(uQ, vUV).rgb * uLL, b = texture(uB, vUV).rgb;
-  vec3 P0 = wpos(vUV); vec3 n = normalize(cross(wpos(vUV + vec2(uTexel.x, 0.0)) - P0, wpos(vUV + vec2(0.0, uTexel.y)) - P0)); float wall = 1.0 - smoothstep(0.35, 0.85, abs(n.y));
+  // the surface's slope from the depth on both sides: at the edge of a figure standing on the ground one side crosses onto the figure,
+  // the other stays on the ground, and only a surface that is upright on both sides counts as a wall (no glow rim around people)
+  vec3 P0 = wpos(vUV), dx = vec3(uTexel.x, 0.0, 0.0), dy = vec3(0.0, uTexel.y, 0.0);
+  vec3 n1 = normalize(cross(wpos(vUV + dx.xy) - P0, wpos(vUV + dy.xy) - P0)), n2 = normalize(cross(P0 - wpos(vUV - dx.xy), P0 - wpos(vUV - dy.xy)));
+  float wall = (1.0 - smoothstep(0.35, 0.85, abs(n1.y))) * (1.0 - smoothstep(0.35, 0.85, abs(n2.y)));
   float dens = 0.0;                                              // how much of the area is lamp / window glass (taps on the full-resolution picture)
   for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) dens += glassy(texture(uS, vUV + vec2(float(x), float(y)) * uTexel * 0.8).rgb);
-  float em = smoothstep(0.10, 0.45, dens / 9.0) * wall * uGlass;              // uGlass 0: a side-view map, whose sky would be taken for glass
+  float self = glassy(texture(uS, vUV).rgb);                     // the pixel itself glass, not only beside some (a blue court around a figure)
+  float em = smoothstep(0.10, 0.45, dens / 9.0) * smoothstep(0.2, 0.6, self) * wall * uGlass;   // uGlass 0: a side-view map, whose sky would be taken for glass
   vec3 hi = max(c - uThr, 0.0) * uHi;
   o = vec4(hi + uLit * em * uEm, em);
 }`;
@@ -364,7 +369,7 @@ export class Lighting {
         // fountains (cool) and street lamps (warm, field_objects lamps), the six nearest the middle of the view
         const all = [], sc = v.fieldScroll ? v.fieldScroll() : { x: 0, y: 0 }, cx = sc.x + 80, cz = sc.y + 72;
         for (const fo of (fx && fx.fountains) || []) all.push({ p: [fo.origin[0], fo.origin[1] + 8, fo.origin[2]], r: 100, c: [0.34 * night, 0.80 * night, 1.20 * night] });
-        for (const l of (v.field && v.field.lamps) || []) all.push({ p: [l.x, l.h, l.y], r: 110, c: [1.5 * night, 1.15 * night, 0.62 * night] });
+        for (const l of (v.field && v.field.lamps) || []) all.push({ p: [l.x, l.h, l.y], r: l.r || 110, c: [1.5 * night * (l.k || 1), 1.15 * night * (l.k || 1), 0.62 * night * (l.k || 1)] });
         all.sort((a, b) => Math.hypot(a.p[0] - cx, a.p[2] - cz) - Math.hypot(b.p[0] - cx, b.p[2] - cz)); out.push(...all.slice(0, 6));
       }
     } else if (kind === "court" && night > 0.02) {
@@ -434,7 +439,7 @@ export class Lighting {
       this.pass(progB, q.b1, { uDir: [1 / q.q0.w * 1.3, 0], uUseDepth: 0 }, [q.q0.t, S.depthTex]);
       this.pass(progB, q.b0, { uDir: [0, 1 / q.q0.h * 1.3], uUseDepth: 0 }, [q.b1.t, S.depthTex]);
     }
-    this.pass(progE, q.e0, { uGlass: cam.kind === "field" && this.v.field && this.v.field.noGlass ? 0 : 1, uInvVP: invVP, uTexel: [1 / q.q0.w, 1 / q.q0.h], uHi: fx.bloom ? 1.5 * P.bloom : 0, uEm: 2.2 * night * (cam.kind === "field" ? 1 : 0), uThr: P.thr, uLL: Math.min(1.4, (0.299 * (P.amb[0] + (P.sun[0] - P.amb[0]) * 0.85) + 0.587 * (P.amb[1] + (P.sun[1] - P.amb[1]) * 0.85) + 0.114 * (P.amb[2] + (P.sun[2] - P.amb[2]) * 0.85)) * P.exp), uLit: [1.0, 0.72, 0.34] }, [q.q0.t, (needB ? q.b0 : q.q0).t, S.t, S.depthTex]);
+    this.pass(progE, q.e0, { uGlass: cam.kind === "field" && this.v.field && (this.v.field.noGlass || this.v.field.noGlow) ? 0 : 1, uInvVP: invVP, uTexel: [1 / q.q0.w, 1 / q.q0.h], uHi: fx.bloom ? 1.5 * P.bloom : 0, uEm: 2.2 * night * (cam.kind === "field" ? 1 : 0), uThr: P.thr, uLL: Math.min(1.4, (0.299 * (P.amb[0] + (P.sun[0] - P.amb[0]) * 0.85) + 0.587 * (P.amb[1] + (P.sun[1] - P.amb[1]) * 0.85) + 0.114 * (P.amb[2] + (P.sun[2] - P.amb[2]) * 0.85)) * P.exp), uLit: [1.0, 0.72, 0.34] }, [q.q0.t, (needB ? q.b0 : q.q0).t, S.t, S.depthTex]);
     this.pass(progB, q.g1, { uDir: [1 / q.e0.w * 2.2, 0], uUseDepth: 0 }, [q.e0.t, S.depthTex]);
     this.pass(progB, q.g0, { uDir: [0, 1 / q.e0.h * 2.2], uUseDepth: 0 }, [q.g1.t, S.depthTex]);
     this.pass(progB, q.g1, { uDir: [1 / q.e0.w * 5, 0], uUseDepth: 0 }, [q.g0.t, S.depthTex]);

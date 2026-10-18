@@ -1189,7 +1189,7 @@ export class Voxel3D {
   // flowers and fountains; patches the floor under them. `art` is the map picture, `floor` its copy for the ground.
   buildFieldObjects(art, floor) {
     const gl = this.gl, f = this.field, def = this.fieldDef(f.mapId);
-    f.noGlass = false; if (f.stars) { gl.deleteTexture(f.stars.tex); f.stars = null; } if (f.nightBand) { gl.deleteTexture(f.nightBand.tex); f.nightBand = null; }
+    f.noGlass = false; f.noGlow = false; if (f.stars) { gl.deleteTexture(f.stars.tex); f.stars = null; } if (f.nightBand) { gl.deleteTexture(f.nightBand.tex); f.nightBand = null; }
     for (const c of f.cards || []) { if (c.own) { gl.deleteTexture(c.tex); this.freeMesh(c.mesh); } }
     if (f.blocks) for (const b of [f.blocks.front, f.blocks.side]) { gl.deleteBuffer(b.pb); gl.deleteBuffer(b.ub); gl.deleteVertexArray(b.vao); }
     if (f.artTex) gl.deleteTexture(f.artTex);
@@ -1201,7 +1201,7 @@ export class Voxel3D {
     // where each floor / building-texture pixel comes from in the map picture: palette fades only recolour (recolourField)
     f.floorSrc = new Int32Array(512 * 512).map((_, i) => i); f.artSrc = new Int32Array(f.floorSrc);
     if (!def) return;
-    f.noWalls = def.walls === false;
+    f.noWalls = def.walls === false; f.noGlow = def.glass === false;   // glass: false: no window glow at night (no buildings: pale fences and courts are not windows)
     f.patched = new Uint8Array(512 * 512); f.artMod = new Uint8Array(512 * 512);   // floor / art pixels that are no longer the map's (kept by live tile updates)
     const cover = (x0, y0, x1, y1) => {          // metatiles under annotated objects: no collision box there (it would show as a floor-textured block)
       for (let my = Math.max(0, y0 >> 4); my <= Math.min(31, (y1 - 1) >> 4); my++) for (let mx = Math.max(0, x0 >> 4); mx <= Math.min(31, (x1 - 1) >> 4); mx++) f.covered[my * 32 + mx] = 1;
@@ -1317,12 +1317,13 @@ export class Voxel3D {
       if (c.plant) { const t = trim(d, w, h); placePlant(shapeOf(t.d, c.x0, c.y0, w, t.h, c.plant), c.x0 + w / 2, c.y0 + t.h + (c.dz || 0), c); continue; }
       f.cards.push(card(d, c.x0, c.y0, w, h, c));
     }
-    // street lamps (lamps: [[x, y], ...] map px of the foot): a post with a lantern, drawn here (not in the map); the lantern's warm glass
+    // street lamps (lamps: [[x, y], ...] map px of the foot; lampLight {r, k}: their reach and strength, wider on the courts): a post with a
+    // lantern, drawn here (not in the map); the lantern's warm glass
     // glows at night (lighting.js finds warm lamps) and each lamp is a point light (lighting.js lights)
     f.lamps = [];
     for (const [lx, ly] of def.lamps || []) {
       if (!inMap(lx, ly)) continue;
-      const d = lampArt(), cd = card(d, lx - 6, ly - 46, 12, 46, {}); cd.src = null; f.cards.push(cd); f.lamps.push({ x: lx, y: ly, h: 40 });
+      const d = lampArt(), cd = card(d, lx - 6, ly - 46, 12, 46, {}); cd.src = null; f.cards.push(cd); f.lamps.push({ x: lx, y: ly, h: 40, r: (def.lampLight || {}).r || 110, k: (def.lampLight || {}).k || 1 });
     }
     // sprites: one example cut out; every pixel-exact copy anywhere in the map (not tile-aligned) stands up too
     for (const sp of def.sprites || []) {
