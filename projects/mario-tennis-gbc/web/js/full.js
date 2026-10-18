@@ -13,10 +13,10 @@ import { attachVoxStyle } from "./voxround.js";   // VOX: Blocky / Rounded
 import { attachBallFX } from "./ballfx.js";
 import { attachIntro } from "./intro.js";         // INTRO: walk-out before each match (3D stadium)       // BALL FX: on / off (3D / VOX court)
 import { loadSnapshot } from "./gb/snapshot.js";
-import { saveState, loadState } from "./gb/state.js";
+import { saveState, loadState, snapshot, restore } from "./gb/state.js";
 import { composeWide, WIDE_W, WIDE_H } from "./wide.js";
 import { mountStick } from "./stick.js";
-import { Recorder, maskOf, packRecording, bytesToBase64 } from "./recorder.js";
+import { Recorder, maskOf, packRecording, bytesToBase64, stateOf } from "./recorder.js";
 import { HDText, FONTS, FONT_ORDER, HD } from "./hdtext.js";
 import { mountCreator } from "./look/creator.js";
 import { lookEvent } from "./look/index.js";
@@ -55,9 +55,9 @@ function loadSave() {
 }
 function bytesToBinary(b) { let s = ""; for (let i = 0; i < b.length; i += 8192) s += String.fromCharCode.apply(null, b.subarray(i, i + 8192)); return s; }   // no giant spread
 let saveTimer = 0, savePending = false;
-function writeSave() {
+function writeSave() {                     // (with run-ahead on: the real machine's save, not the look-ahead frame's)
   savePending = false;
-  try { localStorage.setItem(SAVE_KEY(), btoa(bytesToBinary(gb.mem.sram))); $("savestatus").textContent = "saved " + new Date().toLocaleTimeString(); } catch (e) { console.warn("save", e); }
+  try { localStorage.setItem(SAVE_KEY(), btoa(bytesToBinary(raSnap ? raSnap.mem.sram : gb.mem.sram))); $("savestatus").textContent = "saved " + new Date().toLocaleTimeString(); } catch (e) { console.warn("save", e); }
 }
 function maybeSave() {                     // the game writes its save in bursts: store it 0.5 s after the last write
   if (!gb.mem.sramDirty) return;
@@ -67,7 +67,7 @@ function maybeSave() {                     // the game writes its save in bursts
 // the debounce timer does not run once the page is hidden (Android pauses the WebView's timers when the app goes to
 // the background and may then kill it), so a pending save is written immediately when the page is hidden
 function flushSave() {
-  if (!gb) return;
+  if (!gb) return; settle();
   if (gb.mem.sramDirty) { gb.mem.sramDirty = false; savePending = true; }
   if (savePending) { clearTimeout(saveTimer); writeSave(); }
 }
@@ -96,8 +96,18 @@ const session = new Recorder(); let portRecFrom = -1, sessionLook = null;
 const creator = mountCreator({ hud: $("hud"), keys, pause: p => { const was = paused; paused = p; return was; },
   onChange: look => { rec.event(lookEvent(look)); session.event(lookEvent(look)); drawnFrame = -1; } });
 const recording = () => rec.on || portRecFrom >= 0;
+// RUN-AHEAD (on / off, remembered): after the game's frames, the machine is copied, one more frame is run with the same buttons and that
+// frame is shown; the copy is put back before the next real frame (settle). What you press shows one frame (17 ms) sooner, and the game
+// itself is untouched (web/tests/runahead.mjs). Saves, recordings, reset and save states always use the real machine (settle first).
+// The original code only: the JS port keeps state of its own outside the machine.
+let runAhead = stored("mt-runahead") === "on", raSnap = null, lastInp = null;
+function settle() { if (raSnap) { restore(gb, raSnap); raSnap = null; } }
+function lookAhead() {
+  if (!runAhead || port || !gb) return;
+  raSnap = snapshot(gb); gb.setInput(lastInp || input()); gb.runFrame(); gb.apu.outPos = 0;   // its sound is dropped (the real frame plays it)
+}
 function frame() {
-  pollGamepad(keys); const inp = input(), mask = maskOf(inp); gb.setInput(inp);
+  pollGamepad(keys); const inp = input(), mask = maskOf(inp); gb.setInput(inp); lastInp = inp;
   if (port) portFrame(); else gb.runFrame();
   if (view3d && voxel && voxel.mode === "3d") voxel.tick();
   rec.frame(gb, mask); session.frame(gb, mask);
@@ -203,14 +213,31 @@ function setPreset(name) {                  // court camera preset (CAM button c
   try { localStorage.setItem("mt-cam", name); } catch (e) { /* private mode */ }
 }
 let hdLast = 0, hdDt = 16;
+// INTRO: while the walk-out holds the game, a copy of the machine plays on with no buttons pressed, for its music only (the court music
+// goes on instead of silence); it is dropped when the match starts and the game itself carries on from where it was held
+let recomp = null, introGb = null, introAcc = 0, introLast = 0;
+function introMusic(now) {
+  if (!introGb) {
+    try { introGb = new GBC(gb.mem.rom, { sampleRate: 44100, audio: true }); if (recomp) { introGb.installRecomp(recomp.T); if (recomp.sig) introGb.exec.setHramSig(recomp.sig); } loadState(introGb, saveState(gb)); }
+    catch (e) { console.warn("intro music", e); introGb = false; return; }
+    introAcc = 0; introLast = now;
+  }
+  if (!introGb) return;
+  introAcc = Math.min(introAcc + now - introLast, STEP * 4); introLast = now;
+  for (; introAcc >= STEP; introAcc -= STEP) {
+    introGb.setInput(stateOf(0)); introGb.runFrame();
+    if (audioReady && anode) { const n = introGb.apu.drain(abuf); if (n) anode.port.postMessage(abuf.slice(0, n)); } else introGb.apu.outPos = 0;
+  }
+}
 function loop(now) {
-  if (gb && !paused && voxel && view3d && voxel.intro && voxel.intro.holding) { last = now; acc = 0; renderedAt = -1; draw(1); }   // INTRO: the game waits, the camera moves
+  if (gb && !paused && voxel && view3d && voxel.intro && voxel.intro.holding) { last = now; acc = 0; renderedAt = -1; draw(1); introMusic(now); }   // INTRO: the game waits, the camera moves, the music plays on
   else if (gb && !paused) {
+    introGb = null;
     if (!last) last = now;
     acc = Math.min(acc + (now - last), STEP * 4); last = now;
     const per = turbo ? 4 : 1;
-    while (acc >= STEP) { for (let i = 0; i < per; i++) frame(); acc -= STEP; fps.n++; }
-    draw(acc / STEP); maybeSave();
+    if (acc >= STEP) { settle(); while (acc >= STEP) { for (let i = 0; i < per; i++) frame(); acc -= STEP; fps.n++; } maybeSave(); lookAhead(); }
+    draw(acc / STEP);
     if (hd) { const dt = now - (hdLast || now); hdLast = now; hdDt = hdDt * 0.9 + Math.min(dt, 100) * 0.1; hd.struggling = hdDt > 24; }   // below ~40 fps the HD art waits while the screen moves
     if (now - fps.t >= 1000) { $("fps").textContent = view3d ? `game ${fps.n} · view ${fps.r} fps` + (turbo ? " (turbo)" : "") : fps.n + " fps" + (turbo ? " (turbo)" : ""); fps.n = 0; fps.r = 0; fps.t = now; }
   } else last = now;
@@ -272,6 +299,7 @@ async function loadRom(buf) {
   $("romstatus").textContent = romHash === "" ? "ROM loaded" : romHash === EXPECTED_SHA1 ? "ROM verified (Mario Tennis USA)" : "Warning: unexpected ROM SHA-1 " + romHash;
   await creator.ready;                         // bundled opponent mods (web/mods) are fetched
   creator.prepare(bytes);                      // the player's look (web/js/look) patches the ROM copy before the machine is built
+  raSnap = null;
   if (portMode() !== "rom") { port = await makePort(bytes); gb = port.gb; portError = null; }
   else gb = new GBC(bytes, { sampleRate: 44100, audio: true });
   creator.attach(gb);
@@ -281,7 +309,7 @@ async function loadRom(buf) {
   // the statically translated game (tools/recomp.py -> gen/game.js) runs the traced code as native
   // functions; without it everything is interpreted (same results, see web/tests/recomp_vs_interp.mjs)
   if (port) $("romstatus").textContent += ` · JS port (${port.hooks.size} routines ported, the rest ROM code)`;
-  else try { const mod = await import("../gen/game.js"); const T = {}; mod.install(T); gb.installRecomp(T); if (mod.HRAM_SIG) gb.exec.setHramSig(mod.HRAM_SIG); $("romstatus").textContent += " · recompiled code"; } catch (e) { $("romstatus").textContent += " · interpreter"; }
+  else try { const mod = await import("../gen/game.js"); const T = {}; mod.install(T); gb.installRecomp(T); if (mod.HRAM_SIG) gb.exec.setHramSig(mod.HRAM_SIG); recomp = { T, sig: mod.HRAM_SIG }; $("romstatus").textContent += " · recompiled code"; } catch (e) { $("romstatus").textContent += " · interpreter"; }
   loadSave();
   if (port) { session.start(gb, recMeta()); sessionLook = creator.look; }
   $("loader").hidden = true; cv.focus();
@@ -331,13 +359,13 @@ $("file").addEventListener("change", async e => {
 romStore("readonly", s => s.get("rom")).then(b => { if (b && !gb) $("remembered").hidden = false; }).catch(() => {});
 $("startsaved").addEventListener("click", () => romStore("readonly", s => s.get("rom")).then(b => b && loadRom(b.buffer.slice(0))).catch(e => { $("romstatus").textContent = "could not read the saved ROM: " + e; }));
 $("forgetrom").addEventListener("click", () => romStore("readwrite", s => s.delete("rom")).then(() => { $("remembered").hidden = true; }).catch(() => {}));
-$("reset").addEventListener("click", () => { if (port) { location.reload(); return; } if (gb) { gb.reset(); rec.event("reset"); } });
+$("reset").addEventListener("click", () => { if (port) { location.reload(); return; } if (gb) { settle(); gb.reset(); rec.event("reset"); } });
 // ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
 // a .mtrec file (Android: Downloads/MTenn3D and the share sheet; browser: a download). Hiding the app stops and saves.
 const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? "enhanced" : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
   port: port ? (portMode() === "portall" ? "all" : (q.get("port") || PORT_VERIFIED.join(","))) : undefined });
 async function saveRecording(now = false) {     // now: the app is being hidden; skip compression so it finishes at once
-  if (!recording()) return;
+  if (!recording()) return; settle();
   let obj;
   if (portRecFrom >= 0) { obj = session.snapshot(gb, romHash); obj.meta = { ...recMeta(), look: sessionLook || undefined, from: portRecFrom }; portRecFrom = -1; }
   else obj = rec.stop(gb, romHash);
@@ -352,7 +380,7 @@ async function saveRecording(now = false) {     // now: the app is being hidden;
 $("rec").addEventListener("pointerdown", () => {
   if (!gb) return;
   if (recording()) { saveRecording(); return; }
-  if (port) portRecFrom = session.n; else rec.start(gb, recMeta());
+  settle(); if (port) portRecFrom = session.n; else rec.start(gb, recMeta());
   $("rec").classList.add("on");
 });
 setInterval(() => { if (!recording()) return; const t = rec.on ? rec.seconds : (session.n - portRecFrom) / 60; $("rec").textContent = "REC " + Math.floor(t / 60) + ":" + String(Math.floor(t % 60)).padStart(2, "0"); }, 1000);
@@ -364,6 +392,10 @@ function applySmooth() {
   try { localStorage.setItem("mt-smooth", smooth ? "on" : "off"); } catch (e) { /* private mode */ }
 }
 $("smoothbtn").addEventListener("pointerdown", () => { smooth = !smooth; renderedAt = -1; applySmooth(); });
+const raBtn = document.createElement("span"); raBtn.className = "k"; raBtn.id = "runaheadbtn"; raBtn.title = "Run-ahead: what you press shows one frame (17 ms) sooner; the game is unchanged. Uses twice the emulation (the original code only, not the JS port)";
+const showRA = () => { raBtn.textContent = "RUN-AHEAD: " + (runAhead ? "on" : "off"); raBtn.classList.toggle("on", runAhead); };
+raBtn.addEventListener("pointerdown", () => { runAhead = !runAhead; if (!runAhead) settle(); try { localStorage.setItem("mt-runahead", runAhead ? "on" : "off"); } catch (e) { /* private mode */ } showRA(); });
+$("smoothbtn").after(document.createTextNode(" "), raBtn); showRA();
 applySmooth();
 $("cam").addEventListener("pointerdown", () => setPreset(PRESET_ORDER[(PRESET_ORDER.indexOf(preset) + 1) % PRESET_ORDER.length]));
 $("aspect").addEventListener("pointerdown", () => { aspect = ASPECTS[(ASPECTS.indexOf(aspect) + 1) % ASPECTS.length]; drawnFrame = -1; applyAspect(); });
@@ -424,5 +456,5 @@ $("engbtn").addEventListener("pointerdown", () => {
 // a private build bundles the ROM; a shared one doesn't, so the app starts with the ROM the player picked last time
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom)
   .catch(() => { if (navigator.userAgent.includes("MarioTennisWrapper")) romStore("readonly", s => s.get("rom")).then(b => { if (b && !gb) loadRom(b.buffer.slice(0)); }).catch(() => {}); });
-window.__gb = { get smooth() { return smooth; }, set smooth(v) { smooth = !!v; renderedAt = -1; applySmooth(); }, get fpsInfo() { return fps; }, get gb() { return gb; }, get hd() { return hd; }, keys, rec, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, loadSnapshot(s) { loadSnapshot(gb, s); }, saveState() { return saveState(gb); }, loadState(s) { loadState(gb, s); drawnFrame = -1; } };
+window.__gb = { get smooth() { return smooth; }, set smooth(v) { smooth = !!v; renderedAt = -1; applySmooth(); }, get fpsInfo() { return fps; }, get gb() { return gb; }, get hd() { return hd; }, keys, rec, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { if (n) settle(); for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, loadSnapshot(s) { raSnap = null; loadSnapshot(gb, s); }, saveState() { settle(); return saveState(gb); }, loadState(s) { raSnap = null; loadState(gb, s); drawnFrame = -1; }, get runAhead() { return runAhead; }, settle };
 requestAnimationFrame(loop);

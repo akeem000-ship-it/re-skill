@@ -28,3 +28,26 @@ export function loadState(gb, s) {
   for (const p of PARTS) dec(gb[p], s[p]);
   gb.frames = s.frames; gb.cycles = s.cycles; gb.mem.updateRom();
 }
+// Fast in-memory copies of the same fields, for run-ahead (full.js): typed arrays are copied as they are (no base64), and a
+// restore writes them back in place. snapshot(gb) -> object, restore(gb, snap); the snapshot can be restored any number of times.
+function cp(v) {
+  if (ArrayBuffer.isView(v)) return v.slice();
+  if (Array.isArray(v)) return v.map(cp);
+  if (v && typeof v === "object") { const o = {}; for (const k of Object.keys(v)) if (!SKIP.has(k)) o[k] = cp(v[k]); return o; }
+  return v;
+}
+function put(target, v) {
+  if (ArrayBuffer.isView(v)) { if (target && ArrayBuffer.isView(target) && target.length === v.length && target.constructor === v.constructor) { target.set(v); return target; } return v.slice(); }
+  if (Array.isArray(v)) { const a = Array.isArray(target) ? target : []; v.forEach((x, i) => { a[i] = put(a[i], x); }); a.length = v.length; return a; }
+  if (v && typeof v === "object") { const o = target && typeof target === "object" ? target : {}; for (const k of Object.keys(v)) o[k] = put(o[k], v[k]); return o; }
+  return v;
+}
+export function snapshot(gb) {
+  const s = { frames: gb.frames, cycles: gb.cycles };
+  for (const p of PARTS) s[p] = cp(gb[p]);
+  return s;
+}
+export function restore(gb, s) {
+  for (const p of PARTS) put(gb[p], s[p]);
+  gb.frames = s.frames; gb.cycles = s.cycles; gb.mem.updateRom();
+}

@@ -175,7 +175,7 @@ export class Stadium3D {
     return "senior";                                                                // exhibition and everything else
   }
   get crowdSizes() { return this._sizes ||= this.loadSizes(); }
-  loadSizes() { const d = { junior: 0.12, senior: 0.45, major: 1 }; try { const o = JSON.parse(localStorage.getItem(SIZES_KEY) || "{}"); for (const k of Object.keys(d)) if (typeof o[k] === "number") d[k] = clamp(o[k]); } catch (e) { /* defaults */ } return d; }
+  loadSizes() { const d = { junior: 0.08, senior: 0.45, major: 1 }; try { const o = JSON.parse(localStorage.getItem(SIZES_KEY) || "{}"); for (const k of Object.keys(d)) if (typeof o[k] === "number") d[k] = clamp(o[k]); } catch (e) { /* defaults */ } return d; }
   // for the LIGHT / settings panel: setCrowdSize("junior" | "senior" | "major", 0..1); remembered in localStorage mt-crowd
   setCrowdSize(cls, v) { const z = this.crowdSizes; if (!(cls in z)) return; z[cls] = clamp(+v); try { localStorage.setItem(SIZES_KEY, JSON.stringify(z)); } catch (e) { /* private mode */ } this.applyFill(); if (this.onSizes) this.onSizes(z); }
   applyFill() { this.cls = this.crowdClass(); this.fill = this.crowdSizes[this.cls]; }
