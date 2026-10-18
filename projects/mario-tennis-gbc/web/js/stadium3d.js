@@ -197,6 +197,9 @@ function adTextures(gl) {
     return t;
   });
 }
+// the players' tunnels (x, z: the centre of the mouth, facing the near end; w wide, d deep, h high): stadium3d.js builds them, intro.js walks
+// the players out of them
+export const TUNNELS = [{ side: 0, x: -1065, z: 800, w: 230, d: 240, h: 260, col: [200, 30, 40] }, { side: 1, x: 1065, z: -1470, w: 230, d: 240, h: 260, col: [30, 80, 200] }];
 export class Stadium3D {
   constructor(voxel) {
     this.v = voxel; this.gl = voxel.gl;
@@ -404,6 +407,15 @@ export class Stadium3D {
       for (let s = 0; s < 5; s++) B.add(cx - 40 - s * 6, s * 30, cz + 48, 34, 7, 30, frame);                // ladder steps towards the viewer
       B.add(cx - 22, 0, cz + 66, 6, 150, 6, f2); B.add(cx - 56, 0, cz + 66, 6, 150, 6, f2);
       judge = { x: cx, y: H + 9, z: cz, w: jd.width, h: jd.height };   // the umpire: the game's own picture of them, seated here (draw)
+    }
+    // the players' tunnels (intro.js: the walk-out starts inside them): an opening in a block against the left stand on the near half and one
+    // against the right stand on the far half (in front of the court's backdrop), a dark passage behind each mouth (it hides a player until they step out) and a banner over it
+    for (const T of TUNNELS) {
+      const { x, z, w, d, h } = T, zc = z - d / 2, col = shade(P.conc, 0.85), top = shade(P.conc, 1.1);
+      B.add(x - w / 2 + 15, 0, zc, 30, h, d, col, 0.03); B.add(x + w / 2 - 15, 0, zc, 30, h, d, col, 0.03);          // the side walls
+      B.add(x, h, zc, w + 10, 36, d + 10, top, 0.03);                                                           // the roof
+      B.add(x, 0, zc - 4, w - 60, h, d - 18, [14, 14, 20]);                                                     // the dark passage (its front just inside the mouth)
+      B.add(x, h - 42, z + 3, w + 10, 42, 8, T.col);                                                            // the banner over the mouth
     }
     // floodlight towers (lighting.js hangs its lights at the same x / z, FLOOD_HEIGHT up)
     for (const [x, z] of FLOODS) {

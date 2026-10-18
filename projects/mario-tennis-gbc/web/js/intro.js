@@ -10,15 +10,21 @@
 //      blows the whistle: PLAY!
 // The close-ups show each player's level and four bars (power, spin, speed, control from their 11 stats). The names, levels and stats are
 // the match's player records (wP1Name $CA00 / wP2Name $CA80: name, roster id +$0B, level +$18, stats +$20-$2A).
+// It grows with the match (tier, by STADIUM crowdClass): junior plain; senior and exhibition louder (a cheer as each player steps out);
+// the big matches (Island Open, dream matches, the tour's last matches) add a second camera pass high round the stadium under fireworks
+// with a big title banner, confetti over each player as they walk out of the tunnel and roars from the crowd. The players walk out of
+// the stadium's tunnels (stadium3d.js TUNNELS) in every tier.
 // A tap or key press skips it. The players' drawn positions are moved (voxel.js interp -> adjust) only while it runs; the game is never touched.
 // Remembered in localStorage mt-intro; ?intro=off turns it off for a page load.
 const KEY = "mt-intro", RUN_IN = 40;             // game frames the court fades in before the hold
 const T_A = 2.4, T_B = 4.5, T_O = 6.6, T_C = 6.6, T_VS = 8.8, T_SPLIT = 0.6, T_WALK = 10.5, T_PLAY = 10.8, T_END = 11.4;
 const RUN = [2, 7, 12, 17];                     // match frames: running sideways (four steps; facing right, mirrored to run left)
 const FRONT = [4, 9, 14, 19], WALK_IN = 650;    // walking towards the camera; how far each player walks in along their side in their close-up
+const PASS = 3.4;                                  // seconds of the big matches' second camera pass (after A)
 const VS_BGS = ["stripes", "rays", "balls", "energy"];   // one at random per match
 const TYPES = ["POWER", "TECHNIQUE", "ALL-AROUND", "TRICKY", "SPEED"];
 import { matchFrameRaw } from "./crowdfans.js";
+import { TUNNELS } from "./stadium3d.js";
 const ease = u => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
 // READY? / PLAY! in the style of the game's own score captions ("0-15", "NICE!"): chunky 2-px strokes, yellow, orange on the right and lower
 // edges of each stroke, a black outline. Glyphs 5x7, drawn at 2x onto a small canvas that is shown pixelated.
@@ -49,10 +55,14 @@ export class MatchIntro {
     let m = q.get("intro"); if (m === null) { try { m = localStorage.getItem(KEY); } catch (e) { m = null; } }
     this.on = m !== "off";
     this.vsBg = "stripes";
-    this.skip = () => { if (this.start >= 0) this.t0 = performance.now() / 1000 - T_END; };
+    this.skip = () => { if (this.start >= 0) this.t0 = performance.now() / 1000 - T_END - this.pass; };
   }
   setOn(on) { this.on = !!on; try { localStorage.setItem(KEY, this.on ? "on" : "off"); } catch (e) { /* private mode */ } if (!this.on) this.stop(); }
-  get t() { return performance.now() / 1000 - this.t0; }
+  get rt() { return performance.now() / 1000 - this.t0; }               // real seconds since the intro began
+  get pass() { return this.tier === 2 ? PASS : 0; }
+  get inPass() { const r = this.rt; return this.pass > 0 && r >= T_A && r < T_A + this.pass; }
+  // the timeline's clock: the big matches' extra pass after A is time the rest does not see (A's end held)
+  get t() { const r = this.rt, P = this.pass; return !P || r < T_A ? r : r < T_A + P ? T_A - 1e-4 : r - P; }
   // the page runs no game frames while this is true
   get holding() { return this.start >= 0 && this.v.gb.ppu.frames - this.fr0 >= RUN_IN && this.t < T_PLAY; }
 
@@ -65,13 +75,14 @@ export class MatchIntro {
       this.start = fr; this.fr0 = fr; this.t0 = performance.now() / 1000; this.cheered = false; this.whistled = false; this.freeRun(); this.runTex = new Map();
       const name = a => { let o = ""; for (let i = 0; i < 16; i++) { const c = w[a + i]; if (c < 0x20 || c > 0x7E) break; o += String.fromCharCode(c); } return o.trim(); };
       this.names = [name(0xA00) || "YOU", name(0xA80) || "OPPONENT"];
-      this.cls = st.crowdClass(); this.mode = w[0x8A6];
+      this.cls = st.crowdClass(); this.mode = w[0x8A6]; this.tier = this.cls === "major" ? 2 : this.cls === "senior" ? 1 : 0; this.fx = {};
       this.who = [0xA00, 0xA80].map((a, side) => this.player(a, side)); this.vsBg = VS_BGS[Math.floor(Math.random() * VS_BGS.length)]; this.show();
       addEventListener("pointerdown", this.skip, true); addEventListener("keydown", this.skip, true);
     }
     if (this.start < 0) return;
     if (!st || !st.active || this.t >= T_END) { this.stop(); return; }
     if (!this.cheered && this.t >= T_A && st.sound) { this.cheered = true; st.sound.cheer(st.fill); }
+    this.grand(st);
     if (!this.whistled && this.t >= T_PLAY && st.sound) { this.whistled = true; st.sound.whistle(); }
     this.overlay();
   }
@@ -133,15 +144,34 @@ export class MatchIntro {
   adjust(s) {
     if (this.start < 0 || !s || !s.players || !s.players.length) return s;
     const t = this.t, e = Math.max(0, Math.min(1, (t - T_VS) / (T_WALK - T_VS)));   // an even run
-    const players = s.players.map(p => { const f = this.from(p), off = -WALK_IN * this.walkIn(p.Y >= 0 ? 0 : 1, t).left; return { ...p, X: f.X + (p.X - f.X) * e, Y: f.Y + off + (p.Y - f.Y) * e }; });
+    // in their close-up each walks out of their tunnel (from inside its dark passage) to their side's spot, then runs to their place
+    const players = s.players.map(p => {
+      const side = p.Y >= 0 ? 0 : 1, f = this.from(p), T = TUNNELS[side], y0 = T.z - T.d * 0.8, left = this.walkIn(side, t).left, y = f.Y + (y0 - f.Y) * left;
+      return { ...p, X: f.X + (p.X - f.X) * e, Y: y + (p.Y - y) * e };
+    });
     return { ...s, players };
+  }
+  // what the tier adds, each once at its time: fireworks and roars for the second pass, a cheer (and confetti) as each player steps out
+  grand(st) {
+    const F = this.fx, snd = st.sound, mf = this.v.matchfx, once = (k, at, fn) => { if (!F[k] && this.rt >= at) { F[k] = true; fn(); } };
+    if (this.tier === 2) {
+      once("fw", 0.2, () => { if (mf) mf.fireworks(T_A + PASS + T_B - T_A + 1.5, this.mode === 10 ? [[255, 215, 0], [255, 80, 60], [80, 220, 120], [255, 255, 255]] : null, snd); });
+      once("roar1", T_A, () => { if (snd) { snd.cheer(1); setTimeout(() => snd.cheer(1), 900); } });
+    }
+    if (this.tier >= 1) {
+      once("out0", T_A + this.pass + 0.35, () => { if (snd) snd.cheer(this.tier === 2 ? 1 : st.fill); if (this.tier === 2 && mf) mf.confettiAt(TUNNELS[0].x + 15, TUNNELS[0].z + 250, 110, 330, 380, true); });
+      once("out1", T_B + this.pass + 0.35, () => { if (snd) snd.cheer(this.tier === 2 ? 1 : st.fill); if (this.tier === 2 && mf) mf.confettiAt(TUNNELS[1].x - 15, TUNNELS[1].z + 300, 110, 330, 380, true); });
+    }
   }
   // the camera while the intro runs ({ mvp, tilt }), or null for the usual one
   camera(aspect, m4, clip, players) {
     if (this.start < 0) return null;
     const t = this.t; if (t >= T_O) return null;          // from the VS screen on: the usual camera
     let eye, at, fov = 0.75;
-    if (t < T_A) {                                // A: low along the right-hand stand
+    if (this.inPass) {                            // the big matches: high round the stadium under the fireworks
+      const u = ease((this.rt - T_A) / PASS), a = -1.0 + 2.0 * u;
+      eye = [3900 * Math.sin(a), 1750 - 350 * u, 3600 * Math.cos(a) - 400]; at = [0, 380, -500]; fov = 0.8;
+    } else if (t < T_A) {                                // A: low along the right-hand stand
       const u = ease(t / T_A), z = 1500 - 2400 * u;
       eye = [350, 170, z]; at = [1500, 300, z - 260];
     } else if (t < T_B) {                         // B: on the player by the left-hand stand
@@ -180,11 +210,16 @@ export class MatchIntro {
 #matchintro .stats .sb { flex: 1; height: .62em; border-radius: .31em; background: #343849; overflow: hidden; }
 #matchintro .stats .sb i { display: block; height: 100%; border-radius: inherit; }
 #matchintro canvas.vs { position: absolute; left: 0; top: 0; transform: none; width: 100%; height: 100%; max-width: none; aspect-ratio: auto; background: transparent; image-rendering: pixelated; display: none; }   /* (not the page's own canvas rules: they centre and blacken every canvas) */
+#matchintro .banner { position: absolute; left: 0; right: 0; top: 20%; text-align: center; opacity: 0; transform: scale(.7); transition: opacity .5s, transform .6s cubic-bezier(.2,.9,.3,1.3); }
+#matchintro .banner b { display: inline-block; padding: .08em .6em; font-size: clamp(34px, 9vw, 88px); font-weight: normal; letter-spacing: .06em; color: #fff4c0;
+  background: linear-gradient(180deg, #e8b020, #a8660a); border: 3px solid #fff2b0; border-radius: 12px; text-shadow: 0 3px 0 #6a3a00, 0 0 18px rgba(255,220,120,.8); box-shadow: 0 6px 24px rgba(0,0,0,.5); }
+#matchintro .banner i { display: block; margin-top: .4em; font-style: normal; color: #fff; font-size: clamp(14px, 3vw, 26px); letter-spacing: .3em; text-shadow: 0 2px 6px #000; }
+#matchintro .banner.on { opacity: 1; transform: none; }
 #matchintro .big { position: absolute; left: 50%; top: 38%; height: 16%; transform: translateX(-50%); image-rendering: pixelated; opacity: 0; transition: opacity .15s; }
-</style><div class="bar" style="top:0"></div><div class="bar" style="bottom:0"></div><div class="flare" style="left:14%;top:12%">✦</div><div class="flare" style="right:12%;top:8%;font-size:46px;animation-direction:reverse">✦</div><div class="plate"><b></b><i></i></div><div class="plate r"><b></b><i></i></div><div class="stats"></div><div class="stats r"></div><canvas class="vs"></canvas><img class="big" alt="">`;
+</style><div class="bar" style="top:0"></div><div class="bar" style="bottom:0"></div><div class="flare" style="left:14%;top:12%">✦</div><div class="flare" style="right:12%;top:8%;font-size:46px;animation-direction:reverse">✦</div><div class="plate"><b></b><i></i></div><div class="plate r"><b></b><i></i></div><div class="stats"></div><div class="stats r"></div><canvas class="vs"></canvas><img class="big" alt=""><div class="banner"><b></b><i></i></div>`;
       document.body.appendChild(root);
       const q = s => root.querySelectorAll(s);
-      this.ui = { root, bars: q(".bar"), flares: q(".flare"), plate: q(".plate")[0], plate2: q(".plate")[1], stats: q(".stats"), vs: q(".vs")[0], big: q(".big")[0] };
+      this.ui = { root, bars: q(".bar"), flares: q(".flare"), plate: q(".plate")[0], plate2: q(".plate")[1], stats: q(".stats"), vs: q(".vs")[0], big: q(".big")[0], banner: q(".banner")[0] };
     }
     const u = this.ui, title = this.mode === 4 ? "EXHIBITION" : this.cls === "junior" ? "JUNIOR CLASS" : this.cls === "senior" ? "SENIOR CLASS" : this.mode === 10 ? "DREAM MATCH" : "ISLAND OPEN";
     u.plate.children[0].textContent = this.names[0]; u.plate.children[1].textContent = title + "  ·  " + (this.mode === 4 ? "LET'S PLAY!" : MODES[this.mode]);
@@ -198,6 +233,7 @@ export class MatchIntro {
       }
     });
     u.vsTitle = title;
+    u.banner.children[0].textContent = this.mode === 10 ? "DREAM MATCH" : this.mode === 2 ? "ISLAND OPEN" : "CHAMPIONSHIP"; u.banner.children[1].textContent = MODES[this.mode] || "";
     u.root.hidden = false; u.word = ""; u.big.style.opacity = 0;
     u.img ||= { "READY?": captionImage("READY?"), "PLAY!": captionImage("PLAY!") };
   }
@@ -205,7 +241,8 @@ export class MatchIntro {
     const u = this.ui, t = this.t, r = this.v.cv.getBoundingClientRect();
     Object.assign(u.root.style, { left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" });
     const bars = t < T_C; u.bars[0].style.transform = bars ? "none" : "translateY(-100%)"; u.bars[1].style.transform = bars ? "none" : "translateY(100%)";
-    const lit = t >= T_A && t < T_O; for (const f of u.flares) f.style.opacity = lit ? 0.95 : 0;
+    const lit = t >= T_A && t < T_O && !this.inPass; for (const f of u.flares) f.style.opacity = lit ? 0.95 : 0;
+    u.banner.classList.toggle("on", this.inPass && this.rt < T_A + PASS - 0.4);
     u.plate.style.transform = t >= T_A + 0.5 && t < T_B ? "none" : "translateX(-120%)";
     u.plate2.style.transform = t >= T_B + 0.5 && t < T_O ? "none" : "translateX(120%)";
     // the stats panel beside the walking player's head (projected each frame): right of yours, left of your opponent's

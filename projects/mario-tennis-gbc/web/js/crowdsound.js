@@ -93,6 +93,13 @@ export class CrowdSound {
     const n = this.src(c), hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 2600; const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 4200; bp.Q.value = 0.9;
     n.connect(hp); hp.connect(bp); bp.connect(out); n.stop(t + 1.7);
   }
+  // a firework's bang (intro.js: the big matches): a short low thump with a crackle after it
+  boom() {
+    const c = this.on && this.ctx(); if (!c) return;
+    const t = c.currentTime, out = c.createGain(); out.gain.setValueAtTime(0.32 * this.volume, t); out.gain.exponentialRampToValueAtTime(0.001, t + 0.9); out.connect(c.destination);
+    const n = this.src(c), lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.setValueAtTime(900, t); lp.frequency.exponentialRampToValueAtTime(120, t + 0.5); n.connect(lp); lp.connect(out); n.stop(t + 1);
+    for (let i = 0; i < 10; i++) { const at = t + 0.15 + Math.random() * 0.6, s = c.createBufferSource(); s.buffer = this.buffer(c); const g = c.createGain(); g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(0.12 * this.volume, at + 0.002); g.gain.exponentialRampToValueAtTime(0.001, at + 0.04); s.connect(g); g.connect(c.destination); s.start(at, Math.random() * 1.8, 0.06); }
+  }
   rattle(strength = 1) {
     const c = this.on && this.ctx(); if (!c || !this.gate("rattle", 0.25)) return;
     const t = c.currentTime, V = 0.38 * this.volume * strength, out = c.createGain(); out.gain.value = V; out.connect(c.destination);

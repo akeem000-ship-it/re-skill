@@ -10,6 +10,7 @@
 const KEY = "mt-matchfx";
 const ease = u => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
 const SWEEP = 3.2, CELEB = 2.6;                             // seconds (the game leaves the court for its results about 2.3 s after match point)
+const CONF_LIFE = 5.5, FW_COLOURS = [[255, 90, 80], [255, 210, 60], [120, 200, 255], [140, 255, 140], [255, 140, 230], [255, 255, 255]];
 const CONFETTI = [[255, 70, 80], [255, 200, 40], [80, 200, 255], [120, 230, 110], [250, 250, 250], [230, 110, 230]];
 
 // the pause camera's shots (u: 0..1 through the shot): [eye, look at], world units (the court X +-432, Y +-1248; the side stands from
@@ -80,12 +81,38 @@ export class MatchFX {
     this.cine = { kind: "win", t0: now, side, a0: Math.random() * Math.PI * 2 };
     if (snd) { snd.cheer(1); setTimeout(() => snd.cheer(1), 1200); }
     // round the winner (where the camera looks) and over the stands
-    const rnd = () => Math.random(), parts = [], h = ((this.v.interp().players || []).filter(q => (q.slot & 1) === side)[0]) || { X: 0, Y: side ? -1200 : 1200 };
-    for (let i = 0; i < 260; i++) {
-      const near = i % 2 === 0, x = near ? h.X + (rnd() * 2 - 1) * 800 : (rnd() * 2 - 1) * 1900, z = near ? h.Y + (rnd() * 2 - 1) * 800 : -2500 + rnd() * 4400;
-      parts.push({ x, y: (near ? 260 : 700) + rnd() * 500, z, vy: 70 + rnd() * 90, sw: rnd() * 6.28, sp: 1 + rnd() * 2, rot: rnd() * 6.28, c: CONFETTI[i % CONFETTI.length] });
+    const h = ((this.v.interp().players || []).filter(q => (q.slot & 1) === side)[0]) || { X: 0, Y: side ? -1200 : 1200 };
+    this.confettiAt(h.X, h.Y, 130, 800, 260); this.confettiAt(0, -300, 130, 2200, 700);   // round the winner (where the camera looks) and over the stands
+  }
+  // confetti: n paper squares around (x, z) within r, starting h up (also the intro's walk-on: intro.js); each falls for CONF_LIFE seconds
+  confettiAt(x, z, n, r, h, intro = false) {
+    const now = performance.now() / 1000, rnd = () => Math.random(), C = this.confetti || (this.confetti = { parts: [] });
+    for (let i = 0; i < n; i++) C.parts.push({ t0: now, x: x + (rnd() * 2 - 1) * r, y: h + rnd() * 500, z: z + (rnd() * 2 - 1) * r, vy: 70 + rnd() * 90, sw: rnd() * 6.28, sp: 1 + rnd() * 2, rot: rnd() * 6.28, c: CONFETTI[i % CONFETTI.length], intro });
+  }
+  // fireworks over the stadium until `until` (intro.js: the big matches' walk-out): shells rise and burst into sparks; pal: their colours
+  fireworks(dur, pal, snd) {
+    const now = performance.now() / 1000; this.fw = { until: now + dur, next: now, shells: [], pal: pal || FW_COLOURS, snd };
+  }
+  drawFireworks(mvp, m4, now) {
+    const F = this.fw, v = this.v, gl = v.gl; if (!F) return;
+    if (now < F.until && now >= F.next) {
+      F.next = now + 0.25 + Math.random() * 0.45;
+      F.shells.push({ t0: now, x: (Math.random() * 2 - 1) * 1900, z: -2600 + Math.random() * 3000, h: 950 + Math.random() * 650, c: F.pal[Math.floor(Math.random() * F.pal.length)], n: 36 + Math.floor(Math.random() * 20), boomed: false });
     }
-    this.confetti = { t0: now, parts };
+    F.shells = F.shells.filter(s => now - s.t0 < 2.4); if (!F.shells.length && now > F.until) { this.fw = null; return; }
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE); gl.depthMask(false);
+    for (const s of F.shells) {
+      const t = now - s.t0, RISE = 0.7;
+      if (t < RISE) { const y = s.h * (1 - (1 - t / RISE) ** 2); v.draw(this.tex, m4.trs(s.x, y, s.z, 14, 14, 0, 0), mvp, [0, 0, 1, 1], [1, 0.9, 0.6, 1], 0); continue; }
+      if (!s.boomed) { s.boomed = true; if (F.snd) F.snd.boom(); }
+      const u = t - RISE, fade = Math.max(0, 1 - u / 1.6);
+      for (let k = 0; k < s.n; k++) {
+        const a = k * 2.399, b = Math.acos(1 - 2 * ((k + 0.5) / s.n)), sp = 420, dx = Math.sin(b) * Math.cos(a), dy = Math.cos(b), dz = Math.sin(b) * Math.sin(a);
+        const r = sp * (1 - Math.exp(-u * 2.2)) / 2.2 * 2.2;
+        v.draw(this.tex, m4.trs(s.x + dx * r, s.h + dy * r - 160 * u * u, s.z + dz * r, 16, 16, 0, 0), mvp, [0, 0, 1, 1], [s.c[0] / 255, s.c[1] / 255, s.c[2] / 255, fade], 0);
+      }
+    }
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(true);
   }
   // voxel.js renderCourt: the camera while a sweep or the celebration runs (null: the usual camera)
   camera(aspect, m4, clip, players) {
@@ -107,13 +134,16 @@ export class MatchFX {
   }
   // confetti over the stands (after the stadium): small paper squares falling, swaying and turning
   draw(mvp, m4) {
-    const C = this.confetti, v = this.v; if (!C || !this.on) return;
-    const t = performance.now() / 1000 - C.t0; if (t > CELEB + 2) { this.confetti = null; return; }
-    const gl = v.gl; if (!this.tex) this.tex = v.solidTexture([255, 255, 255, 255]);
-    gl.useProgram(v.prog); gl.bindVertexArray(v.vao); const fade = Math.min(1, (CELEB + 2 - t) / 1.5);
+    const C = this.confetti, v = this.v, now = performance.now() / 1000, gl = v.gl;
+    if (!this.tex) this.tex = v.solidTexture([255, 255, 255, 255]);
+    gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
+    this.drawFireworks(mvp, m4, now);
+    if (!C) return;
+    C.parts = C.parts.filter(q => now - q.t0 < CONF_LIFE); if (!C.parts.length) { this.confetti = null; return; }
     for (const q of C.parts) {
-      const y = q.y - q.vy * t; if (y < 0) continue;
-      const x = q.x + 40 * Math.sin(q.sw + t * q.sp), r = q.rot + t * q.sp * 2;
+      if (!this.on && !q.intro) continue;
+      const t = now - q.t0, y = q.y - q.vy * t; if (y < 0) continue;
+      const fade = Math.min(1, (CONF_LIFE - t) / 1.5), x = q.x + 40 * Math.sin(q.sw + t * q.sp), r = q.rot + t * q.sp * 2;
       v.draw(this.tex, m4.trs(x, y, q.z, 22, 14 * Math.abs(Math.cos(r)) + 3, r, r * 0.7), mvp, [0, 0, 1, 1], [q.c[0] / 255, q.c[1] / 255, q.c[2] / 255, fade], 0);
     }
   }

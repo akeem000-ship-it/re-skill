@@ -837,7 +837,7 @@ export class Voxel3D {
     const gw = WORLD.x1 - WORLD.x0, gh = WORLD.y1 - WORLD.y0;
     this.draw(this.groundTex, m4.trs(0, -0.5, WORLD.y1, gw, gh, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
     if (this.stadium && this.stadium.active) this.stadium.draw(mvp); else this.drawStands(mvp);   // STADIUM / bleachers with spectators beside and behind the court
-    if (this.matchfx && this.stadium && this.stadium.active) this.matchfx.draw(mvp, m4);   // MATCH FX: confetti at the end of the match
+    if (this.matchfx && this.stadium && this.stadium.active) this.matchfx.draw(mvp, m4);   // MATCH FX: confetti and fireworks (the end of the match, the intro)
     // upright cut-outs: net, chair, backdrop (cards, or voxels in voxel mode)
     const fx = this.ballfx && this.ballfx.on ? this.ballfx : null;       // BALLFX
     for (const c of this.cuts) {
