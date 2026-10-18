@@ -110,8 +110,17 @@ function lookAhead() {
   if (!runAhead || port || !gb) return;
   raSnap = snapshot(gb); gb.setInput(lastInp || input()); gb.runFrame(); gb.apu.outPos = 0;   // its sound is dropped (the real frame plays it)
 }
+// the win / lose screen after a match (bank $16: its raster split, rows $48-$57, is on only while it shows) goes on with A only, and not
+// for its first second: B and a tap left over from the last point no longer skip it (RIGHT still opens the statistics)
+let resultsAt = -1;
+function resultsGate(inp) {
+  const w = gb.mem.wram[0], on = w[0xB02] === 0x48 && w[0xB03] === 0x57 && (gb.mem.ie & 0x02);
+  if (!on) { resultsAt = -1; return inp; }
+  if (resultsAt < 0) resultsAt = gb.frames;
+  return { ...inp, b: false, a: inp.a && gb.frames - resultsAt >= 60 };
+}
 function frame() {
-  pollGamepad(keys); const inp = input(), mask = maskOf(inp); gb.setInput(inp); lastInp = inp;
+  pollGamepad(keys); const inp = resultsGate(input()), mask = maskOf(inp); gb.setInput(inp); lastInp = inp;
   if (port) portFrame(); else gb.runFrame();
   if (view3d && voxel && voxel.mode === "3d") voxel.tick();
   if (phone) phone.frame(gb);                // VIBRATE: hits and points
@@ -257,7 +266,9 @@ let port = null, portError = null;
 // PHYSICS: Classic / Enhanced (web/js/engine/enhanced.js): ?physics=enhanced|classic, else the remembered choice; Enhanced runs only through the port
 // (the ROM's own code cannot be changed), so it turns the default CODE: ROM into the port
 const physicsMode = () => { const v = q.get("physics") || stored("mt-physics"); return v === "enhanced" ? "enhanced" : "classic"; };
-const portMode = () => { const h = location.hash.slice(1), sel = $("engine") && $("engine").value, m = h === "port" || h === "portall" ? h : q.has("port") ? "port" : sel || "rom"; return m === "rom" && physicsMode() === "enhanced" ? "port" : m; };
+// NET: Original / Even (engine/chars.js): ?net=even|original, else the remembered choice; Even runs only through the port
+const netMode = () => { const v = q.get("net") || stored("mt-net"); return v === "even" ? "even" : "original"; };
+const portMode = () => { const h = location.hash.slice(1), sel = $("engine") && $("engine").value, m = h === "port" || h === "portall" ? h : q.has("port") ? "port" : sel || "rom"; return m === "rom" && (physicsMode() === "enhanced" || netMode() === "even") ? "port" : m; };
 if ($("engine")) {
   const saved = stored("mt-engine");
   if (location.hash === "#port" || location.hash === "#portall") $("engine").value = location.hash.slice(1);
@@ -291,6 +302,7 @@ async function makePort(bytes) {
   }
   const P = new GamePort(bytes, { ...entry, hooks }, { audio: true, sampleRate: 44100 });
   if (physicsMode() === "enhanced") { const { EnhancedPhysics } = await import("./engine/enhanced.js"); P.physics = new EnhancedPhysics(); }
+  P.evenNet = netMode() === "even";
   return P;
 }
 function portFrame() {
@@ -367,7 +379,7 @@ $("forgetrom").addEventListener("click", () => romStore("readwrite", s => s.dele
 $("reset").addEventListener("click", () => { if (port) { location.reload(); return; } if (gb) { settle(); gb.reset(); rec.event("reset"); } });
 // ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
 // a .mtrec file (Android: Downloads/MTenn3D and the share sheet; browser: a download). Hiding the app stops and saves.
-const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? "enhanced" : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
+const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? "enhanced" : undefined, net: port && port.evenNet ? "even" : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
   port: port ? (portMode() === "portall" ? "all" : (q.get("port") || PORT_VERIFIED.join(","))) : undefined });
 async function saveRecording(now = false) {     // now: the app is being hidden; skip compression so it finishes at once
   if (!recording()) return; settle();
@@ -449,6 +461,19 @@ $("engbtn").textContent = ENGINE_LABEL[portMode()] || "CODE: ROM";
     try { localStorage.setItem("mt-physics", next); if (next === "enhanced" && portMode() === "rom") localStorage.setItem("mt-engine", "port"); } catch (e) { /* private mode */ }
     if ($("engine") && next === "enhanced" && $("engine").value === "rom") $("engine").value = "port";
     const u = new URL(location.href); u.searchParams.delete("physics"); history.replaceState(null, "", u.pathname + u.search + u.hash);
+    location.reload();
+  });
+  $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b);
+}
+// NET: Original / Even: remembered, then the page reloads (Even needs the port, like Enhanced physics)
+{
+  const b = document.createElement("span"); b.className = "k"; b.id = "netbtn"; b.title = "how close to the net you can run: the game's own limits (the far side stops further back), or Even (both sides as close); Even runs through the JS port (no run-ahead)";
+  const show = () => { b.textContent = "NET: " + (netMode() === "even" ? "Even" : "Original"); b.classList.toggle("on", netMode() === "even"); }; show();
+  b.addEventListener("pointerdown", () => {
+    const next = netMode() === "even" ? "original" : "even";
+    try { localStorage.setItem("mt-net", next); if (next === "even" && portMode() === "rom") localStorage.setItem("mt-engine", "port"); } catch (e) { /* private mode */ }
+    if ($("engine") && next === "even" && $("engine").value === "rom") $("engine").value = "port";
+    const u = new URL(location.href); u.searchParams.delete("net"); history.replaceState(null, "", u.pathname + u.search + u.hash);
     location.reload();
   });
   $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b);

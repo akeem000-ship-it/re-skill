@@ -29,8 +29,10 @@ export function buildDetail(kind, W, H, x0, y0, texel) {
       const scuff = baseline * (vnoise(X / 38, Y / 16, 5) > 0.5 ? 1 : 0.35), mark = hash(Math.floor(X / 90), Math.floor(Y / 90), 6) > 0.985 && inCourt && Math.hypot(((X % 90) + 90) % 90 - 45, ((Y % 90) + 90) % 90 - 45) < 5 ? 1 : 0;
       l = g * 38 + g2 * 14 + n * 26 - arc * 14 - mark * 34 - scuff * 18; w = clamp(Math.round(scuff * 60 + mark * 50), 0, 127);
     } else if (kind === "grass") {
-      const stripe = Math.floor(Y / 150) & 1 ? 1 : -1, blade = hash(i, j, 7) - 0.5, patch = baseline * (vnoise(X / 40, Y / 20, 8) > 0.45 ? 1 : 0.25) + (Math.abs(ay - 640) < 90 ? 0.4 * (vnoise(X / 30, Y / 30, 9) > 0.55 ? 1 : 0) : 0);
-      l = stripe * 17 + blade * 36 + g2 * 10 - patch * 18; w = clamp(Math.round(patch * 85), 0, 127);
+      // broad mowing stripes with soft edges, a fine low grain, and worn patches as soft blotches (paintFloor first smooths the game's dither away)
+      const sp = Y / 150, f = sp - Math.floor(sp), stripe = (Math.floor(sp) & 1 ? 1 : -1) * Math.min(1, Math.min(f, 1 - f) * 8), blade = hash(i, j, 7) - 0.5, tuft = vnoise(X / 9, Y / 30, 11) - 0.5;
+      const patch = baseline * smooth(clamp((vnoise(X / 60, Y / 26, 8) - 0.35) * 2.5, 0, 1)) + (Math.abs(ay - 640) < 90 ? 0.35 * smooth(clamp((vnoise(X / 45, Y / 45, 9) - 0.5) * 3, 0, 1)) * (1 - Math.abs(ay - 640) / 90) : 0);
+      l = stripe * 11 + blade * 9 + tuft * 12 - patch * 10; w = clamp(Math.round(patch * 70), 0, 127);
     } else {
       const cx = Math.floor(X / 110), cy = Math.floor(Y / 110), chk = ((cx + cy) & 1) ? 1 : -1;
       l = chk * 22 + g * 8 + 16 * Math.sin((X + Y) / 260) + (((cx + cy) & 1) && hash(i, j, 10) > 0.996 ? 30 : 0);       // glossy checker, a diagonal sheen
@@ -53,11 +55,16 @@ export function lineColours(idx, lut) {
 // recolours the ground: rgba (W x H x 4), src (texel -> map pixel), idx (map pixel -> palette index + 1), lut (colours), detail from buildDetail
 export function paintFloor(rgba, src, idx, lut, W, H, detail) {
   const L = lineColours(idx, lut), { dl, dw, kind } = detail, N = W * H;
+  // grass: the game's grass is a coarse dither of three greens with dark streaks (and orange dots where it is worn); stretched over the 3D
+  // court it reads as noise. Its colour is taken as the average around each texel (the lines left out, so they do not bleed), and the
+  // stripes and grain come from the detail instead
+  const avg = kind === "grass" ? smoothColours(src, idx, lut, L, W, H, 12) : null;
   const tint = kind === "clay" ? [0.62, 0.42, 0.22] : kind === "grass" ? [0.84, 0.70, 0.35] : [1, 1, 1];     // what a worn patch turns towards (of the texel's own colour)
-  const sat = kind === "special" ? 1.18 : 1.2, gloss = kind === "special" || kind === "hard" ? 1 : 0;
+  const sat = kind === "special" ? 1.18 : kind === "grass" ? 0.8 : 1.2, gloss = kind === "special" || kind === "hard" ? 1 : 0;
   for (let i = 0; i < N; i++) {
     const k = idx[src[i]], o = i * 4; let r = lut[k * 4], g = lut[k * 4 + 1], b = lut[k * 4 + 2];
     if (L[k]) { rgba[o] = r; rgba[o + 1] = g; rgba[o + 2] = b; rgba[o + 3] = 255; continue; }                  // the lines: exact
+    if (avg) { r = avg[i * 3]; g = avg[i * 3 + 1]; b = avg[i * 3 + 2]; }
     let m = 1 + dl[i] / 256;
     const x = i % W, y = (i / W) | 0;
     if (x > 2 && y > 2 && L[idx[src[i - 2 * W - 2]]]) m *= 0.84; else if (x > 1 && y > 1 && L[idx[src[i - W - 1]]]) m *= 0.92;   // the soft shadow of a line (light from the upper left)
@@ -68,4 +75,21 @@ export function paintFloor(rgba, src, idx, lut, W, H, detail) {
     if (gloss && dl[i] > 30) { r += 10; g += 10; b += 10; }                                                      // a glint
     rgba[o] = r < 0 ? 0 : r > 255 ? 255 : r; rgba[o + 1] = g < 0 ? 0 : g > 255 ? 255 : g; rgba[o + 2] = b < 0 ? 0 : b > 255 ? 255 : b; rgba[o + 3] = 255;
   }
+}
+
+// the average colour of the non-line texels in a (2r+1)^2 box round each texel (summed-area tables): W x H x 3 floats
+function smoothColours(src, idx, lut, L, W, H, r) {
+  const S = new Float64Array((W + 1) * (H + 1) * 4);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const k = idx[src[y * W + x]], on = L[k] ? 0 : 1, o = ((y + 1) * (W + 1) + x + 1) * 4, a = (y * (W + 1) + x + 1) * 4, c = ((y + 1) * (W + 1) + x) * 4, d = (y * (W + 1) + x) * 4;
+    for (let ch = 0; ch < 3; ch++) S[o + ch] = (on ? lut[k * 4 + ch] : 0) + S[a + ch] + S[c + ch] - S[d + ch];
+    S[o + 3] = on + S[a + 3] + S[c + 3] - S[d + 3];
+  }
+  const out = new Float32Array(W * H * 3);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const x0 = Math.max(0, x - r), x1 = Math.min(W, x + r + 1), y0 = Math.max(0, y - r), y1 = Math.min(H, y + r + 1);
+    const A = (y0 * (W + 1) + x0) * 4, B = (y0 * (W + 1) + x1) * 4, C = (y1 * (W + 1) + x0) * 4, D = (y1 * (W + 1) + x1) * 4, n = S[D + 3] - S[B + 3] - S[C + 3] + S[A + 3] || 1;
+    for (let ch = 0; ch < 3; ch++) out[(y * W + x) * 3 + ch] = (S[D + ch] - S[B + ch] - S[C + ch] + S[A + ch]) / n;
+  }
+  return out;
 }

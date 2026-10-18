@@ -309,7 +309,8 @@ let SB = null;
 // painter cuts the original's ink (portraits, icons, bars) out of its fills so "the picture shows through", and what shows
 // through is then the smoothed picture, not the plain 4x one. Only on screens that have HD panels (menus), never in a match.
 const onCourt = scr => scr.gb.mem.wram[0][0x32E] <= 15;       // wCurMapID: a court (the match, the courts' maps)
-const SMOOTH_ALL = true;
+// off unless asked for (localStorage mt-menusmooth = on): the smoothing blurred the character pictures
+const SMOOTH_ALL = (() => { try { return localStorage.getItem("mt-menusmooth") === "on"; } catch (e) { return false; } })();
 let underPart = null;                                         // the clip the canvas was last drawn with ("" = whole screen)
 registerHDPainter("d_smooth", (g, scr) => {
   if (!SMOOTH_ALL || !(scr.panels && scr.panels.length)) { if (SM) SM.valid = false; underPart = null; return false; }
@@ -393,7 +394,7 @@ registerHDPainter("d_gauges", (g, scr, layer) => {
 // Menu sprites (name tags, arrows, cursors, digits, icons) are drawn smoothed like the rest: all of them are composed into
 // one picture (lower OAM index on top, sprites behind the background left out), smoothed with Scale2x twice and laid on
 // the sprite canvas; the original sprites are hidden (2D only: the 3D view cannot leave sprites out). Not in a match.
-const SMOOTH_SPRITES = true;
+const SMOOTH_SPRITES = SMOOTH_ALL;
 registerHDPainter("d_sprites", (g, scr, layer) => {
   if (!SMOOTH_SPRITES || layer !== "spr" || !scr.canHide || !(scr.panels && scr.panels.length) || onCourt(scr)) return;
   // in the 3D field the people stand in the scene: their sprites are not menu art (they were smoothed over the text boxes)

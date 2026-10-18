@@ -605,17 +605,19 @@ export function stepCharJumpPhysics(E) {
 }
 // 08:72DE StepCharMovement: velocity into position (/8 while charging). Moves that leave the court box are
 // refused per axis, not clamped (so a diagonal push into a wall slides); the CPU (input source 1) is only
-// kept on its own side of the net
+// kept on its own side of the net. The game lets the near side up to $90 from the net but the far side only to
+// $100 (in its flat picture the far player's sprite overlaps the net); NET: Even uses $90 for both
 export function stepCharMovement(E) {
   const C = E.C, M = E.M;
   let bc = U16(C.velX), de = U16(C.velDepth);
   if (C.flags & CHARF.CHARGING) { bc = SRA16(bc, 3); de = SRA16(de, 3); }
   C.flags &= ~CHARF.MOVE_BLOCKED;
   const block = () => { C.flags |= CHARF.MOVE_BLOCKED; };
+  const far = E.evenNet ? 0x0090 : 0x0100;                               // NET: Even (full.js): the far side may come as close to the net as the near side
   if (C.inputSource === 1) {
     M.addDEToMem24(0xDF00, bc);                                          // AddBCToMem24
     const d = M.addDEToMem24IntoBC(0xDF03, de);
-    const ok = NEG(d) ? U16(d) + 0x0100 <= 0xFFFF : U16(d) + 0xFF70 > 0xFFFF;
+    const ok = NEG(d) ? U16(d) + far <= 0xFFFF : U16(d) + 0xFF70 > 0xFFFF;
     if (ok) M.addDEToMem24(0xDF03, de); else block();
     return;
   }
@@ -632,7 +634,7 @@ export function stepCharMovement(E) {
   let okD;
   if (!NEG(d)) okD = d + 0xFF70 > 0xFFFF && d + 0xF920 <= 0xFFFF;
   else {
-    okD = d + 0x0100 <= 0xFFFF && d + 0x0700 > 0xFFFF;
+    okD = d + far <= 0xFFFF && d + 0x0700 > 0xFFFF;
     if (okD && !NEG(d + 0x02A0) && !NEG(U16(C.posXInt) + 0xFDC0)) okD = false;
   }
   if (okD) M.addDEToMem24(0xDF03, de); else block();

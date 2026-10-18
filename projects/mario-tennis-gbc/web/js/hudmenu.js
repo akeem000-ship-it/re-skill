@@ -7,7 +7,7 @@ const CATS = [
   ["VIEW", "3D view, camera, picture", ["view3d", "cam", "aspect", "smoothbtn", "voxstylebtn", "fieldlifebtn"]],
   ["STADIUM", "lighting, stadium, crowd, effects, intro", ["lightbtn", "stadiumbtn", "crowdsndbtn", "ballfxbtn", "introbtn", "matchfxbtn"]],
   ["LOOK", "your character, sprites, menus and text", ["lookbtn", "sprbtn", "uibtn", "fontbtn"]],
-  ["GAME", "physics, code, run-ahead, controls", ["physbtn", "engbtn", "runaheadbtn", "padmode", "turbo", "reset"]],
+  ["GAME", "physics, code, run-ahead, controls", ["physbtn", "netbtn", "engbtn", "runaheadbtn", "padmode", "turbo", "reset"]],
 ];
 const STATUS = ["romstatus", "fps", "savestatus"], OWN = new Set(["rec"]);
 const CSS = `
