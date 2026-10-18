@@ -240,14 +240,34 @@ function hairUnderCap(st) {
   grow([HAIR], Math.min(info.yh, fy + 2));
 }
 
+// the cap's lower edge at the back that the labels took for the shirt (cap and shirt are both colour 1 in Alex's frames): in the first
+// row under the cap, the shirt pixels within the cap's width; in the row after, the runs of shirt pixels that touch those
+function capBand(st, hat) {
+  const { w, h, reg } = st; let yb = -1; for (const i of hat) yb = Math.max(yb, (i / w) | 0);
+  if (yb < 0 || yb + 1 >= h) return [];
+  let x0 = w, x1 = -1; for (const i of hat) if (((i / w) | 0) >= yb - 1) { const x = i % w; x0 = Math.min(x0, x); x1 = Math.max(x1, x); }
+  const band = new Set(); for (let x = Math.max(0, x0 - 1); x <= Math.min(w - 1, x1 + 1); x++) if (reg[(yb + 1) * w + x] === TOP) band.add((yb + 1) * w + x);
+  if (yb + 2 < h) {
+    const y = yb + 2;
+    for (let x = x0; x <= x1; x++) {
+      if (reg[y * w + x] !== TOP || (x > x0 && reg[y * w + x - 1] === TOP)) continue;                // the start of a run
+      let e = x; while (e + 1 <= x1 && reg[y * w + e + 1] === TOP) e++;
+      let touches = false; for (let k = x; k <= e; k++) if (band.has((y - 1) * w + k)) touches = true;
+      if (touches) for (let k = x; k <= e; k++) band.add(y * w + k);
+      x = e;
+    }
+  }
+  return [...band];
+}
 function styleAlex(st, style) {
   const { w, h, reg } = st;
-  if (style === "cap") { if (st.kind !== "portrait") hairUnderCap(st); return; }
+  if (style === "cap") { if (st.kind !== "portrait") { hairUnderCap(st); for (const i of capBand(st, Array.from(st.reg.keys()).filter(i => st.reg[i] === HAT))) set(st, i, HAT); } return; }
   const hat = []; for (let i = 0; i < w * h; i++) if (reg[i] === HAT) hat.push(i);
   if (!hat.length) return;
   const f = facing(st);
   for (const i of hat) set(st, i, HAIR);
   if (style === "headband") {
+    if (st.kind !== "portrait") { const band = capBand(st, hat); if (band.length) { const rm = new Uint8Array(w * h); for (const i of band) { set(st, i, NONE); rm[i] = 1; } reoutline(st, rm); } }   // (the cap's back band, taken for the shirt: gone, a visor is open at the back)
     // the band: the lowest hair pixel of every column above the face (two rows seen from behind)
     const low = new Map(); for (const i of hat) { const x = i % w, y = (i / w) | 0; if (!low.has(x) || low.get(x) < y) low.set(x, y); }
     for (const [x, y] of low) { set(st, y * w + x, HAT); if (f === null && y > 0 && reg[(y - 1) * w + x] === HAIR) set(st, (y - 1) * w + x, HAT); }
@@ -279,17 +299,8 @@ function styleAlex(st, style) {
     // tufts: every other column of the head's top a pixel higher
     const top = new Map(); for (let y = 0; y < yTop; y++) for (let x = 0; x < w; x++) if (reg[y * w + x] === HAIR && !top.has(x)) top.set(x, y);
     if (style === "spiky") [...top].sort((a, b) => a[0] - b[0]).slice(1, -1).forEach(([x, y], k) => { if (!(k % 2) && y >= 2 && reg[(y - 1) * w + x] === OUT) set(st, (y - 1) * w + x, HAIR); });
-    // the cap's edge that the labels took for the shirt (both are colour 1 in Alex's frames): the shirt pixels of the first row under the
-    // cap that sit right under a cap pixel, and the rest of their run along that row
-    {
-      const hatSet = new Set(hat); let yb = -1; for (const i of hat) yb = Math.max(yb, (i / w) | 0);
-      const y = yb + 1;
-      if (y < h) {
-        const strip = new Set(); for (let x = 0; x < w; x++) if (reg[y * w + x] === TOP && hatSet.has(yb * w + x)) strip.add(x);
-        for (const x0 of [...strip]) for (const d of [-1, 1]) for (let x = x0 + d; x >= 0 && x < w && reg[y * w + x] === TOP; x += d) strip.add(x);
-        if (strip.size) { removed = removed || new Uint8Array(w * h); for (const x of strip) { set(st, y * w + x, NONE); removed[y * w + x] = 1; } }
-      }
-    }
+    // the cap's back band that the labels took for the shirt goes with the cap
+    { const band = capBand(st, hat); if (band.length) { removed = removed || new Uint8Array(w * h); for (const i of band) { set(st, i, NONE); removed[i] = 1; } } }
     // a rounded head: below its widest row the hair does not widen again (the brim's last rows hang down at the back of the neck)
     {
       const hairRow = y => { let a = w, b = -1; for (let x = 0; x < w; x++) if (reg[y * w + x] === HAIR) { a = Math.min(a, x); b = Math.max(b, x); } return [a, b]; };
