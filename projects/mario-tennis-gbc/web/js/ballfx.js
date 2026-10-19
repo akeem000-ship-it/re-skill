@@ -11,6 +11,10 @@
 //   impact     a flare, a glow, a ring and spark streaks at the racket contact; power shots and smashes are bigger with a second burst
 //   net        the net rocks when the ball hits it and flutters when the ball clips the tape (wBallNetHit / wBallNetCross)
 //   shadow     the ball's shadow is wide, pale and soft high up and shrinks to a small dark crisp one at the court
+//   marks      the court keeps what the match does to it: on clay every bounce leaves an oval ball mark and the players' feet scuff
+//              it where they run (they stay until the court is left or a new match starts); grass wears brown where the players
+//              spend their time (the baselines first), growing over the match; a hard court keeps faint ball marks and dark rubber
+//              scuffs where a player stops or turns sharply (each fading after a minute or two)
 //   speed      a power shot, a smash or a special shot puts its speed up for a moment ("142 km/h"), read two frames after the contact
 //              (the launch speed): 1 world unit is 23.77 m / 2496 of the court, and the game's ball flies at a little over half the
 //              pace of a real one, so the reading is scaled by 1.8 to feel like the shot looks (power serves near 215, power drives 120)
@@ -29,7 +33,7 @@ const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * 
 const mix3 = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
 const WHITE = [1, 1, 0.92];
 const R_BALL = 24;                       // world units: the ball sprite is about 5 px of 7.5 units
-const KMH = 60 * 3.6 * 23.77 / 2496 * 1.8;   // km/h per world unit per frame (scaled: see "speed")
+export const KMH = 60 * 3.6 * 23.77 / 2496 * 1.8;   // km/h per world unit per frame (scaled: see "speed")
 
 // shot colours by wShotType (wC4A0): 0 top 1 power top 2 slice 3 power slice 4 flat A+B 5 low volley 6 / 7 / 8 volleys 9 smash 10 lob 11 drop 12 / 13 / 14 serves
 const SHOT = {
@@ -88,12 +92,13 @@ export class BallFX {
     this.v = vox; this.on = true; this.onChange = null;
     this.parts = []; this.hits = []; this.bounces = []; this.net = null; this.shot = { type: 4, c: shotInfo(4).c, power: 0 };
     this.sq = null; this.cut = -1; this.phase = 0; this.rate = 0; this.T = 0; this.lastFr = -99; this.prev = null; this.ball = null;
+    this.marks = []; this.wear = new Map(); this.feet = new Map(); this.markKey = "";   // court marks: ball marks and scuffs, grass wear by cell, last foot positions
     this.rnd = 1; this.surface = { kind: "hard", c: [0.78, 0.82, 0.86], at: -1 };
     this.gl = null; this.stats = { ms: 0, quads: 0 }; this.k = { R: 1, w: 1, front: 2.2, depth: true, size: 1.6, alpha: 1.35 };   // tuning knobs (tests)
-    this.buf = new Float32Array(11 * 6 * 700);
+    this.buf = new Float32Array(11 * 6 * 1600);                     // quads: the effects (~700) and the court marks (up to ~800)
   }
   setOn(on) { this.on = !!on; try { localStorage.setItem(KEY, this.on ? "on" : "off"); } catch (e) { /* private mode */ } if (this.onChange) this.onChange(this.on); }
-  reset() { this.parts.length = 0; this.hits.length = 0; this.bounces.length = 0; this.net = null; this.sq = null; this.prev = null; this.cut = -1; this.ball = null; }
+  reset() { this.marks.length = 0; this.wear.clear(); this.feet.clear(); this.parts.length = 0; this.hits.length = 0; this.bounces.length = 0; this.net = null; this.sq = null; this.prev = null; this.cut = -1; this.ball = null; }
   // the speed tag over the 3D view: a short-lived label under the scoreboard, in the shot's colour
   showSpeed(kmh, c) {
     if (typeof document === "undefined" || !this.v || !this.v.cv) return;
@@ -135,6 +140,7 @@ export class BallFX {
   ingest(s) {
     const p = this.prev, fr = s.fr, cont = p && fr === p.fr + 1;
     this.prev = s;
+    this.markStep(s);
     if (!s.active) { this.cut = fr; this.sq = null; this.rate = 0; this.vel = null; this.age(fr); return; }
     if (!cont || !p.active) { this.cut = fr; this.sq = null; }                   // the first sample, skipped frames, a new ball: no events from this one
     const q = cont ? p : null; this.lastFr = fr;     // the previous sample, for the edges (the serve toss is a ball that was not active yet)
@@ -157,7 +163,7 @@ export class BallFX {
     if (this.speedAt && fr >= this.speedAt) { this.speedAt = 0; this.showSpeed(Math.round(sp * KMH / 5) * 5, this.shot.c); }
     if (s.bounce && !(q && q.bounce)) {
       const impact = clamp(Math.abs(q ? q.vz : s.vz) / 14), str = clamp(0.2 + 0.5 * impact + 0.4 * clamp(this.spd / 34));
-      const b = { fr, pos: { x: s.X, y: 0, z: s.Y }, str }; this.bounces.push(b); if (this.bounces.length > 6) this.bounces.shift();
+      const b = { fr, pos: { x: s.X, y: 0, z: s.Y }, str }; this.bounces.push(b); this.ballMark(s, q || s, fr); if (this.bounces.length > 6) this.bounces.shift();
       this.sq = { kind: "bounce", fr, str: clamp(0.25 + 0.75 * impact * (0.5 + 0.5 * clamp(this.spd / 24))), d: [0, 1, 0] };
       this.spawnBounce(b, s);
     }
@@ -226,6 +232,42 @@ export class BallFX {
     this.add({ k: 2, add: true, t0, life: 4, pos: p, s0: 14, s1: 30 + 30 * S, c: [1.0, 0.98, 0.9], a: 1.5 });
     for (let i = 0; i < Math.round(4 + 6 * S); i++) { const th = R() * 6.2832; this.add({ k: 4, add: true, streak: true, t0, life: 4 + 3 * R(), pos: p, v: [Math.cos(th) * (3 + 6 * R()), 1.5 + 4 * R(), Math.sin(th) * (2 + 4 * R())], drag: 0.18, g: 0.4, s0: 2, c: [1.0, 0.96, 0.8], a: 1.4, len: 1.5 }); }
     if (hitNet) this.add({ k: 3, add: true, t0, life: 6, pos: p, s0: 10, s1: 55, p: 0.93, c: [1, 1, 0.9], a: 0.7 });
+  }
+  // ---- court marks: per game frame (the players' feet, a new court or match clears them), and a mark where the ball bounces ----
+  markStep(s) {
+    const v = this.v, w = v.gb.mem.wram[0], key = s.mapId + ":" + (v.courtId ?? -1), fresh = !(w[0x8E0] | w[0x8E1] | w[0x8E2] | w[0x8E3] | w[0x8E4] | w[0x8E5]);
+    if (key !== this.markKey || (fresh && !this.markFresh)) { this.marks.length = 0; this.wear.clear(); this.feet.clear(); this.markKey = key; }
+    this.markFresh = fresh;
+    if (s.mapId > 15 || (v.isDrill && v.isDrill())) return;
+    const kind = this.surfaceAt(0, 0).kind, fr = s.fr;
+    for (const p of v.players()) {
+      const f = this.feet.get(p.slot); this.feet.set(p.slot, { x: p.X, z: p.Y, fr, vx: f ? p.X - f.x : 0, vz: f ? p.Y - f.z : 0 });
+      if (!f || fr !== f.fr + 1 || p.Z < -6) continue;                                    // (in the air: no marks)
+      const vx = p.X - f.x, vz = p.Y - f.z, sp = Math.hypot(vx, vz);
+      if (kind === "grass") { const k = Math.round(p.X / 40) + "," + Math.round(p.Y / 40); this.wear.set(k, (this.wear.get(k) || 0) + 1); }
+      else if (kind === "clay" && sp > 3 && fr % 8 === 0) this.addMark({ x: p.X, z: p.Y, d: [vx / sp, vz / sp], len: 14 + sp * 2, wid: 10, a: 0.22, fr, kind: "scuff" });
+      else if (kind === "hard" && sp < 1.5 && Math.hypot(f.vx, f.vz) > 6) this.addMark({ x: p.X, z: p.Y, d: [f.vx, f.vz].map(x => x / Math.hypot(f.vx, f.vz)), len: 34, wid: 6, a: 0.3, fr, kind: "rubber" });
+    }
+  }
+  ballMark(s, q, fr) {
+    if (s.mapId > 15 || (this.v.isDrill && this.v.isDrill())) return;
+    const kind = this.surfaceAt(s.X, s.Y).kind, h = Math.hypot(q.vx, q.vy) || 1, d = [q.vx / h, q.vy / h];
+    if (kind === "clay") this.addMark({ x: s.X, z: s.Y, d, len: 38, wid: 21, a: 0.6, fr, kind: "ball" });
+    else if (kind === "hard") this.addMark({ x: s.X, z: s.Y, d, len: 18, wid: 11, a: 0.16, fr, kind: "ball" });
+  }
+  addMark(m) { if (this.marks.length > 500) { const i = this.marks.findIndex(o => o.kind !== "ball"); this.marks.splice(Math.max(0, i), 1); } this.marks.push(m); }
+  // drawn flat under everything else of the ball's: clay marks a shade darker than the court, hard-court ball marks pale, rubber dark
+  drawMarks(T) {
+    const kind = this.surface.kind, dc = this.surface.c, life = kind === "hard" ? 5400 : 1e9;
+    if (this.marks.length) this.marks = this.marks.filter(m => T - m.fr < life);
+    for (const m of this.marks) {
+      const fade = Math.min(1, (life - (T - m.fr)) / 900), col = m.kind === "rubber" ? [0.12, 0.12, 0.14] : kind === "clay" ? dc.map(x => x * (m.kind === "ball" ? 0.62 : 0.72)) : [0.95, 0.95, 0.9];
+      this.quad([m.x, 0.45, m.z], [m.d[0] * m.len, 0, m.d[1] * m.len], [-m.d[1] * m.wid, 0, m.d[0] * m.wid], 7, 0.75, [col[0], col[1], col[2], m.a * fade]);
+    }
+    if (kind === "grass") for (const [k, n] of this.wear) {                                  // under a second in a spot to show, browner the longer
+      if (n < 45) continue; const [cx, cz] = k.split(",").map(Number), a = Math.min(0.55, 0.16 * Math.log2(n / 30));
+      this.flat([cx * 40, 0.4, cz * 40], 62, 50, 7, 0.95, [0.56, 0.46, 0.26, a]);
+    }
   }
   // the court colour under a point (voxel.js groundColour), and the surface type: clay / grass / hard by the map, else by the colour
   surfaceAt(X, Y) {
@@ -345,6 +387,7 @@ export class BallFX {
     const gl = this.gl, T = this.T = this.time(); this.n = 0; this.B = this.basis(mvp);
     const L = this.v.light; this.gk = L && L.active && L.begun && !L.broken ? 0.5 : 1;     // LIGHT is on: its bloom adds to the overbright additive colours, so they start lower
     const B = this.B, ball = this.ball, PL = this.bodies();
+    if (this.v.isCourt && this.v.isCourt()) this.drawMarks(T);
     // 1. shadow of the ball (the court-level one the voxel view used to draw as a fixed blob)
     if (ball) {
       const h = ball.h, k = clamp(h / 420), rx = 24 * (1 + 1.5 * k), rz = 16 * (1 + 1.5 * k), soft = clamp(0.10 + 0.85 * sstep(0, 260, h)), al = 0.68 * (1 - 0.62 * sstep(0, 420, h));

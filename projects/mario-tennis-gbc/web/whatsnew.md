@@ -1,6 +1,6 @@
 # MTenn3D — full changelog (every version)
 
-**0.35.20 is the shareable build: it contains no game data** (it does carry a little surprise for the [REDACTED] and the [REDACTED]; 0.35.21 is your own build with the ROM inside: keep it on your phone). On first start, tap the file box and pick your
+**0.35.22 is the shareable build: it contains no game data** (it does carry a little surprise for the [REDACTED] and the [REDACTED]; 0.35.23 is your own build with the ROM inside: keep it on your phone). On first start, tap the file box and pick your
 own legal dump of *Mario Tennis (USA)* for Game Boy Color (`.gbc`, SHA-1 starting `414ba583`). The app
 checks it, keeps it on the phone (never uploaded), and starts with it by itself after that. Builds up to
 0.24 were private builds with the ROM inside; keep those to yourself. Newest first.
@@ -53,6 +53,8 @@ checks it, keeps it on the phone (never uploaded), and starts with it by itself 
 - 0.35.20: WEATHER has two more kinds: Wet (after the rain: a dark, glossy court with puddles mirroring the sky and, at night, the floodlights) and Wind (leaves blown across the court in gusts, with a low rush of wind); rain now wets the court too, with rings spreading in the puddles. Random picks them as well.
 - 0.35.20: open world (FIELD LIFE): fireflies at night, puddles on the ground for a while after a rainy match, people walking along the campus paths (the map's own kinds of people), and the fountains' night glow now shows.
 - 0.35.20: [REDACTED] opponents have something to say: a line in a speech bubble during their walk-out close-up (billed as a RIVAL) and a word on the result when the match ends; more of the story's lines were rewritten for the disguises.
+- 0.35.22: a rally counter in the corner from the 5th shot of a rally, and the match's stats (points won, aces, winners, errors, double faults, fastest serve, longest rally) in a TV panel at each changeover and after each set, until the next serve (MATCH FX).
+- 0.35.22: the court shows the match: ball marks and foot scuffs stay on clay, grass wears brown where the players spend their time (the baselines first), and a hard court keeps faint ball marks and rubber scuffs where a player stops sharply (BALL FX).
 
 ## 0.34 — replays, weather and a better grass court
 - **Instant replay:** after a rally of 5 shots or more a REPLAY button shows for a few seconds; tap it to watch the

@@ -8,9 +8,16 @@
 //   claps               before a big point (or now and then) the crowd claps in rhythm, faster and faster, until the serve
 //   pause               while the game's pause menu is up (its labels written over the court: many BG tiles off the court map)
 //                       TV shots of the court and the crowd cut one after another, each a slow pan
+//   rally counter       from the 5th shot of a rally a counter in the corner counts the shots, popping at each one
+//   stats               the match's numbers are kept as it goes, read from the game's own point bytes (wPointOutcome $C4D8, wRallyLength
+//                       $C4B6, the score): points won, aces, winners, errors (into the net or out), double faults, the fastest serve
+//                       (its launch speed, as BALL FX reads it) and the longest rally; at each changeover (after the 1st, 3rd, 5th...
+//                       game of a set) and after each set they come up in a TV panel until the next serve
 //   after each point    the game plays its own fist pump / slump (CharPointReactionPhase 08:6D27 by wCharPointResult $DF57); on top of
 //                       it the point's winner hops twice under turning stars, the loser gets a sweat drop and a small grey cloud
+import { KMH } from "./ballfx.js";
 const KEY = "mt-matchfx";
+const OUT_WINNER = 6, OUT_NET = 4, OUT_OUT = 5, OUT_DOUBLE = 2;   // wPointOutcome values (engine/ball.js POINTOUTCOME)
 const ease = u => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
 const SWEEP = 3.2, CELEB = 2.6;                             // seconds (the game leaves the court for its results about 2.3 s after match point)
 const CONF_LIFE = 5.5, FW_COLOURS = [[255, 90, 80], [255, 210, 60], [120, 200, 255], [140, 255, 140], [255, 140, 230], [255, 255, 255]];
@@ -35,7 +42,7 @@ const PAUSE_SHOTS = [
 export class MatchFX {
   constructor(voxel) {
     this.v = voxel; this.on = (() => { try { return localStorage.getItem(KEY) !== "off"; } catch (e) { return true; } })();
-    this.prev = null; this.react = new Map(); this.cine = null; this.confetti = null; this.tense = false; this.oohAt = 0; this.claps = null; this.pauseN = 0;
+    this.prev = null; this.react = new Map(); this.cine = null; this.stats = null; this.ptMax = 0; this.serveAt = 0; this.confetti = null; this.tense = false; this.oohAt = 0; this.claps = null; this.pauseN = 0;
     this.skip = () => { if (this.cine && this.cine.kind === "sweep") this.cine = null; };
     addEventListener("pointerdown", this.skip, true); addEventListener("keydown", this.skip, true);
   }
@@ -58,11 +65,16 @@ export class MatchFX {
     const v = this.v, w = v.gb.mem.wram[0], S = this.score(w), p = this.prev, snd = st.sound, now = performance.now() / 1000; this.prev = S;
     if (!this.on || !p) return;
     const sig = s => [...s.sets, ...s.games, ...s.pts].join();
+    const zero = ![...S.sets, ...S.games, ...S.pts].some(x => x);
+    if (!this.stats || (zero && sig(p) !== sig(S))) this.stats = newStats();   // a new match (or one already under way: counted from here)
+    this.rallyStep(v, w, S, p);
     if (sig(S) !== sig(p)) {                                // a point was played
+      this.countPoint(w, S, p);
       const setDone = S.sets[0] + S.sets[1] > p.sets[0] + p.sets[1], gameDone = S.games[0] + S.games[1] !== p.games[0] + p.games[1] || setDone;
       if (S.won && !p.won) { this.celebrate(S.sets[0] >= S.sets[1] ? 0 : 1, st); return; }
       if (this.tense && setDone && snd) setTimeout(() => snd.cheer(1), 700);           // the set point was won: a second roar
       if (gameDone) this.cine = { kind: "sweep", t0: now, a0: Math.random() < 0.5 ? -1 : 1 };
+      if (!S.won && (setDone || (gameDone && (S.games[0] + S.games[1]) % 2 === 1))) this.showStats(setDone ? "SET " + (S.sets[0] + S.sets[1]) : "CHANGEOVER");
       const k = Math.max(this.stakes(S, 0), this.stakes(S, 1)); this.tense = k > 0;
       if (k && snd) setTimeout(() => snd.hush(st.fill), 1400);
       if (!S.won && (k || Math.random() < 0.3)) this.claps = { next: now + (k ? 3.2 : 1.6), n: 0, until: now + 9 };   // (after the hush on a big point)
@@ -81,6 +93,70 @@ export class MatchFX {
   }
   // seconds since a reaction began, in game frames (held with the game: the pause menu, the intro)
   reactAge(q) { return (this.v.gb.ppu.frames - q.f0) / 60; }
+  // the rally counter and the serve's speed (two frames after the serve's contact: the launch velocity, wBallVelocity $C420-$C428)
+  rallyStep(v, w, S, p) {
+    const h = S.hits; this.ptMax = Math.max(this.ptMax, h);
+    if (h === 1 && p.hits === 0) { this.serveAt = v.gb.ppu.frames + 2; if (this.panel && !this.panel.hidden) this.hidePanel(); }   // a serve: the next point is under way
+    if (this.serveAt && v.gb.ppu.frames >= this.serveAt && this.stats) {
+      this.serveAt = 0;
+      const s24 = a => ((w[a] | (w[a + 1] << 8) | (w[a + 2] << 16)) << 8 >> 8) / 65536, kmh = Math.round(Math.hypot(s24(0x420), s24(0x423), s24(0x426)) * KMH);
+      const side = w[0x4B8] & 1; this.stats.serve[side] = Math.max(this.stats.serve[side], kmh);
+    }
+    // (the count stays in wRallyLength until the next point starts: the counter goes 1.5 s after the point's outcome)
+    if (!w[0x4D8]) this.outAt = 0; else if (!this.outAt) this.outAt = v.gb.ppu.frames;
+    this.rallyTag(this.on && h >= 5 && (!this.outAt || v.gb.ppu.frames - this.outAt < 90) ? h : 0);
+  }
+  // a point just went into the score: who won it (the side whose count rose; a deuce taken back to 30-30 lowers the loser's), and how
+  countPoint(w, S, p) {
+    const T = this.stats, h = this.ptMax; this.ptMax = 0; if (!T || ![...S.sets, ...S.games, ...S.pts].some(x => x)) return;   // (a new match's 0-0 is no point)
+    const d = i => (S.sets[i] - p.sets[i]) * 1e4 + (S.games[i] - p.games[i]) * 100 + (S.pts[i] - p.pts[i]), win = d(0) > d(1) ? 0 : 1, lose = 1 - win, o = w[0x4D8];
+    T.points[win]++; T.longest = Math.max(T.longest, h);
+    if (o === OUT_WINNER) { T.winners[win]++; if (h === 1) T.aces[win]++; }
+    else if (o === OUT_NET || o === OUT_OUT) T.errors[lose]++;
+    else if (o === OUT_DOUBLE) T.doubles[lose]++;
+  }
+  rallyTag(n) {
+    if (typeof document === "undefined" || !this.v.cv) return;
+    let e = this.tag; if (!n && !e) return;
+    if (!e) {
+      e = this.tag = document.createElement("div");
+      e.style.cssText = "position:fixed;z-index:7;pointer-events:none;font:700 18px Itim,system-ui,sans-serif;color:#fff;background:rgba(14,16,26,.78);border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:3px 10px;transition:opacity .4s,transform .12s;opacity:0";
+      document.body.appendChild(e);
+    }
+    if (n === this.tagN) return; this.tagN = n;
+    if (!n) { e.style.opacity = "0"; return; }
+    const r = this.v.cv.getBoundingClientRect();
+    e.style.left = Math.round(r.right - r.width * 0.04) + "px"; e.style.top = Math.round(r.top + r.height * 0.2) + "px";
+    e.replaceChildren(); const b = document.createElement("span"); b.textContent = "RALLY "; b.style.cssText = "font-size:.7em;letter-spacing:.12em;color:#ffdc5a"; e.append(b, String(n));
+    e.style.opacity = "1"; e.style.transform = "translateX(-100%) scale(1.25)"; setTimeout(() => { e.style.transform = "translateX(-100%)"; }, 120);
+  }
+  // the TV panel of the match's numbers so far: your name on the left (red), your opponent's on the right (blue)
+  showStats(title) {
+    const T = this.stats; if (!this.on || !T || typeof document === "undefined" || !this.v.cv) return;
+    let e = this.panel;
+    if (!e) {
+      e = this.panel = document.createElement("div");
+      e.style.cssText = "position:fixed;z-index:7;pointer-events:none;transform:translate(-50%,-50%);min-width:min(420px,80vw);background:rgba(12,14,24,.86);color:#e9ecf4;border:2px solid rgba(255,255,255,.22);border-radius:12px;font:clamp(12px,2.2vw,17px)/1.35 Itim,system-ui,sans-serif;padding:.5em .9em .6em;box-shadow:0 6px 24px rgba(0,0,0,.5);transition:opacity .4s;opacity:0";
+      document.body.appendChild(e);
+    }
+    const w = this.v.gb.mem.wram[0], name = a => { let o = ""; for (let i = 0; i < 16; i++) { const c = w[a + i]; if (c < 0x20 || c > 0x7E) break; o += String.fromCharCode(c); } return o.trim().toUpperCase(); };
+    const rows = [["POINTS WON", T.points], ["ACES", T.aces], ["WINNERS", T.winners], ["ERRORS", T.errors], ["DOUBLE FAULTS", T.doubles], ["FASTEST SERVE", T.serve.map(k => k ? k + " km/h" : "-")]];
+    e.replaceChildren();
+    const head = document.createElement("div"); head.style.cssText = "display:flex;justify-content:space-between;gap:1em;margin-bottom:.35em;font-weight:700";
+    const n0 = document.createElement("span"), mid = document.createElement("span"), n1 = document.createElement("span");
+    n0.textContent = name(0xA00) || "YOU"; n0.style.color = "#ff6a6a"; n1.textContent = name(0xA80) || "OPPONENT"; n1.style.color = "#6aa0ff"; mid.textContent = title; mid.style.cssText = "color:#ffdc5a;letter-spacing:.12em;font-size:.85em";
+    head.append(n0, mid, n1); e.appendChild(head);
+    for (const [label, v] of rows) {
+      const r = document.createElement("div"); r.style.cssText = "display:flex;justify-content:space-between;gap:1em;border-top:1px solid rgba(255,255,255,.08);padding:.1em 0";
+      const a = document.createElement("b"), l = document.createElement("span"), b = document.createElement("b");
+      a.textContent = v[0]; b.textContent = v[1]; l.textContent = label; l.style.cssText = "font-size:.8em;letter-spacing:.08em;color:#aab";
+      r.append(a, l, b); e.appendChild(r);
+    }
+    const lr = document.createElement("div"); lr.style.cssText = "text-align:center;margin-top:.3em;font-size:.85em;color:#ffdc5a"; lr.textContent = "LONGEST RALLY  " + T.longest + (T.longest === 1 ? " SHOT" : " SHOTS"); e.appendChild(lr);
+    const r = this.v.cv.getBoundingClientRect(); e.style.left = Math.round(r.left + r.width / 2) + "px"; e.style.top = Math.round(r.top + r.height * 0.5) + "px";
+    e.hidden = false; e.style.opacity = "1"; clearTimeout(this.panelT); this.panelT = setTimeout(() => this.hidePanel(), 9000);
+  }
+  hidePanel() { const e = this.panel; if (!e) return; e.style.opacity = "0"; clearTimeout(this.panelT); this.panelT = setTimeout(() => { e.hidden = true; }, 400); }
   // each match slot's point reaction: state 7 (the point's end) from its reaction phase on, wCharPointResult's sign the mood
   reactStep(v) {
     const m = v.gb.mem, n = m.wram[0][0x8F3] >= 4 ? 4 : 2;
@@ -215,6 +291,8 @@ export class MatchFX {
     }
   }
 }
+
+function newStats() { const two = () => [0, 0]; return { points: two(), aces: two(), winners: two(), errors: two(), doubles: two(), serve: two(), longest: 0 }; }
 
 export function addMatchFxButton(hud, fx) {
   if (!hud || !fx) return null;
