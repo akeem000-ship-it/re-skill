@@ -844,7 +844,7 @@ export class Voxel3D {
       }
       c.fitKey = key; c.dist = hi;
     }
-    const d = c.dist;
+    const d = c.dist * (this.matchfx && this.stadium && this.stadium.active ? this.matchfx.zoom() : 1);   // MATCH FX: leaning in with the momentum
     const view = m4.lookAt([dir[0] * d, dir[1] * d, dir[2] * d + pr.aim], [0, 0, pr.aim], [0, 1, 0]);
     return { mvp: m4.mul(m4.perspective(fov, aspect, COURT_CLIP.near, COURT_CLIP.far), view), tilt };
   }

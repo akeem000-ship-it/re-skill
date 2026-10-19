@@ -13,6 +13,9 @@
 //                       $C4B6, the score): points won, aces, winners, errors (into the net or out), double faults, the fastest serve
 //                       (its launch speed, as BALL FX reads it) and the longest rally; at each changeover (after the 1st, 3rd, 5th...
 //                       game of a set) and after each set they come up in a TV panel until the next serve
+//   momentum            a bar under the scoreboard swings towards whoever is winning the points (each point pulls it a third of the
+//                       way over); three in a row puts ON FIRE on their side, the crowd roars louder for each point of the streak and
+//                       the court camera leans in a little as the momentum builds (voxel.js courtCamera: zoom())
 //   after each point    the game plays its own fist pump / slump (CharPointReactionPhase 08:6D27 by wCharPointResult $DF57); on top of
 //                       it the point's winner hops twice under turning stars, the loser gets a sweat drop and a small grey cloud
 import { KMH } from "./ballfx.js";
@@ -42,7 +45,7 @@ const PAUSE_SHOTS = [
 export class MatchFX {
   constructor(voxel) {
     this.v = voxel; this.on = (() => { try { return localStorage.getItem(KEY) !== "off"; } catch (e) { return true; } })();
-    this.prev = null; this.react = new Map(); this.cine = null; this.stats = null; this.ptMax = 0; this.serveAt = 0; this.confetti = null; this.tense = false; this.oohAt = 0; this.claps = null; this.pauseN = 0;
+    this.prev = null; this.react = new Map(); this.cine = null; this.stats = null; this.mom = 0; this.momShown = 0; this.streak = { side: -1, n: 0 }; this.ptMax = 0; this.serveAt = 0; this.confetti = null; this.tense = false; this.oohAt = 0; this.claps = null; this.pauseN = 0;
     this.skip = () => { if (this.cine && this.cine.kind === "sweep") this.cine = null; };
     addEventListener("pointerdown", this.skip, true); addEventListener("keydown", this.skip, true);
   }
@@ -66,10 +69,11 @@ export class MatchFX {
     if (!this.on || !p) return;
     const sig = s => [...s.sets, ...s.games, ...s.pts].join();
     const zero = ![...S.sets, ...S.games, ...S.pts].some(x => x);
-    if (!this.stats || (zero && sig(p) !== sig(S))) this.stats = newStats();   // a new match (or one already under way: counted from here)
+    if (!this.stats || (zero && sig(p) !== sig(S))) { this.stats = newStats(); this.mom = 0; this.streak = { side: -1, n: 0 }; }   // a new match (or one already under way: counted from here)
+    this.momentumBar();
     this.rallyStep(v, w, S, p);
     if (sig(S) !== sig(p)) {                                // a point was played
-      this.countPoint(w, S, p);
+      this.countPoint(w, S, p, snd, st);
       const setDone = S.sets[0] + S.sets[1] > p.sets[0] + p.sets[1], gameDone = S.games[0] + S.games[1] !== p.games[0] + p.games[1] || setDone;
       if (S.won && !p.won) { this.celebrate(S.sets[0] >= S.sets[1] ? 0 : 1, st); return; }
       if (this.tense && setDone && snd) setTimeout(() => snd.cheer(1), 700);           // the set point was won: a second roar
@@ -107,13 +111,42 @@ export class MatchFX {
     this.rallyTag(this.on && h >= 5 && (!this.outAt || v.gb.ppu.frames - this.outAt < 90) ? h : 0);
   }
   // a point just went into the score: who won it (the side whose count rose; a deuce taken back to 30-30 lowers the loser's), and how
-  countPoint(w, S, p) {
+  countPoint(w, S, p, snd, st) {
     const T = this.stats, h = this.ptMax; this.ptMax = 0; if (!T || ![...S.sets, ...S.games, ...S.pts].some(x => x)) return;   // (a new match's 0-0 is no point)
     const d = i => (S.sets[i] - p.sets[i]) * 1e4 + (S.games[i] - p.games[i]) * 100 + (S.pts[i] - p.pts[i]), win = d(0) > d(1) ? 0 : 1, lose = 1 - win, o = w[0x4D8];
+    // MOMENTUM: a third of the way towards the winner's end; a streak of three or more makes the crowd roar louder
+    this.mom = this.mom * (2 / 3) + (win ? -1 : 1) / 3;
+    this.streak = this.streak.side === win ? { side: win, n: this.streak.n + 1 } : { side: win, n: 1 };
+    if (this.streak.n >= 3 && snd && st) setTimeout(() => snd.cheer(Math.min(1, st.fill + 0.15 * (this.streak.n - 2))), 450);
     T.points[win]++; T.longest = Math.max(T.longest, h);
     if (o === OUT_WINNER) { T.winners[win]++; if (h === 1) T.aces[win]++; }
     else if (o === OUT_NET || o === OUT_OUT) T.errors[lose]++;
     else if (o === OUT_DOUBLE) T.doubles[lose]++;
+  }
+  // the court camera's distance factor (voxel.js courtCamera): up to 7% closer as the momentum builds, either way
+  zoom() { return this.on ? 1 - 0.07 * Math.min(1, Math.abs(this.momShown) * 1.2) : 1; }
+  // the momentum bar under the scoreboard: red from the left for you, blue from the right for your opponent; ON FIRE on a streak of 3+
+  momentumBar() {
+    this.momShown += (this.mom - this.momShown) * 0.05;                          // eases over about a second
+    if (typeof document === "undefined" || !this.v.cv) return;
+    let e = this.bar; const show = this.on && this.stats && (this.stats.points[0] + this.stats.points[1]) > 0;
+    if (!e) {
+      if (!show) return;
+      e = this.bar = document.createElement("div");
+      e.style.cssText = "position:fixed;z-index:6;pointer-events:none;transform:translateX(-50%);height:12px;border-radius:6px;background:rgba(14,16,26,.7);border:1px solid rgba(255,255,255,.25);transition:opacity .4s";
+      e.innerHTML = '<i style="position:absolute;top:1px;bottom:1px;border-radius:5px"></i><b style="position:absolute;left:50%;top:-3px;width:2px;height:16px;background:#fff;opacity:.6"></b><span style="position:absolute;top:14px;font:700 11px Itim,system-ui,sans-serif;letter-spacing:.1em;white-space:nowrap;text-shadow:0 1px 2px #000"></span>';
+      document.body.appendChild(e);
+    }
+    e.style.opacity = show ? "1" : "0"; if (!show) return;
+    clearTimeout(this.barT); this.barT = setTimeout(() => { e.style.opacity = "0"; }, 600);   // (off the court, or the game stopped: no steps)
+    const r = this.v.cv.getBoundingClientRect(), W = Math.round(Math.min(260, r.width * 0.26)), m = Math.max(-1, Math.min(1, this.momShown));
+    e.style.left = Math.round(r.left + r.width / 2) + "px"; e.style.top = Math.round(r.top + r.height * 0.035) + "px"; e.style.width = W + "px";
+    const fill = e.children[0], half = (W - 2) / 2, len = Math.abs(m) * half;
+    fill.style.background = m >= 0 ? "linear-gradient(90deg,#ff7a50,#ff3c3c)" : "linear-gradient(90deg,#3c78ff,#5ab4ff)";
+    fill.style.left = (m >= 0 ? half - len : half) + "px"; fill.style.width = len + "px";
+    const t = e.children[2], fire = this.streak.n >= 3;
+    t.textContent = fire ? "ON FIRE \u00D7" + this.streak.n : ""; t.style.color = this.streak.side ? "#8ab8ff" : "#ff8a6a";
+    t.style.left = this.streak.side ? "auto" : "0"; t.style.right = this.streak.side ? "0" : "auto";
   }
   rallyTag(n) {
     if (typeof document === "undefined" || !this.v.cv) return;
