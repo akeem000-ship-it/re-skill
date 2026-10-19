@@ -177,8 +177,8 @@ const STADIUM_MAP = 32;
 // the side stands stop short of the far backdrop (base at Y ~ -1720) so they do not cut through it; the
 // far bleachers are only added behind courts whose own backdrop has no stands
 const STANDS = [
-  { name: "left",  inner: "right",  seats: { x0: 18,  y0: 112, x1: 100, y1: 296 }, wall: { x0: 100, y0: 112, x1: 119, y1: 296 }, base: 130, plane: { x0: -1180, x1: -1877, y0: -1640, y1: 1900, h: 300 } },
-  { name: "right", inner: "left",   seats: { x0: 290, y0: 112, x1: 370, y1: 296 }, wall: { x0: 270, y0: 112, x1: 290, y1: 296 }, base: 130, plane: { x0: 1180,  x1: 1860,  y0: -1640, y1: 1900, h: 290 } },
+  { name: "left",  inner: "right",  seats: { x0: 18,  y0: 112, x1: 100, y1: 296 }, wall: { x0: 100, y0: 112, x1: 119, y1: 296 }, base: 130, plane: { x0: -1420, x1: -2117, y0: -1640, y1: 1900, h: 300 } },
+  { name: "right", inner: "left",   seats: { x0: 290, y0: 112, x1: 370, y1: 296 }, wall: { x0: 270, y0: 112, x1: 290, y1: 296 }, base: 130, plane: { x0: 1420,  x1: 2100,  y0: -1640, y1: 1900, h: 290 } },
   { name: "far",   inner: "bottom", seats: { x0: 18,  y0: 12,  x1: 370, y1: 96 },  wall: { x0: 18,  y0: 96,  x1: 370, y1: 112 }, base: 130, plane: { x0: -2030, x1: 2030,  y0: -1800, y1: -2514, h: 290 }, skipCourts: [2, 6, 7, 14] },
 ];
 
@@ -373,7 +373,7 @@ export class Voxel3D {
   }
   sampleState() { const p = this.gb.ppu; return { players: this.players(), ball: this.ballWorld(), scx: p.scx, scy: p.scy }; }
   // interpolated world state for the current display frame (positions that jumped are not interpolated)
-  interp() { const r = this.interp0(); return this.intro ? this.intro.adjust(r) : r; }   // INTRO: the walk-out moves the drawn players
+  interp() { const r0 = this.interp0(), r = this.intro ? this.intro.adjust(r0) : r0; return this.matchfx && this.stadium && this.stadium.active ? this.matchfx.adjust(r) : r; }   // INTRO: the walk-out moves the drawn players; MATCH FX: the point winner's hop
   interp0() {
     const a = this.alpha, c = this.cur, q = this.prev; if (!c) return this.sampleState(); if (!q || a >= 1) return c;
     const mix = (u, v, lim) => Math.abs(u - v) > lim ? u : v + (u - v) * a;
@@ -2050,6 +2050,7 @@ export class Voxel3D {
       if (m && (a.ax + m.bx0 < 0 || a.ax + m.bx1 > 160 || a.ay + m.by0 < 0 || a.ay > 144)) this.drawBody(m.body, X, Z, a.lift, 1, TILT, mvp);
     }
     for (const g of loose) { const cx2 = (g.x0 + g.x1) / 2; this.blitObject(g.list, cx2, g.y1, cx2 + ox, g.y1 + oy, 0, 1, TILT, mvp); }
+    if (this.life) this.life.drawWalkers(mvp, TILT);                  // FIELD LIFE: people walking about
     if (this.debug) this.debug.push({ actors: actors.map(a => `${a.slot}:${a.obj}@${Math.round(a.ax)},${Math.round(a.ay)}/${a.list.length}${mem.has(a.slot) ? "m" : ""}`).join(" "), loose: loose.length });
   }
   // the Training Center's people (map 34) as pictures, one per kind of person, kept for the drill hall (stadium3d.js): they watch the
@@ -2079,8 +2080,8 @@ export class Voxel3D {
   // the frame actor b (its offset in the actor table) would show, read from the ROM into bank 2 (romFrameTiles): the animation's
   // frame (+0x33, or the first frame of its script at +0x2C) and the facing (+0x34 through DirectionToFacing 04:56B3, unless the
   // object has one facing, +0x35 = 1; or `facing`, a frame offset 0x00 / 0x40 / 0x80 / 0xC0, when given). -> its first tile there, or -1
-  actorRomFrame(b, facing) {
-    const w4 = this.gb.mem.wram[4], rom = this.gb.mem.rom, bank = w4[b + 0x22], at = a => bank * 0x4000 + (a & 0x3FFF), w = o => w4[b + o] | w4[b + o + 1] << 8;
+  actorRomFrame(b, facing, w4 = this.gb.mem.wram[4]) {      // (w4: or a copy of the actor's table entry, b 0: FIELD LIFE's walkers)
+    const rom = this.gb.mem.rom, bank = w4[b + 0x22], at = a => bank * 0x4000 + (a & 0x3FFF), w = o => w4[b + o] | w4[b + o + 1] << 8;
     if (bank < 1 || bank >= rom.length / 0x4000) return -1;
     let e = w4[b + 0x33];
     if (e === 0xFF) {

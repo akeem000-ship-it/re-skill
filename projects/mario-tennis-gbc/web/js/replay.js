@@ -57,7 +57,7 @@ export class InstantReplay {
   camera(aspect, m4, clip, state) {
     const b = (state && state.ball) || { X: 0, Y: 0 }, want = [b.X * 0.35, b.Y * 0.8];
     this.cam = this.cam ? [this.cam[0] + (want[0] - this.cam[0]) * 0.08, this.cam[1] + (want[1] - this.cam[1]) * 0.08] : want;
-    const [cx, cz] = this.cam, eye = [1650, 900, cz + 650], at = [cx, 60, cz];   // (above the right-hand stand, clear of the seats)
+    const [cx, cz] = this.cam, eye = [1890, 900, cz + 650], at = [cx, 60, cz];   // (above the right-hand stand, clear of the seats)
     return { mvp: m4.mul(m4.perspective(0.62, aspect, clip.near, clip.far), m4.lookAt(eye, at, [0, 1, 0])), tilt: 0 };
   }
 }

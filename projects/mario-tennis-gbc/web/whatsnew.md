@@ -1,13 +1,15 @@
 # MTenn3D — full changelog (every version)
 
-**0.35.18 is the shareable build: it contains no game data** (it does carry a little surprise for the [REDACTED] and the [REDACTED]; 0.35.19 is your own build with the ROM inside: keep it on your phone). On first start, tap the file box and pick your
+**0.35.20 is the shareable build: it contains no game data** (it does carry a little surprise for the [REDACTED] and the [REDACTED]; 0.35.21 is your own build with the ROM inside: keep it on your phone). On first start, tap the file box and pick your
 own legal dump of *Mario Tennis (USA)* for Game Boy Color (`.gbc`, SHA-1 starting `414ba583`). The app
 checks it, keeps it on the phone (never uploaded), and starts with it by itself after that. Builds up to
 0.24 were private builds with the ROM inside; keep those to yourself. Newest first.
 
 ## Known issues (as of 0.35)
 - Next week: the second half of the story scripts in the JS port, practice mode (a ball machine on any court) and a check of doubles in 3D (a recording of a doubles match would help).
-- Characters fading during power shots: not reproduced yet; a screenshot or a timestamp in a recording would help.
+- Characters fading during power shots, and a slight blur at the start of a match: not reproduced yet; a screenshot or a timestamp in a recording would help.
+- Practice courts: a player rallying there who is also a [REDACTED] classmate can switch colours between strokes (their swing frames are not part of the mod yet).
+- The instant replay is not available yet when the JS port runs the game (CODE: PORT).
 - The cafeteria's seated people were set up without a recording of them sitting: tell me if anyone still sinks into a seat.
 - The shared builds run the game on the built-in interpreter (slower than your private build); set LIGHT
   quality to Low (or BATTERY: saver) if a phone struggles.
@@ -44,6 +46,13 @@ checks it, keeps it on the phone (never uploaded), and starts with it by itself 
 - 0.35.18: menus: the EXP screen's names and numbers (the menus' bold font) are in the HD font; in 3D the pause menu's label under the selected icon (MUSIC, RULES...) and its score panel's digits show properly (a digit was taken for the ball's shadow).
 - 0.35.18: matches: the camera sweeps round the stadium after every game and every set, whoever wins it; a player's shadow follows the body's shape (a dive casts a long one); in the walk-out intro each player walks on from the tunnel to their place instead of standing still.
 - 0.35.18: [REDACTED] characters who are also the junior courts' classmates keep the game's own look in story mode until you win a junior class title; the [REDACTED] heads beside the score are round cut-outs like the others'.
+- 0.35.20: a roomier stadium: the side stands, their tunnels and the floodlights stand further back from the court, with more run-off round it.
+- 0.35.20: after each point the winner hops twice under turning stars and the loser gets a sweat drop and a grey cloud (on top of the game's own fist pump and slump; MATCH FX).
+- 0.35.20: power shots, smashes and special shots put their speed up for a moment ("142 km/h", BALL FX).
+- 0.35.20: fans in the stands hold up banners with your name (red) and your opponent's (blue); the fuller the stadium, the more banners.
+- 0.35.20: WEATHER has two more kinds: Wet (after the rain: a dark, glossy court with puddles mirroring the sky and, at night, the floodlights) and Wind (leaves blown across the court in gusts, with a low rush of wind); rain now wets the court too, with rings spreading in the puddles. Random picks them as well.
+- 0.35.20: open world (FIELD LIFE): fireflies at night, puddles on the ground for a while after a rainy match, people walking along the campus paths (the map's own kinds of people), and the fountains' night glow now shows.
+- 0.35.20: [REDACTED] opponents have something to say: a line in a speech bubble during their walk-out close-up (billed as a RIVAL) and a word on the result when the match ends; more of the story's lines were rewritten for the disguises.
 
 ## 0.34 — replays, weather and a better grass court
 - **Instant replay:** after a rally of 5 shots or more a REPLAY button shows for a few seconds; tap it to watch the

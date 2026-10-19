@@ -63,6 +63,8 @@ export function mountCreator({ hud, keys, pause, onChange }) {
   // mods' "from": "senior" characters: their look only outside story mode (the map last walked is not an RPG map) or once a junior
   // class title is won; re-checked with the look detection and the look rebuilt when it changes
   mgr.gate = ch => ch.from !== "senior" || seniorUp;
+  // the switched-on mods' character `ch` (a roster id) as it plays now (gated), or null: its lines (intro.js, matchfx.js)
+  const modChar = ch => { const L = mgr.look; for (const m of (L && L.mods) || []) for (const c of m.chars) if (c.char === ch && mgr.gate(c)) return c; return null; };
   const gateNow = () => {
     const w = gb.mem.wram[0], map = w[0x32E];
     if (map >= 17 && map <= 36) inStory = true; else if (map === 16) inStory = false;   // (a court keeps what led to it)
@@ -268,7 +270,7 @@ export function mountCreator({ hud, keys, pause, onChange }) {
     // before the machine: apply the stored look to the ROM bytes
     ready,
     prepare(bytes) { pristine = Uint8Array.from(bytes); portraitSets = portraitKeys(pristine); mgr.prepare(bytes, withMods(load(KEY)), { detail: sprMode === "detail" }); },
-    attach(machine) { gb = machine; mgr.attach(gb); lastSlot = -1; detail.attach(gb, document.getElementById("screen")); detail.setEnabled(sprMode === "detail"); },
+    attach(machine) { gb = machine; mgr.attach(gb); gb.modChar = modChar; lastSlot = -1; detail.attach(gb, document.getElementById("screen")); detail.setEnabled(sprMode === "detail"); },
     get look() { return mgr.look; },
     open: openPanel,
     // once per emulated frame (after it ran)

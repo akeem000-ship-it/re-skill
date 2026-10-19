@@ -11,6 +11,9 @@
 //   impact     a flare, a glow, a ring and spark streaks at the racket contact; power shots and smashes are bigger with a second burst
 //   net        the net rocks when the ball hits it and flutters when the ball clips the tape (wBallNetHit / wBallNetCross)
 //   shadow     the ball's shadow is wide, pale and soft high up and shrinks to a small dark crisp one at the court
+//   speed      a power shot, a smash or a special shot puts its speed up for a moment ("142 km/h"), read two frames after the contact
+//              (the launch speed): 1 world unit is 23.77 m / 2496 of the court, and the game's ball flies at a little over half the
+//              pace of a real one, so the reading is scaled by 1.8 to feel like the shot looks (power serves near 215, power drives 120)
 // Everything is drawn in the scene (before the HUD, and before lighting.js's resolve when LIGHT is on), additive effects are overbright
 // so the lighting layer's bloom picks them up, and lights() hands the lighting layer a point light for strong impacts.
 // The game state is read once per game frame (step(), called from Voxel3D.tick()); the drawing is a function of the display time
@@ -26,6 +29,7 @@ const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * 
 const mix3 = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
 const WHITE = [1, 1, 0.92];
 const R_BALL = 24;                       // world units: the ball sprite is about 5 px of 7.5 units
+const KMH = 60 * 3.6 * 23.77 / 2496 * 1.8;   // km/h per world unit per frame (scaled: see "speed")
 
 // shot colours by wShotType (wC4A0): 0 top 1 power top 2 slice 3 power slice 4 flat A+B 5 low volley 6 / 7 / 8 volleys 9 smash 10 lob 11 drop 12 / 13 / 14 serves
 const SHOT = {
@@ -90,6 +94,21 @@ export class BallFX {
   }
   setOn(on) { this.on = !!on; try { localStorage.setItem(KEY, this.on ? "on" : "off"); } catch (e) { /* private mode */ } if (this.onChange) this.onChange(this.on); }
   reset() { this.parts.length = 0; this.hits.length = 0; this.bounces.length = 0; this.net = null; this.sq = null; this.prev = null; this.cut = -1; this.ball = null; }
+  // the speed tag over the 3D view: a short-lived label under the scoreboard, in the shot's colour
+  showSpeed(kmh, c) {
+    if (typeof document === "undefined" || !this.v || !this.v.cv) return;
+    let e = this.tag;
+    if (!e) {
+      e = this.tag = document.createElement("div");
+      e.style.cssText = "position:fixed;z-index:7;pointer-events:none;font:italic 700 22px Itim,system-ui,sans-serif;color:#fff;padding:2px 14px 2px 10px;border-radius:4px;transform:skewX(-12deg);transition:opacity .5s;opacity:0;text-shadow:0 2px 0 #000";
+      document.body.appendChild(e);
+    }
+    const r = this.v.cv.getBoundingClientRect(), col = `rgb(${c.map(x => Math.round(x * 200)).join(",")})`;
+    e.textContent = kmh + " km/h"; e.style.background = `linear-gradient(90deg, ${col}, rgba(0,0,0,.55))`;
+    e.style.left = Math.round(r.left + r.width * 0.06) + "px"; e.style.top = Math.round(r.top + r.height * 0.2) + "px";
+    e.style.transition = "none"; e.style.opacity = "1"; void e.offsetWidth; e.style.transition = "opacity .5s";
+    clearTimeout(this.tagT); this.tagT = setTimeout(() => { e.style.opacity = "0"; }, 1400);
+  }
   rand() { this.rnd = (this.rnd * 1664525 + 1013904223) >>> 0; return this.rnd / 4294967296; }
 
   // ---------------- reading the game, once per game frame ----------------
@@ -133,7 +152,9 @@ export class BallFX {
       const dir = this.norm(vw, [0, 0, -1]); this.cut = fr; this.sq = { kind: "hit", fr, str, d: dir };
       const h = { fr, pos: { ...pos }, str, dir, c: info.c, power: this.shot.power, smash: s.type === 9 }; this.hits.push(h); if (this.hits.length > 6) this.hits.shift();
       this.spawnHit(h);
+      if (this.shot.power) this.speedAt = fr + 2;
     }
+    if (this.speedAt && fr >= this.speedAt) { this.speedAt = 0; this.showSpeed(Math.round(sp * KMH / 5) * 5, this.shot.c); }
     if (s.bounce && !(q && q.bounce)) {
       const impact = clamp(Math.abs(q ? q.vz : s.vz) / 14), str = clamp(0.2 + 0.5 * impact + 0.4 * clamp(this.spd / 34));
       const b = { fr, pos: { x: s.X, y: 0, z: s.Y }, str }; this.bounces.push(b); if (this.bounces.length > 6) this.bounces.shift();

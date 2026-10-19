@@ -201,7 +201,9 @@ function adTextures(gl) {
 // the players' tunnels, through the bottom rows of the side stands beside the net, opening onto the court (x, z: the centre of the mouth at
 // the stand's inner edge; dir: into the stand along x; w wide, d deep, h high): stadium3d.js builds them, intro.js walks the players out of them
 // (yours in the left stand on the near side of the net, your opponent's in the right stand on the far side, clear of the umpire's chair)
-export const TUNNELS = [{ side: 0, x: -1180, z: 260, dir: -1, w: 200, d: 240, h: 250, col: [200, 30, 40] }, { side: 1, x: 1180, z: -260, dir: 1, w: 200, d: 240, h: 250, col: [30, 80, 200] }];
+// (the side stands stand SIDE_IN from the middle: 240 further out than the game's own picture of them, so the court has room round it)
+export const SIDE_IN = 1420;
+export const TUNNELS = [{ side: 0, x: -SIDE_IN, z: 260, dir: -1, w: 200, d: 240, h: 250, col: [200, 30, 40] }, { side: 1, x: SIDE_IN, z: -260, dir: 1, w: 200, d: 240, h: 250, col: [30, 80, 200] }];
 export class Stadium3D {
   constructor(voxel) {
     this.v = voxel; this.gl = voxel.gl;
@@ -338,9 +340,9 @@ export class Stadium3D {
     const tg = performance.now(); this.gfx(); const tp = performance.now(); const P = this.palette(bg, v.rom), rnd = mulberry32(0x57AD1 + courtId * 977);
     this.fanTexture(); const tb = performance.now(); const B = new Boxes(), crowd = [];
     const N = 8, D = 80, RISE = 38, BASE = 130, SEAT = 44, hall = this.v.isDrill();
-    const STANDS = [{ id: "left", side: true, dir: -1, inner: -1180, v0: -1640, v1: 1900 }, { id: "right", side: true, dir: 1, inner: 1180, v0: -1640, v1: 1900 },
+    const STANDS = [{ id: "left", side: true, dir: -1, inner: -SIDE_IN, v0: -1640, v1: 1900 }, { id: "right", side: true, dir: 1, inner: SIDE_IN, v0: -1640, v1: 1900 },
                     { id: "far", side: false, dir: -1, inner: -1800, v0: -2030, v1: 2030, skip: [2, 6, 7, 14] }];
-    const adBoards = [];
+    const adBoards = [], banners = [], rb = mulberry32(0xBA77 + courtId);   // (banners: their own random numbers, the crowd's stay as they were)
     const conc = [shade(P.conc, 1.05), shade(P.conc, 0.92)], ads = [P.seatA, P.seatB, ...P.accent, [240, 240, 236]];
     for (const S of hall ? [] : STANDS) {                // (the Training Center's drills are indoors: its hall instead, below)
       if (S.skip && S.skip.includes(courtId)) continue;
@@ -382,6 +384,10 @@ export class Stadium3D {
           if (i < K && inOpen(v0, v0 + SEAT * 5)) continue;                                                  // (the tunnel's roof)
           const c = ((sec * 2 + (i >> 1)) % 5 < 3) ? P.seatA : P.seatB;
           box(u + 14, u + 44, v0, v0 + SEAT * 5 - 6, y, y + 14, c, 0.05); box(u + 44, u + 51, v0, v0 + SEAT * 5 - 6, y + 14, y + 42, shade(c, 0.88), 0.05);
+          if (i >= 1 && i <= 6 && rb() < 0.13) {                                                           // CROWD BANNERS: a fan holds one up here
+            const [x, z] = at(u + 14, v0 + SEAT * 2.5), r = S.side ? [0, 0, S.dir] : [1, 0, 0], n = S.side ? [-S.dir, 0, 0] : [0, 0, 1];
+            banners.push({ x, y: y + 110, z, r, n, ph: rb() * 6.28, who: rb() < 0.6 ? 0 : 1, kind: Math.floor(rb() * 4), order: rb() });
+          }
           for (let s = 0; s < 5; s++) {
             const [x, z] = at(u + 28, v0 + s * SEAT + SEAT / 2 - 3);
             const fan = Math.floor(rnd() * (this.fans ? this.fans.n : 1));
@@ -450,7 +456,7 @@ export class Stadium3D {
     const vaoC = gl.createVertexArray(); gl.bindVertexArray(vaoC);
     gl.bindBuffer(gl.ARRAY_BUFFER, bufC); for (const [loc, off] of [[0, 0], [1, 16]]) { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, 32, off); gl.vertexAttribDivisor(loc, 1); }
     gl.bindVertexArray(null);
-    this.built = { boxBuf: bufB, boxVao: vaoB, boxN: B.n, crowdBuf: bufC, crowdVao: vaoC, crowdN: crowd.length / 8, court: courtId, judge, adBoards, hall };
+    this.built = { boxBuf: bufB, boxVao: vaoB, boxN: B.n, crowdBuf: bufC, crowdVao: vaoC, crowdN: crowd.length / 8, court: courtId, judge, adBoards, banners: banners.sort((a, b) => a.order - b.order), hall };
     this.stats = { boxes: B.n, crowd: crowd.length / 8, ms: performance.now() - t0, gfx: tp - tg, palette: tb - tp, geom: performance.now() - tb };
   }
 
@@ -604,6 +610,7 @@ export class Stadium3D {
         gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
         for (const b of this.built.adBoards) v.draw(this.adTex[b.ad], b.m, mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
       }
+      if (this.built.banners && this.built.banners.length && this.fill > 0) this.drawBanners(mvp, T);
       if (this.built.hall) this.drawHall(mvp);                                                    // the drill hall's spectators and glass
       // the scoreboard's screen (a card in front of its frame)
       if (this.boardPos) {
@@ -613,6 +620,32 @@ export class Stadium3D {
       }
     } catch (e) { console.warn("stadium", e); this.broken = true; gl.disable(gl.CULL_FACE); }
     gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
+  }
+  // CROWD BANNERS: fans in the side and far stands hold up banners for the players, your name (wP1Name $CA00) on red, your opponent's
+  // ($CA80) on blue; the fuller the stadium the more of them (up to all the spots build() picked), each bobbing and swaying a little
+  bannerTex(text, who) {
+    const key = who + ":" + text, M = this.bannerTexs || (this.bannerTexs = new Map()); if (M.has(key)) return M.get(key);
+    const W = 256, H = 96, c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d");
+    g.fillStyle = who ? "#1e50c8" : "#c81e28"; g.fillRect(0, 0, W, H); g.fillStyle = "#fff"; g.fillRect(0, 0, W, 7); g.fillRect(0, H - 7, W, 7);
+    let size = 54; g.font = `bold ${size}px system-ui, sans-serif`; while (g.measureText(text).width > W - 22 && size > 20) g.font = `bold ${(size -= 2)}px system-ui, sans-serif`;
+    g.textAlign = "center"; g.textBaseline = "middle"; g.lineWidth = 6; g.strokeStyle = "rgba(0,0,0,.45)"; g.strokeText(text, W / 2, H / 2 + 2);
+    g.fillStyle = who ? "#ffe45a" : "#fff"; g.fillText(text, W / 2, H / 2 + 2);
+    const d = new Uint8Array(g.getImageData(0, 0, W, H).data.buffer), tex = this.v.texture(W, H, d, true);
+    M.set(key, tex); return tex;
+  }
+  drawBanners(mvp, T) {
+    const v = this.v, w = v.gb.mem.wram[0], gl = this.gl;
+    const name = a => { let o = ""; for (let i = 0; i < 16; i++) { const c = w[a + i]; if (c < 0x20 || c > 0x7E) break; o += String.fromCharCode(c); } return o.trim().toUpperCase(); };
+    const names = [name(0xA00), name(0xA80)]; if (!names[0] && !names[1]) return;
+    const say = [n => `GO ${n}!`, n => `${n}!!`, n => `WE \u2665 ${n}`, n => `${n} #1`];
+    const B = this.built.banners, n = Math.min(B.length, Math.round(2 + (B.length - 2) * this.fill));
+    gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
+    for (let i = 0; i < n; i++) {
+      const b = B[i], who = names[b.who] ? b.who : 1 - b.who, tex = this.bannerTex(say[b.kind](names[who]), who);
+      const up = 10 * Math.sin(T * 2.6 + b.ph), sw = 0.08 * Math.sin(T * 1.7 + b.ph * 1.3), W = 210, H = 78;
+      const r = [b.r[0] * Math.cos(sw), Math.sin(sw), b.r[2] * Math.cos(sw)], u = [-b.r[0] * Math.sin(sw), Math.cos(sw), -b.r[2] * Math.sin(sw)];
+      v.draw(tex, new Float32Array([r[0] * W, r[1] * W, r[2] * W, 0, u[0] * H, u[1] * H, u[2] * H, 0, b.n[0], 0, b.n[2], 0, b.x, b.y + up, b.z, 1]), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
+    }
   }
   // the floodlight beams (night only: as strong as the lighting's lamps are on, lighting.js sky.lamps). Light, not a surface: drawn after
   // the lighting pass (voxel.js renderCourt), so the night grade does not darken them, as a soft haze over the scene

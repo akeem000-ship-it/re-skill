@@ -34,7 +34,7 @@ const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t *
 
 // the court's floodlight towers (x, z; the lamps hang 820 above the ground), behind the corners of the stands so they light the court,
 // the stands and the crowd from above and behind: stadium3d.js builds its towers here
-export const FLOODS = [[-1980, -2580], [1980, -2580], [-2080, 2050], [2080, 2050]];
+export const FLOODS = [[-2220, -2580], [2220, -2580], [-2320, 2050], [2320, 2050]];   // (behind the side stands, stadium3d.js SIDE_IN)
 export const FLOOD_HEIGHT = 820;
 // ---- time of day ----
 // az: where the sun is, degrees from "behind the scene" (+ = to the right of the view); el: its height; sun / amb: light colour on lit

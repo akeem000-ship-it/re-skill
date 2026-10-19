@@ -28,6 +28,8 @@
 //             Stop. Every record the character is shown as (its own, and the story's rankers and other opponents that
 //             NameTextRemap_02 shows as it) keeps its own total of stat points, shared out by these weights (bars capped at 9),
 //             so each match stays as hard as before but plays in the character's style
+//   lines     { intro, win, lose }: what the character says before a match against them (the 3D walk-out intro, intro.js) and after
+//             it, when they won or lost (matchfx.js); each up to 64 characters
 //   from      "senior": in story mode the character keeps the game's own look until a junior class title is won (the classmates
 //             the junior and senior courts share: anime students only from the senior class on); elsewhere always
 //   photo     a picture ("data:image/png|jpeg|webp;base64,...", square) the HD UI draws in place of the 24x24 face, at full
@@ -84,6 +86,7 @@ export function normalizeMod(m) {
     }
     if (Number.isInteger(c.matchSet) && c.matchSet >= 0 && c.matchSet < 64) o.matchSet = c.matchSet;
     if (c.from === "senior") o.from = "senior";
+    if (c.lines && typeof c.lines === "object") { const l = {}; for (const k of ["intro", "win", "lose"]) if (typeof c.lines[k] === "string" && /^[ -~]{1,64}$/.test(c.lines[k])) l[k] = c.lines[k]; if (Object.keys(l).length) o.lines = l; }
     if (Array.isArray(c.stats) && c.stats.length === 11 && c.stats.every(v => Number.isInteger(v) && v >= 0 && v <= 9) && c.stats.some(v => v > 0)) o.stats = c.stats.slice();
     const p = artOf(c.portrait, 24, 24); if (p) o.portrait = p;
     const h = artOf(c.head, 16, 16); if (h) o.head = h;

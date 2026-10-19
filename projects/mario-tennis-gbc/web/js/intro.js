@@ -8,7 +8,8 @@
 //      balls / energy, one at random per match), a fire line through the middle and a VS badge; it then splits open along the line onto the
 //      court, READY? shows while both players run on from the sides (the match's running frames) to their places; as it fades the umpire
 //      blows the whistle: PLAY!
-// The close-ups show each player's level and four bars (power, spin, speed, control from their 11 stats). The names, levels and stats are
+// The close-ups show each player's level and four bars (power, spin, speed, control from their 11 stats); an opponent from a switched-on
+// mod with an intro line (mods.js lines.intro) says it in a speech bubble over their head, and is billed as a RIVAL. The names, levels and stats are
 // the match's player records (wP1Name $CA00 / wP2Name $CA80: name, roster id +$0B, level +$18, stats +$20-$2A).
 // It grows with the match (tier, by STADIUM crowdClass): junior plain; senior and exhibition louder (a cheer as each player steps out);
 // the big matches (Island Open, dream matches, the tour's last matches) add a second camera pass high round the stadium under fireworks
@@ -76,7 +77,8 @@ export class MatchIntro {
       const name = a => { let o = ""; for (let i = 0; i < 16; i++) { const c = w[a + i]; if (c < 0x20 || c > 0x7E) break; o += String.fromCharCode(c); } return o.trim(); };
       this.names = [name(0xA00) || "YOU", name(0xA80) || "OPPONENT"];
       this.cls = st.crowdClass(); this.mode = w[0x8A6]; this.tier = this.cls === "major" ? 2 : this.cls === "senior" ? 1 : 0; this.fx = {};
-      this.who = [0xA00, 0xA80].map((a, side) => this.player(a, side)); this.vsBg = VS_BGS[Math.floor(Math.random() * VS_BGS.length)]; this.show();
+      this.who = [0xA00, 0xA80].map((a, side) => this.player(a, side));
+      this.says = [0xA00, 0xA80].map(a => { const c = v.gb.modChar && v.gb.modChar(w[a + 0x0B] & 0x3F); return (c && c.lines && c.lines.intro) || ""; }); this.vsBg = VS_BGS[Math.floor(Math.random() * VS_BGS.length)]; this.show();
       addEventListener("pointerdown", this.skip, true); addEventListener("keydown", this.skip, true);
     }
     if (this.start < 0) return;
@@ -219,15 +221,21 @@ export class MatchIntro {
   background: linear-gradient(180deg, #e8b020, #a8660a); border: 3px solid #fff2b0; border-radius: 12px; text-shadow: 0 3px 0 #6a3a00, 0 0 18px rgba(255,220,120,.8); box-shadow: 0 6px 24px rgba(0,0,0,.5); }
 #matchintro .banner i { display: block; margin-top: .4em; font-style: normal; color: #fff; font-size: clamp(14px, 3vw, 26px); letter-spacing: .3em; text-shadow: 0 2px 6px #000; }
 #matchintro .banner.on { opacity: 1; transform: none; }
+#matchintro .say { position: absolute; left: 0; top: 0; max-width: 42%; padding: .45em .8em; border-radius: 14px; background: #fffdf4; color: #1c1c28; border: 3px solid #1c1c28;
+  font-size: clamp(13px, 2.6vw, 22px); line-height: 1.2; box-shadow: 0 4px 14px rgba(0,0,0,.45); opacity: 0; transition: opacity .25s; }
+#matchintro .say::after { content: ""; position: absolute; left: 50%; bottom: -14px; margin-left: -9px; border: 9px solid transparent; border-top: 9px solid #1c1c28; border-bottom: 0; }
+#matchintro .plate i em { font-style: normal; color: #ff7a7a; letter-spacing: .12em; }
 #matchintro .big { position: absolute; left: 50%; top: 38%; height: 16%; transform: translateX(-50%); image-rendering: pixelated; opacity: 0; transition: opacity .15s; }
-</style><div class="bar" style="top:0"></div><div class="bar" style="bottom:0"></div><div class="flare" style="left:14%;top:12%">✦</div><div class="flare" style="right:12%;top:8%;font-size:46px;animation-direction:reverse">✦</div><div class="plate"><b></b><i></i></div><div class="plate r"><b></b><i></i></div><div class="stats"></div><div class="stats r"></div><canvas class="vs"></canvas><img class="big" alt=""><div class="banner"><b></b><i></i></div>`;
+</style><div class="bar" style="top:0"></div><div class="bar" style="bottom:0"></div><div class="flare" style="left:14%;top:12%">✦</div><div class="flare" style="right:12%;top:8%;font-size:46px;animation-direction:reverse">✦</div><div class="plate"><b></b><i></i></div><div class="plate r"><b></b><i></i></div><div class="stats"></div><div class="stats r"></div><div class="say"></div><div class="say"></div><canvas class="vs"></canvas><img class="big" alt=""><div class="banner"><b></b><i></i></div>`;
       document.body.appendChild(root);
       const q = s => root.querySelectorAll(s);
-      this.ui = { root, bars: q(".bar"), flares: q(".flare"), plate: q(".plate")[0], plate2: q(".plate")[1], stats: q(".stats"), vs: q(".vs")[0], big: q(".big")[0], banner: q(".banner")[0] };
+      this.ui = { root, bars: q(".bar"), flares: q(".flare"), plate: q(".plate")[0], plate2: q(".plate")[1], stats: q(".stats"), says: q(".say"), vs: q(".vs")[0], big: q(".big")[0], banner: q(".banner")[0] };
     }
     const u = this.ui, title = this.mode === 4 ? "EXHIBITION" : this.cls === "junior" ? "JUNIOR CLASS" : this.cls === "senior" ? "SENIOR CLASS" : this.mode === 10 ? "DREAM MATCH" : "ISLAND OPEN";
     u.plate.children[0].textContent = this.names[0]; u.plate.children[1].textContent = title + "  ·  " + (this.mode === 4 ? "LET'S PLAY!" : MODES[this.mode]);
     u.plate2.children[0].textContent = this.names[1]; u.plate2.children[1].textContent = title + (this.who[1].type ? "  ·  " + this.who[1].type : "");
+    if (this.says[1]) { const e = document.createElement("em"); e.textContent = "RIVAL  ·  "; u.plate2.children[1].prepend(e); }
+    this.says.forEach((line, i) => { u.says[i].textContent = line ? "\u201C" + line + "\u201D" : ""; });
     this.who.forEach((p, i) => {
       const col = i ? "#3c78ff" : "#ff4a4a", el = u.stats[i]; el.replaceChildren();
       const t = document.createElement("div"); t.className = "t"; t.textContent = "LV " + p.lv + (p.type ? "  ·  " + p.type : ""); el.appendChild(t);
@@ -252,11 +260,14 @@ export class MatchIntro {
     // the stats panel beside the walking player's head (projected each frame): right of yours, left of your opponent's
     for (const i of [0, 1]) {
       const el = u.stats[i], on = i ? t >= T_B + 0.5 && t < T_O : t >= T_A + 0.5 && t < T_B; el.style.opacity = on ? 1 : 0;
+      const say = u.says[i], talk = this.says[i] && (i ? t >= T_B + 1.1 && t < T_O - 0.15 : t >= T_A + 1.1 && t < T_B - 0.15); say.style.opacity = talk ? 1 : 0;   // RIVAL: their line
       if (!on || !this.mvp || !this.head) continue;
       const m = this.mvp, [x, y, z] = this.head, cw = m[3] * x + m[7] * y + m[11] * z + m[15]; if (cw <= 0) continue;
       const sx = ((m[0] * x + m[4] * y + m[8] * z + m[12]) / cw * 0.5 + 0.5) * r.width, sy = (1 - ((m[1] * x + m[5] * y + m[9] * z + m[13]) / cw * 0.5 + 0.5)) * r.height;
       const w = el.offsetWidth, h = el.offsetHeight, gap = r.width * 0.06, left = i ? sx - gap - w : sx + gap;
       el.style.left = Math.max(4, Math.min(r.width - w - 4, left)) + "px"; el.style.top = Math.max(r.height * 0.1, Math.min(r.height * 0.9 - h, sy - h * 0.5)) + "px";
+      // RIVAL: their line in a bubble over their head, from a second into the close-up
+      if (talk) { const sw = say.offsetWidth, sh = say.offsetHeight; say.style.left = Math.max(4, Math.min(r.width - sw - 4, sx - sw / 2)) + "px"; say.style.top = Math.max(r.height * 0.1, Math.min(sy - sh - r.height * 0.1, el.offsetTop - sh - 10)) + "px"; }
     }
     const vsOn = t >= T_C && t < T_VS + T_SPLIT; u.vs.style.display = vsOn ? "block" : "none"; if (vsOn) this.drawVS(t - T_C, r);
     const word = t >= T_VS && t < T_WALK + 0.1 ? "READY?" : t >= T_PLAY && t < T_END ? "PLAY!" : "";
