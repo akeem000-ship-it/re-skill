@@ -1,6 +1,6 @@
 # MTenn3D — full changelog (every version)
 
-**0.35.16 is the shareable build: it contains no game data** (it does carry a little surprise for the [REDACTED] and the [REDACTED]; 0.35.17 is your own build with the ROM inside: keep it on your phone). On first start, tap the file box and pick your
+**0.35.18 is the shareable build: it contains no game data** (it does carry a little surprise for the [REDACTED] and the [REDACTED]; 0.35.19 is your own build with the ROM inside: keep it on your phone). On first start, tap the file box and pick your
 own legal dump of *Mario Tennis (USA)* for Game Boy Color (`.gbc`, SHA-1 starting `414ba583`). The app
 checks it, keeps it on the phone (never uploaded), and starts with it by itself after that. Builds up to
 0.24 were private builds with the ROM inside; keep those to yourself. Newest first.
@@ -38,6 +38,12 @@ checks it, keeps it on the phone (never uploaded), and starts with it by itself 
 - 0.35.14: a look mod can give a character a match sprite set of their own by borrowing Bowser's (the N64-transfer character), so a [REDACTED] no longer shares a sprite set with another mod character. Until more sets are added, an unlocked Bowser shows that mod character's look.
 - 0.35.16: **portrait mode** for phones held upright (a Fold's cover screen, or the inner screen turned): the game sits on top and the controls get a deck of their own below it, out of the picture, with SELECT next to START and MENU / CAM / REC on top. In a match the deck is the court's own pixel art, with a court-lines stick, scoreboard buttons and advert-board SELECT / START; in the Training Center it is the hall's art, with the Tennis Machine's eye as the stick and glass buttons. A and B are tennis balls on both. Elsewhere (the open world, menus) the deck is plain.
 - 0.35.16: after a drill, the pop-up beside the result shows your own character's sprite (in your look) instead of a drawn face: a fist pump when you clear it, tears when you fail. With UI: HD, the results screen's win / lose faces show it too.
+- 0.35.18: characters are back to the game's own sprites as blocky voxels (SPRITES: Game, view VOX, VOX: Blocky; set once, the buttons still change them), and NET: Even is the default when the JS port runs the game (CODE: PORT, as in your build), so you can walk up to the net from the far side too.
+- 0.35.18: training rooms: the drill hall's watchers face the court and sit on the benches instead of inside them; the hall is lit as a room without windows (no time of day, floodlights or weather) and its window wall became panels; its glass and the Training Center's window (now a thin pane, not a thick block) show clearly; the people at the gym machines sit on them; the drill court's floor behind the net no longer smears into streaks.
+- 0.35.18: campus: the lamp in front of the Training Center's steps is gone, the person in the courtside bench nook is no longer inside the stand, and swaying trees and hedges no longer open thin dark seams.
+- 0.35.18: menus: the EXP screen's names and numbers (the menus' bold font) are in the HD font; in 3D the pause menu's label under the selected icon (MUSIC, RULES...) and its score panel's digits show properly (a digit was taken for the ball's shadow).
+- 0.35.18: matches: the camera sweeps round the stadium after every game and every set, whoever wins it; a player's shadow follows the body's shape (a dive casts a long one); in the walk-out intro each player walks on from the tunnel to their place instead of standing still.
+- 0.35.18: [REDACTED] characters who are also the junior courts' classmates keep the game's own look in story mode until you win a junior class title; the [REDACTED] heads beside the score are round cut-outs like the others'.
 
 ## 0.34 — replays, weather and a better grass court
 - **Instant replay:** after a rally of 5 shots or more a REPLAY button shows for a few seconds; tap it to watch the

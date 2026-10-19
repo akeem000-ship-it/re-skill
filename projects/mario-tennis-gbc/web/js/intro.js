@@ -99,12 +99,16 @@ export class MatchIntro {
   freeRun() { const v = this.v; for (const e of (this.runTex || new Map()).values()) { if (e.tex) v.gl.deleteTexture(e.tex); if (e.mesh) v.freeMesh(e.mesh); } }
   // each player's walk in their close-up: [start, end] seconds, and how much of it is left at t (1 before, 0 after)
   walkIn(side, t) { const a = side ? T_B : T_A, b = (side ? T_O : T_B) - 0.4; return { a, left: 1 - Math.max(0, Math.min(1, (t - a) / (b - a))) }; }
+  // after their close-up each walks on from the tunnel's mouth to their place on the court, arriving as the VS screen comes up
+  walkOn(side, t) { const a = (side ? T_O : T_B) - 0.4; return { a, u: Math.max(0, Math.min(1, (t - a) / (T_VS - 0.3 - a))) }; }
   walkBody(pl) {
     const v = this.v, t = this.t; if (this.start < 0 || !this.who) return null;
-    const side = pl.Y >= 0 ? 0 : 1, p = this.who[side], w = this.walkIn(side, t), walking = w.left > 0 && w.left < 1;
-    if (!walking && (t < T_VS || t >= T_WALK)) return null;
-    // VOX: a voxel body of the frame (bodyMesh, as the game's own sprites get; Rounded or Blocky), else one card
-    const vox = !!v.voxelSprites, k = walking ? FRONT[Math.floor((t - w.a) * 6) % 4] : RUN[Math.floor((t - T_VS) * 9) % 4], flip = !walking && side === 1;
+    const side = pl.Y >= 0 ? 0 : 1, p = this.who[side], w = this.walkIn(side, t), walking = w.left > 0 && w.left < 1, on = this.walkOn(side, t), onCourt = on.u > 0 && on.u < 1;
+    if (!walking && !onCourt) return null;
+    // VOX: a voxel body of the frame (bodyMesh, as the game's own sprites get; Rounded or Blocky), else one card. Walking on to their
+    // place: the running frames at a walking pace, facing the way they go (the frames face right: mirrored to go left)
+    const dir = Math.sign(pl.X - this.from(pl).X) || 1;
+    const vox = !!v.voxelSprites, k = walking ? FRONT[Math.floor((t - w.a) * 6) % 4] : RUN[Math.floor((t - on.a) * 6) % 4], flip = !walking && dir < 0;
     const key = side + ":" + k + (flip ? "f" : "") + (vox ? (v.rounded ? "R" : "V") : ""), gen = vox ? v.meshGen || 0 : v.texGen || 0;
     let e = this.runTex.get(key);
     if (!e || e.gen !== gen) {
@@ -144,10 +148,10 @@ export class MatchIntro {
   // voxel.js interp(): the drawn positions while the intro runs (a new object; the sampled state is left alone)
   adjust(s) {
     if (this.start < 0 || !s || !s.players || !s.players.length) return s;
-    const t = this.t, e = Math.max(0, Math.min(1, (t - T_VS) / (T_WALK - T_VS)));   // an even run
-    // in their close-up each walks out of their tunnel (from inside its dark passage) onto the court, then runs to their place
+    const t = this.t;
+    // in their close-up each walks out of their tunnel (from inside its dark passage) onto the court, then on to their place (an even walk)
     const players = s.players.map(p => {
-      const side = p.Y >= 0 ? 0 : 1, f = this.from(p), T = TUNNELS[side], x0 = T.x + T.dir * T.d * 0.8, left = this.walkIn(side, t).left, x = f.X + (x0 - f.X) * left;
+      const side = p.Y >= 0 ? 0 : 1, f = this.from(p), T = TUNNELS[side], x0 = T.x + T.dir * T.d * 0.8, left = this.walkIn(side, t).left, x = f.X + (x0 - f.X) * left, e = this.walkOn(side, t).u;
       return { ...p, X: x + (p.X - x) * e, Y: f.Y + (p.Y - f.Y) * e };
     });
     return { ...s, players };

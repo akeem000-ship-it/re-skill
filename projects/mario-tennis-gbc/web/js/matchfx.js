@@ -2,7 +2,7 @@
 // shot count ($C4B6) are watched, nothing in the game changes.
 //   set / match point   the crowd hushes as the point is about to be played (crowdsound hush); when it is won, a second roar
 //   long rally          from the 10th shot on, an "ooh" every few shots, rising the longer it lasts
-//   changeover          after an odd game (the players change ends) the camera sweeps slowly round the stadium, until a button
+//   game / set won      after every game and every set, whoever won it, the camera sweeps slowly round the stadium, until a button
 //   end of the match    the camera circles the winner, two cheers, and confetti falls over the stands
 //   claps               before a big point (or now and then) the crowd claps in rhythm, faster and faster, until the serve
 //   pause               while the game's pause menu is up (its labels written over the court: many BG tiles off the court map)
@@ -54,7 +54,7 @@ export class MatchFX {
       const setDone = S.sets[0] + S.sets[1] > p.sets[0] + p.sets[1], gameDone = S.games[0] + S.games[1] !== p.games[0] + p.games[1] || setDone;
       if (S.won && !p.won) { this.celebrate(S.sets[0] >= S.sets[1] ? 0 : 1, st); return; }
       if (this.tense && setDone && snd) setTimeout(() => snd.cheer(1), 700);           // the set point was won: a second roar
-      if (gameDone && (S.games[0] + S.games[1]) % 2 === 1 && !setDone) this.cine = { kind: "sweep", t0: now, a0: Math.random() < 0.5 ? -1 : 1 };
+      if (gameDone) this.cine = { kind: "sweep", t0: now, a0: Math.random() < 0.5 ? -1 : 1 };
       const k = Math.max(this.stakes(S, 0), this.stakes(S, 1)); this.tense = k > 0;
       if (k && snd) setTimeout(() => snd.hush(st.fill), 1400);
       if (!S.won && (k || Math.random() < 0.3)) this.claps = { next: now + (k ? 3.2 : 1.6), n: 0, until: now + 9 };   // (after the hush on a big point)

@@ -277,9 +277,11 @@ let port = null, portError = null;
 // PHYSICS: Classic / Enhanced (web/js/engine/enhanced.js): ?physics=enhanced|classic, else the remembered choice; Enhanced runs only through the port
 // (the ROM's own code cannot be changed), so it turns the default CODE: ROM into the port
 const physicsMode = () => { const v = q.get("physics") || stored("mt-physics"); return v === "enhanced" ? "enhanced" : "classic"; };
-// NET: Original / Even (engine/chars.js): ?net=even|original, else the remembered choice; Even runs only through the port
-const netMode = () => { const v = q.get("net") || stored("mt-net"); return v === "even" ? "even" : "original"; };
-const portMode = () => { const h = location.hash.slice(1), sel = $("engine") && $("engine").value, m = h === "port" || h === "portall" ? h : q.has("port") ? "port" : sel || "rom"; return m === "rom" && (physicsMode() === "enhanced" || netMode() === "even") ? "port" : m; };
+// NET: Original / Even (engine/chars.js): ?net=even|original, else the remembered choice; Even runs only through the port: chosen, it
+// switches the engine to the port; with no choice it is the default wherever the port already runs (both sides reach the net)
+const netChoice = () => q.get("net") || stored("mt-net");
+const netMode = () => { const v = netChoice(); return v === "even" || v === "original" ? v : portMode() !== "rom" ? "even" : "original"; };
+const portMode = () => { const h = location.hash.slice(1), sel = $("engine") && $("engine").value, m = h === "port" || h === "portall" ? h : q.has("port") ? "port" : sel || "rom"; return m === "rom" && (physicsMode() === "enhanced" || netChoice() === "even") ? "port" : m; };
 if ($("engine")) {
   const saved = stored("mt-engine");
   if (location.hash === "#port" || location.hash === "#portall") $("engine").value = location.hash.slice(1);
@@ -390,7 +392,7 @@ $("forgetrom").addEventListener("click", () => romStore("readwrite", s => s.dele
 $("reset").addEventListener("click", () => { if (port) { location.reload(); return; } if (gb) { settle(); gb.reset(); rec.event("reset"); } });
 // ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
 // a .mtrec file (Android: Downloads/MTenn3D and the share sheet; browser: a download). Hiding the app stops and saves.
-const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? "enhanced" : undefined, net: port && port.evenNet ? "even" : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
+const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? "enhanced" : undefined, net: port ? (port.evenNet ? "even" : "original") : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
   port: port ? (portMode() === "portall" ? "all" : (q.get("port") || PORT_VERIFIED.join(","))) : undefined });
 async function saveRecording(now = false) {     // now: the app is being hidden; skip compression so it finishes at once
   if (!recording()) return; settle();

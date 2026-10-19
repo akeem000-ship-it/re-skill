@@ -73,9 +73,11 @@ export class LookManager {
   // switch the detailed sprites' face data on or off while the game runs
   setDetail(on) { if (!!on === this.detail) return this; const look = this.look; this.detail = !!on; return this.set(look); }
   _restore() { if (this.rom) for (const p of this.undo.slice().reverse()) this.rom.set(p.bytes, p.off); this.undo = []; this.built = null; }
+  // gate(ch): whether a mod's character takes its look now (creator.js: mods' "from": "senior" by the story's progress)
   _build() {
     if (!this.rom || (!this.look && !this.detail)) { this.built = null; return; }
-    this.built = buildLook(this.rom, this.look || {}, { detail: this.detail }); this.notes = this.built.notes;
+    const g = this.gate, look = g && this.look && this.look.mods ? { ...this.look, mods: this.look.mods.map(m => ({ ...m, chars: m.chars.filter(g) })) } : this.look;
+    this.built = buildLook(this.rom, look || {}, { detail: this.detail }); this.notes = this.built.notes;
     this.undo = applyPatches(this.rom, this.built.patches);
   }
   toJSON() { return this.look; }

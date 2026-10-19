@@ -24,6 +24,8 @@ const STYLE_LABEL = { cap: "Cap", headband: "Headband", ponytail: "Ponytail", sh
 const FACE_ROWS = [["shape", "Face shape", FACE.shapes], ["eyes", "Eyes", FACE.eyes], ["brows", "Eyebrows", FACE.brows], ["mouth", "Mouth", FACE.mouths]];
 const PARTS = [["skin", "Skin", "skin"], ["hair", "Hair", "hair"], ["hat", "Hat / band", "cloth"], ["top", "Top", "cloth"], ["bottom", "Shorts / skirt", "cloth"], ["shoes", "Shoes", "cloth"], ["racket", "Racket", "cloth"]];
 const WRAM_STORY_SLOT = 0x36C, WRAM_HANDEDNESS = 0xB50;   // wCurrentStorySlot $C36C, wCharSelectHandedness $CB50
+// story mode's junior class titles (wGameFlags $C9C0: flag n is byte n >> 3, bit $80 >> (n & 7)): singles $53, doubles $42
+const JUNIOR_TITLE = [[0x9C0 + (0x53 >> 3), 0x80 >> (0x53 & 7)], [0x9C0 + (0x42 >> 3), 0x80 >> (0x42 & 7)]];
 
 const CSS = `
 #lookpanel { position: fixed; inset: 0; z-index: 20; background: rgba(8,10,16,.72); display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 12px 8px; box-sizing: border-box; }
@@ -57,7 +59,15 @@ export function mountCreator({ hud, keys, pause, onChange }) {
   const SPR_KEY = "mt-sprites", detail = new SpriteDetail();
   let sprMode = (() => { const q = new URLSearchParams(location.search).get("sprites"); if (q === "detail" || q === "game") return q; try { return localStorage.getItem(SPR_KEY) === "detail" ? "detail" : "game"; } catch (e) { return "game"; } })();
   let gb = null, open = false, draft = null, hero = "boy", pristine = null, detectAt = 0, onPick = false, offered = false, lastSlot = -1, pressFrames = 0, wasPaused = false;
-  let portraitSets = null;
+  let portraitSets = null, inStory = false, seniorUp = true;
+  // mods' "from": "senior" characters: their look only outside story mode (the map last walked is not an RPG map) or once a junior
+  // class title is won; re-checked with the look detection and the look rebuilt when it changes
+  mgr.gate = ch => ch.from !== "senior" || seniorUp;
+  const gateNow = () => {
+    const w = gb.mem.wram[0], map = w[0x32E];
+    if (map >= 17 && map <= 36) inStory = true; else if (map === 16) inStory = false;   // (a court keeps what led to it)
+    return !inStory || JUNIOR_TITLE.some(([a, m]) => w[a] & m);
+  };
   // ---- mods: library = id -> { def, bundled } ; prefs = id -> bool (explicit choices; a bundled mod is on until switched off)
   const library = new Map(); let prefs = {};
   try { prefs = JSON.parse(localStorage.getItem(MODS_ON) || "{}") || {}; } catch (e) { prefs = {}; }
@@ -267,6 +277,7 @@ export function mountCreator({ hud, keys, pause, onChange }) {
       detail.frame();
       if (pressFrames > 0) { keys.Enter = pressFrames > 3; pressFrames--; if (!pressFrames) keys.Enter = false; }
       if (gb.frames < detectAt) return; detectAt = gb.frames + 20;
+      const up = gateNow(); if (up !== seniorUp) { seniorUp = up; if (mgr.look && mgr.look.mods) { mgr.set(mgr.look); onChange(mgr.look); } }
       const pick = detect();
       if (pick && !onPick && !offered && !open) offer.hidden = false;
       if (!pick) offer.hidden = true;

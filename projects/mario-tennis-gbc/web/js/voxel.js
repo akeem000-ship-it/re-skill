@@ -428,17 +428,18 @@ export class Voxel3D {
   // a field actor's frame (4 tiles, 64 bytes at bank:src, as the game copies them to the actor's VRAM slot) put in bank 2:
   // its first tile number there
   romFrameTiles(bank, src) {
-    const R = this.romFrames || (this.romFrames = { tiles: new Uint8Array(256 * 16), at: new Map(), next: 0 }), k = bank << 16 | src;
+    const R = this.romFrames || (this.romFrames = { tiles: new Uint8Array(256 * 16), from: new Int32Array(256), at: new Map(), next: 0 }), k = bank << 16 | src;
     let t = R.at.get(k); if (t !== undefined) return t;
     if (R.next >= 256) { R.at.clear(); R.next = 0; }
     t = R.next; R.next += 4; R.at.set(k, t);
     const rom = this.gb.mem.rom, o = bank * 0x4000 + (src & 0x3FFF); R.tiles.set(rom.subarray(o, o + 64), t * 16);
+    for (let i = 0; i < 4; i++) R.from[t + i] = o + i * 16;                // each tile's ROM offset: the look's colours for it (spritePixels)
     return t;
   }
   // sprite tile (8 rows) as RGBA, colour 0 transparent
   spritePixels(tile, bank, pal, flipX, flipY) {
     const v = this.tileBank(bank), d = new Uint8Array(8 * 8 * 4), op = this.objPal();
-    const L = this.gb.look, reg = L && bank < 2 ? L.tileRegions(bank, tile * 16) : null, fd = reg ? L.fade(op, pal) : -1;   // the player's look
+    const L = this.gb.look, reg = !L ? null : bank < 2 ? L.tileRegions(bank, tile * 16) : (L.byOffset && L.byOffset.get(this.romFrames.from[tile])) || null, fd = reg ? L.fade(op, pal) : -1;   // the player's look (and the mods'), for ROM-read frames too
     for (let y = 0; y < 8; y++) {
       const row = flipY ? 7 - y : y, lo = v[tile * 16 + row * 2], hi = v[tile * 16 + row * 2 + 1];
       for (let x = 0; x < 8; x++) {
@@ -885,23 +886,29 @@ export class Voxel3D {
     // bank 1. Captions never join a body (they used to be taken in as they passed a player and drawn beside them on the court): HUD.
     const isCaption = sp => sp.tile < 0x40 && !(sp.attr & 8);
     const near = (a, b, gap) => a.sx < b.sx + 8 + gap && b.sx < a.sx + 8 + gap && a.sy < b.sy + b.h + gap && b.sy < a.sy + a.h + gap;
-    // ball-range tiles in a row of three or more side by side are a caption the game drew with them (the pause menu's "MUSIC" label): HUD
+    // ball-range tiles in a row of three or more side by side, or right beside a caption tile, are part of a caption the game drew with
+    // them (the pause menu's "MUSIC" label, its score digits): HUD
     const inRow = sp => { let n = 1; for (const d of [-8, 8]) for (let x = sp.sx + d; sprs.some(o => o.sy === sp.sy && o.sx === x); x += d) n++; return n >= 3; };
-    for (const sp of sprs) if (isBallTile(sp) && inRow(sp)) sp.owner = "caption";
+    const besideCaption = sp => sprs.some(o => o.sy === sp.sy && Math.abs(o.sx - sp.sx) === 8 && isCaption(o));   // (the pause panel's score digits)
+    for (const sp of sprs) if (isBallTile(sp) && (inRow(sp) || besideCaption(sp))) sp.owner = "caption";
     const ballGroup = [];
     for (const sp of sprs) if (isBallTile(sp) && Math.hypot(sp.sx + 4 - ballSx, sp.sy + sp.h / 2 - ballSy) < 12) { sp.owner = "ball"; ballGroup.push(sp); }
     for (let grew = true; grew && ballGroup.length;) {   // the trail: a chain of ball-range tiles behind the ball
       grew = false;
       for (const sp of sprs) if (!sp.owner && isBallTile(sp) && Math.hypot(sp.sx + 4 - ballSx, sp.sy + sp.h / 2 - ballSy) < 40 && ballGroup.some(b => near(sp, b, 3))) { sp.owner = "ball"; ballGroup.push(sp); grew = true; }
     }
-    if (ball.Z < -4) { let best = null, d0 = 10; for (const sp of sprs) { if (sp.owner) continue; const d = Math.hypot(sp.sx + 4 - shSx, sp.sy + sp.h / 2 - shSy); if (d < d0) { d0 = d; best = sp; } } if (best) best.owner = "shadow"; }
+    if (ball.Z < -4) { let best = null, d0 = 10; for (const sp of sprs) { if (sp.owner || !isBallTile(sp)) continue; const d = Math.hypot(sp.sx + 4 - shSx, sp.sy + sp.h / 2 - shSy); if (d < d0) { d0 = d; best = sp; } } if (best) best.owner = "shadow"; }
     const feet = players.map(pl => { const [fx, fy] = this.screenOf(pl.X, pl.Y, pl.Z); return { pl, fx, fy: fy + 2, list: [] }; });
     // the game's own drop shadow under each player (tiles $58/$5A/$5C, drawn every other frame so it looks
     // see-through on the LCD): left out, the view draws its own shadow on the ground; taken into the body it stood
     // upright at the feet and blinked at 30 Hz
     for (const sp of sprs) if (!sp.owner && sp.tile >= 0x58 && sp.tile < 0x5E && feet.some(f => Math.abs(sp.sx + 4 - f.fx) <= 20 && Math.abs(sp.sy + sp.h - f.fy) <= 10)) sp.owner = "pshadow";
+    // a menu panel over the court (the pause menu: many BG tiles off the court map): its sprites (VRAM bank 0; the players' bodies always
+    // use bank 1) are menu art, never part of a body behind it
+    const menuUp = (() => { const pr = this.courtMaps && this.courtMaps[this.courtId], v0 = this.gb.mem.vram[0], base = this.bgBase(); if (!pr) return false; let n = 0; for (let k = 0; k < 1024; k += 2) if (v0[base + k] !== pr[k] && ++n > 50) return true; return false; })();
+    const menuArt = sp => menuUp && !(sp.attr & 8);
     for (const sp of sprs) {                              // seeds: the lowest body tiles (the player banks' tiles $00-$3F), standing on the feet
-      if (sp.owner || isBallTile(sp) || sp.tile >= 0x40 || isCaption(sp)) continue;
+      if (sp.owner || isBallTile(sp) || sp.tile >= 0x40 || isCaption(sp) || menuArt(sp)) continue;
       let best = null, d0 = 1e9;
       for (const f of feet) {
         // feet above the screen: the lowest visible tiles are higher up the body; feet below it: the body is cut
@@ -915,7 +922,7 @@ export class Voxel3D {
     for (let grew = true; grew;) {                        // grow each body by touching sprites
       grew = false;
       for (const sp of sprs) {
-        if (sp.owner || isBallTile(sp) || isCaption(sp)) continue;
+        if (sp.owner || isBallTile(sp) || isCaption(sp) || menuArt(sp)) continue;
         for (const f of feet) if (f.list.some(b => near(sp, b, 2)) && Math.abs(sp.sx + 4 - f.fx) <= 28 && sp.sy + sp.h <= f.fy + 6) { f.list.push(sp); sp.owner = f; grew = true; break; }
       }
     }
@@ -954,7 +961,10 @@ export class Voxel3D {
       if (n === base) lay[f.pl.slot] = f.list.map(sp => ({ dx: sp.sx - f.fx, dy: sp.sy - f.fy, tile: sp.tile, attr: sp.attr, h: sp.h }));
       else if (had && n < base) for (const q of had) if (f.fy + q.dy < 0 && !f.list.some(sp => sp.tile === q.tile)) f.list.push({ sx: f.fx + q.dx, sy: f.fy + q.dy, tile: q.tile, attr: q.attr, h: q.h, owner: f });
       const pl = sm.players[k] || f.pl, upp = 1024 / (project(pl.X, pl.Y, 0).s || 128), scale = SCALE * upp / 8;   // world units per px at that depth
-      this.draw(this.shadowTex, m4.trs(pl.X, 0.6, pl.Y + 4, 150, 70, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 0.75], 0);
+      // the shadow as wide as the body and under its middle (a dive lying along the court casts a long one), smaller in the air
+      let bx0 = 999, bx1 = -999; for (const sp of f.list) { bx0 = Math.min(bx0, sp.sx); bx1 = Math.max(bx1, sp.sx + 8); }
+      const bw = Math.max(16, bx1 - bx0), air = Math.max(0.55, 1 - Math.max(0, -pl.Z) / 400), shW = Math.max(150, bw * scale * 1.05) * air;
+      this.draw(this.shadowTex, m4.trs(pl.X + ((bx0 + bx1) / 2 - f.fx) * scale * 0.8, 0.6, pl.Y + 4, shW, 70 * air, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 0.75 * air], 0);
       // the Tennis Machine's robot (the far player on the training court) is always a solid voxel body, in 3D as in VOX
       const robot = this.courtId === 6 && pl.Y < 0 && this.isDrill();
       const run = this.intro && this.intro.walkBody(pl), body = run || this.bodyOf(f.list, f.fx, f.fy, robot); this.drawBody(body, pl.X, pl.Y, -pl.Z, scale, tilt, mvp);   // INTRO: running on
@@ -1039,8 +1049,11 @@ export class Voxel3D {
     // captions, menus and score digits the game writes into the BG map (tiles that differ from the court's own map)
     // are drawn where they are on screen, as an overlay; `cover` marks the screen cells they (and the window) take
     const cover = new Uint8Array(21 * 19), m = this.gb.mem, v0 = m.vram[0], v1 = m.vram[1], base = this.bgBase(), pristine = this.courtMaps[this.courtId];
+    // (a tile that happens to equal the court's own there, with written tiles on both sides or above and below, is part of the panel:
+    // the pause panel's score digits)
+    const diff = i => v0[base + i] !== pristine[i], at = (x, y) => diff(((y + 32) % 32) * 32 + ((x + 32) % 32));
     for (let ty = 0; ty < 32; ty++) for (let tx = 0; tx < 32; tx++) {
-      const i = ty * 32 + tx, tile = v0[base + i]; if (tile === pristine[i]) continue;
+      const i = ty * 32 + tx, tile = v0[base + i]; if (!diff(i) && !((at(tx - 1, ty) && at(tx + 1, ty)) || (at(tx, ty - 1) && at(tx, ty + 1)))) continue;
       const sx = ((tx * 8 - p.scx) & 255), sy = ((ty * 8 - p.scy) & 255); if (sx >= 160 || sy >= 144) continue;
       this.draw(this.bgTileTexture(tile, v1[base + i]), m4.trs(sx + 4, sy + 8, 0, 8, -8, 0), ortho);
       cover[(sy >> 3) * 21 + (sx >> 3)] = 1;
