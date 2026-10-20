@@ -26,6 +26,9 @@ const VS_BGS = ["stripes", "rays", "balls", "energy"];   // one at random per ma
 const TYPES = ["POWER", "TECHNIQUE", "ALL-AROUND", "TRICKY", "SPEED"];
 import { matchFrameRaw } from "./crowdfans.js";
 import { TUNNELS } from "./stadium3d.js";
+import { hdFaceCanvas } from "./look/hdface.js";
+import { faceColours } from "./look/faces.js";
+import { normalizeFace } from "./look/portrait.js";
 const ease = u => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
 // READY? / PLAY! in the style of the game's own score captions ("0-15", "NICE!"): chunky 2-px strokes, yellow, orange on the right and lower
 // edges of each stroke, a black outline. Glyphs 5x7, drawn at 2x onto a small canvas that is shown pixelated.
@@ -56,6 +59,8 @@ export class MatchIntro {
     let m = q.get("intro"); if (m === null) { try { m = localStorage.getItem(KEY); } catch (e) { m = null; } }
     this.on = m !== "off";
     this.vsBg = "stripes";
+    let vf = null; try { vf = new URLSearchParams(location.search).get("vs") || localStorage.getItem("mt-vs"); } catch (e) { /* no storage */ }
+    this.vsFaces = vf === "faces";                       // VS screen: the players' faces close up instead of their whole figure
     this.skip = () => { if (this.start >= 0) this.t0 = performance.now() / 1000 - T_END - this.pass; };
   }
   setOn(on) { this.on = !!on; try { localStorage.setItem(KEY, this.on ? "on" : "off"); } catch (e) { /* private mode */ } if (!this.on) this.stop(); }
@@ -78,6 +83,7 @@ export class MatchIntro {
       this.names = [name(0xA00) || "YOU", name(0xA80) || "OPPONENT"];
       this.cls = st.crowdClass(); this.mode = w[0x8A6]; this.tier = this.cls === "major" ? 2 : this.cls === "senior" ? 1 : 0; this.fx = {};
       this.who = [0xA00, 0xA80].map((a, side) => this.player(a, side));
+      if (this.vsFaces) this.who.forEach((p, side) => { if (p) p.face = this.face(w[(side ? 0xA80 : 0xA00) + 0x0B] & 0x3F, p.pic); });
       this.says = [0xA00, 0xA80].map(a => { const c = v.gb.modChar && v.gb.modChar(w[a + 0x0B] & 0x3F); return (c && c.lines && c.lines.intro) || ""; }); this.vsBg = VS_BGS[Math.floor(Math.random() * VS_BGS.length)]; this.show();
       addEventListener("pointerdown", this.skip, true); addEventListener("keydown", this.skip, true);
     }
@@ -96,6 +102,19 @@ export class MatchIntro {
     const type = roster > 1 ? TYPES[rom[0xE18FB + roster]] || "" : TYPES[w[0x90B] & 3];
     const sprite = rom[0x1DA50 + roster], pal = side ? 5 : 4;                // RosterToSprite 07:5A50; the court's OBJ palette of each side
     return { lv: w[a + 0x18], type, sprite, pal, bars: [["POWER", avg(2, 3, 4)], ["SPIN", avg(0, 1)], ["SPEED", avg(7, 8, 9, 10)], ["CONTROL", avg(5, 6)]], pic: this.picture(sprite, pal) };
+  }
+  // a player's face for the VS close-up: your redrawn face (the look's HD art, or the default one without a look), a mod's
+  // photo, else the head of their match sprite (its top rows), drawn big with its pixels; {c, pixel} or null
+  face(roster, pic) {
+    const L = this.v.gb.look, F = (L && L.faces) || {}, hero = ["boy", "girl"][roster];
+    const spec = hero ? F[hero] || { hero, face: normalizeFace(null, hero), colours: faceColours(hero) } : F["mod" + roster];
+    try {
+      if (spec && spec.photo) { const im = new Image(); im.src = spec.photo; return { c: im, pixel: false }; }
+      if (spec) return { c: hdFaceCanvas({ ...spec, mood: "neutral" }, 256), pixel: false };
+    } catch (e) { console.warn("intro face", e); }
+    if (!pic) return null;
+    const h = Math.min(pic.height, Math.max(10, Math.round(pic.width * 0.8))), c = document.createElement("canvas");
+    c.width = pic.width; c.height = h; c.getContext("2d").drawImage(pic, 0, 0); return { c, pixel: true };
   }
   // the running player during the walk-on: one card of the match's running frame (voxel.js draws it in place of the game's sprites)
   freeRun() { const v = this.v; for (const e of (this.runTex || new Map()).values()) { if (e.tex) v.gl.deleteTexture(e.tex); if (e.mesh) v.freeMesh(e.mesh); } }
@@ -283,7 +302,13 @@ export class MatchIntro {
     for (const top of [true, false]) half(top, () => {
       this.vsBack(g, W, H, top, tt);
       const p = this.who[top ? 0 : 1], pic = p && p.pic;
-      if (pic) {                                                         // the player, 5x, breathing and bouncing, cut by the line
+      const fc = this.vsFaces && p && p.face && p.face.c;
+      if (fc && (fc.width || fc.naturalWidth)) {                         // the face close up: as tall as the half, sliding in, bobbing a little
+        const fw0 = fc.naturalWidth || fc.width, fh0 = fc.naturalHeight || fc.height, fh = M + 18, fw = fw0 * fh / fh0, bob = 2 * Math.sin(tt * 5);
+        const x = top ? W + (W - 30 - fw - W) * slide : -fw + (30 + fw) * slide, y = top ? -6 + bob : M - 10 - bob;
+        g.save(); g.imageSmoothingEnabled = !p.face.pixel; g.shadowColor = "rgba(0,0,0,.55)"; g.shadowBlur = 0; g.shadowOffsetX = top ? -6 : 6; g.shadowOffsetY = 4;
+        g.drawImage(fc, 0, 0, fw0, fh0, Math.round(x), Math.round(y), Math.round(fw), Math.round(fh)); g.restore();
+      } else if (pic) {                                                  // the player, 5x, breathing and bouncing, cut by the line
         const k = 5, sq = Math.floor(tt * 4) % 2, bob = 3 * Math.sin(tt * 7), w = pic.width * k, h = (pic.height - sq) * k;
         const x = top ? W + (W - 70 - w - W) * slide : -w + (70 + w) * slide, y = top ? 8 + bob : M + 6 - bob;
         g.drawImage(pic, 0, 0, pic.width, pic.height, Math.round(x), Math.round(y + sq * k), w, h);

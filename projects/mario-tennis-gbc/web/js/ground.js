@@ -6,7 +6,7 @@
 //   trees     the trees, bushes and palms (voxel.js plants) get full crowns: rounded puffs of small leaves over the green of
 //             their picture, two or three deep, lit from above (light yellow-green on top, dark below and inside)
 //   edging    the light bricks and their dark outline lining the dirt paths stand up as a low kerb, a brick per 2 x 2 px
-//   paths     the dirt is strewn with pebbles and small stones (dirt-coloured and grey), a few to each 4 x 4 px
+//   paths     the dirt is strewn with fine grit (its own colour, some grey) and the odd small stone
 // Two kinds of grass (the GROUND button: Pixel / Tufts / Carpet): tufts as above, or a carpet: a dense, short, flat turf of
 // fine strands over every lawn (shells: the lawn drawn in thin layers one above another, each keeping only the strands
 // that reach it, thinning to their tips), with a few taller tufts standing out of it. On the school grounds (KEPT: the
@@ -45,7 +45,7 @@ void main() {
 }`;
 const FS_SHELL = `#version 300 es
 precision highp float; in vec2 vXZ; in float vL; out vec4 o;
-uniform sampler2D uMask; uniform vec4 uRect, uKept; uniform float uTime; uniform vec3 uPush;
+uniform sampler2D uMask; uniform vec4 uRect, uKept; uniform float uTime, uFlat; uniform vec3 uPush;
 ${WIND}
 float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vn(vec2 p) { vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f); return mix(mix(h21(i), h21(i + vec2(1, 0)), u.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), u.x), u.y); }
@@ -57,6 +57,11 @@ void main() {
   vec2 q = vXZ - (vec2(s * 0.7, s * 0.25) * (kept ? 0.3 : 1.0) + (kept ? vec2(0.0, st * 2.0 - 1.0) * 0.6 : vec2(0.0)) + (d > 0.01 ? rel / d : vec2(0.0)) * push * 2.2) * L * L;
   vec4 m = texture(uMask, (q - uRect.xy) / uRect.zw);
   if (m.a < 0.03) discard;
+  if (uFlat > 0.0) {                                                            // a path's surface: the dirt mottled, its worn middle lighter
+    float mo = vn(vXZ / 5.0) * 0.6 + vn(vXZ / 1.6) * 0.4, wear = m.a;
+    vec3 c = m.rgb * (0.8 + 0.3 * mo) * (0.9 + 0.22 * wear) + vec3(0.05, 0.035, 0.0) * wear;
+    o = vec4(mix(c, vec3(dot(c, vec3(0.3, 0.59, 0.11))) * vec3(1.18, 1.0, 0.78), 0.3), 1.0); return;   // (towards a sandy tan)
+  }
   if (L == 0.0) { o = vec4(m.rgb * mix(1.0, 0.36, smoothstep(0.05, 0.4, m.a)), 1.0); return; }   // the soil between the strands (the plain ground's colour where it thins out)
   vec2 c = q * 1.25, id = floor(c), f = fract(c) - 0.5;
   float r = h21(id), hgt = (kept ? 0.32 + 0.06 * r : (0.3 + 0.7 * r) * m.a) * (1.0 - 0.6 * push);
@@ -126,7 +131,7 @@ export class Ground {
     const v = this.v, gl = v.gl, uni = (p, names) => Object.fromEntries(names.map(n => [n, gl.getUniformLocation(p, n)]));
     this.pB = v.link(VS_BLADE, FS_BLADE, ["aCorner", "aBlade", "aCol", "aLean"]); this.uB = uni(this.pB, ["uMVP", "uTime", "uPush"]);
     this.pX = v.link(VS_BOX, FS_BOX, ["aCube", "aAt", "aSize", "aCol"]); this.uX = uni(this.pX, ["uMVP"]);
-    this.pS = v.link(VS_SHELL, FS_SHELL, ["aCorner"]); this.uS = uni(this.pS, ["uMVP", "uRect", "uKept", "uN", "uHmax", "uMask", "uTime", "uPush"]);
+    this.pS = v.link(VS_SHELL, FS_SHELL, ["aCorner"]); this.uS = uni(this.pS, ["uMVP", "uRect", "uKept", "uN", "uHmax", "uMask", "uTime", "uPush", "uFlat"]);
     this.pL = v.link(VS_LEAF, FS_LEAF, ["aCorner", "aLeaf", "aTurn", "aCol"]); this.uL = uni(this.pL, ["uMVP", "uTime"]);
     const buf = a => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, a, gl.STATIC_DRAW); return b; };
     this.tri = buf(new Float32Array([-0.5, 0, 0.5, 0, 0, 1])); this.cube = buf(cube());
@@ -150,6 +155,7 @@ export class Ground {
     const gl = this.v.gl, B = this.built; if (!B) return;
     for (const k of ["blades", "boxes", "leaves"]) if (B[k]) { for (const b of B[k].bufs) gl.deleteBuffer(b); gl.deleteVertexArray(B[k].vao); }
     if (B.carpet) gl.deleteTexture(B.carpet.tex);
+    if (B.paths) gl.deleteTexture(B.paths.tex);
     this.built = null;
   }
   build(f) {
@@ -222,6 +228,18 @@ export class Ground {
       }
       carpet = { tex: v.texture(W, Hc, t, true), rect: [-B, -B, W, Hc], kept: kept ? [0, 0, MX, MY] : [0, 0, 0, 0] };
     }
+    // ---- the paths' surface: the dirt's colour without the dither, alpha how far into the path (its worn, lighter middle) ----
+    let paths = null;
+    {
+      const t = new Uint8Array(512 * H * 4), D = (x, y) => inMap(x, y) && dirt(px(x, y)); let n = 0;
+      for (let y = 0; y < H; y++) for (let x = 0; x < 512; x++) {
+        if (!D(x, y) || !open(x, y)) continue;
+        let r = 1; for (; r <= 7; r++) if (!D(x + r, y) || !D(x - r, y) || !D(x, y + r) || !D(x, y - r) || !D(x + r, y + r) || !D(x - r, y - r) || !D(x + r, y - r) || !D(x - r, y + r)) break;
+        const c = mean(x, y, 3, dirt); if (!c) continue; const o = (y * 512 + x) * 4;
+        t[o] = c[0]; t[o + 1] = c[1]; t[o + 2] = c[2]; t[o + 3] = 20 + Math.round(235 * Math.min(1, (r - 1) / 6)); n++;
+      }
+      if (n) paths = { tex: v.texture(512, H, t, true), rect: [0, 0, 512, H] };
+    }
     // ---- the path edging (a brick per 2 x 2 px: kerb colours within 4 px of dirt) and the pebbles on the dirt ----
     const at = [], size = [], bcol = [];
     const nearDirt = (x, y) => { for (const [dx, dy] of [[4, 0], [-4, 0], [0, 4], [0, -4], [2, 0], [-2, 0], [0, 2], [0, -2]]) if (inMap(x + dx, y + dy) && dirt(px(x + dx, y + dy))) return true; return false; };
@@ -233,12 +251,12 @@ export class Ground {
         const hh = (dark ? 1.9 : 2.6) + course * 0.25 + rnd(x, y, 7) * 0.15, k = 0.92 + course * 0.08;
         at.push(x, 0, y, 0); size.push(2.05, hh, 2.05, 0); bcol.push(d[o] / 255 * k, d[o + 1] / 255 * k, d[o + 2] / 255 * k);
       } else if (dirt(o) && (x & 3) === 1 && (y & 3) === 1) {
-        for (let i = 0; i < 2; i++) {
-          if (rnd(x, y, 60 + i) > 0.55) continue;
-          const grey = rnd(x, y, 70 + i) < 0.3, s = 0.8 + rnd(x, y, 80 + i) * (grey ? 1.8 : 1.2), k = 0.7 + rnd(x, y, 90 + i) * 0.45;
-          const c = grey ? [0.62 * k, 0.6 * k, 0.56 * k] : [d[o] / 255 * k, d[o + 1] / 255 * k, d[o + 2] / 255 * k];
-          at.push(x - 1 + rnd(x, y, 100 + i) * 4, 0, y - 1 + rnd(x, y, 110 + i) * 4, rnd(x, y, 120 + i) * 3.14);
-          size.push(s, s * (0.35 + rnd(x, y, 130 + i) * 0.35), s * (0.7 + rnd(x, y, 140 + i) * 0.5), 0); bcol.push(...c);
+        for (let i = 0; i < 5; i++) {                                         // fine grit, mostly the dirt's own colour, the odd stone
+          if (rnd(x, y, 60 + i) > 0.7) continue;
+          const stone = rnd(x, y, 70 + i) < 0.06, grey = rnd(x, y, 75 + i) < 0.12, s = stone ? 1.1 + rnd(x, y, 80 + i) * 0.9 : 0.35 + rnd(x, y, 80 + i) * 0.55, k = 0.72 + rnd(x, y, 90 + i) * 0.5;
+          const c = grey ? [0.66 * k, 0.62 * k, 0.55 * k] : [Math.min(1, d[o] / 255 * k * 1.05), d[o + 1] / 255 * k, d[o + 2] / 255 * k * 0.9];
+          at.push(x - 1 + rnd(x, y, 100 + i) * 4, 0.04, y - 1 + rnd(x, y, 110 + i) * 4, rnd(x, y, 120 + i) * 3.14);
+          size.push(s, s * (0.25 + rnd(x, y, 130 + i) * 0.3), s * (0.7 + rnd(x, y, 140 + i) * 0.5), 0); bcol.push(...c);
         }
       }
     }
@@ -260,15 +278,17 @@ export class Ground {
         for (let j = 0; j < layers; j++) {
           const cz = (layers === 3 ? [-0.7, 0, 0.7][j] : [-0.45, 0.45][j]) * deep + (rnd(x, y + seed, 60 + j) - 0.5) * 2;
           const cx = x - w / 2 + (rnd(x + seed, y, 61 + j) - 0.5) * 2, cy = h - y + (rnd(x, y, 62 + j) - 0.5) * 2;
-          const R = (3.6 + rnd(x, y + seed, 63 + j) * 2.2) * (img.kind === "bush" ? 0.85 : 1), up = 1 - (y - top) / Math.max(1, h - top);   // (higher puffs lighter)
-          for (let i = 0; i < 26; i++) {
+          const R = (3.9 + rnd(x, y + seed, 63 + j) * 2.4) * (img.kind === "bush" ? 0.85 : 1), up = 1 - (y - top) / Math.max(1, h - top);   // (higher puffs lighter)
+          const hue = (rnd(x + seed, y, 64 + j) - 0.5) * 0.16;                      // each clump a little yellower or bluer
+          for (let i = 0; i < 64; i++) {
             const u = rnd(x + j * 7, y + seed, 100 + i) * 2 - 1, a = rnd(x + seed, y + j * 5, 200 + i) * 6.2832, sq = Math.sqrt(1 - u * u);
-            const n = [sq * Math.cos(a), u, sq * Math.sin(a)], rr = R * (0.72 + 0.28 * rnd(x, y, 300 + i + j * 31));
+            const n = [sq * Math.cos(a), u, sq * Math.sin(a)], rr = R * (0.62 + 0.38 * Math.sqrt(rnd(x, y, 300 + i + j * 31)));
             const lx = cx + n[0] * rr, ly = cy + n[1] * rr * 0.85, lz = cz + n[2] * rr;
             const X = m[0] * lx + m[4] * ly + m[8] * lz + m[12], Y = m[1] * lx + m[5] * ly + m[9] * lz + m[13], Z = m[2] * lx + m[6] * ly + m[10] * lz + m[14];
-            const lit = Math.max(0, n[0] * L[0] + n[1] * L[1] + n[2] * L[2]), k = 0.42 + 0.62 * lit + 0.18 * up + (rnd(x, y, 400 + i) - 0.5) * 0.14;
-            const warm = lit * lit * 0.12;                                           // sunlit tips: a touch of yellow
-            leaf.push(X, Y, Z, 1.9 + rnd(x, y, 500 + i) * 1.4);
+            const lit = Math.max(0, n[0] * L[0] + n[1] * L[1] + n[2] * L[2]), ao = 0.55 + 0.45 * rr / R;    // inner leaves in the crown's shade
+            const k = (0.3 + 0.82 * Math.pow(lit, 1.3) + 0.16 * up) * ao + (rnd(x, y, 400 + i) - 0.5) * 0.18;
+            const warm = lit * lit * 0.2 + hue;                                      // sunlit tips: yellow-green
+            leaf.push(X, Y, Z, 1.05 + rnd(x, y, 500 + i) * 0.85);
             turn.push(Math.atan2(n[2], n[0]) + 1.5708 + (rnd(x, y, 600 + i) - 0.5) * 0.9, (rnd(x, y, 700 + i) - 0.5) * 1.8, p.phase + (X + Z) * 0.02, p.amp * Math.min(1, ly / h) * 1.2);
             lcol.push(Math.min(1, (mr * 0.85 + warm) * k + 0.02), Math.min(1, (mg * 1.05 + warm * 0.8) * k), Math.min(1, mb * 0.8 * k));
           }
@@ -277,7 +297,7 @@ export class Ground {
     }
     this.free();
     this.built = {
-      floor: d, fx: f.fx, carpetOn: this.carpet, carpet,
+      floor: d, fx: f.fx, carpetOn: this.carpet, carpet, paths,
       blades: this.vao(this.tri, 2, [[blades, 4], [cols, 4], [leans, 2]]),
       boxes: this.vao(this.cube, 4, [[at, 4], [size, 4], [bcol, 3]]),
       leaves: this.vao(this.quad, 2, [[leaf, 4], [turn, 4], [lcol, 3]]),
@@ -293,6 +313,12 @@ export class Ground {
     if (B.blades.n) {
       gl.useProgram(this.pB); gl.uniformMatrix4fv(this.uB.uMVP, false, mvp); gl.uniform1f(this.uB.uTime, T); gl.uniform3fv(this.uB.uPush, me ? [me.x, me.y + 4, 1] : [0, 0, 0]);
       gl.bindVertexArray(B.blades.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 3, B.blades.n);
+    }
+    if (B.paths || B.carpet) { gl.useProgram(this.pS); gl.uniformMatrix4fv(this.uS.uMVP, false, mvp); gl.uniform1f(this.uS.uTime, T); gl.uniform4fv(this.uS.uKept, [0, 0, 0, 0]); gl.activeTexture(gl.TEXTURE0); gl.uniform1i(this.uS.uMask, 0); }
+    if (B.paths) {
+      gl.uniform4fv(this.uS.uRect, B.paths.rect); gl.uniform1f(this.uS.uN, 1); gl.uniform1f(this.uS.uHmax, 0); gl.uniform1f(this.uS.uFlat, 1);
+      gl.uniform3fv(this.uS.uPush, [0, 0, 0]); gl.bindTexture(gl.TEXTURE_2D, B.paths.tex); gl.bindVertexArray(this.unitVao); gl.drawArrays(gl.TRIANGLES, 0, 6);
+      gl.uniform1f(this.uS.uFlat, 0);
     }
     if (B.carpet) {
       const N = 14;
