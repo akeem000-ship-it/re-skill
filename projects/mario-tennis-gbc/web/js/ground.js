@@ -7,6 +7,9 @@
 //             their picture, two or three deep, lit from above (light yellow-green on top, dark below and inside)
 //   edging    the light bricks and their dark outline lining the dirt paths stand up as a low kerb, a brick per 2 x 2 px
 //   paths     the dirt is strewn with pebbles and small stones (dirt-coloured and grey), a few to each 4 x 4 px
+// Two kinds of grass (the GROUND button: Pixel / Tufts / Carpet): tufts as above, or a carpet: a dense, short, flat turf of
+// fine strands over every lawn (shells: the lawn drawn in thin layers one above another, each keeping only the strands
+// that reach it, thinning to their tips), with a few taller tufts standing out of it.
 // Grass and leaves sway in the same travelling wind as the trees and hedges (voxel.js VSP); grass parts round you as you
 // walk. Three instanced draws per map (blades, boxes, leaves), made when the floor picture is (voxel.js buildField).
 const KEY = "mt-ground";
@@ -28,6 +31,39 @@ void main() {
 const FS_BLADE = `#version 300 es
 precision mediump float; in vec3 vCol; in float vH; out vec4 o;
 void main() { o = vec4(vCol * mix(0.42, 1.18, vH) + vec3(0.07, 0.08, 0.0) * vH * vH, 1.0); }`;
+// carpet: layer gl_InstanceID of N over the grass's area; a strand per 1/D px, its height from the strand and the lawn's
+// (mask alpha), bent by the wind and by you at the top; the mask holds the lawn's colour without the dither
+const VS_SHELL = `#version 300 es
+in vec2 aCorner; uniform mat4 uMVP; uniform vec4 uRect; uniform float uN, uHmax;
+out vec2 vXZ; out float vL;
+void main() {
+  vL = float(gl_InstanceID) / uN; vXZ = uRect.xy + aCorner * uRect.zw;
+  gl_Position = uMVP * vec4(vXZ.x, 0.05 + vL * uHmax, vXZ.y, 1.0);
+}`;
+const FS_SHELL = `#version 300 es
+precision highp float; in vec2 vXZ; in float vL; out vec4 o;
+uniform sampler2D uMask; uniform vec4 uRect; uniform float uTime; uniform vec3 uPush;
+${WIND}
+float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vn(vec2 p) { vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f); return mix(mix(h21(i), h21(i + vec2(1, 0)), u.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), u.x), u.y); }
+void main() {
+  float L = vL, s = wind(uTime, vXZ.x * 0.11 + vXZ.y * 0.07);
+  vec2 rel = vXZ - uPush.xy; float d = length(rel), push = uPush.z * max(0.0, 1.0 - d / 14.0);
+  vec2 q = vXZ - (vec2(s * 0.7, s * 0.25) + (d > 0.01 ? rel / d : vec2(0.0)) * push * 2.2) * L * L;
+  vec4 m = texture(uMask, (q - uRect.xy) / uRect.zw);
+  if (m.a < 0.03) discard;
+  if (L == 0.0) { o = vec4(m.rgb * mix(1.0, 0.36, smoothstep(0.05, 0.4, m.a)), 1.0); return; }   // the soil between the strands (the plain ground's colour where it thins out)
+  vec2 c = q * 1.25, id = floor(c), f = fract(c) - 0.5;
+  float r = h21(id), hgt = (0.3 + 0.7 * r) * m.a * (1.0 - 0.6 * push);
+  if (L > hgt) discard;
+  vec2 j = vec2(h21(id + 3.1), h21(id + 7.7)) - 0.5;
+  if (length(f - j * 0.35) > 0.62 * (1.0 - L / hgt) + 0.12) discard;
+  float k = h21(id + 11.3), pa = vn(q / 22.0) * 0.65 + vn(q / 7.0) * 0.35;     // patches: lighter and darker, some olive
+  vec3 col = m.rgb * (0.68 + 0.5 * k) * (0.78 + 0.42 * pa);
+  col = mix(col, col * vec3(1.25, 1.0, 0.5) + vec3(0.07, 0.05, 0.0), smoothstep(0.55, 0.15, pa) * 0.45);
+  col = mix(col, col * vec3(1.35, 1.12, 0.5) + vec3(0.06, 0.04, 0.0), step(0.84, k) * 0.75);   // straw-coloured strands
+  o = vec4(col * mix(0.45, 1.22, L / max(hgt, 0.01) * 0.6 + L * 0.4) + vec3(0.06, 0.07, 0.0) * L * L, 1.0);
+}`;
 // boxes (kerb bricks, pebbles): a unit cube (corner, face shade) scaled and placed per instance
 const VS_BOX = `#version 300 es
 in vec4 aCube; in vec4 aAt; in vec4 aSize; in vec3 aCol;
@@ -74,17 +110,21 @@ export class Ground {
     this.v = voxel; this.built = null;
     let m = null; try { m = new URLSearchParams(location.search).get("ground"); } catch (e) { /* no location */ }
     if (m === null) { try { m = localStorage.getItem(KEY); } catch (e) { m = null; } }
-    this.on = m === "detail" || m === "on"; this.density = 1;
+    this.on = m === "detail" || m === "on" || m === "carpet"; this.carpet = m === "carpet"; this.density = 1;
   }
-  setOn(on) { this.on = !!on; try { localStorage.setItem(KEY, this.on ? "detail" : "pixel"); } catch (e) { /* private mode */ } }
+  setOn(on, carpet = false) { this.on = !!on; this.carpet = this.on && carpet; try { localStorage.setItem(KEY, this.carpet ? "carpet" : this.on ? "detail" : "pixel"); } catch (e) { /* private mode */ } }
   init() {
     const v = this.v, gl = v.gl, uni = (p, names) => Object.fromEntries(names.map(n => [n, gl.getUniformLocation(p, n)]));
     this.pB = v.link(VS_BLADE, FS_BLADE, ["aCorner", "aBlade", "aCol", "aLean"]); this.uB = uni(this.pB, ["uMVP", "uTime", "uPush"]);
     this.pX = v.link(VS_BOX, FS_BOX, ["aCube", "aAt", "aSize", "aCol"]); this.uX = uni(this.pX, ["uMVP"]);
+    this.pS = v.link(VS_SHELL, FS_SHELL, ["aCorner"]); this.uS = uni(this.pS, ["uMVP", "uRect", "uN", "uHmax", "uMask", "uTime", "uPush"]);
     this.pL = v.link(VS_LEAF, FS_LEAF, ["aCorner", "aLeaf", "aTurn", "aCol"]); this.uL = uni(this.pL, ["uMVP", "uTime"]);
     const buf = a => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, a, gl.STATIC_DRAW); return b; };
     this.tri = buf(new Float32Array([-0.5, 0, 0.5, 0, 0, 1])); this.cube = buf(cube());
     this.quad = buf(new Float32Array([-1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1]));
+    this.unit = buf(new Float32Array([0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1]));
+    this.unitVao = gl.createVertexArray(); gl.bindVertexArray(this.unitVao); gl.bindBuffer(gl.ARRAY_BUFFER, this.unit);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.bindVertexArray(null);
   }
   // an instanced vertex array: the per-vertex buffer (size n0 at location 0), then per-instance float arrays with their sizes
   vao(base, n0, inst) {
@@ -100,6 +140,7 @@ export class Ground {
   free() {
     const gl = this.v.gl, B = this.built; if (!B) return;
     for (const k of ["blades", "boxes", "leaves"]) if (B[k]) { for (const b of B[k].bufs) gl.deleteBuffer(b); gl.deleteVertexArray(B[k].vao); }
+    if (B.carpet) gl.deleteTexture(B.carpet.tex);
     this.built = null;
   }
   build(f) {
@@ -138,21 +179,38 @@ export class Ground {
       return n ? [r / n, g / n, b / n] : null;
     };
     for (let y = 2; y < MY; y += 4) for (let x = 2; x < MX; x += 4) {
-      if (!open(x, y) || !lawn(px(x, y)) || rnd(x, y, 0) > 0.9 * this.density) continue;
+      if (!open(x, y) || !lawn(px(x, y)) || rnd(x, y, 0) > (this.carpet ? 0.1 : 0.9) * this.density) continue;
       const c = mean(x, y, 3, lawn); if (c) tuft(x, y, 4, ...c);
     }
     // the plain ground round the map's area (its own, or the neighbouring map's reaching past it), when it is lawn: a band 160 px wide
     const sf = f.skirt ? f : f.neighbour && f.neighbour.f.skirt ? f.neighbour.f : null, sd = sf && sf.floorData, sk = sf && sf.skirtSrc >= 0 ? sf.skirtSrc * 4 : -1;
     const sLawn = o => { const r = sd[o], g = sd[o + 1], b = sd[o + 2]; return g > 70 && g >= r && b < g * 0.45; };
+    let band = null;
     if (sd && (sf.grassSrc || (sk >= 0 && sLawn(sk)))) {
       let r = 0, g = 0, b = 0, n = 0;
       for (let o = 0; o < 512 * H * 4; o += 4 * 7) if (lawn(o)) { r += d[o]; g += d[o + 1]; b += d[o + 2]; n++; }
       if (!n && sk >= 0) { r = sd[sk]; g = sd[sk + 1]; b = sd[sk + 2]; n = 1; }
-      const B = 160;
+      const B = 160; band = [r / n, g / n, b / n];
       for (let y = 3 - B; y < MY + B; y += 6) for (let x = 3 - B; x < MX + B; x += 6) {
-        if (inArea(x, y) || (y < 0 && f.neighbour) || rnd(x, y, 0) > 0.8 * this.density) continue;
+        if (inArea(x, y) || (y < 0 && f.neighbour) || rnd(x, y, 0) > (this.carpet ? 0.08 : 0.8) * this.density) continue;
         tuft(x, y, 6, r / n, g / n, b / n);
       }
+    }
+    // ---- the carpet's mask: the lawn's colour without the dither (dry patches yellower), alpha its height (taller patches) ----
+    let carpet = null;
+    if (this.carpet) {
+      const B = band ? 240 : 0, W = MX + 2 * B, Hc = MY + 2 * B, t = new Uint8Array(W * Hc * 4);
+      for (let j = 0; j < Hc; j++) for (let i = 0; i < W; i++) {
+        const x = i - B, y = j - B; let c = null;
+        if (inArea(x, y)) { if (open(x, y) && lawn(px(x, y))) c = mean(x, y, 3, lawn); }
+        else if (band && !(y < 0 && f.neighbour)) c = band;
+        if (!c) continue;
+        const tall = noise(x / 38, y / 38), dr = Math.max(0, noise(x / 55 + 17, y / 55 + 5) - 0.5) * 1.8, o = (j * W + i) * 4;
+        let edge = Math.min(1, Math.min(i, j, W - 1 - i, Hc - 1 - j) / 120 + (B ? 0 : 1));     // the band thins out over its outer 120 px
+        if (!inArea(x, y) && f.neighbour) edge = Math.min(edge, Math.max(0, y) / 60);          // and towards the neighbouring map's edge
+        t[o] = Math.min(255, c[0] + dr * 70 + 4); t[o + 1] = Math.min(255, c[1] * (1 + dr * 0.06)); t[o + 2] = c[2]; t[o + 3] = Math.round(255 * (0.45 + 0.55 * tall) * edge);
+      }
+      carpet = { tex: v.texture(W, Hc, t, true), rect: [-B, -B, W, Hc] };
     }
     // ---- the path edging (a brick per 2 x 2 px: kerb colours within 4 px of dirt) and the pebbles on the dirt ----
     const at = [], size = [], bcol = [];
@@ -209,7 +267,7 @@ export class Ground {
     }
     this.free();
     this.built = {
-      floor: d, fx: f.fx,
+      floor: d, fx: f.fx, carpetOn: this.carpet, carpet,
       blades: this.vao(this.tri, 2, [[blades, 4], [cols, 4], [leans, 2]]),
       boxes: this.vao(this.cube, 4, [[at, 4], [size, 4], [bcol, 3]]),
       leaves: this.vao(this.quad, 2, [[leaf, 4], [turn, 4], [lcol, 3]]),
@@ -220,11 +278,18 @@ export class Ground {
   draw(f, mvp, T) {
     if (!this.on || !f.floorData || f.noGlass) return;
     const v = this.v, gl = v.gl;
-    try { if (!this.pB) this.init(); if (!this.built || this.built.floor !== f.floorData || this.built.fx !== f.fx) this.build(f); } catch (e) { console.warn("ground", e); this.on = false; return; }
+    try { if (!this.pB) this.init(); if (!this.built || this.built.floor !== f.floorData || this.built.fx !== f.fx || this.built.carpetOn !== this.carpet) this.build(f); } catch (e) { console.warn("ground", e); this.on = false; return; }
     const B = this.built, me = v.fi && v.fi.act && v.fi.act.get(0);
     if (B.blades.n) {
       gl.useProgram(this.pB); gl.uniformMatrix4fv(this.uB.uMVP, false, mvp); gl.uniform1f(this.uB.uTime, T); gl.uniform3fv(this.uB.uPush, me ? [me.x, me.y + 4, 1] : [0, 0, 0]);
       gl.bindVertexArray(B.blades.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 3, B.blades.n);
+    }
+    if (B.carpet) {
+      const N = 14;
+      gl.useProgram(this.pS); gl.uniformMatrix4fv(this.uS.uMVP, false, mvp); gl.uniform4fv(this.uS.uRect, B.carpet.rect); gl.uniform1f(this.uS.uN, N);
+      gl.uniform1f(this.uS.uHmax, 3.4); gl.uniform1f(this.uS.uTime, T); gl.uniform3fv(this.uS.uPush, me ? [me.x, me.y + 4, 1] : [0, 0, 0]);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, B.carpet.tex); gl.uniform1i(this.uS.uMask, 0);
+      gl.bindVertexArray(this.unitVao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, N);
     }
     if (B.boxes.n) { gl.useProgram(this.pX); gl.uniformMatrix4fv(this.uX.uMVP, false, mvp); gl.bindVertexArray(B.boxes.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 30, B.boxes.n); }
     if (B.leaves.n) {
@@ -238,8 +303,8 @@ export function attachGround(voxel, hud) {
   const g = voxel.groundFx = new Ground(voxel);
   if (hud) {
     const b = document.createElement("span"); b.className = "k"; b.id = "groundbtn"; b.title = "3D overworld: the ground as the game's pixels, or in detail: grass that sways and parts as you walk, leafy trees, raised path edging and pebbles on the paths";
-    const show = () => { b.textContent = "GROUND: " + (g.on ? "Detail" : "Pixel"); b.classList.toggle("on", g.on); };
-    b.addEventListener("pointerdown", () => { g.setOn(!g.on); show(); });
+    const show = () => { b.textContent = "GROUND: " + (g.carpet ? "Carpet" : g.on ? "Tufts" : "Pixel"); b.classList.toggle("on", g.on); };
+    b.addEventListener("pointerdown", () => { if (!g.on) g.setOn(true); else if (!g.carpet) g.setOn(true, true); else g.setOn(false); show(); });
     hud.appendChild(document.createTextNode(" ")); hud.appendChild(b); show();
   }
   return g;
