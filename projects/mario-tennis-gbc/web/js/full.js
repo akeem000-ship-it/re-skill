@@ -14,8 +14,8 @@ import { attachBallFX } from "./ballfx.js";
 import { attachIntro } from "./intro.js";
 import { attachMatchFx } from "./matchfx.js";
 import { attachFieldLife } from "./fieldlife.js";
-import { attachWeather } from "./weather.js";
-import { attachGrass } from "./grass.js";           // GRASS: blades of grass on the overworld's lawns   // WEATHER: rain or a sunset over a match (the look only)
+import { attachWeather } from "./weather.js";   // WEATHER: rain or a sunset over a match (the look only)
+import { attachGround } from "./ground.js";     // GROUND: grass, leafy trees, brick path edging and pebbles on the overworld
 import { attachPhone } from "./phone.js";
 import { InstantReplay } from "./replay.js";   // INSTANT REPLAY: the last long rally again under a TV camera   // GAME: vibrate, screenshot, quick save / load, battery saver, what's new   // FIELD LIFE: birds, cloud shadows, fountain glints in the overworld   // MATCH FX: set / match point hush, rally ooh, changeover sweep, the winner's celebration
 import { organizeHud } from "./hudmenu.js";      // the button bar in categories (VIEW / STADIUM / LOOK / GAME)         // INTRO: walk-out before each match (3D stadium)       // BALL FX: on / off (3D / VOX court)
@@ -228,7 +228,7 @@ addEventListener("resize", () => applyAspect());
 let preset = q.get("cam") || stored("mt-cam") || "low"; if (!PRESETS[preset]) preset = "low";
 function setView3d(on, vox = false) {
   view3d = on; $("view3d").classList.toggle("on", on); $("view3d").textContent = on ? (vox ? "VOX" : "3D") : "3D";
-  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.hdText = hd; voxel.freeCam = q.has("freecam"); attachLighting(voxel, $("hud")); attachLightPanel(voxel); if (phone) phone.applyBattery(); attachStadium(voxel, $("hud")); attachCrowdSound(voxel.stadium, $("hud"), () => actx); attachBallFX(voxel, $("hud")); attachIntro(voxel, $("hud")); attachMatchFx(voxel, $("hud")); attachFieldLife(voxel, $("hud")); attachWeather(voxel, $("hud")); attachGrass(voxel, $("hud")); attachVoxStyle(voxel, $("hud")); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
+  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.hdText = hd; voxel.freeCam = q.has("freecam"); attachLighting(voxel, $("hud")); attachLightPanel(voxel); if (phone) phone.applyBattery(); attachStadium(voxel, $("hud")); attachCrowdSound(voxel.stadium, $("hud"), () => actx); attachBallFX(voxel, $("hud")); attachIntro(voxel, $("hud")); attachMatchFx(voxel, $("hud")); attachFieldLife(voxel, $("hud")); attachWeather(voxel, $("hud")); attachGround(voxel, $("hud")); attachVoxStyle(voxel, $("hud")); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
   if (voxel) voxel.voxelSprites = on && vox;
   $("gl").hidden = !view3d; cv.hidden = view3d; $("cam").hidden = !view3d; $("smoothbtn").hidden = !view3d; if ($("ballfxbtn")) $("ballfxbtn").hidden = !view3d; if ($("voxstylebtn")) $("voxstylebtn").hidden = !(view3d && vox); if ($("lightbtn")) $("lightbtn").hidden = !view3d; if ($("stadiumbtn")) $("stadiumbtn").hidden = !view3d; if ($("crowdsndbtn")) $("crowdsndbtn").hidden = !view3d;
   try { localStorage.setItem("mt-3d", on ? (vox ? "vox" : "3d") : "off"); } catch (e) { /* private mode */ }

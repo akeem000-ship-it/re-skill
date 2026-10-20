@@ -1333,7 +1333,7 @@ export class Voxel3D {
     const shapeOf = (d, x0, y0, w, h, kind) => {
       const [R, T] = PLANT[kind] || PLANT.tree, m = F3.plantMesh(d, w, h, R, T);
       for (let k = 0; k < m.uv.length; k += 2) { m.uv[k] = (m.uv[k] + x0) / 512; m.uv[k + 1] = (m.uv[k + 1] + y0) / 512; }
-      const sh = { m, r: Math.hypot(w / 2, h) }; shapes.push(sh); return sh;
+      const sh = { m, r: Math.hypot(w / 2, h), img: { d, w, h, kind } }; shapes.push(sh); return sh;   // (img: GROUND's leaves)
     };
     const placed = [];                          // a plant found twice (a stamp and a sprite of its top) stands once
     const taken = (x, y, w, h) => placed.some(q => Math.abs(q[0] - x) < w * 0.5 && Math.abs(q[1] - y) < h * 0.5 + 8);
@@ -1881,7 +1881,7 @@ export class Voxel3D {
       gl.drawArrays(gl.TRIANGLES, 0, f.walls.count);
       gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
     }
-    if (this.grass && !part) this.grass.draw(f, mvp, T);                  // GRASS: blades on the lawns
+    if (this.groundFx && !part) this.groundFx.draw(f, mvp, T);            // GROUND: grass, leaves, path edging, pebbles
     // buildings (roof + front wall, then the darker side walls) and the stand-up cut-outs
     if (f.blocks) {
       const SU = this.uS; gl.useProgram(this.progS); gl.bindTexture(gl.TEXTURE_2D, f.artTex); gl.uniformMatrix4fv(SU.uMVP, false, mvp); gl.uniform1f(SU.uAlphaTest, 0.5);   // SHIMMER: window glints on the facades
