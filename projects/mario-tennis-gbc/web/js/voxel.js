@@ -1881,6 +1881,7 @@ export class Voxel3D {
       gl.drawArrays(gl.TRIANGLES, 0, f.walls.count);
       gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
     }
+    if (this.grass && !part) this.grass.draw(f, mvp, T);                  // GRASS: blades on the lawns
     // buildings (roof + front wall, then the darker side walls) and the stand-up cut-outs
     if (f.blocks) {
       const SU = this.uS; gl.useProgram(this.progS); gl.bindTexture(gl.TEXTURE_2D, f.artTex); gl.uniformMatrix4fv(SU.uMVP, false, mvp); gl.uniform1f(SU.uAlphaTest, 0.5);   // SHIMMER: window glints on the facades
