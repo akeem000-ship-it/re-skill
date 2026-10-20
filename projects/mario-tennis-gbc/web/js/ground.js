@@ -9,10 +9,13 @@
 //   paths     the dirt is strewn with pebbles and small stones (dirt-coloured and grey), a few to each 4 x 4 px
 // Two kinds of grass (the GROUND button: Pixel / Tufts / Carpet): tufts as above, or a carpet: a dense, short, flat turf of
 // fine strands over every lawn (shells: the lawn drawn in thin layers one above another, each keeping only the strands
-// that reach it, thinning to their tips), with a few taller tufts standing out of it.
+// that reach it, thinning to their tips), with a few taller tufts standing out of it. On the school grounds (KEPT: the
+// courts, the plaza and school entrance, the dorm) the lawns inside the map are mown: short and even, in light and dark
+// stripes; the ground beyond stays rough.
 // Grass and leaves sway in the same travelling wind as the trees and hedges (voxel.js VSP); grass parts round you as you
 // walk. Three instanced draws per map (blades, boxes, leaves), made when the floor picture is (voxel.js buildField).
 const KEY = "mt-ground";
+const KEPT = new Set([20, 22, 23, 24, 26, 27, 28, 29, 30, 31, 36]);   // maps whose lawns are mown (wCurMapID; 19, the road, stays rough)
 const WIND = `float wind(float t, float ph) { return sin(t * 1.9 + ph) * 0.75 + sin(t * 3.3 + ph * 1.7) * 0.25; }`;
 const VS_BLADE = `#version 300 es
 in vec2 aCorner; in vec4 aBlade; in vec4 aCol; in vec2 aLean;
@@ -42,26 +45,32 @@ void main() {
 }`;
 const FS_SHELL = `#version 300 es
 precision highp float; in vec2 vXZ; in float vL; out vec4 o;
-uniform sampler2D uMask; uniform vec4 uRect; uniform float uTime; uniform vec3 uPush;
+uniform sampler2D uMask; uniform vec4 uRect, uKept; uniform float uTime; uniform vec3 uPush;
 ${WIND}
 float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vn(vec2 p) { vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f); return mix(mix(h21(i), h21(i + vec2(1, 0)), u.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), u.x), u.y); }
 void main() {
   float L = vL, s = wind(uTime, vXZ.x * 0.11 + vXZ.y * 0.07);
   vec2 rel = vXZ - uPush.xy; float d = length(rel), push = uPush.z * max(0.0, 1.0 - d / 14.0);
-  vec2 q = vXZ - (vec2(s * 0.7, s * 0.25) + (d > 0.01 ? rel / d : vec2(0.0)) * push * 2.2) * L * L;
+  bool kept = vXZ.x >= uKept.x && vXZ.y >= uKept.y && vXZ.x < uKept.z && vXZ.y < uKept.w;
+  float st = mod(floor(vXZ.y / 12.0), 2.0), cr = mod(floor(vXZ.x / 12.0), 2.0);   // mown: the stripes (and a fainter cross cut)
+  vec2 q = vXZ - (vec2(s * 0.7, s * 0.25) * (kept ? 0.3 : 1.0) + (kept ? vec2(0.0, st * 2.0 - 1.0) * 0.6 : vec2(0.0)) + (d > 0.01 ? rel / d : vec2(0.0)) * push * 2.2) * L * L;
   vec4 m = texture(uMask, (q - uRect.xy) / uRect.zw);
   if (m.a < 0.03) discard;
   if (L == 0.0) { o = vec4(m.rgb * mix(1.0, 0.36, smoothstep(0.05, 0.4, m.a)), 1.0); return; }   // the soil between the strands (the plain ground's colour where it thins out)
   vec2 c = q * 1.25, id = floor(c), f = fract(c) - 0.5;
-  float r = h21(id), hgt = (0.3 + 0.7 * r) * m.a * (1.0 - 0.6 * push);
+  float r = h21(id), hgt = (kept ? 0.32 + 0.06 * r : (0.3 + 0.7 * r) * m.a) * (1.0 - 0.6 * push);
   if (L > hgt) discard;
   vec2 j = vec2(h21(id + 3.1), h21(id + 7.7)) - 0.5;
   if (length(f - j * 0.35) > 0.62 * (1.0 - L / hgt) + 0.12) discard;
   float k = h21(id + 11.3), pa = vn(q / 22.0) * 0.65 + vn(q / 7.0) * 0.35;     // patches: lighter and darker, some olive
-  vec3 col = m.rgb * (0.68 + 0.5 * k) * (0.78 + 0.42 * pa);
-  col = mix(col, col * vec3(1.25, 1.0, 0.5) + vec3(0.07, 0.05, 0.0), smoothstep(0.55, 0.15, pa) * 0.45);
-  col = mix(col, col * vec3(1.35, 1.12, 0.5) + vec3(0.06, 0.04, 0.0), step(0.84, k) * 0.75);   // straw-coloured strands
+  vec3 col;
+  if (kept) col = m.rgb * (0.86 + 0.2 * k) * (0.93 + 0.1 * pa) * (0.84 + 0.26 * st) * (0.96 + 0.06 * cr);
+  else {
+    col = m.rgb * (0.68 + 0.5 * k) * (0.78 + 0.42 * pa);
+    col = mix(col, col * vec3(1.25, 1.0, 0.5) + vec3(0.07, 0.05, 0.0), smoothstep(0.55, 0.15, pa) * 0.45);
+    col = mix(col, col * vec3(1.35, 1.12, 0.5) + vec3(0.06, 0.04, 0.0), step(0.84, k) * 0.75);   // straw-coloured strands
+  }
   o = vec4(col * mix(0.45, 1.22, L / max(hgt, 0.01) * 0.6 + L * 0.4) + vec3(0.06, 0.07, 0.0) * L * L, 1.0);
 }`;
 // boxes (kerb bricks, pebbles): a unit cube (corner, face shade) scaled and placed per instance
@@ -117,7 +126,7 @@ export class Ground {
     const v = this.v, gl = v.gl, uni = (p, names) => Object.fromEntries(names.map(n => [n, gl.getUniformLocation(p, n)]));
     this.pB = v.link(VS_BLADE, FS_BLADE, ["aCorner", "aBlade", "aCol", "aLean"]); this.uB = uni(this.pB, ["uMVP", "uTime", "uPush"]);
     this.pX = v.link(VS_BOX, FS_BOX, ["aCube", "aAt", "aSize", "aCol"]); this.uX = uni(this.pX, ["uMVP"]);
-    this.pS = v.link(VS_SHELL, FS_SHELL, ["aCorner"]); this.uS = uni(this.pS, ["uMVP", "uRect", "uN", "uHmax", "uMask", "uTime", "uPush"]);
+    this.pS = v.link(VS_SHELL, FS_SHELL, ["aCorner"]); this.uS = uni(this.pS, ["uMVP", "uRect", "uKept", "uN", "uHmax", "uMask", "uTime", "uPush"]);
     this.pL = v.link(VS_LEAF, FS_LEAF, ["aCorner", "aLeaf", "aTurn", "aCol"]); this.uL = uni(this.pL, ["uMVP", "uTime"]);
     const buf = a => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, a, gl.STATIC_DRAW); return b; };
     this.tri = buf(new Float32Array([-0.5, 0, 0.5, 0, 0, 1])); this.cube = buf(cube());
@@ -160,6 +169,7 @@ export class Ground {
     const open = (x, y) => { const mx = x >> 4, my = y >> 4, i = my * 32 + mx; return mx < MW && my < MH && (allLawn[i] || (coll[i] !== 0x0F && !(f.covered && f.covered[i]))); };
     const dirt = o => { const r = d[o], g = d[o + 1], b = d[o + 2]; return r > 120 && r > g * 1.25 && b < r * 0.45; };
     const kerb = o => { const r = d[o], g = d[o + 1], b = d[o + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b); return (mx - mn < 40 && mx > 90) || (r < 80 && g < 30 && b < 60); };
+    const kept = this.carpet && KEPT.has(v.mapId());
     // ---- grass: tufts ----
     const blades = [], cols = [], leans = [];
     const tuft = (x, y, c, r, g, b) => {
@@ -179,7 +189,7 @@ export class Ground {
       return n ? [r / n, g / n, b / n] : null;
     };
     for (let y = 2; y < MY; y += 4) for (let x = 2; x < MX; x += 4) {
-      if (!open(x, y) || !lawn(px(x, y)) || rnd(x, y, 0) > (this.carpet ? 0.1 : 0.9) * this.density) continue;
+      if (kept || !open(x, y) || !lawn(px(x, y)) || rnd(x, y, 0) > (this.carpet ? 0.1 : 0.9) * this.density) continue;
       const c = mean(x, y, 3, lawn); if (c) tuft(x, y, 4, ...c);
     }
     // the plain ground round the map's area (its own, or the neighbouring map's reaching past it), when it is lawn: a band 160 px wide
@@ -205,12 +215,12 @@ export class Ground {
         if (inArea(x, y)) { if (open(x, y) && lawn(px(x, y))) c = mean(x, y, 3, lawn); }
         else if (band && !(y < 0 && f.neighbour)) c = band;
         if (!c) continue;
-        const tall = noise(x / 38, y / 38), dr = Math.max(0, noise(x / 55 + 17, y / 55 + 5) - 0.5) * 1.8, o = (j * W + i) * 4;
+        const mown = kept && inArea(x, y), tall = mown ? 0.8 : noise(x / 38, y / 38), dr = mown ? 0 : Math.max(0, noise(x / 55 + 17, y / 55 + 5) - 0.5) * 1.8, o = (j * W + i) * 4;
         let edge = Math.min(1, Math.min(i, j, W - 1 - i, Hc - 1 - j) / 120 + (B ? 0 : 1));     // the band thins out over its outer 120 px
         if (!inArea(x, y) && f.neighbour) edge = Math.min(edge, Math.max(0, y) / 60);          // and towards the neighbouring map's edge
         t[o] = Math.min(255, c[0] + dr * 70 + 4); t[o + 1] = Math.min(255, c[1] * (1 + dr * 0.06)); t[o + 2] = c[2]; t[o + 3] = Math.round(255 * (0.45 + 0.55 * tall) * edge);
       }
-      carpet = { tex: v.texture(W, Hc, t, true), rect: [-B, -B, W, Hc] };
+      carpet = { tex: v.texture(W, Hc, t, true), rect: [-B, -B, W, Hc], kept: kept ? [0, 0, MX, MY] : [0, 0, 0, 0] };
     }
     // ---- the path edging (a brick per 2 x 2 px: kerb colours within 4 px of dirt) and the pebbles on the dirt ----
     const at = [], size = [], bcol = [];
@@ -286,7 +296,7 @@ export class Ground {
     }
     if (B.carpet) {
       const N = 14;
-      gl.useProgram(this.pS); gl.uniformMatrix4fv(this.uS.uMVP, false, mvp); gl.uniform4fv(this.uS.uRect, B.carpet.rect); gl.uniform1f(this.uS.uN, N);
+      gl.useProgram(this.pS); gl.uniformMatrix4fv(this.uS.uMVP, false, mvp); gl.uniform4fv(this.uS.uRect, B.carpet.rect); gl.uniform4fv(this.uS.uKept, B.carpet.kept); gl.uniform1f(this.uS.uN, N);
       gl.uniform1f(this.uS.uHmax, 3.4); gl.uniform1f(this.uS.uTime, T); gl.uniform3fv(this.uS.uPush, me ? [me.x, me.y + 4, 1] : [0, 0, 0]);
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, B.carpet.tex); gl.uniform1i(this.uS.uMask, 0);
       gl.bindVertexArray(this.unitVao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, N);
