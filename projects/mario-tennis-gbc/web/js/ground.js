@@ -124,6 +124,7 @@ export class Ground {
     this.v = voxel; this.built = null;
     let m = null; try { m = new URLSearchParams(location.search).get("ground"); } catch (e) { /* no location */ }
     if (m === null) { try { m = localStorage.getItem(KEY); } catch (e) { m = null; } }
+    if (m === null) m = "carpet";                                      // the default: carpet (with mown campus lawns)
     this.on = m === "detail" || m === "on" || m === "carpet"; this.carpet = m === "carpet"; this.density = 1;
   }
   setOn(on, carpet = false) { this.on = !!on; this.carpet = this.on && carpet; try { localStorage.setItem(KEY, this.carpet ? "carpet" : this.on ? "detail" : "pixel"); } catch (e) { /* private mode */ } }

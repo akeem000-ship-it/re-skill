@@ -60,7 +60,7 @@ export class MatchIntro {
     this.on = m !== "off";
     this.vsBg = "stripes";
     let vf = null; try { vf = new URLSearchParams(location.search).get("vs") || localStorage.getItem("mt-vs"); } catch (e) { /* no storage */ }
-    this.vsFaces = vf === "faces";                       // VS screen: the players' faces close up instead of their whole figure
+    this.vsFaces = vf !== "body";                        // VS screen: the players' faces close up (the default) or their whole figure
     this.skip = () => { if (this.start >= 0) this.t0 = performance.now() / 1000 - T_END - this.pass; };
   }
   setOn(on) { this.on = !!on; try { localStorage.setItem(KEY, this.on ? "on" : "off"); } catch (e) { /* private mode */ } if (!this.on) this.stop(); }
@@ -364,6 +364,10 @@ export function attachIntro(voxel, hud) {
     const show = () => { b.textContent = "INTRO: " + (it.on ? "on" : "off"); b.classList.toggle("on", it.on); };
     b.addEventListener("pointerdown", () => { it.setOn(!it.on); show(); });
     hud.appendChild(document.createTextNode(" ")); hud.appendChild(b); show();
+    const v = document.createElement("span"); v.className = "k"; v.id = "vsbtn"; v.title = "the VS screen before a match: the players' faces close up, or their whole figure";
+    const showV = () => { v.textContent = "VS: " + (it.vsFaces ? "Faces" : "Body"); };
+    v.addEventListener("pointerdown", () => { it.vsFaces = !it.vsFaces; try { localStorage.setItem("mt-vs", it.vsFaces ? "faces" : "body"); } catch (e) { /* private mode */ } showV(); });
+    hud.appendChild(document.createTextNode(" ")); hud.appendChild(v); showV();
   }
   return it;
 }
