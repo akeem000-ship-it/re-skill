@@ -14,6 +14,7 @@
 // stripes; the ground beyond stays rough.
 // Grass and leaves sway in the same travelling wind as the trees and hedges (voxel.js VSP); grass parts round you as you
 // walk. Three instanced draws per map (blades, boxes, leaves), made when the floor picture is (voxel.js buildField).
+const TREES = ["original", "round", "leaves"], TREE_LABEL = { original: "Original", round: "Round", leaves: "Leaves" };
 const KEY = "mt-ground", MODES = ["pixel", "detail", "carpet", "gemini"], LABEL = { pixel: "Pixel", detail: "Tufts", carpet: "Carpet", gemini: "Gemini" };
 const KEPT = new Set([20, 22, 23, 24, 26, 27, 28, 29, 30, 31, 36]);   // maps whose lawns are mown (wCurMapID; 19, the road, stays rough)
 const WIND = `float wind(float t, float ph) { return sin(t * 1.9 + ph) * 0.75 + sin(t * 3.3 + ph * 1.7) * 0.25; }`;
@@ -179,21 +180,23 @@ export class Ground {
     if (m === null) m = "carpet";                                      // the default: carpet (with mown campus lawns)
     this.mode = MODES.includes(m) ? m : m === "on" ? "detail" : "pixel"; this.apply(); this.density = 1;
     let t = null; try { t = new URLSearchParams(location.search).get("trees") || localStorage.getItem(KEY + "-trees"); } catch (e) { /* no storage */ }
-    this.round = t !== "leaves";                                          // TREES: Round (the default) or Leaves
+    this.trees = TREES.includes(t) ? t : "original";                      // TREES: Original (the default), Round or Leaves
+    this.round = this.trees === "round";
   }
   // the map's own crowns are left out of the plant meshes (voxel.js) when Round draws them: changing that builds the map again
   get hidesCrowns() { return this.on && this.round; }
-  rebuildIf(was) { if ((was.g !== this.gemini || was.h !== this.hidesCrowns) && this.v.field) this.v.field.needBuild = true; }
-  setTrees(round) {
-    const was = { g: this.gemini, h: this.hidesCrowns }; this.round = !!round;
-    try { localStorage.setItem(KEY + "-trees", this.round ? "round" : "leaves"); } catch (e) { /* private mode */ }
+  get roundsGame() { return this.on && this.trees === "original"; }    // the game's own trees, made round (field3d.js plantMesh)
+  rebuildIf(was) { if ((was.g !== this.gemini || was.h !== this.hidesCrowns || was.o !== this.roundsGame) && this.v.field) this.v.field.needBuild = true; }
+  setTrees(t) {
+    const was = { g: this.gemini, h: this.hidesCrowns, o: this.roundsGame }; this.trees = t; this.round = t === "round";
+    try { localStorage.setItem(KEY + "-trees", t); } catch (e) { /* private mode */ }
     this.built = null; this.rebuildIf(was);
   }
   // pixel: the game's ground; detail: tufts; carpet: shells, mown on campus; gemini: Gemini's voxel tufts, lobed crowns and
   // tinted greens (voxel.js / field3d.js, built with the map: switching to or from it builds the map again)
   apply() { this.on = this.mode === "detail" || this.mode === "carpet"; this.carpet = this.mode === "carpet"; this.gemini = this.mode === "gemini"; }
   setMode(m) {
-    const was = { g: this.gemini, h: this.hidesCrowns }; this.mode = m; this.apply();
+    const was = { g: this.gemini, h: this.hidesCrowns, o: this.roundsGame }; this.mode = m; this.apply();
     try { localStorage.setItem(KEY, m); } catch (e) { /* private mode */ }
     this.rebuildIf(was);
   }
@@ -285,7 +288,7 @@ export class Ground {
     }
     // ---- TREES: Round: the shadows of the trees and shrubs, baked into the lawn and the paths below (darker in three
     // steps towards the middle), thrown out to the front right of each crown ----
-    const shadows = this.round ? ((f.fx && f.fx.plants) || []).map(p => this.shadowOf(p)).filter(Boolean) : [];
+    const shadows = this.trees !== "leaves" ? ((f.fx && f.fx.plants) || []).map(p => this.shadowOf(p)).filter(Boolean) : [];
     // the shade (1 = none) of every pixel of a w x h area whose top left is the map's (ox, oy)
     const shadeMap = (w, h, ox, oy) => {
       if (!shadows.length) return null;
@@ -356,6 +359,7 @@ export class Ground {
     const cC = [], cS = [], cW = [], cCol = [], sp = { leaf: [], turn: [], col: [] };
     for (const p of (f.fx && f.fx.plants) || []) {
       const img = p.shape.img; if (!img || img.kind === "pot" || img.kind === "statue") continue;
+      if (this.trees === "original" && img.kind !== "palm") continue;   // the game's own crown, rounded
       if (this.round && img.kind !== "palm") { this.crown(p, cC, cS, cW, cCol, at, size, bcol, sp, L); continue; }
       const { d: pd, w, h } = img, m = p.model, crown = img.kind === "bush" ? 0.3 : 0.38, green = o => pd[o + 3] >= 128 && pd[o + 1] >= pd[o] * 0.85 && pd[o + 1] > pd[o + 2];
       let mr = 0, mg = 0, mb = 0, mn = 0, top = h;                                // the crown's mean colour, and its top row
@@ -388,7 +392,7 @@ export class Ground {
     }
     this.free();
     this.built = {
-      floor: d, fx: f.fx, carpetOn: this.carpet, round: this.round, carpet, paths,
+      floor: d, fx: f.fx, carpetOn: this.carpet, round: this.trees, carpet, paths,
       blades: this.vao(this.tri, 2, [[blades, 4], [cols, 4], [leans, 2]]),
       boxes: this.vao(this.cube, 4, [[at, 4], [size, 4], [bcol, 3]]),
       leaves: this.vao(this.quad, 2, [[leaf, 4], [turn, 4], [lcol, 3]]),
@@ -485,7 +489,7 @@ export class Ground {
   draw(f, mvp, T) {
     if (!this.on || !f.floorData || f.noGlass) return;
     const v = this.v, gl = v.gl;
-    try { if (!this.pB) this.init(); if (!this.built || this.built.floor !== f.floorData || this.built.fx !== f.fx || this.built.carpetOn !== this.carpet || this.built.round !== this.round) this.build(f); } catch (e) { console.warn("ground", e); this.on = false; return; }
+    try { if (!this.pB) this.init(); if (!this.built || this.built.floor !== f.floorData || this.built.fx !== f.fx || this.built.carpetOn !== this.carpet || this.built.round !== this.trees) this.build(f); } catch (e) { console.warn("ground", e); this.on = false; return; }
     const B = this.built, me = v.fi && v.fi.act && v.fi.act.get(0);
     if (B.blades.n) {
       gl.useProgram(this.pB); gl.uniformMatrix4fv(this.uB.uMVP, false, mvp); gl.uniform1f(this.uB.uTime, T); gl.uniform3fv(this.uB.uPush, me ? [me.x, me.y + 4, 1] : [0, 0, 0]);
@@ -527,9 +531,9 @@ export function attachGround(voxel, hud) {
     const show = () => { b.textContent = "GROUND: " + LABEL[g.mode]; b.classList.toggle("on", g.mode !== "pixel"); };
     b.addEventListener("pointerdown", () => { g.setMode(MODES[(MODES.indexOf(g.mode) + 1) % MODES.length]); show(); });
     hud.appendChild(document.createTextNode(" ")); hud.appendChild(b); show();
-    const t = document.createElement("span"); t.className = "k"; t.id = "treesbtn"; t.title = "3D overworld, with GROUND on Tufts or Carpet: trees and shrubs as round clumps of leaves (Round), or the game's own crowns covered in small leaves (Leaves)";
-    const showT = () => { t.textContent = "TREES: " + (g.round ? "Round" : "Leaves"); };
-    t.addEventListener("pointerdown", () => { g.setTrees(!g.round); showT(); });
+    const t = document.createElement("span"); t.className = "k"; t.id = "treesbtn"; t.title = "3D overworld, with GROUND on Tufts or Carpet: the game's own trees made round (Original), trees and shrubs as clumps of leaves (Round), or the game's crowns covered in small leaves (Leaves)";
+    const showT = () => { t.textContent = "TREES: " + TREE_LABEL[g.trees]; };
+    t.addEventListener("pointerdown", () => { g.setTrees(TREES[(TREES.indexOf(g.trees) + 1) % TREES.length]); showT(); });
     hud.appendChild(document.createTextNode(" ")); hud.appendChild(t); showT();
   }
   return g;

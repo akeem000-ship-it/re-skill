@@ -1347,7 +1347,8 @@ export class Voxel3D {
           if (kind === "bush" || (y <= low && !brown) || leaf(o)) md[o + 3] = 0;
         }
       }
-      const [R, T] = PLANT[kind] || PLANT.tree, m = F3.plantMesh(md, w, h, R, T, !!(this.groundFx && this.groundFx.gemini));
+      const roundIt = (kind === "tree" || kind === "bush") && !!(this.groundFx && this.groundFx.roundsGame) && !this.inNeighbour;
+      const [R, T] = PLANT[kind] || PLANT.tree, m = F3.plantMesh(md, w, h, R, T, !!(this.groundFx && this.groundFx.gemini), roundIt);
       for (let k = 0; k < m.uv.length; k += 2) { m.uv[k] = (m.uv[k] + x0) / 512; m.uv[k + 1] = (m.uv[k + 1] + y0) / 512; }
       const sh = { m, r: Math.hypot(w / 2, h), img: { d, w, h, kind } }; shapes.push(sh); return sh;   // (img: GROUND's leaves)
     };

@@ -349,8 +349,10 @@ export function jetDroplets(n = 150) {
 // sway = (weight, shade, phase): the weight grows linearly with the height (the foot stays put), shade darkens the back and
 // sides, phase is added to the instance's place in the wind (0 here).
 // gem: the "Gemini" look (GROUND: Gemini): foliage depth in lobes down the crown, the trunk's foot thinner, and faces
-// shaded lighter towards the top of the crown
-export function plantMesh(rgba, w, h, R = 5, T = 4, gem = false) {
+// shaded lighter towards the top of the crown. round (TREES: Original): every row a round slice (deepest at the middle
+// of its run of pixels, as deep as the run is half wide), every column too, the shallower of the two kept: the crown a
+// ball and the trunk a post, in whole pixels
+export function plantMesh(rgba, w, h, R = 5, T = 4, gem = false, round = false) {
   const n = w * h, op = i => rgba[i * 4 + 3] >= 128, dist = new Float32Array(n).fill(1e9);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (!op(i)) { dist[i] = 0; continue; } if (x === 0 || y === 0 || x === w - 1 || y === h - 1) dist[i] = 1; }
   const relax = (i, j, d) => { if (dist[j] + d < dist[i]) dist[i] = dist[j] + d; };
@@ -362,6 +364,13 @@ export function plantMesh(rgba, w, h, R = 5, T = 4, gem = false) {
     let lobe = 1;
     if (gem) { const y = (i / w) | 0, foliage = rgba[i * 4 + 1] > rgba[i * 4] && rgba[i * 4 + 1] > rgba[i * 4 + 2]; lobe = foliage && h >= 20 ? 1 + 0.28 * Math.sin(y / h * Math.PI * 3) : y > h * 0.72 && !foliage ? 0.65 : 1; }
     dep[i] = Math.max(1, Math.round(base * lobe));
+  }
+  if (round) {
+    const rowD = new Float32Array(n), colD = new Float32Array(n);
+    const runs = (len, at, out) => { for (let a = 0; a < len;) { if (!op(at(a))) { a++; continue; } let b = a; while (b < len && op(at(b))) b++; const c = (a + b - 1) / 2, r = (b - a) / 2 + 0.5; for (let k = a; k < b; k++) out[at(k)] = Math.sqrt(Math.max(0, r * r - (k - c) * (k - c))); a = b; } };
+    for (let y = 0; y < h; y++) runs(w, x => y * w + x, rowD);
+    for (let x = 0; x < w; x++) runs(h, y => y * w + x, colD);
+    for (let i = 0; i < n; i++) if (op(i)) dep[i] = Math.max(1, Math.round(Math.min(rowD[i] * 0.95, colD[i] * 1.6 + 1)));
   }
   const D = (x, y) => (x >= 0 && y >= 0 && x < w && y < h) ? dep[y * w + x] : 0;
   const out = { pos: [], uv: [], sway: [] };
