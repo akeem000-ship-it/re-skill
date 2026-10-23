@@ -14,7 +14,7 @@
 // stripes; the ground beyond stays rough.
 // Grass and leaves sway in the same travelling wind as the trees and hedges (voxel.js VSP); grass parts round you as you
 // walk. Three instanced draws per map (blades, boxes, leaves), made when the floor picture is (voxel.js buildField).
-const KEY = "mt-ground";
+const KEY = "mt-ground", MODES = ["pixel", "detail", "carpet", "gemini"], LABEL = { pixel: "Pixel", detail: "Tufts", carpet: "Carpet", gemini: "Gemini" };
 const KEPT = new Set([20, 22, 23, 24, 26, 27, 28, 29, 30, 31, 36]);   // maps whose lawns are mown (wCurMapID; 19, the road, stays rough)
 const WIND = `float wind(float t, float ph) { return sin(t * 1.9 + ph) * 0.75 + sin(t * 3.3 + ph * 1.7) * 0.25; }`;
 const VS_BLADE = `#version 300 es
@@ -125,9 +125,16 @@ export class Ground {
     let m = null; try { m = new URLSearchParams(location.search).get("ground"); } catch (e) { /* no location */ }
     if (m === null) { try { m = localStorage.getItem(KEY); } catch (e) { m = null; } }
     if (m === null) m = "carpet";                                      // the default: carpet (with mown campus lawns)
-    this.on = m === "detail" || m === "on" || m === "carpet"; this.carpet = m === "carpet"; this.density = 1;
+    this.mode = MODES.includes(m) ? m : m === "on" ? "detail" : "pixel"; this.apply(); this.density = 1;
   }
-  setOn(on, carpet = false) { this.on = !!on; this.carpet = this.on && carpet; try { localStorage.setItem(KEY, this.carpet ? "carpet" : this.on ? "detail" : "pixel"); } catch (e) { /* private mode */ } }
+  // pixel: the game's ground; detail: tufts; carpet: shells, mown on campus; gemini: Gemini's voxel tufts, lobed crowns and
+  // tinted greens (voxel.js / field3d.js, built with the map: switching to or from it builds the map again)
+  apply() { this.on = this.mode === "detail" || this.mode === "carpet"; this.carpet = this.mode === "carpet"; this.gemini = this.mode === "gemini"; }
+  setMode(m) {
+    const was = this.gemini; this.mode = m; this.apply();
+    try { localStorage.setItem(KEY, m); } catch (e) { /* private mode */ }
+    if (was !== this.gemini && this.v.field) this.v.field.needBuild = true;
+  }
   init() {
     const v = this.v, gl = v.gl, uni = (p, names) => Object.fromEntries(names.map(n => [n, gl.getUniformLocation(p, n)]));
     this.pB = v.link(VS_BLADE, FS_BLADE, ["aCorner", "aBlade", "aCol", "aLean"]); this.uB = uni(this.pB, ["uMVP", "uTime", "uPush"]);
@@ -340,8 +347,8 @@ export function attachGround(voxel, hud) {
   const g = voxel.groundFx = new Ground(voxel);
   if (hud) {
     const b = document.createElement("span"); b.className = "k"; b.id = "groundbtn"; b.title = "3D overworld: the ground as the game's pixels, or in detail: grass that sways and parts as you walk, leafy trees, raised path edging and pebbles on the paths";
-    const show = () => { b.textContent = "GROUND: " + (g.carpet ? "Carpet" : g.on ? "Tufts" : "Pixel"); b.classList.toggle("on", g.on); };
-    b.addEventListener("pointerdown", () => { if (!g.on) g.setOn(true); else if (!g.carpet) g.setOn(true, true); else g.setOn(false); show(); });
+    const show = () => { b.textContent = "GROUND: " + LABEL[g.mode]; b.classList.toggle("on", g.mode !== "pixel"); };
+    b.addEventListener("pointerdown", () => { g.setMode(MODES[(MODES.indexOf(g.mode) + 1) % MODES.length]); show(); });
     hud.appendChild(document.createTextNode(" ")); hud.appendChild(b); show();
   }
   return g;

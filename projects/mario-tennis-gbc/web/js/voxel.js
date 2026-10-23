@@ -65,8 +65,13 @@ void main() {
   vUV = aUVP; vShade = aSwayP.y; gl_Position = uMVP * uModel * vec4(aPosP + vec3(dx, -abs(dx) * 0.3, dx * 0.35), 1.0);
 }`;
 const FSP = `#version 300 es
-precision mediump float; in vec2 vUV; in float vShade; uniform sampler2D uTex; out vec4 o;
-void main() { o = vec4(texture(uTex, vUV).rgb * vShade, 1.0); }`;
+precision mediump float; in vec2 vUV; in float vShade; uniform sampler2D uTex; uniform float uGem; out vec4 o;
+void main() {
+  vec3 c = texture(uTex, vUV).rgb;
+  float g = step(max(c.r, c.b) + 0.04, c.g) * uGem;   // GROUND: Gemini: greens cooler in shade, warmer in the light
+  vec3 tint = mix(vec3(1.0), mix(vec3(0.74, 0.93, 1.05), vec3(1.15, 1.09, 0.76), clamp((vShade - 0.55) / 0.65, 0.0, 1.0)), g * 0.68);
+  o = vec4(c * vShade * tint, 1.0);
+}`;
 // fountain jet: droplet boxes flown along their arcs (kind 0 the rising column, 1 the falling crown, 2 splashes on the
 // pool), positions snapped to half pixels; uJet = (column height, crown radius, droplet size, -)
 const VSJ = `#version 300 es
@@ -222,7 +227,7 @@ export class Voxel3D {
     this.uV = {}; for (const n of ["uMVP", "uModel"]) this.uV[n] = gl.getUniformLocation(this.progV, n);
     const uni = (p, names) => Object.fromEntries(names.map(n => [n, gl.getUniformLocation(p, n)]));
     this.progW = this.link(VSW, FSV, ["aPosW", "aColW", "aSwayW"]); this.uW = uni(this.progW, ["uMVP", "uModel", "uTime", "uAmp", "uPhase"]);
-    this.progP = this.link(VSP, FSP, ["aPosP", "aUVP", "aSwayP"]); this.uP = uni(this.progP, ["uMVP", "uModel", "uTime", "uAmp", "uPhase", "uTex"]);
+    this.progP = this.link(VSP, FSP, ["aPosP", "aUVP", "aSwayP"]); this.uP = uni(this.progP, ["uMVP", "uModel", "uTime", "uAmp", "uPhase", "uTex", "uGem"]);
     this.progJ = this.link(VSJ, FSV, ["aCorner", "aSeed"]); this.uJ = uni(this.progJ, ["uMVP", "uTime", "uOrigin", "uJet", "uC0", "uC1", "uC2"]);
     this.progR = this.link(VS, FSR); this.uR = uni(this.progR, ["uMVP", "uModel", "uUVRect", "uTime", "uSize", "uCol"]);
     this.voxelMeshes = new Map(); this.objectMeshes = new Map(); this.voxelSprites = false;   // voxelSprites: cubes per opaque pixel instead of cards
@@ -1331,7 +1336,7 @@ export class Voxel3D {
     // stands, rustling in the wind; the default cut keeps their outline
     const PLANT = { tree: [4, 3, 0.8], bush: [4, 3, 0.45], palm: [4, 3, 1.1], pot: [3, 2, 0.3], statue: [3, 3, 0] }, shapes = [], plants = [];
     const shapeOf = (d, x0, y0, w, h, kind) => {
-      const [R, T] = PLANT[kind] || PLANT.tree, m = F3.plantMesh(d, w, h, R, T);
+      const [R, T] = PLANT[kind] || PLANT.tree, m = F3.plantMesh(d, w, h, R, T, !!(this.groundFx && this.groundFx.gemini));
       for (let k = 0; k < m.uv.length; k += 2) { m.uv[k] = (m.uv[k] + x0) / 512; m.uv[k + 1] = (m.uv[k + 1] + y0) / 512; }
       const sh = { m, r: Math.hypot(w / 2, h), img: { d, w, h, kind } }; shapes.push(sh); return sh;   // (img: GROUND's leaves)
     };
@@ -1573,6 +1578,28 @@ export class Voxel3D {
         const plain = (x, y) => x >= 0 && y >= 0 && x < MWp >> 3 && y < MHp >> 3 && !flowerKeys.has(k(x, y)) && !hole[y * 8 * 512 + x * 8];
         const nb = [[tx - 1, ty], [tx + 1, ty], [tx, ty - 1], [tx, ty + 1]].find(([x, y]) => plain(x, y));
         if (nb) for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const i = (ty * 8 + y) * 512 + tx * 8 + x, j = (nb[1] * 8 + y) * 512 + nb[0] * 8 + x; floor.copyWithin(i * 4, j * 4, j * 4 + 3); f.floorSrc[i] = f.floorSrc[j]; f.patched[i] = 1; }
+      }
+    }
+    // GROUND: Gemini (made by Gemini): small swaying 3D grass tufts, 3 x 3 voxels coloured from the cell's lightest and darkest
+    // greens, on about a quarter of the open grass cells (8 x 8 px)
+    if (this.groundFx && this.groundFx.gemini && !def.backdrop && !this.inNeighbour) {
+      for (let ty = 1; ty < (MHp >> 3) - 1; ty++) for (let tx = 1; tx < (MWp >> 3) - 1; tx++) {
+        if (f.covered[(ty >> 1) * 32 + (tx >> 1)] || flowerKeys.has(k(tx, ty))) continue;
+        const hsh = (Math.imul(tx, 73856093) ^ Math.imul(ty, 19349663) ^ Math.imul(f.mapId, 83492791)) >>> 0;
+        if ((hsh & 7) > 1) continue;
+        let gCnt = 0, hiIdx = -1, loIdx = -1, hiG = -1, loG = 999;
+        for (let y = 0; y < 8; y += 2) for (let x = 0; x < 8; x += 2) {
+          const idx = (ty * 8 + y) * 512 + tx * 8 + x;
+          if (hole[idx]) { gCnt = -99; break; }
+          const o = idx * 4, r = art[o], g = art[o + 1], b = art[o + 2];
+          if (g > r + 18 && g > b + 18) { gCnt++; if (g > hiG) { hiG = g; hiIdx = idx; } if (g < loG) { loG = g; loIdx = idx; } }
+        }
+        if (gCnt < 14 || hiIdx < 0 || loIdx < 0) continue;
+        const X = tx * 8 + 2 + (hsh >> 4 & 3), Z = ty * 8 + 3 + (hsh >> 7 & 3);
+        const hc = [Math.min(255, Math.round(art[hiIdx * 4] * 1.12)), Math.min(255, Math.round(art[hiIdx * 4 + 1] * 1.08)), Math.round(art[hiIdx * 4 + 2] * 0.85)];
+        const lc = [art[loIdx * 4], art[loIdx * 4 + 1], art[loIdx * 4 + 2]];
+        const tuftPx = [[0, 1, ...hc, hiIdx], [0, 2, ...lc, loIdx], [1, 0, ...hc, hiIdx], [1, 1, ...hc, hiIdx], [1, 2, ...lc, loIdx], [2, 1, ...hc, hiIdx], [2, 2, ...lc, loIdx]];
+        F3.swayVoxels(flOf(X, Z), tuftPx, 3, 3, X, 0, Z, 0.8, X * 0.13 + Z * 0.09 + (hsh & 15) * 0.2, null);
       }
     }
     const fx = f.fx = { flowerGroups: [], fountains: [], shapes: [], plants };
@@ -1926,7 +1953,7 @@ export class Voxel3D {
     gl.uniformMatrix4fv(this.uW.uModel, false, m4.identity()); gl.uniform1f(this.uW.uPhase, 0); gl.uniform1f(this.uW.uAmp, 1.1);
     for (const g of fx.flowerGroups || []) if (inView(g.centre, 48)) { gl.bindVertexArray(g.vao); gl.drawArrays(gl.TRIANGLES, 0, g.count); }
     if (fx.plants.length && f.artTex) {   // trees and bushes: voxel bodies rustling in the same wind, those in view
-      gl.useProgram(this.progP); gl.uniformMatrix4fv(this.uP.uMVP, false, mvp); gl.uniform1f(this.uP.uTime, T); gl.bindTexture(gl.TEXTURE_2D, f.artTex);
+      gl.useProgram(this.progP); gl.uniformMatrix4fv(this.uP.uMVP, false, mvp); gl.uniform1f(this.uP.uTime, T); gl.uniform1f(this.uP.uGem, this.groundFx && this.groundFx.gemini ? 1 : 0); gl.bindTexture(gl.TEXTURE_2D, f.artTex);
       let drawn = 0;
       for (const p of fx.plants) {
         const c = m4.apply(mvp, p.centre ? [...p.centre, 1] : [p.model[12], p.shape.r * 0.5, p.model[14], 1]), m = p.shape.r * 1.2 * Math.abs(mvp[5]) + 0.2 * c[3];   // centre in clip space, with a margin
@@ -1937,7 +1964,7 @@ export class Voxel3D {
       this.plantVerts = drawn;                    // (vertices drawn this frame: for tests)
     }
     if (fx.hedges && fx.hedges.length) {           // hedges: coloured from the floor texture, the wind's phase by place
-      gl.useProgram(this.progP); gl.uniformMatrix4fv(this.uP.uMVP, false, mvp); gl.uniform1f(this.uP.uTime, T); gl.bindTexture(gl.TEXTURE_2D, f.floorTex);
+      gl.useProgram(this.progP); gl.uniformMatrix4fv(this.uP.uMVP, false, mvp); gl.uniform1f(this.uP.uTime, T); gl.uniform1f(this.uP.uGem, this.groundFx && this.groundFx.gemini ? 1 : 0); gl.bindTexture(gl.TEXTURE_2D, f.floorTex);
       gl.uniformMatrix4fv(this.uP.uModel, false, m4.identity()); gl.uniform1f(this.uP.uPhase, 0); gl.uniform1f(this.uP.uAmp, 0.5);
       for (const hg of fx.hedges) {
         const c = m4.apply(mvp, [...hg.centre, 1]), mg = hg.shape.r * 1.2 * Math.abs(mvp[5]) + 0.2 * c[3];

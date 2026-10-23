@@ -348,18 +348,25 @@ export function jetDroplets(n = 150) {
 // bottom-centre. Returns {pos, uv, sway}: uv in image pixels (the caller offsets them into the map texture),
 // sway = (weight, shade, phase): the weight grows linearly with the height (the foot stays put), shade darkens the back and
 // sides, phase is added to the instance's place in the wind (0 here).
-export function plantMesh(rgba, w, h, R = 5, T = 4) {
+// gem: the "Gemini" look (GROUND: Gemini): foliage depth in lobes down the crown, the trunk's foot thinner, and faces
+// shaded lighter towards the top of the crown
+export function plantMesh(rgba, w, h, R = 5, T = 4, gem = false) {
   const n = w * h, op = i => rgba[i * 4 + 3] >= 128, dist = new Float32Array(n).fill(1e9);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (!op(i)) { dist[i] = 0; continue; } if (x === 0 || y === 0 || x === w - 1 || y === h - 1) dist[i] = 1; }
   const relax = (i, j, d) => { if (dist[j] + d < dist[i]) dist[i] = dist[j] + d; };
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (x > 0) relax(i, i - 1, 1); if (y > 0) { relax(i, i - w, 1); if (x > 0) relax(i, i - w - 1, 1.4); if (x < w - 1) relax(i, i - w + 1, 1.4); } }
   for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) { const i = y * w + x; if (x < w - 1) relax(i, i + 1, 1); if (y < h - 1) { relax(i, i + w, 1); if (x < w - 1) relax(i, i + w + 1, 1.4); if (x > 0) relax(i, i + w - 1, 1.4); } }
   const dep = new Float32Array(n);
-  for (let i = 0; i < n; i++) if (op(i)) { const u = Math.min(dist[i], R) / R; dep[i] = Math.max(1, Math.round(T * Math.sqrt(1 - (1 - u) * (1 - u)))); }
+  for (let i = 0; i < n; i++) if (op(i)) {
+    const u = Math.min(dist[i], R) / R, base = T * Math.sqrt(1 - (1 - u) * (1 - u));
+    let lobe = 1;
+    if (gem) { const y = (i / w) | 0, foliage = rgba[i * 4 + 1] > rgba[i * 4] && rgba[i * 4 + 1] > rgba[i * 4 + 2]; lobe = foliage && h >= 20 ? 1 + 0.28 * Math.sin(y / h * Math.PI * 3) : y > h * 0.72 && !foliage ? 0.65 : 1; }
+    dep[i] = Math.max(1, Math.round(base * lobe));
+  }
   const D = (x, y) => (x >= 0 && y >= 0 && x < w && y < h) ? dep[y * w + x] : 0;
   const out = { pos: [], uv: [], sway: [] };
   // quad: 4 corners [x, y(local up), z] with their texture pixel coordinates [u, v]
-  const quad = (q, t, k) => { for (const j of [0, 1, 2, 0, 2, 3]) { const [p, uv] = q[j]; out.pos.push(p[0] - w / 2, p[1], p[2]); out.uv.push(uv[0], uv[1]); out.sway.push(Math.max(0, Math.min(1, p[1] / h)), k, 0); } };   // linear in height: faces stay joined as they bend
+  const quad = (q, t, k) => { for (const j of [0, 1, 2, 0, 2, 3]) { const [p, uv] = q[j], hf = Math.max(0, Math.min(1, p[1] / h)); out.pos.push(p[0] - w / 2, p[1], p[2]); out.uv.push(uv[0], uv[1]); out.sway.push(hf, gem ? k * (0.78 + 0.4 * hf) : k, 0); } };   // linear in height: faces stay joined as they bend
   const Y = y => h - y;                            // image row y -> local height of its top edge
   // front and back: greedy rectangles of one depth
   const used = new Uint8Array(n);
