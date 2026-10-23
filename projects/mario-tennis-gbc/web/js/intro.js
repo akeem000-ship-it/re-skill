@@ -24,11 +24,9 @@ const FRONT = [4, 9, 14, 19], WALK_IN = 650;    // walking towards the camera; h
 const PASS = 3.4;                                  // seconds of the big matches' second camera pass (after A)
 const VS_BGS = ["stripes", "rays", "balls", "energy"];   // one at random per match
 const TYPES = ["POWER", "TECHNIQUE", "ALL-AROUND", "TRICKY", "SPEED"];
-import { matchFrameRaw } from "./crowdfans.js";
+import { matchFrameRaw, matchPalette } from "./crowdfans.js";
 import { TUNNELS } from "./stadium3d.js";
 import { hdFaceCanvas } from "./look/hdface.js";
-import { faceColours } from "./look/faces.js";
-import { normalizeFace } from "./look/portrait.js";
 const ease = u => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
 // READY? / PLAY! in the style of the game's own score captions ("0-15", "NICE!"): chunky 2-px strokes, yellow, orange on the right and lower
 // edges of each stroke, a black outline. Glyphs 5x7, drawn at 2x onto a small canvas that is shown pixelated.
@@ -111,15 +109,35 @@ export class MatchIntro {
   // a player's face for the VS close-up: your redrawn face (the look's HD art, or the default one without a look), a mod's
   // photo, else the head of their match sprite (its top rows), drawn big with its pixels; {c, pixel} or null
   face(roster, pic) {
-    const L = this.v.gb.look, F = (L && L.faces) || {}, hero = ["boy", "girl"][roster];
-    const spec = hero ? F[hero] || { hero, face: normalizeFace(null, hero), colours: faceColours(hero) } : F["mod" + roster];
+    const gb = this.v.gb, L = gb.look, F = (L && L.faces) || {}, hero = ["boy", "girl"][roster], spec = hero ? F[hero] : F["mod" + roster];
     try {
       if (spec && spec.photo) { const im = new Image(); im.src = spec.photo; return { c: im, pixel: false }; }
-      if (spec) return { c: hdFaceCanvas({ ...spec, mood: "neutral" }, 256), pixel: false };
+      if (spec) return { c: hdFaceCanvas({ ...spec, mood: "neutral" }, 256), pixel: false };   // the redrawn face (Portraits: Redrawn)
+      if (hero && gb.heroPortrait) {                                     // else the game's own portrait, as the menus show it
+        const im = gb.heroPortrait(hero);
+        if (im) { const c = document.createElement("canvas"); c.width = im.w; c.height = im.h; c.getContext("2d").putImageData(new ImageData(im.data, im.w, im.h), 0, 0); return { c, pixel: true }; }
+      }
+      const head = this.head(roster); if (head) return { c: head, pixel: true };   // a game character: its character-select head
     } catch (e) { console.warn("intro face", e); }
     if (!pic) return null;
     const h = Math.min(pic.height, Math.max(10, Math.round(pic.width * 0.8))), c = document.createElement("canvas");
     c.width = pic.width; c.height = h; c.getContext("2d").drawImage(pic, 0, 0); return { c, pixel: true };
+  }
+  // roster character's 16x16 head of the character select (raw 2bpp, 2 x 2 tiles column-major, 18:5AF0 + 64 per character), in
+  // its colour scheme (18:4300, as the select screen shows it): a canvas, or null
+  head(roster) {
+    const rom = this.v.gb.mem.rom, o = 0x18 * 0x4000 + (0x5AF0 - 0x4000) + 64 * roster, pal = matchPalette(rom, rom[0x1DA50 + roster]);
+    if (!pal || roster > 31) return null;
+    const cv = document.createElement("canvas"); cv.width = cv.height = 16; const g = cv.getContext("2d"), im = g.createImageData(16, 16); let n = 0;
+    for (let t = 0; t < 4; t++) for (let y = 0; y < 8; y++) {
+      const lo = rom[o + t * 16 + y * 2], hi = rom[o + t * 16 + y * 2 + 1];
+      for (let x = 0; x < 8; x++) {
+        const ci = ((lo >> (7 - x)) & 1) | (((hi >> (7 - x)) & 1) << 1); if (!ci) continue;
+        const q = (((t & 1) * 8 + y) * 16 + (t >> 1) * 8 + x) * 4, c = pal[ci]; im.data[q] = c[0]; im.data[q + 1] = c[1]; im.data[q + 2] = c[2]; im.data[q + 3] = 255; n++;
+      }
+    }
+    if (n < 20) return null;                                                // (rosters 21 / 22 are blank)
+    g.putImageData(im, 0, 0); return cv;
   }
   // the running player during the walk-on: one card of the match's running frame (voxel.js draws it in place of the game's sprites)
   freeRun() { const v = this.v; for (const e of (this.runTex || new Map()).values()) { if (e.tex) v.gl.deleteTexture(e.tex); if (e.mesh) v.freeMesh(e.mesh); } }
@@ -149,14 +167,16 @@ export class MatchIntro {
   picture(c, pal, k = 9, flip = false) {
     try {
       const v = this.v, rom = v.gb.mem.rom, f = matchFrameRaw(rom, c, k); if (!f) return null;
-      const { w, h, px } = f.im, op = v.gb.ppu.objPal, L = v.gb.look, fd = L ? L.fade(op, pal) : -1;
+      // the colours unfaded: the look's at fade 0, else the sprite set's own scheme (the court can still be fading in from
+      // white when the intro starts), else the live palette
+      const { w, h, px } = f.im, op = v.gb.ppu.objPal, L = v.gb.look, fd = L ? Math.min(0, L.fade(op, pal)) : -1, own = matchPalette(rom, c);
       let x0 = w, x1 = -1, y0 = h, y1 = -1; for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (px[y * w + x]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
       if (x1 < 0) return null;
       const cv = document.createElement("canvas"); cv.width = x1 - x0 + 1; cv.height = y1 - y0 + 1; const g = cv.getContext("2d"), im = g.createImageData(cv.width, cv.height);
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
         const ci = px[y * w + x]; if (!ci) continue; const o = ((y - y0) * cv.width + x - x0) * 4;
         const reg = fd >= 0 && L.byOffset ? L.byOffset.get(f.base + ((x >> 3) * 4 + (y >> 3)) * 16) : null, lc = reg ? L.rgba(reg[(y & 7) * 8 + (x & 7)], fd) : 0;
-        const c3 = lc ? [lc & 255, (lc >> 8) & 255, (lc >> 16) & 255] : v.col5(op, pal, ci), q = flip ? ((y - y0) * cv.width + (x1 - x)) * 4 : o;
+        const c3 = lc ? [lc & 255, (lc >> 8) & 255, (lc >> 16) & 255] : own ? own[ci] : v.col5(op, pal, ci), q = flip ? ((y - y0) * cv.width + (x1 - x)) * 4 : o;
         im.data[q] = c3[0]; im.data[q + 1] = c3[1]; im.data[q + 2] = c3[2]; im.data[q + 3] = 255;
       }
       g.putImageData(im, 0, 0); return cv;

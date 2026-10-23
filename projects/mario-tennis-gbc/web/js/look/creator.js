@@ -270,7 +270,9 @@ export function mountCreator({ hud, keys, pause, onChange }) {
     // before the machine: apply the stored look to the ROM bytes
     ready,
     prepare(bytes) { pristine = Uint8Array.from(bytes); portraitSets = portraitKeys(pristine); mgr.prepare(bytes, withMods(load(KEY)), { detail: sprMode === "detail" }); },
-    attach(machine) { gb = machine; mgr.attach(gb); gb.modChar = modChar; lastSlot = -1; detail.attach(gb, document.getElementById("screen")); detail.setEnabled(sprMode === "detail"); },
+    attach(machine) { gb = machine; mgr.attach(gb); gb.modChar = modChar;
+      // the hero's 24x24 portrait as the game shows it now (its own, recoloured by the look, or the redrawn one): the VS screen
+      gb.heroPortrait = key => { if (!pristine) return null; const L = mgr.look; return heroPreview(pristine, key === "girl" ? "nina" : "alex", L && L[key], 0, !!(L && L.portraits === "redrawn")).portrait; }; lastSlot = -1; detail.attach(gb, document.getElementById("screen")); detail.setEnabled(sprMode === "detail"); },
     get look() { return mgr.look; },
     open: openPanel,
     // once per emulated frame (after it ran)

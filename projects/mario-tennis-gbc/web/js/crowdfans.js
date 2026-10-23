@@ -23,6 +23,12 @@ export function matchFrameRaw(rom, c, k) {
   const ntiles = info ? rom[off(bank, info + 4 * k + 3)] : 12, cols = Math.max(1, Math.min(4, ((ntiles || 12) + 3) >> 2));
   return { im: decodeColMajor(rom, off(bank, ptr), cols, 4), base: off(bank, ptr) };
 }
+// sprite set c's own colours (its OBJ scheme 18:4300 by the header's slot), 4 x rgb, or null: as the game loads them, unfaded
+export function matchPalette(rom, c) {
+  const w = u16(rom, OBJECT_LIST[0], OBJECT_LIST[1] + 2 * c), bank = w >> 8, hdr = u16(rom, bank, 0x4000 + (w & 0xFF)), slot = rom[off(bank, hdr)];
+  if (slot < 3 || slot > 7) return null;
+  const o = off(SCHEMES[0], SCHEMES[1]) + (slot - 3) * 8; return [0, 1, 2, 3].map(i => rgb(rom[o + 2 * i] | rom[o + 2 * i + 1] << 8));
+}
 // the match frame k of character sprite set c as { w, h, px (indices 0-3), pal (4 x rgb) } trimmed to its pixels
 function matchFrame(rom, c, k) {
   const w = u16(rom, OBJECT_LIST[0], OBJECT_LIST[1] + 2 * c), bank = w >> 8, hdr = u16(rom, bank, 0x4000 + (w & 0xFF));
