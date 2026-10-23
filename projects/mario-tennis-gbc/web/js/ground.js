@@ -283,10 +283,26 @@ export class Ground {
         tuft(x, y, 6, r / n, g / n, b / n);
       }
     }
+    // ---- TREES: Round: the shadows of the trees and shrubs, baked into the lawn and the paths below (darker in three
+    // steps towards the middle), thrown out to the front right of each crown ----
+    const shadows = this.round ? ((f.fx && f.fx.plants) || []).map(p => this.shadowOf(p)).filter(Boolean) : [];
+    // the shade (1 = none) of every pixel of a w x h area whose top left is the map's (ox, oy)
+    const shadeMap = (w, h, ox, oy) => {
+      if (!shadows.length) return null;
+      const a = new Float32Array(w * h).fill(1);
+      for (const [X, Z, rx, rz] of shadows) {
+        for (let y = Math.max(0, Math.floor(Z - rz - oy)); y < Math.min(h, Math.ceil(Z + rz - oy)); y++) for (let x = Math.max(0, Math.floor(X - rx - ox)); x < Math.min(w, Math.ceil(X + rx - ox)); x++) {
+          const dx = (x + ox - X) / rx, dz = (y + oy - Z) / rz, q = dx * dx + dz * dz; if (q >= 1) continue;
+          const k = 1 - Math.floor((1 - Math.max(0, (Math.sqrt(q) - 0.35) / 0.65)) * 3 + 0.5) / 3 * 0.55, i = y * w + x;
+          if (k < a[i]) a[i] = k;
+        }
+      }
+      return a;
+    };
     // ---- the carpet's mask: the lawn's colour without the dither (dry patches yellower), alpha its height (taller patches) ----
     let carpet = null;
     if (this.carpet) {
-      const B = band ? 240 : 0, W = MX + 2 * B, Hc = MY + 2 * B, t = new Uint8Array(W * Hc * 4);
+      const B = band ? 240 : 0, W = MX + 2 * B, Hc = MY + 2 * B, t = new Uint8Array(W * Hc * 4), sh = shadeMap(W, Hc, -B, -B);
       for (let j = 0; j < Hc; j++) for (let i = 0; i < W; i++) {
         const x = i - B, y = j - B; let c = null;
         if (inArea(x, y)) { if (open(x, y) && lawn(px(x, y))) c = mean(x, y, 3, lawn); }
@@ -295,19 +311,21 @@ export class Ground {
         const mown = kept && inArea(x, y), tall = mown ? 0.8 : noise(x / 38, y / 38), dr = mown ? 0 : Math.max(0, noise(x / 55 + 17, y / 55 + 5) - 0.5) * 1.8, o = (j * W + i) * 4;
         let edge = Math.min(1, Math.min(i, j, W - 1 - i, Hc - 1 - j) / 120 + (B ? 0 : 1));     // the band thins out over its outer 120 px
         if (!inArea(x, y) && f.neighbour) edge = Math.min(edge, Math.max(0, y) / 60);          // and towards the neighbouring map's edge
-        t[o] = Math.min(255, c[0] + dr * 70 + 4); t[o + 1] = Math.min(255, c[1] * (1 + dr * 0.06)); t[o + 2] = c[2]; t[o + 3] = Math.round(255 * (0.45 + 0.55 * tall) * edge);
+        const k = sh ? sh[j * W + i] : 1;
+        t[o] = Math.min(255, c[0] + dr * 70 + 4) * k; t[o + 1] = Math.min(255, c[1] * (1 + dr * 0.06)) * k; t[o + 2] = c[2] * k; t[o + 3] = Math.round(255 * (0.45 + 0.55 * tall) * edge);
       }
       carpet = { tex: v.texture(W, Hc, t, true), rect: [-B, -B, W, Hc], kept: kept ? [0, 0, MX, MY] : [0, 0, 0, 0] };
     }
     // ---- the paths' surface: the dirt's colour without the dither, alpha how far into the path (its worn, lighter middle) ----
     let paths = null;
     {
-      const t = new Uint8Array(512 * H * 4), D = (x, y) => inMap(x, y) && dirt(px(x, y)); let n = 0;
+      const t = new Uint8Array(512 * H * 4), D = (x, y) => inMap(x, y) && dirt(px(x, y)), sh = shadeMap(512, H, 0, 0); let n = 0;
       for (let y = 0; y < H; y++) for (let x = 0; x < 512; x++) {
         if (!D(x, y) || !open(x, y)) continue;
         let r = 1; for (; r <= 7; r++) if (!D(x + r, y) || !D(x - r, y) || !D(x, y + r) || !D(x, y - r) || !D(x + r, y + r) || !D(x - r, y - r) || !D(x + r, y - r) || !D(x - r, y + r)) break;
         const c = mean(x, y, 3, dirt); if (!c) continue; const o = (y * 512 + x) * 4;
-        t[o] = c[0]; t[o + 1] = c[1]; t[o + 2] = c[2]; t[o + 3] = 20 + Math.round(235 * Math.min(1, (r - 1) / 6)); n++;
+        const k = sh ? sh[y * 512 + x] : 1;
+        t[o] = c[0] * k; t[o + 1] = c[1] * k; t[o + 2] = c[2] * k; t[o + 3] = 20 + Math.round(235 * Math.min(1, (r - 1) / 6)); n++;
       }
       if (n) paths = { tex: v.texture(512, H, t, true), rect: [0, 0, 512, H] };
     }
@@ -377,12 +395,21 @@ export class Ground {
       clumps: this.vao(this.sphere, 3, [[cC, 4], [cS, 4], [cW, 4], [cCol, 3]]),
       spikes: this.vao(this.quad, 2, [[sp.leaf, 4], [sp.turn, 4], [sp.col, 3]]),
     };
-    this.stats = { blades: this.built.blades.n, boxes: this.built.boxes.n, leaves: this.built.leaves.n, clumps: this.built.clumps.n, spikes: this.built.spikes.n };
+    this.stats = { blades: this.built.blades.n, boxes: this.built.boxes.n, leaves: this.built.leaves.n, clumps: this.built.clumps.n, spikes: this.built.spikes.n, shadows: shadows.length };
   }
   // TREES: Round: one plant's crown as clumps (local plant space: x across, y up from its foot, z towards the camera; placed
   // with the plant's model), shaped by the green of its picture: a round tree (a top clump, a ring of five round it and
   // three below), a tall narrow one as a cypress (a column of clumps narrowing to a point), a bush as a low mound; one bush
   // in three flowers (pink or white)
+  // the shadow a tree or shrub's crown throws on the ground: [x, z, radius across, radius deep] in map px, or null
+  shadowOf(p) {
+    const img = p.shape.img; if (!img || img.kind === "pot" || img.kind === "statue" || img.kind === "palm") return null;
+    const { d: pd, w, h } = img, m = p.model; let x0 = w, x1 = -1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const o = (y * w + x) * 4; if (pd[o + 3] >= 128 && pd[o + 1] >= pd[o] * 0.85 && pd[o + 1] > pd[o + 2]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); } }
+    if (x1 < 0) return null;
+    const W = x1 - x0 + 1, cx = (x0 + x1 + 1) / 2 - w / 2, X = m[0] * cx + m[12], Z = m[2] * cx + m[14];
+    return [X + W * 0.42, Z + W * 0.22, W * 0.9, W * 0.55];
+  }
   crown(p, cC, cS, cW, cCol, at, size, bcol, sp, L) {
     const { d: pd, w, h, kind } = p.shape.img, m = p.model, green = o => pd[o + 3] >= 128 && pd[o + 1] >= pd[o] * 0.85 && pd[o + 1] > pd[o + 2];
     let mr = 0, mg = 0, mb = 0, n = 0, x0 = w, x1 = -1, y0 = h, y1 = -1;
@@ -391,35 +418,48 @@ export class Ground {
     mr /= n * 255; mg /= n * 255; mb /= n * 255;
     const W = x1 - x0 + 1, Hc = y1 - y0 + 1, cx = (x0 + x1 + 1) / 2 - w / 2, cy = h - (y0 + y1 + 1) / 2, seed = m[12] * 0.37 + m[14] * 0.53;
     const R = (k) => rnd(m[12], m[14], k), list = [];
-    if (kind === "bush") {                                                  // a mound: clumps side by side, low and wide
-      const k = Math.max(2, Math.round(W / 7)), r = Math.min(W / (k + 0.6), Hc * 0.95) * 0.62;
-      for (let i = 0; i < k; i++) list.push([cx - W / 2 + (i + 0.5) * W / k + (R(i) - 0.5) * 2, Math.max(r * 0.8, cy - Hc * 0.1) + R(10 + i) * 2, (R(20 + i) - 0.5) * W * 0.35, r * (0.9 + 0.25 * R(30 + i)), 1.05, 0.85]);
-      list.push([cx, Math.max(r, cy) + r * 0.45, 0, r * 0.9, 1, 0.85]);
+    // a dark core with rounded lobes all over its upper part (points spread evenly over a sphere, the lowest left out):
+    // every lobe catches the light on its own top, with shadowy gaps between them, so the crown's edge is scalloped
+    const lobed = (X0, Y0, Z0, core, n, lobe, sy) => {
+      list.push([X0, Y0, Z0, core, 1, sy, 0.62, 1]);
+      for (let i = 0, made = 0; made < n && i < n * 2; i++) {
+        const u = 1 - 2 * (i + 0.5) / (n * 1.35), a = i * 2.39996 + R(400 + i), sq = Math.sqrt(Math.max(0, 1 - u * u));
+        if (u < -0.45) continue; made++;
+        list.push([X0 + Math.cos(a) * sq * core * 0.86, Y0 + u * core * 0.86 * sy, Z0 + Math.sin(a) * sq * core * 0.86, lobe * (0.82 + 0.3 * R(450 + i)), 1, 0.92, 1, 0]);
+      }
+    };
+    let tint = [1, 1, 1];
+    if (kind === "bush") {                                                  // a mound: a low core with lobes
+      const core = Math.min(W * 0.42, Hc * 0.62);
+      lobed(cx, Math.max(core * 0.75, cy - Hc * 0.05), 0, core, 10, core * 0.5, 0.85);
+      tint = [0.95 + 0.1 * R(5), 1, 0.95];
     } else if (Hc > W * 1.5) {                                              // a cypress: a dense cone of small clumps
       const k = Math.max(6, Math.round(Hc / 3.2));
       for (let i = 0; i < k; i++) {
         const u = i / (k - 1), rr = W * 0.5 * (1 - u * 0.8), a = R(i) * 6.2832, off = rr * 0.35;
-        list.push([cx + Math.cos(a) * off, cy - Hc / 2 + (0.08 + u * 0.86) * Hc, Math.sin(a) * off, rr * (0.75 + 0.2 * R(40 + i)), 1, 1.15]);
-        if (rr > 3 && i % 2 === 0) list.push([cx - Math.cos(a) * off, cy - Hc / 2 + (0.1 + u * 0.86) * Hc, -Math.sin(a) * off, rr * 0.7, 1, 1.1]);
+        list.push([cx + Math.cos(a) * off, cy - Hc / 2 + (0.08 + u * 0.86) * Hc, Math.sin(a) * off, rr * (0.75 + 0.2 * R(40 + i)), 1, 1.15, 1, 0]);
+        if (rr > 3 && i % 2 === 0) list.push([cx - Math.cos(a) * off, cy - Hc / 2 + (0.1 + u * 0.86) * Hc, -Math.sin(a) * off, rr * 0.7, 1, 1.1, 1, 0]);
       }
-    } else {                                                                // a round tree
-      const r = W * 0.34;
-      list.push([cx + (R(1) - 0.5) * 2, cy + Hc * 0.22, 0, r * 1.05, 1, 0.95]);
-      for (let i = 0; i < 5; i++) { const a = i / 5 * 6.2832 + R(50 + i); list.push([cx + Math.cos(a) * W * 0.28, cy + Hc * 0.02 + (R(60 + i) - 0.5) * 3, Math.sin(a) * W * 0.24, r * (0.78 + 0.18 * R(70 + i)), 1, 0.9]); }
-      for (let i = 0; i < 3; i++) { const a = i / 3 * 6.2832 + 0.6 + R(80 + i); list.push([cx + Math.cos(a) * W * 0.2, cy - Hc * 0.24, Math.sin(a) * W * 0.18, r * 0.72, 1, 0.85]); }
+      tint = [0.62, 0.86, 0.95];                                          // cypresses: a deeper, cooler green
+    } else {                                                                // a round tree: a big lobed ball
+      const core = Math.min(W * 0.42, Hc * 0.5);
+      lobed(cx, cy + Hc * 0.04, 0, core, 18, core * 0.46, 0.95);
+      if (R(6) < 0.3) tint = [1.3, 1.16, 0.6];                              // some trees a sunny yellow-green
     }
+    mr = Math.min(1, mr * tint[0]); mg = Math.min(1, mg * tint[1]); mb = Math.min(1, mb * tint[2]);
     const tw = (x, y, z) => [m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]];
     // the leaf ramp of the clump shader, for the spikes (lit 0-1 -> five shades of the crown's green)
     const base = [mr * 0.78, mg * 0.8, mb * 0.62], ramp = lit => {
       const k = Math.max(0, Math.min(4, Math.floor(lit * 4.6))), m = [[0.32, 0.42, 0.55], [0.55, 0.66, 0.7], [0.84, 0.84, 0.84], [1.04, 1.04, 1.04], [1.16, 1.16, 1.16]][k], a = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0.06, 0.06, 0], [0.17, 0.15, 0.02]][k];
       return base.map((c, j) => Math.min(1, c * m[j] + a[j]));
     };
-    list.forEach(([x, y, z, r, sx, sy], i) => {
+    list.forEach(([x, y, z, r, sx, sy, shade = 1, inner = 0], i) => {
       const [X, Y, Z] = tw(x, y, z), hue = (R(90 + i) - 0.5) * 0.1, wind = p.amp * Math.min(1, y / h) * 1.1, ph = p.phase + (X + Z) * 0.02;
       cC.push(X, Y, Z, r * 0.86); cS.push(sx, sy, seed + i * 3.7, ph); cW.push(wind, 0, 0, 0);
-      cCol.push(Math.min(1, mr * (1 + hue) + 0.02), Math.min(1, mg * 1.04), Math.min(1, mb * (1 - hue)));
+      cCol.push(Math.min(1, (mr * (1 + hue) + 0.02) * shade), Math.min(1, mg * 1.04 * shade), Math.min(1, mb * (1 - hue) * shade));
+      if (inner) return;                                                  // (the dark core: no leaves of its own)
       // spiky leaves standing out of the clump all over its upper and outer surface: they make the crown's jagged outline
-      const nLeaves = Math.max(16, Math.min(130, Math.round(r * r * 2.8)));
+      const nLeaves = Math.max(10, Math.min(110, Math.round(r * r * 2.4)));
       for (let k = 0; k < nLeaves; k++) {
         const u = -0.45 + 1.45 * R(300 + i * 97 + k), a = R(500 + i * 89 + k) * 6.2832, sq = Math.sqrt(Math.max(0, 1 - u * u));
         const s0 = [sq * Math.cos(a), u, sq * Math.sin(a)], len = 0.8 + R(700 + i * 71 + k) * 1.1;
