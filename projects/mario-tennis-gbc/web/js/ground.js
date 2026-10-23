@@ -186,7 +186,12 @@ export class Ground {
   // the map's own crowns are left out of the plant meshes (voxel.js) when Round draws them: changing that builds the map again
   get hidesCrowns() { return this.on && this.round; }
   get roundsGame() { return this.on && this.trees === "original"; }    // the game's own trees, made round (field3d.js plantMesh)
-  rebuildIf(was) { if ((was.g !== this.gemini || was.h !== this.hidesCrowns || was.o !== this.roundsGame) && this.v.field) this.v.field.needBuild = true; }
+  rebuildIf(was) {
+    if ((was.g !== this.gemini || was.h !== this.hidesCrowns || was.o !== this.roundsGame) && this.v.field) {
+      this.v.field.needBuild = true;
+      if (was.o !== this.roundsGame && this.v.neighbours) this.v.neighbours.clear();   // the neighbouring maps' trees are built again too
+    }
+  }
   setTrees(t) {
     const was = { g: this.gemini, h: this.hidesCrowns, o: this.roundsGame }; this.trees = t; this.round = t === "round";
     try { localStorage.setItem(KEY + "-trees", t); } catch (e) { /* private mode */ }
