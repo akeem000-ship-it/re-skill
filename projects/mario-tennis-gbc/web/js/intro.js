@@ -77,10 +77,10 @@ export class MatchIntro {
     const v = this.v, fr = v.gb.ppu.frames, st = v.stadium, w = v.gb.mem.wram[0];
     if (v.replaying) { this.lastCourt = fr; return; }                  // INSTANT REPLAY: no intro for the replayed point
     // a new match: the court back after 10 s away, or after any break (half a second) with the score at its start (no
-    // sets, games or points: wP1Sets-wP2Points $C8E0-$C8E5, wGamesPlayed $C8EC = 1, wPointsPlayed $C8ED = 0), as when you
+    // sets, games or points: wP1Sets-wP2Points $C8E0-$C8E5, wGamesPlayed $C8EC 0 or 1, wPointsPlayed $C8ED 0), as when you
     // quit a match and start the next one quickly
     const away = this.lastCourt < 0 || fr < this.lastCourt ? 1e9 : fr - this.lastCourt;
-    let atStart = w[0x8EC] === 1 && w[0x8ED] === 0; for (let a = 0x8E0; a <= 0x8E5 && atStart; a++) if (w[a]) atStart = false;
+    let atStart = w[0x8EC] <= 1 && w[0x8ED] === 0; for (let a = 0x8E0; a <= 0x8E5 && atStart; a++) if (w[a]) atStart = false;
     const fresh = this.start < 0 && (away > 600 || (away > 30 && atStart)); this.lastCourt = fr;
     if (fresh && this.on && st && st.active && MODES[w[0x8A6]]) {
       this.start = fr; this.fr0 = fr; this.t0 = performance.now() / 1000; this.cheered = false; this.whistled = false; this.freeRun(); this.runTex = new Map();
