@@ -104,6 +104,52 @@ void main() {
 const FS_LEAF = `#version 300 es
 precision mediump float; in vec3 vCol; in vec2 vUV; out vec4 o;
 void main() { vec2 q = vUV; float w = 1.0 - q.y * q.y; if (abs(q.x) > w) discard; o = vec4(vCol * (1.0 - 0.25 * abs(q.x) / max(w, 0.01)), 1.0); }`;
+// TREES: Round: a crown of overlapping leaf clumps (the trees and shrubs of an HD-2D diorama). A clump is a unit sphere
+// per instance, made lumpy by noise, with a chunky leaf texture of world-space cells about a pixel wide: each cell tips
+// the light a little, and the light is cut into five shades from the crown's own green (dark and cool below, yellow-green
+// on top); the crown sways in the plant's wind. aC: centre, radius; aS: x / y scale, seed, wind phase; aW: wind amount
+const NOISE3 = `float h3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+float n3(vec3 p) { vec3 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(h3(i), h3(i + vec3(1, 0, 0)), u.x), mix(h3(i + vec3(0, 1, 0)), h3(i + vec3(1, 1, 0)), u.x), u.y),
+             mix(mix(h3(i + vec3(0, 0, 1)), h3(i + vec3(1, 0, 1)), u.x), mix(h3(i + vec3(0, 1, 1)), h3(i + vec3(1, 1, 1)), u.x), u.y), u.z); }`;
+const VS_CLUMP = `#version 300 es
+in vec3 aPos; in vec4 aC; in vec4 aS; in vec4 aW; in vec3 aCol;
+uniform mat4 uMVP; uniform float uTime; out vec3 vN; out vec3 vW; out vec3 vCol; out float vSeed;
+${WIND}
+${NOISE3}
+void main() {
+  float bump = 1.0 + 0.3 * (n3(aPos * 2.4 + aS.z) - 0.5) + 0.14 * (n3(aPos * 6.0 + aS.z * 1.7) - 0.5);
+  vec3 p = aC.xyz + aPos * aC.w * vec3(aS.x, aS.y, aS.x) * bump;
+  float s = wind(uTime, aS.w) * aW.x; p += vec3(s, 0.0, s * 0.35);
+  vN = aPos; vW = p; vCol = aCol; vSeed = aS.z; gl_Position = uMVP * vec4(p, 1.0);
+}`;
+const FS_CLUMP = `#version 300 es
+precision highp float; in vec3 vN; in vec3 vW; in vec3 vCol; in float vSeed; out vec4 o;
+${NOISE3}
+void main() {
+  vec3 q = floor(vW * 0.9);                                                       // leaf cells about a pixel wide
+  vec3 n = normalize(normalize(vN) + (vec3(h3(q + 1.3), h3(q + 2.7), h3(q + 4.1)) - 0.5) * 0.9);
+  vec3 L = normalize(vec3(-0.35, 0.85, 0.4));
+  float lit = clamp(dot(n, L) * 0.55 + 0.45, 0.0, 1.0) * mix(0.55, 1.0, smoothstep(-0.7, 0.35, vN.y));
+  lit += (n3(vW * 0.35 + vSeed) - 0.5) * 0.25;                                     // leafy masses, lighter and darker
+  float k = clamp(floor(lit * 4.6), 0.0, 4.0);
+  vec3 c = vCol * vec3(0.78, 0.8, 0.62);                                           // the crown's green, a little deeper and less lime
+  vec3 r = k < 0.5 ? c * vec3(0.32, 0.42, 0.55) : k < 1.5 ? c * vec3(0.55, 0.66, 0.7) : k < 2.5 ? c * 0.84 :
+           k < 3.5 ? c * 1.04 + vec3(0.06, 0.06, 0.0) : c * 1.16 + vec3(0.17, 0.15, 0.02);
+  o = vec4(min(r, vec3(1.0)), 1.0);
+}`;
+// a unit sphere (an icosahedron split twice), as triangles
+function sphere() {
+  const t = (1 + Math.sqrt(5)) / 2; let V = [[-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0], [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t], [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1]];
+  let F = [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8], [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]];
+  const norm = p => { const l = Math.hypot(...p); return p.map(c => c / l); };
+  V = V.map(norm);
+  for (let r = 0; r < 2; r++) {
+    const mid = new Map(), m = (a, b) => { const k = a < b ? a + "," + b : b + "," + a; if (!mid.has(k)) { mid.set(k, V.length); V.push(norm(V[a].map((c, i) => (c + V[b][i]) / 2))); } return mid.get(k); };
+    F = F.flatMap(([a, b, c]) => { const ab = m(a, b), bc = m(b, c), ca = m(c, a); return [[a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]]; });
+  }
+  return new Float32Array(F.flatMap(f => f.flatMap(i => V[i])));
+}
 // a unit cube on the ground (y 0..1, x / z -0.5..0.5), each face's shade in w
 function cube() {
   const v = [], f = (a, b, c, d, k) => { for (const p of [a, b, c, a, c, d]) v.push(...p, k); };
@@ -126,14 +172,24 @@ export class Ground {
     if (m === null) { try { m = localStorage.getItem(KEY); } catch (e) { m = null; } }
     if (m === null) m = "carpet";                                      // the default: carpet (with mown campus lawns)
     this.mode = MODES.includes(m) ? m : m === "on" ? "detail" : "pixel"; this.apply(); this.density = 1;
+    let t = null; try { t = new URLSearchParams(location.search).get("trees") || localStorage.getItem(KEY + "-trees"); } catch (e) { /* no storage */ }
+    this.round = t !== "leaves";                                          // TREES: Round (the default) or Leaves
+  }
+  // the map's own crowns are left out of the plant meshes (voxel.js) when Round draws them: changing that builds the map again
+  get hidesCrowns() { return this.on && this.round; }
+  rebuildIf(was) { if ((was.g !== this.gemini || was.h !== this.hidesCrowns) && this.v.field) this.v.field.needBuild = true; }
+  setTrees(round) {
+    const was = { g: this.gemini, h: this.hidesCrowns }; this.round = !!round;
+    try { localStorage.setItem(KEY + "-trees", this.round ? "round" : "leaves"); } catch (e) { /* private mode */ }
+    this.built = null; this.rebuildIf(was);
   }
   // pixel: the game's ground; detail: tufts; carpet: shells, mown on campus; gemini: Gemini's voxel tufts, lobed crowns and
   // tinted greens (voxel.js / field3d.js, built with the map: switching to or from it builds the map again)
   apply() { this.on = this.mode === "detail" || this.mode === "carpet"; this.carpet = this.mode === "carpet"; this.gemini = this.mode === "gemini"; }
   setMode(m) {
-    const was = this.gemini; this.mode = m; this.apply();
+    const was = { g: this.gemini, h: this.hidesCrowns }; this.mode = m; this.apply();
     try { localStorage.setItem(KEY, m); } catch (e) { /* private mode */ }
-    if (was !== this.gemini && this.v.field) this.v.field.needBuild = true;
+    this.rebuildIf(was);
   }
   init() {
     const v = this.v, gl = v.gl, uni = (p, names) => Object.fromEntries(names.map(n => [n, gl.getUniformLocation(p, n)]));
@@ -141,8 +197,9 @@ export class Ground {
     this.pX = v.link(VS_BOX, FS_BOX, ["aCube", "aAt", "aSize", "aCol"]); this.uX = uni(this.pX, ["uMVP"]);
     this.pS = v.link(VS_SHELL, FS_SHELL, ["aCorner"]); this.uS = uni(this.pS, ["uMVP", "uRect", "uKept", "uN", "uHmax", "uMask", "uTime", "uPush", "uFlat"]);
     this.pL = v.link(VS_LEAF, FS_LEAF, ["aCorner", "aLeaf", "aTurn", "aCol"]); this.uL = uni(this.pL, ["uMVP", "uTime"]);
+    this.pC = v.link(VS_CLUMP, FS_CLUMP, ["aPos", "aC", "aS", "aW", "aCol"]); this.uC = uni(this.pC, ["uMVP", "uTime"]);
     const buf = a => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, a, gl.STATIC_DRAW); return b; };
-    this.tri = buf(new Float32Array([-0.5, 0, 0.5, 0, 0, 1])); this.cube = buf(cube());
+    this.tri = buf(new Float32Array([-0.5, 0, 0.5, 0, 0, 1])); this.cube = buf(cube()); const sp = sphere(); this.sphere = buf(sp); this.sphereN = sp.length / 3;
     this.quad = buf(new Float32Array([-1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1]));
     this.unit = buf(new Float32Array([0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1]));
     this.unitVao = gl.createVertexArray(); gl.bindVertexArray(this.unitVao); gl.bindBuffer(gl.ARRAY_BUFFER, this.unit);
@@ -161,7 +218,7 @@ export class Ground {
   }
   free() {
     const gl = this.v.gl, B = this.built; if (!B) return;
-    for (const k of ["blades", "boxes", "leaves"]) if (B[k]) { for (const b of B[k].bufs) gl.deleteBuffer(b); gl.deleteVertexArray(B[k].vao); }
+    for (const k of ["blades", "boxes", "leaves", "clumps"]) if (B[k]) { for (const b of B[k].bufs) gl.deleteBuffer(b); gl.deleteVertexArray(B[k].vao); }
     if (B.carpet) gl.deleteTexture(B.carpet.tex);
     if (B.paths) gl.deleteTexture(B.paths.tex);
     this.built = null;
@@ -272,8 +329,10 @@ export class Ground {
     // 5 px of crown, two or three deep, so the crown is round), each a ball of small leaves lit from above: light yellow-green
     // on top, dark below and inside; placed with the plant's own model (its lean back) ----
     const leaf = [], turn = [], lcol = [], Ld = [-0.35, 0.85, 0.4], Ll = Math.hypot(...Ld), L = Ld.map(c => c / Ll);
+    const cC = [], cS = [], cW = [], cCol = [];
     for (const p of (f.fx && f.fx.plants) || []) {
       const img = p.shape.img; if (!img || img.kind === "pot" || img.kind === "statue") continue;
+      if (this.round && img.kind !== "palm") { this.crown(p, cC, cS, cW, cCol, at, size, bcol); continue; }
       const { d: pd, w, h } = img, m = p.model, crown = img.kind === "bush" ? 0.3 : 0.38, green = o => pd[o + 3] >= 128 && pd[o + 1] >= pd[o] * 0.85 && pd[o + 1] > pd[o + 2];
       let mr = 0, mg = 0, mb = 0, mn = 0, top = h;                                // the crown's mean colour, and its top row
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const o = (y * w + x) * 4; if (!green(o)) continue; mr += pd[o]; mg += pd[o + 1]; mb += pd[o + 2]; mn++; top = Math.min(top, y); }
@@ -305,18 +364,63 @@ export class Ground {
     }
     this.free();
     this.built = {
-      floor: d, fx: f.fx, carpetOn: this.carpet, carpet, paths,
+      floor: d, fx: f.fx, carpetOn: this.carpet, round: this.round, carpet, paths,
       blades: this.vao(this.tri, 2, [[blades, 4], [cols, 4], [leans, 2]]),
       boxes: this.vao(this.cube, 4, [[at, 4], [size, 4], [bcol, 3]]),
       leaves: this.vao(this.quad, 2, [[leaf, 4], [turn, 4], [lcol, 3]]),
+      clumps: this.vao(this.sphere, 3, [[cC, 4], [cS, 4], [cW, 4], [cCol, 3]]),
     };
-    this.stats = { blades: this.built.blades.n, boxes: this.built.boxes.n, leaves: this.built.leaves.n };
+    this.stats = { blades: this.built.blades.n, boxes: this.built.boxes.n, leaves: this.built.leaves.n, clumps: this.built.clumps.n };
+  }
+  // TREES: Round: one plant's crown as clumps (local plant space: x across, y up from its foot, z towards the camera; placed
+  // with the plant's model), shaped by the green of its picture: a round tree (a top clump, a ring of five round it and
+  // three below), a tall narrow one as a cypress (a column of clumps narrowing to a point), a bush as a low mound; one bush
+  // in three flowers (pink or white)
+  crown(p, cC, cS, cW, cCol, at, size, bcol) {
+    const { d: pd, w, h, kind } = p.shape.img, m = p.model, green = o => pd[o + 3] >= 128 && pd[o + 1] >= pd[o] * 0.85 && pd[o + 1] > pd[o + 2];
+    let mr = 0, mg = 0, mb = 0, n = 0, x0 = w, x1 = -1, y0 = h, y1 = -1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const o = (y * w + x) * 4; if (!green(o)) continue; mr += pd[o]; mg += pd[o + 1]; mb += pd[o + 2]; n++; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    if (!n) return;
+    mr /= n * 255; mg /= n * 255; mb /= n * 255;
+    const W = x1 - x0 + 1, Hc = y1 - y0 + 1, cx = (x0 + x1 + 1) / 2 - w / 2, cy = h - (y0 + y1 + 1) / 2, seed = m[12] * 0.37 + m[14] * 0.53;
+    const R = (k) => rnd(m[12], m[14], k), list = [];
+    if (kind === "bush") {                                                  // a mound: clumps side by side, low and wide
+      const k = Math.max(2, Math.round(W / 7)), r = Math.min(W / (k + 0.6), Hc * 0.95) * 0.62;
+      for (let i = 0; i < k; i++) list.push([cx - W / 2 + (i + 0.5) * W / k + (R(i) - 0.5) * 2, Math.max(r * 0.8, cy - Hc * 0.1) + R(10 + i) * 2, (R(20 + i) - 0.5) * W * 0.35, r * (0.9 + 0.25 * R(30 + i)), 1.05, 0.85]);
+      list.push([cx, Math.max(r, cy) + r * 0.45, 0, r * 0.9, 1, 0.85]);
+    } else if (Hc > W * 1.5) {                                              // a cypress: a dense cone of small clumps
+      const k = Math.max(6, Math.round(Hc / 3.2));
+      for (let i = 0; i < k; i++) {
+        const u = i / (k - 1), rr = W * 0.5 * (1 - u * 0.8), a = R(i) * 6.2832, off = rr * 0.35;
+        list.push([cx + Math.cos(a) * off, cy - Hc / 2 + (0.08 + u * 0.86) * Hc, Math.sin(a) * off, rr * (0.75 + 0.2 * R(40 + i)), 1, 1.15]);
+        if (rr > 3 && i % 2 === 0) list.push([cx - Math.cos(a) * off, cy - Hc / 2 + (0.1 + u * 0.86) * Hc, -Math.sin(a) * off, rr * 0.7, 1, 1.1]);
+      }
+    } else {                                                                // a round tree
+      const r = W * 0.34;
+      list.push([cx + (R(1) - 0.5) * 2, cy + Hc * 0.22, 0, r * 1.05, 1, 0.95]);
+      for (let i = 0; i < 5; i++) { const a = i / 5 * 6.2832 + R(50 + i); list.push([cx + Math.cos(a) * W * 0.28, cy + Hc * 0.02 + (R(60 + i) - 0.5) * 3, Math.sin(a) * W * 0.24, r * (0.78 + 0.18 * R(70 + i)), 1, 0.9]); }
+      for (let i = 0; i < 3; i++) { const a = i / 3 * 6.2832 + 0.6 + R(80 + i); list.push([cx + Math.cos(a) * W * 0.2, cy - Hc * 0.24, Math.sin(a) * W * 0.18, r * 0.72, 1, 0.85]); }
+    }
+    const tw = (x, y, z) => [m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]];
+    list.forEach(([x, y, z, r, sx, sy], i) => {
+      const [X, Y, Z] = tw(x, y, z), hue = (R(90 + i) - 0.5) * 0.1;
+      cC.push(X, Y, Z, r); cS.push(sx, sy, seed + i * 3.7, p.phase + (X + Z) * 0.02); cW.push(p.amp * Math.min(1, y / h) * 1.1, 0, 0, 0);
+      cCol.push(Math.min(1, mr * (1 + hue) + 0.02), Math.min(1, mg * 1.04), Math.min(1, mb * (1 - hue)));
+    });
+    if (kind === "bush" && R(99) < 0.34) {                                  // flowers on the mound's top and sides
+      const pink = R(98) < 0.6, fc = pink ? [1, 0.62, 0.78] : [1, 0.98, 0.9];
+      for (let i = 0; i < 14; i++) {
+        const c = list[Math.floor(R(200 + i) * list.length)], a = R(220 + i) * 6.2832, u = 0.25 + R(240 + i) * 0.75, sq = Math.sqrt(1 - u * u);
+        const [X, Y, Z] = tw(c[0] + Math.cos(a) * sq * c[3], c[1] + u * c[3] * c[5], c[2] + Math.sin(a) * sq * c[3] + c[3] * 0.25);
+        at.push(X, Y, Z, a); size.push(1.1, 0.8, 1.1, 0); bcol.push(fc[0], fc[1] * (0.9 + 0.1 * R(260 + i)), fc[2]);
+      }
+    }
   }
   // voxel.js drawFieldScene, after the floor and walls: the map's own detail (not a neighbouring map's), you pushing the grass aside
   draw(f, mvp, T) {
     if (!this.on || !f.floorData || f.noGlass) return;
     const v = this.v, gl = v.gl;
-    try { if (!this.pB) this.init(); if (!this.built || this.built.floor !== f.floorData || this.built.fx !== f.fx || this.built.carpetOn !== this.carpet) this.build(f); } catch (e) { console.warn("ground", e); this.on = false; return; }
+    try { if (!this.pB) this.init(); if (!this.built || this.built.floor !== f.floorData || this.built.fx !== f.fx || this.built.carpetOn !== this.carpet || this.built.round !== this.round) this.build(f); } catch (e) { console.warn("ground", e); this.on = false; return; }
     const B = this.built, me = v.fi && v.fi.act && v.fi.act.get(0);
     if (B.blades.n) {
       gl.useProgram(this.pB); gl.uniformMatrix4fv(this.uB.uMVP, false, mvp); gl.uniform1f(this.uB.uTime, T); gl.uniform3fv(this.uB.uPush, me ? [me.x, me.y + 4, 1] : [0, 0, 0]);
@@ -336,6 +440,10 @@ export class Ground {
       gl.bindVertexArray(this.unitVao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, N);
     }
     if (B.boxes.n) { gl.useProgram(this.pX); gl.uniformMatrix4fv(this.uX.uMVP, false, mvp); gl.bindVertexArray(B.boxes.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 30, B.boxes.n); }
+    if (B.clumps.n) {
+      gl.useProgram(this.pC); gl.uniformMatrix4fv(this.uC.uMVP, false, mvp); gl.uniform1f(this.uC.uTime, T);
+      gl.bindVertexArray(B.clumps.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, this.sphereN, B.clumps.n);
+    }
     if (B.leaves.n) {
       gl.useProgram(this.pL); gl.uniformMatrix4fv(this.uL.uMVP, false, mvp); gl.uniform1f(this.uL.uTime, T);
       gl.bindVertexArray(B.leaves.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, B.leaves.n);
@@ -350,6 +458,10 @@ export function attachGround(voxel, hud) {
     const show = () => { b.textContent = "GROUND: " + LABEL[g.mode]; b.classList.toggle("on", g.mode !== "pixel"); };
     b.addEventListener("pointerdown", () => { g.setMode(MODES[(MODES.indexOf(g.mode) + 1) % MODES.length]); show(); });
     hud.appendChild(document.createTextNode(" ")); hud.appendChild(b); show();
+    const t = document.createElement("span"); t.className = "k"; t.id = "treesbtn"; t.title = "3D overworld, with GROUND on Tufts or Carpet: trees and shrubs as round clumps of leaves (Round), or the game's own crowns covered in small leaves (Leaves)";
+    const showT = () => { t.textContent = "TREES: " + (g.round ? "Round" : "Leaves"); };
+    t.addEventListener("pointerdown", () => { g.setTrees(!g.round); showT(); });
+    hud.appendChild(document.createTextNode(" ")); hud.appendChild(t); showT();
   }
   return g;
 }

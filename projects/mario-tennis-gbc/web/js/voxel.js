@@ -1336,7 +1336,18 @@ export class Voxel3D {
     // stands, rustling in the wind; the default cut keeps their outline
     const PLANT = { tree: [4, 3, 0.8], bush: [4, 3, 0.45], palm: [4, 3, 1.1], pot: [3, 2, 0.3], statue: [3, 3, 0] }, shapes = [], plants = [];
     const shapeOf = (d, x0, y0, w, h, kind) => {
-      const [R, T] = PLANT[kind] || PLANT.tree, m = F3.plantMesh(d, w, h, R, T, !!(this.groundFx && this.groundFx.gemini));
+      // TREES: Round draws the crowns of trees and bushes itself (ground.js): their meshes keep only what is not leaf green
+      let md = d;
+      if ((kind === "tree" || kind === "bush") && this.groundFx && this.groundFx.hidesCrowns && !this.inNeighbour) {
+        // keep only the trunk: below the crown's lowest leaf row, and brown pixels (not the dark outline) inside it
+        md = new Uint8Array(d); const leaf = o => md[o + 3] >= 128 && md[o + 1] >= md[o] * 0.85 && md[o + 1] > md[o + 2];
+        let low = -1; for (let o = 0; o < md.length; o += 4) if (leaf(o)) low = Math.max(low, (o >> 2) / w | 0);
+        for (let o = 0; o < md.length; o += 4) {
+          const y = (o >> 2) / w | 0, r = md[o], g = md[o + 1], b = md[o + 2], brown = r > 70 && r >= g && r > b + 15;
+          if (kind === "bush" || (y <= low && !brown) || leaf(o)) md[o + 3] = 0;
+        }
+      }
+      const [R, T] = PLANT[kind] || PLANT.tree, m = F3.plantMesh(md, w, h, R, T, !!(this.groundFx && this.groundFx.gemini));
       for (let k = 0; k < m.uv.length; k += 2) { m.uv[k] = (m.uv[k] + x0) / 512; m.uv[k + 1] = (m.uv[k + 1] + y0) / 512; }
       const sh = { m, r: Math.hypot(w / 2, h), img: { d, w, h, kind } }; shapes.push(sh); return sh;   // (img: GROUND's leaves)
     };
