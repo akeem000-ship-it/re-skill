@@ -103,7 +103,13 @@ void main() {
 }`;
 const FS_LEAF = `#version 300 es
 precision mediump float; in vec3 vCol; in vec2 vUV; out vec4 o;
-void main() { vec2 q = vUV; float w = 1.0 - q.y * q.y; if (abs(q.x) > w) discard; o = vec4(vCol * (1.0 - 0.25 * abs(q.x) / max(w, 0.01)), 1.0); }`;
+uniform float uSpike;   // 1: TREES: Round's spiky leaves (narrow, widest near the base, pointed at the tip, which is aCorner.y = 1)
+void main() {
+  vec2 q = vUV; float t = (q.y + 1.0) * 0.5;
+  float w = uSpike > 0.5 ? 0.62 * min(t * 3.0, 1.0 - t) : 1.0 - q.y * q.y; if (abs(q.x) > w) discard;
+  float k = uSpike > 0.5 ? 0.78 + 0.34 * t - 0.2 * abs(q.x) / max(w, 0.01) : 1.0 - 0.25 * abs(q.x) / max(w, 0.01);
+  o = vec4(vCol * k, 1.0);
+}`;
 // TREES: Round: a crown of overlapping leaf clumps (the trees and shrubs of an HD-2D diorama). A clump is a unit sphere
 // per instance, made lumpy by noise, with a chunky leaf texture of world-space cells about a pixel wide: each cell tips
 // the light a little, and the light is cut into five shades from the crown's own green (dark and cool below, yellow-green
@@ -127,8 +133,8 @@ const FS_CLUMP = `#version 300 es
 precision highp float; in vec3 vN; in vec3 vW; in vec3 vCol; in float vSeed; out vec4 o;
 ${NOISE3}
 void main() {
-  vec3 q = floor(vW * 0.9);                                                       // leaf cells about a pixel wide
-  vec3 n = normalize(normalize(vN) + (vec3(h3(q + 1.3), h3(q + 2.7), h3(q + 4.1)) - 0.5) * 0.9);
+  vec3 q = floor(vW * 1.25);                                                      // leaf cells under a pixel wide
+  vec3 n = normalize(normalize(vN) + (vec3(h3(q + 1.3), h3(q + 2.7), h3(q + 4.1)) - 0.5) * 1.3);
   vec3 L = normalize(vec3(-0.35, 0.85, 0.4));
   float lit = clamp(dot(n, L) * 0.55 + 0.45, 0.0, 1.0) * mix(0.55, 1.0, smoothstep(-0.7, 0.35, vN.y));
   lit += (n3(vW * 0.35 + vSeed) - 0.5) * 0.25;                                     // leafy masses, lighter and darker
@@ -196,7 +202,7 @@ export class Ground {
     this.pB = v.link(VS_BLADE, FS_BLADE, ["aCorner", "aBlade", "aCol", "aLean"]); this.uB = uni(this.pB, ["uMVP", "uTime", "uPush"]);
     this.pX = v.link(VS_BOX, FS_BOX, ["aCube", "aAt", "aSize", "aCol"]); this.uX = uni(this.pX, ["uMVP"]);
     this.pS = v.link(VS_SHELL, FS_SHELL, ["aCorner"]); this.uS = uni(this.pS, ["uMVP", "uRect", "uKept", "uN", "uHmax", "uMask", "uTime", "uPush", "uFlat"]);
-    this.pL = v.link(VS_LEAF, FS_LEAF, ["aCorner", "aLeaf", "aTurn", "aCol"]); this.uL = uni(this.pL, ["uMVP", "uTime"]);
+    this.pL = v.link(VS_LEAF, FS_LEAF, ["aCorner", "aLeaf", "aTurn", "aCol"]); this.uL = uni(this.pL, ["uMVP", "uTime", "uSpike"]);
     this.pC = v.link(VS_CLUMP, FS_CLUMP, ["aPos", "aC", "aS", "aW", "aCol"]); this.uC = uni(this.pC, ["uMVP", "uTime"]);
     const buf = a => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, a, gl.STATIC_DRAW); return b; };
     this.tri = buf(new Float32Array([-0.5, 0, 0.5, 0, 0, 1])); this.cube = buf(cube()); const sp = sphere(); this.sphere = buf(sp); this.sphereN = sp.length / 3;
@@ -218,7 +224,7 @@ export class Ground {
   }
   free() {
     const gl = this.v.gl, B = this.built; if (!B) return;
-    for (const k of ["blades", "boxes", "leaves", "clumps"]) if (B[k]) { for (const b of B[k].bufs) gl.deleteBuffer(b); gl.deleteVertexArray(B[k].vao); }
+    for (const k of ["blades", "boxes", "leaves", "clumps", "spikes"]) if (B[k]) { for (const b of B[k].bufs) gl.deleteBuffer(b); gl.deleteVertexArray(B[k].vao); }
     if (B.carpet) gl.deleteTexture(B.carpet.tex);
     if (B.paths) gl.deleteTexture(B.paths.tex);
     this.built = null;
@@ -329,10 +335,10 @@ export class Ground {
     // 5 px of crown, two or three deep, so the crown is round), each a ball of small leaves lit from above: light yellow-green
     // on top, dark below and inside; placed with the plant's own model (its lean back) ----
     const leaf = [], turn = [], lcol = [], Ld = [-0.35, 0.85, 0.4], Ll = Math.hypot(...Ld), L = Ld.map(c => c / Ll);
-    const cC = [], cS = [], cW = [], cCol = [];
+    const cC = [], cS = [], cW = [], cCol = [], sp = { leaf: [], turn: [], col: [] };
     for (const p of (f.fx && f.fx.plants) || []) {
       const img = p.shape.img; if (!img || img.kind === "pot" || img.kind === "statue") continue;
-      if (this.round && img.kind !== "palm") { this.crown(p, cC, cS, cW, cCol, at, size, bcol); continue; }
+      if (this.round && img.kind !== "palm") { this.crown(p, cC, cS, cW, cCol, at, size, bcol, sp, L); continue; }
       const { d: pd, w, h } = img, m = p.model, crown = img.kind === "bush" ? 0.3 : 0.38, green = o => pd[o + 3] >= 128 && pd[o + 1] >= pd[o] * 0.85 && pd[o + 1] > pd[o + 2];
       let mr = 0, mg = 0, mb = 0, mn = 0, top = h;                                // the crown's mean colour, and its top row
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const o = (y * w + x) * 4; if (!green(o)) continue; mr += pd[o]; mg += pd[o + 1]; mb += pd[o + 2]; mn++; top = Math.min(top, y); }
@@ -369,14 +375,15 @@ export class Ground {
       boxes: this.vao(this.cube, 4, [[at, 4], [size, 4], [bcol, 3]]),
       leaves: this.vao(this.quad, 2, [[leaf, 4], [turn, 4], [lcol, 3]]),
       clumps: this.vao(this.sphere, 3, [[cC, 4], [cS, 4], [cW, 4], [cCol, 3]]),
+      spikes: this.vao(this.quad, 2, [[sp.leaf, 4], [sp.turn, 4], [sp.col, 3]]),
     };
-    this.stats = { blades: this.built.blades.n, boxes: this.built.boxes.n, leaves: this.built.leaves.n, clumps: this.built.clumps.n };
+    this.stats = { blades: this.built.blades.n, boxes: this.built.boxes.n, leaves: this.built.leaves.n, clumps: this.built.clumps.n, spikes: this.built.spikes.n };
   }
   // TREES: Round: one plant's crown as clumps (local plant space: x across, y up from its foot, z towards the camera; placed
   // with the plant's model), shaped by the green of its picture: a round tree (a top clump, a ring of five round it and
   // three below), a tall narrow one as a cypress (a column of clumps narrowing to a point), a bush as a low mound; one bush
   // in three flowers (pink or white)
-  crown(p, cC, cS, cW, cCol, at, size, bcol) {
+  crown(p, cC, cS, cW, cCol, at, size, bcol, sp, L) {
     const { d: pd, w, h, kind } = p.shape.img, m = p.model, green = o => pd[o + 3] >= 128 && pd[o + 1] >= pd[o] * 0.85 && pd[o + 1] > pd[o + 2];
     let mr = 0, mg = 0, mb = 0, n = 0, x0 = w, x1 = -1, y0 = h, y1 = -1;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const o = (y * w + x) * 4; if (!green(o)) continue; mr += pd[o]; mg += pd[o + 1]; mb += pd[o + 2]; n++; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
@@ -402,10 +409,28 @@ export class Ground {
       for (let i = 0; i < 3; i++) { const a = i / 3 * 6.2832 + 0.6 + R(80 + i); list.push([cx + Math.cos(a) * W * 0.2, cy - Hc * 0.24, Math.sin(a) * W * 0.18, r * 0.72, 1, 0.85]); }
     }
     const tw = (x, y, z) => [m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]];
+    // the leaf ramp of the clump shader, for the spikes (lit 0-1 -> five shades of the crown's green)
+    const base = [mr * 0.78, mg * 0.8, mb * 0.62], ramp = lit => {
+      const k = Math.max(0, Math.min(4, Math.floor(lit * 4.6))), m = [[0.32, 0.42, 0.55], [0.55, 0.66, 0.7], [0.84, 0.84, 0.84], [1.04, 1.04, 1.04], [1.16, 1.16, 1.16]][k], a = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0.06, 0.06, 0], [0.17, 0.15, 0.02]][k];
+      return base.map((c, j) => Math.min(1, c * m[j] + a[j]));
+    };
     list.forEach(([x, y, z, r, sx, sy], i) => {
-      const [X, Y, Z] = tw(x, y, z), hue = (R(90 + i) - 0.5) * 0.1;
-      cC.push(X, Y, Z, r); cS.push(sx, sy, seed + i * 3.7, p.phase + (X + Z) * 0.02); cW.push(p.amp * Math.min(1, y / h) * 1.1, 0, 0, 0);
+      const [X, Y, Z] = tw(x, y, z), hue = (R(90 + i) - 0.5) * 0.1, wind = p.amp * Math.min(1, y / h) * 1.1, ph = p.phase + (X + Z) * 0.02;
+      cC.push(X, Y, Z, r * 0.86); cS.push(sx, sy, seed + i * 3.7, ph); cW.push(wind, 0, 0, 0);
       cCol.push(Math.min(1, mr * (1 + hue) + 0.02), Math.min(1, mg * 1.04), Math.min(1, mb * (1 - hue)));
+      // spiky leaves standing out of the clump all over its upper and outer surface: they make the crown's jagged outline
+      const nLeaves = Math.max(16, Math.min(130, Math.round(r * r * 2.8)));
+      for (let k = 0; k < nLeaves; k++) {
+        const u = -0.45 + 1.45 * R(300 + i * 97 + k), a = R(500 + i * 89 + k) * 6.2832, sq = Math.sqrt(Math.max(0, 1 - u * u));
+        const s0 = [sq * Math.cos(a), u, sq * Math.sin(a)], len = 0.8 + R(700 + i * 71 + k) * 1.1;
+        const j = [R(1500 + i * 13 + k) - 0.5, R(1700 + i * 17 + k) - 0.5, R(1900 + i * 19 + k) - 0.5], nl = Math.hypot(s0[0] + j[0] * 0.9, s0[1] + j[1] * 0.9, s0[2] + j[2] * 0.9);
+        const n = [(s0[0] + j[0] * 0.9) / nl, (s0[1] + j[1] * 0.9) / nl, (s0[2] + j[2] * 0.9) / nl];   // (leaves tilted every way, not straight out)
+        const rr = r * 0.86 * (0.9 + 0.1 * R(900 + i * 61 + k));
+        const P = [X + s0[0] * rr * sx + n[0] * len * 0.7, Y + s0[1] * rr * sy + n[1] * len * 0.7, Z + s0[2] * rr * sx + n[2] * len * 0.7];
+        const lit = Math.max(0, Math.min(1, (s0[0] * L[0] + s0[1] * L[1] + s0[2] * L[2]) * 0.55 + 0.45)) * (0.55 + 0.45 * Math.min(1, Math.max(0, (s0[1] + 0.7) / 1.05))) + (R(1100 + i * 53 + k) - 0.5) * 0.35;
+        sp.leaf.push(...P, len); sp.turn.push(Math.atan2(-n[0], n[2]) + (R(1300 + k) - 0.5) * 0.5, Math.acos(Math.max(-1, Math.min(1, n[1]))), ph, wind);
+        sp.col.push(...ramp(lit));
+      }
     });
     if (kind === "bush" && R(99) < 0.34) {                                  // flowers on the mound's top and sides
       const pink = R(98) < 0.6, fc = pink ? [1, 0.62, 0.78] : [1, 0.98, 0.9];
@@ -443,6 +468,10 @@ export class Ground {
     if (B.clumps.n) {
       gl.useProgram(this.pC); gl.uniformMatrix4fv(this.uC.uMVP, false, mvp); gl.uniform1f(this.uC.uTime, T);
       gl.bindVertexArray(B.clumps.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, this.sphereN, B.clumps.n);
+    }
+    if (B.spikes.n) {
+      gl.useProgram(this.pL); gl.uniformMatrix4fv(this.uL.uMVP, false, mvp); gl.uniform1f(this.uL.uTime, T); gl.uniform1f(this.uL.uSpike, 1);
+      gl.bindVertexArray(B.spikes.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, B.spikes.n); gl.uniform1f(this.uL.uSpike, 0);
     }
     if (B.leaves.n) {
       gl.useProgram(this.pL); gl.uniformMatrix4fv(this.uL.uMVP, false, mvp); gl.uniform1f(this.uL.uTime, T);
