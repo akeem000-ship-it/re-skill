@@ -29,6 +29,25 @@ export function matchPalette(rom, c) {
   if (slot < 3 || slot > 7) return null;
   const o = off(SCHEMES[0], SCHEMES[1]) + (slot - 3) * 8; return [0, 1, 2, 3].map(i => rgb(rom[o + 2 * i] | rom[o + 2 * i + 1] << 8));
 }
+// match frame k of sprite set c as a canvas trimmed to its pixels, coloured as on the court: the look's colours where it has the pixel's
+// tile (fade fd: by default the fade of OBJ palette pal, unfaded), else the sprite set's own scheme, else OBJ palette pal; or null
+// (intro.js: the VS screen; menuskins.js: the character select)
+export function matchPicture(gb, c, k, { pal = 4, flip = false, fd } = {}) {
+  const rom = gb.mem.rom, f = matchFrameRaw(rom, c, k); if (!f) return null;
+  const { w, h, px } = f.im, op = gb.ppu.objPal, L = gb.look, own = matchPalette(rom, c);
+  if (fd === undefined) fd = L ? Math.min(0, L.fade(op, pal)) : -1;
+  const col5 = ci => { const o = pal * 8 + ci * 2, v = op[o] | (op[o + 1] << 8); return [(v & 31) * 8, ((v >> 5) & 31) * 8, ((v >> 10) & 31) * 8]; };
+  let x0 = w, x1 = -1, y0 = h, y1 = -1; for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (px[y * w + x]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  if (x1 < 0) return null;
+  const cv = document.createElement("canvas"); cv.width = x1 - x0 + 1; cv.height = y1 - y0 + 1; const g = cv.getContext("2d"), im = g.createImageData(cv.width, cv.height);
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const ci = px[y * w + x]; if (!ci) continue; const o = ((y - y0) * cv.width + x - x0) * 4;
+    const reg = fd >= 0 && L && L.byOffset ? L.byOffset.get(f.base + ((x >> 3) * 4 + (y >> 3)) * 16) : null, lc = reg ? L.rgba(reg[(y & 7) * 8 + (x & 7)], fd) : 0;
+    const c3 = lc ? [lc & 255, (lc >> 8) & 255, (lc >> 16) & 255] : own ? own[ci] : col5(ci), q = flip ? ((y - y0) * cv.width + (x1 - x)) * 4 : o;
+    im.data[q] = c3[0]; im.data[q + 1] = c3[1]; im.data[q + 2] = c3[2]; im.data[q + 3] = 255;
+  }
+  g.putImageData(im, 0, 0); return cv;
+}
 // the match frame k of character sprite set c as { w, h, px (indices 0-3), pal (4 x rgb) } trimmed to its pixels
 function matchFrame(rom, c, k) {
   const w = u16(rom, OBJECT_LIST[0], OBJECT_LIST[1] + 2 * c), bank = w >> 8, hdr = u16(rom, bank, 0x4000 + (w & 0xFF));

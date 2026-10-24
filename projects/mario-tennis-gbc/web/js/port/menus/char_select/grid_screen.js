@@ -96,6 +96,7 @@ export function* runExhibitionCharSelectScreen(P, mode) {
       P.wramBank(WRAM_SCREEN);
       drawGridSprites(P);
     }
+    if (P.menuWheel && P.menuWheel.on && rd(P, "charSelectSlot") !== SLOT_DONE) P.menuWheel.skin = { id: "chars", at: P.frames };   // MENU: Wheel (menuskins.js reads the screen's state), read only
     const exit = rd(P, "charSelectExitCode");
     P.wramBank(bank);
     if (exit === EXIT_ALL_CHOSEN) {

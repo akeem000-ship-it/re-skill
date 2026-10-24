@@ -24,7 +24,7 @@ const FRONT = [4, 9, 14, 19], WALK_IN = 650;    // walking towards the camera; h
 const PASS = 3.4;                                  // seconds of the big matches' second camera pass (after A)
 const VS_BGS = ["stripes", "rays", "balls", "energy"];   // one at random per match
 const TYPES = ["POWER", "TECHNIQUE", "ALL-AROUND", "TRICKY", "SPEED"];
-import { matchFrameRaw, matchPalette } from "./crowdfans.js";
+import { matchPicture } from "./crowdfans.js";
 import { TUNNELS } from "./stadium3d.js";
 const ease = u => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
 // READY? / PLAY! in the style of the game's own score captions ("0-15", "NICE!"): chunky 2-px strokes, yellow, orange on the right and lower
@@ -141,22 +141,7 @@ export class MatchIntro {
   }
   // match frame k of sprite set c (9: the stance waiting for a serve), coloured with OBJ palette pal and, on your own player, your look
   picture(c, pal, k = 9, flip = false) {
-    try {
-      const v = this.v, rom = v.gb.mem.rom, f = matchFrameRaw(rom, c, k); if (!f) return null;
-      // the colours unfaded: the look's at fade 0, else the sprite set's own scheme (the court can still be fading in from
-      // white when the intro starts), else the live palette
-      const { w, h, px } = f.im, op = v.gb.ppu.objPal, L = v.gb.look, fd = L ? Math.min(0, L.fade(op, pal)) : -1, own = matchPalette(rom, c);
-      let x0 = w, x1 = -1, y0 = h, y1 = -1; for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (px[y * w + x]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
-      if (x1 < 0) return null;
-      const cv = document.createElement("canvas"); cv.width = x1 - x0 + 1; cv.height = y1 - y0 + 1; const g = cv.getContext("2d"), im = g.createImageData(cv.width, cv.height);
-      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-        const ci = px[y * w + x]; if (!ci) continue; const o = ((y - y0) * cv.width + x - x0) * 4;
-        const reg = fd >= 0 && L.byOffset ? L.byOffset.get(f.base + ((x >> 3) * 4 + (y >> 3)) * 16) : null, lc = reg ? L.rgba(reg[(y & 7) * 8 + (x & 7)], fd) : 0;
-        const c3 = lc ? [lc & 255, (lc >> 8) & 255, (lc >> 16) & 255] : own ? own[ci] : v.col5(op, pal, ci), q = flip ? ((y - y0) * cv.width + (x1 - x)) * 4 : o;
-        im.data[q] = c3[0]; im.data[q + 1] = c3[1]; im.data[q + 2] = c3[2]; im.data[q + 3] = 255;
-      }
-      g.putImageData(im, 0, 0); return cv;
-    } catch (e) { console.warn("intro picture", e); return null; }
+    try { return matchPicture(this.v.gb, c, k, { pal, flip }); } catch (e) { console.warn("intro picture", e); return null; }
   }
   stop() {
     this.start = -1; removeEventListener("pointerdown", this.skip, true); removeEventListener("keydown", this.skip, true);
