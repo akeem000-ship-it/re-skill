@@ -269,6 +269,29 @@ that, and `scan_jumptables.kind()` now uses it.
 - **Song table**: word `$52D7 + 2n` in the song's bank. A song header is 9 bytes: a channel mask (bit 0 =
   channel 1) and 4 channel pointers. Songs 01-09 are in 7E, 0A-16 in 7D, 17-2A in 7C; song 00 (mask 0) is
   silence (SyncBGMEnableFlag plays it to mute the music).
+- **Music script** (MusicRunScript 7E:43EF, one script per channel at wChScriptPtr `$C4D5`; per-channel arrays
+  of 4 bytes from `$C4CD` to `$C535`, labelled in labels.csv). A byte `< $D0` is a note: the low nibble + 1
+  times wChLengthUnit is the duration in frames, the high nibble the pitch (0 = rest; on the noise channel an
+  instrument from NoiseInstrumentTable 7E:4F41). The frequency is MusicFreqTable 7E:4C4B indexed from the
+  octave base (MusicOctaveTable 7E:4C43) + 2 x pitch + 2 x transpose, plus the signed detune. A note sounds
+  for wChGate/8 of its duration, then the release envelope. Commands (MusicCommandTable 7E:4407):
+
+  | Byte | Effect | Byte | Effect |
+  |------|--------|------|--------|
+  | D0 nn | length unit | E4 nn | detune (signed) |
+  | D1-D6 | octave 0-5 (wave channel +1) | E5 nn | duty (`nn & $C0`) |
+  | D7 / D8 | octave up / down | E6 nn | envelope (NRx2) |
+  | D9 | tie (next note not retriggered) | E7 nn | wave pattern (WavePatternTable 7E:4CDD) |
+  | DA, DB, EF-FF | channel end | E8 nn | gate in eighths |
+  | DC nn | panning bits (NR51 shadow wPanning) | E9 nn | wave volume after the gate |
+  | DD / DE | set loop point / jump to it (song loop) | EA nn | vibrato type (VibratoTable 7E:50C9) |
+  | DF nn / E0 | repeat block nn times | EB nn | vibrato delay |
+  | E1 ww | jump | EC nn / ED nn | transpose set / add |
+  | E2 ww / E3 | call / return (12-byte stack per channel) | EE nn | release envelope |
+
+  The channels a sound effect is using (wSFXChannelMask `$C4CC`) are left alone by the music. Exports `$08-$14`
+  (mute mask, music / effect playing tests, pause toggle, master volume, save-and-stop / restore of the whole
+  driver state to `$C59A`) are never far-called in this ROM.
 - **Effects**: bank 7F (2 exports: SFXStart 7F:400A, SFXUpdate 7F:406C). Two effect tables: ids `< $65` at
   7F:495C (count) / 7F:495D (pointers), ids `>= $65` at 7F:615F / 7F:6160.
 

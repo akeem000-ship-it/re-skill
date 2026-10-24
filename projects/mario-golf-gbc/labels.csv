@@ -494,3 +494,259 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,D426,wTargetMarker,WRAM6: the target marker (x, y); $D42A the marker's previous spot
 *,D481,wAimArrow,WRAM6: the aim arrow's end (x, y)
 *,D456,wCameraX,WRAM6: the view-4 camera: x, y ($D458), angle ($D45A = $C000 - aim)
+# --- sound driver internals (bank 7E; banks 7C/7D hold the same code at $4000-$52D8: SoundUpdate maps the song's bank before the channel updates, so the copies run) ---
+7E,4043,SoundSetMuteMask,export $08 (unused): a -> wSoundMuteMask; those channels are cleared from NR51 by SoundUpdatePanning
+7E,4047,SoundIsMusicPlaying,export $0A (unused): a = 0 when wMusicRequest is $80 (no song) else 1
+7E,4051,SoundIsSFXPlaying,export $0C (unused): a = 0 when wSFXRequest is $80 else 1
+7E,405B,SoundTogglePause,export $0E (unused): flips wSoundPaused; while set SoundUpdate only silences the music channels
+7E,4064,SoundSetMasterVolume,export $10 (unused): a & 7 to both NR50 nibbles via wMasterVolume
+7E,4145,SoundSilenceMusicChannels,clears wChannelActive and silences each channel not held by an effect (wSFXChannelMask)
+7E,42B8,SoundNop,empty routine called first by SoundUpdate
+7E,42B9,MusicUpdateCh1,square 1: gate timer -> note off; note timer -> next script command then note on; vibrato
+7E,4308,MusicUpdateCh2,square 2: same as MusicUpdateCh1
+7E,4359,MusicUpdateCh3,wave channel: gate timer -> volume from wChParamE9; note timer -> next command; note on
+7E,43AE,MusicUpdateCh4,noise channel: note timer -> next command; else steps the noise pattern (MusicCh4NoiseStep)
+7E,43EF,MusicRunScript,bc = channel: reads script bytes from hl; >= $D0 command via MusicCommandTable; else a note
+7E,4407,MusicCommandTable,word per command $D0-$FF (see REVERSE.md Sound: music script)
+7E,4467,MusicPlayNote,note byte: low nibble+1 x wChLengthUnit = duration; high nibble = pitch (0 rest); gate from wChGate; frequency from octave table + transpose + detune
+7E,456F,MusicCmdLengthUnit,$D0 nn: wChLengthUnit = nn
+7E,457A,MusicCmdOctave,$D1-$D6: octave = (cmd & 7) - 1 (+1 on the wave channel)
+7E,4592,MusicCmdOctaveUp,$D7
+7E,459A,MusicCmdOctaveDown,$D8
+7E,45A2,MusicCmdTie,$D9: wChNoteState = $80 so the next note does not retrigger
+7E,45AB,MusicCmdPanning,$DC nn: sets this channel's bits of wPanning from nn
+7E,45C6,MusicCmdSetLoopPoint,$DD: wChLoopPoint = this command
+7E,45D4,MusicCmdGotoLoopPoint,$DE: continue at wChLoopPoint (song loop)
+7E,45E0,MusicCmdRepeatStart,$DF nn: pushes (return address and count nn) on the channel stack
+7E,45F5,MusicCmdRepeatEnd,$E0: decrements the count and jumps back until it is 0 then pops
+7E,460F,MusicCmdJump,$E1 word: continue at word
+7E,4616,MusicCmdCall,$E2 word: pushes the return address on the channel stack and jumps
+7E,462D,MusicCmdReturn,$E3: pops the return address
+7E,463E,MusicCmdDetune,$E4 nn: wChDetune (signed added to the frequency)
+7E,464B,MusicCmdDuty,$E5 nn: wChDuty = nn & $C0
+7E,465A,MusicCmdEnvelope,$E6 nn: wChEnvelope (NRx2 at note on)
+7E,4667,MusicCmdWave,$E7 nn: wWaveIndex = nn and reload the wave RAM at the next note
+7E,4677,MusicCmdGate,$E8 nn: wChGate (note sounds duration x nn / 8 frames; 8 = full)
+7E,4684,MusicCmdParamE9,$E9 nn: wChParamE9 (wave channel volume after the gate)
+7E,4691,MusicCmdVibrato,$EA nn: wChVibratoIndex and wChVibratoType (table 7E:50C9)
+7E,46A3,MusicCmdVibratoDelay,$EB nn: wChVibratoDelay (0 = no vibrato)
+7E,46B0,MusicCmdTranspose,$EC nn: wChTranspose = nn
+7E,46BD,MusicCmdTransposeAdd,$ED nn: wChTranspose += nn
+7E,46CB,MusicCmdRelease,$EE nn: wChRelease (envelope used at note off)
+7E,46D8,MusicCmdEnd,$DA $DB $EF-$FF: channel off (wChannelActive = 0) and stops the script
+7E,46E0,MusicGetStackPtr,hl = wChStackPtr of channel bc
+7E,46E9,MusicSetStackPtr,wChStackPtr of channel bc = hl
+7E,46F4,MusicNextCommand,pops the script pointer and continues MusicRunScript
+7E,46F8,MusicCh1NoteOn,writes NR10-NR14 from wChDuty / wChFreq; retriggers with wChEnvelope unless tied
+7E,4737,MusicCh1NoteOff,end of the gate: NR12 from the release envelope (wChRelease) and retrigger
+7E,476F,MusicCh2NoteOn,as MusicCh1NoteOn for NR21-NR24
+7E,47AB,MusicCh2NoteOff,as MusicCh1NoteOff for NR22
+7E,47E3,MusicCh3NoteOn,wave channel: reloads the wave (LoadWavePattern) when asked; NR30-NR34
+7E,4831,LoadWavePattern,copies the 16-byte wave wWaveIndex (pointer table 7E:4CDD) to $FF30
+7E,4851,MusicCh4NoteOn,noise: writes the 4 bytes wNoiseRegs to NR41-NR44
+7E,487F,MusicCh4NoiseStep,next byte of the noise pattern (wNoisePtr) to NR43 each frame; $FF ends it
+7E,48A0,SoundUpdatePanning,NR50 = wMasterVolume; NR51 = wPanning merged with the effect channels and wSoundMuteMask
+7E,48D0,MusicVibratoFreq,de = channel frequency plus the vibrato offset (table 7E:50C9) after wChVibratoDelay frames
+7E,492E,MusicApplyVibrato,a = channel: writes the vibrato frequency to the channel registers
+7E,4982,MusicAddDetune,de += signed wChDetune of channel bc
+7E,499B,SoundSilenceAll,silences every channel not held by an effect (used while paused)
+7E,49DF,SoundSaveAndStop,export $12 (unused): saves the music state (SoundSaveState) and silences it
+7E,49EB,SoundRestoreAndResume,export $14 (unused): silences and restores the saved music state
+7E,49F7,SoundSaveState,copies the music driver state $C4C0-$C56D to $C59A-$C629
+7E,4B1C,SoundRestoreState,copies the saved state back (reverse of SoundSaveState)
+7E,4C33,SoundCopyBytes,copies a bytes from hl to de
+7E,4C3B,MusicStackInitTable,4 words: initial wChStackPtr ($C53E + 12 x channel)
+7E,4C43,MusicOctaveTable,first note index of each octave in MusicFreqTable
+7E,4C4B,MusicFreqTable,word per semitone: GB frequency register values
+7E,4CDD,WavePatternTable,word per wave: pointer to 16 bytes of wave RAM
+7E,4F41,NoiseInstrumentTable,word per noise octave and pitch: pointer to panning + NR41 NR42 NR43 NR44 bytes then an NR43 pattern ending $FF
+7E,50C9,VibratoTable,word per vibrato type: signed offsets; $80 = loop / $80 nn = switch type
+*,C4C4,wPanning,NR51 shadow for the music; set by music command $DC
+*,C4C6,wChDuty,4 bytes: duty bits per channel (music command $E5)
+*,C4CA,wWaveIndex,wave pattern for the wave channel (music command $E7)
+*,C4CB,wWaveReload,1 = copy the wave pattern at the next wave note
+*,C4CC,wSFXChannelMask,bits 0-3: channels in use by a sound effect (music does not write them)
+*,C4D1,wChNoteState,4 bytes: 1 new note / 2 sounding / $80 tied
+*,C4D5,wChScriptPtr,4 words: music script pointer per channel
+*,C4DD,wChLoopPoint,4 words: song loop point (music commands $DD / $DE)
+*,C4E5,wChFreq,4 words: current frequency per channel
+*,C4EB,wNoiseRegs,4 bytes for NR41-NR44
+*,C4EF,wChOctave,4 bytes
+*,C4F7,wChNotePitch,4 bytes: high nibble of the last note (0 = rest)
+*,C4FB,wChNoteTimer,4 bytes: frames until the next script command
+*,C4FF,wChGate,4 bytes: share of the note that sounds in eighths (music command $E8)
+*,C503,wChGateTimer,4 bytes: frames until note off
+*,C507,wChParamE9,4 bytes (music command $E9; wave channel volume after the gate)
+*,C50B,wChTranspose,4 bytes
+*,C50F,wChLengthUnit,4 bytes: frames per note length step (music command $D0)
+*,C513,wChVibratoIndex,4 bytes
+*,C517,wChVibratoType,4 bytes
+*,C51B,wChVibratoPos,4 bytes
+*,C51F,wChVibratoDelay,4 bytes
+*,C523,wChVibratoWait,4 bytes
+*,C527,wChEnvelope,3 bytes: NRx2 at note on
+*,C52A,wChRelease,3 bytes: envelope at note off (init $46)
+*,C52D,wChDetune,3 bytes signed
+*,C530,wNoisePtr,noise pattern pointer
+*,C532,wNoiseActive,
+*,C533,wSoundMuteMask,
+*,C534,wMasterVolume,NR50 value (init $77)
+*,C535,wSoundPaused,
+*,C536,wChStackPtr,4 words: per-channel repeat/call stack pointer (stacks at $C53E 12 bytes each)
+*,C598,wCh1Sounding,
+*,C599,wCh2Sounding,
+*,C59A,wSoundSaveArea,copy of the driver state made by SoundSaveState
+# --- bank 7C: copy of the 7E sound driver code (same bytes $4000-$52D8) ---
+7C,4072,SoundInit_7C,copy of 7E:4072
+7C,40EB,SoundUpdate_7C,copy of 7E:40EB
+7C,4016,SoundCmdDispatch_7C,copy of 7E:4016
+7C,4022,SoundRequestSFX_7C,copy of 7E:4022
+7C,4119,SoundHandleRequests_7C,copy of 7E:4119
+7C,4186,SongStart_7C,copy of 7E:4186
+7C,49CC,SoundCheckMusicEnd_7C,copy of 7E:49CC
+7C,5235,SFXPriorityTable_7C,copy of 7E:5235
+7C,52A4,SongCount_7C,copy of 7E:52A4
+7C,52A5,SongBankTable_7C,copy of 7E:52A5
+7C,4043,SoundSetMuteMask_7C,copy of 7E:4043
+7C,4047,SoundIsMusicPlaying_7C,copy of 7E:4047
+7C,4051,SoundIsSFXPlaying_7C,copy of 7E:4051
+7C,405B,SoundTogglePause_7C,copy of 7E:405B
+7C,4064,SoundSetMasterVolume_7C,copy of 7E:4064
+7C,4145,SoundSilenceMusicChannels_7C,copy of 7E:4145
+7C,42B8,SoundNop_7C,copy of 7E:42B8
+7C,42B9,MusicUpdateCh1_7C,copy of 7E:42B9
+7C,4308,MusicUpdateCh2_7C,copy of 7E:4308
+7C,4359,MusicUpdateCh3_7C,copy of 7E:4359
+7C,43AE,MusicUpdateCh4_7C,copy of 7E:43AE
+7C,43EF,MusicRunScript_7C,copy of 7E:43EF
+7C,4407,MusicCommandTable_7C,copy of 7E:4407
+7C,4467,MusicPlayNote_7C,copy of 7E:4467
+7C,456F,MusicCmdLengthUnit_7C,copy of 7E:456F
+7C,457A,MusicCmdOctave_7C,copy of 7E:457A
+7C,4592,MusicCmdOctaveUp_7C,copy of 7E:4592
+7C,459A,MusicCmdOctaveDown_7C,copy of 7E:459A
+7C,45A2,MusicCmdTie_7C,copy of 7E:45A2
+7C,45AB,MusicCmdPanning_7C,copy of 7E:45AB
+7C,45C6,MusicCmdSetLoopPoint_7C,copy of 7E:45C6
+7C,45D4,MusicCmdGotoLoopPoint_7C,copy of 7E:45D4
+7C,45E0,MusicCmdRepeatStart_7C,copy of 7E:45E0
+7C,45F5,MusicCmdRepeatEnd_7C,copy of 7E:45F5
+7C,460F,MusicCmdJump_7C,copy of 7E:460F
+7C,4616,MusicCmdCall_7C,copy of 7E:4616
+7C,462D,MusicCmdReturn_7C,copy of 7E:462D
+7C,463E,MusicCmdDetune_7C,copy of 7E:463E
+7C,464B,MusicCmdDuty_7C,copy of 7E:464B
+7C,465A,MusicCmdEnvelope_7C,copy of 7E:465A
+7C,4667,MusicCmdWave_7C,copy of 7E:4667
+7C,4677,MusicCmdGate_7C,copy of 7E:4677
+7C,4684,MusicCmdParamE9_7C,copy of 7E:4684
+7C,4691,MusicCmdVibrato_7C,copy of 7E:4691
+7C,46A3,MusicCmdVibratoDelay_7C,copy of 7E:46A3
+7C,46B0,MusicCmdTranspose_7C,copy of 7E:46B0
+7C,46BD,MusicCmdTransposeAdd_7C,copy of 7E:46BD
+7C,46CB,MusicCmdRelease_7C,copy of 7E:46CB
+7C,46D8,MusicCmdEnd_7C,copy of 7E:46D8
+7C,46E0,MusicGetStackPtr_7C,copy of 7E:46E0
+7C,46E9,MusicSetStackPtr_7C,copy of 7E:46E9
+7C,46F4,MusicNextCommand_7C,copy of 7E:46F4
+7C,46F8,MusicCh1NoteOn_7C,copy of 7E:46F8
+7C,4737,MusicCh1NoteOff_7C,copy of 7E:4737
+7C,476F,MusicCh2NoteOn_7C,copy of 7E:476F
+7C,47AB,MusicCh2NoteOff_7C,copy of 7E:47AB
+7C,47E3,MusicCh3NoteOn_7C,copy of 7E:47E3
+7C,4831,LoadWavePattern_7C,copy of 7E:4831
+7C,4851,MusicCh4NoteOn_7C,copy of 7E:4851
+7C,487F,MusicCh4NoiseStep_7C,copy of 7E:487F
+7C,48A0,SoundUpdatePanning_7C,copy of 7E:48A0
+7C,48D0,MusicVibratoFreq_7C,copy of 7E:48D0
+7C,492E,MusicApplyVibrato_7C,copy of 7E:492E
+7C,4982,MusicAddDetune_7C,copy of 7E:4982
+7C,499B,SoundSilenceAll_7C,copy of 7E:499B
+7C,49DF,SoundSaveAndStop_7C,copy of 7E:49DF
+7C,49EB,SoundRestoreAndResume_7C,copy of 7E:49EB
+7C,49F7,SoundSaveState_7C,copy of 7E:49F7
+7C,4B1C,SoundRestoreState_7C,copy of 7E:4B1C
+7C,4C33,SoundCopyBytes_7C,copy of 7E:4C33
+7C,4C3B,MusicStackInitTable_7C,copy of 7E:4C3B
+7C,4C43,MusicOctaveTable_7C,copy of 7E:4C43
+7C,4C4B,MusicFreqTable_7C,copy of 7E:4C4B
+7C,4CDD,WavePatternTable_7C,copy of 7E:4CDD
+7C,4F41,NoiseInstrumentTable_7C,copy of 7E:4F41
+7C,50C9,VibratoTable_7C,copy of 7E:50C9
+# --- bank 7D: copy of the 7E sound driver code (same bytes $4000-$52D8) ---
+7D,4072,SoundInit_7D,copy of 7E:4072
+7D,40EB,SoundUpdate_7D,copy of 7E:40EB
+7D,4016,SoundCmdDispatch_7D,copy of 7E:4016
+7D,4022,SoundRequestSFX_7D,copy of 7E:4022
+7D,4119,SoundHandleRequests_7D,copy of 7E:4119
+7D,4186,SongStart_7D,copy of 7E:4186
+7D,49CC,SoundCheckMusicEnd_7D,copy of 7E:49CC
+7D,5235,SFXPriorityTable_7D,copy of 7E:5235
+7D,52A4,SongCount_7D,copy of 7E:52A4
+7D,52A5,SongBankTable_7D,copy of 7E:52A5
+7D,4043,SoundSetMuteMask_7D,copy of 7E:4043
+7D,4047,SoundIsMusicPlaying_7D,copy of 7E:4047
+7D,4051,SoundIsSFXPlaying_7D,copy of 7E:4051
+7D,405B,SoundTogglePause_7D,copy of 7E:405B
+7D,4064,SoundSetMasterVolume_7D,copy of 7E:4064
+7D,4145,SoundSilenceMusicChannels_7D,copy of 7E:4145
+7D,42B8,SoundNop_7D,copy of 7E:42B8
+7D,42B9,MusicUpdateCh1_7D,copy of 7E:42B9
+7D,4308,MusicUpdateCh2_7D,copy of 7E:4308
+7D,4359,MusicUpdateCh3_7D,copy of 7E:4359
+7D,43AE,MusicUpdateCh4_7D,copy of 7E:43AE
+7D,43EF,MusicRunScript_7D,copy of 7E:43EF
+7D,4407,MusicCommandTable_7D,copy of 7E:4407
+7D,4467,MusicPlayNote_7D,copy of 7E:4467
+7D,456F,MusicCmdLengthUnit_7D,copy of 7E:456F
+7D,457A,MusicCmdOctave_7D,copy of 7E:457A
+7D,4592,MusicCmdOctaveUp_7D,copy of 7E:4592
+7D,459A,MusicCmdOctaveDown_7D,copy of 7E:459A
+7D,45A2,MusicCmdTie_7D,copy of 7E:45A2
+7D,45AB,MusicCmdPanning_7D,copy of 7E:45AB
+7D,45C6,MusicCmdSetLoopPoint_7D,copy of 7E:45C6
+7D,45D4,MusicCmdGotoLoopPoint_7D,copy of 7E:45D4
+7D,45E0,MusicCmdRepeatStart_7D,copy of 7E:45E0
+7D,45F5,MusicCmdRepeatEnd_7D,copy of 7E:45F5
+7D,460F,MusicCmdJump_7D,copy of 7E:460F
+7D,4616,MusicCmdCall_7D,copy of 7E:4616
+7D,462D,MusicCmdReturn_7D,copy of 7E:462D
+7D,463E,MusicCmdDetune_7D,copy of 7E:463E
+7D,464B,MusicCmdDuty_7D,copy of 7E:464B
+7D,465A,MusicCmdEnvelope_7D,copy of 7E:465A
+7D,4667,MusicCmdWave_7D,copy of 7E:4667
+7D,4677,MusicCmdGate_7D,copy of 7E:4677
+7D,4684,MusicCmdParamE9_7D,copy of 7E:4684
+7D,4691,MusicCmdVibrato_7D,copy of 7E:4691
+7D,46A3,MusicCmdVibratoDelay_7D,copy of 7E:46A3
+7D,46B0,MusicCmdTranspose_7D,copy of 7E:46B0
+7D,46BD,MusicCmdTransposeAdd_7D,copy of 7E:46BD
+7D,46CB,MusicCmdRelease_7D,copy of 7E:46CB
+7D,46D8,MusicCmdEnd_7D,copy of 7E:46D8
+7D,46E0,MusicGetStackPtr_7D,copy of 7E:46E0
+7D,46E9,MusicSetStackPtr_7D,copy of 7E:46E9
+7D,46F4,MusicNextCommand_7D,copy of 7E:46F4
+7D,46F8,MusicCh1NoteOn_7D,copy of 7E:46F8
+7D,4737,MusicCh1NoteOff_7D,copy of 7E:4737
+7D,476F,MusicCh2NoteOn_7D,copy of 7E:476F
+7D,47AB,MusicCh2NoteOff_7D,copy of 7E:47AB
+7D,47E3,MusicCh3NoteOn_7D,copy of 7E:47E3
+7D,4831,LoadWavePattern_7D,copy of 7E:4831
+7D,4851,MusicCh4NoteOn_7D,copy of 7E:4851
+7D,487F,MusicCh4NoiseStep_7D,copy of 7E:487F
+7D,48A0,SoundUpdatePanning_7D,copy of 7E:48A0
+7D,48D0,MusicVibratoFreq_7D,copy of 7E:48D0
+7D,492E,MusicApplyVibrato_7D,copy of 7E:492E
+7D,4982,MusicAddDetune_7D,copy of 7E:4982
+7D,499B,SoundSilenceAll_7D,copy of 7E:499B
+7D,49DF,SoundSaveAndStop_7D,copy of 7E:49DF
+7D,49EB,SoundRestoreAndResume_7D,copy of 7E:49EB
+7D,49F7,SoundSaveState_7D,copy of 7E:49F7
+7D,4B1C,SoundRestoreState_7D,copy of 7E:4B1C
+7D,4C33,SoundCopyBytes_7D,copy of 7E:4C33
+7D,4C3B,MusicStackInitTable_7D,copy of 7E:4C3B
+7D,4C43,MusicOctaveTable_7D,copy of 7E:4C43
+7D,4C4B,MusicFreqTable_7D,copy of 7E:4C4B
+7D,4CDD,WavePatternTable_7D,copy of 7E:4CDD
+7D,4F41,NoiseInstrumentTable_7D,copy of 7E:4F41
+7D,50C9,VibratoTable_7D,copy of 7E:50C9

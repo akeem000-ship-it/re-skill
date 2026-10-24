@@ -2,7 +2,7 @@
 belongs to the nearest routine entry at or below it (states/code_entries.json and labels.csv); a byte counts as
 named when that routine has a name in labels.csv. Prints the share per bank and in total.
 
-usage: coverage.py [--banks]
+usage: coverage.py [--banks] [--list BB]   (--list: the unnamed routine entries of bank BB with their sizes)
 """
 import sys, os, json, bisect
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -31,6 +31,18 @@ def main():
         tot += len(code[b])
         tot_named += n
         rows.append((b, len(code[b]), n))
+    if "--list" in sys.argv:
+        b = int(sys.argv[sys.argv.index("--list") + 1], 16)
+        starts = sorted(ent.get(b, ()))
+        sizes = {}
+        for addr in code.get(b, ()):
+            i = bisect.bisect_right(starts, addr) - 1
+            if i >= 0:
+                sizes[starts[i]] = sizes.get(starts[i], 0) + 1
+        for a in starts:
+            if a not in named.get(b, ()) and sizes.get(a):
+                print("%02x:%04x %5d bytes" % (b, a, sizes[a]))
+        return
     if "--banks" in sys.argv:
         for b, c, n in rows:
             print("bank %02x: %6d code bytes, %6d in named routines (%5.1f%%)" % (b, c, n, 100 * n / max(c, 1)))
