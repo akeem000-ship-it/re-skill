@@ -325,3 +325,23 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,A040,sBlockDir,12 x 32 bytes: used / SRAM bank / offset from $A000 / length / sum
 *,B620,sBackup,copy of $A020-$A1BF
 *,FF97,hSRAMBank,
+# --- shot launch (bank 10) ---
+10,5EEF,ShotClubParams,club wClub: spin and launch base from ClubParamTable 10:61A6; elevation (02:518B); curve start from 10:5F74
+10,5F74,CurveStartTable,16 words $0300..$FD00 indexed by (10:6B03 + 8) & 15
+10,5F94,ShotLaunch,bank 10 export $4A: computes speed / elevation / direction / spin / curve and sets vx vy vz; ball in the air (not for the putter)
+10,61A6,ClubParamTable,word pointer per club -> spin (word) and launch base (word)
+10,6865,ScaleByPower,hl * PowerCurve[a] / 256 for a < $3C (a >= $3C: unchanged)
+10,6875,PowerCurve,60 bytes: 0 4 9 ... FC (linear: p * 256 / 60)
+10,68B1,ClubBaseDistance,putter / shot modes 2 ($0780) and 3 ($03C0) special; else ClubDistance(...) * $20 (+10% when wShotMode)
+10,6CDB,ShotSpeed,player's shot: ClubBaseDistance x lie factor (10:65EF) x ... x ScaleByPower(wSwingPower) -> 08:60BC
+10,65EF,LieFactor,club x terrain under the ball -> 4 bytes from the per-club table at 10:660E
+2,511A,ClubDistance,a = club: driver distance (hl) x ClubDistanceTable[club] / 65536 (club 0: +10% or x0.95 by flag bits of b)
+2,5171,ClubDistanceTable,14 words: 0000 EE8C DD17 CBA3 C000 B45D A8BA 9D17 9174 85D1 7A2F 68BA 5174 (fractions of the driver distance)
+*,D329,wClub,WRAM6: 0 = driver (1W) ... $0D = putter
+*,D32A,wShotMode,WRAM6
+*,D416,wLaunchSpeed,WRAM6
+*,D418,wLaunchDir,WRAM6: 16-bit angle ($10000 = full turn; $C000 = up the screen)
+*,D41A,wLaunchElev,WRAM6: 16-bit elevation angle (capped at $3F00)
+*,D44B,wImpactSide,WRAM6: adds -32 x value to the curve
+*,D44C,wImpactHeight,WRAM6: positive x $F9/256, negative + 7/256 on the speed; also scales the spin
+*,D4C6,wDriverDistance,WRAM6: the golfer's 1W distance in yards ($010E = 270 for Mario; shown on the HUD)

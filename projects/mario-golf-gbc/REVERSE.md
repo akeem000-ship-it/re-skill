@@ -355,6 +355,26 @@ sound `$51` and drops the ball: water). BallTerrainCheck (10:527C) reads the ter
 (TerrainAt 10:6536) and remembers the last safe spot in `D51D` (not for types 3 and 7). On the green
 (`D443`) positions are taken relative to `D441`/`D442` and scaled x4.
 
+**Shot launch** (ShotLaunch 10:5F94, bank 10 export `$4A`; verified on the 235-yard drive with `emu_watch.py`):
+
+1. ShotClubParams (10:5EEF) for wClub (`D329`; 0 = 1W ... `$0D` = putter): spin start (ClubParamTable 10:61A6),
+   elevation from 02:518B, a curve start value from CurveStartTable (10:5F74, `+3 .. -3` x 256).
+2. Speed `D416`: ShotSpeed (10:6CDB) for the player, or the computer's targets copied into the meter
+   variables. Distance first: ClubBaseDistance (10:68B1) = ClubDistance (02:511A) x `$20`, where ClubDistance
+   is the golfer's driver distance (wDriverDistance `D4C6`: `$010E` = 270 for Mario, the "270Y" on the HUD)
+   times ClubDistanceTable[club] (02:5171: 1, .932, .864, .796, .75, .704, .659, .614, .568, .523, .477, .409,
+   .318); then the lie factor (LieFactor 10:65EF: per club and terrain, table 10:660E), the power
+   (ScaleByPower 10:6865: linear, p/60 below full power), and 08:60BC. `$20` per yard matches the ~32 position
+   units per yard measured on the drive.
+3. Impact: `D44C` (impact height) scales the speed (x `$F9`/256 or + 7/256) and the spin; `D44B` (impact side)
+   adds `-32 x D44B` to the curve; 10:6C54 / 10:6C9F add miss-hit offsets to the direction and the curve;
+   elevation `D41A` gets 10:6B1F / 10:6C18 added (capped at `$3F00`).
+4. MulSinCos (00:11BA) splits the speed by the elevation into horizontal speed and vz, then by the direction
+   `D418` into vx, vy; the ball is put in the air (`D415` = 1; the putter rolls: `D415` = 0, sound `$48`).
+
+On the test drive: speed `$298E`, elevation `$0A39` (14.4 deg), direction `$C194` (272 deg, up the screen) gave
+vz `$0A4B` and (vx, vy) = (`$018B`, `-$2841`), equal to speed x sin / cos to within rounding.
+
 #### Holes (bank 13 loaders; tools/render_hole.py, tools/emu_hole_check.py, tools/hole_stats.py)
 
 - **HoleAssetTable (13:4A16)**: one 16-byte row (8 refs `(idx, bank)`) per hole id; the current id is wHoleId
@@ -531,8 +551,9 @@ Result over 4800 frames:
 - [ ] Map 00: how its init data (32:4FF7, header +4) drives the intro and the character select (0A:4F45)
 - [x] Find the golf round: GolfRound 10:4451 (emulator, emu_callers.py), entered from map 00's menus
 - [x] Golf engine, first pass: round and shot loop, swing meter, ball state and the flight / roll steps
-- [ ] Golf engine: the shot's launch values (club, power, impact -> vx/vy/vz, curve, spin: from ShotSetup 10:4798
-      on), wind (10:52EE, 10:66DB), drag (10:5268), the terrain types and friction table (10:67E4), the bounce
+- [x] Golf engine: shot launch (ShotLaunch 10:5F94): club distance table, power curve, speed / elevation / direction
+- [ ] Golf engine: the lie factor table (10:660E), 08:60BC (distance -> speed), the impact offsets (10:6B03,
+      6B1F, 6C18, 6C54, 6C9F), wind (10:52EE, 10:66DB), drag (10:5268), the bounce
 - [ ] Golf engine: aiming loop (10:486B), club select, putting on the green, CPU golfers' targets, scoring
 - [x] Hole data: HoleAssetTable 13:4A16, overhead assets, terrain table; all 90 holes render (render_hole.py)
 - [ ] Holes: the per-hole data still unidentified (ref 1 entries 2-3: tee/pin positions? par/length?), terrain
