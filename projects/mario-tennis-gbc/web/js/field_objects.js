@@ -9,6 +9,8 @@
 //          apex (ax, ay), eaves at row ey, the roof slopes run back to `back`, tiled with the art rectangle roof)
 //  stamps: one example of a repeated tree / bush / prop (multiples of 8); every place in the map with the same
 //          tiles (>= 80%) stands up as a cut-out card (an inflated voxel body in voxel mode)
+//          solid: h makes every copy a low solid instead (h front rows; seat: people sit on it; back: [rows, h]: its top rows
+//          raised on it by h more rows, an armchair's backrest)
 //  cards:  single upright cut-outs (fences, posts, statues, signs, furniture fronts)
 //  sprites: {x, y, w, h, match, in}: one example; every pixel-exact copy anywhere in the map (any alignment, >= match
 //          of its pixels equal; in: [x0, y0, x1, y1] where copies may start) stands up too
@@ -278,68 +280,26 @@ export const FIELD_OBJECTS = {
     "plant": "pot",
     "cut": "key"
    },
-   {
-    "x": 352,
-    "y": 64,
-    "w": 16,
-    "h": 16
-   },
-   {
-    "x": 112,
-    "y": 112,
-    "w": 16,
-    "h": 16
-   },
-   {
-    "x": 144,
-    "y": 112,
-    "w": 16,
-    "h": 16
-   },
-   {
-    "x": 208,
-    "y": 112,
-    "w": 16,
-    "h": 16
-   },
-   {
-    "x": 32,
-    "y": 112,
-    "w": 16,
-    "h": 16
-   }
+   {"x": 352, "y": 64, "w": 16, "h": 16, "solid": 5, "seat": true, "back": [7, 4], "cut": "outline"},
+   {"x": 112, "y": 112, "w": 16, "h": 16, "solid": 5, "seat": true, "back": [7, 4], "cut": "outline"},
+   {"x": 144, "y": 112, "w": 16, "h": 16, "solid": 5, "seat": true, "back": [7, 4], "cut": "outline"},
+   {"x": 208, "y": 112, "w": 16, "h": 16, "solid": 5, "seat": true, "back": [7, 4], "cut": "outline"},
+   {"x": 32, "y": 112, "w": 16, "h": 16, "solid": 5, "seat": true, "back": [7, 4], "cut": "outline"}
+  ],
+  "solids": [
+   {"x0": 96, "y0": 96, "x1": 128, "y1": 160, "h": 7, "only": [[96, 96, 112, 160], [112, 144, 128, 160]], "cut": "outline"},
+   {"x0": 96, "y0": 96, "x1": 112, "y1": 112, "h": 6, "on": 0, "cut": "rect"},
+   {"x0": 97, "y0": 134, "x1": 111, "y1": 148, "h": 6, "on": 0, "cut": "rect"},
+   {"x0": 144, "y0": 128, "x1": 176, "y1": 144, "h": 7, "cut": "outline"},
+   {"x0": 32, "y0": 128, "x1": 64, "y1": 144, "h": 7, "cut": "outline"},
+   {"x0": 192, "y0": 112, "x1": 208, "y1": 144, "h": 7, "cut": "outline"},
+   {"x0": 194, "y0": 118, "x1": 208, "y1": 136, "h": 6, "on": 5, "cut": "rect"},
+   {"x0": 368, "y0": 144, "x1": 384, "y1": 168, "h": 7, "cut": "outline"},
+   {"x0": 368, "y0": 144, "x1": 384, "y1": 158, "h": 6, "on": 7, "cut": "rect"},
+   {"x0": 321, "y0": 137, "x1": 335, "y1": 152, "h": 5, "seat": true, "cut": "rect"},
+   {"x0": 321, "y0": 153, "x1": 335, "y1": 168, "h": 5, "seat": true, "cut": "rect"}
   ],
   "cards": [
-   {
-    "x0": 32,
-    "y0": 128,
-    "x1": 64,
-    "y1": 144
-   },
-   {
-    "x0": 96,
-    "y0": 96,
-    "x1": 112,
-    "y1": 128
-   },
-   {
-    "x0": 96,
-    "y0": 128,
-    "x1": 128,
-    "y1": 160
-   },
-   {
-    "x0": 144,
-    "y0": 128,
-    "x1": 176,
-    "y1": 144
-   },
-   {
-    "x0": 192,
-    "y0": 112,
-    "x1": 208,
-    "y1": 144
-   },
    {
     "x0": 144,
     "y0": 88,
@@ -359,12 +319,6 @@ export const FIELD_OBJECTS = {
     "y1": 128
    },
    {
-    "x0": 368,
-    "y0": 144,
-    "x1": 384,
-    "y1": 168
-   },
-   {
     "x0": 320,
     "y0": 112,
     "x1": 336,
@@ -375,12 +329,6 @@ export const FIELD_OBJECTS = {
     "y0": 112,
     "x1": 400,
     "y1": 128
-   },
-   {
-    "x0": 320,
-    "y0": 136,
-    "x1": 336,
-    "y1": 168
    },
    {
     "x0": 192,

@@ -14,6 +14,7 @@
 // stripes; the ground beyond stays rough.
 // Grass and leaves sway in the same travelling wind as the trees and hedges (voxel.js VSP); grass parts round you as you
 // walk. Three instanced draws per map (blades, boxes, leaves), made when the floor picture is (voxel.js buildField).
+import { INDOOR_MAPS } from "./lighting.js";
 const TREES = ["original", "round", "leaves"], TREE_LABEL = { original: "Original", round: "Round", leaves: "Leaves" };
 const KEY = "mt-ground", MODES = ["pixel", "detail", "carpet", "gemini"], LABEL = { pixel: "Pixel", detail: "Tufts", carpet: "Carpet", gemini: "Gemini" };
 const KEPT = new Set([20, 22, 23, 24, 26, 27, 28, 29, 30, 31, 36]);   // maps whose lawns are mown (wCurMapID; 19, the road, stays rough)
@@ -242,7 +243,8 @@ export class Ground {
     const MW = Math.min(32, (w0[0x32B] || 64) >> 1), MH = Math.min(32, (w0[0x32C] || 64) >> 1), H = f.mapH || 512;
     const MX = MW * 16, MY = Math.min(H, MH * 16);                         // the map's own area (wMapWidth / Height)
     const px = (x, y) => (y * 512 + x) * 4, inMap = (x, y) => x >= 0 && y >= 0 && x < 512 && y < H, inArea = (x, y) => x >= 0 && y >= 0 && x < MX && y < MY;
-    const lawn = o => { const r = d[o], g = d[o + 1], b = d[o + 2]; return g > 70 && g >= r && b < g * 0.45; };
+    const indoor = INDOOR_MAPS.has(v.mapId());                             // (an office's green floor tiles are not a lawn)
+    const lawn = o => { const r = d[o], g = d[o + 1], b = d[o + 2]; return !indoor && g > 70 && g >= r && b < g * 0.45; };
     // where things may grow: a walkable 16 x 16 square not under an annotated object, or any square that is all lawn
     // (the lawns beyond the fences you cannot walk on, and lawn inside an object's box; a wall or a hedge has other colours)
     const allLawn = new Uint8Array(32 * 32);

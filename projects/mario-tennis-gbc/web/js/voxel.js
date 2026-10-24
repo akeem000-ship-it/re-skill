@@ -1367,7 +1367,11 @@ export class Voxel3D {
         continue;
       }
       if (st.solid) {                            // a low solid at every copy (chairs: seat: people sitting on them are drawn on top)
-        for (const hit of hits) stampSolids.push({ x0: hit.x, y0: hit.y, x1: hit.x + st.w, y1: hit.y + st.h, h: st.solid, cut: st.cut || "outline", seat: st.seat });
+        for (const hit of hits) {
+          const k = (def.solids || []).length + stampSolids.length;
+          stampSolids.push({ x0: hit.x, y0: hit.y, x1: hit.x + st.w, y1: hit.y + st.h, h: st.solid, cut: st.cut || "outline", seat: st.seat });
+          if (st.back) stampSolids.push({ x0: hit.x, y0: hit.y, x1: hit.x + st.w, y1: hit.y + st.back[0], h: st.back[1], cut: "rect", on: k });   // an armchair's backrest: its top rows raised on the seat
+        }
         continue;
       }
       const shared = { tex: this.texture(st.w, t.h, t.d), mesh: null, d: t.d, src: srcOf(st.x, st.y, st.w, t.h), own: true };
