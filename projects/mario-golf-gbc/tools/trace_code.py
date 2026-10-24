@@ -55,12 +55,27 @@ for b in range(1, NB):
     if hits >= 0.8 * len(t) and b not in DATA_BANKS:
         CODE_BANKS.append(b)
         for w in t: push(b, w, True)
+# map scripts (REVERSE.md "Top level"): header +12 (enter script) and the +4 word of the 8-byte talk (+6),
+# object (+8) and trigger (+10) records; a word below $2000 is a text id, not code (MapRunScript 0A:4EFF)
+from dump_maps import records, word
+for _mid, _gfx, idx, mbank, _music, _x in records(rom):
+    hdr = word(rom, mbank, 0x4000 + idx)
+    scripts = [word(rom, mbank, hdr + 12)]
+    for f in (6, 8, 10):
+        o = to_offset(mbank, word(rom, mbank, hdr + f))
+        while rom[o] != 0xFF:
+            scripts.append(rom[o + 4] | rom[o + 5] << 8)
+            o += 8
+    for s in scripts:
+        if 0x4000 <= s < 0x8000:
+            push(mbank, s, True)
 if "--roots" in sys.argv:
     for r in sys.argv[sys.argv.index("--roots") + 1].split(","): add_root(r)
 
 seen = set()
 while work:
     bank, pc = work.pop()
+    imm = {}                                # last immediates on this path: code pointers passed in registers
     while True:
         key = (bank if pc >= 0x4000 else 0, pc)
         if key in seen or pc >= 0x8000: break
@@ -71,12 +86,23 @@ while work:
         if ins.kind == "illegal": break
         for i in range(ins.length): code[cb].add(pc + i)
         nxt = pc + ins.length
+        op = ins.raw[0]
+        if op in (0x21, 0x11, 0x01):                                # ld hl / de / bc, nn
+            imm[{0x21: "hl", 0x11: "de", 0x01: "bc"}[op]] = ins.raw[1] | ins.raw[2] << 8
+        elif op == 0x3E:
+            imm["a"] = ins.raw[1]
+        if ins.kind == "call" and ins.target == 0x23E8 and "hl" in imm:     # RegisterFrameTask: hl = task, this bank
+            push(cb, imm["hl"], True)
+        if ins.kind == "call" and ins.target == 0x015E and "hl" in imm and "a" in imm:  # CallHLInBankA
+            push(imm["a"], imm["hl"], True)
         n = inline_len(ins)
         if n:
             data = rom[off + ins.length:off + ins.length + n]
             for i in range(n): code[cb].add(nxt + i)
             if ins.kind == "rst" and ins.target in (0x10, 0x18) or ins.kind == "call":
                 idx, fb = data[0], data[1]
+                if (fb, idx) == (0x0A, 0x18) and "de" in imm:            # ActorSetHandler: de = handler, this bank
+                    push(cb, imm["de"], True)
                 if 0 < fb < NB and idx // 2 < TABLE_LEN.get(fb, 0):
                     t = farcall_target(rom, idx, fb)
                     if t and 0x4000 <= t < 0x8000: push(fb, t, True)

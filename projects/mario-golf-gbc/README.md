@@ -42,7 +42,8 @@ global checksum `$0FC7`.
 | `hole_py.py`, `hole_run.py`, `hole_suite.py`, `play_hole.py` | the rules between shots; a recorded hole checked in Python; four holes; a hole played in Python |
 | `emu_play_hole.py`, `plan_shot.py` | a bot that plays holes in the emulator (swings chosen by the Python engine); the planner |
 | `swing_py.py`, `joypad.py` | the swing (address step, meter, impact pad, animation timing, landing preview) and the joypad in Python |
-| `trace_code.py`, `coverage.py` | static code trace (copied from Tennis); share of the traced code inside named routines |
+| `trace_code.py`, `coverage.py` | static code trace (copied from Tennis; also seeds map scripts, frame tasks, actor handlers); share of the traced code inside named routines |
+| `map_scripts.py` | the overworld map scripts (enter / talk / object / trigger) per map header, with the texts they show |
 | `launch_py.py`, `test_launch.py`, `emu_launch_record.py` | ShotLaunch (swing result -> ball velocity) in Python; checked on recorded launches and random swings |
 | `cup_sim.py`, `test_cup.py`, `shot_py.py`, `shot_run.py` | the cup and pin in Python (checked against the ROM on random states); BallTask and the shot's main thread in Python; a recorded shot run in Python only |
 | `shot_sim.py`, `emu_shot_record.py`, `shot_suite.py` | whole-shot replay (the game's main loop in the interpreter vs a PyBoy recording); the shot suite (27 cases, four modes) |
