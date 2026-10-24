@@ -11,7 +11,8 @@
 // Register conventions of the ROM are kept as plain values: a routine that leaves its result in bc / de
 // returns it as an unsigned 16-bit number.
 import { advanceMatchRng, setBallVelocityPolar } from "./ball.js";
-import { predictBallXAtDepth } from "./ai.js";                         // 08:7C86, farcalled by the serve banks
+import { predictBallXAtDepth } from "./ai.js";
+import { plusShotSpeed, plusServeSpeed } from "./plus.js";   // PLAY+                         // 08:7C86, farcalled by the serve banks
 
 export const SHOTTYPE = {
   TOPSPIN: 0x00, POWER_TOPSPIN: 0x01, SLICE: 0x02, POWER_SLICE: 0x03, NEUTRAL: 0x04, REACH: 0x05,
@@ -378,6 +379,7 @@ export function shotPlacement(E, t) {
   if (pace) bc = pace(E, bc);
   if (charge) bc = charge(E, bc);
   if (finalize) bc = finalizeShotSpeed(E, bc);
+  if (E.plus && t >= 12) bc = plusServeSpeed(E, bc);                    // PLAY+: the serve's timing
   return bc;
 }
 
@@ -397,6 +399,7 @@ export function loadShotPlacementEntry(E, table, d, e) {
 export function finalizeShotSpeed(E, bc) {
   bc = addPlayerMomentumToShot(E, bc);
   bc = applyCharFlagShotSpeedPenalty(E, bc);
+  if (E.plus) bc = plusShotSpeed(E, bc);                                 // PLAY+: momentum, fatigue
   if (neg(U16(bc + 0xFF00))) bc = 0x0100;
   E.S.shotSpeedFinal = bc;
   return bc;

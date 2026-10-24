@@ -96,7 +96,8 @@ export class BallFX {
     this.rnd = 1; this.surface = { kind: "hard", c: [0.78, 0.82, 0.86], at: -1 };
     this.gl = null; this.stats = { ms: 0, quads: 0 }; this.k = { R: 1, w: 1, front: 2.2, depth: true, size: 1.6, alpha: 1.35 };   // tuning knobs (tests)
     this.buf = new Float32Array(11 * 6 * 1600);
-    this.aimOn = true; this.aim = null;                              // AIM: the landing ring (attachBallFX reads the remembered choice)                     // quads: the effects (~700) and the court marks (up to ~800)
+    this.aimOn = true; this.aim = null;
+    this.serveCue = false; this.fire = null;                          // PLAY+ (full.js): the serve's timing cue, the runs of points (momentum)                              // AIM: the landing ring (attachBallFX reads the remembered choice)                     // quads: the effects (~700) and the court marks (up to ~800)
   }
   setOn(on) { this.on = !!on; try { localStorage.setItem(KEY, this.on ? "on" : "off"); } catch (e) { /* private mode */ } if (this.onChange) this.onChange(this.on); }
   reset() { this.marks.length = 0; this.wear.clear(); this.feet.clear(); this.parts.length = 0; this.hits.length = 0; this.bounces.length = 0; this.net = null; this.sq = null; this.prev = null; this.cut = -1; this.ball = null; }
@@ -154,7 +155,9 @@ export class BallFX {
     // hit: the hit counter went up or the hit-spark timer restarted (the game starts it at the racket contact)
     const hitNow = (q && ((s.hitCount !== q.hitCount && s.hitCount > 0) || s.timers[1] > q.timers[1])), special = q && s.timers[2] > q.timers[2];
     if (hitNow && fr - (this.lastHit || -99) > 5) {
-      this.lastHit = fr; const info = shotInfo(s.type), power = s.power || s.type === 9 ? 1 : 0;
+      this.lastHit = fr; let info = shotInfo(s.type); const power = s.power || s.type === 9 ? 1 : 0;
+      const side = vw[2] < 0 ? 0 : 1;                                // (towards the far end: the near player hit it)
+      if (this.fire && this.fire[side] >= 3) info = { c: [1.0, 0.42, 0.12], n: "on fire" };   // PLAY+: a run of three points: fiery shots
       const str = clamp(0.25 + 0.55 * clamp(this.spd / 36) + 0.25 * power + (special ? 0.25 : 0) + (s.type === 9 ? 0.2 : 0)) * (s.type === 10 || s.type === 11 ? 0.7 : 1);
       this.shot = { type: s.type, c: info.c, power: power || (special ? 1 : 0) };
       const dir = this.norm(vw, [0, 0, -1]); this.cut = fr; this.sq = { kind: "hit", fr, str, d: dir };
@@ -393,6 +396,11 @@ export class BallFX {
     const L = this.v.light; this.gk = L && L.active && L.begun && !L.broken ? 0.5 : 1;     // LIGHT is on: its bloom adds to the overbright additive colours, so they start lower
     const B = this.B, ball = this.ball, PL = this.bodies();
     if (this.v.isCourt && this.v.isCourt()) this.drawMarks(T);
+    // PLAY+: the serve's timing cue: the ball glows gold while it hangs at the top of the toss (the fastest serve)
+    const sv = this.prev;
+    if (this.serveCue && ball && sv && sv.active && sv.hitCount === 0 && ball.h > 60 && Math.abs(sv.vz) < 1.2) {
+      const g = (1 - Math.abs(sv.vz) / 1.2) * this.gk; this.billboard([ball.x, ball.y, ball.z], 46, 0, 0, [1.0 * g, 0.8 * g, 0.25 * g, 0]);
+    }
     // AIM: where the ball in flight will land: a ring in the shot's colour, pulsing, with a dot in the middle; it fades after the bounce
     const A = this.aim;
     if (this.aimOn && A && ball && (A.live || T - A.end < 14) && Math.abs(A.x) < 1500 && Math.abs(A.z) < 2400) {

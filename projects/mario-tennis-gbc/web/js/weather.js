@@ -5,6 +5,9 @@
 //   wet     after the rain: no rain, a duller sky, the court darker and glossy with puddles that mirror the sky and the floodlights
 //   wind    leaves blown across the court in gusts, tumbling, settling and skidding along, and a low rush of wind
 //   sunset  the lighting's hour for the match at 18:20 (lighting.js weatherHour: a low warm sun, long shadows)
+// Random also turns during a match: at each changeover (after the 1st, 3rd, 5th... game of a set, and after a set; the score $C8E0-$C8E3)
+// a clear sky may cloud over into rain or a wind get up, rain may stop (the court left wet), a wet court dry out and the wind drop. Rain
+// comes in and goes off over a few seconds (the drops and the veil fade).
 const WET_FOR = 300;                                   // seconds the campus keeps puddles after a rainy match (fieldlife.js)
 const KEY = "mt-weather", MODES = ["clear", "rain", "wet", "wind", "sunset", "random"];
 import { SIDE_IN } from "./stadium3d.js";
@@ -13,7 +16,7 @@ const LEAF_COLS = [[0.42, 0.62, 0.20], [0.86, 0.66, 0.16], [0.80, 0.38, 0.14], [
 export class Weather {
   constructor(voxel) {
     this.v = voxel; this.mode = (() => { try { const m = localStorage.getItem(KEY); return MODES.includes(m) ? m : "clear"; } catch (e) { return "clear"; } })();
-    this.cur = "clear"; this.lastFr = -1; this.tex = null; this.hiss = null;
+    this.cur = "clear"; this.lastFr = -1; this.tex = null; this.hiss = null; this.games = -1; this.since = -99;
     const rnd = (() => { let s = 12345; return () => (s = (Math.imul(s, 1103515245) + 12345) & 0x7fffffff) / 0x7fffffff; })();
     this.drops = Array.from({ length: 260 }, () => ({ x: (rnd() * 2 - 1) * 1700, z: -2500 + rnd() * 4600, y0: rnd() * 1400, sp: 1900 + rnd() * 600 }));
     // puddles on and round the court (x, z, radii), the rings the drops make in them, the leaves (their own phase, speed and colour)
@@ -38,25 +41,34 @@ export class Weather {
     if (!v.replaying && (this.lastFr < 0 || fr < this.lastFr || fr - this.lastFr > 600)) {   // (INSTANT REPLAY: the same weather, the match's frames left alone)
       const r = Math.random();
       this.cur = this.mode !== "random" ? this.mode : r < 0.15 ? "rain" : r < 0.25 ? "wet" : r < 0.4 ? "wind" : r < 0.55 ? "sunset" : "clear";
+      this.games = -1; this.since = -99;
     }
-    if (!v.replaying) this.lastFr = fr;
+    if (!v.replaying) { this.lastFr = fr; this.changeover(v.gb.mem.wram[0]); }
     if (v.isDrill && v.isDrill()) { if (L) { L.weatherHour = null; L.weatherRain = false; } this.sound(false); return; }   // the drill hall is indoors
     if (L) { L.weatherHour = this.cur === "sunset" ? 18.3 : null; L.weatherRain = this.cur === "rain" || this.cur === "wet"; }
     this.sound(this.cur === "rain" ? "rain" : this.cur === "wind" ? "wind" : false);
     if (this.cur !== "rain" && this.cur !== "wet" && this.cur !== "wind") return;
     const gl = v.gl; if (!this.tex) this.tex = v.solidTexture([255, 255, 255, 255]);
     gl.useProgram(v.prog); gl.bindVertexArray(v.vao); gl.depthMask(false);
-    const T = performance.now() / 1000;
+    const T = performance.now() / 1000, k = Math.min(1, (T - this.since) / 4);    // (rain just come in: fading up)
     if (this.cur === "wind") { this.drawLeaves(mvp, m4, T); gl.depthMask(true); return; }
     this.drawWet(mvp, m4, T, L); this.wetUntil = T + WET_FOR;     // (FIELD LIFE: puddles on the campus for a while after)
     if (this.cur === "wet") { gl.depthMask(true); return; }
-    v.draw(this.tex, m4.trs(0, -1, 0, 2, 2), m4.identity(), [0, 0, 1, 1], [0.42, 0.46, 0.55, 0.22], 0);   // the grey veil
+    v.draw(this.tex, m4.trs(0, -1, 0, 2, 2), m4.identity(), [0, 0, 1, 1], [0.42, 0.46, 0.55, 0.22 * k], 0);   // the grey veil
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-    for (const d of this.drops) {
+    for (const d of this.drops.slice(0, Math.ceil(this.drops.length * k))) {
       const y = 1400 - ((d.y0 + T * d.sp) % 1400);
       v.draw(this.tex, m4.trs(d.x + y * 0.08, y, d.z, 3.5, 70, 0, 0), mvp, [0, 0, 1, 1], [0.75, 0.8, 0.9, 0.35], 0);
     }
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(true);
+  }
+  // Random: the weather may turn at a changeover (games played in the match odd, or a set just finished)
+  changeover(w) {
+    const sets = w[0x8E0] + w[0x8E1], games = w[0x8E2] + w[0x8E3], n = sets * 100 + games, was = this.games; this.games = n;
+    if (this.mode !== "random" || was < 0 || n <= was || (sets === Math.floor(was / 100) && games % 2 === 0)) return;
+    const r = Math.random(), c = this.cur;
+    const next = c === "clear" ? (r < 0.2 ? "rain" : r < 0.35 ? "wind" : c) : c === "rain" ? (r < 0.5 ? "wet" : c) : c === "wet" ? (r < 0.4 ? "clear" : r < 0.55 ? "rain" : c) : c === "wind" ? (r < 0.4 ? "clear" : r < 0.55 ? "rain" : c) : c;
+    if (next !== c) { this.cur = next; this.since = next === "rain" ? performance.now() / 1000 : -99; }
   }
   // the wet court: a dark sheen over it, puddles mirroring the sky (bright under the floodlights at night), and in the rain rings
   // spreading where drops land in them

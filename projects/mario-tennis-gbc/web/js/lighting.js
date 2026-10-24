@@ -26,7 +26,7 @@ export const LIGHT_MODES = ["off", "day", "auto"];
 //   fx: shadows, bloom, tilt-shift, vignette, night lights; quality: auto | low | medium | high (tier 0 / 1 / 2)
 const CFG_KEY = "mt-lightcfg";
 export const MATCH_HOURS = [8, 12, 18.4, 22], MATCH_NAMES = ["morning", "noon", "sunset", "night"];
-const defaultCfg = () => ({ world: null, customHour: 18.5, matches: "same", fx: { shadows: true, bloom: true, tilt: true, vignette: true, night: true, floors: true }, quality: "auto" });
+const defaultCfg = () => ({ world: null, customHour: 18.5, matches: "tour", tourV: 1, fx: { shadows: true, bloom: true, tilt: true, vignette: true, night: true, floors: true }, quality: "auto" });
 export const hourName = h => h < 5 ? "night" : h < 7 ? "dawn" : h < 10 ? "morning" : h < 15 ? "noon" : h < 17.5 ? "afternoon" : h < 19.5 ? "sunset" : h < 21 ? "dusk" : "night";
 const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -226,9 +226,9 @@ export class Lighting {
   // ---- settings ----
   loadCfg(urlOverride) {
     const c = defaultCfg(); let o = null; try { o = JSON.parse(localStorage.getItem(CFG_KEY) || "null"); } catch (e) { /* none */ }
-    if (o) { for (const k of ["customHour", "matches", "quality", "world"]) if (o[k] !== undefined) c[k] = o[k]; Object.assign(c.fx, o.fx || {}); }
+    if (o) { for (const k of ["customHour", "matches", "quality", "world"]) if (o[k] !== undefined) c[k] = o[k]; Object.assign(c.fx, o.fx || {}); if (!o.tourV && c.matches === "same") c.matches = "tour"; }   // (once: the old default becomes "by tour class")
     if (!["off", "day", "clock", "custom", null].includes(c.world)) c.world = null;
-    if (!["same", "day", "night", "random"].includes(c.matches)) c.matches = "same";
+    if (!["same", "day", "night", "random", "tour"].includes(c.matches)) c.matches = "tour";
     if (!["auto", "low", "medium", "high"].includes(c.quality)) c.quality = "auto";
     if (!urlOverride && c.world) { this.mode = c.world === "off" ? "off" : c.world === "day" ? "day" : "auto"; this.hourOverride = c.world === "custom" ? c.customHour : null; }   // the choice made in the panel (else the older LIGHT button's)
     if (c.world === null) c.world = this.mode === "off" ? "off" : this.mode === "day" ? "day" : "clock";
@@ -265,8 +265,19 @@ export class Lighting {
   hourFor(kind) {
     const m = this.cfg.matches;
     if (kind === "court" && this.weatherHour != null) return this.weatherHour;   // WEATHER: Sunset
+    if (kind === "court" && m === "tour") return this.tourHour();
     if (kind === "court" && m !== "same") return m === "day" ? 15 : m === "night" ? 22 : (this.matchHour ?? 12);
     return this.hour();
+  }
+  // matches "tour": the hour by the class of the match (STADIUM crowdClass and the tour's stage): the first junior matches in the early
+  // afternoon, later into the day through the senior and varsity classes (varsity at sunset), the finals at night under the floodlights;
+  // exhibition matches keep the random hours
+  tourHour() {
+    const st = this.v.stadium, w = this.v.gb.mem.wram[0]; if (!st) return this.matchHour ?? 12;
+    const cls = st.crowdClass(w); if (cls === "major") return 21.5;
+    const mode = w[0x8A6], idx = w[0x8F7];
+    if ((mode !== 1 && mode !== 3) || w[0x8F6] > 1) return this.matchHour ?? 12;
+    return idx <= 4 ? 13.5 + idx * 0.4 : idx <= 9 ? 15.5 + (idx - 5) * 0.4 : idx <= 0x0D ? 18.2 + (idx - 0x0A) * 0.1 : 20;
   }
   skyFor(kind) {
     const h = this.hourFor(kind), clock = this.hourOverride == null && this.mode === "auto" && !(kind === "court" && (this.cfg.matches !== "same" || this.weatherHour != null));

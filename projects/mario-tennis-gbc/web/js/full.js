@@ -149,6 +149,8 @@ function draw(alpha = 1) {                 // alpha: fraction of the next game f
   if (hd) hd.setSpriteHide(true);            // sprites replaced by HD art: every view leaves them out (2D, 3D court / field / menu layers)
   if (hd && hd.update()) drawnFrame = -1;    // the text on screen (HD font) changed
   if (menuWheel) menuWheel.update();         // MENU: Wheel
+  if (port && port.plus && voxel && voxel.weather) port.plus.wet = voxel.weather.cur === "rain" || voxel.weather.cur === "wet";   // PLAY+: a wet court
+  if (voxel && voxel.ballfx) { voxel.ballfx.serveCue = !!(port && port.plus && port.plus.serve); voxel.ballfx.fire = port && port.plus && port.plus.momentum && port.E ? port.E.mom || null : null; }   // PLAY+: its cues
   if (view3d && voxel) {
     if (gb.frames >= insetAt) {               // the touch HUD bar covers the top of the view: overlays go below it
       insetAt = gb.frames + 30; const hud = $("hud"), top = $("gl").getBoundingClientRect().top;
@@ -287,6 +289,10 @@ const netChoice = () => q.get("net") || stored("mt-net");
 // TOUR MATCH: 3x3 / Game's (port/story/match.js): the tour's matches the best of 3 sets of 3 games (default), or the game's own lengths
 // (3 sets of 6 games, 5 at the Island Open); ?tourlen=3x3|game, else the remembered choice. Only through the port (the ROM's own code
 // knows no 3-game set)
+// PLAY+ (engine/plus.js): momentum, stamina, serve timing, courts that play apart, net cords, the tour's difficulty curve; ?plus=on|off,
+// else the remembered choice (on by default). Through the port only.
+const plusOn = () => { const v = q.get("plus") || stored("mt-plus"); return v !== "off"; };
+const plusRules = () => (plusOn() ? { momentum: 1, stamina: 1, serve: 1, courts: 1, netcord: 1, tour: 1, wet: false } : null);
 const tourLen = () => { const v = q.get("tourlen") || stored("mt-tourlen"); return v === "game" ? "game" : "3x3"; };
 const netMode = () => { const v = netChoice(); return v === "even" || v === "original" ? v : portMode() !== "rom" ? "even" : "original"; };
 const portMode = () => { const h = location.hash.slice(1), sel = $("engine") && $("engine").value, m = h === "port" || h === "portall" ? h : q.has("port") ? "port" : sel || "rom"; return m === "rom" && (physicsMode() === "enhanced" || netChoice() === "even") ? "port" : m; };
@@ -325,6 +331,7 @@ async function makePort(bytes) {
   if (physicsMode() === "enhanced") { const { EnhancedPhysics } = await import("./engine/enhanced.js"); P.physics = new EnhancedPhysics(); }
   P.evenNet = netMode() === "even";
   P.tourLength = tourLen();
+  P.plus = plusRules();
   return P;
 }
 function portFrame() {
@@ -401,7 +408,7 @@ $("forgetrom").addEventListener("click", () => romStore("readwrite", s => s.dele
 $("reset").addEventListener("click", () => { if (port) { location.reload(); return; } if (gb) { settle(); gb.reset(); rec.event("reset"); } });
 // ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
 // a .mtrec file (Android: Downloads/MTenn3D and the share sheet; browser: a download). Hiding the app stops and saves.
-const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? "enhanced" : undefined, net: port ? (port.evenNet ? "even" : "original") : undefined, tourlen: port ? port.tourLength : undefined, menu: port && port.menuWheel && port.menuWheel.on ? "wheel" : "game", font, ua: navigator.userAgent, look: creator.look || undefined,
+const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? "enhanced" : undefined, net: port ? (port.evenNet ? "even" : "original") : undefined, tourlen: port ? port.tourLength : undefined, menu: port && port.menuWheel && port.menuWheel.on ? "wheel" : "game", plus: port ? (port.plus ? "on" : "off") : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
   port: port ? (portMode() === "portall" ? "all" : (q.get("port") || PORT_VERIFIED.join(","))) : undefined });
 async function saveRecording(now = false) {     // now: the app is being hidden; skip compression so it finishes at once
   if (!recording()) return; settle();
@@ -501,8 +508,19 @@ $("engbtn").textContent = ENGINE_LABEL[portMode()] || "CODE: ROM";
   });
   $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b);
 }
+// PLAY+: on / off (remembered; takes effect at once)
+{
+  const b = document.createElement("span"); b.className = "k"; b.id = "plusbtn"; b.title = "match rules on top of the game's: momentum, stamina, serve timing, courts that play apart, net cords, a difficulty curve through the tour (needs the JS port)";
+  const show = () => { b.textContent = "PLAY+: " + (plusOn() ? "on" : "off"); b.classList.toggle("on", plusOn()); }; show();
+  b.addEventListener("pointerdown", () => {
+    try { localStorage.setItem("mt-plus", plusOn() ? "off" : "on"); } catch (e) { /* private mode */ }
+    const u = new URL(location.href); u.searchParams.delete("plus"); history.replaceState(null, "", u.pathname + u.search + u.hash);
+    if (port) port.plus = plusRules(); show();
+  });
+  $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b);
+}
 // MENU: Wheel / Game (menuwheel.js): the main menu as a ball wheel over the game's own (through the port)
-menuWheel = attachMenuWheel(() => gb, () => port, $("hud"));
+menuWheel = attachMenuWheel(() => gb, () => port, $("hud"), () => hd);
 // TOUR MATCH: 3x3 / Game's: remembered, read by the port when a tour match is set up (the next match, no reload)
 {
   const b = document.createElement("span"); b.className = "k"; b.id = "tourlenbtn"; b.title = "tour match length: the best of 3 sets of 3 games, or the game's own (3 sets of 6 games, 5 sets at the Island Open); needs the JS port (CODE: PORT)";

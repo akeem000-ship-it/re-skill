@@ -77,6 +77,7 @@ export function engine(P) {
     E.modeHook = d => callModeHook(P, d);                                 // CallModeHook (the minigames' hooks)
   }
   E.evenNet = !!P.evenNet;                                                // NET: Even (chars.js stepCharMovement)
-  E.physics = P.physics || null;                                          // PHYSICS: Enhanced (engine/enhanced.js); null = the game's own ball
+  E.physics = P.physics || null;
+  E.plus = P.plus || null;                                                // PLAY+ (engine/plus.js); null = the game's rules                                          // PHYSICS: Enhanced (engine/enhanced.js); null = the game's own ball
   return E;
 }

@@ -15,6 +15,7 @@
 // the last launch was solved for). Classic is the code in ball.js; this runs only when E.physics is set.
 import { bounceBallOffCourtFences, handleBallNetCrossing, updateBallAnglesAndSpeed, applyCourtBounceDamping, getBallHeightSign, stepBallPhysicsClassic } from "./ball.js";
 import { MatchEngine } from "./engine.js";
+import { plusSurface } from "./plus.js";   // PLAY+: courts that play apart
 
 // units: 1 unit = 1/105 m, 1 frame = 1/60 s. Spin scalars (the game's wBallTopspin / wBallSidespin, 3700 = a very heavy topspin ~ 4600 rpm)
 export const PHYS = {
@@ -73,7 +74,7 @@ export class EnhancedPhysics {
     if (sign === 0) { applyCourtBounceDamping(E); S.ballHeightFull = -S.ballHeightFull | 0; return; }     // resting on it: the game's rolling damping
     S.ballHeightFull = -S.ballHeightFull | 0;                                // reflect the penetration
     S.ballBounceEvent = 1;
-    const r = this.bounce(vx, vy, Math.max(vzd, 0), tau, sig, S.courtSurfaceFriction, S.courtSurfaceBounce, k);
+    const r = this.bounce(vx, vy, Math.max(vzd, 0), tau, sig, ...plusSurface(E, S.courtSurfaceFriction, S.courtSurfaceBounce), k);
     m.w24(0xC420, S24(r.vx)); m.w24(0xC423, S24(r.vy)); S.ballTopspin = Math.trunc(r.tau); S.ballSideSpin = Math.trunc(sig * k.SIDE_BOUNCE);
     if (r.up < k.REST) { S.ballHeightFull = 0; m.w24(0xC426, 0); } else m.w24(0xC426, S24(-r.up));
   }
@@ -122,7 +123,7 @@ export class EnhancedPhysics {
       x += vx; y += vy; z += vz;
       if (z < 0) {                          // through the ground: the model's bounce (position reflected as the game does)
         z = -z;
-        const r = this.bounce(vx, vy, Math.max(-vz, 0), tau, sig, S.courtSurfaceFriction, S.courtSurfaceBounce, k);
+        const r = this.bounce(vx, vy, Math.max(-vz, 0), tau, sig, ...plusSurface(E, S.courtSurfaceFriction, S.courtSurfaceBounce), k);
         vx = r.vx; vy = r.vy; tau = r.tau; sig *= k.SIDE_BOUNCE; pts.push([x, y, 0]);
         if (bounce >= 0 || r.up < k.REST) { this.pathKey = key; return this.path = { pts, bounce: bounce >= 0 ? bounce : pts.length - 1 }; }
         vz = r.up; bounce = pts.length - 1; continue;
@@ -164,7 +165,7 @@ export class EnhancedPhysics {
     if (spd < 4 || vh0 < 1) return;                                          // a toss or a dribble: nothing to aim
     const C = this.classicLanding(E); this.last.classic = C;
     if (!C) return;                                                          // the game's ball meets the net or a fence first: nothing to match
-    const T = [C.x, C.y], fB = S.courtSurfaceFriction, eB = S.courtSurfaceBounce, netH = S.netHeight;
+    const T = [C.x, C.y], [fB, eB] = plusSurface(E, S.courtSurfaceFriction, S.courtSurfaceBounce), netH = S.netHeight;
     const h0 = [v0[0] / vh0, v0[1] / vh0];
     const land = v => this.flyToLanding(x, y, z, v, tau, sig, fB, eB, netH);
     let best = null;

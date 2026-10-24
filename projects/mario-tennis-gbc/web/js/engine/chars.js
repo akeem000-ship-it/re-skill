@@ -14,6 +14,7 @@
 import * as ball from "./ball.js";
 import * as shot from "./shot.js";
 import * as ai from "./ai.js";
+import { plusRunSpeed, plusTourDifficulty } from "./plus.js";   // PLAY+
 
 export const CHARSTATE = { INERT: 0, RALLY: 1, RECOVER: 2, SERVE: 3, AWAIT_SERVE: 4, STANDBY: 5, WALK: 6, POINT_END: 7 };
 export const CHARANIM = {
@@ -133,6 +134,7 @@ export function loadCharacterAttributes(E) {
   C.lobPlacementIndex = (C.swingAttrWord >> 8) & 1;
   C.dropPlacementIndex = (C.swingAttrWord >> 9) & 1;
   if (E.S.debugMatchFlags & 0x02) overrideCharStatsForDebug(E);
+  if (E.plus) plusTourDifficulty(E);                                     // PLAY+: the tour's opponents by its stage
 }
 // 07:5CF4 OverrideCharStatsForDebug: a fixed, accurate CPU
 export function overrideCharStatsForDebug(E) {
@@ -679,8 +681,8 @@ function clampSpeed(v, max) {
   return c >= l ? null : max;
 }
 // 08:74D7 ClampCharDepthSpeed / 08:750C ClampCharXSpeed
-export function clampCharDepthSpeed(E) { const C = E.C, v = clampSpeed(C.velDepth, E.M.mulHLBySinSigned(U16(C.maxSpeedDepth), C.facingDesired)); if (v !== null) C.velDepth = v; }
-export function clampCharXSpeed(E) { const C = E.C, v = clampSpeed(C.velX, E.M.mulHLByCosSigned(U16(C.maxSpeedX), C.facingDesired)); if (v !== null) C.velX = v; }
+export function clampCharDepthSpeed(E) { const C = E.C, v = clampSpeed(C.velDepth, E.M.mulHLBySinSigned(U16(E.plus ? plusRunSpeed(E, C.maxSpeedDepth) : C.maxSpeedDepth), C.facingDesired)); if (v !== null) C.velDepth = v; }
+export function clampCharXSpeed(E) { const C = E.C, v = clampSpeed(C.velX, E.M.mulHLByCosSigned(U16(E.plus ? plusRunSpeed(E, C.maxSpeedX) : C.maxSpeedX), C.facingDesired)); if (v !== null) C.velX = v; }
 // 08:7541 MoveCharTowardTarget: a fixed $1000 step toward the walk target (returns 1), or snap onto it once
 // within $18 on both axes (returns 0)
 export function moveCharTowardTarget(E) {

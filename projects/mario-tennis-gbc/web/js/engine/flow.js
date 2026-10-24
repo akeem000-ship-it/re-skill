@@ -4,6 +4,7 @@ import * as ball from "./ball.js";
 import { POINTOUTCOME } from "./ball.js";
 import * as chars from "./chars.js";
 import { setBallTrailColor } from "./shot.js";
+import { plusPoint } from "./plus.js";
 
 export const SHOTTYPE_SMASH = 0x09, SHOTTYPE_LOB = 0x0A, SHOTTYPE_DROP = 0x0B;
 export const POINTWINNER = { SERVICE_ACE: 1, RETURN_ACE: 2, SMASH_ACE: 3, LOB: 4, DROP_SHOT: 5 };
@@ -17,6 +18,7 @@ export function scorePoint(E) {
   E.S.pointWinLoseFlag = resolvePointWinner(E);
   updatePointStats(E);
   applyPointToScore(E);
+  if (E.plus) plusPoint(E);                                               // PLAY+: the run of points (momentum)
 }
 // 08:5AE6 ApplyPointToScore: point, deuce compression, game, set (tiebreak entry), match
 export function applyPointToScore(E) {

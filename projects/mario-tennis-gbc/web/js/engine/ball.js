@@ -3,6 +3,7 @@
 // Positions are 16.16 (ballXFull...), velocities 24-bit aligned with the position's low three bytes
 // (ballVelocityXFull...), so a raw velocity v moves v / 65536 units per frame.
 import { setCharState, forEachCharBank } from "./chars.js";
+import { plusNetCordBand } from "./plus.js";   // PLAY+
 
 export const SFX_NET_CORD = 0x5A, SFX_BALL_BOUNCE = 0x5B, SFX_BALL_CONTACT = 0x77, SFX_LANDING_MARKER = 0x6D, SFX_SPECIAL_HIT = 0x55;
 export const SHOTTYPE_LOB = 0x0A;
@@ -115,7 +116,7 @@ export function handleBallNetCrossing(E) {
     let d = S16(S.ballVelocityDepth) >> 3; if (d < 0) d = -d;
     S.ballVelocityHeight = NEG16(advanceMatchRng(E) * 4 + d);
   };
-  if (((h + 0x5A) & 0x8000) !== 0) {                                    // within 6 of the tape: the net cord
+  if (((h + (0x60 - plusNetCordBand(E))) & 0x8000) !== 0) {            // within 6 of the tape (PLAY+: 12): the net cord
     S.ballHeightFull = 0; S.ballHeight = 0xFFA0;
     popUp();
     S.ballVelocityDepth = S16(S.ballVelocityDepth) >> 2;               // dribbles on at a quarter of the speed

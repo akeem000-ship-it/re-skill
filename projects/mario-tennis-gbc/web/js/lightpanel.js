@@ -51,8 +51,8 @@ export function attachLightPanel(voxel) {
     sheet.appendChild(c);
     // matches
     c = card("Matches");
-    c.appendChild(pills([["same", "Same as overworld"], ["day", "Day"], ["night", "Night"], ["random", "Random"]], C.matches, m => L.setMatches(m)));
-    c.appendChild(el("div", "note", C.matches === "random" ? "Each match rolls " + MATCH_NAMES.join(", ") + " once (seeded by when the match starts, so a recording replays the same). Night: floodlights on, crowd lit by the towers." : C.matches === "same" ? "Matches use the overworld setting." : "Every match is played in " + (C.matches === "day" ? "daylight" : "the floodlit night") + "."));
+    c.appendChild(pills([["tour", "By tour class"], ["same", "Same as overworld"], ["day", "Day"], ["night", "Night"], ["random", "Random"]], C.matches, m => L.setMatches(m)));
+    c.appendChild(el("div", "note", C.matches === "random" ? "Each match rolls " + MATCH_NAMES.join(", ") + " once (seeded by when the match starts, so a recording replays the same). Night: floodlights on, crowd lit by the towers." : C.matches === "tour" ? "Junior matches in the afternoon, senior later in the day, varsity at sunset, the finals at night under the floodlights (exhibition matches: random)." : C.matches === "same" ? "Matches use the overworld setting." : "Every match is played in " + (C.matches === "day" ? "daylight" : "the floodlit night") + "."));
     sheet.appendChild(c);
     // effects
     c = card("Effects");
