@@ -104,6 +104,29 @@ def parse_actor_script(bank, addr):
             pc += 1 + ACTOR_ARGS[op]
 
 
+def push_word_table(bank, t, n, allow_zero=False):
+    """Entries of a jump table at bank:t: at most n words, targets in the table's own area (bank 0 or this
+    bank's $4000-$7FFF); stops at the first word that is not such a target or where the code of an entry starts."""
+    lo, hi = (0x4000, 0x8000) if t >= 0x4000 else (0x0100, 0x4000)
+    first = hi
+    for e in range(n):
+        a = t + 2 * e
+        if not lo <= a < hi - 1 or a >= first:
+            break
+        o = to_offset(bank, a)
+        w = rom[o] | rom[o + 1] << 8
+        if w == 0 and allow_zero:
+            continue
+        if not lo <= w < hi or rom[to_offset(bank, w)] == 0xFF or t <= w < a + 2:
+            break
+        if w > t:
+            first = min(first, w)
+        push(bank, w, True)
+
+
+TABLE_CALLS = {0x470D: (0x08, 16, True)}   # DispatchByGameMode 08:470D: hl = 16 words by wGameMode, 0 = none
+
+
 seen = set()
 while work or actor_scripts - {(b, a) for b, a in actor_done}:
   if not work:
@@ -130,6 +153,19 @@ while work or actor_scripts - {(b, a) for b, a in actor_done}:
             imm[{0x21: "hl", 0x11: "de", 0x01: "bc"}[op]] = ins.raw[1] | ins.raw[2] << 8
         elif op == 0x3E:
             imm["a"] = ins.raw[1]
+        elif op in (0x19, 0x09):                                    # add hl, de / bc: a table base in de / bc
+            r = "de" if op == 0x19 else "bc"
+            if r in imm: imm["hl"] = imm[r]
+            else: imm.pop("hl", None)
+        elif op in (0xE1, 0xF8, 0x29, 0x39):                        # pop hl / ld hl, sp+n / add hl, hl / sp
+            imm.pop("hl", None)
+        if ins.kind == "call" and ins.target in TABLE_CALLS and cb == TABLE_CALLS[ins.target][0] and "hl" in imm:
+            push_word_table(cb, imm["hl"], TABLE_CALLS[ins.target][1], TABLE_CALLS[ins.target][2])
+        # inline jump table: ld hl, T ... ld a, [hl+] ; ld h, [hl] ; ld l, a ... jp hl (or call JumpToHL 00:0699)
+        if op == 0x2A and rom[off + 1:off + 3] == bytes((0x66, 0x6F)) and "hl" in imm:
+            imm["table"] = imm["hl"]
+        if (op == 0xE9 or ins.kind == "call" and ins.target == 0x0699) and "table" in imm:
+            push_word_table(cb, imm.pop("table"), 32, True)
         if ins.kind == "call" and ins.target == 0x23E8 and "hl" in imm:     # RegisterFrameTask: hl = task, this bank
             push(cb, imm["hl"], True)
         if ins.kind == "call" and ins.target == 0x015E and "hl" in imm and "a" in imm:  # CallHLInBankA
