@@ -128,12 +128,19 @@ public class MainActivity extends Activity {
     @Override public void onWindowFocusChanged(boolean f) { super.onWindowFocusChanged(f); if (f) immersive(); }
 
     // ---- Bluetooth / USB controllers: forward buttons and sticks to the page as a bit mask ----
-    private int padMask = 0, hatMask = 0, stickMask = 0, sentMask = -1;
+    private int padMask = 0, hatMask = 0, sentMask = -1;
     private void pushMask() {
-        final int m = padMask | hatMask | stickMask;
+        final int m = padMask | hatMask;
         if (m == sentMask) return;                        // joystick motion events arrive constantly; only changes matter
         sentMask = m;
         web.post(() -> web.evaluateJavascript("window.__padmask=" + m + ";", null));
+    }
+    private float sentX = 9, sentY = 9;
+    private void pushStick(float x, float y) {
+        if (Math.abs(x) < 0.12f && Math.abs(y) < 0.12f) { x = 0; y = 0; }    // (rest)
+        if (Math.abs(x - sentX) < 0.02f && Math.abs(y - sentY) < 0.02f) return;  // motion events arrive constantly; small changes are dropped
+        sentX = x; sentY = y; final String js = "window.__padstick=[" + x + "," + y + "];";
+        web.post(() -> web.evaluateJavascript(js, null));
     }
     private static int bitFor(int keyCode) {
         switch (keyCode) {
@@ -164,11 +171,7 @@ public class MainActivity extends Activity {
             float hx = e.getAxisValue(MotionEvent.AXIS_HAT_X), hy = e.getAxisValue(MotionEvent.AXIS_HAT_Y);
             float sx = e.getAxisValue(MotionEvent.AXIS_X), sy = e.getAxisValue(MotionEvent.AXIS_Y);
             hatMask = (hx > 0.5f ? 16 : 0) | (hx < -0.5f ? 32 : 0) | (hy < -0.5f ? 64 : 0) | (hy > 0.5f ? 128 : 0);
-            stickMask = 0;                                    // radial dead zone, eight 45-degree sectors (same rule as web/js/stick.js)
-            float m = (float) Math.hypot(sx, sy);
-            if (m >= 0.28f) { float nx = sx / m, ny = sy / m, c = 0.3827f;
-                stickMask = (nx > c ? 16 : 0) | (nx < -c ? 32 : 0) | (ny < -c ? 64 : 0) | (ny > c ? 128 : 0); }
-            pushMask(); return true;
+            pushMask(); pushStick(sx, sy); return true;           // the stick goes to the page as it is: web/js/stick.js reads it (STICK FEEL)
         }
         return super.dispatchGenericMotionEvent(e);
     }

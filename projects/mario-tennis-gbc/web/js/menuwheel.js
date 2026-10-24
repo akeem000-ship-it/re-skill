@@ -82,7 +82,7 @@ const OPTION_CATS = [
   ["STADIUM", "the court, the crowd, the effects", ["stadiumbtn", "stadiumqbtn", "seasonbtn", "venuetourbtn", "courtbtn", "farendbtn", "weatherbtn", "crowdsndbtn", "ballfxbtn", "matchfxbtn", "kitbtn", "introbtn", "vsbtn", "callsbtn", "aimbtn"]],
   ["MENUS & TEXT", "how menus and words are drawn", ["uibtn", "fontbtn", "sprbtn"]],
   ["MODES", "exhibition rules, rematch, practice, partner, text", ["mode-sets", "mode-games", "mode-tiebreak", "mode-noAd", "mode-rematch", "mode-machine", "mode-mgHard", "mode-partner", "mode-fastText", "recordsbtn"]],
-  ["PLAY", "the rules, the feel, the controls", ["physbtn", "netbtn", "plusbtn", "tourlenbtn", "runaheadbtn", "padmode", "vibratebtn", "batterybtn", "tourplusbtn", "tourbtn"]],
+  ["PLAY", "the rules, the feel, the controls", ["physbtn", "netbtn", "plusbtn", "tourlenbtn", "runaheadbtn", "padmode", "stickfeelbtn", "vibratebtn", "batterybtn", "tourplusbtn", "tourbtn"]],
 ];
 const OPTION_NAMES = { view3d: "3D VIEW", aspect: "SCREEN", cam: "CAMERA", padmode: "TOUCH PAD", lightbtn: "LIGHT", uibtn: "MENUS", sprbtn: "SPRITES" };
 export class MenuWheel {

@@ -29,7 +29,7 @@ import { organizeHud } from "./hudmenu.js";      // the button bar in categories
 import { loadSnapshot } from "./gb/snapshot.js";
 import { saveState, loadState, snapshot, restore } from "./gb/state.js";
 import { composeWide, WIDE_W, WIDE_H } from "./wide.js";
-import { mountStick } from "./stick.js";
+import { mountStick, stickDir, stickFrame, addStickFeelButton } from "./stick.js";
 import { portraitArea, attachPortrait } from "./portrait.js";   // touch screens held upright: the game on top, a control deck below
 import { Recorder, maskOf, packRecording, bytesToBase64, stateOf } from "./recorder.js";
 import { HDText, FONTS, FONT_ORDER, HD } from "./hdtext.js";
@@ -101,11 +101,14 @@ const STEP = 1000 / 60; let acc = 0, last = 0, fps = { n: 0, r: 0, t: 0 };
 const smoothQ = new URLSearchParams(location.search).get("smooth");
 let smooth = smoothQ ? !(smoothQ === "0" || smoothQ === "off") : (() => { try { return localStorage.getItem("mt-smooth") !== "off"; } catch (e) { return true; } })();
 let renderedAt = -1;
-function input() {
-  const k = keys;
+// the page's input: the keys, the touch d-pad and buttons, a controller (pollGamepad); withStick: the analog stick's direction too (full
+// presses: the menus and panels); the game's frames take the stick through stickFrame instead (STICK FEEL: its walking)
+function input(withStick = true) {
+  const k = keys, s = withStick ? stickDir() : {};
   return { a: k.KeyZ || k.KeyA, b: k.KeyX || k.KeyS, start: k.Enter, select: k.ShiftRight || k.Backspace || k.KeyQ,
-           right: k.ArrowRight, left: k.ArrowLeft, up: k.ArrowUp, down: k.ArrowDown };
+           right: k.ArrowRight || !!s.right, left: k.ArrowLeft || !!s.left, up: k.ArrowUp || !!s.up, down: k.ArrowDown || !!s.down };
 }
+const frameInput = () => stickFrame(input(false), !!gb && onCourt());   // (a match on the court: a light tilt walks)
 const rec = new Recorder();
 // with the JS port the game's state is partly JavaScript (its coroutines), which a machine state can't hold: a
 // recording made mid-game could not be replayed. So the port keeps a log of every frame from power-on, and REC
@@ -131,7 +134,7 @@ let runAhead = stored("mt-runahead") === "on", raSnap = null, lastInp = null;
 function settle() { if (raSnap) { restore(gb, raSnap); raSnap = null; } }
 function lookAhead() {
   if (!runAhead || port || !gb) return;
-  raSnap = snapshot(gb); gb.setInput(lastInp || input()); gb.runFrame(); gb.apu.outPos = 0;   // its sound is dropped (the real frame plays it)
+  raSnap = snapshot(gb); gb.setInput(lastInp || frameInput()); gb.runFrame(); gb.apu.outPos = 0;   // its sound is dropped (the real frame plays it)
 }
 // the win / lose screen after a match (bank $16: its raster split, rows $48-$57, is on only while it shows) goes on with A only, and not
 // for its first second: B and a tap left over from the last point no longer skip it (RIGHT still opens the statistics)
@@ -143,7 +146,7 @@ function resultsGate(inp) {
   return { ...inp, b: false, a: inp.a && gb.frames - resultsAt >= 60 };
 }
 function frame() {
-  pollGamepad(keys); const inp = modes.filterInput(resultsGate(input())), mask = maskOf(inp); gb.setInput(inp); lastInp = inp;   // (MODES: the partner's commands kept from the game)
+  pollGamepad(keys); const inp = modes.filterInput(resultsGate(frameInput())), mask = maskOf(inp); gb.setInput(inp); lastInp = inp;   // (MODES: the partner's commands kept from the game)
   if (port) portFrame(); else gb.runFrame();
   if (view3d && voxel && voxel.mode === "3d") voxel.tick();
   if (phone) phone.frame(gb);                // VIBRATE: hits and points
@@ -451,7 +454,7 @@ $("cam").addEventListener("pointerdown", () => setPreset(PRESET_ORDER[(PRESET_OR
 $("aspect").addEventListener("pointerdown", () => { aspect = ASPECTS[(ASPECTS.indexOf(aspect) + 1) % ASPECTS.length]; drawnFrame = -1; applyAspect(); });
 applyAspect();
 // ---- touch movement: analog stick (default) or the d-pad ----
-const stick = mountStick($("stickzone"), keys);
+const stick = mountStick($("stickzone"), keys); addStickFeelButton($("hud"));
 let padMode = q.get("pad") || stored("mt-pad") || "stick"; if (padMode !== "dpad") padMode = "stick";
 function applyPadMode() {
   const on = padMode === "stick"; document.body.classList.toggle("stick", on); stick.setEnabled(on);
