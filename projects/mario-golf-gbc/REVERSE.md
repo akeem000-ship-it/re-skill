@@ -2185,6 +2185,112 @@ Map01EnterNop 35:7848 holds an unreachable far call to the task (already noted).
 wPuttOfferCourse (never read), `$D335`-`$D344` caption motion fields (wCaptionScript / X / Y / VX / VY / StepFunc /
 StepKeep / StepFrames / Sprite).
 
+##### Tracer issues (entries that are not code; not labelled)
+
+- **10:6DCD** is data: 4 words (10:6DD5 / 6E13 / 6E51 / 6E51) picked by `$D32B & 3` in PowerScaleLookup 10:6DAE,
+  which then reads word `[wSwingPower & $FE]` of that table and returns (ends in `ret`, no `jp hl`). The entry most
+  likely comes from the `ld hl, imm` heuristic (looks_like_routine) on `ld hl, $6dcd` at 10:6DB4: the bytes
+  `d5 6d 13 6e ...` start with an opener (`push de`). Fix: mark 10:6DCD (and 6DD5-6E8F) as data.
+- **02:6109** is data: the 17 x 20 spaces string printed by ClearDebugLines 02:60F0 (`ld hl, $6109` at 02:60F8).
+  `$20` (jr nz) is in OPENERS, so looks_like_routine accepted it. Fix: mark 02:6109 as data (e.g. label it
+  `DebugBlankLinesData`).
+- All other listed entries are real code. Some have no reference at all (dead code, see below): 08:4F82, 10:77CC,
+  31:4A4E / 53F6 / 5D12 / 65A0, 05:6108 (skipped by a `jr`).
+
+##### Bank 08: per-mode round hooks (DispatchByGameMode tables)
+
+Every RoundHook* export calls DispatchByGameMode 08:470D with a 16-word table by wGameMode `$C834`. Modes: 1
+Tournament, 2 Match Game, 3 Stroke, 4 Training, 5 / `$0A` / `$0B` mini-games, 6 / `$0C` practice and lessons, 7
+putting practice.
+
+| Hook (table) | 1 | 2 | 3 | 4 | other |
+|---|---|---|---|---|---|
+| RoundStart (473F) | 475F | 478C | 47A6 | - | - |
+| SaveAtHole (47D1) | 47F1 | 47F5 | 47F9 | - | - |
+| HoleStart (481A) | 483A (ret) | 4847 | 483B | - | - |
+| PlayerUp (489D) | 48FD | 48BD | 48FD | 48EB | 6/7/C 48F4, A 48FD |
+| AfterShot (491E) | 493E | 494B | 4942 | 4A39 | - |
+| HoleEnd (4B1F) | 4B3F | 4B64 | 4B93 | - | - |
+| RoundEnd (4BD9) | 4BF9 | 4D7D | 4EBF | 4EF2 (ret) | 5/A/B 4EF3 (ret) |
+| PauseMenu (4695) | 46B5 | 46C6 | 46B5 | 46D7 | 5/A/B 46DE, 6/C 46E2, 7 46EF |
+
+- Tournament (mode 1) round end 4BF9: rank -> wRoundResult; the first top-3 finish per course (course-hole bit
+  `$14 + rank`) gives SetRankExpBonus (RankExpBonusTable 08:4D3D: course 1 40/20/10 ... course 5 400/200/100);
+  TournamentReturnMapTable 08:4C6E sends courses 1-4 to the ceremony maps `$18-$1B` (entrance 2/3/4 = place) and
+  course 5 to map `$1D` entrance 6, wStoryRoundKind `$32`; flags #112-#116 (played) and #136-#139 / #117 (won).
+- Match (mode 2) round end 4D7D: beating opponent 4-`$0A` the first time: AwardFirstWinBonus (game flags
+  `$0A00-$0B80`, bonus kinds `$14-$1A`, EXP 40 70 140 200 400 50 400) and save flags `$80-$140`; opponent 7 also
+  sets the return map `$30` entrance 5 unless #188. Losing to 4-7 sets #132-#135.
+- Training (mode 4) after-shot 4A39: continue menu result 2 retry (RetryShotRestore) / 3 replay the hole (hole -1,
+  holes left +1) / 4 / 5 end the round (wRoundResult 1 / 0). 08:4A4D `cp 2 ; jr nz, +0` is a no-op leftover.
+- PauseMenuDebugEditors 46F3: with hDebugMode, Select held opens DebugPointsEditor 41:77EA and Up held
+  DebugPaletteEditor 44:42FB after the pause menu (modes 1-4).
+- Dead code: CopyMapRowsToScreenUnused 08:4F82 (no caller): sets wHoled `$FF` and copies 8 map rows from the WRAM2
+  / WRAM3 buffers at `$D100` to `$9880`.
+- RAM: wP2Character `$C8D0` (`$FF` = one player), wP1ScoreVsPar `$C8BE` / wP2ScoreVsPar `$C8FE`, wPlayerRank
+  `$C875`, wStandingsPhase `$C4BD`, wReturnEntrance `$C961`. `$C8A8` (P1 +`$28`) is set to `$0F` before each shot
+  in modes 4 6 7 `$0C` (meaning unknown).
+
+##### Bank 11: ball display objects (course / green / cup views)
+
+BallDisplayTask 11:4113 jumps through BallDisplayViewTable 11:412C by wOnGreen: 0 BallDisplayCourseView 4361, 1
+BallDisplayGreenView 4970, 2 BallDisplayCupView 4CBB, 3 InitBallCamera, 4-6 BallView4, 7 nothing. Course and green
+views run CameraStep, PreviewFrame and the look cursor, then DrawSortedBallObjects 11:4D79: up to 6 objects enabled
+by wBallObjectFlags `$D485` bits 0-5 (1 pin, 2 target marker, 3 ball, 4 aim arrow, 5 preview spot, 6 other ball)
+are listed with their y at `$D468` and drawn from the largest y down (so nearer objects get the lower OAM slots)
+through the handler table in `$D47E` (CourseViewObjectHandlerTable 4375 / GreenViewObjectHandlerTable 4984). The
+course view uses scroll-relative coordinates / 8 (ball hidden every other frame under tree tiles when it is lower
+than the canopy); the green view is relative to wGreenCornerX/Y. The cup view (4CBB) draws the ball, its shadow and
+the pin (CupViewDrawPin 4D61) around a fixed cup, ordered by y. LookCursorBob 4C69 bobs the 16x16 cursor with
+LookCursorBobTable 4C7B. ShowCaptionAndWait clears bits 1 and 4 of `$D485` (marker and preview) during captions.
+
+##### Bank 02 (debug save viewer pages)
+
+DebugSaveViewerPage 02:5DCE uses DebugSaveViewerPageTable 5DDF: pages 0-5 DebugSavePageRecord (record b of `$32`
+bytes at `$D000`), 6 the same with "ALL", 7 bytes at `$D15E`, 8 word pairs at `$D166`, 9 `$D400-$D408`. Field
+printers 608E-60CF (a = offset into bc). Scores are shown minus `$36`, "  -" when 0.
+
+##### Bank 31 (golf clinic coach comments; leftovers)
+
+- Golf Clinic (map 2D): ClinicClassifyShot gives class 0-8 (0 a clean full shot; 1 wavering impact; 2 below full
+  power; 3 both; 4 neither; 5 hook; 6 slice; 7 topspin; 8 backspin). Coach 1 has one comment per class
+  (texts `$15BC-$15C4`); coach 2 rejects classes 1-4 (`$15C0`) and 5-8 (`$15C5`). For class 0 both build a sentence
+  from five pushed strings: coach 1 (`$15BA`) distance grade (ClinicGradeDistance 756A on ClubDistance) / shape
+  (DriverShape) / height / meet area / waver; coach 2 (`$15BB`) carry / control / wind / timing / aim. The three
+  last parts come from the character stats `$C81C`, `$C81E`, `$C81F` (value -4..4 -> text index 4 - v).
+- Leftovers: 31:4A4E (talk script for the shot-terms tip `$0D1B` with a Yes/No prompt) and 31:53F6 / 5D12 / 65A0
+  (plus the copies after them at 4A7F / 5402 / 5D1E / 65AC) show the placeholder text `$0D16` "Lesson character."
+  None is referenced by a map list.
+
+##### Bank 3B (OutcomeRules by terrain)
+
+OutcomeRules 3B:7260 jumps through OutcomeByTerrainTable 72A3 by the landing terrain: 0/`$E` fairway 7541, 1/`$F`
+rough 756B, 2 bunker 7529, 3 water 7426 (CountStroke, DropAtSafeSpot), 5 7590, 6 green 7447, 7 out of bounds 7411
+(CountStroke, a = `$FF`), 9 semi-rough 757F, `$A` 7555, `$C` 75A1, `$D` 75B2, 4/8/`$B` no caption. Each shows a
+caption animation (StartCaptionAnim 4F:619C, often wLie-based) and a caption. OutcomeGreen gives the first-on-green
+bonuses (+4 with wBallFlags bit 1, +2 with three strokes to spare against par, +2 with two to spare and within $21 of the pin). Mode 6 (OutcomeMode6 75CE) uses its own
+table 75E2 (green -> OutcomeMode6Green 7639, no bonuses, no points); modes 5 and `$0B` (OutcomeMode5B 75CC) do
+nothing. The meanings of terrains 5 `$A` `$C` `$D` are not known (captions are sprites).
+
+##### Banks 4A-4E (behind-view scenery, copies of bank 4F)
+
+Each holds export 0 ComposeObjectPicture and its helpers, byte-for-byte the code of 4F:5645-6183 with its own data
+(LZ base sheet, palettes, shape records). DrawBehindViewScenery 15:462D picks the bank with SceneryByCourseTable
+15:463F: 4B Marion (courses 0 1 8 `$A-$F`), 4C Palm (2), 4D Dune (3), 4E Links (4), 4F course 5, 4A Pitch and Putt
+(6 and 9); course 7 by hole (SceneryCourse7HoleTable 15:465F: holes 1-2 4E, 3-6 4F, 7-9 4B, 10-12 4C, 13-15 4D,
+16-18 4E).
+
+##### Bank 15 / 10 / 05 small entries
+
+- 15:467F-4697: one farcall per scenery bank (SceneryMarion ... SceneryPitchAndPutt, SceneryCourse7ByHole).
+- 10:6D8A-6DAA: SpeedTableJump targets: farcall the distance -> launch speed routine of trajectory class -4..+4
+  (banks 39 / 38 / 3A). PowerScaleLookup 10:6DAE (see the tracer note). ReflectScaleUnused 10:77CC has no caller
+  (an alternative of Reflect 10:771E: scales the contact normal `$D4A1/$D4A3` by the velocity over the length of
+  reflected - velocity).
+- 05:6B76-6B88: the four DebugMenu items (Scene / Map / Palette / Flag). 05:6108 CloseMessageBoxShrinkLoop is the
+  shrink animation of CloseMessageBoxAnimated, skipped by its `jr` at 05:6106 (also contains odd register
+  arithmetic at 05:6130, never run).
+
 ### Data Structures
 
 *(none yet)*

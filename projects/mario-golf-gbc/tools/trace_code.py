@@ -218,8 +218,11 @@ while work or actor_scripts - {(b, a) for b, a in actor_done}:
 # code pointers passed in registers to helpers that call them (e.g. 32:5DD5 ld hl, door animation ; call
 # Map03WalkOutOfDoor): an ld hl / de / bc immediate in traced code naming an untraced address of the same bank
 # that decodes as a whole routine (no illegal opcode, no $FF, ends in ret / jp, at least two calls or far calls)
+ROUTINE_OPENERS = OPENERS - {0x18, 0x20, 0x28, 0x30, 0x38, 0xC9, 0xC3}
+
+
 def looks_like_routine(bank, a):
-    if rom[to_offset(bank, a)] not in OPENERS:
+    if rom[to_offset(bank, a)] not in ROUTINE_OPENERS:
         return False
     pc, calls = a, 0
     for _ in range(300):

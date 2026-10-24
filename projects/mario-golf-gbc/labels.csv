@@ -3839,3 +3839,206 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,D343,wCaptionStepFrames,WRAM6: frames left in the current caption step
 *,D344,wCaptionSprite,WRAM6: caption number selecting CaptionTemplateTable
 3E,60C3,PutTileStringAttr0,hl = 0-terminated tiles at bc: PutTileAttr0 per tile (shares the loop at 3E:617C); called by DrawTileStringAttr0At
+# --- jump-table code: game-mode round hooks (08), ball display objects (11), clinic comments (31), after-shot rules (3B), scenery copies (4A-4E) ---
+08,40DD,MatchHoleStatusThunk,call MatchHoleStatus; ret (used by PlayerUpMode2Match)
+08,4695,PauseMenuModeTable,16 words by wGameMode for PauseMenu (DispatchByGameMode): 1/3 46B5 2 46C6 4 46D7 5/A/B 46DE 6/C 46E2 7 46EF
+08,46B5,PauseMenuMode1Tournament,pause menu of modes 1 and 3: GolfPauseMenuSave (41:6E96) then PauseMenuDebugEditors; in link play ($C33F) GolfPauseMenu 41:6E49
+08,46C6,PauseMenuMode2Match,pause menu of mode 2: GolfPauseMenuSave2 (41:6EBB) then PauseMenuDebugEditors; in link play GolfPauseMenu 41:6E49
+08,46D7,PauseMenuMode4Training,pause menu of mode 4: TrainingPauseMenu 41:6EE0 then PauseMenuDebugEditors
+08,46DE,PauseMenuMode5MiniGame,pause menu of modes 5 $0A $0B: MiniGamePauseMenu 41:6F9F
+08,46E2,PauseMenuMode6Practice,pause menu of modes 6 and $0C: PracticeWindMenu 41:6F08 with flag #100 else PracticeMenu 41:6F30
+08,46EF,PauseMenuMode7Putting,pause menu of mode 7: PracticeMenu 41:6F30
+08,46F3,PauseMenuDebugEditors,debug only (hDebugMode): Select held -> DebugPointsEditor 41:77EA; Up held -> DebugPaletteEditor 44:42FB; keeps af
+08,473F,RoundStartModeTable,16 words by wGameMode for RoundHookRoundStart: 1 475F 2 478C 3 47A6
+08,475F,RoundStartMode1Tournament,sound $38; course 5 sets flag #127; LoadCourseStatsWork; ClearHonour; BuildStandings and GetPlayerRank -> wPlayerRank $C875; wRoundResult 0
+08,478C,RoundStartMode2Match,sound $38; clears wMatchPlayoff / wHonour / wMatchHoles (18 bytes) and the contest wins; wRoundResult 0
+08,47A6,RoundStartMode3Stroke,sound $38; ClearHonour; ClearContestWins when there is a player 2 ($C8D0 != $FF)
+08,47D1,SaveAtHoleModeTable,16 words by wGameMode for RoundHookSaveAtHole: modes 1-3
+08,47F1,SaveAtHoleMode1Tournament,SaveGameMidRound
+08,47F5,SaveAtHoleMode2Match,SaveGameMidRound
+08,47F9,SaveAtHoleMode3Stroke,SaveGameMidRound
+08,481A,HoleStartModeTable,16 words by wGameMode for RoundHookHoleStart: 1 483A 2 4847 3 483B
+08,483A,HoleStartMode1Tournament,ret (nothing at hole start)
+08,483B,HoleStartMode3Stroke,SetTeeOrderByHonour; InitHoleContest when there is a player 2
+08,4847,HoleStartMode2Match,wCurPlayer = 1 on hole 1 (not in a playoff) else wHonour xor 1; InitHoleContest; playoff -> caption $1E; MatchStatus 1/2 (dormie) -> wDecisiveHole music and caption $26
+08,489D,PlayerUpModeTable,16 words by wGameMode for RoundHookPlayerUp: 1/3/A 48FD 2 48BD 4 48EB 6/7/C 48F4
+08,48BD,PlayerUpMode2Match,ShowPuttForCaption; MatchHoleStatus 1 -> caption $1C; 2 or 3 on the green (lie 6) -> caption $1A
+08,48EB,PlayerUpMode4Training,ShowPuttForCaption; $C8A8 (P1 +$28) = $0F
+08,48F4,PlayerUpMode6Practice,modes 6 7 $0C: PlayRoundMusic; $C8A8 (P1 +$28) = $0F
+08,48FD,PlayerUpMode1Tournament,modes 1 3 $0A: ShowPuttForCaption
+08,491E,AfterShotModeTable,16 words by wGameMode for RoundHookAfterShot: 1 493E 2 494B 3 4942 4 4A39
+08,493E,AfterShotMode1Tournament,UpdateTeeShotStats
+08,4942,AfterShotMode3Stroke,UpdateHoleContest when there is a player 2
+08,494B,AfterShotMode2Match,UpdateHoleContest; wBallFlags bit 7 marks the other player holed (+$2A) with one more stroke (+$20) (a conceded putt?); MatchHoleResult -> honour and wMatchHoles[hole] (not in a playoff); Scorecard; sounds $20/$21/$22; both players holed; c -> wRoundResult
+08,4A39,AfterShotMode4Training,GolfViewExit; continue menu (41:6F7A when holed else ContinueMulliganMenu 41:6F55): 2 RetryShotRestore / 3 replay the hole / 4 end (wRoundResult 1) / 5 end (0)
+08,4B1F,HoleEndModeTable,16 words by wGameMode for RoundHookHoleEnd: 1 4B3F 2 4B64 3 4B93
+08,4B3F,HoleEndMode1Tournament,standings and rank -> $C875; UpdateHoleEndStats; ShowScorecard ($C4BD = 1); ShowHalfwayPicture
+08,4B64,HoleEndMode2Match,AddContestWinsToPlayers; ShowStandingsFar; decided -> wHolesLeft 1; level after the last hole -> wMatchPlayoff and wHolesLeft 2; ShowHalfwayPicture; SetDecisiveHoleOnLast
+08,4B93,HoleEndMode3Stroke,AddContestWinsToPlayers (2 players); ShowScorecard; ShowHalfwayPicture; SetDecisiveHoleOnLast
+08,4BAA,SetDecisiveHoleOnLast,wDecisiveHole = 1 from hole 17 on when there is a player 2
+08,4BD9,RoundEndModeTable,16 words by wGameMode for RoundHookRoundEnd: 1 4BF9 2 4D7D 3 4EBF 4 4EF2 5/A/B 4EF3
+08,4BF9,RoundEndMode1Tournament,SaveCourseStats; rank -> wRoundResult (1-4); RoundResultScreen 1; first top-3 finish per course -> SetRankExpBonus; return map/entrance from TournamentReturnMapTable; flags #112-#116 played / #136-#139 #117 won; points +10; RoundEndFadeAndExp
+08,4C6E,TournamentReturnMapTable,4 bytes per course: return map ($18-$1B ceremonies / $1D) then entrance for rank 1 2 3 (0 = none)
+08,4D3D,RankExpBonusTable,8 bytes per course (wCourse & 7): bonus words for rank 0-3 (e.g. course 1: 0 40 20 10; course 5: 0 400 200 100)
+08,4D7D,RoundEndMode2Match,RoundResultScreen 0; win vs opponent 4-$0A: AwardFirstWinBonus (flags $0A00-$0B80) and save flags $80-$140; opponent 7 also return map $30 entrance 5 unless #188; loss vs 4-7 sets #132-#135; points +10; RoundEndFadeAndExp
+08,4EBF,RoundEndMode3Stroke,two players: wRoundResult 1/2/3 by score $C8BE vs $C8FE (lower wins / tie); RoundResultScreen 2; points +10; RoundEndFadeAndExp
+08,4EF2,RoundEndMode4Training,ret
+08,4EF3,RoundEndMode5MiniGame,ret (modes 5 $0A $0B)
+08,4F82,CopyMapRowsToScreenUnused,unreferenced: wHoled = $FF; copies 8 rows of 20 tiles from WRAM2 / WRAM3 $D100 (stride $40) via $C600 / $C700 to $9880 (attributes and tiles) with QueueVRAMCopy
+11,412C,BallDisplayViewTable,8 words by wOnGreen for BallDisplayTask: 0 4361 / 1 4970 / 2 4CBB / 3 476E / 4-6 4795 / 7 4E4F
+11,4361,BallDisplayCourseView,view 0: CameraStep; PreviewFrame ($D485 bit 4); CourseViewDrawLookCursor; DrawSortedBallObjects with table 11:4375
+11,4375,CourseViewObjectHandlerTable,8 words: object handlers of the course view (1 pin 2 target marker 3 ball 4 aim arrow 5 preview spot 6 other ball)
+11,4385,CourseViewDrawBall,ball sprite (tile $78 + 2 x height step) and shadow $4E relative to the scroll; every other frame hidden under tree tiles (bit 7) when lower than the canopy
+11,44A1,CourseViewDrawOtherBall,wOtherBall sprite $78; every other frame hidden when on a tree tile
+11,453B,CourseViewDrawTargetMarker,wTargetMarker sprite $3A (offset up $160) and BlinkTargetMarker 12:502C
+11,4599,CourseViewDrawPin,cup: dot $4E when wNoPin else flag sprite $4C (offset up $140 right $40)
+11,464C,CourseViewDrawAimArrow,wAimArrow 16x16 sprite (palette by wCurPlayer; flipped with $D333) unless $D4D4
+11,46B2,CourseViewDrawPreviewSpot,wPreviewSpot ghost ball sprite $3E
+11,4704,CourseViewDrawLookCursor,camera mode 3: wLookCursor sprite (flag #75: 8x8 $2C + AnimateCursorIcon; else bobbing 16x16 $2C)
+11,4961,SubDEFromHLNonZero,hl -= de unless de = 0
+11,4970,BallDisplayGreenView,view 1: CameraStep; PreviewFrame; GreenViewDrawLookCursor; DrawSortedBallObjects with table 11:4984
+11,4984,GreenViewObjectHandlerTable,8 words: object handlers of the green view (same order as CourseViewObjectHandlerTable)
+11,4994,GreenViewDrawBall,ball and shadow relative to wGreenCornerX/Y (1/8 scale)
+11,4A35,GreenViewDrawOtherBall,wOtherBall sprite $78 in the green view
+11,4A7E,GreenViewDrawTargetMarker,wTargetMarker sprite $3A in the green view and BlinkTargetMarker
+11,4AD0,GreenViewDrawPin,cup: hole sprite $DE when wNoPin else flag sprites $EE / $FE
+11,4B68,GreenViewDrawAimArrow,wAimArrow 16x16 sprite in the green view unless $D4D4
+11,4BC7,GreenViewDrawPreviewSpot,wPreviewSpot sprite $3E in the green view
+11,4C12,GreenViewDrawLookCursor,camera mode 3: wLookCursor sprite in the green view (as CourseViewDrawLookCursor)
+11,4C69,LookCursorBob,e += LookCursorBobTable[hVBlankCount & $3F]
+11,4C7B,LookCursorBobTable,64 signed y offsets (0 to 3 to -3) bobbing the look cursor
+11,4CBB,BallDisplayCupView,view 2 (close-up of the cup): holed ($D444 1) frame sprites $CE/$E4; ball $C6 and shadow $D6 relative to the cup; pin drawn in front or behind by y ($FF = nothing)
+11,4D61,CupViewDrawPin,pin sprites $E6 / $F6 at a fixed spot unless wNoPin
+11,4D79,DrawSortedBallObjects,hl = handler table -> $D47E; lists the objects enabled by $D485 bits 0-5 with their y at $D468; calls the handlers from the largest y down
+11,4E4F,BallObjectNop,ret (handler 0 / 7 and view 7)
+11,4E50,CallBallObjectHandler,c = object id: jumps to word c of the table at $D47E
+02,5DDF,DebugSaveViewerPageTable,10 words: pages 0-5 5E03 / 6 5DF3 / 7 5F8A / 8 5FCE / 9 605A
+02,5DF3,DebugSavePageAll,page 6: prints ALL then the 50-byte record 6 at $D000 + 6 x $32 (as DebugSavePageRecord)
+02,5E03,DebugSavePageRecord,pages 0-5: number b+1 and record b ($32 bytes at $D000 + b x $32): words / signed bytes / scores ($36 bias) / hex bytes at fixed screen spots
+02,5F8A,DebugSavePageBytes,page 7: 8 hex bytes from $D15E
+02,5FCE,DebugSavePageWords,page 8: 17 rows of two hex words from $D166 (step 4)
+02,605A,DebugSavePageBall,page 9: words and hex bytes from $D400 ($D400-$D408)
+02,608E,DebugPrintScoreField,a = offset: byte [bc + a] - $36 signed (PrintDecimalByteSigned) or "  -" when 0
+02,60AC,DebugPrintSignedField,a = offset: byte [bc + a] with PrintDecimalByteSigned
+02,60B7,DebugPrintWordField,a = offset: word [bc + a] with PrintDecimalWord
+02,60C4,DebugPrintHexField,a = offset: byte [bc + a] with PrintHexByte
+02,60CF,DebugPrintHexWordPair,a = offset: words [bc + a] and [bc + a + 2] with PrintHexWord 8 columns apart
+31,4A4E,Map0CUnusedShotTermsTip,unreferenced talk script (Marion driving range area): text $0D1B (hook / slice terms) on actor 6 with a Yes/No prompt
+31,53F6,Map0FUnusedLessonPlaceholder,unreferenced: placeholder text $0D16 (Lesson character.) on actor 3
+31,5D12,Map12UnusedLessonPlaceholder,unreferenced: placeholder text $0D16 (Lesson character.) on actor 3
+31,65A0,Map15UnusedLessonPlaceholder,unreferenced: placeholder text $0D16 (Lesson character.) on actor 3
+31,7321,ClinicCoach1CommentWaver,shot class 1: text $15BC (wavering impact)
+31,732E,ClinicCoach1CommentLowPower,shot class 2: text $15BD (less than max power)
+31,733B,ClinicCoach1CommentPowerImpact,shot class 3: text $15BE (wavers on power and impact)
+31,7348,ClinicCoach1CommentNotSerious,shot class 4: text $15BF (that can't be a serious shot)
+31,7355,ClinicCoach1CommentHook,shot class 5: text $15C1 (only judges natural shots)
+31,7362,ClinicCoach1CommentSlice,shot class 6: text $15C2
+31,736F,ClinicCoach1CommentTopspin,shot class 7: text $15C3
+31,737C,ClinicCoach1CommentBackspin,shot class 8: text $15C4; then the coach faces down ($C0) and ScriptEnd
+31,7392,ClinicCoach1JudgeShot,shot class 0: text $15BA filled with distance grade ($1566 + ClinicGradeDistance) / shape ($1572 + DriverShape + 4) / height $1584 / meet area $1596 / waver $15A8 (by stats $C81C $C81E $C81F)
+31,7495,ClinicCoach2CommentMisHit,shot classes 1-4: text $15C0 (I don't judge mis-hits)
+31,74A2,ClinicCoach2CommentSpecial,shot classes 5-8: text $15C5 (no intentional shots); then faces down and ScriptEnd
+31,74B8,ClinicCoach2JudgeShot,shot class 0: text $15BB filled with carry ($156C + grade) / control ($157B + shape + 4) / wind $158D / timing $159F / aim $15B1 (stats $C81C $C81E $C81F)
+31,756A,ClinicGradeDistance,de = distance: a = 0-5 by thresholds $DD $F1 $105 $119 $12D
+31,7691,ClinicShotDistance,hl = ClubDistance 02:511A of wEventShotClub for the character (wCharDriverDist / wCharFlags)
+31,76A2,ClinicShotShape,a = DriverShape 02:534B (wCharFlags / wEventShotClub / $C81D)
+3B,72A3,OutcomeByTerrainTable,16 words by outcome (landing terrain) & $0F for OutcomeRules
+3B,7411,OutcomeOutOfBounds,terrain 7: caption anim 0 and caption 5; CountStroke; a = $FF (stroke and distance)
+3B,7426,OutcomeWater,terrain 3: hides the ball and arrow ($D485 bits 2 3); caption anim 1 and caption $0C; CountStroke; DropAtSafeSpot
+3B,7447,OutcomeGreen,terrain 6: first time on the green (PlayerField $2B): captions $1B (+4 bonus) / $1F (+2) / $13 (+2 near the pin) / $0B / $0A / $24; later shots: long putt near the pin -> caption 9 else $24
+3B,7529,OutcomeBunker,terrain 2: caption anim wLie+2 and caption $0D
+3B,7541,OutcomeFairway,terrain 0 and $0E: caption anim wLie+5 and caption $0E
+3B,7555,OutcomeTerrainA,terrain $0A: hides the arrow; caption anim 5 and caption $0F
+3B,756B,OutcomeRough,terrain 1 and $0F: caption anim wLie+8 and caption $10
+3B,757F,OutcomeSemiRough,terrain 9: caption anim 6 and caption $12
+3B,7590,OutcomeTerrain5,terrain 5: caption anim $0A and caption $11
+3B,75A1,OutcomeTerrainC,terrain $0C: caption anim $0A and caption $2B
+3B,75B2,OutcomeTerrainD,terrain $0D: caption anim wLie+$0B and caption $25
+3B,75CA,OutcomeNoCaption,terrain 4 8 $0B: a = 0
+3B,75CC,OutcomeMode5B,OutcomeRules for wGameMode 5 and $0B: nothing (a = 0)
+3B,75CE,OutcomeMode6,OutcomeRules for wGameMode 6: holed in 1 -> hole-in-one picture / MarkHoleCleared / 20 points; holed later -> picture 4 caption $18; else OutcomeMode6ByTerrainTable
+3B,75E2,OutcomeMode6ByTerrainTable,16 words as OutcomeByTerrainTable but terrain 6 -> OutcomeMode6Green
+3B,7639,OutcomeMode6Green,terrain 6 in mode 6: first time on the green captions $1B / $0B / $0A without bonuses; later long putt near the pin caption 9 else $24
+4A,56C6,ComposeObjectPicture_4A,bank 4A export 0 (Pitch and Putt courses 6 and 9 via 15:4693): as 4F:5645; LZ 4A:5410; palettes 4A:5696
+4A,56FE,DrawObjectList23_4A,as 4F:567D
+4A,5728,DrawObject23_4A,as 4F:56A7; shape records 4A:5793
+4A,57D3,DrawObjectList1_4A,as 4F:5752
+4A,580A,DrawObject1_4A,as 4F:5789; shape records 4A:60CA
+4A,610A,DrawObjectOverlay23_4A,as 4F:6089
+4A,6130,DrawObjectOverlay_4A,as 4F:60AF; shape records 4A:619D
+4A,61DD,BlitRowOpaque03_4A,as 4F:615C
+4A,61EA,BlitRowMasked_4A,as 4F:6169
+4B,570A,ComposeObjectPicture_4B,bank 4B export 0 (Marion: courses 0 1 8 $0A-$0F and course 7 holes 7-9 via 15:467F): as 4F:5645; LZ 4B:5360; palettes 4B:56DA
+4B,5742,DrawObjectList23_4B,as 4F:567D
+4B,576C,DrawObject23_4B,as 4F:56A7; shape records 4B:57D7
+4B,5817,DrawObjectList1_4B,as 4F:5752
+4B,584E,DrawObject1_4B,as 4F:5789; shape records 4B:610E
+4B,614E,DrawObjectOverlay23_4B,as 4F:6089
+4B,6174,DrawObjectOverlay_4B,as 4F:60AF; shape records 4B:61E1
+4B,6221,BlitRowOpaque03_4B,as 4F:615C
+4B,622E,BlitRowMasked_4B,as 4F:6169
+4C,572F,ComposeObjectPicture_4C,bank 4C export 0 (Palm: course 2 and course 7 holes 10-12 via 15:4683): as 4F:5645; LZ 4C:5400; palettes 4C:56FF
+4C,5767,DrawObjectList23_4C,as 4F:567D
+4C,5791,DrawObject23_4C,as 4F:56A7; shape records 4C:57FC
+4C,583C,DrawObjectList1_4C,as 4F:5752
+4C,5873,DrawObject1_4C,as 4F:5789; shape records 4C:6133
+4C,6173,DrawObjectOverlay23_4C,as 4F:6089
+4C,6199,DrawObjectOverlay_4C,as 4F:60AF; shape records 4C:6206
+4C,6246,BlitRowOpaque03_4C,as 4F:615C
+4C,6253,BlitRowMasked_4C,as 4F:6169
+4D,5884,ComposeObjectPicture_4D,bank 4D export 0 (Dune: course 3 and course 7 holes 13-15 via 15:4687): as 4F:5645; LZ 4D:5530; palettes 4D:5854
+4D,58BC,DrawObjectList23_4D,as 4F:567D
+4D,58E6,DrawObject23_4D,as 4F:56A7; shape records 4D:5951
+4D,5991,DrawObjectList1_4D,as 4F:5752
+4D,59C8,DrawObject1_4D,as 4F:5789; shape records 4D:6288
+4D,62C8,DrawObjectOverlay23_4D,as 4F:6089
+4D,62EE,DrawObjectOverlay_4D,as 4F:60AF; shape records 4D:635B
+4D,639B,BlitRowOpaque03_4D,as 4F:615C
+4D,63A8,BlitRowMasked_4D,as 4F:6169
+4E,5642,ComposeObjectPicture_4E,bank 4E export 0 (Links: course 4 and course 7 holes 1-2 16-18 via 15:468B): as 4F:5645; LZ 4E:54F0; palettes 4E:5612
+4E,567A,DrawObjectList23_4E,as 4F:567D
+4E,56A4,DrawObject23_4E,as 4F:56A7; shape records 4E:570F
+4E,574F,DrawObjectList1_4E,as 4F:5752
+4E,5786,DrawObject1_4E,as 4F:5789; shape records 4E:6046
+4E,6086,DrawObjectOverlay23_4E,as 4F:6089
+4E,60AC,DrawObjectOverlay_4E,as 4F:60AF; shape records 4E:6119
+4E,6159,BlitRowOpaque03_4E,as 4F:615C
+4E,6166,BlitRowMasked_4E,as 4F:6169
+15,463F,SceneryByCourseTable,16 words by wCourse & $0F for DrawBehindViewScenery: 0 1 8 $0A-$0F Marion / 2 Palm / 3 Dune / 4 Links / 5 4F / 6 9 Pitch and Putt / 7 by hole
+15,465F,SceneryCourse7HoleTable,16 words by (wHoleNumber - 7) & $0F: holes 1-2 4E / 3-6 4F / 7-9 4B / 10-12 4C / 13-15 4D / 16-18 4E
+15,467F,SceneryMarion,farcall ComposeObjectPicture_4B
+15,4683,SceneryPalm,farcall ComposeObjectPicture_4C
+15,4687,SceneryDune,farcall ComposeObjectPicture_4D
+15,468B,SceneryLinks,farcall ComposeObjectPicture_4E
+15,468F,SceneryCourse5,farcall ComposeObjectPicture 4F:5645 (course 5: Peach's course?)
+15,4693,SceneryPitchAndPutt,farcall ComposeObjectPicture_4A (courses 6 and 9)
+15,4697,SceneryCourse7ByHole,course 7: jumps through SceneryCourse7HoleTable by wHoleNumber - 7 (holes from all courses?)
+10,6D8A,LaunchSpeedClassM4,trajectory class -4 or lower: farcall 39:6A48
+10,6D8E,LaunchSpeedClassM3,trajectory class -3: farcall 39:5525
+10,6D92,LaunchSpeedClassM2,trajectory class -2: farcall 39:4006
+10,6D96,LaunchSpeedClassM1,trajectory class -1: farcall 38:6A02
+10,6D9A,LaunchSpeedClass0,trajectory class 0: farcall 38:4006
+10,6D9E,LaunchSpeedClassP1,trajectory class +1: farcall 38:550B
+10,6DA2,LaunchSpeedClassP2,trajectory class +2: farcall 3A:4006
+10,6DA6,LaunchSpeedClassP3,trajectory class +3: farcall 3A:54EB
+10,6DAA,LaunchSpeedClassP4,trajectory class +4 or higher: farcall 3A:69BC
+10,6DAE,PowerScaleLookup,ShotSpeed branch (10:6CE0): hl = word [wSwingPower & $FE] of the table picked by $D32B & 3 from 10:6DCD (word tables 6DD5 6E13 6E51)
+10,77CC,ReflectScaleUnused,unreferenced: length of (reflected - ball velocity) by Dist16; $D4A9 / $D4AB = -$D4A1 x vx / len and -$D4A3 x vy / len (clamped $3FFF)
+05,6108,CloseMessageBoxShrinkLoop,unreachable (CloseMessageBoxAnimated jumps over it at 05:6106): shrinks window $D856 step by step with RestoreShadowFromMap / BuildTextWindowRecord / UpdateWindows
+05,6B76,DebugMenuScene,DebugMenu item 0: DebugWarpMenu 05:6C25
+05,6B7B,DebugMenuMap,DebugMenu item 1: DebugMapGfxViewer 0B:4579 then RestorePalettesFromMaster
+05,6B83,DebugMenuPalette,DebugMenu item 2: DebugPaletteEditor 44:42FB
+05,6B88,DebugMenuFlag,DebugMenu item 3: DebugFlagEditor
+*,C8D0,wP2Character,player 2 character (wPlayer2 +$10); $FF = no second player
+*,C8BE,wP1ScoreVsPar,player 1 score vs par (PlayerField $3E); compared with wP2ScoreVsPar by RoundEndMode3Stroke
+*,C8FE,wP2ScoreVsPar,player 2 score vs par (PlayerField $3E)
+*,C875,wPlayerRank,player rank from GetPlayerRank 0E:7887 (tournament round start and hole end)
+*,C4BD,wStandingsPhase,0 round start / 1 hole end / 2 round end: set before BuildStandings and ShowScorecard in bank 08
+*,C961,wReturnEntrance,entrance used with wReturnMap $C960 (set by RoundEndMode1Tournament / RoundEndMode2Match)
+*,D485,wBallObjectFlags,WRAM6: ball display objects enabled: bit 0 pin 1 target marker 2 ball 3 aim arrow 4 preview spot (and PreviewFrame) 5 other ball
+*,D468,wBallObjectList,WRAM6: up to 6 entries (y word / handler id) sorted by DrawSortedBallObjects
+*,D47A,wBallObjectMaxY,WRAM6: largest y found by DrawSortedBallObjects (word)
+*,D47C,wBallObjectPick,WRAM6: pointer to the picked wBallObjectList entry
+*,D47E,wBallObjectHandlers,WRAM6: handler table pointer (11:4375 course view / 11:4984 green view)
+10,6DCD,PowerScaleTable,4 words by $D32B & 3 (6DD5 6E13 6E51 6E51): power scale lists read by PowerScaleLookup 10:6DAE
+2,6109,DebugBlankLineData,string of spaces printed by ClearDebugLines (02:60F8)
