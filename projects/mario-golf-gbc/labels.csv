@@ -1642,3 +1642,155 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,DFAE,wTextStringArgs,WRAM5: 16 string pointers for text code $04
 *,DFCE,wTextNumberArgs,WRAM5: 16 numbers for text code $09
 *,DFEE,wTextByteArgs,WRAM5: 16 short text indices for text code $08
+# --- banks 3C 3E 36 3D (computer golfer AI, rival scores, standings screens) ---
+3C,426A,CpuPlanShotMain,bank 3C export 0 (from 10:5978): computer golfer's shot plan; $D549 = CpuHoleStrokeBias; green lie ($D4CD 6/$0A) -> CpuPlanPutt; PinDist >= $780 -> CpuPlanLongShot else CpuPlanApproach; returns a = club d = shot mode bc = aim e = pad h = power l = impact (h l even)
+3C,5751,CpuPlanLongShot,far from the pin: club (CpuPickTeeClub / CpuGoForGreenClub or power shot via CpuDecidePowerShot) / target (CpuChooseTarget) / power / spin (CpuChooseSpin) / wind (CpuWindAimCorrection CpuWindAdjustClubPower) / tree check (CpuPreviewHitsTree) and clear-aim search; then power and impact errors; plan in $D54A-$D551
+3C,59DC,CpuPlanApproach,within $780 of the pin: target = cup (+ random offset unless behind schedule) / club CpuChooseApproachClub; putter-style power from distance (shot mode 0-3) / errors CpuPowerJitter CpuImpactError
+3C,5DCD,CpuPlanPutt,on the green: target = cup (+-16 x random offset when ahead of schedule); putter $0D; power from the distance (cap $3C) then CpuReadPutt
+3C,5F1C,CpuReadPutt,walks the putt line in $20 steps reading green slope (CpuTerrainAtPoint): bends the aim by table 3C:5D9D and adjusts power; the sideways sum at 3C:601B is dead (reads ROM $000C instead of the $D55E toggle)
+3C,4693,CpuChooseTarget,bc = club reach: target $D545 = cup when reachable and on schedule; else waypoints of the hole route (3D:431A by golfer PlayerField $10) from the last one in reach; CpuFindLandingSpot fallback; hole lists 3C:4A0F / 3C:4A2F
+3C,48D5,CpuFindLandingSpot,bc = distance: tries 16 aim offsets around AimAtCup (3C:49B3) for a landing on fairway/green ($00 $06 $0A $0E) -> $D545; distance x 3/4 up to twice; else the cup
+3C,4A51,CpuFindFairwaySpot,as CpuFindLandingSpot with the finer offsets 3C:49EB: fairway ($00 $0E) only and no hazard near (CpuHazardNear); up to 4 shortenings; else the cup
+3C,499F,NextAimOffset,bc += word d of table 3C:49B3; d++ (CpuFindLandingSpot)
+3C,49D7,NextAimOffsetFine,bc += word d of table 3C:49EB; d++ (CpuFindFairwaySpot)
+3C,4A11,IsHoleInList41,a = 1 when wHoleId is in the list at 3C:4A0F ($41)
+3C,4A33,IsHoleInList17,a = 1 when wHoleId is in the list at 3C:4A2F ($17 $3A $46)
+3C,50D3,CpuHoleStrokeBias,spreads the golfer's target strokes (record bytes 2 + course bonus 3C:43DE) over 18 holes (front/back split CpuNineSplit) -> a = this hole's bias (stored $D549); the $D526 = PlayerField $3E store at 3C:50E3 is dead (overwritten)
+3C,51F6,CpuNineSplit,golfer record: total bias -> b = front nine / c = back nine share by the 2-bit style (3C:4381) and sign of byte 2
+3C,525C,CpuPickTeeClub,club for a long shot: by par ($D325) / strokes (PlayerField $20) / schedule and golfer bits 4-5: driver or 2-3 woods if CpuClubBanned allows; else CpuPickClubForDistance(PinDist)
+3C,5307,CpuGoForGreenClub,a = club: when this stroke is meant to reach the green (par - 2 + bias = strokes + 1) and the club out-reaches PinDist picks the club for PinDist (not from a bunker)
+3C,45F9,CpuPickClubForDistance,bc = distance: shortest club (from 1W down) that still reaches it on this lie (CpuClubDistanceForLie); skips banned clubs; putter on the green; woods only from tee/fairway ($00 $0E) else club 3
+3C,465F,CpuClubBanned,a = club: 1 when unusable from lie $D4CD (clubs 0-2 off tee/fairway; lie 4 bans all but $0B/$0C)
+3C,453F,CpuClubDistanceForLie,a = club: ClubBaseDistance (10:68B4) x lie factor (CpuLieFactor sum; $C6 = unchanged)
+3C,4528,CpuClubDistanceAtPower,a = club h = power (0-$3C): CpuClubDistanceForLie / 60 x power
+3C,5021,CpuPowerForDistance,bc = club distance de = wanted distance: power (de + $60) x 60 / bc capped at $3C; $3C when the club is short
+3C,4CDA,CpuLandingPoint,a = club h = power e (power) bc = aim: ball + polar(CpuClubDistanceAtPower) -> bc = x de = y
+3C,4D0A,CpuShortenToGoodLie,a = club d = power bc = aim: walks the carry back $20 at a time until the landing terrain is playable ($00 $02 $06 $09 $0A $0E); h = new power ($FF none)
+3C,4C54,CpuFindClearAim,a = club h = power de = aim: tries 48 aim offsets (3C:4BF4) until the preview misses trees (CpuPreviewHitsTree) and the landing is safe (CpuLandingUnsafe); a = 0 de = aim or a = 1
+3C,4BD1,CpuLandingUnsafe,bc de = point: 1 for water/OB terrain (3 5 7) or a hazard near (CpuHazardNear)
+3C,4E74,CpuHazardNear,hl de = point: scans a $140 square in $20 steps for terrain 3 / 7 / $0C -> a = 1
+3C,4F30,CpuShotNearHazard,a = club d = power bc = aim: CpuHazardNear around the landing point
+3C,4F97,CpuPreviewHitsTree,a = club bc = aim: runs the landing preview (PreviewRestart / PreviewStep) up to 249 steps while the ghost is below $200 ($D37A); a = 1 when PreviewTreeCheck hits; restores aim / $D41C / club ($D598-$D59C)
+3C,555D,CpuWindAimCorrection,a = club bc = aim: when wind ($C815) >= 2 adds the crosswind correction from 3C:561C x $1C7 x 2 / golfer factor (3C:534D)
+3C,56CA,CpuWindAdjustClubPower,club / aim / power: head/tail wind carry change (3C:55BA) x $20 -> new club for the distance and new power
+3C,561C,WindSideLookup,a = club b = wind speed d = relative wind angle: signed aim step from 3C:535D/539D/53DD/541D (club group; rows by speed 10 14 17)
+3C,55BA,WindCarryLookup,as WindSideLookup with tables 3C:545D/549D/54DD/551D: signed carry change
+3C,569A,WindAngleToAim,bc = aim: d = wWindAngle - aim rounded to 1/16 turn
+3C,63F8,CpuChooseSpin,e = d-pad hold for the swing ($40 up / $80 down / $FF none) by target-at-cup / wind speed under the golfer limit (3C:43C7 + 5) / wind angle / golfer bits 6-7 and random; not from bunker/green/lies 5 $0B $0C
+3C,6530,CpuDecidePowerShot,d = 1 to use a power shot: first stroke / not par 3 / power shots left (PlayerField $28) / hole not $41; chance by golfer bits 0-1 of record byte 1
+3C,6213,CpuPowerJitter,d = power: when ahead of schedule adds a random error by golfer style (3C:438A: -7..8 / -4..3 / -1..2) clamped 3..$3C
+3C,62CA,CpuImpactError,sets wClub / wShotMode; when ahead of schedule and MissTable allows: l = random impact offset (CpuRandomOffset) scaled by golfer style and lie
+3C,6396,CpuRandomOffset,a = range: random 0..range (rand & 15 rejected above) negated when h bit 0
+3C,63C7,CpuRandomOffsetNonZero,as CpuRandomOffset but never 0
+3C,5C22,CpuScanPathToCup,steps from the ball to the cup in $10 units: first green/semi-rough point -> $D592; a = 1 when the path crosses other terrain
+3C,5CE4,CpuChooseApproachClub,bunker -> $0C; fairway with a clear path: putter when the green starts within $20 else CpuApproachClubByDistance; else $0B
+3C,5D60,CpuApproachClubByDistance,a = golfer style (3C:438A) hl = distance/32: thresholds 3C:4344 -> value from 3C:435C ($0B past them)
+3C,4404,CpuCompare16,bc vs de: a = 0 equal / 1 bc > de / 2 bc < de (signed)
+3C,4447,CpuDistToCup,bc de = point: distance to the cup (scaled Isqrt)
+3C,4466,CpuDistFromBall,bc de = point: distance from the ball (scaled Isqrt of dx^2 + dy^2)
+3C,44DE,CpuAngleTargetToPoint,AngleFromVector16 of point bc de minus target $D545/$D547
+3C,44FC,CpuAimAtTarget,bc = angle from the ball to the target $D545/$D547
+3C,4564,CpuTerrainAtPoint,hl = x de = y: green-relative on green views; c = slope (CpuSafeSlopeAt) a = terrain (CpuSafeTerrainAt)
+3C,45AF,CpuSafeSlopeAt,CpuGreenSlopeAt guarded against negative or >= $4000 coordinates ($80 / b = 0)
+3C,45D5,CpuSafeTerrainAt,CpuTerrainAt guarded against coordinates out of the map (returns 7 = OB)
+3C,4599,RandomUpTo,a = n: AdvanceRandomSeed until l <= n
+3C,4006,CpuBallLieTerrain,copy of BallLieTerrain 10:648B
+3C,404C,CpuGreenSlopeAt,copy of GreenSlopeAt 10:64D1
+3C,40B1,CpuTerrainAt,copy of TerrainAt 10:6536
+3C,416A,CpuLieFactor,copy of LieFactor 10:65EF (table 3C:4189)
+3C,41ED,CpuLieClass,copy of LieClass 10:6672 (table 3C:4246)
+3C,4256,CpuPlayerField,copy of PlayerField 10:4B14
+3C,4360,GolferAiRecord,a = golfer (PlayerField $10; >= $10 -> 0) -> hl = 8-byte record from 3C:4324
+3C,4381,GolferAiBits01,record byte 0 bits 0-1 (style: nine split / approach / errors)
+3C,438A,GolferAiBits23,record byte 0 bits 2-3 (error size / approach club row)
+3C,4397,GolferAiBits45,record byte 0 bits 4-5 (tee club choice)
+3C,43A8,GolferAiBits67,record byte 0 bits 6-7 (spin habit)
+3C,43BD,GolferAiPowerShotBits,record byte 1 bits 0-1 (power shot chance)
+3C,43C7,GolferAiWindLimit,record byte 1 bits 2-4 (wind limit for spin)
+3C,43D5,GolferAiTargetStrokes,record byte 2 (signed stroke bias)
+3C,43DE,GolferAiCourseBonus,record byte 3 + course - 1 for course $C836 1-5 else 0
+3C,6686,SimulateRivalScores,bank 3C export 2 (from 0E:78DC): seeds $D596 from $C9FE; 27 rivals (3C:65E4) get a score through the current hole; ranks them; last entry = PlayerField $3E and hole
+3C,6598,RivalRandom,16-bit LCG at $D596 (x 3 ... + $3039) -> a = high byte
+3C,65C8,RivalRandomBelow,a = n: RivalRandom masked down and rejected until below n
+3C,67E2,RivalBaseScore,a = rival: skill (3C:65E4 byte 0) + course offset (3C:67DD) + random spread (two RivalRandomBelow 5)
+3C,66EF,RivalScoreThroughHole,a = rival d = base: base x holes / 18 + profile (RivalHoleProfile); rival $1A on hole 18 is held to the player's total
+3C,67B1,RivalHoleProfile,a = rival: per-hole profile row 3C:6650 (18 bytes by record byte 1) at the hole + record byte 3
+3C,6821,RankRivals,copies the 27 scores to $D554 with indices $D572; sorts (SortScoresWithIndex); separates ties at the top
+3C,6921,SortScoresWithIndex,a = count hl = values de = indices: selection sort ascending swapping both arrays
+3C,69D7,KeepRivalsBehindLeader,rivals 0-25 scoring at or under rival 26 are set to its score + 1
+3C,6A04,RivalScoreToWord,a = score byte -> hl sign-extended ($91 and up negative)
+3C,6A23,DebugWindCarryTest,unreferenced export 4: prints the build stamp (00:0153); runs DebugWindCarrySweep into SRAM bank 1; prints COMPLETE and hangs
+3C,6A55,DebugWindCarrySweep,debug: for clubs 0-$0C wind angles $C0.. step $10 and speeds 1-9 fires a full perfect shot up the screen (DebugTestShot) and logs the result (DebugLogShot) to SRAM via $BFF0
+3C,6B3F,AngleFromUp,de = bc - $C000 (angle relative to straight up)
+3C,6B59,DebugLogShot,debug: writes the shot's angle (DebugShotAngle) and distance minus the club base distance to SRAM at [$BFF0] and prints them
+3C,6BCA,DebugTestShot,debug: clears the stop spot; aim $C000; ShotLaunch then BallTask / RestWatch until the ball rests
+3C,6BFE,DebugShotAngle,angle of ball - start ($D439/$D43B) via AngleFromVector16
+3C,4091,CpuSlopeDirTable,32 bytes: copy of the slope direction table used by CpuGreenSlopeAt
+3C,4189,CpuLieFactorTable,per-club pointers to 4-byte lie factor rows (copy of 10:660E)
+3C,4246,CpuLieClassTable,16 bytes: lie class by terrain (copy of 10:66CB)
+3C,4324,GolferAiRecordTable,16 pointers to 8-byte golfer AI records at 3C:42A4
+3C,4344,ApproachDistTable,3 rows of 4 words: approach distance thresholds by golfer style
+3C,435C,ApproachClubTable,4 bytes picked by CpuApproachClubByDistance
+3C,49B3,AimOffsetTable,16 words: aim offsets alternating +- for CpuFindLandingSpot
+3C,49EB,AimOffsetFineTable,18 words: finer aim offsets for CpuFindFairwaySpot
+3C,4BF4,ClearAimOffsetTable,48 words: aim offsets alternating +- for CpuFindClearAim
+3C,534D,GolferWindFactorTable,16 bytes: crosswind divisor per golfer (2 or 3)
+3C,535D,WindSideTable,4 x 64 bytes (club groups) of 16-direction rows: crosswind aim steps
+3C,545D,WindCarryTable,4 x 64 bytes: head/tail wind carry steps
+3C,5D9D,PuttBreakTable,16 directions x 3 strengths: aim bend for CpuReadPutt
+3C,65E4,RivalTable,27 x 4 bytes: skill / profile row / ? / 0
+3C,6650,RivalProfileTable,3 x 18 bytes: per-hole score drift profiles
+3C,67DD,RivalCourseOffsetTable,5 bytes by course ($C836): ff fd fb f8 f5
+3E,403F,MatchStandingsScreen,bank 3E export 0 (via 0E:43D6 in match mode): fade; screen gfx; tallies holes ($C96E) and draws both players' names / hole marks / status / labels / hole number; waits for a key (WaitKeyNoTimeout)
+3E,6361,TwoPlayerScoreScreen,bank 3E export 2 (0E:43D6 and map script 35:775F): both players' names / labels / score vs par ($C8BE $C8FE) and winner faces (LoadResultFaces); waits for a key
+3E,675C,ShowStandingsFar,bank 3E export 4 (08:4B6C 41:789C 41:78BD): farcall 0E:43D6 (standings screen picked by wGameMode)
+3E,4102,LoadStandingsGfx,LZ tiles 3E:4E90 and 3E:5D50 to VRAM / palettes 3E:5882 3E:6048 / tile and attribute maps 3E:58D0 3E:5B10 to WRAM1 $D000 / $D400
+3E,4164,MatchTallyHoles,counts wMatchHoles results of the holes played into $D555/$D556 (holes won) $D557 (others) $D559/$D55A (2 per win 1 per other); then MatchStatusFlags
+3E,4377,MatchTallyPlayoff,as MatchTallyHoles for the single playoff result $C96C ($C83A set)
+3E,425B,MatchStatusFlags,tail of the tallies: $D525 decided / $D52A last hole / $D526 $D527 dormie-like flags / $D528 $D529 holes up per player
+3E,43F7,DrawHoleNumber,big two-tile-high digits of wHoleNumber (tiles $C0+/$D0+; $AF/$BF for 10)
+3E,4450,DrawMatchStatus,a = player: status text tile string 3E:4006 when flagged else the holes-up number (05:551F) and 3E:4010
+3E,4505,DrawHolesWonMarks,a = player: one mark per hole won ($D555 / $D556) from tiles at 3E:4038/403A
+3E,456A,DrawPlayerKindMatch,a = player: label 3E:4023 or 3E:401C by character (PlayerField $10; $0B) and PlayerField $13
+3E,659D,DrawPlayerKindResult,as DrawPlayerKindMatch with labels 3E:402F / 3E:4028
+3E,45B0,LoadPlayer1Portrait,face tiles of character $C890 (3E:4990 + id x 64) and palette (3E:4D90; +$80 with $C899 bit 4)
+3E,4605,LoadPlayer2Portrait,as LoadPlayer1Portrait for $C8D0 / $C8D9
+3E,4842,FillUnusedMarkCells,fills the unused hole-mark cells with tile $C9 (count from $D553 or 9 with $C83A)
+3E,489E,LoadMatchBanner,$C83A set: banner 3E:5E88 ($D61D = 2); $D52A: banner 3E:5F94 ($D61D = 1); else $D61D = 0
+3E,6098,WaitKeyNoTimeout,waits for A/B (a = 0) or Right (a = 1) with sound $5C; bc = 300 is never decremented so there is no timeout
+3E,60CA,DrawPlayerName,a = player bc = cell: formats the name (05:54CF 05:62AA) into $CA00 and copies 7 tiles to the WRAM1 tile map
+3E,612C,ClearAttrRow7,7 attribute cells from bc set to 0
+3E,6144,ClearNameBuffer,7 spaces at $CA00
+3E,615E,CopyNameBuffer,7 bytes $CA00 -> de
+3E,61A2,PutTileStringBank1,hl = tile string bc = cell: PutTileBank1 until 0
+3E,61B7,StandingsMapAddr,bc = column row -> hl = $D000 + row x 32 + column (WRAM1 attribute map; tile map at +$400)
+3E,61E3,PutTileAttr0,a = tile at bc: tile map and attribute 0
+3E,6209,PutTileOnly,a = tile at bc: tile map only
+3E,622A,PutTileBank1,a = tile at bc: tile map and attribute 8 (VRAM bank 1)
+3E,6250,PutAttr,a = attribute at bc
+3E,6293,DrawTileStringAt,hl = (x y string) with y + d: PutTileStringBank1
+3E,62A6,ScoreTensDigit,a = score byte: tens digit of |score| mod 100
+3E,62D3,ScoreOnesDigit,a = score byte: ones digit
+3E,6342,MatchScoreToWord,a = score byte -> hl sign-extended ($91 and up negative)
+3E,6421,FillScorePanels,fills two 10 x 2 panels with tile $C9
+3E,64FB,DrawScoreLabel,3 x 2 tiles $39-$3B / $49-$4B at bc
+3E,6525,DrawScoreVsPar,a = score vs par: sign (+ / - / $60 even) and up to three digits
+3E,6637,MatchCompare16,copy of CpuCompare16
+3E,665B,LoadResultFaces,compares the players' $C8BE / $C8FE: winner and loser face tiles (3E:5E2E 3E:5DE1) and palettes to slots 9 / $0A (same face when tied)
+36,4008,LzTileBlockTableA,5 pointers to LZ tile blocks (36:4020 1760 bytes ... 36:5120); loader not found
+36,547B,LzMapBlockTableA,16-byte rows of 4 pointers to LZ blocks of 160 bytes each (20 x 8 maps?); loader not found
+36,5D0D,LzTileBlockTableB,5 pointers to LZ tile blocks (36:5D20 1792 bytes ...); loader not found
+36,71D6,LzMapBlockTableB,rows of 4 pointers to 160-byte LZ blocks (as LzMapBlockTableA); loader not found
+3D,431A,HoleRouteWaypoint,bank 3D export 0 (3C:4693): c = waypoint b = golfer -> bc de = waypoint x y (x 32) of route (golfer 4-11 or default) for wHoleId from 3D:4252; c >= 3 -> $FFE0 none
+3D,4252,HoleRouteTable,per wHoleId a pointer to 9 route pointers (default + golfers 4-11) of 4-byte waypoints
+*,D4CD,wLieTerrain,WRAM6: terrain type under the ball before the shot (LieClass / CPU club choice)
+*,D4DA,wSwingTargetPad,WRAM6: computer swing d-pad hold copied to $D44D ($40 up / $80 down / $FF none)
+*,D525,wCpuScratch,WRAM6: $D525-$D536 work bytes of the bank 3C planner (reused per routine)
+*,D545,wCpuTarget,WRAM6: computer target point x / y ($D547) integer parts
+*,D549,wCpuStrokeBias,WRAM6: this hole's stroke bias (CpuHoleStrokeBias); par + bias - 2 = stroke meant to reach the green
+*,D54A,wCpuPlan,WRAM6: plan of the shot: club / ? / aim $D54C / pad $D54E / mode $D54F / impact $D550 / power $D551
+*,D592,wCpuGreenEntry,WRAM6: first green point on the line to the cup (CpuScanPathToCup; $FFFF none)
+*,D596,wRivalRng,WRAM6: LCG state of the rival score simulation
+*,D598,wPreviewSave,WRAM6: launch dir / $D41C / club saved around CpuPreviewHitsTree
+*,D608,wCpuTeeClub,WRAM6: club picked by CpuPickTeeClub
+*,C9FE,wRoundSeed,random word saved at round start (10:4B8C); seeds SimulateRivalScores

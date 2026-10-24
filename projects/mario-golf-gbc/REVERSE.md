@@ -1041,6 +1041,108 @@ no callers; 03:4028-40AA is an unreferenced full-screen picture routine (LZ tile
 03:4A9E, palettes 03:4B05, song `$06`, waits for a button; it first resets the serial link) not in the export
 table: probably an old link/error screen.
 
+##### Bank 3C: computer golfer AI, rival-score simulation, debug wind sweep
+
+Exports (`$4000` table): `$00` 3C:426A CpuPlanShotMain (far-called from 10:5978 only), `$02` 3C:6686
+SimulateRivalScores (from 0E:78DC only), `$04` 3C:6A23 DebugWindCarryTest (no caller).
+
+**Shot planner.** 10:5978 farcalls 3C:426A and stores what it returns: a -> wClub, d -> wShotMode/$D32B,
+bc -> wLaunchDir, l -> wSwingTargetImpact, h -> wSwingTargetPower, e -> $D4DA (copied to the swing pad byte $D44D
+by SwingMeterCPU 10:567E). CpuPlanShotMain first computes the per-hole stroke bias (CpuHoleStrokeBias 3C:50D3 ->
+`$D549`), then branches on the lie and distance: green lie ($D4CD = 6 or $0A) -> CpuPlanPutt 3C:5DCD; PinDist
+(10:62AD) >= `$780` -> CpuPlanLongShot 3C:5751; otherwise CpuPlanApproach 3C:59DC. Power and impact are rounded
+down to even values on return.
+
+- "Schedule": par ($D325) + bias ($D549) - 2 is the stroke on which the golfer means to reach the green;
+  compared with strokes so far + 1 (PlayerField $20). Ahead of schedule the AI adds deliberate errors: a random
+  target offset (approach / putt), random power (CpuPowerJitter 3C:6213) and impact (CpuImpactError 3C:62CA).
+  Behind schedule it aims exactly.
+- Long shot (3C:5751): club = CpuPickTeeClub (3C:525C: driver / woods by par, strokes, golfer bits) and
+  CpuGoForGreenClub (3C:5307), or the driver at +10% when CpuDecidePowerShot (3C:6530) says to use a power shot;
+  target = CpuChooseTarget (3C:4693): the cup when in reach, else a waypoint of the hole's route (3D:431A) or a
+  searched landing spot (CpuFindLandingSpot 3C:48D5 / CpuFindFairwaySpot 3C:4A51); power from distance
+  (CpuPowerForDistance 3C:5021); spin pad (CpuChooseSpin 3C:63F8); wind (CpuWindAimCorrection 3C:555D,
+  CpuWindAdjustClubPower 3C:56CA); then the landing preview is run (CpuPreviewHitsTree 3C:4F97: PreviewRestart /
+  PreviewStep / PreviewTreeCheck from banks 10 and 08) and on a tree or hazard it searches 48 aim offsets
+  (CpuFindClearAim 3C:4C54) and longer clubs. After a shot outcome 7 (PlayerField $14) it plays club $0B to a
+  fairway spot (3C:59C4).
+- Approach (3C:59DC): club from CpuChooseApproachClub (3C:5CE4): bunker -> $0C, clear fairway path to the green
+  (CpuScanPathToCup 3C:5C22) -> putter or a club by distance (3C:5D60), else $0B; shot mode 0-3 and power from
+  the distance in 3C:5AB0-5B78.
+- Putt (3C:5DCD): putter, power from distance, then CpuReadPutt (3C:5F1C) walks the line reading green slopes.
+- Many bank 10 routines are duplicated here byte for byte: CpuBallLieTerrain 3C:4006 (= 10:648B), CpuGreenSlopeAt
+  3C:404C (= 10:64D1), CpuTerrainAt 3C:40B1 (= 10:6536), CpuLieFactor 3C:416A (= 10:65EF), CpuLieClass 3C:41ED
+  (= 10:6672), CpuPlayerField 3C:4256 (= 10:4B14), with their tables (3C:4091, 3C:4189, 3C:4246).
+- Golfer AI records: GolferAiRecord 3C:4360 maps the golfer id (PlayerField $10, < $10) through 3C:4324 to an
+  8-byte record at 3C:42A4: byte 0 four 2-bit traits (3C:4381/438A/4397/43A8), byte 1 power-shot chance bits 0-1
+  and wind limit bits 2-4, byte 2 signed stroke bias, bytes 3-7 a per-course bonus indexed by wCourse $C836 1-5.
+- Per-hole routes in bank 3D (below); hole-specific exceptions: wHoleId $41 (3C:4A0F) and $17/$3A/$46 (3C:4A2F);
+  CpuPlanLongShot also special-cases wHoleId $17 (3C:5842).
+
+**Rival scores** (export `$02`, called from 0E:78DC with hl = a WRAM6 buffer at $D800): seeds an LCG (RivalRandom
+3C:6598, state `$D596`) from `$C9FE` (random word stored at round start by 10:4B8C), gives each of 27 rivals
+(table 3C:65E4: skill / profile row) a score through the current hole: base = skill + course offset
+(3C:67DD by wCourse) + random spread, scaled by holes/18 plus a per-hole profile (3C:6650), then sorts them
+(RankRivals 3C:6821, SortScoresWithIndex 3C:6921) and keeps rivals 0-25 behind rival 26 (3C:69D7); on hole 18
+rival $1A is clamped against the player's total (PlayerField $3E). This is the tournament leaderboard filler.
+
+**Debug leftover**: export `$04` DebugWindCarryTest (3C:6A23) has no caller. It prints the build stamp at 00:0153,
+enables SRAM bank 1, and DebugWindCarrySweep (3C:6A55) sets hDebugMode = 3, then for every club 0-$0C, 16 wind
+angles and wind speeds 1-9 fires a perfect full-power shot straight up the screen (DebugTestShot 3C:6BCA:
+ShotLaunch + BallTask until RestWatch) and logs the angle and distance minus the club's base distance to SRAM
+through the pointer at $BFF0 (DebugLogShot 3C:6B59); then prints "COMPLETE" (3C:6A4C) and hangs. It looks like the
+tool used to build the wind tables 3C:535D / 3C:545D.
+
+**Bugs**
+- 3C:601B in CpuReadPutt: `ld a, [$000C]` reads ROM (`$FF`), so `and 1` is always nonzero and the per-step
+  sideways accumulation at 3C:6022-6043 never runs; the toggle at `$D55E` (3C:608D) was probably meant.
+- 3C:59FB and 3C:5DFD: `ld a, $10 ; call CpuPlayerField ; cp $07` lacks the `ld a, [hl]` (compare 3C:5751),
+  so the "golfer 7" test compares the address low byte and never matches.
+- 3C:50DD-50E3: `$D526` = PlayerField $3E (when wGameMode != 2) is overwritten by 0 at 3C:50E6 (dead store).
+
+**RAM (WRAM6)**: `$D525-$D536` scratch, `$D545/$D547` target, `$D549` stroke bias, `$D54A-$D551` shot plan
+(club, aim, pad, mode, impact, power), `$D552-$D55E` putt-reading / ranking work, `$D554`/`$D572` rival
+score and index arrays, `$D592` first green point on the line, `$D596` rival LCG, `$D598-$D59C` aim / $D41C / club
+saved around the preview, `$D608` tee club.
+
+##### Bank 3E: between-holes standings screens (match play and two-player)
+
+Exports: `$00` 3E:403F MatchStandingsScreen and `$02` 3E:6361 TwoPlayerScoreScreen, both reached through the
+screen picker 0E:43D6 (table 0E:4422 by wGameMode $C834; 6361 also from map script 35:775F); `$04` 3E:675C is a
+2-instruction trampoline to 0E:43D6 (called from 08:4B6C, 41:789C, 41:78BD).
+
+- Screen build: LoadStandingsGfx 3E:4102 (LZ tiles 3E:4E90 / 3E:5D50, palettes, tile maps to WRAM1 `$D000`
+  attributes / `$D400` tiles, 32 wide; StandingsMapAddr 3E:61B7), tile writers 3E:61E3/6209/622A/6250, tile
+  strings (x, y, tiles, 0) at 3E:4006-403E drawn by DrawTileStringAt 3E:6293. Faces: LoadPlayer1Portrait /
+  LoadPlayer2Portrait (3E:45B0 / 3E:4605, character $C890 / $C8D0, tiles 3E:4990 + id x 64). Player names
+  DrawPlayerName 3E:60CA.
+- Match play: MatchTallyHoles 3E:4164 counts wMatchHoles ($C96E, 1 = P1 won, 2 = P2 won) for the holes played
+  into $D555/$D556 (holes won), $D559/$D55A (2 points per win, 1 per other hole) and flags ($D525-$D52A) at
+  3E:425B; playoff variant 3E:4377 uses `$C96C` when $C83A is set. Draws status (3E:4450), hole marks (3E:4505),
+  hole number (3E:43F7), banner (3E:489E, `$D61D`).
+- Two-player: score vs par of each player (PlayerField $3E: $C8BE / $C8FE) by DrawScoreVsPar 3E:6525, winner /
+  loser faces LoadResultFaces 3E:665B.
+- **Bug**: WaitKeyNoTimeout 3E:6098 loads bc = 300 but never decrements it, so the screen waits for A/B/Right
+  forever (returns 0 for A/B, 1 for Right).
+- 3E:6637 (Compare16) and 3E:6342 (score sign-extend, `$91` and up negative) are copies of 3C:4404 / 3C:6A04
+  (also at 48:497E / 48:4A08).
+
+##### Bank 36: LZ graphics (no code)
+
+The four `$4000` entries are data, not code: 36:4008 and 36:5D0D each list 5 LZ streams of 1024-1792 bytes
+(tile blocks; 36:4020 renders as large character artwork), 36:547B and 36:71D6 hold 16-byte rows of 4 pointers to
+160-byte LZ streams (20 x 8 maps?). All decompress cleanly with LZDecompress's format and end at the next pointer.
+Bank 37 has the same layout (4008, 5411, 5D06, 7151). No loader was found (no far call or `ld a, $36` bank
+switch refers to them); the end of the bank is `$FF`.
+
+##### Bank 3D: hole routes for the computer golfers
+
+Export `$00` HoleRouteWaypoint 3D:431A (called 3x from CpuChooseTarget 3C:4693): c = waypoint index, b = golfer
+id; golfers 4-11 have their own route (b - 3), others use route 0; table 3D:4252 by wHoleId -> 9 route pointers ->
+4-byte waypoints (x, y in units of 32). Index >= 3 returns `$FFE0` (none; a stored `$FFFF` waypoint shifts to the same value). The rest of the
+bank holds more copies of bank 10 code (twins of GreenSlopeAt at 3D:4048, LieClass at 3D:41E9) not reached by
+coverage.
+
 ### Data Structures
 
 *(none yet)*
