@@ -137,6 +137,7 @@ export class Courtside {
     // the venue's lamps: unlit by day, glowing as the floodlights come on (lighting.js sky.lamps)
     const LT = this.v.light, sky = LT && !LT.broken && LT.active && LT.skyFor ? LT.skyFor("court") : null, nk = sky ? sky.lamps || 0 : 0;
     for (const l of this.lights) { const flick = 0.92 + 0.08 * Math.sin(T * 9 + l.x * 0.05); this.add(l.x, l.y, l.z, l.sx, l.sy, l.sz, l.col.map(c => c * (0.42 + 0.58 * nk * flick) + 255 * 0.25 * nk)); }
+    if (this.st.mom) this.st.mom.boxes(T, (x, y, z, sx, sy, sz, c) => this.add(x, y, z, sx, sy, sz, c));   // BIG MOMENTS: the moving boxes
     // one instanced draw
     if (!this.vao) { this.buf = gl.createBuffer(); this.vao = gl.createVertexArray(); gl.bindVertexArray(this.vao);
       gl.bindBuffer(gl.ARRAY_BUFFER, cube); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 16, 0); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 16, 12);

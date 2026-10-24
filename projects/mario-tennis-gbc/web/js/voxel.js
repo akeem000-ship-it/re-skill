@@ -386,7 +386,7 @@ export class Voxel3D {
 
   // ---- game state helpers ----
   col5(pal, p, i) { const o = p * 8 + i * 2, c = pal[o] | (pal[o + 1] << 8); return [(c & 31) * 8, ((c >> 5) & 31) * 8, ((c >> 10) & 31) * 8]; }
-  mapId() { return this.gb.mem.wram[0][0x32E]; }
+  mapId() { return this.venueTour ? this.venueTour.map : this.gb.mem.wram[0][0x32E]; }   // (VENUE TOUR: the venue's court)
   // the annotations of a map (field_objects.js); a map with more than one layout (map 18: the boy's and the girl's dorm room) lists
   // variants { use, tile: [tx, ty, tile id] }: the first whose tile is in the live map (WRAM3, 64 tiles a row) is used instead
   fieldDef(id) {
@@ -415,6 +415,7 @@ export class Voxel3D {
     return best;
   }
   isField() {
+    if (this.venueTour) return false;                                // VENUE TOUR: the court only
     const id = this.mapId();
     if (id < 17 || id > 36 || SIDE_VIEW_MAPS.has(id)) { this.fieldMap = -1; return this.fieldOn = false; }
     if (id !== this.fieldMap) { this.fieldMap = id; this.fieldAt = 0; this.fieldMiss = 0; }   // from map to map (faded out, LCD off) the field view stays
@@ -425,6 +426,7 @@ export class Voxel3D {
   }
   // a court is loaded when the BG tilemap in VRAM is one of the court maps (checked every 20 frames)
   isCourt() {
+    if (this.venueTour) { this.courtId = this.venueTour.map; return true; }
     if (!this.courtMaps || this.mapId() > 15) { this.courtId = -1; this.detectAt = 0; this.lastBody = null; return false; }
     const fr = this.gb.ppu.frames; if (fr < this.detectAt) return this.courtId >= 0;
     this.detectAt = fr + 20;
@@ -439,8 +441,9 @@ export class Voxel3D {
   }
   // players: one bank per match slot (WRAM4 P1, WRAM5 P2, WRAM6/7 the partners in doubles); wPlayerX/Y/Z at $DF01/04/07
   // a drill or mini-game of the Training Center (gameMode $C8A6 5-8: drills, the Tennis Machine, Wall Practice, mini-games)
-  isDrill() { const m = this.gb.mem.wram[0][0x8A6]; return m >= 5 && m <= 8; }
+  isDrill() { if (this.venueTour) return false; const m = this.gb.mem.wram[0][0x8A6]; return m >= 5 && m <= 8; }
   players() {
+    if (this.venueTour) return [];
     const m = this.gb.mem, n = m.wram[0][0x8F3] >= 4 ? 4 : 2, out = [];
     for (let k = 4; k < 4 + n; k++) {
       const b = m.wram[k], s16 = a => (b[a] | (b[a + 1] << 8)) << 16 >> 16, X = s16(0xF01), Y = s16(0xF04), Z = s16(0xF07);
@@ -670,7 +673,8 @@ export class Voxel3D {
   }
   bgBase() { return this.gb.ppu.lcdc & 0x08 ? 0x1C00 : 0x1800; }
   composeBG() { return this.composeMap(this.bgBase()); }
-  palHash() { let h = 0; for (let i = 0; i < 64; i++) h = (Math.imul(h, 31) + this.gb.ppu.bgPal[i]) | 0; return h; }
+  palHash() { const P = this.bgPalNow(); let h = 0; for (let i = 0; i < 64; i++) h = (Math.imul(h, 31) + P[i]) | 0; return h; }
+  bgPalNow() { return this.venueTour ? this.venueTour.pal : this.gb.ppu.bgPal; }   // (VENUE TOUR: the court map's own colours from the ROM)
   // BG tile (colour 0 transparent) for the caption / score overlay
   bgTileTexture(tile, attr) {
     const m = this.gb.mem, v0 = m.vram[0], v1 = m.vram[1], bank = attr & 8 ? v1 : v0, addr = this.gb.ppu.lcdc & 0x10 ? tile << 4 : 0x1000 + ((tile << 24 >> 24) << 4), d = new Uint8Array(256);
@@ -744,7 +748,7 @@ export class Voxel3D {
   paintGround() {                                        // per palette change: the ROM court picture coloured with the current palettes
     const g = this.ground, lut = new Uint8Array(33 * 4);
     if (!g.fromRom) this.composeMap(this.bgBase(), this.courtMaps[this.courtId], g.idx);
-    for (let k = 0; k < 32; k++) { const c = this.col5(this.gb.ppu.bgPal, k >> 2, k & 3); lut[(k + 1) * 4] = c[0]; lut[(k + 1) * 4 + 1] = c[1]; lut[(k + 1) * 4 + 2] = c[2]; lut[(k + 1) * 4 + 3] = 255; }
+    for (let k = 0; k < 32; k++) { const c = this.col5(this.bgPalNow(), k >> 2, k & 3); lut[(k + 1) * 4] = c[0]; lut[(k + 1) * 4 + 1] = c[1]; lut[(k + 1) * 4 + 2] = c[2]; lut[(k + 1) * 4 + 3] = 255; }
     const bg = new Uint8Array(256 * 256 * 4);
     for (let i = 0; i < 65536; i++) { const k = g.idx[i] * 4; bg[i * 4] = lut[k]; bg[i * 4 + 1] = lut[k + 1]; bg[i * 4 + 2] = lut[k + 2]; bg[i * 4 + 3] = 255; }
     const d = g.rgba, src = g.src, idx = g.idx;
@@ -846,6 +850,7 @@ export class Voxel3D {
   // rects: (overworld) the overlay boxes of the frame: a sprite the HD art replaced counts as replaced only inside one (a cursor in a box); a character the
   // cursor finder took for an arrow, standing in the scenery, is still a character
   collectSprites(edge = false, rects = null, isActor = null) {
+    if (this.venueTour) return [];                                       // (VENUE TOUR: the game's sprites are not of this court)
     const m = this.gb.mem, p = this.gb.ppu, oam = m.oam, tall = p.lcdc & 4, sprs = [], hd = this.hdText, hid = hd && hd.active && hd.hideSprites && hd.hiddenOam.size ? hd.hiddenOam : null;
     for (let i = 0; i < 40; i++) {
       const sy = oam[i * 4] - 16, sx = oam[i * 4 + 1] - 8; if (edge ? (sy <= -16 || sy >= 160 || sx < -8 || sx >= 168) : (sy <= -16 || sy >= 144 || sx <= -8 || sx >= 160)) continue;
@@ -907,6 +912,7 @@ export class Voxel3D {
   // per game frame (also called by the page after each emulated frame, so skipped display frames keep it whole):
   // the ball's world position history the court effects are placed from
   tick(ball = null) {
+    if (this.venueTour) return;                                         // (VENUE TOUR: no match to follow)
     const fr = this.gb.ppu.frames, h = this.ballHist ||= [];
     if (h.length && h[h.length - 1].fr === fr) return;
     h.push({ fr, ball: ball || this.ballWorld() }); if (h.length > 40) h.shift();
@@ -973,8 +979,8 @@ export class Voxel3D {
     const gl = this.gl, cv = this.cv, p = this.gb.ppu; this.mode = "3d"; if (this.debug) this.debug.length = 0;
     if (!this.ground || this.ground.court !== this.courtId) { this.buildGround(); this.groundHash = -1; }
     const h = this.palHash(), lk = this.courtLook(); if (h !== this.groundHash || (lk ? lk.name + ":" + lk.title : "") !== this.paintedLook) { this.groundHash = h; this.paintGround(); }   // (a final starts / ends: its court)
-    if (this.intro) this.intro.update();      // INTRO: the walk-out before a match (its own camera while it runs)
-    const { mvp, tilt } = (this.replayCam && this.replayCam(cv.width / cv.height, m4, COURT_CLIP, this.interp())) || (this.intro && this.intro.camera(cv.width / cv.height, m4, COURT_CLIP, this.interp().players)) || (this.matchfx && this.matchfx.camera(cv.width / cv.height, m4, COURT_CLIP, this.interp().players)) || this.courtCamera(cv.width / cv.height);   // MATCH FX: changeover sweep, the winner
+    if (this.intro && !this.venueTour) this.intro.update();      // INTRO: the walk-out before a match (its own camera while it runs)
+    const { mvp, tilt } = (this.venueTour && this.venueTour.camera(cv.width / cv.height, m4, COURT_CLIP)) || (this.replayCam && this.replayCam(cv.width / cv.height, m4, COURT_CLIP, this.interp())) || (this.intro && this.intro.camera(cv.width / cv.height, m4, COURT_CLIP, this.interp().players)) || (this.matchfx && this.matchfx.camera(cv.width / cv.height, m4, COURT_CLIP, this.interp().players)) || this.courtCamera(cv.width / cv.height);   // MATCH FX: changeover sweep, the winner
     if (this.light) this.light.camera(mvp, COURT_CLIP.near, COURT_CLIP.far, 7.5, "court", [0, 0, 0]);   // LIGHT
     if (this.skybox && !this.isDrill() && this.skybox.draw(gl, mvp)) { gl.useProgram(this.prog); gl.bindVertexArray(this.vao); }   // SKY: behind everything
     // ground plane (lying flat: tilt -90deg around X so the quad's up axis becomes -Z, i.e. +Y world towards the camera)
@@ -983,7 +989,7 @@ export class Voxel3D {
     if (this.stadium && this.stadium.active) this.stadium.draw(mvp); else if (!this.isDrill()) this.drawStands(mvp);   // STADIUM / bleachers with spectators beside and behind the court (none at the Training Center's drills)
     if (this.matchfx && this.stadium && this.stadium.active) this.matchfx.draw(mvp, m4);   // MATCH FX: confetti and fireworks (the end of the match, the intro)
     // upright cut-outs: net, chair, backdrop (cards, or voxels in voxel mode)
-    const fx = this.ballfx && this.ballfx.on ? this.ballfx : null;       // BALLFX
+    const fx = this.ballfx && this.ballfx.on && !this.venueTour ? this.ballfx : null;       // BALLFX
     for (const c of this.cuts) {
       if (c.flat) { this.gl.useProgram(this.prog); this.gl.bindVertexArray(this.vao); this.gl.disable(this.gl.CULL_FACE); this.draw(c.tex, m4.trs(c.X, 0.6, c.Y, c.width * 3, c.depth, -Math.PI / 2, 0), mvp, [-1, 0, 3, 1], [1, 1, 1, 1], 0); continue; }   // the garden behind the far fence
       if (this.stadium && this.stadium.active && this.stadium.cut(c)) continue;   // STADIUM: replaced (umpire chair)
@@ -1156,7 +1162,8 @@ export class Voxel3D {
     // a wide or tall viewport
     if (this.light) this.light.post();   // LIGHT: the lit scene goes to the canvas; the HUD is drawn over it, unlit
     if (this.stadium && this.stadium.active) { try { this.stadium.drawBeams(mvp); this.stadium.drawGlow(mvp); } catch (e) { /* no beams */ } gl.useProgram(this.prog); gl.bindVertexArray(this.vao); }   // STADIUM: floodlight beams at night
-    if (this.weather) { this.weather.draw(mvp, m4); gl.useProgram(this.prog); gl.bindVertexArray(this.vao); }   // WEATHER: rain over the court, a sunset
+    if (this.weather && !this.venueTour) { this.weather.draw(mvp, m4); gl.useProgram(this.prog); gl.bindVertexArray(this.vao); }   // WEATHER: rain over the court, a sunset
+    if (this.venueTour) return;                                          // VENUE TOUR: no HUD, no game picture over it
     gl.disable(gl.DEPTH_TEST);
     const { ortho, l, r, t, b } = this.hudOrtho();
     // HUD sprites at HUD_SCALE of the full-screen Game Boy scale, anchored to the nearest edge with a margin; on

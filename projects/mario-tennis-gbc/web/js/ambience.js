@@ -20,6 +20,8 @@ const K = {
   sparkle: { box: [-2200, 2200, 600, 900, -2600, 1900], v: [0, 0, 0], sway: 0, size: [16, 30], col: [255, 240, 150], a: 0.9, life: 0.8, n: 16, blink: true },
   dust:    { box: [1300, 2200, 100, 800, -1600, 1800], v: [5, 4, 0], sway: 20, size: [6, 10], col: [255, 240, 210], a: 0.5, life: 8, n: 70 },
   butterfly: { box: [-2000, 2000, 80, 500, -2200, 1400], v: [0, 0, 0], sway: 120, size: [16, 22], col: [255, 230, 90], a: 0.95, life: 7, n: 14, solid: true, day: true },
+  bat:     { box: [-2400, 2400, 500, 1100, -2600, 1200], v: [0, 0, 0], sway: 260, size: [22, 30], col: [24, 20, 30], a: 0.95, life: 8, n: 26, solid: true, dusk: true },
+  snow:    { box: [-2600, 2600, 900, 1300, -2600, 1900], v: [10, -70, 0], sway: 30, size: [10, 16], col: [255, 255, 255], a: 0.9, life: 18, n: 160 },
   flash:   { box: [-2100, 2100, 200, 700, -2500, 1800], v: [0, 0, 0], sway: 0, size: [24, 40], col: [255, 255, 255], a: 1, life: 0.12, n: 6, night: true },
 };
 const BY_VENUE = { tropics: ["mist", "spray"], jungle: ["leaf", "firefly"], volcano: ["ember", "ash"], castle: ["petal"], pipes: ["sparkle"], hangar: ["dust"],
@@ -45,7 +47,10 @@ export class Ambience {
   draw(mvp, T, venue) {
     const v = this.v, gl = v.gl, dt = Math.min(0.1, Math.max(0, T - this.lastT)); this.lastT = T;
     if (!this.watch && typeof setInterval === "function") this.watch = setInterval(() => { if (this.venue && performance.now() / 1000 - this.lastT > 1) this.leave(); }, 1000);   // (the court left, or the 3D view off: quiet)
-    if (venue !== this.venue) { this.venue = venue; this.parts = []; for (const kind of BY_VENUE[venue] || []) for (let i = 0; i < K[kind].n; i++) this.parts.push(this.spawn(kind)); this.sound(venue); }
+    if (venue !== this.venue) {                                                    // (venue ":" season: the season's particles too)
+      this.venue = venue; this.parts = []; const [ven, season] = venue.split(":"), S = { halloween: ["bat"], winter: ["snow"], spring: ["petal"] }[season] || [];
+      for (const kind of [...(BY_VENUE[ven] || []), ...S.filter(k => !(BY_VENUE[ven] || []).includes(k))]) for (let i = 0; i < K[kind].n; i++) this.parts.push(this.spawn(kind)); this.sound(ven);
+    }
     if (this.snd) this.snd.tick(T);
     const nk = this.night(), rx = Math.hypot(mvp[0], mvp[8]) || 1, R = [mvp[0] / rx, 0, mvp[8] / rx], soft = this.softTex(), solid = this.solidTex();
     gl.useProgram(v.prog); gl.bindVertexArray(v.vao); gl.depthMask(false);
@@ -54,11 +59,11 @@ export class Ambience {
       const p = this.parts[i], k = K[p.kind];
       p.age += dt; if (p.age > p.life) { this.parts[i] = this.spawn(p.kind); this.parts[i].age = 0; continue; } if (p.age < 0) continue;
       if (k.night) { p.x += Math.sin(T * 1.3 + p.ph) * k.sway * dt; p.y += k.v[1] * dt; continue; }   // (night ones glow: drawGlow)
-      const vis = k.day ? clamp(1 - nk * 1.5) : 1; if (vis <= 0.01) continue;
+      const vis = k.day ? clamp(1 - nk * 1.5) : k.dusk ? clamp(0.25 + nk * 1.5) : 1; if (vis <= 0.01) continue;
       p.x += (k.v[0] + Math.sin(T * 1.3 + p.ph) * k.sway) * dt; p.y += k.v[1] * dt; p.z += (k.v[2] + Math.cos(T * 1.1 + p.ph) * k.sway * 0.6) * dt;
       const u = p.age / p.life, fade = clamp(Math.min(u * 5, (1 - u) * 4)), blink = k.blink ? 0.5 + 0.5 * Math.sin(T * 6 + p.ph * 3) : 1, a = k.a * fade * blink * vis;
       if (a < 0.02) continue;
-      const s = p.s * (p.kind === "butterfly" ? 0.6 + 0.4 * Math.abs(Math.sin(T * 12 + p.ph)) : 1), tex = k.solid ? solid : soft;
+      const s = p.s * (p.kind === "butterfly" || p.kind === "bat" ? 0.6 + 0.4 * Math.abs(Math.sin(T * (p.kind === "bat" ? 18 : 12) + p.ph)) : 1), tex = k.solid ? solid : soft;
       v.draw(tex, new Float32Array([R[0] * s, 0, R[2] * s, 0, 0, s, 0, 0, -R[2], 0, R[0], 0, p.x, p.y - s / 2, p.z, 1]), mvp, [0, 0, 1, 1], [k.col[0] / 255, k.col[1] / 255, k.col[2] / 255, a], 0.01);
     }
     gl.depthMask(true);
@@ -72,12 +77,21 @@ export class Ambience {
     for (let i = 0; i < S[2]; i++) { const a = r() * 6.283, sp = 60 + r() * 160; B.push({ x: X, y: 4, z: Y, vx: Math.cos(a) * sp, vy: 120 + r() * (S[0] === "splash" ? 360 : 220), vz: Math.sin(a) * sp, age: 0, life: 0.45 + r() * 0.4, s: S[0] === "dust" || S[0] === "clay" ? 26 + r() * 30 : 10 + r() * 10, col: S[1], a: S[3], kind: S[0] }); }
     if (B.length > 200) B.splice(0, B.length - 200);
   }
+  // a spray of particles (bigmoments.js: an eruption, a splash, coins, smoke): o = { x, y, z, n, sp: [min, max] sideways speed, up: [min, max],
+  // col, life, size: [min, max], g: gravity, glow (added light), solid (hard-edged) }
+  spray(o) {
+    const r = this.rnd, B = this.bursts || (this.bursts = []);
+    for (let i = 0; i < o.n; i++) { const a = r() * 6.283, sp = o.sp[0] + r() * (o.sp[1] - o.sp[0]); B.push({ x: o.x, y: o.y, z: o.z, vx: Math.cos(a) * sp, vy: o.up[0] + r() * (o.up[1] - o.up[0]), vz: Math.sin(a) * sp, age: 0, life: o.life * (0.7 + r() * 0.5), s: o.size[0] + r() * (o.size[1] - o.size[0]), col: o.col, a: 0.95, kind: o.solid ? "bits" : o.glow ? "glow" : "puff", g: o.g ?? 900 }); }
+    if (B.length > 600) B.splice(0, B.length - 600);
+  }
   drawBursts(mvp, dt, R, soft, solid) {
     const v = this.v, B = this.bursts; if (!B || !B.length) return;
     for (const b of B) {
-      b.age += dt; if (b.age > b.life) continue; b.x += b.vx * dt; b.z += b.vz * dt; b.y = Math.max(2, b.y + b.vy * dt); b.vy -= 900 * dt;
-      const u = b.age / b.life, a = b.a * (1 - u), s = b.kind === "dust" || b.kind === "clay" ? b.s * (1 + u * 1.5) : b.s, tex = b.kind === "bits" ? solid : soft;
+      b.age += dt; if (b.age > b.life) continue; b.x += b.vx * dt; b.z += b.vz * dt; b.y = Math.max(2, b.y + b.vy * dt); b.vy -= (b.g ?? 900) * dt;
+      const u = b.age / b.life, a = b.a * (1 - u), s = b.kind === "dust" || b.kind === "clay" || b.kind === "puff" ? b.s * (1 + u * 1.5) : b.s, tex = b.kind === "bits" ? solid : soft, gl = v.gl;
+      if (b.kind === "glow") gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
       v.draw(tex, new Float32Array([R[0] * s, 0, R[2] * s, 0, 0, s, 0, 0, -R[2], 0, R[0], 0, b.x, b.y - s / 2, b.z, 1]), mvp, [0, 0, 1, 1], [b.col[0] / 255, b.col[1] / 255, b.col[2] / 255, a], 0.01);
+      if (b.kind === "glow") gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     }
     this.bursts = B.filter(b => b.age <= b.life);
   }

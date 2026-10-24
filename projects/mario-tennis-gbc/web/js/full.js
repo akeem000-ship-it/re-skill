@@ -13,6 +13,7 @@ import { attachVoxStyle } from "./voxround.js";   // VOX: Blocky / Rounded
 import { attachBallFX } from "./ballfx.js";
 import { Tour, addTourButtons } from "./tour.js";
 import { Modes, addModeButtons } from "./modes.js";
+import { VenueTour, addVenueTourButton } from "./venuetour.js";   // VENUE TOUR: fly round the stadiums from anywhere
 import { attachIntro } from "./intro.js";
 import { attachMenuWheel } from "./menuwheel.js";
 import { addCourtButton } from "./courtconcepts.js";
@@ -119,6 +120,8 @@ addTourButtons($("hud"), tour);
 // MODES (modes.js): exhibition rules, rematch, the machine's court, mini-games Hard, partner commands, fast text, the RECORDS panel
 const modes = new Modes({ getGb: () => gb, getPort: () => port, pause: p => { const was = paused; paused = p; return was; }, pad: () => { pollGamepad(keys); return input(); } });
 addModeButtons($("hud"), modes);
+const venueTour = new VenueTour({ getVoxel: () => voxel, setView3d: on => setView3d(on), getView3d: () => view3d, pad: () => { pollGamepad(keys); return input(); } });
+addVenueTourButton($("hud"), venueTour); window.__venueTour = venueTour;   // (tests)
 const recording = () => rec.on || portRecFrom >= 0;
 // RUN-AHEAD (on / off, remembered): after the game's frames, the machine is copied, one more frame is run with the same buttons and that
 // frame is shown; the copy is put back before the next real frame (settle). What you press shows one frame (17 ms) sooner, and the game
@@ -273,7 +276,7 @@ function introMusic(now) {
   }
 }
 function loop(now) {
-  if (gb && !paused && voxel && view3d && voxel.intro && voxel.intro.holding) { last = now; acc = 0; renderedAt = -1; draw(1); introMusic(now); }   // INTRO: the game waits, the camera moves, the music plays on
+  if (gb && !paused && voxel && view3d && ((voxel.intro && voxel.intro.holding) || (voxel.stadium && voxel.stadium.holding))) { last = now; acc = 0; renderedAt = -1; draw(1); if (voxel.intro && voxel.intro.holding) introMusic(now); }   // (BIG MOMENTS: the trophy ceremony holds too)   // INTRO: the game waits, the camera moves, the music plays on
   else if (gb && !paused) {
     introGb = null;
     if (!last) last = now;

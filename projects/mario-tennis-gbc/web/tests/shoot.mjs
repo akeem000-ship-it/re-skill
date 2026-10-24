@@ -19,6 +19,7 @@ fs.mkdirSync(spec.out, { recursive: true });
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
 const page = await (await browser.newContext({ viewport: { width: 960, height: 540 }, userAgent: "Android MarioTennisWrapper" })).newPage();
 page.on("pageerror", e => console.log("pageerror", e.message));
+if (process.env.CONSOLE) page.on("console", m => { if (m.type() === "warning" || m.type() === "error") console.log("console", m.type(), m.text()); });   // CONSOLE=1: the page's warnings too
 await page.addInitScript(l => { const real = performance.now.bind(performance); window.__vclock = { on: false, t: 0 }; performance.now = () => window.__vclock.on ? window.__vclock.t : real(); try { localStorage.setItem("mt-look", JSON.stringify(l)); } catch (e) { /* no storage */ } }, rec.meta.look);
 const m = rec.meta;
 await page.goto(`http://localhost:${PORT}/web/full.html?port=${encodeURIComponent(spec.port || m.port)}${m.physics ? "&physics=" + m.physics : ""}&net=${m.net || "original"}${/tourlen=/.test(spec.q || "") ? "" : "&tourlen=" + (m.tourlen || "game")}${/menu=/.test(spec.q || "") ? "" : "&menu=" + (m.menu || "game")}${/plus=/.test(spec.q || "") ? "" : "&plus=" + (m.plus || "off")}&${spec.q || "intro=off"}`);

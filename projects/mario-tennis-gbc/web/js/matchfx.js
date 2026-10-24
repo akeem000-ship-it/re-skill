@@ -78,6 +78,7 @@ export class MatchFX {
       const setDone = S.sets[0] + S.sets[1] > p.sets[0] + p.sets[1], gameDone = S.games[0] + S.games[1] !== p.games[0] + p.games[1] || setDone;
       if (S.won && !p.won) { this.celebrate(S.sets[0] >= S.sets[1] ? 0 : 1, st); return; }
       if (this.tense && setDone && snd) setTimeout(() => snd.cheer(1), 700);           // the set point was won: a second roar
+      if (setDone && st.mom) st.mom.setWon(S.sets[0] > p.sets[0] ? 0 : 1, st.built && st.built.venue);   // BIG MOMENTS: the venue's event, the cards
       if (gameDone) this.cine = { kind: "sweep", t0: now, a0: Math.random() < 0.5 ? -1 : 1 };
       if (!S.won && (setDone || (gameDone && (S.games[0] + S.games[1]) % 2 === 1))) this.showStats(setDone ? "SET " + (S.sets[0] + S.sets[1]) : "CHANGEOVER");
       const k = Math.max(this.stakes(S, 0), this.stakes(S, 1)); this.tense = k > 0;
@@ -94,7 +95,7 @@ export class MatchFX {
     if (pz && (!this.cine || this.cine.kind !== "pause")) { if (++this.pauseN > 20) this.cine = { kind: "pause", t0: now, first: Math.floor(Math.random() * PAUSE_SHOTS.length) }; }
     else if (!pz) { this.pauseN = 0; if (this.cine && this.cine.kind === "pause") this.cine = null; }
     if (S.hits > p.hits && S.hits >= 10 && now - this.oohAt > 1.2 && (S.hits - 10) % 3 === 0 && snd) { this.oohAt = now; snd.ooh(st.fill, Math.min(1, (S.hits - 10) / 15)); }
-    if (this.cine && this.cine.kind !== "pause" && now - this.cine.t0 > (this.cine.kind === "sweep" ? SWEEP : CELEB)) this.cine = null;
+    if (this.cine && this.cine.kind !== "pause" && now - this.cine.t0 > (this.cine.kind === "sweep" ? SWEEP : this.cine.dur || CELEB)) this.cine = null;
   }
   // seconds since a reaction began, in game frames (held with the game: the pause menu, the intro)
   reactAge(q) { return (this.v.gb.ppu.frames - q.f0) / 60; }
@@ -250,7 +251,8 @@ export class MatchFX {
   }
   celebrate(side, st) {
     const now = performance.now() / 1000, snd = st.sound;
-    this.cine = { kind: "win", t0: now, side, a0: Math.random() * Math.PI * 2 };
+    if (st.mom) st.mom.matchWon(side, st.built && st.built.venue);                     // BIG MOMENTS: the venue's event, the cards, the trophy
+    this.cine = { kind: "win", t0: now, side, a0: Math.random() * Math.PI * 2, dur: st.mom && st.mom.cer ? 6.6 : CELEB };
     if (snd) { snd.cheer(1); setTimeout(() => snd.cheer(1), 1200); }
     // round the winner (where the camera looks) and over the stands
     const h = ((this.v.interp().players || []).filter(q => (q.slot & 1) === side)[0]) || { X: 0, Y: side ? -1200 : 1200 };

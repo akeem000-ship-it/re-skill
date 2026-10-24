@@ -114,6 +114,11 @@ export class CrowdSound {
     const n = this.src(c), hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 2600; const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 4200; bp.Q.value = 0.9;
     n.connect(hp); hp.connect(bp); bp.connect(out); n.stop(t + 1.7);
   }
+  // coins bursting out of the pipes (bigmoments.js): a run of bright two-note chimes
+  chime() {
+    const c = this.on && this.ctx(); if (!c) return;
+    for (let i = 0; i < 6; i++) { const t = c.currentTime + i * 0.12 + Math.random() * 0.05; for (const [f, d] of [[988, 0.07], [1319, 0.35]]) { const o = c.createOscillator(); o.type = "square"; o.frequency.value = f; const g = c.createGain(), at = t + (f > 1000 ? 0.07 : 0); g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(0.03 * this.volume, at + 0.005); g.gain.exponentialRampToValueAtTime(0.0005, at + d); o.connect(g); g.connect(this.bus(c)); o.start(at); o.stop(at + d + 0.05); } }
+  }
   // a floodlight bank switching on (stadium3d.js floodK): a heavy contactor's clunk and a low hum rising
   clunk() {
     const c = this.on && this.ctx(); if (!c) return;

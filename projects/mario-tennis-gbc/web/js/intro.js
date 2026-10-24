@@ -1,6 +1,6 @@
 // "INTRO: on / off": a walk-out introduction before each match in the 3D stadium (3D / VOX court, STADIUM: 3D). A view effect: the game is
 // held (the page simply runs no frames, as with pause) while the camera
-//   A  pans low along the right-hand stand (the real stadium crowd, so its size follows the class of the match: STADIUM crowdClass),
+//   A  flies in high over the far end and round the venue, then pans low along the right-hand stand (the real stadium crowd, so its size follows the class of the match: STADIUM crowdClass),
 //   B  you walk in along the left-hand side towards the camera (the match's walking frames), spotlights, your name plate and stats,
 //   O  the same for your opponent along the right-hand side at the far end (their name plate and stats on the right),
 //   VS a VS screen: you in the top half, your opponent in the bottom half, each in their waiting-for-serve stance (match frame 9 of their
@@ -18,7 +18,8 @@
 // A tap or key press skips it. The players' drawn positions are moved (voxel.js interp -> adjust) only while it runs; the game is never touched.
 // Remembered in localStorage mt-intro; ?intro=off turns it off for a page load.
 const KEY = "mt-intro", RUN_IN = 40;             // game frames the court fades in before the hold
-const T_A = 2.4, T_B = 4.5, T_O = 6.6, T_C = 6.6, T_VS = 8.8, T_SPLIT = 0.6, T_WALK = 10.5, T_PLAY = 10.8, T_END = 11.4;
+const T_A = 4.6, T_B = 6.7, T_O = 8.8, T_C = 8.8, T_VS = 11.0, T_SPLIT = 0.6, T_WALK = 12.7, T_PLAY = 13.0, T_END = 13.6;   // (A: the flyover, then the pan)
+const FLY = 0.5;                                   // the share of A that is the flyover
 const RUN = [2, 7, 12, 17];                     // match frames: running sideways (four steps; facing right, mirrored to run left)
 const FRONT = [4, 9, 14, 19], WALK_IN = 650;    // walking towards the camera; how far each player walks in along their side in their close-up
 const PASS = 3.4;                                  // seconds of the big matches' second camera pass (after A)
@@ -86,7 +87,8 @@ export class MatchIntro {
       this.cls = st.crowdClass(); this.mode = w[0x8A6]; this.tier = this.cls === "major" ? 2 : this.cls === "senior" ? 1 : 0; this.fx = {};
       this.who = [0xA00, 0xA80].map((a, side) => this.player(a, side));
       if (this.vsFaces) this.who.forEach((p, side) => { if (p) p.face = this.face(w[(side ? 0xA80 : 0xA00) + 0x0B] & 0x3F, p.pic, p.sprite, p.pal); });
-      this.says = [0xA00, 0xA80].map((a, side) => { const c = v.gb.modChar && v.gb.modChar(w[a + 0x0B] & 0x3F); return (c && c.lines && c.lines.intro) || (side && v.tour ? v.tour.rivalLine(w[a + 0x0B] & 0x3F) : ""); });   // TOUR+: an opponent you have met remembers it this.vsBg = VS_BGS[Math.floor(Math.random() * VS_BGS.length)]; this.show();
+      this.says = [0xA00, 0xA80].map((a, side) => { const c = v.gb.modChar && v.gb.modChar(w[a + 0x0B] & 0x3F); return (c && c.lines && c.lines.intro) || (side && v.tour ? v.tour.rivalLine(w[a + 0x0B] & 0x3F) : ""); });   // (TOUR+: an opponent you have met remembers it)
+      this.vsBg = VS_BGS[Math.floor(Math.random() * VS_BGS.length)]; this.show();
       addEventListener("pointerdown", this.skip, true); addEventListener("keydown", this.skip, true);
     }
     if (this.start < 0) return;
@@ -184,8 +186,12 @@ export class MatchIntro {
       const u = ease((this.rt - T_A) / PASS), a = -1.0 + 2.0 * u;
       const st = this.v.stadium, G = !!(st && st.built && st.built.giant);              // (GIANT: higher and wider, over the finals' roof)
       eye = G ? [4700 * Math.sin(a), 3000 - 500 * u, 4400 * Math.cos(a) - 400] : [3900 * Math.sin(a), 1750 - 350 * u, 3600 * Math.cos(a) - 400]; at = G ? [0, 200, -500] : [0, 380, -500]; fov = 0.8;
+    } else if (t < T_A * FLY) {                          // the flyover: in high over the far end, round over the venue, down to the court's corner
+      const u = ease(t / (T_A * FLY)), b = (p0, p1, p2, p3) => p0.map((_, i) => (1 - u) ** 3 * p0[i] + 3 * (1 - u) ** 2 * u * p1[i] + 3 * (1 - u) * u * u * p2[i] + u ** 3 * p3[i]);
+      eye = b([-3400, 2800, -4200], [2600, 2400, -3600], [3600, 1300, 1200], [350, 170, 1500]);
+      at = [0, 250, -900].map((a0, i) => a0 + ([1500, 300, 1240][i] - a0) * u); fov = 0.8 - 0.05 * u;
     } else if (t < T_A) {                                // A: low along the right-hand stand
-      const u = ease(t / T_A), z = 1500 - 2400 * u;
+      const u = ease((t - T_A * FLY) / (T_A * (1 - FLY))), z = 1500 - 2400 * u;
       eye = [350, 170, z]; at = [1500, 300, z - 260];
     } else if (t < T_O) {                         // B / O: on each player stepping out of their tunnel (yours in the left-hand stand, the
       const near = t < T_B, T = TUNNELS[near ? 0 : 1];                                       // opponent's in the right-hand one): from the court, on their side of the net

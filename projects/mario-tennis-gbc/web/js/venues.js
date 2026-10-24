@@ -193,7 +193,7 @@ export const VENUES = {
     tunnel(ctx, T, o0, o1) { mouth(ctx, T, o0, o1, [40, 42, 52], 24, 30); ctx.box(-20, -14, o0, o1, T.h + 6, T.h + 16, T.col); },
   },
   junior: {
-    name: "junior", fans: { sets: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], own: 0.15 }, rows: 3, conc: () => [[178, 150, 112], [160, 132, 98]], boardInk: ["#ffffff", "#ffe45a", "#f0f0e0"],
+    name: "junior", home: true, fans: { sets: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], own: 0.15 }, rows: 3, conc: () => [[178, 150, 112], [160, 132, 98]], boardInk: ["#ffffff", "#ffe45a", "#f0f0e0"],
     extras(ctx) {
       const { B, stands, rnd, lite } = ctx, post = [120, 124, 130];
       for (const s of stands) {
@@ -206,7 +206,7 @@ export const VENUES = {
     board(ctx, p) { frameAround(ctx.B, p.x, p.y - 4, p.z - 30, p.w + 40, p.h + 30, 40, 24, [126, 92, 60], 0.05); },
   },
   senior: {
-    name: "senior", fans: { sets: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], own: 0.15, shirts: [[240, 240, 236], [40, 90, 60], [200, 60, 60], [60, 80, 160], [230, 200, 120]] }, rows: 5, conc: () => [[200, 196, 184], [184, 178, 166]], boardInk: ["#ffffff", "#ffd23a", "#d8f0d8"],
+    name: "senior", home: true, fans: { sets: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], own: 0.15, shirts: [[240, 240, 236], [40, 90, 60], [200, 60, 60], [60, 80, 160], [230, 200, 120]] }, rows: 5, conc: () => [[200, 196, 184], [184, 178, 166]], boardInk: ["#ffffff", "#ffd23a", "#d8f0d8"],
     extras(ctx) {
       const { B, stands, rnd } = ctx, hedge = [56, 128, 60];
       for (const s of stands) for (let vv = s.S.v0 - 20; vv < s.S.v1 + 20; vv += 40) s.box(s.outer - 36, s.outer + 4, vv, vv + 40, s.top + 14, s.top + 64 + rnd() * 10, rnd() > 0.5 ? hedge : shade(hedge, 0.86), 0.1);
@@ -224,7 +224,7 @@ export const VENUES = {
     board(ctx, p) { frameAround(ctx.B, p.x, p.y - 4, p.z - 30, p.w + 40, p.h + 30, 50, 30, [40, 96, 60], 0.04); },
   },
   varsity: {
-    name: "varsity", fans: { sets: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], own: 0.15, shirts: [[40, 80, 190], [240, 190, 40], [240, 240, 236], [40, 80, 190], [30, 40, 90]] }, rows: 8, boardInk: ["#ffc24a", "#7cc8ff", "#e8ecf4"],
+    name: "varsity", home: true, fans: { sets: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], own: 0.15, shirts: [[40, 80, 190], [240, 190, 40], [240, 240, 236], [40, 80, 190], [30, 40, 90]] }, rows: 8, boardInk: ["#ffc24a", "#7cc8ff", "#e8ecf4"],
     extras(ctx) {
       const { B, stands } = ctx, blue = [40, 80, 190], gold = [240, 190, 40];
       for (const s of stands) for (let vv = s.S.v0 + 100, k = 0; vv < s.S.v1; vv += 380, k++) { const [x, z] = s.at(s.outer - 16, vv); B.add(x, s.top + 14, z, 8, 240, 8, [220, 220, 226]); flagOn(ctx, x + 3, s.top + 180, z, 80, 54, k & 1 ? gold : blue); }
@@ -232,3 +232,76 @@ export const VENUES = {
     },
   },
 };
+
+// ---- SEASONS (by the date; SEASON: Auto / Off, remembered; ?season=halloween|winter|spring tries one) ----
+//   halloween   10 Oct - 2 Nov: pumpkins along the boards (their faces lit at night), orange and purple bunting, bats at dusk
+//   winter      December to 6 January: snow on the stands, coloured lights along their tops, lit trees in the far corners, snowfall
+//   spring      20 March - April: blossom trees round the stadium and petals on the air
+const SEASON_KEY = "mt-season";
+export function seasonSetting() { try { const q = new URLSearchParams(location.search).get("season"); if (q) return q; return localStorage.getItem(SEASON_KEY) || "auto"; } catch (e) { return "auto"; } }
+export function setSeasonSetting(s) { try { localStorage.setItem(SEASON_KEY, s); } catch (e) { /* private mode */ } }
+export function seasonNow(d = new Date()) {
+  const set = seasonSetting(); if (set === "off") return null; if (SEASONS[set]) return set;
+  const m = d.getMonth() + 1, day = d.getDate();
+  if ((m === 10 && day >= 10) || (m === 11 && day <= 2)) return "halloween";
+  if (m === 12 || (m === 1 && day <= 6)) return "winter";
+  if ((m === 3 && day >= 20) || m === 4) return "spring";
+  return null;
+}
+export const SEASONS = {
+  halloween: {
+    particles: ["bat"],
+    extras(ctx) {
+      const { B, stands } = ctx, orange = [236, 120, 30], purple = [120, 50, 160];
+      for (const s of stands) {
+        for (let vv = s.S.v0 + 180; vv < s.S.v1 - 60; vv += 420) {                                  // pumpkins on the boards
+          const [x, z] = s.at(-30, vv), y = 92, n = s.S.side ? [-s.S.dir, 0] : [0, 1];
+          B.add(x, y, z, 54, 40, 54, orange, 0.06); B.add(x, y + 4, z, 62, 30, 40, shade(orange, 0.9)); B.add(x, y + 4, z, 40, 30, 62, shade(orange, 0.9)); B.add(x, y + 40, z, 8, 14, 8, [70, 110, 40]);
+          lamp(ctx, x + n[0] * 28, y + 16, z + n[1] * 28, [255, 170, 40], n[0] ? 4 : 24, 10, n[0] ? 24 : 4);
+        }
+        for (let vv = s.S.v0, k = 0; vv < s.S.v1; vv += 60, k++) s.box(s.outer - 48, s.outer - 42, vv, vv + 34, s.top - 30, s.top + 4, k & 1 ? purple : orange);   // bunting
+      }
+    },
+  },
+  winter: {
+    particles: ["snow"],
+    extras(ctx) {
+      const { B, stands } = ctx, snow = [244, 248, 255], cols = [[255, 60, 60], [60, 220, 90], [255, 210, 50], [80, 140, 255]];
+      for (const s of stands) {
+        s.box(s.outer - 40, s.outer + 6, s.S.v0 - 30, s.S.v1 + 30, s.top + 14, s.top + 30, snow, 0.04);                       // snow on the tops
+        s.box(-10, 0, s.S.v0, s.S.v1, 92, 100, snow, 0.04);                                                                   // and on the boards
+        for (let vv = s.S.v0, k = 0; vv < s.S.v1; vv += 90, k++) { const [x, z] = s.at(s.outer - 18, vv); lamp(ctx, x, s.top + 34, z, cols[k % 4], 14, 16, 14); }
+      }
+      for (const sx of [-1, 1]) {                                                                                             // the trees in the far corners
+        const x = sx * 1760, z = -1900; B.add(x, 0, z, 40, 120, 40, [100, 70, 40]);
+        for (let i = 0; i < 9; i++) { const w = 380 - i * 38; B.add(x, 100 + i * 64, z, w, 70, w, i & 1 ? [40, 120, 60] : [30, 100, 50], 0.06); if (i < 8) for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) lamp(ctx, x + dx * w / 2, 130 + i * 64, z + dz * w / 2, cols[(i + dx + dz + 4) % 4], 16, 16, 16); }
+        lamp(ctx, x, 700, z, [255, 230, 90], 50, 50, 50);
+      }
+    },
+  },
+  spring: {
+    particles: ["petal"],
+    extras(ctx) {
+      const { B, stands, rnd } = ctx;
+      for (const s of stands) for (let vv = s.S.v0 + 300; vv < s.S.v1; vv += 700) { const [x, z] = s.at(s.outer + 200 + rnd() * 100, vv); B.add(x, 0, z, 24, s.top + 120, 24, [90, 60, 50]); dome(B, x, s.top + 60, z, 190, 230, 190, 34, [250, 190, 214], [240, 160, 196], [255, 230, 240], rnd); }
+    },
+  },
+};
+
+// ---- HOME COURT (the class courts in the tour): the venue is upgraded as you win the tour's ranking matches (your won-rank flags,
+// wGameFlags $C9C0: the junior, senior and varsity ladders, singles and doubles): 2 wins a row more on every stand and the academy's
+// flags, 5 a roof over the far stand, 8 a big screen on it showing the score ----
+const RANK_FLAGS = [80, 81, 82, 83, 84, 85, 86, 87, 88, 64, 65, 66, 68, 69, 70, 72];
+export function homeLevel(w) { let n = 0; for (const f of RANK_FLAGS) if (w[0x9C0 + (f >> 3)] & (0x80 >> (f & 7))) n++; return n >= 8 ? 3 : n >= 5 ? 2 : n >= 2 ? 1 : 0; }
+export function homeUpgrades(ctx, up) {
+  const { B, stands } = ctx, far = stands.find(s => !s.S.side), blue = [40, 80, 190], gold = [240, 190, 40];
+  if (up >= 1) for (const s of stands) for (let vv = s.S.v0 + 300, k = 0; vv < s.S.v1; vv += 600, k++) { const [x, z] = s.at(s.outer - 16, vv); B.add(x, s.top + 14, z, 8, 260, 8, [220, 220, 226]); flagOn(ctx, x + 3, s.top + 200, z, 90, 56, k & 1 ? gold : blue); }
+  if (up >= 2 && far) {                                                                                                        // the far stand's roof
+    for (let vv = far.S.v0; vv <= far.S.v1; vv += 500) far.box(far.outer - 40, far.outer - 16, vv - 12, vv + 12, 0, far.top + 260, [200, 204, 214]);
+    for (let k = 0; k < 6; k++) { const u0 = far.outer - k * 110; far.box(u0 - 120, u0, far.S.v0 - 40, far.S.v1 + 40, far.top + 260 - k * 14, far.top + 280 - k * 14, k & 1 ? [214, 218, 226] : [196, 200, 210], 0.02); }
+  }
+  if (up >= 3 && far && ctx.screens) {                                                                                       // the big screen on top
+    const [x, z] = far.at(far.outer - 60, 0), y = far.top + 300; B.add(x, far.top + 280, z - 20, 60, 40, 60, [70, 72, 82]); B.add(x, y, z, 860, 300, 30, [30, 32, 40]);
+    ctx.screens.push({ x, y: y + 20, z: z + 18, w: 800, h: 260 });
+  }
+}

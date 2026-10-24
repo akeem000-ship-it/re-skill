@@ -79,7 +79,7 @@ const NC = CELLS.length;
 // is first turned on) are left out until they exist.
 const OPTION_CATS = [
   ["PICTURE", "the view, the camera, the screen", ["view3d", "cam", "aspect", "smoothbtn", "voxstylebtn", "lightbtn", "fieldlifebtn", "groundbtn", "treesbtn"]],
-  ["STADIUM", "the court, the crowd, the effects", ["stadiumbtn", "stadiumqbtn", "courtbtn", "farendbtn", "weatherbtn", "crowdsndbtn", "ballfxbtn", "matchfxbtn", "kitbtn", "introbtn", "vsbtn", "callsbtn", "aimbtn"]],
+  ["STADIUM", "the court, the crowd, the effects", ["stadiumbtn", "stadiumqbtn", "seasonbtn", "venuetourbtn", "courtbtn", "farendbtn", "weatherbtn", "crowdsndbtn", "ballfxbtn", "matchfxbtn", "kitbtn", "introbtn", "vsbtn", "callsbtn", "aimbtn"]],
   ["MENUS & TEXT", "how menus and words are drawn", ["uibtn", "fontbtn", "sprbtn"]],
   ["MODES", "exhibition rules, rematch, practice, partner, text", ["mode-sets", "mode-games", "mode-tiebreak", "mode-noAd", "mode-rematch", "mode-machine", "mode-mgHard", "mode-partner", "mode-fastText", "recordsbtn"]],
   ["PLAY", "the rules, the feel, the controls", ["physbtn", "netbtn", "plusbtn", "tourlenbtn", "runaheadbtn", "padmode", "vibratebtn", "batterybtn", "tourplusbtn", "tourbtn"]],
@@ -185,6 +185,7 @@ export class MenuWheel {
   }
   update() {
     this.sync();
+    if (globalThis.__venueTourOn) { if (this.root) this.root.style.display = "none"; return; }   // (VENUE TOUR: its own view)
     const P = this.getPort(), gb = this.getGb(), wheel = !!(this.on && P && P.menuWheel && P.menuWheel.active && gb);
     const onTitle = !!(this.on && P && gb && !wheel && this.isTitle()), T = performance.now() / 1000, F = gb ? gb.frames : 0;
     // the title, then (Start) the zoom until the wheel is up, then the wheel. The title also stays up while the game plays its own

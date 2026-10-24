@@ -12,7 +12,7 @@ const s16 = (w, a) => (w[a] | (w[a + 1] << 8)) << 16 >> 16;
 export class CloseCall {
   constructor(v) {
     this.v = v; this.on = (() => { try { return localStorage.getItem(KEY) !== "off"; } catch (e) { return true; } })();
-    this.prevBounce = 0; this.prevOutcome = 0; this.call = null; this.log = [];   // (log: the last calls, for tests) this.cv = null; this.raf = 0;
+    this.prevBounce = 0; this.prevOutcome = 0; this.call = null; this.log = []; this.cv = null; this.raf = 0;   // (log: the last calls, for tests)
   }
   setOn(on) { this.on = on; try { localStorage.setItem(KEY, on ? "on" : "off"); } catch (e) { /* private mode */ } if (!on) this.hide(); }
   // per game frame (voxel.js tick)

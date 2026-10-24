@@ -18,11 +18,14 @@ import { buildFanAtlas, CELL } from "./crowdfans.js";
 import { FLOODS, FLOOD_HEIGHT } from "./lighting.js";
 import { FAR_WALL_MAPS } from "./farwalls.js";   // FAR END: Walls
 import { poseCanvas, POSE_FRAMES } from "./look/poses.js";
-import { venueFor } from "./venues.js";   // VENUES: each court's stadium in its own style
+import { venueFor, seasonNow, seasonSetting, setSeasonSetting, SEASONS, homeLevel, homeUpgrades } from "./venues.js";
+import { toast } from "./hdpanel.js";
+import { markSeen } from "./venuetour.js";   // VENUES: each court's stadium in its own style
 import { Courtside } from "./courtside.js";
 import { Ambience } from "./ambience.js";
 import { CourtWear } from "./courtwear.js";   // COURT WEAR: scuffs and ball marks that build up
-import { surfaceKind } from "./courtfloor.js";   // AMBIENCE: the venue's particles and background sound   // COURTSIDE: ball kids, line judges, benches, the TV crane, flags in the wind
+import { surfaceKind } from "./courtfloor.js";
+import { BigMoments, VIP } from "./bigmoments.js";   // BIG MOMENTS: venue events, the trophy, the VIP box, the card display   // AMBIENCE: the venue's particles and background sound   // COURTSIDE: ball kids, line judges, benches, the TV crane, flags in the wind
 const KEY = "mt-stadium", QKEY = "mt-stadium-q";
 export const STADIUM_MODES = ["classic", "3d"];
 const STADIUM_MAP = 32, SIZES_KEY = "mt-crowd2", JUDGE_TOP = 0.5;   // the part of the chair picture (from the top) that is the umpire
@@ -226,10 +229,11 @@ export class Stadium3D {
     this.forceGiant = m === "giant" || q.get("giant") === "1"; if (m === "giant") m = "3d";   // GIANT: ?stadium=giant tries the finals' stadium anywhere
     this.mode = STADIUM_MODES.includes(m) ? m : "3d";
     this.pend = null; this.built = null; this.sig = ""; this.buildAt = -99; this.cheer = 0; this.cheerAt = -99; this.fill = 0.6; this.scoreSig = ""; this.stats = { boxes: 0, crowd: 0, ms: 0 };
-    this.board = null; this.stadiumImg = null; this.onMode = null; this.side = new Courtside(this); this.amb = new Ambience(this); this.wear = new CourtWear(voxel);
+    this.board = null; this.stadiumImg = null; this.onMode = null; this.side = new Courtside(this); this.amb = new Ambience(this); this.wear = new CourtWear(voxel); this.mom = new BigMoments(this);
     let qv = q.get("detail"); if (qv === null) { try { qv = localStorage.getItem(QKEY); } catch (e) { qv = null; } } this.quality = qv === "lite" ? "lite" : "full";   // DETAIL: Full / Lite
   }
   get active() { return this.mode === "3d" && !this.broken; }
+  get holding() { return this.active && ((this.mom && this.mom.holding) || !!this.v.venueTour); }   // (VENUE TOUR holds it too)   // (BIG MOMENTS: the trophy ceremony holds the game, as the intro does)
   // GIANT: the finals (the Island Open's rounds and the dream matches: crowdClass "major") get the giant stadium: an upper deck all round
   // over a concourse, closing the far corners, under a roof with floodlight banks along its edge, flags, and two video screens
   wantGiant() { return !this.v.isDrill() && (this.forceGiant || this.crowdClass() === "major"); }
@@ -296,6 +300,7 @@ export class Stadium3D {
   // the crowd by the stakes: practice matches thin, the fans still arriving early in a match (full by the 6th game), more coming in
   // when a set is tight (games level or one apart from 4 games on); the base from the tour's progress as before
   applyFill() {
+    if (this.v.venueTour) { this.cls = "senior"; this.fill = 0.95; return; }                   // (VENUE TOUR: a full house)
     const z = this.crowdSizes, p = this.progress(), w = this.v.gb.mem.wram[0]; this.cls = this.crowdClass();
     let f = p === null ? z.exhibition : z.start + (z.end - z.start) * p;
     if (w[0x8A6] === 3) f *= 0.4;                                                                      // a practice match
@@ -313,7 +318,7 @@ export class Stadium3D {
     const E = { fr, sig: [w[0x8E4], w[0x8E5], w[0x8E6], w[0x8E7], w[0x8E8], w[0x8E9], w[0x8EA], w[0x8EB]].join(), res: w[0x4D8], fault: w[0x8EE], body: w[0x4AE], ball: w[0x4B3] }, p = this.ev;
     this.ev = E; if (!p || fr < p.fr || fr > p.fr + 8) return;          // first frame, a reload, or frames skipped: no events
     const when = performance.now() / 1000; if (this.side) this.side.step(w, E, p, when);
-    if (this.built && this.built.side) this.wear.step(w);                                            // COURT WEAR
+    if (this.built && this.built.side) { this.wear.step(w); this.mom.step(w, E, p, when); }            // COURT WEAR; BIG MOMENTS (the VIP box's reactions)
     if (E.ball === 1 && p.ball !== 1 && this.built && this.built.side) { const b = v.ballWorld(); this.amb.impact(b.X, b.Y, this.built.venue, this.surface); }   // the bounce's burst
     // CROWD: an "ooh" when the ball clips the net (wBallNetHit $C4BF); a murmur before a game point; a bigger roar when a game is won
     if (w[0x4BF] === 1 && this.netHitWas !== 1 && this.sound) this.sound.ooh(this.fill, 0.35); this.netHitWas = w[0x4BF];
@@ -423,7 +428,8 @@ export class Stadium3D {
     const tb = performance.now(); const B = new Boxes(), crowd = [];
     const hall = this.v.isDrill(), VEN = hall ? null : venueFor(this), lite = this.quality === "lite";
     if (courtId !== (this.built && this.built.court)) this.flood = null;                            // (FLOODLIGHTS: a new court starts as the sky is)   // VENUES; DETAIL: Lite
-    const N = VEN ? VEN.rows : 8, D = 80, RISE = 38, BASE = 130, SEAT = 44, giantWant = this.wantGiant(), giant = giantWant || !!(VEN && VEN.giant);
+    const up = VEN && VEN.home ? homeLevel(v.gb.mem.wram[0]) : 0, season = hall ? null : seasonNow();   // HOME COURT upgrades; SEASONS
+    const N = VEN ? VEN.rows + (up >= 1 ? 1 : 0) : 8, D = 80, RISE = 38, BASE = 130, SEAT = 44, giantWant = this.wantGiant(), giant = giantWant || !!(VEN && VEN.giant);
     if (VEN && VEN.seats) { P.seatA = VEN.seats[0]; P.seatB = VEN.seats[1]; }
     this.boardInk = VEN && VEN.boardInk || null; const standList = [], flags = [], lights = []; this.fanTexture(VEN);
     if (this.sound && this.sound.setVenue) this.sound.setVenue(VEN ? VEN.name : "varsity");   // ACOUSTICS: the venue's echo
@@ -474,6 +480,7 @@ export class Stadium3D {
         const y = BASE + (i + 1) * RISE, u = i * D;
         for (let sec = 0, v0 = S.v0 + 60; v0 + SEAT * 5 < S.v1 - 40; sec++, v0 += SEAT * 5 + 36) {
           if (i < K && inOpen(v0, v0 + SEAT * 5)) continue;                                                  // (the tunnel's roof)
+          if (!hall && S.side && S.dir < 0 && i >= N - VIP.rows && v0 + SEAT * 5 > VIP.v0 && v0 < VIP.v1) continue;   // (BIG MOMENTS: the VIP box)
           const c = ((sec * 2 + (i >> 1)) % 5 < 3) ? P.seatA : P.seatB;
           box(u + 14, u + 44, v0, v0 + SEAT * 5 - 6, y, y + 14, c, 0.05); box(u + 44, u + 51, v0, v0 + SEAT * 5 - 6, y + 14, y + 42, shade(c, 0.88), 0.05);
           if (i >= 1 && i <= 6 && rb() < 0.13) {                                                           // CROWD BANNERS: a fan holds one up here
@@ -529,6 +536,12 @@ export class Stadium3D {
       }
     }
     if (VEN && VEN.extras) VEN.extras({ B, P, rnd: mulberry32(0x7E40 + courtId), stands: standList, court: courtId, lite, giant, flags, lights });   // VENUES: the venue's buildings
+    if (VEN && VEN.home && up) homeUpgrades({ B, stands: standList, flags, screens }, up);
+    if (season) SEASONS[season].extras({ B, P, rnd: mulberry32(0x5EA5 + courtId), stands: standList, flags, lights });
+    this.season = season; if (VEN && !v.venueTour) markSeen(VEN.name);                                 // (VENUE TOUR: played in, unlocked)
+    if (VEN && VEN.home) { const slot = v.gb.mem.wram[0][0x36C], key = "mt-homecourt-" + slot; let was = 0; try { was = +(localStorage.getItem(key) || 0); } catch (e) { /* private mode */ }
+      if (up > was) { try { localStorage.setItem(key, String(up)); } catch (e) { /* private mode */ } toast(["", "HOME COURT: a new row of seats and the academy's flags", "HOME COURT: a roof over the far stand", "HOME COURT: a big screen"][up]); } }
+    this.mom.build(B, standList, { N, D, RISE, BASE, hall });                                          // BIG MOMENTS: the VIP box
     const farS = standList.find(s => !s.S.side);                          // COURTSIDE: flags along the far stand's top (the varsity has its own)
     if (farS && VEN && VEN.name !== "varsity") for (let k = 0; k < 5; k++) { const vv = -1600 + k * 800, [x, z] = farS.at(farS.outer - 16, vv); B.add(x, farS.top + 14, z, 8, 250, 8, [220, 220, 226]); flags.push({ x: x + 3, y: farS.top + 200, z, w: 90, h: 56, col: P.shirts[k % P.shirts.length], along: "x" }); }
     // back wall: thickness behind the backdrop picture, a coping on top, rounded-voxel hedges in front
@@ -744,7 +757,8 @@ export class Stadium3D {
       gl.useProgram(this.pBox); gl.uniformMatrix4fv(this.uBox.uMVP, false, mvp); gl.bindVertexArray(this.built.boxVao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 30, this.built.boxN);
       if (this.built.side) this.wear.draw(mvp);                                                       // COURT WEAR (on the floor, under everything)
       if (this.built.side) this.side.draw(mvp, T, this.pBox, this.uBox, this.cube);                 // COURTSIDE: the moving people and flags
-      if (this.built.side) this.amb.draw(mvp, T, this.built.venue);                                   // AMBIENCE: particles, the venue's sound
+      if (this.built.side) this.amb.draw(mvp, T, this.built.venue + (this.season ? ":" + this.season : ""));                                   // AMBIENCE: particles, the venue's sound
+      if (this.built.side) this.mom.sprites(mvp, T);                                                  // BIG MOMENTS: the VIP box's rivals, the cards
       const ft = this.fanTex && this.fans ? this.fanTex : null;
       if (ft && this.fill > 0) {                                                                                       // the fans: camera-facing billboards
         gl.disable(gl.CULL_FACE); const rx = Math.hypot(mvp[0], mvp[8]) || 1, U = this.uCrowd;
@@ -875,6 +889,10 @@ export function addStadiumButton(hud, st) {
   const q = document.createElement("span"); q.className = "k"; q.id = "stadiumqbtn"; q.title = "how much the 3D stadiums carry: Full, or Lite for slower phones (every other seat filled, fewer trees, palms, pipes and vines)";
   const showQ = () => { q.textContent = "DETAIL: " + (st.quality === "lite" ? "Lite" : "Full"); q.classList.toggle("on", st.quality !== "lite"); };
   q.addEventListener("pointerdown", () => { st.setQuality(st.quality === "lite" ? "full" : "lite"); showQ(); });
-  hud.appendChild(document.createTextNode(" ")); hud.appendChild(q); showQ(); st.onQuality = showQ; return b;
+  hud.appendChild(document.createTextNode(" ")); hud.appendChild(q); showQ(); st.onQuality = showQ;
+  const se = document.createElement("span"); se.className = "k"; se.id = "seasonbtn"; se.title = "the stadiums dressed for the time of year: Auto (Halloween, winter, spring by the date) or Off";
+  const showS = () => { const on = seasonSetting() !== "off"; se.textContent = "SEASON: " + (on ? "Auto" : "Off"); se.classList.toggle("on", on); };
+  se.addEventListener("pointerdown", () => { setSeasonSetting(seasonSetting() === "off" ? "auto" : "off"); showS(); if (st.painted) st.pend = st.painted; });
+  hud.appendChild(document.createTextNode(" ")); hud.appendChild(se); showS(); return b;
 }
 export function attachStadium(voxel, hud) { const s = voxel.stadium = new Stadium3D(voxel); addStadiumButton(hud, s); return s; }
