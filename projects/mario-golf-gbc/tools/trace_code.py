@@ -7,7 +7,7 @@ Outputs per-bank coverage and states/code_map.json ({bank: [[start, end], ...]} 
 states/code_entries.json ({bank: [entry, ...]}), and appends nothing to labels.csv (use --emit-labels to print sub_BB_AAAA candidates).
 usage: trace_code.py [--roots BB:AAAA,...] [--report]
 """
-import sys, os, json, collections
+import sys, os, re, json, collections
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gbrom import load_rom, to_offset, nbanks, ROOT, Labels
 from instruction_set import decode
@@ -36,14 +36,19 @@ def add_root(spec):
 for v in (0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x40, 0x48, 0x50, 0x58, 0x100):
     push(0, v, True)
 # AddTask(HL) targets and other known indirect roots from labels.csv (names, not data tables)
-DATA_WORDS = ("Table", "Curve", "Signature", "Header", "String", "Font", "Widths", "Sine", "Tangent", "Tiles",
-              "Palettes", "Gfx", "Data")
+# data labels (not code roots): names ending in Table / Tables / Data (optionally + one capital letter or a
+# _BB copy suffix), and older data names that predate that convention
+DATA_NAME = re.compile(r"(Table|Tables|Data)([A-Z]|_[0-9A-F]{2})?$")
+DATA_NAMES = {"Font", "FontWidths", "FontTiles", "SaveSignature", "PowerCurve", "MissCurve", "SpeedTableJump",
+              "DefaultBGPalettes", "DefaultOBJPalettes", "CursorSpriteTiles", "LinkLostTilesLZ", "LinkLostPalettes",
+              "StatsPalettes", "RecordsPalettes", "GfxPromptStrings", "DebugFlagHeaderText", "NumberFontGlyphPtrs",
+              "Map39LetterSpriteTiles", "Map39MarkerSpriteTiles", "SineTable8"}
 LABELS = Labels()
 DATA_LABELS = set()
 for (b, a), (name, _) in LABELS.by.items():
     if b == "*" or a >= 0x8000 or not name:
         continue
-    if any(k in name for k in DATA_WORDS):
+    if DATA_NAME.search(name) or name in DATA_NAMES:
         DATA_LABELS.add((b if a >= 0x4000 else 0, a))
     else:
         push(b if a >= 0x4000 else 0, a, True)

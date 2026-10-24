@@ -3838,3 +3838,4 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,D342,wCaptionStepKeep,WRAM6: step byte 3: 0 clears wCaptionStepFunc after one call
 *,D343,wCaptionStepFrames,WRAM6: frames left in the current caption step
 *,D344,wCaptionSprite,WRAM6: caption number selecting CaptionTemplateTable
+3E,60C3,PutTileStringAttr0,hl = 0-terminated tiles at bc: PutTileAttr0 per tile (shares the loop at 3E:617C); called by DrawTileStringAttr0At
