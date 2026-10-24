@@ -509,6 +509,25 @@ $("engbtn").textContent = ENGINE_LABEL[portMode()] || "CODE: ROM";
   });
   $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b);
 }
+// +9000 EXP (testing): adds 9000 EXP to the Mario Tour player's record (wC900 + $2C, 24-bit, capped at 99999 like the game's AddExp
+// 02:4D30) in the loaded tour file, on the campus only (maps 17-36). Two taps (the first arms it for three seconds). The game's own
+// level-up screen hands out the levels after the next EXP award (a match or a mini-game), and its next save keeps them.
+{
+  const b = document.createElement("span"); b.className = "k"; b.id = "expbtn"; b.textContent = "+9000 EXP"; b.title = "testing: give your tour character 9000 EXP (tap twice)";
+  let armed = 0;
+  b.addEventListener("pointerdown", () => {
+    if (!gb) return;
+    const w = gb.mem.wram[0], map = w[0x32E]; let name = "";
+    for (let i = 0; i < 8; i++) { const c = w[0x900 + i]; if (c < 0x20 || c > 0x7E) break; name += String.fromCharCode(c); }
+    if (map < 17 || map > 36 || !name.trim()) { hint("Load your tour file and walk on the campus first"); return; }
+    if (performance.now() - armed > 3000) { armed = performance.now(); b.textContent = "TAP AGAIN"; setTimeout(() => { b.textContent = "+9000 EXP"; }, 3000); return; }
+    armed = 0; b.textContent = "+9000 EXP";
+    const o = 0x92C, v = Math.min(99999, (w[o] | (w[o + 1] << 8) | (w[o + 2] << 16)) + 9000);
+    w[o] = v & 0xFF; w[o + 1] = (v >> 8) & 0xFF; w[o + 2] = v >> 16;
+    hint(`${name.trim()}: ${v} EXP. Play a match or a mini-game: the level-up screen comes after it`);
+  });
+  $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b);
+}
 $("engbtn").addEventListener("pointerdown", () => {
   const order = ["rom", "port", "portall"], next = order[(order.indexOf(portMode()) + 1) % order.length];
   try { localStorage.setItem("mt-engine", next); } catch (e) { /* private mode */ }
