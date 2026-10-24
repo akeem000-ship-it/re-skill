@@ -136,7 +136,7 @@ bank,addr,name,comment
 0,2A8A,BlitBGRowFrom64,(as in Mario Tennis 00:222C)
 0,2AF7,BlitBGColumnFrom64,(as in Mario Tennis 00:2299)
 0,2B6C,StopBGMIfPlaying,(as in Mario Tennis 00:2F52)
-0,2BBB,PlaySoundCmd,(as in Mario Tennis 00:2FB3)
+0,2BBB,PlaySoundCmd,ids < $36 songs; $36-$3A jingles; >= $40 effects (as in Mario Tennis 00:2FB3)
 0,2C6B,UpdateGameTimer,(as in Mario Tennis 00:23DD)
 0,2C98,TickSecondaryTimerCountdown,(as in Mario Tennis 00:240A)
 0,2CC3,SaveGameTimer,(as in Mario Tennis 00:2452)
@@ -197,7 +197,7 @@ bank,addr,name,comment
 *,FF9C,hOAMUsed,bytes of wShadowOAM used this frame
 *,FF9E,hDebugMode,debug overlay and frame-step (AdvanceFrame)
 *,FFA6,hJoyRepeatRate,6 (Start)
-*,FFCD,hActiveJingle,set by PlaySoundCmd for jingle ids $36-$3F
+*,FFCD,hActiveJingle,set by PlaySoundCmd for jingle ids $36-$3A
 *,FFCE,hSoundFlags,bit 0: music off (option)
 *,FFC0,hSerialRecv,last byte received
 *,FFC1,hSerialIdleByte,byte sent when nothing is queued ($10)
@@ -231,3 +231,21 @@ A,5348,MapIndexOf,a = map id -> a = record number
 *,C46A,wMapEntrance,entrance id ($FA = keep position)
 *,C4BF,wMapLoadPhase,$10 / $20 / $30 / $40 while MapRun loads a map
 A,4950,MapDebugCoordsTask,frame task 1 during maps: prints the player's coordinates with PrintHexWord when flag #32 is set
+# --- sound (banks 7C/7D/7E driver + 7F effects) ---
+7E,4022,SoundRequestSFX,a = effect id: keeps the higher priority (table 7E:5235) in wSFXRequest / $C4C3
+7E,4119,SoundHandleRequests,new wMusicRequest -> SongStart; new wSFXRequest -> farcall 7F:400A; sets bit 7 when handled
+7E,4186,SongStart,a = song: bank from SongBankTable -> wSoundBank and rROMB0 (hFFBF); header from SongTable in that bank
+7E,49CC,SoundCheckMusicEnd,when the 4 channel flags $C4CD-$C4D0 are 0: wMusicRequest = $80
+7E,5235,SFXPriorityTable,1 byte per effect
+7E,52A4,SongCount,$2B
+7E,52A5,SongBankTable,1 byte per song (7C / 7D / 7E)
+7E,52D7,SongTable,word per song in each music bank (the bank's own copy); header = mask + 4 channel pointers
+7F,400A,SFXStart,a = effect: ids < $65 from 7F:495C/495D; ids >= $65 from 7F:615F/6160
+7F,406C,SFXUpdate,farcalled at the start of SoundUpdate
+*,C4C0,wMusicRequest,song id; bit 7 set once started (SoundCmdDispatch writes it if < SongCount)
+*,C4C1,wSoundBank,music bank of the current song
+*,C4C2,wSFXRequest,effect id; bit 7 set once started
+*,C4C3,wSFXPriority,
+*,C4CD,wChannelActive,4 bytes, one per channel
+*,FFBF,hSoundROMBank,the driver's own ROM bank shadow (it does not use hROMBank)
+0,2BE8,JingleSongTable,PlaySoundCmd ids $36-$3A -> songs 00 17 18 19 1A

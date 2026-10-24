@@ -63,7 +63,7 @@ Standard Game Boy Color map. Project-specific uses so far:
 | Vector | Target | Meaning (shown by reading the target) |
 |--------|--------|------------------------------------|
 | `rst $00` | 00:0690 JumpTableDispatch | `add a ; pop hl ; ... jp hl`: A-indexed `dw` jump table inline after the `rst` |
-| `rst $08` | 00:2BBB PlaySoundCmd | reads 1 inline byte (sound id) and returns past it; ids $36-$3F are jingles (Tennis: $40-$4F) |
+| `rst $08` | 00:2BBB PlaySoundCmd | reads 1 inline byte (sound id) and returns past it: songs < $36, jingles $36-$3A, effects >= $40 (see Sound) |
 | `rst $10` | 00:01F6 FarCallVectorInline | reads inline `db idx, bank`, switches bank, jumps to word `[bank:$4000+idx]`, restores the bank, returns past the 2 bytes |
 | `rst $18` | 00:01B6 FarCall | same inline `db idx, bank` far call; keeps a/hl (code identical to Tennis 00:01B6) |
 | `rst $20` | 00:2D86 SetGameFlagCmd | inline `dw` flag argument (via FetchInlineWordOperand 00:2D65) |
@@ -204,7 +204,8 @@ bank. Assets are LZ: banks 28-2F, 40, 4B-4E, 72-74 have 12-37 clean LZ entries e
 | 02, 05, 0A, 0B, 10 | most far-call targets (0A: ~5150 call sites, 10: ~880, 05: ~560, 02: ~370, 0B: ~220) | engine libraries |
 | 28-2F, 72-74 | 22-52 entries, ~60% LZ | compressed graphics |
 | 30-35 | 900-1400 `rst $18` call sites each, mostly into 0A | script-like code (story / RPG mode?) |
-| 7C-7E | 11-entry tables at the same layout | sound engine and its data (7E called from bank 0) |
+| 7C-7E | the same sound driver code in each, songs after it | **sound driver + music** (confirmed, see Sound) |
+| 7F | 2 exports | **sound effects** (confirmed) |
 | 18-1F | 2 exports each, at the end of the bank, called from LoadText 05:6179 | **text banks** (confirmed, see Text) |
 | 0D, 3D, 44 | 1-2 exports far from `$4000`, but real: far-called from code (0D:4AA7 from 32/3D/58; 3D:431A from 3C; 44:42FB from 05/08/32) | code |
 | 46 | 2 words, no far call uses them (`scan_jumptables.py` kind `header`) | data, no export table |
@@ -247,6 +248,27 @@ that, and `scan_jumptables.kind()` now uses it.
 | `$0F` | 05:5828 | placing: text `$1CA3 + ([$DFCE] & 3)` ("000", "1st", "2nd", "3rd") |
 | `$10-$13` | 05:5900-5921 | write tile `$0A-$0D` directly (special glyphs) |
 | `$DE`, `$DF` | 05:5580, 05:55A0 | modify the previous glyph (Japanese dakuten / handakuten, left over from the Japanese version) |
+
+#### Sound (banks 7C/7D/7E and 7F; tools/dump_songs.py)
+
+- **Commands** (`rst $08 ; db id`, PlaySoundCmd 00:2BBB): id `< $36` = song id: stored in wCurrentBGM (`$C33E`)
+  and passed to SoundCmdDispatch (7E:4016), which accepts it if below SongCount (`$2B` = 43 songs) and writes
+  wMusicRequest. Ids `$36-$3A` are jingles: song `JingleSongTable[id - $36]` (00, 17, 18, 19, 1A), with
+  `hActiveJingle` set so the BGM comes back afterwards (WaitJingleEnd, ResumeBGMAfterJingle). Ids `>= $40`
+  are effects: `id - $40` goes to SoundRequestSFX (7E:4022), which keeps the higher-priority request
+  (SFXPriorityTable 7E:5235).
+- **Driver**: the code at `$4000-$52D8` is byte-identical in banks 7C, 7D and 7E
+  (`python3 tools/compare_banks.py 7c 7e`); each bank holds different songs after it. SongStart (7E:4186)
+  picks the song's bank from SongBankTable (7E:52A5) and writes it straight to the MBC (with its own shadow
+  `hFFBF`, not hROMBank); because the code is the same in every copy, execution continues in the new bank.
+  SoundUpdate (7E:40EB, every VBlank) first runs the effects engine (farcall 7F:406C), then switches to
+  wSoundBank and updates the four channels (7E:42B9, 4308, 4359, 43AE); SoundCheckMusicEnd (7E:49CC) marks
+  the music finished when the four channel flags at `$C4CD` are clear.
+- **Song table**: word `$52D7 + 2n` in the song's bank. A song header is 9 bytes: a channel mask (bit 0 =
+  channel 1) and 4 channel pointers. Songs 01-09 are in 7E, 0A-16 in 7D, 17-2A in 7C; song 00 (mask 0) is
+  silence (SyncBGMEnableFlag plays it to mute the music).
+- **Effects**: bank 7F (2 exports: SFXStart 7F:400A, SFXUpdate 7F:406C). Two effect tables: ids `< $65` at
+  7F:495C (count) / 7F:495D (pointers), ids `>= $65` at 7F:615F / 7F:6160.
 
 ### Data Structures
 
@@ -348,7 +370,8 @@ engine is the RPG ("story") side; how golf rounds and the menus are entered from
 - [ ] How a golf round is started from a map (talk/object handlers 0A:4F96 / 0A:5066 / 0A:5109) and how it returns
 - [ ] Map header fields +10/+12; warp record bytes 0-5; entrance byte 1; MapTable byte 5
 - [ ] The bank-02 setup calls in GameMain (02:41F6, 02:45D3, 02:4E3D) and the save check at 02:4078 ("CAMELOT GAMEBOY" at 02:4162)
-- [ ] Bank 7E: confirm the sound engine (entries 7E:4016/4072/40EB) and the sound id tables
+- [x] Sound: driver copies in 7C/7D/7E, song bank/pointer tables, command id ranges, effects bank 7F
+- [ ] Sound: channel script format (7E:42B9 per channel) and the effect format (7F); exports 7E:4043-4064, 49DF, 49EB
 - [x] Text: text banks 18-1F, id format, control codes, font 03:50F0 (dump_text.py)
 - [ ] Text: render the font (03:50F0) to an image to confirm the glyph format (16 bytes: 8 rows x 2 bytes?)
 - [ ] Text: control code `$0D` (05:531B) and where the argument lists `$DFAE`/`$DFEE` are filled
