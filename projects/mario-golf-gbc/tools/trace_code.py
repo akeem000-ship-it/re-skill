@@ -179,6 +179,18 @@ while work or actor_scripts - {(b, a) for b, a in actor_done}:
                 idx, fb = data[0], data[1]
                 if (fb, idx) == (0x0A, 0x18) and "de" in imm:            # ActorSetScript: de = actor script, this bank
                     actor_scripts.add((cb, imm["de"]))
+                if (fb, idx) == (0x0A, 0x4C) and "hl" in imm and "de" in imm and 0x4000 <= imm["hl"] < 0x8000:
+                    # ScriptSetMapField: word at $C450 + de = hl; de $0C / $0E / $10 = talk / object / trigger list
+                    # (8-byte records, script word at +4), $12 = enter script (in the map's bank: this bank)
+                    if imm["de"] == 0x12:
+                        push(cb, imm["hl"], True)
+                    elif imm["de"] in (0x0C, 0x0E, 0x10):
+                        o = to_offset(cb, imm["hl"])
+                        if rom[o] != 0xC9:
+                            while rom[o] != 0xFF and o < to_offset(cb, 0x7FF8):
+                                w = rom[o + 4] | rom[o + 5] << 8
+                                if 0x4000 <= w < 0x8000: push(cb, w, True)
+                                o += 8
                 if (fb, idx) == (0x10, 0x1A) and "hl" in imm and 0x4000 <= imm["hl"] < 0x7FF6:
                     for e in range(5):                  # SetGolfEventHook: hl = table of 5 handlers (events 0-4)
                         o = to_offset(cb, imm["hl"] + 2 * e)
@@ -202,6 +214,136 @@ while work or actor_scripts - {(b, a) for b, a in actor_done}:
         if ins.kind == "jr" and ins.cond is None: break
         if ins.kind == "rst" and ins.target in (0x00,): break
         pc = nxt
+
+# code pointers passed in registers to helpers that call them (e.g. 32:5DD5 ld hl, door animation ; call
+# Map03WalkOutOfDoor): an ld hl / de / bc immediate in traced code naming an untraced address of the same bank
+# that decodes as a whole routine (no illegal opcode, no $FF, ends in ret / jp, at least two calls or far calls)
+def looks_like_routine(bank, a):
+    if rom[to_offset(bank, a)] not in OPENERS:
+        return False
+    pc, calls = a, 0
+    for _ in range(300):
+        if pc >= 0x7FFD or pc in code[bank]:
+            return False
+        ins = decode(rom, to_offset(bank, pc), pc)
+        if ins.kind == "illegal" or ins.raw[0] in (0xFF, 0x76, 0x10):
+            return False
+        if ins.kind == "call" or ins.kind == "rst" and ins.target in (0x10, 0x18):
+            calls += 1
+        pc += ins.length + inline_len(ins)
+        if ins.kind in ("ret", "jp") and ins.cond is None:
+            return calls >= 2
+    return False
+
+
+for _round in range(4):
+    found = 0
+    for b in list(code):
+        if b == 0:
+            continue
+        starts = sorted(code[b])
+        for a in starts:
+            o = to_offset(b, a)
+            if rom[o] not in (0x21, 0x11, 0x01) or (a + 1) not in code[b] or (a + 2) not in code[b]:
+                continue
+            ins = decode(rom, o, a)
+            if ins.length != 3 or ins.text.split()[0] != "ld":
+                continue
+            w = rom[o + 1] | rom[o + 2] << 8
+            if 0x4000 <= w < 0x8000 and w not in code[b] and (b, w) not in DATA_LABELS and looks_like_routine(b, w):
+                push(b, w, True)
+                found += 1
+    if not found:
+        break
+    while work:
+        bank, pc = work.pop()
+        imm = {}
+        while True:
+            key = (bank if pc >= 0x4000 else 0, pc)
+            if key in seen or pc >= 0x8000: break
+            seen.add(key)
+            cb = key[0]
+            off = to_offset(cb, pc)
+            ins = decode(rom, off, pc)
+            if ins.kind == "illegal" or ins.raw[0] == 0xFF: break
+            for i in range(ins.length): code[cb].add(pc + i)
+            nxt = pc + ins.length
+            n = inline_len(ins)
+            if n:
+                data = rom[off + ins.length:off + ins.length + n]
+                for i in range(n): code[cb].add(nxt + i)
+                if ins.kind == "rst" and ins.target in (0x10, 0x18) or ins.kind == "call" and n == 2 and ins.target == 0x01F6:
+                    idx, fb = data[0], data[1]
+                    if 0 < fb < NB and idx // 2 < TABLE_LEN.get(fb, 0):
+                        t = farcall_target(rom, idx, fb)
+                        if t and 0x4000 <= t < 0x8000: push(fb, t, True)
+                nxt += n
+            if ins.target is not None and ins.kind in ("call", "jp", "jr", "rst"):
+                push(cb, ins.target, ins.kind in ("call", "rst"))
+            if ins.kind in ("ret", "jp") and ins.cond is None: break
+            if ins.kind == "jr" and ins.cond is None: break
+            if ins.kind == "rst" and ins.target in (0x00,): break
+            pc = nxt
+
+# unreferenced (dead) routines: in banks with at least 2 KB of traced code, an untraced gap that starts right
+# after traced code and decodes as whole routines (no illegal opcode or $FF, each ending in ret / jp, with at
+# least 3 calls in all) -- e.g. 33:4929, a 402-byte block nothing calls
+DEAD = []
+LABEL_ADDRS = {}
+for (lb, la), _ in LABELS.by.items():
+    if lb != "*" and la < 0x8000:
+        LABEL_ADDRS.setdefault(lb if la >= 0x4000 else 0, []).append(la)
+for v in LABEL_ADDRS.values():
+    v.sort()
+if "--no-dead" not in sys.argv:
+    for b in list(code):
+        if len(code[b]) < 2048:
+            continue
+        lo, hi = (0x0100, 0x4000) if b == 0 else (0x4000, 0x8000)
+        a = lo
+        while a < hi:
+            if a in code[b] or a - 1 not in code[b]:
+                a += 1
+                continue
+            end = a
+            while end < hi and end not in code[b]:
+                end += 1
+            pc, calls, ok = a, 0, True
+            while pc < end:
+                ins = decode(rom, to_offset(b, pc), pc)
+                if ins.kind == "illegal" or ins.raw[0] in (0xFF, 0x76, 0x10):
+                    ok = False
+                    break
+                if ins.kind == "call" or ins.kind == "rst" and ins.target in (0x10, 0x18, 0x08, 0x20, 0x28, 0x30):
+                    calls += 1
+                pc += ins.length + inline_len(ins)
+            near = [x for x in LABEL_ADDRS.get(b, ()) if x <= a]
+            in_data = near and (b if near[-1] >= 0x4000 else 0, near[-1]) in DATA_LABELS
+            if ok and pc == end and calls >= 3 and end - a >= 16 and rom[to_offset(b, a)] in OPENERS and not in_data:
+                DEAD.append((b, a, end - a))
+                push(b, a, True)
+            a = end
+    while work:
+        bank, pc = work.pop()
+        while True:
+            key = (bank if pc >= 0x4000 else 0, pc)
+            if key in seen or pc >= 0x8000: break
+            seen.add(key)
+            cb = key[0]
+            off = to_offset(cb, pc)
+            ins = decode(rom, off, pc)
+            if ins.kind == "illegal" or ins.raw[0] == 0xFF: break
+            for i in range(ins.length): code[cb].add(pc + i)
+            nxt = pc + ins.length + inline_len(ins)
+            for i in range(inline_len(ins)): code[cb].add(pc + ins.length + i)
+            if ins.target is not None and ins.kind in ("call", "jp", "jr", "rst"):
+                push(cb, ins.target, ins.kind in ("call", "rst"))
+            if ins.kind in ("ret", "jp") and ins.cond is None: break
+            if ins.kind == "jr" and ins.cond is None: break
+            pc = nxt
+    if "--dead" in sys.argv:
+        for b, a, n in DEAD:
+            print("dead code %02x:%04x %d bytes" % (b, a, n))
 
 total = 0
 rows = []
