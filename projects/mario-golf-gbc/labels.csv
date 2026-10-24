@@ -261,3 +261,42 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 10,45E7,GolfShotLoop,shot loop of GolfRound (AdvanceFrame is reached through 10:486B -> 10:5D19 during aiming)
 *,C833,wRoundId,also copied to $C839
 *,C838,wWindDir,rand & 3 at hole start (unless $D4ED forces $D4EE)
+10,4134,ShotPreCheck,
+10,4674,PickNextPlayer,chooses wCurPlayer for the next shot (players not yet holed out: player field +$2A)
+10,4798,ShotSetup,per shot: club / lie (12:4B19), then the swing and the flight; registers BallTask
+10,49B7,ShotLaunch,RegisterFrameTask(1, BallTask) and waits for the ball
+10,4B14,PlayerField,a = field offset -> hl = wPlayer1 + a (+$40 for player 2 when wCurPlayer)
+10,4CDE,BallSpeedAndDir,wBallDir = angle of (vx vy); wBallSpeed = 0F04 of vx*vx + vy*vy (magnitude)
+10,4D09,BallLandCheck,height 0 and |vz| < $20: flight over (wBallInAir = 0); sound $40
+10,4D45,BallTask,frame task during a shot (bank 10 export $4C): flight or roll step; terrain check; height copied to $D4C1
+10,4D86,BallRollStep,on the ground: curve; roll speed; friction factor from the terrain table (10:67E4); water ($51 sound)
+10,4EE0,BallFlightStep,in the air: curve (wBallCurve x speed x $1C) across the direction; lift from wBallSpin x airspeed; gravity -$20 on vz; spin decay; wind (10:52EE); drag (10:5268); position and height integrated (10:52DA)
+10,527C,BallTerrainCheck,terrain under the ball (10:6536); saves the last safe position to $D51D unless type 3 or 7
+10,52DA,AddVelocityToPos,hl = 24-bit position; de = 8.8 velocity
+10,5643,SwingMeterCPU,computer swing: cursor up to the target power wSwingTargetPower then down to wSwingTargetImpact
+10,57E0,SwingMeterLoop,player swing: wSwingCount++ per frame; cursor = count up to $3C then $78 - count; A sets power then impact; times out at count $8A
+10,6536,TerrainAt,hl = x and de = y (integer parts) -> a = terrain type
+*,C835,wCurPlayer,0 or 1
+*,C837,wHoleNumber,1-18
+*,C839,wHolesLeft,
+*,C880,wPlayer1,$40-byte player record; +$20 strokes this hole; +$2A holed out
+*,C8C0,wPlayer2,
+*,D400,wBallX,WRAM6: 24-bit x (8.8 fraction + 16-bit integer); about 32 units per yard
+*,D403,wBallY,WRAM6: 24-bit y (decreases toward the green on hole 1)
+*,D406,wBallHeight,WRAM6: 16-bit 8.8 height
+*,D409,wBallVX,WRAM6: 8.8 signed
+*,D40B,wBallVY,WRAM6: 8.8 signed
+*,D40D,wBallVZ,WRAM6: 8.8 signed; -$20 per frame of gravity in flight
+*,D40F,wBallCurve,WRAM6: sideways force; decays x $FC/256 per frame
+*,D411,wBallSpin,WRAM6: lift/spin; decays about 1/128 per frame
+*,D413,wBallSpeed,WRAM6: |(vx vy)|
+*,D414,wBallDir,WRAM6: direction of (vx vy); 256 = full turn
+*,D415,wBallInAir,WRAM6: 1 in flight / 0 rolling
+*,D443,wOnGreen,WRAM6: positions relative to $D441/$D442 and x4 on the green
+*,D44E,wSwingCount,WRAM6: frames since the meter started
+*,D44F,wSwingCursor,WRAM6: meter cursor 0..$3C..0..-18
+*,D450,wSwingPower,WRAM6: cursor at the power press ($3C = full; $80 = none)
+*,D451,wSwingPerfect,WRAM6: impact pressed with the cursor at 0
+*,D452,wSwingFullPower,WRAM6:
+*,D4D8,wSwingTargetPower,WRAM6: computer swing
+*,D4D9,wSwingTargetImpact,WRAM6: computer swing

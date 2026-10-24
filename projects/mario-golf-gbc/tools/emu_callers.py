@@ -3,8 +3,9 @@
 Plays the given button script, then counts, for every execution of BB:AAAA after frame START, the
 return address at [SP] and the next stack words that point into ROM ($0150-$7FFF), with the
 current ROM bank (hROMBank). Prints the most common call chains.
-usage: emu_callers.py BB:AAAA START END [--depth N] --press FRAME:BUTTON ...
+usage: emu_callers.py BB:AAAA START END [--depth N] [--state FILE] --press FRAME:BUTTON ...
   e.g. emu_callers.py 00:2E3B 4400 4600 --press 3000:start 3300:a 3400:right ...
+  --state starts from a saved state (frames then count from it)
 """
 import sys, os, collections
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -24,6 +25,8 @@ def main():
             f, b = p.split(":")
             presses[int(f)] = b
     e = Emu(fresh=True)
+    if "--state" in a:
+        e.load(a[a.index("--state") + 1])
     chains = collections.Counter()
     state = {"on": False}
 

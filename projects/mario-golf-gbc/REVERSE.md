@@ -314,8 +314,48 @@ Found by playing in PyBoy (Start, A, Right x4 to Mario, A, A, A: "Play Modes" ->
   indexed far helper) and 12, 13. Banks 50-5D and 5F-71 have small tables of 5-16 entries each: likely the
   course / hole data (not decoded yet).
 
-The golf engine proper (swing and power meter, ball flight, wind, lie and terrain, bounce and roll, putting, CPU
-golfers, scoring) is the next big area; see Next Tasks.
+**Round structure (10:4451).** Per hole (10:44B4): wind, hole setup, then the shot loop (10:45D9-4632):
+PickNextPlayer (10:4674) chooses who plays next among the players not yet holed out (player record field
+`+$2A`); a shot is ShotSetup (10:4798) -> swing -> ShotLaunch (10:49B7); the loop ends when both players' holed
+flags are set; then wHoleNumber (`$C837`) goes up (wrapping 19 -> 1) and wHolesLeft (`$C839`) down. Players are
+`$40`-byte records at `$C880` and `$C8C0` (PlayerField 10:4B14 indexes the current one, wCurPlayer `$C835`);
+field `+$20` is the stroke count on the hole (went to 1 after the first shot in the emulator).
+
+**Swing meter** (10:57E0 for the player, 10:5643 for the computer; WRAM6). Confirmed in the emulator
+(`tools/emu_watch.py`, button presses from `states/stroke_hole1.state`):
+
+| Variable | Meaning |
+|----------|---------|
+| `D44E` wSwingCount | +1 per frame once the meter starts |
+| `D44F` wSwingCursor | = count up to `$3C` (full), then `$78 - count` back down; the swing times out at count `$8A` (cursor -18) |
+| `D450` wSwingPower | cursor at the first press (`$80` = not set; `$3C` = full power -> `D452` = 1, sound `$5E`) |
+| `D451` wSwingPerfect | 1 when the second (impact) press comes with the cursor exactly at 0 (sound `$5E`) |
+| `D4D8` / `D4D9` | the computer's target power and impact point (SwingMeterCPU stops the cursor at them) |
+
+Test: presses at frames 60 / 100 / 158 / 218 after the state gave power `$3A`, a perfect impact, and a
+235-yard drive ("235y" on screen, 137 y left on the 374 y hole).
+
+**Ball** (WRAM6 `D400-D415`; BallTask 10:4D45 is registered as frame task 1 for the shot):
+
+| Address | Field |
+|---------|-------|
+| `D400-D402` / `D403-D405` | x / y: 8-bit fraction + 16-bit integer; the 235 y drive moved y by `$1D59` and x by `$25`, so about 32 units per yard |
+| `D406-D407` | height (8.8); `D4C1` gets a copy each frame |
+| `D409` / `D40B` / `D40D` | velocity vx / vy / vz (8.8 signed) |
+| `D40F` | curve (sideways force) |
+| `D411` | spin / lift |
+| `D413` / `D414` | speed and direction of (vx, vy), recomputed each frame (10:4CDE) |
+| `D415` | 1 in the air, 0 on the ground |
+
+Flight step (BallFlightStep 10:4EE0, while `D415` = 1): curve force `D40F x speed x $1C` added across the direction
+(angle + `$40`); vz += `D411` (spin) x airspeed term x `$1C`, then vz -= `$20` (gravity; the net change seen in the
+emulator was `-$19`/`-$1A` per frame); spin decays by about 1/128; wind (10:52EE) and a drag step (10:5268) act
+on vx, vy, vz; position and height are integrated (10:52DA). Landing (10:4D09): height 0 and |vz| < `$20` ends
+the flight (sound `$40`). Roll step (BallRollStep 10:4D86, `D415` = 0): the curve force (x `$40`), forward
+speed decay x `$FC`/256, wind, and a friction factor from the terrain table at 10:67E4 (terrain type 3 plays
+sound `$51` and drops the ball: water). BallTerrainCheck (10:527C) reads the terrain under the ball every frame
+(TerrainAt 10:6536) and remembers the last safe spot in `D51D` (not for types 3 and 7). On the green
+(`D443`) positions are taken relative to `D441`/`D442` and scaled x4.
 
 ### Data Structures
 
@@ -441,8 +481,10 @@ Result over 4800 frames:
 - [x] Map 00 (the boot map, entrance 3): the intro, then the character select (emulator, emu_boot.py)
 - [ ] Map 00: how its init data (32:4FF7, header +4) drives the intro and the character select (0A:4F45)
 - [x] Find the golf round: GolfRound 10:4451 (emulator, emu_callers.py), entered from map 00's menus
-- [ ] Golf engine: shot loop 10:45E7 and the aiming loop 10:486B; swing / power meter; ball flight and wind;
-      lie and terrain; bounce and roll; putting; CPU golfers; scoring
+- [x] Golf engine, first pass: round and shot loop, swing meter, ball state and the flight / roll steps
+- [ ] Golf engine: the shot's launch values (club, power, impact -> vx/vy/vz, curve, spin: from ShotSetup 10:4798
+      on), wind (10:52EE, 10:66DB), drag (10:5268), the terrain types and friction table (10:67E4), the bounce
+- [ ] Golf engine: aiming loop (10:486B), club select, putting on the green, CPU golfers' targets, scoring
 - [ ] Hole data: the tables in banks 50-5D and 5F-71 (LZ via 00:069A during hole setup); render a hole
 - [ ] How the play-mode menu (map 00) calls GolfRound, and the RPG side's golf (story tournaments from maps)
 - [ ] Map header fields +10/+12; warp record bytes 0-5; entrance byte 1; MapTable byte 5
