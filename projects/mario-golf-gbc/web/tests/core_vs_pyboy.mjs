@@ -1,5 +1,5 @@
 // Run the JS core from power-on and compare its per-frame hashes with PyBoy's (tools/emu_frame_hashes.py).
-// usage: node web/tests/core_vs_pyboy.mjs out/pyboy_hashes.txt [--frames N] [--dump FRAME] [--keys F:button,...] [--keyoff 68]\n// (keys are PyBoy frame numbers, shifted by the boot-ROM offset; dump writes out/core_fFRAME.ppm)
+// usage: node web/tests/core_vs_pyboy.mjs out/pyboy_hashes.txt [--frames N] [--dump FRAME] [--keys F:button,...] [--keyoff 64]\n// (keys are PyBoy frame numbers, shifted by the 64 frames of PyBoy's boot ROM; dump writes out/core_fFRAME.ppm)
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { GBC } from "../js/gb/gbc.js";
@@ -7,7 +7,7 @@ const here = p => fileURLToPath(new URL(p, import.meta.url));
 const a = process.argv.slice(2), opt = (n, d) => (a.includes(n) ? a[a.indexOf(n) + 1] : d);
 const rom = new Uint8Array(fs.readFileSync(here("../../rom/mario_golf.gbc")));
 const ref = fs.existsSync(a[0]) ? fs.readFileSync(a[0], "utf8").trim().split("\n").map(l => l.split(" ")[1]) : [];
-const N = +opt("--frames", ref.length || 300), dump = opt("--dump", null), keyOff = +opt("--keyoff", 68);
+const N = +opt("--frames", ref.length || 300), dump = opt("--dump", null), keyOff = +opt("--keyoff", 64);
 const keys = {}; for (const k of opt("--keys", "").split(",")) if (k) { const [f, b] = k.split(":"); keys[+f - keyOff] = b; }   // PyBoy frames -> core frames
 const gb = new GBC(rom, { audio: false });
 const hashes = []; const t0 = Date.now();

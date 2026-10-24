@@ -19,14 +19,17 @@ export class GBC {
   }
   reset() {
     this.cpu.reset();
-    const m = this.mem; m.romBank = 1; m.updateRom(); m.ie = 0; m.iflag = 0xE1; m.doubleSpeed = false;
-    // post-boot I/O state of the CGB boot ROM
-    this.timer.div = 0x1E00 << 0;
-    this.timer.tima = 0; this.timer.tma = 0; this.timer.setTac(0xF8);
-    this.ppu.lcdc = 0x91; this.ppu.stat = 0x85; this.ppu.bgp = 0xFC;
+    const m = this.mem, c = this.cpu, p = this.ppu; m.romBank = 1; m.updateRom(); m.ie = 0; m.iflag = 0xE1; m.doubleSpeed = false;
+    // the state PyBoy's CGB boot ROM hands over at $0100 (tools: read from a PyBoy state there), so a power-on run
+    // matches PyBoy frame for frame: registers, the divider, and the LCD on line 145 (VBlank), 172 dots in
+    c.a = 0x11; c.f = 0x80; c.b = 0x00; c.c = 0x00; c.d = 0x00; c.e = 0x08; c.h = 0x00; c.l = 0x7C;
+    this.timer.div = 0xC71C;
+    this.timer.tima = 0; this.timer.tma = 0; this.timer.tac = 0; this.timer.setTac(0xF8);
+    p.lcdc = 0x91; p.bgp = 0xFC; p.ly = 145; p.dots = 172; p.mode = 1; p.stat = 0x81; p.windowLine = 0;
+    m.hram[0x7C] = 0xB0;                                      // $FFFC, left by the boot ROM
     this.apu.write(0x26, 0x80); this.apu.write(0x25, 0xF3); this.apu.write(0x24, 0x77);
     this.apu.write(0x11, 0x80); this.apu.write(0x12, 0xF3); this.apu.write(0x14, 0xBF);
-    this.frames = 0; this.cycles = 0;
+    this.frames = 0; this.cycles = 0; this.caught = 0;
   }
   setInput(state) { this.joypad.set(state); }
   installRecomp(table) { this.exec = new Exec(this, table); }
@@ -37,13 +40,36 @@ export class GBC {
     this.sync(cpuCycles);
   }
   sync(cpuCycles) {
+    const n = cpuCycles - this.caught; this.caught = 0;   // part of the instruction may already be synced (catchUp)
+    if (n > 0) this.advance(n);
+    this.cycles += cpuCycles;
+    const m = this.mem;
+    if (m.serialPending) { m.serialPending = false; m.io[1] = 0xFF; m.io[2] &= 0x7F; m.requestInterrupt(8); }
+  }
+  // advance the timer, PPU and APU to `pre` cycles into the current instruction (before it accesses their registers)
+  catchUp(pre) {
+    const n = pre - this.caught;
+    if (n > 0) { this.advance(n); this.caught = pre; }
+  }
+  // CPU cycles until the next PPU transition (mode / line / LCD-off frame) or timer tick, at least 4: how far a
+  // halted CPU sleeps in one step, so it wakes exactly when an interrupt can be raised
+  cyclesToEvent() {
+    const p = this.ppu, t = this.timer, shift = this.mem.doubleSpeed ? 1 : 0;
+    let d;
+    if (!(p.lcdc & 0x80)) d = 70224 - p.offDots;
+    else if (p.ly < 144) d = (p.mode === 2 ? 80 : p.mode === 3 ? 252 : 456) - p.dots;
+    else d = (p.ly === 153 && p.firstFrame ? 464 : 456) - p.dots;
+    let c = d << shift;
+    if (t.reload) c = Math.min(c, t.reload);
+    else if (t.tac & 4) c = Math.min(c, t.period - (t.div % t.period));
+    return Math.max(4, c);
+  }
+  advance(cpuCycles) {
     const m = this.mem, dots = m.doubleSpeed ? cpuCycles >> 1 : cpuCycles;
     this.timer.step(cpuCycles);
     const extra = this.ppu.step(dots);
     if (this.audioOn) this.apu.step(dots);
     if (extra) { this.timer.step(extra); this.ppu.step(m.doubleSpeed ? extra >> 1 : extra); }
-    this.cycles += cpuCycles;
-    if (m.serialPending) { m.serialPending = false; m.io[1] = 0xFF; m.io[2] &= 0x7F; m.requestInterrupt(8); }
   }
   // run one frame: until the PPU marks the next frame start (line 153 -> 0, the LCD switched on, or 70224 dots
   // with the LCD off: PyBoy's frame boundaries, so per-frame inputs and screens line up with it)

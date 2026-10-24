@@ -2550,11 +2550,12 @@ Result over 4800 frames:
 - [x] Decompress and render LZ entries (extract_tiles.py); overworld maps fully rendered (render_map.py)
 - [ ] Map descriptor w7 (WRAM6 D800): find its readers (w4 = terrain grid, w5 = event grid: bank 0B notes)
 - [ ] Loaders for the LZ entries in banks 40, 4B-4E, 58 (UI, faces, sprites) and the golf course graphics
-- [ ] Milestone 3: run the game on `web/js/gb` (copy from Tennis) with SRAM saving; `core_vs_pyboy.mjs`
+- [x] Milestone 3: the game runs in the browser on `web/js/gb` with SRAM saving (docs/architecture_web.md); identical
+      to PyBoy frame for frame from power-on and for 24 000 frames of play (`core_vs_pyboy.mjs`, `snap_vs_pyboy.mjs`)
 
 ### Web Port Fixes
 
 ### Documentation
 
 - [x] `docs/architecture_exe.md` (binary layout, bank roles, execution flow, data flow)
-- [ ] `docs/architecture_web.md` once the web port starts
+- [x] `docs/architecture_web.md` (the page, the core, the PyBoy checks)

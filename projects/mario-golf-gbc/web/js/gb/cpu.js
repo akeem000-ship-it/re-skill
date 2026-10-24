@@ -67,6 +67,7 @@ export class CPU {
 
   step() {
     const m = this.m;
+    this.setAccessTiming();
     // interrupts
     const pending = m.iflag & m.ie & 0x1F;
     if (pending) {
@@ -80,10 +81,21 @@ export class CPU {
         }
       }
     }
-    if (this.halted) return 4;
+    if (this.halted) return m.machine.cyclesToEvent();   // sleep straight to the next timer / LCD event (as PyBoy)
     if (this.eiPending) { this.eiPending = false; this.ime = true; }
     const op = this.fetch();
     return this.exec(op);
+  }
+
+  // cycles into the instruction at which it reads / writes memory (PyBoy's timing; 0 for most): the Timer, sound
+  // and LCD registers are accessed with the hardware advanced that far (Memory.catchUp)
+  setAccessTiming() {
+    const m = this.m, op = m.read(this.pc);
+    let r = 0, w = 0;
+    if (op === 0xF0) r = 4; else if (op === 0xFA) r = 8;
+    else if (op === 0xE0 || op === 0x36 || op === 0x34 || op === 0x35) w = 4; else if (op === 0xEA) w = 8;
+    else if (op === 0xCB && (m.read((this.pc + 1) & 0xFFFF) & 7) === 6) { r = 4; w = 8; }
+    m.preR = r; m.preW = w;
   }
 
   // --- ALU helpers ---

@@ -20,6 +20,7 @@ export class Memory {
     this.ppu = null; this.apu = null; this.timer = null; this.joypad = null;
     this.romOffset = 0x4000;
     this.sramDirty = false;
+    this.preR = 0; this.preW = 0;               // set per instruction by CPU.setAccessTiming
     this.machine = null;                // set by GBC: tick() syncs the hardware for the cycles in cpu.cyc
   }
   tick(c) { if (c.cyc) { const n = c.cyc; c.cyc = 0; this.machine.sync(n); } }
@@ -39,6 +40,7 @@ export class Memory {
     return this.ie;
   }
   readIO(r) {
+    if ((r >= 0x04 && r <= 0x07) || (r >= 0x10 && r <= 0x4B)) this.machine.catchUp(this.preR);
     if (r === 0x00) return this.joypad.read();
     if (r === 0x04) return this.timer.div >> 8;
     if (r === 0x05) return this.timer.tima;
@@ -78,6 +80,7 @@ export class Memory {
   }
   updateRom() { this.romOffset = (this.romBank % this.romBanks) << 14; }
   writeIO(r, v) {
+    if ((r >= 0x04 && r <= 0x07) || (r >= 0x10 && r <= 0x4B)) this.machine.catchUp(this.preW);
     switch (r) {
       case 0x00: this.joypad.write(v); return;
       case 0x01: this.io[1] = v; return;

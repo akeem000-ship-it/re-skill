@@ -11,7 +11,7 @@ export class PPU {
     // frameStart: a frame ends where PyBoy ends one (line 153 -> 0, the LCD switched on, or 70224 dots with the
     // LCD off), so inputs given per frame land at the same point as in PyBoy; firstFrame: the frame after the
     // LCD is switched on shows blank, as on the hardware (and PyBoy)
-    this.frameStart = false; this.offDots = 0; this.firstFrame = false;
+    this.frameStart = false; this.offDots = 0; this.firstFrame = false; this.startDelay = false;
     this.frame = new Uint32Array(160 * 144); this.rgb5 = new Uint8Array(160 * 144 * 3);
     this.lineColor = new Uint8Array(160); this.linePrio = new Uint8Array(160);   // BG colour index 0-3 and attribute priority per pixel
     this.bgFrame = new Uint32Array(160 * 144);   // background + window only (no sprites), 0xAABBGGRR
@@ -38,7 +38,12 @@ export class PPU {
       case 0x40: {
         const was = this.lcdc & 0x80; this.lcdc = v;
         if (was && !(v & 0x80)) { this.ly = 0; this.dots = 0; this.mode = 0; this.stat = (this.stat & 0xFC); this.windowLine = 0; this.offDots = 0; this.frameStart = true; this.blank(); }
-        else if (!was && (v & 0x80)) { this.dots = 0; this.mode = 2; this.stat = (this.stat & 0xFC) | 2; this.checkStat(); this.frameStart = true; this.firstFrame = true; }
+        else if (!was && (v & 0x80)) {
+          // the LCD restarts when the writing instruction ends (step() skips its remaining dots); its first line is
+          // 8 dots short and line 153 of that frame 8 dots long, so the frame keeps its length (PyBoy's timing)
+          this.dots = 8; this.mode = 2; this.stat = (this.stat & 0xFC) | 2; this.checkStat(); this.frameStart = true; this.firstFrame = true;
+          this.startDelay = !globalThis.NO_DELAY;
+        }
         return;
       }
       case 0x41: this.stat = (this.stat & 0x07) | (v & 0x78); this.checkStat(); return;
@@ -73,6 +78,7 @@ export class PPU {
       return 0;
     }
     let extra = 0;
+    if (this.startDelay) { this.startDelay = false; return 0; }   // the rest of the instruction that switched the LCD on
     this.dots += n;
     while (true) {
       if (this.ly < 144) {
@@ -81,7 +87,8 @@ export class PPU {
         else if (this.mode === 0 && this.dots >= 456) { this.dots -= 456; this.ly++; if (this.ly === 144) { this.setMode(1); this.m.requestInterrupt(1); this.frameDone = true; this.frames++; if (this.firstFrame) this.blank(); } else this.setMode(2); this.checkStat(); continue; }
         else break;
       } else {
-        if (this.dots >= 456) { this.dots -= 456; this.ly++; if (this.ly > 153) { this.ly = 0; this.windowLine = 0; this.setMode(2); this.frameStart = true; this.firstFrame = false; } this.checkStat(); continue; }
+        const len = this.ly === 153 && this.firstFrame ? 464 : 456;
+        if (this.dots >= len) { this.dots -= len; this.ly++; if (this.ly > 153) { this.ly = 0; this.windowLine = 0; this.setMode(2); this.frameStart = true; this.firstFrame = false; } this.checkStat(); continue; }
         break;
       }
       break;
