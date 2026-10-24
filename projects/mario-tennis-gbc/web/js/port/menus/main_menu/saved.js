@@ -112,6 +112,7 @@ export function* runSavedDataSourceSelect(P) {
     yield* advanceFrame(P);
     V.menuInputPressed = V.inputPressed;
     if (moveSavedDataPickerCursor(P).a) { sound(P, SFX_MENU_MOVE); drawSavedDataSourceGrid(P); }
+    if (P.menuWheel && P.menuWheel.on) P.menuWheel.skin = { id: "files", at: P.frames, mode: "status", sel: V.menuCursorX + COLS * V.menuCursorY };   // MENU: Wheel (menuskins.js), read only
     const input = V.menuInputPressed;
     if (input & PADF_A) {
       const index = getMenuCursorIndex(P, COLS).a;

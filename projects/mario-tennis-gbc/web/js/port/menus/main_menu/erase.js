@@ -100,6 +100,7 @@ export function* runEraseSavedDataSelect(P) {
   for (;;) {
     V.menuInputPressed = V.inputPressed;                     // (the pad of the frame before: read before the wait)
     if (moveSavedDataPickerCursor(P).a) { sound(P, SFX_MENU_MOVE); drawEraseSavedDataGrid(P); }
+    if (P.menuWheel && P.menuWheel.on) P.menuWheel.skin = { id: "files", at: P.frames, mode: "erase", sel: V.menuCursorX + COLS * V.menuCursorY };   // MENU: Wheel (menuskins.js), read only
     yield* advanceFrame(P);
     const input = V.menuInputPressed;
     if (input & PADF_A) {

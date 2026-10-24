@@ -23,6 +23,9 @@ export function matchFrameRaw(rom, c, k) {
   const ntiles = info ? rom[off(bank, info + 4 * k + 3)] : 12, cols = Math.max(1, Math.min(4, ((ntiles || 12) + 3) >> 2));
   return { im: decodeColMajor(rom, off(bank, ptr), cols, 4), base: off(bank, ptr) };
 }
+// colour scheme i of 18:4300 (AllIndexedPalettes_18, 8 bytes each), 4 x rgb: a character's is CharPaletteIndexTable 02:417E[char]
+export function schemeColours(rom, i) { const o = off(SCHEMES[0], SCHEMES[1]) + (i & 0x0F) * 8; return [0, 1, 2, 3].map(j => rgb(rom[o + 2 * j] | rom[o + 2 * j + 1] << 8)); }
+export const charScheme = (rom, ch) => rom[off(0x02, 0x417E) + ch];
 // sprite set c's own colours (its OBJ scheme 18:4300 by the header's slot), 4 x rgb, or null: as the game loads them, unfaded
 export function matchPalette(rom, c) {
   const w = u16(rom, OBJECT_LIST[0], OBJECT_LIST[1] + 2 * c), bank = w >> 8, hdr = u16(rom, bank, 0x4000 + (w & 0xFF)), slot = rom[off(bank, hdr)];
@@ -32,9 +35,9 @@ export function matchPalette(rom, c) {
 // match frame k of sprite set c as a canvas trimmed to its pixels, coloured as on the court: the look's colours where it has the pixel's
 // tile (fade fd: by default the fade of OBJ palette pal, unfaded), else the sprite set's own scheme, else OBJ palette pal; or null
 // (intro.js: the VS screen; menuskins.js: the character select)
-export function matchPicture(gb, c, k, { pal = 4, flip = false, fd } = {}) {
+export function matchPicture(gb, c, k, { pal = 4, flip = false, fd, scheme } = {}) {
   const rom = gb.mem.rom, f = matchFrameRaw(rom, c, k); if (!f) return null;
-  const { w, h, px } = f.im, op = gb.ppu.objPal, L = gb.look, own = matchPalette(rom, c);
+  const { w, h, px } = f.im, op = gb.ppu.objPal, L = gb.look, own = scheme != null ? schemeColours(rom, scheme) : matchPalette(rom, c);
   if (fd === undefined) fd = L ? Math.min(0, L.fade(op, pal)) : -1;
   const col5 = ci => { const o = pal * 8 + ci * 2, v = op[o] | (op[o + 1] << 8); return [(v & 31) * 8, ((v >> 5) & 31) * 8, ((v >> 10) & 31) * 8]; };
   let x0 = w, x1 = -1, y0 = h, y1 = -1; for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (px[y * w + x]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }

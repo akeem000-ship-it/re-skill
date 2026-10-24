@@ -12,8 +12,13 @@
 //            the anime mods' too), their name and type (the game's own words, text bank $30) or a created character's levels, the
 //            players picked so far, and the CPU level chips while the game asks for one. Read from the screen's state (WRAM 3:
 //            wCharGridEntries $DA00, the slots $D814-$D834) and the ROM, never written
+//   files    Status and Erase (bank $3B RunSavedDataSourceSelect / RunEraseSavedDataSelect: the three tour files over the Game
+//            Pak's and the N64's data): the five round the ball; the panel shows a file's player standing with their level and
+//            play time (the summaries at WRAM 3 $D300, as the main menu reads them), or what the cell holds; Erase in red
+//   minigames the Mario mini-games (bank $3B RunMinigameSelect, 6 or 9 cells): their names (text 30:178 + cell) round the ball, the
+//            chosen one's host standing in the panel (match frame 4), a locked one as "? ? ?"
 import { courtImage } from "./assets.js";
-import { matchPicture } from "./crowdfans.js";
+import { matchPicture, charScheme } from "./crowdfans.js";
 import { Rom } from "./rom.js";
 
 const FONT = "MT Luckiest Guy", BODY = "Itim, system-ui, sans-serif";
@@ -43,6 +48,8 @@ export class MenuSkins {
     if (skin.id === "court") this.court(g, W, H, k, skin, gb);
     else if (skin.id === "format") this.format(g, W, H, k, skin, hd);
     else if (skin.id === "chars") this.chars(g, W, H, k, gb);
+    else if (skin.id === "files") this.files(g, W, H, k, skin, gb);
+    else if (skin.id === "minigames") this.minigames(g, W, H, k, skin, gb, hd);
   }
   // the turning: the ball's position eases to the chosen item, the shorter way round n
   ease(sel, n) { let d = sel - this.pos; if (n > 5) { if (d > n / 2) d -= n; if (d < -n / 2) d += n; } this.pos += d * 0.3; if (Math.abs(d) < 0.01) this.pos = sel; return this.pos; }   // (a short list does not wrap)
@@ -115,7 +122,7 @@ export class MenuSkins {
       let name = created ? "" : this.text(rom, TEXT_NAME + id);
       if (created) for (let i = 0; i < 11 && w[rec + 7 + i] && w[rec + 7 + i] !== 0xFF; i++) { const c = w[rec + 7 + i]; if (c >= 32 && c < 127) name += String.fromCharCode(c); }
       out.push({ n, id, sprite: rom[SPRITE_OF + id], name: (name || "?").trim(), type: created ? "" : this.text(rom, TEXT_TYPE + rom[0x38 * 0x4000 + CHAR_TYPE_TABLE - 0x4000 + id]),
-        taken: !!w[e + 2], lv: created ? [w[rec + 2], w[rec + 3], w[rec + 4], w[rec + 5], w[rec + 6]] : null });
+        taken: !!w[e + 2], colour: (w[e + 1] - 1) & 0xFF, lv: created ? [w[rec + 2], w[rec + 3], w[rec + 4], w[rec + 5], w[rec + 6]] : null });
     }
     return out;
   }
@@ -125,10 +132,12 @@ export class MenuSkins {
     for (let i = 1; i < 8; i++) { const v = rom[b + p + i]; if (v > 3) break; out.push(v); }
     return out.length ? out : [0, 2];
   }
-  figure(gb, sprite) {
-    const key = sprite + ":" + (gb.look ? 1 : 0); this.figs = this.figs || new Map();
+  // character ch standing (match frame 4 of its sprite set), in its colour scheme (CharPaletteIndexTable, or `scheme`: a created
+  // player's chosen colour) and the look's colours where it has them
+  figure(gb, ch, scheme) {
+    const rom = gb.mem.rom, sc = scheme ?? charScheme(rom, ch), key = ch + ":" + sc; this.figs = this.figs || new Map();
     if (this.figLook !== gb.look) { this.figs.clear(); this.figLook = gb.look; }
-    if (!this.figs.has(key)) { let c = null; try { c = matchPicture(gb, sprite, 4, { fd: gb.look ? 0 : -1 }); } catch (e) { /* not a sprite set */ } this.figs.set(key, c); }
+    if (!this.figs.has(key)) { let c = null; try { c = matchPicture(gb, rom[SPRITE_OF + ch], 4, { fd: gb.look ? 0 : -1, scheme: sc }); } catch (e) { /* not a sprite set */ } this.figs.set(key, c); }
     return this.figs.get(key);
   }
   chars(g, W, H, k, gb) {
@@ -144,7 +153,7 @@ export class MenuSkins {
       const fx = px + pw / 2, fb = py + 300 * k, gr = g.createRadialGradient(fx, fb - 120 * k, 10 * k, fx, fb - 120 * k, 190 * k);
       gr.addColorStop(0, "rgba(255,214,90,0.55)"); gr.addColorStop(1, "rgba(255,214,90,0)"); g.fillStyle = gr; g.fillRect(px, py, pw, 320 * k);
       g.fillStyle = "rgba(40,30,10,0.18)"; g.beginPath(); g.ellipse(fx, fb, 80 * k, 16 * k, 0, 0, 6.2832); g.fill();
-      const fig = this.figure(gb, at.sprite), gone = at.taken && !prompt;           // (while the game asks for the CPU level the one just picked is shown)
+      const fig = this.figure(gb, at.id, at.colour), gone = at.taken && !prompt;           // (while the game asks for the CPU level the one just picked is shown)
       if (fig) {
         const s = Math.floor(Math.min(240 * k / fig.height, 200 * k / fig.width)), bob = Math.round(Math.sin(performance.now() / 420) * 3 * k);
         g.imageSmoothingEnabled = false; g.save(); if (gone) { g.filter = "grayscale(0.85)"; g.globalAlpha = 0.6; } g.drawImage(fig, fx - fig.width * s / 2, fb - fig.height * s + bob, fig.width * s, fig.height * s); g.restore();
@@ -173,13 +182,74 @@ export class MenuSkins {
       picks.forEach((p, i) => {
         const x = x0 + i * cw + cw / 2, on = p.s === slot; g.textAlign = "center";
         g.fillStyle = on ? "#ffd65a" : "#e4e6f0"; g.beginPath(); g.arc(x, by + 36 * k, 34 * k, 0, 6.2832); g.fill();
-        const fig = p.e ? this.figure(gb, p.e.sprite) : null;
+        const fig = p.e ? this.figure(gb, p.e.id, p.e.colour) : null;
         if (fig) { const hh = Math.min(fig.height, Math.round(fig.width * 0.9)), s = 52 * k / Math.max(fig.width, hh); g.imageSmoothingEnabled = false; g.drawImage(fig, 0, 0, fig.width, hh, x - fig.width * s / 2, by + 36 * k - hh * s / 2, fig.width * s, hh * s); }
         else { g.fillStyle = on ? "#281e0a" : "#9aa0b8"; g.font = `${34 * k}px "${FONT}", ${BODY}`; g.fillText("?", x, by + 48 * k); }
         g.fillStyle = on ? "#281e0a" : "#7a7f98"; g.font = `${17 * k}px "${FONT}", ${BODY}`; g.fillText(SLOT_TAGS[p.s], x, by + 92 * k); g.textAlign = "start";
       });
     }
     this.hint(g, W, H, k, prompt ? "◀ ▶ level   A ok   B back" : "▲ ▼ ◀ ▶ choose   A pick   B back   START hand");
+  }
+
+  // ---- Status and Erase: the tour files, the Game Pak, the N64 ----
+  files(g, W, H, k, s, gb) {
+    const erase = s.mode === "erase", F = [0, 1, 2].map(i => this.mw.file(gb, i)), w3 = gb.mem.wram[3];
+    const labels = [...F.map((f, i) => f ? f.name.toUpperCase() : "FILE " + (i + 1)), erase ? "N64 DATA" : "GAME PAK", erase ? "ALL DATA" : "N64"];   // (Erase: the N64's records, then everything)
+    this.title(g, k, erase ? "ERASE" : "STATUS");
+    this.arc(g, k, H, labels, s.sel, 0.4);
+    const { px, py, pw, ph } = this.panel(g, W, k, 110, 500), cx = px + pw / 2, red = "#d8443a";
+    if (erase) { g.lineWidth = 6 * k; g.strokeStyle = red; this.mw.pill(g, px, py, pw, ph, 30 * k); g.stroke(); }
+    g.textAlign = "center";
+    if (s.sel < 3) {
+      const f = F[s.sel], fb = py + 290 * k;
+      g.fillStyle = "#8a7a50"; g.font = `${24 * k}px "${FONT}", ${BODY}`; g.fillText("TOUR FILE " + (s.sel + 1), cx, py + 50 * k);
+      if (f) {
+        const gr = g.createRadialGradient(cx, fb - 110 * k, 10 * k, cx, fb - 110 * k, 170 * k); gr.addColorStop(0, erase ? "rgba(216,68,58,0.35)" : "rgba(255,214,90,0.55)"); gr.addColorStop(1, "rgba(255,214,90,0)");
+        g.fillStyle = gr; g.fillRect(px, py + 60 * k, pw, 260 * k);
+        g.fillStyle = "rgba(40,30,10,0.18)"; g.beginPath(); g.ellipse(cx, fb, 70 * k, 14 * k, 0, 0, 6.2832); g.fill();
+        const id = w3[0x300 + s.sel * 16], fig = id < 4 ? this.figure(gb, id, w3[0x300 + s.sel * 16 + 1]) : null;
+        if (fig) { const sc = Math.floor(Math.min(200 * k / fig.height, 170 * k / fig.width)); g.imageSmoothingEnabled = false; g.drawImage(fig, cx - fig.width * sc / 2, fb - fig.height * sc + Math.round(Math.sin(performance.now() / 420) * 3 * k), fig.width * sc, fig.height * sc); }
+        g.fillStyle = "#281e0a"; g.font = `${44 * k}px "${FONT}", ${BODY}`; g.fillText(f.name.toUpperCase(), cx, fb + 60 * k);
+        g.fillStyle = "#464a64"; g.font = `${24 * k}px ${BODY}`; g.fillText(`Level ${f.level}  ·  ${f.h} h ${String(f.m).padStart(2, "0")} m played`, cx, fb + 98 * k);
+        if (erase) { g.fillStyle = red; g.font = `${22 * k}px "${FONT}", ${BODY}`; g.fillText("A ERASES THIS FILE", cx, fb + 140 * k); }
+      } else {
+        g.fillStyle = "#9aa0b8"; g.font = `${110 * k}px "${FONT}", ${BODY}`; g.fillText("—", cx, py + 250 * k);
+        g.fillStyle = "#464a64"; g.font = `${26 * k}px ${BODY}`; g.fillText("No tour on this file", cx, py + 330 * k);
+      }
+    } else {
+      const n64 = erase ? s.sel === 3 : s.sel === 4, icon = n64 ? "N64" : erase ? "ALL" : "GB";
+      g.fillStyle = erase ? red : "#ffd65a"; this.mw.pill(g, cx - 90 * k, py + 90 * k, 180 * k, 150 * k, 26 * k); g.fill();
+      g.fillStyle = erase ? "#fff" : "#281e0a"; g.font = `${64 * k}px "${FONT}", ${BODY}`; g.fillText(icon, cx, py + 190 * k);
+      g.fillStyle = "#281e0a"; g.font = `${38 * k}px "${FONT}", ${BODY}`; g.fillText(labels[s.sel], cx, py + 310 * k);
+      g.fillStyle = "#464a64"; g.font = `${23 * k}px ${BODY}`;
+      const lines = erase ? (n64 ? ["The records sent over from", "Mario Tennis on the N64"] : ["Every tour file and record", "on this Game Pak"])
+                          : (n64 ? ["The records sent over from", "Mario Tennis on the N64"] : ["The records kept", "on this Game Pak"]);
+      lines.forEach((t, i) => g.fillText(t, cx, py + 352 * k + i * 32 * k));
+      if (erase) { g.fillStyle = red; g.font = `${22 * k}px "${FONT}", ${BODY}`; g.fillText("CANNOT BE UNDONE", cx, py + 440 * k); }
+    }
+    g.textAlign = "start";
+    this.hint(g, W, H, k, erase ? "▲ ▼ ◀ ▶ choose   A erase   B back" : "▲ ▼ ◀ ▶ choose   A view   B back");
+  }
+
+  // ---- the Mario mini-games ----
+  minigames(g, W, H, k, s, gb, hd) {
+    const rom = gb.mem.rom, locked = c => c === 0x15, names = s.cells.map((c, i) => locked(c) ? "? ? ?" : this.text(rom, 0xB2 + i).toUpperCase());
+    this.title(g, k, "MINI-GAMES");
+    this.arc(g, k, H, names, s.sel, 0.34);
+    const { px, py, pw } = this.panel(g, W, k, 110, 500), cx = px + pw / 2, c = s.cells[s.sel], fb = py + 300 * k;
+    g.textAlign = "center";
+    if (!locked(c)) {
+      const gr = g.createRadialGradient(cx, fb - 110 * k, 10 * k, cx, fb - 110 * k, 170 * k); gr.addColorStop(0, "rgba(255,214,90,0.55)"); gr.addColorStop(1, "rgba(255,214,90,0)");
+      g.fillStyle = gr; g.fillRect(px, py + 40 * k, pw, 280 * k);
+      g.fillStyle = "rgba(40,30,10,0.18)"; g.beginPath(); g.ellipse(cx, fb, 70 * k, 14 * k, 0, 0, 6.2832); g.fill();
+      const fig = this.figure(gb, c);
+      if (fig) { const sc = Math.floor(Math.min(220 * k / fig.height, 180 * k / fig.width)); g.imageSmoothingEnabled = false; g.drawImage(fig, cx - fig.width * sc / 2, fb - fig.height * sc + Math.round(Math.sin(performance.now() / 420) * 3 * k), fig.width * sc, fig.height * sc); }
+      g.fillStyle = "#8a7a50"; g.font = `${22 * k}px "${FONT}", ${BODY}`; g.fillText(this.text(rom, TEXT_NAME + c).toUpperCase() + "'S GAME", cx, py + 48 * k);
+    } else { g.fillStyle = "#9aa0b8"; g.font = `${130 * k}px "${FONT}", ${BODY}`; g.fillText("?", cx, py + 270 * k); }
+    g.fillStyle = "#281e0a"; g.font = `${(names[s.sel].length > 14 ? 34 : 42) * k}px "${FONT}", ${BODY}`; g.fillText(names[s.sel], cx, fb + 62 * k);
+    g.fillStyle = "#464a64"; g.font = `${24 * k}px ${BODY}`; if (locked(c)) g.fillText(this.text(rom, 0xBB) || "Not unlocked yet", cx, fb + 100 * k);   // (the game's own "can't play yet")
+    g.textAlign = "start";
+    this.hint(g, W, H, k, "▲ ▼ ◀ ▶ choose   A play   B back");
   }
 
   // ---- the court select ----

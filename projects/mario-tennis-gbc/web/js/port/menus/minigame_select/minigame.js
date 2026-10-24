@@ -18,6 +18,7 @@ import {
 } from "../equipment/defs.js";
 import { decompressDataFromBank } from "../../home/decompress.js";
 import { moveMenuCursorGrid, getMenuCursorIndex, setMenuCursorFromIndex } from "../common/cursors.js";
+import { getUnlockedMarioCastCharAtGridSlot, checkMinigameGridExpanded } from "../main_menu/saved.js";   // (pure reads, for MENU: Wheel)
 
 export const BANK = 0x3B;
 export const MinigameSelectCursorSpriteTask = 0x646D;
@@ -80,6 +81,10 @@ export function* runMinigameSelect(P) {
     P.V.menuInputPressed = P.V.inputPressed;
     const moved = gridExpanded(P) ? moveMenuCursorGrid(P, GRID_COLUMNS, GRID_COLUMNS).a : rom(P, MoveMinigameGridCursor).a;
     if (moved) { sound(P, SFX_MENU_MOVE); drawMinigameSelectCaption(P); drawGrid(); }
+    if (P.menuWheel && P.menuWheel.on) {                     // MENU: Wheel (menuskins.js): the cells' characters (CHAR_UNUSED_15: locked), read only
+      const n = checkMinigameGridExpanded(P).a ? GRID_CELLS : 6;
+      P.menuWheel.skin = { id: "minigames", at: P.frames, sel: cursorCell(P), cells: Array.from({ length: n }, (_, i) => getUnlockedMarioCastCharAtGridSlot(P, i).a) };
+    }
     yield* advanceFrame(P);
     const input = P.V.menuInputPressed;
     if (input & PADF_A) {

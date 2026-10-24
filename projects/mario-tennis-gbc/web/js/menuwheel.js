@@ -83,11 +83,11 @@ export class MenuWheel {
   get on() { return this.style === "wheel"; }
   setStyle(s) { this.style = s === "game" ? "game" : "wheel"; try { localStorage.setItem(KEY, this.style); } catch (e) { /* private mode */ } this.sync(); }
   sync() { const P = this.getPort(); if (P) { P.menuWheel = P.menuWheel || { on: false, active: false }; P.menuWheel.on = this.on; } }
-  // the tour files' summaries (main_menu.js BuildSaveSlotSummaries: WRAM 3 $D300, 16 bytes each: character or $3F, colour, level, name, hours, minutes)
+  // the tour files' summaries (main_menu.js BuildSaveSlotSummaries: WRAM 3 $D300, 16 bytes each: character or $3F, colour, level, name, minutes (+14), hours (+15))
   file(gb, k) {
     const w = gb.mem.wram[3], o = 0x300 + k * 16; if (!w || w[o] === 0x3F || w[o] >= 0x40) return null;
     let name = ""; for (let i = 0; i < 11; i++) { const c = w[o + 3 + i]; if (c < 0x20 || c > 0x7E) break; name += String.fromCharCode(c); }
-    return name.trim() ? { name: name.trim(), level: w[o + 2], h: w[o + 14], m: w[o + 15] } : null;
+    return name.trim() ? { name: name.trim(), level: w[o + 2], h: w[o + 15], m: w[o + 14] } : null;   // (the caption prints +15 before the colon, +14 after it)
   }
   ui() {
     if (this.root) return;
