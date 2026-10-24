@@ -355,6 +355,35 @@ sound `$51` and drops the ball: water). BallTerrainCheck (10:527C) reads the ter
 (TerrainAt 10:6536) and remembers the last safe spot in `D51D` (not for types 3 and 7). On the green
 (`D443`) positions are taken relative to `D441`/`D442` and scaled x4.
 
+**Ball simulator** (`tools/ball_sim.py`, with the bank-0 math in `tools/golfmath.py`): a Python port of BallTask
+that reproduces the game's ball state (`D400-D415`) **exactly, step for step**. Recordings come from
+`tools/emu_ball_record.py`, which snapshots WRAM6 `D400-D45F` at every BallTask entry. Result on five shots on
+hole 1 (wind 7 mph): perfect drive 437 steps, topped shot 216, late-impact shot 387, 3-wood 486, aimed-left
+shot 257: **all 1783 steps identical**, through flight, bounces and roll. Details the port pinned down:
+
+- BallSpeedAndDir (10:4CDE): direction = high byte of AngleFromVector16(**vy, vx**) (angle from +x toward +y),
+  speed = IsqrtHL(vx²/65536 + vy²/65536) with MulHLByDEBothSigned.
+- Air step (10:4EE0): curve push `curve x speed x $1C` along direction + `$40`; lift
+  `spin x (speed x 256 + wind x cos(dir - wind dir + $80)) x $1C` added to vz with gravity `-$20`; spin decay
+  `spin -= spin / 128` rounded away from zero; vx, vy move toward the wind vector by 1/256 of the difference
+  and vz loses 1/256 (each rounded toward zero, 10:5268); position and 24-bit height integrated.
+- Wind (10:52EE): only in the air; size WindSpeedTable[`$C815` mph] (10:5315), direction `$C816`.
+- Bounce (10:4FF2): terrain factors `D448` / `D449` = TerrainPropTable bytes 0 and 2; height, vz, spin, curve
+  x `D448` (height and vz negated); slope push (size -32 along the slope; plus vz x `$DD`/256 along it, vz
+  halved); curve x `$40` and spin x `$40` pushes; vx, vy x `D449`. Water (type 3) and the bunker plug (types
+  2 / `$0D`, entry angle below `$14`) branch off (not simulated).
+- Landing (10:4D09): integer height 0 and |vz| < `$20` -> rolling.
+- Roll (10:4D86): curve push (x `$40`) and spin push along the direction, both decaying x `$FC`/256 each
+  frame; slope push; then vx, vy x the terrain's friction byte (TerrainPropTable byte 1).
+- **Slopes**: off the green, a 4 x 4-cell nibble map per tile (course asset ref 0 entry 4, WRAM1 `$D800`; bit 3
+  = sloped, bits 0-2 = direction through SlopeDirTable 10:6516 with the tile's flips), push `$20`
+  (SlopeCellAt 10:674E). On the green, a per-tile byte (hole asset ref 1 entry 2, WRAM6 `$D700`; strength in
+  bits 4-5, push 0/2/4/6, scaled by the ball speed in 10:4E98) — the green branch is not simulated yet.
+- The math routines used are all checked against the ROM on random inputs (`tools/test_math.py`, via
+  `tools/emu_callfn.py`, which calls a ROM routine inside PyBoy): multiplies, MulSin/MulSinCos (16- and 8-bit
+  angles), AngleFromVector16, IsqrtHL (00:0F04; the Tennis name "AngleFromVector" was wrong) and DivAHLByDE
+  (00:0DDB), whose three-phase division drops remainder bits for large divisors — the port reproduces that.
+
 **Shot launch** (ShotLaunch 10:5F94, bank 10 export `$4A`; verified on the 235-yard drive with `emu_watch.py`):
 
 1. ShotClubParams (10:5EEF) for wClub (`D329`; 0 = 1W ... `$0D` = putter): spin start (ClubParamTable 10:61A6),
@@ -392,10 +421,10 @@ vz `$0A4B` and (vx, vy) = (`$018B`, `-$2841`), equal to speed x sin / cos to wit
   | ref 0 (course) entry 0: palettes | `$40` bytes copied; the first `$28` are BG palettes 2-6 (checked against wBGPalMaster `$C200`) |
   | ref 0 entry 1: tiles (LZ) | WRAM1 -> VRAM bank 1, `$9000` then `$8800` (signed addressing, LCDC `$E7`) |
   | ref 0 entry 3: terrain table (LZ, 2048 bytes) | WRAM6 `$D800`: 8 bytes per tile = 4 x 4 cells of 4-bit terrain types |
-  | ref 0 entry 4 (LZ, 2048 bytes) | WRAM1 `$D800` (loaded later; not identified) |
+  | ref 0 entry 4 (LZ, 2048 bytes) | WRAM1 `$D800`: slope nibbles, 4 x 4 cells per tile (read by SlopeCellAt 10:674E) |
   | ref 1 (hole) entry 0: attributes (LZ, 4096) | WRAM2 `$D000` |
   | ref 1 entry 1: tilemap (LZ, 4096) | WRAM3 `$D000`, 64 x 64 |
-  | ref 1 entry 2 (LZ, 256) | WRAM6 `$D700` (not identified) |
+  | ref 1 entry 2 (LZ, 256) | WRAM6 `$D700`: green slope byte per tile (GreenSlopeAt 10:64D1) |
   | ref 1 entry 3 | WRAM4 `$DC00` via 00:0749 (not identified) |
   | refs 2-4 | the behind-the-golfer view (`hFFB0` = 1 paths; banks 55, 56, 12, 13) |
 
@@ -497,8 +526,8 @@ engine is the RPG ("story") side; how golf rounds and the menus are entered from
       LoadText, MapLoadHeader, MapLoadGfx; see "Verification" below)
 - [x] Ph4: tiles extracted and compared to the emulator: two whole map tile sets in VRAM bank 1 match byte for
       byte; gfx 1E matches the character-creation screen by eye
-- [ ] Ph5: key data struct confirmed in emulator memory dump, all fields match (MapTable record at $C450-$C455:
-      yes; the map header fields and the golf structures: not yet)
+- [x] Ph5: key data structs confirmed against emulator memory: MapTable record, hole maps (tilemap, attributes,
+      terrain), and the ball state D400-D415 field by field (ball_sim.py reproduces it exactly)
 - [ ] Ph6: full game session played, no major logic gaps found
 - [ ] Ph7: web port pixel-compared against emulator screenshots
 
@@ -552,8 +581,10 @@ Result over 4800 frames:
 - [x] Find the golf round: GolfRound 10:4451 (emulator, emu_callers.py), entered from map 00's menus
 - [x] Golf engine, first pass: round and shot loop, swing meter, ball state and the flight / roll steps
 - [x] Golf engine: shot launch (ShotLaunch 10:5F94): club distance table, power curve, speed / elevation / direction
+- [x] Golf engine: ball step ported exactly (ball_sim.py: flight, wind, drag, bounce, roll, slopes; 5 shots, 1783 steps)
+- [ ] Ball step: the green (putting) branches, water drop and bunker plug; record a putt and a water shot
 - [ ] Golf engine: the lie factor table (10:660E), 08:60BC (distance -> speed), the impact offsets (10:6B03,
-      6B1F, 6C18, 6C54, 6C9F), wind (10:52EE, 10:66DB), drag (10:5268), the bounce
+      6B1F, 6C18, 6C54, 6C9F): port ShotLaunch and check launch values the same way
 - [ ] Golf engine: aiming loop (10:486B), club select, putting on the green, CPU golfers' targets, scoring
 - [x] Hole data: HoleAssetTable 13:4A16, overhead assets, terrain table; all 90 holes render (render_hole.py)
 - [ ] Holes: the per-hole data still unidentified (ref 1 entries 2-3: tee/pin positions? par/length?), terrain

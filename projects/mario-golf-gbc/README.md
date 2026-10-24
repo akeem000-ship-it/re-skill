@@ -36,6 +36,8 @@ global checksum `$0FC7`.
 | `emu_callers.py`, `emu_lzlog.py` | who calls a routine (stack walk); every LZ load with source and destination |
 | `render_hole.py`, `hole_stats.py`, `emu_hole_check.py` | golf holes and terrain maps; hole statistics; hole assets vs the game's memory |
 | `dump_save.py` | SRAM save: signature, checksum, backup, block directory |
+| `golfmath.py`, `test_math.py`, `emu_callfn.py`, `probe_fn.py` | bank-0 math in Python; checked against the ROM routines called inside PyBoy |
+| `ball_sim.py`, `emu_ball_record.py`, `emu_regs_at.py` | exact ball simulator; per-step ball recordings; registers at an address |
 | `xref.py`, `search_bytes.py`, `find_bytes.py`, `decode_tables.py`, `relsearch.py`, `strings_dump.py` | generic, copied from Tennis |
 
 The ROM and everything extracted from it are gitignored. Only tools and notes are versioned.

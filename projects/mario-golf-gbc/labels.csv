@@ -17,7 +17,7 @@ bank,addr,name,comment
 0,0153,BuildStamp,ascii "9908020118" + 00 (Tennis has its stamp at the same address)
 # --- bank 0 routines found by reading code ---
 0,0690,JumpTableDispatch,rst $00 target: pops the return address as the table base and jumps to word [A] (as in Mario Tennis 00:06C4; different code)
-0,0B3C,MulHLBySin,(as in Mario Tennis 00:0B03; its callee 0B4C matches MulHLBySinHalf)
+0,0B3C,MulHLBySin,hl * sin(a) with an 8-bit angle (table 00:0B69) (as in Mario Tennis 00:0B03)
 0,1F2F,LZDecompress,hl = src and de = dst; returns hl = bytes written. Same format as Mario Tennis 00:1797 (tools/decompress.py)
 0,2DAA,SoftReset,sp = $D000 then the whole init; jumped to from 2F90 (as in Mario Tennis 00:2582; partial match)
 0,2E3B,AdvanceFrame,halts until hVBlankDone; runs 2688 and RunFrameTasks; inc wFrameCounter; soft-reset check (as in Mario Tennis 00:2631; partial match)
@@ -91,7 +91,7 @@ bank,addr,name,comment
 0,0C8E,MulHLByDEBothSigned,(as in Mario Tennis 00:0C68)
 0,0CB5,MulHLByDE,(as in Mario Tennis 00:0C8F)
 0,0EE8,GetSquareOfByte,(as in Mario Tennis 00:106E)
-0,0F04,AngleFromVector,(as in Mario Tennis 00:108A)
+0,0F04,IsqrtHL,a = floor(sqrt(hl)) (the Tennis name AngleFromVector does not fit; checked in the emulator)
 0,11AC,MulSinCosSigned,(as in Mario Tennis 00:1332)
 0,1A03,AngleFromVector16,(as in Mario Tennis 00:1416)
 0,203E,UpdateDebugOverlay,(as in Mario Tennis 00:1893)
@@ -345,3 +345,17 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,D44B,wImpactSide,WRAM6: adds -32 x value to the curve
 *,D44C,wImpactHeight,WRAM6: positive x $F9/256, negative + 7/256 on the speed; also scales the spin
 *,D4C6,wDriverDistance,WRAM6: the golfer's 1W distance in yards ($010E = 270 for Mario; shown on the HUD)
+# --- ball step details (tools/ball_sim.py) ---
+10,4FF2,BallBounce,height below 0 in the air: terrain factors $D448/$D449 (TerrainPropTable bytes 0/2); water / bunker plug; height vz spin curve x $D448 and negated; slope push; vx vy x $D449
+10,521C,BallStop,zeroes velocity and height; landing spot -> $D4CF
+10,52EE,WindVector,in the air: hl = WindSpeedTable[$C815 & 31], b = $C816; on the ground: 0
+10,5268,Div256TowardZero,de = hl / 256 rounded toward zero
+10,5315,WindSpeedTable,32 words: speed per mph
+10,64D1,GreenSlopeAt,on the green: per-tile slope byte from WRAM6 $D700 (hole asset ref 1 entry 2): bits 4-5 strength, 0-2 direction
+10,6516,SlopeDirTable,32 bytes: direction byte for (direction + tile flip x 8)
+10,66DB,SlopeAt,-> hl = push size, b = direction, a = $FF when sloped (off the green 10:674E, on it 10:66F1)
+10,674E,SlopeCellAt,off the green: per-cell nibble from WRAM1 $D800 (course asset ref 0 entry 4); bit 3 = sloped, bits 0-2 direction; push $20
+10,6738,GreenSlopeTable,push size by strength on the green: 0 2 4 6
+0,0B69,SineTable8,65 bytes for angles 0..$40
+0,0DDB,DivAHLByDE,a:hl / de in three 8-bit phases (golfmath.div_ahl_by_de reproduces its quirks)
+0,1B68,TangentTable,257 words used by AngleFromVector16
