@@ -92,6 +92,7 @@ export function charInputHandler1(E) {
   if (C.aiSecondButtonDelay) C.aiSecondButtonDelay--;
   let table;
   if (!S.matchIsDoubles) table = SINGLES;
+  else if (E.partnerCmd && C.index === 2) table = E.partnerCmd === "back" ? BASELINER : NET_PLAYER;   // PARTNER (modes.js): your partner's role as told
   else table = C.serveRole & 2 ? NET_PLAYER : BASELINER;
   return dispatch(E, table, C.state, "wCharState");
 }
@@ -391,7 +392,7 @@ function aiNetPlayerPoachCheck(E) {
   E.setBank(charIndexToWramBank((C.index + 2) & 3));
   const ball = ABS16(E.S.ballDepth), mate = ABS16(E.C.posDepthInt);
   E.setBank(saved);
-  if (!(U16(mate + 0x20 - ball) & 0x8000)) return;
+  if (!(U16(mate + (E.partnerCmd === "poach" && C.index === 2 ? -0x60 : 0x20) - ball) & 0x8000)) return;   // (PARTNER: poach: also for balls up to 96 short of the teammate)
   const depth = U16(E.C.posDepthInt);
   setCharTarget(E, aiPredictX(E, depth), depth);
   E.C.aiPhase = 2;

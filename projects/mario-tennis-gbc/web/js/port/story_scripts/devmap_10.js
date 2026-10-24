@@ -21,6 +21,7 @@ import {
   hookGen, scene,
 } from "./common.js";
 import { restoreGameTimer, resetGameTimer } from "../home/flags.js";
+import { advanceFrame } from "../home/frame.js";
 import { initSerialLink } from "../home/link.js";
 
 const BANK = 0x10;
@@ -281,6 +282,20 @@ function* storySlotBackToTitle(P, e) {
   return null;
 }
 
+// REMATCH (modes.js sets P.rematchOn; not in the game): after an exhibition match (not quit with save), over the menu screen,
+// "REMATCH?" (modes.js draws it from P.rematchAsk): left / right or up / down pick, A answers, B is no. Yes plays the same match
+// again: the format, characters and court kept, as the game's own "that match again" entry (.optionsFlow) does.
+function* askRematch(P) {
+  const a = P.rematchAsk = { at: P.frames, sel: 0 };
+  for (;;) {
+    yield* advanceFrame(P);
+    const e = P.V.inputRisingEdge; a.at = P.frames;
+    if (e & 0xF0) { a.sel ^= 1; sound(P, 0x5E); }                     // SFX_MENU_MOVE
+    else if (e & 0x01) { sound(P, 0x5F); P.rematchAsk = null; return a.sel === 0; }   // SFX_MENU_SELECT
+    else if (e & 0x02) { sound(P, 0x62); P.rematchAsk = null; return false; }         // SFX_MENU_CANCEL
+  }
+}
+
 // MatchSelectHandlersBHandler3 (10:50FE): exhibition. The results of a match quit with save first (or that match
 // again); then the format, the characters and the court menus (B in each goes back one), the match; the menu after.
 // Returns the loop's label to go on at.
@@ -357,6 +372,7 @@ function* matchSelectExhibition(P) {
         V.menuSlideDirection = MENUSLIDE_FORWARD;       // .done
         yield* resetMenuScreen(P, true);
         fadeIn(P, FADE_SPEED);
+        if (P.rematchOn && !V.saveAndQuitRequest && (yield* askRematch(P))) { at = "optionsFlow"; continue; }   // REMATCH (modes.js)
         return "menuLoop";
       default: throw new Error(`MatchSelectHandlersBHandler3: no label ${at}`);
     }

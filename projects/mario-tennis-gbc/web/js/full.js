@@ -12,6 +12,7 @@ import { attachLightPanel } from "./lightpanel.js";   // LIGHT settings panel   
 import { attachVoxStyle } from "./voxround.js";   // VOX: Blocky / Rounded
 import { attachBallFX } from "./ballfx.js";
 import { Tour, addTourButtons } from "./tour.js";
+import { Modes, addModeButtons } from "./modes.js";
 import { attachIntro } from "./intro.js";
 import { attachMenuWheel } from "./menuwheel.js";
 import { addCourtButton } from "./courtconcepts.js";
@@ -115,6 +116,9 @@ const creator = mountCreator({ hud: $("hud"), keys, pause: p => { const was = pa
 // TOUR+ (tour.js): rankings, rivals, training, equipment, the day schedule and sponsors, kept per tour file; read only
 const tour = new Tour({ getGb: () => gb, getPort: () => port, pause: p => { const was = paused; paused = p; return was; }, pad: () => { pollGamepad(keys); return input(); } });
 addTourButtons($("hud"), tour);
+// MODES (modes.js): exhibition rules, rematch, the machine's court, mini-games Hard, partner commands, fast text, the RECORDS panel
+const modes = new Modes({ getGb: () => gb, getPort: () => port, pause: p => { const was = paused; paused = p; return was; }, pad: () => { pollGamepad(keys); return input(); } });
+addModeButtons($("hud"), modes);
 const recording = () => rec.on || portRecFrom >= 0;
 // RUN-AHEAD (on / off, remembered): after the game's frames, the machine is copied, one more frame is run with the same buttons and that
 // frame is shown; the copy is put back before the next real frame (settle). What you press shows one frame (17 ms) sooner, and the game
@@ -136,13 +140,13 @@ function resultsGate(inp) {
   return { ...inp, b: false, a: inp.a && gb.frames - resultsAt >= 60 };
 }
 function frame() {
-  pollGamepad(keys); const inp = resultsGate(input()), mask = maskOf(inp); gb.setInput(inp); lastInp = inp;
+  pollGamepad(keys); const inp = modes.filterInput(resultsGate(input())), mask = maskOf(inp); gb.setInput(inp); lastInp = inp;   // (MODES: the partner's commands kept from the game)
   if (port) portFrame(); else gb.runFrame();
   if (view3d && voxel && voxel.mode === "3d") voxel.tick();
   if (phone) phone.frame(gb);                // VIBRATE: hits and points
   if (replay) replay.afterFrame(gb, inp);   // INSTANT REPLAY: the buttons of the point (the port: the point's tape)
   rec.frame(gb, mask); session.frame(gb, mask);
-  creator.frame(); deck.frame(); tour.frame();
+  creator.frame(); deck.frame(); tour.frame(); modes.frame();
   if (port && port.plus) port.plus.fatigue = tour.fatigue();   // TOUR+: a tired player (PLAY+ stamina)
   if (audioReady && anode) { const n = gb.apu.drain(abuf); if (n) anode.port.postMessage(abuf.slice(0, n)); } else gb.apu.outPos = 0;
 }
@@ -157,6 +161,7 @@ function draw(alpha = 1) {                 // alpha: fraction of the next game f
   if (hd && hd.update()) drawnFrame = -1;    // the text on screen (HD font) changed
   if (menuWheel) menuWheel.update();         // MENU: Wheel
   tour.coachFrame();                         // TOUR+: the coach's pick on the stat screen
+  modes.overlay();                           // MODES: the rematch question
   if (port && port.plus && voxel && voxel.weather) port.plus.wet = voxel.weather.cur === "rain" || voxel.weather.cur === "wet";   // PLAY+: a wet court
   if (voxel && voxel.ballfx) { voxel.ballfx.serveCue = !!(port && port.plus && port.plus.serve); voxel.ballfx.fire = port && port.plus && port.plus.momentum && port.E ? port.E.mom || null : null; }   // PLAY+: its cues
   if (view3d && voxel) {
@@ -273,7 +278,7 @@ function loop(now) {
     introGb = null;
     if (!last) last = now;
     acc = Math.min(acc + (now - last), STEP * 4); last = now;
-    const per = turbo ? 4 : 1;
+    const per = turbo || modes.fastText(lastInp) ? 4 : 1;   // (MODES: FAST TEXT)
     if (replay && replay.playing) { while (acc >= STEP) { replay.step(); acc -= STEP; fps.n++; } }   // INSTANT REPLAY: the point again (no saves, no run-ahead)
     else if (acc >= STEP) { settle(); while (acc >= STEP) { for (let i = 0; i < per; i++) frame(); acc -= STEP; fps.n++; } maybeSave(); lookAhead(); }
     if (!phone || phone.allowDraw(now)) draw(acc / STEP);   // (BATTERY saver: at most 60 pictures a second)
@@ -339,7 +344,7 @@ async function loadRom(buf) {
   await creator.ready;                         // bundled opponent mods (web/mods) are fetched
   creator.prepare(bytes);                      // the player's look (web/js/look) patches the ROM copy before the machine is built
   raSnap = null;
-  if (portMode() !== "rom") { port = await makePort(bytes); gb = port.gb; portError = null; }
+  if (portMode() !== "rom") { port = await makePort(bytes); gb = port.gb; portError = null; modes.apply(); }
   else gb = new GBC(bytes, { sampleRate: 44100, audio: true });
   creator.attach(gb);
   drawnFrame = -1;
@@ -401,7 +406,7 @@ $("forgetrom").addEventListener("click", () => romStore("readwrite", s => s.dele
 $("reset").addEventListener("click", () => { if (port) { location.reload(); return; } if (gb) { settle(); gb.reset(); rec.event("reset"); } });
 // ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
 // a .mtrec file (Android: Downloads/MTenn3D and the share sheet; browser: a download). Hiding the app stops and saves.
-const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? "enhanced" : undefined, net: port ? (port.evenNet ? "even" : "original") : undefined, tourlen: port ? port.tourLength : undefined, menu: port && port.menuWheel && port.menuWheel.on ? "wheel" : "game", plus: port ? (port.plus ? "on" : "off") : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
+const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? "enhanced" : undefined, net: port ? (port.evenNet ? "even" : "original") : undefined, tourlen: port ? port.tourLength : undefined, menu: port && port.menuWheel && port.menuWheel.on ? "wheel" : "game", plus: port ? (port.plus ? "on" : "off") : undefined, rules: port && port.rules ? port.rules : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
   port: port ? q.get("port") || "all" : undefined });
 async function saveRecording(now = false) {     // now: the app is being hidden; skip compression so it finishes at once
   if (!recording()) return; settle();
@@ -554,6 +559,6 @@ $("engbtn").addEventListener("pointerdown", () => {
 // a private build bundles the ROM; a shared one doesn't, so the app starts with the ROM the player picked last time
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom)
   .catch(() => { if (navigator.userAgent.includes("MarioTennisWrapper")) romStore("readonly", s => s.get("rom")).then(b => { if (b && !gb) loadRom(b.buffer.slice(0)); }).catch(() => {}); });
-window.__gb = { get port() { return port; }, get deck() { return deck; }, get smooth() { return smooth; }, set smooth(v) { smooth = !!v; renderedAt = -1; applySmooth(); }, get fpsInfo() { return fps; }, get gb() { return gb; }, get hd() { return hd; }, keys, rec, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { if (n) settle(); for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, get creator() { return creator; }, get tour() { return tour; }, get menuWheel() { return menuWheel; }, get replay() { return replay; }, loadSnapshot(s) { raSnap = null; loadSnapshot(gb, s); }, saveState() { settle(); return saveState(gb); }, loadState(s) { raSnap = null; loadState(gb, s); drawnFrame = -1; }, get runAhead() { return runAhead; }, settle };
+window.__gb = { get port() { return port; }, get deck() { return deck; }, get smooth() { return smooth; }, set smooth(v) { smooth = !!v; renderedAt = -1; applySmooth(); }, get fpsInfo() { return fps; }, get gb() { return gb; }, get hd() { return hd; }, keys, rec, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { if (n) settle(); for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, get creator() { return creator; }, get tour() { return tour; }, get modes() { return modes; }, get menuWheel() { return menuWheel; }, get replay() { return replay; }, loadSnapshot(s) { raSnap = null; loadSnapshot(gb, s); }, saveState() { settle(); return saveState(gb); }, loadState(s) { raSnap = null; loadState(gb, s); drawnFrame = -1; }, get runAhead() { return runAhead; }, settle };
 organizeHud($("hud"));
 requestAnimationFrame(loop);

@@ -78,6 +78,8 @@ export function engine(P) {
   }
   E.evenNet = !!P.evenNet;                                                // NET: Even (chars.js stepCharMovement)
   E.physics = P.physics || null;
+  E.rules = P.rules || null;                                              // EXHIBITION RULES (modes.js); null = the game's
+  E.partnerCmd = P.partnerCmd || null;                                    // PARTNER (modes.js): the doubles partner's command, or null
   E.plus = P.plus || null;                                                // PLAY+ (engine/plus.js); null = the game's rules                                          // PHYSICS: Enhanced (engine/enhanced.js); null = the game's own ball
   return E;
 }

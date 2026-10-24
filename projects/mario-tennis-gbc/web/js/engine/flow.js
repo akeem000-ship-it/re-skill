@@ -116,8 +116,9 @@ export function checkMatchWon(E) {
 // 08:5CE9 CheckSetWon: 6 games (2 in a short set), 2 clear; level -> tiebreak; 7-6 (3-2) counts as 8-6 (4-2). Also a 3-game set
 // (TOUR MATCH: 3x3, not in the game: the ROM's own code plays it as 6 games): level at 3-3 -> tiebreak, 4-3 counts as 5-3
 export function checkSetWon(E) {
-  const S = E.S, g = S.matchTypeNumberOfGames, n = g === 2 || g === 3 ? g : 6, cap = n + 1;
+  const S = E.S, g = S.matchTypeNumberOfGames, n = g === 2 || g === 3 || (E.rulesOn && g >= 1 && g <= 6) ? g : 6, cap = n + 1;
   let d = S.player1GamesWon, e = S.player2GamesWon;
+  if (E.rulesOn && E.rules.tiebreak === false) { const r = evalWinByTwo(d, e, n, n); return r === 0x80 ? 0 : r; }   // EXHIBITION RULES: an advantage set
   if (d === cap) d++;
   if (e === cap) e++;
   const r = evalWinByTwo(d, e, n, n);
@@ -129,6 +130,13 @@ export function checkGameWon(E) { return gameWon(E, 3, 4); }
 export function checkTiebreakGameWon(E) { return gameWon(E, 6, 7); }
 function gameWon(E, b, c) {
   const S = E.S; S.deuceIndicator = 0;
+  if (E.rulesOn && E.rules.noAd && b === 3) {                           // EXHIBITION RULES: no-ad: at 40-40 the next point wins the game
+    const p = S.player1PointsWon, q = S.player2PointsWon;
+    if (p >= c && p > q) return 0x01;
+    if (q >= c && q > p) return 0xFF;
+    if (p === b && q === b) S.deuceIndicator = 1;
+    return 0;
+  }
   const r = evalWinByTwo(S.player1PointsWon, S.player2PointsWon, b, c);
   if (r !== 0x80) return r;
   S.deuceIndicator = 1; return 0;
@@ -279,7 +287,7 @@ export function initTiebreakPointCounter(E) { E.S.totalPointsScoredInCurrentGame
 // writes the pad bytes for that frame (hPlayerInputFlags $FF90, hInputPressed $FF91, hInputRisingEdge $FF94)
 // and resumes; so the engine's yields line up with the frames of the real game.
 export const CHARSTATE = { INERT: 0, RALLY: 1, RECOVER: 2, SERVE: 3, AWAIT_SERVE: 4, STANDBY: 5, WALK: 6, POINT_END: 7 };
-const CHARANIM_IDLE = 0x01, MATCHABORT_POINT = 0x01, MATCHABORT_MATCH = 0x80, GAMEMODE_ISLAND_OPEN = 0x02, GAMEMODE_LINK_MATCH = 0x09;
+const CHARANIM_IDLE = 0x01, MATCHABORT_POINT = 0x01, MATCHABORT_MATCH = 0x80, GAMEMODE_ISLAND_OPEN = 0x02, GAMEMODE_EXHIBITION = 0x04, GAMEMODE_LINK_MATCH = 0x09;
 // `call X` into the coroutine gen, returning to 08:ret (the host keeps the ROM's stack depth: E.ext.call)
 export const call = (E, ret, gen) => E.ext.call(E, ret, gen);
 
@@ -354,6 +362,10 @@ export function resetMatchState(E, vblankCounter = 0) {
   S.courtLimitX = -0x1B0; S.courtLimitDepth = -0x4E0; S.netHeight = 0x60;
   S.aimSpreadBase = S.matchIsDoubles ? 0x0320 : 0x0220;
   S.onCourtCharCountMinus1 = (S.onCourtCharCount - 1) & 3;
+  // EXHIBITION RULES (modes.js, through the port: E.rules): an exhibition's sets and games, a set with no tiebreak, no-ad games
+  E.rulesOn = !!(E.rules && S.gameMode === GAMEMODE_EXHIBITION);
+  if (E.rulesOn && E.rules.sets) S.matchTypeNumberOfSets = E.rules.sets;
+  if (E.rulesOn && E.rules.games) S.matchTypeNumberOfGames = E.rules.games;
   m.w8(0xC4DB, S.matchTypeNumberOfSets >> 1);                           // wRulesSetsIndex
   m.w8(0xC4DC, (S.matchTypeNumberOfGames >> 2) & 1);                    // wRulesGamesIndex (rrca twice)
   selectScoreboardLayout(E);

@@ -22,6 +22,7 @@
 // The panel opens from the TOUR button in the menu bar (and OPTIONS > PLAY); it pauses the game; LEFT / RIGHT change the page,
 // UP / DOWN scroll, B or START close it.
 import { MenuSkins } from "./menuskins.js";
+import { HdPanel } from "./hdpanel.js";
 
 const KEY = "mt-tourplus", SLOT_KEY = s => "mt-tour-" + s;
 const textAt = MenuSkins.prototype.textAt;
@@ -68,14 +69,13 @@ const DRILL_SKILL = { [GM.MACHINE]: 3, [GM.WALL]: 2, [GM.MINIGAME]: 3 };   // a 
 const fresh = () => ({ v: 1, day: 1, energy: 100, meals: {}, today: [], matches: [], practice: [0, 0, 0, 0], sponsors: [], news: 0 });
 const css = c => `rgb(${c.join(",")})`;
 
-export class Tour {
+export class Tour extends HdPanel {
   constructor({ getGb, getPort, pause, pad, toast }) {
-    this.getGb = getGb; this.getPort = getPort; this.pause = pause; this.pad = pad; this.toastFn = toast;
+    super({ pause, pad, toast }); this.getGb = getGb; this.getPort = getPort; this.needs = "This page needs a tour file loaded (the campus).";
     const q = new URLSearchParams(typeof location !== "undefined" ? location.search : "");
     let m = q.get("tourplus"); if (m !== "on" && m !== "off") { try { m = localStorage.getItem(KEY); } catch (e) { m = null; } }
     this.on = m !== "off"; this.onChange = null;
     this.slot = -1; this.data = null; this.cur = null; this.lastLoc = -1; this.lastHits = 0; this.lastMap = -1; this.next = 0; this.fatigueNow = 0;
-    this.root = null; this.page = 0; this.open = false;
   }
   setOn(on) { this.on = !!on; try { localStorage.setItem(KEY, this.on ? "on" : "off"); } catch (e) { /* private mode */ } if (!this.on) this.close(); if (this.onChange) this.onChange(this.on); }
 
@@ -244,78 +244,14 @@ export class Tour {
   // stadium3d.js: the advert indices of your sponsors, for your tour matches
   sponsorAds() { return this.on && this.data && this.cur && this.cur.match ? SPONSORS.filter(S => this.data.sponsors.includes(S.id)).map(S => S.ad) : null; }
 
-  // ---------------- the HD panel ----------------
-  toast(msg) {
-    if (this.toastFn) { this.toastFn(msg); return; } if (typeof document === "undefined") return;
-    this.build(); const t = this.toastEl; t.textContent = msg; t.style.opacity = "1"; t.style.display = "block";
-    clearTimeout(this.toastT); this.toastT = setTimeout(() => { t.style.opacity = "0"; }, 3200);
-  }
-  build() {
-    if (this.root) return;
-    const st = document.createElement("style"); st.textContent = `
-#tourpanel { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: rgba(6,12,30,.72); font: 16px Itim, system-ui, sans-serif; }
-#tourpanel .tp { width: min(760px, 94vw); height: min(560px, 88vh); background: #f6f4ee; border-radius: 18px; border: 4px solid #ffcf3a; box-shadow: 0 10px 40px rgba(0,0,0,.5); display: flex; flex-direction: column; overflow: hidden; color: #2a2016; }
-#tourpanel .tabs { display: flex; gap: 4px; padding: 10px 12px 0; background: #1d2b7a; flex-wrap: wrap; }
-#tourpanel .tab { font: 18px "MT Luckiest Guy", Impact, sans-serif; color: #c9d2ff; padding: 6px 12px 4px; border-radius: 10px 10px 0 0; cursor: pointer; letter-spacing: .5px; }
-#tourpanel .tab.on { background: #f6f4ee; color: #1d2b7a; }
-#tourpanel .body { flex: 1; overflow-y: auto; padding: 14px 18px; }
-#tourpanel h3 { font: 20px "MT Luckiest Guy", Impact, sans-serif; color: #1d2b7a; margin: 10px 0 4px; letter-spacing: .5px; }
-#tourpanel table { border-collapse: collapse; width: 100%; margin-bottom: 6px; }
-#tourpanel td { padding: 3px 6px; border-bottom: 1px solid #e4dfd2; }
-#tourpanel tr.you td { background: #ffe58a; font-weight: bold; }
-#tourpanel .n { text-align: right; color: #6a5d48; white-space: nowrap; }
-#tourpanel td.rk { width: 34px; }
-#tourpanel .hint { color: #6a5d48; font-size: 14px; }
-#tourpanel .bar { height: 12px; border-radius: 6px; background: #e4dfd2; overflow: hidden; }
-#tourpanel .bar i { display: block; height: 100%; border-radius: 6px; }
-#tourpanel .foot { padding: 6px 16px 10px; color: #6a5d48; font-size: 14px; text-align: right; }
-#tourpanel .chip { display: inline-block; padding: 1px 8px; border-radius: 9px; background: #1d2b7a; color: #fff; font-size: 13px; margin-left: 6px; }
-#tourpanel .up { color: #2e9e3e; } #tourpanel .dn { color: #d03030; }
-#tourpanel .sp { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid #e4dfd2; }
-#tourpanel .sp b { font: 17px "MT Luckiest Guy", Impact, sans-serif; letter-spacing: .5px; min-width: 170px; }
-#tourpanel .sp.off { opacity: .45; }
-#tourcoach { position: fixed; z-index: 30; left: 50%; bottom: 8%; transform: translateX(-50%); background: rgba(29,43,122,.92); color: #fff; border: 3px solid #ffcf3a; border-radius: 14px; padding: 6px 16px; font: 17px Itim, system-ui, sans-serif; pointer-events: none; display: none; }
-#tourtoast { position: fixed; z-index: 35; left: 50%; top: 12%; transform: translateX(-50%); background: rgba(246,244,238,.96); color: #1d2b7a; border: 3px solid #ffcf3a; border-radius: 14px; padding: 8px 18px; font: 18px Itim, system-ui, sans-serif; pointer-events: none; transition: opacity .6s; box-shadow: 0 6px 20px rgba(0,0,0,.4); }
-#tourcoach b { font: 19px "MT Luckiest Guy", Impact, sans-serif; color: #ffcf3a; letter-spacing: .5px; }`;
-    document.head.appendChild(st);
-    const r = this.root = document.createElement("div"); r.id = "tourpanel"; r.hidden = true;
-    r.innerHTML = `<div class="tp"><div class="tabs"></div><div class="body"></div><div class="foot">◀ ▶ page &nbsp; ▲ ▼ scroll &nbsp; B close</div></div>`;
-    r.addEventListener("pointerdown", e => { if (e.target === r) this.close(); });
-    document.body.appendChild(r);
-    this.coachEl = document.createElement("div"); this.coachEl.id = "tourcoach"; document.body.appendChild(this.coachEl);
-    this.toastEl = document.createElement("div"); this.toastEl.id = "tourtoast"; this.toastEl.style.display = "none"; document.body.appendChild(this.toastEl);
-  }
+  // ---------------- the HD panel (hdpanel.js) ----------------
   pages() { return ["RANKINGS", "RIVALS", "TRAINING", "EQUIPMENT", "SCHEDULE", "SPONSORS"]; }
+  pageFns() { return [this.pRankings, this.pRivals, this.pTraining, this.pEquipment, this.pSchedule, this.pSponsors]; }
   show() {
     if (!this.inStory() && !(this.data && this.slot >= 0)) { this.toast("TOUR+: load a tour file first (the campus)"); return; }
     if (!this.data) this.load(this.getGb().mem.wram[0][W.slot]);
-    this.build(); this.open = true; this.root.hidden = false; this.wasPaused = this.pause(true); this.render();
-    this.lastPad = null; const loop = () => { if (!this.open) return; this.padStep(); requestAnimationFrame(loop); }; requestAnimationFrame(loop);
-    this.keyH = e => { const k = { ArrowLeft: 0x20, ArrowRight: 0x10, ArrowUp: 0x40, ArrowDown: 0x80, Escape: 2, KeyX: 2, Enter: 8 }[e.code]; if (k) { e.preventDefault(); e.stopPropagation(); this.input(k); } };
-    addEventListener("keydown", this.keyH, true);
+    super.show();
   }
-  close() { if (!this.open) return; this.open = false; this.root.hidden = true; removeEventListener("keydown", this.keyH, true); this.pause(this.wasPaused); }
-  toggle() { if (this.open) this.close(); else this.show(); }
-  padStep() {
-    if (!this.pad) return; const p = this.pad(), m = (p.a ? 1 : 0) | (p.b ? 2 : 0) | (p.start ? 8 : 0) | (p.right ? 0x10 : 0) | (p.left ? 0x20 : 0) | (p.up ? 0x40 : 0) | (p.down ? 0x80 : 0);
-    if (this.lastPad === null) { this.lastPad = m; return; }                // (the press that opened the panel)
-    const edge = m & ~this.lastPad; this.lastPad = m; if (edge) this.input(edge);
-  }
-  input(edge) {
-    const n = this.pages().length, body = this.root.querySelector(".body");
-    if (edge & 0x0A) { this.close(); return; }
-    if (edge & 0x30) { this.page = (this.page + (edge & 0x10 ? 1 : n - 1)) % n; this.render(); return; }
-    if (edge & 0xC0) body.scrollTop += edge & 0x80 ? 90 : -90;
-  }
-  render() {
-    const tabs = this.root.querySelector(".tabs"), body = this.root.querySelector(".body");
-    tabs.innerHTML = this.pages().map((p, i) => `<span class="tab${i === this.page ? " on" : ""}" data-i="${i}">${p}</span>`).join("");
-    tabs.querySelectorAll(".tab").forEach(t => t.addEventListener("pointerdown", e => { e.stopPropagation(); this.page = +t.dataset.i; this.render(); }));
-    body.scrollTop = 0;
-    try { body.innerHTML = [this.pRankings, this.pRivals, this.pTraining, this.pEquipment, this.pSchedule, this.pSponsors][this.page].call(this); }
-    catch (e) { body.innerHTML = `<p class="hint">This page needs a tour file loaded (the campus).</p>`; console.warn("tour", e); }
-  }
-  esc(s) { return String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]); }
   h2h(name) { const R = this.rivals().find(r => r.name === name); return R ? `<span class="chip">${R.w}-${R.l}</span>` : ""; }
   pRankings() {
     const L = this.ladders(); let cur = L.findIndex(l => l.won < l.total && !l.list); if (cur < 0) cur = 4;
@@ -367,7 +303,7 @@ export class Tour {
   }
   // the stat screen after a level-up (port/menus/char_data/screen.js sets P.charDataSeen each frame of its input loop): the coach's pick
   coachFrame() {
-    const P = this.getPort && this.getPort(); if (!this.coachEl) { if (!this.on) return; this.build(); }
+    const P = this.getPort && this.getPort(); if (!this.coachEl) { if (!this.on) return; this.build(); this.coachEl = document.createElement("div"); this.coachEl.className = "hdchip"; document.body.appendChild(this.coachEl); }
     const s = P && P.charDataSeen, live = this.on && s && P.frames - s.at <= 2 && s.left > 0 && this.data;
     const C = live ? this.coach() : null, show = !!(C && C.pick >= 0);
     if (show) this.coachEl.innerHTML = `COACH: <b>${SKILLS[C.pick]}</b> · ${Math.round(C.shares[C.pick] * 100)}% of your practice` + (s.page === C.pick ? " ✔" : "");

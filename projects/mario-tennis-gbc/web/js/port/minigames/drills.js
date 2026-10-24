@@ -20,7 +20,7 @@ import {
   BANK_DRILLS, BANK_MINIGAMES, ROM, far, farWait, farcallAt, callAt, sound, pushWramBank, inBankWait, rb, rw, at, jumpTable,
   rlaBit, shiftedOutBit, popcount8, hook, hookGen, flagsOfA, FLAG_Z, FLAG_N, FLAG_C,
   POINTOUTCOME, WINLOSE_LOSE, MATCHABORT_POINT, MATCHABORT_MATCH, CHARSTATE_INERT, WRAM_TEXT, WRAM_CHAR1, WRAM_COURT_PLANES, WRAM_SCREEN,
-  CHAR, CHAR_NONE, MATCHLIST_TRAINING, MINIGAME_TENNIS_MACHINE_1, MINIGAME_TWO_ON_ONE, MINIGAME_SERVICE_MATCH_2,
+  CHAR, CHAR_NONE, MATCHLIST_TRAINING, MINIGAME_TENNIS_MACHINE_1, MINIGAME_TENNIS_MACHINE_HIGH_SCORE, MINIGAME_TWO_ON_ONE, MINIGAME_SERVICE_MATCH_2,
   DRILLMSG_HIDE, DRILLMSG_NO_MESSAGE_FOR_THIS_CASE,
 } from "./common.js";
 import { startMinigameByID } from "./minigame_core.js";
@@ -63,6 +63,7 @@ export function* runTrainingDrillByID(P, id) {
     else {
       if (id >= MINIGAME_TENNIS_MACHINE_1) yield* inBankWait(P, BANK_MINIGAMES, startMinigameByID(P, id));
       else yield* startDrillFromDefinition(P, rw(P, DrillDefinitionPtrs + id * 2));
+      if (P.machineCourt != null && ((id >= MINIGAME_TENNIS_MACHINE_1 && id <= MINIGAME_TENNIS_MACHINE_1 + 3) || id === MINIGAME_TENNIS_MACHINE_HIGH_SCORE)) P.V.currentlyUsedCourt = P.machineCourt;   // MACHINE (modes.js): the ball machine on another court
       clearMemory16(P, P.A.drillAbortCountdown, 2);             // the drill's work bytes ($20 from wDrillAbortCountdown)
       resetAiServeOverrides(P);
       yield* farcallAt(P, 0x473C, ROM.RunMinigameMatch);

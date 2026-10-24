@@ -98,7 +98,8 @@ export function getMinigameTargetScore(P, id, level) {
   let entry;
   if (id < MINIGAME_BOO_BLAST) entry = at(MinigamePracticeTargetScores, (id - MINIGAME_TENNIS_MACHINE_1) * 2);
   else entry = at(MinigameTargetScores, ((((id - MINIGAME_BOO_BLAST) * 4) & 0xFF) + level) * 2);
-  const v = rw(P, entry);
+  let v = rw(P, entry);
+  if (P.minigameHard && id >= MINIGAME_BOO_BLAST && v) v = Math.min(9999, Math.ceil(v * 1.5));   // MINI-GAMES: Hard (modes.js): half as many points again to clear
   return { de: v, a: v & 0xFF, hl: (entry + 1) & 0xFFFF };
 }
 // GetDefaultMinigameRecordValue (0D:41A6, export $4002), a = record slot: de = its default (a fresh save's record)
