@@ -519,6 +519,7 @@ $("engbtn").textContent = ENGINE_LABEL[portMode()] || "CODE: ROM";
 }
 // MENU: Wheel / Game (menuwheel.js): the main menu as a ball wheel over the game's own (through the port)
 menuWheel = attachMenuWheel(() => gb, () => port, $("hud"), () => hd);
+menuWheel.isCourt = () => !!(view3d && voxel && voxel.mode === "3d" && voxel.isCourt());   // (BACKDROP: a match is up, stop holding the menu)
 // TOUR MATCH: 3x3 / Game's: remembered, read by the port when a tour match is set up (the next match, no reload)
 {
   const b = document.createElement("span"); b.className = "k"; b.id = "tourlenbtn"; b.title = "tour match length: the best of 3 sets of 3 games, or the game's own (3 sets of 6 games, 5 sets at the Island Open); needs the JS port (CODE: PORT)";

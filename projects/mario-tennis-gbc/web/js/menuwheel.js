@@ -13,7 +13,7 @@
 import { sigHits } from "./hdmenus/b_common.js";
 import { MenuSkins } from "./menuskins.js";   // the sub-menus in the same look
 const TITLE_LOGO = [[20, 20, "3a2df153"], [60, 24, "847037c7"], [100, 40, "2ee97ec9"], [130, 30, "b3a7e81d"], [40, 56, "bf70c43a"], [80, 64, "10cddfdc"], [120, 60, "d82c442b"]];
-const ZOOM = 1.0;                                   // seconds of the title -> menu move
+const ZOOM = 1.0, HOLD = 90;                          // seconds of the title -> menu move; game frames a screen's picture is held between two (BACKDROP)
 // ---- the ball (drawn once, 512 px): felt (seam and fibres, turned with the ball), light (fixed shading over it), rim (the fuzzy edge) ----
 function makeBall(N = 512) {
   const mk = () => { const c = document.createElement("canvas"); c.width = c.height = N; return c; };
@@ -173,6 +173,7 @@ export class MenuWheel {
     if (this.root) return;
     const root = this.root = document.createElement("div"); root.id = "menuwheel";
     Object.assign(root.style, { position: "fixed", zIndex: 1, pointerEvents: "none", overflow: "hidden", display: "none", backdropFilter: "blur(7px) brightness(0.62)", WebkitBackdropFilter: "blur(7px) brightness(0.62)", background: "rgba(8,10,32,0.35)" });
+    this.bgcv = document.createElement("canvas"); Object.assign(this.bgcv.style, { position: "absolute", left: "0", top: "0", width: "100%", height: "100%", maxWidth: "none", aspectRatio: "auto", transform: "none", display: "none" }); root.appendChild(this.bgcv);   // BACKDROP
     this.cv = document.createElement("canvas"); Object.assign(this.cv.style, { position: "absolute", left: "0", top: "0", width: "100%", height: "100%", maxWidth: "none", aspectRatio: "auto", background: "transparent", transform: "none", display: "block" }); root.appendChild(this.cv);   // (not the page's own canvas look)
     this.cell = document.createElement("canvas"); document.body.appendChild(root);
   }
@@ -184,15 +185,28 @@ export class MenuWheel {
   update() {
     this.sync();
     const P = this.getPort(), gb = this.getGb(), wheel = !!(this.on && P && P.menuWheel && P.menuWheel.active && gb);
-    const title = !!(this.on && P && gb && !wheel && this.isTitle()), T = performance.now() / 1000;
-    // the title, then (Start) the zoom until the wheel is up, then the wheel
-    if (title) { if (this.phase !== "title") this.logo = null; this.phase = "title"; }
-    else if (this.phase === "title" && this.on && P && gb) { this.phase = "zoom"; this.zoomAt = T; }
+    const onTitle = !!(this.on && P && gb && !wheel && this.isTitle()), T = performance.now() / 1000, F = gb ? gb.frames : 0;
+    // the title, then (Start) the zoom until the wheel is up, then the wheel. The title also stays up while the game plays its own
+    // attract loop (the ball toss, then the title again: no Start or A pressed when the title went), until the title or the menu is back
+    if (onTitle) { if (this.phase !== "title" && this.phase !== "attract") this.logo = null; this.phase = "title"; if (gb.joypad.buttons & 9) this.startAt = F; }
+    else if (this.phase === "title" && this.on && P && gb) {
+      if (F - (this.startAt ?? -1e9) < 45) { this.phase = "zoom"; this.zoomAt = T; }
+      else { this.phase = "attract"; this.attractAt = F; }
+    } else if (this.phase === "attract" && (!this.on || wheel || F - this.attractAt > 1200 || F < this.attractAt)) this.phase = "none";
+    const title = onTitle || this.phase === "attract";
     if (this.phase === "zoom" && T - this.zoomAt > ZOOM && (wheel || T - this.zoomAt > ZOOM + 1.5)) this.phase = "none";   // (the wheel up, or soon after: a quick player may already be past the main menu)
     const skin = this.on && P && P.menuWheel && P.menuWheel.skin, skinOn = !!(skin && !wheel && !title && this.phase !== "zoom" && P.frames - skin.at <= 2);   // (a sub-menu's loop running now)
     const opts = !!(this.on && P && P.menuWheel && P.menuWheel.optionsOpen && this.opts);   // OPTIONS: open (from the main menu or a match's options)
     const show = title || wheel || this.phase === "zoom" || skinOn || opts;
-    if (!show) { if (this.root && this.root.style.display !== "none") this.root.style.display = "none"; return; }
+    // BACKDROP: the front end's screens (the wheel, the sub-menus, OPTIONS from the menu) play over a moving night court of their own,
+    // not the game's screen; a match's pause menu and its OPTIONS keep the match behind them. Between two screens (the game's
+    // slide-out, load and slide-in, where no skin is up) the last picture stays up over the backdrop for a moment, fading, so the
+    // game's own menu never shows through.
+    const front = show && !title && (wheel || this.phase === "zoom" || (skinOn && skin.icon !== "pause") || (opts && !P.menuWheel.pauseMore));
+    if (front) this.lastFront = F;
+    const court = this.isCourt && this.isCourt();                                  // (a match's court is up: no more holding)
+    const hold = !show && !court && this.on && this.lastFront && F - this.lastFront < HOLD && F >= this.lastFront && this.snap;
+    if (!show && !hold) { this.lastFront = 0; if (this.root && this.root.style.display !== "none") this.root.style.display = "none"; return; }
     this.ui();
     const view = [document.getElementById("gl"), document.getElementById("screen")].find(e => e && !e.hidden && e.offsetWidth > 0); if (!view) return;
     const r = view.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -200,16 +214,45 @@ export class MenuWheel {
     const W = Math.round(r.width * dpr), H = Math.round(r.height * dpr); if (this.cv.width !== W || this.cv.height !== H) { this.cv.width = W; this.cv.height = H; }
     if (!this.ball) this.ball = makeBall();
     const zooming = this.phase === "zoom", opaque = title || (zooming && T - this.zoomAt < ZOOM);
-    this.root.style.background = opaque ? "#0b1024" : "rgba(8,10,32,0.35)";
+    this.root.style.background = opaque || front || hold ? "#0b1024" : "rgba(8,10,32,0.35)";
+    this.bgcv.style.display = front || hold ? "block" : "none";
+    if (front || hold) this.backdrop(W, H, T);
+    if (hold) {                                                                   // between two screens: the last one, fading
+      const g = this.cv.getContext("2d"); g.clearRect(0, 0, W, H); g.globalAlpha = Math.max(0, 1 - (F - this.lastFront) / HOLD); g.drawImage(this.snap, 0, 0, W, H); g.globalAlpha = 1; return;
+    }
     if (title) { this.drawTitle(gb, W, H, T); return; }
     if (zooming && (T - this.zoomAt < ZOOM || !wheel)) { this.drawZoom(gb, W, H, Math.min(1, (T - this.zoomAt) / ZOOM), T); return; }
     this.phase = "none";
-    if (opts) { this.drawOptions(W, H); return; }
-    if (skinOn) { (this.skins || (this.skins = new MenuSkins(this))).draw(this.cv.getContext("2d"), W, H, skin, gb, this.getHd && this.getHd()); return; }
+    if (opts) { this.drawOptions(W, H); this.keep(front); return; }
+    if (skinOn) { (this.skins || (this.skins = new MenuSkins(this))).draw(this.cv.getContext("2d"), W, H, skin, gb, this.getHd && this.getHd()); this.keep(front); return; }
     const w0 = gb.mem.wram[0], sel = P.menuWheel.virtual ? NC - 1 : Math.min(8, w0[0xB05] * 3 + w0[0xB04]);          // wMenuCursorY / X (or OPTIONS)
     // the wheel turns smoothly towards the chosen cell (the shorter way round)
     let d = sel - this.pos; if (d > NC / 2) d -= NC; if (d < -NC / 2) d += NC; this.pos += d * 0.3; if (Math.abs(d) < 0.01) this.pos = sel;
-    this.draw(gb, sel, W, H);
+    this.draw(gb, sel, W, H); this.keep(true);
+  }
+  // the picture just drawn, kept for the gap before the next screen (BACKDROP)
+  keep(front) {
+    if (!front) return; const c = this.cv;
+    if (!this.snap) this.snap = document.createElement("canvas");
+    if (this.snap.width !== c.width || this.snap.height !== c.height) { this.snap.width = c.width; this.snap.height = c.height; }
+    const g = this.snap.getContext("2d"); g.clearRect(0, 0, c.width, c.height); g.drawImage(c, 0, 0);
+  }
+  // BACKDROP: the title's night court, alive: the camera drifting in and swaying, a rally crossing the court (the ball on its arc, its
+  // shadow, a short trail), camera flashes in the stands; drawn at half size (soft), darkened a little under the panels
+  backdrop(W, H, T) {
+    const c = this.bgcv, w = Math.max(2, Math.round(W / 2)), h = Math.max(2, Math.round(H / 2));
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    const g = c.getContext("2d"), z = 1.08 + 0.05 * Math.sin(T * 0.11), ox = Math.sin(T * 0.07) * w * 0.03, oy = Math.cos(T * 0.09) * h * 0.015;
+    const X = x => (x - w / 2) * z + w / 2 + ox, Y = y => (y - h / 2) * z + h / 2 + oy;
+    g.drawImage(this.scene(w, h), X(0), Y(0), w * z, h * z);
+    const P = (u, v) => { const d = 1 + v * 2.2; return [X(w * 0.5 + (u * w * 0.75) / d), Y(h * 0.43 + (h * 0.57) * (1 - 1 / d) * 1.55), d]; };   // (scene()'s court)
+    let s = (Math.floor(T * 6) * 2654435761) >>> 0; const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
+    for (let i = 0; i < 3; i++) if (rnd() < 0.5) { const fx = X(rnd() * w), fy = Y(h * (0.1 + rnd() * 0.3)), r = g.createRadialGradient(fx, fy, 0, fx, fy, w * 0.02); r.addColorStop(0, "rgba(255,255,255,0.9)"); r.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = r; g.fillRect(fx - w * 0.02, fy - w * 0.02, w * 0.04, w * 0.04); }
+    const ball = t => { const q = (t % 2.4) / 1.2, back = q > 1, f = back ? q - 1 : q, v = back ? 0.12 + 1.0 * f : 1.12 - 1.0 * f, u = 0.32 * Math.sin(t * 0.9) * (back ? 1 - f : f) + 0.1;
+      const [bx, by, d] = P(u, v), hgt = Math.sin(Math.min(1, f * 1.25) * Math.PI) * h * 0.16 / d + Math.abs(Math.sin((f - 0.8) * Math.PI * 5)) * (f > 0.8 ? h * 0.03 / d : 0); return [bx, by, by - hgt, d]; };
+    const [sx, sy, , d0] = ball(T); g.fillStyle = "rgba(0,0,0,0.35)"; g.beginPath(); g.ellipse(sx, sy, w * 0.012 / d0 * 2, w * 0.005 / d0 * 2, 0, 0, 6.2832); g.fill();
+    for (let i = 6; i >= 0; i--) { const [bx, , gy, d] = ball(T - i * 0.025), r = w * 0.009 / d * 2 * (1 - i * 0.08); g.fillStyle = i ? `rgba(232,240,74,${0.12 * (7 - i) / 7})` : "#e8f04a"; g.beginPath(); g.arc(bx, gy, r, 0, 6.2832); g.fill(); }
+    g.fillStyle = "rgba(6,8,24,0.28)"; g.fillRect(0, 0, w, h);
   }
   draw(gb, sel, W, H) {
     const g = this.cv.getContext("2d"), k = Math.min(W / 1280, H / 720), cy = H / 2, br = 250 * k, bx = -60 * k;
@@ -250,8 +293,9 @@ export class MenuWheel {
   }
   // the court at night for the title: a navy court in perspective with its lines, floodlit, a dark stand of dots, soft (drawn once per size)
   scene(W, H) {
-    if (this.bg && this.bg.width === W && this.bg.height === H) return this.bg;
-    const c = this.bg = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d");
+    const key = W + "x" + H, S = this.scenes || (this.scenes = new Map()); if (S.has(key)) return S.get(key);
+    if (S.size > 3) S.clear();
+    const c = document.createElement("canvas"); c.width = W; c.height = H; S.set(key, c); const g = c.getContext("2d");
     let gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, "#070a1c"); gr.addColorStop(0.42, "#141a3a"); gr.addColorStop(0.43, "#3a2a6a"); gr.addColorStop(1, "#24184c"); g.fillStyle = gr; g.fillRect(0, 0, W, H);
     let a = 0x9e3779b9; const rnd = () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; };
     for (let i = 0; i < 2600; i++) { const x = rnd() * W, y = H * (0.08 + rnd() * 0.33); g.fillStyle = `hsla(${rnd() * 360},55%,${35 + rnd() * 30}%,0.8)`; g.fillRect(x, y, 2 + rnd() * 3, 3 + rnd() * 3); }   // the crowd
