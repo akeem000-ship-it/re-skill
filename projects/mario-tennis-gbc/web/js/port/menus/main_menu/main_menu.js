@@ -25,7 +25,7 @@ import {
   withRomBank, wramBank, pushWramBank, popWramBank, withWramBank, queueCopy, loadPalettes, getRegs, cell, HOME,
   WRAM_STAGING, WRAM_COURT_PLANES, WRAM_SCREEN, TILE_SIZE, TILEMAP_WIDTH, VRAM_BANK1, vTiles0, vTiles1, vTiles2,
   vBGMap0, wDecompBuffer, wShadowTilemap, wShadowAttrmap, OAM_BANK1, PADF_A, PADF_B, rIE, rIF, IE_TIMER,
-  MENUSLIDE_BACK, MENUSLIDE_FORWARD, BGM_MENU, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_CANCEL,
+  MENUSLIDE_BACK, MENUSLIDE_FORWARD, BGM_MENU, SFX_MENU_MOVE, SFX_MENU_SELECT, SFX_MENU_CANCEL, PADF_UP, PADF_DOWN, PADF_LEFT, PADF_RIGHT,
 } from "../common/defs.js";
 import { ixFlags } from "../common/defs.js";
 import { moveMenuCursorGrid, getMenuCursorIndex, setMenuCursorFromIndex } from "../common/cursors.js";
@@ -87,8 +87,11 @@ export function* runMainMenu(P) {
       yield* advanceFrame(P);
       withRomBank(P, BANK_MENU_LIB, () => updateCheatCodeEntry(P));
       V.menuInputPressed = V.inputPressed;
-      if (moveMenuCursorGrid(P, GRID_COLS, GRID_ROWS).a) { sound(P, SFX_MENU_MOVE); drawMainMenuSelection(P); }
+      const wheel = P.menuWheel && P.menuWheel.on;                         // MENU: Wheel (menuwheel.js): the d-pad steps through the nine cells in order
+      if (P.menuWheel) P.menuWheel.active = !!wheel;
+      if (wheel ? stepWheelCursor(P) : moveMenuCursorGrid(P, GRID_COLS, GRID_ROWS).a) { sound(P, SFX_MENU_MOVE); drawMainMenuSelection(P); }
       const input = V.menuInputPressed;
+      if ((input & (PADF_A | PADF_B)) && P.menuWheel) P.menuWheel.active = false;
       if (input & PADF_A) {
         V.cheatUnlockTriggered = 1;
         sound(P, SFX_MENU_SELECT);
@@ -116,6 +119,13 @@ export function* runMainMenu(P) {
       }
     }
   }
+}
+// MENU: Wheel (not in the game): up / left the cell before, down / right the next, round the nine; true when it moved
+function stepWheelCursor(P) {
+  const input = P.V.menuInputPressed, dir = input & (PADF_DOWN | PADF_RIGHT) ? 1 : input & (PADF_UP | PADF_LEFT) ? -1 : 0;
+  if (!dir) return false;
+  setMenuCursorFromIndex(P, GRID_COLS, (getMenuCursorIndex(P, GRID_COLS).a + dir + CELLS) % CELLS);
+  return true;
 }
 // MapMainMenuCursorToItemId (3B:56B0): the item id of grid cell a. Returns a and hl = its table entry.
 export function mapMainMenuCursorToItemId(P, index) {

@@ -103,3 +103,15 @@ export function paintConcept(rgba, src, idx, lut, L, W, H, world, name, opts = {
     rgba[p] = clamp(r, 0, 255); rgba[p + 1] = clamp(g, 0, 255); rgba[p + 2] = clamp(b, 0, 255); rgba[p + 3] = 255;
   }
 }
+
+// the HUD button "COURT: Tour / Game" (remembered, mt-courtlook): the tour's classes on courts of their own (voxel.js courtLook), or
+// the game's courts everywhere but the finals
+export function addCourtButton(voxel, hud) {
+  let m = null; try { m = new URLSearchParams(location.search).get("courtlook") ?? localStorage.getItem("mt-courtlook"); } catch (e) { m = null; }
+  voxel.courtTour = m !== "game";
+  if (!hud) return;
+  const b = document.createElement("span"); b.className = "k"; b.id = "courtbtn"; b.title = "3D court: each tour class on a court of its own (park, club clay, academy), or the game's courts";
+  const show = () => { b.textContent = "COURT: " + (voxel.courtTour ? "Tour" : "Game"); b.classList.toggle("on", voxel.courtTour); }; show();
+  b.addEventListener("pointerdown", () => { voxel.courtTour = !voxel.courtTour; try { localStorage.setItem("mt-courtlook", voxel.courtTour ? "tour" : "game"); } catch (e) { /* private mode */ } show(); });
+  hud.appendChild(document.createTextNode(" ")); hud.appendChild(b);
+}

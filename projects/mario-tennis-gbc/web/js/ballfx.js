@@ -95,7 +95,8 @@ export class BallFX {
     this.marks = []; this.wear = new Map(); this.feet = new Map(); this.markKey = "";   // court marks: ball marks and scuffs, grass wear by cell, last foot positions
     this.rnd = 1; this.surface = { kind: "hard", c: [0.78, 0.82, 0.86], at: -1 };
     this.gl = null; this.stats = { ms: 0, quads: 0 }; this.k = { R: 1, w: 1, front: 2.2, depth: true, size: 1.6, alpha: 1.35 };   // tuning knobs (tests)
-    this.buf = new Float32Array(11 * 6 * 1600);                     // quads: the effects (~700) and the court marks (up to ~800)
+    this.buf = new Float32Array(11 * 6 * 1600);
+    this.aimOn = true; this.aim = null;                              // AIM: the landing ring (attachBallFX reads the remembered choice)                     // quads: the effects (~700) and the court marks (up to ~800)
   }
   setOn(on) { this.on = !!on; try { localStorage.setItem(KEY, this.on ? "on" : "off"); } catch (e) { /* private mode */ } if (this.onChange) this.onChange(this.on); }
   reset() { this.marks.length = 0; this.wear.clear(); this.feet.clear(); this.parts.length = 0; this.hits.length = 0; this.bounces.length = 0; this.net = null; this.sq = null; this.prev = null; this.cut = -1; this.ball = null; }
@@ -129,6 +130,7 @@ export class BallFX {
       type: w[0x4A0], power: w[0x4A6], hitCount: w[0x4B6], timers: [w[0x4A8], w[0x4A9], w[0x4AA]],
       bounce: w[0x4B3] === 1, netCross: w[0x4B4] === 1, netHit: w[0x4BF] === 1,
       active: spd > 0.5 && !(b.X === 896 && b.Y === 0 && b.Z === 0) && w[0x32E] <= 15,
+      landX: s16(0x450), landY: s16(0x452),                                         // the shot's predicted landing point (wLandingX/Y)
       mapId: w[0x32E],
     };
   }
@@ -159,13 +161,16 @@ export class BallFX {
       const h = { fr, pos: { ...pos }, str, dir, c: info.c, power: this.shot.power, smash: s.type === 9 }; this.hits.push(h); if (this.hits.length > 6) this.hits.shift();
       this.spawnHit(h);
       if (this.shot.power) this.speedAt = fr + 2;
+      this.aim = { fr, live: true, x: s.landX, z: s.landY, c: info.c };   // AIM: a ring where the shot will land, from the next frames' prediction
     }
+    if (this.aim && this.aim.live && fr - this.aim.fr >= 1 && fr - this.aim.fr <= 3) { this.aim.x = s.landX; this.aim.z = s.landY; }   // (the game finishes the shot's numbers just after the contact)
     if (this.speedAt && fr >= this.speedAt) { this.speedAt = 0; this.showSpeed(Math.round(sp * KMH / 5) * 5, this.shot.c); }
     if (s.bounce && !(q && q.bounce)) {
       const impact = clamp(Math.abs(q ? q.vz : s.vz) / 14), str = clamp(0.2 + 0.5 * impact + 0.4 * clamp(this.spd / 34));
       const b = { fr, pos: { x: s.X, y: 0, z: s.Y }, str }; this.bounces.push(b); this.ballMark(s, q || s, fr); if (this.bounces.length > 6) this.bounces.shift();
       this.sq = { kind: "bounce", fr, str: clamp(0.25 + 0.75 * impact * (0.5 + 0.5 * clamp(this.spd / 24))), d: [0, 1, 0] };
       this.spawnBounce(b, s);
+      if (this.aim && this.aim.live) { this.aim.live = false; this.aim.end = fr; }
     }
     // the net: wBallNetHit (the game's own test: the ball met the net and was thrown back), or the ball crossing it within a tape's
     // width above the tape (wBallNetCross with the height at the crossing): the net rocks, the tape flicks a spark
@@ -388,6 +393,14 @@ export class BallFX {
     const L = this.v.light; this.gk = L && L.active && L.begun && !L.broken ? 0.5 : 1;     // LIGHT is on: its bloom adds to the overbright additive colours, so they start lower
     const B = this.B, ball = this.ball, PL = this.bodies();
     if (this.v.isCourt && this.v.isCourt()) this.drawMarks(T);
+    // AIM: where the ball in flight will land: a ring in the shot's colour, pulsing, with a dot in the middle; it fades after the bounce
+    const A = this.aim;
+    if (this.aimOn && A && ball && (A.live || T - A.end < 14) && Math.abs(A.x) < 1500 && Math.abs(A.z) < 2400) {
+      const fade = A.live ? Math.min(1, (T - A.fr) / 4) : 1 - (T - A.end) / 14, pul = 1 + 0.1 * Math.sin(T * 0.4), a = fade, c = A.c.map(x => 0.45 + 0.55 * x);
+      this.flat([A.x, 0.8, A.z], 110 * pul, 74 * pul, 3, 0.62, [0, 0, 0, 0.35 * a]);                       // a dark rim so it reads on any court
+      this.flat([A.x, 0.9, A.z], 96 * pul, 64 * pul, 3, 0.66, [c[0], c[1], c[2], 0.95 * a]);
+      this.flat([A.x, 0.9, A.z], 16, 11, 0, 0, [1, 1, 1, 0.9 * a]);
+    }
     // 1. shadow of the ball (the court-level one the voxel view used to draw as a fixed blob)
     if (ball) {
       const h = ball.h, k = clamp(h / 420), rx = 24 * (1 + 1.5 * k), rz = 16 * (1 + 1.5 * k), soft = clamp(0.10 + 0.85 * sstep(0, 260, h)), al = 0.68 * (1 - 0.62 * sstep(0, 420, h));
@@ -459,5 +472,15 @@ export function attachBallFX(voxel, hud) {
   let m = null; try { m = new URLSearchParams(location.search).get("ballfx"); } catch (e) { /* no location */ }
   if (m === null) { try { m = localStorage.getItem(KEY); } catch (e) { m = null; } }
   fx.on = !(m === "0" || m === "off");
-  addBallFXButton(hud, fx); return fx;
+  addBallFXButton(hud, fx);
+  // AIM: on / off (remembered): the ring where each shot will land
+  let a = null; try { a = new URLSearchParams(location.search).get("aim") ?? localStorage.getItem("mt-aim"); } catch (e) { a = null; }
+  fx.aimOn = !(a === "0" || a === "off");
+  if (hud) {
+    const b = document.createElement("span"); b.className = "k"; b.id = "aimbtn"; b.title = "3D / VOX court: a ring where each shot will land (with BALL FX on)";
+    const show = () => { b.textContent = "AIM: " + (fx.aimOn ? "on" : "off"); b.classList.toggle("on", fx.aimOn); }; show();
+    b.addEventListener("pointerdown", () => { fx.aimOn = !fx.aimOn; try { localStorage.setItem("mt-aim", fx.aimOn ? "on" : "off"); } catch (e) { /* private mode */ } show(); });
+    hud.appendChild(document.createTextNode(" ")); hud.appendChild(b);
+  }
+  return fx;
 }

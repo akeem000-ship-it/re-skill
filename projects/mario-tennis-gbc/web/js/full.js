@@ -12,6 +12,8 @@ import { attachLightPanel } from "./lightpanel.js";   // LIGHT settings panel   
 import { attachVoxStyle } from "./voxround.js";   // VOX: Blocky / Rounded
 import { attachBallFX } from "./ballfx.js";
 import { attachIntro } from "./intro.js";
+import { attachMenuWheel } from "./menuwheel.js";
+import { addCourtButton } from "./courtconcepts.js";
 import { attachMatchFx } from "./matchfx.js";
 import { attachFieldLife } from "./fieldlife.js";
 import { attachWeather } from "./weather.js";   // WEATHER: rain or a sunset over a match (the look only)
@@ -33,7 +35,7 @@ const $ = id => document.getElementById(id);
 const cv = $("screen"), g = cv.getContext("2d");
 const img = g.createImageData(160, 144);
 let voxel = null, view3d = false, hd = null;
-let gb = null, keys = {}, paused = false, turbo = false, romHash = "", phone = null, replay = null;   // phone: phone.js (GAME menu conveniences)
+let gb = null, keys = {}, paused = false, turbo = false, romHash = "", phone = null, replay = null, menuWheel = null;   // phone: phone.js (GAME menu conveniences)
 const deck = attachPortrait(() => gb);
 const SAVE_KEY = () => "mt-sram-" + romHash.slice(0, 12);
 const q = new URLSearchParams(location.search);
@@ -146,6 +148,7 @@ function draw(alpha = 1) {                 // alpha: fraction of the next game f
   if (hd) hd.setView3d(view3d);
   if (hd) hd.setSpriteHide(true);            // sprites replaced by HD art: every view leaves them out (2D, 3D court / field / menu layers)
   if (hd && hd.update()) drawnFrame = -1;    // the text on screen (HD font) changed
+  if (menuWheel) menuWheel.update();         // MENU: Wheel
   if (view3d && voxel) {
     if (gb.frames >= insetAt) {               // the touch HUD bar covers the top of the view: overlays go below it
       insetAt = gb.frames + 30; const hud = $("hud"), top = $("gl").getBoundingClientRect().top;
@@ -228,7 +231,7 @@ addEventListener("resize", () => applyAspect());
 let preset = q.get("cam") || stored("mt-cam") || "low"; if (!PRESETS[preset]) preset = "low";
 function setView3d(on, vox = false) {
   view3d = on; $("view3d").classList.toggle("on", on); $("view3d").textContent = on ? (vox ? "VOX" : "3D") : "3D";
-  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.hdText = hd; voxel.freeCam = q.has("freecam"); attachLighting(voxel, $("hud")); attachLightPanel(voxel); if (phone) phone.applyBattery(); attachStadium(voxel, $("hud")); attachCrowdSound(voxel.stadium, $("hud"), () => actx); attachBallFX(voxel, $("hud")); attachIntro(voxel, $("hud")); attachMatchFx(voxel, $("hud")); attachFieldLife(voxel, $("hud")); attachWeather(voxel, $("hud")); attachGround(voxel, $("hud")); attachVoxStyle(voxel, $("hud")); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
+  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.hdText = hd; voxel.freeCam = q.has("freecam"); attachLighting(voxel, $("hud")); attachLightPanel(voxel); if (phone) phone.applyBattery(); attachStadium(voxel, $("hud")); addCourtButton(voxel, $("hud")); attachCrowdSound(voxel.stadium, $("hud"), () => actx); attachBallFX(voxel, $("hud")); attachIntro(voxel, $("hud")); attachMatchFx(voxel, $("hud")); attachFieldLife(voxel, $("hud")); attachWeather(voxel, $("hud")); attachGround(voxel, $("hud")); attachVoxStyle(voxel, $("hud")); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
   if (voxel) voxel.voxelSprites = on && vox;
   $("gl").hidden = !view3d; cv.hidden = view3d; $("cam").hidden = !view3d; $("smoothbtn").hidden = !view3d; if ($("ballfxbtn")) $("ballfxbtn").hidden = !view3d; if ($("voxstylebtn")) $("voxstylebtn").hidden = !(view3d && vox); if ($("lightbtn")) $("lightbtn").hidden = !view3d; if ($("stadiumbtn")) $("stadiumbtn").hidden = !view3d; if ($("crowdsndbtn")) $("crowdsndbtn").hidden = !view3d;
   try { localStorage.setItem("mt-3d", on ? (vox ? "vox" : "3d") : "off"); } catch (e) { /* private mode */ }
@@ -398,7 +401,7 @@ $("forgetrom").addEventListener("click", () => romStore("readwrite", s => s.dele
 $("reset").addEventListener("click", () => { if (port) { location.reload(); return; } if (gb) { settle(); gb.reset(); rec.event("reset"); } });
 // ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
 // a .mtrec file (Android: Downloads/MTenn3D and the share sheet; browser: a download). Hiding the app stops and saves.
-const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? "enhanced" : undefined, net: port ? (port.evenNet ? "even" : "original") : undefined, tourlen: port ? port.tourLength : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
+const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? "enhanced" : undefined, net: port ? (port.evenNet ? "even" : "original") : undefined, tourlen: port ? port.tourLength : undefined, menu: port && port.menuWheel && port.menuWheel.on ? "wheel" : "game", font, ua: navigator.userAgent, look: creator.look || undefined,
   port: port ? (portMode() === "portall" ? "all" : (q.get("port") || PORT_VERIFIED.join(","))) : undefined });
 async function saveRecording(now = false) {     // now: the app is being hidden; skip compression so it finishes at once
   if (!recording()) return; settle();
@@ -498,6 +501,8 @@ $("engbtn").textContent = ENGINE_LABEL[portMode()] || "CODE: ROM";
   });
   $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b);
 }
+// MENU: Wheel / Game (menuwheel.js): the main menu as a ball wheel over the game's own (through the port)
+menuWheel = attachMenuWheel(() => gb, () => port, $("hud"));
 // TOUR MATCH: 3x3 / Game's: remembered, read by the port when a tour match is set up (the next match, no reload)
 {
   const b = document.createElement("span"); b.className = "k"; b.id = "tourlenbtn"; b.title = "tour match length: the best of 3 sets of 3 games, or the game's own (3 sets of 6 games, 5 sets at the Island Open); needs the JS port (CODE: PORT)";

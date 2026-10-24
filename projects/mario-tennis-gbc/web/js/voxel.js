@@ -641,10 +641,15 @@ export class Voxel3D {
   }
   // the court's surface concept (courtconcepts.js): ?court=..., else the finals' giant stadium (STADIUM GIANT) plays on the "final" court,
   // with ISLAND OPEN (game mode 2) or STAR CUP (the dream matches) behind the baselines
+  // COURT: Tour (courtTour, the default): the tour's classes get a court each: the junior matches a park court, the senior ones club clay,
+  // varsity the academy's hard court ($C8F7: 0-4 junior, 5-9 senior, $0A-$0D varsity); exhibition, drills and mini-games keep the game's
   courtLook() {
     if (this.courtConcept) return { name: this.courtConcept, title: null };
-    const st = this.stadium; if (!st || !st.active || this.isDrill() || !st.wantGiant()) return null;
-    return { name: "final", title: this.gb.mem.wram[0][0x8A6] === 2 ? "ISLAND OPEN" : "STAR CUP" };
+    const st = this.stadium; if (!st || !st.active || this.isDrill()) return null;
+    const w = this.gb.mem.wram[0];
+    if (st.wantGiant()) return { name: "final", title: w[0x8A6] === 2 ? "ISLAND OPEN" : "STAR CUP" };
+    if (this.courtTour === false || (w[0x8A6] !== 1 && w[0x8A6] !== 3) || w[0x8F6] > 1) return null;
+    const idx = w[0x8F7]; return idx <= 4 ? { name: "junior", title: null } : idx <= 9 ? { name: "senior", title: null } : idx <= 0x0D ? { name: "varsity", title: null } : null;
   }
   paintGround() {                                        // per palette change: the ROM court picture coloured with the current palettes
     const g = this.ground, lut = new Uint8Array(33 * 4);
