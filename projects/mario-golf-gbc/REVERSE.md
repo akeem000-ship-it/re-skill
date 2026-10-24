@@ -202,7 +202,8 @@ bank. Assets are LZ: banks 28-2F, 40, 4B-4E, 72-74 have 12-37 clean LZ entries e
 |-------|----------|-------------|
 | 01 | 7-entry table; GameMain 01:400E | boot / top level |
 | 02, 05, 0A, 0B, 10 | most far-call targets (0A: ~5150 call sites, 10: ~880, 05: ~560, 02: ~370, 0B: ~220) | engine libraries |
-| 28-2F, 72-74 | 22-52 entries, ~60% LZ | compressed graphics |
+| 28-2F, 72-74 | 22-52 entries, ~60% LZ | **overworld map graphics** (confirmed: MapGfxTable, see Graphics) |
+| 40, 4B-4E | LZ entries of many sizes | UI tiles, faces, sprites (40:66F6 = menu tiles and face icons; 4D: sprite frames) |
 | 30-35 | 900-1400 `rst $18` call sites each, mostly into 0A | script-like code (story / RPG mode?) |
 | 7C-7E | the same sound driver code in each, songs after it | **sound driver + music** (confirmed, see Sound) |
 | 7F | 2 exports | **sound effects** (confirmed) |
@@ -224,8 +225,9 @@ that, and `scan_jumptables.kind()` now uses it.
   table at TABLE (`$4004` in every bank seen) holds string offsets relative to DATA (bank 18: `$4404`, 19:
   `$41B4`, ...); the table runs up to DATA. 2963 strings: 18: 512, 19: 216, 1A: 252, 1B: 285, 1C: 264, 1D: 497,
   1E: 768, 1F: 169.
-- **Encoding**: ASCII `$20-$7E`; strings end with `$00`. Font: 03:50F0, 16 bytes per glyph, glyph = char - `$20`
-  (102 glyphs, `$20-$85`), drawn by 03:4B45 into WRAM bank 7; per-glyph widths at 03:5750 (variable width).
+- **Encoding**: ASCII `$20-$7E`; strings end with `$00`. Font: 03:50F0, one 2bpp 8x8 tile per glyph, glyph =
+  char - `$20` (102 slots, `$20-$85`; `$7B` and up are blank), drawn by 03:4B45 into WRAM bank 7; per-glyph widths
+  at 03:5750 (variable width).
 - **Control codes**: the printer 05:5235 ends on `$00`, reads `$0E`'s argument byte into `$C361`, sends every
   byte below `$20` to the handler table at 05:592C (dispatcher 05:58E2), and maps `$DE`/`$DF` to handlers `$1E`/`$1F`.
 
@@ -269,6 +271,30 @@ that, and `scan_jumptables.kind()` now uses it.
   silence (SyncBGMEnableFlag plays it to mute the music).
 - **Effects**: bank 7F (2 exports: SFXStart 7F:400A, SFXUpdate 7F:406C). Two effect tables: ids `< $65` at
   7F:495C (count) / 7F:495D (pointers), ids `>= $65` at 7F:615F / 7F:6160.
+
+#### Graphics (tools/render_map.py, tools/extract_tiles.py)
+
+- **Overworld map graphics**: MapStartGfx (0B:46DF, a = wMapGfx from the MapTable record) -> MapLoadGfxScreen
+  (0B:44C4) -> MapLoadGfx (0B:440C). MapGfxTable (0B:4048) has 35 descriptors (`$00-$22`, exactly the gfx ids
+  the map table uses), 18 bytes each: 9 `(idx, bank)` refs into `$4000` tables:
+
+  | Ref | Data | Destination |
+  |-----|------|-------------|
+  | w0 | header, 16 bytes raw | `$C600`; bytes 2-5 -> `$C329-$C32C` |
+  | w1 | palettes, `$40` bytes raw | WRAM1 `D000`; BG palettes 2-7 from `+$10` |
+  | w2 | tilemap, LZ, 4096 bytes | WRAM3 `D000`: 64 x 64 tile numbers, signed `$9000` addressing |
+  | w3 | attribute map, LZ, 4096 bytes | WRAM2 `D000` (bits 0-2 palette, 3 VRAM bank, 5/6 flip) |
+  | w4, w5 | LZ, 1024 bytes each | WRAM6 `D000`, `D400` (collision / events? not yet known) |
+  | w6 | — | not loaded |
+  | w7 | LZ | WRAM6 `D800` |
+  | w8 | tiles, LZ | WRAM1 `D000`, then VRAM bank 1: first `$800` bytes to `$9000`, next `$800` to `$8800` |
+
+  The same layout as Mario Tennis's RPG maps (Tennis 0A:59D9 has 8 refs); Tennis's RPG engine evidently
+  comes from this one. `render_map.py` draws all 35 correctly (checked by eye: gfx 02 is a clubhouse
+  interior, gfx 14 the Palm Club area map, gfx 1E the star background used by maps 00, 01 and 24).
+- **Font**: 03:50F0 is plain 2bpp 8x8 tiles in ASCII order from `$20` (rendered: `gfx/raw_03_50f0.png`).
+- **Other LZ banks**: 40, 4B-4E, 58 hold LZ entries of many sizes (`extract_tiles.py`): 40:66F6 is menu UI
+  tiles (digits, pre-drawn mode labels, character face icons); 4D holds sprite frames. Not traced to loaders yet.
 
 ### Data Structures
 
@@ -327,6 +353,9 @@ engine is the RPG ("story") side; how golf rounds and the menus are entered from
 | File | Contents |
 |------|----------|
 | `python3 tools/dump_maps.py [--entrances]` (stdout) | map table and headers |
+| `gfx/map_XX.png` (gitignored) | the 35 overworld map graphics, 512 x 512 |
+| `gfx/lz_BB_AAAA.png`, `gfx/raw_03_50f0.png` (gitignored) | LZ entries as tile sheets; the font |
+| `python3 tools/gen_all.py` | rebuilds all of the above |
 | `docs/text_dump.txt` (gitignored) | every string: `id bank:index text`, control codes as `{XX}` (`python3 tools/dump_text.py`) |
 
 ---
@@ -373,9 +402,11 @@ engine is the RPG ("story") side; how golf rounds and the menus are entered from
 - [x] Sound: driver copies in 7C/7D/7E, song bank/pointer tables, command id ranges, effects bank 7F
 - [ ] Sound: channel script format (7E:42B9 per channel) and the effect format (7F); exports 7E:4043-4064, 49DF, 49EB
 - [x] Text: text banks 18-1F, id format, control codes, font 03:50F0 (dump_text.py)
-- [ ] Text: render the font (03:50F0) to an image to confirm the glyph format (16 bytes: 8 rows x 2 bytes?)
+- [x] Text: font rendered; plain 2bpp tiles
 - [ ] Text: control code `$0D` (05:531B) and where the argument lists `$DFAE`/`$DFEE` are filled
-- [ ] Decompress and render a few LZ entries from banks 28-2F (needs a tile renderer copied from Tennis)
+- [x] Decompress and render LZ entries (extract_tiles.py); overworld maps fully rendered (render_map.py)
+- [ ] Map descriptor w4/w5/w7 (WRAM6 D000/D400/D800): collision, event or height maps? Find their readers
+- [ ] Loaders for the LZ entries in banks 40, 4B-4E, 58 (UI, faces, sprites) and the golf course graphics
 - [ ] Milestone 3: run the game on `web/js/gb` (copy from Tennis) with SRAM saving; `core_vs_pyboy.mjs`
 
 ### Web Port Fixes

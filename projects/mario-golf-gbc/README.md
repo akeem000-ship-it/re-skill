@@ -25,6 +25,11 @@ global checksum `$0FC7`.
 | `farcall_stats.py` | counts `rst $10` / `rst $18` far-call patterns against a baseline |
 | `scan_jumptables.py`, `bank_map.py` | per-bank `$4000` tables, LZ entries, far-call graph |
 | `decompress.py` | the LZ format (00:1F2F) |
+| `dump_text.py`, `text_stats.py` | the text banks 18-1F |
+| `dump_maps.py`, `render_map.py` | overworld map table, headers and graphics |
+| `dump_songs.py`, `compare_banks.py` | music table; byte comparison of two banks |
+| `extract_tiles.py`, `byte_hist.py`, `hexdump.py` | LZ tile sheets; value histograms; hex dumps |
+| `gen_all.py` | rebuilds every derived file (`docs/text_dump.txt`, `gfx/`) |
 | `xref.py`, `search_bytes.py`, `find_bytes.py`, `decode_tables.py`, `relsearch.py`, `strings_dump.py` | generic, copied from Tennis |
 
 The ROM and everything extracted from it are gitignored. Only tools and notes are versioned.

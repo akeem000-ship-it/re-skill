@@ -5,7 +5,7 @@ Start with HANDOFF.md (the plan) if this project is new to you.
 - Binary: `rom/mario_golf.gbc` (USA, SHA-1 `7f2062e51b4fc87378c1d5e6b9578c9277b94e0b`). Not committed: copy your own
   dump there.
   Derived output (`gfx/`, text and scene dumps, `out/`, `states/`, `web/gen/`) is gitignored; rebuild it with
-  `python3 tools/gen_all.py` once that exists.
+  `python3 tools/gen_all.py` (needs `pip install pypng`).
 - Platform: Game Boy Color only (CGB flag `$C0`), SM83 CPU, MBC5 + RAM + battery, 128 x 16 KB banks, 8 KB SRAM
   (confirmed from the header: `python3 tools/header.py`).
 - Address notation: `BB:AAAA` (bank hex, CPU address hex). Bank-0 addresses may omit the bank.

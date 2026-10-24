@@ -249,3 +249,9 @@ A,4950,MapDebugCoordsTask,frame task 1 during maps: prints the player's coordina
 *,C4CD,wChannelActive,4 bytes, one per channel
 *,FFBF,hSoundROMBank,the driver's own ROM bank shadow (it does not use hROMBank)
 0,2BE8,JingleSongTable,PlaySoundCmd ids $36-$3A -> songs 00 17 18 19 1A
+# --- map graphics (tools/render_map.py) ---
+B,4048,MapGfxTable,18-byte descriptors = 9 (idx bank) refs; ends with a zero word; index = wMapGfx
+B,440C,MapLoadGfx,a = gfx id: tiles -> VRAM1 $9000/$8800; tilemap -> WRAM3; attributes -> WRAM2; 3 more maps -> WRAM6; palettes
+B,44C4,MapLoadGfxScreen,LCD off; MapLoadGfx; header (descriptor w0) -> $C600 and $C329-$C32C
+B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the descriptors into $C32D; MapLoadGfxScreen
+*,C32E,wMapGfxLoaded,
