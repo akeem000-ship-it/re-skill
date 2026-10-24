@@ -26,7 +26,6 @@ const VS_BGS = ["stripes", "rays", "balls", "energy"];   // one at random per ma
 const TYPES = ["POWER", "TECHNIQUE", "ALL-AROUND", "TRICKY", "SPEED"];
 import { matchFrameRaw, matchPalette } from "./crowdfans.js";
 import { TUNNELS } from "./stadium3d.js";
-import { hdFaceCanvas } from "./look/hdface.js";
 const ease = u => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
 // READY? / PLAY! in the style of the game's own score captions ("0-15", "NICE!"): chunky 2-px strokes, yellow, orange on the right and lower
 // edges of each stroke, a black outline. Glyphs 5x7, drawn at 2x onto a small canvas that is shown pixelated.
@@ -86,7 +85,7 @@ export class MatchIntro {
       this.names = [name(0xA00) || "YOU", name(0xA80) || "OPPONENT"];
       this.cls = st.crowdClass(); this.mode = w[0x8A6]; this.tier = this.cls === "major" ? 2 : this.cls === "senior" ? 1 : 0; this.fx = {};
       this.who = [0xA00, 0xA80].map((a, side) => this.player(a, side));
-      if (this.vsFaces) this.who.forEach((p, side) => { if (p) p.face = this.face(w[(side ? 0xA80 : 0xA00) + 0x0B] & 0x3F, p.pic); });
+      if (this.vsFaces) this.who.forEach((p, side) => { if (p) p.face = this.face(w[(side ? 0xA80 : 0xA00) + 0x0B] & 0x3F, p.pic, p.sprite, p.pal); });
       this.says = [0xA00, 0xA80].map(a => { const c = v.gb.modChar && v.gb.modChar(w[a + 0x0B] & 0x3F); return (c && c.lines && c.lines.intro) || ""; }); this.vsBg = VS_BGS[Math.floor(Math.random() * VS_BGS.length)]; this.show();
       addEventListener("pointerdown", this.skip, true); addEventListener("keydown", this.skip, true);
     }
@@ -106,38 +105,15 @@ export class MatchIntro {
     const sprite = rom[0x1DA50 + roster], pal = side ? 5 : 4;                // RosterToSprite 07:5A50; the court's OBJ palette of each side
     return { lv: w[a + 0x18], type, sprite, pal, bars: [["POWER", avg(2, 3, 4)], ["SPIN", avg(0, 1)], ["SPEED", avg(7, 8, 9, 10)], ["CONTROL", avg(5, 6)]], pic: this.picture(sprite, pal) };
   }
-  // a player's face for the VS close-up: your redrawn face (the look's HD art, or the default one without a look), a mod's
-  // photo, else the head of their match sprite (its top rows), drawn big with its pixels; {c, pixel} or null
-  face(roster, pic) {
-    const gb = this.v.gb, L = gb.look, F = (L && L.faces) || {}, hero = ["boy", "girl"][roster], spec = hero ? F[hero] : F["mod" + roster];
+  // a player's face for the VS close-up: match frame 4 of their sprite set (everyone standing facing the camera, the same frame for
+  // every character, the anime mods' too: coloured by the look as on the court), zoomed to the head (the figure's top rows, a square
+  // as wide as the figure); {c, pixel} or null
+  face(roster, pic, sprite, pal) {
     try {
-      if (spec && spec.photo) { const im = new Image(); im.src = spec.photo; return { c: im, pixel: false }; }
-      if (spec) return { c: hdFaceCanvas({ ...spec, mood: "neutral" }, 256), pixel: false };   // the redrawn face (Portraits: Redrawn)
-      if (hero && gb.heroPortrait) {                                     // else the game's own portrait, as the menus show it
-        const im = gb.heroPortrait(hero);
-        if (im) { const c = document.createElement("canvas"); c.width = im.w; c.height = im.h; c.getContext("2d").putImageData(new ImageData(im.data, im.w, im.h), 0, 0); return { c, pixel: true }; }
-      }
-      const head = this.head(roster); if (head) return { c: head, pixel: true };   // a game character: its character-select head
-    } catch (e) { console.warn("intro face", e); }
-    if (!pic) return null;
-    const h = Math.min(pic.height, Math.max(10, Math.round(pic.width * 0.8))), c = document.createElement("canvas");
-    c.width = pic.width; c.height = h; c.getContext("2d").drawImage(pic, 0, 0); return { c, pixel: true };
-  }
-  // roster character's 16x16 head of the character select (raw 2bpp, 2 x 2 tiles column-major, 18:5AF0 + 64 per character), in
-  // its colour scheme (18:4300, as the select screen shows it): a canvas, or null
-  head(roster) {
-    const rom = this.v.gb.mem.rom, o = 0x18 * 0x4000 + (0x5AF0 - 0x4000) + 64 * roster, pal = matchPalette(rom, rom[0x1DA50 + roster]);
-    if (!pal || roster > 31) return null;
-    const cv = document.createElement("canvas"); cv.width = cv.height = 16; const g = cv.getContext("2d"), im = g.createImageData(16, 16); let n = 0;
-    for (let t = 0; t < 4; t++) for (let y = 0; y < 8; y++) {
-      const lo = rom[o + t * 16 + y * 2], hi = rom[o + t * 16 + y * 2 + 1];
-      for (let x = 0; x < 8; x++) {
-        const ci = ((lo >> (7 - x)) & 1) | (((hi >> (7 - x)) & 1) << 1); if (!ci) continue;
-        const q = (((t & 1) * 8 + y) * 16 + (t >> 1) * 8 + x) * 4, c = pal[ci]; im.data[q] = c[0]; im.data[q + 1] = c[1]; im.data[q + 2] = c[2]; im.data[q + 3] = 255; n++;
-      }
-    }
-    if (n < 20) return null;                                                // (rosters 21 / 22 are blank)
-    g.putImageData(im, 0, 0); return cv;
+      const f4 = sprite != null ? this.picture(sprite, pal, 4) : null, src = f4 || pic; if (!src) return null;
+      const h = Math.min(src.height, Math.max(10, Math.round(src.width * 0.9))), c = document.createElement("canvas");
+      c.width = src.width; c.height = h; c.getContext("2d").drawImage(src, 0, 0); return { c, pixel: true };
+    } catch (e) { console.warn("intro face", e); return null; }
   }
   // the running player during the walk-on: one card of the match's running frame (voxel.js draws it in place of the game's sprites)
   freeRun() { const v = this.v; for (const e of (this.runTex || new Map()).values()) { if (e.tex) v.gl.deleteTexture(e.tex); if (e.mesh) v.freeMesh(e.mesh); } }
@@ -329,9 +305,9 @@ export class MatchIntro {
       this.vsBack(g, W, H, top, tt);
       const p = this.who[top ? 0 : 1], pic = p && p.pic;
       const fc = this.vsFaces && p && p.face && p.face.c;
-      if (fc && (fc.width || fc.naturalWidth)) {                         // the face close up: as tall as the half, sliding in, bobbing a little
-        const fw0 = fc.naturalWidth || fc.width, fh0 = fc.naturalHeight || fc.height, fh = M + 18, fw = fw0 * fh / fh0, bob = 2 * Math.sin(tt * 5);
-        const x = top ? W + (W - 30 - fw - W) * slide : -fw + (30 + fw) * slide, y = top ? -6 + bob : M - 10 - bob;
+      if (fc && (fc.width || fc.naturalWidth)) {                         // the face close up: filling its half (clear of the line), sliding in, bobbing a little
+        const fw0 = fc.naturalWidth || fc.width, fh0 = fc.naturalHeight || fc.height, fh = M - 8, fw = fw0 * fh / fh0, bob = 2 * Math.sin(tt * 5);
+        const x = top ? W + (W - 30 - fw - W) * slide : -fw + (30 + fw) * slide, y = top ? 2 + bob : M + 6 - bob;
         g.save(); g.imageSmoothingEnabled = !p.face.pixel; g.shadowColor = "rgba(0,0,0,.55)"; g.shadowBlur = 0; g.shadowOffsetX = top ? -6 : 6; g.shadowOffsetY = 4;
         g.drawImage(fc, 0, 0, fw0, fh0, Math.round(x), Math.round(y), Math.round(fw), Math.round(fh)); g.restore();
       } else if (pic) {                                                  // the player, 5x, breathing and bouncing, cut by the line
