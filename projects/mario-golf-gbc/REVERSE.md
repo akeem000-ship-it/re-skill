@@ -1550,6 +1550,103 @@ $D5F0 steps / $D5F9 delay.
 - Ending (0A:56B1): parts from EndingPartTable 0A:5682 (map 0 -> character map 0A:56A1 by wCharId); each part
   runs the map with flag #24, freezes actors, fades palettes to sepia (b c = $3F3F, d = $1E), then CreditsRun 0B:5395.
 
+##### Bank 32: mode select, Marion Clubhouse / Lounge / Director's Room, test maps
+
+Map names below are the banner texts (`$12C` + map id, bank 18).
+
+| Header | Maps | Place |
+|---|---|---|
+| 32:4FE9 | 00 | Mode Select (title, link and mode menus) |
+| 32:553B | 03 | Marion Clubhouse (hall with 5 doors) |
+| 32:6315 | 04 | Lounge (the four Club Champs) |
+| 32:6EB5 | 05 | Director's Room |
+| 32:4016 | 1F | "VS Results" test map |
+| 32:4778 | 20 | "Course Parameters" test map |
+| 32:4C1B | 21 | "Norio Status!" test map |
+| 32:4EB4 | 22 | "Norio Sample" (a copy of the clubhouse NPC list; empty enter script) |
+
+- **Mode Select (map 00)**: ModeSelectMain 32:5037 is the front end. It shows the title (40:4032), then LinkMenu 09:4A12:
+  0 = load a character (CharacterSelectScreen; SaveBlockLoad; pending EXP `$C95C` scaled by level 32:54B5 and
+  given with AwardExpPoints 48:4D70; MapWarpToReturnPoint; summary prompt 32:7D35), 1 / `$11` = link host / guest
+  (exchange the `$C880` records with SerialSendBlock; handshakes `$20`-`$22`; `$C33F` = 1 / 2), 2 = 0B:4D9D,
+  else ModeSelectOptionsMenu 32:79D8 (3F:4002 or DataManageMenu 32:7A0A: copy / erase a character, erase all).
+  Then the game mode menu 0D:4AA7: 9 = story (clears the partner flags #144-147, saves, warp 4), 1 = stroke
+  (CourseSelect, 18 holes, or hole 18 / 3 holes by debug? flags #74 / #73), 2 = VS with a CPU golfer, 3, 4 = single
+  hole practice (CourseHoleSelect loop).
+- **Clubhouse (map 03)**: the counters (talk 02 / 03 use partner texts `$1D1+` when a champ follows you),
+  five doors (triggers 03-07 play 4-frame door animations 32:5EF5-6219 and take warps 3-7; entering through a door
+  runs the closing animation, 32:5D94), and the exit. Trigger 01 (after Links is won) asks "Going outside?" and sets
+  #149. The enter script swaps the talk list by progress (ScriptSetMapField +$0C, lists 32:5853-5B09 by course flags
+  #112-115 / #139) and, after beating Mario (#117 without #120), warps to the Director's Room scene.
+- **Lounge (map 04)**: trigger 01 (flag #96 once) is the champ introduction: an arrow sprite task (32:6AB6, table
+  32:6AA2, index `$C4B3`) points at each champ while texts `$1F1-$1F4` (or the "former champ" texts `$1F9-$1FC`
+  when the club-won flag #136-139 is set) are shown. Talking to a champ (slots 7-10, Map04TalkClubChamp 32:6B81)
+  runs a Yes/No chain; agreeing makes the champ your **partner**: flags #144+n (partner) and #128+n are set, #118
+  cleared, and the champ follows the player (ActorStartFollow; `$C298` slot, `$C294` actor, `$C299` = n + 4). The
+  Links champ talk also sets #131. Per-club flag helpers take `$C4BC - 7` as the club index (32:6B2F / 6B43 / 6B57).
+- **Director's Room (map 05)**: entrance 2 is the first-day welcome (director, pro and Caddie Master introduce
+  themselves, texts `$487-$48F`, then warp 2). After beating Mario (#117) the staff scene 32:7533 (texts
+  `$4BF-$4D0`, they decide to keep the win quiet) plays once and sets #120. Object 04 is a 1-UP Mushroom
+  (flag #156: EXP to the next level, LevelUpScreen). Bookshelves give random book titles.
+- **Story flags used here**: #112-#115 / #139 course progress (Palm / Dune / Links unlocked, Links won), #136-#139
+  club tournament won (Marion / Palm / Dune / Links), #144-#147 partner from that club, #117 beat Mario,
+  #120 cover-up scene seen, #96 lounge intro seen, #149 talked at the exit.
+- **Test maps (debug leftovers)**: map 1F shows a two-player result with portraits, falling confetti actors and a
+  rainbow palette cycle (32:4199-4777; sums the 18 hole scores at `$C8AC` / `$C8EC`); map 20 shows RoundResultScreen
+  with fixed results (entrances 4-7) and a "Hole in One / Eagle / ... / Bogey" picture menu (table 32:4951);
+  map 21 is a 3x3 golfer grid with stat bars that starts an 18-hole test round and prints the choice with
+  PrintHexByte / PrintHexWord (32:4E0C). Maps 1F and 20 also have a talk that opens DebugPaletteEditor 44:42FB.
+- RAM: `$C441` = warp request (wMapEvent+1, `$FA` reloads at the saved position); `$C33F` link role; `$C95C` pending
+  EXP (valid when `$C95E` = `$64`); `$C4BA` text base / `$C4BC` script argument (shared with bank 33);
+  `$C3F4` / `$C3F5` (debug palette editor labels) are reused as rainbow step / scene variant by the VS test.
+- Notable: Map04 talk 07 (Marion champ) uses text base `$1FD` but the other champs `$416` / `$42F` / `$448`.
+  ModeSelectCheckLinksUnlocked 32:5304 drops its caller's return address (pop hl) to abort the course select.
+
+##### Bank 33: Caddie Master's offices, Mario World, Windy Valley, Club Maker's Hut
+
+| Header | Maps | Place |
+|---|---|---|
+| 33:400A | 08-0B | Caddie Master's Office of Marion / Palm / Dune / Links (one header, per-map code by wMapId) |
+| 33:56BE | 1C | Road to Peach's Castle |
+| 33:5AC6 | 1D | Peach's Castle |
+| 33:6FB9 | 26 | Windy Valley Special Hole |
+| 33:781E | 2E 2F | Club Maker's Hut / Windy Valley Hutt |
+
+- **Caddie Master's offices (maps 08-0B)**: the gate to every club round. Enter 33:4722 clears the temp flags
+  #224/#225 (and #118 #190-193 #101 #102), loads the club's spawns / lists / decoration (33:55A3-55DB) and sets
+  #227 = qualified for this club tournament (course flag #112 / #113 / #114) and #226 = club already won
+  (#136-139). The Caddie Master menu (33:5166, text `$892`): **Club Tournament** (StartClubTournamentRound 33:4F05:
+  wGameMode 1, wStoryRoundKind `$C967` = `$0A`), **Practice Round** (wGameMode 3, `$14`) or a **Match Game** against
+  your partner (wGameMode 2, `$1E`, partner golfer 4-7). The course is 1-4 by map, return point = this map entrance 6.
+  Before the first round per club a group tees off (33:5257; flags #176+n / #184+n). Back at entrance 6 the round
+  result sets #240 and #241 won / #242 placed / #243 not placed (33:45FE), which pick the speeches (`$880-$891`,
+  `$C33-$C3A`) and NPC texts (33:4CAC). Leaving with a partner asks whether the partner comes along (33:4FE5);
+  declining dismisses the partner (clears #144+n). Signs point to Hole 1 / Driving Range / Approach / Putting.
+- **Hidden friends**: on map 0B object 0F a friend hides (flag #140, not when you play character 0); 33:7CF1 gives
+  **300 EXP** once all friends other than your own character are found (#140-#143).
+- **Road to Peach's Castle (map 1C)**: sets #125 (Mario World reached); the Bob-omb launcher (33:57CE, tile
+  animations 33:5899 / 5912) shoots the player to the castle (warp 1).
+- **Peach's Castle (map 1D)**: first visit (33:60B2, unless #126 / #116) is the welcome scene with Peach, Toad, Bowser,
+  Mario, Luigi, Yoshi (texts `$144A-$1456`), then "May we begin the tournament?" (33:66DC). Starting it opens the
+  castle door (#127, tiles 33:63F9) and plays **Peach's Tournament** on course 5 hole 1 (wGameMode 1, return entrance
+  6). Back at entrance 6 (33:5F8F sets #106 and the result flags) the award ceremony 33:672A presents the trophy;
+  the **first win** sets #111 and #121, saves, shows ShowPictureTimed and runs **EndingSequence 0A:56B1**. Toad
+  (talk 06) offers a practice round on course 5 once #127 is set. Object 04 is a 1-UP Mushroom (#158).
+- **Windy Valley Special Hole (map 26)**: a guardian challenges you to hit targets (triggers 01-03 pick the tee,
+  33:72BE / 730C, wGameMode 5 or 6, shot limit `$C82C` = `$28` or 7, event hook 33:736F, random wind 33:751B on
+  course 0 hole 7 or course 8 hole 11). First success: 40 EXP (x1.25 with #99), #198 (and #200 #212 #213 when
+  #114); second target: 180 EXP and #201. Afterwards the guru offers once to switch your shot between **fade and
+  draw** (33:779F flips GetCharHand / SetCharHand; #214). Trigger 04 is a door locked until #198.
+- **Club Maker's Hut (maps 2E / 2F)**: sets #124 on map 2E; the club maker (33:7990) gives a special **Distance or
+  Control club** (SetCharFlags12 1 / 2; #215 #216 #225, #217 = Control) and later takes it back or returns it
+  (33:7A73), saving each time. Talk 03 is the Windy Valley guardian again (after #212 it sets #213 and sends you to
+  the second target). Object 01 is a 1-UP Mushroom (#157).
+- RAM: `$C967` wStoryRoundKind (`$0A` tournament / `$14` practice / `$1E` match / `$64` result speech pending);
+  `$C3E0` target result / club choice (scratch); `$C298` / `$C294` / `$C299` partner; flags #224 / #225 are map-local
+  temp flags (cleared on entry).
+- Notable: 33:66CB plays a single hole instead of 18 when flag #72 is set (debug?); entrances `$0A-$0C` of map 1D
+  fake a 1st-3rd place result (33:5F5B), likely for the debug warp menu. 33:4DBE duplicates 32:62F7 (HasPartner).
+
 ### Data Structures
 
 *(none yet)*

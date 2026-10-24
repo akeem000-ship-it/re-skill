@@ -2450,3 +2450,234 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,D4A0,wPalFadeTarget,WRAM6: 16 target palettes (sepia copy of the master palettes)
 *,D5F0,wPalFadeSteps,WRAM6: remaining fade steps
 *,D5F9,wPalFadeDelay,WRAM6: frames between fade steps (steps / 31)
+# --- banks 32 33 map scripts (mode select, clubhouse, caddie offices, Peach's Castle) ---
+32,40EB,Map1FTalkPaletteEditor,map $1F talk 08: farcall 44:42FB DebugPaletteEditor (debug leftover in the VS Results test map)
+32,417E,Map1FTriggerWindTip,map $1F trigger 01: shows text $172 (low trajectory in headwinds tip)
+32,4199,Map1FEnterVsResults,map $1F (banner VS Results) enter: entrance 1 sums both players' 18 hole scores (32:475B) and plays the winner/loser confetti scene (32:44B4); entrance 2 a single-player variant (32:456A); then waits for A/B/Start
+32,4219,VsConfettiInitActors,actors 2-7: +$17/+$18/+$19 set from a (column) with random speed $10-$17 (slot 7: $08-$0F); runs in WRAM4
+32,434E,VsConfettiStepActor,frame step of one confetti actor a: x from VectorFromLengthAndAngle(+$19 + y/8) + $18 swing; y += speed; wraps to the top ($780/$600 by $C3F5) with a new random speed
+32,43F5,VsConfettiTask,frame task: steps confetti actors 2-7 (32:434E) and bobs actor $0E (32:471B)
+32,4427,FillTileBlock4x8,writes 8 rows of 4 consecutive tile ids (start c) into the WRAM3 $D000 map buffer at column b row e (row stride $40)
+32,4469,DrawVsPortrait,loads a character picture (11:4EAB LoadPictureTiles) and copies its 4x8 tile block into the map buffer at d e (0B:4864); a = character b = variant
+32,44A0,VsPortraitTileBase,d = tile base ((h mod 6) x 2 + l) x 4 and e = $30 or $38 (h >= 6) for DrawVsPortrait
+32,44B4,VsResultsShowTwoPlayers,VS result scene: draws both portraits; when c != 0 also redraws the score panels and places actors 8-$0E; starts confetti (32:4219) and VsConfettiTask; $C3F5 = 0
+32,456A,VsResultsShowOnePlayer,single-player result scene: panels by c (2+ = rank) then one portrait at $16 $06; starts confetti with a = $18; $C3F5 = 1
+32,45EE,VsHidePanelActors,clears byte +$17 of actors 8-$0D (WRAM4)
+32,467B,VsRainbowPaletteTask,frame task: cycles BG palettes $0A and $0C through VsRainbowColorTable 32:46B5 using $C3F4 as the step (0-$26)
+32,46B5,VsRainbowColorTable,$27 RGB555 words of a colour ramp read two at a time by VsRainbowPaletteTask
+32,471B,VsBobActor0E,actor $0E: +$18 angle += 2 (or 4) and y = $900 + sin offset ($40 radius): a floating bob
+32,475B,SumPlayerHoleScores,a = player (0 / 1): sum of the low nibbles of the 18 hole scores at $C8AC (P1) or $C8EC (P2) -> a
+32,47B1,Map20TalkPaletteEditor,map $20 talk 08: farcall 44:42FB DebugPaletteEditor (debug leftover)
+32,4844,Map20TriggerWindTip,map $20 trigger 01: shows text $172 (wind trajectory tip)
+32,48AE,Map20EnterResultTests,map $20 (banner Course Parameters) enter: entrance 4 loops a character menu ($11C) into RoundResultScreen; 5-7 show RoundResultScreen with fixed test results; others a menu ($11F Hole in One..Bogey) that shows story pictures 77:6E3E (test map)
+32,4951,ScoreNamePictureTable,5 bytes: story picture per Hole in One / Eagle / Birdie / Par / Bogey menu row (Map20EnterResultTests)
+32,4AA6,ShowStoryPictureB,$D34D = $FF and farcall 77:6E3E LoadStoryPicture with b = picture
+32,4B3B,RestoreBgRowsFromWram,copies 8 rows x 20 tiles from the WRAM2 / WRAM3 $D100 map buffers (stride $40) into $C600 / $C700 and queues them to BG map rows 4-11 ($9880; attributes via $B880)
+32,4C5C,Map21TriggerNone,map $21 trigger 01: empty script (ret)
+32,4C66,Map21EnterGolferTest,map $21 (banner Norio Status!) enter: d-pad moves a cursor actor over a 3x3 grid (32:4E66) with sounds 8-$B; bars per cell (32:4D74); A starts a test round with that golfer (32:4E0C) then warps 1
+32,4D1F,DrawStatBarRight,a negative: draws -a 1x1 bar tiles (0B:4864) at columns 5+(4+a) to 8 of row $10
+32,4D4C,DrawStatBarLeft,draws a-count 1x1 bar tiles from column $0B on row $10
+32,4D74,DrawGolferStatBar,clears the bar row then draws the bar of grid cell a from GolferTestBarTable 32:4EA2 (negative = right side via 32:4D1F)
+32,4DAB,GolferTestMoveCursor,moves grid cell b (0-8) by direction c (1 up 2 left 3 down 4 right) with wrap inside the 3x3 grid
+32,4E0C,GolferTestStartRound,GolfSessionInit; sets up two golfers; prints cell b and its golfer id (PrintHexByte / PrintHexWord debug output); golfer from GolferTestIdTable 32:4E90; course 1 hole 1; no wind; GolfRound 18 holes
+32,4E66,GolferTestCursorTable,9 x (x y) words: cursor actor position per grid cell (Map21EnterGolferTest)
+32,4E90,GolferTestIdTable,9 words: golfer id per grid cell (GolferTestStartRound)
+32,4EA2,GolferTestBarTable,9 words: signed bar length per grid cell (DrawGolferStatBar)
+32,4F92,Map22TriggerWindTip,map $22 trigger 01: shows text $172 (wind trajectory tip)
+32,4FAD,Map22EnterNone,map $22 (banner Norio Sample) enter: empty (ret)
+32,5033,Map00EnterModeSelect,map $00 (banner Mode Select) enter: calls ModeSelectMain
+32,5037,ModeSelectMain,title / mode select driver: resets menu cursors and serial; title 40:4032 then LinkMenu 09:4A12: 0 load a character (save block; pending EXP; MapWarpToReturnPoint; summary 32:7D35) / 1 link host / $11 link guest / 2 0B:4D9D / else options 32:79D8; then the game mode menu 0D:4AA7: 9 story (warp 4) / 1 stroke / 2 VS / 3 / 4 hole practice
+32,5304,ModeSelectCheckLinksUnlocked,returns when flag #139 is clear or #123 is set; otherwise drops the caller and sets warp request 6 (story route instead of the course select?)
+32,5428,LoadRosterEntryAsPlayer,roster entry a of de: slot nibble -> wSaveSlot; $F = guest character (SetupPlayerGolfer + SetPlayerControl + field 11 from bit 0 of byte $0F) else SaveBlockLoad + RestoreGameTimer + SetupPlayerGolfer
+32,5474,ClearBgMapsBlank,LCD off; clears the WRAM2 / WRAM3 $D000 buffers and copies them to BG map $9800 and attributes; LCD on
+32,54B5,ScaleExpByLevel,de = EXP scaled by wCharLevel: < 10 x1 / < 20 x1.5 / < 30 x2 / < 40 x2.5 / else x3 (pending EXP of ModeSelectMain)
+32,56EA,Map03TalkMemberCounter,map $03 talk 02: with a partner (32:62F7) text $1D1+n by club flags (32:5B5A) else text $16B (member counter)
+32,5704,Map03TalkVisitorCounter,map $03 talk 03: with a partner text $1DB+n else text $16C (visitor counter)
+32,5B5A,SetTextByClubProgress,hl += 0-9 chosen from partner flags #144-147 and club-won flags #136-139 / course flags #113 #114; ScriptSetText; then SetTextCourseByProgress
+32,5BBE,SetTextCourseByProgress,SetTextCourseIndex (05:57C3) = 5 (#139) / 4 (#115 or #114) / 3 (#113) / 2: next course name for text code $0B
+32,5BEA,Map03ObjectBookshelf,map $03 object 02: random book text $1E5-$1E8
+32,5C09,Map03TriggerExitToMap,map $03 trigger 02: warp 2 (sound $92) after a 30-frame fade out
+32,5C25,Map03TriggerGoingOutside,map $03 trigger 01: only after Links is won (#139) and before #149 / #127 an actor walks up and asks Going outside? (text $1CE); Yes sets #149 and warps 1; No walks the player back in (otherwise plain warp 1)
+32,5CAF,Map03TriggerDoor1,map $03 trigger 03: player steps in; door 1 opens (32:5EF5); warp 3
+32,5CCF,Map03TriggerDoor2,map $03 trigger 04: door 2 opens (32:5FBE); warp 4
+32,5CEF,Map03TriggerDoor3,map $03 trigger 05: door 3 opens (32:6087); warp 5
+32,5D0F,Map03TriggerDoor4,map $03 trigger 06: door 4 opens (32:6150); warp 6
+32,5D2F,Map03TriggerDoor5,map $03 trigger 07: door 5 opens (32:6219); warp 7
+32,5D94,Map03WalkOutOfDoor,runs hl (door open frame); player (and partner $C298) walk 2 tiles down; fade in; runs de (door close animation); waits for the player
+32,5E07,Map03EnterClubhouse,map $03 (Marion Clubhouse) enter: entrance 1 after beating Mario (#117 set #120 clear) warps $0E; talk list by progress (#139 #115 #114 #113 #112 -> lists 32:5B09 5A4C 59C7 5928 5853; actor 9 script 32:7E19); entrances 3-7 come out of doors 1-5
+32,5EF5,Map03DoorOpenAnim1,4 frames of tile copies (0B:4864) opening door 1 (3 frames each)
+32,5FBE,Map03DoorOpenAnim2,4 frames opening door 2
+32,6087,Map03DoorOpenAnim3,4 frames opening door 3
+32,6150,Map03DoorOpenAnim4,4 frames opening door 4 (4x2 tiles)
+32,6219,Map03DoorOpenAnim5,4 frames opening door 5
+32,62F7,HasPartner,a = 1 (nz) if any partner flag #144-147 is set else 0
+32,63A8,Map04TalkMarionChamp,map $04 talk 07: champ slot 7 with text base $1FD -> Map04TalkClubChamp
+32,63BA,Map04TalkPalmChamp,map $04 talk 08: champ slot 8 text base $416 -> Map04TalkClubChamp
+32,63CC,Map04TalkDuneChamp,map $04 talk 09: champ slot 9 text base $42F -> Map04TalkClubChamp
+32,63DE,Map04TalkLinksChamp,map $04 talk 0A: sets flag #131; champ slot $0A text base $448 -> Map04TalkClubChamp
+32,6735,Map04ChampArrowTaskStub,frame task wrapper: calls Map04ChampArrowTask
+32,6739,Map04TriggerChampIntro,map $04 trigger 01 (once: flag #96; skipped with #189): a member points at each Club Champ (arrow task 32:6735; texts $1F1-$1F4 or ex-champ texts $1F9-$1FC by flags #136-139) and repeats on No to Did you get that?
+32,69B5,Map04EnterLounge,map $04 (Lounge) enter: hides the champs whose partner flag #144-147 is set (they follow the player); talk list by progress (#139 #115 #114 #113 #112 -> lists 32:65C2 6579 6530 64E7 649E; actor 4 script 32:6A5C)
+32,6AA2,ChampArrowPosTable,5 x 4 bytes: x / y / flags of the pointing arrow per $C4B3 index (Map04ChampArrowTask)
+32,6AB6,Map04ChampArrowTask,while $C4B3 != 0 draws a bobbing 16x16 arrow sprite ($7C) over the champ named by $C4B3 (table 32:6AA2) with tick sound $90
+32,6AFF,ChampShowTextAt,text = word $C4BA + de; ScriptShowText by speaker $C4BC; waits 10 frames
+32,6B17,ChampShowTextKeepOpen,text = word $C4BA + de; ScriptShowTextKeepOpen by speaker $C4BC; waits 5 frames
+32,6B2F,ChampTestFlag,tests flag de + ($C4BC - 7): per-club flag (de $88 = club won #136+ / $80 = #128+ / $84 = #132+)
+32,6B43,ChampSetFlag,sets flag de + ($C4BC - 7) (de $90 = partner #144+ / $80 = asked #128+)
+32,6B57,ChampTestFlag2,tests flag de + 2 x ($C4BC - 7) (de $4E / $50 / $52: per-club pairs of event flags)
+32,6B81,Map04TalkClubChamp,Lounge champ talk ($C4BC = champ slot 7-$0A; $C4BA = text base): texts by club flags; a Yes/No chain where agreeing makes the champ your partner (32:6DCF; flags #144+n and #128+n; clears #118)
+32,6DCF,Map04ChampJoinAsPartner,champ $C4BC walks around the sofa (Palm / Dune champs) then follows the player (04:4525 ActorStartFollow); partner slot $C298 / actor $C294 / id $C299 = n + 4; sound $94
+32,7156,Map05ObjectBookshelfA,map $05 object 02: random book text $806-$809
+32,716C,Map05ObjectBookshelfB,map $05 object 01: random book text $80A-$80D
+32,71B4,Map05TriggerWindTip,map $05 trigger 01: shows text $172 (wind trajectory tip)
+32,71CF,Map05EnterDirectorsRoom,map $05 (Director's Room) enter: entrance 2 = first day: director pro and Caddie Master introduce themselves (texts $487-$48F) then warp 2; else talk lists by progress (lists 32:7006-712F; spawns 32:6F35) and after beating Mario (#117) the cover-up scene 32:7533 once (#120) then warp 1
+32,7533,Map05BeatMarioCoverUpScene,Director's Room scene after beating Mario (texts $4BF-$4D0: the staff decide to keep the win quiet); sets flag #120
+32,7966,Map05Object1UpMushroom,map $05 object 04: flag #156; adds the EXP to the next level (unless level 99); mushroom jumps; text $C5F; level-up screen; reloads the map at the saved position
+32,79D8,ModeSelectOptionsMenu,two-item menu 09:5AC5 loop: item 0 -> 3F:4002; item 1 -> the data menu 32:7A0A; B returns after a fade out
+32,7A0A,DataManageMenu,three-item menu 09:6A74: copy a character (free block 32:7D10; new random ID $C80B-$C80F; text $14A5) / erase a character (SaveBlockClear; $14A3) / erase all (confirm $1497; SaveReset; $14A2); messages $14A6 no data / $14A7 full
+32,7CFB,WaitAnyButtonPress,waits for any newly pressed button (hJoyPressed) then one more frame
+32,7D10,FindFreeSaveBlock,a = first save block 0-2 that SaveBlockLoad reports empty or $FF when all are used
+32,7D35,LoadSummaryPrompt,after loading: ExpScreen 48:4053 then two graphic prompts (48:4A81 / 48:4AC3) answered by 32:7D82 -> a = 0 / 1 / $FF
+32,7D82,TwoChoicePrompt,cursor $D251 (WRAM6) toggled by Up/Down (sound $5B); A returns it (sound $5C); B returns $FF (sound $5D)
+32,7DE5,GetLastOpenedWindow,a = wLastOpenedWindow $D820 (WRAM5)
+32,7DFB,SetWindowTextBank5,SetWindowText 05:5A51 with WRAM5 mapped
+32,7E67,MapScriptNop,empty object script (ret) used by maps $1F $20 $22 $04 $05
+32,7E8E,CurPlayerFieldAddr,hl = wPlayer1 + a (+$40 for player 2 when wCurPlayer = 1)
+32,7EE7,FadeToLevelUpScreen,fade out then farcall 41:402A LevelUpScreen
+32,7E19,Map03ActorScriptData,actor script bytecode (04:4234) given to actor 9 by Map03EnterClubhouse
+32,6A5C,Map04ActorScriptData,actor script bytecode given to actor 4 by Map04EnterLounge
+32,5853,Map03TalkListTable,alternate talk lists for map $03 at 32:5853 / 5928 / 59C7 / 5A4C / 5B09 chosen by story progress (ScriptSetMapField +$0C)
+32,649E,Map04TalkListTable,alternate talk lists for map $04 at 32:649E / 64E7 / 6530 / 6579 / 65C2 by story progress
+32,7006,Map05TalkListTable,alternate talk lists for map $05 at 32:7006-712F (9 lists) by story progress
+32,6F08,Map05IntroSpawnTable,actor spawn list for the first-day introduction (ScriptRespawnActors)
+32,6F35,Map05StaffSpawnTable,actor spawn list used after the first day (ScriptRespawnActors)
+33,4317,Map08TalkGolferA,maps $08-$0B talk 02: text base $8B7 picked by club / result (33:4CAC)
+33,4329,Map08TalkGolferB,maps $08-$0B talk 03: text base $8C9 via 33:4CAC
+33,433B,Map08TalkGolferC,maps $08-$0B talk 04: text base $8DB via 33:4CAC
+33,434D,Map08TalkGolferD,maps $08-$0B talk 05: text base $8ED via 33:4CAC
+33,443B,Map08TalkSignHole1,maps $08-$0B talk 08: sign To Hole 1 (text $8B3)
+33,4447,Map08TalkSignDrivingRange,maps $08-$0B talk 09: sign To Driving Range ($8B4)
+33,4453,Map08TalkSignApproachRange,maps $08-$0B talk 0A: sign To Approach Practice Range ($8B5)
+33,445F,Map08ObjectHiddenFriend,maps $08-$0B object 0F: on map $0B a hidden friend (not when wCharId = 0) is found once (flag #140; text $C57); walks off; then the hidden-friend bonus check 33:7CF1
+33,44F1,Map08TriggerExitHole1,maps $08-$0B trigger 02: partner check (33:4FE5); walk out; warp 2
+33,451B,Map08TriggerExitRange,maps $08-$0B trigger 03: partner check; walk out; warp 3
+33,4545,Map08TriggerExitDown,maps $08-$0B trigger 04: partner check; step down; warp 4
+33,4566,Map08WalkOutAnim,player turns up and walks 4.5 tiles at speed $0B with animation $0A
+33,45C7,Map08TriggerStepBack,maps $08-$0B triggers 02/03 (second set): player is pushed back one step with locked facing
+33,45FE,Map08SetRoundResultFlags,places the Caddie Master (slot $0B on map 8 else 5); flag #240 plus #241 win (wRoundResult 1) / #243 out of the places (>= 4) / #242 placed
+33,4722,Map08EnterCaddieMasterOffice,maps $08-$0B (Caddie Master's offices of Marion / Palm / Dune / Links) enter: clears temp flags; per club spawns and lists; #227 = qualified (course flag) / #226 = club won; returning from a round (entrance 6) handles wStoryRoundKind $C967 (tournament / practice / match results)
+33,4864,Map08WalkInAfterRound,player walks to the counter and faces the Caddie Master; after a tournament ($C967 = $64) shows the result speech (Marion 33:4D97 else 33:4D25)
+33,48EC,Map08TalkCaddieMasterB,talk 06 (second entry): sets flag #248 then Map08TalkCaddieMaster
+33,48EF,Map08TalkCaddieMaster,Caddie Master talk: result speech after a round (#240) else the round menu 33:5166 (Club Tournament / Practice Round / Quit) with Yes/No branches
+33,4BD3,Map08TriggerCallOver,maps $08-$0B trigger 01: Caddie Master calls You there! (or champ greeting with #226); player hops and walks to the counter; then Map08TalkCaddieMaster
+33,4C89,ScriptSetTextFromBase,text = word $C4BA + de (ScriptSetText)
+33,4C94,SetCaddieMasterTextBase,$C4BA = $C1B on map $08 (Marion) else $893
+33,4CAC,SetClubGolferText,text = $C4BA + club offset (Dune +6 / Links +$0C) + 0-5 by result flags #240-243 / #226 / #227
+33,4DBE,HasPartnerB,a = 1 (nz) if any partner flag #144-147 is set (same as 32:62F7)
+33,4DDC,SetTextClubIndex,SetTextCourseIndex = 1-4 for maps $08-$0B (club name for text code $0B)
+33,4F05,StartClubTournamentRound,wStoryRoundKind $0A; GolfSessionInit; wGameMode 1; SetupPlayerGolfer $8000 and $FF01; club course (33:4F96); GolfRound (33:66CB); GolfSessionEnd
+33,4F28,StartClubPracticeRound,wStoryRoundKind $14; wGameMode 3; club course; GolfRound
+33,4F4B,StartPartnerMatchGame,wStoryRoundKind $1E; wGameMode 2; partner as opponent (33:4F6B); club course; GolfRound
+33,4F6B,SetupPartnerOpponent,SetupPlayerGolfer player 2 = golfer 4-7 by the set partner flag #144-147
+33,4F96,SetClubCourseAndReturn,return point = this map entrance 6; SetCourseHole course 1-4 (maps $08-$0B) hole 1
+33,4FE5,CheckPartnerBeforeLeaving,no partner -> 0; else partner asks Practicing? (text $C42+n): Yes = partner leaves (flag cleared 33:50A6) -> 0; No = player steps back -> 1
+33,506F,SetPartnerText,$C4BC = partner index 0-3 from flags #144-147 and ScriptSetText(hl + index); a = 5 when none
+33,50A6,ClearPartnerFlag,clears flag #144 + $C4BC
+33,5138,PlacePlayerAndPartnerAtCounter,unless entrance $FA puts the player and partner ($C298) at the counter facing up
+33,5257,ClubRoundStartScene,before a round: the waiting group tees off (first time per club?: flags #176+n tournament / #184+n practice) then the player (and partner) walk out; starts the tournament (33:4F05) or practice round (33:4F28)
+33,5522,CaddieMasterSendOff,Caddie Master faces the player and says text base + $0F; player animation 5
+33,5551,SetClubFlag,sets flag de + (wMapId - 8)
+33,5565,SetClubTournamentSeen,sets flag #176 + club (tournament start scene seen)
+33,556C,SetClubPracticeFlag,sets flag #180 + club (practice round taken while unqualified?)
+33,5573,SetClubGroupPracticeSeen,sets flag #184 + club (practice-round start scene seen)
+33,557A,TestClubFlag,tests flag de + (wMapId - 8)
+33,558E,TestClubTournamentSeen,tests flag #176 + club
+33,559C,TestClubGroupPracticeSeen,tests flag #184 + club
+33,55A3,Map09DecoratePalm,Palm office: replaces a 4x$3A tile strip (0B:4864) and loads palettes from 33:560E
+33,55BF,Map0ADecorateDune,Dune office decoration tiles and palettes 33:564E
+33,55DB,Map0BDecorateLinks,Links office decoration tiles and palettes 33:568E; waits 10 frames
+33,5729,Map1CTalkBobombJump,map $1C talk 06 (second entry): player hops (sound $8A) then Map1CWalkToBobomb
+33,5737,Map1CTalkBobomb,map $1C talk 06: player hops; walks to the Bob-omb; launch scene 33:57CE
+33,57A6,Map1CWalkToBobomb,player walks to the Bob-omb faces up and plays animation $0A; falls through into Map1CBobombLaunch
+33,57CE,Map1CBobombLaunch,Bob-omb (slot 5) leads the player; the launcher opens (33:5899); player is shot away (33:5912; sound $9C); fade; warp 1 to Peach's Castle
+33,5876,Map1CTriggerExit,map $1C trigger 02: sound $99; warp 2
+33,588F,Map1CEnterRoadToCastle,map $1C (Road to Peach's Castle) enter: sets flag #125 (Mario World visited); hides the name banner
+33,5899,Map1CLauncherOpenAnim,5 tile frames of the launcher opening (0B:4864) with sound $9A
+33,5912,Map1CLauncherShootAnim,launcher fires: player flies up off the screen (state 2) and the Bob-omb jumps; 4 tile frames
+33,5BD1,Map1DTalkGoBackDown,map $1D talk 0E / object 01: player jumps into the hole; Map1DTriggerExit
+33,5C01,Map1DTalkPeachWalk,map $1D talk 02 (alternate): Peach (slot 2) animates; player walks around to face her; then Map1DTalkPeach
+33,5C4D,Map1DTalkPeach,map $1D talk 02: after Peach's tournament texts $1470 / $1472 / $1474 by result flags; Yes re-enters the tournament (33:66DC)
+33,5CB0,Map1DTalkMario,talk 07: Mamma Mia! ($145A; +1 after beating Mario #117)
+33,5CC4,Map1DTalkLuigi,talk 08: texts $145E-$1460 by result flags (#240-243) or #117
+33,5CF0,Map1DTalkBaby,talk 09: goo-goo ga-ga ($145C)
+33,5CFC,Map1DTalkDK,talk 0B: Ooh-ooh ($145D)
+33,5D0E,Map1DTalkYoshiA,talk 0A: Yoshi! with sound $9D (speaker $83)
+33,5D1C,Map1DTalkYoshiB,talk 0A second entry: Yoshi! (speaker $81)
+33,5D2A,Map1DTalkBowser,talk 0C: texts $1461-$1463 by #117 / #240 / #241
+33,5D51,Map1DTalkResidentA,talk 03: text $1464 (+1 after #117)
+33,5D65,Map1DTalkResidentB,talk 04: text $1466 (+1 after #117)
+33,5D79,Map1DTalkResidentC,talk 05: text $1468 (+1 after #117)
+33,5D8D,Map1DTalkToadPracticeRound,talk 06: with flag #127 offers a practice round ($146A): Toad leads the way; practice round (wGameMode 3; wStoryRoundKind $1E) on course 5 hole 1; return to map $1D entrance 2
+33,5EE5,Map1DObjectCastleDoor,map $1D object 03: sound $9E; The castle door is shut tight ($147E) or Push or pull ($147D) with flag #23
+33,5F25,Map1DTriggerExit,map $1D trigger 01: sound $9C; fade; warp 1
+33,5F42,Map1DEnterPeachsCastle,map $1D (Peach's Castle) enter: flag #125; result entrances (33:5F5B); result flags (33:5F8F); door tiles (33:63F9); first-visit scene (33:60B2); award ceremony (33:672A)
+33,5F5B,Map1DResultTestEntrances,entrances $0A / $0B / $0C set wRoundResult 1 / 2 / 3 and flag #126 and continue as entrance 6 (award test entrances for the debug warp menu?)
+33,5F8F,Map1DSetResultFlags,entrance 6 with a result sets flag #106 (back from Peach's tournament); then #240 and #241 / #242 / #243 by wRoundResult
+33,6040,Map1DPlayerArrivesAnim,player pops out at the entrance (jump; sound $9C); walks in and hops twice
+33,60B2,Map1DFirstVisitScene,first visit (not #116 / #126; #127 sets #126): Mario World welcome by Peach Toad Bowser Mario Luigi Yoshi (texts $144A-$1456) then the tournament prompt 33:66DC
+33,63F9,Map1DOpenCastleDoor,with flag #127 copies the open-door tiles terrain and events (0B:4864 / 4653 / 4699)
+33,66CB,Map1DGolfRound,GolfRound with 1 hole when flag #72 is set (debug short round?) else 18
+33,66DC,Map1DAskStartTournament,May we begin the tournament? ($1477): No = $1478 (or $1476 after a round); Yes = the opening scene (33:642C: flag #127 opens the door) and Peach's tournament on course 5 hole 1
+33,672A,Map1DAwardCeremony,back from Peach's tournament placed 1-3: trophy tiles and texts $1479 / $147A (place via PushTextNumberArg); first win sets #111 saves and plays ShowPictureTimed + EndingSequence 0A:56B1; #121 = current winner
+33,6B62,Map1DRisingSpriteEffect,5 steps of a rising 4-frame sprite effect (33:6BB3 tiles $760-$766) using $C3E0 step / $C3E2 y offset
+33,6BB3,DrawMapSpriteFrames,draws sprite template 33:6C90 at a map point (scroll-relative) for 5 frames with tile bc
+33,6E45,LoadEffectSpritesA,queues tiles 33:6C10 to $8600 and OBJ palette 33:6CA1
+33,6E5D,LoadEffectSpritesB,queues tiles 33:6CB0 to $8500 and OBJ palette 33:6E3D
+33,6E75,DrawEffectFrameAtPoint,draws sprite template 33:6E30 at map point ($1600 $0C80) for 6 frames with tile bc
+33,6EAA,PlayEffectAnim,cycles DrawEffectFrameAtPoint through tiles $750 / $756 / $75C four times
+33,6F47,Map1DObject1UpMushroom,map $1D object 04: flag #158; EXP to next level; mushroom jumps; text $C5F; level-up screen; reload at the saved position
+33,701F,Map26TalkGuardianA,map $26 talk 02: target challenge intro ($14C8); once (#199) the guardian steps aside
+33,705D,Map26TalkGuardianB,map $26 talk 02 (alternate): same intro; once (#199) the guardian walks around
+33,70B2,Map26TalkGuru,map $26 talk 02 (third): after #201 the fade / draw offer (33:771A) else text $14D5
+33,70E1,Map26ObjectLockedDoor,map $26 object 01: sound $9E; The door is locked ($14D2)
+33,70F8,Map26TriggerTarget1,map $26 trigger 01: intro once then target shot 1 ($C4BC = 1; 33:72BE)
+33,7109,Map26TriggerTarget2,map $26 trigger 02: target shot 2
+33,710D,Map26TriggerTarget3,map $26 trigger 03: target shot 3
+33,7116,Map26TriggerDoor,map $26 trigger 04: locked ($14D2) until #198; else step up and warp 2
+33,713E,Map26TriggerLeave,map $26 trigger 05: Hmph! ($14C9) when the challenge was seen but not passed; warp 1
+33,7184,Map26EnterWindyValley,map $26 (Windy Valley Special Hole) enter: hand flag (33:7813); guardian placement by #199 / #213 / #198; results of target shots (33:73BB / 33:755B); entrance $0F first clear (#198; with #114 also #200 #212 #213); entrance 3 second target; $0E the guru (33:7660)
+33,72BE,Map26AskTargetShot,Shoot from here? ($14D3): Yes = GolfSession with wStoryRoundKind $0A; tee by target (33:730C); wind and hole (33:751B); event hook 33:736F; GolfRound
+33,730C,Map26SetTargetTee,SetForcedTee per target $C4BC (1: $2320 $1DA0; 2: $1CA0 $2980; else $11E0 $2CE0); wGameMode 6 with $C82C = 7 or (target 1 by #198 #201 #213) wGameMode 5 with $C82C = $28
+33,73BB,Map26FirstTargetResult,after target 1: success ($C3E0 = 1) gives 40 EXP (x1.25 with flag #99) ($11B); level-up; save; warp $0F; failure texts $14CC / $14CA
+33,751B,Map26SetTargetWindHole,random wind strength 1-3 (SetForcedWind) and course 0 hole 7 or (after #213) course 8 hole $0B (no wind with flag #72)
+33,755B,Map26SecondTargetResult,after the second target (#213 set #201 clear): success gives 180 EXP (x1.25 with #99) and sets #201; warp $0E; failure texts $14D8 / $14D7
+33,7660,Map26GuruOfferSwap,guru asks whether your shot is a fade or a draw (temp flag #224 = hand) and offers to switch once (33:779F)
+33,771A,Map26GuruRevisit,after the switch (#214) text $14E8; else repeats the switch offer ($14E2-$14E5)
+33,779F,SwapShotCurve,sets flag #214; GetCharHand xor 1 -> SetCharHand (fade <-> draw); six flash fades
+33,7813,SetTempFlagFromHand,sets temp flag #224 when GetCharHand = 1
+33,7882,Map2ETalkClubMaker,map $2E talk 02: first offer (33:7990) / exchange (33:7A73) / texts $181A / $1814 by #215 #216 #225
+33,78B6,Map2ETalkGuardian,map $2E talk 03: after #212 Hmm you improved ($14D4) sets #213 and warps 3; else $14D0 (once #200)
+33,791C,Map2ETriggerLeave,map $2E trigger 01: with a fresh special club (#225 #216) the maker speaks $1815; warp 1
+33,7945,Map2ETriggerExit2,map $2E trigger 02: warp 2
+33,795C,Map2EEnterClubMakersHut,maps $2E / $2F enter: sets camera bounds ($C329 / $C32B) per map; map $2E sets flag #124 (Club Maker's Hut visited)
+33,7990,Map2EClubMakerOffer,club maker offer ($180C): menu Distance / Control / None ($1811); sets #215 #216 #225 (and #217 for Control); SetCharFlags12 1 or 2; text $1812 / $1813
+33,7A73,Map2EClubMakerExchange,return the special club ($1819; SetCharFlags12 0) or take it back ($181B; 1 or 2 by #217); saves each time
+33,7B6B,Map2EObject1UpMushroom,map $2E object 01: flag #157; EXP to next level; mushroom jumps; text $C5F; level-up screen; reload at the saved position
+33,7CB7,FadeToLevelUpScreenB,fade out then 41:402A LevelUpScreen
+33,7CF1,HiddenFriendsBonus,when all hidden friends other than your character are found (flags #140-143) gives 300 EXP ($11B); level-up screen; save; reload
+33,5105,WalkOutActorData,actor script bytecode (04:4234) given to the player / partner / group members when they walk out to the course
+33,6EFA,Map1DActorScriptDataA,actor script bytecode used in the Peach's Castle tournament opening
+33,6F15,Map1DActorScriptDataB,actor script bytecode given to 5 castle actors in the tournament opening
+33,6F21,Map1DActorScriptDataC,actor script bytecode used in the tournament opening
+33,6F39,Map1DActorScriptDataD,actor script bytecode used in the first-visit scene
+33,6F40,Map1DActorScriptDataE,actor script bytecode used in the first-visit scene
+33,7BDE,ClubGroupActorScriptData,actor script bytecode given to actor 4 in ClubRoundStartScene
+*,C441,wMapWarpRequest,wMapEvent+1: warp record index to take (MapEventLoop copies it to $C46B); $FA = reload at the saved position
+*,C967,wStoryRoundKind,story round in progress: $0A tournament / $14 practice / $1E match / $64 back for the result speech / $5A
+*,C4BA,wScriptTextBase,word: base text id for per-map text tables (champs / Caddie Master / club golfers)
+*,C4BC,wScriptArg,script argument: champ slot (map $04) / partner index (maps $08-$0B) / target number (map $26)
+*,C298,wPartnerSlot,actor slot of the partner that follows the player ($FF none)
+*,C294,wPartnerActor,word: actor pointer of the partner
+*,C299,wPartnerId,partner golfer id (champ index + 4)
+*,C33F,wLinkRole,0 none / 1 link host / 2 link guest (ModeSelectMain)
+*,C95C,wPendingExp,word: EXP waiting for the next load; $C95E = $64 marks it valid (ModeSelectMain)
