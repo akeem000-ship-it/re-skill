@@ -310,9 +310,7 @@ Found by playing in PyBoy (Start, A, Right x4 to Mario, A, A, A: "Play Modes" ->
 - **10:4415** (bank 10 export 0) runs the bank-02 setup and then GolfRound(`$12`) forever; only the unreachable
   debug boot menu calls it, so it is a developer's direct-to-golf entry.
 - The round runs with wMapId still 00: golf is entered from map 00's menus, not through a map warp.
-- **Hole data**: while hole 1 loads, LZ streams are read from banks 50, 55, 56 and 61 (through 00:069A, the
-  indexed far helper) and 12, 13. Banks 50-5D and 5F-71 have small tables of 5-16 entries each: likely the
-  course / hole data (not decoded yet).
+- **Hole data**: see "Holes" below.
 
 **Round structure (10:4451).** Per hole (10:44B4): wind, hole setup, then the shot loop (10:45D9-4632):
 PickNextPlayer (10:4674) chooses who plays next among the players not yet holed out (player record field
@@ -356,6 +354,39 @@ speed decay x `$FC`/256, wind, and a friction factor from the terrain table at 1
 sound `$51` and drops the ball: water). BallTerrainCheck (10:527C) reads the terrain under the ball every frame
 (TerrainAt 10:6536) and remembers the last safe spot in `D51D` (not for types 3 and 7). On the green
 (`D443`) positions are taken relative to `D441`/`D442` and scaled x4.
+
+#### Holes (bank 13 loaders; tools/render_hole.py, tools/emu_hole_check.py, tools/hole_stats.py)
+
+- **HoleAssetTable (13:4A16)**: one 16-byte row (8 refs `(idx, bank)`) per hole id; the current id is wHoleId
+  (WRAM6 `$D320`; `$0A` in the Stroke round's hole 1). Each ref names a list in a bank's `$4000` table, and
+  FarDispatchIndexed (00:069A) LZ-decompresses entry n of that list. HoleAsset (13:49EE) maps (ref, entry) for
+  the current hole.
+- **Ids `$0A-$63` are the 5 courses x 18 holes**: the course tile set (ref 0) changes every 18 rows: `$0A-$1B`
+  50:00, `$1C-$2D` 50:02, `$2E-$3F` 51:00, `$40-$51` 51:02, `$52-$63` 52:00 — the five clubs Marion, Palm, Dune,
+  Links and Peach's Castle (renders: `$2E` is a desert hole, `$52` is shaped like Peach). Ids `$00-$09` and
+  `$64` up reuse a few assets (practice and special rows, not traced).
+- **Overhead view** (HoleLoadMaps 13:4014, HoleLoadTiles 13:40CA, when `hFFB0` = 0):
+
+  | Asset | Destination |
+  |-------|-------------|
+  | ref 0 (course) entry 0: palettes | `$40` bytes copied; the first `$28` are BG palettes 2-6 (checked against wBGPalMaster `$C200`) |
+  | ref 0 entry 1: tiles (LZ) | WRAM1 -> VRAM bank 1, `$9000` then `$8800` (signed addressing, LCDC `$E7`) |
+  | ref 0 entry 3: terrain table (LZ, 2048 bytes) | WRAM6 `$D800`: 8 bytes per tile = 4 x 4 cells of 4-bit terrain types |
+  | ref 0 entry 4 (LZ, 2048 bytes) | WRAM1 `$D800` (loaded later; not identified) |
+  | ref 1 (hole) entry 0: attributes (LZ, 4096) | WRAM2 `$D000` |
+  | ref 1 entry 1: tilemap (LZ, 4096) | WRAM3 `$D000`, 64 x 64 |
+  | ref 1 entry 2 (LZ, 256) | WRAM6 `$D700` (not identified) |
+  | ref 1 entry 3 | WRAM4 `$DC00` via 00:0749 (not identified) |
+  | refs 2-4 | the behind-the-golfer view (`hFFB0` = 1 paths; banks 55, 56, 12, 13) |
+
+  `emu_hole_check.py` on hole 1: tilemap, attributes and terrain table equal the decoded assets byte for byte;
+  VRAM1 `$8800` equals the second half of the tiles, `$9000` all but tiles `$00-$10` (overwritten by the HUD).
+- **Terrain** (TerrainAt 10:6536): ball x/y integer parts -> tile (64 x 64, one tile = 256 position units, about
+  8 yards) and cell (64 units); the tile's attribute flips are applied to the cell. Types seen on hole 1:
+  `0` fairway (also the tee box), `1` rough, `2` bunker, `6` green, `7` out of bounds (the tree area),
+  `9` semi-rough (the ring round fairway and green; the game showed "SemiRough" where the test drive stopped);
+  `3` is water (BallRollStep plays sound `$51`; friction byte `+$01`). TerrainPropTable (10:6825) holds 4 bytes
+  per type; byte 1 is the roll friction (fairway `$F8`, rough `$E0`, bunker `$F0`, green `$FC`, OB `$80`).
 
 ### Data Structures
 
@@ -415,6 +446,7 @@ engine is the RPG ("story") side; how golf rounds and the menus are entered from
 |------|----------|
 | `python3 tools/dump_maps.py [--entrances]` (stdout) | map table and headers |
 | `gfx/map_XX.png` (gitignored) | the 35 overworld map graphics, 512 x 512 |
+| `gfx/hole_XX.png`, `gfx/hole_XX_terrain.png` (gitignored) | the 90 holes and their terrain types |
 | `gfx/lz_BB_AAAA.png`, `gfx/raw_03_50f0.png` (gitignored) | LZ entries as tile sheets; the font |
 | `python3 tools/gen_all.py` | rebuilds all of the above |
 | `out/boot_FFFFF.png` (gitignored) | emulator screenshots from `emu_boot.py` |
@@ -485,7 +517,9 @@ Result over 4800 frames:
 - [ ] Golf engine: the shot's launch values (club, power, impact -> vx/vy/vz, curve, spin: from ShotSetup 10:4798
       on), wind (10:52EE, 10:66DB), drag (10:5268), the terrain types and friction table (10:67E4), the bounce
 - [ ] Golf engine: aiming loop (10:486B), club select, putting on the green, CPU golfers' targets, scoring
-- [ ] Hole data: the tables in banks 50-5D and 5F-71 (LZ via 00:069A during hole setup); render a hole
+- [x] Hole data: HoleAssetTable 13:4A16, overhead assets, terrain table; all 90 holes render (render_hole.py)
+- [ ] Holes: the per-hole data still unidentified (ref 1 entries 2-3: tee/pin positions? par/length?), terrain
+      types 4, 5, 8, A-F, the behind-the-golfer view assets (refs 2-4), hole ids `$00-$09` and `$64` up
 - [ ] How the play-mode menu (map 00) calls GolfRound, and the RPG side's golf (story tournaments from maps)
 - [ ] Map header fields +10/+12; warp record bytes 0-5; entrance byte 1; MapTable byte 5
 - [ ] The bank-02 setup calls in GameMain (02:41F6, 02:45D3, 02:4E3D) and the save check at 02:4078 ("CAMELOT GAMEBOY" at 02:4162)

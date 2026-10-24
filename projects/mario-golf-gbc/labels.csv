@@ -72,7 +72,6 @@ bank,addr,name,comment
 0,0654,FarCopyBytes,(as in Mario Tennis 00:067A)
 0,066C,CopyOAMDMARoutineToHRAM,(as in Mario Tennis 00:06AC)
 0,067A,OAMDMARoutine,(as in Mario Tennis 00:06BA)
-0,069A,FarDispatchIndexed,(as in Mario Tennis 00:06CF)
 0,06C2,FarCopyIndexed,(as in Mario Tennis 00:06F7)
 0,06F1,FarCallIndexed1,(as in Mario Tennis 00:0726)
 0,071D,FarCallIndexed2,(as in Mario Tennis 00:0752)
@@ -300,3 +299,13 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,D452,wSwingFullPower,WRAM6:
 *,D4D8,wSwingTargetPower,WRAM6: computer swing
 *,D4D9,wSwingTargetImpact,WRAM6: computer swing
+# --- holes (tools/render_hole.py) ---
+0,069A,FarDispatchIndexed,h = bank and l = idx -> list at bank:[$4000+l]; a = entry -> LZDecompress that entry to de (as in Mario Tennis 00:06CF)
+13,4014,HoleLoadMaps,overhead view: attributes / tilemap / D700 / terrain table / DC00 of wHoleId
+13,40CA,HoleLoadTiles,overhead tiles (course list entry 1 -> WRAM1 -> VRAM1) and palettes (entry 0 -> $C600)
+13,49EE,HoleAsset,h = ref (0-7) and l = list entry -> hl = (bank idx) for FarDispatchIndexed; a = entry; row = wHoleId
+13,4A16,HoleAssetTable,16 bytes (8 refs) per hole id; holes $0A-$63 = 5 courses x 18
+10,67E4,TerrainProps,terrain type under the ball -> hl = TerrainPropTable entry
+10,6825,TerrainPropTable,4 bytes per terrain type (16 types); byte 1 = roll friction
+*,D320,wHoleId,WRAM6: row of HoleAssetTable ($0A = Marion hole 1)
+*,C200,wBGPalMaster,8 BG palettes then 8 OBJ palettes at $C240 (LoadPalettesMasterOnly)

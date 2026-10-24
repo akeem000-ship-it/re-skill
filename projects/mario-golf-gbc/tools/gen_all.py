@@ -4,6 +4,7 @@
   gfx/map_XX.png            render_map.py all
   gfx/lz_BB_AAAA.png        extract_tiles.py on the banks with LZ entries
   gfx/raw_03_50f0.png       the font
+  gfx/hole_XX.png           render_hole.py: the 90 course holes ($0A-$63) and their terrain maps
 usage: gen_all.py
 """
 import os, subprocess, sys
@@ -29,6 +30,8 @@ def main():
     run(["render_map.py", "all"])
     run(["extract_tiles.py"] + LZ_BANKS)
     run(["extract_tiles.py", "--raw", "03:50f0", "102"])
+    for h in range(0x0A, 0x64):
+        run(["render_hole.py", "%02x" % h, "--terrain"])
 
 
 if __name__ == "__main__":

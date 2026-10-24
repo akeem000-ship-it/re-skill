@@ -27,7 +27,7 @@ checked in the emulator (`tools/emu_verify.py`).
 | 28-2F, 72-74 | overworld map graphics (35 descriptors) | confirmed (emulator) |
 | 30-35 | map headers and their lists (63 maps) | confirmed |
 | 40, 4B-4E, 58 | LZ UI tiles, faces, sprites | partly seen |
-| 50-5D, 5F-71 | probably course / hole data (LZ read during hole load) | hypothesis |
+| 50-5D, 5F-71 | course and hole data (HoleAssetTable 13:4A16) | confirmed (emulator) |
 | 7C, 7D, 7E | sound driver (identical code in each) + music | confirmed |
 | 7F | sound effects | confirmed |
 
