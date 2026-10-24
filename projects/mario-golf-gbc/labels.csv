@@ -1406,3 +1406,239 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 11,48AB,PreviewMarkerView4,view 4: the preview landing spot ($D374/$D377) relative to the camera ($D456/$D458) rotated by $D45A -> $D45C; perspective divide; draws the marker (00:2798) or tile 11:507C when too close
 11,6E08,LoadGolferFrameTiles,h = golfer -> list 11:6EEF; l = entry: 16 tiles to de through FarCallIndexed1 (per frame from GolfAnimTask; GolfAnimInit uses LoadGolferSpriteTiles)
 *,D374,wPreviewSpot,WRAM6: preview ghost-ball spot x ($D374) / y ($D377) projected by PreviewMarkerView4
+# --- banks 05 03 (windows, menus, messages, text printer, glyph renderer, debug menu) ---
+05,407A,InitWindowSystem,clears WRAM5 D000-DFFF over 4 frames; marks the 6 window slots free; wMessageWindow = $FF; wWindowAttr = $80; farcalls 41:707C
+05,40C2,CopyTextShortToDE,hl = text id; LoadTextShort then copies the string from wTextShortBuffer to de (with its $00)
+05,40E6,ClearBGShadow,no callers: zeroes WRAM5 D000-D7FF (BG tile and attribute shadow)
+05,4102,DebugHDMAShadowToVRAM,no callers: while A is held starts a general HDMA of $250 bytes WRAM5 D000 -> $9800
+05,4128,WriteShadowTile,a = tile at d = x e = y of the WRAM5 BG shadow (nothing if a = 0)
+05,413E,ReadShadowTile,no callers: a = tile at d e of the WRAM5 BG shadow
+05,414F,ShadowTileAddr,d = x e = y (& $1F) -> de = $D000 + y*32 + x (WRAM5 BG tile shadow)
+05,416F,CopyVisibleShadowRows,b = WRAM bank; queues 19 shadow rows from camera row [$C323] (wrapping at 32): tiles D000 -> $9800 and attrs D400 -> VRAM1 $9800 via 00:0468
+05,41EF,CopyShadowTilesToVRAM,b = WRAM bank; queues $400 bytes D000 -> $9800 (tile map) via 00:0468
+05,4208,CopyShadowAttrsToVRAM,b = WRAM bank; queues $400 bytes D400 -> VRAM1 $9800 (attributes) via 00:0468
+05,4221,CopyShadowRowToVRAM,no callers: a = row; b = WRAM bank; queues one 32-tile row of tiles and attributes
+05,4262,QueueShadowRows,a = first row; c = rows; b = WRAM bank; queues tiles D000 -> $9800 and attrs D400 -> VRAM1 $9800 via 00:0468
+05,42AD,CopyShadowRowsFramed,a = first row; c = rows; queues 7 rows per frame (wrapping at row 32) with flag #24 set
+05,431B,CopyWindowRowsToVRAM,a = window slot; queues the rows the window covers (heights 3/5 widened to 7) in one go
+05,4384,CopyWindowRowsFramed,a = window slot; queues the window rows 7 per frame; spins forever (jr $) if a wrapped part is 8+ rows
+05,43F6,FlushMessageWindowRows,if wCurWindow is wMessageWindow copies its rows to VRAM (CopyWindowRowsToVRAM)
+05,4408,SetWindowTile,a = window slot; d e = x y inside the window; c = tile and b = attribute stored in the window record
+05,444F,GetWindowTile,a = window slot; d e = x y; returns c = tile and b = attribute from the window record
+05,4492,RestoreShadowFromMap,recopies 20 BG shadow rows from the overworld map (CopyMapRowToShadow) 5 per frame from camera row [$C323]
+05,44B7,CopyMapEdgeRows,no callers: copies 7 map rows into the shadow from row [$C323] (+ fine-scroll carry from $C322; +11 if a bit 0)
+05,44E3,RestoreMapUnderWindow,a = window slot; recopies the map rows the window covers into the BG shadow
+05,450B,CopyMapRowToShadow,a = map row (0-63); copies 32 tiles (WRAM3 map) and attributes (WRAM2) from column [$C321] into shadow row a & 31 (WRAM5 D000/D400) via wMapRowBuffer
+05,45DC,OpenPromptWindow,OpenWindow (d e b c) with text hl (SetWindowText); slot kept in wPromptWindow
+05,45F6,RunYesNoMenu,menu with text $001A (Yes / No) at de; closes it and wPromptWindow; a = row or $FF
+05,4624,BeginWindowText,no window open: clears and uploads the glyph buffer (03:4BFE 03:4C60) and zeroes $C36A-$C36F; else starts a new glyph block ($C36F = $C36E)
+05,465B,BeginWindowTextNoUpload,as BeginWindowText without the VRAM upload
+05,468F,AllocWindowSlot,hl = record buffer; b c = size; a = priority; claims a free slot (-> wLastOpenedWindow and wCurWindow) storing hl and priority<<5 | 3; hl = $FFFF if full or past $E000
+05,46F1,FindFreeWindowSlot,a = first of the 6 slots at $D800 with a zero pointer or $FF
+05,4717,BuildPlainWindowRecord,no callers: fills the record at hl (flags a; x d y e w b h c) with frame tiles 02-09 and a blank ($20) interior
+05,4773,BuildTextWindowRecord,fills the record at hl (x d y e w b h c) with frame tiles 02-09 and glyph tiles numbered from $80 + [$C36E] on every other row; attr wWindowAttr
+05,4818,RebuildWindowRecord,a = window slot; BuildTextWindowRecord again from the record's own x y w h
+05,4831,DrawWindowToShadow,hl = window record; copies its tiles and attributes into the BG shadow D000/D400 at x y (wraps at 32)
+05,486F,EraseWindowFromShadow,no callers: hl = window record; writes tile 0 over its area of the BG shadow
+05,4899,OpenWindowRecord,a = flags; hl = record buffer; d e b c = x y w h; AllocWindowSlot + BuildTextWindowRecord; counts it in wOpenWindowCount (max 6); a = slot or $FF
+05,48CE,FreeWindowSlot,a = slot; clears the slot and frees its buffer; decrements wOpenWindowCount; a menu window also pops the menu stack (wMenuWindow wMenuCursor wMenuRows)
+05,4949,UpdateWindows,per priority 1-8: closes slots marked for closing (animated erase) and draws the others into the BG shadow + VRAM; prints each window's text id
+05,4A2F,OpenWindowBuffered,a = flags; takes a free $11D-byte buffer at $D900 (AllocWindowBuffer) then OpenWindowRecord
+05,4A61,AllocWindowBuffer,a = first clear bit (0-6) of wWindowBufferMask which it sets; $FF if all 7 used
+05,4A85,FreeWindowBuffer,a = buffer (0-5); clears its bit in wWindowBufferMask; $FF if it was not set
+05,4AB1,GetScrollTilePos,d e = hSCX / hSCY rounded to tiles (& 31)
+05,4AD2,OpenWindowWithAttr,a = tile attribute (wWindowAttr) for this window; OpenWindow; wWindowAttr back to $80
+05,4AF2,OpenWindow,d e = screen tile x y; b c = width height; opens a buffered window (flags 2) relative to the scroll; a = slot or $FF
+05,4B20,OpenMessageWindow,as OpenWindow and makes it wMessageWindow; position and size in $D825-$D828
+05,4B63,OpenMessageWindowVRAM1,as OpenMessageWindow with attr ($C372 ^ 8) | $80 and no glyph upload (BeginWindowTextNoUpload)
+05,4BB0,OpenMenuWindow,hl = text id (one option per line); d e = screen x y; size from MeasureTextBox; pushes it on the menu stack ($D832); a = slot
+05,4C4A,OpenPagedMenuWindow,OpenMenuWindow then sets record flag bits 0-1 (paged: RunMenu reports Left / Right)
+05,4C5C,CloseWindow,a = window slot; marks it for closing (pointer high nibble $C); UpdateWindows erases and frees it
+05,4C75,SetWindowPriority,a = window slot; b = priority (1-7) stored in slot byte 2 bits 5-7
+05,4C9A,SetWindowFlags,a = window slot; b = mask; c bit 0: set (1) or clear (0) those bits of the record flags byte
+05,4CC1,GetWindowFlags,a = window slot -> a = record flags & 3
+05,4CD7,RunMenu_05,cursor on wMenuWindow: Up/Down (sound $5B) A selects ($5C) B or Start cancels ($FF; $5D); paged menus return $FE / $FD for Left / Right; options $C3F9 $C3FA $C3FC; a = row
+05,4F20,MenuCursorTask,frame task of RunMenu: blinks the cursor tile $0D at $D842 (bit 4 of $D841); flags #48-52 draw extra arrows via 41:7BB4
+05,5184,MenuBlinkPhase,a = 0 when bit 4 of the blink counter $D841 is set else 1
+05,5197,RunPagedMenu,hl = first page text id; a = page count; OpenPagedMenuWindow + RunMenu; Left / Right flip pages; a = page*4 + row or $FF
+05,52EF,TextCmdNewLine,text code $01 (and $00 $14-$1D in the table): pen to the start of the next line (2 rows down)
+05,5307,TextCmdRowDown,text code $0A: pen one row down
+05,531B,TextCmdStepBack,text code $0D: moves the PrintTextToBuffer pointer $D864 back by 2 * the stride $C362 (only in PrintTextToBuffer?)
+05,534C,TextCmdPause30,text code $05: flushes the window rows then waits 30 frames
+05,5369,TextCmdPauseShort,text code $06: waits up to 15 frames or a button
+05,538E,TextCmdNewPage,text code $02: blinking arrow (MoreArrowTask) and wait for a button; sets wTextPagePending for the next page
+05,53D1,GetMoreArrowPos,de = arrow position: message window x + w/2 and y + h - 1
+05,53F9,MoreArrowTask,frame task: blinks the next-page arrow (tile $01 / $08) at $D842
+05,5433,TextCmdWaitButton,text code $03: unless flag #22 uploads the glyphs (03:4F7D) and waits for a button ($F3 mask)
+05,5465,TextCmdPause60,text code $0C: WaitFramesCmd $3C
+05,546A,TextCmdStringArg,text code $04: prints the next pointer of wTextStringArgs (copied to wTextArgBuffer from its WRAM bank)
+05,54CF,PushTextStringArg,hl = string pointer (a $Dxxx pointer gets the current WRAM bank in its high nibble); appends to wTextStringArgs (16 max) for code $04
+05,551F,PushTextNumberArg,hl = number; appends to wTextNumberArgs (16 max) for code $09
+05,5552,PushTextByteArg,a = short text index; appends to wTextByteArgs (16 max) for code $08
+05,5580,TextCmdDakuten,code $DE: rewrites the glyph above-left as dakuten ($0E on tile 3)
+05,55A0,TextCmdHandakuten,code $DF: same for handakuten ($0F on tile 3)
+05,55C0,TextCmdPlayerName,text code $07: prints wPlayerName
+05,55CB,MeasureStringArg,a = pixel width of the next $04 argument (counter $D866); copies it to wTextArgBuffer
+05,5634,MeasurePlayerName,a = pixel width of wPlayerName
+05,564C,TextCmdByteArg,text code $08: prints short text [wTextByteArgs + n]
+05,5679,MeasureByteArg,a = pixel width of the next $08 argument (counter $D868)
+05,56AB,TextCmdNumberArg,text code $09: prints the next wTextNumberArgs word in decimal (PrintDecWordInline)
+05,56E2,MeasureNumberArg,a = pixel width of the next $09 number (counter $D867): digits found with PowersOfTenTable
+05,577C,PowersOfTenTable,dw 1 10 100 1000 10000 (MeasureNumberArg)
+05,5786,TextCmdCourseName,text code $0B: prints short text $3C + [$D85D]
+05,579E,MeasureCourseName,a = pixel width of short text $3C + [$D85D]
+05,57C3,SetTextCourseIndex,a -> $D85D (argument of text code $0B)
+05,57DF,TextCmdCharName,text code $0E: prints short text $43 + wTextControlArg
+05,57FD,MeasureCharName,a = pixel width of short text $43 + wTextControlArg
+05,5828,TextCmdPlacing,text code $0F: prints short text $1CA3 + ([wTextNumberArgs] & 3)
+05,5857,MeasurePlacing,a = pixel width of short text $1CA3 + ([wTextNumberArgs] & 3)
+05,5885,ClampPenToLine,de = shadow address; moves it back a row if its row is not $D82B; keeps it in D000-D3FF
+05,58B1,PenRowAbove,de = shadow address one row up unless already on row $D82B - 1 (dakuten codes)
+05,5900,TextCmdTile0A,text code $10: writes tile $0A at the pen
+05,590B,TextCmdTile0B,text code $11: writes tile $0B
+05,5916,TextCmdTile0C,text code $12: writes tile $0C
+05,5921,TextCmdTile0D,text code $13: writes tile $0D
+05,596C,PrintInlineString,hl = string; prints it at the current pen (inserted names and numbers) glyph by glyph via 03:4E6A
+05,59D1,PrintHexByteInline,no callers: a in hex through PrintInlineString
+05,59E6,PrintHexWordInline,no callers: hl in hex through PrintInlineString
+05,59FC,PrintDecByteInline,no callers: a in decimal (4 wide) through PrintInlineString
+05,5A13,PrintDecWordInline,hl in decimal; wPrintNoPad set = leading blanks skipped; through PrintInlineString
+05,5A51,SetWindowText,b = window slot; hl = text id stored in slot bytes 2-3 (priority bits kept)
+05,5A75,GetWindowText,no callers: b = window slot -> hl = its text id
+05,5A96,SetMessageText,hl = text id (NormalizeTextId) set on wMessageWindow
+05,5AA8,RenderWindowText,b = slot; text index & $300 = $300 means none ($D85F = 1); else LoadText + SizeMessageBox + DrawWindowToShadow + PrintText
+05,5B03,RenderMessageWindow,RenderWindowText for wMessageWindow
+05,5B0F,SetWindowPriorityAlt,no callers: b = slot; a = priority (SetWindowPriority with the arguments swapped)
+05,5B3B,SizeMessageBox,measures wTextBuffer (or the resume pointer $D84E) and rebuilds the message window centred in $D825-$D828; width in $D854; leftover debug PrintHexByte of it
+05,5C3B,MeasureTextBox,measures wTextBuffer: b = width in tiles (+3) c = height (lines * 2 + 1)
+05,5CC2,TextCharDelay,per glyph in the message window: voice blip sound $69 + voice*4 + (char & 3) and wTextCharDelay frames (a held button skips)
+05,5D1F,SetTextDelayFromOption,wTextCharDelay = 0 / 2 / 4 from wTextSpeed 0 / 1 / other (bit 7 = 0)
+05,5D49,ShowMessage,hl = text id; a = speaker actor ($FF = wTalkActor); opens a box near the speaker if none; prints every page; closes it
+05,5DE5,ShowMessageKeepOpen,as ShowMessage but the message window stays open
+05,5E70,ShowMessageAt,hl = text id; a = voice actor (bit 7 = none); d e = box centre; OpenMessageBoxAt; prints every page; closes it (bank 30 cutscenes)
+05,5F02,ContinueMessageAt,no callers: hl = text id; d e - (10 9) = centre; voice actor taken from e - 9 (bug?); prints into the message window (OpenMessageBoxAt if none) and leaves it open
+05,5F46,CloseMessageWindow,CloseWindow wMessageWindow; wMessageWindow = $FF
+05,5F62,OpenMessageBoxNearSpeaker,a = actor (bit 7 = none); hl = text id; 20x7 message box at the bottom or top by the actor's y vs the camera ($D85C); grows in 8 steps to the text size
+05,605F,OpenMessageBoxAt,hl = text id; opens the 20x7 message window and resizes it to the text centred on d e
+05,60B0,GetWindowRecord,a = window slot -> hl = its record pointer
+05,60C3,ResizeMessageBox,no callers: if a page is pending re-measures and rebuilds window record $D856 from $D858
+05,60FF,CloseMessageBoxAnimated,no callers: its shrink animation is skipped (jr over 6108-614C) so it only closes window $D855
+05,615D,GetTextBoxWidth,hl = text id -> a = message box width in tiles (LoadText + SizeMessageBox)
+05,622F,NormalizeTextId,hl = text id + a; an index past its bank's count carries into the next text bank (TextBankSizeTable)
+05,629A,TextBankSizeTable,8 words: strings in text banks 18-1F (512 216 252 285 264 497 768 169)
+05,62AA,PrintTextToBuffer,hl = text id; de = tile map buffer; c = row stride; renders the glyphs (03:4E6A) and writes their tile numbers at de (03:4F21 4F58)
+05,638A,PrintTextToBufferSkipLine,as PrintTextToBuffer starting after the first $01
+05,6472,GetActorPtr,a = actor (< $18) -> hl = $D000 + a*$40 (WRAM4 actor record); $FF -> 0
+05,648E,PrintTextToShadow,hl = text id at d e of the WRAM5 BG shadow (PrintTextToBuffer stride 32)
+05,64B8,PrintTextToShadowNow,PrintTextToShadow then copies 3 rows from e - 1 to VRAM
+05,64D1,CopyShadowToVRAMFramed,copies all 32 BG shadow rows to VRAM 8 per frame
+05,6510,DrawWindowBuffer,RestoreShadowFromMap then draws window buffer [$D860] ($D900 + n * $11D) into the shadow
+05,652F,PrintTextInWindowBuffer,hl = text id at d e inside window buffer [$D860] (PrintTextToShadow)
+05,6564,PrintNumberInWindowBuffer,hl = number; text $0118 ({09}) at d e of buffer [$D860] without padding
+05,6589,PrintStringInWindowBuffer,hl = string; text $0019 ({04}) at d e of buffer [$D860]
+05,6597,PrintTextInWindowBufferNow,as PrintTextInWindowBuffer and copies the rows to VRAM
+05,65CC,PrintNumberInWindowBufferNow,no callers: number variant of PrintTextInWindowBufferNow
+05,65F1,PrintStringInWindowBufferNow,hl = string; text $0019 via PrintTextInWindowBufferNow
+05,65FF,DrawStringToWindow,a = window slot; hl = string; d e = x y; writes chars as tiles (attr $80) into the record; $DE / $DF change the tile above-left
+05,6646,DrawTextToWindow,hl = text id; LoadText then DrawStringToWindow
+05,6658,DrawNumberToWindow,no callers: hl = number via text $0118 and DrawStringToWindow
+05,667B,GetSpeakerVoice,a = actor -> a = voice 0-7 from SpeakerVoiceTable by the actor's +$30 byte; 8 = none
+05,66C0,SpeakerVoiceTable,pairs (actor +$30 id; voice 0-7) ended by $FF
+05,6701,ResetWindowsAndMap,InitWindowSystem then RestoreShadowFromMap
+05,6708,OpenWindowWithText,OpenWindow (d e b c) then SetWindowText hl; a = wLastOpenedWindow
+05,6729,RefreshWindowText,a = slot; the message window re-renders its pages; other windows redraw their record and text
+05,679F,CopyWindowToVRAM,a = slot; CopyWindowRowsFramed with WRAM5 selected
+05,67BB,RemoveWindow,a = slot; RestoreMapUnderWindow + CopyWindowRowsFramed + CloseWindow
+05,67C5,ShowMessageInPlace,hl = text id; message box centred on d e (OpenMessageBoxCentered); renders every page in place; RemoveWindow
+05,682D,OpenMessageBoxCentered,same code as OpenMessageBoxAt (used by ShowMessageInPlace)
+05,687E,DebugToggleFlagAtCursor,flag editor: toggles flag page $C484 * 64 + row $C486 * 8 + column $C485 (00:2D10 / 2D2E / 2D49)
+05,68B4,DebugDrawFlagsLeft,flag editor: hex labels and 4 rows of 8 flags (tile $65 set / $40 clear) of the page's first 32 flags in window $C488
+05,68F4,DebugDrawFlagsRight,flag editor: same for the page's last 32 flags in window $C489
+05,6935,HexDigitChars,ASCII 0-9 A-F
+05,6945,DebugDrawHexLabel,a = flag number; b = window; draws its high hex digit then tile $3F at d e
+05,6967,DebugDrawFlagRow,a = first flag; b = window; 8 flags as tiles $65 (set) or $40 (clear) every 2 columns from d e
+05,6998,DebugDrawFlagCursor,tile $0D at the cursor ($C485 $C486) in the left or right flag window
+05,69C9,DebugEraseFlagCursor,blank tile at the cursor
+05,69FB,DebugMoveFlagCursor,held d-pad moves $C485 / $C486 (wrapping 0-7)
+05,6A36,NullFrameTask,ret (frame task registered by DebugFlagEditor)
+05,6A37,DebugFlagHeaderText,two strings: "0 1 2 3 4 5 6 7" and "8 9 A B C D E F"
+05,6A57,DebugFlagEditor,debug menu Flag: 3 windows ($C487-$C489); A toggles the flag at the cursor; Start = next page of 64 flags (4 pages); B exits
+05,6B2E,DebugMenu,menu text $0084 (Scene / Map / Palette / Flag): DebugWarpMenu / 0B:4579 / 44:42FB / DebugFlagEditor; loops until B
+05,6B6E,DebugMenuJumpTable,4 handlers of DebugMenu
+05,6B8D,DebugDrawWarpWindow,warp menu window $C471: map name (text $012C + index) "- ENTER NO -" map index entrance and the cursor
+05,6C18,DebugEnterNoText,"- ENTER NO -"
+05,6C25,DebugWarpMenu,debug menu Scene: Left / Right pick the map record ($C470) or entrance ($C474 < 16); Up / Down switch; A warps (wMapId wMapEntrance $C441 = $FA); B exits
+05,6CCC,DebugAdjustValue,a + 1 on Right / - 1 on Left (repeat) wrapping in 0 .. d - 1
+03,4028,UnusedPictureScreen,no callers: link idle + LCD off; LZ tiles 03:40AB -> VRAM1 $9000 map 03:4950 attrs 03:4A9E palettes 03:4B05; song $06; waits for a button
+03,4B89,GetCharWidth,a = char -> c = pixel width (FontWidths)
+03,4B93,LookupGlyphWidth,a = glyph (char - $20) -> c = FontWidths[a]
+03,4B9D,BlitGlyphByte,a = font byte; de = bit position in the WRAM7 glyph buffer $D000; ORs it in shifted by de & 7 across two tiles 16 bytes apart
+03,4BFE,ClearGlyphBuffer,fills WRAM7 D000-D7FF with the blank glyph (Font tile 0) ($80 tiles)
+03,4C17,ClearWindowGlyphs,clears (w - 2) * ((h - 2) / 2 + 1) glyph tiles from tile [$C36E] for window [$D821]
+03,4C60,UploadGlyphBuffer,copies WRAM7 D000-D4FF to $8800-$8CFF (VRAM1 if wWindowAttr bit 3) $100 bytes per frame with flag #24 set
+03,4CF1,RenderStringToGlyphs,no callers: hl = string; clears and renders it for window [$D821] ($01 = new line; ends at $02 / $03)
+03,4D41,InitTextPen,window [$D821]: pen $C36A = tile [$C36E]; line length $C36C = w - 2; next line tile $C36D; clears its glyph tiles
+03,4D93,DrawNextChar,draws the char at [$D869] at the pen (WRAM7); $01 = new line; updates $C36A and $C36E
+03,4DF0,UploadCurrentCharTiles,message window with a non-instant wTextSpeed: copies the 2 glyph tiles under the pen to $8800+ at once
+03,4E6A,DrawCharFromHL,hl = string; draws [hl] at the pen ($01 = new line) and advances hl (inline strings)
+03,4EB8,ResetGlyphBuffer,zeroes $C36A-$C36F and clears the glyph buffer
+03,4EDC,ResetGlyphBufferDup,same code as ResetGlyphBuffer
+03,4F02,SetTextLineLength,c = line length in tiles; pen = tile [$C36E]; $C36C = $C36D = c
+03,4F21,WriteGlyphTileNumbers,de = tile map buffer; writes $80 + [$C36F] .. for the pen width; advances $C36E (max $7F)
+03,4F58,CommitGlyphBlock,$C371 = block start; $C370 = tiles drawn ($C36E - $C36F); $C36F = $C36E
+03,4F6C,UploadGlyphTiles,LCD on: UploadGlyphTilesFramed; off: UploadGlyphTilesDirect
+03,4F7D,FinishTextBlock,end of a string: uploads the glyph tiles unless already sent per char; moves $C36E / $C36F to the next line
+03,4FB7,UploadGlyphTilesFramed,copies glyph tiles up to [$C36E] to $8800 (VRAM1 if wWindowAttr bit 3) 16 tiles per frame; flag #24
+03,5039,UploadGlyphTilesDirect,LCD off: copies the used glyph tiles to $8800 in $200-byte blocks via 00:2096
+03,5087,UploadGlyphRange,copies [$C370] (max 32) glyph tiles from [$C371] to $8800 + (VRAM1 if wGlyphVRAMBank)
+03,50CD,DrawStringToGlyphs,hl = string ($00 end); de = byte offset in the glyph buffer (tile * 16); DrawGlyph per char (caller selects WRAM7)
+*,C360,wPrintNoPad,1 = numbers inserted without leading blanks (PrintDecWordInline)
+*,C361,wTextControlArg,argument byte of text code $0E
+*,C362,wTextBufferStride,negated row stride for PrintTextToBuffer
+*,C36A,wGlyphPen,16-bit bit position of the pen in the WRAM7 glyph buffer (bits 0-2 = pixel; / 128 = tile)
+*,C36C,wTextLineTiles,tiles per text line
+*,C36D,wTextNextLineTile,first glyph tile of the next line
+*,C36E,wGlyphNextTile,next free glyph tile (tile $80 + n at $8800)
+*,C36F,wGlyphBlockStart,first glyph tile of the current block
+*,C370,wGlyphUploadCount,tiles to upload (CommitGlyphBlock)
+*,C371,wGlyphUploadStart,first tile to upload
+*,C372,wGlyphVRAMBank,nonzero = glyph tiles go to VRAM bank 1
+*,C3F9,wMenuInitCursor,starting row for RunMenu (cleared when read)
+*,C3FA,wMenuLRMask,bit 7 = enabled; bit n = row n reports Left / Right
+*,C484,wDebugFlagPage,flag editor page (64 flags each)
+*,C485,wDebugFlagX,
+*,C487,wDebugFlagWindows,3 window slots (header / left grid / right grid)
+*,C780,wTextArgBuffer,$20-byte scratch for inserted strings
+*,C7E0,wMapRowBuffer,32-byte row buffer of CopyMapRowToShadow
+*,C82D,wTextSpeed,text speed option: 0 = instant / 1 / 2+ (bit 7 = instant)
+*,D800,wWindowSlots,WRAM5: 6 x 4 bytes: record pointer (high nibble $C = close request) / priority<<5 + text id high / text id low
+*,D820,wLastOpenedWindow,WRAM5
+*,D821,wCurWindow,WRAM5: window being drawn or printed
+*,D822,wOpenWindowCount,WRAM5
+*,D823,wWindowBufferMask,WRAM5: bit n = buffer n at $D900 in use
+*,D824,wMessageWindow,WRAM5: slot of the message box ($FF = none)
+*,D825,wMessageBoxPos,WRAM5: x y w h of the message box (4 bytes)
+*,D829,wTextCharDelay,WRAM5: frames per character
+*,D82A,wTextPenX,WRAM5: column / row of the line start
+*,D82F,wMenuWindow_2,WRAM5
+*,D830,wMenuCursor,WRAM5
+*,D831,wMenuRows,WRAM5: last row index
+*,D832,wMenuStack,WRAM5: 6 x 2 bytes (rows<<4 | cursor ; window)
+*,D83E,wMenuStackDepth,WRAM5: $FF = empty
+*,D841,wCursorBlink,WRAM5: blink counter; $D842 = cursor shadow address
+*,D847,wTextArgReadIdx,WRAM5: next string / number / byte argument ($D847-$D849); counts at $D84A-$D84C
+*,D84D,wWindowAttr,WRAM5: attribute byte of window tiles ($80)
+*,D84E,wTextResumePtr,WRAM5: where the next page starts
+*,D850,wTextPagePending,WRAM5: 1 = another page follows
+*,D851,wMessageSpeaker,WRAM5
+*,D854,wTextBoxWidth,WRAM5
+*,D85D,wTextCourseIndex,WRAM5: argument of text code $0B
+*,D860,wDrawWindowBuffer,WRAM5: window buffer used by the PrintTextInWindowBuffer family
+*,D862,wTextVoice,WRAM5: voice 0-7 (8 = silent)
+*,D863,wPromptWindow,WRAM5
+*,D869,wTextReadPtr,WRAM5: current position in the string
+*,D880,wTextShortBuffer,WRAM5: $20-byte string from LoadTextShort
+*,D900,wWindowBuffers,WRAM5: 7 window records of $11D bytes (flags x y w h then tile/attr pairs)
+*,DFAE,wTextStringArgs,WRAM5: 16 string pointers for text code $04
+*,DFCE,wTextNumberArgs,WRAM5: 16 numbers for text code $09
+*,DFEE,wTextByteArgs,WRAM5: 16 short text indices for text code $08

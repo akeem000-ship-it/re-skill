@@ -946,6 +946,101 @@ All addresses come from `tools/disasm.py` and `tools/xref.py`. Names are in `lab
 - Effect objects: `$CA80`.
 - Caption object: `$CAA0`.
 
+##### Bank 05: window manager, menus, message boxes, text printer, debug menu
+
+Role: the whole UI layer that the overworld/RPG, golf and cutscene code calls (61 exports at `$4000`; ~560 far
+calls). It owns WRAM5 `$D000-$DFFF` and draws windows over the overworld map into a WRAM5 BG shadow that is
+queued to VRAM through 00:0468.
+
+**BG shadow** (WRAM5): `D000-D3FF` tile map 32x32, `D400-D7FF` attributes (same addresses as WRAM6 wBallX etc.,
+so no RAM label). ShadowTileAddr 05:414F; copies to VRAM: QueueShadowRows 05:4262 (tiles to `$9800`, attrs to
+`$B800` = VRAM1 `$9800`; 00:0468 treats `$A000+` as VRAM bank 1), CopyShadowRowsFramed 05:42AD (7 rows per frame),
+CopyShadowToVRAMFramed 05:64D1. The map under windows comes back from the 64x64 overworld map (WRAM3 tiles,
+WRAM2 attrs, see Graphics): CopyMapRowToShadow 05:450B (column `$C321`, row from `$C323`), RestoreShadowFromMap
+05:4492 (20 rows, 5 per frame; the standard "redraw" call, always followed by UpdateWindows).
+
+**Windows.** 6 slots at `$D800` (4 bytes: record pointer, priority<<5 | text-id high, text-id low). The pointer's
+high nibble doubles as a command: `$D` = live, `$C` = close request (CloseWindow 05:4C5C). Records live in 7
+buffers of `$11D` bytes at `$D900` (bitmask `$D823`): flags, x, y, w, h, then (tile, attr) pairs. Frame tiles are
+`$02-$09`; text windows (BuildTextWindowRecord 05:4773) number their interior tiles from `$80` on every other row,
+so each window has its own run of glyph tiles. API: OpenWindow 05:4AF2 (export 04; d,e = screen tile pos
+relative to the scroll, b,c = size; returns the slot), OpenWindowWithAttr 05:4AD2, OpenMessageWindow 05:4B20,
+OpenMenuWindow 05:4BB0, SetWindowText 05:5A51, SetWindowTile/GetWindowTile 05:4408/444F, SetWindowPriority
+05:4C75, CloseWindow 05:4C5C, RemoveWindow 05:67BB. UpdateWindows 05:4949 (export 14) walks priorities 1-8:
+erases windows marked for closing (FreeWindowSlot 05:48CE) and draws the rest (DrawWindowToShadow 05:4831,
+CopyWindowRowsFramed 05:4384), printing each slot's text id. Callers do `RestoreShadowFromMap ; UpdateWindows`
+after every change.
+
+**Menus.** OpenMenuWindow sizes a window from a text whose options are separated by `$01` and pushes it on a
+6-deep menu stack (`$D832`, depth `$D83E`). RunMenu 05:4CD7 (export 4E) moves the cursor (frame task
+MenuCursorTask 05:4F20 blinks tile `$0D`), sounds `$5B` move / `$5C` select / `$5D` cancel, returns the row, `$FF`
+for B (or Start when `$C3FC` bit 7), `$FE`/`$FD` for Left/Right in paged menus (RunPagedMenu 05:5197).
+RunYesNoMenu 05:45F6 uses text `$001A` "Yes/No".
+
+**Message boxes.** ShowMessage 05:5D49 (export 46): hl = text id, a = speaker actor; OpenMessageBoxNearSpeaker
+05:5F62 puts a 20x7 box at the bottom or top depending on the speaker's y (actor records `$D000 + n*$40` in WRAM4,
+GetActorPtr 05:6472) and grows it to the measured text size in 8 steps; pages loop on wTextPagePending `$D850`.
+Variants: ShowMessageKeepOpen 05:5DE5, ShowMessageAt 05:5E70 (centred on d,e; bank 30 cutscenes), ShowMessageInPlace
+05:67C5. Text size: MeasureTextBox 05:5C3B / SizeMessageBox 05:5B3B walk the string with per-code measure helpers
+(05:55CB, 5634, 5679, 56E2, 579E, 57FD, 5857) and FontWidths. Typing: TextCharDelay 05:5CC2 plays a voice blip
+(sound `$69 + voice*4 + (char & 3)`; voice from SpeakerVoiceTable 05:66C0 by the actor's `+$30` byte) and waits
+`$D829` frames, set from the text speed option `$C82D` by SetTextDelayFromOption 05:5D1F (0 / 2 / 4 frames).
+
+**Text arguments.** PushTextStringArg 05:54CF (export 54, list `$DFAE`), PushTextNumberArg 05:551F (export 56,
+`$DFCE`), PushTextByteArg 05:5552 (export 58, `$DFEE`), 16 each, consumed by codes `$04`/`$09`/`$08`; SetTextCourseIndex
+05:57C3 (export 5A) sets the `$0B` argument `$D85D`. All control-code handlers are now labelled (TextCmd*, 05:52EF-5921).
+NormalizeTextId 05:622F adds an index offset to a text id and carries into the next text bank using TextBankSizeTable
+05:629A (512 216 252 285 264 497 768 169 = the per-bank string counts in "Text").
+
+**Text to arbitrary tile maps.** PrintTextToBuffer 05:62AA (export 22) renders a text into glyph tiles and writes
+their numbers into any tile buffer (stride c); PrintTextToShadow 05:648E, the window-buffer helpers 05:652F-65F1,
+DrawStringToWindow 05:65FF (characters as tile numbers straight into a window record).
+
+**Debug menu** (05:6B2E, export 60; only the debug boot path reaches it): text `$0084` "Scene / Map / Palette /
+Flag". Scene = DebugWarpMenu 05:6C25 (pick a MapTable record by index with its name, text `$012C + n`, and an
+entrance 0-15; A sets wMapId / wMapEntrance and `$C441 = $FA`); Map = farcall 0B:4579; Palette = farcall 44:42FB;
+Flag = DebugFlagEditor 05:6A57 (4 pages of 64 game flags `$C840`; A toggles, Start next page, tiles `$65`/`$40`).
+
+**Leftovers / oddities.**
+- No callers (dead code): ClearBGShadow 05:40E6, DebugHDMAShadowToVRAM 05:4102 (HDMA while A is held),
+  ReadShadowTile 05:413E, CopyShadowRowToVRAM 05:4221, CopyMapEdgeRows 05:44B7, BuildPlainWindowRecord 05:4717,
+  EraseWindowFromShadow 05:486F, PrintHex/Dec*Inline 05:59D1-59FC, GetWindowText 05:5A75, SetWindowPriorityAlt
+  05:5B0F, ContinueMessageAt 05:5F02 (takes the voice actor from e - 9), ResizeMessageBox 05:60C3,
+  PrintNumberInWindowBufferNow 05:65CC, DrawNumberToWindow 05:6658.
+- CloseMessageBoxAnimated 05:60FF jumps over its own shrink animation (05:6108-614C unreachable).
+- SizeMessageBox calls PrintHexByte (00:22A5) with the box width at `de = $0A0C` (05:5BF3): a debug print left in.
+- CopyWindowRowsFramed 05:43F4 is `jr $` (hang) if a wrapped window part is 8+ rows.
+- OpenMessageBoxCentered 05:682D is a byte copy of OpenMessageBoxAt 05:605F.
+- `$DE`/`$DF` (dakuten) handling everywhere: Japanese-version residue.
+
+**RAM** (all WRAM5 unless noted): window slots `D800-D817`; `D820` last opened, `D821` current, `D822` count,
+`D823` buffer mask, `D824` message window, `D825-D828` its x y w h, `D829` char delay, `D82A/D82B` pen line start,
+`D82F-D831` menu window / cursor / rows, `D832-D83E` menu stack, `D841-D845` cursor blink and addresses, `D846`
+menu page, `D847-D84C` argument indices / counts, `D84D` window tile attribute, `D84E` resume pointer, `D850` page
+pending, `D851` speaker, `D854` box width, `D85D` course index, `D860` window buffer index, `D862` voice, `D863`
+prompt window, `D864` PrintTextToBuffer pointer, `D866-D868` measure indices, `D869` read pointer, `D880` short
+text, `D900` buffers, `DFAE/DFCE/DFEE` argument lists. WRAM0: `C360-C362`, menu options `C3F9/C3FA/C3FC`,
+`C780` string scratch, `C7E0` map row buffer, `C82D` text speed, debug `C470-C474` and `C484-C489`.
+
+##### Bank 03: proportional-font glyph renderer
+
+Role: draws text pixel by pixel. Glyphs from Font 03:50F0 (2bpp, 16 bytes) are OR-ed into a glyph buffer of
+`$80` tiles in WRAM7 `$D000` at a bit-precise pen (`$C36A`, bits 0-2 = pixel, /128 = tile) by DrawGlyph 03:4B45 /
+BlitGlyphByte 03:4B9D, advancing by FontWidths 03:5750 (GetCharWidth 03:4B89). The tiles are uploaded to
+`$8800-$8CFF` (tile ids `$80+`, VRAM1 when the window attribute has bit 3): all at once (UploadGlyphBuffer 03:4C60,
+UploadGlyphTiles 03:4F6C: per-frame when the LCD is on, direct when off), per character for typed messages
+(UploadCurrentCharTiles 03:4DF0, only when `$C82D` is not instant), or as a range (UploadGlyphRange 03:5087).
+Pen/block state: `$C36A` pen, `$C36C` line length, `$C36D` next line tile, `$C36E` next free tile, `$C36F` block
+start, `$C370/$C371` upload count / start, `$C372` VRAM bank. Bank 05 drives it: InitTextPen 03:4D41 at the start
+of PrintText, DrawNextChar 03:4D93 per character, FinishTextBlock 03:4F7D at the end; DrawCharFromHL 03:4E6A /
+WriteGlyphTileNumbers 03:4F21 / CommitGlyphBlock 03:4F58 for PrintTextToBuffer. ResetGlyphBuffer 03:4EB8 (16 far
+callers in many banks) and DrawStringToGlyphs 03:50CD (export 26) are the entries used outside bank 05.
+
+Notable: ResetGlyphBufferDup 03:4EDC is the same code as 03:4EB8; RenderStringToGlyphs 03:4CF1 (export 08) has
+no callers; 03:4028-40AA is an unreferenced full-screen picture routine (LZ tiles 03:40AB, map 03:4950, attrs
+03:4A9E, palettes 03:4B05, song `$06`, waits for a button; it first resets the serial link) not in the export
+table: probably an old link/error screen.
+
 ### Data Structures
 
 *(none yet)*
