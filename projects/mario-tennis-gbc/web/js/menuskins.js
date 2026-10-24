@@ -358,7 +358,7 @@ export class MenuSkins {
     const sc = Math.min((W - 300 * k) / 160, (H - 210 * k) / 144), w = 160 * sc, h = 144 * sc, x = Math.max(260 * k, (W - w) / 2 + 80 * k), y = 100 * k;
     g.fillStyle = "rgba(250,250,255,0.94)"; this.mw.pill(g, x - 14 * k, y - 14 * k, w + 28 * k, h + 28 * k, 24 * k); g.fill(); g.lineWidth = 4 * k; g.strokeStyle = "#ffd65a"; g.stroke();
     g.save(); this.mw.pill(g, x, y, w, h, 12 * k); g.clip(); g.imageSmoothingEnabled = false; g.drawImage(cv, x, y, w, h); g.restore();
-    this.hint(g, W, H, k, s.title === "RULES" ? "A next page" : "✚ look   A / B back");
+    this.hint(g, W, H, k, s.title === "RULES" ? "A next page" : s.title === "CHARACTER DATA" ? "◀ ▶ page   A / B back" : "✚ look   A / B back");
   }
 
   // ---- the name entry ----

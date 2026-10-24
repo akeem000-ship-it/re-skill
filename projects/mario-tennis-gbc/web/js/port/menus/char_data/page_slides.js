@@ -154,6 +154,7 @@ export function* runDrillResultInputLoop(P) {
   if (mode > MODE_PARTNER) mode = MODE_PARTNER;
   for (;;) {
     yield* advanceFrame(P);
+    if (P.menuWheel && P.menuWheel.on) P.menuWheel.skin = { id: "frame", at: P.frames, title: "CHARACTER DATA" };   // MENU: Wheel (menuskins.js: the page itself, framed), read only
     const edge = P.V.inputRisingEdge;
     if (mode === MODE_SUMMARY) {
       if (edge & PADF_RIGHT) { yield* toStatPage(P, "charStatPagePartner", slideToPartnerStatPage, MODE_PARTNER); mode = MODE_PARTNER; continue; }
