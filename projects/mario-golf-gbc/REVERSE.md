@@ -356,17 +356,39 @@ engine is the RPG ("story") side; how golf rounds and the menus are entered from
 | `gfx/map_XX.png` (gitignored) | the 35 overworld map graphics, 512 x 512 |
 | `gfx/lz_BB_AAAA.png`, `gfx/raw_03_50f0.png` (gitignored) | LZ entries as tile sheets; the font |
 | `python3 tools/gen_all.py` | rebuilds all of the above |
+| `out/boot_FFFFF.png` (gitignored) | emulator screenshots from `emu_boot.py` |
 | `docs/text_dump.txt` (gitignored) | every string: `id bank:index text`, control codes as `{XX}` (`python3 tools/dump_text.py`) |
 
 ---
 
 ## Verification Checklist
 
-- [ ] Ph3: 3+ functions traced and cross-checked against emulator trace
-- [ ] Ph4: 5+ sprites/tiles extracted and visually compared to emulator
-- [ ] Ph5: key data struct confirmed in emulator memory dump, all fields match
+- [x] Ph3: 3+ functions traced and cross-checked against emulator trace (`tools/emu_verify.py`: LZDecompress,
+      LoadText, MapLoadHeader, MapLoadGfx; see "Verification" below)
+- [x] Ph4: tiles extracted and compared to the emulator: two whole map tile sets in VRAM bank 1 match byte for
+      byte; gfx 1E matches the character-creation screen by eye
+- [ ] Ph5: key data struct confirmed in emulator memory dump, all fields match (MapTable record at $C450-$C455:
+      yes; the map header fields and the golf structures: not yet)
 - [ ] Ph6: full game session played, no major logic gaps found
 - [ ] Ph7: web port pixel-compared against emulator screenshots
+
+---
+
+### Verification (PyBoy 2.8, `tools/emu_verify.py`, `tools/emu_boot.py`)
+
+`emu_boot.py` boots the game headless (no battery RAM) and saves screenshots to `out/`: the intro (narration
+text, then large character art) plays in map 00 at entrance 3; Start then A reach the character select
+(map 00) and the character creation room (map `$1E`, gfx `$1E`, the star background).
+
+`emu_verify.py` runs the same boot with hooks on the real routines and compares with the Python decoders.
+Result over 4800 frames:
+
+| Check | Hook | Result |
+|-------|------|--------|
+| LZ | 00:1F2F entry / 00:1F8D end: bytes written vs `decompress.py` | 1849 of 1849 match |
+| Text | 05:6179 / 05:61CF: wTextBuffer vs `dump_text.py` | 8 of 8 match |
+| Map record | 0A:4BFA: `$C450-$C455` vs MapTable (`dump_maps.py`) | 2 of 2 match |
+| Map graphics | 0B:4500: WRAM3 tilemap, WRAM2 attributes, VRAM1 `$9000`/`$8800` tiles vs `render_map.py` | 6 of 6 regions match |
 
 ---
 
@@ -395,7 +417,8 @@ engine is the RPG ("story") side; how golf rounds and the menus are entered from
 - [ ] 00:2B31 (copies a column into WRAM bank 3, sets `hFFB9`): no `call` to it; find how it is reached
 - [ ] Link modes: trace the InitSerialLink callers in banks 02, 03, 07, 09 and 32
 - [x] GameMain 01:400E: followed to MapEngine 0A:498C (map table, header, warps, event loop)
-- [ ] Map 00 (the boot map, entrance 3): is it the title screen? Trace its init data (32:4FF7) and 0A:4F45
+- [x] Map 00 (the boot map, entrance 3): the intro, then the character select (emulator, emu_boot.py)
+- [ ] Map 00: how its init data (32:4FF7, header +4) drives the intro and the character select (0A:4F45)
 - [ ] How a golf round is started from a map (talk/object handlers 0A:4F96 / 0A:5066 / 0A:5109) and how it returns
 - [ ] Map header fields +10/+12; warp record bytes 0-5; entrance byte 1; MapTable byte 5
 - [ ] The bank-02 setup calls in GameMain (02:41F6, 02:45D3, 02:4E3D) and the save check at 02:4078 ("CAMELOT GAMEBOY" at 02:4162)
