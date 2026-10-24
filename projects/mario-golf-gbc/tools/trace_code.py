@@ -124,7 +124,8 @@ def push_word_table(bank, t, n, allow_zero=False):
         push(bank, w, True)
 
 
-TABLE_CALLS = {0x470D: (0x08, 16, True)}   # DispatchByGameMode 08:470D: hl = 16 words by wGameMode, 0 = none
+TABLE_CALLS = {0x470D: (0x08, 16, True),   # DispatchByGameMode 08:470D: hl = 16 words by wGameMode, 0 = none
+               0x4D79: (0x11, 8, True)}    # 11:4D79: hl = handler table kept in $D47E (8 words)
 
 
 seen = set()
@@ -159,7 +160,7 @@ while work or actor_scripts - {(b, a) for b, a in actor_done}:
             else: imm.pop("hl", None)
         elif op in (0xE1, 0xF8, 0x29, 0x39):                        # pop hl / ld hl, sp+n / add hl, hl / sp
             imm.pop("hl", None)
-        if ins.kind == "call" and ins.target in TABLE_CALLS and cb == TABLE_CALLS[ins.target][0] and "hl" in imm:
+        if ins.kind in ("call", "jp") and ins.target in TABLE_CALLS and cb == TABLE_CALLS[ins.target][0] and "hl" in imm:
             push_word_table(cb, imm["hl"], TABLE_CALLS[ins.target][1], TABLE_CALLS[ins.target][2])
         # inline jump table: ld hl, T ... ld a, [hl+] ; ld h, [hl] ; ld l, a ... jp hl (or call JumpToHL 00:0699)
         if op == 0x2A and rom[off + 1:off + 3] == bytes((0x66, 0x6F)) and "hl" in imm:
