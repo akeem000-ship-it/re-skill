@@ -370,7 +370,8 @@ export function plantMesh(rgba, w, h, R = 5, T = 4, gem = false, round = false) 
     const runs = (len, at, out) => { for (let a = 0; a < len;) { if (!op(at(a))) { a++; continue; } let b = a; while (b < len && op(at(b))) b++; const c = (a + b - 1) / 2, r = (b - a) / 2 + 0.5; for (let k = a; k < b; k++) out[at(k)] = Math.sqrt(Math.max(0, r * r - (k - c) * (k - c))); a = b; } };
     for (let y = 0; y < h; y++) runs(w, x => y * w + x, rowD);
     for (let x = 0; x < w; x++) runs(h, y => y * w + x, colD);
-    for (let i = 0; i < n; i++) if (op(i)) dep[i] = Math.max(1, Math.round(Math.min(rowD[i] * 0.95, colD[i] * 1.6 + 1)));
+    for (let i = 0; i < n; i++) if (op(i)) dep[i] = Math.max(1, Math.min(rowD[i] * 0.95, colD[i] * 1.6 + 1));
+    return smoothPlant(rgba, w, h, dep, op, gem);
   }
   const D = (x, y) => (x >= 0 && y >= 0 && x < w && y < h) ? dep[y * w + x] : 0;
   const out = { pos: [], uv: [], sway: [] };
@@ -412,6 +413,41 @@ export function plantMesh(rgba, w, h, R = 5, T = 4, gem = false, round = false) 
       quad([[[xx, y0, -t], [u1, e]], [[xx, y0, -tn], [u0, e]], [[xx, y1, -tn], [u0, y]], [[xx, y1, -t], [u1, y]]], t, 0.75);
     }
     y = e;
+  }
+  return out;
+}
+
+// plantMesh's round body (TREES: Original, GROUND on): one smooth closed surface instead of steps of whole-pixel depth. The front and the
+// back are a height field over the pixel grid whose corner depths are shared by the pixels meeting there (the mean of their depths; at the
+// silhouette a thin rim), so the body rolls off round without stair steps; every pixel keeps its own colour, shaded by the slope it sits on
+// (lit from the upper left), the back darker; the rim closes the outline.
+function smoothPlant(rgba, w, h, dep, op, gem) {
+  const W1 = w + 1, V = (x, y) => y * W1 + x, vd = new Float32Array(W1 * (h + 1));
+  for (let y = 0; y <= h; y++) for (let x = 0; x <= w; x++) {
+    let s = 0, k = 0;
+    for (const [px, py] of [[x - 1, y - 1], [x, y - 1], [x - 1, y], [x, y]]) if (px >= 0 && py >= 0 && px < w && py < h && op(py * w + px)) { s += dep[py * w + px]; k++; }
+    vd[V(x, y)] = k ? (s / k) * (k === 4 ? 1 : 0.3) : 0;
+  }
+  const out = { pos: [], uv: [], sway: [] }, L = [-0.45, 0.6, 0.66];
+  const put = (x, y, z, u, v, k) => { out.pos.push(x - w / 2, h - y, z); out.uv.push(u, v); out.sway.push(Math.max(0, Math.min(1, (h - y) / h)), gem ? k * (0.78 + 0.4 * (h - y) / h) : k, 0); };
+  // the shade of a front corner from the surface's slope there (the normal of z = d(x, y), y down the picture)
+  const shade = (x, y, back) => {
+    const d = (a, b) => vd[V(Math.max(0, Math.min(w, a)), Math.max(0, Math.min(h, b)))];
+    const gx = (d(x + 1, y) - d(x - 1, y)) / 2, gy = (d(x, y + 1) - d(x, y - 1)) / 2, nx = -gx, ny = gy, nz = 1, m = Math.hypot(nx, ny, nz);
+    const l = (nx * L[0] * (back ? -1 : 1) + ny * L[1] + nz * L[2]) / m;
+    return Math.max(0.62, Math.min(1.12, 1 + 0.9 * (l - L[2]))) * (back ? 0.62 : 1);
+  };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (!op(y * w + x)) continue;
+    const c = [[x, y], [x + 1, y], [x + 1, y + 1], [x, y + 1]];
+    for (const j of [0, 3, 2, 0, 2, 1]) { const [cx, cy] = c[j]; put(cx, cy, vd[V(cx, cy)], cx, cy, shade(cx, cy, false)); }   // front (towards the viewer)
+    for (const j of [0, 1, 2, 0, 2, 3]) { const [cx, cy] = c[j]; put(cx, cy, -vd[V(cx, cy)], cx, cy, shade(cx, cy, true)); }   // back
+    // the rim where the pixel has no opaque neighbour: front corner to back corner, the pixel's own colour
+    for (const [dx, dy, a, b] of [[-1, 0, 3, 0], [1, 0, 1, 2], [0, -1, 0, 1], [0, 1, 2, 3]]) {
+      const nx = x + dx, ny = y + dy; if (nx >= 0 && ny >= 0 && nx < w && ny < h && op(ny * w + nx)) continue;
+      const [ax, ay] = c[a], [bx, by] = c[b], da = vd[V(ax, ay)], db = vd[V(bx, by)], u = x + 0.5, v = y + 0.5, k = dy < 0 ? 0.9 : dy > 0 ? 0.55 : 0.75;
+      for (const [px, py, z] of [[ax, ay, da], [bx, by, db], [bx, by, -db], [ax, ay, da], [bx, by, -db], [ax, ay, -da]]) put(px, py, z, u, v, k);
+    }
   }
   return out;
 }
