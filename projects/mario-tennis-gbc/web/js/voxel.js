@@ -18,7 +18,8 @@ import { FIELD_OBJECTS } from "./field_objects.js";
 import * as F3 from "./field3d.js";
 import { FS_SHIM, VS_GLASS, FS_GLASS, WindowShimmer } from "./shimmer.js";   // SHIMMER: window shimmer + glass walls
 import { roundedMeshData } from "./voxround.js";
-import { surfaceKind, buildDetail, paintFloor } from "./courtfloor.js";   // HD court floors   // VOXSTYLE: "VOX: Blocky / Rounded"
+import { surfaceKind, buildDetail, paintFloor, lineColours } from "./courtfloor.js";
+import { paintConcept, COURT_CONCEPTS } from "./courtconcepts.js";   // COURT concepts (?court=junior|senior|varsity|open|final)   // HD court floors   // VOXSTYLE: "VOX: Blocky / Rounded"
 
 const VS = `#version 300 es
 in vec2 aPos; in vec2 aUV; uniform mat4 uMVP; uniform mat4 uModel; uniform vec4 uUVRect; out vec2 vUV;
@@ -243,6 +244,7 @@ export class Voxel3D {
     this.shadowTex = this.blobTexture();                     // soft round shadow on the ground (players, ball)
     this.stadium = null;                                     // STADIUM: stadium3d.js (attachStadium) sets this; null = the flat stands
     this.light = null;                                       // LIGHT: lighting.js (attachLighting) sets this; null = off
+    try { const c = new URLSearchParams(location.search).get("court"); this.courtConcept = COURT_CONCEPTS.includes(c) ? c : null; } catch (e) { this.courtConcept = null; }   // COURT concepts
     this.rounded = false;                                    // VOXSTYLE: voxround.js (attachVoxStyle) sets this: rounded solid bodies instead of cubes
     this.ballfx = null;                                      // BALLFX: ballfx.js (attachBallFX) sets this; null = off
     this.preset = "low"; this.cam = { yaw: 0, pitch: 0.9, dist: 3100, fitKey: "" };
@@ -650,6 +652,7 @@ export class Voxel3D {
       if (!g.detail || g.detail.kind !== kind) g.detail = buildDetail(kind, g.W, g.H, WORLD.x0, WORLD.y0, WORLD.texel);
       paintFloor(d, src, idx, lut, g.W, g.H, g.detail);
     }
+    if (this.courtConcept) paintConcept(d, src, idx, lut, lineColours(idx, lut), g.W, g.H, WORLD, this.courtConcept);   // COURT concepts
     if (this.groundTex) this.gl.deleteTexture(this.groundTex);
     this.groundTex = this.texture(g.W, g.H, d, true);
     this.buildCuts(bg, g.cuts);
