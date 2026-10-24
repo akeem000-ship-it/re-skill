@@ -307,7 +307,7 @@ that, and `scan_jumptables.kind()` now uses it.
   | w1 | palettes, `$40` bytes raw | WRAM1 `D000`; BG palettes 2-7 from `+$10` |
   | w2 | tilemap, LZ, 4096 bytes | WRAM3 `D000`: 64 x 64 tile numbers, signed `$9000` addressing |
   | w3 | attribute map, LZ, 4096 bytes | WRAM2 `D000` (bits 0-2 palette, 3 VRAM bank, 5/6 flip) |
-  | w4, w5 | LZ, 1024 bytes each | WRAM6 `D000`, `D400` (collision / events? not yet known) |
+  | w4, w5 | LZ, 1024 bytes each | WRAM6 `D000`, `D400` terrain grid and event grid, 32 x 32 cells of 2 x 2 tiles (see "Banks by role", bank 0B) |
   | w6 | — | not loaded |
   | w7 | LZ | WRAM6 `D800` |
   | w8 | tiles, LZ | WRAM1 `D000`, then VRAM bank 1: first `$800` bytes to `$9000`, next `$800` to `$8800` |
@@ -656,6 +656,97 @@ and commits (02:41C1: checksum + backup). SaveBlockLoad (02:4355) copies a block
 equal, the directory as above. What each block holds (characters, records, tournament progress) is not
 traced; three `$200` blocks would fit the three create-a-character slots on the character select.
 
+#### Banks by role (labelling pass; names in labels.csv)
+
+##### Bank 0B: map graphics, map buffers, result screens, records queries, ending credits
+
+A mixed library, not just map graphics.
+
+- **Map graphics** (exports $00-$1E): MapStartGfx / MapLoadGfxScreen / MapLoadGfx (already known), plus
+  MapDrawFullScreen 0B:4306 (22 x 20 tiles from the 64x64 WRAM2 attribute / WRAM3 tile maps into $9800, both
+  VRAM banks; a = 0 centres the camera first with MapCenterCamera 0B:49D3). The camera is wMapScrollX/Y
+  ($C320/$C322, high byte = tile), clamped to the 4 header bytes $C329-$C32C (min x, min y, width, height).
+  MapGfxStartTileAnim 0B:4900 / MapGfxStopTileAnim 0B:497D call export 0 / 2 of the gfx banks 28-2F, 72-74
+  through MapGfxAnimTable 0B:42C0 (tile animations, frame task in that bank, state $C32F-$C33C).
+  DebugMapGfxViewer 0B:4579 (from the debug menu 05:6B7B) shows any gfx id picked with 05:5197.
+- **The two WRAM6 grids** (MapGfxTable refs w4 / w5, 32x32 cells of 2x2 tiles, address
+  `$D000/$D400 + (y/2)*32 + x/2` with x, y in tiles): `$D000` is terrain (bank 04 walking speed drops on value
+  $0B, 04:541A), `$D400` is the event grid read by the map engine: low nibble 1 = trigger, 8 = object, $C = talk
+  across a counter; high nibble = id (0A:4C9B, 0A:4D1F). Get/set/rect-copy helpers 0B:45AB-46DE (rect copies
+  are used by map scripts 33-35).
+- **Map buffer edits**: MapBufCopyRect 0B:6DC7 / MapBufCopyRectRedraw 0B:4864 copy a tile rectangle
+  (src (b c), dst (d e), size (h l)) inside the 64x64 maps; the second redraws the screen (05:4492, 05:42AD) and
+  is far-called by the map scripts (30-32) to change rooms (doors etc.).
+- **Round result screen** RoundResultScreen 0B:59DE (export $18; callers bank 08 and script 32) loads map gfx
+  $0A (gfx/map_0a.png is the result-screen sheet: WIN/LOSE plates, digits, trophies, "Congratulations"),
+  then DrawRankResult 0B:61CF (a = 1: rank digits, course name by $C836, score $C8BE) or DrawVsResult 0B:5F54
+  (1P/2P plates, portraits, hole counts from wMatchHoles $C96E via MatchHolesUp 0B:65AE). All drawing is
+  MapBufCopyRect from the sheet, numbers by DrawResultNumber 0B:65FE / DrawResultSign 0B:6646. Waits A/B/Start.
+- **Records queries** (exports $28-$42, callers mostly bank 0C): LoadRecordsBlock 0B:4FB7 loads save block 3
+  into WRAM6 $DC00 ($32-byte records; RecordsSelect sets $D224); bit-field queries return in b/c or $D226
+  (RecordsHoleBit 0B:5303 reads an 18-bit per-hole field at record +$2F). Game meaning of the fields not traced.
+- **Menu glue**: ModeSelectMenuLoop 0B:4D9D (from map script 32:54EC) drives MainMenu 07:4006 and two
+  submenus (07:51A6, 07:63EC) into bank 0C screens, the character select 06:6071 and EventListScreen 0A:6F56.
+  A failed load or empty roster shows a picture message (ShowSaveMessageAndWait 0B:4F66).
+- **Ending credits**: CreditsRun 0B:5395 (part a = $C2AC, from 0A:573B) prints the staff text ($1900+ in bank 1E)
+  into the window and scrolls it (0B:56EF-5883); CopyrightScreen 0B:58B0 shows Camelot / Monegi / Nintendo.
+- Data tables: 0B:42C0 anim table; 0B:572C credit pages; 0B:5209 / 51F7 / 521B records index tables.
+- Odd: xref.py lists far calls to 0B:4637 (MapSetEventAt) from 7D:78D0/79E8/7A75, inside the sound bank;
+  probably data bytes that look like `rst $18`, not real calls.
+
+##### Bank 0A: the map engine (extends REVERSE.md "Top level")
+
+- **Actors**: WRAM4 `$D000 + slot*$40`, up to $18 slots (ActorSlotAddr 0A:42E0). Known fields: +0/+1/+2 handler
+  address and bank (ActorSetHandler 0A:431E; default 0A:435D), +4/+6 x/y words (ActorSetPos 0A:43C6), +$10
+  facing (bits 6-7 direction; ActorSetFacing 0A:4644), +$12 bit 0 busy, +$29 angle. wPlayerActor $C290 and
+  wScriptActor $C292 hold slot pointers. ActorPointAhead 0A:4C6A gives a point at a distance ahead of an actor.
+- **Map header fields resolved**: +4 object spawn list (MapInitObjects 0A:4F45 -> 04:5084), +6 talk list
+  (MapTalkTo 0A:4F96), +8 object list (MapUseObject 0A:5066), **+10 trigger list** (MapStepTrigger 0A:50CB
+  for wMapEvent+0, MapCheckTrigger 0A:5109 for the A button), **+12 enter script** (MapRunEnterScript 0A:4F71).
+  All lists are 8-byte records `[id, facing mask, flag word (bit 15 = inverted), script, ...]`, searched by
+  MapListFind / MapListFindIfFlag (0A:4EA0 / 4EC5) and copied to wMapRecord $C400.
+- **Scripts**: MapRunScript 0A:4EFF: a "script" below $2000 is a text id shown with 05:5D49; otherwise code in
+  the header bank called between ScriptBegin / ScriptEnd (0A:4092 / 40D6). ScriptWaitFrames 0A:410D is the
+  wait used ~785 times by script banks 30-35.
+- MapShowNameBanner 0A:4DDB shows text $12C + map index for 80 frames at map start (bank 18 names such as
+  "Marion Clubhouse", "Norio Sample", "Mini-Character Test": a development banner?).
+- Return point: MapSaveReturnPoint / MapWarpToReturnPoint (0A:4D5B / 4D8A, wReturnMap $C960).
+- **NavigationMenu 0A:7174** (map 2's A button and 41:7413): the "Navigation" list (text $1A05-$1A13: clubs,
+  Peach's Castle, Golf Clinic, Club Maker's Hut, Windy Valley, ... Quit) of places whose flag is set (table
+  0A:6FA9); writes wNavDestination $C2A7, read by 0A:78CE-7A20. RAM $C473-$C480.
+- **EventListScreen 0A:6F56** (export $58): pages Marion / Palm / Dune / Links / Field ($19E1+page) listing the
+  lessons and contests (Shot Lesson, Approach Contest, ...) that are unlocked (flags 0A:680A), with a mark for
+  cleared ones (flags 0A:6852). RAM $C470-$C472.
+- Bug (latent): ScriptWaitFrames 0A:410D jumps to its `ret` with af and bc still pushed when a = 0 and flag #22
+  is clear; any caller passing 0 frames would return to a garbage address.
+
+##### Bank 06: name entry and character select
+
+- NameEntryScreen 06:51DC (export 2): letter grid 17 x 6 (layout 06:505B, two pages $C4B3), cursor $C3F6/$C3F7,
+  name up to 7 letters in wPlayerName $C800; Select jumps to END; on END $C80B-$C80F get random bytes; empty name
+  takes a default from 05:40C2.
+- CharacterSelectScreen 06:6071 (export $0C; 06:6D3E is a variant without the big portrait): the roster built by
+  02:5B5B at $D658 (10 records of 32 bytes: +0 character, +2 name, +$0D, +$0E word, +$10, +$11) shown as a 5x2
+  grid; an empty slot ($0B) reads "Create a new character here." (text $10F6). Cursor $D214, remembered in $CABE.
+  Portraits are LZ per character (tables 06:637E, 06:6E35).
+- 06:4EA8 (export 0) is a bare `ret`. 06:6914 prints the remembered cursor with PrintHexByte (debug leftover).
+
+##### Bank 07: graphical menu engine
+
+- MenuScreenInit 07:741E + MenuSelect 07:7C00: menus whose items are pre-drawn LZ pictures (descriptor at hl:
+  item gfx words, +$28 = extra tiles), highlighted by blinking; Up/Down wrap, A = item, B = $FF. With the link
+  flag ($D205) item 1 performs a serial handshake (send $10, wait $20) and returns $11.
+- Three menus: MainMenu 07:4006 (3 items when the records block loads, else 2), MenuFiveItems 07:51A6,
+  MenuFourItems 07:63EC; cursors remembered at $CABB-$CABD. The item pictures were not rendered, so item
+  meanings are unknown.
+
+##### Bank 09: second copy of the menu engine
+
+- 09:400A-498F is the same code as 07:741E-7DAF (only addresses differ) (MenuScreenInit / MenuSelect / item drawing) with its own
+  graphics; MenuScreenInitAlt 09:7AD5 is a variant. Menus: LinkMenu 09:4A12 (export 0, link handshake on),
+  09:5AC5 (2 items), 09:6A74 (3 items) and 09:6A9B (redraw of that menu; called from 00:125B and script 32);
+  cursors $CAB8-$CABA. All are far-called from map script bank 32.
+
 ### Data Structures
 
 *(none yet)*
@@ -813,7 +904,7 @@ Result over 4800 frames:
 - [x] Text: font rendered; plain 2bpp tiles
 - [ ] Text: control code `$0D` (05:531B) and where the argument lists `$DFAE`/`$DFEE` are filled
 - [x] Decompress and render LZ entries (extract_tiles.py); overworld maps fully rendered (render_map.py)
-- [ ] Map descriptor w4/w5/w7 (WRAM6 D000/D400/D800): collision, event or height maps? Find their readers
+- [ ] Map descriptor w7 (WRAM6 D800): find its readers (w4 = terrain grid, w5 = event grid: bank 0B notes)
 - [ ] Loaders for the LZ entries in banks 40, 4B-4E, 58 (UI, faces, sprites) and the golf course graphics
 - [ ] Milestone 3: run the game on `web/js/gb` (copy from Tennis) with SRAM saving; `core_vs_pyboy.mjs`
 

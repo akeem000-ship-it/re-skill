@@ -750,3 +750,223 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 7D,4CDD,WavePatternTable_7D,copy of 7E:4CDD
 7D,4F41,NoiseInstrumentTable_7D,copy of 7E:4F41
 7D,50C9,VibratoTable_7D,copy of 7E:50C9
+# --- banks 0B 0A 06 09 07 (menus / map engine / name entry) ---
+0B,4306,MapDrawFullScreen,a = 0: centre the camera on the player (MapCenterCamera) else use wMapScrollX/Y; copies 22 x 20 tiles: WRAM2 attributes -> VRAM1 $9800 and WRAM3 tile numbers -> VRAM0 (64x64 buffers wrap)
+0B,43E8,MapGfxGetRef,a = ref number: hl = (idx bank) word of MapGfxTable[wMapGfxLoaded] (MapLoadGfxScreen reads the w0 header with it)
+0B,4579,DebugMapGfxViewer,debug menu (05:6B7B): stops tile animation; number entry 05:5197 picks a gfx id (0..$C32D) and MapLoadGfxScreen shows it
+0B,45AB,MapTerrainCellAddr,d = tile x and e = tile y -> hl = WRAM6 $D000 + (e/2)*32 + d/2 (descriptor w4: 32x32 cells of 2x2 tiles)
+0B,45C9,MapTerrainAt,a = WRAM6 $D000 cell at tile (d e); bank 04 actor movement slows on terrain $0B
+0B,45E3,MapSetTerrainAt,WRAM6 $D000 cell at tile (d e) = a
+0B,45FF,MapEventCellAddr,d = tile x and e = tile y -> hl = WRAM6 $D400 + (e/2)*32 + d/2 (descriptor w5 event grid)
+0B,461D,MapEventAt,a = WRAM6 $D400 cell at tile (d e): low nibble 1 trigger / 8 object / $C talk across; high nibble = id (0A:4C9B 0A:4D1F)
+0B,4637,MapSetEventAt,WRAM6 $D400 cell at tile (d e) = a
+0B,4653,MapCopyTerrainRect,copies a rectangle of $D000 grid cells: src tile (b c) -> dst tile (d e); size h x l tiles (halved); used by map scripts 33-35
+0B,4699,MapCopyEventRect,same as MapCopyTerrainRect for the $D400 event grid
+0B,4732,MapStopGfxTask,unregisters the map frame task 0B:4784 (registered by MapStartGfx)
+0B,4864,MapBufCopyRectRedraw,copies tile rect src (b c) -> dst (d e) size (h l) in the 64x64 WRAM2 attr and WRAM3 tile maps; then redraws via 05:4492 and 05:42AD (map scripts open doors etc)
+0B,48EA,MapBufAddr,h = tile x and l = tile y -> hl = $D000 + y*64 + x (offset in the WRAM2/WRAM3 64x64 maps)
+0B,4900,MapGfxStartTileAnim,a = gfx id: MapGfxAnimTable (0B:42C0) gives (sub id bank slot); farcalls export 0 of bank 28-2F/72-74 (tile animation setup)
+0B,497D,MapGfxStopTileAnim,a = gfx id: farcalls export 2 of the gfx bank 28-2F (unregisters its tile animation task)
+0B,49D3,MapCenterCamera,wMapScrollX/Y = player actor position - (9.F0 / A.F0 tiles) clamped to $C329-$C32C bounds (map width - 20 / height - 18)
+0B,4D9D,ModeSelectMenuLoop,called from map script 32:54EC: main menu 07:4006 -> 0 character select (06:6071) + SaveBlockLoad + submenu 4ECA / 1 bank 0C 67F8 loop / 2 submenu 4E5D; $FF leaves
+0B,4E48,LoadRecordsOrError,LoadRecordsBlock; on failure shows the message picture (ShowSaveMessageAndWait); ResumeBGM
+0B,4E5D,ModeSubmenuB,07:51A6 five-item menu -> bank 0C exports 0C 0A 04 02 00 ($D23B = 0 for item 0) until B
+0B,4ECA,ModeSubmenuA,07:63EC four-item menu -> 41:6506 / 0C:4A15 ($D23B = 1) / 0C:65B2 / 0A:6F56 (EventListScreen); B: back to character select
+0B,4F51,LoadRosterOrError,02:5B5B builds the character roster at $D658; if it is empty shows ShowSaveMessageAndWait
+0B,4F66,ShowSaveMessageAndWait,LZ picture 0B:4C38/4C36 -> window rows at $9982 (+ attributes) then WaitAnyButton
+0B,4F98,WaitAnyButton,AdvanceFrame until hJoyPressed != 0
+0B,4FAC,FadeOutWait,BeginFadeOut c = $10 and WaitFade (keeps a)
+0B,4FB7,LoadRecordsBlock,SaveLoad then SaveBlockLoad block 3 -> WRAM6 $DC00; a = 0 ok / $FF error
+0B,4FE5,RecordsSelect,b = record: $D224 = $DC00 + b * $32
+0B,5009,RecordsGridBit,b and c clamped 0..5: word at $DC00+$15F+b; returns b = bits set (of 6) and c = bit c
+0B,506E,RecordsFirstBit,$D226 = index (1-6) of the lowest set bit of $DC00+$15E (0 / 6 when none)
+0B,50B6,CountFlags112To114,$D226 = 1 + flags #112 #113 #114 #139 set
+0B,50EB,RecordsGridLevel,sums RecordsGridBit counts over 6 rows: $D226 = 0..5 by steps of 4
+0B,5133,RecordsTestBits,b c index table 0B:5209: tests a bit in the 4-byte records at $DC00+$166; c = 0 / 1 / 2
+0B,51B9,RecordsReadField,b = record (RecordsSelect) and c = field via table 0B:51F7 (+$0E): a = byte
+0B,51E7,RecordsFieldIndex,c = table 0B:521B[c]
+0B,522D,RecordsEntryAddr,hl = $DC00 + b * $32 + c * 5 + $20
+0B,5260,LoadSaveBlockByte0B,SaveBlockLoad block 4+c -> $DC00; a = its byte $0B ($FF on error)
+0B,5296,RecordsSlotId,a = byte at $DC00 + c*$80 + $10 if < $0B else $FF
+0B,52D2,RecordsSlotWord,b c = bytes at $DC00 + c*$80 + $20
+0B,5303,RecordsHoleBit,c = hole 0-17: 18 bits at [$D224]+$2F: b = number set and c = bit of hole c
+0B,538D,FillBytes,[hl++] = b for de bytes
+0B,5395,CreditsRun,ending (0A:573B with $C2AC): sets up the window; frame task 0B:5640; waits $D242; clears WRAM1/WRAM5; CreditsShowPage a then CreditsScroll
+0B,56EF,CreditsShowPage,a = part: 7-byte records at 0B:572C (count then text offsets from $1900) -> CreditsPrintLines; $D243 = count
+0B,5795,CreditsPrintLines,prints the staff text ids $1900+n into the WRAM1 $D063 buffer (20 chars per line) with CopyTextLine
+0B,57E4,CreditsScroll,scrolls the credit lines up $D243 & 3 times (20 steps then 255 frames)
+0B,5822,CreditsScrollStep,copies 8 rows x 20 from WRAM1 $D000+c to WRAM5 $D000 and queues them to $9C00
+0B,5884,CopyTextLine,hl = text id: LoadText then copies up to 20 chars of wTextBuffer to WRAM1 at de
+0B,58B0,CopyrightScreen,end of the ending: draws text $19DA $19DC $19DE (Camelot / Monegi / Nintendo) fades in and holds $84 frames
+0B,59DE,RoundResultScreen,result screen (gfx $0A): a = 1 rank result (DrawRankResult) else VS result (DrawVsResult); $C96C mode; waits A/B/Start; skipped when $C878 = 1; called from bank 08 and map script 32
+0B,5BE6,InitResultActors,actors 2-7: +$17 = 0 / +$18 = a or a-1 / +$19 colour / +$0E random 16-23 (falling confetti?)
+0B,5E13,PutTileBlock4x8,writes 4x8 consecutive tile numbers (from c) into the WRAM3 64x64 map at tile (d e)
+0B,5E55,SetAttrBlock4x8Pal1,sets palette 1 in a 4x8 block of the WRAM2 attribute map at (d e)
+0B,5ED6,DrawResultPortrait,a = character (bit 4 = alt palette): tiles via 11:4EAB then PutTileBlock4x8; palette from 0B:5E8A; MapBufCopyRect frame
+0B,5F40,ResultPortraitSlot,h l -> d e tile slot of a portrait (two rows of 6)
+0B,5F54,DrawVsResult,1P/2P result: WIN/LOSE plates (MapBufCopyRect from the gfx $0A layout); sounds $20-$22; portraits; scores and hole counts via DrawResultNumber
+0B,61CF,DrawRankResult,c = rank: place digits (DrawRankDigits) / course name by $C836 / trophy / score $C8BE with DrawResultSign; confetti for ranks 1-3
+0B,6402,ClearResultActors,clears +$17 of actors 8-13
+0B,65AE,MatchHolesUp,counts $C96E (18 hole results: 1 = P1 / 2 = P2): a = |P2 - P1| (1 when $C83A is set)
+0B,65FE,DrawResultNumber,a = 0-255 drawn as 1-3 digit tiles at (d e) with MapBufCopyRect from the digit strip (row $29)
+0B,6646,DrawResultSign,a = score: 0 -> even tile / >= $CA -> minus / else plus (MapBufCopyRect row $2A)
+0B,666E,LoadResultExtraTiles,a = 1-3: LZ tiles (table 0B:66B9) -> $8600
+0B,67D3,DrawRankDigits,c = rank: LZ digit tiles (table 0B:688A) -> $9300-$9520 (LCD off); rank < 10 uses a fixed plate
+0B,6C79,LoadResultTiles9100,LZ 0B:6CAE -> VRAM $9100 and $9200 (LCD off)
+0B,6DC7,MapBufCopyRect,copies tile rect src (b c) -> dst (d e) size (h l) in the WRAM2 attr and WRAM3 tile 64x64 maps (no redraw)
+0B,42C0,MapGfxAnimTable,2 bytes per gfx id: (sub id / gfx bank slot 0-9 = banks 28-2F 72 73 else 74) for MapGfxStartTileAnim
+0A,4092,ScriptBegin,$C363 = $FF; clears $C368/$C369; resets the wScriptActor slot (ActorResetHandler); debug task 0A:4066 when hDebugMode
+0A,40D6,ScriptEnd,points the wScriptActor slot at 0A:4109; unregisters 0A:4066; clears flag #22
+0A,410D,ScriptWaitFrames,a = frames (2 when flag #22 is set) -> WaitFrames; bug: a = 0 returns with af/bc still pushed
+0A,42E0,ActorSlotAddr,a = actor slot (< $18) -> hl = WRAM4 $D000 + a*$40; $FF -> hl = 0
+0A,431E,ActorSetHandler,a = slot: +0/+1 = de (code) / +2 = b (bank)
+0A,4342,ActorResetHandler,a = slot: handler = 0A:435D in the current bank
+0A,43C6,ActorSetPos,a = slot: x = bc / y = de (+4..+7); clears +$12
+0A,43F5,ActorCopyPos,copies 4 bytes from bc to actor ($FFE0)+4 and clears +$12 (ActorSetPos helper)
+0A,4644,ActorSetFacing,a = slot: +$10 = b (facing; bits 6-7 = direction)
+0A,48AC,WaitScriptActorIdle,AdvanceFrame (ScriptWaitFrames 1) while wScriptActor +$12 bit 0 is set; at most 600 frames
+0A,49C6,MapFindTalk,talk target ahead (MapTalkTargetAhead) unless it is $C298; a = id if the talk list (header +6) has a record for it
+0A,49E9,MapFindObject,object id in the event grid ahead (MapObjectAhead); a = id if the object list (header +8) has a record for it
+0A,4B8C,ClearC85C,zeroes $C85C-$C85F at map start
+0A,4B99,MapClearEvents,zeroes the 5 bytes of wMapEvent
+0A,4BAC,MapEventPending,a = sum of the wMapEvent bytes (nz when an event is pending)
+0A,4C6A,ActorPointAhead,hl = actor; a = angle offset; de = distance: hl/de = actor x/y + vector(de at facing +$29 + a) (00:0AF2)
+0A,4C9B,MapObjectAhead,MapEventAt $1C0 ahead of the player: a = high nibble when the low nibble is 8 else 0
+0A,4CC5,MapTalkTargetAhead,04:56FD; looks $1C0 ahead ($3C0 across a counter cell $C) and +-$10 angles with 04:55C4: a = actor id
+0A,4D1F,MapTriggerUnderPlayer,MapEventAt the player's cell: low nibble 1 -> id (high nibble) if the trigger list (header +10) has it
+0A,4D5B,MapSaveReturnPoint,b c = map and entrance -> $C960/$C961; b = $FF: current map with the position $C2A0 (5 bytes) -> $C962
+0A,4D8A,MapWarpToReturnPoint,wMapEvent+1 = $FA; wMapId / wMapEntrance from $C960/$C961 (entrance $FA: position from $C962-$C966)
+0A,4DDB,MapShowNameBanner,shows text wMapNameText (map index + $12C: debug-style names) with 05:5DE5 for $50 frames or a button
+0A,4E2F,TestFlagCondition,de = flag (bit 15 = inverted): z / nz from the flag test 00:2D10
+0A,4E70,MapCheckFacing,b = direction mask ($FF any): a = 1 when the player's facing (+$10 bits 6-7 via 0A:4E6C) matches
+0A,4EA0,MapListFind,a = bank and hl = list of 8-byte records: finds id d with a matching facing; hl = record or 0
+0A,4EC5,MapListFindIfFlag,as MapListFind but also needs the record's flag word (+2) to pass TestFlagCondition
+0A,4EFF,MapRunScript,hl < $2000: a text id shown by 05:5D49 (b = arg); else code in bank a called between ScriptBegin and ScriptEnd
+0A,4F45,MapInitObjects,header +4 list: clears flag #21; 04:410D; player placed (04:510A); objects spawned (04:5084); 04:51D0
+0A,4F71,MapRunEnterScript,runs the header +12 script (MapRunScript) with b = $C296 at map load
+0A,4F96,MapTalkTo,a = actor: talk record (header +6) -> $C400; turns the actor to face the player; runs its script (+4); $C298 uses 0A:5365
+0A,5066,MapUseObject,a = id: object record (header +8) -> $C400; sets flag #18; runs its script (+4) when the flag word passes
+0A,50CB,MapStepTrigger,wMapEvent+0: trigger record (header +10) -> $C400; runs its script unless +6 = 1
+0A,5109,MapCheckTrigger,A button on a trigger cell: trigger record (header +10) -> $C400; runs its script when +6 != 0
+0A,531F,MapCount,a = number of MapTable records
+0A,5336,MapIdAt,a = record number -> a = map id of MapTable[a]
+0A,6C58,DrawListMark,b = row: a blinking mark sprite (00:26A4) next to list row b (scrolled by hSCY)
+0A,6C7A,DrawPageArrows,two bobbing arrow sprites (table 0A:6CA7) at the top of the event list
+0A,6CAF,ListEntryFlag,hl = per-page table of flag words: z/nz for entry b of page $C470 (page 3 entries >= 5 also need flag #139)
+0A,6CFE,ListCountUnlocked,a = entries of page $C470 whose flag (table 0A:680A) is set
+0A,6D15,ListPageSetup,$C471 = entry count of page $C470 (lists 0A:6852); $C472 = max scroll
+0A,6D42,ListDrawFrame,builds the frame rows of the list in the WRAM1 $D080 tile/attr buffers
+0A,6D7F,ListDrawText,page title text $19E1+page centred (05:615D / 05:62AA) and the names of unlocked entries (table 0A:6DE4)
+0A,6DEE,ListHandleInput,Up/Down scroll hSCY (0..$C472); Left/Right change page skipping empty ones; sound $5B
+0A,6E47,ListChangePage,fade out; ListPageSetup; rebuild frame and text; copy to $9800; fade in
+0A,6EA2,ListScreenInit,sets flag #15; page 0; frame (LZ 0A:68E4/698A) and text to $9800; sprite tiles and palettes
+0A,6F35,ListFrame,per frame: ListHandleInput; 0C:43AD; DrawPageArrows; DrawListMark for cleared entries (table 0A:6852)
+0A,6F56,EventListScreen,export $58 (0B:4ECA item 3 and scripts): pages Marion/Palm/Dune/Links/Field of lessons and contests with clear marks; B returns to the map at $C2A0
+0A,7174,NavigationMenu,map 2 A button (sound $5C) and 41:7413: 'Navigation' list of unlocked places (flags 0A:6FA9); A sets wNavDestination ($FF for Quit); B cancels; reloads the map at $C2A0
+0A,7257,NavLoadFrameTiles,LZ 0A:6FE5 -> WRAM1 $D000
+0A,7267,NavLoadFrameAttrs,LZ 0A:7085 -> WRAM1 $D400
+0A,7277,NavCopyTilemap,queues WRAM1 $D000 -> $9800 ($24 rows)
+0A,7289,NavCopyAttrmap,queues WRAM1 $D400 -> VRAM1 $9800 (dst $B800)
+0A,729B,NavCopyListRows,queues WRAM1 $D080 -> $9880 ($1A rows)
+0A,72BF,NavDrawList,reloads the frame buffers; 03:4EB8; NavDrawText
+0A,72D2,NavFrame,per frame: NavHandleInput; 0C:43AD; marks (flags 0A:6FC7); scroll arrows; bobbing cursor sprite
+0A,7344,NavDrawScrollArrows,up arrow when wNavScroll > 0; down arrow when more than 7 rows remain
+0A,7387,NavDrawText,title $1A05 'Navigation' centred and 7 entry names $1A06+entry from wNavEntries
+0A,73D3,NavBuildEntries,wNavEntries = places 0-13 whose flag (table 0A:6FA9) is set; $FF ends
+0A,73ED,NavCountEntries,a = number of wNavEntries
+0A,73FC,NavHandleInput,Up/Down move wNavCursor (clamped) and wNavCursorRow (0-6); redraws when wNavScroll changes
+06,4EA8,Bank06Stub,export 0: just ret
+06,4EA9,NameEntryLoadPage,page $C4B3: copies the character grid rows (table 06:4EA0) to WRAM1 $D400 attrs and $D000 tiles
+06,4ED3,NameEntryCopyTilemap,queues WRAM1 $D000 -> $9800 ($24 rows)
+06,4EE0,NameEntryCopyAttrmap,queues WRAM1 $D400 -> VRAM1 $9800 (dst $B800)
+06,4EED,NameEntryCursorToEnd,cursor ($C3F6 $C3F7) = (16 5) = the END key
+06,4EFA,NameLength,a = length of wPlayerName
+06,4F0D,NameEntryDrawName,draws wPlayerName (7 cells) into the WRAM1 name row ($D047 tiles / $D027 attrs)
+06,4F4A,NameEntryBackspace,removes the last letter of wPlayerName and redraws
+06,4F6C,NameEntrySwitchPage,NameEntryLoadPage; redraw name; 06:6040 fills; copies tilemap and attrs to VRAM
+06,4F87,NameEntryPressA,A on the grid: (5 $0A) backspace / (5 $10) END sets $C4B3 bit 7 / else appends the letter (max 7) and moves to END when full
+06,5001,NameFull,a = $FF when wPlayerName has 7 letters else 0
+06,50C1,NameEntryMoveCursor,d-pad moves ($C3F6 0-16 $C3F7 0-5) wrapping and skipping blank keys (layout 06:505B)
+06,51DC,NameEntryScreen,export 2: name entry for wPlayerName (portrait $C810 via 06:5B39); Select -> END; B backspace; on END random bytes -> $C80B-$C80F; empty name uses the default name; a = 0 / $FF cancelled
+06,5B20,LoadFaceTiles8800,tiles 06:52F0 -> VRAM1 $8800 and palette 06:5B00
+06,5B39,LoadPortraitTiles,a = character: 9 tiles (06:5B80 + a*$90) -> de and palette (06:6000 + a*8) b
+06,6040,FillTileBlock3x3,writes a 3x3 block of consecutive tiles (from c) at hl and attribute b at de; a = row stride
+06,6071,CharacterSelectScreen,export $0C: hl = roster (02:5B5B list at $D658: 10 x 32-byte records); 5x2 grid of slots (empty slot $0B = 'Create a new character here'); a = slot / $FF (B)
+06,60E6,CharSelectInit,LCD off; roster pointer $D216; slot list (CharSelectBuildSlots); frame / portrait / cursor graphics and palettes; mini portraits
+06,62A5,CharSelectDrawCursor,draws the cursor frame (3 rows) around slot $D214
+06,62CF,CharSelectCursorRow,c = row 0-2: writes 3 tiles and attrs of the cursor frame into WRAM1 $D000/$D300
+06,6329,LoadMiniPortrait,c = slot: LZ hl -> WRAM1 $D9E0 + c*$90
+06,6347,LoadAllMiniPortraits,LoadMiniPortrait for the 10 slots by character (table 06:637E)
+06,6396,CharSelectPlaceSlotTiles,writes each slot's 9 portrait tile numbers into the tilemap buffer
+06,63CB,PutSlotTiles,writes 9 consecutive tile numbers b+ at the cell offsets of hl into $D200
+06,63F1,CharSelectSlotPalettes,attribute palettes of the 10 slots by character (06:6422)
+06,6422,PutSlotPalette,writes the character's palette (table 06:6465) to the 9 cells of a slot in $D000
+06,64F8,SlotFirstTile,c = slot -> b = $9E + 9c
+06,6503,SlotCellList,c = slot -> hl = its 9 cell offsets (table 06:6511)
+06,6778,CharSelectInput,d-pad (CharSelectMove + redraw); A = slot (kept in $CABE) / B = $FF / else $FE; Select+A on slots >= 3 flags the record (+$10)
+06,6839,CharSelectMove,e = direction: moves $D214 in the 5x2 grid skipping empty ($FF) slots
+06,68F8,CharSelectBuildSlots,$D20A[0-9] = character of each roster record (RosterCharacter)
+06,690F,ResetCharSelectCursor,$CABE = 0
+06,6914,CharSelectInitCursor,$D214 from the remembered $CABE (debug PrintHexByte of it) skipping empty slots
+06,697B,RosterCharacter,c = record: l = byte +0 (>= $0B -> $0B; $FF empty)
+06,69A1,RosterNamePtr,c = record: hl = its name (+2)
+06,69B5,RosterByte0D,c = record: l = byte +$0D
+06,69CF,RosterWord0E,c = record: hl = word +$0E
+06,6A01,RosterSetFlag10,record $D214: +$10 = 1
+06,6A34,RosterByte11,c = record: l = byte +$11 (sign selects one of three panel rows)
+06,6ADE,CharSelectDrawInfo,info panel for slot $D214: name / numbers (+$0D +$0E) / or 'Create a new character here' (text $10F6) / or the empty message
+06,6D22,CharSelectCopyInfo,queues the panel rows WRAM1 $D1A0 -> $B9A0 and $D4A0 -> $99A0
+06,6D3E,CharacterSelectNoPortrait,export $10: CharacterSelectScreen without the big portrait (no 06:6D9A) and no fade out
+06,6D9A,CharSelectLoadPortrait,LZ portrait of the slot's character (table 06:6E35) -> WRAM3 then VRAM $A9E0 + slot*$90; current one -> WRAM2
+07,4006,MainMenu,0B:4FB7 records ok -> menu 07:4040 (3 items) else 07:406A (2 items); cursor kept in $CABB
+07,51A6,MenuFiveItems,menu 07:51DC (5 items); cursor kept in $CABC; fades out
+07,63EC,MenuFourItems,menu 07:6422 (4 items); cursor kept in $CABD; fades out
+07,741E,MenuScreenInit,hl = menu descriptor ($D200: item gfx words; +$28 = font) d = items e = first row b = link; loads BG 07:74E2 and palettes; draws items; frame task 07:7DB0
+07,7C00,MenuSelect,a = start item: blinking cursor; Up/Down wrap; A = item; B = $FF; with $D205 item 1 does the link handshake ($10/$20 bytes) and returns $11
+07,7CFE,MenuDrawItem,l = item and h = 0 normal / 1 highlighted: two rows of LZ item graphics (MenuItemGfx)
+07,7D19,MenuItemPalette,l = item: palette c for its two rows (MenuItemAttrs)
+07,7D36,MenuItemGfx,l = row: LZ gfx of the item -> WRAM6 and queued to VRAM
+07,7D69,MenuItemAttrs,l = row: 32-byte attribute row (07:7820) with palette c -> $B8A0 + row*32
+09,400A,MenuScreenInit09,copy of MenuScreenInit (07:741E) with this bank's graphics (09:40CE 4325 4360 45A0)
+09,47E0,MenuSelect09,copy of MenuSelect (07:7C00)
+09,48DE,MenuDrawItem09,copy of MenuDrawItem (07:7CFE)
+09,48F9,MenuItemPalette09,copy of MenuItemPalette (07:7D19)
+09,4916,MenuItemGfx09,copy of MenuItemGfx (07:7D36)
+09,4949,MenuItemAttrs09,copy of MenuItemAttrs (09:4400 rows)
+09,4A12,LinkMenu,export 0 (32:5094): menu 09:4A4C (4 items) with the link handshake ($D205 = 1); cursor $CAB8
+09,5AC5,MenuTwoItems,export 2 (32:79DE): menu 09:5AF6 (2 items); cursor $CAB9
+09,6A74,MenuThreeItems,export 6 (32:7A0E): menu 09:6AC0 (3 items); cursor $CABA; no fade out
+09,6A9B,RedrawMenuThreeItems,export 8 (00:125B and scripts): fade out; 01:41B3; MenuScreenInitAlt with menu 09:6AC0; fade in
+09,7AD5,MenuScreenInitAlt,variant of MenuScreenInit09 (BG 09:7BAC; palettes 09:7E03); also 05:407A and MenuCopyBGToScroll
+09,7E3B,MenuCopyBGToScroll,copies $40 bytes of the BG maps 09:4360/45A0 to WRAM1 and CopyMapToScrollBuffers
+*,C290,wPlayerActor,pointer to the player's actor (WRAM4 $40-byte slot; +4 x / +6 y / +$10 facing / +$29 angle)
+*,C292,wScriptActor,pointer to the actor slot the map script runner uses (ScriptBegin / ScriptEnd)
+*,C320,wMapScrollX,map camera x (high byte = tile column; MapCenterCamera / MapDrawFullScreen)
+*,C322,wMapScrollY,map camera y (high byte = tile row)
+*,C329,wMapBounds,4 bytes from the gfx header: min x / min y / width / height in tiles (camera clamp)
+*,C32D,wMapGfxCount,number of MapGfxTable descriptors (MapStartGfx)
+*,C33D,wMapGfxPrev,previous gfx id ($FF after MapStartGfx)
+*,C400,wMapRecord,8-byte scratch copy of the current entrance / warp / talk / object / trigger record
+*,C4B4,wMapNameText,text id of the map name ($12C + map index; MapShowNameBanner)
+*,C960,wReturnMap,map / entrance / position (5 bytes at $C962) to come back to (MapSaveReturnPoint)
+*,C2A0,wPlayerPosSave,player x / y (4 bytes) and facing ($C2A4) restored when a menu reloads the map
+*,C2A7,wNavDestination,place chosen in NavigationMenu ($FF = Quit or none)
+*,C470,wListPage,EventListScreen page 0-4
+*,C471,wListCount,entries on the current page
+*,C472,wListScrollMax,max hSCY on the event list
+*,C473,wNavCursor,NavigationMenu cursor (entry index)
+*,C474,wNavScroll,first visible entry
+*,C475,wNavCount,number of unlocked places
+*,C476,wNavCursorRow,cursor row on screen 0-6
+*,C480,wNavEntries,unlocked place ids ending with $FF
+*,C3F6,wNameCursorX,name entry cursor column 0-16 ($C3F7 = row 0-5)
+*,C4B3,wNamePage,name entry character page (bit 7 = END pressed)
+*,D200,wMenuDesc,WRAM6: menu descriptor pointer ($D202 items / $D203 first row / $D204 blink timer / $D205 link)
+*,D214,wCharSelCursor,WRAM6: character select slot 0-9 ($D215 previous; $D20A slot characters; $D216 roster pointer)
+*,CABB,wMainMenuCursor,remembered cursors: $CABB main / $CABC five-item / $CABD four-item / $CABE character select ($CAB8-$CABA bank 09 menus)
+*,D224,wRecordPtr,WRAM6: pointer to the selected $32-byte record in $DC00 (RecordsSelect)
+*,D226,wRecordResult,WRAM6: result byte of the records queries
+*,DC00,wRecordsBuf,WRAM6: save block 3 (records) loaded by LoadRecordsBlock
+*,C96E,wMatchHoles,18 bytes: hole won by 1 (P1) or 2 (P2) in match play (MatchHolesUp)
+*,C2AC,wCreditsPart,ending credits part (CreditsRun)
+*,D243,wCreditsLines,WRAM6: lines on the current credits page
