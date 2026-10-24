@@ -36,8 +36,16 @@ def add_root(spec):
 for v in (0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x40, 0x48, 0x50, 0x58, 0x100):
     push(0, v, True)
 # AddTask(HL) targets and other known indirect roots from labels.csv (names, not data tables)
-for (b, a), (name, _) in Labels().by.items():
-    if b != "*" and a < 0x8000 and name and not any(k in name for k in ("Table", "Curve", "Signature", "Header", "String", "Font", "Widths", "Sine", "Tangent")):
+DATA_WORDS = ("Table", "Curve", "Signature", "Header", "String", "Font", "Widths", "Sine", "Tangent", "Tiles",
+              "Palettes", "Gfx", "Data")
+LABELS = Labels()
+DATA_LABELS = set()
+for (b, a), (name, _) in LABELS.by.items():
+    if b == "*" or a >= 0x8000 or not name:
+        continue
+    if any(k in name for k in DATA_WORDS):
+        DATA_LABELS.add((b if a >= 0x4000 else 0, a))
+    else:
         push(b if a >= 0x4000 else 0, a, True)
 # export tables of code banks: a bank counts as code when most of its exports start with a
 # typical routine opener (push/ld/call/xor/and/or/cp/rst/jr/jp/ret)
@@ -54,7 +62,8 @@ for b in range(1, NB):
     hits = sum(1 for w in t if rom[to_offset(b, w)] in OPENERS)
     if hits >= 0.8 * len(t) and b not in DATA_BANKS:
         CODE_BANKS.append(b)
-        for w in t: push(b, w, True)
+        for w in t:
+            if (b, w) not in DATA_LABELS: push(b, w, True)
 # map scripts (REVERSE.md "Top level"): header +12 (enter script) and the +4 word of the 8-byte talk (+6),
 # object (+8) and trigger (+10) records; a word below $2000 is a text id, not code (MapRunScript 0A:4EFF)
 from dump_maps import records, word
