@@ -31,7 +31,7 @@ export function normalizeLook(look) {
 export const lookKey = look => JSON.stringify(normalizeLook(look));
 
 export class LookManager {
-  constructor() { this.look = null; this.rom = null; this.undo = []; this.renderer = null; this.gb = null; this.built = null; this.notes = []; this.detail = false; }
+  constructor() { this.look = null; this.rom = null; this.undo = []; this.renderer = null; this.gb = null; this.built = null; this.notes = []; this.detail = false; this.kit = null; }
   // before the machine is built: patch the ROM bytes it will run (the same array, kept)
   // opts.detail: also build the heroes' face data for the detailed sprites (render.js frameTile), look or not
   prepare(romBytes, look, opts = {}) {
@@ -43,7 +43,7 @@ export class LookManager {
   attach(gb) {
     this.gb = gb;
     if (this.renderer) this.renderer.detach();
-    this.renderer = this.built && (this.look || this.detail) ? new LookRenderer(this.built) : null;
+    this.renderer = this.built && (this.look || this.detail || this.kit) ? new LookRenderer(this.built) : null;
     if (this.renderer) this.renderer.attach(gb);
     return this;
   }
@@ -75,12 +75,19 @@ export class LookManager {
   _restore() { if (this.rom) for (const p of this.undo.slice().reverse()) this.rom.set(p.bytes, p.off); this.undo = []; this.built = null; }
   // gate(ch): whether a mod's character takes its look now (creator.js: mods' "from": "senior" by the story's progress)
   _build() {
-    if (!this.rom || (!this.look && !this.detail)) { this.built = null; return; }
-    const g = this.gate, look = g && this.look && this.look.mods ? { ...this.look, mods: this.look.mods.map(m => ({ ...m, chars: m.chars.filter(g) })) } : this.look;
+    if (!this.rom || (!this.look && !this.detail && !this.kit)) { this.built = null; return; }
+    const g = this.gate; let look = g && this.look && this.look.mods ? { ...this.look, mods: this.look.mods.map(m => ({ ...m, chars: m.chars.filter(g) })) } : this.look;
+    if (this.kit) look = withKit(look || {}, this.kit);
     this.built = buildLook(this.rom, look || {}, { detail: this.detail }); this.notes = this.built.notes;
     this.undo = applyPatches(this.rom, this.built.patches);
   }
   toJSON() { return this.look; }
+}
+// KIT (creator.js): the heroes' match outfit in the tour class's colour (15-bit): a hero with the game's own look plays in a shirt of
+// that colour edged in white (the game's own frames); a hero with a look of their own keeps its colours, the outfit edged in the class colour
+export function withKit(look, kit) {
+  const hero = h => h ? { ...h, colours: { ...(h.colours || {}), trim: kit }, extras: ["trim"] } : { own: true, colours: { top: kit, trim: 0x7BDE }, extras: ["trim"] };
+  return { ...look, boy: hero(look.boy), girl: hero(look.girl) };
 }
 const key16 = (b, o) => { let s = ""; for (let i = 0; i < 16; i++) s += String.fromCharCode(b[o + i]); return s; };
 

@@ -25,6 +25,7 @@ const FACE_ROWS = [["shape", "Face shape", FACE.shapes], ["eyes", "Eyes", FACE.e
 const PARTS = [["skin", "Skin", "skin"], ["hair", "Hair", "hair"], ["hat", "Hat / band", "cloth"], ["top", "Top", "cloth"], ["bottom", "Shorts / skirt", "cloth"], ["shoes", "Shoes", "cloth"], ["racket", "Racket", "cloth"]];
 const WRAM_STORY_SLOT = 0x36C, WRAM_HANDEDNESS = 0xB50;   // wCurrentStorySlot $C36C, wCharSelectHandedness $CB50
 // story mode's junior class titles (wGameFlags $C9C0: flag n is byte n >> 3, bit $80 >> (n & 7)): singles $53, doubles $42
+const KIT_KEY = "mt-kit", KIT_COLOURS = { junior: 0x26C7, senior: 0x7165, varsity: 0x14BC, open: 0x135F };   // (15-bit: green, blue, red, gold)
 const JUNIOR_TITLE = [[0x9C0 + (0x53 >> 3), 0x80 >> (0x53 & 7)], [0x9C0 + (0x42 >> 3), 0x80 >> (0x42 & 7)]];
 
 const CSS = `
@@ -65,6 +66,15 @@ export function mountCreator({ hud, keys, pause, onChange }) {
   mgr.gate = ch => ch.from !== "senior" || seniorUp;
   // the switched-on mods' character `ch` (a roster id) as it plays now (gated), or null: its lines (intro.js, matchfx.js)
   const modChar = ch => { const L = mgr.look; for (const m of (L && L.mods) || []) for (const c of m.chars) if (c.char === ch && mgr.gate(c)) return c; return null; };
+  // KIT: the class of the tour match being played ($C8A6 game mode 1 / 3 the tour, 2 the Island Open; $C8F7 the match: 0-4 junior,
+  // 5-9 senior, $0A-$0D varsity), on a court only, as the class's 15-bit colour, or null
+  const kitNow = () => {
+    if (!kitOn) return null; const w = gb.mem.wram[0]; if (w[0x32E] > 15) return null;
+    if (w[0x8A6] === 2) return KIT_COLOURS.open;
+    if ((w[0x8A6] !== 1 && w[0x8A6] !== 3) || w[0x8F6] > 1) return null;
+    const i = w[0x8F7]; return i <= 4 ? KIT_COLOURS.junior : i <= 9 ? KIT_COLOURS.senior : i <= 0x0D ? KIT_COLOURS.varsity : null;
+  };
+  const setKit = k => { if (k === mgr.kit) return; mgr.kit = k; mgr.set(mgr.look); };
   const gateNow = () => {
     const w = gb.mem.wram[0], map = w[0x32E];
     if (map >= 17 && map <= 36) inStory = true; else if (map === 16) inStory = false;   // (a court keeps what led to it)
@@ -100,6 +110,13 @@ export function mountCreator({ hud, keys, pause, onChange }) {
   }
   sprBtn.addEventListener("pointerdown", () => setSprites(sprMode === "detail" ? "game" : "detail"));
   hud.appendChild(document.createTextNode(" ")); hud.appendChild(sprBtn); showSpr();
+  // KIT: Class / Game (remembered, mt-kit; ?kit=on|off): in a tour match your player wears the class's colour (junior green, senior
+  // blue, varsity red, the Island Open gold; index.js withKit); the look is rebuilt when a class match starts or ends
+  let kitOn = (() => { const q = new URLSearchParams(location.search).get("kit"); if (q === "on" || q === "off") return q === "on"; try { return localStorage.getItem(KIT_KEY) !== "off"; } catch (e) { return true; } })();
+  const kitBtn = document.createElement("span"); kitBtn.className = "k"; kitBtn.id = "kitbtn"; kitBtn.title = "tour matches: your player wears the class colour (junior green, senior blue, varsity red, Island Open gold): a shirt in it with the game's look, the outfit edged in it with your own look";
+  const showKit = () => { kitBtn.textContent = "KIT: " + (kitOn ? "Class" : "Game"); kitBtn.classList.toggle("on", kitOn); };
+  kitBtn.addEventListener("pointerdown", () => { kitOn = !kitOn; showKit(); try { localStorage.setItem(KIT_KEY, kitOn ? "on" : "off"); } catch (e) { /* private mode */ } if (gb) setKit(kitNow()); });
+  hud.appendChild(document.createTextNode(" ")); hud.appendChild(kitBtn); showKit();
   const offer = document.createElement("button"); offer.id = "lookoffer"; offer.hidden = true; offer.textContent = "✦ Customize your player's look";
   document.body.appendChild(offer);
   const panel = document.createElement("div"); panel.id = "lookpanel"; panel.hidden = true;
@@ -274,6 +291,8 @@ export function mountCreator({ hud, keys, pause, onChange }) {
       // the hero's 24x24 portrait as the game shows it now (its own, recoloured by the look, or the redrawn one): the VS screen
       gb.heroPortrait = key => { if (!pristine) return null; const L = mgr.look; return heroPreview(pristine, key === "girl" ? "nina" : "alex", L && L[key], 0, !!(L && L.portraits === "redrawn")).portrait; }; lastSlot = -1; detail.attach(gb, document.getElementById("screen")); detail.setEnabled(sprMode === "detail"); },
     get look() { return mgr.look; },
+    get kit() { return mgr.kit; },
+    set kit(k) { setKit(k); },                                  // (tests: a class's trim without a tour match)
     open: openPanel,
     // once per emulated frame (after it ran)
     frame() {
@@ -282,6 +301,7 @@ export function mountCreator({ hud, keys, pause, onChange }) {
       if (pressFrames > 0) { keys.Enter = pressFrames > 3; pressFrames--; if (!pressFrames) keys.Enter = false; }
       if (gb.frames < detectAt) return; detectAt = gb.frames + 20;
       const up = gateNow(); if (up !== seniorUp) { seniorUp = up; if (mgr.look && mgr.look.mods) { mgr.set(mgr.look); onChange(mgr.look); } }
+      setKit(kitNow());
       const pick = detect();
       if (pick && !onPick && !offered && !open) offer.hidden = false;
       if (!pick) offer.hidden = true;

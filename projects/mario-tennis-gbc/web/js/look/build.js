@@ -6,7 +6,7 @@
 // (walk sprites banks $70/$74, match sprites banks $40/$41, portraits $16/$1B, HUD heads $18).
 import { lzDecompress } from "./lz.js";
 import { decodeColMajor, encodeColMajor, decodeRowMajor, cellOf, clone } from "./gfx.js";
-import { REG, labelSprite, labelPortrait, applyStyle, applyTouchups } from "./label.js";
+import { REG, labelSprite, labelPortrait, applyStyle, applyExtras, applyTouchups } from "./label.js";
 import { TOUCHUPS } from "./touchups.js";
 import { buildMods } from "./mods.js";
 import { faceAssets } from "./faces.js";
@@ -42,16 +42,19 @@ export function checkRom(rom) {
 // style null: the frames as they are (labelled only: the detailed sprites' face data for a hero without a look)
 // mood of the face by the animation group of a match frame (the game's 29 groups x 5 views): the frame ids tell what the player is doing
 export const groupMood = g => g >= 26 ? "sad" : g >= 23 ? "happy" : g === 20 || g < 5 || g === 15 || g === 16 ? "neutral" : "effort";
-function heroAssets(rom, name, style, portraits = false) {
+// extras: drawn over the match frames only (KIT: the outfit's trim in a tour match, index.js withKit)
+function heroAssets(rom, name, style, portraits = false, extras = null) {
   const h = HEROES[name], out = { raw: [], lz: [], frames: [] };     // raw: { off, bytes, regions: Map(tileOff -> plane) }; frames: { key, kind, cols, rows, info, mood, view }
   const T = TOUCHUPS[name] || {};
   const touch = (st, key) => { applyTouchups(st, (T[key] || {})["*"]); applyTouchups(st, (T[key] || {})[style]); };
   // portraits and HUD heads: a hairstyle with hand-pixelled art (hairart.js) draws it over the game's face; the rest restyle by rule
   const frameOf = key => key === "portrait" || key === "win" || key === "lose" ? key : key.startsWith("head:") ? "head" : null;
   const finish = (st, key) => {
-    if (!style) return st;
-    const fr = frameOf(key);
-    if (fr && hasHairArt(name, style, fr)) applyHairArt(st, name, style, fr); else { applyStyle(st, style); touch(st, key); }
+    if (style) {
+      const fr = frameOf(key);
+      if (fr && hasHairArt(name, style, fr)) applyHairArt(st, name, style, fr); else { applyStyle(st, style); touch(st, key); }
+    }
+    if (extras && key.startsWith("match:")) applyExtras(st, extras);
     return st;
   };
   // overworld walk frames: 4 facings of 16x16 (two 8x16 objects) per 256-byte frame
@@ -132,9 +135,9 @@ export function buildLook(rom, look, opts = {}) {
     const L = look[key]; if (!L) { if (opts.detail) addFrames(heroAssets(rom, name, null)); continue; }
     const hid = HEROES[name].id, c = L.colours || {};
     const set = (r, v) => { if (v !== undefined && v !== null) res.colours[hid * 16 + r] = v & 0x7FFF; };
-    set(REG.OUT, c.outline ?? 0x0000); set(REG.SKIN, c.skin); set(REG.SHADE, c.skin !== undefined ? shade(c.skin) : undefined); set(REG.HILITE, c.skin !== undefined ? hilite(c.skin) : undefined);
-    set(REG.HAIR, c.hair); if (c.hair !== undefined) { const t = hairTones(c.hair); set(REG.HAIR2, t.k); set(REG.HAIR3, t.g); } set(REG.HAT, c.hat); set(REG.TOP, c.top); set(REG.BOTTOM, c.bottom); set(REG.SHOES, c.shoes ?? c.bottom); set(REG.RACKET, c.racket);
-    const A = heroAssets(rom, name, L.style || (name === "alex" ? "cap" : "pigtails"), !redrawn); addFrames(A);
+    set(REG.OUT, c.outline ?? (L.own ? undefined : 0x0000)); set(REG.SKIN, c.skin); set(REG.SHADE, c.skin !== undefined ? shade(c.skin) : undefined); set(REG.HILITE, c.skin !== undefined ? hilite(c.skin) : undefined);
+    set(REG.HAIR, c.hair); if (c.hair !== undefined) { const t = hairTones(c.hair); set(REG.HAIR2, t.k); set(REG.HAIR3, t.g); } set(REG.HAT, c.hat); set(REG.TOP, c.top); set(REG.BOTTOM, c.bottom); set(REG.SHOES, c.shoes ?? c.bottom); set(REG.RACKET, c.racket); set(REG.TRIM, c.trim);
+    const A = heroAssets(rom, name, L.own ? null : L.style || (name === "alex" ? "cap" : "pigtails"), !redrawn && !L.own, L.extras || null); addFrames(A);
     const tag = plane => { const p = new Uint8Array(64); for (let i = 0; i < 64; i++) p[i] = plane[i] ? hid * 16 + plane[i] : 0; return p; };
     for (const r of A.raw) {
       res.patches.push({ off: r.off, bytes: r.bytes });

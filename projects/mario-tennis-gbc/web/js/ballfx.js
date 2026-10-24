@@ -9,6 +9,8 @@
 //   dust       a ring on the court and puffs (clay: soft orange clouds, grass: green flecks and a few puffs, hard: small pale puffs and
 //              specks), coloured from the court under the ball
 //   impact     a flare, a glow, a ring and spark streaks at the racket contact; power shots and smashes are bigger with a second burst
+//   swing      the racket's path: a swoosh round the hitter through the contact, from behind the body into the follow-through, in
+//              the plane of the swing (level for drives, over the head for smashes and serves), in the shot's colour, gone in ~10 frames
 //   net        the net rocks when the ball hits it and flutters when the ball clips the tape (wBallNetHit / wBallNetCross)
 //   shadow     the ball's shadow is wide, pale and soft high up and shrinks to a small dark crisp one at the court
 //   marks      the court keeps what the match does to it: on clay every bounce leaves an oval ball mark and the players' feet scuff
@@ -90,7 +92,7 @@ const squashAbout = (c, d, kd, kp) => {
 export class BallFX {
   constructor(vox) {
     this.v = vox; this.on = true; this.onChange = null;
-    this.parts = []; this.hits = []; this.bounces = []; this.net = null; this.shot = { type: 4, c: shotInfo(4).c, power: 0 };
+    this.parts = []; this.hits = []; this.swings = []; this.bounces = []; this.net = null; this.shot = { type: 4, c: shotInfo(4).c, power: 0 };
     this.sq = null; this.cut = -1; this.phase = 0; this.rate = 0; this.T = 0; this.lastFr = -99; this.prev = null; this.ball = null;
     this.marks = []; this.wear = new Map(); this.feet = new Map(); this.markKey = "";   // court marks: ball marks and scuffs, grass wear by cell, last foot positions
     this.rnd = 1; this.surface = { kind: "hard", c: [0.78, 0.82, 0.86], at: -1 };
@@ -100,7 +102,7 @@ export class BallFX {
     this.serveCue = false; this.fire = null;                          // PLAY+ (full.js): the serve's timing cue, the runs of points (momentum)                              // AIM: the landing ring (attachBallFX reads the remembered choice)                     // quads: the effects (~700) and the court marks (up to ~800)
   }
   setOn(on) { this.on = !!on; try { localStorage.setItem(KEY, this.on ? "on" : "off"); } catch (e) { /* private mode */ } if (this.onChange) this.onChange(this.on); }
-  reset() { this.marks.length = 0; this.wear.clear(); this.feet.clear(); this.parts.length = 0; this.hits.length = 0; this.bounces.length = 0; this.net = null; this.sq = null; this.prev = null; this.cut = -1; this.ball = null; }
+  reset() { this.marks.length = 0; this.wear.clear(); this.feet.clear(); this.parts.length = 0; this.hits.length = 0; this.swings.length = 0; this.bounces.length = 0; this.net = null; this.sq = null; this.prev = null; this.cut = -1; this.ball = null; }
   // the speed tag over the 3D view: a short-lived label under the scoreboard, in the shot's colour
   showSpeed(kmh, c) {
     if (typeof document === "undefined" || !this.v || !this.v.cv) return;
@@ -162,7 +164,7 @@ export class BallFX {
       this.shot = { type: s.type, c: info.c, power: power || (special ? 1 : 0) };
       const dir = this.norm(vw, [0, 0, -1]); this.cut = fr; this.sq = { kind: "hit", fr, str, d: dir };
       const h = { fr, pos: { ...pos }, str, dir, c: info.c, power: this.shot.power, smash: s.type === 9 }; this.hits.push(h); if (this.hits.length > 6) this.hits.shift();
-      this.spawnHit(h);
+      this.spawnHit(h); this.spawnSwing(h, s.type);
       if (this.shot.power) this.speedAt = fr + 2;
       this.aim = { fr, live: true, x: s.landX, z: s.landY, c: info.c };   // AIM: a ring where the shot will land, from the next frames' prediction
     }
@@ -191,7 +193,7 @@ export class BallFX {
   norm(v, fb) { const l = Math.hypot(v[0], v[1], v[2]); return l > 1e-3 ? [v[0] / l, v[1] / l, v[2] / l] : fb; }
   age(fr) {
     this.parts = this.parts.filter(p => fr - p.t0 < p.life + 2);
-    this.hits = this.hits.filter(h => fr - h.fr < 40); this.bounces = this.bounces.filter(b => fr - b.fr < 40);
+    this.hits = this.hits.filter(h => fr - h.fr < 40); this.swings = this.swings.filter(w => fr - w.fr < 18); this.bounces = this.bounces.filter(b => fr - b.fr < 40);
     if (this.net && fr - this.net.fr > 70) this.net = null;
     if (this.sq && fr - this.sq.fr > 14) this.sq = null;
   }
@@ -218,6 +220,30 @@ export class BallFX {
       const d = this.norm([dir[0] + h.dir[0] * bias, dir[1] + h.dir[1] * bias + 0.12, dir[2] + h.dir[2] * bias], dir);
       this.add({ k: 4, add: true, streak: true, t0, life: 3.5 + 3 * R() + (big ? 1.5 : 0), pos: h.pos, v: d.map(x => x * sp), drag: 0.18, g: 0.3, s0: 1.8 + 2 * S, c: R() < 0.35 ? mix3(c, WHITE, 0.7) : mix3(c, WHITE, 0.25), a: 1.5, len: 1.2 });
     }
+  }
+  // the swing: the hitter is the player nearest the contact on the court. Drives and volleys turn level round the body at the
+  // contact's height (from behind the body, round the side the ball is on, through the ball); smashes and serves turn over the head
+  // in the upright plane of the shot. The arc's sense is the one that carries the racket towards the shot's direction at the contact.
+  spawnSwing(h, type) {
+    let pl = []; try { pl = this.v.players() || []; } catch (e) { /* not a court */ } let best = null, bd = 1e9;
+    for (const q of pl) { const d = Math.hypot(q.X - h.pos.x, q.Y - h.pos.z); if (d < bd) { bd = d; best = q; } }
+    if (!best || bd > 260) return;
+    const fwd = this.norm([h.dir[0], 0, h.dir[2]], [0, 0, best.Y > 0 ? -1 : 1]), lift = -best.Z;
+    const over = type === 9 || type >= 12 || h.pos.y - lift > 200;
+    let C, r, n;
+    if (over) {
+      C = [best.X, lift + 120, best.Y]; r = [h.pos.x - C[0], h.pos.y - C[1], h.pos.z - C[2]];
+      const l = Math.hypot(...r) || 1, R = Math.max(80, Math.min(150, l)); r = r.map(x => x / l * R);
+      n = this.norm([fwd[2], 0, -fwd[0]], [1, 0, 0]);                       // up x forward: turns the upward arm towards the shot
+    } else {
+      C = [best.X, Math.max(lift + 40, Math.min(lift + 160, h.pos.y)), best.Y]; r = [h.pos.x - C[0], 0, h.pos.z - C[2]];
+      const l = Math.hypot(r[0], r[2]); if (l < 1) r = [fwd[0], 0, fwd[2]];
+      const L = Math.hypot(r[0], r[2]), R = Math.max(70, Math.min(130, L)); r = r.map(x => x / L * R);
+      const along = r[2] * h.dir[0] - r[0] * h.dir[2];                       // (up x r) . dir: the level arc's sense
+      n = [0, along < -1e-3 ? -1 : 1, 0];
+    }
+    const soft = type === 10 || type === 11 ? 0.6 : 1;
+    this.swings.push({ fr: h.fr, C, r, n, c: h.c, big: h.power || h.smash, a: soft, over });
   }
   spawnBounce(b, s) {
     const t0 = b.fr - 1, S = b.str, R = this.rand.bind(this), sf = this.surfaceAt(b.pos.x, b.pos.z), dc = sf.c, kind = sf.kind;
@@ -429,7 +455,8 @@ export class BallFX {
       else if (p.add) this.billboard([x, y, z], s, p.k, p.p || 0, [c[0] * a * fade * this.gk, c[1] * a * fade * this.gk, c[2] * a * fade * this.gk, 0], p.rot || 0);
       else this.billboard([x, y, z], s, p.k, p.p || 0, [c[0], c[1], c[2], Math.min(1, a * fade * this.k.alpha)]);
     }
-    // 3. the trail and the spin cues on the ball
+    // 3. the racket swooshes, the trail and the spin cues on the ball
+    for (const w of this.swings) this.drawSwing(w, T);
     if (ball && this.vel) this.drawBall(T);
     if (this.n) {
       gl.useProgram(this.prog); gl.bindVertexArray(this.vao); gl.uniformMatrix4fv(this.uMVP, false, mvp);
@@ -439,6 +466,23 @@ export class BallFX {
       gl.depthMask(true); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.bindVertexArray(this.v.vao); gl.useProgram(this.v.prog);
     }
     this.stats.quads = this.n / 6; this.stats.ms = this.stats.ms * 0.95 + (performance.now() - t0) * 0.05;
+  }
+  // a swoosh along the racket's arc: the head runs from just past the contact into the follow-through over ~4 frames while the
+  // tail shortens and the whole fades; a pale band (normal blending, reads on light courts) with a hot core in the shot's colour
+  drawSwing(w, T) {
+    const age = T - w.fr, life = w.big ? 13 : 10; if (age < 0 || age > life) return;
+    const fade = (1 - sstep(life * 0.35, life, age)) * w.a, head = 0.35 + 1.35 * sstep(0, 4, age), len = 0.3 + 1.8 * (1 - sstep(1.5, life * 0.8, age)), tail = head - len;
+    const rot = th => { const c = Math.cos(th), s = Math.sin(th), n = w.n, r = w.r, d = n[0] * r[0] + n[1] * r[1] + n[2] * r[2];
+      const x = [n[1] * r[2] - n[2] * r[1], n[2] * r[0] - n[0] * r[2], n[0] * r[1] - n[1] * r[0]];
+      return [0, 1, 2].map(i => w.C[i] + r[i] * c + x[i] * s + n[i] * d * (1 - c)); };
+    const N = 14, wd = (w.big ? 28 : 21) * this.k.w, hot = mix3(w.c, WHITE, 0.55), g = this.gk;
+    let p0 = rot(tail);
+    for (let i = 1; i <= N; i++) {
+      const u0 = (i - 1) / N, u1 = i / N, p1 = rot(tail + len * u1), a0 = fade * Math.pow(u0, 1.2), a1 = fade * Math.pow(u1, 1.2);
+      this.ribbon(p0, p1, wd * (0.25 + 0.75 * u0), wd * (0.25 + 0.75 * u1), [hot[0], hot[1], hot[2], 0.85 * a0], [hot[0], hot[1], hot[2], 0.85 * a1], 5);
+      this.ribbon(p0, p1, wd * 0.4 * u0, wd * 0.4 * u1, [1.4 * w.c[0] * a0 * g, 1.4 * w.c[1] * a0 * g, 1.4 * w.c[2] * a0 * g, 0], [1.4 * w.c[0] * a1 * g, 1.4 * w.c[1] * a1 * g, 1.4 * w.c[2] * a1 * g, 0], 5);
+      p0 = p1;
+    }
   }
   drawBall(T) {
     const v = this.v, ball = this.ball, B = this.B, sp = this.spd || 0, hist = v.ballHist || [], head = [ball.x, ball.y, ball.z], sc = this.shot.c, power = this.shot.power;
@@ -469,7 +513,7 @@ export class BallFX {
 // the HUD button: "BALL FX: on / off" (remembered)
 export function addBallFXButton(hud, fx) {
   if (!hud || !fx) return null;
-  const b = document.createElement("span"); b.className = "k"; b.id = "ballfxbtn"; b.title = "3D / VOX court: ball trail coloured by shot, spin seam, squash and stretch, bounce dust, impact sparks, net wobble, ball shadow";
+  const b = document.createElement("span"); b.className = "k"; b.id = "ballfxbtn"; b.title = "3D / VOX court: ball trail coloured by shot, the racket's swoosh, spin seam, squash and stretch, bounce dust, impact sparks, net wobble, ball shadow";
   const show = () => { b.textContent = "BALL FX: " + (fx.on ? "on" : "off"); b.classList.toggle("on", fx.on); };
   b.addEventListener("pointerdown", () => { fx.setOn(!fx.on); });
   hud.appendChild(document.createTextNode(" ")); hud.appendChild(b); show(); fx.onChange = show;
