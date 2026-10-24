@@ -68,7 +68,7 @@ export const hourNow = () => { const d = new Date(); return d.getHours() + d.get
 // ---- small matrix helpers (column-major, like voxel.js) ----
 const mul = (a, b) => { const o = new Float32Array(16); for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + j] * b[i * 4 + k]; o[i * 4 + j] = s; } return o; };
 const apply = (m, v) => { const o = [0, 0, 0, 0]; for (let i = 0; i < 4; i++) o[i] = m[i] * v[0] + m[4 + i] * v[1] + m[8 + i] * v[2] + m[12 + i] * v[3]; return o; };
-function invert(a) {                                  // general 4x4 inverse
+export function invert(a) {                                  // general 4x4 inverse
   const o = new Float32Array(16);
   // Gauss-Jordan on a 4x8 augmented matrix: short, and plenty fast for one call per frame
   const r = []; for (let i = 0; i < 4; i++) { r.push([a[i], a[4 + i], a[8 + i], a[12 + i], i === 0 ? 1 : 0, i === 1 ? 1 : 0, i === 2 ? 1 : 0, i === 3 ? 1 : 0]); }
@@ -157,7 +157,7 @@ uniform sampler2D uScene, uDepth, uShadow, uBlur, uGlow, uE;
 uniform mat4 uInvVP; uniform mat4 uVP; uniform vec2 uNF; uniform vec2 uRes;
 uniform vec3 uL; uniform vec3 uSun, uAmb; uniform float uShade, uWall;
 uniform float uExp, uSat, uCon, uBloom, uGlowK, uSpill, uLamps, uVig, uDof; uniform vec3 uTone, uWarm;
-uniform float uDbg; uniform vec4 uFocus;                    // y of the sharp band: centre, half height (0..1 of the screen), blur rise top, rise bottom
+uniform float uDbg, uSkyLit; uniform vec4 uFocus;                    // y of the sharp band: centre, half height (0..1 of the screen), blur rise top, rise bottom
 uniform int uNP; uniform vec4 uPP[6]; uniform vec3 uPC[6]; uniform vec4 uPool; uniform vec3 uPoolC;
 uniform int uNF2; uniform vec4 uFl[4]; uniform vec3 uFC[4];
 float lin(float d) { return 2.0 * uNF.x * uNF.y / ((uNF.y + uNF.x) - (d * 2.0 - 1.0) * (uNF.y - uNF.x)); }
@@ -184,6 +184,7 @@ void main() {
   vec4 g4 = texture(uGlow, vUV); vec3 gl = g4.rgb;
   // lamps / windows keep their own light and shine
   float em = smoothstep(0.1, 0.5, texture(uE, vUV).a) * smoothstep(0.2, 0.6, glassy(c0)) * (1.0 - up);   // lit panes and lamps (on walls)
+  if (d >= 0.99999 && uSkyLit > 0.5) { light = vec3(1.0); add = vec3(0.0); poolW = 0.0; }   // the sky (skybox.js) keeps its own colours
   c = mix(c, vec3(lum(c)), 0.85 * poolW * up * uLamps);                          // the court does not glow in its own colour under the warm floodlights
   c = c * (light + add + gl * uSpill);
   c = mix(c, uWarm * (0.75 + 0.9 * lum(c0)), em * uLamps);
@@ -368,7 +369,7 @@ export class Lighting {
 
   // ---- hooks called by voxel.js ----
   begin(W, H) {
-    const gl = this.gl; this.begun = false; this.posted = false;
+    const gl = this.gl; this.begun = false; this.posted = false; this.skyDrawn = false;
     try { this.ensure(W, H); } catch (e) { console.warn("light", e); this.broken = true; gl.bindFramebuffer(gl.FRAMEBUFFER, null); return false; }
     this.W = W; this.H = H; this.begun = true; this.t0 = performance.now(); this.watchFrames();
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.msaa ? this.q.ms.f : this.q.scene.f);
@@ -478,7 +479,7 @@ export class Lighting {
     this.pass(progC, null, {
       uInvVP: invVP, uVP: vp, uNF: NF, uRes: [W, H], uL: L, uSun: P.sun, uAmb: P.amb, uShade: shade, uWall: wallK,
       uExp: P.exp, uSat: P.sat, uCon: P.con, uBloom: P.bloom, uGlowK: 0.62 * (0.6 + 0.4 * P.bloom), uSpill: 0.5 + 0.18 * night, uLamps: cam.kind === "field" ? night : 0, uVig: fx.vignette ? P.vig : 0, uDof: dofK * 0.8, uTone: P.tone,
-      uDbg: this.dbg, uWarm: [1.15, 0.82, 0.42], uFocus: cam.kind === "court" ? [0.5, 0.36, 0.22, 0.26] : [0.5, 0.17, 0.30, 0.36],   // (a court: the players at both baselines stay sharp)
+      uDbg: this.dbg, uSkyLit: this.skyDrawn ? 1 : 0, uWarm: [1.15, 0.82, 0.42], uFocus: cam.kind === "court" ? [0.5, 0.36, 0.22, 0.26] : [0.5, 0.17, 0.30, 0.36],   // (a court: the players at both baselines stay sharp)
     }, [S.t, S.depthTex, q.sh0.t, (needB ? q.b0 : q.q0).t, q.g0.t, q.e0.t]);
     this.timerEnd();
   }

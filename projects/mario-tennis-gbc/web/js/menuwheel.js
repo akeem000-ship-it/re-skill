@@ -5,13 +5,14 @@
 // The port's main menu (port/menus/main_menu/main_menu.js) does the choosing: with P.menuWheel.on the d-pad steps through the nine cells
 // in order (up / left back, down / right on) instead of round the 3 x 3 grid; A and B are the game's. The overlay shows only while the
 // menu waits for a choice (P.menuWheel.active), so the game's slide-in and slide-out play as they are. Through the JS port only.
-// TITLE (with MENU: Wheel): the title screen becomes a courtside night scene: the game's own logo (its pixels, lifted off the screen) over
-// a floodlit court, PRESS START, and a real-looking tennis ball in the foreground (optic-yellow felt, thousands of fibres of fuzz and a
+// TITLE (with MENU: Wheel): the title screen becomes a courtside night scene: the app's logo (crestlogo.js: the shield and the wordmark,
+// 2D-HD on its ribbon) over a floodlit court, PRESS START, and a real-looking tennis ball in the foreground (optic-yellow felt, thousands of fibres of fuzz and a
 // fuzzy rim, the white rubber seam sunk in its groove, lit from the upper left). Press Start: the ball zooms in towards the camera and
 // rolls to the left, where it becomes the wheel's ball as the main menu comes in. The title is recognised by its logo tiles (as the
 // HD title painter does it); nothing of the game is changed.
 import { sigHits } from "./hdmenus/b_common.js";
 import { MenuSkins } from "./menuskins.js";   // the sub-menus in the same look
+import { crestLogo } from "./crestlogo.js";
 const TITLE_LOGO = [[20, 20, "3a2df153"], [60, 24, "847037c7"], [100, 40, "2ee97ec9"], [130, 30, "b3a7e81d"], [40, 56, "bf70c43a"], [80, 64, "10cddfdc"], [120, 60, "d82c442b"]];
 const ZOOM = 1.0, HOLD = 90;                          // seconds of the title -> menu move; game frames a screen's picture is held between two (BACKDROP)
 // ---- the ball (drawn once, 512 px): felt (seam and fibres, turned with the ball), light (fixed shading over it), rim (the fuzzy edge) ----
@@ -87,7 +88,7 @@ const OPTION_NAMES = { view3d: "3D VIEW", aspect: "SCREEN", cam: "CAMERA", padmo
 export class MenuWheel {
   constructor(getGb, getPort) {
     this.getGb = getGb; this.getPort = getPort; this.shown = 0; this.pos = 0; this.root = null;
-    this.getHd = null; this.ball = null; this.phase = "none"; this.zoomAt = 0; this.logo = null;   // TITLE: the screen, the ball, the move to the menu
+    this.getHd = null; this.ball = null; this.phase = "none"; this.zoomAt = 0;   // TITLE: the ball, the move to the menu
     const q = new URLSearchParams(typeof location !== "undefined" ? location.search : "");
     let m = q.get("menu"); if (m === null) { try { m = localStorage.getItem(KEY); } catch (e) { m = null; } }
     this.style = m === "game" ? "game" : "wheel";
@@ -188,7 +189,7 @@ export class MenuWheel {
     const onTitle = !!(this.on && P && gb && !wheel && this.isTitle()), T = performance.now() / 1000, F = gb ? gb.frames : 0;
     // the title, then (Start) the zoom until the wheel is up, then the wheel. The title also stays up while the game plays its own
     // attract loop (the ball toss, then the title again: no Start or A pressed when the title went), until the title or the menu is back
-    if (onTitle) { if (this.phase !== "title" && this.phase !== "attract") this.logo = null; this.phase = "title"; if (gb.joypad.buttons & 9) this.startAt = F; }
+    if (onTitle) { this.phase = "title"; if (gb.joypad.buttons & 9) this.startAt = F; }
     else if (this.phase === "title" && this.on && P && gb) {
       if (F - (this.startAt ?? -1e9) < 45) { this.phase = "zoom"; this.zoomAt = T; }
       else { this.phase = "attract"; this.attractAt = F; }
@@ -311,18 +312,10 @@ export class MenuWheel {
     const v = g.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.75); v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,0.6)"); g.fillStyle = v; g.fillRect(0, 0, W, H);
     return c;
   }
-  // the game's logo off the title screen: its pixels from (10, 6) to (152, 78), the screen's background colour made clear
-  grabLogo(gb) {
-    const fr = gb.ppu.frame, x0 = 10, y0 = 6, w = 142, h = 72, bg = fr[2 * 160 + 2];
-    const c = document.createElement("canvas"); c.width = w; c.height = h; const g = c.getContext("2d"), im = g.createImageData(w, h), u = new Uint32Array(im.data.buffer);
-    let n = 0; for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const p = fr[(y0 + y) * 160 + x0 + x]; if (p !== bg) { u[y * w + x] = p | 0xFF000000; n++; } }
-    g.putImageData(im, 0, 0); return n > 500 ? c : null;
-  }
   drawTitle(gb, W, H, T) {
     const g = this.cv.getContext("2d"), k = Math.min(W / 1280, H / 720);
-    if (!this.logo) this.logo = this.grabLogo(gb);
     g.drawImage(this.scene(W, H), 0, 0);
-    if (this.logo) { const s = 3.2 * k; g.save(); g.shadowColor = "rgba(0,0,0,0.6)"; g.shadowBlur = 16 * k; g.imageSmoothingEnabled = false; g.drawImage(this.logo, 50 * k, 36 * k, this.logo.width * s, this.logo.height * s); g.restore(); }
+    g.drawImage(crestLogo(), 20 * k, 10 * k, 800 * k, 450 * k);
     this.menuBall(g, W - 300 * k, H - 210 * k, 150 * k, -this.pos * 0.35 + Math.sin(T * 0.6) * 0.15);
     const pulse = 0.65 + 0.35 * Math.sin(T * 4);
     g.font = `${58 * k}px "${FONT}", ${BODY}`; g.textBaseline = "middle"; g.fillStyle = "rgba(0,0,0,0.6)"; g.fillText("PRESS START", 64 * k, H - 76 * k);
@@ -332,7 +325,7 @@ export class MenuWheel {
   drawZoom(gb, W, H, u, T) {
     const g = this.cv.getContext("2d"), k = Math.min(W / 1280, H / 720), e = u * u * (3 - 2 * u);
     g.clearRect(0, 0, W, H);
-    g.globalAlpha = 1 - e; g.drawImage(this.scene(W, H), 0, 0); if (this.logo) { const s = 3.2 * k; g.imageSmoothingEnabled = false; g.drawImage(this.logo, 50 * k - e * 400 * k, 36 * k, this.logo.width * s, this.logo.height * s); } g.globalAlpha = 1;
+    g.globalAlpha = 1 - e; g.drawImage(this.scene(W, H), 0, 0); g.drawImage(crestLogo(), 20 * k - e * 400 * k, 10 * k, 800 * k, 450 * k); g.globalAlpha = 1;
     const x0 = W - 300 * k, y0 = H - 210 * k, r0 = 150 * k, x1 = -60 * k, y1 = H / 2, r1 = 250 * k;
     const grow = Math.sin(Math.min(1, u * 1.6) * Math.PI) * 0.55;                 // in towards the camera first
     const x = x0 + (x1 - x0) * e, y = y0 + (y1 - y0) * e, r = (r0 + (r1 - r0) * e) * (1 + grow);

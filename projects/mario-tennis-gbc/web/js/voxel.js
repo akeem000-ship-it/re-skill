@@ -21,6 +21,7 @@ import { FS_SHIM, VS_GLASS, FS_GLASS, WindowShimmer } from "./shimmer.js";   // 
 import { roundedMeshData } from "./voxround.js";
 import { surfaceKind, buildDetail, paintFloor, lineColours } from "./courtfloor.js";
 import { tallWall, FAR_WALL_MAPS, farWallsOn } from "./farwalls.js";   // FAR END: Walls
+import { SkyBox } from "./skybox.js";   // SKY: the sky behind the courts, at the match's hour
 import { paintConcept, COURT_CONCEPTS } from "./courtconcepts.js";   // COURT concepts (?court=junior|senior|varsity|open|final)   // HD court floors   // VOXSTYLE: "VOX: Blocky / Rounded"
 
 const VS = `#version 300 es
@@ -312,6 +313,7 @@ export class Voxel3D {
     this.shadowTex = this.blobTexture();                     // soft round shadow on the ground (players, ball)
     this.stadium = null;                                     // STADIUM: stadium3d.js (attachStadium) sets this; null = the flat stands
     this.light = null;                                       // LIGHT: lighting.js (attachLighting) sets this; null = off
+    this.skybox = new SkyBox(this);                          // SKY: drawn behind every court (not the drill hall)
     this.farWalls = farWallsOn();   // FAR END: Walls (farwalls.js; the button: addFarEndButton)
     try { const c = new URLSearchParams(location.search).get("court"); this.courtConcept = COURT_CONCEPTS.includes(c) ? c : null; } catch (e) { this.courtConcept = null; }   // COURT concepts
     this.rounded = false;                                    // VOXSTYLE: voxround.js (attachVoxStyle) sets this: rounded solid bodies instead of cubes
@@ -974,6 +976,7 @@ export class Voxel3D {
     if (this.intro) this.intro.update();      // INTRO: the walk-out before a match (its own camera while it runs)
     const { mvp, tilt } = (this.replayCam && this.replayCam(cv.width / cv.height, m4, COURT_CLIP, this.interp())) || (this.intro && this.intro.camera(cv.width / cv.height, m4, COURT_CLIP, this.interp().players)) || (this.matchfx && this.matchfx.camera(cv.width / cv.height, m4, COURT_CLIP, this.interp().players)) || this.courtCamera(cv.width / cv.height);   // MATCH FX: changeover sweep, the winner
     if (this.light) this.light.camera(mvp, COURT_CLIP.near, COURT_CLIP.far, 7.5, "court", [0, 0, 0]);   // LIGHT
+    if (this.skybox && !this.isDrill() && this.skybox.draw(gl, mvp)) { gl.useProgram(this.prog); gl.bindVertexArray(this.vao); }   // SKY: behind everything
     // ground plane (lying flat: tilt -90deg around X so the quad's up axis becomes -Z, i.e. +Y world towards the camera)
     const gw = WORLD.x1 - WORLD.x0, gh = WORLD.y1 - WORLD.y0;
     this.draw(this.groundTex, m4.trs(0, -0.5, WORLD.y1, gw, gh, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);

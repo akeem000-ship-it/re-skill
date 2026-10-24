@@ -3,11 +3,11 @@
 // panels by hdui_frames.js, the text by hdtext.js / data.js, the cursors by hdui_cursors.js.
 //
 // TITLE SCREEN. The logo, the checkered bar and the (c) line are the game's own pixels (read from the BG-only picture at
-// run time) smoothed up 4x with Scale2x; "HD-2D" is added under the logo in the logo's colours (Luckiest Guy: yellow to
+// run time) smoothed up 4x with Scale2x; "2D-HD" is added under the logo in the logo's colours (Luckiest Guy: yellow to
 // orange fill, dark green outline, red shadow, sparkles) and "PRESS START" replaces the START sprites on the bar (the view
 // leaves them out: scr.hide), with the same glint sweeping across it that the original's letters have. The bar moves down
-// to make room for HD-2D. The whole screen is claimed (the other painters would take logo tiles for box pieces). In a view
-// that cannot leave sprites out (scr.canHide false: START stays) the bar stays and HD-2D goes under it. Purely visual: nothing here touches
+// to make room for 2D-HD. The whole screen is claimed (the other painters would take logo tiles for box pieces). In a view
+// that cannot leave sprites out (scr.canHide false: START stays) the bar stays and 2D-HD goes under it. Purely visual: nothing here touches
 // the game's state; the screen is recognised by the content of a few logo tiles (hashes), not by any game variable.
 import { registerHDPainter, HD } from "../hdui.js";
 import { sigHits, smooth4, makeCanvas, useFont, sparkle } from "./b_common.js";
@@ -79,7 +79,7 @@ function paintTitleArt(g, scr, layer) {
   const logo = blocks[0], bgc = px[2], w = fade(px, logo.y0, logo.y1), alpha = 1 - w;
   const bar = blocks.find(b => b.y0 >= logo.y1 + 3 && b.y0 < 100 && b.y1 - b.y0 >= 12 && b.y1 - b.y0 <= 20) || { y0: 88, y1: 104 };   // mid-fade it can be all but white
   const css = a => `rgb(${a & 255},${a >> 8 & 255},${a >> 16 & 255})`;
-  // the START sprites go (the view leaves them out) when it can; then the bar moves down and PRESS START / HD-2D take over
+  // the START sprites go (the view leaves them out) when it can; then the bar moves down and PRESS START / 2D-HD take over
   const spr = startSprites(scr), moved = font && scr.canHide && (!spr.length || scr.hide(spr, g, layer));
   const shift = moved ? SHIFT : 0;
   // 1. the picture smoothed. Plain background more than a pixel away from anything is left transparent, so the 3D views'
@@ -101,17 +101,17 @@ function paintTitleArt(g, scr, layer) {
   }
   claim(scr);
   if (!font) return;
-  // 3. HD-2D under the logo, in the logo's colours (drawn on a layer of its own, which fades with the picture)
+  // 3. 2D-HD under the logo, in the logo's colours (drawn on a layer of its own, which fades with the picture)
   if (alpha < 0.02) return;
   const cx = 80, base = moved ? logo.y1 + 14.5 : bar.y1 + 17.5, LY = cache.LY || (cache.LY = makeCanvas(640, 576)), l = LY.getContext("2d");
   if (!cache.LYdone || cache.LYbase !== base) {
     l.setTransform(HD, 0, 0, HD, 0, 0); l.clearRect(0, 0, 160, 144);
     const grad = l.createLinearGradient(0, base - 13, 0, base + 1); grad.addColorStop(0, "rgb(255,238,70)"); grad.addColorStop(0.55, "rgb(255,190,30)"); grad.addColorStop(1, "rgb(255,140,15)");
-    outlined(l, "HD-2D", cx, base, { size: 18, outline: 1.35, stroke: "rgb(18,86,28)", fill: grad, shadow: "rgb(205,32,36)", dx: 1.2, dy: 1.5 });
+    outlined(l, "2D-HD", cx, base, { size: 18, outline: 1.35, stroke: "rgb(18,86,28)", fill: grad, shadow: "rgb(205,32,36)", dx: 1.2, dy: 1.5 });
     sparkle(l, cx - 31, base - 12, 3.6); sparkle(l, cx + 32, base - 5, 2.8); sparkle(l, cx + 25, base - 14.5, 2);
     cache.LYdone = true; cache.LYbase = base;
   }
-  // (the layer with HD-2D is kept with the smoothed picture; PRESS START is drawn on a copy, as the glint moves)
+  // (the layer with 2D-HD is kept with the smoothed picture; PRESS START is drawn on a copy, as the glint moves)
   const L2 = makeCanvas(640, 576), l2 = L2.getContext("2d"); l2.drawImage(LY, 0, 0);
   // 4. PRESS START on the bar (while the original's START is shown), the glint sweeping across it
   if (moved && spr.length >= 6) {
