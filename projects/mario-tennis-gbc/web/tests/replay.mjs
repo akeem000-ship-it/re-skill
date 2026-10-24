@@ -35,6 +35,7 @@ else {
   port = new GamePort(romBytes, { ...entry, hooks }, { audio: false }); gb = port.gb;
   if (rec.meta.physics === "enhanced") { const { EnhancedPhysics } = await import("../js/engine/enhanced.js"); port.physics = new EnhancedPhysics(); }   // PHYSICS: Enhanced (a recording without meta.physics is classic)
   port.evenNet = rec.meta.net === "even";                                // NET: Even
+  port.tourLength = rec.meta.tourlen || "game";                           // TOUR MATCH (a recording without it: the game's own lengths)
 }
 if (!port && !a.includes("--interp")) { try { const mod = await import("../gen/game.js"); const T = {}; mod.install(T); gb.installRecomp(T); if (mod.HRAM_SIG) gb.exec.setHramSig(mod.HRAM_SIG); } catch (e) { console.log("interpreter only:", e.message); } }
 loadState(gb, rec.start);

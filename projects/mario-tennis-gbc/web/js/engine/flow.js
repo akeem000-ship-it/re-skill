@@ -111,9 +111,10 @@ export function checkMatchWon(E) {
   if (diff & 0x80) return S.player2SetsWon >= need ? 0xFF : 0;
   return S.player1SetsWon >= need ? 0x01 : 0;
 }
-// 08:5CE9 CheckSetWon: 6 games (2 in a short set), 2 clear; level -> tiebreak; 7-6 (3-2) counts as 8-6 (4-2)
+// 08:5CE9 CheckSetWon: 6 games (2 in a short set), 2 clear; level -> tiebreak; 7-6 (3-2) counts as 8-6 (4-2). Also a 3-game set
+// (TOUR MATCH: 3x3, not in the game: the ROM's own code plays it as 6 games): level at 3-3 -> tiebreak, 4-3 counts as 5-3
 export function checkSetWon(E) {
-  const S = E.S, short = S.matchTypeNumberOfGames === 2, cap = short ? 3 : 7, n = short ? 2 : 6;
+  const S = E.S, g = S.matchTypeNumberOfGames, n = g === 2 || g === 3 ? g : 6, cap = n + 1;
   let d = S.player1GamesWon, e = S.player2GamesWon;
   if (d === cap) d++;
   if (e === cap) e++;

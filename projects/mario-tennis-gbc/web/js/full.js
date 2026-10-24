@@ -281,6 +281,10 @@ const physicsMode = () => { const v = q.get("physics") || stored("mt-physics"); 
 // NET: Original / Even (engine/chars.js): ?net=even|original, else the remembered choice; Even runs only through the port: chosen, it
 // switches the engine to the port; with no choice it is the default wherever the port already runs (both sides reach the net)
 const netChoice = () => q.get("net") || stored("mt-net");
+// TOUR MATCH: 3x3 / Game's (port/story/match.js): the tour's matches the best of 3 sets of 3 games (default), or the game's own lengths
+// (3 sets of 6 games, 5 at the Island Open); ?tourlen=3x3|game, else the remembered choice. Only through the port (the ROM's own code
+// knows no 3-game set)
+const tourLen = () => { const v = q.get("tourlen") || stored("mt-tourlen"); return v === "game" ? "game" : "3x3"; };
 const netMode = () => { const v = netChoice(); return v === "even" || v === "original" ? v : portMode() !== "rom" ? "even" : "original"; };
 const portMode = () => { const h = location.hash.slice(1), sel = $("engine") && $("engine").value, m = h === "port" || h === "portall" ? h : q.has("port") ? "port" : sel || "rom"; return m === "rom" && (physicsMode() === "enhanced" || netChoice() === "even") ? "port" : m; };
 if ($("engine")) {
@@ -317,6 +321,7 @@ async function makePort(bytes) {
   const P = new GamePort(bytes, { ...entry, hooks }, { audio: true, sampleRate: 44100 });
   if (physicsMode() === "enhanced") { const { EnhancedPhysics } = await import("./engine/enhanced.js"); P.physics = new EnhancedPhysics(); }
   P.evenNet = netMode() === "even";
+  P.tourLength = tourLen();
   return P;
 }
 function portFrame() {
@@ -393,7 +398,7 @@ $("forgetrom").addEventListener("click", () => romStore("readwrite", s => s.dele
 $("reset").addEventListener("click", () => { if (port) { location.reload(); return; } if (gb) { settle(); gb.reset(); rec.event("reset"); } });
 // ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
 // a .mtrec file (Android: Downloads/MTenn3D and the share sheet; browser: a download). Hiding the app stops and saves.
-const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? "enhanced" : undefined, net: port ? (port.evenNet ? "even" : "original") : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
+const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? "enhanced" : undefined, net: port ? (port.evenNet ? "even" : "original") : undefined, tourlen: port ? port.tourLength : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
   port: port ? (portMode() === "portall" ? "all" : (q.get("port") || PORT_VERIFIED.join(","))) : undefined });
 async function saveRecording(now = false) {     // now: the app is being hidden; skip compression so it finishes at once
   if (!recording()) return; settle();
@@ -490,6 +495,17 @@ $("engbtn").textContent = ENGINE_LABEL[portMode()] || "CODE: ROM";
     if ($("engine") && next === "even" && $("engine").value === "rom") $("engine").value = "port";
     const u = new URL(location.href); u.searchParams.delete("net"); history.replaceState(null, "", u.pathname + u.search + u.hash);
     location.reload();
+  });
+  $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b);
+}
+// TOUR MATCH: 3x3 / Game's: remembered, read by the port when a tour match is set up (the next match, no reload)
+{
+  const b = document.createElement("span"); b.className = "k"; b.id = "tourlenbtn"; b.title = "tour match length: the best of 3 sets of 3 games, or the game's own (3 sets of 6 games, 5 sets at the Island Open); needs the JS port (CODE: PORT)";
+  const show = () => { b.textContent = "TOUR: " + (tourLen() === "game" ? "Game's" : "3x3"); b.classList.toggle("on", tourLen() !== "game"); }; show();
+  b.addEventListener("pointerdown", () => {
+    try { localStorage.setItem("mt-tourlen", tourLen() === "game" ? "3x3" : "game"); } catch (e) { /* private mode */ }
+    const u = new URL(location.href); u.searchParams.delete("tourlen"); history.replaceState(null, "", u.pathname + u.search + u.hash);
+    if (port) port.tourLength = tourLen(); show();
   });
   $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b);
 }

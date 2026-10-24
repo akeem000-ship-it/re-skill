@@ -21,7 +21,7 @@ const page = await (await browser.newContext({ viewport: { width: 960, height: 5
 page.on("pageerror", e => console.log("pageerror", e.message));
 await page.addInitScript(l => { const real = performance.now.bind(performance); window.__vclock = { on: false, t: 0 }; performance.now = () => window.__vclock.on ? window.__vclock.t : real(); try { localStorage.setItem("mt-look", JSON.stringify(l)); } catch (e) { /* no storage */ } }, rec.meta.look);
 const m = rec.meta;
-await page.goto(`http://localhost:${PORT}/web/full.html?port=${encodeURIComponent(m.port)}${m.physics ? "&physics=" + m.physics : ""}&net=${m.net || "original"}&${spec.q || "intro=off"}`);
+await page.goto(`http://localhost:${PORT}/web/full.html?port=${encodeURIComponent(m.port)}${m.physics ? "&physics=" + m.physics : ""}&net=${m.net || "original"}${/tourlen=/.test(spec.q || "") ? "" : "&tourlen=" + (m.tourlen || "game")}&${spec.q || "intro=off"}`);
 if (!spec.hud) await page.addStyleTag({ content: "#pad, #stickzone, #deck, #hud { display: none !important; }" });   // (the touch controls and the menu bar)
 await page.waitForFunction(() => window.__gb && window.__gb.gb && window.__gb.port && document.getElementById("loader").hidden, null, { timeout: 120000 });
 await page.evaluate(async rec => {

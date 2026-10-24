@@ -128,6 +128,8 @@ export function loadMatchSettingsFromTable(P) {
   const e = rd();
   V.matchTypeNumberOfGames = e & 0x0F;
   V.matchTypeNumberOfSets = e >> 4;
+  // TOUR MATCH: 3x3 (full.js sets P.tourLength): every tour match the best of 3 sets of 3 games (the game's own: 3 or 5 sets of 6)
+  if (P.tourLength === "3x3" && (e >> 4) > 1) { V.matchTypeNumberOfGames = 3; V.matchTypeNumberOfSets = 3; }
   const bgm = P.rom.u8(BANK, hl);
   V.matchBGM = bgm;
   return { a: bgm, f: zf(e >> 4) | FH, de: (table & 0xFF00) | e, hl };
