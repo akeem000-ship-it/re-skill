@@ -1,0 +1,57 @@
+"""Record who calls a routine while the game runs: (ROM bank, return address) pairs from the stack.
+
+Plays the given button script, then counts, for every execution of BB:AAAA after frame START, the
+return address at [SP] and the next stack words that point into ROM ($0150-$7FFF), with the
+current ROM bank (hROMBank). Prints the most common call chains.
+usage: emu_callers.py BB:AAAA START END [--depth N] --press FRAME:BUTTON ...
+  e.g. emu_callers.py 00:2E3B 4400 4600 --press 3000:start 3300:a 3400:right ...
+"""
+import sys, os, collections
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from tools.emu.session import Emu
+
+
+def main():
+    a = sys.argv[1:]
+    bank, addr = (int(x, 16) for x in a[0].split(":"))
+    start, end = int(a[1]), int(a[2])
+    depth = int(a[a.index("--depth") + 1]) if "--depth" in a else 4
+    presses = {}
+    if "--press" in a:
+        for p in a[a.index("--press") + 1:]:
+            if p.startswith("--"):
+                break
+            f, b = p.split(":")
+            presses[int(f)] = b
+    e = Emu(fresh=True)
+    chains = collections.Counter()
+    state = {"on": False}
+
+    def hit(emu):
+        if not state["on"]:
+            return
+        sp = emu.regs()["SP"]
+        words = []
+        for k in range(16):
+            w = emu.r16(sp + 2 * k)
+            if 0x0150 <= w < 0x8000:
+                words.append(w)
+            if len(words) >= depth:
+                break
+        chains[(emu.r8(0xFF95),) + tuple(words)] += 1
+
+    e.hook(bank, addr, hit)
+    for f in range(end):
+        state["on"] = f >= start
+        if f in presses:
+            e.pb.button_press(presses[f])
+        if f - 6 in presses:
+            e.pb.button_release(presses[f - 6])
+        e.run(1)
+    e.stop()
+    for ch, n in chains.most_common(25):
+        print("%5d  bank %02x  %s" % (n, ch[0], " <- ".join("%04x" % w for w in ch[1:])))
+
+
+if __name__ == "__main__":
+    main()

@@ -296,6 +296,27 @@ that, and `scan_jumptables.kind()` now uses it.
 - **Other LZ banks**: 40, 4B-4E, 58 hold LZ entries of many sizes (`extract_tiles.py`): 40:66F6 is menu UI
   tiles (digits, pre-drawn mode labels, character face icons); 4D holds sprite frames. Not traced to loaders yet.
 
+#### Golf round (bank 10; first pass with the emulator)
+
+Found by playing in PyBoy (Start, A, Right x4 to Mario, A, A, A: "Play Modes" -> "Stroke: Try a practice round!"
+-> hole 1, par 4, 374 y) and recording the callers of AdvanceFrame (`tools/emu_callers.py`):
+
+- **10:4451 GolfRound** (a = round id, kept in wRoundId `$C833` / `$C839`; `$12` in that Stroke round). Per hole:
+  wind from AdvanceRandomSeed (direction `wWindDir` = `rand & 3`, strength from MulHLByAFrac(rand, 20)); in link
+  play (`$C893` = 3) the two Game Boys swap 5 bytes per hole (`$C836-$C838`, `$C815`, `$C816`) through the
+  serial buffers. Then hole setup (farcalls 08:47B4, 08:6432, 12:6F8D, 08:47FD) and the shot loop
+  (10:45E7). During aiming the frame wait is reached through 10:486B -> 10:5D19; bank 08 (08:45D3 -> 08:649F)
+  also waits frames during the round.
+- **10:4415** (bank 10 export 0) runs the bank-02 setup and then GolfRound(`$12`) forever; only the unreachable
+  debug boot menu calls it, so it is a developer's direct-to-golf entry.
+- The round runs with wMapId still 00: golf is entered from map 00's menus, not through a map warp.
+- **Hole data**: while hole 1 loads, LZ streams are read from banks 50, 55, 56 and 61 (through 00:069A, the
+  indexed far helper) and 12, 13. Banks 50-5D and 5F-71 have small tables of 5-16 entries each: likely the
+  course / hole data (not decoded yet).
+
+The golf engine proper (swing and power meter, ball flight, wind, lie and terrain, bounce and roll, putting, CPU
+golfers, scoring) is the next big area; see Next Tasks.
+
 ### Data Structures
 
 *(none yet)*
@@ -419,7 +440,11 @@ Result over 4800 frames:
 - [x] GameMain 01:400E: followed to MapEngine 0A:498C (map table, header, warps, event loop)
 - [x] Map 00 (the boot map, entrance 3): the intro, then the character select (emulator, emu_boot.py)
 - [ ] Map 00: how its init data (32:4FF7, header +4) drives the intro and the character select (0A:4F45)
-- [ ] How a golf round is started from a map (talk/object handlers 0A:4F96 / 0A:5066 / 0A:5109) and how it returns
+- [x] Find the golf round: GolfRound 10:4451 (emulator, emu_callers.py), entered from map 00's menus
+- [ ] Golf engine: shot loop 10:45E7 and the aiming loop 10:486B; swing / power meter; ball flight and wind;
+      lie and terrain; bounce and roll; putting; CPU golfers; scoring
+- [ ] Hole data: the tables in banks 50-5D and 5F-71 (LZ via 00:069A during hole setup); render a hole
+- [ ] How the play-mode menu (map 00) calls GolfRound, and the RPG side's golf (story tournaments from maps)
 - [ ] Map header fields +10/+12; warp record bytes 0-5; entrance byte 1; MapTable byte 5
 - [ ] The bank-02 setup calls in GameMain (02:41F6, 02:45D3, 02:4E3D) and the save check at 02:4078 ("CAMELOT GAMEBOY" at 02:4162)
 - [x] Sound: driver copies in 7C/7D/7E, song bank/pointer tables, command id ranges, effects bank 7F
@@ -436,4 +461,5 @@ Result over 4800 frames:
 
 ### Documentation
 
-- [ ] `docs/architecture_exe.md` once the main loop and bank roles are confirmed
+- [x] `docs/architecture_exe.md` (binary layout, bank roles, execution flow, data flow)
+- [ ] `docs/architecture_web.md` once the web port starts

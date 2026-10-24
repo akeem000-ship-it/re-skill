@@ -255,3 +255,9 @@ B,440C,MapLoadGfx,a = gfx id: tiles -> VRAM1 $9000/$8800; tilemap -> WRAM3; attr
 B,44C4,MapLoadGfxScreen,LCD off; MapLoadGfx; header (descriptor w0) -> $C600 and $C329-$C32C
 B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the descriptors into $C32D; MapLoadGfxScreen
 *,C32E,wMapGfxLoaded,
+# --- golf round (bank 10; found with tools/emu_callers.py during a Stroke round) ---
+10,4415,GolfDebugEntry,export 0: setup (02:4E3D 02:41F6 02:4355) then GolfRound($12) forever; called by the debug boot menu
+10,4451,GolfRound,a = round id (wRoundId; $12 in a Stroke practice round; $FF = continue): per-hole wind from AdvanceRandomSeed; link play swaps 5 bytes per hole; hole setup then the shot loop at 10:45E7
+10,45E7,GolfShotLoop,shot loop of GolfRound (AdvanceFrame is reached through 10:486B -> 10:5D19 during aiming)
+*,C833,wRoundId,also copied to $C839
+*,C838,wWindDir,rand & 3 at hole start (unless $D4ED forces $D4EE)
