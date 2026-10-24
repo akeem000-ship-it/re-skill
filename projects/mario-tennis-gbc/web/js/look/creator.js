@@ -67,12 +67,12 @@ export function mountCreator({ hud, keys, pause, onChange }) {
   // the switched-on mods' character `ch` (a roster id) as it plays now (gated), or null: its lines (intro.js, matchfx.js)
   const modChar = ch => { const L = mgr.look; for (const m of (L && L.mods) || []) for (const c of m.chars) if (c.char === ch && mgr.gate(c)) return c; return null; };
   // KIT: the class of the tour match being played ($C8A6 game mode 1 / 3 the tour, 2 the Island Open; $C8F7 the match: 0-4 junior,
-  // 5-9 senior, $0A-$0D varsity), on a court only, as the class's 15-bit colour, or null
+  // 5-9 senior, $0A-$0E varsity), on a court only, as the class's 15-bit colour, or null
   const kitNow = () => {
     if (!kitOn) return null; const w = gb.mem.wram[0]; if (w[0x32E] > 15) return null;
     if (w[0x8A6] === 2) return KIT_COLOURS.open;
     if ((w[0x8A6] !== 1 && w[0x8A6] !== 3) || w[0x8F6] > 1) return null;
-    const i = w[0x8F7]; return i <= 4 ? KIT_COLOURS.junior : i <= 9 ? KIT_COLOURS.senior : i <= 0x0D ? KIT_COLOURS.varsity : null;
+    const i = w[0x8F7]; return i <= 4 ? KIT_COLOURS.junior : i <= 9 ? KIT_COLOURS.senior : i <= 0x0E ? KIT_COLOURS.varsity : null;
   };
   const setKit = k => { if (k === mgr.kit) return; mgr.kit = k; mgr.set(mgr.look); };
   const gateNow = () => {

@@ -8,6 +8,8 @@
 //   courts     PHYSICS: Enhanced only: the courts' own bounce and grip bytes pushed apart: clay grips more and sits up, grass skids
 //              low, a wet court (WEATHER: Rain / Wet, plus.wet) is slower and lower (enhanced.js bounce)
 //   netcord    a ball that clips the top of the net dribbles over from within 12 units of the tape (the game: 6) (ball.js)
+//   fatigue    TOUR+ (tour.js): a player low on the tour's energy tires sooner: the stamina thresholds come down by up to 6 shots
+//              (plus.fatigue 0..1, fixed for the match; stamina must be on)
 //   tour       the tour's opponents react two frames slower at the first junior matches, two faster at the finals (chars.js
 //              loadCharacterAttributes, the CPU side of a tour match)
 // Every hook only scales or offsets numbers the game already computes; integers stay integers.
@@ -25,7 +27,7 @@ export function plusShotSpeed(E, bc) {
   let k = 1;
   const side = E.C.index & 1, m = E.mom;
   if (P.momentum && m && m[side] >= 3) k += 0.06;
-  const r = E.S.rallyLength; if (P.stamina && r > 16) k -= Math.min(0.08, (r - 16) * 0.004);
+  const r = E.S.rallyLength, t = 16 - Math.round(6 * (P.fatigue || 0)); if (P.stamina && r > t) k -= Math.min(0.08, (r - t) * 0.004);
   return k === 1 ? bc : U16(Math.round((bc & 0xFFFF) * k));
 }
 // a serve's speed (shot.js shotPlacement, serve rows): timing against the top of the toss
@@ -37,8 +39,8 @@ export function plusServeSpeed(E, bc) {
 // running speed (chars.js): fatigue in long rallies
 export function plusRunSpeed(E, s) {
   const P = E.plus; if (!P || !P.stamina) return s;
-  const r = E.S.rallyLength; if (r <= 14) return s;
-  return U16(Math.round((s & 0xFFFF) * (1 - Math.min(0.12, (r - 14) * 0.006))));
+  const r = E.S.rallyLength, t = 14 - Math.round(6 * (P.fatigue || 0)); if (r <= t) return s;
+  return U16(Math.round((s & 0xFFFF) * (1 - Math.min(0.12, (r - t) * 0.006))));
 }
 // the court's friction and bounce bytes (enhanced.js): [friction, bounce]
 export function plusSurface(E, fB, eB) {

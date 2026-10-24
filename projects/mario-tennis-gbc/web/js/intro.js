@@ -86,7 +86,7 @@ export class MatchIntro {
       this.cls = st.crowdClass(); this.mode = w[0x8A6]; this.tier = this.cls === "major" ? 2 : this.cls === "senior" ? 1 : 0; this.fx = {};
       this.who = [0xA00, 0xA80].map((a, side) => this.player(a, side));
       if (this.vsFaces) this.who.forEach((p, side) => { if (p) p.face = this.face(w[(side ? 0xA80 : 0xA00) + 0x0B] & 0x3F, p.pic, p.sprite, p.pal); });
-      this.says = [0xA00, 0xA80].map(a => { const c = v.gb.modChar && v.gb.modChar(w[a + 0x0B] & 0x3F); return (c && c.lines && c.lines.intro) || ""; }); this.vsBg = VS_BGS[Math.floor(Math.random() * VS_BGS.length)]; this.show();
+      this.says = [0xA00, 0xA80].map((a, side) => { const c = v.gb.modChar && v.gb.modChar(w[a + 0x0B] & 0x3F); return (c && c.lines && c.lines.intro) || (side && v.tour ? v.tour.rivalLine(w[a + 0x0B] & 0x3F) : ""); });   // TOUR+: an opponent you have met remembers it this.vsBg = VS_BGS[Math.floor(Math.random() * VS_BGS.length)]; this.show();
       addEventListener("pointerdown", this.skip, true); addEventListener("keydown", this.skip, true);
     }
     if (this.start < 0) return;

@@ -721,7 +721,8 @@ export class Stadium3D {
       if (this.built.adBoards && this.built.adBoards.length) {
         if (!this.adTex) this.adTex = adTextures(gl);
         gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
-        for (const b of this.built.adBoards) v.draw(this.adTex[b.ad], b.m, mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
+        const sp = v.tour && v.tour.sponsorAds();                                                // TOUR+: your sponsors on every other board in your tour matches
+        this.built.adBoards.forEach((b, i) => v.draw(this.adTex[sp && sp.length && !(i & 1) ? sp[(i >> 1) % sp.length] : b.ad], b.m, mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0));
       }
       if (this.built.banners && this.built.banners.length && this.fill > 0) this.drawBanners(mvp, T);
       if (this.built.hall) this.drawHall(mvp);                                                    // the drill hall's spectators and glass

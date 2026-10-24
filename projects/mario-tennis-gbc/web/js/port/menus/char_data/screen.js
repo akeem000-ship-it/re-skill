@@ -478,6 +478,7 @@ export function* charDataScreenInputLoop(P) {
     if (rd(P, "charDataViewOnly")) finish = true;
     else {
       yield* advanceFrame(P);
+      P.charDataSeen = P.withWramBank(WRAM_SCENE, () => ({ at: P.frames, left: rd(P, "charDataPointsLeft"), page: rd(P, "charDataPage") }));   // TOUR+ (tour.js: the coach's pick), read only
       const edge = P.V.inputRisingEdge;
       if (startExits() && edge & PADF_START) finish = true;
       else if (edge & PADF_B) {
