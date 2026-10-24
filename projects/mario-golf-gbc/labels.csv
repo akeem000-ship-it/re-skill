@@ -815,12 +815,12 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 0B,6C79,LoadResultTiles9100,LZ 0B:6CAE -> VRAM $9100 and $9200 (LCD off)
 0B,6DC7,MapBufCopyRect,copies tile rect src (b c) -> dst (d e) size (h l) in the WRAM2 attr and WRAM3 tile 64x64 maps (no redraw)
 0B,42C0,MapGfxAnimTable,2 bytes per gfx id: (sub id / gfx bank slot 0-9 = banks 28-2F 72 73 else 74) for MapGfxStartTileAnim
-0A,4092,ScriptBegin,$C363 = $FF; clears $C368/$C369; resets the wScriptActor slot (ActorResetHandler); debug task 0A:4066 when hDebugMode
+0A,4092,ScriptBegin,$C363 = $FF; clears $C368/$C369; resets the wScriptActor slot (ActorResetScript); debug task 0A:4066 when hDebugMode
 0A,40D6,ScriptEnd,points the wScriptActor slot at 0A:4109; unregisters 0A:4066; clears flag #22
 0A,410D,ScriptWaitFrames,a = frames (2 when flag #22 is set) -> WaitFrames; bug: a = 0 returns with af/bc still pushed
 0A,42E0,ActorSlotAddr,a = actor slot (< $18) -> hl = WRAM4 $D000 + a*$40; $FF -> hl = 0
-0A,431E,ActorSetHandler,a = slot: +0/+1 = de (code) / +2 = b (bank)
-0A,4342,ActorResetHandler,a = slot: handler = 0A:435D in the current bank
+0A,431E,ActorSetScript,a = slot: +0/+1 = de / +2 = b: the actor script (bytecode run by 04:4234; opcodes 04:420C) in bank b
+0A,4342,ActorResetScript,a = slot: actor script = 0A:435D (default) in the current bank
 0A,43C6,ActorSetPos,a = slot: x = bc / y = de (+4..+7); clears +$12
 0A,43F5,ActorCopyPos,copies 4 bytes from bc to actor ($FFE0)+4 and clears +$12 (ActorSetPos helper)
 0A,4644,ActorSetFacing,a = slot: +$10 = b (facing; bits 6-7 = direction)
@@ -2383,3 +2383,70 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,D337,wCaptionActive,nonzero while a caption shows (WaitCaptionOrButton)
 *,D34D,wPictureTimer,set $F0 by ShowPlayerPicture; WaitPictureTimeout waits for 0
 0,1B52,SubHLBC,hl -= bc (returns at once with z set when bc = 0); called by map scripts 34/35
+# --- bank 0A script API (texts, actor moves, waits, fades) ---
+0A,4066,ScriptDebugSkipTask,frame task registered by ScriptBegin in hDebugMode: Start ($08) toggles flag #22 (script fast-forward) and wTextSpeed bit 7 (instant text)
+0A,4109,ScriptActorIdleScript,data not code: actor script bytes 0B 0C FE FF given to the wScriptActor slot by ScriptEnd (bank 04 actor script interpreter 04:420C)
+0A,4120,ScriptRespawnActors,export $06: a = bank / hl = spawn list -> MapInitObjects (actors cleared; player / list / partner respawned)
+0A,4124,ScriptSetText,export $0E: hl = text id -> SetMessageText and the script text cursor wScriptTextId ($D852)
+0A,4140,ScriptSkipText,export $10: wScriptTextId += 1 (skips one text without showing it)
+0A,4164,ScriptShowText,export $08: a = speaker actor slot ($80+ = none): WaitScriptActorIdle (unless wReplayActive); ShowMessage text wScriptTextId (skipped when flag #22); wScriptTextId += 1
+0A,4199,ScriptShowTextKeepOpen,export $0A: as ScriptShowText but ShowMessageKeepOpen (box stays open; used before ScriptAskYesNo)
+0A,41CE,ScriptCloseText,export $0C: CloseMessageWindow; RestoreShadowFromMap; UpdateWindows
+0A,41D8,ScriptAskYesNo,export $12: after ScriptShowTextKeepOpen: re-shows the last page of text wScriptTextId-1 and a Yes/No menu (text $1A) -> a = 0 Yes / 1 No / $FF B
+0A,4227,OpenYesNoWindow,OpenMenuWindow text $1A at x 2 / y 1 or $0A by the speaker's screen row (wMessageSpeaker actor +7 - camera row $C323; bit 7 = no actor)
+0A,4281,ScriptTextResumeLastPage,loads text wScriptTextId-1 into wTextBuffer and points wTextResumePtr ($D84E) after its last $02 page break
+0A,42BF,ScriptRunMenu,export $44: hl = option text / d e = screen x y: OpenMenuWindow + RunMenu_05 + CloseWindow -> a = row ($FF = cancel)
+0A,42FC,ActorSetSpeed,export $16: a = slot: +$0E = bc (move speed per frame used by the bank 04 mover)
+0A,435E,WaitActorScriptEnd,export $1C: a = slot: waits until the byte at the actor's script pointer (+0) is 0 (idle script 0A:435D); at most 600 iterations
+0A,4393,WaitActorMoveDone,export $1E: a = slot: ScriptWaitFrames 1 while +$12 bit 0 (moving) is set; at most 600 frames
+0A,4416,ActorMoveTo,export $22: a = slot: target +$0A/+$0C = bc (x) / de (y); +$12 = 1 (bank 04 walks it there turning +$10)
+0A,4445,ActorStartMoveTo,helper: actor ($FFE0): 4 bytes x y from [bc] -> target +$0A; +$12 = 1
+0A,4466,ActorMoveToNear,export $24 (no callers): a = slot / bc de = point / l = distance: target = point + vector(l) from the point toward the actor (flag #22: ActorSetPos); buggy delta (subtracts the y argument and a pointer)
+0A,44A2,ActorMoveToNearCalc,helper of ActorMoveToNear: computes the target from the 5 argument bytes at [bc]; +$12 = 1
+0A,4503,ActorMoveBy,export $26 (no callers): a = slot: target = position + (bc / de); +$12 = 1
+0A,4532,ActorMoveByCalc,helper of ActorMoveBy: target +$0A/+$0C = +4/+6 + words at [bc]; +$12 = 1
+0A,4587,ActorMoveDir,export $28: a = slot / b = angle ($00 $40 $80 $C0 ...) / de = distance: target = position + vector (00:0AF2); +$12 = 1
+0A,45B6,ActorMoveDirCalc,helper of ActorMoveDir: angle and distance at [bc] -> target +$0A/+$0C; +$12 = 1
+0A,460E,ActorLockSpriteFacing,export $2A: a = slot: +$33 = b (nonzero: drawn facing +$32 frozen so the actor moves without turning); b = 0 also sets +$10 = +$32
+0A,4662,ActorFaceActor,export $2E: a = slot turns to actor b ($FF = none): +$10 = angle from a to b (AngleFromVectorCoarse)
+0A,46D4,ActorsFaceEachOther,export $30: as ActorFaceActor and actor b's +$10 = that angle + $80
+0A,475B,ActorPlayAnim,export $32: b = slot / a = animation -> ActorSetAnimChecked (04:4E4C)
+0A,4768,WaitActorAnimDone,export $34: a = slot: unless flag #22 waits (04:4E36; at most 240 frames) until the animation +$31 is back to 0 or 1
+0A,4774,ActorJump,export $40: a = slot: +$1C = de (vertical speed; negative = up; bank 04 adds gravity $10 per frame to height +$08)
+0A,4788,WaitActorLanded,export $42: a = slot: unless flag #22 waits (04:4575; at most 120 frames) until height +$08 and vertical speed +$1C are 0
+0A,4794,ActorSetState,export $46: a = slot: +$16 = b (actor state byte; as ActorSetField16 04:41EA)
+0A,47A6,ScriptActorSetSpeed,export $36: wScriptActor +$0E = bc (speed)
+0A,47C8,ScriptActorGoTo,export $38: wScriptActor (player-following actor; camera focus?) to x bc / y de: a = 0 walks (ActorStartMoveTo); else fade out + ActorCopyPos + RestoreShadowFromMap + fade in
+0A,482A,ScriptActorGoToActor,export $3A: as ScriptActorGoTo with actor a's position (b = 0 walk / else jump with a fade)
+0A,48DF,ScriptShakeScreen,export $3E: a = 0 stops (wScrollShake cleared; task unregistered); a = 1-3 (4+ = 3) -> $C363 and frame task ScreenShakeTask
+0A,4927,ScreenShakeTask,frame task: wScrollShake x / y = random & (2^[$C363] - 1); the negate branch never runs (and clears carry)
+0A,4BFF,ScriptSetMapField,export $4C: word at wMapId ($C450) + de = hl (patches the map record / header: de 8 = warps list / $0C = talk list)
+0A,5422,PalFadeInitSepia,export $5E: WRAM6: clears the 16 select bytes $D5E0; master palettes $C200 -> $D540 (current) and $D4A0 (target); target turned sepia (PalSepiaColor)
+0A,5441,PalFadeCopyMaster,copies the 128 bytes of wBGPalMaster to $D540 and $D4A0
+0A,545E,PalTargetToSepia,each of the 64 colours of $D4A0 replaced by its sepia tone (PalSepiaColor)
+0A,5490,PalSepiaColor,de = 3 colour components (from SplitColorComponents): s = sum: first = s/2 (max $1F) / second = s/4 / third = s/8
+0A,54CF,PalFadeSetup,export $60: b c = 16-bit mask of palettes to fade (b bit 7 = BG 0 ... c bit 0 = OBJ 7) -> $D5E0; d = steps -> $D5F0; delay $D5F9 = d / 31
+0A,5561,PalFadeRun,export $62: per step waits $D5F9 frames and moves each RGB component of the selected palettes 1 toward the target; LoadPalettesImmediate; at the end PalFadeFinish
+0A,55AC,PalFadeStepPalette,b = palette: PalFadeStepColors on $D540 + 8b toward $D4A0 + 8b
+0A,55C6,PalFadeStepColors,4 colours at hl move 1 step per component toward de (PalStepComponent)
+0A,561C,PalStepComponent,[hl] moves 1 toward [de] (5-bit component)
+0A,562E,PalFadeFinish,selected palettes copied from the target $D4A0 to $D540; LoadPalettesImmediate
+0A,5675,PalOffset,hl += b * 8 (palette b in a 16-palette buffer)
+0A,5682,EndingPartTable,EndingSequence: map / entrance per credits part (map 0 = by character via 0A:56A1); $FF ends
+0A,56A1,EndingCharMapTable,map / entrance of the character-specific credits part by wCharId (4 x 2 bytes)
+0A,56B1,EndingSequence,export $64 (33:6978): fade; sound $15; each part of EndingPartTable: MapRun with flag #24 then FreezeAllActors + sepia fade + CreditsRun; CopyrightScreen; EndingFinalScreen until a button or 3600 frames
+0A,57A3,FreezeAllActors,every in-use actor: +$1A = $FF (bank 04 skips its script and movement) / +$34 = 1
+0A,6747,EndingFinalScreen,LCD off: palettes 0A:6707; LZ tiles 0A:57CC 0A:5F7F and maps 0A:5E70 0A:5F52 0A:65C6 0A:66A8 to VRAM; 79:688C; LCD on (frame task 0A:6806 animates)
+0A,6806,EndingFinalScreenTask,frame task of EndingFinalScreen: farcall 79:68B1
+0A,7878,NavGuideStart,export $5C (34:469B after NavigationMenu): palette; cursor sprite tiles to $87C0; NavGuideDrawName; frame task NavGuideTask (slot 4)
+0A,789A,NavDestPosTable,per wNavDestination: x / y words of the place (compared with player position >> 5)
+0A,78CE,NavGuideTask,frame task while wNavDestination != $FF: arrow sprite (tiles 0A:7470 by the 16-way angle from the player $C2A0 to the place) + NavGuideDrawMarker
+0A,7967,NavGuideDrawMarker,bobbing marker sprite (offsets 0A:79B7) at the destination's world position (PositionSpriteWorld)
+0A,79BF,NavGuideDrawName,unless wNavDestination = $FF: window at WY $78 with the place name (text $1A06 + place) centred; glyphs via DrawStringToGlyphs to $8F00
+*,D852,wScriptTextId,WRAM5: script text cursor (ScriptSetText / ScriptShowText / ScriptSkipText)
+*,C363,wShakeLevel,ScriptShakeScreen strength 1-3 ($FF = off; ScriptBegin)
+*,D5E0,wPalFadeSelect,WRAM6: 16 bytes: 1 = palette n is faded (PalFadeSetup)
+*,D540,wPalFadeCur,WRAM6: 16 working palettes (128 bytes) loaded each fade step
+*,D4A0,wPalFadeTarget,WRAM6: 16 target palettes (sepia copy of the master palettes)
+*,D5F0,wPalFadeSteps,WRAM6: remaining fade steps
+*,D5F9,wPalFadeDelay,WRAM6: frames between fade steps (steps / 31)

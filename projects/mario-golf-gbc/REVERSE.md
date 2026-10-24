@@ -697,7 +697,7 @@ A mixed library, not just map graphics.
 ##### Bank 0A: the map engine (extends REVERSE.md "Top level")
 
 - **Actors**: WRAM4 `$D000 + slot*$40`, up to $18 slots (ActorSlotAddr 0A:42E0). Known fields: +0/+1/+2 handler
-  address and bank (ActorSetHandler 0A:431E; default 0A:435D), +4/+6 x/y words (ActorSetPos 0A:43C6), +$10
+  address and bank (ActorSetScript 0A:431E: an actor script, bytecode run by 04:4234; default 0A:435D), +4/+6 x/y words (ActorSetPos 0A:43C6), +$10
   facing (bits 6-7 direction; ActorSetFacing 0A:4644), +$12 bit 0 busy, +$29 angle. wPlayerActor $C290 and
   wScriptActor $C292 hold slot pointers. ActorPointAhead 0A:4C6A gives a point at a distance ahead of an actor.
 - **Map header fields resolved**: +4 object spawn list (MapInitObjects 0A:4F45 -> 04:5084), +6 talk list
@@ -1480,6 +1480,75 @@ and WaitPictureTimeout 773F, StrokeLimitPickUp 76D8 (called by StrokeLimit 10:41
 picture 5, caption `$19`), OutcomeMode7 76A8 / OutcomeModeC 76C0 (OutcomeRules branches for game modes 7 and
 `$0C`), ShowBannerSprite 776D / HideBannerSprite 7766 / BannerSpriteTask 7858 (a blinking 48 x 16 sprite banner,
 12 tiles at 3B:7790; the text was not read reliably).
+
+Role: overworld map engine (MapEngine 0A:498C, map load/events/talk/objects) plus the **script API** that the
+map scripts in banks 30-35 call with `rst $18 ; db idx, $0A`. Also: event list / navigation screens, the
+navigation guide arrow, palette (sepia) fades and the ending sequence.
+
+##### Script API (export idx = byte after rst $18; uses in all banks)
+| idx | addr | name | args / effect |
+|---|---|---|---|
+| 00 | 4092 | ScriptBegin | (existing) |
+| 02 | 40D6 | ScriptEnd | (existing) |
+| 04 | 410D | ScriptWaitFrames | a = frames (782 uses) |
+| 06 | 4120 | ScriptRespawnActors | a = bank, hl = spawn list -> MapInitObjects |
+| 08 | 4164 | ScriptShowText | a = speaker slot ($80 = none); shows text wScriptTextId, then cursor += 1 (557 uses) |
+| 0A | 4199 | ScriptShowTextKeepOpen | same, box left open (before a Yes/No) |
+| 0C | 41CE | ScriptCloseText | closes the message box, redraws the map |
+| 0E | 4124 | ScriptSetText | hl = text id -> wScriptTextId $D852 (511 uses) |
+| 10 | 4140 | ScriptSkipText | cursor += 1 without showing |
+| 12 | 41D8 | ScriptAskYesNo | Yes/No (text $1A) under the last page -> a = 0 Yes / 1 No / $FF |
+| 14 | 42E0 | ActorSlotAddr | (existing) |
+| 16 | 42FC | ActorSetSpeed | a = slot, bc -> +$0E |
+| 18 | 431E | ActorSetScript | +0..+2 = actor script pointer (bytecode run by 04:4234, opcodes 04:420C) |
+| 1A | 4342 | ActorResetScript | |
+| 1C | 435E | WaitActorScriptEnd | a = slot; until script byte = 0 |
+| 1E | 4393 | WaitActorMoveDone | a = slot; while +$12 bit 0 |
+| 20 | 43C6 | ActorSetPos | (existing) |
+| 22 | 4416 | ActorMoveTo | a = slot, bc = x, de = y |
+| 24 | 4466 | ActorMoveToNear | unused, buggy |
+| 26 | 4503 | ActorMoveBy | unused: bc / de deltas |
+| 28 | 4587 | ActorMoveDir | a = slot, b = angle, de = distance |
+| 2A | 460E | ActorLockSpriteFacing | a = slot, b = 1 lock / 0 unlock (+$33; +$32 drawn facing) |
+| 2C | 4644 | ActorSetFacing | (existing) |
+| 2E | 4662 | ActorFaceActor | a turns toward b |
+| 30 | 46D4 | ActorsFaceEachOther | a and b face each other |
+| 32 | 475B | ActorPlayAnim | b = slot, a = anim |
+| 34 | 4768 | WaitActorAnimDone | a = slot (<= 240 frames) |
+| 36 | 47A6 | ScriptActorSetSpeed | bc -> wScriptActor +$0E |
+| 38 | 47C8 | ScriptActorGoTo | a = 0 walk / else fade-warp; bc = x, de = y |
+| 3A | 482A | ScriptActorGoToActor | a = target slot, b = 0 walk / else fade-warp |
+| 3C | 48AC | WaitScriptActorIdle | (existing) |
+| 3E | 48DF | ScriptShakeScreen | a = 0 off / 1-3 strength |
+| 40 | 4774 | ActorJump | a = slot, de = vertical speed (neg = up) |
+| 42 | 4788 | WaitActorLanded | a = slot (<= 120 frames) |
+| 44 | 42BF | ScriptRunMenu | hl = options text, d e = x y -> a = row |
+| 46 | 4794 | ActorSetState | a = slot, b -> +$16 |
+| 4C | 4BFF | ScriptSetMapField | hl -> word at $C450 + de (patch header lists) |
+| 5C | 7878 | NavGuideStart | navigation arrow + destination marker task |
+| 5E/60/62 | 5422/54CF/5561 | PalFadeInitSepia / PalFadeSetup / PalFadeRun | sepia fade: init; bc = palette mask, d = steps; run |
+| 64 | 56B1 | EndingSequence | ending credits driver (33:6978) |
+
+Typical text pattern: `ld hl,id; ScriptSetText; ld a,spk; ScriptShowTextKeepOpen; ScriptAskYesNo; ScriptCloseText;`
+then Yes -> ScriptShowText (id+1), No -> ScriptSkipText + ScriptShowText (id+2).
+
+##### Actor fields learnt (WRAM4 $D000 + slot*$40)
++$08 height (neg = up) / +$1C vertical speed (gravity $10, 04:4299); +$0A/+$0C move target; +$0E speed;
++$10 heading; +$11 turn rate?; +$12 bit 0 moving to target; +$16 state; +$1A bit 0 script frozen / bit 1 movement frozen;
++$31 animation; +$32 drawn facing; +$33 drawn facing locked; +$34 set by FreezeAllActors.
+
+##### RAM
+$D852 wScriptTextId (WRAM5); $C363 wShakeLevel; WRAM6 fade buffers $D4A0 target / $D540 current / $D5E0 select /
+$D5F0 steps / $D5F9 delay.
+
+##### Notable
+- Flag #22 = debug script fast-forward (ScriptDebugSkipTask 0A:4066, Start in hDebugMode): texts are skipped
+  (0A:417F), actor moves become ActorSetPos (0A:446D), anim/landing waits skipped.
+- ScreenShakeTask 0A:4927: the negate branch is dead (`and c` clears carry), so shake offsets are always >= 0.
+- ActorMoveToNear 0A:4466 (export $24) has no callers and computes its delta from the wrong registers.
+- 0A:4109 is actor-script data (`0B 0C FE FF`), not code.
+- Ending (0A:56B1): parts from EndingPartTable 0A:5682 (map 0 -> character map 0A:56A1 by wCharId); each part
+  runs the map with flag #24, freezes actors, fades palettes to sepia (b c = $3F3F, d = $1E), then CreditsRun 0B:5395.
 
 ### Data Structures
 
