@@ -25,14 +25,14 @@ bank,addr,name,comment
 0,2F6F,TimerHandler,farcalls 7E:40EB (sound update) while the LCD is off (as in Mario Tennis 00:27D7)
 0,2F81,LCDStatHandler,just reti
 0,2F82,WaitVBlankFlag,halt until hVBlankDone; clears it
-0,2F8D,SoftResetFromCombo,farcall 08:555F then jp SoftReset; reached from AdvanceFrame when hFF C8 is set and hFF C3 & $E0
-0,2F93,SerialHandler,
+0,2F8D,LinkLostReset,farcall 08:555F then jp SoftReset; reached from AdvanceFrame when hLinkActive and hLinkIdleCount >= $20 (link cable lost)
+0,2F93,SerialHandler,link protocol: $70/$71 handshake; counts idle bytes ($00/$FF) in hLinkIdleCount; $4x/$5x commands
 # --- bank 1 ($4000 table: 7 entries) ---
 1,400E,GameMain,farcalled by Start (rst $10 ; db $00 $01); never returns
 1,5278,CGBRequiredScreen,farcalled by Start when hIsCGB = 0 (name is a guess from that branch)
 # --- bank 7E (sound engine: hypothesis from the callers) ---
 7E,4072,SoundInit,farcalled by Start (rst $10 ; db $00 $7E)
-7E,40EB,SoundUpdateLCDOff,farcalled by TimerHandler while the LCD is off
+7E,40EB,SoundUpdate,farcalled every frame by VBlankHandler and by TimerHandler while the LCD is off
 7E,4016,SoundCmdDispatch,farcalled by PlaySoundCmd (rst $18 ; db $04 $7E)
 # --- HRAM / WRAM ---
 *,FF8D,hVBlankDone,set by the VBlank handler; polled by AdvanceFrame / WaitVBlankFlag
@@ -162,3 +162,50 @@ bank,addr,name,comment
 3,4B45,DrawGlyph,a = char; 16 bytes from Font + (a - $20) * 16 into WRAM bank 7
 3,50F0,Font,102 glyphs x 16 bytes; chars $20-$85
 3,5750,FontWidths,1 byte per glyph
+# --- bank 0, named by reading the code (session 2) ---
+0,02EB,ReadJoypad,hJoyHeld / hJoyPressed (new presses) / hJoyRepeat (auto-repeat after $12 frames then every hJoyRepeatRate) (as in Mario Tennis 00:02EB; partial match 33/54)
+0,0458,ClearVRAMCopyQueue,clears wVRAMCopyQueue (10 entries x 8 bytes)
+0,04DE,ProcessVRAMCopyQueue,VBlank: if hVRAMQueuePending runs the 10 queued copies at wVRAMCopyQueue with HDMA (as in Mario Tennis 00:052E ProcessVRAMCopyQueues; partial match)
+0,0A7B,AngleFromVectorCoarse,(as in Mario Tennis 00:0A54; partial match 51/68)
+0,11CB,MulSin,hl * sin(bc) signed: negates the result of MulSinUnsigned for bit 7 of b (as in Mario Tennis 00:1351; the twin DivBySin is excluded because the callee multiplies)
+0,11DB,MulSinUnsigned,looks up SineTable[bc >> 3] (bit 6 of b mirrors the angle) and calls MulHLByDE (different code from Mario Tennis 00:1361)
+0,1201,SineTable,words 0000 0032 0065 0097 00C9 ...
+0,2683,ResetSprites,hOAMUsed = 0 then ClearUnusedSprites
+0,2688,ClearUnusedSprites,zeroes wShadowOAM from hOAMUsed to $A0 (called by AdvanceFrame)
+0,2B54,ResumeBGM,if hSoundFlags bit 0: clear it and replay wCurrentBGM (as in Mario Tennis 00:2F32; partial match)
+0,2B7A,SyncBGMEnableFlag,hSoundFlags bit 0 = [$C818] & 1; plays sound 0 when set (as in Mario Tennis 00:2F60; partial match)
+0,2C1F,WaitJingleEnd,AdvanceFrame until hActiveJingle = 0 or a button; then replays wCurrentBGM (as in Mario Tennis 00:302A; partial match)
+0,2C4A,ResumeBGMAfterJingle,VBlank: when hActiveJingle is set and the channels at $C4CD-C4D0 are idle; replays wCurrentBGM
+0,2C73,TickSecondaryTimer,frames/seconds/minutes at wPlayClock ($C0F0) up to 99:59 (as in Mario Tennis 00:2435; partial match)
+0,3038,SerialVBlankTick,VBlank: restarts the serial transfer while a link is active (hFFC2)
+0,304D,InitSerialLink,sends $70 and resets the link state $FFC0-$FFC9 (as in Mario Tennis 00:28B9; partial match)
+*,C000,wShadowOAM,40 sprites; copied by the OAM DMA routine at $FF80
+*,C0A0,wVRAMCopyQueue,10 x 8 bytes: rom bank / wram bank / src / vram bank / dst / length
+*,C0F0,wPlayClock,frames / seconds / minutes / hours (TickSecondaryTimer)
+*,C33E,wCurrentBGM,music id replayed after jingles
+*,C800,wPlayerName,printed by text code $07
+*,FF8A,hSCY,shadow written to rSCY in VBlank
+*,FF8B,hSCX,shadow written to rSCX in VBlank
+*,FF8C,hVBlankCount,incremented by every VBlank that completes
+*,FF90,hJoyHeld,buttons held (bit 0 A ... bit 3 Start; high nibble d-pad)
+*,FF91,hJoyRepeat,new presses plus auto-repeat
+*,FF92,hJoyLast,held value the repeat timer compares against
+*,FF93,hJoyRepeatTimer,
+*,FF94,hJoyPressed,buttons newly pressed this frame
+*,FF98,hWindowScroll,when set the VBlank handler shows SCX 0 / SCY $40 with BG map $9C00
+*,FF99,hVRAMQueuePending,
+*,FF9C,hOAMUsed,bytes of wShadowOAM used this frame
+*,FF9E,hDebugMode,debug overlay and frame-step (AdvanceFrame)
+*,FFA6,hJoyRepeatRate,6 (Start)
+*,FFCD,hActiveJingle,set by PlaySoundCmd for jingle ids $36-$3F
+*,FFCE,hSoundFlags,bit 0: music off (option)
+*,FFC0,hSerialRecv,last byte received
+*,FFC1,hSerialIdleByte,byte sent when nothing is queued ($10)
+*,FFC2,hLinkRole,0 none / 1 internal clock (got $70) / 2 external clock (got $71)
+*,FFC3,hLinkIdleCount,consecutive $00/$FF bytes received; AdvanceFrame resets the game at >= $20
+*,FFC4,hSerialSendMode,0 idle byte / 1 block (00:30AD; count hFFC5) / other: send $40
+*,FFC8,hLinkActive,
+0,30AD,SerialNextSendNibble,returns b = $50 | next nibble of wSerialSendBuf (index hFFC7)
+0,30C9,SerialStoreNibble,a = received $5x byte: packs its nibble into wSerialRecvBuf (index hFFC6)
+*,CB00,wSerialSendBuf,
+*,CB40,wSerialRecvBuf,64 bytes

@@ -70,10 +70,10 @@ Standard Game Boy Color map. Project-specific uses so far:
 | `rst $28` | 00:2D93 ClearGameFlagCmd | inline `dw` |
 | `rst $30` | 00:2D79 TestGameFlagCmd | inline `dw` |
 | `rst $38` | — | no handler (`$FF` fill; executing `$FF` would loop) |
-| VBlank | 00:2EF9 | |
+| VBlank | 00:2EF9 | see "VBlank" below |
 | LCD STAT | 00:2F81 | `reti` only |
 | Timer | 00:2F6F | farcalls 7E:40EB (sound update) while the LCD is off |
-| Serial | 00:2F93 | link-cable byte protocol (`$70`/`$71` handshake bytes) |
+| Serial | 00:2F93 | link-cable byte protocol, see "Serial link" below |
 | Joypad | 00:0060 | `reti` |
 
 So the Tennis conventions hold, with one difference: Golf's vector table has `rst $10` as a second far call
@@ -98,11 +98,40 @@ GameMain (01:400E) starts by calling 00:304D, DisableLCDSafely, then clears WRAM
 #### Frame sync (00:2E3B AdvanceFrame)
 
 Same structure as Tennis's AdvanceFrame (00:2631; the first 12 instructions match): saves registers; if
-`hFFC8` is set and `hFFC3 & $E0` (a button combination) jumps to 00:2F8D, which farcalls 08:555F and restarts
-at SoftReset; a debug slow-motion/frame-step block driven by `hFF9E`/`hFF9A` and the joypad bytes at
+`hLinkActive` (`$FFC8`) is set and `hLinkIdleCount & $E0` (32+ idle serial bytes: the link cable is gone) jumps
+to LinkLostReset 00:2F8D, which farcalls 08:555F and restarts at SoftReset; a debug slow-motion/frame-step block driven by `hFF9E`/`hFF9A` and the joypad bytes at
 `$FF90/91/94`; then `halt` until `hVBlankDone` (`$FF8D`), runs 00:2688 and RunFrameTasks (00:247D), clears
 the flag and increments `wFrameCounter` (`$C4B2`). WaitFrames (00:2EF0) calls it C times; WaitFramesCmd
 (00:2ED5) takes C as an inline byte after the `call`.
+
+#### VBlank (00:2EF9 VBlankHandler)
+
+1. ApplyPendingPaletteUpdates.
+2. Only if the main loop has consumed the last frame (`hVBlankDone` = 0): scroll from the shadows `hSCX`/`hSCY`
+   with BG map `$9800`, or, when `hWindowScroll` (`$FF98`) is set, SCX 0 / SCY `$40` with BG map `$9C00`; OAM DMA
+   (`call $FF80`); ProcessBGBlitQueue, and if it had nothing to do ProcessVRAMCopyQueue (queue of 10 HDMA copies at
+   `$C0A0`); UpdateDebugOverlay when `hDebugMode`; set `hVBlankDone`, increment `hVBlankCount`.
+3. Every VBlank: ReadJoypad; held = `$0F` (A+B+Select+Start) jumps to SoftReset; SerialVBlankTick; farcall
+   7E:40EB SoundUpdate; ResumeBGMAfterJingle; UpdateGameTimer; UpdateFadeOut; UpdateFadeIn; RunFrameTasks with
+   A = `$80`.
+
+So the joypad, sound and fades run at 60 Hz even when the main loop runs slow; VRAM work is done only for
+frames the main loop finished. The main loop's AdvanceFrame also calls RunFrameTasks (A = 0) and
+ClearUnusedSprites.
+
+#### Serial link (00:2F93 SerialHandler, 00:304D InitSerialLink)
+
+InitSerialLink sends `$70` on the external clock. A side that receives `$70` becomes the internal-clock side
+(`hLinkRole` = 1, rSC = `$83`); one that receives `$71` becomes the external-clock side (`hLinkRole` = 2). Then
+every received byte goes to `hSerialRecv`; `hLinkIdleCount` counts consecutive `$00`/`$FF` bytes (32 of them
+in a row trigger LinkLostReset through AdvanceFrame). Data travels as nibbles: the sender (00:30AD
+SerialNextSendNibble) takes byte `hFFC7 >> 1` of the send buffer `$CB00`, high nibble first, and sends
+`$50 | nibble`; the receiver (00:30C9 SerialStoreNibble) packs `$5x` bytes into the receive buffer `$CB40`
+(index `hFFC6 >> 1`, up to 64 bytes); a received `$4x` resets the receive index (`hFFC6` = 0), i.e. starts a
+block. What is sent depends on `hSerialSendMode`: the idle byte (`$10`), the block (count in `hFFC5`) or `$40`.
+SerialVBlankTick (00:3038) restarts the transfer each frame on the internal-clock side. InitSerialLink is called
+from GameMain 01:400E, 02:63B8, 03:402E, 07:7CDA, 08:5565 (the link-lost path), 09:48BA and three times in bank
+32: those are the link-mode entry points to trace.
 
 #### Home bank vs Mario Tennis (tools/compare_home.py)
 
@@ -117,7 +146,15 @@ were claimed by twin Tennis routines that differ only in their callees:
 
 - 00:0B3C: MulHLBySin or MulHLBySinSigned. Resolved to MulHLBySin, since its callee 00:0B4C matches
   MulHLBySinHalf in full.
-- 00:11CB: MulSin or DivBySin. Unresolved: its callee 00:11DB matches neither MulSinUnsigned nor DivBySinUnsigned.
+- 00:11CB: MulSin or DivBySin. Resolved to MulSin: its callee 00:11DB (MulSinUnsigned, different code from
+  Tennis) looks the angle up in SineTable (00:1201) and calls MulHLByDE.
+
+The 14 partial matches were read one by one; the ones that are the same routine with changes got the Tennis
+name with "partial match" in the comment (ReadJoypad, ProcessVRAMCopyQueue, AngleFromVectorCoarse,
+ResumeBGM, SyncBGMEnableFlag, WaitJingleEnd, TickSecondaryTimer, InitSerialLink, plus SoftReset and
+AdvanceFrame). The others were chance overlaps with already-named code (FarCallVector at 00:0235 is inside
+DecompressDataFromBank, MulHLByDE32 at 00:0CB6 is MulHLByDE shifted by one byte, ...) or too short to tell
+(EnableLCD, QueueVRAMCopyFromBank, IncrementLinkFrameCounter, RunSoundEngine).
 
 Layout of Golf's bank 0, in Tennis's order with shifted addresses:
 
@@ -258,10 +295,11 @@ that, and `scan_jumptables.kind()` now uses it.
 - [x] Teach `disasm.py` the `$4000` table: it lists the entries as `dw` when disassembling a bank from `$4000`
 - [x] Short `$4000` tables: classified by far-call evidence (`scan_jumptables.kind()`); only bank 46 is a header,
       banks 18-1F turned out to be the text banks
-- [ ] Resolve 00:11CB (MulSin vs DivBySin) by reading 00:11DB
-- [ ] Read the 14 partial matches (ReadJoypad 02EB, ProcessVRAMCopyQueues 04DE, SoftReset, AdvanceFrame,
-      VBlankHandler 2EF9, ...) and name them from the code
-- [ ] Name the unmatched bank-0 code: 00:0458, 00:2683/2688, 00:304D, the VBlank handler, the serial protocol
+- [x] Resolve 00:11CB: MulSin
+- [x] Read the 14 partial matches and name them from the code
+- [x] Name the unmatched bank-0 code: 0458, 2683/2688, 304D, 3038, 2C4A, the VBlank handler, the serial protocol
+- [ ] 00:2B31 (copies a column into WRAM bank 3, sets `hFFB9`): no `call` to it; find how it is reached
+- [ ] Link modes: trace the InitSerialLink callers in banks 02, 03, 07, 09 and 32
 - [ ] GameMain 01:400E: follow it to the scene / mode dispatcher
 - [ ] Bank 7E: confirm the sound engine (entries 7E:4016/4072/40EB) and the sound id tables
 - [x] Text: text banks 18-1F, id format, control codes, font 03:50F0 (dump_text.py)
