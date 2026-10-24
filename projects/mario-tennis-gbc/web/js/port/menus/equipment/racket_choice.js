@@ -92,6 +92,7 @@ export function* runEraseDataConfirmMenu(P, variant) {
       P.V.menuCursorY ^= 1;
       sound(P, SFX_MENU_MOVE);
     }
+    if (P.menuWheel && P.menuWheel.on) P.menuWheel.skin = { id: "confirm", at: P.frames, sel: P.V.menuCursorY, texts: [...ERASE_TEXTS[variant === ERASE_VARIANT_OTHER ? 2 : variant ? 1 : 0], Text_30_220] };   // MENU: Wheel (menuskins.js: the warning's own words), read only
   }
 }
 function* closeEraseConfirm(P, answer) {

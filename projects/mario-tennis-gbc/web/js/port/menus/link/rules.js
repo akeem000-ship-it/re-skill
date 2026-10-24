@@ -93,6 +93,7 @@ export function* runLinkMatchRulesMenu(P) {
     P.V.menuInputPressed = P.V.linkInput;
     handleMatchRulesToggleInput(P);
     if (moveMenuCursorGrid(P, 1, RULE_ROWS).a) { sound(P, SFX_MENU_MOVE); drawMatchRulesCaption(P); }
+    if (P.menuWheel && P.menuWheel.on) P.menuWheel.skin = { id: "format", at: P.frames, title: "LINK MATCH", row: P.V.menuCursorY, doubles: P.V.matchFormatDoubles, games: P.V.matchFormatGames, sets: P.V.matchFormatSets };   // MENU: Wheel (menuskins.js), read only
     yield* romWait(P, FAR.RunLinkInputFrame);
     const input = P.V.menuInputPressed;
     if (input & PADF_A) {

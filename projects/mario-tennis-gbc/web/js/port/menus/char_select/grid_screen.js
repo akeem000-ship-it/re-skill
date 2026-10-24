@@ -394,6 +394,7 @@ export function* runLinkCharSelectScreen(P) {
       drawGridSprites(P);
       return rd(P, "charSelectExitCode");
     });
+    if (P.menuWheel && P.menuWheel.on && withWram(P, WRAM_SCREEN, () => rd(P, "charSelectSlot")) !== SLOT_DONE) P.menuWheel.skin = { id: "chars", at: P.frames };   // MENU: Wheel, read only
     if (exit === EXIT_ALL_CHOSEN) {
       clearFrameTasks(P);
       processLinkSelectCommand(P);

@@ -110,6 +110,7 @@ export function* runCharDataConfirmScreen(P) {
   wr(P, "charDataConfirmState", 1);
   for (;;) {
     drawConfirmSelectionCursor1a(P);
+    if (P.menuWheel && P.menuWheel.on) P.menuWheel.skin = { id: "cardconfirm", at: P.frames, sel: P.withWramBank(WRAM_SCENE, () => rd(P, "charDataConfirmState")) };   // MENU: Wheel (menuskins.js), read only
     yield* advanceFrame(P);
     const edge = P.V.inputRisingEdge;
     if (edge & PADF_A) {

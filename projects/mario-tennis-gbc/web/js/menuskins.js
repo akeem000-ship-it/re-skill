@@ -21,6 +21,10 @@
 //            locked until the first is cleared), Status's data types (1B:715D), the N64 record types (3B:71B0) and transfer
 //            items (3B:74BF): the choices (the game's own words, text bank $30) round the ball, the chosen one large in the
 //            panel with an icon and the game's own caption line
+//   confirm  the erase warning (3E:4C12): its own words (text bank $30, by the warning's kind) in a red panel, YES / NO round the ball
+//   cardconfirm  the file-erase question over the character-data cards (1A:7945): the game's own cards (its picture) in the
+//            panel, "Erase this data?" (text 30:313), YES / NO round the ball
+// The link screens use the same skins (rules: format; courts; characters), with their link titles.
 import { courtImage } from "./assets.js";
 import { matchPicture, charScheme } from "./crowdfans.js";
 import { Rom } from "./rom.js";
@@ -55,6 +59,8 @@ export class MenuSkins {
     else if (skin.id === "files") this.files(g, W, H, k, skin, gb);
     else if (skin.id === "minigames") this.minigames(g, W, H, k, skin, gb, hd);
     else if (skin.id === "tabs") this.tabs(g, W, H, k, skin, gb, hd);
+    else if (skin.id === "confirm") this.confirm(g, W, H, k, skin, gb);
+    else if (skin.id === "cardconfirm") this.cardConfirm(g, W, H, k, skin, gb);
   }
   // the turning: the ball's position eases to the chosen item, the shorter way round n
   ease(sel, n) { let d = sel - this.pos; if (n > 5) { if (d > n / 2) d -= n; if (d < -n / 2) d += n; } this.pos += d * 0.3; if (Math.abs(d) < 0.01) this.pos = sel; return this.pos; }   // (a short list does not wrap)
@@ -90,7 +96,7 @@ export class MenuSkins {
   // ---- the match format ----
   format(g, W, H, k, s, hd) {
     const rows = [["PLAYERS", ["SINGLES", "DOUBLES"], s.doubles], ["GAMES", ["2 GAMES", "6 GAMES"], s.games], ["SETS", ["1 SET", "3 SETS", "5 SETS"], s.sets]];
-    this.title(g, k, "MATCH");
+    this.title(g, k, s.title || "MATCH");
     this.arc(g, k, H, rows.map(r => r[1][r[2]] || r[0]), s.row, 0.42);
     const { px, py, pw } = this.panel(g, W, k, 130, 430), r = rows[s.row] || rows[0];
     g.textAlign = "center"; g.fillStyle = "#8a7a50"; g.font = `${26 * k}px "${FONT}", ${BODY}`; g.fillText(r[0], px + pw / 2, py + 60 * k);
@@ -272,6 +278,40 @@ export class MenuSkins {
     const n = labels.length; for (let i = 0; i < n; i++) { g.fillStyle = i === s.sel ? "#ffd65a" : locked[i] ? "#d0d3de" : "#a9adc2"; g.beginPath(); g.arc(cx + (i - (n - 1) / 2) * 26 * k, py + 395 * k, (i === s.sel ? 8 : 6) * k, 0, 6.2832); g.fill(); }
     g.textAlign = "start";
     this.hint(g, W, H, k, (n > 3 ? "▲ ▼ ◀ ▶" : "◀ ▶") + " choose   A ok   B back");
+  }
+  // ---- the erase warning ----
+  confirm(g, W, H, k, s, gb) {
+    const red = "#d8443a", T = (s.texts || []).map(t => this.text(gb.mem.rom, t));   // [warning 1, warning 2, question, "data? OK?"]
+    this.title(g, k, "ERASE");
+    this.arc(g, k, H, ["YES", "NO"], s.sel, 0.5);
+    const { px, py, pw, ph } = this.panel(g, W, k, 130, 420), cx = px + pw / 2;
+    g.lineWidth = 6 * k; g.strokeStyle = red; this.mw.pill(g, px, py, pw, ph, 30 * k); g.stroke();
+    g.fillStyle = red; g.beginPath(); g.arc(cx, py + 85 * k, 46 * k, 0, 6.2832); g.fill();
+    g.fillStyle = "#fff"; g.textAlign = "center"; g.font = `${68 * k}px "${FONT}", ${BODY}`; g.fillText("!", cx, py + 109 * k);
+    g.fillStyle = "#281e0a"; g.font = `${32 * k}px "${FONT}", ${BODY}`;
+    [T[0], T[1]].forEach((t, i) => t && g.fillText(t.toUpperCase(), cx, py + 190 * k + i * 42 * k));
+    g.fillStyle = "#464a64"; g.font = `${26 * k}px ${BODY}`; g.fillText([T[2], T[3]].filter(Boolean).join(" "), cx, py + 300 * k);
+    g.fillStyle = s.sel === 0 ? red : "#7a7f98"; g.font = `${22 * k}px "${FONT}", ${BODY}`; g.fillText(s.sel === 0 ? "A ERASES IT: IT CANNOT BE UNDONE" : "A KEEPS IT", cx, py + ph - 40 * k);
+    g.textAlign = "start";
+    this.hint(g, W, H, k, "▲ ▼ choose   A ok   B keep");
+  }
+  // the file-erase question: the cards as the game draws them (LCD rows 24-143, below its own question box), large and sharp
+  cardConfirm(g, W, H, k, s, gb) {
+    const red = "#d8443a";
+    this.title(g, k, "ERASE FILE");
+    this.arc(g, k, H, ["YES", "NO"], s.sel, 0.5);
+    const { px, py, pw, ph } = this.panel(g, W, k, 96, 540), cx = px + pw / 2;
+    g.lineWidth = 6 * k; g.strokeStyle = red; this.mw.pill(g, px, py, pw, ph, 30 * k); g.stroke();
+    const fr = gb.ppu.frame, y0 = 24, ch = 120, cv = this.cardCv || (this.cardCv = document.createElement("canvas")); cv.width = 160; cv.height = ch;
+    const cg = cv.getContext("2d"), im = cg.createImageData(160, ch), u32 = new Uint32Array(im.data.buffer);
+    for (let y = 0; y < ch; y++) for (let x = 0; x < 160; x++) u32[y * 160 + x] = fr[(y0 + y) * 160 + x] | 0xFF000000;
+    cg.putImageData(im, 0, 0);
+    const sc = Math.min((pw - 40 * k) / 160, 340 * k / ch); g.imageSmoothingEnabled = false;
+    g.save(); this.mw.pill(g, cx - 80 * sc, py + 24 * k, 160 * sc, ch * sc, 14 * k); g.clip(); g.drawImage(cv, cx - 80 * sc, py + 24 * k, 160 * sc, ch * sc); g.restore();
+    g.textAlign = "center"; g.fillStyle = "#281e0a"; g.font = `${34 * k}px "${FONT}", ${BODY}`; g.fillText(this.text(gb.mem.rom, 313).toUpperCase(), cx, py + 24 * k + ch * sc + 52 * k);
+    g.fillStyle = s.sel === 0 ? red : "#7a7f98"; g.font = `${22 * k}px "${FONT}", ${BODY}`; g.fillText(s.sel === 0 ? "A ERASES IT: IT CANNOT BE UNDONE" : "A KEEPS IT", cx, py + ph - 30 * k);
+    g.textAlign = "start";
+    this.hint(g, W, H, k, "▲ ▼ choose   A ok   B keep");
   }
   // an icon for a choice: players (one ball or two), a level's medal, a data chart, the N64
   icon(g, x, y, k, kind, i, on, label) {
