@@ -290,7 +290,7 @@ export class MenuSkins {
     this.icon(g, cx, py + 150 * k, k, s.icon, s.sel, on, label);
     g.textAlign = "center"; g.fillStyle = on ? "#281e0a" : "#9aa0b8"; g.font = `${(label.length > 15 ? 32 : 40) * k}px "${FONT}", ${BODY}`;
     g.fillText(on ? label.toUpperCase() : "? ? ?", cx, py + 300 * k);
-    const cap = s.captions ? this.text(rom, s.captions[s.sel]) : gameText(hd, 120, 144);   // the game's own caption ("Clear this first.", ...)
+    const cap = s.captions ? (typeof s.captions[s.sel] === "string" ? s.captions[s.sel] : this.text(rom, s.captions[s.sel])) : gameText(hd, 120, 144);   // the game's own caption ("Clear this first.", ...)
     if (cap && cap.toLowerCase() !== label.toLowerCase()) { g.fillStyle = "#464a64"; g.font = `${24 * k}px ${BODY}`; g.fillText(cap, cx, py + 345 * k); }
     // the choices as dots, the chosen one gold
     const n = labels.length; for (let i = 0; i < n; i++) { g.fillStyle = i === s.sel ? "#ffd65a" : locked[i] ? "#d0d3de" : "#a9adc2"; g.beginPath(); g.arc(cx + (i - (n - 1) / 2) * 26 * k, py + 395 * k, (i === s.sel ? 8 : 6) * k, 0, 6.2832); g.fill(); }

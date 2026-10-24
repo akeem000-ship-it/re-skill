@@ -70,7 +70,19 @@ const CELLS = [
   { name: "STATUS", line: "The files' players and records", r: [8, 88, 40, 24] },
   { name: "DICTIONARY", line: "Every move and rule, explained", r: [56, 88, 40, 24] },
   { name: "SAVED DATA", line: "Copy or erase a tour file", r: [104, 88, 40, 24] },
+  { name: "OPTIONS", line: "Picture, stadium, menus and play", options: true },   // OPTIONS: not a cell of the game's (P.menuWheel.virtual)
 ];
+const NC = CELLS.length;
+// OPTIONS: the menu bar's settings in the game's menu, by category; each row is a button of the bar (read: its "NAME: value"; changed:
+// the button pressed for it, as a tap would), so the two never disagree. Buttons the bar has not made yet (the 3D view's, before it
+// is first turned on) are left out until they exist.
+const OPTION_CATS = [
+  ["PICTURE", "the view, the camera, the screen", ["view3d", "cam", "aspect", "smoothbtn", "voxstylebtn", "lightbtn", "fieldlifebtn", "groundbtn", "treesbtn"]],
+  ["STADIUM", "the court, the crowd, the effects", ["stadiumbtn", "courtbtn", "farendbtn", "weatherbtn", "crowdsndbtn", "ballfxbtn", "matchfxbtn", "introbtn", "vsbtn", "callsbtn", "aimbtn"]],
+  ["MENUS & TEXT", "how menus and words are drawn", ["uibtn", "fontbtn", "sprbtn"]],
+  ["PLAY", "the rules, the feel, the controls", ["physbtn", "netbtn", "plusbtn", "tourlenbtn", "runaheadbtn", "padmode", "vibratebtn", "batterybtn"]],
+];
+const OPTION_NAMES = { view3d: "3D VIEW", aspect: "SCREEN", cam: "CAMERA", padmode: "TOUCH PAD", lightbtn: "LIGHT", uibtn: "MENUS", sprbtn: "SPRITES" };
 export class MenuWheel {
   constructor(getGb, getPort) {
     this.getGb = getGb; this.getPort = getPort; this.shown = 0; this.pos = 0; this.root = null;
@@ -82,7 +94,74 @@ export class MenuWheel {
   }
   get on() { return this.style === "wheel"; }
   setStyle(s) { this.style = s === "game" ? "game" : "wheel"; try { localStorage.setItem(KEY, this.style); } catch (e) { /* private mode */ } this.sync(); }
-  sync() { const P = this.getPort(); if (P) { P.menuWheel = P.menuWheel || { on: false, active: false }; P.menuWheel.on = this.on; } }
+  sync() {
+    const P = this.getPort(); if (!P) return;
+    P.menuWheel = P.menuWheel || { on: false, active: false }; P.menuWheel.on = this.on;
+    P.menuWheel.openOptions = () => this.openOptions(); P.menuWheel.optionsInput = input => this.optionsInput(input);   // OPTIONS (main_menu.js)
+  }
+  // ---- OPTIONS ----
+  optionRows(cat) {
+    return OPTION_CATS[cat][2].map(id => document.getElementById(id)).filter(e => e && !e.hidden && e.offsetParent !== undefined).map(el => {
+      const t = el.textContent.trim(), i = t.indexOf(":"), name = OPTION_NAMES[el.id] || (i > 0 ? t.slice(0, i) : t).toUpperCase();
+      const value = el.id === "view3d" ? (el.classList.contains("on") ? t : "Off") : i > 0 ? t.slice(i + 1).trim() : el.classList.contains("on") ? "On" : t;
+      return { el, name, value, help: el.title || "" };
+    });
+  }
+  openOptions() { const P = this.getPort(); this.opts = { cat: this.opts ? this.opts.cat : 0, row: 0, pos: this.opts ? this.opts.cat : 0, flash: 0 }; if (P && P.menuWheel) P.menuWheel.optionsOpen = true; }
+  // a frame's pad (the edges) while the panel is open; returns the sound to play ("move", "select", "cancel") or null
+  optionsInput(input) {
+    const o = this.opts, P = this.getPort(); if (!o) return null;
+    const rows = this.optionRows(o.cat);
+    if (input & 0x0A) { if (P && P.menuWheel) P.menuWheel.optionsOpen = false; return "cancel"; }        // B or START: back to the wheel
+    if (input & 0x30) { o.cat = (o.cat + (input & 0x10 ? 1 : -1) + OPTION_CATS.length) % OPTION_CATS.length; o.row = 0; return "move"; }   // right / left: the category
+    if (input & 0xC0) { if (!rows.length) return null; o.row = (o.row + (input & 0x80 ? 1 : -1) + rows.length) % rows.length; return "move"; }
+    if (input & 0x01 && rows[o.row]) {                                                                   // A: the button pressed, as a tap
+      const el = rows[o.row].el, before = el.textContent + el.className;
+      el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+      if (el.textContent + el.className === before) el.click();
+      o.flash = performance.now(); return "select";
+    }
+    return null;
+  }
+  gear(g, x, y, r) {
+    g.save(); g.translate(x, y); g.fillStyle = "#3d6fd8";
+    for (let i = 0; i < 8; i++) { g.rotate(Math.PI / 4); this.pill(g, -r * 0.16, -r * 1.05, r * 0.32, r * 0.4, r * 0.08); g.fill(); }
+    g.beginPath(); g.arc(0, 0, r * 0.82, 0, 6.2832); g.fill(); g.fillStyle = "#f4f6fb"; g.beginPath(); g.arc(0, 0, r * 0.36, 0, 6.2832); g.fill(); g.restore();
+  }
+  drawOptions(W, H) {
+    const g = this.cv.getContext("2d"), k = Math.min(W / 1280, H / 720), o = this.opts, cy = H / 2, br = 250 * k, bx = -60 * k, n = OPTION_CATS.length;
+    g.clearRect(0, 0, W, H);
+    let d = o.cat - o.pos; if (d > n / 2) d -= n; if (d < -n / 2) d += n; o.pos += d * 0.3; if (Math.abs(d) < 0.01) o.pos = o.cat;
+    this.menuBall(g, bx, cy, br, -o.pos * 0.6);
+    g.font = `${54 * k}px "${FONT}", ${BODY}`; g.textBaseline = "top"; g.fillStyle = "rgba(0,0,0,0.5)"; g.fillText("OPTIONS", 404 * k, 34 * k); g.fillStyle = "#ffd65a"; g.fillText("OPTIONS", 400 * k, 30 * k); g.textBaseline = "middle";
+    for (let i = 0; i < n; i++) {                                                     // the categories round the ball
+      let off = i - o.pos; if (off > n / 2) off -= n; if (off < -n / 2) off += n;
+      const a = off * 0.42, rr = br + 80 * k + (Math.abs(off) < 0.5 ? 40 * k * (1 - Math.abs(off) * 2) : 0), x = bx + rr * Math.cos(a), y = cy + rr * Math.sin(a), label = OPTION_CATS[i][0];
+      if (i === o.cat) { g.font = `${40 * k}px "${FONT}", ${BODY}`; const tw = g.measureText(label).width; g.fillStyle = "#ffd65a"; this.pill(g, x - 20 * k, y - 34 * k, tw + 56 * k, 68 * k, 34 * k); g.fill(); g.fillStyle = "#281e0a"; g.fillText(label, x + 8 * k, y + 3 * k); }
+      else { g.globalAlpha = Math.max(0.3, 1 - Math.abs(off) * 0.25); g.font = `${28 * k}px "${FONT}", ${BODY}`; g.fillStyle = "#000"; g.fillText(label, x + 2 * k, y + 2 * k); g.fillStyle = "#c8d0eb"; g.fillText(label, x, y); g.globalAlpha = 1; }
+    }
+    // the panel: the category's settings, the chosen row gold, each value on a pill
+    const rows = this.optionRows(o.cat), px = W - 600 * k, py = 96 * k, pw = 540 * k, rh = (rows.length > 8 ? 36 : 46) * k, ph = Math.max(220 * k, 80 * k + rows.length * rh + 90 * k);
+    g.fillStyle = "rgba(250,250,255,0.95)"; this.pill(g, px, py, pw, ph, 28 * k); g.fill(); g.lineWidth = 4 * k; g.strokeStyle = "#ffd65a"; g.stroke();
+    g.fillStyle = "#8a7a50"; g.font = `${20 * k}px ${BODY}`; g.fillText(OPTION_CATS[o.cat][1], px + 30 * k, py + 36 * k);
+    if (!rows.length) { g.fillStyle = "#7a7f98"; g.font = `${24 * k}px ${BODY}`; g.fillText("Turn on 3D VIEW (PICTURE) for these", px + 30 * k, py + 100 * k); }
+    rows.forEach((r, i) => {
+      const y = py + 80 * k + i * rh, on = i === Math.min(o.row, rows.length - 1);
+      if (on) { g.fillStyle = "rgba(255,214,90,0.35)"; this.pill(g, px + 14 * k, y - rh / 2 + 3 * k, pw - 28 * k, rh - 6 * k, 14 * k); g.fill(); }
+      g.fillStyle = "#281e0a"; g.font = `${(on ? 26 : 24) * k}px "${FONT}", ${BODY}`; g.textAlign = "left"; g.fillText(r.name, px + 32 * k, y + 2 * k);
+      g.font = `700 ${22 * k}px ${BODY}`; const vw = Math.max(90 * k, g.measureText(r.value).width + 30 * k), flash = on && performance.now() - o.flash < 250;
+      g.fillStyle = flash ? "#ffb43a" : on ? "#ffd65a" : "#e4e6f0"; this.pill(g, px + pw - 30 * k - vw, y - 17 * k, vw, 34 * k, 17 * k); g.fill();
+      g.fillStyle = "#281e0a"; g.textAlign = "center"; g.fillText(r.value, px + pw - 30 * k - vw / 2, y + 1 * k); g.textAlign = "left";
+    });
+    const cur = rows[Math.min(o.row, rows.length - 1)];
+    if (cur && cur.help) {                                                            // the setting's help (the button's own tooltip)
+      g.fillStyle = "#464a64"; g.font = `${18 * k}px ${BODY}`; let line = ""; const maxW = pw - 60 * k, lines = [];
+      for (const w of cur.help.split(" ")) { const t = line ? line + " " + w : w; if (g.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t; } if (line) lines.push(line);
+      g.strokeStyle = "rgba(70,74,100,0.18)"; g.lineWidth = 2 * k; g.beginPath(); g.moveTo(px + 30 * k, py + ph - 82 * k); g.lineTo(px + pw - 30 * k, py + ph - 82 * k); g.stroke();
+      lines.slice(0, 3).forEach((l, i) => g.fillText(l, px + 30 * k, py + ph - 62 * k + i * 22 * k));
+    }
+    g.fillStyle = "#dce2f5"; g.font = `${24 * k}px ${BODY}`; g.textAlign = "right"; g.fillText("◀ ▶ category   ▲ ▼ setting   A change   B done", W - 60 * k, H - 40 * k); g.textAlign = "start";
+  }
   // the tour files' summaries (main_menu.js BuildSaveSlotSummaries: WRAM 3 $D300, 16 bytes each: character or $3F, colour, level, name, minutes (+14), hours (+15))
   file(gb, k) {
     const w = gb.mem.wram[3], o = 0x300 + k * 16; if (!w || w[o] === 0x3F || w[o] >= 0x40) return null;
@@ -110,7 +189,8 @@ export class MenuWheel {
     else if (this.phase === "title" && this.on && P && gb) { this.phase = "zoom"; this.zoomAt = T; }
     if (this.phase === "zoom" && T - this.zoomAt > ZOOM && (wheel || T - this.zoomAt > ZOOM + 1.5)) this.phase = "none";   // (the wheel up, or soon after: a quick player may already be past the main menu)
     const skin = this.on && P && P.menuWheel && P.menuWheel.skin, skinOn = !!(skin && !wheel && !title && this.phase !== "zoom" && P.frames - skin.at <= 2);   // (a sub-menu's loop running now)
-    const show = title || wheel || this.phase === "zoom" || skinOn;
+    const opts = !!(this.on && P && P.menuWheel && P.menuWheel.optionsOpen && this.opts);   // OPTIONS: open (from the main menu or a match's options)
+    const show = title || wheel || this.phase === "zoom" || skinOn || opts;
     if (!show) { if (this.root && this.root.style.display !== "none") this.root.style.display = "none"; return; }
     this.ui();
     const view = [document.getElementById("gl"), document.getElementById("screen")].find(e => e && !e.hidden && e.offsetWidth > 0); if (!view) return;
@@ -123,10 +203,11 @@ export class MenuWheel {
     if (title) { this.drawTitle(gb, W, H, T); return; }
     if (zooming && (T - this.zoomAt < ZOOM || !wheel)) { this.drawZoom(gb, W, H, Math.min(1, (T - this.zoomAt) / ZOOM), T); return; }
     this.phase = "none";
+    if (opts) { this.drawOptions(W, H); return; }
     if (skinOn) { (this.skins || (this.skins = new MenuSkins(this))).draw(this.cv.getContext("2d"), W, H, skin, gb, this.getHd && this.getHd()); return; }
-    const w0 = gb.mem.wram[0], sel = Math.min(8, w0[0xB05] * 3 + w0[0xB04]);          // wMenuCursorY / X
-    // the wheel turns smoothly towards the chosen cell (the shorter way round the nine)
-    let d = sel - this.pos; if (d > 4.5) d -= 9; if (d < -4.5) d += 9; this.pos += d * 0.3; if (Math.abs(d) < 0.01) this.pos = sel;
+    const w0 = gb.mem.wram[0], sel = P.menuWheel.virtual ? NC - 1 : Math.min(8, w0[0xB05] * 3 + w0[0xB04]);          // wMenuCursorY / X (or OPTIONS)
+    // the wheel turns smoothly towards the chosen cell (the shorter way round)
+    let d = sel - this.pos; if (d > NC / 2) d -= NC; if (d < -NC / 2) d += NC; this.pos += d * 0.3; if (Math.abs(d) < 0.01) this.pos = sel;
     this.draw(gb, sel, W, H);
   }
   draw(gb, sel, W, H) {
@@ -135,8 +216,8 @@ export class MenuWheel {
     // the ball (the title's, turning as the wheel turns)
     this.menuBall(g, bx, cy, br, -this.pos * 0.35);
     // the cells on the arc: the chosen one on a gold pill, the others fading with their distance from it
-    for (let i = 0; i < 9; i++) {
-      let o = i - this.pos; if (o > 4.5) o -= 9; if (o < -4.5) o += 9; if (Math.abs(o) > 3.6) continue;
+    for (let i = 0; i < NC; i++) {
+      let o = i - this.pos; if (o > NC / 2) o -= NC; if (o < -NC / 2) o += NC; if (Math.abs(o) > 3.6) continue;
       const a = o * 0.3, rr = br + 80 * k + (Math.abs(o) < 0.5 ? 40 * k * (1 - Math.abs(o) * 2) : 0), x = bx + rr * Math.cos(a), y = cy + rr * Math.sin(a), c = CELLS[i], f = c.file != null ? this.file(gb, c.file) : null;
       const label = c.file != null ? (f ? f.name.toUpperCase() : "NEW FILE") : c.name, near = i === sel;
       if (near) {
@@ -151,11 +232,14 @@ export class MenuWheel {
     // the panel: the chosen cell as the game draws it, its name and its line
     const c = CELLS[sel], f = c.file != null ? this.file(gb, c.file) : null, px = W - 480 * k, py = 150 * k, pw = 420 * k, ph = 380 * k;
     g.fillStyle = "rgba(250,250,255,0.93)"; this.pill(g, px, py, pw, ph, 30 * k); g.fill(); g.lineWidth = 4 * k; g.strokeStyle = "#ffd65a"; g.stroke();
-    const [cx0, cy0, cw, ch] = c.r, fr = gb.ppu.bgFrame || gb.ppu.frame, cc = this.cell; cc.width = cw; cc.height = ch;   // (the background only: the chosen cell's name banner and bobbing frame are sprites over it)
-    const cg = cc.getContext("2d"), im = cg.createImageData(cw, ch), u32 = new Uint32Array(im.data.buffer);
-    for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) u32[y * cw + x] = fr[(cy0 + y) * 160 + cx0 + x] | 0xFF000000;
-    cg.putImageData(im, 0, 0);
-    const s = Math.min(300 * k / cw, 180 * k / ch); g.imageSmoothingEnabled = false; g.drawImage(cc, px + (pw - cw * s) / 2, py + 26 * k, cw * s, ch * s);
+    if (c.options) this.gear(g, px + pw / 2, py + 120 * k, 86 * k);
+    else {
+      const [cx0, cy0, cw, ch] = c.r, fr = gb.ppu.bgFrame || gb.ppu.frame, cc = this.cell; cc.width = cw; cc.height = ch;   // (the background only: the chosen cell's name banner and bobbing frame are sprites over it)
+      const cg = cc.getContext("2d"), im = cg.createImageData(cw, ch), u32 = new Uint32Array(im.data.buffer);
+      for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) u32[y * cw + x] = fr[(cy0 + y) * 160 + cx0 + x] | 0xFF000000;
+      cg.putImageData(im, 0, 0);
+      const s = Math.min(300 * k / cw, 180 * k / ch); g.imageSmoothingEnabled = false; g.drawImage(cc, px + (pw - cw * s) / 2, py + 26 * k, cw * s, ch * s);
+    }
     g.textAlign = "center"; g.textBaseline = "middle"; g.fillStyle = "#281e0a"; g.font = `${40 * k}px "${FONT}", ${BODY}`;
     g.fillText(c.file != null ? (f ? f.name.toUpperCase() : c.name) : c.name, px + pw / 2, py + 250 * k);
     g.fillStyle = "#464a64"; g.font = `${23 * k}px ${BODY}`;

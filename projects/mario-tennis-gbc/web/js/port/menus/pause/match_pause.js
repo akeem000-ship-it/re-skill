@@ -152,6 +152,7 @@ export function drawMatchMenuCursor(P) {
 export function* runMatchMenu(P) {
   const count = getMatchMenuItemCount(P);
   wr(P, "pauseMenuItemCount", count);
+  if (P.menuWheel) P.menuWheel.pauseMore = false;           // (OPTIONS: MORE not chosen)
   drawMatchMenuItems(P);
   clearAttrPriorityRegion(P, (getScrolledTilemapRowOffset(P, MENU_ROW) + wCourtAttrmap) & 0xFFFF, ATTR_PRIORITY_CLEARED);
   let redraw = true;
@@ -170,12 +171,31 @@ export function* runMatchMenu(P) {
       yield* stepMatchFrame(P);
     }
     drawMatchMenuCursor(P);
-    if (P.menuWheel && P.menuWheel.on) {                     // MENU: Wheel (menuskins.js): the items and their captions, read only
+    const wheel = P.menuWheel && P.menuWheel.on, more = wheel && rd(P, "pauseMenuId") <= MENU_OPTIONS;   // MENU: Wheel; OPTIONS: a "MORE" item after the game's (pause menus, OPTIONS)
+    if (wheel) {                                             // MENU: Wheel (menuskins.js): the items and their captions, read only
       const ids = Array.from({ length: rd(P, "pauseMenuItemCount") }, (_, i) => getMatchMenuItemId(P, i)), menu = rd(P, "pauseMenuId");
-      P.menuWheel.skin = { id: "tabs", at: P.frames, icon: "pause", title: MENU_TITLES[menu] || "PAUSE", labels: ids.map(i => MENU_ITEM_LABELS[i] || ""), captions: ids.map(i => (MATCH_MENU_CAPTIONS + i) & 0xFFFF), sel: rd(P, "matchMenuSelection") };
+      const labels = ids.map(i => MENU_ITEM_LABELS[i] || ""), captions = ids.map(i => (MATCH_MENU_CAPTIONS + i) & 0xFFFF);
+      if (more) { labels.push("MORE"); captions.push("Picture, stadium, menus and play"); }
+      P.menuWheel.skin = { id: "tabs", at: P.frames, icon: "pause", title: MENU_TITLES[menu] || "PAUSE", labels, captions, sel: more && P.menuWheel.pauseMore ? ids.length : rd(P, "matchMenuSelection") };
     }
     yield* stepMatchFrame(P);
     redraw = false;
+    if (more && P.menuWheel.pauseMore) {                     // OPTIONS: on MORE (not an item of the game's: its cursor stays on the last one)
+      const input = readMatchInputPressed(P);
+      if (input & PADF_A) {                                  // the options panel (menuwheel.js) until B; the match stays frozen
+        sound(P, SFX_MENU_SELECT); P.menuWheel.openOptions();
+        while (P.menuWheel.optionsOpen) {
+          yield* stepMatchFrame(P);
+          const s = P.menuWheel.optionsInput(readMatchInputPressed(P));
+          if (s) sound(P, s === "move" ? SFX_MENU_MOVE : s === "select" ? SFX_MENU_SELECT : SFX_MENU_CANCEL);
+        }
+        continue;
+      }
+      if (readMatchInputRepeat(P) & PADF_LEFT) { P.menuWheel.pauseMore = false; sound(P, SFX_MENU_MOVE); continue; }
+      if (!(input & (PADF_B | PADF_START))) continue;
+    } else if (more && (readMatchInputRepeat(P) & PADF_RIGHT) && rd(P, "matchMenuSelection") === rd(P, "pauseMenuItemCount") - 1) {
+      P.menuWheel.pauseMore = true; sound(P, SFX_MENU_MOVE); continue;
+    }
     if (readMatchInputPressed(P) & (PADF_B | PADF_START)) {
       sound(P, SFX_MENU_CANCEL);
       wr(P, "matchMenuSelection", MATCHMENUSEL_CANCELLED);
