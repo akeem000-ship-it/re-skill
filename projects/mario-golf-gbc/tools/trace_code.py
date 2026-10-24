@@ -111,6 +111,11 @@ while work:
             for i in range(n): code[cb].add(nxt + i)
             if ins.kind == "rst" and ins.target in (0x10, 0x18) or ins.kind == "call" and n == 2 and ins.target == 0x01F6:
                 idx, fb = data[0], data[1]
+                if (fb, idx) == (0x10, 0x1A) and "hl" in imm and 0x4000 <= imm["hl"] < 0x7FF6:
+                    for e in range(5):                  # SetGolfEventHook: hl = table of 5 handlers (events 0-4)
+                        o = to_offset(cb, imm["hl"] + 2 * e)
+                        w = rom[o] | rom[o + 1] << 8
+                        if 0x4000 <= w < 0x8000: push(cb, w, True)
                 if 0 < fb < NB and idx // 2 < TABLE_LEN.get(fb, 0):
                     t = farcall_target(rom, idx, fb)
                     if t and 0x4000 <= t < 0x8000: push(fb, t, True)

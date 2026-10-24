@@ -1647,6 +1647,279 @@ Map names below are the banner texts (`$12C` + map id, bank 18).
 - Notable: 33:66CB plays a single hole instead of 18 when flag #72 is set (debug?); entrances `$0A-$0C` of map 1D
   fake a 1st-3rd place result (33:5F5B), likely for the debug warp menu. 33:4DBE duplicates 32:62F7 (HasPartner).
 
+##### Banks 30 and 31: map scripts (practice ranges, putting greens, Alternate Game, opening, clinic, award ceremonies)
+
+Map names are text `$12C + map index` (bank 18). Flags are game flags (`rst $20/$28/$30`).
+
+**Shared lesson system (both banks, 8 ranges x 2 coaches = 16 lessons).** Each approach / driving range has two
+coaches (talk 03 / talk 04) and the same script set per coach (example Marion approach range, map 0D):
+- talk script (30:4119): if the "lesson in progress" flag (#101 coach 1 / #102 coach 2) is set, offer a retry
+  (30:44D0); else Yes/No for a **coach demo**: GolfSessionInit, mode `$0C`, golfer preset `$4F`/`$4E` with a
+  16-byte stroke record copied to `$C600` (e.g. 30:432E: tee `$1D60 $1F80`, club 6; bit 6 of the preset copies it
+  to `$D680`), fixed course 7 hole, forced tee / wind / wind direction, an event hook table (30:433E) and
+  MapSaveReturnPoint to the same map with entrance 2 (coach 1) or 3 (coach 2).
+- enter script (30:429A) dispatches by wMapEntrance: 2/3 = after the demo (30:44DA "want to try?" -> 30:4506);
+  4/5 = after the player's attempt (result script 30:4448); `$FA` = back from free practice (clears #100).
+- the attempt (30:4506) sets #101/#102 and replays the hole with the player's golfer and SetForcedShot.
+- the attempt's hook (e.g. 30:4409) writes **wEventResult `$C968`** = BallWithinPinDist 30:7E2E (0 = within
+  `$60` of the pin), **wEventShotClub `$C969`** (stroke record +8; `$0D` putter gets its own line) and flag #99
+  from `$C8AA`. Success sets #98 and clears #101/#102; the enter script then, the first time only, sets the
+  lesson flag, awards EXP (AwardExpWithBonus 30:7E7F: +25% when #99), saves and requests warp 6/7 (8/9 in 31).
+- EXP per club: Marion 20, Palm 25, Dune 45, Links 50 (same values for the putting challenge).
+- Trigger 0F on every range = "Practice here?" (30:47E6 / 31:51F4): sets #100 (practice; 41:6F08 menu) and plays
+  a free round teed at the player's map position (30:480D / 31:521B).
+
+| Map | Place | Coach 1 lesson (flag) | Coach 2 lesson (flag) |
+|---|---|---|---|
+| 0D | Marion approach range (30:400E) | running approach #160 | chip approach #161 |
+| 10 | Palm approach range (30:48F8) | bunker shot #164 | running approach on sloped greens #165 |
+| 13 | Dune approach range (30:5065) | approach over a hazard (backspin) #168 | pin above a steep climb #169 |
+| 16 | Links approach range (30:57FD) | over a mound to a downhill pin #172 | across a steep slope #173 |
+| 0C | Marion driving range (31:4946) | driver tee shot #162 | iron shots #163 |
+| 0F | Palm driving range (31:52D2) | intentional hook/slice #166 | wind shots #167 |
+| 12 | Dune driving range (31:5BCE) | high shot to a two-tiered green #170 | recovery from the trees #171 |
+| 15 | Links driving range (31:645F) | shot from the trees #174 | buried bunker lie #175 |
+
+**Links contests (after winning the Links tournament).** Tournament flags (set by 08:4CAE): #112-115 = course 1-4
+tournament played, #136-139 = won. On Links maps 16 and 15 the talk list is patched with ScriptSetMapField
+(`de = $0C`) after #115 and again after #139. Map16UnlockContests 30:6414 / Map15UnlockContests 31:7051 set
+#224 / #225 when #139 and the coach's lesson flag are set; the coaches then challenge the player instead
+(approach: mode 5, win at `$C968 >= 7`, 10 = bonus #99, first win #220/#221; driving range: closest to the pin,
+player distance `$C96A` vs coach `$C968`, first win #222/#223; 50 EXP each).
+- Quirk (?): both maps set the same #224/#225 from their own lesson flags (#172/#173 vs #174/#175) and never clear
+  them (bank 33 does), so clearing one range's lesson also turns on the other range's contest.
+
+**Putting greens (maps 0E 11 14 17 = Marion Palm Dune Links practice greens; header 30:642A, enter 30:69B9).**
+- One header for four maps; PuttingGreenEnter respawns per-map actors and patches the warp list (`de = 8`) and
+  talk list (`de = $0C`) per map (Links again by #115/#139).
+- Green pro (talk 08 on 0E, talk 06 elsewhere: 30:6666 / 668B / 66B3 / 66DA): putting challenge (offer 30:6701,
+  text by tournament flags 30:6DF6, hole PuttingSetChallengeHole 30:6B90); wStoryRoundKind `$C967` = `$0A`;
+  result 30:6CF2: wPuttChallengeScore `$C3E1 >= 7` clears it (flag #194 + green index, PuttingGreenIndex
+  30:6E49), else marks it tried (#190 + index); EXP 20/25/45/50, +25% for 10 (30:6EC8).
+- Free putting practice (trigger 0F, 30:6B13): `$C967 = $14`, mode 7, tee pulled toward the player (30:6D40).
+- Hidden friend Azalea (object 0F, 30:6942): sets #142 unless you play Azalea; HiddenFriendsBonus_30 30:7EAD
+  gives 300 EXP once the other three of #140-143 are set (same as 33:7CF1).
+- Dune green (map 14) golfers 8 / 9 / `$0A` (30:681A / 683E / 6862): before the Dune tournament (#114) they ask for
+  a partner; afterwards the **Alternate Game** invitation (30:6F42; replay 30:70B0): Match Game or Stroke rules
+  (#155 = Stroke -> mode 3, else 2), warp to map 2A. Declining a replay sets #249, after which they only say
+  "...maybe next time" (30:71AF; #249 is never cleared).
+
+**Alternate Game (maps 2A / 2B: "Alternate Game", "Alternate Game Event").** 2B enter 30:747D: entrance 1 intro
+cutscene (30:74FE) -> warp `$0F` -> 2A enter 30:7212 (rules text first time #151, who starts: #152) ->
+AltShotStartRound 30:72F0: player + partner `$0B` vs presets `$0C`/`$0D` (teams `$C878-$C87C`), course 3 hole 1,
+round id `$12`, wAltShotTurns `$C873` toggled by AltShotNextGolfer 30:72A8; returns to 2B entrance 6 ->
+result by wRoundResult (30:76F9): win 30:790F (first win #154 + 200 EXP), loss / tie texts. Talk 05 on 2B plays a
+small sprite animation (tiles 30:7B90 -> `$8500`, 30:7C61-7CE3).
+
+**Story Opening (map 1E, 31:43B9).** NewGame, then four two-choice questions with portraits: boy/girl (#0),
+character (#1) -> OpeningCharTable 31:4791 -> CreateCharacter 02:4E82, handedness (#2 -> `$C811`), random
+`$C83E` (0-5); confirmation 41:6784; NameEntryScreen; "Marion Club Director's Office" caption; sets **#97**
+(opening done) and warp 1. The opening reuses `$C470-$C472` (EventListScreen RAM) as choice marks / cursor x / y.
+
+**Select Screen (map 23, 31:47D7).** Development leftover: the enter script calls AngleFromVector16 with constant
+vectors and prints three results as hex (PrintHexWord at row 9 columns `$0C-$0E`), then a mode menu (text `$0085`:
+Tournament / Match Game / Practice / Clubhouse / VS / Start Over, handlers 31:4867) that starts fixed test
+rounds (course 1), EventListScreen, or ShowScorecard with hard-coded values.
+
+**Golf Clinic (map 2D, 31:7127-7444).** Coaches 5 / 6 (and trigger 01) judge one tee shot (31:7252: course 0
+hole 6, mode 6). The hook 31:75E1 sets #99 and classifies the first stroke (31:760C: power byte +`$0A` `$3C`
+perfect / `>= $34` / weak, impact offset +`$0B`, bits 4-7 of +`$0C`) into `$C968` = 0-8; on return each coach
+comments through a jump table (31:72F6 / 31:746A, texts `$15BC-`).
+
+**Award Ceremonies (maps 18-1B = Marion Palm Dune Links, 31:7775).** Entrance 2 = champion (31:78E1), 3/4 =
+second / third place trophy (31:7B1C, place = entrance - 1), else none (`$C96C = 5`). The first champion
+ceremony on 18/19/1A sets #107/#108/#109 and later visits skip straight to warp 2. Links champion: character
+picture (40:6666), StaffCredits 41:7E07, sets **#110** (game cleared), returns to map 0 entrance 2 and saves.
+Map 1A also sets #212 when #198 and #114 are set (31:7CB0).
+- Possible bug (static reading): CeremonyEnter tests #110 for every ceremony map before looking at the entrance
+  (31:77FD -> 31:782F). After the ending, any entrance 2-4 visit to a ceremony map whose seen flag is still clear
+  (#107-109 are only set by a win; map 1B has none) replays the ending picture and credits; the later #110 test at 31:786B is then redundant.
+
+**Shared helpers** (copies in both banks): MapScriptNop_30/31 (object 01 scripts), FadeToLevelUpScreen_30/31,
+AwardExpWithBonus 30:7E7F / 31:7DA4, CurPlayerFieldAddr_30 30:7E1A, BallWithinPinDist 30:7E2E,
+GetPlayerActorPos 30:7E46. Actor scripts (bytecode, data): 30:7D7B, 30:7D99 (= 31:7CBE), 30:7DFF, 30:7E08,
+30:7E11, 31:7D19, 31:7D24, 31:7D2D.
+
+**RAM (new labels):** `$C82C` wRoundMusic, `$C968` wEventResult, `$C969` wEventShotClub, `$C96A`
+wEventPlayerDist, `$C873` wAltShotTurns, `$C3E0` wScriptLoop, `$C3E1` wPuttChallengeScore, `$C3E2/$C3E4`
+wPuttGreenBaseX/Y. Used: wStoryRoundKind `$C967`, wMapWarpRequest `$C441`.
+
+Not labelled: the golf event hook handlers (code reached only through the hook tables, e.g. 30:435E, 30:4409,
+31:75E1) and the unlisted code they call; the hook tables themselves are labelled `...HookTable`.
+
+Labels: `a10/labels.csv` (344 code/data + 41 RAM). With them and the extra tracer roots below, every traced
+entry of these 12 banks is named (scratch trace: total 236514 traced bytes, 80.1% named vs 71.3% before).
+
+##### Tracer roots (feed to `trace_code.py --roots`)
+
+Live code the tracer misses (indirect jumps):
+
+- **0E** (ScorecardPageTable 0E:4422, dispatched by `call $0699` in ShowScorecard 0E:43D6):
+  `0E:5209,0E:6C7A,0E:762F,0E:7199,0E:4432,0E:4436`. These six pages pull in all the remaining live code of
+  the bank (0E goes from ~600 traced bytes to 3762).
+- **0D** (mode-select descriptor hooks, `jp hl` in 0D:4953 / 0D:496B): `0D:6FF7,0D:7070`.
+- **04** actor script opcode handlers (table 04:420C, `jp hl` at 04:4287):
+  `04:45C1,04:45C3,04:45D8,04:45E9,04:4679,04:4612,04:46A2,04:46FB,04:4756,04:47A2,04:484D,04:48FC,04:49A2,04:49B1,04:49EC,04:4A57,04:4A5B,04:4A71,04:4A7C,04:476C`;
+  the handlers' return point `04:4288` (pushed with `ld hl,$4288 ; push hl`); native code called from the
+  player's actor script 04:527A (op $12 at 04:527A+$0E): `04:538C` (PlayerWalkControl, the player's walking).
+- **40** demo slide frame tasks and setup routines (DemoSlideTable 40:5D9F, read by DemoSlide 40:5C72):
+  `40:5E1F,40:5E2C,40:5E2D,40:5E3D,40:5E50,40:5E5F,40:5E66,40:5E76,40:5E8A,40:5E9F,40:5EC0,40:5ED4,40:5EEE,40:5F11,40:6143,40:616B,40:6194,40:61A9`.
+- **41** menu handlers (word tables passed to RunMenu 41:6FF4, `jp hl` at 41:7077):
+  `41:7323,41:7329,41:732F,41:7335,41:7349,41:739A,41:73E4,41:73EA,41:73F0,41:7402,41:7413,41:7419,41:741F,41:7425,41:7437,41:744B,41:7451,41:7457,41:745D,41:746B,41:74AE,41:757B,41:7581,41:7587,41:758D,41:759B,41:75DE,41:7662,41:7668,41:766E,41:767A,41:768C,41:769E,41:76AC,41:76BF,41:76C7,41:76CF,41:76DF,41:76E7,41:76EF,41:76F7,41:7707,41:770F,41:7721,41:7733,41:7745,41:774D,41:775F,41:7767,41:7779,41:77B3`
+  (the last two from the Settings table 41:7775).
+
+Unreferenced code (dead; labelled, roots only if the tracer should count it):
+`0E:44AE,0E:44C8,0E:44E2,0E:45CD,0E:7356,0E:6E50,0D:499A,04:40E9,04:4588,04:4EE0,04:4EF5,40:5EFC,40:61AA,0B:4776,0B:4739,0B:4788,0B:4826,0B:4501,0B:656F,0B:6585,0B:65DE,12:416B,12:4956,06:69E7,3E:618D,3E:626D,3E:6280,3E:630C,3E:631E,3E:65E3,48:4D4C,41:42D9,3F:41DC`.
+
+Comma-separated lists: `a10/roots_live.txt` (live) and `a10/roots_dead.txt` (unreferenced).
+
+Tracer notes:
+- The existing labels `41:7317 GolfPauseMenuHandlers` ... `41:775B MiniGamePauseMenuHandlers` (11 word tables)
+  have no `Table` in their names, so trace_code.py pushes them as code roots and counts the table words as
+  code bytes. Rename them `...HandlerTable` (or add `Handlers` to the exclusion list). New data labels here all end
+  in `Table`.
+- Bank 04 is not in CODE_BANKS (its exports are not seeded); its exports $48 (04:4EE0) and $5E (04:4588) have
+  no caller and are therefore untraced.
+- Banks 40 and 77: exports past 40:$06 and all of 77's are data (LZ assets), correctly untraced.
+- Actor scripts (bytecode for 04:4234) can call native code (op $12 addr, in the script's bank); script data
+  should be scanned for `12 lo hi` to find more such roots (only 04:527A parsed here).
+
+##### Bank 0E: scorecard and standings screens
+
+ShowScorecard (0E:43D6, export 0) picks two pages from ScorecardPageTable 0E:4422 by mode: c = 0 (wGameMode 1,
+tournament): standings list 0E:5209 + stroke card 0E:6C7A; c = 1 (mode 2, match): 3E:403F + match card 0E:762F;
+c = 2 ($C8D0 = $FF, one player): 0E:6C7A twice; c = 3 (two players): 3E:6361 + two-player card 0E:7199. A page
+returns 0 for A/B/Start or 1 for Select (flip page); each page has a setup routine (LCD off, LZ tiles 0E:5480 /
+0E:5E51, per-page LZ maps, palettes 0E:68E1, ScorecardLoadCommonGfx 0E:42F0, draw, MapDrawFullScreen 0B:4306) and
+a frame task (Up/Down scroll via ScorecardScrollTask 0E:443A + sprites). Text is drawn into the WRAM3 tile map
+(attributes WRAM2) by ScorecardPutTile/PutString/PutText/PutNumber (0E:447C-0E:4532); digits are 2-tile pairs
+from 0E:454A.
+- Standings (0E:5448): BuildStandings, copy of WRAM6 $D800 to $C600, DrawStandingsList 0E:53A6 (names rendered
+  into tiles with BlitGlyphRows 0E:46CD); cursor on the player row $C482, blinking arrow when rank $C483 changed.
+- Per-hole data: wP1HoleScores $C8AC / wP2HoleScores $C8EC (18 bytes: low nibble strokes, high nibble putts,
+  cf. 10:4101). Par from 13:7044. Front/back nine split $C480/$C481 (ScorecardResetView 0E:4373).
+- Match play card (0E:7850): per hole win/loss/halve marks (tiles $7E $7F $7D) with holes-up count in $C484 and
+  text $120 "Up" / $122 "Down" / $121 "Even" (0E:7804).
+- GetGolferName 0E:45E8: id 0/$FF player name, bit 7 = per-course list 0E:4633, else text $53 + id.
+- Leftovers: 0E:44AE / 0E:44C8 / 0E:44E2 / 0E:45CD / 0E:7356 / 0E:6E50 are unreferenced helpers.
+- Data: 0E:4008-0E:42EF tiles / templates, 0E:4706-0E:5208, 0E:5473-0E:6C79, 0E:6F00-0E:7198, 0E:73E2-0E:762E
+  are LZ graphics and maps (pointers in the setup routines); 0E:7A59-7FFF is `$FF`.
+
+##### Bank 0D: game mode select (film strip)
+
+A copy of the course select film strip of bank 0F (0F:400B ...) used for the main mode menu. GameModeSelect
+0D:4AA7 (export 0; callers 32:51D4 32:534E 3D:5CEB 58:5E7C 71:7517) gets the mode list from GetModeList 0D:707A:
+Tournament 1 / Match Game 2 / Stroke 3 / Training 4 / Marion Clubhouse 9; only Stroke / Training when
+wSaveSlot & $0F = $0F (no save); Match Game / Stroke with the versus descriptions ($7A + id: "Compete for holes
+won!" / "...total score!") when wVersusMode $C33F is set. The start item is the current wGameMode (FindModeIndex
+0D:70A9). Names: text $66 + id, descriptions $70 + id (DrawModeNameBox 0D:6FF7). Returns the mode id or $FF.
+Routine-by-routine twin of 0F (ModeSelectNext/Prev = CourseSelectNext/Prev etc.); 0D:499A is an unused copy of
+DrawCourseEmblem. Uses hSelectIndex/hSelectCount/hFilmTileSlot/wSelectIdList like 0F.
+
+##### Bank 3F: golf dictionary
+
+GolfDictionary 3F:4002 (export 0; map scripts 32:79F3 with a = 6, 33:4E29 with a = $C4BC - $0C) is the clubhouse
+golf dictionary. Mode 0-4 shows one category (mask 1 terms / 2 rules / 4 equipment / 8 techniques / $10
+facilities: texts $1A1E-$1A22 "Ask about golf ..."), 5 all categories with the category hint as answer, 6 the
+whole dictionary from an A-Z index page (text $1A23 "View the entire dictionary here."). DictEntryTable 3F:5DFC
+holds one category byte per entry, `$00` between first letters, `$40` at the end; entry names are text
+$1A2B + n ("address", "against", ...), explanations $1AE7 + n. Pages: A-Z index (DictIndexInput 3F:5F73: 26
+letters, 9 per row) and a 6-row list (DictListInput 3F:6017: A shows the explanation in a message window while the
+host's face animates (DictFrameTask 3F:58DD), Left/Right jump between letter groups). RAM: WRAM6 $D609-$D61A
+(wDict*). Leftover: 3F:41DC unreferenced scroll fragment.
+
+##### Bank 04: map actors
+
+Adds to REVERSE.md "Bank 04": ActorsUpdateTask 04:4234 runs each actor's bytecode script (+0..+2) through 20
+opcodes (04:420C): $00 end, $01 n wait, $02 wait for walk end, $03 set pos, $04 walk to, $05 walk near point,
+$06 walk by, $07 walk polar, $08 walk turn, $09 wander (random direction, home box +$18/+$19, obstacles), $0A
+follow leader, $0B chase leader, $0C relative jump, $0D/$0E set/add field (sizes 04:4A31), $0F nop, $10 set anim,
+$11 skip byte, $12 call native code, $13 set home. Handlers return a = 0 to yield. Then walking toward +$0A/+$0C
+(PointNearPlayer 04:554D blocks walking into the player) and camera follow (+$16 = 1). ActorsDrawTask 04:4B69
+draws/animates actors (frame lists: ActorAnimStep 04:4ACD; tile upload farcall 26:4012). The player's script
+04:527A calls PlayerWalkControl 04:538C every frame: A/Start/B (run, flag #17), d-pad facing (04:5500), probes
+(04:52FA, 04:5510), bumps ($C28C/$C443), events (CheckEventAtPoint 04:5360: type 1 trigger -> $C440, type 3 warp
+-> $C441), grid snap when idle. RAM: $C284-$C288, $C29A/$C29C, $C28A-$C28E, $C2AB, $C442-$C444.
+Unused: 04:40E9, exports $48 / $5E (04:4EE0, 04:4588), 04:4EF5.
+
+##### Bank 40: title screen, attract demo, intro picture
+
+TitleScreen 40:4032 (export 0): with a = 0 first the attract loop: IntroPicture 40:61CB (picture 40:4908, sound
+$5E) then 16 DemoSlides (40:5C72, table 40:5D9F: duration / frame task / setup / picture; pans, window slide,
+animated frames 40:5F11) with music $29; then the title (music $24, tasks 40:4D53 clouds / palette cycle /
+animated tiles / SCY wobble and 40:4D1D press-start sprite) for $4B0 frames or until Start/A (or link byte $10).
+**Cheat code** (TitleCheatInput 40:4CB6, sequence 40:4CF5): Up Up Down Up Left Right Left Right B A, twice,
+sets hUnlockAll `hFFCF` = 1 (sound $63): all golfers and courses selectable (02:5A07 0F:4B7A ...).
+Notable: IntroCheckSkip 40:6238 returns z in every case, so the intro picture cannot be skipped (DemoCheckSkip
+40:6217 does skip); DemoSlide prints hVBlankCount, rDIV, the frame counter and Sqrt24 (40:5775) of them with
+PrintHexByte every frame (debug leftover; Sqrt24 has no other caller). Unused demo tasks 40:5EFC, 40:61AA; dead
+branch 40:5F7A. Other exports of bank 40 ($08-$30) are graphics data.
+
+##### Bank 12: golf HUD (additions)
+
+HudTask 12:449F (HUD frame task): player panels with the current player blinking, countdown sprites
+(DrawCountdown 12:4F24 for the mini-game timer $C0F4-$C0F7), wind indicator, effect objects (12:6B04 / 12:6B11:
+the water splash object at $CA80 with frame lists), swing meter cursors (12:456E). ShotLengthTask 12:4F07 draws the
+running shot length (yards; feet with tenths for the putter, 12:4DE9). Dead: 12:416B, 12:4956 and the unreachable
+branches 12:4BDC / 12:4C6A in HudDrawPlayer1/2.
+
+##### Bank 06: name entry and character select (additions)
+
+Frame tasks: NameEntryTask 06:51CC (cursor, blank-cell marks, animated tiles 06:41A0); character select
+CharSelectCursorTask 06:65D9, CharSelectPaletteTask 06:6617 (cycling cursor colour), CharSelectBobSprite 06:66F6,
+CharSelectDrawTrendMarks 06:6A4E (up to 4 marks left or right by roster byte +$11, sign = direction),
+CharSelectPortraitAnimTask 06:6E4D (mini portrait blink frames per character, 06:6EFE). Dead: 06:69E7.
+
+##### Bank 3E: match standings / two-player result (additions)
+
+MatchStandingsTask 3E:465A (blinks the mark of the last hole's winner; reuses $D592 as a counter),
+TwoPlayerScoreTask 3E:645C, BGMap9800Addr 3E:61CD. Dead helpers: 3E:618D (used only by dead 3E:6280), 3E:626D,
+3E:6280, 3E:630C, 3E:631E, 3E:65E3.
+
+##### Bank 48: EXP screen (additions)
+
+ExpDrawCounters 48:4B05 (frame task: counted EXP $D632, points to next level $D642 / $D63C; skipped at level
+$63), digit sprite helpers 48:4BD4 / 48:4C54, YesNoCursorTask 48:42F7, ExpCharSpriteTask 48:4336,
+PictureAnimTiles 48:5EE9 (ShowPictureScreen). Dead: 48:4D4C.
+
+##### Bank 41: level-up screen and pause / start menus (additions)
+
+Level-up frame tasks: 41:4CD1, 41:4D2F, PointsBounceTask 41:4D79, SparkleTask 41:4DFC, 41:50B3, skill value
+sprites 41:53B8, LevelUpBannerRevealTask 41:5694, DrawClockTask 41:587C (two 2-digit numbers $C831/$C830 or
+$C0F3/$C0F2 with a colon blinking each second); LevelUpRestart 41:54CA (No on the confirm box).
+Menus: every RunMenu handler is now named (41:7323-41:7767; texts $147F-$148A): Camera Mode (12:6D3D free look),
+Course Map (farcall 17:437D), Scorecard (0E:43D6 or 3E:675C in Match Game), Settings (41:78C6: Music /
+3-D Screen toggles of wOptionFlags $C818 bits 0/1), Give Up (refused on the 1st stroke, text $1491), Quit /
+Save & Quit (SaveGame, $C814 + 1, $C2A6 = 1), Training wind direction / speed (41:72A1 / 41:72D8: wWindAngle
+-/+ $10, wWindSpeed 0-$13), Mulligan menus (wMenuResult 0 / 2 / 3 / 4 / 5), start menu Char. Data / Stars /
+Message speed (41:7969) / Save & Quit (41:79A7 warps to map 0 entrance 1, or entrance 2 for "return to Main Menu").
+wMenuResult codes: $80 quit / $81 give up / $82 quit practice or mini-game / $FF stay. Dead: 41:42D9.
+
+##### Bank 0B: map graphics, credits, results (additions)
+
+MapGfxScrollTask 0B:4784 (the map frame task = MapScrollTask). CreditsWindowTask 0B:5640 (per-scene scroll from
+0B:56C9, window rises). Result screens: ConfettiTask 0B:5DE1 (actors 2-7 swaying down, ConfettiActorStep
+0B:5D2C; reuses $C3E0 / $C3F5), ResultBobActor 0B:652F, ResultPaletteCycleTask 0B:648F (reuses $C3F4),
+ResultSpriteTask 0B:6694. **Debug leftover:** an unreferenced map graphics browser 0B:4776 (endless loop:
+MapGfxBrowserInit 0B:4739 counts MapGfxTable entries, d-pad scrolls the map 0B:4788 / 0B:4826 with vectors
+0B:47E6, B opens a paged menu of gfx screens 0B:4501), separate from DebugMapGfxViewer 0B:4579. Dead score helpers
+0B:656F / 0B:6585 / 0B:65DE.
+
+##### Bank 77: story pictures (additions)
+
+StoryPictureAnimTask 77:7033 runs the frame script at $D347 (frame / duration; $FE n jump; $FF end) and draws
+frames with DrawStoryPictureFrame 77:70D0 (LZ frame from 77:735E merged into the WRAM2/3 maps and queued to
+$9880); StoryPictureTimerTask 77:70B6 counts wPictureTimer $D34D; StoryPicturePaletteTask 77:6F8E cycles BG
+palette 6 colour 0 (table 77:6FD5) via SetPaletteColor 77:6FAE (writes wPalLive and wBGPalMaster).
+
+##### RAM labelled
+
+$C284-$C288 $C28A $C28C $C28E $C29A $C29C $C2AB $C33F (wVersusMode) $C442-$C444 $C482 $C483 $C818
+(wOptionFlags) $C8AC $C8EC $D247-$D254 (title/demo, WRAM6) $D346 $D349 (story picture) $D609-$D61A
+(dictionary, WRAM6) $FFCF (hUnlockAll). Many screens reuse golf WRAM6 / $C3xx-$C4xx addresses as scratch
+(e.g. $D592 wCpuGreenEntry in 3E, $C3F4/$C3F5 palette-editor vars in 0B/77, $C470-$C474 in 04:5658), so existing
+names there are misleading in those banks.
+
 ### Data Structures
 
 *(none yet)*

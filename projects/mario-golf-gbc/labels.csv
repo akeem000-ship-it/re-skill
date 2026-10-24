@@ -1053,17 +1053,17 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 41,7F5A,CreditsLineIsEnd,a = first character of the line buffer - '#' (0 = end of the roll)
 41,7F60,CopyCreditsLine,LoadText hl -> WRAM3 de (lower case shifted down $20)
 41,6486,SkillHighlightColorTable,64 colour words cycled by 41:50D2
-41,7317,GolfPauseMenuHandlers,6 handler words for RunMenu (Camera Mode ... Quit)
-41,73DC,MapStartMenuHandlers,4 handler words (Char. Data / Stars / Message / Save & Quit)
+41,7317,GolfPauseMenuHandlerTable,6 handler words for RunMenu (Camera Mode ... Quit)
+41,73DC,MapStartMenuHandlerTable,4 handler words (Char. Data / Stars / Message / Save & Quit)
 41,7409,MapStartMenuNavHandlers,5 handler words (Navigation first; map 2)
 41,743F,GolfPauseMenuSaveHandlers,6 handler words
 41,756F,GolfPauseMenuSave2Handlers,6 handler words
-41,7654,TrainingPauseMenuHandlers,7 handler words
-41,76FF,PracticeWindMenuHandlers,4 handler words
-41,7741,PracticeMenuHandlers,2 handler words
-41,76B9,ContinueMulliganMenuHandlers,3 handler words
-41,76D7,ContinueMulliganRestartMenuHandlers,4 handler words
-41,775B,MiniGamePauseMenuHandlers,2 handler words
+41,7654,TrainingPauseMenuHandlerTable,7 handler words
+41,76FF,PracticeWindMenuHandlerTable,4 handler words
+41,7741,PracticeMenuHandlerTable,2 handler words
+41,76B9,ContinueMulliganMenuHandlerTable,3 handler words
+41,76D7,ContinueMulliganRestartMenuHandlerTable,4 handler words
+41,775B,MiniGamePauseMenuHandlerTable,2 handler words
 48,4053,ExpScreen,bank 48 export 0 (32:7D39 / 6B:41ED / 48:4D70): a = 0 shows the character card only; else counts de EXP into the character with message h (48:4C7D) / trophy bonus (48:4DFF) / pts to next level; $D63B set when a level is reached; commits with 02:5465
 48,4362,LoadExpScreenGfx,LZ tiles 48:4F70 / frame / palettes / character sprite (42:400B at $78 $28) / more LZ art for the EXP screen
 48,4527,DrawExpFrameBlock,20 x 5 tile + attribute block from table 48:445F into the WRAM1 buffers
@@ -2681,3 +2681,678 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,C299,wPartnerId,partner golfer id (champ index + 4)
 *,C33F,wLinkRole,0 none / 1 link host / 2 link guest (ModeSelectMain)
 *,C95C,wPendingExp,word: EXP waiting for the next load; $C95E = $64 marks it valid (ModeSelectMain)
+# --- banks 30 31 map scripts (practice ranges, putting greens, lessons, clinic, ceremonies) ---
+30,40EE,Map0DTalk02ApproachTip,talk 02 (Marion approach range): Yes/No tip on approaches (text $0C63) then text +1 (Yes) or +2 (No)
+30,4119,Map0DTalk03RunningApproachLesson,talk 03 (Marion approach coach 1): flag #101 set -> Map0DRunningApproachLessonRetry; else Yes/No for a coach demo round (golfer $4F; recorded shots 30:432E -> $C600; course 7 hole 8; hook 30:433E; returns to entrance 2)
+30,41A2,Map0DTalk04ChipApproachLesson,talk 04 (Marion approach coach 2): flag #102 set -> Map0DChipApproachLessonRetry; else Yes/No for a coach demo round (golfer $4E; shots 30:459A; hook 30:45AA; returns to entrance 3)
+30,422B,Map0DTalk05PitchAndPuttTip,talk 05 (Marion approach range): Yes/No tip on the pitch and putt (text $0C66)
+30,4277,Map0DTriggerGolfLingoSign,trigger 01 (Marion approach range): shows text $0857 (golf lingo sign)
+30,429A,Map0DEnter,Marion approach range enter script by wMapEntrance: 2/3 after a coach demo; 4/5 lesson result (first success sets #160/#161 + 20 EXP + SaveGame + warp 6/7); $FA clears practice flag #100
+30,4448,Map0DRunningApproachLessonResult,entrance 4: coach reacts to wEventResult $C968 (0 = ball stopped near the pin; putter used = wEventShotClub $0D gets a special line); success sets #98 and clears #101
+30,44D0,Map0DRunningApproachLessonRetry,text $0D11 (Try again?) then Map0DRunningApproachLessonAskTry
+30,44DA,Map0DRunningApproachLessonAfterDemo,entrance 2 (after the coach demo): coach faces the player; text $0CA5 then Map0DRunningApproachLessonAskTry
+30,4506,Map0DRunningApproachLessonAskTry,Yes: sets #101 and plays the player's attempt (mode $0C; course 7 hole 8; forced tee/wind and club 6; hook 30:43AF; returns to entrance 4); No: practice hint and coach walks back (actor script 30:7DFF)
+30,46A1,Map0DChipApproachLessonResult,entrance 5: coach 2 reacts to wEventResult $C968; success sets #98 and clears #102
+30,471C,Map0DChipApproachLessonRetry,text $0D12 (Want to try again?) then Map0DChipApproachLessonAskTry
+30,4726,Map0DChipApproachLessonAfterDemo,entrance 3 (after the coach demo): text $0CB3 then Map0DChipApproachLessonAskTry
+30,4752,Map0DChipApproachLessonAskTry,Yes: sets #102 and plays the player's attempt (mode $0C; course 7 hole 8; hook 30:4627; returns to entrance 5); No: hint and coach walks back (actor script 30:7E08)
+30,47E6,ApproachRangeTriggerPractice,trigger 0F of the approach ranges (maps 0D 10 13 16): Practice here? (text $0C60) -> ApproachRangeStartPractice on Yes
+30,480D,ApproachRangeStartPractice,sets practice flag #100; free practice round (mode $0C) teed at the player's map position wPlayerPosSave; hole from ApproachRangeSetPracticeHole; hook 30:48BC
+30,4855,ApproachRangeSetPracticeHole,SetCourseHole by wMapId (table 30:4868 = 0D 10 13): course 7 hole 8 / 11 / 14 / else 17
+30,49D0,Map10Talk02ApproachClubTip,talk 02 (Palm approach range): Yes/No tip (text $0C6A: approaches do not only use the SW or PW)
+30,49FB,Map10Talk05SpinTip,talk 05 (Palm approach range): Yes/No tip on putting spin on the ball (text $0C6D)
+30,4A26,Map10Talk03BunkerShotLesson,talk 03 (Palm approach coach 1): flag #101 set -> retry; else Yes/No for a coach demo of the bunker shot (text $0CBA; returns to entrance 2)
+30,4AAF,Map10Talk04SlopedGreenApproachLesson,talk 04 (Palm approach coach 2): flag #102 set -> retry; else Yes/No for a coach demo of running approaches on sloped greens (text $0CC8; returns to entrance 3)
+30,4B62,Map10Enter,Palm approach range enter script: 2/3 after a demo; 4/5 lesson result (first success sets #164/#165 + 25 EXP + SaveGame + warp 6/7); $FA clears #100
+30,4CF9,Map10BunkerShotLessonResult,entrance 4: coach reacts to wEventResult $C968; success sets #98 and clears #101
+30,4D6D,Map10BunkerShotLessonRetry,text $0D11 (Try again?) then Map10BunkerShotLessonAskTry
+30,4D77,Map10BunkerShotLessonAfterDemo,entrance 2 (after the coach demo): text $0CC1 then Map10BunkerShotLessonAskTry
+30,4DA3,Map10BunkerShotLessonAskTry,Yes: sets #101 and plays the player's attempt (returns to entrance 4); No: practice hint and coach walks back
+30,4F23,Map10SlopedGreenApproachLessonResult,entrance 5: coach 2 reacts to wEventResult $C968; success sets #98 and clears #102
+30,4F9B,Map10SlopedGreenApproachLessonRetry,text $0D12 (Want to try again?) then Map10SlopedGreenApproachLessonAskTry
+30,4FA5,Map10SlopedGreenApproachLessonAfterDemo,entrance 3 (after the coach demo): text $0CCF then Map10SlopedGreenApproachLessonAskTry
+30,4FD1,Map10SlopedGreenApproachLessonAskTry,Yes: sets #102 and plays the player's attempt (returns to entrance 5); No: hint and coach walks back
+30,515D,Map13Talk05SpinTip,talk 05 (Dune approach range): two chained Yes/No questions on spin (text $0C72)
+30,51A7,Map13Talk03BackspinLesson,talk 03 (Dune approach coach 1): flag #101 set -> retry; else Yes/No for a coach demo (text $0CD6: pin near a hazard-guarded edge so backspin; returns to entrance 2)
+30,5230,Map13Talk04UphillGreenLesson,talk 04 (Dune approach coach 2): flag #102 set -> retry; else Yes/No for a coach demo (text $0CE5: pin above a steep climb; returns to entrance 3)
+30,52CB,Map13Enter,Dune approach range enter script: 2/3 after a demo; 4/5 lesson result (first success sets #168/#169 + 45 EXP + SaveGame + warp 6/7); $FA clears #100
+30,545F,Map13BackspinLessonResult,entrance 4: coach reacts to wEventResult $C968 and wEventShotClub $C969; success sets #98 and clears #101
+30,54E7,Map13BackspinLessonRetry,text $0D11 (Try again?) then Map13BackspinLessonAskTry
+30,54F1,Map13BackspinLessonAfterDemo,entrance 2 (after the coach demo): text $0CDD then Map13BackspinLessonAskTry
+30,551D,Map13BackspinLessonAskTry,Yes: sets #101 and plays the player's attempt (returns to entrance 4); No: practice hint and coach walks back
+30,56AE,Map13UphillGreenLessonResult,entrance 5: coach 2 reacts to wEventResult $C968 (putter used = special line $0CF3); success sets #98 and clears #102
+30,5733,Map13UphillGreenLessonRetry,text $0D12 (Want to try again?) then Map13UphillGreenLessonAskTry
+30,573D,Map13UphillGreenLessonAfterDemo,entrance 3 (after the coach demo): text $0CEC then Map13UphillGreenLessonAskTry
+30,5769,Map13UphillGreenLessonAskTry,Yes: sets #102 and plays the player's attempt (returns to entrance 5); No: hint and coach walks back
+30,58D5,Map16Talk05HillTip,talk 05 (Links approach range): two chained Yes/No questions on shots from hills (text $0C79)
+30,597C,Map16Enter,Links approach range enter: Map16UnlockContests; talk list patched after the Links tournament (#115: 30:5918; won #139: 30:5941); 2/3 after a demo; 4/5 lesson or contest result (first success: #172/#173 or contest #220/#221 + 50 EXP + save + warp 6/7); $FA clears #100
+30,5A94,Map16Talk03MoundApproachLesson,talk 03 (Links approach coach 1): #224 -> Map16MoundApproachContestOffer; #101 -> retry; else coach demo (text $0CF4: over a mound to a downhill pin; round music 7; returns to entrance 2)
+30,5B2B,Map16Talk04SlopeApproachLesson,talk 04 (Links approach coach 2): #225 -> Map16SlopeApproachContestOffer; #102 -> retry; else coach demo (text $0D03: across a steep slope; returns to entrance 3)
+30,5CC2,Map16MoundApproachLessonResult,entrance 4 (no contest): coach reacts to wEventResult $C968 and wEventShotClub $C969; success sets #98 and clears #101
+30,5D4A,Map16MoundApproachLessonRetry,text $0D11 (Try again?) then Map16MoundApproachLessonAskTry
+30,5D54,Map16MoundApproachLessonAfterDemo,entrance 2 (after the coach demo): text $0CFB then Map16MoundApproachLessonAskTry
+30,5D80,Map16MoundApproachLessonAskTry,Yes: sets #101 and plays the player's attempt (returns to entrance 4); No: hint and coach walks back
+30,5EF8,Map16SlopeApproachLessonResult,entrance 5 (no contest): coach 2 reacts to wEventResult $C968; success sets #98 and clears #102
+30,5F70,Map16SlopeApproachLessonRetry,text $0D12 (Want to try again?) then Map16SlopeApproachLessonAskTry
+30,5F7A,Map16SlopeApproachLessonAfterDemo,entrance 3 (after the coach demo): text $0D0A then Map16SlopeApproachLessonAskTry
+30,5FA6,Map16SlopeApproachLessonAskTry,Yes: sets #102 and plays the player's attempt (returns to entrance 5); No: hint and coach walks back
+30,60DA,Map16MoundApproachContestResult,entrance 4 with #224: win when wEventResult $C968 >= 7 (10 sets bonus flag #99) -> sets #98 and clears #101; else the coach wins
+30,6159,Map16MoundApproachContestOffer,coach 1 challenges the player (text $0C82) then Map16MoundApproachContestAsk
+30,6185,Map16MoundApproachContestAsk,Yes: sets #101; clears $C968/$C969; contest round (mode 5; course 7 hole 17; hook 30:6032; music $0B until #220; returns to entrance 4); No: text $0C96
+30,62CB,Map16SlopeApproachContestResult,entrance 5 with #225: win when wEventResult $C968 >= 7 (10 sets #99) -> sets #98 and clears #101; else the coach wins
+30,634A,Map16SlopeApproachContestOffer,coach 2 challenges the player (text $0C8A) then Map16SlopeApproachContestAsk
+30,6376,Map16SlopeApproachContestAsk,Yes: sets #102 and starts the contest round (hook 30:6223; returns to entrance 5); No: text $0C8B
+30,6414,Map16UnlockContests,after the Links win (#139): sets contest flag #224 when lesson #172 is done and #225 when #173 is done
+30,6635,PuttingGreenTalk02PuttingTip,talk 02 (practice putting greens 0E 11 14 17): Yes/No tip (text $10B1: putting has no form)
+30,6666,Map0ETalk08PuttingChallenge,talk 08 (Marion putting green pro): Try again? when tried (PuttingTestTriedFlag); cleared #194 -> text $10D9; else offer via 30:6701 (entries for the other greens follow at 30:668B / 66B3 / 66DA)
+30,668B,Map11Talk06PuttingChallenge,talk 06 (Palm putting green pro; patched talk list 30:67E9): as Map0ETalk08PuttingChallenge with cleared flag #195
+30,66B3,Map14Talk06PuttingChallenge,talk 06 (Dune putting green pro; patched talk list 30:6886): as Map0ETalk08PuttingChallenge with cleared flag #196
+30,66DA,Map17Talk06PuttingChallenge,talk 06 (Links putting green pro; patched talk lists 30:68C7 / 68F0 / 6919): as Map0ETalk08PuttingChallenge with cleared flag #197
+30,6942,PuttingGreenObject0FMeetAzalea,object 0F of the putting greens (actor 8 is placed on map 11 only): unless the player is Azalea (wCharId 2) sets hidden-friend flag #142; actor 8 jumps in and talks (text $0C5D); then HiddenFriendsBonus_30
+30,69B9,PuttingGreenEnter,enter script of maps 0E 11 14 17: per map respawns actors (ScriptRespawnActors) and patches the warp and talk lists (Links talk list by #115 / #139); hides actor 8 on map 11 until #142; on return ($FA) wStoryRoundKind $0A -> PuttingChallengeResult
+30,6A8C,Map0ETalk09PuttDemo,talk 09: text $10B8 (never up never in) then actor 9 putts and ball actor $0A rolls to the cup (sounds $48 / $5A)
+30,6AE0,Map0ETalk09NeverUpTip,talk 09 (other record): text $10B8 only
+30,6AEC,PuttingGreenTriggerPractice,trigger 0F of the putting greens: Practice here? (text $0C60) -> PuttingGreenStartPractice on Yes
+30,6B13,PuttingGreenStartPractice,wStoryRoundKind = $14; free putting round (mode 7) teed by PuttingSetTeeNearPlayer; hole and music from PuttingSetPracticeHole; hook 30:6BDB
+30,6B51,PuttingSetPracticeHole,by wMapId: SetCourseHole course 7 hole $12/$0F/$0C/$09 and wRoundMusic $0B/$09/$0A/$08 (maps 17 14 11 0E)
+30,6B90,PuttingSetChallengeHole,by wMapId: SetCourseHole $0A0C / $0A07 / $0A02 / else $080E (maps 17 14 11 / 0E) for the putting challenge
+30,6CF2,PuttingChallengeResult,after the putting challenge: if not yet cleared: wPuttChallengeScore $C3E1 >= 7 -> text $10D8 + PuttingTestClearedFlag set + AwardPuttingChallengeExp; else text $10DA and sets the tried flag
+30,6D40,PuttingSetTeeNearPlayer,SetForcedTee at base ($C3E2/$C3E4 from PuttingLoadGreenBase) + (player position wPlayerPosSave - base) / 4
+30,6D89,PuttingLoadGreenBase,by wMapId: base point $C3E2 (x) / $C3E4 (y) of the practice putting green
+30,6E49,PuttingGreenIndex,a = 0-3 for maps 0E 11 14 17 (Marion Palm Dune Links greens)
+30,6E74,PuttingSetClearedFlag,sets flag #194 + PuttingGreenIndex (putting challenge cleared on this green)
+30,6E89,PuttingTestClearedFlag,tests flag #194 + PuttingGreenIndex
+30,6E9E,PuttingSetTriedFlag,sets flag #190 + PuttingGreenIndex (putting challenge tried)
+30,6EB3,PuttingTestTriedFlag,tests flag #190 + PuttingGreenIndex
+30,6EC8,AwardPuttingChallengeExp,20/25/45/50 EXP by green (+25% when wPuttChallengeScore = 10); level-up check; SaveGame; reloads the map at the player's position (warp $FA)
+30,7212,Map2AEnter,Alternate Game (map 2A) enter at entrance $0F: rules text $1539 (shown and #151 set when neither #151 nor #154); asks who starts: Yes clears #152 / else asks again and sets #152; then AltShotStartRound
+30,72A8,AltShotNextGolfer,toggles bit 0 (team 1) or bit 1 (team 2) of wAltShotTurns $C873 for wCurPlayer and refreshes the golfer profile (player $80 / partner $0B; rivals $0C / $0D)
+30,72DF,AltShotSetMode,wGameMode = 3 when flag #155 else 2
+30,72F0,AltShotStartRound,alternate shot match: player + golfer $0C; course 3 hole 1; no forced wind; hook 30:7361; teams in $C878-$C87C (char / $0B vs $0C / $0D); #152 = partner starts; round $12; returns to map 2B entrance 6
+30,7453,Map2BTalk05SpriteAnimA,talk 05 (facing mask $40): Map2BLoadSpriteGfx then Map2BSpriteAnimLoop5
+30,745A,Map2BTalk05SpriteAnimB,talk 05 (facing mask $20): Map2BLoadSpriteGfx then Map2BSpriteAnimLoop8
+30,7473,Map2BTriggerNop,trigger 01 of map 2B: ret
+30,747D,Map2BEnter,Alternate Game Event (map 2B) enter: Map2BPatchTiles then by entrance: 1 intro scene (30:74FE); 6 match result (30:76F9); $0A rivals leave (30:7A67); $0B win (30:790F); $0C tie (30:7705); $0D loss (30:770D)
+30,74E5,Map2BPatchTiles,copies a 6x4 tile block (MapBufCopyRectRedraw b c d e h l = 01 1A 01 06 3A 04) and loads 2 palettes from 30:74B5
+30,74FE,Map2BIntroScene,entrance 1: Alternate Game intro cutscene (texts from $1533; one line differs when the Dune tournament was won #138); walks the four golfers off; warp $0F
+30,76F9,Map2BMatchResult,entrance 6: by wRoundResult: 1 -> Map2BMatchWon; 2 -> loss text $153C; else tie text $1541; then the teams talk and leave (warp 1)
+30,790F,Map2BMatchWon,We won! (text $1546) cutscene; first win sets #154 and gives 200 EXP + level-up check + SaveGame + warp $0E
+30,7A67,Map2BRivalsLeave,entrance $0A: rivals say they will practice (text $154A) and walk off; warp 1
+30,7C61,Map2BLoadSpriteGfx,copies tiles 30:7B90 to VRAM $8500 and palette 30:7C59
+30,7C79,Map2BDrawSpriteFrames,shows sprite template 30:7C50 (bc = attr/tile) at map point ($0800 $0700) relative to the scroll for 6 frames
+30,7CAE,Map2BSpriteAnimLoop5,5 x frames $50 $54 $58 $54 via Map2BDrawSpriteFrames (counter $C3E0)
+30,7CE3,Map2BSpriteAnimLoop8,8 x frames $54 $58 via Map2BDrawSpriteFrames (counter $C3E0)
+30,7D02,Map2BTeamsWalkIn,places actors 0 2 3 4 on row $0D (x 7 5 3 1) and walks them 2 tiles right at speed $0A
+30,7DF3,MapScriptNop_30,ret: object 01 script of the approach ranges
+30,7E73,FadeToLevelUpScreen_30,fade out then LevelUpScreen 41:402A
+30,7E7F,AwardExpWithBonus,de = EXP (+25% when bonus flag #99): AddExp; text $011B (You earned N EXP Pts); FadeToLevelUpScreen_30
+30,7EAD,HiddenFriendsBonus_30,as 33:7CF1: when the hidden-friend flags #140-143 of the other three characters are set: 300 EXP; level-up check; SaveGame; reloads the map at the player's position (warp $FA)
+30,7E1A,CurPlayerFieldAddr_30,as 32:7E8E: hl = wPlayer1 + a (+$40 for player 2 by wCurPlayer); keeps de
+30,7E2E,BallWithinPinDist,a = 0 when PinDist 10:62AD <= hl else 1 (lesson success test used by the event hooks)
+30,7E46,GetPlayerActorPos,hl / de = x / y words of the player's actor (WRAM4 +4 / +6)
+30,4868,ApproachRangeMapTable,3 map ids (0D 10 13) for ApproachRangeSetPracticeHole
+30,7D7B,AltGameCheerActorScriptData,actor script (04:4234 bytecode) given to the four golfers at the end of the Alternate Game intro
+30,7D99,LessonCoachTalkActorScriptData,actor script set on a lesson coach while he talks to the player (same bytes as 31:7CBE)
+30,7DFF,LessonCoach1ActorScriptData,actor script of approach coach 1 back at his spot (loops; bytecode)
+30,7E08,LessonCoach2ActorScriptData,actor script of approach coach 2 back at his spot (loops; bytecode)
+30,7E11,ContestCoachActorScriptData,actor script of the Links contest coach after a contest (bytecode)
+31,4052,Map1EEnter,Story Opening (map 1E) enter: StoryOpeningCreateCharacter
+31,4262,OpeningLoadGfx,LCD off: tiles 31:4060 -> $8600 and 31:40B0 -> $8400 (VRAM DMA); 2 palettes 31:40A0
+31,428C,OpeningDrawPortraitFrames,restores the map shadow and draws two 3x3 frames (06:6040) into WRAM5 $D084 / $D08D then queues the rows to $9880 / $B880
+31,42C8,OpeningLoadPortraitPair,a = question 0-3: portrait pair from 31:42E7 -> tiles $8E00 / $8F00 (LoadPortraitTiles 06:5B39)
+31,42EF,OpeningPickLeftRight,left/right choice: moves actor 2 (pointer) and the cursor ($C471/$C472) between the two portraits; A -> h = 0 left / 1 right; B -> $FF
+31,435E,OpeningDrawCursor,bobbing cursor sprite (tile $60) at $C471 / $C472 + wFrameCounter wobble
+31,437D,OpeningDrawChoiceMarks,choice marks: sprite templates 31:4230 / 31:4249 at the left / right portraits by bits 0 / 1 of $C470
+31,43B2,OpeningSpriteTask,frame task of the opening: OpeningDrawChoiceMarks + OpeningDrawCursor
+31,43B9,StoryOpeningCreateCharacter,new game intro: NewGame; boy/girl (flag #0); character (flag #1) -> 31:4791 -> CreateCharacter; handedness (flag #2 -> $C811); random $C83E; confirm (41:6784); NameEntryScreen; Director's Office caption; sets #97; warp 1
+31,47D7,Map23EnterAngleTest,Select Screen (map 23) enter: leftover test of AngleFromVector16 that prints three results with PrintHexWord at (9 $0C-$0E); then Map23ModeMenu
+31,483E,Map23ModeMenu,mode menu (text $0085: Tournament / Match Game / Practice / Clubhouse / VS / Start Over) -> handlers at 31:4867
+31,4867,Map23ModeHandlerTable,6 handler words for Map23ModeMenu
+31,4873,Map23ModeTournament,round in mode 1 (course 1 hole 1) returning to this map
+31,48A3,Map23ModeMatchGame,round in mode 2 (player vs own golfer; course 1 hole 3)
+31,48D3,Map23ModePractice,round in mode 6 (course 1 hole 2)
+31,4902,Map23ModeClubhouse,EventListScreen 0A:6F56 then warp 4
+31,4912,Map23ModeVsScorecard,shows ShowScorecard with fixed test values (course 2 hole $0B mode 1 $C8D0 = 4)
+31,4940,Map23ModeStartOver,warp 5
+31,4A1D,Map0CTalk02GoodShotTip,talk 02 (Marion driving range): Yes/No tip (text $0D17: what you need for a good shot)
+31,4A8B,Map0CTalk03DriverLesson,talk 03 (Marion driving range coach 1): #101 -> retry; else coach demo of driver tee shots (text $102F; returns to entrance 2)
+31,4B11,Map0CTalk04IronShotLesson,talk 04 (Marion driving range coach 2): #102 -> retry; else coach demo of iron shots (text $103F; returns to entrance 3)
+31,4BC9,Map0CTriggerGolfLingoSign,trigger 01 (Marion driving range): shows text $0857 (golf lingo sign)
+31,4BEC,Map0CEnter,Marion driving range enter: 2/3 after a demo; 4/5 lesson result (first success sets #162/#163 + 20 EXP + SaveGame + warp 8/9); $FA clears #100
+31,4D9C,Map0CDriverLessonResult,entrance 4: coach reacts to wEventResult $C968 (perfect power shot texts $103C / $103E); success sets #98 and clears #101
+31,4E9F,Map0CDriverLessonRetry,text $0D11 (Try again?) then Map0CDriverLessonAskTry
+31,4EA9,Map0CDriverLessonAfterDemo,entrance 2 (after the coach demo): text $1036 then Map0CDriverLessonAskTry
+31,4ED5,Map0CDriverLessonAskTry,Yes: sets #101 and plays the player's attempt (returns to entrance 4); No: hint and coach walks back
+31,507A,Map0CIronShotLessonResult,entrance 5: coach 2 reacts to wEventResult $C968; success sets #98 and clears #102
+31,512D,Map0CIronShotLessonRetry,text $0D12 (Want to try again?) then Map0CIronShotLessonAskTry
+31,5137,Map0CIronShotLessonAfterDemo,entrance 3 (after the coach demo): text $1046 then Map0CIronShotLessonAskTry
+31,5163,Map0CIronShotLessonAskTry,Yes: sets #102 and plays the player's attempt (returns to entrance 5); No: hint and coach walks back
+31,51F4,DrivingRangeTriggerPractice,trigger 0F of the driving ranges (maps 0C 0F 12 15): Practice here? (text $0C60) -> DrivingRangeStartPractice on Yes
+31,521B,DrivingRangeStartPractice,sets practice flag #100; free practice round (mode $0C) teed at wPlayerPosSave; hole from DrivingRangeSetPracticeHole
+31,5263,DrivingRangeSetPracticeHole,SetCourseHole by wMapId (table 31:5276 = 0C 0F 12 15): course 7 hole 7 / 10 / 13 / 16
+31,53A6,Map0FTalk02DriveFartherTip,talk 02 (Palm driving range): two chained Yes/No questions (text $0D1C: drive the ball farther)
+31,540E,Map0FTalk03IntentionalShotLesson,talk 03 (Palm driving range coach 1): #101 -> retry; else coach demo of intentional hook/slice shots (text $104E; returns to entrance 2)
+31,54A2,Map0FTalk04WindShotLesson,talk 04 (Palm driving range coach 2): #102 -> retry; else coach demo of wind shots (text $1061; returns to entrance 3)
+31,5543,Map0FEnter,Palm driving range enter: 2/3 after a demo; 4/5 lesson result (first success sets #166/#167 + 25 EXP + SaveGame + warp 8/9); $FA clears #100
+31,5711,Map0FIntentionalShotLessonResult,entrance 4: coach reacts to wEventResult $C968 (6 outcomes: curve size / no d-pad / hit a tree); success sets #98 and clears #101
+31,584C,Map0FIntentionalShotLessonRetry,text $0D11 (Try again?) then Map0FIntentionalShotLessonAskTry
+31,5856,Map0FIntentionalShotLessonAfterDemo,entrance 2 (after the coach demo): text $1056 then Map0FIntentionalShotLessonAskTry
+31,5882,Map0FIntentionalShotLessonAskTry,Yes: sets #101 and plays the player's attempt (returns to entrance 4); No: hint and coach walks back
+31,5A27,Map0FWindShotLessonResult,entrance 5: coach 2 reacts to wEventResult $C968; success sets #98 and clears #102
+31,5ADA,Map0FWindShotLessonRetry,text $0D12 (Want to try again?) then Map0FWindShotLessonAskTry
+31,5AE4,Map0FWindShotLessonAfterDemo,entrance 3 (after the coach demo): text $1068 then Map0FWindShotLessonAskTry
+31,5B10,Map0FWindShotLessonAskTry,Yes: sets #102 and plays the player's attempt (returns to entrance 5); No: hint and coach walks back
+31,5CC2,Map12Talk02HitFartherTip,talk 02 (Dune driving range): two chained Yes/No questions (text $1006: can you hit farther now)
+31,5D2A,Map12Talk03HighShotLesson,talk 03 (Dune driving range coach 1): #101 -> retry; else coach demo (text $1070: two-tiered green behind a hazard so a high shot; returns to entrance 2)
+31,5DBF,Map12Talk04TreeRecoveryLesson,talk 04 (Dune driving range coach 2): #102 -> retry; else coach demo of a recovery shot from the trees (text $1080; returns to entrance 3)
+31,5E63,Map12Enter,Dune driving range enter: 2/3 after a demo; 4/5 lesson result (first success sets #170/#171 + 45 EXP + SaveGame + warp 8/9); $FA clears #100
+31,5FE8,Map12HighShotLessonResult,entrance 4: coach reacts to wEventResult $C968; success sets #98 and clears #101
+31,60B6,Map12HighShotLessonRetry,text $0D11 (Try again?) then Map12HighShotLessonAskTry
+31,60C0,Map12HighShotLessonAfterDemo,entrance 2 (after the coach demo): text $1078 then Map12HighShotLessonAskTry
+31,60EC,Map12HighShotLessonAskTry,Yes: sets #101 and plays the player's attempt (returns to entrance 4); No: hint and coach walks back
+31,628E,Map12TreeRecoveryLessonResult,entrance 5: coach 2 reacts to wEventResult $C968; success sets #98 and clears #102
+31,6368,Map12TreeRecoveryLessonRetry,text $0D12 (Want to try again?) then Map12TreeRecoveryLessonAskTry
+31,6372,Map12TreeRecoveryLessonAfterDemo,entrance 3 (after the coach demo): text $1087 then Map12TreeRecoveryLessonAskTry
+31,639E,Map12TreeRecoveryLessonAskTry,Yes: sets #102 and plays the player's attempt (returns to entrance 5); No: hint and coach walks back
+31,656F,Map15Talk02HookSliceTip,talk 02 (Links driving range): Yes/No tip (text $100D: can you hit a hook and a slice)
+31,65B8,Map15Talk03TreeShotLesson,talk 03 (Links driving range coach 1): #101 -> retry; #224 -> contest offer text $1015 else lesson text $108F; coach demo round (mode 6; course 0 hole $0A; hook 31:68E9; returns to entrance 4)
+31,666F,Map15Talk04BuriedLieLesson,talk 04 (Links driving range coach 2): #102 -> retry; lesson (text $109F: buried lie in a bunker) or with #225 the eyeball contest offer ($1020; declined text depends on #139); coach demo returns to entrance 5
+31,67C8,Map15Enter,Links driving range enter: Map15UnlockContests; talk list patched after the Links tournament (#115: 31:6764; won #139: 31:678D); 4/5 after a demo; 6/7 lesson or contest results (first success: #174/#175 or contests #222/#223 + 50 EXP); $0A / $0B post-contest talks; $FA clears #100
+31,6A56,Map15TreeShotLessonResult,entrance 6 (no contest): coach reacts to wEventResult $C968; success sets #98 and clears #101
+31,6AE3,Map15TreeShotContestResult,entrance 6 with #224: player wins when wEventPlayerDist $C96A < coach distance $C968 (word) -> sets #98; clears #101
+31,6B5A,Map15TreeShotPostContestTalk,entrance $0A: coach 1 text $101E (master trouble shots)
+31,6BC1,Map15TreeShotLessonRetry,text $0D11 (Try again?) then Map15TreeShotLessonAskTry
+31,6BCB,Map15TreeShotLessonAfterDemo,entrance 4 (after the coach demo): text $1097 then Map15TreeShotLessonAskTry
+31,6BF7,Map15TreeShotLessonAskTry,Yes: sets #101 and plays the player's attempt or contest (club 3 forced; wind $6000 and music by #224/#222/#174; returns to entrance 6); No: hint
+31,6DF8,Map15BuriedLieLessonResult,entrance 7 (no contest): coach 2 reacts to wEventResult $C968; success sets #98 and clears #102
+31,6E9D,Map15BuriedLieContestResult,entrance 7 with #225: player wins when wEventPlayerDist $C96A < coach distance $C968 (word) -> sets #98; clears #102
+31,6F14,Map15BuriedLiePostContestTalk,entrance $0B: coach 2 text $1028 (will practice and try again)
+31,6F64,Map15BuriedLieLessonRetry,text $0D12 (Want to try again?) then Map15BuriedLieLessonAskTry
+31,6F6E,Map15BuriedLieLessonAfterDemo,entrance 5 (after the coach demo): text $10A7 then Map15BuriedLieLessonAskTry
+31,6F9A,Map15BuriedLieLessonAskTry,Yes: sets #102 and plays the player's attempt or contest (by #225 / #223 / #175; returns to entrance 7); No: hint
+31,7051,Map15UnlockContests,after the Links win (#139): sets #224 when lesson #174 is done and #225 when #175 is done (same flags as Map16UnlockContests)
+31,7127,Map2DTalk03Student,talk 03 (Golf Clinic): student text $1560 with actor scripts 31:7CBE / 31:7D19
+31,715F,Map2DTalk04Student,talk 04 (Golf Clinic): student text $1561 with actor scripts 31:7CBE / 31:7D24
+31,7199,Map2DTalk05CoachJudge,talk 05 (Golf Clinic coach): You want your shot judged? (text $1564) Yes -> ClinicStartJudgedShot
+31,71D3,Map2DTalk06CoachJudge,talk 06 (Golf Clinic coach 2): same offer -> ClinicStartJudgedShot
+31,720D,Map2DTriggerCoachJudge,trigger 01 (Golf Clinic): same offer; on No the player is walked back to ($2000 $3900)
+31,7252,ClinicStartJudgedShot,one judged tee shot: mode 6; course 0 hole 6; tee ($2000 $3800); hook 31:75C0 (shot class -> wEventResult $C968); returns to map 2D entrance 2
+31,72A3,Map2DEnter,Golf Clinic enter: entrance 2 with #99 (a shot was judged) -> ClinicCoach1Comment and ClinicCoach2Comment; clears the name banner
+31,72CF,ClinicCoach1Comment,coach 5: no shot -> text $1562; else comment chosen by wEventResult $C968 through jump table 31:72F6 (texts $15BC-)
+31,7444,ClinicCoach2Comment,coach 6: no shot -> text $1563; else comment chosen by wEventResult $C968 through jump table 31:746A (texts $15C0-)
+31,72F6,ClinicCoach1CommentTable,jump table (9 words) indexed by the shot class $C968 for ClinicCoach1Comment
+31,746A,ClinicCoach2CommentTable,jump table (9 words) indexed by the shot class $C968 for ClinicCoach2Comment
+31,760C,ClinicClassifyShot,a = shot class 0-8 from the first stroke record ($D680 +$0A power: $3C / >= $34 / less; +$0B impact offset; +$0C bits 4-7)
+31,7775,CeremonyEnter,Award Ceremony enter (maps 18-1B): per map palettes and warp list (ScriptSetMapField de 8); seen flags #107/#108/#109 (Marion Palm Dune) skip to warp 2; entrance 2 champion (Links: picture + StaffCredits + #110 + save + back to map 0); 3/4 second/third place; else none
+31,78E1,CeremonyChampion,first place: new champion speech (texts $0C3C-$0C3F) and trophy then falls into CeremonyCongratsAndLeave
+31,7A00,CeremonyCongratsAndLeave,Congratulations (text $0C40): golfers walk off and fade out
+31,7B1C,CeremonyPlaceTrophy,second/third place: text $0C41 with the place number (wMapEntrance - 1) then CeremonyCongratsAndLeave
+31,7B5E,CeremonySetCourseText,SetTextCourseIndex 1-4 by wMapId (18 19 1A 1B) for the {0B} code
+31,7B86,CeremonyPatchTiles2nd,MapBufCopyRectRedraw b c d e h l = $16 $0A $0A $0A 2 2 (second place podium?)
+31,7B96,CeremonyPatchTiles3rd,MapBufCopyRectRedraw b c d e h l = $19 $0A $0A $0A 2 2 (third place podium?)
+31,7CB0,CeremonyDuneSetFlag212,map 1A: sets flag #212 when #198 and #114 are set
+31,7D18,MapScriptNop_31,ret: object 01 script of the driving ranges and the ceremonies
+31,7D98,FadeToLevelUpScreen_31,copy of 30:7E73 (as 32:7EE7): fade out then LevelUpScreen
+31,7DA4,AwardExpWithBonus_31,copy of 30:7E7F: de = EXP (+25% when #99); AddExp; text $011B; level-up screen
+31,4791,OpeningCharTable,character id by (flag #1 << 1 | flag #0): 00 01 03 02
+31,42E7,OpeningPortraitPairTable,portrait pairs per opening question (4 x 2 bytes)
+31,7CBE,LessonCoachTalkActorScriptData_31,actor script set on a coach while he talks (same bytes as 30:7D99)
+*,C82C,wRoundMusic,song for the next round (PlayRoundMusic 08:5062 plays it when non-zero; GolfSessionInit clears it)
+*,C968,wEventResult,golf event result written by the event hooks: lesson 0 = near the pin / 1 = missed; contest score; clinic shot class; word = coach distance in the Links driving range contest
+*,C969,wEventShotClub,club of the first stroke (stroke record +8) saved by the lesson hooks ($0D = putter)
+*,C96A,wEventPlayerDist,word: player's distance in the Links driving range contests (compared with $C968)
+*,C873,wAltShotTurns,alternate shot: bit 0 / bit 1 = which golfer of team 1 / team 2 hits next (AltShotNextGolfer); saved by bank 10
+*,C3E0,wScriptLoop,loop counter of the map 2B sprite animations
+*,C3E1,wPuttChallengeScore,putting challenge result (>= 7 clears; 10 = bonus); also script scratch in bank 34
+*,C3E2,wPuttGreenBaseX,word: x of the putting green base point (PuttingLoadGreenBase)
+*,C3E4,wPuttGreenBaseY,word: y of the putting green base point
+30,681A,Map14Talk08AltGameGolfer1,talk 08 (Dune putting green golfer 8; patched list 30:6886): #249 -> AltGameDeclinedTalk; #151 or #154 -> AltGameInviteAgain; Dune tournament played #114 -> AltGameInvite; else text $1529
+30,683E,Map14Talk09AltGameGolfer2,talk 09 (golfer 9): same checks as Map14Talk08AltGameGolfer1; else text $152A
+30,6862,Map14Talk0AAltGameGolfer3,talk 0A (golfer $0A): same checks as Map14Talk08AltGameGolfer1; else text $152B
+30,6F42,AltGameInvite,first invitation to the Alternate Game (texts $152C-$1530): Yes twice -> rules menu Match Game / Stroke (text $1808; Stroke sets #155 else clears it) -> warp 2 (to map 2A)
+30,70B0,AltGameInviteAgain,replay invitation (text $154B): Yes -> rules menu (#155) and warp; No -> sets #249 (the golfers then only say text $154E)
+30,71AF,AltGameDeclinedTalk,text $154E (...maybe next time) once the replay was declined (#249)
+31,5276,DrivingRangeMapTable,4 map ids (0C 0F 12 15) for DrivingRangeSetPracticeHole
+31,7D19,ClinicStudentActorScriptData,actor script (04:4234 bytecode) of the Golf Clinic student after talk 03
+31,7D24,DrivingCoach1ActorScriptData,actor script of driving range coach 1 back at his spot (also the clinic student of talk 04; bytecode)
+31,7D2D,DrivingCoach2ActorScriptData,actor script of driving range coach 2 back at his spot (bytecode)
+30,432E,Map0DTalk03RunningApproachLessonDemoStrokeData,coach demo stroke record (tee x/y words; aim; club ...) copied to $C600 for the golfer preset with bit 6 (-> $D680) by Map0DTalk03RunningApproachLesson
+30,433E,Map0DTalk03RunningApproachLessonHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map0DTalk03RunningApproachLesson
+30,459A,Map0DTalk04ChipApproachLessonDemoStrokeData,coach demo stroke record (tee x/y words; aim; club ...) copied to $C600 for the golfer preset with bit 6 (-> $D680) by Map0DTalk04ChipApproachLesson
+30,45AA,Map0DTalk04ChipApproachLessonHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map0DTalk04ChipApproachLesson
+30,43AF,Map0DRunningApproachLessonAskTryHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map0DRunningApproachLessonAskTry
+30,4627,Map0DChipApproachLessonAskTryHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map0DChipApproachLessonAskTry
+30,48BC,ApproachRangeStartPracticeHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by ApproachRangeStartPractice
+30,4BF7,Map10Talk03BunkerShotLessonDemoStrokeData,coach demo stroke record (tee x/y words; aim; club ...) copied to $C600 for the golfer preset with bit 6 (-> $D680) by Map10Talk03BunkerShotLesson
+30,4C07,Map10Talk03BunkerShotLessonHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map10Talk03BunkerShotLesson
+30,4E37,Map10Talk04SlopedGreenApproachLessonDemoStrokeData,coach demo stroke record (tee x/y words; aim; club ...) copied to $C600 for the golfer preset with bit 6 (-> $D680) by Map10Talk04SlopedGreenApproachLesson
+30,4E47,Map10Talk04SlopedGreenApproachLessonHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map10Talk04SlopedGreenApproachLesson
+30,4C83,Map10BunkerShotLessonAskTryHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map10BunkerShotLessonAskTry
+30,4EAD,Map10SlopedGreenApproachLessonAskTryHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map10SlopedGreenApproachLessonAskTry
+30,535F,Map13Talk03BackspinLessonDemoStrokeData,coach demo stroke record (tee x/y words; aim; club ...) copied to $C600 for the golfer preset with bit 6 (-> $D680) by Map13Talk03BackspinLesson
+30,536F,Map13Talk03BackspinLessonHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map13Talk03BackspinLesson
+30,55B1,Map13Talk04UphillGreenLessonDemoStrokeData,coach demo stroke record (tee x/y words; aim; club ...) copied to $C600 for the golfer preset with bit 6 (-> $D680) by Map13Talk04UphillGreenLesson
+30,55C1,Map13Talk04UphillGreenLessonHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map13Talk04UphillGreenLesson
+30,53D5,Map13BackspinLessonAskTryHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map13BackspinLessonAskTry
+30,5627,Map13UphillGreenLessonAskTryHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map13UphillGreenLessonAskTry
+30,5BC2,Map16Talk03MoundApproachLessonDemoStrokeData,coach demo stroke record (tee x/y words; aim; club ...) copied to $C600 for the golfer preset with bit 6 (-> $D680) by Map16Talk03MoundApproachLesson
+30,5BD2,Map16Talk03MoundApproachLessonHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map16Talk03MoundApproachLesson
+30,5E0C,Map16Talk04SlopeApproachLessonDemoStrokeData,coach demo stroke record (tee x/y words; aim; club ...) copied to $C600 for the golfer preset with bit 6 (-> $D680) by Map16Talk04SlopeApproachLesson
+30,5E1C,Map16Talk04SlopeApproachLessonHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map16Talk04SlopeApproachLesson
+30,5C38,Map16MoundApproachLessonAskTryHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map16MoundApproachLessonAskTry
+30,5E82,Map16SlopeApproachLessonAskTryHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map16SlopeApproachLessonAskTry
+30,6032,Map16MoundApproachContestAskHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map16MoundApproachContestAsk
+30,6223,Map16SlopeApproachContestAskHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map16SlopeApproachContestAsk
+30,6BDB,PuttingGreenStartPracticeHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by PuttingGreenStartPractice
+30,7361,AltShotStartRoundHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by AltShotStartRound
+31,4C88,Map0CTalk03DriverLessonDemoStrokeData,coach demo stroke record (tee x/y words; aim; club ...) copied to $C600 for the golfer preset with bit 6 (-> $D680) by Map0CTalk03DriverLesson
+31,4C98,Map0CTalk03DriverLessonHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map0CTalk03DriverLesson
+31,4F66,Map0CTalk04IronShotLessonDemoStrokeData,coach demo stroke record (tee x/y words; aim; club ...) copied to $C600 for the golfer preset with bit 6 (-> $D680) by Map0CTalk04IronShotLesson
+31,4F76,Map0CTalk04IronShotLessonHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map0CTalk04IronShotLesson
+31,4D14,Map0CDriverLessonAskTryHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map0CDriverLessonAskTry
+31,4FF2,Map0CIronShotLessonAskTryHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map0CIronShotLessonAskTry
+31,5296,DrivingRangeStartPracticeHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by DrivingRangeStartPractice
+31,5600,Map0FTalk03IntentionalShotLessonDemoStrokeData,coach demo stroke record (tee x/y words; aim; club ...) copied to $C600 for the golfer preset with bit 6 (-> $D680) by Map0FTalk03IntentionalShotLesson
+31,5610,Map0FTalk03IntentionalShotLessonHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map0FTalk03IntentionalShotLesson
+31,5913,Map0FTalk04WindShotLessonDemoStrokeData,coach demo stroke record (tee x/y words; aim; club ...) copied to $C600 for the golfer preset with bit 6 (-> $D680) by Map0FTalk04WindShotLesson
+31,5923,Map0FTalk04WindShotLessonHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map0FTalk04WindShotLesson
+31,5681,Map0FIntentionalShotLessonAskTryHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map0FIntentionalShotLessonAskTry
+31,599F,Map0FWindShotLessonAskTryHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map0FWindShotLessonAskTry
+31,5EF7,Map12Talk03HighShotLessonDemoStrokeData,coach demo stroke record (tee x/y words; aim; club ...) copied to $C600 for the golfer preset with bit 6 (-> $D680) by Map12Talk03HighShotLesson
+31,5F07,Map12Talk03HighShotLessonHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map12Talk03HighShotLesson
+31,6185,Map12Talk04TreeRecoveryLessonDemoStrokeData,coach demo stroke record (tee x/y words; aim; club ...) copied to $C600 for the golfer preset with bit 6 (-> $D680) by Map12Talk04TreeRecoveryLesson
+31,6195,Map12Talk04TreeRecoveryLessonHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map12Talk04TreeRecoveryLesson
+31,5F58,Map12HighShotLessonAskTryHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map12HighShotLessonAskTry
+31,6206,Map12TreeRecoveryLessonAskTryHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map12TreeRecoveryLessonAskTry
+31,68D9,Map15Talk03TreeShotLessonDemoStrokeData,coach demo stroke record (tee x/y words; aim; club ...) copied to $C600 for the golfer preset with bit 6 (-> $D680) by Map15Talk03TreeShotLesson
+31,68E9,Map15Talk03TreeShotLessonHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map15Talk03TreeShotLesson
+31,6CA6,Map15Talk04BuriedLieLessonDemoStrokeData,coach demo stroke record (tee x/y words; aim; club ...) copied to $C600 for the golfer preset with bit 6 (-> $D680) by Map15Talk04BuriedLieLesson
+31,6CB6,Map15Talk04BuriedLieLessonHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map15Talk04BuriedLieLesson
+31,699C,Map15TreeShotLessonAskTryHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map15TreeShotLessonAskTry
+31,6D52,Map15BuriedLieLessonAskTryHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by Map15BuriedLieLessonAskTry
+31,75C0,ClinicStartJudgedShotHookTable,golf event hook table (words for events 0 shot setup and 1 after a shot) of the round started by ClinicStartJudgedShot
+# --- banks 04 40 12 06 3E 48 41 0B 77 3F 0D 0E (scorecard pages, game mode select, golf dictionary, actor script opcodes, title and demo, menu handlers) ---
+0E,42F0,ScorecardLoadCommonGfx,VBK0: tiles 0E:4050/4250/4290 to $8000/$8200/$8300 and palettes 0E:42B0; face icons via 12:6CF0 (4 from $C879.. when $C878 = 1 else 2 from $C890/$C899 and $C8D0/$C8D9)
+0E,4373,ScorecardResetView,ClearFrameTasks; wHolesDone = wHoleNumber (-1 unless $C4BD); splits it in front 9 ($C480) and back 9 ($C481); zeroes scroll / camera bounds (row max $3F) and sprites
+0E,4432,ScorecardPageMatchStandings,ScorecardPageTable stub: farcall 3E:403F MatchStandingsScreen
+0E,4436,ScorecardPageTwoPlayer,ScorecardPageTable stub: farcall 3E:6361 TwoPlayerScoreScreen
+0E,443A,ScorecardScrollTask,Up / Down held scroll wMapScrollY by $80 within 0..[$C32C]-$12 rows; then farcall 04:4072 MapScrollTask
+0E,447C,ScorecardPutTile,writes tile a to [de] in WRAM3 and attribute 0 in WRAM2; de++ (scorecard tilemap buffers)
+0E,4492,ScorecardPutString,copies the 0-terminated string at hl to the WRAM3 tile map at de with attribute 0 in WRAM2
+0E,44AE,ScorecardPutStringAccentA,unreferenced fragment: rewrites the previous tile as an accented glyph ($30/$50 +) with attribute 8 and resumes ScorecardPutString
+0E,44C8,ScorecardPutStringAccentB,unreferenced fragment: as ScorecardPutStringAccentA with glyph base $2B
+0E,44E2,ScorecardPutStringRight,unreferenced: de += 6 minus the string length then ScorecardPutString (right-aligned in 6 cells)
+0E,44F8,ScorecardPutText,hl = text id: copies it to a stack buffer via 05:40C2 CopyTextShortToDE then ScorecardPutString at de
+0E,4513,ScorecardPutNumber,hl = value / a = digits: FormatDecimalNumber into a stack buffer then ScorecardPutString at de
+0E,4532,ScorecardPutDigitPair,a & $1F indexes the 2-tile table 0E:454A; writes both tiles with ScorecardPutTile
+0E,454A,ScorecardDigitTileTable,32 x 2 tile codes used by ScorecardPutDigitPair (numbers 0-31 as 2 tiles)
+0E,458A,ScorecardPutScoreToPar,a = signed score to par: 3 digits (FormatDecimalNumber) with '+' before positive values and $2E in the second cell for 0; ScorecardPutString at de
+0E,45CD,ScorecardFillBlank,unreferenced: writes b spaces ($20 attr 0) at hl in the WRAM3/WRAM2 tile maps
+0E,45E8,GetGolferName,a = golfer id -> name at de: 0/$FF = wPlayerName; bit 7 = course list 0E:4633 entry (05:40C2); else text $53 + a
+0E,4633,CourseGolferNameTable,per course (wCourse) pointer to a list of golfer text ids used by GetGolferName and AssignStandingsNames
+0E,4643,ScorecardQueueSprite,e = row (tiles) d = column: skips rows off screen; positions the sprite template hl relative to wMapScrollY with a bob offset from 0E:467D (hVBlankCount & $3F) via QueueSpriteTemplate
+0E,467D,ScorecardBobTable,64 vertical offsets indexed by hVBlankCount & $3F (ScorecardQueueSprite)
+0E,46CD,BlitGlyphRows,c x 8 calls of BlitGlyphRowMasked: merges the glyph rows at de into the 2bpp tiles at hl
+0E,46EB,BlitGlyphRowMasked,reads mask byte pair (c b) from de and ORs it into the two bitplanes at hl with mask b (text over background tiles)
+0E,5209,ScorecardPageStandings,page: ScorecardResetView + ScorecardStandingsSetup; frame task 0E:5348; waits A/B/Start (a = 0) or Select (a = 1); sound $5C
+0E,5230,ScorecardStandingsSetup,LCD off; loads the standings tiles / LZ maps (0E:4710 0E:5131 0E:4FEA) to WRAM; BuildStandings list; draws it with MapDrawFullScreen 0B:4306
+0E,5309,ScorecardInitNameTiles,writes 6 increasing tile numbers ($40..) per row for 28 rows at WRAM3 $D146 (attr 0 in WRAM2): name cells drawn into tile RAM
+0E,5348,ScorecardStandingsTask,frame task: scroll; cursor sprite on the player row ($C482); blinking up/down arrow when the rank $C483 differs from $C875
+0E,53A6,DrawStandingsList,hl = standings entries (4 bytes ended by $96): rank (+ tie '/') name rendered into tiles at $D400 (BlitGlyphRows) score to par and holes ('-' when 0); one row per $40
+0E,5448,ScorecardBuildStandingsRows,BuildStandings; copies $74 bytes of WRAM6 $D800 to $C600; DrawStandingsList; $C482 = player index; $C483 = player rank
+0E,6C7A,ScorecardPageStrokes,page: hole-by-hole scorecard (one player); frame task 0E:6D47; A/B/Start -> 0; Select -> 1 (not in mode 3)
+0E,6CA8,ScorecardStrokesSetup,LCD off; loads tiles 0E:5480 0E:5E51 and LZ maps 0E:6B93 / 0E:6921; palettes 0E:68E1; ScorecardLoadCommonGfx; DrawStrokesScorecard; MapDrawFullScreen
+0E,6D47,ScorecardStrokesTask,frame task: scroll; two sprites; unless mode 3 marks the holes whose bit is set (02:5C77 TestCourseHoleBit) with a sprite per row
+0E,6D9E,DrawParColumn,9 rows from hole l: par of each hole (13:7044 GetHoleParAndYards) with ScorecardPutDigitPair at de (+$40 per row)
+0E,6DBA,DrawHoleScoresColumn,h holes from l at bc: strokes (low nibble) putts (high nibble) and strokes - par per row
+0E,6DEE,DrawParTotal,h holes from l: sum of pars printed as 2 digits at de
+0E,6E0A,DrawScoreTotals,h holes at bc: total strokes (3 digits) total of high nibbles (2) and total - par
+0E,6E61,DrawStrokesScorecard,front / back nine pars scores and totals of player 1 ($C8AC) into the WRAM3 map at $D145.. ($C480 / $C481 holes per nine)
+0E,7199,ScorecardPageTwoPlayerStrokes,page: two-player scorecard ($C8AC and $C8EC); frame task 0E:725F; A/B/Start -> 0; Select -> 1
+0E,71C0,ScorecardTwoPlayerSetup,LCD off; tiles 0E:5480 0E:5E51 and LZ maps 0E:70C2 / 0E:6F00; ScorecardLoadCommonGfx; DrawTwoPlayerScorecard; MapDrawFullScreen
+0E,725F,ScorecardTwoPlayerTask,frame task: scroll; face / name sprites (4 pairs when $C878 = 1 else 2)
+0E,72E4,DrawTwoPlayerScoresColumn,h holes from l: strokes of player 1 ($C8AC) and player 2 ($C8EC) per row
+0E,731A,DrawTwoPlayerTotals,h holes from l: stroke totals of both players (3 digits each)
+0E,7356,DrawTwoPlayerToPar,unreferenced: SumScoreToPar of $C8AC and $C8EC over wHolesDone printed at $D708 / $D70E
+0E,7377,DrawTwoPlayerScorecard,pars both nines; per-hole strokes of both players; totals (ScorecardTwoPlayer page)
+0E,762F,ScorecardPageMatchPlay,page: match-play hole results; frame task 0E:76F5; A/B/Start -> 0; Select -> 1
+0E,7656,ScorecardMatchPlaySetup,LCD off; tiles 0E:5480 0E:5E51 and LZ maps 0E:7573 / 0E:73F0; ScorecardLoadCommonGfx; DrawMatchPlayScorecard; MapDrawFullScreen
+0E,76F5,ScorecardMatchPlayTask,frame task: same sprites as ScorecardTwoPlayerTask (second column at $1000)
+0E,777A,DrawMatchPlayHoleResults,per hole compares $C8AC with $C8EC: win / loss / halved marks (tiles $7E $7F / $7D); $C484 = holes up (+1 per player-1 win)
+0E,7804,DrawMatchPlayStatus,$C484 holes up: prints n + text $120 Up and $122 Down (or $121 Even twice) for the two sides
+0E,7850,DrawMatchPlayScorecard,pars and par totals then DrawMatchPlayHoleResults and DrawMatchPlayStatus
+*,C8AC,wP1HoleScores,player 1 per-hole score bytes (18): low nibble strokes; high nibble putts (10:4101) (scorecard bank 0E)
+*,C8EC,wP2HoleScores,player 2 per-hole score bytes (18) as wP1HoleScores
+*,C482,wStandingsPlayerIdx,scorecard: player's index in the standings list (0E:5448)
+*,C483,wStandingsPlayerRank,scorecard: player's rank (GetPlayerRank)
+3F,4002,GolfDictionary,export $00 (map scripts 32:79F3 33:4E29): a = mode 0-4 one category (mask 1 2 4 8 $10: terms rules equipment techniques facilities) / 5 all with category hints / 6 whole dictionary from the A-Z index; runs the page loop until a handler returns 1
+3F,4140,DictShowEntryListPage,fade out; leaves the A-Z index for the entry list (SCX row $0D); DictDrawIndexCursor off; DictLoadListGfx; DictFindLetterStart; DictDrawEntryList; fade in; returns 8
+3F,418C,DictShowIndexPage,fade out; back to the A-Z index page (SCX row $21); DictFindLetterOfTop; DictLoadIndexGfx; index cursor on; fade in; returns 2
+3F,41F6,DictResetScroll,zeroes SCX/SCY and the map scroll shadows; clears wTextSpeed bit 7 (on exit)
+3F,4216,DictLoadListGfx,list page graphics: tiles 3F:4E04 / LZ 3F:4889 (title by mode) / 3F:44F5 / 3F:4F54 3F:5036 to VRAM1; palettes 3F:4841; DictClearTextAreas
+3F,42A9,DictLoadIndexGfx,A-Z index page graphics: tiles 3F:4E02 4E06-4E0C and LZ map 3F:4485 to WRAM / VRAM1; palettes 3F:47F9
+3F,431C,DictClearTextAreas,clears the 14 WRAM2 rectangles listed at 3F:444D (dst / length words)
+3F,444D,DictTextAreaTable,14 x (address word / length word) text areas cleared by DictClearTextAreas (WRAM2) and blanked with spaces by DictDrawEntryList (WRAM3)
+3F,433C,DictInit,scroll for the start page; LCD off; ClearFrameTasks; DictCountEntries; DictFindTableEnd; LZ tiles 3F:5119 525A 53D2 5530 5609 5756 to VRAM; palettes 3F:5811; list or index gfx by mode; map 3F:4565; draws the screen; sets wTextSpeed bit 7
+3F,58B9,DictHostStopTalking,if the host animation state $D614 < 3: state 4 with timer $FF
+3F,58CB,DictHostStartTalking,timer $D619 = $B4; state $D614 = random 0-2 (hVBlankCount & 3)
+3F,58DD,DictFrameTask,frame task (prio $1D): host face animation (states $D614 / timer $D619; talk while flag #25) from frame lists 3F:5AD0 / 3F:5B20; list cursor sprite with blink $D61A and left/right arrows ($D613 bits 2-3); index cursor sprite on the A-Z grid (9 per row)
+3F,5B92,FillBytes_3F,fills c bytes at hl with a (registers kept)
+3F,5B9F,DictCountEntries,$D60B = number of entries of DictEntryTable matching the category mask $D60E
+3F,5BC2,DictFindTableEnd,$D60C/$D60D = address of the $40 end marker of DictEntryTable
+3F,5BDC,DictEntryAbsIndex,a = c-th entry matching mask b -> a = its index among all entries (explanation text $1AE7 + a)
+3F,5BF2,DictEntryCategory,a = c-th entry matching mask b -> its category 0-4 (hint text $1A1E + a)
+3F,5C23,DictCurrentEntry,a = (top $D609 + cursor row $D60A) mod $D60B: filtered index of the highlighted entry
+3F,5C3A,DictPrevLetter,Left: moves the top entry $D609 to the start of the previous letter group (0 separators) with wrap; cursor row 0
+3F,5C53,DictWrapToEnd,helper of DictPrevLetter: c = count - 1 and hl = end marker - 2 (wrap from the table start)
+3F,5CB8,DictNextLetter,Right: moves the top entry $D609 to the first entry after the next 0 separator (wraps to 0); cursor row 0
+3F,5D0A,DictDrawEntryList,blanks the text areas; prints 6 entry names (text $1A2B + entry) from the top entry $D609 via 05:62AA PrintTextToBuffer and DictCopyNameRow; DictDrawListCursor
+3F,5DBA,DictDrawListCursor,uploads the 16-byte cursor tile of the highlighted entry's letter group from WRAM1 $D000 to VRAM1 $8600
+3F,5DFC,DictEntryTable,one byte per dictionary entry: category bit (1 2 4 8 $10); $00 separates first letters; $40 ends
+3F,5ED2,DictFindLetterStart,$D609 = filtered index of the first entry of letter $D60A (0 when none); cursor row 0
+3F,5F16,DictFindLetterOfTop,$D60A = letter group (count of 0 separators) of the highlighted entry: index cursor position on return
+3F,5F4C,DictDrawIndexCursor,a = 1: uploads the 2 highlighted tiles of letter b (WRAM1 $D000 + b x 64) to VRAM1 $8600; a = 0 nothing
+3F,5F73,DictIndexInput,A-Z index page input: A -> 4 (open list) / B -> 1 (exit) / Up Down Left Right move the letter cursor $D60A (26 letters; 9 per row)
+3F,6017,DictListInput,list page input: A shows the explanation (text $1AE7 + entry or category hint $1A1E) in a window while the host talks; B exits (1) or back to the index ($10 in mode 6); Up/Down move or scroll; Left/Right previous / next letter
+3F,6142,DictCopyNameRow,de = row: clears $C600 with DictBlankAttrRow and queues the printed name tiles (WRAM3) and attributes (WRAM2) to the BG map $9810 + row; 03:5087 UploadGlyphRange; one frame
+3F,61A0,DictBlankAttrRow,fills 16 bytes of wTextBuffer $C600 with the glyph VRAM bank attribute (wGlyphVRAMBank)
+*,D609,wDictTopEntry,WRAM6 dictionary (bank 3F): filtered index of the first listed entry
+*,D60A,wDictCursor,WRAM6 dictionary: cursor row in the list (0-5) or letter 0-25 on the index page
+*,D60B,wDictEntryCount,WRAM6 dictionary: entries matching the category mask
+*,D60C,wDictTableEnd,WRAM6 dictionary: big-endian pointer to the $40 end of DictEntryTable
+*,D60E,wDictCategoryMask,WRAM6 dictionary: category bits shown (1 2 4 8 $10 or $1F)
+*,D60F,wDictHintMode,WRAM6 dictionary: 1 = A shows the category hint text instead of the explanation (mode 5)
+*,D610,wDictMode,WRAM6 dictionary: mode 0-6 passed to GolfDictionary (6 = index)
+*,D613,wDictFlags,WRAM6 dictionary: bit 0 window open / 1 list page / 2-3 left-right arrow pressed
+*,D614,wDictHostAnim,WRAM6 dictionary: host face animation state (0-2 talk / 3 idle / 4 blink?)
+*,D619,wDictHostTimer,WRAM6 dictionary: host animation timer
+*,D61A,wDictBlink,WRAM6 dictionary: list cursor blink counter
+0D,4007,ModeSelectInit,hl = id list e = start index d = count bc = descriptor table: LCD off; film strip / title / name box gfx and the current mode picture; tasks 415C and 428E (clone of CourseSelectInit 0F:400B)
+0D,415C,ModeTitleWaveTask,frame task: title sprite template 0D:41B5 bobbing by hVBlankCount through 0D:4175 (as CourseTitleWaveTask 0F:4160)
+0D,41DE,ModeSelectInput,left/right scroll the film when 2+ modes; A returns the id at [$D207 + hFFB0]; B returns $FF (as CourseSelectInput 0F:41E2)
+0D,4243,ModeCopyFilmRowsToVRAM,queues $C600 (attributes VRAM1) and $C700 (tiles) to $9880 (16 blocks)
+0D,425A,ModeNextFilmTileColumn,hFFB4 += 8 wrapping $B0 -> $10
+0D,4267,ModeShiftFilmMapLeft,moves the film maps at $C600 one byte left ($1FF bytes)
+0D,4274,ModePrevFilmTileColumn,hFFB4 -= 8 wrapping $08 -> $A8
+0D,4281,ModeShiftFilmMapRight,moves the film maps at $C600 one byte right (reverse copy)
+0D,428E,ModeArrowsTask,frame task: animated tile and blinking left/right arrow sprites when 2+ modes
+0D,42B0,ModeAnimateArrowTile,hFFB1 += 1: 1 of 8 frames at 0D:4730 to VRAM1 $9060
+0D,42C9,ModeFilmScrollLeftStep,shift left; next picture column (hFFB6) into tile slot hFFB4; column tile ids at $C613
+0D,4324,ModeSelectNext,next mode (hFFB0 wraps 1..count): decompresses the pictures and scrolls 12 steps; redraws the name box
+0D,43A8,ModeFilmScrollRightStep,shift right; previous picture column into the tile slot; column ids at $C600
+0D,43FD,ModeSelectPrev,previous mode: as ModeSelectNext scrolling right
+0D,447D,ModeDrawFilmGapColumn,writes the sprocket column (tile $09) and slot tile ids; blank tile 0D:4670 to the slot
+0D,44B6,ModeReloadPicture,queued: palette (field $0A) and picture tiles (field $04) to VRAM1 $8B00-$8F00 then the picture maps
+0D,44F9,ModeLoadPicture,as ModeReloadPicture with an immediate copy (LCD off); writes the 8 x 10 picture maps from field 8
+0D,458E,ModeStoreFilmTileId,[hl+] = a then a += 8 wrapping $B0 -> $10
+0D,4597,ModeInitFilmMaps,fills the film rows at $C600 (tile $0B with $09 sprockets) and the tile ids from hFFB4
+0D,460F,ModeGetField,h = relative item (-1/0/+1 wrapping) l = field: hl = word at [$D200] + 12 x id + 8 + l (as GetCourseField)
+0D,4953,ModeCallHook0,jumps to the first word of the descriptor table [$D200] (0D:6FF7 draw name box)
+0D,496B,ModeCallHook1,jumps to the second word of the descriptor table (0D:7070 clear name box)
+0D,4985,ModeLoadNameBoxMaps,decompresses 0D:4944 / 0D:4919 to $D1A0 / $D4A0
+0D,499A,ModeDrawEmblemUnused,unreferenced copy of DrawCourseEmblem 0F:49AA (field 0 tiles to VRAM1 $9070 and a 3x3 block at $D4C1)
+0D,4A01,ModeOpenNameBoxAnim,unfolds the name box in 3 frames (CopyMemoryFast + ModeCopyNameBoxToVRAM)
+0D,4A90,ModeCopyNameBoxToVRAM,queues $D1A0 -> $99A0 (VRAM1) and $D4A0 -> $99A0 (10 blocks)
+0D,4AA7,GameModeSelect,export $00 (32:51D4 32:534E 3D:5CEB 58:5E7C 71:7517): film strip select of the game mode; a = mode id (Tournament 1 / Match 2 / Stroke 3 / Training 4 / Clubhouse 9) or $FF
+0D,4ACC,ModeSelectDescriptorTable,hooks 6FF7 / 7070 then 12 bytes per mode (emblem / picture tiles / attrs / maps / palette)
+0D,6FF7,DrawModeNameBox,hook 0: mode name text $66 + id centred at $D4CA and description $70 + id (2-player list: $7A + id) at $D50A via 05:62AA; UploadGlyphTiles
+0D,7070,ClearModeNameBox,hook 1: reloads the empty name box (ModeLoadNameBoxMaps) and queues it
+0D,707A,GetModeList,hl = mode id list / d = count: 1 2 3 4 9 normally; 3 4 when wSaveSlot & $0F = $0F; 2 3 (versus) when $C33F is set
+0D,70A9,FindModeIndex,a = mode id: e = its position in the list hl (d entries; 1 when absent) for the start item
+04,4234,ActorsUpdateTask,frame task (ActorsInit): for each of the 24 actors: unless +$1A bit 0 or wait +$15 runs script opcodes (table 04:420C via jp hl) until one returns d = 0; applies push velocity +8/+$1C; walks toward the target +$0A/+$0C (angle limit +$11 / speed +$0E; blocked by PointNearPlayer); camera follows the actor with +$16 = 1; saves the player pos to $C2A0
+04,420C,ActorScriptOpcodeTable,20 handler words of the actor script bytecode run by ActorsUpdateTask (04:45C1-04:4A7C)
+04,4551,ActorIsPushed,export $50: hl = actor (0 = none): a = nonzero while its push velocity +8 or +$1C is not zero
+04,4575,WaitActorPushEnd,export $52 (0A:4790): AdvanceFrame while ActorIsPushed (at most $78 frames)
+04,4ABD,FacingFrameTable,16 sprite frame codes by facing (+$32 + 8) >> 4 used by ActorsDrawTask and GolferActorTask
+04,4ACD,ActorAnimStep,de = actor: runs the frame list at +$26 (bank $C286): $FF n loop back / $FE set anim / $FC play sound / else frame c held b ticks; timer +$2A minus speed +$35 or +$36 (moving)
+04,4B69,ActorsDrawTask,frame task (skipped while flag #20): camera with wScrollShake -> $C29A/$C29C; for actors with +$16 = 2 and no delay +$2E: on screen -> sprite at ($C284 $C285) / ActorAnimStep / facing frame; new frames upload tiles via farcall 26:4012
+04,4CD6,ActorSetFrame,export $60 (34:6B40 7F:52AA): hl = actor bc = frame: +$28 = bc and uploads the frame tiles (26:4012) to +$38 when +$2B bank set
+04,4D3D,ActorSetCharacterChecked,export $36: ActorSetCharacter unless hl = 0
+04,4E15,ActorAnimBusy,hl = actor: a = 1 while its animation +$31 is not 0 or 1 (a scripted animation is playing)
+04,4E36,WaitActorAnimIdle,export $44 (0A:4770): AdvanceFrame while ActorAnimBusy (at most $F0 frames)
+04,4F0A,CountCharacterHeaders,export $3A (35:7920): a = number of entries of the character header table 04:4F1C before the 0 word
+04,554D,PointNearPlayer,hl de = point: a = 1 when within sqrt($C0)/8 of the player actor's target (+$0A/+$0C) (blocks actors walking into the player)
+04,573F,GolferActorTask,frame task (GolferActorShow): ActorAnimStep and facing frame of actor 0; uploads new frame tiles via 26:4012
+*,C284,wActorSprX,actor drawing: screen x tile of the current actor (ActorsDrawTask)
+*,C285,wActorSprY,actor drawing: screen y of the current actor
+*,C286,wActorBank,actor drawing: ROM bank of the current actor's frame data (+$2B)
+*,C288,wActorLoopCount,ActorsDrawTask loop counter (24 actors)
+*,C29A,wActorCamX,camera x incl. wScrollShake (ActorsDrawTask)
+*,C29C,wActorCamY,camera y incl. shake
+04,45C1,ActorOpEnd,actor script op $00: a = 0 without advancing (the script stops here)
+04,45C3,ActorOpWait,op $01 n: wait counter +$15 = n - 1; yields
+04,45D8,ActorOpWaitMove,op $02: yields while the actor is walking (+$12 bit 0) then continues
+04,45E9,ActorOpSetPos,op $03 x y (words): position +4..+7; not moving
+04,4612,ActorOpWalkNear,op $05 x y (words) d (byte): target = the point moved d toward the actor (stops short of it); walking
+04,4679,ActorOpWalkTo,op $04 x y (words): target +$0A/+$0C; walking
+04,46A2,ActorOpWalkBy,op $06 dx dy (words): target = position + (dx dy); walking
+04,46FB,ActorOpWalkAngle,op $07 angle (byte) length (word): target = position + polar vector (VectorFromLengthAndAngle); walking
+04,4756,ActorOpWalkTurn,op $08 angle length: as ActorOpWalkAngle with the angle relative to the facing +$10
+04,476C,ActorOpSetHome,op $13: home tile +$18/+$19 = current tile (y x high bytes); speed +$0E = 8; collision checks +$1B = 1
+04,47A2,ActorOpWander,op $09: while visible picks a random direction (facing +/- $20) clear of obstacles (04:551E) and inside the home area (04:552F); walks $E0 that way; up to 4 turns of $41 then yields
+04,484D,ActorOpFollow,op $0A: follows the leader +$18: when 3+ tiles away walks to 2 tiles behind it at the leader's speed; yields
+04,48FC,ActorOpChase,op $0B: target = the leader's position; speed $10-$80 grows with the squared tile distance; yields
+04,49A2,ActorOpJump,op $0C ofs (word): script pointer += ofs (relative jump)
+04,49B1,ActorOpSetField,op $0D field (byte) value (word): stores 1 or 2 bytes at actor + field (size from ActorFieldSizeTable 04:4A31)
+04,49EC,ActorOpAddField,op $0E field value: adds value to the 1- or 2-byte field (ActorFieldSizeTable)
+04,4A31,ActorFieldSizeTable,size (0 1 2) of each actor record field for ActorOpSetField / ActorOpAddField
+04,4A57,ActorOpNop,op $0F: continue
+04,4A5B,ActorOpSetAnim,op $10 anim: ActorSetAnimChecked
+04,4A71,ActorOpSkipByte,op $11 n: ignores its byte argument (no effect)
+04,4A7C,ActorOpCallNative,op $12 addr (word): calls native code at addr in the script's bank (CallHLInBankA)
+04,4A8D,ActorHasTarget,nz when the target +$0A..+$0D differs from the position +4..+7
+40,4032,TitleScreen,export $00: a = 0 plays the attract loop first (intro picture 40:61CB then the 16 demo slides 40:5C72) with music $29; title screen with tasks 4D53 / 4D1D and music $24 until Start or A ($4B0 frames then back to the attract loop); link byte $10 also starts; restores hDebugMode
+40,4CB6,TitleCheatInput,compares hJoyHeld with the sequence 40:4CF5 (index $D254; 0 = release): on completion sound $63 and hFFCF = 1 (unlock everything); a wrong press restarts it
+40,4CF5,TitleCheatSequenceTable,held-button codes ended by $FF: Up Up Down Up Left Right Left Right B A twice (with releases between)
+40,4D1D,TitlePressStartTask,frame task: queues the sprite template 40:4D2A at ($54 $18)
+40,4D53,TitleAnimTask,frame task: two scrolling sprite rows ($D24F / $D250); palette cycle (40:4CA6 + colours 40:5755 by hVBlankCount); animated tiles LZ 40:4ED8 / 40:4EF8 to VRAM1; SCY wobble from 40:4E72 (SCX too while the d-pad is held)
+40,5775,Sqrt24,a:h:l = 24-bit value -> hl = integer square root (bit by bit; 0 for 0); only used by the debug print in DemoSlide
+40,5C62,WaitFadeOrSkip,AdvanceFrame until the fade ends (hFFA2 = 0); nz when DemoCheckSkip fires
+40,5C72,DemoSlide,a = slide 0-15 of DemoSlideTable 40:5D9F: picture (LoadFullScreenPicture or blank) / setup routine / frame task / frame count; fade in; runs until skipped (nz) or timed out; leftover debug: PrintHexByte of hVBlankCount rDIV the frame counter and Sqrt24 of them every frame
+40,5D9F,DemoSlideTable,16 x (frame count / frame task / setup routine / picture list (idx bank)) used by DemoSlide
+40,5E1F,DemoTaskNone,demo frame task: only selects WRAM bank 6
+40,5E26,DemoWindowXTask,frame task: rWX = $D24B (window slide used by slides 10-12)
+40,5E2C,DemoSetupNone,demo setup: nothing
+40,5E2D,DemoSetupPanLeft,demo setup: scroll x $D247 = $78 / y $D248 = 0
+40,5E3D,DemoTaskPanLeft,demo task: SCX = $D247 -= 6 until 0
+40,5E50,DemoSetupOrigin,demo setup: scroll x / y = 0
+40,5E5F,DemoTaskStatic,demo task: nothing (WRAM bank 6)
+40,5E66,DemoSetupPanRight,demo setup: scroll x = $EC
+40,5E76,DemoTaskPanRight,demo task: SCX = $D247 += 6 until $58
+40,5E8A,DemoSetupDiagonal,demo setup: scroll x and y = $70
+40,5E9F,DemoTaskDiagonalLate,demo task: after frame $3C moves SCX and SCY up-left by 1 per frame
+40,5EC0,DemoSetupDiagonalSmall,demo setup: scroll = $28 / $28; DisableOAMDMA
+40,5ED4,DemoTaskDiagonal,demo task: moves SCX and SCY up-left by 1 per frame until x = 0
+40,5EEE,DemoSetupZero,demo setup: scroll x / y = 0
+40,5EFC,DemoTaskDiagonalDown,unreferenced demo task: SCX and SCY += 1 per frame
+40,5F11,DemoTaskAnimFrames,demo task: on frames $32-$35 $3C $41 $69 $6E $73 $70 of $D24C loads new tile / map frames of asset 40:7906 (FarDispatchIndexed) to VRAM (sound $A5 at $70)
+40,6143,DemoSetupWindow,demo setup: scroll $78 / $48; window at WY $48 sliding in from WX $78 (task 40:5E26); LCDC bit 6 cleared
+40,616B,DemoTaskWindowSlide,demo task: WX $D24B -= 6 down to 7 and SCX $D247 -= 6 down to 0
+40,6194,DemoSetupReset,demo setup: SCX = SCY = 0
+40,61A9,DemoTaskNoneB,demo task: ret
+40,61AA,DemoTaskDiagonalLateB,unreferenced copy of DemoTaskDiagonalLate
+40,61CB,IntroPicture,the opening picture 40:4908 with sound $5E: 60 frames then SCY $80 for 60 frames; fade out; nz if skipped (it never is: IntroCheckSkip always returns z)
+40,6217,DemoCheckSkip,nz when Start or A is held or the link partner sent $10 (then replies $20 via SerialSendBlock)
+40,6238,IntroCheckSkip,as DemoCheckSkip but returns z in every case (bug or deliberate: the intro picture cannot be skipped)
+*,D247,wDemoScrollX,WRAM6 title / demo slides: scroll x
+*,D248,wDemoScrollY,WRAM6 demo slides: scroll y
+*,D24B,wDemoWindowX,WRAM6 demo slides: window x
+*,D24C,wDemoFrame,WRAM6 demo slides: frame counter
+*,D24D,wDemoTask,WRAM6 demo slides: big-endian frame task pointer
+*,D24F,wTitleSpriteX1,WRAM6 title: first scrolling sprite row x
+*,D250,wTitleSpriteX2,WRAM6 title: second scrolling sprite row x
+*,D254,wTitleCheatIndex,WRAM6 title: progress in TitleCheatSequence
+*,FFCF,hUnlockAll,set by the title cheat (40:4CB6): all golfers and courses selectable (02:5A07 0F:4B7A)
+12,449F,HudTask,HUD frame task (HudInit; idle while $D358): player panels (current one blinks while wHudBlink) unless wHudPanelsHidden; countdown; wind indicator; effect objects; wind gust sprite by $D44D; swing meter cursors; a marker sprite in shot mode 1 with a non-putter club
+12,456E,HudDrawMeterCursor,a = meter position ($80 hidden) h bit 0 = blink: cursor sprite at x $6D - a / y $86 (tile $4A or $48 blinking)
+12,4DE9,DrawShotLength,hl = shot length: other clubs yards (hl >> 5) as 3 digits + tile $0B; putter feet (x3 >> 5) with tenths and tiles $0A $0C as sprites (ShotLengthTask)
+12,4EB1,DrawShotLengthNumber,hl = value: up to 3 digit sprites (FormatDecimalNumber) at column d (6 px apart)
+12,4EEF,QueueShotLengthDigit,a = digit / glyph: sprite tile $10 + 2a at x $48 + d / y $74
+12,4F07,ShotLengthTask,frame task: 10:6276 ShotLength then DrawShotLength
+12,4F24,DrawCountdown,when wCountdownState: minutes ($C0F7) ':' and seconds ($C0F6 2 digits) as sprites at the top left; blinks when the time is up
+12,4F8A,DrawCountdownNumber,hl = value: 2 digit sprites at column d (leading zero kept)
+12,4FBA,QueueCountdownDigit,a = digit: sprite tile $10 + 2a at x 4 + d / y $0C
+12,6B04,UpdateEffectObjectList,WRAM6: runs UpdateEffectObject on the first object at wEffectObjects $CA80 (the water splash)
+12,6B11,UpdateEffectObject,hl = 10-byte object: frame list (tile duration pairs ended by $FF which frees it); draws the sprite at its map position relative to the camera (palette 7)
+06,5143,NameEntryDrawCursor,cursor sprite at ($14 + 8 x wNameCursorX / $44 + 16 x row $C3F7; the END row 2 px higher)
+06,5171,NameEntryDrawBlanks,blinking underscore sprites on the empty name cells (NameLength..6)
+06,5197,NameEntryAnimTiles,animated tiles: frame (wFrameCounter >> 2) of 06:41A0 -> VRAM $8F00 / $8F20
+06,51CC,NameEntryTask,frame task (NameEntryScreen): cursor; empty-cell marks; animated tiles
+06,65D9,CharSelectCursorTask,frame task: cursor sprite template 06:65FE at the position of slot $D214 (CharSelectSlotPos)
+06,6617,CharSelectPaletteTask,frame task: steps 3 indices $D220-$D222 through the table 06:66B6 to build a cycling colour for the cursor palette $D218 (OBJ palette 1)
+06,66F6,CharSelectBobSprite,sprite template 06:674F bobbing by hVBlankCount through 06:670F
+06,68B6,CharSelectSlotPos,d / e = sprite x / y of slot $D214 (table 06:68D0)
+06,6A4E,CharSelectDrawTrendMarks,frame helper: for a real record of slot $D214: RosterByte11 >= $80 -> marks to the left (CharSelectMarksLeft) else to the right; centre sprite at ($84 $84)
+06,6AA3,CharSelectMarksLeft,a = count (max 4): mark sprites leftwards from x $7C
+06,6AC0,CharSelectMarksRight,a = count (max 4): mark sprites rightwards from x $8C
+06,6E4D,CharSelectPortraitAnimTask,frame task: animates the mini portrait of slot $D214 (3 frame thresholds per character at 06:6EFE; wFrameCounter loops) by queueing 9 tiles from WRAM2 to VRAM1 $A9E0 + slot x $90
+3E,465A,MatchStandingsTask,frame task: player panels (00:2756); bobbing sprite 3E:4930 (offsets 3E:47B3); banner sprites 3E:4800 / 3E:4820 by $D61D; blinks the mark of the last hole's winner (wMatchHoles or playoff $C96C) every 16 frames via QueueBGTileWrite (counter $D592 reused)
+3E,61CD,BGMap9800Addr,b = column c = row: hl = $9800 + 32 x row + column
+3E,645C,TwoPlayerScoreTask,frame task: player panels; sprite templates 3E:6740 / 3E:674E; bobbing sprite 3E:4930 (offsets 3E:64BB)
+48,42F7,YesNoCursorTask,frame task: cursor sprite 48:4330 at row $D251 (16 px steps) blinking every $20 frames ($D253)
+48,4336,ExpCharSpriteTask,frame task: 42:4074 CharSpriteTask then the sprite template 48:4350 at ($58 $70)
+48,4B05,ExpDrawCounters,EXP screen: counted EXP $D632 as 5 digit sprites at $D634; unless the level (wPlayerName + $12) is $63: the pts-to-next value $D642 at $D63E or once it reaches 0 clears the message rows and shows $D63C ($D63B = 1)
+48,4BD4,DrawDigitSpritesShifted,a = count hl = ASCII digits de = position (+ $D63A on x): sprite tile $D636 + 2 x digit with attr $D637; spaces skipped
+48,4C54,DrawDigitSprites,as DrawDigitSpritesShifted without the x shift
+48,5EE9,PictureAnimTiles,animated picture tiles: 4 blocks from 48:6900 + (frame & $FC) x 16 to VRAM1 $9000; frame $C0F8 cycles 0-$2F
+41,4CD1,DrawStatValueSprite3,frame task: value $D63E (+ the preview delta $D648 when phase $D632 != 0) as 3 digit sprites at x $6B / y [$D434] + $1E (41:4D04)
+41,4D04,DrawDigitSpritesAt,a = count hl = ASCII digits bc = pointer to the y base de = tile base offset / x: sprite tile $30 + 2 x (digit + 1) attr 1 per digit 8 px apart
+41,4D2F,DrawLevelSprites,frame task: level digits $D406/$D407 ($FF = blank) as sprites at y $26 x $10/$18 and the template 41:63BE at ($38 $30)
+41,4D79,PointsBounceTask,frame task while $D4A4: skill points digits $D43D/$D43E as sprites (tile $46 + 2d) plus tiles $5A/$5C; jumps up 3 px every 32 frames ($D43F)
+41,4DFC,SparkleTask,frame task (phase 0 only): every 64 frames ($D452 counter) shows 8 sparkle sprites (tiles $2C / $2E palette 7) at the positions $D442-$D451 for a few frames
+41,5088,CharSpriteTask_41,frame task stub: farcall 42:4074 CharSpriteTask
+41,50B3,TickAnimTimer,frame task: while $D4A0 is set counts $D4A1 down and clears $D4A0 at 0
+41,53B8,DrawSkillValueSprites,frame task (phase != 0): the 4 skill values $D453-$D456 as 2-digit sprites at x $8C (y $1C $2E $46 $60); the selected skill $D630 shows +1 while the cursor blink ($D631 >= $10) is on
+41,5497,DrawTwoDigitSprites,bc = 2 digit values ($FF leading blank): sprites tile $46 + 2d at (d e) 8 px apart
+41,54CA,LevelUpRestart,No on the confirm box: phase 4 / skill 0; re-registers the level-up tasks; RestoreStatsAndHistory; LoadStatDisplayValues; back to the main loop 41:40DA
+41,5694,LevelUpBannerRevealTask,frame task until $D4A4: every [$D4A5] frames (delays 41:6463) widens the 12-tile banner copied from the WRAM2/3 buffers ($D460 / $D0E0) to the row $98E0 (and VRAM1)
+41,5726,CopyRectBothBuffers,b bytes x 4 rows (stride 32) from hl to de in WRAM2 and again in WRAM3
+41,587C,DrawClockTask,frame task: two 2-digit numbers ($C831 / $C830 or $C0F3 / $C0F2 when $D4D0 = 0) with a colon blinking each second ($D553 0-$3B) into the row $9840 (both VRAM banks)
+41,6E3B,PromptSpriteTask,frame task: sprite template 41:63BE at ($38 $30) (CharYesNoPrompt)
+41,7879,FreeLookMenuHandler,menu handler (Camera Mode): farcall 12:6D3D FreeLookCursor; wMenuResult = $FF
+41,7E03,CharSummaryTask,frame task (OpenCharSummaryScreen): farcall 42:4074 CharSpriteTask
+0B,4784,MapGfxScrollTask,frame task registered by MapStartGfx (unregistered by MapStopGfxTask): farcall 04:4072 MapScrollTask
+0B,5640,CreditsWindowTask,frame task (CreditsRun): scrolls SCY and wMapScrollY by a per-scene step (table 0B:56C9 by $D5FE; scene 7 by wCharId) and raises the window (WY = $90 - frame); after $3F frames unregisters itself and sets $D242
+0B,56C9,CreditsScrollStepTable,per credits scene ($D5FE): SCY step and wMapScrollY step bytes
+0B,5D2C,ConfettiActorStep,a = actor slot: x = base +$18 + sine sway (phase +$19 + y/8); y += speed +$0E; below row $0F ($11 when $C3E0 = 1) restarts at the top with a random speed $10-$17
+0B,5DE1,ConfettiTask,frame task (result screens): ConfettiActorStep for actors 2-7 then ResultBobActor
+0B,648F,ResultPaletteCycleTask,frame task: step $C3F4 (0-$26) of the colour table 0B:64C9 loaded into BG palettes $0A and $0C
+0B,652F,ResultBobActor,actor $0E: angle +$18 advances by 2 (4 on the way down); y = $0800 + sine x $40 (bobbing)
+0B,6694,ResultSpriteTask,frame task: a 2x2 sprite (tiles $60-$66) at x $22-$32 / y $5C-$64
+77,6F8E,StoryPicturePaletteTask,frame task: colour step $C3F4 (0-$26) of the table 77:6FD5 written to BG palette 6 colour 0 (SetPaletteColor)
+77,6FAE,SetPaletteColor,hl = colour word d = palette e = colour: writes it to wPalLive $C100 and wBGPalMaster $C200 + (4d + e) x 2 and flags hPalUpdate
+77,7033,StoryPictureAnimTask,frame task: runs the frame script at $D347 (frame / duration bytes; $FE n jumps within the list at $D349; $FF ends) drawing each frame with DrawStoryPictureFrame; overall timer $D34D ($FF = endless)
+77,70B6,StoryPictureTimerTask,frame task: counts $D34D down and unregisters itself at 0
+77,70D0,DrawStoryPictureFrame,b = frame c = picture: LZ frame (table 77:735E; variant $D34C x 8 + b) to WRAM1; merges it into 2 x 8 rows of the WRAM2/WRAM3 maps ($C600 attributes / $C700 tiles) and queues them to $9880
+*,D346,wStoryAnimDelay,WRAM6 story picture: frames left on the current animation frame
+*,D349,wStoryAnimBase,WRAM6 story picture: start of the frame script (jump base)
+04,5289,ActorSetTarget,bc = actor: target +$0A = hl (x) / +$0C = de (y)
+04,5332,ActorPointAtAngle,bc = actor a = angle hl = length: hl / de = actor position + polar vector (VectorFromLengthAndAngle)
+04,534E,PointAddPolar,hl / de = point a = angle bc = length: hl / de = point + polar vector
+04,551E,TerrainBlockedAt,hl / de = position: a = $0F when the terrain cell (0B:45C9 MapTerrainAt) is $0F (blocked) else 0
+04,552F,TileInHomeArea,b c = home tile h l = half size d e = tile: a = 0 inside the box else $FF (ActorOpWander)
+41,72A1,MenuWindDirectionAdjust,Wind Direction item: Left/Right ($C3FC low nibble 1/2) turns wWindAngle by -/+ $10 (sound $8B); HudDrawWind
+41,72D8,MenuWindSpeedAdjust,Wind Speed item: Left/Right change wWindSpeed within 0-$13; HudDrawWind
+41,7323,GolfPauseCameraMode,GolfPauseMenu item Camera Mode: FreeLookMenuHandler then close the menu (41:7078)
+41,7329,GolfPauseCourseMap,item Course Map: MenuShowCourseMap then close
+41,732F,GolfPauseScorecard,item Scorecard: MenuShowScorecardByMode then close
+41,7335,GolfPauseSettings,item Settings: MenuSettings then reopens GolfPauseMenu on item 3
+41,7349,GolfPauseGiveUp,item Give Up: "Give up on this hole?" (text $1490) Yes -> wMenuResult $81; refused on the 1st stroke (PlayerField $20 = 0: MenuCantGiveUp); No reopens on item 4
+41,739A,GolfPauseQuit,item Quit: "OK to quit this round?" ($148C; $148F in Match Game) Yes -> wMenuResult $80; No reopens on item 5
+41,73E4,MapStartCharData,MapStartMenu item Char. Data: MenuCharData then close
+41,73EA,MapStartStars,item Stars: 0A:6F56 EventListScreen then close
+41,73F0,MapStartMessageSpeed,item Message: MenuTextSpeedAdjust; stays in the menu (41:701E)
+41,7402,MapStartSaveQuit,item Save & Quit ($C4B8 = 0): MenuSaveAndQuit
+41,7413,MapStartNavigation,MapStartMenuNav item Navigation: 0A:7174 NavigationMenu then close
+41,7419,MapStartNavCharData,MapStartMenuNav item Char. Data: MenuCharData then close
+41,741F,MapStartNavStars,MapStartMenuNav item Stars: EventListScreen then close
+41,7425,MapStartNavMessageSpeed,MapStartMenuNav item Message: MenuTextSpeedAdjust; stays in the menu
+41,7437,MapStartNavSaveQuit,MapStartMenuNav item Save & Quit ($C4B8 = 1): MenuSaveAndQuit
+41,744B,GolfPauseSaveCameraMode,GolfPauseMenuSave item Camera Mode: FreeLookMenuHandler then close
+41,7451,GolfPauseSaveCourseMap,item Course Map: MenuShowCourseMap then close
+41,7457,GolfPauseSaveScorecard,item Scorecard: MenuShowScorecard then close
+41,745D,GolfPauseSaveSettings,item Settings: MenuSettings then reopens GolfPauseMenuSave on item 3
+41,746B,GolfPauseSaveGiveUp,item Give Up: as GolfPauseGiveUp reopening GolfPauseMenuSave
+41,74AE,GolfPauseSaveQuit,last item: unsaved game (wSaveSlot & $0F = $0F) asks quit ($148C); else "Save current progress?" ($148B): Yes increments $C814 (max $FF) / SaveGame / wMenuResult $80 / $C2A6 = 1; B reopens; No asks quit ($148E; $148C in mode 3)
+41,757B,GolfPauseSave2CameraMode,GolfPauseMenuSave2 item Camera Mode: FreeLookMenuHandler then close
+41,7581,GolfPauseSave2CourseMap,item Course Map: MenuShowCourseMap then close
+41,7587,GolfPauseSave2Scorecard,item Scorecard: MenuShowStandings (3E:675C) then close
+41,758D,GolfPauseSave2Settings,item Settings: MenuSettings then reopens GolfPauseMenuSave2 on item 3
+41,759B,GolfPauseSave2GiveUp,item Give Up: as GolfPauseGiveUp reopening GolfPauseMenuSave2
+41,75DE,GolfPauseSave2SaveQuit,item Save & Quit: "Save current progress?" Yes saves as GolfPauseSaveQuit; No asks "OK to quit this Match Game?" ($148F)
+41,7662,TrainingCameraMode,TrainingPauseMenu item Camera Mode: FreeLookMenuHandler then close
+41,7668,TrainingCourseMap,item Course Map: MenuShowCourseMap then close
+41,766E,TrainingHoleOut,item Hole Out: wMenuResult $80 / wRoundResult 0
+41,767A,TrainingWindDirection,item Wind Direction: MenuWindDirectionAdjust; stays in the menu
+41,768C,TrainingWindSpeed,item Wind Speed: MenuWindSpeedAdjust; stays in the menu
+41,769E,TrainingSettings,item Settings: MenuSettings then reopens TrainingPauseMenu on item 5
+41,76AC,TrainingBackToMenu,item Back to Menu: wMenuResult $80 / wRoundResult 1
+41,76BF,MulliganContinue,ContinueMulliganMenu item Continue: wMenuResult 0
+41,76C7,MulliganMulligan,ContinueMulliganMenu item Mulligan: wMenuResult 2
+41,76CF,MulliganHoleOut,ContinueMulliganMenu item Hole Out: wMenuResult 5
+41,76DF,MulliganRestartContinue,ContinueMulliganRestartMenu item Continue: wMenuResult 0
+41,76E7,MulliganRestartMulligan,item Mulligan: wMenuResult 2
+41,76EF,MulliganRestartStartOver,item Start Over: wMenuResult 3
+41,76F7,MulliganRestartMainMenu,item Back to Main Menu: wMenuResult 4
+41,7707,PracticeWindQuit,PracticeWindMenu item Quit Practice: wMenuResult $82
+41,770F,PracticeWindDirection,item Wind Direction: MenuWindDirectionAdjust; stays in the menu
+41,7721,PracticeWindSpeed,item Wind Speed: MenuWindSpeedAdjust; stays in the menu
+41,7733,PracticeWindSettings,item Settings: MenuSettings then reopens PracticeWindMenu on item 3
+41,7745,PracticeQuit,PracticeMenu item Quit Practice: wMenuResult $82
+41,774D,PracticeSettings,PracticeMenu item Settings: MenuSettings then reopens PracticeMenu on item 1
+41,775F,MiniGameQuit,MiniGamePauseMenu item Quit Mini-Game: wMenuResult $82
+41,7767,MiniGameSettings,MiniGamePauseMenu item Settings: MenuSettings then reopens it on item 1
+41,7775,SettingsMenuHandlerTable,2 handler words of the Settings menu (Music / 3-D Screen; text $1487)
+41,7779,SettingsToggleMusic,Settings item Music: Left/Right toggles $C818 bit 0 (sound $8B) then 00:2B98; stays in the menu
+41,77B3,SettingsToggle3D,Settings item 3-D Screen: Left/Right toggles $C818 bit 1; stays in the menu
+41,7882,MenuShowCourseMap,farcall 17:437D (course map); wMenuResult $FF
+41,788B,MenuShowScorecard,$C4BD = 0; farcall 0E:43D6 ShowScorecard; wMenuResult $FF
+41,7898,MenuShowStandings,$C4BD = 0; farcall 3E:675C ShowStandingsFar; wMenuResult $FF
+41,78A5,MenuShowScorecardByMode,MenuShowStandings in Match Game (mode 2) else MenuShowScorecard
+41,78C6,MenuSettings,draws the Slow / Normal / Fast option glyphs (texts $1495 $1496) to $8DA0 then runs the Settings menu ($1487 / SettingsMenuHandlerTable; flag #48 while open)
+41,7935,MenuCantGiveUp,sound $5D and "You can't give up on the 1st stroke." (text $1491)
+41,7943,MenuCharData,41:6506 CharDataScreen then map re-entry: $C441 = $C46A = $FA and the saved player position ($C2A0) to $C466
+41,7965,MenuShowEventList,farcall 0A:6F56 EventListScreen
+41,7969,MenuTextSpeedAdjust,Message item: Right / Left step wTextSpeed (low bits 0-2 with bit 7 kept) with sound $8B
+41,79A7,MenuSaveAndQuit,clears flags #49 #50; "Save current progress?" Yes: MapSaveReturnPoint / SaveGame / warp to map 0 entrance 1; No: "OK to return to Main Menu?" ($148D) Yes warps to map 0 entrance 2; B reopens the start menu
+*,C818,wOptionFlags,settings: bit 0 music / bit 1 3-D screen (toggled by 41:7779 41:77B3)
+04,538C,PlayerWalkControl,native code of the player's actor script (04:527A op $12): A -> $C442 / Start -> $C444 / B held runs (flag #17); d-pad picks the facing ($C28A) from 04:5500; speed $20 ($10 on terrain $0B / $40 running); unless flag #16 probes ahead and +/- $20 (blocked or an actor -> $C28C / $C443); walks one step and checks events (CheckEventAtPoint); idle: snaps the position to the $20 grid
+04,52FA,PlayerProbePoint,a = direction: hl / de = actor position + probe offset (04:52BA; 04:52DA while running)
+04,5360,CheckEventAtPoint,hl / de = point: MapEventAt: type 1 -> wMapEvent = id (trigger) / type 3 -> sound $92 and $C441 = id (warp)
+04,5510,PlayerBlockedAt,a = TerrainBlockedAt | $80 when blocked else FindActorNear (slot of an actor in the way)
+04,5500,DPadFacingTable,16 facing angles by d-pad bits ($FF = none / opposite directions)
+04,5658,BuildNearbyActorList,player x / y copied to $C470; pointers of the active visible actors (+1 +$2F +$17) within 3 tiles of the player -> $CAC0 (0 terminated)
+*,C28A,wPlayerFacing,map: facing angle of the walking player (PlayerWalkControl)
+*,C28C,wBumpedActor,map: actor slot the player walked into this frame (0 none; previous frame in $C28D)
+*,C28E,wBumpCounter,map: frames spent pushing against an actor (PlayerWalkControl)
+*,C2AB,wPlayerStepped,map: 1 when the player started a step this frame
+*,C442,wActionRequest,map event byte +2: A pressed (talk / check) (PlayerWalkControl)
+*,C443,wBumpEvent,map event byte +3: set when the player bumps into an actor
+*,C444,wMenuRequest,map event byte +4: Start pressed (start menu)
+04,40E9,ActorsClearKeepTasks,unreferenced: clears the 24 actor records (WRAM4 $D000) and registers ActorsDrawTask only; $C289 = 0 (cut-down ActorsInit)
+04,4288,ActorsUpdateOpReturn,return point pushed by ActorsUpdateTask before jp hl into an opcode handler (d = handler result; loops while nonzero); not seen by the tracer
+04,4588,ActorIsWalking,export $5E (no caller found): hl = actor (0 = none): a = 1 while its target +$0A..+$0D differs from its position
+04,4EE0,ActorSetAnimSpeed,export $48 (no caller found): hl = actor (0 = none): +$35 (animation speed while standing) = a
+04,4EF5,ActorSetMoveAnimSpeed,unreferenced: hl = actor (0 = none): +$36 (animation speed while moving) = a
+0B,4501,MapGfxBrowserPick,unreferenced debug (MapGfxBrowser): B opens a paged menu (05:5197 text $0123) of map gfx screens (count wMapGfxCount / 4); loads and animates the chosen one
+0B,4739,MapGfxBrowserInit,unreferenced debug: scroll 0; wMapGfxCount = MapGfxTable entries / 9; loads gfx screen 0 (MapLoadGfxScreen) and its tile animation
+0B,4776,MapGfxBrowser,unreferenced debug loop (never returns): MapGfxBrowserInit then every frame MapBrowserScroll and MapGfxBrowserPick
+0B,4788,MapBrowserScroll,d-pad scrolls the map camera (MapBrowserDPadMove) and blits the new BG row / column (00:2A8A / 00:2AF7); SCX / SCY from wMapScrollX / wMapScrollY
+0B,47E6,DPadScrollVectorTable,16 x (dx dy) word pairs by d-pad bits for MapBrowserDPadMove
+0B,4826,MapBrowserDPadMove,adds the DPadScrollVectorTable entry of hJoyHeld to wMapScrollX / wMapScrollY
+0B,656F,SumPlayerHoleCounts,unreferenced: d = sum over 18 holes of HoleStrokesPlusPutts for player a
+0B,6585,CountHolesWon,unreferenced: compares HoleStrokesPlusPutts of both players per hole: a = 1 when player 2 won more holes else 0
+0B,65DE,HoleStrokesPlusPutts,a = player (0 $C8AC / 1 $C8EC) c = hole: low nibble + high nibble of the hole byte
+12,416B,TerrainAtTileUnused,unreferenced: d e = tile coords: terrain nibble from WRAM6 $D800 via the WRAM3 tile and WRAM2 flips (tile-level twin of TerrainAtPos)
+12,4956,QueueD000To8E00,unreferenced: queues WRAM6 $D000 -> VRAM $8E00 ($20 blocks)
+06,69E7,RosterWord10,unreferenced: c = record: hl = byte +$10 of the roster record ($D216 + 32c)
+3E,618D,PutTileStringNoAttr,hl = 0-terminated tiles at bc: PutTileOnly per tile (no attribute)
+3E,626D,DrawTileStringAttr0At,unreferenced: hl = (x y string) with y + d: tile string via 3E:60C3
+3E,6280,DrawTileStringNoAttrAt,unreferenced: hl = (x y string) with y + d: PutTileStringNoAttr
+3E,630C,DivATen,unreferenced: a = a / 10
+3E,631E,ModATen,unreferenced: a = a mod 10
+3E,65E3,DrawScoreLabelB,unreferenced: 3 x 2 tiles $CA-$CC / $DA-$DC at bc
+48,4D4C,CopyTextToWram1D800,unreferenced: LoadText then copies the string from WRAM5 $C600 to WRAM1 $D800
+41,42D9,ShowNextScriptText,unreferenced: shows message wScriptTextId (05:5DE5 ShowMessageKeepOpen with speaker a) and increments the id
+3F,41DC,DictScrollStepUnused,unreferenced fragment: hl += de; stores wMapScrollX while h < b (a = 0) else a = 1; MapScrollTask
+0E,6E50,DrawP1ScoreToPar,unreferenced: SumScoreToPar of $C8AC over wHolesDone printed at $D708 (ScorecardPutScoreToPar)
