@@ -2,7 +2,8 @@
 // surroundings are drawn; it reads the game (the score bytes, to make the crowd cheer) and never writes it, so frame hashes and
 // replays are untouched. Everything is generated here in code, at runtime, from the court's own picture:
 //   * stepped stands (side and far) with seat rows and a crowd: seat colours from the stadium map's seats, crowd colours from them
-//     and the court's accent colours; the crowd bobs, and jumps with its arms up for a few seconds after every point,
+//     and the court's accent colours; the crowd bobs, and jumps with its arms up for a few seconds after every point; now and then
+//     between points the crowd does the wave (round the stands twice, arms up as it passes; the serve stops it),
 //   * the back wall gets thickness and a coping in its own colours; where the court's backdrop shows hedges and flower beds
 //     (found by colour in the picture) rounded-voxel hedges with flower boxes grow in front of it; the near fence gets posts,
 //   * the umpire chair is built from boxes in the chair picture's colours, with its ladder and umpire,
@@ -68,16 +69,18 @@ const FS_BOX = `#version 300 es
 precision mediump float; in vec3 vCol; out vec4 o; void main() { o = vec4(vCol, 1.0); }`;
 // the crowd: one camera-facing billboard per fan (a random fan of crowdfans.js: the game's own character frames, recoloured), the upper body only.
 // aP = x, y, z (seat), phase; aQ = fan, size, threshold (a seat is occupied when threshold < uFill: the crowd size), hops (1: one of the third
-// that hop and use the cheering frame while uCheer > 0). uRight: the camera's right on the ground.
+// that hop and use the cheering frame while uCheer > 0). uRight: the camera's right on the ground. uWave: the wave's front (an angle round
+// the court) and its strength: the fans it passes stand up with their arms up.
 const VS_CROWD = `#version 300 es
-in vec4 aP; in vec4 aQ; uniform mat4 uMVP; uniform vec3 uRight; uniform float uT, uCheer, uFill, uShow; uniform vec2 uCells; out vec2 vUV;
+in vec4 aP; in vec4 aQ; uniform mat4 uMVP; uniform vec3 uRight; uniform float uT, uCheer, uFill, uShow; uniform vec2 uCells, uWave; out vec2 vUV;
 void main() {
   vec2 c = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1));
   if (aQ.z > uFill) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vUV = vec2(0.0); return; }
-  float ph = aP.w * 6.2831, hop = aQ.w, cheering = (uCheer > 0.0 && hop > 0.5) ? 1.0 : 0.0, cell = aQ.x * 2.0 + cheering;
+  float ph = aP.w * 6.2831, hop = aQ.w, da = mod(atan(aP.z, aP.x) - uWave.x + 3.14159, 6.28318) - 3.14159, wv = uWave.y * exp(-da * da * 18.0);
+  float cheering = ((uCheer > 0.0 && hop > 0.5) || wv > 0.45) ? 1.0 : 0.0, cell = aQ.x * 2.0 + cheering;
   vec2 cc = vec2(mod(cell, uCells.x), floor(cell / uCells.x));
   float sz = aQ.y * 3.6 * 32.0, lift = hop > 0.5 ? uCheer * max(0.0, sin(uT * 8.0 + ph)) * 46.0 : 0.0;
-  lift += sin(uT * 1.6 + ph * 3.0) * 0.6 * (1.0 + uCheer * 2.0);
+  lift += sin(uT * 1.6 + ph * 3.0) * 0.6 * (1.0 + uCheer * 2.0) + wv * 52.0;
   vec3 p = aP.xyz + vec3(0.0, lift, 0.0) + uRight * (c.x - 0.5) * sz + vec3(0.0, c.y * uShow * sz, 0.0);
   vUV = (cc + vec2(c.x, uShow * (1.0 - c.y))) / uCells;
   gl_Position = uMVP * vec4(p, 1.0);
@@ -231,7 +234,7 @@ export class Stadium3D {
     if (this.pBox) return;
     const gl = this.gl, v = this.v;
     this.pBox = v.link(VS_BOX, FS_BOX, ["aCorner", "aShade", "aA", "aB"]); this.uBox = { uMVP: gl.getUniformLocation(this.pBox, "uMVP") };
-    this.pCrowd = v.link(VS_CROWD, FS_CROWD, ["aP", "aQ"]); this.uCrowd = Object.fromEntries(["uMVP", "uRight", "uT", "uCheer", "uFill", "uShow", "uCells", "uAtlas", "uBright"].map(n => [n, gl.getUniformLocation(this.pCrowd, n)]));
+    this.pCrowd = v.link(VS_CROWD, FS_CROWD, ["aP", "aQ"]); this.uCrowd = Object.fromEntries(["uMVP", "uRight", "uT", "uCheer", "uFill", "uShow", "uCells", "uWave", "uAtlas", "uBright"].map(n => [n, gl.getUniformLocation(this.pCrowd, n)]));
     this.cube = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, this.cube); gl.bufferData(gl.ARRAY_BUFFER, cubeVerts(), gl.STATIC_DRAW);
   }
   // the fans' atlas (random, from the ROM's match characters; once per ROM)
@@ -290,7 +293,11 @@ export class Stadium3D {
     const E = { fr, sig: [w[0x8E4], w[0x8E5], w[0x8E6], w[0x8E7], w[0x8E8], w[0x8E9], w[0x8EA], w[0x8EB]].join(), res: w[0x4D8], fault: w[0x8EE], body: w[0x4AE], ball: w[0x4B3] }, p = this.ev;
     this.ev = E; if (!p || fr < p.fr || fr > p.fr + 8) return;          // first frame, a reload, or frames skipped: no events
     const when = performance.now() / 1000, ballY = (v.ballHist && v.ballHist.length ? v.ballHist[v.ballHist.length - 1].ball.Y : 0), sound = this.sound;
-    if (E.sig !== p.sig) { this.cheerAt = when; if (sound) sound.cheer(this.fill); }
+    if (E.sig !== p.sig) {
+      this.cheerAt = when; if (sound) sound.cheer(this.fill);
+      if (!this.wave && !w[0x8E8] && this.fill > 0.3 && Math.random() < 0.14) this.wave = { t0: when + 2.4, until: when + 2.4 + 9, a0: Math.random() * 6.28, dir: Math.random() < 0.5 ? -1 : 1 };   // THE WAVE, after the cheer
+    }
+    if (this.wave && w[0x4B6] > 0 && this.wave.until > when + 1) this.wave.until = when + 1;   // the serve: the wave dies away
     else if ((E.res !== p.res && (E.res === 1 || E.res === 2 || E.res === 9)) || (E.fault === 1 && p.fault === 0) || (E.body === 1 && p.body === 0)) { if (sound) sound.aww(this.fill); }
     if (E.ball === 2 && p.ball !== 2 && Math.abs(ballY) > 1400 && sound) sound.rattle(Math.min(1, Math.abs(ballY) > 1700 ? 1 : 0.7));
   }
@@ -642,6 +649,8 @@ export class Stadium3D {
         gl.disable(gl.CULL_FACE); const rx = Math.hypot(mvp[0], mvp[8]) || 1, U = this.uCrowd;
         gl.useProgram(this.pCrowd); gl.uniformMatrix4fv(U.uMVP, false, mvp); gl.uniform3f(U.uRight, mvp[0] / rx, 0, mvp[8] / rx); gl.uniform1f(U.uT, T); gl.uniform1f(U.uCheer, cheer);
         gl.uniform1f(U.uFill, this.fill); gl.uniform1f(U.uShow, 0.72); gl.uniform2f(U.uCells, this.fans.cols, this.fans.rows); gl.uniform1f(U.uBright, 0.97);
+        const Wv = this.wave, wu = Wv ? T - Wv.t0 : -1, wk = Wv && wu > 0 ? clamp(Math.min(wu / 1.2, (Wv.until - T) / 1.0)) : 0;   // THE WAVE: 1.4 rad / s round the court
+        gl.uniform2f(U.uWave, Wv ? Wv.a0 + Wv.dir * 1.4 * Math.max(0, wu) : 0, wk); if (Wv && T > Wv.until) this.wave = null;
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, ft); gl.uniform1i(U.uAtlas, 0);
         gl.bindVertexArray(this.built.crowdVao); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.built.crowdN);
       }
@@ -685,10 +694,13 @@ export class Stadium3D {
     const names = [name(0xA00), name(0xA80)]; if (!names[0] && !names[1]) return;
     const say = [n => `GO ${n}!`, n => `${n}!!`, n => `WE \u2665 ${n}`, n => `${n} #1`];
     const B = this.built.banners, n = Math.min(B.length, Math.round(2 + (B.length - 2) * this.fill));
+    // whoever is ahead (3 a set, 1 a game) gets more of the stands' banners, and after a point they are thrust up higher
+    const ld = (w[0x8E0] - w[0x8E1]) * 3 + (w[0x8E2] - w[0x8E3]), lead = ld > 0 ? 0 : 1, share = Math.min(0.5, Math.max(0, Math.abs(ld) - 1) * 0.12);
+    const jump = 26 * clamp(1 - (T - this.cheerAt) / 2.5);
     gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
     for (let i = 0; i < n; i++) {
-      const b = B[i], who = names[b.who] ? b.who : 1 - b.who, tex = this.bannerTex(say[b.kind](names[who]), who);
-      const up = 10 * Math.sin(T * 2.6 + b.ph), sw = 0.08 * Math.sin(T * 1.7 + b.ph * 1.3), W = 210, H = 78;
+      const b = B[i], pick = i < n * share ? lead : b.who, who = names[pick] ? pick : 1 - pick, tex = this.bannerTex(say[b.kind](names[who]), who);
+      const up = 10 * Math.sin(T * 2.6 + b.ph) + jump * Math.abs(Math.sin(T * 7 + b.ph)), sw = 0.08 * Math.sin(T * 1.7 + b.ph * 1.3), W = 210, H = 78;
       const r = [b.r[0] * Math.cos(sw), Math.sin(sw), b.r[2] * Math.cos(sw)], u = [-b.r[0] * Math.sin(sw), Math.cos(sw), -b.r[2] * Math.sin(sw)];
       v.draw(tex, new Float32Array([r[0] * W, r[1] * W, r[2] * W, 0, u[0] * H, u[1] * H, u[2] * H, 0, b.n[0], 0, b.n[2], 0, b.x, b.y + up, b.z, 1]), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
     }

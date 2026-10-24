@@ -16,6 +16,7 @@
 //   momentum            a bar under the scoreboard swings towards whoever is winning the points (each point pulls it a third of the
 //                       way over); three in a row puts ON FIRE on their side, the crowd roars louder for each point of the streak and
 //                       the court camera leans in a little as the momentum builds (voxel.js courtCamera: zoom())
+//   sweat               from the 12th shot of a rally the players start to sweat: drops flick off their heads, more the longer it goes
 //   after each point    the game plays its own fist pump / slump (CharPointReactionPhase 08:6D27 by wCharPointResult $DF57); on top of
 //                       it the point's winner hops twice under turning stars, the loser gets a sweat drop and a small grey cloud
 import { KMH } from "./ballfx.js";
@@ -231,6 +232,16 @@ export class MatchFX {
       }
     }
   }
+  // SWEAT: drops flicking off each player's head in a long rally (wRallyLength $C4B6 from 12), each on a short arc, fading
+  drawSweat(mvp, m4, now) {
+    const v = this.v, hits = v.gb.mem.wram[0][0x4B6]; if (!this.on || this.cine || hits < 12 || hits >= 0x64) return;
+    const k = Math.min(1, (hits - 11) / 12), n = 1 + Math.round(k * 3), players = v.interp().players || [];
+    for (const p of players) for (let i = 0; i < n; i++) {
+      const per = 0.9 - 0.35 * k, ph = (p.slot * 0.37 + i / n) * per, t = ((now + ph) % per) / per, side = (i + p.slot) % 2 ? 1 : -1;
+      const head = -p.Z + 300, x = p.X + side * (50 + 140 * t), y = head + 90 * t - 220 * t * t, z = p.Y + 20 * Math.sin(i * 2.1);
+      v.draw(this.markTex("drop"), m4.trs(x, y, z, 30, 36, side * 0.5 * t, 0), mvp, [0, 0, 1, 1], [0.6, 0.85, 1, 0.85 * (1 - t)], 0.3);
+    }
+  }
   pausedNow(v) {
     if (!v.courtMaps || v.courtId < 0) return false;
     const m = v.gb.mem, base = v.bgBase(), pr = v.courtMaps[v.courtId]; if (!pr) return false; let n = 0;
@@ -317,6 +328,7 @@ export class MatchFX {
     gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
     this.drawFireworks(mvp, m4, now);
     this.drawReactions(mvp, m4);
+    this.drawSweat(mvp, m4, now);
     if (!C) return;
     C.parts = C.parts.filter(q => now - q.t0 < CONF_LIFE); if (!C.parts.length) { this.confetti = null; return; }
     for (const q of C.parts) {

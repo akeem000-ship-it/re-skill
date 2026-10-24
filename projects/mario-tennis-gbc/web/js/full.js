@@ -17,6 +17,7 @@ import { addCourtButton } from "./courtconcepts.js";
 import { attachMatchFx } from "./matchfx.js";
 import { attachFieldLife } from "./fieldlife.js";
 import { attachWeather } from "./weather.js";   // WEATHER: rain or a sunset over a match (the look only)
+import { attachCloseCall } from "./closecall.js";   // CALLS: the TV line-call review after a close bounce
 import { attachGround } from "./ground.js";     // GROUND: grass, leafy trees, brick path edging and pebbles on the overworld
 import { attachPhone } from "./phone.js";
 import { InstantReplay } from "./replay.js";   // INSTANT REPLAY: the last long rally again under a TV camera   // GAME: vibrate, screenshot, quick save / load, battery saver, what's new   // FIELD LIFE: birds, cloud shadows, fountain glints in the overworld   // MATCH FX: set / match point hush, rally ooh, changeover sweep, the winner's celebration
@@ -134,7 +135,7 @@ function frame() {
   if (port) portFrame(); else gb.runFrame();
   if (view3d && voxel && voxel.mode === "3d") voxel.tick();
   if (phone) phone.frame(gb);                // VIBRATE: hits and points
-  if (replay && !port) replay.afterFrame(gb, inp);   // INSTANT REPLAY: the buttons of the point
+  if (replay) replay.afterFrame(gb, inp);   // INSTANT REPLAY: the buttons of the point (the port: the point's tape)
   rec.frame(gb, mask); session.frame(gb, mask);
   creator.frame(); deck.frame();
   if (audioReady && anode) { const n = gb.apu.drain(abuf); if (n) anode.port.postMessage(abuf.slice(0, n)); } else gb.apu.outPos = 0;
@@ -233,7 +234,7 @@ addEventListener("resize", () => applyAspect());
 let preset = q.get("cam") || stored("mt-cam") || "low"; if (!PRESETS[preset]) preset = "low";
 function setView3d(on, vox = false) {
   view3d = on; $("view3d").classList.toggle("on", on); $("view3d").textContent = on ? (vox ? "VOX" : "3D") : "3D";
-  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.hdText = hd; voxel.freeCam = q.has("freecam"); attachLighting(voxel, $("hud")); attachLightPanel(voxel); if (phone) phone.applyBattery(); attachStadium(voxel, $("hud")); addCourtButton(voxel, $("hud")); attachCrowdSound(voxel.stadium, $("hud"), () => actx); attachBallFX(voxel, $("hud")); attachIntro(voxel, $("hud")); attachMatchFx(voxel, $("hud")); attachFieldLife(voxel, $("hud")); attachWeather(voxel, $("hud")); attachGround(voxel, $("hud")); attachVoxStyle(voxel, $("hud")); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
+  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.hdText = hd; voxel.freeCam = q.has("freecam"); attachLighting(voxel, $("hud")); attachLightPanel(voxel); if (phone) phone.applyBattery(); attachStadium(voxel, $("hud")); addCourtButton(voxel, $("hud")); attachCrowdSound(voxel.stadium, $("hud"), () => actx); attachBallFX(voxel, $("hud")); attachIntro(voxel, $("hud")); attachMatchFx(voxel, $("hud")); attachFieldLife(voxel, $("hud")); attachWeather(voxel, $("hud")); attachCloseCall(voxel, $("hud")); attachGround(voxel, $("hud")); attachVoxStyle(voxel, $("hud")); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
   if (voxel) voxel.voxelSprites = on && vox;
   $("gl").hidden = !view3d; cv.hidden = view3d; $("cam").hidden = !view3d; $("smoothbtn").hidden = !view3d; if ($("ballfxbtn")) $("ballfxbtn").hidden = !view3d; if ($("voxstylebtn")) $("voxstylebtn").hidden = !(view3d && vox); if ($("lightbtn")) $("lightbtn").hidden = !view3d; if ($("stadiumbtn")) $("stadiumbtn").hidden = !view3d; if ($("crowdsndbtn")) $("crowdsndbtn").hidden = !view3d;
   try { localStorage.setItem("mt-3d", on ? (vox ? "vox" : "3d") : "off"); } catch (e) { /* private mode */ }
@@ -432,7 +433,7 @@ $("rec").addEventListener("pointerdown", () => {
 setInterval(() => { if (!recording()) return; const t = rec.on ? rec.seconds : (session.n - portRecFrom) / 60; $("rec").textContent = "REC " + Math.floor(t / 60) + ":" + String(Math.floor(t % 60)).padStart(2, "0"); }, 1000);
 addEventListener("visibilitychange", () => { if (document.hidden && recording()) saveRecording(true); });
 window.__stopRec = () => { if (recording()) saveRecording(true); };   // called by the Android wrapper from onPause
-replay = new InstantReplay({ gb: () => gb, voxel: () => voxel, canRun: () => !port && view3d && !!voxel && voxel.mode === "3d", settle });
+replay = new InstantReplay({ gb: () => gb, voxel: () => voxel, canRun: () => view3d && !!voxel && voxel.mode === "3d", isPort: () => !!port, settle });
 phone = attachPhone($("hud"), { gb: () => gb, voxel: () => voxel, view3d: () => view3d, redraw: () => { renderedAt = -1; drawnFrame = -1; if (gb) draw(1); },
   saveState: () => { settle(); return saveState(gb); }, loadState: st => { raSnap = null; loadState(gb, st); drawnFrame = -1; }, romHash: () => romHash, hint });
 $("view3d").addEventListener("pointerdown", () => { if (!gb) return; const vox = voxel && voxel.voxelSprites; setView3d(!view3d || !vox, view3d && !vox); });   // off -> cards -> voxels -> off

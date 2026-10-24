@@ -3,7 +3,7 @@
 // intro) run at game speed; the walk-out intro's hold is kept (the clock runs, the game does not).
 //
 // usage: node web/tests/shoot.mjs SPEC.json
-//   SPEC: { "rec": "out/x.mtrec", "q": "ground=carpet", "out": "out/shots/x", "hud": false,
+//   SPEC: { "rec": "out/x.mtrec", "q": "ground=carpet", "out": "out/shots/x", "hud": false, "view": "vox" | "3d" (default: the recording's), "port": the engine (default: the recording's),
 //           "segs": [{ "a": 3000, "b": 3300, "step": 2, "shots": 0, "pre": "JS", "each": "JS", "report": "JS" }] }
 //   a / b: game frames to shoot between; step: game frames between shots (default 2); shots: at most this many;
 //   pre: JS run in the page once before the segment; each: before every shot; report: JS whose result is printed after.
@@ -21,7 +21,7 @@ const page = await (await browser.newContext({ viewport: { width: 960, height: 5
 page.on("pageerror", e => console.log("pageerror", e.message));
 await page.addInitScript(l => { const real = performance.now.bind(performance); window.__vclock = { on: false, t: 0 }; performance.now = () => window.__vclock.on ? window.__vclock.t : real(); try { localStorage.setItem("mt-look", JSON.stringify(l)); } catch (e) { /* no storage */ } }, rec.meta.look);
 const m = rec.meta;
-await page.goto(`http://localhost:${PORT}/web/full.html?port=${encodeURIComponent(m.port)}${m.physics ? "&physics=" + m.physics : ""}&net=${m.net || "original"}${/tourlen=/.test(spec.q || "") ? "" : "&tourlen=" + (m.tourlen || "game")}${/menu=/.test(spec.q || "") ? "" : "&menu=" + (m.menu || "game")}${/plus=/.test(spec.q || "") ? "" : "&plus=" + (m.plus || "off")}&${spec.q || "intro=off"}`);
+await page.goto(`http://localhost:${PORT}/web/full.html?port=${encodeURIComponent(spec.port || m.port)}${m.physics ? "&physics=" + m.physics : ""}&net=${m.net || "original"}${/tourlen=/.test(spec.q || "") ? "" : "&tourlen=" + (m.tourlen || "game")}${/menu=/.test(spec.q || "") ? "" : "&menu=" + (m.menu || "game")}${/plus=/.test(spec.q || "") ? "" : "&plus=" + (m.plus || "off")}&${spec.q || "intro=off"}`);
 if (!spec.hud) await page.addStyleTag({ content: "#pad, #stickzone, #deck, #hud { display: none !important; }" });   // (the touch controls and the menu bar)
 await page.waitForFunction(() => window.__gb && window.__gb.gb && window.__gb.port && document.getElementById("loader").hidden, null, { timeout: 120000 });
 await page.evaluate(async rec => {
@@ -37,7 +37,7 @@ let n = 0, in3d = false;
 for (const s of spec.segs) {
   const step = s.step || 2, cur = await page.evaluate(() => window.__rp.f);
   for (let g = cur; g < s.a - 120; g += 600) await page.evaluate(([k, v]) => window.__rp.run(k, v), [Math.min(600, s.a - 120 - g), in3d]);
-  if (!in3d) { await page.evaluate(() => window.__gb.view3d(true)); in3d = true; }
+  if (!in3d) { await page.evaluate(vox => window.__gb.view3d(true, vox), (spec.view || m.view) === "vox"); in3d = true; }   // (the recording's VOX / 3D view; spec.view overrides)
   await page.evaluate(k => window.__rp.run(k, true), Math.max(0, s.a - (await page.evaluate(() => window.__rp.f))));
   if (s.pre) await page.evaluate(e => (0, eval)(e), s.pre);
   let f = s.a, shots = 0; const max = s.shots || 1e9;

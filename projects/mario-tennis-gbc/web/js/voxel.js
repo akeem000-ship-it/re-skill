@@ -15,6 +15,7 @@
 import { project } from "./camera.js";
 import { courtTilemaps, courtImage, courtIndexMap, COURTS } from "./assets.js";
 import { FIELD_OBJECTS } from "./field_objects.js";
+import { INDOOR_MAPS } from "./lighting.js";   // (water: outdoor maps only)
 import * as F3 from "./field3d.js";
 import { FS_SHIM, VS_GLASS, FS_GLASS, WindowShimmer } from "./shimmer.js";   // SHIMMER: window shimmer + glass walls
 import { roundedMeshData } from "./voxround.js";
@@ -813,6 +814,7 @@ export class Voxel3D {
     if (h.length && h[h.length - 1].fr === fr) return;
     h.push({ fr, ball: ball || this.ballWorld() }); if (h.length > 40) h.shift();
     if (this.ballfx) this.ballfx.step(this);   // BALLFX: reads the game once per game frame
+    if (this.closecall) this.closecall.step(this);   // CALLS: a line-call review after a close bounce (read only)
     if (this.stadium) this.stadium.step(this);   // STADIUM: crowd size by match class, cheer and crowd-sound events (read only)
   }
   // alpha: how far the display is between the last two game frames (0..1); the 3D view renders at the
@@ -1737,8 +1739,20 @@ export class Voxel3D {
       if (g >= 160 && dk >= 12) fol[my * 32 + mx] = 1;
     }
     this.hedgeArt = art; this.buildHedges(fol, MW, MH); this.hedgeArt = null;
+    // water: outdoors, a solid metatile that is mostly water blue (a pond, a lake) stays flat on the ground, not a box (the shore is the
+    // game's own picture; a box raised the water over the grass)
+    // (f.water: the whole pond, every mostly-blue metatile joined to a solid one: fieldlife.js draws its surface)
+    const water = new Uint8Array(32 * 32), blue = new Uint8Array(32 * 32), outdoor = !INDOOR_MAPS.has(f.mapId), stack = [];
+    for (let my = 0; my < MH && outdoor; my++) for (let mx = 0; mx < MW; mx++) {
+      let wb = 0; for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const o = ((my * 16 + y) * 512 + mx * 16 + x) * 4, r = art[o], gg = art[o + 1], b = art[o + 2]; if (b > 120 && b > r + 50 && b >= gg) wb++; }
+      if (wb >= 64) blue[my * 32 + mx] = 1;
+      if (wb >= 120 && coll[my * 32 + mx] === 0x0F) { water[my * 32 + mx] = 1; stack.push(my * 32 + mx); }
+    }
+    const pond = new Uint8Array(water);
+    while (stack.length) { const i = stack.pop(), x = i & 31, y = i >> 5; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const X = x + dx, Y = y + dy, j = Y * 32 + X; if (X >= 0 && Y >= 0 && X < MW && Y < MH && blue[j] && !pond[j]) { pond[j] = 1; stack.push(j); } } }
+    f.water = pond;
     for (let my = 0; my < MH && !f.noWalls; my++) for (let mx = 0; mx < MW; mx++) {
-      if (coll[my * 32 + mx] !== 0x0F || (f.covered && f.covered[my * 32 + mx]) || fol[my * 32 + mx]) continue;
+      if (coll[my * 32 + mx] !== 0x0F || (f.covered && f.covered[my * 32 + mx]) || fol[my * 32 + mx] || water[my * 32 + mx]) continue;
       const x0 = mx * 16, x1 = x0 + 16, z0 = my * 16, z1 = z0 + 16, u0 = x0 / 512, u1 = x1 / 512, v0 = z0 / 512, v1 = z1 / 512;
       const top = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]], side = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
       quad([x0, H, z0], [x1, H, z0], [x1, H, z1], [x0, H, z1], top);

@@ -95,8 +95,67 @@ export class FieldLife {
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       }
     }
+    // ponds (voxel.js f.water: the solid metatiles of water left flat): sun glints twinkling across the water by day, a soft cool sheen
+    // over it at night, each tile on its own phase
+    const pond = f.water;
+    if (pond && pond.some(x => x)) {
+      const surf = this.pondSurface(f);                                   // the water itself: smooth, deeper blue away from the shore
+      if (surf && !f.fading) v.draw(surf, m4.trs(256, 0.35, 512, 512, 512, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE); gl.depthMask(false);
+      for (let i = 0; i < 1024; i++) {
+        if (!pond[i]) continue;
+        const x0 = (i & 31) * 16, z0 = (i >> 5) * 16;
+        if (night > 0.2) { v.draw(this.glow, m4.trs(x0 + 8, 1, z0 + 8, 30, 30, -Math.PI / 2), mvp, [0, 0, 1, 1], [0.3, 0.55, 0.9, 0.12 * night], 0); continue; }
+        for (let k = 0; k < 2; k++) {
+          const h1 = hash(i * 2 + k, 7), h2 = hash(i * 2 + k, 8), tw = Math.pow(Math.max(0, Math.sin(T * (1.3 + 2 * h1) + h2 * 40)), 14);
+          if (tw < 0.05) continue;
+          const s = 2.4 * tw + 0.6;
+          v.draw(this.tex, m4.trs(x0 + 2 + 12 * h1, 1 + k * 0.1, z0 + 2 + 12 * h2, s, s, -Math.PI / 2, 0.785), mvp, [0, 0, 1, 1], [1, 1, 1, 0.85 * tw * day], 0);
+        }
+      }
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(true);
+    }
   }
 }
+// the pond's water as one smooth surface over the map's dithered water tiles: the water pixels of the water metatiles (blue, and the
+// white sparkle dots among them) in the water's own average blue, lighter at the shore and darker towards the middle, with faint
+// broad ripples; everything else clear. Made once per map picture (f.floorData).
+FieldLife.prototype.pondSurface = function (f) {
+  if (this.pond && this.pond.floor === f.floorData) return this.pond.tex;
+  const fl = f.floorData, W = f.water, N = 512, isBlue = o => fl[o + 2] > 120 && fl[o + 2] > fl[o] + 50 && fl[o + 2] >= fl[o + 1];
+  const wet = new Uint8Array(N * N); let sr = 0, sg = 0, sb = 0, n = 0;
+  for (let i = 0; i < 1024; i++) if (W[i]) for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const px = (i & 31) * 16 + x, py = (i >> 5) * 16 + y, o = (py * N + px) * 4;
+    if (isBlue(o)) { wet[py * N + px] = 1; sr += fl[o]; sg += fl[o + 1]; sb += fl[o + 2]; n++; }
+  }
+  if (!n) { this.pond = { floor: fl, tex: null }; return null; }
+  // the white dots: a light pixel with blue water on three sides two pixels away is water too
+  const add = [];
+  for (let i = 0; i < 1024; i++) if (W[i]) for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const px = (i & 31) * 16 + x, py = (i >> 5) * 16 + y; if (wet[py * N + px]) continue;
+    const o = (py * N + px) * 4; if (fl[o] + fl[o + 1] + fl[o + 2] < 560) continue;
+    let k = 0, shore = 0;                                                 // blue water round it in a 7 x 7 window, and no shore (orange, brown, green)
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+      const qx = px + dx, qy = py + dy; if (qx < 0 || qy < 0 || qx >= N || qy >= N) continue;
+      const q = (qy * N + qx) * 4; if (wet[qy * N + qx]) k++; else if (fl[q] > fl[q + 2] + 40 || fl[q + 1] > fl[q + 2] + 30) shore++;
+    }
+    if (k >= 8 && !shore) add.push(py * N + px);
+  }
+  for (const i of add) wet[i] = 1;
+  // distance to the shore (chamfer, capped)
+  const D = new Float32Array(N * N).fill(0);
+  for (let i = 0; i < N * N; i++) D[i] = wet[i] ? 99 : 0;
+  for (let y = 1; y < N; y++) for (let x = 1; x < N - 1; x++) { const i = y * N + x; if (D[i]) D[i] = Math.min(D[i], D[i - 1] + 1, D[i - N] + 1, D[i - N - 1] + 1.4, D[i - N + 1] + 1.4); }
+  for (let y = N - 2; y >= 0; y--) for (let x = N - 2; x > 0; x--) { const i = y * N + x; if (D[i]) D[i] = Math.min(D[i], D[i + 1] + 1, D[i + N] + 1, D[i + N + 1] + 1.4, D[i + N - 1] + 1.4); }
+  const r0 = sr / n, g0 = sg / n, b0 = sb / n, d = new Uint8Array(N * N * 4);
+  for (let i = 0; i < N * N; i++) {
+    if (!wet[i]) continue;
+    const x = i % N, y = (i / N) | 0, t = Math.min(1, D[i] / 22), rip = 0.035 * Math.sin(x * 0.11 + y * 0.23) * Math.sin(x * 0.05 - y * 0.07);
+    const k = 1.12 - 0.3 * t + rip, w = Math.max(0, 1 - D[i] / 2.5) * 0.25;          // lighter in the shallows, a pale lip at the edge
+    d.set([Math.min(255, r0 * k + 255 * w), Math.min(255, g0 * k + 255 * w), Math.min(255, b0 * k + 40 * w), 255], i * 4);
+  }
+  const tex = this.v.texture(N, N, d, true); this.pond = { floor: fl, tex }; return tex;
+};
 const DIRS = [[1, 0, 0x00], [0, 1, 0x40], [-1, 0, 0x80], [0, -1, 0xC0]];   // right, towards the viewer, left, away (DirectionToFacing 04:56B3)
 const WALK = 26;                                                             // px a second
 FieldLife.prototype.drawWalkers = function (mvp, TILT) {
