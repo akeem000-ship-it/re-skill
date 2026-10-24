@@ -845,6 +845,107 @@ Exports: $00 44:7E74 CopyHoleRecord (17:4298, 66:4982) and $02 44:42FB DebugPale
   - A record holds a grid of 4-bit values (10-byte rows; nibbles 0/1/3/F), then a list of tile numbers ending with $FF. It is probably a picture of the hole or green for the bank-17 view. Not confirmed.
 - The rest of the bank (44:43E8-7E73) is data, not traced.
 
+All addresses come from `tools/disasm.py` and `tools/xref.py`. Names are in `labels_a6.csv` (275 lines: 228 routines/tables, 47 RAM).
+
+##### Bank 02: save data, the player's character, golfer setup, link shots, points/EXP, debug screens
+
+- **Save blocks** (next to SaveLoad 02:41F6): SaveBlockStore 02:429B (export 4: block b <- WRAM hl + 24-byte header de; sum + used flag; SaveCommit), SaveBlockClear 02:431D, SaveBlockVerify 02:43CC (0 / `$FE` empty / `$FD` differs / `$FF` bad sum), SaveBlockHeader 02:4454. SaveCheckAllBlocks 02:45D3 (export `$6A`, one of GameMain's three setup calls) checks blocks 0-2 (on a bad sum it restores from backup block b+8, 02:457F), block 3 (02:45AA) and blocks 4-7 (a bad block becomes `$280` zero bytes, 02:45B7).
+- **SaveGame 02:4489** (export `$34`, about 50 calls from the story banks 30-35, plus 08 and 41): only when slot `$C2A5` < 3. It calls SaveGameTimer and BuildClubTable, then stores the character record `$C800` in block slot and again in slot+8 (header template 02:63A0), verifying each copy.
+- **SRAM flag bits** at `$A038`: TestSaveFlag 02:44F2, SetSaveFlag 02:4522 (bank 08 calls it 7 times), ClearSaveFlag 02:4550 (unreferenced).
+- **Character record `$C800`** (name first): type `$C810`, level `$C812` (max 99), flags `$C819`, driver distance `$C81A`, 24-bit EXP `$C826`, stat points at +`$20`/`$21`/`$22`/`$24`. Routines: NewGame 02:4E3D (export `$14`: clears `$C800-$C9FF`, CreateCharacter, map 0 entrance 2); CreateCharacter 02:4E82; CharLevelUp 02:4FFA/4FFD (raises one stat and the level); CharComputeStats 02:4F07 (per-type tables at 02:4D3D); CharLevelUpDiff 02:503C (the stat changes for the level-up screen); AddExp 02:5465, CheckLevelUp 02:546B and ExpToNextLevel 02:5498 (thresholds at 02:54CD by type); BuildClubTable 02:51F6 (13 clubs x 7 bytes -> `$C900`).
+- **Golfer setup**: SetupPlayerGolfer 02:4A28 (export `$1E`, 141 call sites). It fills player record c from golfer b: `$80` = own character, `$81` = `$C600`, `$82` = link partner `$CB40` (sets +`$13` = 3), any other value = preset golfer from 02:4B1D. Player field +`$13` is the controller type (0 = human; AddPoints and 02:5BEC test it). Golfer lists for the select screens go to WRAM6 `$D000`, 32 bytes per entry (02:5985, 02:5A2D, 02:5B5B). Presets are gated by game flags or by save flags.
+- **Shot records**: LoadShotRecord 02:463E and WriteShotRecord 02:46E3 move 13 bytes (ball, aim, club, mode, power or targets). Per-stroke copies sit at `$D680`; LoadStrokeRecord 02:4626 and BallToShotStart 02:4691 read them back.
+- **Link play**: LinkSendShot 02:48B8, LinkSendShotResult 02:4924 and LinkReceiveShot 02:483A send a shot record through `$CB00`/`$CB40`. Control bytes: `$20`/`$21` = idle/aiming, `$2F` = end of block, `$2E` = abort, `$1x` = a button press. While aiming, a partner's button press plays a sound from 02:4802 (02:4812, 02:47ED).
+- **Points**: ClearPoints 02:540A, AddPointsRaw 02:5415 (export `$54`; the body of AddPoints without the mode check), AddPointsSigned 02:544E (has a floor of 0). Per-course hole bitmaps at `$C996`, 25 bytes per course (02:5C50, 02:5C77, 02:5CA5).
+- **Debug leftovers**:
+  - DebugCharacterEditor 02:6176 is reached only from the unreachable debug boot menu (01:4128). D-pad = level up a stat, A/B = change type, Select = slot, Start = save.
+  - DebugSaveViewer 02:5D2F (export `$68`, called from 35:776B) hangs with "NO FILE" or "CHECK SUM ERROR", otherwise shows 10 pages of block 3.
+  - An EXP test loop at 02:611D (A = +10, B = +100, then automatic level-ups) has no caller.
+
+##### Bank 12: golf HUD and on-course sprites
+
+- HudInit 12:442C (export 0, from 10:4214) draws every HUD part and registers the HUD task 12:449F. The task is gated by `$D358`; `wHudPanelsHidden` `$D455`; `wHudBlink` `$D454` blinks the current player's panel.
+- HUD parts (all render to WRAM then queue to VRAM1): lie icon 12:45F4 (by HudLieIndex 12:4239), club icon 12:465C, shot panel 12:46A6 (shot type by wShotMode, club name, club base distance), hole/yards/par 12:4A0A (`$C837`, `$D323`, `$D325`), wind 12:4A81 (`$C815` speed, `$C816` angle), player faces and strokes 12:4B8A / 12:4C18 (player records +`$10` / +`$19` / +`$20`), pin distance 12:4CB1.
+- UpdateWindIndicator 12:50A0 animates the objects at `$CAB0`.
+- Target-marker blink and edge arrows: 12:502C (uses `$D36B` from 40:640E).
+- StrongWindIntro 12:6F8D runs at hole start when wind is `$0C` or more.
+- FreeLookCursor 12:6D3D (export `$42`, from 41:7879) moves cursor `$D422`/`$D424` with acceleration `$D486` and switches to the green view when the cursor enters the green. **Debug:** with hDebugMode set, A teleports the ball to the cursor; with hDebugMode >= 2, 12:6F16 prints the cell's terrain and slope in hex.
+- Countdown control for UpdateGameTimer (`$C0F4`: 1 = run, 2 = pause, `$FF` = expired): CountdownStart 12:4F52 and CountdownPause 12:4F73, both called from bank 34. Resume 12:4F67 and stop 12:4F7F are unreferenced.
+- Cell lookups at map positions: TerrainAtPos 12:40FD, GreenSlopeDirAt 12:4098 (the slope direction is remapped by the tile flips through 12:40DD).
+- Unreferenced: HudDrawClubLieNumbers 12:4622, and a lone `ret` at 12:4DE8.
+
+##### Bank 04: map actors (people sprites) and map scrolling
+
+- There are 24 actors of `$40` bytes in WRAM4 `$D000`. Fields: +0 script/bank, +4/+6 x/y, +`$16`/`$17`/`$1E` state, +`$18` leader, +`$20`/`$22` character tables, +`$24`/`$26` animation, +`$2B` bank, +`$2C` slot, +`$2D` palette, +`$30` character, +`$31` animation, +`$38` VRAM tiles.
+- Init and spawning: ActorsInit 04:410D; ActorAlloc 04:4139 (**bug/leftover:** computes a random 8-15 value, then overwrites it with `$0800`); ActorSpawn 04:4FFB (12-byte spawn records gated by a game flag, 04:4FBE); SpawnActorList 04:5084; SpawnPlayerActor 04:510A; SpawnPartnerActor 04:51D0 (partner chosen by flags #144-147, follows the player via ActorStartFollow 04:4525).
+- Character and animation: ActorSetCharacter 04:4D42 (headers at 04:4F1C), ActorSetAnim 04:4E51.
+- Proximity and lists: FindActorNear 04:55C4 (talk target), BuildActiveActorList 04:56FD -> `$CAC0`.
+- MapScrollTask 04:4072 (export `$3C`, also run as a frame task) blits BG rows and columns as the view tile changes; SCX/SCY include the shake offset `$C368`/`$C369`.
+- Golf uses actor 0 as the golfer's map sprite: 04:57BA, 04:57A1, 04:5808.
+
+##### Bank 15: the behind-the-golfer picture (objects and flag)
+
+- BuildBehindView 15:46AB (export 0, from 13:43AE) runs these steps:
+  1. BehindViewSetup 15:4570: viewpoint `$280` units behind the ball along wLaunchDir.
+  2. Ground (bank 16).
+  3. ProjectViewObjects 15:47BD: objects from the WRAM4 `$DC00` list inside the view cone, at most `$55` of them; sound `$23` when the list is full.
+  4. Screen columns and rows (15:498F, tables 15:48E7 / 15:490F).
+  5. Column and depth sort (15:49F7, 15:4AC7).
+  6. Flag sprite (15:4DC1, hidden when occluded).
+  7. Scenery by course: jump table 15:463F by `$C836` -> export 0 of banks 4B/4C/4D/4E/4F/4A; course 7 chooses by hole.
+  8. Copy to VRAM.
+- **Debug leftover:** ProjectFlag 15:4B18 prints the flag's distance and angle with PrintDecimalWord on every build.
+- TerrainAtCell 15:4F9A works like TerrainAt but in quarter-tile units.
+
+##### Bank 16: behind-view ground renderer
+
+- RenderBehindViewGround 16:4058 (export 2; also called from bank 7D) draws 20 rows (`$C47E`) into WRAM tiles `$CF80-$D9FF`.
+- Per row: SampleViewRow 16:7B01 takes 64 terrain samples along a perspective row (row offsets at 16:7AD9, origin `$C3A4`/`$C3A6`; an unrolled sampler at 16:7A65 that uses stack tricks under `di`). Then: class translation through `$C400` (table 16:4010, loaded by export 0); SmoothGroundRow 16:5967; DominantGroundClass 16:432A for 8 column groups; pattern words written by DrawGroundColumn 16:435F (tables 16:3D67 / 16:3F67 / 16:4567, or 16:4767 on course 3).
+
+##### Bank 11: golf camera, ball/golfer sprites
+
+- Camera: CameraComputeGoal 11:413C (mode `$D438`: scroll / ball / marker / look cursor / cup, clamped to wMapBounds), CameraStep 11:422F (step size by distance, writes the scroll position `$C320`/`$C322`), CameraAtGoal 11:41F7, WaitCameraAtGoal 11:4224.
+- InitBallCamera 11:476E is the view-4 camera.
+- PreviewMarkerView4 11:48AB projects the preview ghost spot.
+- LoadPictureTiles 11:4EAB is an LZ list at 11:4F02 decompressed into VRAM1 (called from 0B and 32).
+- LoadGolferSpriteTiles 11:6E1E and LoadGolferFrameTiles 11:6E08 load from the per-golfer list 11:6EEF; wGolferId is `$D332`.
+- **Leftover:** CpuPlanShot 11:4046 (SmartAim + club + power) has no caller.
+
+##### Bank 40: full-screen pictures, target-marker placement, LZ UI tiles
+
+- LoadFullScreenPicture 40:5BF9 takes a (idx, bank) list: palettes, tiles, attributes, map.
+- ShowPictureTimed 40:6666 (export 1, pictures in banks 7B and 49) and ShowPictureUntilButton 40:66B5 (export 2, waits up to 60 s or a button). Callers: the debug boot menu (01:4131-4155, unreachable) and story banks 31, 33, 65, 77.
+- PlaceTargetMarker 40:640E (export 3, from 10:5A2B / 10:5D10) places the marker at ball + club base distance along the aim (AimOffset 40:62BC). The offset is scaled down so the marker stays inside the map, or inside the green view's 5x4 tiles; edge bits go to `$D36B`.
+- The LZ UI tiles at 40:66F6 were already known.
+
+##### Bank 4F: one course's behind-view scenery, and captions
+
+- ComposeObjectPicture 4F:5645 (export 0, through 15:463F) blits the sorted object list `$DA00` into the WRAM tile sheet. Type-1 shapes come from 4F:6049 / 4F:57FB (colours 0 and 3 opaque, BlitRowOpaque03 4F:615C); type 2/3 shapes from 4F:5712 and 4F:611C (colour 0 transparent, 4F:6169). An extra shape is drawn when the ball's terrain `$C3B7` = `$0C`. Then LZ 4F:5410 and palettes 4F:5615.
+- **Captions** (bank 3B): StartCaptionAnim 4F:619C (sound `$4A`, sprite object `$CAA0`, scripts 4F:632B / 4F:6569; the OBJ palette comes from 4F:63A9 and is varied by `$C836` and hole number via 4F:627B / 4F:6294), WaitCaptionAnimEnd 4F:618B, StopCaptionAnim 4F:6184.
+
+##### Bank 77: story pictures
+
+- LoadStoryPicture 77:6E3E (export 6, from 32:4AB5 and 3B:7737): c = picture (< `$0B`), b = variant (via 77:6F86).
+  - Tiles: LZ list 77:7346 into WRAM1, then six `$200`-byte HDMA copies to `$9200-$97FF` and `$8800-$8DFF`.
+  - Map: 77:7376 / 77:752E.
+  - Animation: script 77:76E6 (`$D347`), tasks 77:7033 and 77:6F8E.
+  - Then farcall 4A:6205, which acts only for variant 0.
+
+##### RAM introduced (see CSV)
+
+- Camera: `$D42E`, `$D432`, `$D438`.
+- Behind view: `$C3A0-$C3B9`, `$C47C-$C487`, `$C836` (course?).
+- HUD: `$D322-$D328`, `$D454`, `$D455`, `$D36C`, `$D422`, `$D486`.
+- Wind: `$C815`, `$C816`.
+- Countdown: `$C0F4`.
+- Character record: `$C810-$C826`, `$C900`, `$C996`.
+- Save: `$C2A5`, `$A038`.
+- Game mode: `$C834`.
+- Actors: `$C296`, `$CAC0`, `$C324`, `$C368`.
+- Story pictures: `$D347-$D34C`.
+- Effect objects: `$CA80`.
+- Caption object: `$CAA0`.
+
 ### Data Structures
 
 *(none yet)*

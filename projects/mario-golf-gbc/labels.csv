@@ -1133,3 +1133,276 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,C826,wCharExp,character record +$26: 24-bit EXP (41:57A9)
 *,CAAD,wExpBonusKind,bonus line on the EXP screen: 1-3 trophy / $14-$19 and others = beaten opponent; $CAAE = bonus amount
 48,6C00,UnusedExport0C,export $0C of bank 48: no caller; the bytes are neither sensible code nor LZ data
+# --- banks 02 12 04 15 16 11 40 4F 77 (save, HUD, actors, golfer view, camera) ---
+77,6E3E,LoadStoryPicture,b = variant (via 77:6F86) c = picture < $0B: LZ tiles to WRAM1 (77:7346) queued to VRAM $9200-$97FF/$8800-$8DFF; map 77:7376/752E; palette 6; anim tasks 77:7033/6F8E; farcall 4A:6205 (called from banks 32 and 3B)
+*,D34B,wStoryPicture,WRAM6: picture id (c & $0F) shown by LoadStoryPicture 77:6E3E
+*,D34C,wStoryPictureVariant,WRAM6: picture variant (from 77:6F86); 1-4 also start the task 77:6F8E
+*,D347,wStoryPictureAnim,WRAM6: animation script pointer (copied to $D349) from 77:76E6 by picture and variant
+11,4046,CpuPlanShot,unreferenced?: SmartAim then club (putter on the green $D4CD = 6; PickClub) and power h from PinDist; returns a = club h = power d = mode e = $FF
+11,410C,BallDisplayStop,unregisters BallDisplayTask
+11,4103,BallDisplayStart,registers BallDisplayTask (slot $0C)
+11,413C,CameraComputeGoal,goal by $D438 mode (0 scroll $C320 / 1 ball / 2 target marker / 3 $D422 / 4 cup) clamped to the map limits $C329-$C32C -> $D42E
+11,41F7,CameraAtGoal,a = $FF when $D432 (camera) equals $D42E (goal) or on the green views; else 0
+11,4224,WaitCameraAtGoal,AdvanceFrame until CameraAtGoal
+11,422F,CameraStep,moves the camera $D432/$D434 toward the goal by a step from the distance ($10-$80); snaps with $D438 bit 4; copies it to the scroll $C320/$C322 off the green
+11,476E,InitBallCamera,view-4 camera ($D456/$D458) at the ball; angle $D45A = $C000 - wLaunchDir
+11,4EAB,LoadPictureTiles,c = entry of the LZ list 11:4F02 -> WRAM1 $D000 -> VRAM1 $8800 + (e-8)*$100 + d*16 ($20 tiles; LCD off) (from 0B and 32)
+11,6D65,GetGolferId,a = $D332 (the golfer's character)
+11,6E1E,LoadGolferSpriteTiles,h = golfer -> (idx bank) list 11:6EEF; l = entry: 16 tiles by HDMA to de (FarCallIndexed2)
+*,D332,wGolferId,WRAM6: the current golfer's character (indexes the swing scripts 11:6ECD and sprite list 11:6EEF)
+*,D438,wCameraMode,WRAM6: low nibble = camera target (0 scroll 1 ball 2 marker 3 $D422 4 cup); bit 4 = jump straight there
+*,D42E,wCameraGoal,WRAM6: camera goal x / y (clamped) computed by CameraComputeGoal 11:413C
+*,D432,wCameraPos,WRAM6: camera x / y moving toward wCameraGoal (CameraStep 11:422F)
+4F,5645,ComposeObjectPicture,bank 4F export 0 (from 15:468F): draws the object list at $DA00 into WRAM tiles (4F:5752 4F:567D) -> VRAM1 $9000/$8800; LZ 4F:5410 + overlay 4F:6089; palettes 4F:5615
+4F,567D,DrawObjectList23,objects of type 2/3 in the $DA00 list ([type x y] $FF end) drawn by DrawObject23 4F:56A7
+4F,56A7,DrawObject23,a = shape: record at 4F:5712 (x y w h ptr): tiles from 4F:4008 masked into the WRAM $D000 tile sheet
+4F,5752,DrawObjectList1,objects of type 1 in the $DA00 list (and shape 7 when $C3B7 = $0C) drawn by DrawObject1 4F:5789
+4F,5789,DrawObject1,a = shape: record at 4F:6049: tile rows from 4F:57FB blitted into WRAM $D000 (BlitRowOpaque03)
+4F,6089,DrawObjectOverlay23,objects of type 2/3 again: overlay shapes 4F:611C onto the second sheet (BlitRowMasked)
+4F,60AF,DrawObjectOverlay,a = shape: record at 4F:611C: tiles from 4F:424E masked into WRAM $D000
+4F,615C,BlitRowOpaque03,one 2bpp row from de onto [hl]: colours 0 and 3 opaque and 1/2 transparent
+4F,6169,BlitRowMasked,one 2bpp row from de onto [hl]: colour 0 transparent
+4F,6184,StopCaptionAnim,unregisters the caption task 4F:62A7
+4F,618B,WaitCaptionAnimEnd,AdvanceFrame until the caption object's script ($CAA0) ends; then unregisters 4F:62A7
+4F,619C,StartCaptionAnim,a = caption c = first tile de = position: sound $4A; task 4F:62A7; object at $CAA0 (scripts 4F:632B / 4F:6569); OBJ palette 7 from 4F:63A9 by course $C836 and hole
+4F,6272,SkipPalette,hl += 8
+4F,627B,CaptionPaletteByHole3,course 7: palette +1 per 3 holes from hole 13
+4F,6294,CaptionPaletteByHole6,course 9: palette +2 from hole 13 and +3 from hole 16
+*,CAA0,wCaptionObj,caption sprite object: script ptr / ? / frames ptr (+4) / VRAM tile addr (+6) / x y (+8) / first tile (+A)
+15,4570,BehindViewSetup,view origin $280 units behind the ball along wLaunchDir ($C3A0/$C3A2 and negated $C3AC/$C3AE); angle $C3B0; cup $C3A8/$C3AA; ball tile $C3B8/$C3B9; terrain at the ball -> $C3B7
+15,462D,DrawBehindViewScenery,jump table 15:463F by course $C836: farcall export 0 of bank 4B/4C/4D/4E/4F/4A (course 7 by hole via 15:4697)
+15,46AB,BuildBehindView,bank 15 export 0 (from 13:43AE): builds the behind-the-golfer picture: BehindViewSetup; 16:4004; project/sort objects; flag; 16:4058; scenery; tiles and maps to VRAM; hole asset 4 -> $D800
+15,47B1,BehindViewTaskStop,unregisters the task 15:47AD (from 10:4909 10:49F4 46:42B7)
+15,47BD,ProjectViewObjects,objects of the WRAM4 list $DC00 ([type ? x y] $FF end) within the view cone and range -> 6-byte records at WRAM1 $DA00 (angle $C471 distance squared $C473); at most $55 (sound $23 when full)
+15,498F,ObjectsToScreen,each $DA00 record: screen column from the angle (table 15:48E7) and row $3F - depth index (distance table 15:490F)
+15,49F7,SortObjectsByColumn,rebuilds $DA00 via $DB00 column by column (20 columns) with ObjectsOfColumn
+15,4A47,ObjectsOfColumn,d = column: appends the nearest type 2/3 object then the nearest type 1 object of that column to the list at bc
+15,4AC7,SortObjectsByDepth,insertion sort of the $DA00 records by their depth byte via $DB00
+15,4B18,ProjectFlag,cup relative to the view origin: distance squared -> $C473 and angle -> $C471; $C470 = 1 when within the view cone; prints both with PrintDecimalWord (debug leftover)
+15,4D32,FlagToScreen,when visible ($C470): screen column/row of the flag from tables 15:4BF2 / 15:490F -> $C471/$C472
+15,4D96,FlagOcclusion,hides the flag ($C470 = 0) when a type 2/3 object in its column is nearer
+15,4DC1,PlaceFlagSprite,ProjectFlag FlagToScreen FlagOcclusion; flag sprite position $C3B4/$C3B5 and $C3B2 ($FF = hidden)
+15,4F9A,TerrainAtCell,d e = x y in quarter tiles: terrain nibble from the WRAM6 $D800 table via the WRAM3 tilemap and WRAM2 attribute flips (as TerrainAt 10:6536)
+*,C3B0,wViewAngle,behind view: viewing angle (wLaunchDir rounded to $10)
+*,C3A0,wViewOrigin,behind view: viewpoint x / y ($C3A2) $280 units behind the ball; negated at $C3AC / $C3AE
+*,C3A8,wViewCup,behind view: cup x / y ($C3AA)
+*,C3B7,wViewBallTerrain,behind view: terrain under the ball (TerrainAtCell)
+*,C3B2,wFlagSpriteRow,behind view: flag sprite row/size ($FF = hidden); $C3B4 / $C3B5 position
+*,C836,wCourse,course id?: picks the behind-view scenery bank (15:463F) and caption palettes (4F:619C)
+16,4004,LoadTerrainClassTable,bank 16 export 0: copies the 16-byte terrain -> ground class table 16:4010 to $C400
+16,4020,TranslateRowByC4Table,64 bytes at hl replaced by [$C400 + byte] (terrain type -> ground class)
+16,4058,RenderBehindViewGround,bank 16 export 2 (15:46FB and bank 7D): renders the 20 ground rows of the behind view into WRAM tiles $CF80-$D9FF ($80 bytes a row; row number $C47E)
+16,41A9,GroundRowFirst,first row: only samples the terrain (GroundRowSample)
+16,41AD,GroundRowNext,one ground row: keep the previous samples (GroundRowKeepPrev) then sample and draw
+16,41B7,GroundRowLast,last row: keep the previous samples and draw without a new sample
+16,41BE,GroundRowKeepPrev,copies the row samples $DB80 to $DB40 (8 x 16 bytes)
+16,41D2,GroundRowSample,SampleViewRow into $DBC0 then TranslateRowByC4Table
+16,41E3,GroundRowDraw,SmoothGroundRow ($DB80 -> $DC00); dominant class of 8 column groups -> $C470-$C477; DrawGroundColumn for each
+16,427B,CountGroundClasses,counts the classes of a group of cells at hl into b c d e (class 1/2 3 6 7 bumps)
+16,432A,DominantGroundClass,CountGroundClasses then the class with the largest count (3-6) -> [bc] + 8 and a; bc += $20
+16,435F,DrawGroundColumn,a = class b = column: 2bpp pattern words from 16:3D67 / 16:3F67 / 16:4567 (16:4767 on course 3) by row $C47C into the tile row at de; mixes edge cells pixel by pixel
+16,5967,SmoothGroundRow,64 samples -> 4 sub-cells each at hl: corners take a neighbour's class when 2 neighbours match (jump table 16:59C4)
+16,7B01,SampleViewRow,a = row: ray along the view angle $C3B0 + offset 16:7AD9 from the origin $C3A4/$C3A6; 64 terrain samples to hl via the unrolled sampler 16:7A65 (stack tricks; di)
+*,C47E,wGroundRow,behind view: ground row being drawn (0-$13)
+*,C47C,wGroundPatternIdx,behind view: index into the ground pattern tables (row x $40 + column)
+*,C486,wGroundSrc,behind view: pointer into the smoothed row $DC00
+40,5BF9,LoadFullScreenPicture,hl = (idx bank) asset list: entry 0 BG palettes; 1 tiles -> $9000/$8800 (VRAM queue); 2 attributes; 3 tilemap $9800; then LCD on
+40,6297,RatioOrMax,|hl| / |de| (8.8 via DivAHLByDE); $FFFF when the signs differ
+40,62BC,AimOffset,hl / de = the club's base distance (ClubBaseDistance) as a vector along wLaunchDir (00:11BA); 40:62C9 follows: target marker = ball + offset clamped to the map or green ($D36B edge bits)
+40,640E,PlaceTargetMarker,bank 40 export 3 (10:5A2B 10:5D10): target marker $D426/$D428 = ball + aim offset shortened so it stays inside the map limits or the green view; edge bits in $D36B
+40,6491,ClampRatioX,x overshoot / x offset ratio (DivAHLByDE) into the caller's stack frame
+40,64FF,ClampRatioY,y overshoot / y offset ratio into the caller's stack frame; the code after it scales the offset by the smaller ratio and re-enters 40:62D0
+40,65D7,GreenClampRatioX,green view: x ratio via RatioOrMax into the caller's stack frame
+40,6636,GreenClampRatioY,green view: y ratio via RatioOrMax into the caller's stack frame
+40,664B,PictureScreenInit,ClearFrameTasks; LCD off; ResetSprites; window off (WY $90); scroll 0
+40,6666,ShowPictureTimed,bank 40 export 1: a = picture 0-7 (list 40:66A5: banks 7B / 49): fade in; short SCY shake; about 3 s; fade out (debug boot menu 01:4131 and story banks)
+40,66B5,ShowPictureUntilButton,bank 40 export 2: a = picture 0-3 (list 40:66EE): fade in; wait up to $0E10 frames or A/B/Select/Start; fade out
+*,D36B,wMarkerEdge,WRAM6: target marker clamp bits (0/1 x edges 2/3 y edges) set by PlaceTargetMarker 40:640E
+04,4062,MapScrollTaskStart,bank 04 export 0 (golf round 10:4217 etc.): registers MapScrollTask (slot 7)
+04,406B,MapScrollTaskStop,bank 04 export 2: unregisters MapScrollTask
+04,4072,MapScrollTask,frame task (also export $3C): blits a BG row / column (BlitBGRowFrom64 / BlitBGColumnFrom64) when the view tile $C321/$C323 changed since $C324/$C325; SCX/SCY = view x8 + shake $C368/$C369
+04,410D,ActorsInit,bank 04 export 4 (0A:4F4C 0B:5A1C): clears the 24 actor records (WRAM4 $D000 $40 bytes each); registers tasks 04:4234 and 04:4B69; $C289 = 0 / $DA00 = 0
+04,4139,ActorAlloc,bank 04 export 6: first free actor (byte +1 = 0) -> hl (0 if none): slot +$2C; VRAM tiles +$38 = $8000 + slot x $40; +4/+6 = $0800 (a random value is computed then discarded); script de / bank a
+04,41DA,ActorSetScript,hl = actor (0 = none): +0 = script de / +2 = bank a
+04,41EA,ActorSetField16,hl = actor (0 = none): +$16 = a
+04,41FC,ActorSetLeader,hl = actor (0 = none): +$18 = de (the actor it follows)
+04,44E6,ActorSetScript5288,bank 04 export $32 (0A:4AB6): actor hl gets the script 04:5288
+04,44F9,ActorSetScript527A,bank 04 export $34 (0A:4B78): actor hl gets the script 04:527A; +$17 = 0 / +$1E = 0 / +$33 = 1
+04,4525,ActorStartFollow,bank 04 export $4C: hl = actor de = leader: follow script 04:454B; +$18 = leader; +$17 = 0 (partner 04:51D0; banks 32)
+04,4D2B,LoadActorPalettes,bank 04 export $46 (map start 0A:4A59): OBJ palettes 4-7 from 04:4D0B
+04,4D42,ActorSetCharacter,a = character -> +$30: 16-byte header via (bank addr) table 04:4F1C to $C400: palette +$2D / tables +$20 +$22; palette $63 = custom 8 bytes; loads the OBJ palette; anim 0
+04,4E02,ActorLoadPalette,b = OBJ palette slot -> +$2D; loads 1 palette from hl
+04,4E4C,ActorSetAnimChecked,bank 04 export $38: ActorSetAnim unless hl = 0
+04,4E51,ActorSetAnim,hl = actor a = anim -> +$31: frame pointer +$24/+$26 = word [+$22 + 2a] in bank +$2B; +$2A = 0
+04,4E93,ActorSetAnim3Alt,hl = actor (0 = none): anim 3 with the second pointer +$26 = +$24 + 8
+04,4F7E,ActorSlotOf,a = (hl - $D000) / $40 (the actor slot); $FF for hl = 0
+04,4F92,ActorSetPosHLDE,bc = actor (0 = none): x hl -> +4 / +$0A; y de -> +6 / +$0C
+04,4FBE,TestSpawnFlag,de = flag (negative = must be clear): tests game flag de << 5 (00:2D10); z = spawn
+04,4FFB,ActorSpawn,hl = $0C-byte spawn record (x y ? flag ? character anim): ActorAlloc; position; flag test; ActorSetCharacter; ActorSetAnim; +$17 / +$1E = 1; +$16 = 2
+04,5084,SpawnActorList,bank 04 export $2E (0A:4F66 0B:5A75): spawns the $0C-byte records of a far list until $FF
+04,510A,SpawnPlayerActor,bank 04 export $30: the player's actor from 04:50FE by $C810 & 3 -> $C290 (slot $C296 / facing $C28A) and a second actor (script 04:5106) -> $C292 / $C297
+04,51D0,SpawnPartnerActor,bank 04 export $4E (0A:4F69): partner by the first set flag #144-147 (records 04:517C-04:51BB) -> $C294 / slot $C298 / id $C299; follows the player
+04,55C4,FindActorNear,bank 04 export $3E (0A:4CF8): hl de = point: slot of the first active actor ($CAC0 list) within about $50 (squared distance after x8); a = 0 if none
+04,56FD,BuildActiveActorList,bank 04 export $54: pointers to the in-use visible actors (+1 +$2F +$1E set) -> $CAC0 zero-terminated
+04,57A1,GolferActorSetAnim,bank 04 export $5A (10:4B0C): actor 0 (WRAM4 $D000) anim a
+04,57BA,GolferActorShow,bank 04 export $56 (golf round): actor 0 = the golfer's map sprite by $D332 (04:57F1); anim 2; task 04:573F
+04,5801,GolferActorTaskStop,bank 04 export $58: unregisters 04:573F
+04,5808,GolferActorAnim3,bank 04 export $5C (10:49FA): actor 0 anim 3 (ActorSetAnim3Alt)
+*,C324,wViewTileLast,view tile x / y ($C325) at the last MapScrollTask (rows / columns blitted when they change)
+*,C368,wScrollShake,offsets added to SCX / SCY ($C369) by MapScrollTask
+*,C296,wPlayerActorSlot,slot of the player's actor; $C297 second actor; $C298 partner; $C299 partner id
+*,CAC0,wActiveActors,zero-terminated list of active actor pointers (BuildActiveActorList)
+12,405E,CellInfoAt,h.l x d.e y (map units; green views relative to the green corner x4): b = green slope (GreenSlopeDirAt) / terrain (TerrainAtPos) -> b; a = slope byte (debug readout 12:6F16)
+12,4098,GreenSlopeDirAt,tile at (h d): green slope byte from WRAM6 $D700 (tile from WRAM3 map); direction remapped by the tile flips (WRAM2 attr) through 12:40DD -> b; raw byte in a
+12,40FD,TerrainAtPos,h.l x d.e y: terrain nibble of the 4x4 cell from WRAM6 $D800 with the tile flips (as TerrainAt 10:6536)
+12,41B6,ClubLieEntry,unused path (12:4622): table 12:41D5 by club then HudLieIndex: d / e = two numbers and hl
+12,4239,HudLieIndex,lie icon index from terrain $D4CD and lie $D446 (bunker / fairway / rough variants 5 6 9 $0A $0B; else table 12:4292); 0 when $D445 is set
+12,442C,HudInit,bank 12 export 0 (10:4214): LCD off; palettes; draws all HUD parts (tiles lie club labels hole wind players distance); registers the HUD task 12:449F; $D328 = 1
+12,45AF,HudLoadTiles,bank 12 export 2: clears WRAM6 $D000; queues the HUD tile blocks 12:5200 12:51C0 12:6020 12:5C60 to VRAM
+12,45EA,HudWindowY80,WY = $80 (the HUD window)
+12,45F4,HudDrawLieIcon,bank 12 export 6: lie icon (HudLieIndex) tiles and palette from 12:6670 (12:6668 for terrain $0D) -> OBJ palette 6 / VRAM1 $8440
+12,4622,HudDrawClubLieNumbers,unreferenced: two numbers from ClubLieEntry drawn with DrawNumberOr100 -> VRAM $8FC0
+12,463F,DrawNumberOr100,a = number -> tiles at $D000 (RenderNumberToTiles); 100 is drawn from the glyphs 12:683D
+12,465C,HudDrawClubIcon,bank 12 export 8: club icon tiles from 12:5C30 by wClub -> VRAM1 $8400
+12,4673,HudDrawLabels,static HUD labels (12:66B8 12:6782) rendered to tiles -> VRAM $8E60; palette 7
+12,46A6,HudDrawShotPanel,bank 12 export $18: shot type label by wShotMode (putter: $D32B) with its palette; club name; club base distance in yards (ClubBaseDistance / 32) -> VRAM $8E00/$8F20
+12,4968,HudSetMeterSpritesY,bank 12 export $50: OAM Y of sprites 0-4: hidden ($A0) with the putter else rows $10/$20
+12,49A5,HudLayoutWindow,fills the HUD window tilemap blocks (00:2756 / 00:2798); the par block only when par $D325 < 6
+12,4A0A,HudDrawHoleInfo,bank 12 export $0A: hole number / yardage $D323 / par $D325 rendered -> VRAM1 $8500 (skipped when par >= 6)
+12,4A81,HudDrawWind,bank 12 export $0C: wind speed $C815 & $1F digits; arrow tile from 12:52F0 by wind angle $C816 (relative to the aim in view 4) or calm 12:56F0; resets wWindAnim
+12,4AF6,HudDrawDigit,bank 12 export $38: one digit (a & $0F) -> VRAM1 $83C0
+12,4B1F,HudBlinkOff,bank 12 export $20: $D454 = 0 (the current player's panel stops blinking)
+12,4B24,HudPanelsShow,bank 12 export $22: $D455 = 0 (HUD task redraws the player panels)
+12,4B29,HudPanelsHide,bank 12 export $24: $D455 = 1
+12,4B2F,DrawStrokeNumberAt10,a = strokes: a digit glyph (< 10) or a tile from 12:5240 (10-19; 9 above) at de + $10
+12,4B60,DrawStrokeNumber,a = number: a digit glyph (< 10) or a tile from 12:5240 at de
+12,4B8A,HudDrawPlayer1,bank 12 export $10: player 1 face ($C890 -> tiles 12:5730 / palette 12:5B30 +$80 when $C899 bit 4) to VRAM1 $85C0 and OBJ palette 4; strokes $C8A0
+12,4C18,HudDrawPlayer2,bank 12 export $12: player 2 face ($C8D0 / $C8D9) to VRAM1 $86C0 and OBJ palette 5; strokes $C8E0
+12,4CB1,HudDrawPinDistance,bank 12 export $36: label 12:68A3 and PinDist in yards when $D322 is set; with the putter near the pin a two-part readout (feet?) -> VRAM1 $8720
+12,4DE8,ReturnStub,ret only (unreferenced)
+12,4F14,ShotLengthTaskStart,bank 12 export $3C (10:49AA): registers 12:4F07 (ShotLength then 12:4DE9: the distance readout during the shot)
+12,4F1D,ShotLengthTaskStop,bank 12 export $3E: unregisters 12:4F07
+12,4F52,CountdownStart,bank 12 export $46 (bank 34): $C0F4 = 1 (running) / $C0F5 = 0 / $C0F6 = hl (seconds minutes) for UpdateGameTimer
+12,4F67,CountdownResume,unreferenced: $C0F4 = 1
+12,4F73,CountdownPause,bank 12 export $4A (bank 34): $C0F4 = 2
+12,4F7F,CountdownStop,unreferenced: $C0F4 = 0
+12,4FD2,HudLoadMarkerTiles,queues sprite tiles 12:64C0 12:6540 12:65C0 -> VRAM1 $8480 / $8780 / $8300
+12,4FF4,HudLoadCursorTiles,target marker tiles 12:6480 / 12:6320 -> VRAM1 $83A0 / $83E0; LZ 12:69C5 -> VRAM1 $8100 ($1C tiles)
+12,502C,BlinkTargetMarker,bank 12 export $28 (11:4595 11:4ACC): every 8 frames ($D36C) toggles the marker tile; at a map edge ($D36B) an edge arrow from 12:6380 by 12:506E
+12,507E,MarkerIconNormal,bank 12 export $2A: tiles 12:6320 -> VRAM1 $83E0
+12,508A,MarkerIconFrame,bank 12 export $2C: a & 1 picks frame 12:6340 / 12:6360 -> VRAM1 $83E0
+12,50A0,UpdateWindIndicator,bank 12 export $4E (HUD task 12:4509 and 17:43AC): when wind $C815 and $D328 = 0: steps the wind animation (12:5110 by speed) into the objects $CAB0 / $CAB4; OBJ palette 1; wWindAnim
+12,6AB8,ToGreenViewCoords,on the green views: hl / de -= green corner and x4
+12,6ADC,SpawnEffectObject,a = slot (& 7) of the 10-byte objects at $CA80: script bc / flags a<<4 / y de / x hl (the splash)
+12,6CF0,DrawFaceIcon,bank 12 export $40 (banks 0E 17): a = face ($FF none): tiles from bc + a x $40 to de (VRAM1 above $A000) and palette 12:5B30 (+$80 with c bit 4) to OBJ palette b
+12,6D3D,FreeLookCursor,bank 12 export $42 (41:7879): D-pad moves the look cursor $D422/$D424 (accelerating $D486) within the map; green view on entering it; A returns 0 / B or Start $FF; debug mode: A moves the ball to the cursor
+12,6EB8,FreeLookViewSwitch,switches to / from the green view (LoadShotView 13:432B and 10:5A3C) when CursorInGreen differs from wOnGreen
+12,6ED5,CursorInGreen,c = 1 when the cursor $D422/$D424 lies in the green window (green corner + 1 .. + 5/4 tiles)
+12,6F16,FreeLookDebugReadout,hDebugMode >= 2: prints the cursor's cell info (CellInfoAt) and coordinates in hex
+12,6F8D,StrongWindIntro,bank 12 export $44 (hole start 10:45D3): wind $C815 >= $0C: sound $5C and a blowing sprite along the wind angle $C816 (12:7019)
+12,6FDD,AnimateCursorIcon,bank 12 export $2E (11:476A 11:4C65): every 16 frames swaps the icon tiles at VRAM1 $82C0 (12:7040 or 12:72C0 with flag #75)
+12,7019,AnimateGustSprite,every 8 frames: next gust frame from 12:70C0 -> VRAM1 $82C0
+*,D454,wHudBlink,WRAM6: nonzero: the current player's HUD panel blinks (HUD task 12:449F)
+*,D455,wHudPanelsHidden,WRAM6: nonzero: the HUD task skips the player panels
+*,D322,wPinDistDirty,WRAM6: set to redraw the pin distance (HudDrawPinDistance clears it)
+*,D323,wHoleYards,WRAM6: hole length in yards (HUD)
+*,D325,wHolePar,WRAM6: par (HUD; >= 6 hides the hole block)
+*,D328,wHudBusy,WRAM6: nonzero stops UpdateWindIndicator; 1 after HudInit
+*,D36C,wMarkerBlink,WRAM6: frame counter of BlinkTargetMarker
+*,D422,wLookCursor,WRAM6: x / y ($D424) of the free-look cursor (FreeLookCursor) and camera mode 3 target
+*,D486,wLookSpeed,WRAM6: free-look cursor acceleration (0-$40)
+*,C815,wWindSpeed,wind strength (low 5 bits) shown by HudDrawWind; $0C and up plays StrongWindIntro
+*,C816,wWindAngle,wind direction as an angle byte (HUD arrow / gust sprite)
+*,C0F4,wCountdownState,countdown timer: 1 running / 2 paused / $FF expired; time at $C0F5-$C0F7 (UpdateGameTimer)
+*,CA80,wEffectObjects,8 x 10-byte effect objects (splash)
+02,4267,StrCompare,de / hl zero-terminated strings: a = 0 (z) when equal else 1 (SaveLoad's signature check)
+02,427A,StrCopy,copies the zero-terminated string hl to de (SaveWriteDefaults: the signature)
+02,429B,SaveBlockStore,bank 02 export 4: b = block; hl = WRAM data; de = 24-byte header (0 = zeros): writes the block to SRAM; sum and used flag in the directory; SaveCommit
+02,431D,SaveBlockClear,bank 02 export $0C: b = block: marks it unused and clears its sum and header; SaveCommit
+02,43CC,SaveBlockVerify,bank 02 export $0A: b = block vs WRAM hl: 0 equal / $FE empty / $FD different / $FF bad sum
+02,4454,SaveBlockHeader,bank 02 export 8: b = block: copies its 24-byte directory header to hl; $FE when empty
+02,4489,SaveGame,bank 02 export $34 (story banks 30-35 08 41): slot $C2A5 < 3: SaveGameTimer; club table; stores the character $C800 in block slot and slot + 8 (backup) with the header 02:63A0; verifies both
+02,44F2,TestSaveFlag,bank 02 export $42: d = byte e = bit (mask table 02:44EA): a = SRAM $A038[d] & mask (nz = set)
+02,4522,SetSaveFlag,bank 02 export $44: d = byte e = bit: sets the bit in SRAM $A038[d]; SaveCommit
+02,4550,ClearSaveFlag,unreferenced: d = byte e = bit: clears the bit in SRAM $A038[d]; SaveCommit
+02,457F,CheckSlotBlock,b = slot 0-2: loads it to WRAM1 $D000; on a bad sum restores it from the backup block b + 8 or clears it
+02,45AA,CheckBlockOrClear,b = block: SaveBlockLoad to $D000; clears the block when its sum is bad
+02,45B7,CheckBlockOrReset,b = block (4-7): when not valid stores $280 zero bytes as a fresh block
+02,45D3,SaveCheckAllBlocks,bank 02 export $6A (GameMain setup and bank 32): checks blocks 0-7 (slots with backups / 3 / 4-7)
+02,4602,ShotRecordSlot,a = offset: hl = $D680 + a (+ $40 for player 2)
+02,4616,ClearShotRecords,bank 02 export $2A (10:4B7F): clears $D680-$D6FF (the per-stroke shot records)
+02,461F,LoadShotStart,bank 02 export $40 (10:4A66): LoadShotRecord from $D5F8
+02,4626,LoadStrokeRecord,bank 02 export $28 (10:5973): when the current stroke (PlayerField +$20) < 4: LoadShotRecord from that stroke's $D680 record
+02,463E,LoadShotRecord,hl = 13-byte shot record -> ball position (height 0) / aim / club / shot mode ($D32A $D32B) / swing targets $D4D8-$D4DA
+02,4691,BallToShotStart,bank 02 export $64 (08:4AA8): ball position = $D5F8 (height 0)
+02,46E3,WriteShotRecord,ball position / aim / club / mode / power / cursor / $D44D -> 13 bytes at hl (ShotRecord)
+02,47BE,JoyPressedIndex,a = 1-8 for the first newly pressed button (A B Start Select Up Down Left Right) else 0
+02,47ED,PlayLinkCallSound,a = 1-15: plays the sound 02:4802[a] (00:2C19)
+02,4812,LinkPartnerCallTick,bank 02 export $5C (aim loop 10:5D19): in link play ($C33F) a received $1x byte plays the partner's button sound
+02,482C,SerialIdleSet21,bank 02 export $5E: idle serial byte $21 (aiming)
+02,4833,SerialIdleSet20,bank 02 export $60: idle serial byte $20
+02,483A,LinkReceiveShot,bank 02 export $2E (10:594B): waits for the partner ($20/$21; sends our button as $1x) until $2F then copies its shot (ball aim club mode targets $D4DB) from $CB40; $2E -> $D4DB = $80
+02,48B8,LinkSendShot,bank 02 export $30 (10:4929): link player (+$13 = 3): waits for $1x then sends ball / aim / club / mode / power / cursor via $CB00
+02,4924,LinkSendShotResult,bank 02 export $32 (10:5DAA): as LinkSendShot with byte b appended; waits for the transfer (00:30EB)
+02,4994,SetPlayerControl,bank 02 export $36: player c (bit 0) record field +$13 = b (0 human 2 ? 3 link)
+02,49A7,SetPlayerField11,bank 02 export $38: player c (bit 0) record field +$11 = b
+02,49BA,RefreshGolferProfile,bank 02 export $20 (bank 30): golfer b ($80 = own character $C800 / preset 02:4B1D): copies name and profile bytes (GolferProfileCopy) to player c; name text via 05:40C2
+02,4A0B,GolferProfileCopy,copies $14 bytes then 7 bytes (+$19..+$1F) of a golfer record hl to de
+02,4A28,SetupPlayerGolfer,bank 02 export $1E (141 story/golf calls): b = golfer for player c: $FF none / $80 own character $C800 / $81 from $C600 (+$13 = 2) / $82 link partner $CB40 (+$13 = 3) / else preset 02:4B1D[b & $F] (bit 6: copy $C600 to $D680)
+02,4E39,GetCharRecord,bc = $C800 (the player's character record)
+02,4E3D,NewGame,bank 02 export $14 (GameMain setup 01:4088 etc.): clears $C800-$C9FF; CreateCharacter 0; map 0 entrance 2; clears flag #14 / sets flag #15
+02,4E5D,CharTablePtr,hl = per-type table (02:4D3D by record +$10 & 3) + a
+02,4E78,SignExtendL,h = sign of l
+02,4E82,CreateCharacter,bank 02 export $16: d = type: clears the record $C800; type +$10; name from text $43 + type (05:40C2); level 0; +$25 = 6; random bit 0 of +$19 for types >= 2; first CharLevelUp; $C82D = 1
+02,4EDA,ClampToPlus78,d = l when |hl| < $78 else $78
+02,4EF6,CharRefreshStats,bank 02 export $1C (bank 41): recomputes the stats (CharComputeStats at level - 1)
+02,4F07,CharComputeStats,stats from the level +$12 and points +$20/+$21/+$22/+$24 through the type tables (02:4D3D): driver distance +$1A and +$1C +$1D (negated by +$19 bit 0) +$1E +$1F
+02,4FFA,CharLevelUp,bank 02 export $18: bc = $C800 then CharLevelUpBC
+02,4FFD,CharLevelUpBC,level +$12 < 99: d = stat to raise (0 +$20 / 1 +$21 / 2 +$22 / 3 +$24; other none); CharComputeStats; level + 1
+02,503C,CharLevelUpDiff,bank 02 export $1A (41:50A3): a = stat: CharLevelUp and writes the changes of +$1A and +$1C-+$1F to hl (for the level-up screen; scratch hFFB0-hFFB3)
+02,51F6,BuildClubTable,bank 02 export $0E: 13 clubs -> $C900 (7 bytes each: ClubDistance / ClubElevation by $C81C / $C81E / shape byte via DriverShape and 02:5253)
+02,5395,GetCharFlags12,bank 02 export $6C: a = ($C819 & 6) >> 1
+02,539C,SetCharFlags12,bank 02 export $6E (bank 33): $C819 bits 1-2 = a
+02,53AC,GetCharHand,bank 02 export $70: a = $C819 bit 0 (flips stat +$1D: handedness?)
+02,53B2,SetCharHand,bank 02 export $72: $C819 bit 0 = a; CharRefreshStats
+02,53C4,Add24Capped,24-bit [hl] += de; capped at the value at 02:53E4
+02,53E8,Compare24,24-bit [de] - [hl]: sign bit of the high byte in a (nz = hl greater)
+02,540A,ClearPoints,bank 02 export $58 (10:4475): wPoints = 0
+02,5415,AddPointsRaw,bank 02 export $54 (bank 08): wPoints += de x course factor (02:543E by $C836) / 2 without the mode check of AddPoints
+02,544E,AddPointsSigned,bank 02 export $56 (bank 41): wPoints += de; floor 0
+02,5465,AddExp,bank 02 export $22 (story banks): 24-bit EXP $C826 += de (capped)
+02,546B,CheckLevelUp,bank 02 export $24: compares EXP $C826 with the next level's threshold (02:54CD by type $C810 and level $C812); $80 at level 99
+02,5498,ExpToNextLevel,bank 02 export $3A: hl = threshold - EXP (0 at level 99)
+02,5985,BuildGolferListByFlags,bank 02 export $3E (32:5244): golfer list in WRAM6 $D000 (32 bytes each): save slots 0-2 then preset golfers shown when their game flags are set (unless hFFCF)
+02,5A07,ListGolferIfFlag,hl = game flag: SetupPlayerGolfer when set (or hFFCF) else an empty entry ($C890 = $FF)
+02,5A17,ListGolfer,SetupPlayerGolfer (bc = golfer / slot)
+02,5A24,ListEmptyEntry,c = a / b = $0F; $C890 = $FF (empty entry)
+02,5A2D,BuildGolferListBySave,bank 02 export $3C (bank 32): as BuildGolferListByFlags but presets gated by save flags (TestSaveFlag); $C818 = 0
+02,5AA6,ListGolferAlways,SetupPlayerGolfer
+02,5AA9,ListGolferIfSaveFlag,b = flag: SetupPlayerGolfer when the save flag is set (or hFFCF) else an empty entry
+02,5ACA,ListSaveSlotGolfer,a = slot: SaveBlockLoad to $C800 and SetupPlayerGolfer $80; empty slot: $C890 = $0F (or $FF in link play $C33F)
+02,5AFB,WriteGolferListEntry,c = index: 32-byte entry at de + c x 32: face $C890 / b / 11 bytes of wPlayer1 / $C892 $C89A $C89B $C891 $C89D
+02,5B38,LoadSaveSlotGolfer,a = slot: SaveBlockLoad to $C800 and SetupPlayerGolfer $80; a = $FF when empty
+02,5B5B,BuildSaveSlotList,bank 02 export $50 (0B 32): entries for save slots 0-2 and golfers 3-9 into WRAM6 $D000; a = number of used slots
+02,5BEC,CourseModeHuman,nz when course $C836 is 1-5 and mode $C834 = 1 and the current player is human (+$13 = 0)
+02,5C19,PointsEnabled,nz when mode $C834 is 1 2 3 5 $0A or $0B and the current player is human
+02,5C50,MarkHoleCleared,bank 02 export $48 (bank 3B): CourseModeHuman: sets bit wHoleNumber in the course's bitmap at $C996 + 25 x (course - 1)
+02,5C77,TestCourseHoleBit,bank 02 export $4C: h = course 1-5 l = bit < $18: a = bit of the $C996 bitmap
+02,5CA5,SetCourseHoleBit,bank 02 export $4A (08:4C35): h = course l = bit: sets it in the $C996 bitmap
+02,5CD3,SetBitN,a = bit number: sets bit a of the bytes at hl (mask table 02:5CEA)
+02,5D11,TestBitN,a = bit number: a = bit a of the bytes at hl (mask table 02:5D27)
+02,5D2F,DebugSaveViewer,bank 02 export $68 (35:776B): debug: loads save block 3; "NO FILE" / "CHECK SUM ERROR" hang; else pages 0-9 (Left/Right) via DebugSaveViewerPage
+02,5DCE,DebugSaveViewerPage,clears the screen (ClearDebugLines) and draws page b via the jump table 02:5DDF
+02,60F0,ClearDebugLines,prints 17 lines of spaces (02:6109) with PrintString
+02,6176,DebugCharacterEditor,bank 02 export $66 (debug boot menu 01:4128): NewGame then shows the character's stats; d-pad raises a stat (CharLevelUp); A/B change type; Select picks slot $CA80; Start saves (SaveBlockStore)
+*,C2A5,wSaveSlot,save slot 0-2 used by SaveGame ($0F = none)
+*,C834,wGameMode,round mode (points only in modes 1-3 5 $0A $0B)
+*,C819,wCharFlags,character record: bit 0 hand? (negates +$1D) / bits 1-2
+*,C81A,wCharDriverDist,character record: driver distance (word) used by BuildClubTable
+*,C900,wClubTable,13 x 7 bytes: per-club distance / elevation / bytes (BuildClubTable)
+*,C996,wCourseHoleBits,per course (1-5) 25-byte hole bitmaps (MarkHoleCleared)
+*,D680,wStrokeRecords,WRAM6: 13-byte shot records of the first 4 strokes (16 apart) per player ($40 apart)
+*,A038,sSaveFlags,SRAM: save-data flag bits (TestSaveFlag / SetSaveFlag)
+11,48AB,PreviewMarkerView4,view 4: the preview landing spot ($D374/$D377) relative to the camera ($D456/$D458) rotated by $D45A -> $D45C; perspective divide; draws the marker (00:2798) or tile 11:507C when too close
+11,6E08,LoadGolferFrameTiles,h = golfer -> list 11:6EEF; l = entry: 16 tiles to de through FarCallIndexed1 (per frame from GolfAnimTask; GolfAnimInit uses LoadGolferSpriteTiles)
+*,D374,wPreviewSpot,WRAM6: preview ghost-ball spot x ($D374) / y ($D377) projected by PreviewMarkerView4
