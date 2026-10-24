@@ -1918,6 +1918,84 @@ $C284-$C288 $C28A $C28C $C28E $C29A $C29C $C2AB $C33F (wVersusMode) $C442-$C444 
 (e.g. $D592 wCpuGreenEntry in 3E, $C3F4/$C3F5 palette-editor vars in 0B/77, $C470-$C474 in 04:5658), so existing
 names there are misleading in those banks.
 
+##### Bank 34: map scripts of the Field and the side places
+
+Headers (table 34:4000): map 06 Locker Room (400E), 02 Field (4324), $27 Tiny-Tots Golf Grounds (5661),
+$28 Mini-Mini Lake Course (5DA8), $29 Raven Woods (689C), $2C Golf Guru's Pitch and Putt (73C0), $30 Match Game
+Event (7738). Map names are the debug banner texts $12C + map id.
+
+- **Locker Room (06)**: ten locker objects (34:4218-4245) open the door tiles and show one of 16 random texts
+  $082F-$083E (Map06OpenLocker 34:41E8); a golfer gets annoyed if talked to repeatedly (flags #224/#225, screen
+  shake, 34:407F); the enter script swaps the talk list by tournament progress (flags #112-#115, #139; 34:42B6).
+- **Field (02)**: door triggers 01-$0D are the warps to the clubs and places (warp ids: 1 Clubhouse, 2-4 Palm / Dune /
+  Links offices, 5 Road to Peach's Castle, 6 Windy Valley, 7 Tiny-Tots, 8 Mini Lake, 9 Raven Woods, $0B Pitch and
+  Putt, $0C Golf Clinic, $0D Club Maker's Hut; trigger $0A asks for warp $0A that the Field list lacks).
+  While a club champ follows you for a Match Game (flags #144-#147, club in wScriptArg $C4BC) each trigger asks
+  "Are you quitting this Match Game?" (34:5530); the Peach's Castle trigger asks "Taking on Mario?" (34:544D).
+  - **Peach's letter**: with flag #139 (Links Club won; Grand Champion) the trigger $0F at the tree blocking the
+    path (object $0F "A large tree blocks the path") plays a sparkle (palette cycling 34:52C0), a falling-letter
+    sprite (34:512E) and warps to map $25 "Terop" entrance 2, which shows "A letter is falling from the sky." /
+    Peach's invitation and sets flag #123 + save flag $1E0 (35:79D2). Back at Field entrance $0F (34:5019) sprites
+    fly in and burst, then flag #125 is set and 34:46E6 rewrites terrain / event / tile rects: the path to Peach's
+    Castle is open; a marker sprite stays at map ($1300 $1080) (frame task 34:46DF). Entrance $0E (34:5218) sets
+    #139 directly (debug / test entry?).
+  - Map edits on entry also depend on flags #80-#86 (34:4769, stops at the first set flag), #114 -> #124 (34:4733),
+    #198 + #114 -> #212 (34:5598). Flag #99 (the EXP bonus flag) is cleared on every Field entry.
+- **Tiny-Tots (27)**: the caretaker's favor ("Can you do me a favor?"): a demo round (mode 6), then a timed round
+  (mode $0B, countdown 12:4F52, hook 34:5C61) putting the balls into the circle; result by balls in $C3E1 (8+ good,
+  10 = "You could manage this place!"); first success: flag #202, EXP 50 (+25% for 10) and save (34:5A99).
+- **Mini-Mini Lake (28)**: trigger $0F plays the Mini-Mini Lake course (course $0A). The "unplayable" story: a
+  golfer (golfer $4F) dunks his shot from the rough; you take the same shot (34:64B1); "NICE ON!" makes him try again
+  and succeed; results set flags #218 / #210 and give 140 EXP (34:6586). Flags #211, #224 track the steps.
+- **Raven Woods (29)**: a crow steals a golfer's hat and sits on the pin (flags #204-#207); "Play from here?" (A held
+  on the trigger, 34:7144) starts a round from the player's spot with random wind (34:716B, wStoryRoundKind $14);
+  hitting the pin scares the crow: hat back, 200 EXP (+25% with flag #99), flag #207, save (34:6D46 / 6E5F).
+- **Pitch and Putt (2C)**: the Golf Guru's 9-hole challenge "get on in 1 and sink with 1 putt on each hole"
+  (course 9; after beating it course 6). Results read wP1HoleScores $C8AC (per hole: low nibble strokes, high
+  nibble strokes to the green) and $C8BE; misses set #241 (not on in one) / #240 (not one putt); a perfect round
+  gives 300 EXP, flags #208 #159 and save flag $200 (34:765D tail). #252 = "equaled Mario" speech seen.
+- **Match Game Event (30)**: after a Match Game against a club champ (entrance = club): lost -> back to the club;
+  won -> flag #188, the club's room is drawn (34:7CED) and the beaten champ's scene runs (texts $15C6+ or $15D9+
+  when #139); flag #127 -> #189. Entrances >= $0C set #80-#86 and count as a win (test entry).
+- **Hidden rivals**: the other three playable characters hide on maps (object $0F): Sherry in Tiny-Tots (flag #141,
+  34:56F7), Joe in Raven Woods (#143, 34:692C); Kid / Azalea (#140 / #142) are elsewhere. When the three others
+  are found AwardFoundAllRivalsExp (34:7E12) gives 300 EXP and reloads the map in place (warp $FA).
+- RAM: wP1HoleScores $C8AC is new; $C3E0-$C3E3 are reused as scratch by these scripts (already labelled
+  by bank 2B's use); wStoryRoundKind $C967 is $0A / $14 for the rounds started here.
+- Data: actor scripts (bytecode for 04:4234) at 34:55A6, 6D2D and the crow block 34:70FC-7133; sprite tiles 34:4890,
+  4950, 6F40, 7290; palettes 34:4F9C, 4FAC, 5250-5268, 7009.
+
+##### Bank 35: Trophy Room, ending maps and the test rooms
+
+Headers (35:4000): 07 Trophy Room, $31-$3E the ending ("End ..." banners), 01 Development room, $24
+Mini-Character Test, $25 Terop (captions).
+
+- **Trophy Room (07)**: 15 trophy actors (spawn table 35:4032) placed by flags #112-#116 (placed in the Marion /
+  Palm / Dune / Links / Peach's Castle tournament) and #136-#139 / #117 (won it) (35:41B2). Objects 01-05 describe
+  the trophy: win -> $083F/$0840, else place 2 or 3 from TestCourseHoleBit(club $16) with $0841/$0843 (35:4345).
+  So #136-#139 = club tournament won and #139 (Links) is the Grand Champion step that unlocks Peach's letter.
+- **Ending maps ($31-$3E)**: wordless replays driven by EndingSequence 0A:56B1: Director's Room first-day scene
+  (31), Lounge with a pointer sprite (32), caddie office (33), award ceremony (34: "A new champion has appeared"),
+  Tiny-Tots (35, Sherry variant), Raven Woods (36, crow / Joe), the Dune alternate-game pair (37), Match Game Event
+  (38), Field letter event (39: a copy of 34:4FB4-5400 at 35:65D4-69DB), Clouds (3A), Azalea (3B), Peach's Castle
+  (3C; its warp leads to itself), walks through the clubhouse (3D) and the Field (3E).
+- **Development room (01)**: each talk target warps to a test destination or runs a screen: TwoPlayerScoreScreen,
+  DebugSaveViewer, Stars / Stats / Ranking screens, a sepia fade test, the Mini-Character Test (35:7735-77BC).
+- **Mini-Character Test (24)**: talk 02 / 03 cycle the player's sprite (wTestSprite $C3F0 of wTestSpriteCount
+  $C3F1 from 04:4F0A; applied by 04:4D3D), talk 04 / 05 play anims 3 / 4, the d-pad plays anim 1.
+- **Terop (25)**: entrance 1 shows the caption "Marion Club Director's Office" (story opening) and warps to map 05;
+  entrances 2 / 3 show Peach's falling letter and set flag #123 (35:79D2).
+- Notable:
+  - The ending maps' object list pointer points at a `ret` byte ($C9) instead of a $FF list end, so map_scripts.py
+    (and the tracer that takes its roots) reads junk records there. 40 junk roots in bank 35 (e.g. 35:4004, 4040,
+    41EA, 4700-4709, 48F9, 6000, 7957) are data, list bytes or middles of instructions; they are labelled with
+    `...Data` names. 35:48F9 and 35:7B21 are actor-script bytecode, 35:6000 sits in sprite tiles 35:5F70.
+  - Map 37 (35:5A0B): "Which rules? Match Game or Stroke?" loads the menu text and position but the ScriptRunMenu
+    call was removed; it always answers "OK! Stroke rules!".
+  - Leftovers: Map01EnterNop 35:7847 has an unreachable farcall 79:68B1 after its `ret`; map 33 and map 34 scenes test
+    wMapId 8 / $18-$1B (values of the real office and ceremony maps), never true there; four talk scripts at
+    35:4604-4622 (texts $0466-$0475, via 35:45D2) are not referenced by any list.
+
 ### Data Structures
 
 *(none yet)*

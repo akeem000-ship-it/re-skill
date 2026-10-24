@@ -64,25 +64,49 @@ for b in range(1, NB):
         CODE_BANKS.append(b)
         for w in t:
             if (b, w) not in DATA_LABELS: push(b, w, True)
-# map scripts (REVERSE.md "Top level"): header +12 (enter script) and the +4 word of the 8-byte talk (+6),
-# object (+8) and trigger (+10) records; a word below $2000 is a text id, not code (MapRunScript 0A:4EFF)
-from dump_maps import records, word
-for _mid, _gfx, idx, mbank, _music, _x in records(rom):
-    hdr = word(rom, mbank, 0x4000 + idx)
-    scripts = [word(rom, mbank, hdr + 12)]
-    for f in (6, 8, 10):
-        o = to_offset(mbank, word(rom, mbank, hdr + f))
-        while rom[o] != 0xFF:
-            scripts.append(rom[o + 4] | rom[o + 5] << 8)
-            o += 8
-    for s in scripts:
-        if 0x4000 <= s < 0x8000:
-            push(mbank, s, True)
+# map scripts (REVERSE.md "Top level"; tools/map_scripts.py): enter / talk / object / trigger scripts
+from map_scripts import roots as map_script_roots
+for mbank, s in map_script_roots(rom):
+    push(mbank, s, True)
 if "--roots" in sys.argv:
     for r in sys.argv[sys.argv.index("--roots") + 1].split(","): add_root(r)
 
+# actor scripts (bytecode run by ActorsUpdateTask 04:4234): argument bytes per opcode $00-$13; op $12 calls
+# native code (ActorOpCallNative 04:4A7C), op $0C jumps relative, op $00 ends
+ACTOR_ARGS = [0, 1, 0, 4, 4, 5, 4, 3, 3, 0, 0, 0, 2, 3, 3, 0, 1, 1, 2, 0]
+actor_scripts, actor_done = set(), set()
+
+
+def parse_actor_script(bank, addr):
+    todo = [addr]
+    while todo:
+        pc = todo.pop()
+        for _ in range(256):
+            if (bank, pc) in actor_done or not 0x4000 <= pc < 0x7FF8:
+                break
+            actor_done.add((bank, pc))
+            op = rom[to_offset(bank, pc)]
+            if op >= len(ACTOR_ARGS):
+                break
+            arg = rom[to_offset(bank, pc + 1)] | rom[to_offset(bank, pc + 2)] << 8
+            if op == 0x12:
+                push(bank, arg, True)
+            if op == 0x0C:
+                todo.append((pc + 1 + arg) & 0xFFFF)   # relative to the argument? see ActorOpJump 04:49A2
+                break
+            if op == 0x00:
+                break
+            pc += 1 + ACTOR_ARGS[op]
+
+
 seen = set()
-while work:
+while work or actor_scripts - {(b, a) for b, a in actor_done}:
+  if not work:
+      for b, a in sorted(actor_scripts):
+          parse_actor_script(b, a)
+      actor_scripts.clear()
+      continue
+  while work:
     bank, pc = work.pop()
     imm = {}                                # last immediates on this path: code pointers passed in registers
     while True:
@@ -111,6 +135,8 @@ while work:
             for i in range(n): code[cb].add(nxt + i)
             if ins.kind == "rst" and ins.target in (0x10, 0x18) or ins.kind == "call" and n == 2 and ins.target == 0x01F6:
                 idx, fb = data[0], data[1]
+                if (fb, idx) == (0x0A, 0x18) and "de" in imm:            # ActorSetScript: de = actor script, this bank
+                    actor_scripts.add((cb, imm["de"]))
                 if (fb, idx) == (0x10, 0x1A) and "hl" in imm and 0x4000 <= imm["hl"] < 0x7FF6:
                     for e in range(5):                  # SetGolfEventHook: hl = table of 5 handlers (events 0-4)
                         o = to_offset(cb, imm["hl"] + 2 * e)

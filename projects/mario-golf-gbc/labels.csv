@@ -3356,3 +3356,277 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 41,42D9,ShowNextScriptText,unreferenced: shows message wScriptTextId (05:5DE5 ShowMessageKeepOpen with speaker a) and increments the id
 3F,41DC,DictScrollStepUnused,unreferenced fragment: hl += de; stores wMapScrollX while h < b (a = 0) else a = 1; MapScrollTask
 0E,6E50,DrawP1ScoreToPar,unreferenced: SumScoreToPar of $C8AC over wHolesDone printed at $D708 (ScorecardPutScoreToPar)
+# --- banks 34 35 map scripts (Field, Locker Room, side places, Trophy Room, ending maps, debug rooms) ---
+*,C3F0,wTestSprite,Mini-Character Test (map $24): sprite index put on the player (Map24ApplySprite)
+*,C3F1,wTestSpriteCount,Mini-Character Test: number of selectable sprites (from 04:4F0A)
+34,4000,Bank34MapHeaderTable,map header pointers of bank 34 (idx 0-$0C): maps 06 / 02 / 27 / 28 / 29 / 2C / 30 (MapTable 0A:5188)
+34,400E,Map06HeaderData,map 06 header (Locker Room)
+34,407F,Map06TalkGrumpyGolfer,Locker Room talk 06: flag #23 clear -> random gripe $0814-$0816 and clear flags #224/#225; else escalates $0817 / $0818 / $0819 "LEAVE ME ALONE" + ScriptShakeScreen (flags #224/#225 count the visits)
+34,41E8,Map06OpenLocker,locker objects (de = tile pos): clear flag #18; sound $A6; open-door tiles via MapBufCopyRectRedraw 0B:4864; random text $082F+(0-15) (Mario Golf N64 / Toad / Yoshi egg ...); close door
+34,4218,Map06ObjectLocker01,object 01: locker at (2 4) -> Map06OpenLocker
+34,421D,Map06ObjectLocker02,object 02: locker at (2 6) -> Map06OpenLocker
+34,4222,Map06ObjectLocker03,object 03: locker at (2 8) -> Map06OpenLocker
+34,4227,Map06ObjectLocker04,object 04: locker at ($0A 2) -> Map06OpenLocker
+34,422C,Map06ObjectLocker05,object 05: locker at ($0A 6) -> Map06OpenLocker
+34,4231,Map06ObjectLocker06,object 06: locker at (2 $12) -> Map06OpenLocker
+34,4236,Map06ObjectLocker07,object 07: locker at (2 $14) -> Map06OpenLocker
+34,423B,Map06ObjectLocker08,object 08: locker at (2 $16) -> Map06OpenLocker
+34,4240,Map06ObjectLocker09,object 09: locker at ($0A $12) -> Map06OpenLocker
+34,4245,Map06ObjectLocker0A,object $0A: locker at ($0A $16) -> Map06OpenLocker
+34,429B,Map06Trigger01MutterWindTip,trigger 01: ScriptBegin; shows $0172 "...low trajectory in headwinds..." (speaker 0); ScriptEnd
+34,42B6,Map06EnterSelectTalkList,Locker Room enter: patches the talk list pointer (header +6 via ScriptSetMapField) by progress: flag #139 -> 41BF / #115 -> 4196 / #114 -> 416D / #113 -> 4144 / #112 -> 411B
+34,4324,Map02HeaderData,map 02 header (Field)
+34,4474,Map02Trigger01EnterClubhouse,Field trigger 01: partner walks to ($05 $2F); Map02WalkInWithPartner; warp 1 (Marion Clubhouse) with sound $92
+34,4497,Map02Trigger02EnterPalmClub,Field trigger 02: partner to ($05 $1B); Map02WalkInWithPartner; warp 2 (Palm Club office); fade out
+34,44C6,Map02Trigger03EnterDuneClub,Field trigger 03: partner to ($21 $2F); Map02WalkInWithPartner; warp 3 (Dune Club office); fade out
+34,44F5,Map02Trigger04EnterLinksClub,Field trigger 04: Map02WalkInWithPartner; warp 4 (Links Club office); fade out
+34,450C,Map02Trigger05RoadToPeachsCastle,Field trigger 05: Map02ConfirmMarioChallenge; then warp 5 (Road to Peach's Castle) with player actor script 55A6 and the palette flash 532E
+34,452A,Map02WalkInWithPartner,player (slot 0) and partner ($C298) walk north into a building door (ActorMoveDir angle $C0) with anim $0A
+34,4618,Map02Trigger06WindyValley,Field trigger 06: Map02ConfirmQuitMatchGame; unless No -> warp 6 (Windy Valley) sound $92
+34,4627,Map02Trigger07TinyTots,Field trigger 07: Map02ConfirmQuitMatchGame; unless No -> warp 7 (Tiny-Tots Golf Grounds)
+34,4636,Map02Trigger08MiniLake,Field trigger 08: Map02ConfirmQuitMatchGame; unless No -> warp 8 (Mini-Mini Lake Course)
+34,4645,Map02Trigger09RavenWoods,Field trigger 09: Map02ConfirmQuitMatchGame; unless No -> warp 9 (Raven Woods)
+34,4654,Map02Trigger0AWarp0A,Field trigger $0A: Map02ConfirmQuitMatchGame; unless No -> warp $0A (no warp record $0A in the Field list: unused?)
+34,4663,Map02Trigger0BPitchAndPutt,Field trigger $0B: Map02ConfirmQuitMatchGame; unless No -> warp $0B (Golf Guru's Pitch and Putt)
+34,4672,Map02Trigger0CGolfClinic,Field trigger $0C: Map02ConfirmQuitMatchGame; unless No -> warp $0C (Golf Clinic)
+34,4681,Map02Trigger0DClubMakersHut,Field trigger $0D: Map02ConfirmQuitMatchGame; unless No -> warp $0D (Club Maker's Hut)
+34,4690,Map02Enter,Field enter: clear flag #99; Map02SetFlag212; wStoryRoundKind = 0; NavGuideStart; flag #127 -> set #125; clear #118/#119; map edits 4719/4769/4733/46E6; entrance $0E -> 5218 / $0F -> 5019; flag #125 -> marker sprite task 46DF
+34,46DF,Map02MarkerSpriteTask,frame task: Map02DrawMarkerSprite with bc = $0230
+34,46E6,Map02OpenCastlePath,flag #125 set: copies terrain / event / tile rects (0B:4653 0B:4699 0B:4864) that clear the tree blocking the path
+34,4719,Map02SetCastleEventCell,flag #139 set and #125 clear: MapCopyEventRect 0B:4699 (arms the trigger at the tree)
+34,4733,Map02ApplyFlag114Edit,flag #114 set: set flag #124 and copy event / terrain / tile rects (opens an area?)
+34,4769,Map02DrawProgressBlocks,draws blocking rects (event / terrain / tiles) for each of flags #86 #84 #82 #80 still clear (stops at the first set one): areas opened step by step?
+34,483B,Map02Trigger0FLetterEvent,Field trigger $0F (at the tree): flag #139 and not #125/#123 -> walk up; palette flash 52C0; letter sprite falls (4FB4 512E); fade; warp $0F (map 25 letter caption); with #123 -> 5019
+34,4FB4,Map02LoadLetterSpriteGfx,12 tiles 34:4890 -> VRAM $8100 (QueueVRAMCopy) and palette 4FAC
+34,4FCC,Map02LoadMarkerSpriteGfx,tiles 34:4950 -> VRAM $8100 and palette 4F9C (sprite drawn at the opened path)
+34,4FE4,Map02DrawMarkerSpriteFrames,draws sprite template 4F50 at map ($1300 $1080) for c frames (b = tile base)
+34,5019,Map02PathOpenCutscene,entrance $0F (after Peach's letter): actor walks; sprites fly in and animate (51B9 5396); fade; set flag #125; Map02OpenCastlePath; sounds $98 $A4; marker frames; register Map02MarkerSpriteTask
+34,50A2,Map02DrawMarkerSprite,queues sprite template 4F50 at map ($1300 $1080) when it is on screen
+34,50DF,Map02DrawLetterSprite,draws sprite 4F61 at ($B8+t $80+t) tiles (t = $C3E0+2) for $0C frames: the falling letter
+34,512E,Map02AnimLetterFall,loops Map02DrawLetterSprite frames $10 $14 $18 $14 while t < $28
+34,516A,Map02DrawFlyingSprite,draws sprite 4F6A at ($E0+$C3E1 $24+$C3E2) for 2 frames
+34,51B9,Map02AnimFlyingSprite,sound $96; moves Map02DrawFlyingSprite diagonally for $5A steps (frames $38 $48 $58); sound $97
+34,5218,Map02EnterAsGrandChampion,entrance $0E: set flag #139 / clear #125; fade in; then Map02Trigger0FLetterEvent
+34,52C0,Map02FlashPaletteSparkle,cycles palette 1 through 5250-5268 (5 frames each) with sound $95 five times
+34,532E,Map02FlashPaletteWarp,sound $99; cycles palette 1 through 5250-5268 three times
+34,5396,Map02AnimBurstSprite,16 cycles of sprite 4F8B frames $68-$6E at map tile ($A0 $90) (5400)
+34,5400,Map02DrawBurstSprite,draws sprite template 4F8B at tile ($A0 $90) for c frames
+34,544D,Map02ConfirmMarioChallenge,no challenger following -> a = 1; else champ asks "Taking on Mario?" ($0C4F+club); Yes -> "As Grand Champion make sure you win!" / drop the challenger / warp 5; No -> step back
+34,54C3,Map02SetChallengerText,club 0-3 of the following challenger (flags #144-#147) -> wScriptArg $C4BC; ScriptSetText hl + club; a = 5 when none
+34,54FA,Map02DropChallenger,clears challenger flag #144+wScriptArg (ClearGameFlag) and flag #118
+34,5512,Map02IsChallengerFollowing,a = 1 when any of flags #144-#147 (a club champ follows you for a Match Game)
+34,5530,Map02ConfirmQuitMatchGame,challenger following -> "Are you quitting this Match Game?" ($0C46+club); Yes -> "OK then..." / drop him / hide partner / a = 0; No -> a = 1
+34,5598,Map02SetFlag212,flags #198 and #114 set -> set flag #212
+34,55A6,Map02PlayerWalkActorScriptData,actor script (bytecode for 04:4234) given to the player on the Peach's Castle trigger
+34,5661,Map27HeaderData,map $27 header (Tiny-Tots Golf Grounds)
+34,56C6,Map27TalkCaretaker,Tiny-Tots talk 02: job done (flag #202) -> "I clean then they mess it up!"; else Map27AskBallCleanup (584B)
+34,56F7,Map27ObjectHiddenSherry,object $0F (not when playing Sherry): set flag #141; "Aww you found me." Sherry jumps out; "You're working hard..."; AwardFoundAllRivalsExp
+34,576F,Map27Trigger01CaretakerGrumbles,trigger 01: "Those darn kids!" caretaker looks around; set flag #203
+34,5820,Map27Enter,Tiny-Tots enter: hides Sherry unless flag #141; entrance 5 -> ball cleanup round (590D); entrance 6 -> result (597D); also holds the favor ask 584B (Yes -> demo round mode 6 hook 58E6)
+34,590D,Map27StartBallCleanup,entrance 5: set flag #224; "Don't take too long"; golf round mode $0B with countdown (Map27SetupTimer) and event hook 5C61; wRoundMusic $28
+34,597D,Map27CleanupResult,entrance 6: balls in ($C3E1): $63 none / <8 "We finally finished" / 8-9 "We did it!" / 10 "You could manage this place!" (Yes/No joke); then Map27AwardCleanupExp
+34,5A99,Map27AwardCleanupExp,first time (flag #202 clear) EXP 50 (+25% for all 10 balls) via AddExp 02:5465; set #202; level-up screen; save; warp 1
+34,5AE9,Map27DrawBallPiles,redraws ball tiles by count $C3E0 (10 rect variants via MapBufCopyRectRedraw); flag #202 -> count 10
+34,5D9E,Map27SetupTimer,CountdownStart 12:4F52 with $000A then CountdownPause 12:4F73
+34,5DA8,Map28HeaderData,map $28 header (Mini-Mini Lake Course)
+34,5E53,Map28Enter,Mini-Mini Lake enter: set flag #82; wStoryRoundKind = 0; entrance 5 -> 5FBE / 6 -> 6568 / $0D -> 62C0 / $0E -> 6412 / $0F -> 6362
+34,5E86,Map28Trigger0FPlayCourse,trigger $0F: "Want to play?" Yes -> wStoryRoundKind $0A; golf mode 6 on course $0A hole 1 (the Mini-Mini Lake course)
+34,5EE1,Map28Trigger01UnplayableShow,trigger 01: set flag #211; "it's all rhythm!"; the golfer (golfer $4F) plays the shot from the rough: round mode 5 hook 5F93 forced tee ($18C0 $1EC0); back at entrance 5 (5FBE: "Give up.")
+34,6018,Map28TalkKeepTrying,talk 03: "Keep trying?" Yes -> Map28PlayerTryShot; No -> "Maybe it's impossible?"
+34,6059,Map28TalkWhatAmIDoing,talk 02: shows $1502 "What am I doing?" then falls into 6064
+34,6064,Map28TalkUnplayableDebate,talk 03: "His tee shot landed over here." debate (texts $1503-$1508 Yes/No); Yes -> "Then let's see you try it!" Map28PlayerTryShot
+34,6114,Map28ShotFailed,result: "HAH! See! It can't be done!" golfers react; set flag #218
+34,6159,Map28ShotOnGreen,result: "Awesome shot!" texts; Map28AwardShotExp; warp
+34,61BB,Map28ShotNiceOn,result: "NICE ON!" then the golfer tries the same shot (round mode 5 hook 6299); entrance $0D -> "You did it!" / $0E $0F -> set flag #210 save and "let's hole out" walk-off
+34,64B1,Map28PlayerTryShot,clear flag #224; player golf round from the golfer's ball ($18C0 $1EC0) with hook 6507; entrance 6 result: Map28ShotResult (6568: 6114 / 61BB / 6159 by $C3E0 $C3E1)
+34,6586,Map28AwardShotExp,EXP 140 (+25% when $C3E1 = 1) via AddExp 02:5465; level-up screen; save
+34,689C,Map29HeaderData,map $29 header (Raven Woods)
+34,692C,Map29ObjectHiddenJoe,object $0F (not when playing Joe): set flag #143; "Tch! Who told you?" Joe jumps out; "Yo! I'm on your side!"; AwardFoundAllRivalsExp
+34,69A4,Map29Trigger01CrowFlies,trigger 01: done (#207) -> nothing; hat on pin (#206) -> Map29AskPlayIfAPressed; else "OH! You idiot!" crow flies off (actor scripts 7114 70FC) golfer chases; set flags #205 #206
+34,6ABE,Map29Trigger02CrowReturns,trigger 02: flag #206 and not #207: "Hey! The crow came back!" crow scripts 711B/7109; clear #206; Map29AskPlayIfAPressed
+34,6B08,Map29Trigger03HatStolen,trigger 03: first time (flag #204 clear) -> Map29HatStolenCutscene; else Map29AskPlayIfAPressed
+34,6B37,Map29Enter,Raven Woods enter: crow gfx (Map29LoadCrowGfx); crow / golfer positions by #206; hides Joe unless #143; entrance 6 -> 6D46 / 7 -> 6E5F; $FA after a $14 round with a hit -> warp; tasks 7347 and 6BF7
+34,6BF7,Map29HatSpriteTask,frame task: Map29DrawHatSprite with bc = $0740
+34,6BFE,Map29HatStolenCutscene,"Gimme back my hat you stupid crow!" golfer jumps at the crow (sound $89 / $A1); crow sits on the pin (scripts 711B/7109); set flag #204
+34,6CF5,Map29TalkHatlessGolfer,talk 02: golfer walks up: "If the ball hits the pin it should scare the crow..." (actor script 6D2D)
+34,6D2D,Map29GolferActorScriptData,actor script bytecode (04:4234) given to the hatless golfer in Map29TalkHatlessGolfer
+34,6D46,Map29PinHitResult,entrance 6 (after hitting the pin): "It dropped my hat." crow flies off (7133/70FC); set #206; EXP 200 (+25% with bonus flag #99); level-up; warp
+34,7011,Map29LoadSpriteGfx,tiles 34:6F40 -> VRAM $8500; palette 7009 (slot $0F)
+34,7029,Map29DrawSpriteNearPlayer,draws sprite template 7000 at the saved player position - ($0100 $03C0) for c frames
+34,7070,Map29AnimSpriteNearPlayer,3 cycles of Map29DrawSpriteNearPlayer frames $50 $54 $58
+34,70FC,Map29CrowActorScriptsData,actor script bytecode block (04:4234) for the crow and the golfer: scripts 70FC 7109 7114 711B 7133
+34,7144,Map29AskPlayFromHere,"Play from here?" Yes -> Map29StartPinShot
+34,716B,Map29StartPinShot,wStoryRoundKind $14; golf round (mode by flags #206/#207) from the player's spot (Map29SetTeeFromPlayer) with random wind (Map29SetRandomWind) and hook 71CC
+34,7215,Map29SetRandomWind,random wind direction ($C3E3) and strength -> SetForcedWind 10:4C26
+34,7254,Map29SetTeeFromPlayer,tee = player position ($C2A0/$C2A2) offset from ($1F80 $1D40) -> SetForcedTee 10:4C04
+34,72E1,Map29LoadCrowGfx,tiles 34:7290 -> VRAM $8400; palette 7009 (master only)
+34,72F9,Map29DrawHatSprite,queues sprite template 72D0 at map ($1FA0 $1C60) (the pin) when on screen
+34,732C,Map29AskPlayIfAPressed,A held -> Map29AskPlayFromHere
+34,7347,Map29CrowSpriteTask,frame task: positions extra sprites on two actor slots (PositionSpriteWorld 00:27B4)
+34,73C0,Map2CHeaderData,map $2C header (Golf Guru's Pitch and Putt)
+34,7407,Map2CTalkGolfGuru,talk 02: beaten (#208) -> "You've equaled Mario" once (#252) then Map2CAskPlayAgain; else set #209 "Will you test your skills?" Yes -> clear #240/#241 and Map2CStartRound
+34,74B5,Map2CEnter,Pitch and Putt enter: entrance 6 (back from the round) -> Map2CRoundResult unless #208; entrance 7 -> Map2CRoundResultBeaten; wStoryRoundKind = 0
+34,74E6,Map2CAskPlayAgain,set flag #252; "So will you play?" Yes -> clear #240/#241; Map2CStartRound
+34,7516,Map2CPlayCourse,flag #208 clear: course 9 hole 1 round; else course 6 hole 1 with a = $12 (wRoundMusic $28)
+34,7547,Map2CStartRound,guru walks to the tee; wStoryRoundKind $14; golf session (return point map $2C) with hook 75C8; Map2CPlayCourse
+34,75F6,Map2CRoundResult,"So what did you shoot?": per hole of $C8AC sets #241 (not on in one) / #240 (not one putt); total = $C8BE+27; >= 19 bad; on-in-one and 1-putt everywhere -> Map2CPerfectRound
+34,7659,Map2CSetMissedOnePutt,set flag #240
+34,765D,Map2CSetMissedGreenInOne,set flag #241; also the result texts ($1554 / $1556 / $1558) and the perfect-round reward (76B5: EXP 300 / flags #208 #159 / save flag $200 / save)
+34,770F,Map2CRoundResultBeaten,entrance 7: fade in; guru: "Today's golfers give it their all!"
+34,7738,Map30HeaderData,map $30 header (Match Game Event)
+34,77EB,Map30EnterMatchResult,Match Game Event: entrance >= $0C -> set flags #80-#86 / clear #188 / win; lost -> warp back (entrance); won -> set #188; Map30DrawClubRoom; the beaten champ scene ("I have lost" $15C6/$15D9 by #139); flag #127 -> #189
+34,7C99,Map30DrawPalmRoom,entrance 2 room tiles (MapBufCopyRectRedraw) and palette 7BE9
+34,7CB5,Map30DrawDuneRoom,entrance 3 room tiles and palette 7C29
+34,7CD1,Map30DrawLinksRoom,entrance 4 room tiles and palette 7C69
+34,7CED,Map30DrawClubRoom,by wMapEntrance 2/3/4 -> 7C99 / 7CB5 / 7CD1
+34,7D58,Map30ObjectNop,object 01: bare ret
+34,7DD8,FadeToLevelUpScreen_34,fade out and wait; LevelUpScreen 41:402A (same as 32:7EE7)
+34,7E12,AwardFoundAllRivalsExp,when the three other characters are found (flags #140-#143 except your own wCharId): EXP 300; level-up; save; reload the map in place (warp $FA)
+35,4000,Bank35MapHeaderTable,map header pointers of bank 35 (idx 0-$22): maps 07 / 31-3E / 01 / 24 / 25 (MapTable 0A:5188)
+35,4004,Bank35HeaderPtrMap32Data,word $453F (map $32 header) in Bank35MapHeaderTable; not code: junk script root from an ending-map object list
+35,4006,Bank35HeaderPtrMap33Data,word $47F8 (map $33 header) in Bank35MapHeaderTable; not code: junk script root from an ending-map object list
+35,4024,Map07HeaderData,map 07 header (Trophy Room)
+35,4032,Map07TrophySpawnTable,12-byte spawn records of the 15 trophy actors (x $05 / $11 / $0B; y $0A / $04 / $06); header +4
+35,4040,Map07TrophySpawnPart1Data,inside Map07TrophySpawnTable; not code (junk script root)
+35,407B,Map07TrophySpawnPart2Data,inside Map07TrophySpawnTable; not code (junk script root)
+35,4080,Map07TrophySpawnPart3Data,inside Map07TrophySpawnTable; not code (junk script root)
+35,40DF,Map07TrophySpawnPart4Data,inside Map07TrophySpawnTable; not code (junk script root)
+35,4115,Map07ObjectMarionTrophy,object 01: flag #112 (has a Marion trophy) -> Map07DescribeTrophy with win flag #136
+35,4126,Map07ObjectPalmTrophy,object 02: flag #113 -> Map07DescribeTrophy with win flag #137
+35,4137,Map07ObjectDuneTrophy,object 03: flag #114 -> Map07DescribeTrophy with win flag #138
+35,4148,Map07ObjectLinksTrophy,object 04: flag #115 -> Map07DescribeTrophy with win flag #139
+35,4159,Map07ObjectPeachTrophy,object 05: flag #116 -> Map07DescribeTrophy with win flag #117 (Peach's Castle)
+35,4193,Map07Trigger01MutterWindTip,trigger 01: shows $0172 "...low trajectory in headwinds..." between ScriptBegin / ScriptEnd
+35,41AE,Map07Enter,Trophy Room enter: Map07PlaceTrophies
+35,41B2,Map07PlaceTrophies,per club (flags #112-#116 placed / #136-#139 won) moves the matching trophy actors in place and hides the others at ($3F00 $3F00); place from TestCourseHoleBit 02:5C77
+35,41EA,Map07PlaceTrophiesMidData,not an entry: middle of an instruction in Map07PlaceTrophies (junk script root)
+35,42DF,Map07PlaceTrophiesMid2Data,not an entry: middle of an instruction in Map07PlaceTrophies (junk script root)
+35,4345,Map07DescribeTrophy,hl = win flag: set -> "victory trophy for {club}" ($083F / $0840 for Peach); else place trophy text ($0841 or $0843 by flag #0) with place number (Map07GetTrophyPlace)
+35,4396,Map07GetTrophyPlace,$C3E1 = 2 or 3 by TestCourseHoleBit(club $C3E0 / $16)
+35,43A5,Map07GetTrophyPlaceMidData,not an entry: middle of an instruction in Map07GetTrophyPlace (junk script root)
+35,43AE,Map07PushTrophyTextArgs,SetTextCourseIndex(club $C3E0) and PushTextNumberArg(place $C3E1)
+35,43BE,Map31HeaderData,map $31 header (End Director's Room)
+35,4415,Map31EnterEndingDirector,ending: replays the first-day scene in the Director's Room ("Hello {name}! It's your 1st day as our student!" $0487; actors from list 43D5); warp 1
+35,453F,Map32HeaderData,map $32 header (End Lounge)
+35,45C2,Map32EntranceTable,map $32 entrances (header +0); junk script root
+35,45D2,Map32AskYesNoAnswer,text already set: show (speaker 2) keep open; Yes/No; Yes -> next page / No -> skip one and show the other; used by the unused talk scripts 4604-4622 (texts $0466-$0475)
+35,465D,Map32ObjectTable,map $32 object list (one record -> 7B7B); junk script root
+35,466A,Map32Trigger01LoungeTour,End Lounge: player and script actor walk a route; flag #189 clear -> pointer sprite (Map32PointerSpriteTask) and "If you're going up there you'd better know who's who." ($01EE; skip a page when all club wins #136-#139)
+35,4700,Map32LoungeTourMidData,not an entry: middle of an instruction in Map32Trigger01LoungeTour (junk script root)
+35,4702,Map32LoungeTourPart2Data,not an entry: inside Map32Trigger01LoungeTour (junk script root)
+35,4703,Map32LoungeTourMid2Data,not an entry: middle of an instruction in Map32Trigger01LoungeTour (junk script root)
+35,4704,Map32LoungeTourMid3Data,not an entry: middle of an instruction in Map32Trigger01LoungeTour (junk script root)
+35,4705,Map32LoungeTourPart3Data,not an entry: inside Map32Trigger01LoungeTour (junk script root)
+35,4709,Map32LoungeTourMid4Data,not an entry: middle of an instruction in Map32Trigger01LoungeTour (junk script root)
+35,470A,Map32LoungeTourPart4Data,not an entry: inside Map32Trigger01LoungeTour (junk script root)
+35,4778,Map32LoungeTourMid5Data,not an entry: middle of an instruction in Map32Trigger01LoungeTour (junk script root)
+35,4795,Map32TriggerTableMidData,inside the map $32 trigger list (4791); not code (junk script root)
+35,479A,Map32EnterEndingLounge,End Lounge enter: fade in; Map32Trigger01LoungeTour; warp
+35,47AB,Map32PointerPosTable,4-byte records (d / e position and b attribute) of the pointer sprite indexed by $C4B3
+35,47BF,Map32PointerSpriteTask,frame task (via 4666): bobbing pointer sprite $7C at Map32PointerPosTable[$C4B3] (QueueSprite16)
+35,47F8,Map33HeaderData,map $33 header (End Caddie Master's Office)
+35,48C8,Map33EntranceTableMidData,inside the map $33 entrance list; not code (junk script root)
+35,48E6,Map33EnterEndingOffice,End Caddie Master's Office enter: entrance 1 / 2 / 3 -> 492C / 4AE5 / 4B7D
+35,48F9,Map33ActorScriptData,actor script bytecode (04:4234) given to four actors at 4A9C-4AD6 and 4D11-4D4B (not code)
+35,492C,Map33EndingScene1,entrance 1: Map33DrawRoom1; actors line up (wMapId 8 test is a leftover from the real office); four actors get Map33ActorScriptData; warp 1
+35,4AE5,Map33EndingScene2,entrance 2: Map33DrawRoom2; actors walk and jump; warp 2
+35,4B7D,Map33EndingScene3,entrance 3: Map33DrawRoom3; actors respawned from 4D5D; long animated scene; four actors get Map33ActorScriptData; warp 3
+35,4D9F,Map33DrawRoom1,room tiles (MapBufCopyRectRedraw) and palettes 4E0A
+35,4DBB,Map33DrawRoom3,room tiles (MapBufCopyRectRedraw) and palettes 4E4A
+35,4DD7,Map33DrawRoom2,room tiles (MapBufCopyRectRedraw) and palettes 4E8A
+35,4EBA,Map34HeaderData,map $34 header (End Award Ceremony)
+35,4F35,Map34EnterEndingAward,fade out; actor states; Map34AwardCeremony; warp
+35,4F51,Map34AwardCeremony,"A new champion has appeared at {club} Club today!" / "I now present this trophy to {name}"; crowd faces the player; trophy walk (wMapId $18 checks copied from the real ceremony maps)
+35,5050,Map34AwardCeremonyPart2Data,not an entry: inside Map34AwardCeremony (junk script root)
+35,5117,Map34SetClubByMapId,SetTextCourseIndex by wMapId $18-$1B (Marion / Palm / Dune / Links ceremony maps)
+35,530B,Map35HeaderData,map $35 header (End Tiny-Tots Golf)
+35,5352,Map35Trigger01EndingCaretaker,ending: ball piles drawn; caretaker: "Those darn kids! Balls everywhere!" and walks the course; warp 1
+35,54B2,Map35EnterEndingTinyTots,entrance 2: hidden Sherry scene (jumps out); else Map35Trigger01EndingCaretaker
+35,558B,Map36HeaderData,map $36 header (End Raven Woods)
+35,55F5,Map36EndingSceneJoe,entrance 2: crow gfx; hat task; actors walk; Joe jumps out twice; warp
+35,56BD,Map36EnterEndingRavenWoods,entrance 2 -> Map36EndingSceneJoe; else crow and golfer at the pin (actor scripts 5808 / 581A); Map36LoadCrowGfx; Map36CrowDropsHat
+35,56F8,Map36HatSpriteTask,frame task: Map36DrawHatSprite with bc = $0740
+35,56FF,Map36CrowDropsHat,"It dropped my hat." crow flies off (actor scripts 5832 / 57FF); golfer gets his hat; warp 1
+35,57FF,Map36ActorScriptsData,actor script bytecode (04:4234) for the crow / golfer: scripts 57FF 5808 581A 5832
+35,583F,Map36ActorScriptsMidData,inside Map36ActorScriptsData; not code (junk script root)
+35,5921,Map36LoadCrowGfx,tiles 35:58D0 -> VRAM $8400; palette 5919 (master only)
+35,5939,Map36DrawHatSprite,queues sprite template 5910 at map ($1FA0 $1C60) when on screen (copy of 34:72F9)
+35,596C,Map37HeaderData,map $37 header (End Alternate Game1)
+35,5A0B,Map37EnterEndingAltGame,ending: Dune Club pair asks you to team up ($152C ...); "Which rules?" with the menu call removed: always "OK! Stroke rules!" ($180B); warp 1
+35,5B50,Map38HeaderData,map $38 header (End Match Game Event)
+35,5BAA,Map38EnterEndingMatchGame,Map38EndingMatchScene; warp
+35,5BB3,Map38EndingMatchScene,Map38DrawRoom; fade in; champions walk in and face each other (wordless replay of the Match Game Event)
+35,5C29,Map38MatchSceneMidData,not an entry: middle of an instruction in Map38EndingMatchScene (junk script root)
+35,5DCC,Map38DrawRoom,room tiles (MapBufCopyRectRedraw) and palettes 5D9C
+35,5DE8,Map39HeaderData,map $39 header (End Field)
+35,5E12,Map39EnterEndingField,ending replay of the Field letter event: actors walk; flash 6890; letter (65D4 6731); path-open scene 6639; warp
+35,5EB0,Map39LetterSpriteTiles,sprite tiles for the letter (65D4)
+35,5F70,Map39MarkerSpriteTiles,sprite tiles loaded by Map39LoadMarkerSpriteGfx (c = $60)
+35,6000,Map39MarkerSpriteTilesMidData,inside Map39MarkerSpriteTiles; not code (junk script root)
+35,65D4,Map39LoadLetterSpriteGfx,tiles 5EB0 -> VRAM $8100; palette 65CC (copy of 34:4FB4)
+35,65EC,Map39LoadMarkerSpriteGfx,tiles 5F70 -> VRAM $8100; palette 65BC (copy of 34:4FCC)
+35,6604,Map39DrawMarkerSpriteFrames,sprite 6570 at map ($1300 $1080) for $0A frames (copy of 34:4FE4)
+35,6621,Map39DrawMarkerFramesMidData,not an entry: inside Map39DrawMarkerSpriteFrames (junk script root)
+35,6639,Map39PathOpenScene,copy of 34:5019: sprites fly in / burst; MapCopyEventRect; Map39OpenCastlePath; marker frames
+35,66A5,Map39DrawMarkerSprite,sprite 6570 at map ($1300 $1080) when on screen (copy of 34:50A2)
+35,66E2,Map39DrawLetterSprite,falling letter sprite (copy of 34:50DF)
+35,6731,Map39AnimLetterFall,letter fall loop (copy of 34:512E)
+35,676D,Map39DrawFlyingSprite,copy of 34:516A
+35,67BC,Map39AnimFlyingSprite,copy of 34:51B9
+35,6890,Map39FlashPaletteSparkle,palette flash loop (copy of 34:52C0)
+35,68F6,Map39AnimBurstSprite,copy of 34:5396
+35,6960,Map39DrawBurstSprite,copy of 34:5400
+35,69AD,Map39OpenCastlePath,terrain / event / tile rects that clear the tree (copy of 34:46E6 without the flag test)
+35,69DB,Map39MarkerSpriteTask,frame task: Map39DrawMarkerSprite (copy of 34:46DF)
+35,69E2,Map3AHeaderData,map $3A header (End Clouds)
+35,6A48,Map3AEnterEndingClouds,ending: actors jump and walk among the clouds; tile animations Map3AAnimRectsA / Map3AAnimRectsB; warp 1
+35,6B28,Map3AAnimRectsA,5 tile rect frames (MapBufCopyRectRedraw) 30 frames apart
+35,6B97,Map3AAnimRectsB,second tile rect animation (MapBufCopyRectRedraw)
+35,6C54,Map3BHeaderData,map $3B header (End Azalea)
+35,6CCF,Map3BEmptyListsData,map $3B talk / object / trigger lists ($FF $C9 $FF: the object pointer hits a ret byte); not code
+35,6CD2,Map3BEnterEndingAzalea,ending: Azalea scene (walks / jumps / anims); warp
+35,6DAC,Map3CHeaderData,map $3C header (End Peach's Castle)
+35,6E6B,Map3CEntranceTable,map $3C entrance list; not code (junk script root)
+35,6E7C,Map3CEmptyListsData,map $3C object / trigger list bytes; not code (junk script root)
+35,6E7E,Map3CEnterEndingCastle,entrance $0A -> fade in and the 7045 variant; else Map3CEndingCastleScene
+35,6E91,Map3CEndingCastleScene,ending at Peach's Castle: actors jump and walk (actor script 70E1); effect sprite (a sparkle? Map3CLoadSparkleGfx Map3CAnimSparkle); warp 1 (back to itself)
+35,70E1,Map3CActorScriptData,actor script bytecode (04:4234) used by Map3CEndingCastleScene
+35,7122,Map3CLoadSparkleGfx,tiles 71C0 -> VRAM; palette 734D (slot $0F)
+35,713A,Map3CDrawSparkle,sprite template 7340 at map ($1600 $0C80) for c frames
+35,716F,Map3CAnimSparkle,4 cycles of Map3CDrawSparkle frames $50 $56 $5C
+35,7355,Map3DHeaderData,map $3D header (End Marion Club House)
+35,73F7,Map3DEnterEndingClubhouse,ending: player walks a 7-leg route through the clubhouse (ScriptActorGoTo); warp 1
+35,74FB,Map3EHeaderData,map $3E header (End Field)
+35,7522,Map3EEmptyListsData,map $3E talk / object / trigger list bytes; not code (junk script root)
+35,7525,Map3EEnterEndingField,ending: player walks an 8-leg route across the Field; warp 1
+35,75FE,Map01HeaderData,map 01 header (Development room)
+35,7735,Map01TalkWarpCourseParams,debug room talk 02: warp 1 (map $20 Course Parameters)
+35,773B,Map01TalkWarpCourseParams5,talk 03: warp 2 (map $20 entrance 5)
+35,7741,Map01TalkWarpLockerRoom,talk 04: warp 3 (map 06)
+35,7747,Map01TalkWarpClubhouse,talk 05: warp 4 (map 03)
+35,774D,Map01TalkWarpLounge,talk 06: warp 5 (map 04)
+35,7753,Map01TalkWarpTrophyRoom,talk 07: warp 6 (map 07)
+35,7759,Map01TalkWarpCaddieOffice,talk 08: warp 7 (map 08)
+35,775F,Map01TalkTwoPlayerScore,talk 09: TwoPlayerScoreScreen 3E:6361 then warp 8
+35,7768,Map01TalkSaveViewer,talk $0A: DebugSaveViewer 02:5D2F then warp 9
+35,7774,Map01TalkStarsScreen,talk $0B: StarsScreen 0C:4014 then warp $0A
+35,7780,Map01TalkStatsScreen,talk $0C: StatsScreen 0C:4A15 then warp $0B
+35,778C,Map01TalkRankingScreen,talk $0D: RankingScreen 0C:5AEC then warp $0C
+35,7798,Map01TalkSepiaFadeTest,talk $0E: sepia palette fade test (PalFadeInitSepia / PalFadeSetup bc $FFFF d $3C / PalFadeRun); 30 x sound $5C; warp $0D (reload)
+35,77BC,Map01TalkWarpCharacterTest,talk $0F: warp $0E (map $24 Mini-Character Test)
+35,783D,Map01Trigger01Nop,trigger 01: bare ret
+35,7847,Map01EnterNop,enter: ret; followed by an unreachable farcall 79:68B1 (leftover)
+35,784C,Map24HeaderData,map $24 header (Mini-Character Test)
+35,789B,Map24TalkPrevSprite,talk 02: wTestSprite - 1 (wraps at wTestSpriteCount); Map24ApplySprite
+35,78B7,Map24TalkNextSprite,talk 03: wTestSprite + 1 (wraps); Map24ApplySprite
+35,78D3,Map24TalkAnim3,talk 04: player actor plays anim 3
+35,78DD,Map24TalkAnim4,talk 05: player actor plays anim 4
+35,7912,Map24Trigger01Nop,trigger 01: bare ret
+35,791C,Map24EnterSpriteTest,enter: wTestSprite = 0; wTestSpriteCount from 04:4F0A; frame task Map24WalkAnimTask
+35,792F,Map24WalkAnimTask,frame task: a d-pad press -> player anim 1
+35,793F,Map24ApplySprite,player actor takes sprite a via 04:4D3D; palettes restored; anim 1
+35,7957,Map24ApplySpriteMidData,not an entry: middle of an instruction in Map24ApplySprite (junk script root)
+35,795C,Map25HeaderData,map $25 header (Terop: caption scenes)
+35,79D2,Map25EnterCaption,entrance 1: caption "Marion Club Director's Office" ($0486) 110 frames -> warp 1 (map 05); entrance 2/3: "A letter is falling from the sky." + Peach's invitation ($1442/$1443); set flag #123 and save flag $1E0; warp 2 (Field) / 3
+35,7B21,EndingActorScriptsData,actor script bytecode block (04:4234) after the Terop script: 7B22 is used by map $33 (35:49A2); not code (junk script root)
+35,7B7B,Bank35ObjectNop,bare ret used as the object 01 script of maps 01 / $24 / $32 / $34

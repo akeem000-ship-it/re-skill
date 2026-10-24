@@ -1,6 +1,6 @@
 """List the overworld map scripts: for each map header (MapTable 0A:5188, see dump_maps.py) the enter script
 (header +12) and the script word (+4) of each 8-byte talk (+6), object (+8) and trigger (+10) record.
-A script word below $2000 is a text id shown as a message; otherwise it is code in the header's bank, run by
+A list whose first byte is $C9 (a `ret`: the ending maps' object lists) is empty. A script word below $2000 is a text id shown as a message; otherwise it is code in the header's bank, run by
 MapRunScript (0A:4EFF). For code scripts the text ids loaded into hl before a far call that takes a text
 (ShowMessage 05:5D49 `db $46, $05`; 0A:4124 `db $0E, $0A`, which passes hl to SetMessageText 05:5A96) in the
 first $200 bytes up to the first ret are printed with their text.
@@ -29,6 +29,8 @@ def scripts(rom):
         items = [("enter", None, word(rom, mbank, hdr + 12))]
         for f, kind in LISTS:
             o = to_offset(mbank, word(rom, mbank, hdr + f))
+            if rom[o] == 0xC9:          # 9 ending maps (31-3E): the empty object list points at a `ret`, not $FF;
+                continue                # its id $C9 never matches an object id, so the game finds nothing
             while rom[o] != 0xFF:
                 items.append((kind, rom[o], rom[o + 4] | rom[o + 5] << 8))
                 o += 8
