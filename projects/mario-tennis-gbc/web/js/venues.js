@@ -38,11 +38,12 @@ export function venueFor(st) {
 const shade = (c, k) => c.map(x => Math.max(0, Math.min(255, x * k)));
 const mix = (a, b, t) => a.map((x, i) => x + (b[i] - x) * t);
 // shared shapes (world coordinates; B.add(x, y0, z, sx, sy, sz, rgb, jitter): a box centred on x / z, standing on y0)
-function tower(B, x, z, r, h, wall, roof, flag) {                 // a round tower: an octagon of two crossed boxes, a ring, a spire, a flag
+function tower(ctx, x, z, r, h, wall, roof, flag) {
+  const B = ctx.B;                 // a round tower: an octagon of two crossed boxes, a ring, a spire, a flag
   B.add(x, 0, z, r * 2, h, r * 1.2, wall, 0.04); B.add(x, 0, z, r * 1.2, h, r * 2, wall, 0.04); B.add(x, 0, z, r * 1.7, h, r * 1.7, shade(wall, 0.94), 0.04);
   for (let a = -1; a <= 1; a += 2) for (let k = -2; k <= 2; k++) B.add(x + k * r * 0.45, h, z + a * r * 0.92, r * 0.3, r * 0.35, r * 0.3, wall), B.add(x + a * r * 0.92, h, z + k * r * 0.45, r * 0.3, r * 0.35, r * 0.3, wall);
   const sh = r * 2.6; for (let i = 0; i < 10; i++) { const w = r * 2.1 * (1 - i / 10); B.add(x, h + r * 0.35 + i * sh / 10, z, w, sh / 10 + 1, w, i & 1 ? roof : shade(roof, 0.9)); }
-  if (flag) { B.add(x, h + r * 0.35 + sh, z, 6, 160, 6, [210, 210, 220]); B.add(x + 44, h + r * 0.35 + sh + 100, z, 80, 50, 4, flag); }
+  if (flag) { B.add(x, h + r * 0.35 + sh, z, 6, 160, 6, [210, 210, 220]); flagOn(ctx, x + 3, h + r * 0.35 + sh + 100, z, 80, 50, flag); }
 }
 function dome(B, cx, y0, cz, rx, hy, rz, cs, colA, colB, top, rnd) {   // a rounded crown of cubes (stadium3d.js garden's)
   for (let y = 0; y < hy; y += cs) {
@@ -65,6 +66,8 @@ function spikes(B, x, y, z, s, along, n, gap, col) {               // a row of s
   for (let i = 0; i < n; i++) { const o = (i - (n - 1) / 2) * gap, px = along ? x : x + o, pz = along ? z + o : z; for (let k = 0; k < 4; k++) B.add(px, y + k * s * 0.3, pz, s * (1 - k * 0.24), s * 0.3, s * (1 - k * 0.24), shade(col, 1 - k * 0.04)); }
 }
 function frameAround(B, x, y, z, w, h, d, t, col, jit = 0) { B.add(x - w / 2 - t / 2, y - t, z, t, h + t * 2, d, col, jit); B.add(x + w / 2 + t / 2, y - t, z, t, h + t * 2, d, col, jit); B.add(x, y + h, z, w + t * 2, t, d, col, jit); B.add(x, y - t, z, w + t * 2, t, d, col, jit); }
+// a flag's cloth: waving (courtside.js draws ctx.flags every frame), else a still box; along: the way it flies ("x" or "z")
+function flagOn(ctx, x, y, z, w, h, col, along = "x") { if (ctx.flags) ctx.flags.push({ x, y, z, w, h, col, along }); else ctx.B.add(x + w / 2, y, z, w, h, 4, col); }
 // the tunnel mouth in stand coordinates: T the tunnel, o0 / o1 its opening along the stand, box() the stand's box helper
 const mouth = (ctx, T, o0, o1, col, t = 30, top = 40) => { ctx.box(-16, 4, o0 - t, o0, 0, T.h + top, col, 0.04); ctx.box(-16, 4, o1, o1 + t, 0, T.h + top, col, 0.04); ctx.box(-16, 4, o0 - t, o1 + t, T.h, T.h + top, col, 0.04); };
 
@@ -77,8 +80,8 @@ export const VENUES = {
         for (let vv = s.S.v0 - 20; vv < s.S.v1 + 20; vv += 76) s.box(s.outer - 40, s.outer + 6, vv, vv + 42, s.top + 14, s.top + 66, stone, 0.04);   // battlements
         for (let vv = s.S.v0 + 200, k = 0; vv < s.S.v1 - 120; vv += 520, k++) s.box(s.outer - 48, s.outer - 40, vv - 46, vv + 46, s.top - 230, s.top + 4, [[200, 40, 60], [230, 180, 40], [50, 80, 190]][k % 3]);   // banners down the back wall
       }
-      for (const s of stands.filter(s => s.S.side)) { const [x, z] = s.at(s.outer, s.S.v0 - 60); tower(B, x, z, 120, s.top + 260, stone, roof, [230, 50, 60]); const [x2, z2] = s.at(s.outer, s.S.v1 + 40); tower(B, x2, z2, 100, s.top + 160, stone, roof, null); }
-      const far = stands.find(s => !s.S.side); if (far) for (const sx of [-1, 1]) { const [x, z] = far.at(far.outer, sx * 1100); tower(B, x, z, 90, far.top + 200, stone, roof, sx < 0 ? [60, 90, 210] : [230, 200, 60]); }
+      for (const s of stands.filter(s => s.S.side)) { const [x, z] = s.at(s.outer, s.S.v0 - 60); tower(ctx, x, z, 120, s.top + 260, stone, roof, [230, 50, 60]); const [x2, z2] = s.at(s.outer, s.S.v1 + 40); tower(ctx, x2, z2, 100, s.top + 160, stone, roof, null); }
+      const far = stands.find(s => !s.S.side); if (far) for (const sx of [-1, 1]) { const [x, z] = far.at(far.outer, sx * 1100); tower(ctx, x, z, 90, far.top + 200, stone, roof, sx < 0 ? [60, 90, 210] : [230, 200, 60]); }
     },
     tunnel(ctx, T, o0, o1) { const st = ctx.court === 0 ? [196, 156, 178] : [150, 150, 164]; mouth(ctx, T, o0, o1, st, 34, 56); for (let k = 0; k < 6; k++) ctx.box(-20, -14, o0 + 10 + k * (o1 - o0 - 20) / 5, o0 + 18 + k * (o1 - o0 - 20) / 5, T.h - 50, T.h, [70, 66, 70]); },   // a gate with the portcullis up
     board(ctx, p) { const st = [160, 160, 172]; frameAround(ctx.B, p.x, p.y - 4, p.z - 30, p.w + 40, p.h + 30, 60, 36, st, 0.04); for (let i = -4; i <= 4; i++) ctx.B.add(p.x + i * 84, p.y + p.h + 62, p.z - 30, 46, 40, 60, st, 0.04); },
@@ -204,7 +207,7 @@ export const VENUES = {
       for (let i = 0; i < 5; i++) B.add(x - w / 2 + 90 + i * 135, 150, z + d / 2 + 2, 70, 100, 6, [130, 180, 220]);
       B.add(x, 0, z + d / 2 + 70, w, 12, 140, [150, 110, 76]); B.add(x, 140, z + d / 2 + 70, w + 20, 10, 150, [236, 228, 210]);
       for (let i = 0; i < 5; i++) B.add(x - w / 2 + 20 + i * (w - 40) / 4, 12, z + d / 2 + 130, 12, 128, 12, [236, 228, 210]);
-      B.add(x + w / 2 - 60, h + 176, z, 8, 260, 8, [220, 220, 226]); B.add(x + w / 2 - 14, h + 380, z, 90, 56, 4, [40, 90, 60]);
+      B.add(x + w / 2 - 60, h + 176, z, 8, 260, 8, [220, 220, 226]); flagOn(ctx, x + w / 2 - 57, h + 380, z, 90, 56, [40, 90, 60]);
       B.add(x, h - 80, z + d / 2 + 4, 90, 90, 8, [250, 250, 244]); B.add(x, h - 40, z + d / 2 + 9, 6, 30, 2, [30, 30, 30]);   // the clock
     },
     board(ctx, p) { frameAround(ctx.B, p.x, p.y - 4, p.z - 30, p.w + 40, p.h + 30, 50, 30, [40, 96, 60], 0.04); },
@@ -213,7 +216,7 @@ export const VENUES = {
     name: "varsity", rows: 8, boardInk: ["#ffc24a", "#7cc8ff", "#e8ecf4"],
     extras(ctx) {
       const { B, stands } = ctx, blue = [40, 80, 190], gold = [240, 190, 40];
-      for (const s of stands) for (let vv = s.S.v0 + 100, k = 0; vv < s.S.v1; vv += 380, k++) { const [x, z] = s.at(s.outer - 16, vv); B.add(x, s.top + 14, z, 8, 240, 8, [220, 220, 226]); const [fx, fz] = s.at(s.outer - 16, vv + 44); B.add(fx, s.top + 180, fz, s.S.side ? 4 : 80, 54, s.S.side ? 80 : 4, k & 1 ? gold : blue); }
+      for (const s of stands) for (let vv = s.S.v0 + 100, k = 0; vv < s.S.v1; vv += 380, k++) { const [x, z] = s.at(s.outer - 16, vv); B.add(x, s.top + 14, z, 8, 240, 8, [220, 220, 226]); flagOn(ctx, x + 3, s.top + 180, z, 80, 54, k & 1 ? gold : blue); }
       const far = stands.find(s => !s.S.side); if (far) { far.box(far.outer - 50, far.outer - 40, -500, 500, far.top - 260, far.top - 20, blue); far.box(far.outer - 54, far.outer - 46, -160, 160, far.top - 220, far.top - 60, gold); }
     },
   },
