@@ -254,7 +254,7 @@ that, and `scan_jumptables.kind()` now uses it.
 #### Sound (banks 7C/7D/7E and 7F; tools/dump_songs.py)
 
 - **Commands** (`rst $08 ; db id`, PlaySoundCmd 00:2BBB): id `< $36` = song id: stored in wCurrentBGM (`$C33E`)
-  and passed to SoundCmdDispatch (7E:4016), which accepts it if below SongCount (`$2B` = 43 songs) and writes
+  and passed to SoundCmdDispatch (7E:4016), which accepts it if below SongCountData (`$2B` = 43 songs) and writes
   wMusicRequest. Ids `$36-$3A` are jingles: song `JingleSongTable[id - $36]` (00, 17, 18, 19, 1A), with
   `hActiveJingle` set so the BGM comes back afterwards (WaitJingleEnd, ResumeBGMAfterJingle). Ids `>= $40`
   are effects: `id - $40` goes to SoundRequestSFX (7E:4022), which keeps the higher-priority request
@@ -1996,6 +1996,195 @@ Mini-Character Test, $25 Terop (captions).
     wMapId 8 / $18-$1B (values of the real office and ceremony maps), never true there; four talk scripts at
     35:4604-4622 (texts $0466-$0475, via 35:45D2) are not referenced by any list.
 
+Labels: `a11/labels.csv`, 207 lines: 193 code and data labels and 14 RAM labels. I checked them against a scratch copy of the
+project with the labels merged in: `coverage.py --list` then shows no unnamed entries in banks 30 31 33 34 35 79 17 26 4A 3B
+44 4F 15 09 07 08 0A 00. Only 0C:6438 is left, and it is a false entry (see the end of these notes).
+
+##### Golf event hooks (banks 30 31 33 34)
+
+How it works: SetGolfEventHook (10:4BC7) stores a bank and a table of 16 words. CallGolfEventHook (10:4CC3) calls entry
+`a` of that table when the word is not zero. There are five event numbers, each called from a fixed place:
+0 = before each shot (10:484C); 1 = after each shot (10:4611, right after RoundHookAfterShot);
+**2 = the hole maps of a view were just loaded (13:43F6, after HoleLoadMaps in LoadShotView)** (new);
+3 = hole start (10:45CD); 4 = scene start (10:4237 GolfSceneStart, 08:646E).
+A handler ends the shot loop with SetGolfEventFlag (`$D4DD`, read by 10:461A):
+- bit 7 set (`$80` or `$82`): the round ends (jump to 10:464A).
+- any other non-zero value (always `1` here): RetryShotRestore 08:4AA3, which replays the same shot.
+In lesson and practice rounds, wGameMode = 0 at event 1 means the player quit (10:4877 clears it). The handlers then
+set the return entrance `$C961` (6/7 in bank 30, 8/9 in bank 31), which sends you back to the coach's "retry" entrance.
+
+Hook tables found in this pass (the earlier pass had labelled only part of them):
+
+| Table | Started by | Entries |
+|---|---|---|
+| 30:6C0F PuttingChallengeHookTable | green pros, 30:6799 | 0 6C2F / 1 6C58 |
+| 33:736F Map26TargetShotHookTable | Map26AskTargetShot | 0 738F / 1 7390 |
+| 34:58E6 Map27DemoRoundHookTable | Map27Enter 34:58C7 | 0 5906 / 1 5907 |
+| 34:5C61 Map27CleanupHookTable | Map27StartBallCleanup | 0 5C81 / 1 5C82 / **2 5D40** / 3 Map27SetupTimer |
+| 34:5F93 / 6299 / 6507 | Map28 golfer shot / golfer retry / player shot | 0 ret / 1 handler |
+| 34:71CC Map29PinShotHookTable | Map29StartPinShot | 0 71EC / 1 71ED / **4 Map29PinShotSceneStart 65C3** |
+| 34:75C8 Map2CRoundHookTable | Map2CStartRound | 0 75E8 / 1 75E9 |
+| 30:7361 AltShotStartRoundHookTable | AltShotStartRound | 0 73B5 / 1 73C7 / **3 AltShotHoleStartGolfers 7381** |
+
+Lesson handler pattern (16 lessons x demo / attempt). For each lesson I named the handlers
+`MapXX<Lesson>{Demo|Try}{ShotSetup|AfterShot}`:
+- **Demo ShotSetup**: the coach explains the shot (3-4 texts via ShowMessageAt 05:5E70, speaker 3 or 4).
+- **Demo AfterShot**: `$82`, so the round ends after one shot.
+- **Try ShotSetup**: "choose an approach / a club / shoot".
+- **Try AfterShot**: sets wEventResult `$C968` and flag #99 = wP1HoledOut `$C8AA`, then `$82`.
+  - Bank 30 (approach ranges): wEventResult is BallWithinPinDist `$60` (0 = success).
+  - Bank 31 (driving ranges): wEventResult comes from a per-lesson judge routine, `Map..JudgeShot`:
+    - 0 = success.
+    - The other codes come from the ball's lie (BallLieTerrain: 0 fairway, 2 bunker, 6 green), PinDist `$A0`, the stroke
+      record at `$D680`, and the ball's final position.
+  - Stroke record fields used: +8 club, +9 (power shot?), +`$0A` power (`$3C` = perfect), +`$0B` impact offset,
+    +`$0C` bits 4-5 = curve input, +`$0C` bit 7 = backspin.
+  - Map13 backspin and Map16 mound (30:541D / 5C80) store stroke record +`$0C` (not the club) in wEventShotClub.
+    Their result scripts test its bit 7 (backspin texts `$0CE2` / `$0D00`).
+- Links contests:
+  - Approach (30:6052 / 605C, 6243 / 624D): wEventShotClub `$C969` is reused as the try counter. Event 0 copies it into
+    wP1Strokes `$C8A0` for the HUD. Each try is replayed with flag 1; after 10 tries the round ends, and #98 is set
+    for 7 or more.
+  - Driving range (31:697D / 6A02, 6D33 / 6DB8): PinDist words go to `$C968` (coach) and `$C96A` (player).
+  - Every Map15 handler calls Map15UnlockContests first.
+- Free practice (30:48DD, 31:52B7, 30:6BFC): the shot repeats (flag 1) until you quit.
+- Putting challenge (30:6C58): `$C3E0` counts putts and wPuttChallengeScore counts putts made (within `$34`). GolfRound
+  is started with 5 holes:
+  - Odd putts are retried from the same spot.
+  - Even putts set wP1HoledOut and SetP1StartStrokes = putts, which moves on to the next hole.
+  - After 10 putts the round ends.
+  The rules text `$10D5` is shown once, guarded by temp flag #224.
+- Clinic (31:75E1): #99 is set whenever the player did not quit, so it means "shot taken" here, not "holed".
+
+Bank 34 hook handlers:
+- Tiny-Tots ball cleanup (34:5C82):
+  - Every shot sets flag #224 + wHoleNumber.
+  - A ball within `$3C` of the pin is "in".
+  - If the ball lands in water or out of bounds (wShotEndLie `$D4DC` 3 / 7), or the countdown `$C0F6` reaches 0, the
+    caretaker scolds you and takes that ball himself.
+  - Event 2 (34:5D40) reapplies the removed ball piles to the hole maps through ApplyFlaggedHoleMapEdits 34:55B6.
+    That routine takes lists of {flag, src, dst, w h} records and copies rects in the WRAM3 / WRAM2 64x64 maps.
+- Mini-Mini Lake (34:6528): `$C3E0` = on the green or holed; `$C3E1` = the ball skipped on water (wBallFlags bit 0).
+  Map28ShotResult 34:6568 then picks: failed / "NICE ON!" / on the green.
+- Raven Woods (34:65C3, event 4): unless #206, loads crow tiles and starts Map29CrowOnPinTask 34:66A0, which draws the
+  crow on the cup in the green view. The pin-shot hook 34:71ED counts a pin hit (wBallFlags bit 1 or 2).
+- Golf Guru (34:75E9): only resets wStoryRoundKind when you quit.
+
+Also named in bank 34 (code that was reached by jumps and not labelled):
+- Map28AfterGolferShot 34:5FBE (entrance 5)
+- Map28GolferSucceeds 34:62C0 (entrance `$0D`)
+- Map28HoleOutAndLeave 34:6362 (entrance `$0F`; sets #210, saves)
+- Map28WalkOff 34:6412 (entrance `$0E`)
+- Map28ShotResult 34:6568 (entrance 6)
+
+35:4666 is the frame task wrapper of Map32PointerSpriteTask (Lounge tour).
+
+Copies: BallWithinPinDist exists in banks 30 (7E2E), 31 (7D53), 33 (7C72) and 34 (7D93). The bank 31/33/34 copies are
+labelled with a `_bank` suffix.
+
+Notable:
+- Quirks in the lesson hooks:
+  - 30:4607 (Marion chip demo) sets #99 when the coach holes the ball; no other demo hook does.
+  - 31:6A02 runs the #99 update twice on the lesson path; it is harmless.
+  - 31:5F52 is the only demo hook without GolfViewExit.
+- Dead code: 31:582D-583C in Map0FIntentionalShotJudgeShot is an x test (`$1C80`) that nothing jumps to.
+- Never read: PuttingChallengeSetTextCourse 30:6E41 stores `a` to `$C3EA`, and nothing reads it.
+- Text grouping: PuttingChallengeSetOfferText 30:6DF6 groups the putting challenge offer texts by the furthest course
+  reached (#112-115) and whether its club was won (#136-139).
+- Reused labels:
+  - wScriptLoop `$C3E0` and wPuttChallengeScore `$C3E1` are general scratch counters in several minigames: the Map26
+    target, Map27 ball count, Map28 / Map29 results and the putting challenge.
+  - wEventShotClub `$C969` is reused as the contest try counter.
+
+##### Bank 17: course map screen (pause menu "Course Map")
+
+Exports:
+- `$00` CourseMapScreen 17:437D (called by MenuShowCourseMap 41:7882).
+- `$02` CourseMapShowTimed 17:4232: 300 frames or a button. No caller found.
+- The `$04` word (`$4021`) is not an export. It is the operand of the code at 17:4004 (CourseMapRecordAddr:
+  `ld hl,$C640 ; ret`), which sits inside the `$4000` table.
+
+How CourseMapInit (17:4250) builds the screen:
+1. It saves the view in `$C471`, sets view 3 and reloads the overhead hole maps (CourseMapReloadHoleMaps 17:41F5).
+2. It copies the hole's course-map record to `$C640` (CopyHoleRecord 44:7E74). The record holds:
+   - a 16x16 nibble grid (each cell = a 4x4-tile block);
+   - the count of detailed blocks;
+   - a `$FF`-ended list of overlay blocks.
+3. CourseMapBuildTilemap 17:4512 turns the grid into the `$DE00` map. Nibble `$F` takes the next "detailed" tile; any
+   other value is a fixed tile.
+4. For each detailed block (CourseMapRenderBlockTile 17:45C8), it reads the 4x4 hole tiles (attribute WRAM2, tile WRAM3,
+   terrain WRAM6 `$D800`, with x/y flips) to get 2x2 terrain cells per tile. It maps them to colours through a 16-byte
+   table (17:4490 for the background, 17:44A0 for the sprites; copied to `$C400`). Then it packs them into a 2bpp tile
+   (17:45E5).
+5. Overlay blocks (17:4628) are rendered as 8x16 sprite tiles and drawn every frame (17:4652).
+
+Other parts of the screen:
+- Side panel (17:47C0): hole info, distance, wind and wind arrow, player face icons.
+- Frame task (17:43AC): wind indicator, blinking current-player tile (17:4DD0), target marker, balls and flag (17:43F3).
+- Input (CourseMapInput 17:4E14): B = shot mode / spin, Up/Down = club, Left/Right = aim (wLaunchDir). The course map is
+  therefore also an aiming view.
+
+Notable (debug leftovers):
+- 17:4512 plays sound `$01` when the detailed-tile count differs from the record or reaches `$C0`.
+- 17:4652 plays sound `$02` when the sprite queue is full.
+- CourseMapInit counts load frames in wLoadFrameCount `$C3B6` (task 17:43A7) and prints the count with PrintDecimalByte
+  at 17:436F. Bank 15 has the same counter (15:47B8) and discards the value (15:4787). Both look like profiling code.
+
+##### Bank 79: ending final screen sprites
+
+Exports:
+- `$08` EndingFinalSpritesInit 79:688C, called from EndingFinalScreen 0A:67FF.
+- `$0A` EndingFinalSpritesTask 79:68B1, called every frame from 0A:6806.
+
+The task keeps a step counter in WRAM6 `$D400` (the wBallX address reused). The step goes up every 4th frame, from 0 to
+`$36`. Six parts (79:68F6 ... 79:7175) each animate one sprite group through 9 steps (steps 0-8, 9-`$11`, ... `$2D`-`$35`):
+- each step decompresses that frame's tiles to VRAM `$8000` / `$8040` / `$8080` / `$80C0` / `$80E0` / `$8100`;
+- and draws its template at x `$FE` / `$0E` / `$1E` / `$2E` / `$36` / `$3E`, y `$80`.
+
+The task also prints the step with PrintDecimalByte at (3, `$0F`), which looks like a debug leftover.
+Map01EnterNop 35:7848 holds an unreachable far call to the task (already noted).
+
+##### Bank 26 (and 20-25): actor sprite graphics
+
+26:4012 ActorCopyFrameTiles (export 0; called from 04:4CB3 / 4D03 / 579C):
+- It switches the ROM bank to wActorBank and keeps running at the same address, so the same 33 bytes sit at `$4012` in
+  banks 20-26.
+- It reads word [hl + 2c] + b and queues 4 tile blocks to VRAM de.
+
+##### Stragglers
+
+- **4A:6C1F** LoadLinkWaitPicture (export 6; 32:5318 / 5371 / 53DE, the link host / guest handshake loops): an animated
+  full-screen picture. The task 4A:6CA2 cycles 12 frames of 4 tiles from 4A:7650 through `$C0F8`.
+- **3B:4433** CaptionMotionTask (task of ShowCaption):
+  - It runs a script of 4-byte steps from `$D335`: step routine `$D340`, keep flag `$D342`, frames `$D343`.
+  - It moves the caption by velocity (`$D33C` / `$D33E`) and draws CaptionTemplateTable 3B:44DA[`$D344`].
+  - When wCaptionActive runs out, it stops and shows the HUD again. The new RAM labels are listed in the CSV.
+- **44:4292** PalEditorSpriteTask: cursor and label sprites of DebugPaletteEditor.
+- **4F:62A7 / 62B4** CaptionAnimTask / CaptionObjStep: the frame / delay script of wCaptionObj `$CAA0`. Each frame is
+  12 tiles plus template 4F:6312.
+- **15:47AD** BehindViewTask → DrawFlagSprite 15:4DEC; 15:47B8 is the load-frame counter task.
+- **07:7DB0 / 09:4990** MenuBobSpriteTask (and the bank 09 copy): a decoration sprite bobbing by hVBlankCount.
+- **08:4244** SetContestLeader.
+- **08:437C / 4391 / 439E / 43AB**: the near-pin / drive contest leader's sprite (P1 tile `$5C`, P2 `$6C`), shown while
+  the contest captions `$20` / `$22` are up.
+- **0A:72AD** NavCopyListAttrRows (WRAM1 `$D480` → VRAM1 `$9880`).
+- **00:2B98** ApplyMusicOption: the Settings music toggle. Music off sends sound command 0; music on replays
+  wCurrentBGM.
+
+##### False entries (not labelled)
+
+- **0C:6438** (73 bytes). The "callers" 0C:43F6 and 0C:46E6 decode `cc 38 64` as `call z,$6438`, but they are inside
+  RecordsAnimTileFramesData 0C:43E0 (tile graphics). 0C:6438 is the middle of CopyWinnersGridCells 0C:6410.
+- **0D:6746** (the far call into bank 17 named in the task) is misaligned data: `d7 10 17` inside graphics at
+  0D:6740+. Its rst `$10` would read word 17:4010 = `$0160`, so it does not reach any bank 17 routine.
+- **17:4021** (export word `$04`) points into code (the operand of 17:4004), not to a routine.
+
+##### RAM added
+
+`$C8A0` wP1Strokes, `$C8AA` wP1HoledOut, `$D4DC` wShotEndLie (stored at 10:4AA1), `$C3B6` wLoadFrameCount, `$C3EA`
+wPuttOfferCourse (never read), `$D335`-`$D344` caption motion fields (wCaptionScript / X / Y / VX / VY / StepFunc /
+StepKeep / StepFrames / Sprite).
+
 ### Data Structures
 
 *(none yet)*
@@ -2006,7 +2195,7 @@ Mini-Character Test, $25 Terop (captions).
 
 GameMain (01:400E) initialises WRAM, palettes and the font tiles (01:41CE LoadFontTiles), runs three bank-02
 setup calls (02:41F6, 02:45D3, 02:4E3D), clears the shadow OAM, then `jp 01:41A6`, skipping a debug boot menu at
-01:40A6-41A2 that nothing reaches (it prints BuildStamp and starts tests on Up + a button). 01:41A6 sets
+01:40A6-41A2 that nothing reaches (it prints BuildStampData and starts tests on Up + a button). 01:41A6 sets
 `wMapId` = 0 and `wMapEntrance` = 3 and farcalls **MapEngine (0A:498C)**, which never returns:
 
 ```

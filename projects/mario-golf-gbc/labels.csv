@@ -14,7 +14,7 @@ bank,addr,name,comment
 0,0060,IntJoypad,reti
 0,0100,EntryPoint,nop ; jp 0150
 0,0150,EntryJump,jp 2DA0 Start
-0,0153,BuildStamp,ascii "9908020118" + 00 (Tennis has its stamp at the same address)
+0,0153,BuildStampData,ascii "9908020118" + 00 (Tennis has its stamp at the same address)
 # --- bank 0 routines found by reading code ---
 0,0690,JumpTableDispatch,rst $00 target: pops the return address as the table base and jumps to word [A] (as in Mario Tennis 00:06C4; different code)
 0,0B3C,MulHLBySin,hl * sin(a) with an 8-bit angle (table 00:0B69) (as in Mario Tennis 00:0B03)
@@ -209,7 +209,7 @@ bank,addr,name,comment
 *,CB00,wSerialSendBuf,
 *,CB40,wSerialRecvBuf,64 bytes
 # --- top level: map engine (bank 0A) ---
-1,40A6,DebugBootMenu,unreachable (GameMain jumps over it to 41A6): prints BuildStamp; Up/Down/A/Start/B/Right/Select pick tests
+1,40A6,DebugBootMenu,unreachable (GameMain jumps over it to 41A6): prints BuildStampData; Up/Down/A/Start/B/Right/Select pick tests
 1,41A6,GameMainStart,wMapId = 0; wMapEntrance = 3; farcall MapEngine
 1,41CE,LoadFontTiles,01:42A0 -> $9000 ($80 tiles) and 01:4AA0 -> $8800 ($60 tiles)
 A,498C,MapEngine,never returns: per map ClearFrameTasks / RegisterFrameTask 1 = 0A:4950 / MapRun / MapTakeWarp
@@ -236,12 +236,12 @@ A,4950,MapDebugCoordsTask,frame task 1 during maps: prints the player's coordina
 7E,4186,SongStart,a = song: bank from SongBankTable -> wSoundBank and rROMB0 (hFFBF); header from SongTable in that bank
 7E,49CC,SoundCheckMusicEnd,when the 4 channel flags $C4CD-$C4D0 are 0: wMusicRequest = $80
 7E,5235,SFXPriorityTable,1 byte per effect
-7E,52A4,SongCount,$2B
+7E,52A4,SongCountData,$2B
 7E,52A5,SongBankTable,1 byte per song (7C / 7D / 7E)
 7E,52D7,SongTable,word per song in each music bank (the bank's own copy); header = mask + 4 channel pointers
 7F,400A,SFXStart,a = effect: ids < $65 from 7F:495C/495D; ids >= $65 from 7F:615F/6160
 7F,406C,SFXUpdate,farcalled at the start of SoundUpdate
-*,C4C0,wMusicRequest,song id; bit 7 set once started (SoundCmdDispatch writes it if < SongCount)
+*,C4C0,wMusicRequest,song id; bit 7 set once started (SoundCmdDispatch writes it if < SongCountData)
 *,C4C1,wSoundBank,music bank of the current song
 *,C4C2,wSFXRequest,effect id; bit 7 set once started
 *,C4C3,wSFXPriority,
@@ -477,7 +477,7 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 10,6406,SmartAim,at the cup if the club reaches; else up to 36 directions (offsets 10:63BE) for a fairway or green landing, then a club less
 10,6145,AimMarker,the aim arrow's end ($D481-$D484) across the aim
 10,6472,DropAtSafeSpot,the ball back to $D51D (water)
-10,63BE,AimSearchOffsets,36 words added to the aim in turn by SmartAim
+10,63BE,AimSearchOffsetTable,36 words added to the aim in turn by SmartAim
 10,639A,ClubCountTable,clubs PickClub may try, by lie class
 3B,7260,OutcomeRules,after a shot: bonus and points, the green flag, water (penalty and drop), out of bounds (penalty, $FF: stroke and distance), the score for a holed ball; captions
 3B,4339,ShowCaption,a = caption: the caption system (task 3B:4433, $D335-$D345)
@@ -605,7 +605,7 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 7C,4186,SongStart_7C,copy of 7E:4186
 7C,49CC,SoundCheckMusicEnd_7C,copy of 7E:49CC
 7C,5235,SFXPriorityTable_7C,copy of 7E:5235
-7C,52A4,SongCount_7C,copy of 7E:52A4
+7C,52A4,SongCountData_7C,copy of 7E:52A4
 7C,52A5,SongBankTable_7C,copy of 7E:52A5
 7C,4043,SoundSetMuteMask_7C,copy of 7E:4043
 7C,4047,SoundIsMusicPlaying_7C,copy of 7E:4047
@@ -682,7 +682,7 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 7D,4186,SongStart_7D,copy of 7E:4186
 7D,49CC,SoundCheckMusicEnd_7D,copy of 7E:49CC
 7D,5235,SFXPriorityTable_7D,copy of 7E:5235
-7D,52A4,SongCount_7D,copy of 7E:52A4
+7D,52A4,SongCountData_7D,copy of 7E:52A4
 7D,52A5,SongBankTable_7D,copy of 7E:52A5
 7D,4043,SoundSetMuteMask_7D,copy of 7E:4043
 7D,4047,SoundIsMusicPlaying_7D,copy of 7E:4047
@@ -1055,9 +1055,9 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 41,6486,SkillHighlightColorTable,64 colour words cycled by 41:50D2
 41,7317,GolfPauseMenuHandlerTable,6 handler words for RunMenu (Camera Mode ... Quit)
 41,73DC,MapStartMenuHandlerTable,4 handler words (Char. Data / Stars / Message / Save & Quit)
-41,7409,MapStartMenuNavHandlers,5 handler words (Navigation first; map 2)
-41,743F,GolfPauseMenuSaveHandlers,6 handler words
-41,756F,GolfPauseMenuSave2Handlers,6 handler words
+41,7409,MapStartMenuNavHandlerTable,5 handler words (Navigation first; map 2)
+41,743F,GolfPauseMenuSaveHandlerTable,6 handler words
+41,756F,GolfPauseMenuSave2HandlerTable,6 handler words
 41,7654,TrainingPauseMenuHandlerTable,7 handler words
 41,76FF,PracticeWindMenuHandlerTable,4 handler words
 41,7741,PracticeMenuHandlerTable,2 handler words
@@ -1554,7 +1554,7 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 05,687E,DebugToggleFlagAtCursor,flag editor: toggles flag page $C484 * 64 + row $C486 * 8 + column $C485 (00:2D10 / 2D2E / 2D49)
 05,68B4,DebugDrawFlagsLeft,flag editor: hex labels and 4 rows of 8 flags (tile $65 set / $40 clear) of the page's first 32 flags in window $C488
 05,68F4,DebugDrawFlagsRight,flag editor: same for the page's last 32 flags in window $C489
-05,6935,HexDigitChars,ASCII 0-9 A-F
+05,6935,HexDigitCharsData,ASCII 0-9 A-F
 05,6945,DebugDrawHexLabel,a = flag number; b = window; draws its high hex digit then tile $3F at d e
 05,6967,DebugDrawFlagRow,a = first flag; b = window; 8 flags as tiles $65 (set) or $40 (clear) every 2 columns from d e
 05,6998,DebugDrawFlagCursor,tile $0D at the cursor ($C485 $C486) in the left or right flag window
@@ -1566,7 +1566,7 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 05,6B2E,DebugMenu,menu text $0084 (Scene / Map / Palette / Flag): DebugWarpMenu / 0B:4579 / 44:42FB / DebugFlagEditor; loops until B
 05,6B6E,DebugMenuJumpTable,4 handlers of DebugMenu
 05,6B8D,DebugDrawWarpWindow,warp menu window $C471: map name (text $012C + index) "- ENTER NO -" map index entrance and the cursor
-05,6C18,DebugEnterNoText,"- ENTER NO -"
+05,6C18,DebugEnterNoTextData,"- ENTER NO -"
 05,6C25,DebugWarpMenu,debug menu Scene: Left / Right pick the map record ($C470) or entrance ($C474 < 16); Up / Down switch; A warps (wMapId wMapEntrance $C441 = $FA); B exits
 05,6CCC,DebugAdjustValue,a + 1 on Right / - 1 on Left (repeat) wrapping in 0 .. d - 1
 03,4028,UnusedPictureScreen,no callers: link idle + LCD off; LZ tiles 03:40AB -> VRAM1 $9000 map 03:4950 attrs 03:4A9E palettes 03:4B05; song $06; waits for a button
@@ -1798,20 +1798,20 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 0C,4014,StarsScreen,export $00: per-course star records (6 stars per course and Remaining = 36 - total); loads save block 3 (0B:4FB7); left/right = course ($D223); B exits
 0C,408B,StarsScreenInput,left/right cycles wRecordsCourse ($D223) through wRecordsPageCount and redraws (4248/433A); B returns $FF
 0C,40F3,StarsScreenInit,LCD off; loads frame tiles (4B:$1C/$20/$1E/$18/$1A) and palettes 0C:419B/0C:5C00; tilemaps to WRAM1 $D000/$D300 then VRAM
-0C,419B,RecordsCursorPalette,2 palettes (8 bytes) loaded to slot 1 by every records screen init
+0C,419B,RecordsCursorPaletteData,2 palettes (8 bytes) loaded to slot 1 by every records screen init
 0C,41AB,DrawStarMark,c = row (0-5; 6 = total row): tile $BF with attribute $0A at $D129 + 32c in the WRAM1 tilemap
 0C,41E9,DrawStarCountDigits,b = number (capped 99) at row c of the stars table ($D129 + 32c); digit tiles from $E6
 0C,4248,DrawStarsPage,reloads the stars tilemaps; course banner (49C1); star marks of wRecordsCourse via 0B:5009; total collected at $D16E and 36 - total at $D1EE
 0C,433A,CopyStarsTilemapToVRAM,queues WRAM1 $D300 -> attributes $9800 (VRAM1) and $D000 -> map $9800; $24 blocks each
 0C,436A,AnimateRecordsTiles,frame counter / 8 picks 1 of 16 frames at 0C:43E0 (+$200 for the second tile pair): 2 tiles each to [$D23E] and [$D240]
 0C,43AD,InitRecordsTileAnim,export $0E (called from bank 0A): animated tile targets $8FC0/$8FE0 -> $D23E/$D240; first step of AnimateRecordsTiles
-0C,43E0,RecordsAnimTileFrames,2 x 16 frames x 32 bytes of animated tile graphics used by AnimateRecordsTiles
+0C,43E0,RecordsAnimTileFramesData,2 x 16 frames x 32 bytes of animated tile graphics used by AnimateRecordsTiles
 0C,47E0,AnimateStarIconTiles,frame counter / 8 picks 1 of 4 frames in WRAM5 $D000: 2 tiles to VRAM1 $8D40 and $8E40
 0C,4821,StarsAnimTask,frame task of StarsScreen: tile animation to VRAM1 $91C0/$91E0 (436A) + AnimateStarIconTiles
 0C,4852,PageArrowsTask,frame task: two bobbing page arrow sprites (0C:4947) at d = $0A - bob / $96 + bob and e = $1C (00:26EA); bob from 0C:4950
 0C,4894,PageArrowsTaskLow,same as PageArrowsTask with e = $14 and 00:26A4
 0C,48D6,PageArrowsScrolledTask,page arrows placed in world coordinates from the scroll position $C320 (PositionSpriteWorld)
-0C,4947,PageArrowSprite,sprite definition of the page arrow used by the arrow tasks
+0C,4947,PageArrowSpriteData,sprite definition of the page arrow used by the arrow tasks
 0C,4950,ArrowBobTable,8 offsets 0 1 2 3 4 3 2 1 for bobbing arrows
 0C,4958,DecompressPanelPieces,hl = tilemap dest and de = attribute dest and b = stride: 499A then 4973
 0C,4973,DecompressPanelAttrPieces,decompresses 4B:$08/$0A/$0C to de / de+b / de+2b (attribute maps)
@@ -1886,9 +1886,9 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 0C,6799,DrawVsResultMark,c = mark 0-2: 2x2 tiles from $D014/$D054/$D094 to de (tiles and attributes)
 0C,67F8,ShotRecordsScreen,export $08: birdie / eagle / albatross / hole-in-one records (4 x 5 faces); A returns $FE to replay the chosen shot
 0C,687C,ShotRecordsScreenInit,clears $D227 list; loads cursor gfx (4C:$12/$14) and palettes; frame 4B:$08/4C:$10/$0E; faces 4C:$1C/$1A
-0C,6987,ShotCursorPalette,cursor palette (also copied to $D218 for cycling)
+0C,6987,ShotCursorPaletteData,cursor palette (also copied to $D218 for cycling)
 0C,698F,ShotCursorTask,frame task: draws the cursor sprite (0C:69B4) at the slot position from 6AE5
-0C,69B4,ShotCursorSprite,sprite definition of the record cursor
+0C,69B4,ShotCursorSpriteData,sprite definition of the record cursor
 0C,69D5,ShotRecordsInput,d-pad moves the cursor (6A48); A -> $FE; B -> $FF
 0C,6A48,MoveShotCursor,e = direction 0-3: moves $D214 in the 5 x 4 grid wrapping and skipping empty slots; stores it in $CA7F
 0C,6AE5,GetShotCursorPos,d = x and e = y of slot $D214 from ShotCursorPosTable
@@ -1946,7 +1946,7 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 0F,4AB7,CourseSelect,export $00: builds the course list (4B7A) and runs the film strip course select; a = course id or $FF
 0F,4AD6,CourseHoleSelect,export $02: l = flags ($D209; bit 7 keeps the current course): course select then hole select (77B3); a = course b = hole
 0F,4B7A,BuildCourseList,$D658 = count then course ids 1-6 available for $C834 mode / $C33F / hFFCF and flags #112-114 #139 #159 or 02:44F2
-0F,4C78,CourseSelectDescriptors,hooks 4CD4/4D33 and frame assets then 12 bytes per course (emblem / picture tiles / emblem attrs / picture maps / palette)
+0F,4C78,CourseSelectDescriptorTable,hooks 4CD4/4D33 and frame assets then 12 bytes per course (emblem / picture tiles / emblem attrs / picture maps / palette)
 0F,4CD4,DrawCourseNameBox,hook 0: emblem and texts $21+id and $28+id (or $2F+id when $C2A5 & $0F = $0F) via 05:62AA
 0F,4D33,ClearCourseNameBox,hook 1: reloads the empty name box
 0F,77B3,HoleSelectInput,course name and text $3B in the box; d-pad changes the hole 1-18 (wraps; DrawHoleNumber); A returns it; B returns $FF and sets $D209 = 1
@@ -2006,10 +2006,10 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 7F,42CB,SFXSilenceAllBroken,unreferenced: meant to write NRx2 / NRx4 of all channels but uses ldh a [n] (reads); only clears wSFXChannelMask
 7F,42E2,SFXSilenceActive,before a new effect: NRx2 = 8 and NRx4 = $80 on every channel in wSFXChannelMask; mask = 0
 7F,431C,SFXHeightFreqTable,word frequencies for SFXCmdBallPitch (from $05FB rising) indexed by ball height / 4
-7F,495C,SFXCountA,byte $6E: limit checked for effect ids < $65 (SFXStart)
+7F,495C,SFXCountAData,byte $6E: limit checked for effect ids < $65 (SFXStart)
 7F,495D,SFXTableA,word per effect id < $65: effect header (channel mask then one script pointer per set bit)
 7F,4B6B,SFXWaveTable,8+ words: 16-byte wave patterns for SFXCmdWave (7F:4C0F + 16 n)
-7F,615F,SFXCountB,byte $6C: limit checked for effect ids >= $65 (index id - $65)
+7F,615F,SFXCountBData,byte $6C: limit checked for effect ids >= $65 (index id - $65)
 7F,6160,SFXTableB,word per effect id >= $65 (id - $65): effect header as SFXTableA
 *,C4C5,wSFXPanning,NR51 bits of the effect channels (SFXCmdPanning); merged by SoundUpdatePanning
 *,C56E,wSFXChTrigger,4 bytes: $80 = retrigger (NRx4 bit 7) at the next frequency write
@@ -2199,9 +2199,9 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 10,5B81,HudRedrawPart,c = 1: shot panel; club icon; meter sprites / c = 2: pin distance / else: lie icon (bank 12 HUD exports)
 10,5EB9,AimStepAccel,export $42: bc (aim step) x (1 + wLookSpeed / 32) / 2 ramping x0.5 -> x1.5; wLookSpeed++ up to $40
 10,621E,TargetCupDist,hl = distance from wTargetMarker to the cup (PinDist tail 10:62DA)
-10,63AA,SmartAimNextOffset,SmartAim: bc += AimSearchOffsets[d]; d++
+10,63AA,SmartAimNextOffset,SmartAim: bc += AimSearchOffsetTable[d]; d++
 10,68B4,ClubBaseDistanceForClub,export $0E: a = club; ClubBaseDistance without reading wClub
-10,4771,NoOtherBallPos,default wOtherBall (y = $DF00: off the map) when the other player has not teed off
+10,4771,NoOtherBallPosData,default wOtherBall (y = $DF00: off the map) when the other player has not teed off
 *,D439,wTeeSpot,WRAM6: tee position (x y integer words) from the hole data (13:562A) or SetForcedTee
 *,D41E,wOtherBall,WRAM6: the other player's ball (x y integer words) for its sprite (bank 11)
 *,C870,wGolfEventBank,bank of the golf event handler table ($C871 = its address); 0 = none
@@ -2321,8 +2321,8 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 08,50E6,PlayGreenMusic,export $12: on the green (lie 6; music on) song $0E when strokes < par else $0D; otherwise PlayRoundMusic
 08,555F,LinkLostScreen,export $18 (LinkLostReset): LZ tiles 08:55E2 -> VRAM1 / map 08:5E87 / attributes 08:5FD5 / palettes 08:603C; song 6; waits for a button
 08,55E2,LinkLostTilesLZ,LZ tiles of the link-lost screen
-08,5E87,LinkLostMapLZ,LZ tilemap of the link-lost screen
-08,5FD5,LinkLostAttrLZ,LZ attribute map of the link-lost screen
+08,5E87,LinkLostMapLZData,LZ tilemap of the link-lost screen
+08,5FD5,LinkLostAttrLZData,LZ attribute map of the link-lost screen
 08,603C,LinkLostPalettes,8 BG palettes
 08,60E6,AimStepForDistance,export $20: hl = club base distance -> bc = aim turn step from AimStepTable[hl >> 5]; / 4 in the green view
 08,6110,AimStepTable,words falling with distance ($4000 $3FE9 $154E ...)
@@ -2385,7 +2385,7 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 0,1B52,SubHLBC,hl -= bc (returns at once with z set when bc = 0); called by map scripts 34/35
 # --- bank 0A script API (texts, actor moves, waits, fades) ---
 0A,4066,ScriptDebugSkipTask,frame task registered by ScriptBegin in hDebugMode: Start ($08) toggles flag #22 (script fast-forward) and wTextSpeed bit 7 (instant text)
-0A,4109,ScriptActorIdleScript,data not code: actor script bytes 0B 0C FE FF given to the wScriptActor slot by ScriptEnd (bank 04 actor script interpreter 04:420C)
+0A,4109,ScriptActorIdleScriptData,data not code: actor script bytes 0B 0C FE FF given to the wScriptActor slot by ScriptEnd (bank 04 actor script interpreter 04:420C)
 0A,4120,ScriptRespawnActors,export $06: a = bank / hl = spawn list -> MapInitObjects (actors cleared; player / list / partner respawned)
 0A,4124,ScriptSetText,export $0E: hl = text id -> SetMessageText and the script text cursor wScriptTextId ($D852)
 0A,4140,ScriptSkipText,export $10: wScriptTextId += 1 (skips one text without showing it)
@@ -3630,3 +3630,211 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 35,79D2,Map25EnterCaption,entrance 1: caption "Marion Club Director's Office" ($0486) 110 frames -> warp 1 (map 05); entrance 2/3: "A letter is falling from the sky." + Peach's invitation ($1442/$1443); set flag #123 and save flag $1E0; warp 2 (Field) / 3
 35,7B21,EndingActorScriptsData,actor script bytecode block (04:4234) after the Terop script: 7B22 is used by map $33 (35:49A2); not code (junk script root)
 35,7B7B,Bank35ObjectNop,bare ret used as the object 01 script of maps 01 / $24 / $32 / $34
+# --- golf event hook handlers (30 31 33 34), course map screen (17), ending sprites (79), stragglers ---
+30,435E,Map0DRunningApproachDemoShotSetup,golf hook event 0 (Map0DTalk03RunningApproachLessonHookTable): GolfViewExit; coach explains the shot (texts $0CA2-$0CA4 via ShowMessageAt 05:5E70)
+30,439B,Map0DRunningApproachDemoAfterShot,golf hook event 1: GolfViewExit; SetGolfEventFlag $82 (bit 7: the demo round ends after one shot)
+30,43CF,Map0DRunningApproachTryShotSetup,golf hook event 0 of the player's attempt: texts $0CA6-$0CA8 (choose an approach / a club / shoot)
+30,4409,Map0DRunningApproachTryAfterShot,golf hook event 1: quit (wGameMode 0) -> return entrance 6; else wEventResult = BallWithinPinDist $60 / flag #99 = P1 holed / wEventShotClub = stroke record +8; ends the round ($82)
+30,45CA,Map0DChipApproachDemoShotSetup,golf hook event 0: texts $0CB0-$0CB2 (chip shot with a pitching wedge)
+30,4607,Map0DChipApproachDemoAfterShot,golf hook event 1: ends the demo round ($82); also sets flag #99 when the coach holes it (the other demo hooks do not)
+30,4647,Map0DChipApproachTryShotSetup,golf hook event 0 of the attempt: texts $0CB4-$0CB6
+30,4673,Map0DChipApproachTryAfterShot,golf hook event 1: quit -> return entrance 7; else wEventResult = BallWithinPinDist $60 and #99 = P1 holed (no club saved); ends ($82)
+30,48DC,ApproachRangePracticeShotSetup,golf hook event 0 of the free practice round: bare ret
+30,48DD,ApproachRangePracticeAfterShot,golf hook event 1: quit (wGameMode 0) -> end ($82); else SetGolfEventFlag 1 (RetryShotRestore: the same shot again)
+30,4C27,Map10BunkerShotDemoShotSetup,golf hook event 0: texts $0CBD-$0CC0 (guard bunker; carry 15Y with a SW)
+30,4C6F,Map10BunkerShotDemoAfterShot,golf hook event 1: ends the demo round ($82)
+30,4CA3,Map10BunkerShotTryShotSetup,golf hook event 0 of the attempt: texts $0CA6-$0CA8 (reuses the Marion range texts)
+30,4CCB,Map10BunkerShotTryAfterShot,golf hook event 1: quit -> return entrance 6; else wEventResult = BallWithinPinDist $60 and #99 = P1 holed; ends ($82)
+30,4E67,Map10SlopedGreenDemoShotSetup,golf hook event 0: texts $0CCB-$0CCE (2Y to the green edge: putter)
+30,4EA1,Map10SlopedGreenDemoAfterShot,golf hook event 1: ends the demo round ($82)
+30,4ECD,Map10SlopedGreenTryShotSetup,golf hook event 0 of the attempt: texts $0CD0-$0CD2
+30,4EF5,Map10SlopedGreenTryAfterShot,golf hook event 1: quit -> return entrance 7; else wEventResult = BallWithinPinDist $60 and #99 = P1 holed; ends ($82)
+30,538F,Map13BackspinDemoShotSetup,golf hook event 0: texts $0CD9-$0CDC (pin 5Y past a guard bunker; SW with backspin)
+30,53C9,Map13BackspinDemoAfterShot,golf hook event 1: ends the demo round ($82)
+30,53F5,Map13BackspinTryShotSetup,golf hook event 0 of the attempt: texts $0CDE-$0CE0
+30,541D,Map13BackspinTryAfterShot,golf hook event 1: quit -> return entrance 6; else wEventResult = BallWithinPinDist $60 / wEventShotClub = stroke record +$0C (bit 7 = backspin; checked for text $0CE2) / #99; ends ($82)
+30,55E1,Map13UphillGreenDemoShotSetup,golf hook event 0: texts $0CE8-$0CEB (iron for the climb: 7I)
+30,561B,Map13UphillGreenDemoAfterShot,golf hook event 1: ends the demo round ($82)
+30,5647,Map13UphillGreenTryShotSetup,golf hook event 0 of the attempt: texts $0CED-$0CEF
+30,566F,Map13UphillGreenTryAfterShot,golf hook event 1: quit -> return entrance 7; else wEventResult = BallWithinPinDist $60 / #99 / wEventShotClub = stroke record +8; ends ($82)
+30,5BF2,Map16MoundApproachDemoShotSetup,golf hook event 0: texts $0CF7-$0CFA (carry up the mound and roll)
+30,5C2C,Map16MoundApproachDemoAfterShot,golf hook event 1: ends the demo round ($82)
+30,5C58,Map16MoundApproachTryShotSetup,golf hook event 0 of the attempt: texts $0CFC-$0CFE
+30,5C80,Map16MoundApproachTryAfterShot,golf hook event 1: quit -> return entrance 6; else wEventResult = BallWithinPinDist $60 / wEventShotClub = stroke record +$0C (bit 7 backspin; text $0D00) / #99; ends ($82)
+30,5E3C,Map16SlopeApproachDemoShotSetup,golf hook event 0: texts $0D06-$0D09 (carry and run about equal: 5I)
+30,5E76,Map16SlopeApproachDemoAfterShot,golf hook event 1: ends the demo round ($82)
+30,5EA2,Map16SlopeApproachTryShotSetup,golf hook event 0 of the attempt: texts $0D0B-$0D0D
+30,5ECA,Map16SlopeApproachTryAfterShot,golf hook event 1: quit -> return entrance 7; else wEventResult = BallWithinPinDist $60 and #99 = P1 holed; ends ($82)
+30,6052,Map16MoundApproachContestShotSetup,golf hook event 0 of the Links contest: try count (wEventShotClub $C969) -> P1 strokes $C8A0 and HudDrawPlayer1
+30,605C,Map16MoundApproachContestAfterShot,golf hook event 1: quit -> return entrance 6 and end; within $60 of the pin -> wEventResult +1; tries +1; text $0C85 / $0C86 with both counts; under 10 tries -> retry (flag 1); at 10 sets #98 when >= 7 and ends
+30,6243,Map16SlopeApproachContestShotSetup,golf hook event 0: as Map16MoundApproachContestShotSetup
+30,624D,Map16SlopeApproachContestAfterShot,golf hook event 1: as Map16MoundApproachContestAfterShot with return entrance 7 and texts $0C8D / $0C8E
+30,6BFB,PuttingGreenPracticeShotSetup,golf hook event 0 of the free putting round: bare ret
+30,6BFC,PuttingGreenPracticeAfterShot,golf hook event 1: wGameMode 7 -> SetGolfEventFlag 1 (putt again from the same spot); else (quit) $80 ends the round
+30,6C0F,PuttingChallengeHookTable,golf event hook table (event 0 PuttingChallengeShotSetup / 1 PuttingChallengeAfterShot) of the putting challenge round started at 30:6799 by the green pros
+30,6C2F,PuttingChallengeShotSetup,golf hook event 0: once per challenge (temp flag #224): GolfViewExit and the rules text $10D5 (7 out of 10)
+30,6C58,PuttingChallengeAfterShot,golf hook event 1: putts $C3E0 +1; quit -> wStoryRoundKind 0 and end; within $34 -> wPuttChallengeScore +1 and text $10D6 else $10D7; 10 putts -> end; odd putt -> retry spot; even -> P1 holed + SetP1StartStrokes (next of the 5 holes)
+30,6CDF,PuttingChallengePushCounts,PushTextNumberArg putts taken ($C3E0) then putts made (wPuttChallengeScore $C3E1) for texts $10D6 / $10D7
+30,6DF6,PuttingChallengeSetOfferText,ScriptSetText $10CF (won the club tournament?) or $10D0 (placed?) for the furthest course by flags #112-#115 and won flags #136-#139; course name via PuttingChallengeSetTextCourse
+30,6E41,PuttingChallengeSetTextCourse,a = e -> SetTextCourseIndex 05:57C3 (text code $0B); also stores a to $C3EA (never read)
+30,7381,AltShotHoleStartGolfers,golf hook event 3 (hole start) of the Alternate Game: AltShotRefreshGolfer for the teammate due by wAltShotTurns $C873 bit 0 (slot 0: own character $80 or $0B) and bit 1 (slot 1: $0C or $0D)
+30,73AF,AltShotRefreshGolfer,RefreshGolferProfile 02:49BA (b = golfer / c = player slot) keeping hl
+30,73B5,AltShotShotSetup,golf hook event 0: HudDrawPlayer1 or HudDrawPlayer2 by wCurPlayer; AdvanceFrame
+30,73C7,AltShotAfterShot,golf hook event 1: AltShotNextGolfer 30:72A8
+31,4CB8,Map0CDriverDemoShotSetup,golf hook event 0 (Map0CTalk03DriverLessonHookTable): texts $1032-$1035 (1W power shot)
+31,4D00,Map0CDriverDemoAfterShot,golf hook event 1: ends the demo round ($82)
+31,4D34,Map0CDriverTryShotSetup,golf hook event 0 of the attempt: texts $1037-$1039 (club then power shot)
+31,4D71,Map0CDriverTryAfterShot,golf hook event 1: quit -> return entrance 8; else wEventResult = Map0CDriverJudgeShot and #99 = P1 holed; ends ($82)
+31,4E5A,Map0CDriverJudgeShot,a = 2 unless the ball rests on the fairway (BallLieTerrain 0); power $3C with impact 0 -> 0 when stroke record +9 is set (power shot?) else 3; power >= $34 and impact within 3 -> 1; else 2
+31,4F96,Map0CIronShotDemoShotSetup,golf hook event 0: texts $1042-$1045 (irons and the wind: one club lower in a tailwind)
+31,4FDE,Map0CIronShotDemoAfterShot,golf hook event 1: ends the demo round ($82)
+31,5012,Map0CIronShotTryShotSetup,golf hook event 0 of the attempt: texts $1047-$1049
+31,504F,Map0CIronShotTryAfterShot,golf hook event 1: quit -> return entrance 9; else wEventResult = Map0CIronShotJudgeShot and #99; ends ($82)
+31,510D,Map0CIronShotJudgeShot,a = 0 within $A0 of the pin (BallWithinPinDist_31) / 1 on the green (BallLieTerrain 6) / 2 otherwise
+31,52B6,DrivingRangePracticeShotSetup,golf hook event 0 of the free practice round: bare ret
+31,52B7,DrivingRangePracticeAfterShot,golf hook event 1: quit -> end ($82); else SetGolfEventFlag 1 (the same shot again)
+31,5630,Map0FIntentionalShotDemoShotSetup,golf hook event 0: texts $1051-$1054 (tree in the way: curve the tee shot)
+31,566D,Map0FIntentionalShotDemoAfterShot,golf hook event 1: ends the demo round ($82)
+31,56A1,Map0FIntentionalShotTryShotSetup,golf hook event 0 of the attempt: texts $1058-$105A
+31,56DE,Map0FIntentionalShotTryAfterShot,golf hook event 1: quit -> return entrance 8; else wEventResult = Map0FIntentionalShotJudgeShot and #99; ends ($82)
+31,5800,Map0FIntentionalShotJudgeShot,a = 2 off the fairway; 3 when stroke record +$0C bits 4-5 are clear (no curve); 5 when ball y ($D404) >= $2480; 4 when wBallFlags bit 4; else 0 (31:582D-583C x test is unreachable)
+31,5943,Map0FWindShotDemoShotSetup,golf hook event 0: texts $1064-$1067 (headwind: a bigger club)
+31,598B,Map0FWindShotDemoAfterShot,golf hook event 1: ends the demo round ($82)
+31,59BF,Map0FWindShotTryShotSetup,golf hook event 0 of the attempt: texts $106A-$106C
+31,59FC,Map0FWindShotTryAfterShot,golf hook event 1: quit -> return entrance 9; else wEventResult = Map0FWindShotJudgeShot and #99; ends ($82)
+31,5ABA,Map0FWindShotJudgeShot,a = 0 within $A0 of the pin / 1 on the green / 2 otherwise (same test as Map0CIronShotJudgeShot)
+31,5F27,Map12HighShotDemoShotSetup,golf hook event 0: texts $1073-$1074 (a standard shot cannot hold this green)
+31,5F52,Map12HighShotDemoAfterShot,golf hook event 1: ends the demo round ($82) without GolfViewExit
+31,5F78,Map12HighShotTryShotSetup,golf hook event 0 of the attempt: texts $1079-$107B
+31,5FB5,Map12HighShotTryAfterShot,golf hook event 1: quit -> return entrance 8; else #99 = P1 holed and wEventResult = Map12HighShotJudgeShot; ends ($82)
+31,607B,Map12HighShotJudgeShot,a = 0 when #99 (holed); 2 unless on the green with stroke record +$0C bit 7 (backspin); then 0 within $A0 of the pin else 1
+31,61B5,Map12TreeRecoveryDemoShotSetup,golf hook event 0: texts $1083-$1086 (low shot through the trees with a 2I)
+31,61F2,Map12TreeRecoveryDemoAfterShot,golf hook event 1: ends the demo round ($82)
+31,6226,Map12TreeRecoveryTryShotSetup,golf hook event 0 of the attempt: texts $1088-$108A
+31,6263,Map12TreeRecoveryTryAfterShot,golf hook event 1: quit -> return entrance 9; else wEventResult = Map12TreeRecoveryJudgeShot and #99; ends ($82)
+31,6321,Map12TreeRecoveryJudgeShot,a = 1 off the fairway; on the fairway 0 when ball x ($D401) < $1980 (y >= $2100) or x < $2100 (y < $2100) else 2
+31,6909,Map15TreeShotDemoShotSetup,golf hook event 0: Map15UnlockContests; contest (#224) without #101 -> texts $1018-$101A; no contest -> lesson texts $1092-$1095
+31,697D,Map15TreeShotDemoAfterShot,golf hook event 1: Map15UnlockContests; contest (#224): coach's PinDist -> wEventResult (word); ends ($82)
+31,69BC,Map15TreeShotTryShotSetup,golf hook event 0 of the attempt: Map15UnlockContests; contest (#224) -> nothing; else texts $1098-$109A
+31,6A02,Map15TreeShotTryAfterShot,golf hook event 1: quit -> return entrance 8; contest -> PinDist to wEventPlayerDist $C96A; else wEventResult = Map15TreeShotJudgeShot; #99; ends ($82)
+31,6B8B,Map15TreeShotJudgeShot,a = 0 when #99 (holed); 2 off the green; on the green 0 within $A0 of the pin else 1
+31,6CD6,Map15BuriedLieDemoShotSetup,golf hook event 0: Map15UnlockContests; contest (#225) -> text $1023; else lesson texts $10A2-$10A5 (buried in sand: 2I)
+31,6D33,Map15BuriedLieDemoAfterShot,golf hook event 1: Map15UnlockContests; contest (#225): coach's PinDist -> wEventResult (word); ends ($82)
+31,6D72,Map15BuriedLieTryShotSetup,golf hook event 0 of the attempt: Map15UnlockContests; contest (#225) -> nothing; else texts $10A8-$10AA
+31,6DB8,Map15BuriedLieTryAfterShot,golf hook event 1: quit -> return entrance 9; contest -> PinDist to wEventPlayerDist; else wEventResult = Map15BuriedLieJudgeShot; #99; ends ($82)
+31,6F45,Map15BuriedLieJudgeShot,a = on the green 0 within $A0 of the pin else 3; in a bunker (lie 2) 2; else 1
+31,75E0,ClinicShotSetup,golf hook event 0 of the clinic's judged shot: bare ret
+31,75E1,ClinicAfterShot,golf hook event 1: flag #99 set unless quit (wGameMode 0); wEventResult = ClinicClassifyShot; wEventShotClub = stroke record +8; ends ($82)
+31,7D53,BallWithinPinDist_31,a = 0 when PinDist 10:62AD <= hl else 1 (copy of BallWithinPinDist 30:7E2E)
+33,736F,Map26TargetShotHookTable,golf event hook table (event 0 Map26TargetShotShotSetup / 1 Map26TargetShotAfterShot) of the round started by Map26AskTargetShot
+33,738F,Map26TargetShotShotSetup,golf hook event 0: bare ret
+33,7390,Map26TargetShotAfterShot,golf hook event 1: GolfViewExit; $C3E0 = 1 when within $3C of the pin (BallWithinPinDist_33) and #99 = P1 holed; ends ($80)
+33,7C72,BallWithinPinDist_33,a = 0 when PinDist <= hl else 1 (copy of 30:7E2E)
+34,55B6,ApplyFlaggedHoleMapEdits,hl = 2 list pointers (by wOnGreen 0 / 1; other views none) of 8-byte records (flag word / src / dst / w h; $FFFF ends): each record whose game flag is set -> CopyHoleMapRect
+34,55FE,CopyHoleMapRect,hl = src and de = dst (low byte row / high byte column of the 64x64 hole maps) -> $D000 + row x 64 + column; copies the b x c rect in WRAM3 (tiles) then WRAM2 (attributes) with CopyRect64
+34,563B,CopyRect64,a = WRAM bank: copies c rows of b bytes from hl to de with both strides $40
+34,58E6,Map27DemoRoundHookTable,golf event hook table (event 0 Map27DemoShotSetup / 1 Map27DemoAfterShot) of the caretaker's demo round (34:58C7 in Map27Enter)
+34,5906,Map27DemoShotSetup,golf hook event 0: bare ret
+34,5907,Map27DemoAfterShot,golf hook event 1: ends the demo round ($82)
+34,5C61,Map27CleanupHookTable,golf event hook table of Map27StartBallCleanup: event 0 Map27CleanupShotSetup / 1 Map27CleanupAfterShot / 2 Map27CleanupViewLoaded / 3 Map27SetupTimer
+34,5C81,Map27CleanupShotSetup,golf hook event 0: bare ret
+34,5C82,Map27CleanupAfterShot,golf hook event 1: sets flag #224+wHoleNumber; quit -> $C3E0 0 / $C3E1 $63; within $3C -> holed and $C3E0 / $C3E1 +1; water or OB (wShotEndLie 3 / 7) or the countdown $C0F6 at 0 -> caretaker texts and he takes the ball; else shoot again
+34,5D40,Map27CleanupViewLoaded,golf hook event 2 (hole maps loaded 13:43F6): ApplyFlaggedHoleMapEdits with Map27BallPileEditTable (removes the balls already cleared)
+34,5D46,Map27BallPileEditTable,ApplyFlaggedHoleMapEdits lists: overhead view 34:5D4A (flag #224+n -> 1x1 tile copies) and green view 34:5D9C (empty)
+34,5F93,Map28GolferShotHookTable,golf event hook table (event 0 Map28GolferShotShotSetup / 1 Map28GolferShotAfterShot) of the golfer's shot in Map28Trigger01UnplayableShow
+34,5FB3,Map28GolferShotShotSetup,golf hook event 0: bare ret
+34,5FB4,Map28GolferShotAfterShot,golf hook event 1: waits 30 frames; ends the round ($82)
+34,5FBE,Map28AfterGolferShot,entrance 5 (after the golfer's dunked shot): text $1500 (please give up) and $1501; actors 3 and 2 animate and speak; script actor walks back
+34,6299,Map28GolferRetryHookTable,golf event hook table (event 0 Map28GolferRetryShotSetup / 1 Map28GolferRetryAfterShot) of the golfer's second try in Map28ShotNiceOn
+34,62B9,Map28GolferRetryShotSetup,golf hook event 0: bare ret
+34,62BA,Map28GolferRetryAfterShot,golf hook event 1: ends the round ($82)
+34,62C0,Map28GolferSucceeds,entrance $0D: "You did it!" ($1517); golfers jump and cheer; Map28AwardShotExp; warp request $0F
+34,6362,Map28HoleOutAndLeave,entrance $0F: sets #210; MapSaveReturnPoint ($FA); SaveGame; "let's hole out before we lose daylight" ($151A); golfers walk off; warp request 1
+34,6412,Map28WalkOff,entrance $0E: as Map28HoleOutAndLeave without the text (sets #210; saves; golfers walk off; warp 1)
+34,6507,Map28PlayerShotHookTable,golf event hook table (event 0 Map28PlayerShotShotSetup / 1 Map28PlayerShotAfterShot) of Map28PlayerTryShot
+34,6527,Map28PlayerShotShotSetup,golf hook event 0: bare ret
+34,6528,Map28PlayerShotAfterShot,golf hook event 1: mode not 5 (quit) -> sets #224 and ends; else $C3E0 = 1 when holed or on the green (wShotEndLie 6) / $C3E1 = 1 when the ball skipped on water (wBallFlags bit 0); ends ($80)
+34,6568,Map28ShotResult,entrance 6 after Map28PlayerTryShot: #224 (quit) -> nothing; $C3E0 = 0 -> Map28ShotFailed; $C3E1 = 1 -> Map28ShotNiceOn; else Map28ShotOnGreen
+34,65C3,Map29PinShotSceneStart,golf hook event 4 (scene start) of Map29StartPinShot: unless flag #206: 12 crow tile blocks 34:65E0 -> $8200 and frame task Map29CrowOnPinTask
+34,65E0,Map29CrowOnPinTileData,12 x 16 bytes of crow sprite tiles copied to $8200 by Map29PinShotSceneStart
+34,66A0,Map29CrowOnPinTask,frame task: on the green view (wOnGreen 1) draws the crow template at the cup (wCupX/Y minus the green corner / 8); frame by hVBlankCount via Map29CrowFrameTable -> Map29CrowTemplateTable
+34,6704,Map29CrowFrameTable,256 frame numbers indexed by hVBlankCount for Map29CrowOnPinTask
+34,6804,Map29CrowTemplateTable,sprite template pointers per crow frame (Map29CrowOnPinTask)
+34,71CC,Map29PinShotHookTable,golf event hook table of Map29StartPinShot: event 0 Map29PinShotShotSetup / 1 Map29PinShotAfterShot / 4 Map29PinShotSceneStart
+34,71EC,Map29PinShotShotSetup,golf hook event 0: bare ret
+34,71ED,Map29PinShotAfterShot,golf hook event 1: wBallFlags bit 1 or bit 2 (hit the pin) -> $C3E1 = 1 and #99 = P1 holed; ends ($80)
+34,75C8,Map2CRoundHookTable,golf event hook table (event 0 Map2CRoundShotSetup / 1 Map2CRoundAfterShot) of Map2CStartRound
+34,75E8,Map2CRoundShotSetup,golf hook event 0: bare ret
+34,75E9,Map2CRoundAfterShot,golf hook event 1: quit (wGameMode 0) -> wStoryRoundKind 0; the round otherwise goes on
+34,7D93,BallWithinPinDist_34,a = 0 when PinDist <= hl else 1 (copy of 30:7E2E)
+35,4666,Map32PointerSpriteTaskEntry,frame task registered / removed by Map32Trigger01LoungeTour (35:4707 / 35:478A): calls Map32PointerSpriteTask
+79,688C,EndingFinalSpritesInit,bank 79 export $08 (EndingFinalScreen 0A:67FF): step counter $D400 (WRAM6; wBallX reused) = 0; OBJ palettes 79:7329 / 79:7331 to slots $0A / $0B
+79,68B1,EndingFinalSpritesTask,bank 79 export $0A (EndingFinalScreenTask 0A:6806): PrintDecimalByte of the step at (3 $0F) (debug?); six parts EndingFinalSpritePart1-6; step +1 every 4th frame up to $36
+79,68F6,EndingFinalSpritePart1,steps 0-8: LZ frame tiles (79:7340 ...) -> WRAM1 $D000 -> VRAM $8000 and template 79:7BE5+ at x $FE y $80; later steps redraw the last template
+79,6AA5,EndingFinalSpritePart2,steps 9-$11: frame tiles -> VRAM $8040; templates 79:7C36+ at x $0E y $80 (nothing before step 9)
+79,6C59,EndingFinalSpritePart3,steps $12-$1A: frame tiles -> VRAM $8080; templates 79:7C87+ at x $1E y $80
+79,6E0D,EndingFinalSpritePart4,steps $1B-$23: frame tiles -> VRAM $80C0; templates 79:7CD8+ at x $2E y $80
+79,6FC1,EndingFinalSpritePart5,steps $24-$2C: frame tiles -> VRAM $80E0; templates 79:7D05+ at x $36 y $80
+79,7175,EndingFinalSpritePart6,steps $2D-$35: frame tiles (79:7B37 ...) -> WRAM1 $D100 -> VRAM $8100; templates 79:7D32+ at x $3E y $80
+17,4004,CourseMapRecordAddr,hl = $C640 (the hole record copied by CopyHoleRecord); its code overlaps the $4000 export table (word $4021 of idx 4 is its operand)
+17,41F5,CourseMapReloadHoleMaps,when the saved view ($C471) was not 0: HoleAsset $0100 -> WRAM2 $D000 / $0101 -> WRAM3 $D000 / $0003 -> WRAM6 $D800 (overhead attribute / tile / terrain maps)
+17,4232,CourseMapShowTimed,bank 17 export $02 (no caller found): CourseMapInit then up to 300 frames or a button (sound $5C); stops CourseMapTask
+17,4250,CourseMapInit,frame counter task; view 3; hole record -> $C640; builds the minimap tiles / map / attributes / overlay sprites from terrain; side panel; palettes 17:4018-402F; fade in; prints the load frame count (hidden?); starts CourseMapTask
+17,437D,CourseMapScreen,bank 17 export 0 (pause menu MenuShowCourseMap 41:7882): fade out; CourseMapInit; CourseMapInput every frame until A or Start; stops CourseMapTask
+17,43A7,CountLoadFramesTask_17,frame task during CourseMapInit: wLoadFrameCount $C3B6 +1
+17,43AC,CourseMapTask,frame task: UpdateWindIndicator; palette $C148 -> slot 6; player blink tile; CourseMapDrawMarkers; overlay sprites (CourseMapQueueOverlaySprites); a marker sprite in shot mode 1 below the putter
+17,43F3,CourseMapDrawMarkers,target marker sprite at wTargetMarker / 2 (tiles $74 / $76 blinking by wFrameCounter); both players' balls (CourseMapDrawBall); flag at wCupX / wCupY
+17,4440,CourseMapDrawBall,c = player: ball sprite template 17:40D0 (P1 $C8A3 / $C8A6) or 17:40D5 (P2 $C8E3 / $C8E6) unless the player is absent ($FF)
+17,4487,CourseMapSetColorTable,copies the 16-byte terrain -> colour table at hl to $C400 (wMapRecord reused)
+17,44B0,CourseMapRemapColors,maps the 64 terrain values at hl through the $C400 colour table (4 passes of 16)
+17,44EA,CourseMapFillAttrs,16 rows of 16 attribute bytes $0A (17:4502) -> $DC00
+17,4512,CourseMapBuildTilemap,hole record (hl) 16x16 nibbles -> $DE00 tile numbers: nibble $F = next detailed tile (counted in b) else the plain tile; sound $01 when the count differs from the record byte or reaches $C0 (debug check)
+17,4582,CourseMapNextTile,next nibble of c -> [hl+]; $F -> b (b +1)
+17,4592,CourseMapRenderDetailTiles,walks the same nibble grid and renders each $F block as a 2bpp tile at WRAM1 $D040+ (CourseMapRenderBlockTile)
+17,45A7,CourseMapRenderIfDetail,nibble $F at block b -> CourseMapRenderBlockTile (d = row b>>4 / e = column x 4)
+17,45C8,CourseMapRenderBlockTile,4x4 hole tiles at block (d e) -> 8x8 colour values in $C600 (CourseMapGatherBlockTerrain + CourseMapRemapColors) -> one 2bpp tile at de (CourseMapPackTile)
+17,45E5,CourseMapPackTile,8 rows of 8 colour bytes at hl -> 16 bytes of 2bpp tile at de
+17,45FE,CourseMapPackRow,8 colour bytes -> one 2bpp row (2 bytes) at de
+17,4620,CourseMapPackPixel,bit 0 of [hl+] into b and bit 1 into c
+17,4628,CourseMapRenderOverlayTiles,list at hl (row<<4 | column; $FF end): renders the block and the one below as tiles at WRAM1 $D000 (sprite tiles); returns c = 2 x count
+17,4652,CourseMapQueueOverlaySprites,same list: 8x16 sprites at (column x 8 + 4 / row x 8 + 4) tiles 0 2 4 ...; sound $02 when the sprite queue is full ($A0; debug check)
+17,46A3,CourseMapGatherBlockTerrain,16 hole tiles of a 4x4 block (offsets 17:4683 into the 64-wide maps) -> 2x2 terrain values each in the 8-wide buffer (offsets 17:4693) via CourseMapTileTerrain
+17,46D7,CourseMapTileTerrain,tile at $D000 + de: attribute (WRAM2) and tile (WRAM3) -> terrain entry WRAM6 $D800 + tile x 8; copies 4 cells to bc / +1 / +8 / +9 honouring the x / y flip bits (attr $20 / $40)
+17,4795,CourseMapQueueFrameSprites,ResetSprites; four fixed frame sprites (tiles $40-$46); SetSpriteQueueBase
+17,47C0,CourseMapDrawSidePanel,side panel maps 17:48C8 -> $DE10 and 17:4908 -> $DC10 (4 x 16); HUD hole info / distance / wind text; wind arrow tiles (17:4950 by wWindAngle); P1 / P2 face icons and HUD boxes
+17,4DD0,CourseMapBlinkPlayerTile,blinks the current player's panel tile ($98B3 P1 / $98F3 P2) by hVBlankCount
+17,4E14,CourseMapInput,B toggles shot mode / spin ($D32A / $D32B; putter and near-pin cases) ; Up / Down change wClub (not on the green); Left / Right turn wLaunchDir with AimStepForDistance / AimStepAccel
+26,4012,ActorCopyFrameTiles,bank 26 export 0 (04:4CB3 04:4D03 04:579C): switches to ROM bank a (wActorBank; the same code sits at 4012 in banks 20-26); word [hl + 2c] + b -> 4 tile blocks queued to VRAM de
+4A,6C1F,LoadLinkWaitPicture,bank 4A export 6 (32:5318 / 5371 / 53DE: link host and guest handshakes): LCD off; palettes 4A:6CC5; LZ tiles 4A:6D05 -> VRAM1 $9000 $9400 $8800; attributes 4A:74D9; map 4A:755E; task LinkWaitPictureTask
+4A,6CA2,LinkWaitPictureTask,frame task: $C0F8 counts 0-$2F; 4 tiles of frame $C0F8/4 from 4A:7650 -> VRAM1 $9000 each frame
+3B,4433,CaptionMotionTask,frame task of ShowCaption: runs step routine [$D340] (dropped when $D342 = 0); next 4-byte step from script [$D335] when $D343 runs out; moves $D338 / $D33A by $D33C / $D33E; wCaptionActive -1 (0: stop and HudPanelsShow); draws CaptionTemplateTable[$D344]
+3B,44DA,CaptionTemplateTable,sprite template pointer per caption ($D344 & $0F) drawn by CaptionMotionTask
+44,4292,PalEditorSpriteTask,frame task of DebugPaletteEditorLoop (44:4237 / 44:428B): cursor sprite (tile $60) on colour ($C3F6 $C3F7) and 8 rows of three sprites (tiles $66+) from x $20 y $50; adjusted by the map fine scroll
+4F,62A7,CaptionAnimTask,frame task of StartCaptionAnim: WRAM6; CaptionObjStep on wCaptionObj $CAA0
+4F,62B4,CaptionObjStep,hl = caption object: script of (frame / delay) pairs ($FF ends and clears the object); on a new frame 12 tiles (frame x $C0 from +4) -> VRAM +6; draws template 4F:6312 at +8 with tile +$0A and palette 7
+15,47AD,BehindViewTask,frame task registered after BuildBehindView (15:477B): DrawFlagSprite
+15,47B8,CountLoadFramesTask_15,frame task during BuildBehindView: wLoadFrameCount $C3B6 +1 (read at 15:4787 and discarded)
+15,4DEC,DrawFlagSprite,wFlagSpriteRow $C3B2 ($FF hidden): sprite template from 15:4E65 (4 bytes per row: tile / ? / template) at $C3B4 / $C3B5
+09,4990,MenuBobSpriteTask09,copy of MenuBobSpriteTask (07:7DB0): template 09:49E9 with offsets 09:49A9
+07,7DB0,MenuBobSpriteTask,frame task of MenuScreenInit: sprite template 07:7E09 (tile $E0 attr 4) positioned by the 64-entry table 07:7DC9 indexed by hVBlankCount
+08,4244,SetContestLeader,a -> wContestLeader $D491 and hl -> wContestBest $D48F
+08,437C,ShowContestLeaderSprite,a = leader: frame task ContestLeaderSpriteP1Task (0) or ContestLeaderSpriteP2Task during the contest caption ($20 / $22)
+08,4391,HideContestLeaderSprite,unregisters both contest leader sprite tasks
+08,439E,ContestLeaderSpriteP1Task,frame task: QueueSpriteGrid 2x1 at ($38 $48) tile $5C attr $0C
+08,43AB,ContestLeaderSpriteP2Task,frame task: QueueSpriteGrid 2x1 at ($38 $48) tile $6C attr $0D
+0A,72AD,NavCopyListAttrRows,queues WRAM1 $D480 -> VRAM1 $9880 ($1A blocks; list row attributes)
+0,2B98,ApplyMusicOption,hSoundFlags bit 0 = wOptionFlags bit 0 (music off); off -> sound command 0 else wCurrentBGM (SoundCmdDispatch 7E:4016); called by SettingsToggleMusic 41:7799
+*,C8A0,wP1Strokes,player 1 strokes this hole (wPlayer1 +$20); the Links contest hooks write their try count here for the HUD (30:6055)
+*,C8AA,wP1HoledOut,player 1 holed out this hole (wPlayer1 +$2A); event hooks read it for flag #99 and set it to end a hole (30:6CBF 34:5CB1)
+*,D4DC,wShotEndLie,WRAM6: result of the last shot (lie terrain or $80 holed) stored at 10:4AA1; read by the bank 34 event hooks
+*,C3B6,wLoadFrameCount,frames counted by a task while a view loads (15:47B8 17:43A7); read and discarded at 15:4787 / printed by CourseMapInit 17:436F (profiling leftover)
+*,C3EA,wPuttOfferCourse,course index stored by PuttingChallengeSetTextCourse 30:6E45; never read
+*,D335,wCaptionScript,WRAM6: pointer to the caption's 4-byte motion steps (CaptionMotionTask)
+*,D338,wCaptionX,WRAM6: caption sprite x (8.8; high byte drawn)
+*,D33A,wCaptionY,WRAM6: caption sprite y (8.8)
+*,D33C,wCaptionVX,WRAM6: caption x velocity per frame
+*,D33E,wCaptionVY,WRAM6: caption y velocity per frame
+*,D340,wCaptionStepFunc,WRAM6: routine run each frame by the current caption step (0 = none)
+*,D342,wCaptionStepKeep,WRAM6: step byte 3: 0 clears wCaptionStepFunc after one call
+*,D343,wCaptionStepFrames,WRAM6: frames left in the current caption step
+*,D344,wCaptionSprite,WRAM6: caption number selecting CaptionTemplateTable
