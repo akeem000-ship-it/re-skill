@@ -1986,3 +1986,237 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,FFB3,hHoleBlinkCount,hole select: blink counter of the hole number
 *,FFB4,hFilmTileSlot,course select: tile slot ($10-$A8) of the next picture column
 *,FFB6,hFilmColumnPtr,course select: pointer to the next picture column graphics
+# --- banks 7F 38-3A 28-2F 72-74 50-54 19-1F 4A 10 (sound effects, launch speed, tile animations, golf event API) ---
+7F,40A4,SFXRunScript,runs effect commands for channel c from hl: high nibble indexes SFXCommandTable 7F:40BB; low nibble is the argument
+7F,40BB,SFXCommandTable,16 words: handlers of effect commands $0x-$Fx ($9x-$Dx point at 7F:40DB = jp SFXRunScript with hl still pushed: unused and broken)
+7F,40DE,SFXCmdNote,$0h ll: frequency $hll -> wSFXChFreq and NRx3/NRx4 (retrigger if wSFXChTrigger); noise: polynomial byte; ends the frame
+7F,411E,SFXCmdEnvelope,$1x nn: NRx2 = nn and wSFXChTrigger = $80 (retrigger at the next note)
+7F,4137,SFXCmdDuty,$2d: NRx1 = d << 4 (duty bits)
+7F,4148,SFXCmdLoopStart,$3x nn: wSFXChLoopCount = nn; wSFXChLoopPtr = the next command
+7F,415D,SFXCmdLoopEnd,$4x: decrements wSFXChLoopCount and jumps back to wSFXChLoopPtr until it is 0
+7F,4176,SFXCmdSlide,$5x nn: wSFXChSlide = nn (signed frequency step per frame; NR43 step on the noise channel)
+7F,4182,SFXCmdWait,$6x nn: applies the slide once then waits nn frames (wSFXChWait); ends the frame
+7F,419D,SFXApplySlide,tone channel c: wSFXChFreq += wSFXChSlide (signed) and rewrites NRx3/NRx4 (keeps the duty bits of NRx1)
+7F,41DD,SFXApplyNoiseSlide,noise channel: the NR43 byte $C580 += $C575 (signed); NR41 = 0 then NR43/NR44 (retrigger via $C571)
+7F,4212,SFXCmdWave,$7w: copies wave w (pointer table 7F:4B6B) to wave RAM $FF30 with NR30 off; wWaveReload = 1
+7F,423D,SFXCmdPanning,$8x nn: this channel's NR51 bits (nn rotated by channel; mask $EE) into wSFXPanning
+7F,4259,SFXCmdBallPitch,$Ex: frequency from SFXHeightFreqTable 7F:431C indexed by wSFXBallHeight / 4 then note on; ends the frame (rising / falling ball whistle?)
+7F,429B,SFXCmdEnd,$Fx: clears the channel's bit in wSFXChannelMask; NRx2 = 8 and NRx4 = $80 (silence); stops the script
+7F,42BE,SFXClearState,no effect channel left: wSFXActive = 0; wSFXPriority = 0; wSFXRequest = $80
+7F,42CB,SFXSilenceAllBroken,unreferenced: meant to write NRx2 / NRx4 of all channels but uses ldh a [n] (reads); only clears wSFXChannelMask
+7F,42E2,SFXSilenceActive,before a new effect: NRx2 = 8 and NRx4 = $80 on every channel in wSFXChannelMask; mask = 0
+7F,431C,SFXHeightFreqTable,word frequencies for SFXCmdBallPitch (from $05FB rising) indexed by ball height / 4
+7F,495C,SFXCountA,byte $6E: limit checked for effect ids < $65 (SFXStart)
+7F,495D,SFXTableA,word per effect id < $65: effect header (channel mask then one script pointer per set bit)
+7F,4B6B,SFXWaveTable,8+ words: 16-byte wave patterns for SFXCmdWave (7F:4C0F + 16 n)
+7F,615F,SFXCountB,byte $6C: limit checked for effect ids >= $65 (index id - $65)
+7F,6160,SFXTableB,word per effect id >= $65 (id - $65): effect header as SFXTableA
+*,C4C5,wSFXPanning,NR51 bits of the effect channels (SFXCmdPanning); merged by SoundUpdatePanning
+*,C56E,wSFXChTrigger,4 bytes: $80 = retrigger (NRx4 bit 7) at the next frequency write
+*,C571,wSFXCh4Trigger,noise channel entry of wSFXChTrigger
+*,C572,wSFXChSlide,4 bytes: signed frequency step per frame (SFXCmdSlide)
+*,C575,wSFXCh4Slide,noise channel entry of wSFXChSlide: signed NR43 step
+*,C576,wSFXChWait,4 bytes: frames until the next effect command
+*,C57A,wSFXChFreq,4 words: current frequency per channel ($C580 low byte = NR43 of the noise channel)
+*,C580,wSFXCh4Poly,noise channel entry of wSFXChFreq: NR43 value
+*,C582,wSFXChLoopCount,4 bytes: SFXCmdLoopStart count
+*,C586,wSFXChLoopPtr,4 words: SFXCmdLoopStart return point
+*,C58E,wSFXChScriptPtr,4 words: effect script pointer per channel
+*,C596,wSFXActive,1 while an effect runs (SFXStart silences the old one first)
+*,C597,wSFXMaskScratch,channel mask rotated by SFXStart / SFXUpdate
+*,CAAB,wSFXBallHeight,word: copy of the ball height $D407-$D408 made each BallTask frame (10:4D6E) for SFXCmdBallPitch
+38,4006,DistToLaunchSpeedClass0,c = club (< 13; else hl = $40) de = distance: hl = word table 38:404D[club][de/2] (odd de: average of two); shot mode 2: byte table 38:51CB; trajectory class 0 (SpeedTableJump)
+38,404D,LaunchSpeedClass0Table,13 words (clubs 0-12): pointer to the club's word list distance -> launch speed
+38,51CB,LaunchSpeedClass0ByteTable,13 words: per-club byte lists used in shot mode 2
+38,550B,DistToLaunchSpeedClassP1_38,copy of DistToLaunchSpeedClass0 for trajectory class +1; tables 38:5552 / 38:66C2
+38,5552,LaunchSpeedClassP1Table,13 words: per-club distance -> launch speed lists (class +1)
+38,66C2,LaunchSpeedClassP1ByteTable,13 words: per-club byte lists (class +1; shot mode 2)
+38,6A02,DistToLaunchSpeedClassM1_38,copy of DistToLaunchSpeedClass0 for trajectory class -1; tables 38:6A49 / 38:7BD1
+38,6A49,LaunchSpeedClassM1Table,13 words: per-club distance -> launch speed lists (class -1)
+38,7BD1,LaunchSpeedClassM1ByteTable,13 words: per-club byte lists (class -1; shot mode 2)
+39,4006,DistToLaunchSpeedClassM2_39,copy of DistToLaunchSpeedClass0 for trajectory class -2; tables 39:404D / 39:51E5
+39,404D,LaunchSpeedClassM2Table,13 words: per-club distance -> launch speed lists (class -2)
+39,51E5,LaunchSpeedClassM2ByteTable,13 words: per-club byte lists (class -2; shot mode 2)
+39,5525,DistToLaunchSpeedClassM3_39,copy of DistToLaunchSpeedClass0 for trajectory class -3; tables 39:556C / 39:6708
+39,556C,LaunchSpeedClassM3Table,13 words: per-club distance -> launch speed lists (class -3)
+39,6708,LaunchSpeedClassM3ByteTable,13 words: per-club byte lists (class -3; shot mode 2)
+39,6A48,DistToLaunchSpeedClassM4_39,copy of DistToLaunchSpeedClass0 for trajectory classes -8..-4; tables 39:6A8F / 39:7C35
+39,6A8F,LaunchSpeedClassM4Table,13 words: per-club distance -> launch speed lists (class -4 and below)
+39,7C35,LaunchSpeedClassM4ByteTable,13 words: per-club byte lists (class -4 and below; shot mode 2)
+3A,4006,DistToLaunchSpeedClassP2_3A,copy of DistToLaunchSpeedClass0 for trajectory class +2; tables 3A:404D / 3A:51AB
+3A,404D,LaunchSpeedClassP2Table,13 words: per-club distance -> launch speed lists (class +2)
+3A,51AB,LaunchSpeedClassP2ByteTable,13 words: per-club byte lists (class +2; shot mode 2)
+3A,54EB,DistToLaunchSpeedClassP3_3A,copy of DistToLaunchSpeedClass0 for trajectory class +3; tables 3A:5532 / 3A:667C
+3A,5532,LaunchSpeedClassP3Table,13 words: per-club distance -> launch speed lists (class +3)
+3A,667C,LaunchSpeedClassP3ByteTable,13 words: per-club byte lists (class +3; shot mode 2)
+3A,69BC,DistToLaunchSpeedClassP4_3A,copy of DistToLaunchSpeedClass0 for trajectory classes +4..+7; tables 3A:6A03 / 3A:7B39
+3A,6A03,LaunchSpeedClassP4Table,13 words: per-club distance -> launch speed lists (class +4 and above)
+3A,7B39,LaunchSpeedClassP4ByteTable,13 words: per-club byte lists (class +4 and above; shot mode 2)
+28,7D0B,MapTileAnimStart,a = gfx index within this bank (0B:42C0): $C32F = a; script from 28:405E[a] ($FE = none) split at $FF into up to 4 tracks ($C338 starts / $C330 frame+timer); registers MapTileAnimTask
+28,7DB2,MapTileAnimStop,UnregisterFrameTask(MapTileAnimTask)
+28,7DC1,MapTileAnimTask,frame task (skipped while flag #24 is set and #28 clear): WRAM6; per track counts the $C330 timer down and calls MapTileAnimStep at 0
+28,7E08,MapTileAnimStep,a = track: frame record (src tile; count; dest tile; frames) -> QueueVRAMCopy 00:0468 from WRAM6 $D800 + 16 src to $9000 + 16 dest; $FF wraps to the track start
+29,7927,MapTileAnimStart_29,copy of 28:7D0B; a = gfx index within this bank (0B:42C0): $C32F = a; script from 29:403A[a] ($FE = none) split at $FF into up to 4 tracks ($C338 starts / $C330 frame+timer); registers MapTileAnimTask
+29,79CE,MapTileAnimStop_29,copy of 28:7DB2; UnregisterFrameTask(MapTileAnimTask)
+29,79DD,MapTileAnimTask_29,copy of 28:7DC1; frame task (skipped while flag #24 is set and #28 clear): WRAM6; per track counts the $C330 timer down and calls MapTileAnimStep at 0
+29,7A24,MapTileAnimStep_29,copy of 28:7E08; a = track: frame record (src tile; count; dest tile; frames) -> QueueVRAMCopy 00:0468 from WRAM6 $D800 + 16 src to $9000 + 16 dest; $FF wraps to the track start
+2A,76BF,MapTileAnimStart_2A,copy of 28:7D0B; a = gfx index within this bank (0B:42C0): $C32F = a; script from 2A:4028[a] ($FE = none) split at $FF into up to 4 tracks ($C338 starts / $C330 frame+timer); registers MapTileAnimTask
+2A,7766,MapTileAnimStop_2A,copy of 28:7DB2; UnregisterFrameTask(MapTileAnimTask)
+2A,7775,MapTileAnimTask_2A,copy of 28:7DC1; frame task (skipped while flag #24 is set and #28 clear): WRAM6; per track counts the $C330 timer down and calls MapTileAnimStep at 0
+2A,77BC,MapTileAnimStep_2A,copy of 28:7E08; a = track: frame record (src tile; count; dest tile; frames) -> QueueVRAMCopy 00:0468 from WRAM6 $D800 + 16 src to $9000 + 16 dest; $FF wraps to the track start
+2B,73ED,MapTileAnimStart_2B,copy of 28:7D0B; a = gfx index within this bank (0B:42C0): $C32F = a; script from 2B:403A[a] ($FE = none) split at $FF into up to 4 tracks ($C338 starts / $C330 frame+timer); registers MapTileAnimTask
+2B,7494,MapTileAnimStop_2B,copy of 28:7DB2; UnregisterFrameTask(MapTileAnimTask)
+2B,74A3,MapTileAnimTask_2B,copy of 28:7DC1; frame task (skipped while flag #24 is set and #28 clear): WRAM6; per track counts the $C330 timer down and calls MapTileAnimStep at 0
+2B,74EA,MapTileAnimStep_2B,copy of 28:7E08; a = track: frame record (src tile; count; dest tile; frames) -> QueueVRAMCopy 00:0468 from WRAM6 $D800 + 16 src to $9000 + 16 dest; $FF wraps to the track start
+2C,7AD1,MapTileAnimStart_2C,copy of 28:7D0B; a = gfx index within this bank (0B:42C0): $C32F = a; script from 2C:405E[a] ($FE = none) split at $FF into up to 4 tracks ($C338 starts / $C330 frame+timer); registers MapTileAnimTask
+2C,7B78,MapTileAnimStop_2C,copy of 28:7DB2; UnregisterFrameTask(MapTileAnimTask)
+2C,7B87,MapTileAnimTask_2C,copy of 28:7DC1; frame task (skipped while flag #24 is set and #28 clear): WRAM6; per track counts the $C330 timer down and calls MapTileAnimStep at 0
+2C,7BCE,MapTileAnimStep_2C,copy of 28:7E08; a = track: frame record (src tile; count; dest tile; frames) -> QueueVRAMCopy 00:0468 from WRAM6 $D800 + 16 src to $9000 + 16 dest; $FF wraps to the track start
+2D,739D,MapTileAnimStart_2D,copy of 28:7D0B; a = gfx index within this bank (0B:42C0): $C32F = a; script from 2D:4028[a] ($FE = none) split at $FF into up to 4 tracks ($C338 starts / $C330 frame+timer); registers MapTileAnimTask
+2D,7444,MapTileAnimStop_2D,copy of 28:7DB2; UnregisterFrameTask(MapTileAnimTask)
+2D,7453,MapTileAnimTask_2D,copy of 28:7DC1; frame task (skipped while flag #24 is set and #28 clear): WRAM6; per track counts the $C330 timer down and calls MapTileAnimStep at 0
+2D,749A,MapTileAnimStep_2D,copy of 28:7E08; a = track: frame record (src tile; count; dest tile; frames) -> QueueVRAMCopy 00:0468 from WRAM6 $D800 + 16 src to $9000 + 16 dest; $FF wraps to the track start
+2E,79D5,MapTileAnimStart_2E,copy of 28:7D0B; a = gfx index within this bank (0B:42C0): $C32F = a; script from 2E:403A[a] ($FE = none) split at $FF into up to 4 tracks ($C338 starts / $C330 frame+timer); registers MapTileAnimTask
+2E,7A7C,MapTileAnimStop_2E,copy of 28:7DB2; UnregisterFrameTask(MapTileAnimTask)
+2E,7A8B,MapTileAnimTask_2E,copy of 28:7DC1; frame task (skipped while flag #24 is set and #28 clear): WRAM6; per track counts the $C330 timer down and calls MapTileAnimStep at 0
+2E,7AD2,MapTileAnimStep_2E,copy of 28:7E08; a = track: frame record (src tile; count; dest tile; frames) -> QueueVRAMCopy 00:0468 from WRAM6 $D800 + 16 src to $9000 + 16 dest; $FF wraps to the track start
+2F,7D20,MapTileAnimStart_2F,copy of 28:7D0B; a = gfx index within this bank (0B:42C0): $C32F = a; script from 2F:403A[a] ($FE = none) split at $FF into up to 4 tracks ($C338 starts / $C330 frame+timer); registers MapTileAnimTask
+2F,7DC7,MapTileAnimStop_2F,copy of 28:7DB2; UnregisterFrameTask(MapTileAnimTask)
+2F,7DD6,MapTileAnimTask_2F,copy of 28:7DC1; frame task (skipped while flag #24 is set and #28 clear): WRAM6; per track counts the $C330 timer down and calls MapTileAnimStep at 0
+2F,7E1D,MapTileAnimStep_2F,copy of 28:7E08; a = track: frame record (src tile; count; dest tile; frames) -> QueueVRAMCopy 00:0468 from WRAM6 $D800 + 16 src to $9000 + 16 dest; $FF wraps to the track start
+72,76BD,MapTileAnimStart_72,copy of 28:7D0B; a = gfx index within this bank (0B:42C0): $C32F = a; script from 72:403A[a] ($FE = none) split at $FF into up to 4 tracks ($C338 starts / $C330 frame+timer); registers MapTileAnimTask
+72,7764,MapTileAnimStop_72,copy of 28:7DB2; UnregisterFrameTask(MapTileAnimTask) (never reached: 0B:497D sends gfx banks 72-74 to 2F:7DC7)
+72,7773,MapTileAnimTask_72,copy of 28:7DC1; frame task (skipped while flag #24 is set and #28 clear): WRAM6; per track counts the $C330 timer down and calls MapTileAnimStep at 0
+72,77BA,MapTileAnimStep_72,copy of 28:7E08; a = track: frame record (src tile; count; dest tile; frames) -> QueueVRAMCopy 00:0468 from WRAM6 $D800 + 16 src to $9000 + 16 dest; $FF wraps to the track start
+73,76C7,MapTileAnimStart_73,copy of 28:7D0B; a = gfx index within this bank (0B:42C0): $C32F = a; script from 73:403A[a] ($FE = none) split at $FF into up to 4 tracks ($C338 starts / $C330 frame+timer); registers MapTileAnimTask
+73,776E,MapTileAnimStop_73,copy of 28:7DB2; UnregisterFrameTask(MapTileAnimTask) (never reached: 0B:497D sends gfx banks 72-74 to 2F:7DC7)
+73,777D,MapTileAnimTask_73,copy of 28:7DC1; frame task (skipped while flag #24 is set and #28 clear): WRAM6; per track counts the $C330 timer down and calls MapTileAnimStep at 0
+73,77C4,MapTileAnimStep_73,copy of 28:7E08; a = track: frame record (src tile; count; dest tile; frames) -> QueueVRAMCopy 00:0468 from WRAM6 $D800 + 16 src to $9000 + 16 dest; $FF wraps to the track start
+74,79AE,MapTileAnimStart_74,copy of 28:7D0B; a = gfx index within this bank (0B:42C0): $C32F = a; script from 74:403A[a] ($FE = none) split at $FF into up to 4 tracks ($C338 starts / $C330 frame+timer); registers MapTileAnimTask
+74,7A55,MapTileAnimStop_74,copy of 28:7DB2; UnregisterFrameTask(MapTileAnimTask) (never reached: 0B:497D sends gfx banks 72-74 to 2F:7DC7)
+74,7A64,MapTileAnimTask_74,copy of 28:7DC1; frame task (skipped while flag #24 is set and #28 clear): WRAM6; per track counts the $C330 timer down and calls MapTileAnimStep at 0
+74,7AAB,MapTileAnimStep_74,copy of 28:7E08; a = track: frame record (src tile; count; dest tile; frames) -> QueueVRAMCopy 00:0468 from WRAM6 $D800 + 16 src to $9000 + 16 dest; $FF wraps to the track start
+50,70F1,HoleTileAnimStart,hole tile animation: script = HoleAsset ref 4 entry 1 (13:49EE) word list [a]; same track parser as MapTileAnimStart ($C330 / $C338); registers HoleTileAnimTask
+50,71A4,HoleTileAnimStop,UnregisterFrameTask(HoleTileAnimTask); 13:70A2 calls all five
+50,71B3,HoleTileAnimTask,frame task (skipped while flag #24 is set and #28 clear): counts the 4 track timers down; HoleTileAnimStep at 0
+50,7201,HoleTileAnimStep,a = track: frame record (src tile; count; dest tile; frames) -> QueueVRAMCopy from the ROM tiles of HoleAsset ref 4 entry 0 to $9000 + 16 dest
+51,7151,HoleTileAnimStart_51,copy of 50:70F1; hole tile animation: script = HoleAsset ref 4 entry 1 (13:49EE) word list [a]; same track parser as MapTileAnimStart ($C330 / $C338); registers HoleTileAnimTask
+51,7204,HoleTileAnimStop_51,copy of 50:71A4; UnregisterFrameTask(HoleTileAnimTask); 13:70A2 calls all five
+51,7213,HoleTileAnimTask_51,copy of 50:71B3; frame task (skipped while flag #24 is set and #28 clear): counts the 4 track timers down; HoleTileAnimStep at 0
+51,7261,HoleTileAnimStep_51,copy of 50:7201; a = track: frame record (src tile; count; dest tile; frames) -> QueueVRAMCopy from the ROM tiles of HoleAsset ref 4 entry 0 to $9000 + 16 dest
+52,7181,HoleTileAnimStart_52,copy of 50:70F1; hole tile animation: script = HoleAsset ref 4 entry 1 (13:49EE) word list [a]; same track parser as MapTileAnimStart ($C330 / $C338); registers HoleTileAnimTask
+52,7234,HoleTileAnimStop_52,copy of 50:71A4; UnregisterFrameTask(HoleTileAnimTask); 13:70A2 calls all five
+52,7243,HoleTileAnimTask_52,copy of 50:71B3; frame task (skipped while flag #24 is set and #28 clear): counts the 4 track timers down; HoleTileAnimStep at 0
+52,7291,HoleTileAnimStep_52,copy of 50:7201; a = track: frame record (src tile; count; dest tile; frames) -> QueueVRAMCopy from the ROM tiles of HoleAsset ref 4 entry 0 to $9000 + 16 dest
+53,7E09,HoleTileAnimStart_53,copy of 50:70F1; hole tile animation: script = HoleAsset ref 4 entry 1 (13:49EE) word list [a]; same track parser as MapTileAnimStart ($C330 / $C338); registers HoleTileAnimTask
+53,7EBC,HoleTileAnimStop_53,copy of 50:71A4; UnregisterFrameTask(HoleTileAnimTask); 13:70A2 calls all five
+53,7ECB,HoleTileAnimTask_53,copy of 50:71B3; frame task (skipped while flag #24 is set and #28 clear): counts the 4 track timers down; HoleTileAnimStep at 0
+53,7F19,HoleTileAnimStep_53,copy of 50:7201; a = track: frame record (src tile; count; dest tile; frames) -> QueueVRAMCopy from the ROM tiles of HoleAsset ref 4 entry 0 to $9000 + 16 dest
+54,7D21,HoleTileAnimStart_54,copy of 50:70F1; hole tile animation: script = HoleAsset ref 4 entry 1 (13:49EE) word list [a]; same track parser as MapTileAnimStart ($C330 / $C338); registers HoleTileAnimTask
+54,7DD4,HoleTileAnimStop_54,copy of 50:71A4; UnregisterFrameTask(HoleTileAnimTask); 13:70A2 calls all five
+54,7DE3,HoleTileAnimTask_54,copy of 50:71B3; frame task (skipped while flag #24 is set and #28 clear): counts the 4 track timers down; HoleTileAnimStep at 0
+54,7E31,HoleTileAnimStep_54,copy of 50:7201; a = track: frame record (src tile; count; dest tile; frames) -> QueueVRAMCopy from the ROM tiles of HoleAsset ref 4 entry 0 to $9000 + 16 dest
+19,7AC3,TextBank19_Load,export 0 (LoadText 05:6179): a = 0 -> TextBank19_Copy
+19,7ACB,TextBank19_LoadShort,export 1 (LoadTextShort 05:61D4): a = 1 -> TextBank19_Copy
+19,7AD3,TextBank19_Copy,e = index; offset table $4004; data $41B4; a = 0: $180 bytes to $C600 / a = 1: $20 bytes to $D880 (CopyMemoryBC)
+19,4004,TextBank19_OffsetTable,word per string: offset from TextBank19_StringTable
+19,41B4,TextBank19_StringTable,ASCII strings ending in $00
+1A,7B20,TextBank1A_Load,export 0 (LoadText 05:6179): a = 0 -> TextBank1A_Copy
+1A,7B28,TextBank1A_LoadShort,export 1 (LoadTextShort 05:61D4): a = 1 -> TextBank1A_Copy
+1A,7B30,TextBank1A_Copy,e = index; offset table $4004; data $41FC; a = 0: $180 bytes to $C600 / a = 1: $20 bytes to $D880 (CopyMemoryBC)
+1A,4004,TextBank1A_OffsetTable,word per string: offset from TextBank1A_StringTable
+1A,41FC,TextBank1A_StringTable,ASCII strings ending in $00
+1B,7B4B,TextBank1B_Load,export 0 (LoadText 05:6179): a = 0 -> TextBank1B_Copy
+1B,7B53,TextBank1B_LoadShort,export 1 (LoadTextShort 05:61D4): a = 1 -> TextBank1B_Copy
+1B,7B5B,TextBank1B_Copy,e = index; offset table $4004; data $423E; a = 0: $180 bytes to $C600 / a = 1: $20 bytes to $D880 (CopyMemoryBC)
+1B,4004,TextBank1B_OffsetTable,word per string: offset from TextBank1B_StringTable
+1B,423E,TextBank1B_StringTable,ASCII strings ending in $00
+1C,7B14,TextBank1C_Load,export 0 (LoadText 05:6179): a = 0 -> TextBank1C_Copy
+1C,7B1C,TextBank1C_LoadShort,export 1 (LoadTextShort 05:61D4): a = 1 -> TextBank1C_Copy
+1C,7B24,TextBank1C_Copy,e = index; offset table $4004; data $4214; a = 0: $180 bytes to $C600 / a = 1: $20 bytes to $D880 (CopyMemoryBC)
+1C,4004,TextBank1C_OffsetTable,word per string: offset from TextBank1C_StringTable
+1C,4214,TextBank1C_StringTable,ASCII strings ending in $00
+1D,7CF5,TextBank1D_Load,export 0 (LoadText 05:6179): a = 0 -> TextBank1D_Copy
+1D,7CFD,TextBank1D_LoadShort,export 1 (LoadTextShort 05:61D4): a = 1 -> TextBank1D_Copy
+1D,7D05,TextBank1D_Copy,e = index; offset table $4004; data $43E6; a = 0: $180 bytes to $C600 / a = 1: $20 bytes to $D880 (CopyMemoryBC)
+1D,4004,TextBank1D_OffsetTable,word per string: offset from TextBank1D_StringTable
+1D,43E6,TextBank1D_StringTable,ASCII strings ending in $00
+1E,6B4D,TextBank1E_Load,export 0 (LoadText 05:6179): a = 0 -> TextBank1E_Copy
+1E,6B55,TextBank1E_LoadShort,export 1 (LoadTextShort 05:61D4): a = 1 -> TextBank1E_Copy
+1E,6B5D,TextBank1E_Copy,e = index; offset table $4004; data $4604; a = 0: $180 bytes to $C600 / a = 1: $20 bytes to $D880 (CopyMemoryBC)
+1E,4004,TextBank1E_OffsetTable,word per string: offset from TextBank1E_StringTable
+1E,4604,TextBank1E_StringTable,ASCII strings ending in $00
+1F,73B1,TextBank1F_Load,export 0 (LoadText 05:6179): a = 0 -> TextBank1F_Copy
+1F,73B9,TextBank1F_LoadShort,export 1 (LoadTextShort 05:61D4): a = 1 -> TextBank1F_Copy
+1F,73C1,TextBank1F_Copy,e = index; offset table $4004; data $4156; a = 0: $180 bytes to $C600 / a = 1: $20 bytes to $D880 (CopyMemoryBC)
+1F,4004,TextBank1F_OffsetTable,word per string: offset from TextBank1F_StringTable
+1F,4156,TextBank1F_StringTable,ASCII strings ending in $00
+18,4004,TextBank18_OffsetTable,word per string: offset from TextBank18_StringTable
+18,4404,TextBank18_StringTable,ASCII strings ending in $00
+4A,6205,LoadCyclingPicture,a = picture (< 1; table 4A:62F1): LZ tiles to WRAM1 $D800 -> $9000; LZ map to $D400 -> $9800; attributes $0A; palette 2 from the record; wOnGreen = $FF; registers PictureCycleTask (called by LoadStoryPicture 77:6F7E)
+4A,629C,PictureCycleStop,UnregisterFrameTask(PictureCycleTask); called after golf views (10:440A 10:4614 10:4C8F 08:42B9)
+4A,62A3,PictureCycleTask,frame task: palette 2 rebuilt in $D350 from wCyclePalettePtr: colours 0-1 fixed; colour 2 from a 16-entry list (+8) and colour 3 from an 8-entry list (+$28) stepped by hVBlankCount/2
+4A,62F1,CyclingPictureTable,1 word: picture record 4A:62F7 = LZ tiles 4A:62FD / LZ map 4A:65E5 / palette data 4A:667E
+*,D34E,wCyclePalettePtr,WRAM6: palette data of the cycling picture (LoadCyclingPicture)
+*,D350,wCyclePalette,WRAM6: 8-byte palette built each frame by PictureCycleTask
+10,405C,ResetPlayersForHole,export 6: WRAM6; both player records: strokes putts +$2A +$2B +$15 +$29 cleared; player 1 strokes = $D4EF and +$29 / lie from $D4E3; player 2 holed out when $C8D0 = $FF (no player 2)
+10,40AC,PlaceBallsAtTee,export $48: both players' ball (+$22) and wBallX/wBallY = the tee spot wTeeSpot (integer x y; fractions 0)
+10,40F8,SetWind,hl -> wWindSpeed (l) / wWindAngle (h)
+10,420E,GolfViewInit,export $58: ClearFrameTasks; ResetSprites; HudInit 12:442C; MapScrollTaskStart 04:4062; BallDisplayStart 11:4103; GolferActorShow 04:57BA; wOnGreen = $FF (no view yet)
+10,4226,GolfSceneStart,export $3A: GolfViewInit; ShotViewUpdate; $D328 = 0; fade-in (00:258D c = $7F); golf event 4 (CallGolfEventHook)
+10,423B,SetCourseHole,export $10 (80 calls from banks 30-34): a = wWindDir; h = wCourse; l = wHoleNumber; then HoleIdFromCourse
+10,4246,HoleIdFromCourse,export $50: wHoleId = CourseHoleIdTable[wCourse][wHoleNumber - 1]
+10,4265,CourseHoleIdTable,word per course -> list of hole ids (wHoleId) by hole number
+10,435E,ReplaySavedHole,export $3C (0B:4E09): GolfSessionInit; save block b+4 record c -> $C600; course hole wind from $C620; stroke records $C640 -> $D680; $C96D = 1 while ShotSetup runs [$C625] times
+10,46B5,AwayBiasField2B,PickNextPlayer: hl (PinDist) += $0C80 when PlayerField $2B is 0 (set once by the outcome code 3B:7447; on the green?)
+10,46C7,AwayBiasOnTee,PickNextPlayer: hl += $3200 when PlayerField $29 is 0 (not yet teed off)
+10,46D9,SelectPlayer1,wCurPlayer = 0: ball from PlayerField $22; wOtherBall from player 2 (10:4771 when not teed off); golfer stats PlayerField $13 $19-$1F -> $D4D7 $D4CC wDriverDistance $D4C8-$D4CB
+10,46EE,SelectPlayer2,as SelectPlayer1 for wPlayer2 (wCurPlayer = 1)
+10,4786,HudRedrawCurPlayer,StrokeLimit reached: redraws the current player's HUD panel (HudDrawPlayer1 / HudDrawPlayer2) then one frame
+10,4B28,GolfSessionInit,export $1C (68 calls from banks 30-34): clears WRAM6 $D000-$D6FF; event overrides $D4DE-$D4EF off; $C2A6 $C0F4 $C832 $C82C $C96C $C878-F $CAAD; no event hook; golfers $80 / $FF; wGameMode 0; ClearShotRecords; MapSaveReturnPoint; random seed -> $C9FE
+10,4B94,GolfSessionEnd,export $30: fade out; 01:41E8; WY = $90; ResetSprites; wGameMode 9; return to the map ($C2A6 -> wMapEntrance; wMapId 0; $C441 = $FA) when $C2A6 is set
+10,4BC7,SetGolfEventHook,export $1A: a = bank and hl = jump table of the golf event handler (wGolfEventBank $C870 / $C871); a = 0: none
+10,4BE5,SetForcedWindDir,export $1E: a < $80: $D4ED = 1 and $D4EE = a (wind direction for the hole); a >= $80: off
+10,4C04,SetForcedTee,export $20: $D4DE = 1; tee spot override hl / de -> $D4DF-$D4E2 (read by hole setup 13:5653)
+10,4C1A,SetP1OffTee,export $24: $D4E3 = 1 (ResetPlayersForHole: player 1 starts off the tee)
+10,4C26,SetForcedWind,export $22: $D4E4 = 1; de -> $D4E5 (wind for the hole via SetWind)
+10,4C36,SetForcedShot,export $26: $D4E7 = 1; club e; aim bc; $D4EB/$D4EC = 0 (AimMenu skips SmartAim)
+10,4C4C,SetForcedShotD,export $28: as SetForcedShot with $D4EB/$D4EC = d
+10,4C62,SetP1StartStrokes,export $46: $D4EF = a (player 1 strokes at the hole start)
+10,4C6E,GolfViewExit,export $2A: cup view -> leave it (13:4528) and back to view 1; picture view ($FF) -> PictureCycleStop and LoadShotView(1); $D4DD = 0; 01:422C; WaitCameraAtGoal; 05:407A; $C82D bit 7 cleared
+10,4CAD,SetGolfEventFlag,export $2E: $D4DD = a (checked by GolfShotLoop after each shot)
+10,4CB9,GolfAdvanceFrame,export $2C: WRAM6 selected then AdvanceFrame
+10,4CC3,CallGolfEventHook,export $56: a = event (0 shot setup / 1 after a shot / 3 hole start / 4 scene start): calls entry a of the hook table in bank wGolfEventBank (00:0184) if set
+10,4E98,ScaleBySlowSpeed,BallRollStep terrain 6: hl and de x |(vx vy)| / 256 when both |vx| and |vy| are below 1 unit (else unchanged)
+10,52C2,SaveSafeSpot,wSafeSpot = ball position (start of ShotLaunch)
+10,5518,PreviewResetBall,ghost ball ($D373) = address spot $D514-$D519; height and velocities ($D379-$D381) cleared
+10,5534,MaxMissSound,not the putter: sound $5F when |MissIndex| = 9
+10,5549,DebugPrintTarget,hDebugMode >= 2: prints target marker x / 32; y / 32 and TargetCupDist / 32 as hex words (PrintHexWord rows 4-6)
+10,55B7,SetImpactFromPad,a = d-pad held: wImpactSide / wImpactHeight from ImpactPadTable 10:55CE[(a >> 4) x 2]
+10,55CE,ImpactPadTable,16 pairs (impact side and height) by d-pad bits
+10,5632,ShotViewUpdate,LoadShotView(BallInGreenArea) when the view changes; AimMarker
+10,5A3C,PlaceTargetMarkerClamped,export $5A: wTargetMarker = ball + TargetMarker offset; on the course views clamped to the hole bounds ($C329-$C32C +- $80) with wMarkerEdge bits
+10,5B81,HudRedrawPart,c = 1: shot panel; club icon; meter sprites / c = 2: pin distance / else: lie icon (bank 12 HUD exports)
+10,5EB9,AimStepAccel,export $42: bc (aim step) x (1 + wLookSpeed / 32) / 2 ramping x0.5 -> x1.5; wLookSpeed++ up to $40
+10,621E,TargetCupDist,hl = distance from wTargetMarker to the cup (PinDist tail 10:62DA)
+10,63AA,SmartAimNextOffset,SmartAim: bc += AimSearchOffsets[d]; d++
+10,68B4,ClubBaseDistanceForClub,export $0E: a = club; ClubBaseDistance without reading wClub
+10,4771,NoOtherBallPos,default wOtherBall (y = $DF00: off the map) when the other player has not teed off
+*,D439,wTeeSpot,WRAM6: tee position (x y integer words) from the hole data (13:562A) or SetForcedTee
+*,D41E,wOtherBall,WRAM6: the other player's ball (x y integer words) for its sprite (bank 11)
+*,C870,wGolfEventBank,bank of the golf event handler table ($C871 = its address); 0 = none
+*,C871,wGolfEventTable,word: address of the golf event handler table
+*,D4DD,wGolfEventFlag,WRAM6: set by SetGolfEventFlag; GolfShotLoop leaves the loop on it
+*,D4DE,wForcedTee,WRAM6: 1 = tee spot from $D4DF-$D4E2 (SetForcedTee)
+*,D4E3,wP1OffTee,WRAM6: bit 0 = player 1 starts off the tee; bits 4-5 = his lie (ResetPlayersForHole)
+*,D4E4,wForcedWind,WRAM6: 1 = wind from $D4E5 (SetForcedWind)
+*,D4E7,wForcedShot,WRAM6: 1 = club $D4E8 and aim $D4E9 given (SetForcedShot; also the retry copy 08:4AC2)
+*,D4ED,wForcedWindDir,WRAM6: 1 = wWindDir from $D4EE (SetForcedWindDir)
+*,D4EF,wP1StartStrokes,WRAM6: player 1 strokes at the hole start (SetP1StartStrokes)
+*,D4C8,wTrajectoryClass,WRAM6: golfer's trajectory class (PlayerField $1C): picks the bank 38-3A launch speed table
+*,D4CA,wGolferShape,WRAM6: golfer's shot shape (PlayerField $1D; ShotShape)
+*,D4CB,wGolferControl,WRAM6: golfer's control (PlayerField $1F; Control 10:6BEF)
+*,D4CC,wGolferEquip,WRAM6: equipment bits (PlayerField $19; ShotShape / ClubDistance)
+*,D373,wPreviewBall,WRAM6: landing preview ghost ball position (6 bytes) then height and velocity
+*,D514,wAddressSpot,WRAM6: ball position at the address (SaveAddressSpot)
+*,C96D,wReplayActive,1 while ReplaySavedHole replays a saved hole

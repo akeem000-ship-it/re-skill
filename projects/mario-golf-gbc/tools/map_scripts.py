@@ -1,8 +1,9 @@
 """List the overworld map scripts: for each map header (MapTable 0A:5188, see dump_maps.py) the enter script
 (header +12) and the script word (+4) of each 8-byte talk (+6), object (+8) and trigger (+10) record.
 A script word below $2000 is a text id shown as a message; otherwise it is code in the header's bank, run by
-MapRunScript (0A:4EFF). For code scripts the text ids loaded into hl before a ShowMessage far call
-(05:5D49, `rst $18 ; db $46, $05`) in the first $200 bytes up to the first ret are printed with their text.
+MapRunScript (0A:4EFF). For code scripts the text ids loaded into hl before a far call that takes a text
+(ShowMessage 05:5D49 `db $46, $05`; 0A:4124 `db $0E, $0A`, which passes hl to SetMessageText 05:5A96) in the
+first $200 bytes up to the first ret are printed with their text.
 
 roots(rom) -> [(bank, addr)] of the code scripts (used by trace_code.py).
 usage: map_scripts.py [BB]   (only the headers in bank BB)
@@ -43,13 +44,13 @@ def roots(rom):
 def texts_shown(rom, bank, addr):
     """Text ids put in hl before a ShowMessage far call, from addr up to the first ret (max $200 bytes)."""
     found, hl, pc = [], None, addr
-    while pc < addr + 0x200:
+    while pc < min(addr + 0x200, 0x7FFD):
         ins = decode(rom, to_offset(bank, pc), pc)
         if ins.raw[0] == 0x21:
             hl = ins.raw[1] | ins.raw[2] << 8
         if ins.raw[0] == 0xDF:
             o = to_offset(bank, pc + 1)
-            if rom[o:o + 2] == bytes((0x46, 0x05)) and hl is not None and hl < 0x2000:
+            if rom[o:o + 2] in (bytes((0x46, 0x05)), bytes((0x0E, 0x0A))) and hl is not None and hl < 0x2000:
                 found.append(hl)
             pc += 3
             continue

@@ -1235,6 +1235,123 @@ wStarsCourse, `$D227` wRecordsList, `$D23B-$D23E` stats source / field offsets /
 wCourseIdList, `$C980` wProfileCourseStats, `$C4BE` wHolesDone, `$CA7F` wLastShotRecord, `hFFB0-hFFB6` course
 select state. Note `$D214`/`$D200` are reused per screen (records page in bank 0C, select descriptors in 0F).
 
+##### 7F: sound effects engine
+Exports SFXStart (7F:400A) and SFXUpdate (7F:406C); farcalled by the driver copies in 7C/7D/7E (SoundHandleRequests,
+SoundUpdate) and by 0F:517D, 37:6D69, 5C:5C44, 2E:43C0.
+- **Effect header** (SFXTableA 7F:495D for ids < $65, SFXTableB 7F:6160 for ids >= $65, index id - $65): a channel
+  mask (-> wSFXChannelMask), then one script pointer per set bit (channel 1..4) -> wSFXChScriptPtr `$C58E`;
+  wSFXChSlide = 0, wSFXChWait = 1. SFXStart first silences the channels of a running effect (SFXSilenceActive 7F:42E2).
+  The "count" bytes before the tables (7F:495C = `$6E`, 7F:615F = `$6C`) are larger than the valid ranges; the
+  tails of both tables hold words that are not script pointers.
+- **SFXUpdate**: per channel in the mask: wSFXChWait - 1; at 0 runs the script (SFXRunScript 7F:40A4), else applies
+  the slide (SFXApplySlide 7F:419D / noise SFXApplyNoiseSlide 7F:41DD). Mask 0 -> SFXClearState (7F:42BE).
+- **Script** (SFXCommandTable 7F:40BB, command = high nibble, low nibble = argument):
+
+  | Cmd | Effect | Cmd | Effect |
+  |-----|--------|-----|--------|
+  | 0h ll | frequency `$hll`, note on, end of frame | 6x nn | slide once, wait nn frames |
+  | 1x nn | NRx2 = nn, retrigger next note | 7w | load wave pattern w (7F:4B6B) |
+  | 2d | NRx1 = d << 4 (duty) | 8x nn | NR51 bits (wSFXPanning `$C4C5`) |
+  | 3x nn | loop start, count nn | 9x-Dx | **broken**: handler 7F:40DB jumps back to SFXRunScript with hl still pushed and hl = 7F:40DB, so it loops forever on its own `$C3` byte |
+  | 4x | loop end | Ex | frequency from SFXHeightFreqTable 7F:431C by wSFXBallHeight / 4 (ball whistle?) |
+  | 5x nn | slide step nn (signed) | Fx | end: channel freed and silenced |
+
+- RAM (WRAM0): `$C56E` trigger, `$C572` slide, `$C576` wait, `$C57A` freq words (`$C580` = NR43 of noise),
+  `$C582` loop count, `$C586` loop pointer, `$C58E` script pointer (4 channels each), `$C596` active, `$C597`
+  scratch mask. `$CAAB` = copy of the ball height (`$D407-$D408`) written every BallTask frame (10:4D6E) only for
+  command `$Ex`: the in-flight sound follows the ball's height.
+- Leftover: 7F:42CB (unreferenced) tries to silence all channels but uses `ldh a, [n]` (`$F0`) where `ldh [n], a`
+  (`$E0`) was meant; only its `wSFXChannelMask = 0` works.
+
+##### 38, 39, 3A: distance -> launch speed tables (golf)
+Each bank holds three copies of the same 71-byte routine, each followed by its own tables. ShotSpeed (10:6CDB)
+reaches them through SpeedTableJump 10:6D6A by `(wTrajectoryClass $D4C8 + 8) & 15`:
+
+| Class | Routine | Class | Routine |
+|-------|---------|-------|---------|
+| -8..-4 | 39:6A48 | +1 | 38:550B |
+| -3 | 39:5525 | +2 | 3A:4006 |
+| -2 | 39:4006 | +3 | 3A:54EB |
+| -1 | 38:6A02 | +4..+7 | 3A:69BC |
+| 0 | 38:4006 | | |
+
+Routine: c = club; club >= 13 (putter) returns `$40`. Otherwise word table[club] (13 pointers) -> word list indexed
+by de / 2 (de = distance from ShotSpeed / 08:60BC); odd de averages the two neighbours. In shot mode 2 (wShotMode)
+a byte table[club] indexed by de & ~1 instead. Values grow with the index (club 0, class 0: 4, 14, 33, 39, 45...).
+`$D4C8` comes from PlayerField `$1C` (SelectPlayer1/2), so it is a per-golfer trajectory (high / low ball).
+Unused exports in the `$4000` tables of 38/39 (idx 08+) are data words, not calls.
+
+##### 28-2F, 72-74: overworld map gfx banks, tile animation
+Appended after the gfx data of each bank (code identical except addresses; `cmp.py` in this folder):
+MapTileAnimStart (export 0), MapTileAnimStop (export 1), MapTileAnimTask, MapTileAnimStep. Called from 0B:4900
+(start; a = wMapGfx, table 0B:42C0 gives (index in bank, bank number 0-10)) and 0B:497D (stop).
+- Animation scripts: word table at the end of the bank's `$4000` export table (28 and 2C: `$405E`; 2A and 2D:
+  `$4028`; the others `$403A`) indexed by the in-bank gfx index. A script holds up to 4 tracks separated by `$FF`, ended by `$FE`
+  (`$FE` first = no animation). A track is a list of 4-byte frames: source tile, tile count, destination tile,
+  duration in frames.
+- Start: `$C32F` = index; `$C330` 4 x (frame offset, timer); `$C338` 4 track start offsets (`$FF` = unused);
+  registers the task. Task (paused while flag #24 is set and #28 clear): each track's timer counts down, then the
+  step queues a VRAM copy (00:0468) of count tiles from WRAM6 `$D800 + 16 src` (MapGfxTable ref w7 is therefore the
+  animation frame tiles) to `$9000 + 16 dest` (`$B000` in the HDMA queue), `$C33C` = scratch offset.
+- **Bug?**: the stop dispatcher 0B:497D handles indices 0-6 and sends everything else to 2F:7DC7, so maps whose
+  gfx are in banks 72-74 unregister bank 2F's task (UnregisterFrameTask matches address and bank) and their own
+  task keeps running until a ClearFrameTasks. Their stop routines (72:7764, 73:776E, 74:7A55) are never called.
+
+##### 50-54: golf hole gfx banks, tile animation
+Same animation engine as the map banks (HoleTileAnimStart/Stop/Task/Step; copies identical except addresses).
+Started from 13:7076 (HoleAsset ref 4 entry 0's bank - `$50` picks the bank), stopped from 13:70A2, which calls
+all five stops. Scripts come from HoleAsset(`$0401`) (a word list indexed by a), frames are copied straight from
+ROM (HoleAsset `$0400` data in the same bank) instead of WRAM6. Same RAM `$C330-$C33C`.
+
+##### 18-1F: text banks
+Unnamed copies of the bank 18 loader pair: TextBankBB_Load (export 0), TextBankBB_LoadShort (export 1),
+TextBankBB_Copy. Offset table `$4004` in all; string data 19: `$41B4`, 1A: `$41FC`, 1B: `$423E`, 1C: `$4214`,
+1D: `$43E6`, 1E: `$4604`, 1F: `$4156` (18: `$4404`).
+
+##### 4A: palette-cycling picture
+LoadCyclingPicture (4A:6205, export 2) is called by LoadStoryPicture (77:6F7E). Only picture 0 exists
+(CyclingPictureTable 4A:62F1 -> record 4A:62F7: LZ tiles 4A:62FD to WRAM1 `$D800` -> `$9000` (64 tiles), LZ map
+4A:65E5 to `$D400` -> `$9800`, attributes all `$0A` (palette 2, VRAM bank 1), palette data 4A:667E). It sets
+wOnGreen = `$FF` and registers PictureCycleTask (4A:62A3): palette 2 rebuilt each frame in `$D350` with colour 2
+cycling through 16 entries and colour 3 through 8 (by hVBlankCount / 2). PictureCycleStop (4A:629C, export 4) is
+called after golf views (10:440A, 10:4614, GolfViewExit 10:4C8F, 08:42B9).
+
+##### 10: golf engine, remaining entries
+Most new names are the **golf event API** used by the story / RPG script banks 30-34 (and 3C):
+- GolfSessionInit (10:4B28, export `$1C`, 68 calls): clears WRAM6 `$D000-$D6FF`, all overrides, golfers
+  (`$80` own character for player 0, `$FF` none for player 1), ClearShotRecords, saves the map return point,
+  seeds `$C9FE`. GolfSessionEnd (10:4B94, export `$30`) fades out and returns to the map when `$C2A6` is set.
+- SetCourseHole (10:423B, export `$10`, 80 calls): a = wWindDir, h = wCourse, l = wHoleNumber -> HoleIdFromCourse
+  (10:4246; CourseHoleIdTable 10:4265: word per course -> hole ids).
+- Overrides for the next hole (WRAM6, cleared by GolfSessionInit): SetForcedTee `$D4DE` (tee spot, read by hole
+  setup 13:5653), SetForcedWind `$D4E4`, SetForcedWindDir `$D4ED`, SetForcedShot / SetForcedShotD `$D4E7` (club,
+  aim; AimMenu 10:5BBF then skips SmartAim; the retry copy 08:4AC2 also uses it), SetP1OffTee `$D4E3`,
+  SetP1StartStrokes `$D4EF`, SetGolfEventFlag `$D4DD`.
+- Event hook: SetGolfEventHook (export `$1A`) stores a bank and jump table (`$C870-$C872`); CallGolfEventHook
+  (10:4CC3) calls entry a: 0 at shot setup (10:484C), 1 after each shot (10:4611), 3 at hole start (10:45CD),
+  4 at scene start (GolfSceneStart 10:4226), also from 08:646E and 13:43F6.
+- GolfViewInit (10:420E) / GolfSceneStart (10:4226) / GolfViewExit (10:4C6E): set up the HUD, scroll, ball and
+  golfer tasks; leave the cup or picture views.
+- ReplaySavedHole (10:435E, export `$3C`, from 0B:4E09): loads save block b+4, record c (128 bytes) to `$C600`:
+  course, hole, wind (`$C620-$C624`), shot count `$C625`, stroke records `$C640` -> `$D680`; with `$C96D` = 1 runs
+  ShotSetup that many times. Looks like the replay of a saved hole (records screen?).
+- Player selection: SelectPlayer1/2 (10:46D9 / 10:46EE) load the ball from PlayerField `$22`, the other player's
+  ball into wOtherBall `$D41E` (default 10:4771, off the map, before he tees off), and the golfer stats (`$D4C6-$D4CC`,
+  `$D4D7`) from PlayerField `$13` and `$19-$1F`. PickNextPlayer adds `$3200` to the pin distance of a player still
+  on the tee (PlayerField `$29` = 0) and `$0C80` while PlayerField `$2B` is 0 (set once by 3B:7447; meaning not
+  certain), then the farther player plays.
+  **Quirk**: SelectPlayer1/2 fill vx/vy/vz (`$D409-$D40E`) with the last byte copied (not 0); harmless because
+  ShotLaunch rewrites them.
+- Smaller helpers: SetWind 10:40F8, ResetPlayersForHole 10:405C, PlaceBallsAtTee 10:40AC (wTeeSpot `$D439`),
+  SaveSafeSpot 10:52C2, PreviewResetBall 10:5518, SetImpactFromPad 10:55B7 (ImpactPadTable 10:55CE), ShotViewUpdate
+  10:5632, PlaceTargetMarkerClamped 10:5A3C (export `$5A`), HudRedrawPart 10:5B81, AimStepAccel 10:5EB9 (aim turns
+  faster the longer the d-pad is held, wLookSpeed), TargetCupDist 10:621E, SmartAimNextOffset 10:63AA,
+  ClubBaseDistanceForClub 10:68B4, ScaleBySlowSpeed 10:4E98, MaxMissSound 10:5534, HudRedrawCurPlayer 10:4786.
+- Debug: DebugPrintTarget (10:5549) prints the target marker and its distance to the cup in hex when
+  hDebugMode >= 2.
+- 10:67CB is not a routine: it is the operand of `and $18` inside SlopeCellAt (the "call nc, $67CB" at 10:4A10
+  is data decoded as code). Left unnamed.
+
 ### Data Structures
 
 *(none yet)*
