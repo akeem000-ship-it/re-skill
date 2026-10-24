@@ -309,3 +309,19 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 10,6825,TerrainPropTable,4 bytes per terrain type (16 types); byte 1 = roll friction
 *,D320,wHoleId,WRAM6: row of HoleAssetTable ($0A = Marion hole 1)
 *,C200,wBGPalMaster,8 BG palettes then 8 OBJ palettes at $C240 (LoadPalettesMasterOnly)
+# --- save (bank 02; tools/dump_save.py) ---
+2,4078,SaveWriteDefaults,signature at $A020 and the default block directory at $A040
+2,4162,SaveSignature,"CAMELOT GAMEBOY" + $00
+2,4172,SaveErase,clears SRAM bank 0 ($A000-$BFFF; bank 02 export 0)
+2,419D,SaveChecksum,hl = 16-bit sum of $A032-$A1BF
+2,41C1,SaveCommit,stores SaveChecksum at $A030 and copies $A020-$A1BF to the backup at $B620
+2,41E1,SaveVerify,nz when the stored checksum is wrong
+2,41F6,SaveLoad,bank 02 export 1 (GameMain): a = 0 main copy valid / 1 restored from backup / $FF erased and reset
+2,424D,SaveReset,erase + defaults + commit
+2,4355,SaveBlockLoad,b = block; hl = destination: copies the block from its SRAM bank and checks its sum; a = 0 ok / $FE empty / $FF bad (bank 02 export 6)
+2,428A,SaveBlockEntry,a = block -> bc = $A040 + 32 a
+*,A020,sSignature,
+*,A030,sChecksum,
+*,A040,sBlockDir,12 x 32 bytes: used / SRAM bank / offset from $A000 / length / sum
+*,B620,sBackup,copy of $A020-$A1BF
+*,FF97,hSRAMBank,

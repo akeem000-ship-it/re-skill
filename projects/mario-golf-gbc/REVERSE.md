@@ -388,6 +388,23 @@ sound `$51` and drops the ball: water). BallTerrainCheck (10:527C) reads the ter
   `3` is water (BallRollStep plays sound `$51`; friction byte `+$01`). TerrainPropTable (10:6825) holds 4 bytes
   per type; byte 1 is the roll friction (fairway `$F8`, rough `$E0`, bunker `$F0`, green `$FC`, OB `$80`).
 
+#### Save (bank 02; tools/dump_save.py)
+
+| SRAM | Content |
+|------|---------|
+| `$A020-$A02F` | "CAMELOT GAMEBOY" + `$00` (02:4162) |
+| `$A030` | 16-bit sum of `$A032-$A1BF` (SaveChecksum 02:419D) |
+| `$A040 + 32 n` | block directory, 12 entries: `[used, SRAM bank, offset from $A000 (word), length (word), sum (word), ...]` |
+| `$A200-$BFFF` | the blocks (fresh save: blocks 0-2 `$200` bytes at `$A200/$A400/$A600`; 3 `$400` at `$A800`; 4-7 `$280` at `$AC00/$AE80/$B100/$B380`, marked used; 8-11 `$200` at `$B800-$BE00`) |
+| `$B620-$B7BF` | backup of `$A020-$A1BF` (in the gap between block 7, which ends at `$B600`, and block 8 at `$B800`) |
+
+SaveLoad (02:41F6, bank 02 export 1, called by GameMain) checks signature and checksum; if they fail it
+restores the backup and checks again; if that fails too it erases SRAM (02:4172), writes the defaults (02:4078)
+and commits (02:41C1: checksum + backup). SaveBlockLoad (02:4355) copies a block to WRAM and checks its sum
+(`$FE` = empty, `$FF` = bad). `dump_save.py` on the emulator's fresh save: signature and checksum valid, backup
+equal, the directory as above. What each block holds (characters, records, tournament progress) is not
+traced; three `$200` blocks would fit the three create-a-character slots on the character select.
+
 ### Data Structures
 
 *(none yet)*
@@ -522,7 +539,9 @@ Result over 4800 frames:
       types 4, 5, 8, A-F, the behind-the-golfer view assets (refs 2-4), hole ids `$00-$09` and `$64` up
 - [ ] How the play-mode menu (map 00) calls GolfRound, and the RPG side's golf (story tournaments from maps)
 - [ ] Map header fields +10/+12; warp record bytes 0-5; entrance byte 1; MapTable byte 5
-- [ ] The bank-02 setup calls in GameMain (02:41F6, 02:45D3, 02:4E3D) and the save check at 02:4078 ("CAMELOT GAMEBOY" at 02:4162)
+- [x] Save: signature, checksum, backup, block directory (02:41F6 SaveLoad and friends; dump_save.py)
+- [ ] Save: what each of the 12 blocks holds (play a story file, save, diff with dump_save.py); GameMain's other
+      bank-02 calls 02:45D3 and 02:4E3D
 - [x] Sound: driver copies in 7C/7D/7E, song bank/pointer tables, command id ranges, effects bank 7F
 - [ ] Sound: channel script format (7E:42B9 per channel) and the effect format (7F); exports 7E:4043-4064, 49DF, 49EB
 - [x] Text: text banks 18-1F, id format, control codes, font 03:50F0 (dump_text.py)
