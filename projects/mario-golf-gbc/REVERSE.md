@@ -42,6 +42,29 @@ Standard Game Boy Color map. Project-specific uses so far:
 
 ---
 
+## Decompile Coverage (tools/trace_code.py, tools/coverage.py)
+
+Every routine the code tracer reaches has a name and a comment in labels.csv: **242,689 bytes of traced code,
+100.0% in named routines** (about 3,200 routine entries; labels.csv has ~3,600 ROM labels). `coverage.py` counts a code
+byte as named when the nearest entry at or below it has a name; `coverage.py --list BB` lists unnamed entries.
+
+What the tracer follows (so the 100% is of this set):
+- the vectors, the `$4000` export tables of code banks, far calls (`rst $10/$18`), `rst $00` inline tables,
+  calls with inline arguments (PlaySoundCmd, the game-flag Cmd routines, WaitFramesCmd), every labelled routine;
+- code pointers passed in registers: RegisterFrameTask, CallHLInBankA, SetGolfEventHook tables (events 0-4),
+  jump tables (`ld hl, T ... ld a, [hl+] ; ld h, [hl] ; ld l, a ... jp hl`, DispatchByGameMode 08:470D,
+  11:4D79), `ld hl/de/bc` immediates naming an untraced same-bank routine (e.g. door animations);
+- the overworld map scripts (tools/map_scripts.py: enter / talk / object / trigger, and the lists scripts patch in
+  with ScriptSetMapField 0A:4BFF), actor scripts (bytecode; op `$12` calls native code);
+- unreferenced (dead) routines: untraced gaps right after traced code that decode as whole routines.
+
+It stops at the `$FF` fill and does not seed data labels (names ending in `Table` / `Data`, plus a few older
+data names). Code it cannot see would be reached only through pointers computed at run time in ways not listed
+above; the scans used to look for such code (pointer tables into untraced code, code-like untraced runs) found
+nothing left in the code banks. Data banks (graphics, holes, text, songs) are not code and are not counted.
+
+---
+
 ## Data-Range Map
 
 | Start | End | Size | Classification | Notes |
@@ -50,7 +73,7 @@ Standard Game Boy Color map. Project-specific uses so far:
 | 00:0100 | 00:014F | $50 | header | |
 | 00:0150 | 00:30FF | ~12 KiB | code | home bank, ~110 routines named from Tennis |
 | 00:3101 | 00:3FFF | ~3.8 KiB | fill `$FF` | the sound engine is not in bank 0 (Tennis has it at 00:2F1A-3DFF) |
-| 01-7F | | | mostly unclassified | per-bank `$4000` tables: see Bank map |
+| 01-7F | | | code and data | per-bank roles: Bank map and "Banks by role"; code coverage: Decompile Coverage |
 
 ---
 
@@ -2290,6 +2313,83 @@ Each holds export 0 ComposeObjectPicture and its helpers, byte-for-byte the code
 - 05:6B76-6B88: the four DebugMenu items (Scene / Map / Palette / Flag). 05:6108 CloseMessageBoxShrinkLoop is the
   shrink animation of CloseMessageBoxAnimated, skipped by its `jr` at 05:6106 (also contains odd register
   arithmetic at 05:6130, never run).
+
+All 76 entries from `coverage.py --list` are named (plus 4 extra code labels, 1 data table, 3 RAM labels: 80 lines).
+No entry turned out to be data decoded as code. One entry is code that cannot be a routine start (40:5941, below).
+
+##### Bank 32 (map scripts: maps 1F 20 21 22 00 03 04 05)
+New entries come from the runtime-patched talk lists (ScriptSetMapField +$0C), as the tracer now follows them.
+- **Map 03 Marion Clubhouse**: lists 32:5853 / 5928 / 59C7 / 5A4C / 5B09 by tournament progress
+  #112 / #113 / #114 / #115 placed (Marion Palm Dune Links) and #139 (Links won). Each list has member (talk 02)
+  and visitor (talk 03) counter scripts: with a partner (flags #144-147) texts $1D1+n / $1DB+n, else a comment
+  on the latest club result (placed vs won flag #136-#139). A fan (talk 0A, 32:5817-5844) cheers by club
+  (texts placed / won / match game with partner via 32:57F5). Quizzes: dogleg (32:57BD) and "did you really
+  beat the Grand Champ?" (32:5AD1). The five doors: each has an "open frame" and a 4-frame close routine
+  (32:5F4E-628A) passed in hl / de to Map03WalkOutOfDoor 32:5D94 (entrances 3-7).
+- Possible slip: 32:59A0 and 32:5A18 are talk 02 scripts but pass speaker 3 to ScriptShowText (the visitor
+  counter actor), while every other talk 02 uses 2.
+- **Map 04 Lounge**: lists 32:649E-65C2 (same flags). Talk 02 (32:6425-6443) asks "Got a second?" (32:63F3).
+  After #139 the champs speak through 32:6667-66C4: Marion uses flag #80; the others ChampFlagPairCheck 32:6E9F
+  (flag #78+2n set and #80+2n clear; these are the rival pair flags #80-#93 of VsResultScreen 0C:665A, so
+  probably "already played / not beaten" in Match Games ?). The Links champ's "I've failed" speech is once
+  (sets #148).
+- **Map 05 Director's Room**: Caddie Master (talk 04) comments on Palm / Dune / Links placings
+  (32:6FB8 6FC7 6FD6), skipping to the "as champ" line when a club was won (32:6F98, which also sets the
+  course name for text code $0B).
+- Debug leftover: 32:4ABD (unreferenced, never returns) is a window test: "Tournament" title, menu $11F
+  (Hole in One / Eagle / Birdie / Par / Bogey), names Ken / Kid pushed as text args, text $16B redrawn in
+  window 1 forever. Looks like an early version of Map20EnterResultTests.
+
+##### Bank 33 (map scripts: Caddie Master offices 08-0B, 1C, 1D, 26, 2E/2F)
+- **Map 08 (Marion) gets its own talk list 33:4389** (Map08EnterCaddieMasterOffice: maps 09-0B patch the warps
+  list, map 08 and anything else patches the talk list at 33:483B, after a useless `cp $08`). It holds six golf
+  tutors (talk 0C-11, 33:42AB-4305): each sets wScriptTextBase ($857 $85E $865 $86C $873 $87A) and
+  wScriptArg = talk id, then Map08TutorAskDictionary 33:4DFF asks Yes/No and on Yes opens GolfDictionary 3F:4002
+  with mode arg-$0C (terms / rules / equipment / techniques / facilities / all), then reloads the map in place
+  (warp $FA with wPlayerPosSave copied to the entrance position $C465-$C469). Talk 0B (33:435F) tells the points
+  to the next level (or "level's high enough" at 99).
+- 33:5166 is the Caddie Master's round menu (text $892: Club Tournament / Practice Round / Quit); tournament
+  needs #227 (qualified), practice sets #224 and #119.
+- Dead code: 33:4929-4ABA is an older Caddie Master dialog reachable by nothing (the live path at 33:4916
+  jumps to 5166 / 4D97 / 4D25); its tail 4ABB is live (partner match). 33:4BA7 places actors 2-5 and falls into
+  Map08TriggerCallOver (no ret, no callers). 33:4C59 is a byte copy of Map08WalkOutAnim. 33:4E49 is an unused
+  "Keep checking?" ($87D) step for the dictionary. 33:7CC3 is a third copy of AwardExpWithBonus (30:7E7F).
+
+##### Bank 34 (map scripts: maps 06 02 27 28 29 2C 30)
+- 34:5BC7 (unreferenced): SetForcedTee at one of 10 spots by $C3E0 (balls already cleared) for the Tiny-Tots
+  ball cleanup (map 27). The cleanup's shot-setup hook Map27CleanupShotSetup 34:5C81 is a bare ret, so this
+  was probably meant to be called there (the tee then comes from elsewhere ?).
+- 34:7DE4: a fourth unreferenced copy of AwardExpWithBonus (uses 34:7DD8 for the level-up screen).
+
+##### Bank 00
+- 00:211D (unreferenced, next to FormatHexWord / FormatDecimalNumber): signed 16-bit to right-aligned decimal
+  string of width a (spaces, '-', NUL). Helpers 00:21CF (digit by repeated subtraction), NegateHL 00:21E0,
+  NegateBC 00:21E8 are only used by it.
+
+##### Bank 0B
+- 0B:4534 (unreferenced debug): small menu text $0123 (gb_04 gb_05 gb_03 gb_06) choosing a map gfx screen;
+  sibling of MapGfxBrowserPick 0B:4501 / DebugMapGfxViewer 0B:4579.
+
+##### Bank 3C (computer golfer AI)
+- Dead planner helpers: 3C:4B1A walks the shot line in $80 steps looking for a steep green slope
+  (3C:4DE2: slope strength >= 2 near the middle of a tile; wider band on courses 3 and 4); 3C:505B adds 10% power;
+  3C:5082 compensates carry on rough / bunker / lie $0C (distance / 10 / 9 / 8) and re-picks club and power.
+  Work bytes $D525-$D52E (wCpuScratch area).
+
+##### Bank 3E
+- 3E:660D: unreferenced third score label (tiles $CD-$CF / $DD-$DF), like DrawScoreLabelB 3E:65E3.
+
+##### Bank 40
+- 40:5775-5BF8 is a block of copied math code: Sqrt24 (used by DemoSlide debug print), then the unreferenced
+  copies DivAHLByDE_40 (40:599C = 00:0DDB) and MulHLByDE_40 (40:5AA9 = 00:0CB5).
+- **Tracer note**: 40:5941 starts right after Sqrt24's last instruction (`ld hl,0 ; jr` at 40:593C) and is
+  byte-identical to the tail of CpuDistFromBall 3C:4483: it pops af / bc / de that were never pushed (its
+  prologue is missing). It is real code but not a callable routine; the dead-code pass should not count it as
+  a routine entry (or should mark it as a fragment). Labelled VectorLengthTail with that remark.
+
+##### RAM
+- $C465 wEntranceFacing, $C466 wEntranceX, $C468 wEntranceY: entrance record bytes 1 / 2-3 / 4-5 copied by
+  0A:4C47; scripts that reload the map in place (warp $FA) store wPlayerPosSave there (33:4E36, 30:6F32 ...).
 
 ### Data Structures
 

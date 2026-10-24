@@ -3537,7 +3537,6 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 35,4EBA,Map34HeaderData,map $34 header (End Award Ceremony)
 35,4F35,Map34EnterEndingAward,fade out; actor states; Map34AwardCeremony; warp
 35,4F51,Map34AwardCeremony,"A new champion has appeared at {club} Club today!" / "I now present this trophy to {name}"; crowd faces the player; trophy walk (wMapId $18 checks copied from the real ceremony maps)
-35,5050,Map34AwardCeremonyPart2Data,not an entry: inside Map34AwardCeremony (junk script root)
 35,5117,Map34SetClubByMapId,SetTextCourseIndex by wMapId $18-$1B (Marion / Palm / Dune / Links ceremony maps)
 35,530B,Map35HeaderData,map $35 header (End Tiny-Tots Golf)
 35,5352,Map35Trigger01EndingCaretaker,ending: ball piles drawn; caretaker: "Those darn kids! Balls everywhere!" and walks the course; warp 1
@@ -4042,3 +4041,91 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,D47E,wBallObjectHandlers,WRAM6: handler table pointer (11:4375 course view / 11:4984 green view)
 10,6DCD,PowerScaleTable,4 words by $D32B & 3 (6DD5 6E13 6E51 6E51): power scale lists read by PowerScaleLookup 10:6DAE
 2,6109,DebugBlankLineData,string of spaces printed by ClearDebugLines (02:60F8)
+# --- patched talk lists, door animations and dead code (32 33 34 00 0B 3C 3E 40) ---
+0,211D,FormatSignedDecimalPadded,unreferenced: hl = signed 16-bit -> ASCII decimal at de right-aligned to width a (space padding; '-' sign; NUL end); digits via 00:21CF
+0,21CF,DecimalDigitBySubtract,d = hl / bc by repeated subtraction (NegateBC + add) and hl = remainder (FormatSignedDecimalPadded)
+0,21E0,NegateHL,hl = -hl (two's complement)
+0,21E8,NegateBC,bc = -bc (two's complement)
+0B,4534,DebugMapGfxQuickMenu,unreferenced debug: menu text $0123 (gb_04 gb_05 gb_03 gb_06) at (1 1) after B is released; choice -> wMapGfxLoaded and MapLoadGfxScreen (not when $FF)
+3C,4B1A,CpuFindSteepSlopeOnLine,unreferenced: a = club h = power bc = aim: walks from the ball along the aim in $80 steps from $20 up to the carry (CpuClubDistanceForLie / 60 x power); a = 1 and bc = distance at the first point CpuSteepSlopeMidTile reports
+3C,4DE2,CpuSteepSlopeMidTile,hl = x de = y: a = 1 when CpuSafeSlopeAt strength (bits 6-7) >= 2 and the x or y fraction (l / e) is in $40-$9F ($20-$BF on courses 3 4); only used by unreferenced 3C:4B1A
+3C,505B,CpuBoostPower10Pct,unreferenced: h = power: unless already $3C adds power / 10 capped at $3C
+3C,5082,CpuLieCarryCompensation,unreferenced: a = club h = power: on rough (1) / bunker (2) / lie $0C adds distance / 10 / 9 / 8 then picks club (CpuPickClubForDistance) and power (CpuPowerForDistance) -> a h
+3E,660D,DrawScoreLabelC,unreferenced: 3 x 2 tiles $CD-$CF / $DD-$DF at bc (as DrawScoreLabelB)
+40,5941,VectorLengthTail,unreferenced headless copy of the tail of CpuDistFromBall (3C:4483): hl = dx de = dy -> hl = sqrt(dx^2 + dy^2) scaled; pops af bc de it never pushed (cannot be called as is)
+40,599C,DivAHLByDE_40,unreferenced copy of DivAHLByDE 00:0DDB
+40,5AA9,MulHLByDE_40,unreferenced copy of MulHLByDE 00:0CB5
+34,5BC7,Map27SetTeeForBallPile,unreferenced: SetForcedTee at one of 10 fixed spots by $C3E0 (0-9 balls cleared) for the Tiny-Tots ball cleanup; Map27CleanupShotSetup is a bare ret instead?
+34,7DE4,AwardExpWithBonus_34,unreferenced copy of 30:7E7F: de = EXP (+25% with flag #99); AddExp; sound $38; text $011B; level-up screen (34:7DD8)
+33,7CC3,AwardExpWithBonus_33,unreferenced copy of 30:7E7F: de = EXP (+25% with flag #99); AddExp; sound $38; text $011B; FadeToLevelUpScreenB
+33,42AB,Map08TalkLingoTutor,map $08 (Marion) talk 0C (list 33:4389): text base $857 Want to learn some golf lingo? -> Map08TutorAskDictionary (dictionary mode 0 terms)
+33,42BD,Map08TalkRulesTutor,map $08 talk 0D: base $85E golf rules -> Map08TutorAskDictionary (mode 1)
+33,42CF,Map08TalkEquipmentTutor,map $08 talk 0E: base $865 golf equipment -> Map08TutorAskDictionary (mode 2)
+33,42E1,Map08TalkTechniqueTutor,map $08 talk 0F: base $86C golf techniques -> Map08TutorAskDictionary (mode 3)
+33,42F3,Map08TalkFacilitiesTutor,map $08 talk 10: base $873 facilities -> Map08TutorAskDictionary (mode 4)
+33,4305,Map08TalkDictionaryTutor,map $08 talk 11: base $87A how to look words up -> Map08TutorAskDictionary (mode 5 all categories)
+33,4389,Map08TalkListTable,talk list of map $08 (Marion) set by Map08EnterCaddieMasterOffice (ScriptSetMapField +$0C): tutors 0C-11 / Caddie Master 06 / level advisor 0B / signs 08-0A
+33,435F,Map08TalkLevelAdvisor,map $08 talk 0B: wCharLevel 99 -> text $87F else $87E with the points to the next level (ExpToNextLevel 02:5498)
+33,4DFF,Map08TutorAskDictionary,tutor wScriptArg ($0C-$11): question (base + 0) and Yes/No; No -> base + 1; Yes -> fade out; GolfDictionary 3F:4002 mode arg - $0C; reload the map in place (warp $FA at wPlayerPosSave)
+33,4E49,Map08TutorAskKeepChecking,unreferenced: fade in; Keep checking? ($87D) Yes -> back into the dictionary (33:4E1C) else text base + de
+33,4E74,TutorShowTextFromBase,text = wScriptTextBase + de; ScriptShowText by speaker wScriptArg; waits 10 frames
+33,4E8C,TutorShowTextFromBaseKeepOpen,text = wScriptTextBase + de; ScriptShowTextKeepOpen by speaker wScriptArg; waits 5 frames
+33,4929,Map08CaddieMasterOldRoundDialog,unreferenced (dead after the jumps at 33:491B-4926): older Caddie Master round dialog: Starting a round? (base + 1) / practice asks (+8 +9 +$0B) setting #224 #244 then ClubRoundStartScene or the walk-out at 33:50BB
+33,4BA7,Map08PlaceGolfersThenCallOver,unreferenced: places actors 2-5 in a row at y $0D80 (x $15 $17 $1B $19) then falls into Map08TriggerCallOver
+33,4C59,Map08WalkOutAnimB,unreferenced byte copy of Map08WalkOutAnim (33:4566)
+33,5166,Map08CaddieMasterRoundMenu,Caddie Master menu: club won (#226) -> 33:54CA; else text base + 4 and menu $892 (tournament / practice / quit): tournament needs #227 (+$0D + ClubRoundStartScene) else +7; practice sets #224 #119 (asks +8 or +9)
+32,4ABD,ScoreNameMenuWindowTest,unreferenced test screen (never returns): title window text $67 (Tournament) / message window / menu $11F (Hole in One..Bogey); each pick pushes names $BC $BD (Ken Kid) and shows text $16B in window 1
+32,576F,Map03TalkMemberCounterAfterMarion,map $03 talk 02 (list 32:5853 after #112): partner -> $1D1+n; else Club won #136 -> $176 else $175
+32,5796,Map03TalkVisitorCounterAfterMarion,map $03 talk 03 (list 32:5853): partner -> $1DB+n; else #136 -> $178 else $177
+32,57BD,Map03TalkDoglegQuiz,map $03 talk 09 (list 32:5853): Did you know a dogleg? ($17E) Yes -> $17F / No -> $180
+32,57F5,Map03FanTextByClubResult,shows the set text +0 (placed) / +1 (club wScriptArg won: Map03TestClubWonFlag) / +2 (with a partner) by speaker $0A
+32,5817,Map03TalkFanAfterMarion,map $03 talk 0A (list 32:5853): texts $181-$183 for club 0 via Map03FanTextByClubResult
+32,5826,Map03TalkFanAfterPalm,map $03 talk 0A (list 32:5928 after #113): texts $195-$197 for club 1
+32,5835,Map03TalkFanAfterDune,map $03 talk 0A (list 32:59C7 after #114): texts $1A3-$1A5 for club 2
+32,5844,Map03TalkFanAfterLinks,map $03 talk 0A (list 32:5A4C after #115): texts $1AF-$1B1 for club 3
+32,58A4,Map03TalkMemberCounterAfterPalm,map $03 talk 02 (list 32:5928): partner -> $1D1+n; else You won/placed at Palm? ($189 with #137 else $185) Yes/No with follow-ups
+32,5901,Map03TalkVisitorCounterAfterPalm,map $03 talk 03 (list 32:5928): partner -> $1DB+n; else #137 -> $18E else $18D
+32,5979,Map03TalkVisitorCounterAfterDune,map $03 talk 03 (list 32:59C7): partner -> $1DB+n; else #138 -> $19C else $19B
+32,59A0,Map03TalkMemberCounterAfterDune,map $03 talk 02 (list 32:59C7): partner -> $1D1+n; else #138 -> $19A else $199 (speaker 3 not 2?)
+32,5A18,Map03TalkMemberCounterAfterLinks,map $03 talk 02 (list 32:5A4C): partner -> $1D1+n else $1A7 (speaker 3 not 2?)
+32,5A32,Map03TalkVisitorCounterAfterLinks,map $03 talk 03 (list 32:5A4C): partner -> $1DB+n else $1A8
+32,5A9D,Map03TalkMemberCounterGrandChamp,map $03 talk 02 (list 32:5B09 after #139): partner -> $1D1+n else $1B3
+32,5AB7,Map03TalkVisitorCounterGrandChamp,map $03 talk 03 (list 32:5B09): partner -> $1DB+n else $1B4
+32,5AD1,Map03TalkBeatGrandChampQuiz,map $03 talk 05 (list 32:5B09): Did you really beat the Grand Champ? ($1B6) Yes -> $1B7 / No -> $1B8
+32,5F4E,Map03DoorSetOpen1,door 1: one MapBufCopyRectRedraw of the open frame (hl of Map03WalkOutOfDoor)
+32,5F65,Map03DoorCloseAnim1,door 1: 4 frames back to closed (de of Map03WalkOutOfDoor)
+32,6017,Map03DoorSetOpen2,door 2: open frame
+32,602E,Map03DoorCloseAnim2,door 2: closing animation
+32,60E0,Map03DoorSetOpen3,door 3: open frame
+32,60F7,Map03DoorCloseAnim3,door 3: closing animation
+32,61A9,Map03DoorSetOpen4,door 4: open frame
+32,61C0,Map03DoorCloseAnim4,door 4: closing animation
+32,6272,Map03DoorSetOpen5,door 5: open frame
+32,6289,Map03DoorCloseAnim5,door 5: closing animation
+32,62E2,Map03TestClubWonFlag,tests flag #136 + wScriptArg (club won)
+32,63F3,Map04AskGotASecond,Got a second? (set text) Yes/No by speaker 2: No -> next text (Tch!) / Yes -> skips it and shows the story after
+32,6425,Map04TalkMemberAfterPalm,map $04 talk 02 (list 32:64E7 after #113): texts $466-$46A via Map04AskGotASecond
+32,642F,Map04TalkMemberAfterDune,map $04 talk 02 (list 32:6530 after #114): texts $46B-$46F
+32,6439,Map04TalkMemberAfterLinks,map $04 talk 02 (list 32:6579 after #115): texts $470-$474
+32,6443,Map04TalkMemberGrandChamp,map $04 talk 02 (list 32:65C2 after #139): Been to Peach's Castle? texts $475-$477
+32,660B,Map04TalkLoungeMemberAGrandChamp,map $04 talk 05 (list 32:65C2): $484 with #189; else $462 or $463 (ex-champs) when all clubs won #136-#139
+32,6639,Map04TalkLoungeMemberBGrandChamp,map $04 talk 06 (list 32:65C2): $485 with #189; else $464 or $465 when all clubs won
+32,6667,Map04TalkMarionChampGrandChamp,map $04 talk 07 (list 32:65C2): flag #80 clear -> Map04TalkMarionChamp; else $47A (+1 with #136)
+32,6686,Map04TalkPalmChampGrandChamp,map $04 talk 08 (list 32:65C2): ChampFlagPairCheck -> $47C (+1 with #137) else Map04TalkPalmChamp
+32,66A5,Map04TalkDuneChampGrandChamp,map $04 talk 09 (list 32:65C2): ChampFlagPairCheck -> $47E (+1 with #138) else Map04TalkDuneChamp
+32,66C4,Map04TalkLinksChampGrandChamp,map $04 talk 0A (list 32:65C2): ChampFlagPairCheck -> once (#148) texts $480-$482 with animations; then $483; else Map04TalkLinksChamp
+32,6E9F,ChampFlagPairCheck,a = 1 when flag #78 + 2n is set and #80 + 2n clear (n = wScriptArg - 7; ChampTestFlag2 de $4E / $50): VsResult rival flags?
+32,6F98,Map05SkipTextIfClubChamp,highest club won (#138 3 / #137 2 / #136 1) -> SetTextCourseIndex and ScriptSkipText; nothing when none
+32,6FB8,Map05TalkCaddieMasterAfterPalm,map $05 talk 04 (record 32:7058 in Map05TalkListTable): $49F placed at Palm / $4A0 as a club champ (Map05SkipTextIfClubChamp)
+32,6FC7,Map05TalkCaddieMasterAfterDune,map $05 talk 04 (record 32:709A): $4A8 / $4A9
+32,6FD6,Map05TalkCaddieMasterAfterLinks,map $05 talk 04 (record 32:70DC): $4B1 / $4B2
+*,C465,wEntranceFacing,entrance record byte 1 (0A:4C4A MapPlaceAtEntrance); scripts store wPlayerPosSave facing here before warp $FA
+*,C466,wEntranceX,entrance x word (0A:4C52); read at map load (0A:4A6A); scripts copy wPlayerPosSave here for warp $FA
+*,C468,wEntranceY,entrance y word (0A:4C5D)
+12,4292,HudLieIconTable,16 bytes: lie icon index by terrain $D4CD (HudLieIndex 12:4239)
+12,42A2,SlopeAtBallUnused,unreferenced: slope under the ball: on the green GreenSlopeDirAt direction -> hl from the word table 12:42FF (off-green terrain $20); off the green the cell of the WRAM6 $D800 map at the ball with the WRAM2 tile flips
+06,6465,SlotPaletteTable,12 bytes: BG palette of each character's slot (PutSlotPalette 06:6422 and 06:62F4)
+06,6471,LoadSelectedCharPaletteUnused,unreferenced: BG palette 7 from table 06:6494 by the character of the roster slot under the cursor ($D214)
+30,4888,ApproachRangeKeepPracticingUnused,unreferenced script: fade in; "Keep practicing?" ($0C61) Yes/No; No -> text; Yes -> ApproachRangeStartPractice
+35,50DE,Map34PresentTrophyUnused,unreferenced script: fade in; actor 5 animation 2; "I present the {place} Place Trophy to {name}" ($0C41) with the place from wMapEntrance - 1; then 35:5011
+35,5011,Map34CeremonyActorsWalkIn,actors 2-5 speed 8; actor 2 faces down and walks to ($0A00 $0F00) / actor 3 to ($0A80 $0E00) ... (the ceremony walk-in); called only by Map34PresentTrophyUnused

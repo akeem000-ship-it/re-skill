@@ -321,7 +321,8 @@ if "--no-dead" not in sys.argv:
                     calls += 1
                 pc += ins.length + inline_len(ins)
             near = [x for x in LABEL_ADDRS.get(b, ()) if x <= a]
-            in_data = near and (b if near[-1] >= 0x4000 else 0, near[-1]) in DATA_LABELS
+            in_data = near and (b if near[-1] >= 0x4000 else 0, near[-1]) in DATA_LABELS and \
+                not any(x in code[b] for x in range(near[-1], a))
             if ok and pc == end and calls >= 3 and end - a >= 16 and rom[to_offset(b, a)] in OPENERS and not in_data:
                 DEAD.append((b, a, end - a))
                 push(b, a, True)
