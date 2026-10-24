@@ -639,6 +639,13 @@ export class Voxel3D {
     }
     return n ? [r / n / 255, gg / n / 255, b / n / 255] : null;
   }
+  // the court's surface concept (courtconcepts.js): ?court=..., else the finals' giant stadium (STADIUM GIANT) plays on the "final" court,
+  // with ISLAND OPEN (game mode 2) or STAR CUP (the dream matches) behind the baselines
+  courtLook() {
+    if (this.courtConcept) return { name: this.courtConcept, title: null };
+    const st = this.stadium; if (!st || !st.active || this.isDrill() || !st.wantGiant()) return null;
+    return { name: "final", title: this.gb.mem.wram[0][0x8A6] === 2 ? "ISLAND OPEN" : "STAR CUP" };
+  }
   paintGround() {                                        // per palette change: the ROM court picture coloured with the current palettes
     const g = this.ground, lut = new Uint8Array(33 * 4);
     if (!g.fromRom) this.composeMap(this.bgBase(), this.courtMaps[this.courtId], g.idx);
@@ -652,7 +659,8 @@ export class Voxel3D {
       if (!g.detail || g.detail.kind !== kind) g.detail = buildDetail(kind, g.W, g.H, WORLD.x0, WORLD.y0, WORLD.texel);
       paintFloor(d, src, idx, lut, g.W, g.H, g.detail);
     }
-    if (this.courtConcept) paintConcept(d, src, idx, lut, lineColours(idx, lut), g.W, g.H, WORLD, this.courtConcept);   // COURT concepts
+    const look = this.courtLook(); this.paintedLook = look ? look.name + ":" + look.title : "";
+    if (look) paintConcept(d, src, idx, lut, lineColours(idx, lut), g.W, g.H, WORLD, look.name, { title: look.title });   // COURT concepts
     if (this.groundTex) this.gl.deleteTexture(this.groundTex);
     this.groundTex = this.texture(g.W, g.H, d, true);
     this.buildCuts(bg, g.cuts);
@@ -860,7 +868,7 @@ export class Voxel3D {
   renderCourt(frame2d) {
     const gl = this.gl, cv = this.cv, p = this.gb.ppu; this.mode = "3d"; if (this.debug) this.debug.length = 0;
     if (!this.ground || this.ground.court !== this.courtId) { this.buildGround(); this.groundHash = -1; }
-    const h = this.palHash(); if (h !== this.groundHash) { this.groundHash = h; this.paintGround(); }
+    const h = this.palHash(), lk = this.courtLook(); if (h !== this.groundHash || (lk ? lk.name + ":" + lk.title : "") !== this.paintedLook) { this.groundHash = h; this.paintGround(); }   // (a final starts / ends: its court)
     if (this.intro) this.intro.update();      // INTRO: the walk-out before a match (its own camera while it runs)
     const { mvp, tilt } = (this.replayCam && this.replayCam(cv.width / cv.height, m4, COURT_CLIP, this.interp())) || (this.intro && this.intro.camera(cv.width / cv.height, m4, COURT_CLIP, this.interp().players)) || (this.matchfx && this.matchfx.camera(cv.width / cv.height, m4, COURT_CLIP, this.interp().players)) || this.courtCamera(cv.width / cv.height);   // MATCH FX: changeover sweep, the winner
     if (this.light) this.light.camera(mvp, COURT_CLIP.near, COURT_CLIP.far, 7.5, "court", [0, 0, 0]);   // LIGHT

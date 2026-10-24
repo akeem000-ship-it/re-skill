@@ -24,7 +24,7 @@ const LOOK = {
 };
 
 // decals: text and shapes drawn on a canvas the size of the ground texture (W x H texels); returns its RGBA (alpha = coverage)
-function decals(name, W, H, tx, ty, box) {
+function decals(name, W, H, tx, ty, box, title) {
   if (typeof document === "undefined") return null;
   const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const g = cv.getContext("2d");
   const cx = tx(0), far = ty(box.y0 - 150), near = ty(box.y1 + 150), wTex = (box.x1 - box.x0) / 6;
@@ -32,7 +32,7 @@ function decals(name, W, H, tx, ty, box) {
   const star = (x, y, r, colour) => { g.beginPath(); for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5, rr = k & 1 ? r * 0.45 : r; g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); } g.closePath(); g.fillStyle = colour; g.fill(); };
   if (name === "varsity") { label("ROYAL ACADEMY", near, false, 26, "#ffffff"); label("ROYAL ACADEMY", far, true, 26, "#ffffff"); }
   else if (name === "final") {
-    label("STAR CUP", near, false, 30, "#f4c84a"); label("STAR CUP", far, true, 30, "#f4c84a");   // (the text is kept within the middle half)
+    const t = title || "STAR CUP"; label(t, near, false, 30, "#f4c84a"); label(t, far, true, 30, "#f4c84a");   // (the text is kept within the middle half)
     for (const s of [-1, 1]) { star(cx - wTex * 0.42, s > 0 ? near : far, 13, "#f4c84a"); star(cx + wTex * 0.42, s > 0 ? near : far, 13, "#f4c84a"); }
   } else if (name === "open") { label("ISLAND OPEN", near, false, 24, "rgba(235,245,220,0.9)"); label("ISLAND OPEN", far, true, 24, "rgba(235,245,220,0.9)"); }
   else return null;
@@ -41,7 +41,8 @@ function decals(name, W, H, tx, ty, box) {
 
 // rgba: the painted ground (W x H x 4), already with the game's colours / courtfloor.js; src / idx / lut / L as in courtfloor.js paintFloor
 // (L: the line colours); world: { x0, y0, texel }
-export function paintConcept(rgba, src, idx, lut, L, W, H, world, name) {
+// opts.title: the name painted behind the baselines (final: STAR CUP unless given)
+export function paintConcept(rgba, src, idx, lut, L, W, H, world, name, opts = {}) {
   const look = LOOK[name]; if (!look) return;
   const N = W * H, isLine = new Uint8Array(N);
   for (let i = 0; i < N; i++) isLine[i] = L[idx[src[i]]];
@@ -54,7 +55,7 @@ export function paintConcept(rgba, src, idx, lut, L, W, H, world, name) {
   }
   if (bx0 > bx1) { bx0 = -576; bx1 = 576; by0 = -1248; by1 = 1248; }
   const box = { x0: bx0, x1: bx1, y0: by0, y1: by1 }, tx = X => (X - world.x0) / world.texel, ty = Y => (Y - world.y0) / world.texel;
-  const dec = decals(name, W, H, tx, ty, box);
+  const dec = decals(name, W, H, tx, ty, box, opts.title);
   for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
     const o = j * W + i, p = o * 4, X = world.x0 + i * world.texel, Y = world.y0 + j * world.texel;
     const inside = X > bx0 && X < bx1 && Y > by0 && Y < by1, ay = Math.abs(Y), nearBase = Math.max(0, 1 - Math.abs(ay - by1) / 160);
