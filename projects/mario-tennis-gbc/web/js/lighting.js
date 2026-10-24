@@ -266,10 +266,13 @@ export class Lighting {
   hourFor(kind) {
     const m = this.cfg.matches;
     if (kind === "court" && this.weatherHour != null) return this.weatherHour;   // WEATHER: Sunset
-    if (kind === "court" && m === "tour") return this.tourHour();
-    if (kind === "court" && m !== "same") return m === "day" ? 15 : m === "night" ? 22 : (this.matchHour ?? 12);
+    if (kind === "court" && m === "tour") return Math.min(23.5, this.tourHour() + this.flow());
+    if (kind === "court" && m !== "same") return m === "day" ? 15 : m === "night" ? 22 : Math.min(23.5, (this.matchHour ?? 12) + this.flow());
     return this.hour();
   }
+  // TIME MOVES ON: the match's hour advances 12 minutes a game (sets count six), up to three hours: a match begun in the late
+  // afternoon ends under the floodlights, the sun and the stands' shadows moving as it goes (stadium3d.js switches the floodlights on)
+  flow() { if (this.cfg.timeFlow === false) return 0; const w = this.v.gb.mem.wram[0]; return Math.min(3, ((w[0x8E0] + w[0x8E1]) * 6 + w[0x8E2] + w[0x8E3]) * 0.2); }
   // matches "tour": the hour by the class of the match (STADIUM crowdClass and the tour's stage): the first junior matches in the early
   // afternoon, later into the day through the senior and varsity classes (varsity at sunset), the finals at night under the floodlights;
   // exhibition matches keep the random hours
@@ -392,7 +395,9 @@ export class Lighting {
       }
     } else if (kind === "court" && night > 0.02 && !(this.cam && this.cam.indoor)) {   // (no floodlights in the drill hall)
       pool = { v: [0, -80, 1000, 1850], c: [0.58 * night, 0.62 * night, 0.56 * night] };
-      for (const [x, z] of FLOODS) { out.push({ p: [x, FLOOD_HEIGHT, z], r: 4800, c: [0.10 * night, 0.09 * night, 0.07 * night] }); fl.push({ p: [x, FLOOD_HEIGHT, z], c: [0.42 * night, 0.38 * night, 0.28 * night], size: 0.10 }); }
+      const st = v.stadium, fk = i => st && st.active && st.floodK ? st.floodK(i, night) : 1;   // (FLOODLIGHTS: bank by bank as they come on)
+      const avg = (fk(0) + fk(1) + fk(2) + fk(3)) / 4; pool.c = pool.c.map(c => c * avg);
+      FLOODS.forEach(([x, z], i) => { const n = night * fk(i); out.push({ p: [x, FLOOD_HEIGHT, z], r: 4800, c: [0.10 * n, 0.09 * n, 0.07 * n] }); fl.push({ p: [x, FLOOD_HEIGHT, z], c: [0.42 * n, 0.38 * n, 0.28 * n], size: 0.10 }); });
     }
     if (kind === "court" && v.ballfx && v.ballfx.on) for (const l of v.ballfx.lights()) if (out.length < 6) out.push(l);      // impact lights of the ball effects (ballfx.js), day and night
     return { out, fl, pool };

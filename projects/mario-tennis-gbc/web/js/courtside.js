@@ -46,7 +46,7 @@ export class Courtside {
     this.crane = { x: -1180, z: -1560 };
     B.add(-1180, 0, -1560, 160, 40, 160, [60, 62, 70]); B.add(-1180, 40, -1560, 50, 300, 50, [80, 82, 92]);
     this.bench = [[bx - 80, -360], [bx - 80, 360]];
-    this.flags = opt.flags || []; this.lights = opt.lights || [];
+    this.flags = opt.flags || []; this.lights = opt.lights || []; this.spots = opt.spots || [];
   }
   // ---- once per game frame (stadium3d.js step): a point, an out call, a changeover ----
   step(w, E, p, now) {
@@ -127,6 +127,12 @@ export class Courtside {
         if (along === "x") this.add(fl.x + t * fl.w, fl.y - droop, fl.z + wave, fl.w / m + 1, fl.h, 4, k & 1 ? fl.col : shade(fl.col, 0.9));
         else this.add(fl.x + wave, fl.y - droop, fl.z + t * fl.w, 4, fl.h, fl.w / m + 1, k & 1 ? fl.col : shade(fl.col, 0.9));
       }
+    }
+    // RAIN: umbrellas go up over the crowd, more as the rain goes on (WEATHER: Rain), in all colours
+    if (W && W.cur === "rain" && this.spots.length) {
+      const share = Math.min(1, Math.max(0, (T - (W.since > 0 ? W.since : T - 20)) / 8)), fill = this.st.fill || 0, UC = [[230, 60, 60], [60, 110, 220], [250, 200, 50], [60, 170, 90], [240, 240, 240], [150, 70, 190], [30, 30, 40]];
+      for (let i = 0; i < this.spots.length; i++) { const [x, y, z, th] = this.spots[i]; if (th >= fill || (i * 0.618) % 1 > share) continue; const c = UC[i % UC.length];
+        this.add(x, y + 110, z, 96, 12, 96, c); this.add(x, y + 122, z, 60, 10, 60, c); this.add(x, y + 132, z, 20, 8, 20, c.map(v => v * 0.8)); }
     }
     // the venue's lamps: unlit by day, glowing as the floodlights come on (lighting.js sky.lamps)
     const LT = this.v.light, sky = LT && !LT.broken && LT.active && LT.skyFor ? LT.skyFor("court") : null, nk = sky ? sky.lamps || 0 : 0;

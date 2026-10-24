@@ -47,9 +47,9 @@ export class Ambience {
     if (!this.watch && typeof setInterval === "function") this.watch = setInterval(() => { if (this.venue && performance.now() / 1000 - this.lastT > 1) this.leave(); }, 1000);   // (the court left, or the 3D view off: quiet)
     if (venue !== this.venue) { this.venue = venue; this.parts = []; for (const kind of BY_VENUE[venue] || []) for (let i = 0; i < K[kind].n; i++) this.parts.push(this.spawn(kind)); this.sound(venue); }
     if (this.snd) this.snd.tick(T);
-    if (!this.parts.length) return;
     const nk = this.night(), rx = Math.hypot(mvp[0], mvp[8]) || 1, R = [mvp[0] / rx, 0, mvp[8] / rx], soft = this.softTex(), solid = this.solidTex();
     gl.useProgram(v.prog); gl.bindVertexArray(v.vao); gl.depthMask(false);
+    this.drawBursts(mvp, dt, R, soft, solid);
     for (let i = 0; i < this.parts.length; i++) {
       const p = this.parts[i], k = K[p.kind];
       p.age += dt; if (p.age > p.life) { this.parts[i] = this.spawn(p.kind); this.parts[i].age = 0; continue; } if (p.age < 0) continue;
@@ -62,6 +62,24 @@ export class Ambience {
       v.draw(tex, new Float32Array([R[0] * s, 0, R[2] * s, 0, 0, s, 0, 0, -R[2], 0, R[0], 0, p.x, p.y - s / 2, p.z, 1]), mvp, [0, 0, 1, 1], [k.col[0] / 255, k.col[1] / 255, k.col[2] / 255, a], 0.01);
     }
     gl.depthMask(true);
+  }
+  // the ball's bounce, the court's own way (stadium3d.js step): clay dust, grass bits, sparks at Bowser's court, a splash on the island,
+  // pink glitter at the castle, a coin's sparkle at the pipe court, leaf bits in the jungle, dust elsewhere
+  impact(X, Y, venue, surface) {
+    const S = surface === "clay" ? ["clay", [214, 124, 72], 14, 0.9] : surface === "grass" ? ["bits", [96, 164, 64], 10, 0.95] : venue === "volcano" ? ["spark", [255, 170, 60], 14, 1] : venue === "tropics" ? ["splash", [205, 232, 255], 16, 0.9]
+      : venue === "castle" ? ["spark", [255, 190, 230], 10, 1] : venue === "pipes" ? ["spark", [255, 220, 80], 10, 1] : venue === "jungle" ? ["bits", [80, 150, 60], 10, 0.95] : ["dust", [226, 222, 214], 10, 0.6];
+    const r = this.rnd, B = this.bursts || (this.bursts = []);
+    for (let i = 0; i < S[2]; i++) { const a = r() * 6.283, sp = 60 + r() * 160; B.push({ x: X, y: 4, z: Y, vx: Math.cos(a) * sp, vy: 120 + r() * (S[0] === "splash" ? 360 : 220), vz: Math.sin(a) * sp, age: 0, life: 0.45 + r() * 0.4, s: S[0] === "dust" || S[0] === "clay" ? 26 + r() * 30 : 10 + r() * 10, col: S[1], a: S[3], kind: S[0] }); }
+    if (B.length > 200) B.splice(0, B.length - 200);
+  }
+  drawBursts(mvp, dt, R, soft, solid) {
+    const v = this.v, B = this.bursts; if (!B || !B.length) return;
+    for (const b of B) {
+      b.age += dt; if (b.age > b.life) continue; b.x += b.vx * dt; b.z += b.vz * dt; b.y = Math.max(2, b.y + b.vy * dt); b.vy -= 900 * dt;
+      const u = b.age / b.life, a = b.a * (1 - u), s = b.kind === "dust" || b.kind === "clay" ? b.s * (1 + u * 1.5) : b.s, tex = b.kind === "bits" ? solid : soft;
+      v.draw(tex, new Float32Array([R[0] * s, 0, R[2] * s, 0, 0, s, 0, 0, -R[2], 0, R[0], 0, b.x, b.y - s / 2, b.z, 1]), mvp, [0, 0, 1, 1], [b.col[0] / 255, b.col[1] / 255, b.col[2] / 255, a], 0.01);
+    }
+    this.bursts = B.filter(b => b.age <= b.life);
   }
   // the night's own lights (fireflies, flashes in the crowd): added over the lit picture (stadium3d.js drawGlow)
   drawGlow(mvp, T, nk, halo) {

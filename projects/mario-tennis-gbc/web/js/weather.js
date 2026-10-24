@@ -41,7 +41,7 @@ export class Weather {
     if (!v.replaying && (this.lastFr < 0 || fr < this.lastFr || fr - this.lastFr > 600)) {   // (INSTANT REPLAY: the same weather, the match's frames left alone)
       const r = Math.random();
       this.cur = this.mode !== "random" ? this.mode : r < 0.15 ? "rain" : r < 0.25 ? "wet" : r < 0.4 ? "wind" : r < 0.55 ? "sunset" : "clear";
-      this.games = -1; this.since = -99;
+      this.games = -1; this.since = -99; this.wetSince = performance.now() / 1000;
     }
     if (!v.replaying) { this.lastFr = fr; this.changeover(v.gb.mem.wram[0]); }
     if (v.isDrill && v.isDrill()) { if (L) { L.weatherHour = null; L.weatherRain = false; } this.sound(false); return; }   // the drill hall is indoors
@@ -68,7 +68,7 @@ export class Weather {
     if (this.mode !== "random" || was < 0 || n <= was || (sets === Math.floor(was / 100) && games % 2 === 0)) return;
     const r = Math.random(), c = this.cur;
     const next = c === "clear" ? (r < 0.2 ? "rain" : r < 0.35 ? "wind" : c) : c === "rain" ? (r < 0.5 ? "wet" : c) : c === "wet" ? (r < 0.4 ? "clear" : r < 0.55 ? "rain" : c) : c === "wind" ? (r < 0.4 ? "clear" : r < 0.55 ? "rain" : c) : c;
-    if (next !== c) { this.cur = next; this.since = next === "rain" ? performance.now() / 1000 : -99; }
+    if (next !== c) { this.cur = next; this.since = next === "rain" ? performance.now() / 1000 : -99; if (next === "wet") this.wetSince = performance.now() / 1000; }
   }
   // the wet court: a dark sheen over it, puddles mirroring the sky (bright under the floodlights at night), and in the rain rings
   // spreading where drops land in them
@@ -77,7 +77,9 @@ export class Weather {
     v.draw(this.tex, m4.trs(0, 0.7, 0, 2 * SIDE_IN, 4000, flat), mvp, [0, 0, 1, 1], [0.05, 0.08, 0.14, 0.22], 0);
     const spot = this.spot(false), sky = night ? [0.55, 0.6, 0.75] : [0.62, 0.7, 0.82];
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-    for (const p of this.puddles) {
+    const dry = this.cur === "wet" ? 1 - 0.8 * Math.min(1, (T - (this.wetSince || T)) / 300) : 1;   // after the rain the puddles dry up, over five minutes
+    for (const p0 of this.puddles) {
+      const p = { x: p0.x, z: p0.z, rx: p0.rx * dry, rz: p0.rz * dry };
       v.draw(spot, m4.trs(p.x, 0.9, p.z, p.rx * 2, p.rz * 2, flat), mvp, [0, 0, 1, 1], [sky[0], sky[1], sky[2], 0.16], 0);
       // a floodlight's glint: a long thin streak down the puddle towards the camera
       if (night) v.draw(spot, m4.trs(p.x + p.rx * 0.2, 1.0, p.z, p.rx * 0.35, p.rz * 1.8, flat), mvp, [0, 0, 1, 1], [1, 0.95, 0.8, 0.22], 0);

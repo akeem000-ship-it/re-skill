@@ -114,6 +114,13 @@ export class CrowdSound {
     const n = this.src(c), hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 2600; const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 4200; bp.Q.value = 0.9;
     n.connect(hp); hp.connect(bp); bp.connect(out); n.stop(t + 1.7);
   }
+  // a floodlight bank switching on (stadium3d.js floodK): a heavy contactor's clunk and a low hum rising
+  clunk() {
+    const c = this.on && this.ctx(); if (!c) return;
+    const t = c.currentTime, out = c.createGain(); out.gain.setValueAtTime(0.28 * this.volume, t); out.gain.exponentialRampToValueAtTime(0.001, t + 0.5); out.connect(this.bus(c));
+    const n = this.src(c), lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 260; n.connect(lp); lp.connect(out); n.stop(t + 0.5);
+    const o = c.createOscillator(); o.type = "sawtooth"; o.frequency.value = 100; const hg = c.createGain(); hg.gain.setValueAtTime(0, t); hg.gain.linearRampToValueAtTime(0.02 * this.volume, t + 0.3); hg.gain.exponentialRampToValueAtTime(0.0005, t + 1.4); const hl = c.createBiquadFilter(); hl.type = "lowpass"; hl.frequency.value = 400; o.connect(hl); hl.connect(hg); hg.connect(this.bus(c)); o.start(t); o.stop(t + 1.5);
+  }
   // a firework's bang (intro.js: the big matches): a short low thump with a crackle after it
   boom() {
     const c = this.on && this.ctx(); if (!c) return;
