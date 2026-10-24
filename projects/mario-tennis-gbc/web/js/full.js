@@ -277,10 +277,11 @@ function loop(now) {
 }
 
 // ?port: run the game through the readable JS port (web/js/port) instead of the core's CPU: ported routines run as
-// JavaScript, the rest as the ROM's code (the hybrid). ?port uses the finished, verified modules; ?port=all adds
-// every module in progress; ?port=a/b,c/d picks modules (paths under web/js/port).
+// JavaScript, the rest as the ROM's code (the hybrid). CODE: PORT (?port, ?port=all) runs every module (program.js); ?port=a/b,c/d picks
+// modules (paths under web/js/port: the tests). (The older choice of only the finished modules is gone: "portall" links, settings and
+// recordings are the port.)
 let port = null, portError = null;
-// the mode: the page's selector, or #port / #portall in the link, or ?port in the URL
+// the mode: the page's selector, or #port in the link, or ?port in the URL
 // PHYSICS: Classic / Enhanced (web/js/engine/enhanced.js): ?physics=enhanced|classic, else the remembered choice; Enhanced runs only through the port
 // (the ROM's own code cannot be changed), so it turns the default CODE: ROM into the port
 const physicsMode = () => { const v = q.get("physics") || stored("mt-physics"); return v === "enhanced" ? "enhanced" : "classic"; };
@@ -296,37 +297,21 @@ const plusOn = () => { const v = q.get("plus") || stored("mt-plus"); return v !=
 const plusRules = () => (plusOn() ? { momentum: 1, stamina: 1, serve: 1, courts: 1, netcord: 1, tour: 1, wet: false } : null);
 const tourLen = () => { const v = q.get("tourlen") || stored("mt-tourlen"); return v === "game" ? "game" : "3x3"; };
 const netMode = () => { const v = netChoice(); return v === "even" || v === "original" ? v : portMode() !== "rom" ? "even" : "original"; };
-const portMode = () => { const h = location.hash.slice(1), sel = $("engine") && $("engine").value, m = h === "port" || h === "portall" ? h : q.has("port") ? "port" : sel || "rom"; return m === "rom" && (physicsMode() === "enhanced" || netChoice() === "even") ? "port" : m; };
+const portMode = () => { const h = location.hash.slice(1), sel = $("engine") && $("engine").value, m = h === "port" || h === "portall" || q.has("port") ? "port" : sel || "rom"; return m === "rom" && (physicsMode() === "enhanced" || netChoice() === "even") ? "port" : m; };
 if ($("engine")) {
   const saved = stored("mt-engine");
-  if (location.hash === "#port" || location.hash === "#portall") $("engine").value = location.hash.slice(1);
-  else if (saved === "rom" || saved === "port" || saved === "portall") $("engine").value = saved;
+  if (location.hash === "#port" || location.hash === "#portall") $("engine").value = "port";
+  else if (saved === "rom" || saved === "port" || saved === "portall") $("engine").value = saved === "rom" ? "rom" : "port";
   $("engine").addEventListener("change", () => { try { localStorage.setItem("mt-engine", $("engine").value); } catch (e) { /* private mode */ } });
 }
-const PORT_VERIFIED = ["home/index", "audio/index", "save/index", "cutscenes/index", "story/index", "minigames/index",
-  "text/index", "menus/common/cursorbox", "menus/common/cursors", "menus/common/menu_lib", "menus/common/prompts", "menus/common/tilemaps", "menus/common/widgets", "menus/main_menu/boot", "menus/main_menu/erase", "menus/main_menu/main_menu", "menus/main_menu/match_format", "menus/main_menu/n64", "menus/main_menu/n64data", "menus/main_menu/n64transfer", "menus/main_menu/saved",
-  "menus/char_select/index", "menus/char_data/index",
-  "menus/pause/index", "menus/briefing/index", "menus/court_select/index", "menus/scenes/index",
-  "match/index", "menus/exp/index", "menus/results/index", "menus/ranking/index",
-  "menus/equipment/index", "menus/dictionary/index", "menus/minigame_select/index", "menus/debug/index", "menus/link/index",
-  "story_scripts/devmap_10", "story_scripts/challenge_scenes_15", "story_scripts/challenger_15",
-  "story_scripts/coach_lessons_15", "story_scripts/coach_walks_15", "story_scripts/court_sky_14",
-  "story_scripts/ending_finals_27", "story_scripts/ending_jrcourt_27", "story_scripts/ending_office_27",
-  "story_scripts/firework_14", "story_scripts/gym_actors_0e", "story_scripts/island_14",
-  "story_scripts/academy_13", "story_scripts/academy_main_10", "story_scripts/academy_wing_10", "story_scripts/actor_0f",
-  "story_scripts/actor_27", "story_scripts/awards_0f", "story_scripts/center_11", "story_scripts/court_machine_14",
-  "story_scripts/court_practice_11", "story_scripts/dorm_13", "story_scripts/doubles_11",
-  "story_scripts/ending_varsity_27", "story_scripts/exhibition_0e", "story_scripts/island_open_0f",
-  "story_scripts/island_rounds_0f", "story_scripts/junior_doubles_11", "story_scripts/junior_singles_11",
-  "twins/index"];
 async function makePort(bytes) {
   const { GamePort } = await import("./port/port.js"), { entry } = await import("./port/entry.js");
-  const want = portMode() === "portall" ? "all" : q.get("port");
+  const want = q.get("port") || "all";
   let hooks;
   if (want === "all") hooks = (await import("./port/program.js")).program.hooks;
   else {
     hooks = [];
-    for (const m of want ? want.split(",") : PORT_VERIFIED) hooks.push(...(await import(`./port/${m}.js`)).HOOKS);
+    for (const m of want.split(",")) hooks.push(...(await import(`./port/${m}.js`)).HOOKS);
   }
   const P = new GamePort(bytes, { ...entry, hooks }, { audio: true, sampleRate: 44100 });
   if (physicsMode() === "enhanced") { const { EnhancedPhysics } = await import("./engine/enhanced.js"); P.physics = new EnhancedPhysics(); }
@@ -410,7 +395,7 @@ $("reset").addEventListener("click", () => { if (port) { location.reload(); retu
 // ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
 // a .mtrec file (Android: Downloads/MTenn3D and the share sheet; browser: a download). Hiding the app stops and saves.
 const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? "enhanced" : undefined, net: port ? (port.evenNet ? "even" : "original") : undefined, tourlen: port ? port.tourLength : undefined, menu: port && port.menuWheel && port.menuWheel.on ? "wheel" : "game", plus: port ? (port.plus ? "on" : "off") : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
-  port: port ? (portMode() === "portall" ? "all" : (q.get("port") || PORT_VERIFIED.join(","))) : undefined });
+  port: port ? q.get("port") || "all" : undefined });
 async function saveRecording(now = false) {     // now: the app is being hidden; skip compression so it finishes at once
   if (!recording()) return; settle();
   let obj;
@@ -481,7 +466,7 @@ applyUI();
 $("turbo").addEventListener("pointerdown", () => { turbo = !turbo; $("turbo").classList.toggle("on", turbo); });
 // what runs the game, switchable in play (the app loads the ROM before the loader's selector can be used):
 // remembered, then the page reloads
-const ENGINE_LABEL = { rom: "CODE: ROM", port: "CODE: PORT", portall: "CODE: PORT+" };
+const ENGINE_LABEL = { rom: "CODE: ROM", port: "CODE: PORT" };
 $("engbtn").textContent = ENGINE_LABEL[portMode()] || "CODE: ROM";
 // PHYSICS: Classic / Enhanced: remembered, then the page reloads (Enhanced needs the port; a running game is lost, as with CODE)
 {
@@ -553,7 +538,7 @@ menuWheel = attachMenuWheel(() => gb, () => port, $("hud"), () => hd);
   $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b);
 }
 $("engbtn").addEventListener("pointerdown", () => {
-  const order = ["rom", "port", "portall"], next = order[(order.indexOf(portMode()) + 1) % order.length];
+  const order = ["rom", "port"], next = order[(order.indexOf(portMode()) + 1) % order.length];
   try { localStorage.setItem("mt-engine", next); } catch (e) { /* private mode */ }
   if ($("engine")) $("engine").value = next;
   if (location.hash) history.replaceState(null, "", location.pathname + location.search);

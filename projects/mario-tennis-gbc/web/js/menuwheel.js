@@ -11,6 +11,7 @@
 // rolls to the left, where it becomes the wheel's ball as the main menu comes in. The title is recognised by its logo tiles (as the
 // HD title painter does it); nothing of the game is changed.
 import { sigHits } from "./hdmenus/b_common.js";
+import { MenuSkins } from "./menuskins.js";   // the sub-menus in the same look
 const TITLE_LOGO = [[20, 20, "3a2df153"], [60, 24, "847037c7"], [100, 40, "2ee97ec9"], [130, 30, "b3a7e81d"], [40, 56, "bf70c43a"], [80, 64, "10cddfdc"], [120, 60, "d82c442b"]];
 const ZOOM = 1.0;                                   // seconds of the title -> menu move
 // ---- the ball (drawn once, 512 px): felt (seam and fibres, turned with the ball), light (fixed shading over it), rim (the fuzzy edge) ----
@@ -107,8 +108,9 @@ export class MenuWheel {
     // the title, then (Start) the zoom until the wheel is up, then the wheel
     if (title) { if (this.phase !== "title") this.logo = null; this.phase = "title"; }
     else if (this.phase === "title" && this.on && P && gb) { this.phase = "zoom"; this.zoomAt = T; }
-    if (this.phase === "zoom" && T - this.zoomAt > ZOOM && (wheel || T - this.zoomAt > 6)) this.phase = wheel ? "none" : "none";
-    const show = title || wheel || this.phase === "zoom";
+    if (this.phase === "zoom" && T - this.zoomAt > ZOOM && (wheel || T - this.zoomAt > ZOOM + 1.5)) this.phase = "none";   // (the wheel up, or soon after: a quick player may already be past the main menu)
+    const skin = this.on && P && P.menuWheel && P.menuWheel.skin, skinOn = !!(skin && !wheel && !title && this.phase !== "zoom" && P.frames - skin.at <= 2);   // (a sub-menu's loop running now)
+    const show = title || wheel || this.phase === "zoom" || skinOn;
     if (!show) { if (this.root && this.root.style.display !== "none") this.root.style.display = "none"; return; }
     this.ui();
     const view = [document.getElementById("gl"), document.getElementById("screen")].find(e => e && !e.hidden && e.offsetWidth > 0); if (!view) return;
@@ -121,6 +123,7 @@ export class MenuWheel {
     if (title) { this.drawTitle(gb, W, H, T); return; }
     if (zooming && (T - this.zoomAt < ZOOM || !wheel)) { this.drawZoom(gb, W, H, Math.min(1, (T - this.zoomAt) / ZOOM), T); return; }
     this.phase = "none";
+    if (skinOn) { (this.skins || (this.skins = new MenuSkins(this))).draw(this.cv.getContext("2d"), W, H, skin, gb, this.getHd && this.getHd()); return; }
     const w0 = gb.mem.wram[0], sel = Math.min(8, w0[0xB05] * 3 + w0[0xB04]);          // wMenuCursorY / X
     // the wheel turns smoothly towards the chosen cell (the shorter way round the nine)
     let d = sel - this.pos; if (d > 4.5) d -= 9; if (d < -4.5) d += 9; this.pos += d * 0.3; if (Math.abs(d) < 0.01) this.pos = sel;
@@ -148,7 +151,7 @@ export class MenuWheel {
     // the panel: the chosen cell as the game draws it, its name and its line
     const c = CELLS[sel], f = c.file != null ? this.file(gb, c.file) : null, px = W - 480 * k, py = 150 * k, pw = 420 * k, ph = 380 * k;
     g.fillStyle = "rgba(250,250,255,0.93)"; this.pill(g, px, py, pw, ph, 30 * k); g.fill(); g.lineWidth = 4 * k; g.strokeStyle = "#ffd65a"; g.stroke();
-    const [cx0, cy0, cw, ch] = c.r, fr = gb.ppu.frame, cc = this.cell; cc.width = cw; cc.height = ch;
+    const [cx0, cy0, cw, ch] = c.r, fr = gb.ppu.bgFrame || gb.ppu.frame, cc = this.cell; cc.width = cw; cc.height = ch;   // (the background only: the chosen cell's name banner and bobbing frame are sprites over it)
     const cg = cc.getContext("2d"), im = cg.createImageData(cw, ch), u32 = new Uint32Array(im.data.buffer);
     for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) u32[y * cw + x] = fr[(cy0 + y) * 160 + cx0 + x] | 0xFF000000;
     cg.putImageData(im, 0, 0);

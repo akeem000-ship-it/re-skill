@@ -236,7 +236,8 @@ registerHDPainter("d_text", (g, scr, layer) => {
     const size = f.em * Math.min(1, Math.max(0.7, gap / 14));
     let covered = true; for (let y = Math.max(0, l.y); y < Math.min(144, l.y + 8) && covered; y++) for (let x = Math.max(0, l.x); x < Math.min(160, l.x + l.w + 1); x++) if (!scr.opaque[y * 160 + x]) { covered = false; break; }
     if (!covered) { g.fillStyle = l.c[0]; g.fillRect(l.x, l.y, l.w + 1, 8); }
-    if (/^\S{1,5}( \S{1,5}){2,}$/.test(l.text.trim()) && l.cells.length === l.text.length && l.text.trim().length >= 12) {   // a letter grid (name entry): one centred character per cell
+    if (!l.shadowFont && /^\S{1,5}( \S{1,5}){2,}$/.test(l.text.trim()) && l.cells.length === l.text.length && l.text.trim().length >= 12) {   // a letter grid (name entry): one centred character per cell (the fixed-width font only: a
+      // line of the dialogue font has the strip's cells, whose count can equal its letters by chance: "You have to raise", 17 and 17)
       for (let k = 0; k < l.text.length; k++) { const ch = l.text[k]; if (ch !== " ") drawText(g, scr, ch, l.x + k * 8 + 4, l.y + 7.6, { size: 10.5, color: l.c[2], shadow: shade(l.c[1], 1), align: "center" }); }
       continue;
     }

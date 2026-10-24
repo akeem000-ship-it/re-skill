@@ -54,6 +54,13 @@ const COURT_SELECT_TILE_BLOCKS = [
 ];
 
 // the cursor routines of this bank (cursor_3e.asm, the shared menu code)
+// MENU: Wheel (menuwheel.js): the court screen in the ball-wheel style over this one; read only (the cursor, the court ids, the unlock bits)
+function courtSkin(P, cols) {
+  const W = P.menuWheel; if (!W || !W.on) return;
+  const n = cols * cols, mask = rd(P, "unlockedCourtMask"), ids = [];
+  for (let i = 0; i < n; i++) ids.push(courtSelectIndexToCourtId(P, i));
+  W.skin = { id: "court", at: P.frames, cols, sel: P.V.menuCursorY * cols + P.V.menuCursorX, ids, locked: ids.map(c => c >= COURT_STAR && !((mask >> c) & 1)) };
+}
 const moveMenuCursorGrid = (P, cols, rows) => rom(P, FAR.MoveMenuCursorGrid_3e, { b: cols, c: rows }).a;
 const getMenuCursorIndex = (P, cols) => rom(P, FAR.GetMenuCursorIndex_3e, { c: cols }).a;
 const setMenuCursorFromIndex = (P, cols, index) => rom(P, FAR.SetMenuCursorFromIndex_3e, { b: cols, c: index });
@@ -77,6 +84,7 @@ export function* runCourtSelect4Menu(P) {
     yield* advanceFrame(P);
     wr(P, "menuInputPressed", P.V.inputPressed);
     if (moveMenuCursorGrid(P, 2, 2)) { sound(P, SFX_MENU_MOVE); redrawCourtSelect4Menu(P); }
+    courtSkin(P, 2);
     const input = rd(P, "menuInputPressed");
     if (input & PADF_A) {
       sound(P, SFX_MENU_DECIDE);
@@ -129,6 +137,7 @@ export function* runLinkCourtSelect4Menu(P) {
     yield* linkInputFrame(P);
     wr(P, "menuInputPressed", P.V.linkInput);
     if (moveMenuCursorGrid(P, 2, 2)) { sound(P, SFX_MENU_MOVE); redrawCourtSelect4Menu(P); }
+    courtSkin(P, 2);
     const input = rd(P, "menuInputPressed");
     if (input & PADF_A) {
       sound(P, SFX_MENU_DECIDE);
@@ -317,6 +326,7 @@ export function* runCourtSelect9Menu(P) {
     yield* advanceFrame(P);
     wr(P, "menuInputPressed", P.V.inputPressed);
     if (moveMenuCursorGrid(P, 3, 3)) { sound(P, SFX_MENU_MOVE); redrawCourtSelect9Menu(P); }
+    courtSkin(P, 3);
     const input = rd(P, "menuInputPressed");
     if (input & PADF_A) {
       if (!isCourtUnlocked(P, getMenuCursorIndex(P, 3))) { sound(P, SFX_MENU_LOCKED); continue; }
@@ -352,6 +362,7 @@ export function* runLinkCourtSelect9Menu(P) {
     wr(P, "menuInputPressed", P.V.linkInput);
     yield* linkInputFrame(P);
     if (moveMenuCursorGrid(P, 3, 3)) { sound(P, SFX_MENU_MOVE); redrawCourtSelect9Menu(P); }
+    courtSkin(P, 3);
     const input = rd(P, "menuInputPressed");
     if (input & PADF_A) {
       if (!isCourtUnlocked(P, getMenuCursorIndex(P, 3))) { sound(P, SFX_MENU_LOCKED); continue; }

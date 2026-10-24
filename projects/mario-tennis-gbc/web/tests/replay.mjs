@@ -2,7 +2,7 @@
 // session exactly (frame hashes every 60 frames). Optional: screenshots, periodic core states for state_view.mjs.
 // usage: node web/tests/replay.mjs FILE.mtrec [--shots K] [--states N] [--out DIR] [--to FRAME] [--interp] [--mod MOD.json]
 // (--mod: add an opponent mod file to the recording's look; the recorded frame hashes then differ where its sprites show)
-// A recording made with the JS port (meta.engine "port" / "portall") starts at power-on and is replayed through a
+// A recording made with the JS port (meta.engine "port", or "portall" from before the two port choices became one) starts at power-on and is replayed through a
 // GamePort with the same modules (meta.port); meta.from is the frame its player pressed REC at. The port's modules
 // must be those of the build it was recorded with (check out that commit) for the replay to be exact.
 import fs from "fs"; import zlib from "zlib";
@@ -30,7 +30,7 @@ if (engine === "rom") gb = new GBC(romBytes, { audio: false });
 else {
   const { GamePort } = await import("../js/port/port.js"), { entry } = await import("../js/port/entry.js");
   let hooks = [];
-  if (rec.meta.port === "all" || engine === "portall") hooks = (await import("../js/port/program.js")).program.hooks;
+  if (!rec.meta.port || rec.meta.port === "all" || engine === "portall") hooks = (await import("../js/port/program.js")).program.hooks;
   else for (const m of rec.meta.port.split(",")) hooks.push(...(await import(`../js/port/${m}.js`)).HOOKS);
   port = new GamePort(romBytes, { ...entry, hooks }, { audio: false }); gb = port.gb;
   if (rec.meta.physics === "enhanced") { const { EnhancedPhysics } = await import("../js/engine/enhanced.js"); port.physics = new EnhancedPhysics(); }   // PHYSICS: Enhanced (a recording without meta.physics is classic)

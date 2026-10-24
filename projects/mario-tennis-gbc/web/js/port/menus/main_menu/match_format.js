@@ -64,6 +64,7 @@ export function* runMatchFormatSelect(P) {
     V.menuInputPressed = V.inputPressed;
     handleMatchFormatInput(P);
     if (moveMenuCursorGrid(P, 1, ROWS).a) { sound(P, SFX_MENU_MOVE); drawMatchFormatCaption(P); }
+    if (P.menuWheel && P.menuWheel.on) P.menuWheel.skin = { id: "format", at: P.frames, row: V.menuCursorY, doubles: V.matchFormatDoubles, games: V.matchFormatGames, sets: V.matchFormatSets };   // MENU: Wheel (menuwheel.js), read only
     const input = V.menuInputPressed;
     if (input & PADF_A) {
       sound(P, SFX_MENU_SELECT);
