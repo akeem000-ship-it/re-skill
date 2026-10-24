@@ -1774,10 +1774,8 @@ Unreferenced code (dead; labelled, roots only if the tracer should count it):
 Comma-separated lists: `a10/roots_live.txt` (live) and `a10/roots_dead.txt` (unreferenced).
 
 Tracer notes:
-- The existing labels `41:7317 GolfPauseMenuHandlers` ... `41:775B MiniGamePauseMenuHandlers` (11 word tables)
-  have no `Table` in their names, so trace_code.py pushes them as code roots and counts the table words as
-  code bytes. Rename them `...HandlerTable` (or add `Handlers` to the exclusion list). New data labels here all end
-  in `Table`.
+- The 11 menu handler word tables `41:7317 GolfPauseMenuHandlerTable` ... `41:775B MiniGamePauseMenuHandlerTable` were
+  renamed from `...MenuHandlers` so the tracer reads them as data.
 - Bank 04 is not in CODE_BANKS (its exports are not seeded); its exports $48 (04:4EE0) and $5E (04:4588) have
   no caller and are therefore untraced.
 - Banks 40 and 77: exports past 40:$06 and all of 77's are data (LZ assets), correctly untraced.
