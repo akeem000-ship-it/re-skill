@@ -19,7 +19,8 @@ import { FLOODS, FLOOD_HEIGHT } from "./lighting.js";
 import { FAR_WALL_MAPS } from "./farwalls.js";   // FAR END: Walls
 import { poseCanvas, POSE_FRAMES } from "./look/poses.js";
 import { venueFor } from "./venues.js";   // VENUES: each court's stadium in its own style
-import { Courtside } from "./courtside.js";   // COURTSIDE: ball kids, line judges, benches, the TV crane, flags in the wind
+import { Courtside } from "./courtside.js";
+import { Ambience } from "./ambience.js";   // AMBIENCE: the venue's particles and background sound   // COURTSIDE: ball kids, line judges, benches, the TV crane, flags in the wind
 const KEY = "mt-stadium", QKEY = "mt-stadium-q";
 export const STADIUM_MODES = ["classic", "3d"];
 const STADIUM_MAP = 32, SIZES_KEY = "mt-crowd2", JUDGE_TOP = 0.5;   // the part of the chair picture (from the top) that is the umpire
@@ -223,7 +224,7 @@ export class Stadium3D {
     this.forceGiant = m === "giant" || q.get("giant") === "1"; if (m === "giant") m = "3d";   // GIANT: ?stadium=giant tries the finals' stadium anywhere
     this.mode = STADIUM_MODES.includes(m) ? m : "3d";
     this.pend = null; this.built = null; this.sig = ""; this.buildAt = -99; this.cheer = 0; this.cheerAt = -99; this.fill = 0.6; this.scoreSig = ""; this.stats = { boxes: 0, crowd: 0, ms: 0 };
-    this.board = null; this.stadiumImg = null; this.onMode = null; this.side = new Courtside(this);
+    this.board = null; this.stadiumImg = null; this.onMode = null; this.side = new Courtside(this); this.amb = new Ambience(this);
     let qv = q.get("detail"); if (qv === null) { try { qv = localStorage.getItem(QKEY); } catch (e) { qv = null; } } this.quality = qv === "lite" ? "lite" : "full";   // DETAIL: Full / Lite
   }
   get active() { return this.mode === "3d" && !this.broken; }
@@ -248,12 +249,11 @@ export class Stadium3D {
     this.cube = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, this.cube); gl.bufferData(gl.ARRAY_BUFFER, cubeVerts(), gl.STATIC_DRAW);
   }
   // the fans' atlas (random, from the ROM's match characters; once per ROM)
-  fanTexture() {
-    const gl = this.gl, v = this.v;
-    if (this.fans === undefined) { try { this.fans = v.rom ? buildFanAtlas(v.rom.b || v.rom, 20260101, 96) : null; } catch (e) { console.warn("fans", e); this.fans = null; } }
-    if (!this.fans) return null;
-    if (!this.fanTex) { this.fanTex = v.texture(this.fans.w, this.fans.h, this.fans.data, false); }
-    return this.fanTex;
+  // VENUES: each venue its own crowd (venues.js fans: the characters it draws its fans from); one atlas per venue, kept
+  fanTexture(VEN) {
+    const v = this.v, key = VEN && VEN.fans ? VEN.name : "", M = this.fanSets || (this.fanSets = new Map());
+    if (!M.has(key)) { let f = null; try { f = v.rom ? buildFanAtlas(v.rom.b || v.rom, 20260101 + key.length * 131, 96, VEN && VEN.fans || {}) : null; } catch (e) { console.warn("fans", e); } M.set(key, { fans: f, tex: f ? v.texture(f.w, f.h, f.data, false) : null }); }
+    const e = M.get(key); this.fans = e.fans; this.fanTex = e.tex; return this.fanTex;
   }
 
   // ---- hooks called by voxel.js ----
@@ -291,7 +291,15 @@ export class Stadium3D {
   loadSizes() { const d = { start: 0.04, end: 1, exhibition: 1 }; try { const o = JSON.parse(localStorage.getItem(SIZES_KEY) || "{}"); for (const k of Object.keys(d)) if (typeof o[k] === "number") d[k] = clamp(o[k]); } catch (e) { /* defaults */ } return d; }
   // for the LIGHT / settings panel: setCrowdSize("start" | "end" | "exhibition", 0..1); remembered in localStorage mt-crowd2
   setCrowdSize(cls, v) { const z = this.crowdSizes; if (!(cls in z)) return; z[cls] = clamp(+v); try { localStorage.setItem(SIZES_KEY, JSON.stringify(z)); } catch (e) { /* private mode */ } this.applyFill(); if (this.onSizes) this.onSizes(z); }
-  applyFill() { const z = this.crowdSizes, p = this.progress(); this.cls = this.crowdClass(); this.fill = p === null ? z.exhibition : z.start + (z.end - z.start) * p; }
+  // the crowd by the stakes: practice matches thin, the fans still arriving early in a match (full by the 6th game), more coming in
+  // when a set is tight (games level or one apart from 4 games on); the base from the tour's progress as before
+  applyFill() {
+    const z = this.crowdSizes, p = this.progress(), w = this.v.gb.mem.wram[0]; this.cls = this.crowdClass();
+    let f = p === null ? z.exhibition : z.start + (z.end - z.start) * p;
+    if (w[0x8A6] === 3) f *= 0.4;                                                                      // a practice match
+    const g = w[0x8E2] + w[0x8E3] + 6 * (w[0x8E0] + w[0x8E1]), tight = Math.abs(w[0x8E2] - w[0x8E3]) <= 1 && w[0x8E2] + w[0x8E3] >= 4;
+    this.fill = clamp(f * (0.78 + 0.22 * Math.min(1, g / 5)) * (tight ? 1.12 : 1));
+  }
   // once per game frame (voxel.js tick): the class of the match, the cheer after a point and the events the crowd sound plays on (read only)
   step(v) {
     if (v.replaying) { this.ev = null; if (v.matchfx) v.matchfx.prev = null; return; }   // INSTANT REPLAY: the replayed point raises no crowd events
@@ -303,9 +311,14 @@ export class Stadium3D {
     const E = { fr, sig: [w[0x8E4], w[0x8E5], w[0x8E6], w[0x8E7], w[0x8E8], w[0x8E9], w[0x8EA], w[0x8EB]].join(), res: w[0x4D8], fault: w[0x8EE], body: w[0x4AE], ball: w[0x4B3] }, p = this.ev;
     this.ev = E; if (!p || fr < p.fr || fr > p.fr + 8) return;          // first frame, a reload, or frames skipped: no events
     const when = performance.now() / 1000; if (this.side) this.side.step(w, E, p, when);
+    // CROWD: an "ooh" when the ball clips the net (wBallNetHit $C4BF); a murmur before a game point; a bigger roar when a game is won
+    if (w[0x4BF] === 1 && this.netHitWas !== 1 && this.sound) this.sound.ooh(this.fill, 0.35); this.netHitWas = w[0x4BF];
+    const gp = !w[0x8E7] && (w[0x8E6] ? w[0x8E4] !== w[0x8E5] : Math.max(w[0x8E4], w[0x8E5]) >= 3);   // one point from the game (deuce: advantage)
+    if (gp && !this.gpWas && this.sound) setTimeout(() => this.sound.hush(this.fill * 0.6), 900); this.gpWas = gp;
     const ballY = (v.ballHist && v.ballHist.length ? v.ballHist[v.ballHist.length - 1].ball.Y : 0), sound = this.sound;
     if (E.sig !== p.sig) {
-      this.cheerAt = when; if (sound) sound.cheer(this.fill);
+      const gameWon = this.gamesWas !== undefined && w[0x8E2] + w[0x8E3] !== this.gamesWas; this.gamesWas = w[0x8E2] + w[0x8E3];
+      this.cheerAt = when; if (sound) { sound.cheer(this.fill); if (gameWon) setTimeout(() => sound.cheer(Math.min(1, this.fill * 1.2)), 700); }
       if (!this.wave && !w[0x8E8] && this.fill > 0.3 && Math.random() < 0.14) this.wave = { t0: when + 2.4, until: when + 2.4 + 9, a0: Math.random() * 6.28, dir: Math.random() < 0.5 ? -1 : 1 };   // THE WAVE, after the cheer
     }
     else if ((E.res !== p.res && (E.res === 1 || E.res === 2 || E.res === 9)) || (E.fault === 1 && p.fault === 0) || (E.body === 1 && p.body === 0)) { if (sound) sound.aww(this.fill); }
@@ -403,11 +416,12 @@ export class Stadium3D {
   build() {
     const t0 = performance.now(), { bg, courtId } = this.pend, v = this.v, gl = this.gl; this.pend = null;
     const tg = performance.now(); this.gfx(); const tp = performance.now(); const P = this.palette(bg, v.rom), rnd = mulberry32(0x57AD1 + courtId * 977);
-    this.fanTexture(); const tb = performance.now(); const B = new Boxes(), crowd = [];
+    const tb = performance.now(); const B = new Boxes(), crowd = [];
     const hall = this.v.isDrill(), VEN = hall ? null : venueFor(this), lite = this.quality === "lite";   // VENUES; DETAIL: Lite
     const N = VEN ? VEN.rows : 8, D = 80, RISE = 38, BASE = 130, SEAT = 44, giantWant = this.wantGiant(), giant = giantWant || !!(VEN && VEN.giant);
     if (VEN && VEN.seats) { P.seatA = VEN.seats[0]; P.seatB = VEN.seats[1]; }
-    this.boardInk = VEN && VEN.boardInk || null; const standList = [], flags = [];
+    this.boardInk = VEN && VEN.boardInk || null; const standList = [], flags = [], lights = []; this.fanTexture(VEN);
+    if (this.sound && this.sound.setVenue) this.sound.setVenue(VEN ? VEN.name : "varsity");   // ACOUSTICS: the venue's echo
     const UN = 12, RISE2 = 56, G0 = N * D + 120, UB = 660, topU = UB + UN * RISE2, roofY = topU + 300, screens = [];   // GIANT: the upper deck
     const gdn = v.cuts.find(c => c.name === "garden"), GS = gdn && !hall ? gdn.depth + 40 : 0;   // (the garden behind the far fence: the far stand stands back beyond it)
     const STANDS = [{ id: "left", side: true, dir: -1, inner: -SIDE_IN, v0: -1640, v1: 1900 }, { id: "right", side: true, dir: 1, inner: SIDE_IN, v0: -1640, v1: 1900 },
@@ -509,7 +523,7 @@ export class Stadium3D {
         }
       }
     }
-    if (VEN && VEN.extras) VEN.extras({ B, P, rnd: mulberry32(0x7E40 + courtId), stands: standList, court: courtId, lite, giant, flags });   // VENUES: the venue's buildings
+    if (VEN && VEN.extras) VEN.extras({ B, P, rnd: mulberry32(0x7E40 + courtId), stands: standList, court: courtId, lite, giant, flags, lights });   // VENUES: the venue's buildings
     const farS = standList.find(s => !s.S.side);                          // COURTSIDE: flags along the far stand's top (the varsity has its own)
     if (farS && VEN && VEN.name !== "varsity") for (let k = 0; k < 5; k++) { const vv = -1600 + k * 800, [x, z] = farS.at(farS.outer - 16, vv); B.add(x, farS.top + 14, z, 8, 250, 8, [220, 220, 226]); flags.push({ x: x + 3, y: farS.top + 200, z, w: 90, h: 56, col: P.shirts[k % P.shirts.length], along: "x" }); }
     // back wall: thickness behind the backdrop picture, a coping on top, rounded-voxel hedges in front
@@ -571,7 +585,7 @@ export class Stadium3D {
       B.add(-230, 0, bz - 6, 30, by, 30, [88, 90, 100]); B.add(230, 0, bz - 6, 30, by, 30, [88, 90, 100]); B.add(0, by - 16, bz - 6, 720, 250, 48, [38, 40, 48]); B.add(0, by + 232, bz - 6, 740, 14, 56, [120, 122, 134]);
       this.boardPos = { x: 0, y: by + 12, z: bz + 20, w: 640, h: 210 }; this.boardDirty = true; if (VEN && VEN.board) VEN.board({ B }, this.boardPos);
     } else this.boardPos = null;
-    if (!hall) this.side.build(B, VEN, { sponsors: v.tour && v.tour.sponsorAds ? v.tour.sponsorAds() : null, ads: ADS, flags });   // COURTSIDE: the benches (the people move: draw)
+    if (!hall) this.side.build(B, VEN, { sponsors: v.tour && v.tour.sponsorAds ? v.tour.sponsorAds() : null, ads: ADS, flags, lights });   // COURTSIDE: the benches (the people move: draw)
     // upload
     const boxes = B.data(); this.free();
     const bufB = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bufB); gl.bufferData(gl.ARRAY_BUFFER, boxes, gl.STATIC_DRAW);
@@ -722,6 +736,7 @@ export class Stadium3D {
       gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK);
       gl.useProgram(this.pBox); gl.uniformMatrix4fv(this.uBox.uMVP, false, mvp); gl.bindVertexArray(this.built.boxVao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 30, this.built.boxN);
       if (this.built.side) this.side.draw(mvp, T, this.pBox, this.uBox, this.cube);                 // COURTSIDE: the moving people and flags
+      if (this.built.side) this.amb.draw(mvp, T, this.built.venue);                                   // AMBIENCE: particles, the venue's sound
       const ft = this.fanTex && this.fans ? this.fanTex : null;
       if (ft && this.fill > 0) {                                                                                       // the fans: camera-facing billboards
         gl.disable(gl.CULL_FACE); const rx = Math.hypot(mvp[0], mvp[8]) || 1, U = this.uCrowd;
@@ -809,6 +824,22 @@ export class Stadium3D {
     gl.depthMask(false); gl.blendFunc(gl.SRC_ALPHA, gl.ONE); gl.disable(gl.DEPTH_TEST);
     gl.drawArrays(gl.TRIANGLES, 0, data.length / 5);
     gl.depthMask(true); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.bindVertexArray(null);
+  }
+  // the lamps' glow at night (venues.js lamps, ambience.js night particles): soft halos added over the lit picture, so the night grade
+  // does not dim them (drawn after the lighting pass, as the beams are)
+  drawGlow(mvp) {
+    if (!this.built || !this.built.side) return;
+    const v = this.v, L = v.light, sky = L && !L.broken && L.active && L.skyFor ? L.skyFor("court") : null, nk = sky ? sky.lamps || 0 : 0; if (nk < 0.05) return;
+    const gl = this.gl, T = performance.now() / 1000, tex = this.amb.softTex(), rx = Math.hypot(mvp[0], mvp[8]) || 1, R = [mvp[0] / rx, 0, mvp[8] / rx];
+    gl.useProgram(v.prog); gl.bindVertexArray(v.vao); gl.disable(gl.DEPTH_TEST); gl.depthMask(false); gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+    const halo = (x, y, z, s, c, a) => v.draw(tex, new Float32Array([R[0] * s, 0, R[2] * s, 0, 0, s, 0, 0, -R[2], 0, R[0], 0, x, y - s / 2, z, 1]), mvp, [0, 0, 1, 1], [c[0] / 255, c[1] / 255, c[2] / 255, a], 0.01);
+    for (const l of this.side.lights || []) {
+      const flick = 0.85 + 0.15 * Math.sin(T * 9 + l.x * 0.05), long = Math.max(l.sx, l.sz), n = long > 200 ? Math.ceil(long / 160) : 1;
+      for (let i = 0; i < n; i++) { const t = n > 1 ? (i + 0.5) / n - 0.5 : 0, x = l.x + (l.sx > 200 ? t * l.sx : 0), z = l.z + (l.sz > 200 ? t * l.sz : 0), s = n > 1 ? 220 : Math.max(l.sx, l.sy, l.sz) * 4.5;
+        halo(x, l.y + l.sy / 2, z, s, l.col, 0.55 * nk * flick); }
+    }
+    this.amb.drawGlow(mvp, T, nk, halo);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(true); gl.enable(gl.DEPTH_TEST);
   }
   // cut-outs this layer replaces: the umpire chair (built from boxes above)
   cut(c) { return c.name === "judge" && !!this.built && this.built.court === this.v.courtId && !this.built.hall; }

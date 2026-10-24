@@ -1155,7 +1155,7 @@ export class Voxel3D {
     // HUD: screen space, each sprite anchored to the nearest screen edge so the strips stay at the edges of
     // a wide or tall viewport
     if (this.light) this.light.post();   // LIGHT: the lit scene goes to the canvas; the HUD is drawn over it, unlit
-    if (this.stadium && this.stadium.active) { try { this.stadium.drawBeams(mvp); } catch (e) { /* no beams */ } gl.useProgram(this.prog); gl.bindVertexArray(this.vao); }   // STADIUM: floodlight beams at night
+    if (this.stadium && this.stadium.active) { try { this.stadium.drawBeams(mvp); this.stadium.drawGlow(mvp); } catch (e) { /* no beams */ } gl.useProgram(this.prog); gl.bindVertexArray(this.vao); }   // STADIUM: floodlight beams at night
     if (this.weather) { this.weather.draw(mvp, m4); gl.useProgram(this.prog); gl.bindVertexArray(this.vao); }   // WEATHER: rain over the court, a sunset
     gl.disable(gl.DEPTH_TEST);
     const { ortho, l, r, t, b } = this.hudOrtho();

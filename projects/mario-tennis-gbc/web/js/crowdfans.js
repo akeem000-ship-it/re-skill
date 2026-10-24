@@ -69,19 +69,22 @@ function matchFrame(rom, c, k) {
 
 export const CELL = 32, ATLAS_COLS = 16;
 // n random fans (two cells each: calm, cheering); returns { w, h, data: Uint8Array RGBA, n, cols, rows, hops: Uint8Array(n) }
-export function buildFanAtlas(rom, seed = 1, n = 96) {
-  const R = mulberry32(seed), sets = [];
-  for (let c = 0; c < 30; c++) { try { const a = matchFrame(rom, c, CALM), b = matchFrame(rom, c, CHEER); if (a) sets.push([a, b || a]); } catch (e) { /* no such set */ } }
+// opt (VENUES: a crowd for the court): sets, the sprite sets to draw fans from (default all 30); own, the share of fans in their character's
+// own colours (a Yoshi in green: fans dressed as their favourite); shirts, the shirt colours of the others
+export function buildFanAtlas(rom, seed = 1, n = 96, opt = {}) {
+  const R = mulberry32(seed), sets = [], ids = opt.sets || [...Array(30).keys()], shirts = opt.shirts || SHIRT, ownShare = opt.own || 0;
+  for (const c of ids) { try { const a = matchFrame(rom, c, CALM), b = matchFrame(rom, c, CHEER); if (a) sets.push([a, b || a, c]); } catch (e) { /* no such set */ } }
   if (!sets.length) return null;
   const cells = n * 2, cols = ATLAS_COLS, rows = Math.ceil(cells / cols), W = cols * CELL, H = rows * CELL, data = new Uint8Array(W * H * 4), hops = new Uint8Array(n);
   const pick = a => a[Math.floor(R() * a.length)];
   for (let i = 0; i < n; i++) {
-    const [calm, cheer] = pick(sets), skin = pick(SKIN), hair = pick(HAIR), shirt = pick(SHIRT), flip = R() < 0.5; hops[i] = R() < 0.34 ? 1 : 0;
+    const [calm, cheer, set] = pick(sets), skin = pick(SKIN), hair = pick(HAIR), shirt = pick(shirts), flip = R() < 0.5; hops[i] = R() < 0.34 ? 1 : 0;
+    const own = R() < ownShare ? matchPalette(rom, set) : null;                       // dressed as the character (its own colours)
     for (let s = 0; s < 2; s++) {
       const f = s ? cheer : calm, cell = i * 2 + s, ox = (cell % cols) * CELL + ((CELL - f.w) >> 1), oy = ((cell / cols) | 0) * CELL, split = Math.round(f.h * 0.45);
       for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) {
         const v = f.px[y * f.w + x]; if (!v) continue;
-        let c = v === 3 ? [24, 16, 24] : v === 1 ? (y < split ? skin : [255, 255, 230]) : (y < split ? hair : shirt);
+        let c = own ? own[v] : v === 3 ? [24, 16, 24] : v === 1 ? (y < split ? skin : [255, 255, 230]) : (y < split ? hair : shirt);
         const X = ox + (flip ? f.w - 1 - x : x), o = ((oy + y) * W + X) * 4; data[o] = c[0]; data[o + 1] = c[1]; data[o + 2] = c[2]; data[o + 3] = 255;
       }
     }

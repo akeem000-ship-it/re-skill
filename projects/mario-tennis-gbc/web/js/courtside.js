@@ -46,7 +46,7 @@ export class Courtside {
     this.crane = { x: -1180, z: -1560 };
     B.add(-1180, 0, -1560, 160, 40, 160, [60, 62, 70]); B.add(-1180, 40, -1560, 50, 300, 50, [80, 82, 92]);
     this.bench = [[bx - 80, -360], [bx - 80, 360]];
-    this.flags = opt.flags || [];
+    this.flags = opt.flags || []; this.lights = opt.lights || [];
   }
   // ---- once per game frame (stadium3d.js step): a point, an out call, a changeover ----
   step(w, E, p, now) {
@@ -128,6 +128,9 @@ export class Courtside {
         else this.add(fl.x + wave, fl.y - droop, fl.z + t * fl.w, 4, fl.h, fl.w / m + 1, k & 1 ? fl.col : shade(fl.col, 0.9));
       }
     }
+    // the venue's lamps: unlit by day, glowing as the floodlights come on (lighting.js sky.lamps)
+    const LT = this.v.light, sky = LT && !LT.broken && LT.active && LT.skyFor ? LT.skyFor("court") : null, nk = sky ? sky.lamps || 0 : 0;
+    for (const l of this.lights) { const flick = 0.92 + 0.08 * Math.sin(T * 9 + l.x * 0.05); this.add(l.x, l.y, l.z, l.sx, l.sy, l.sz, l.col.map(c => c * (0.42 + 0.58 * nk * flick) + 255 * 0.25 * nk)); }
     // one instanced draw
     if (!this.vao) { this.buf = gl.createBuffer(); this.vao = gl.createVertexArray(); gl.bindVertexArray(this.vao);
       gl.bindBuffer(gl.ARRAY_BUFFER, cube); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 16, 0); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 16, 12);
