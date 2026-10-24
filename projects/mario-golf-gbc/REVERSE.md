@@ -747,6 +747,104 @@ A mixed library, not just map graphics.
   09:5AC5 (2 items), 09:6A74 (3 items) and 09:6A9B (redraw of that menu; called from 00:125B and script 32);
   cursors $CAB8-$CABA. All are far-called from map script bank 32.
 
+Read from the code. Texts are from `tools/dump_text.py`. The labels are in `labels_a2.csv` (162 lines: 131 routines, 17 data tables and 14 RAM labels).
+
+##### Character record at $C800 (what these banks read)
+
+| Offset | Use (evidence) |
+|---|---|
+| +$00 | name (wPlayerName; 41:6D25, 41:5765) |
+| +$10 | character 0-3 (wCharId; 42:400B indexes 42:41F2 with it) |
+| +$12 | level, max $63 (wCharLevel; 02:546B level-up test, 02:4FFA, 41:550C) |
+| +$1A (word), +$1C-$1F | values shown on the level-up and stats screens (41:49ED -> $D63E, $D640-$D646) |
+| +$20 +$21 +$22 +$24 | points given to the 4 skills (02:4FFA: d = 0-3 increments one of them and the level) |
+| +$26 (3 bytes) | EXP, 24 bit (41:57A9 prints it in decimal) |
+| +$2D bit 7 | set while a bank 41 screen or menu is open |
+| +$34 / +$36 / +$37 | mode (9 = on the overworld, map name instead) / course / hole for the card (41:7C7D, 48:4696, 48:480D) |
+| $C819 bits 1-2 | badge value shown on the stats screen (02:5395, 41:65D1) |
+
+##### Bank 41: level-up and stats screens, pause/start menus, credits
+
+Export table at `$4000` (21 words):
+
+| idx | Routine | Callers |
+|---|---|---|
+| $00 | 41:402A LevelUpScreen | map scripts 30-35, 48:4DA2 (after EXP), 57 |
+| $02 | 41:6FF4 RunMenu | internal |
+| $04 | 41:707C ClearMenuState | 05:40B9 |
+| $06-$1A | menus (table below) | 08, 0A, 2D, 70 |
+| $1C / $1E | 41:7DB3 / 41:7DF4 open/close the character summary | no caller found / 32:7D77 |
+| $20 | 41:77EA DebugPointsEditor | 08:46FF |
+| $22 | 41:6506 CharDataScreen | 0B:4F18, 41:7945 |
+| $24 | 41:6784 CharYesNoPrompt | 31:4673, 32:7A75, 32:7B70 |
+| $26 | 41:7E07 StaffCredits | 01:4115, 31:7835 |
+| $28 | 41:7BB4 PutMenuTile | 05:4F82-4FC2 (8 calls) |
+
+- **Level-up screen** (41:402A): returns at once (`ret nz`) unless 02:546B says the EXP at +$26 reaches the next level. 41:48F4 finds how many levels are due: it calls 02:546B and 02:4FFA in a loop, counts them in `$D435`, then restores the record. The player gives that many points to the four skills (texts $10DF-$10EA: "Improve which skill?", Drive, Height, Shot, "Meet Area and" Control, "Is this OK?", Yes/No).
+  - The phase is in `$D632`: 0 = message, 1 = choosing a skill (Left/Right move `$D630`; A adds a point with 02:4FFA and records it in the history `$D4D2`, count `$D4D1`), 2 = Yes/No (`$D40A`), 3 = done.
+  - B undoes the last point (41:550C).
+  - Eight frame tasks run while the screen is up: cursor blink 41:42FA / 41:4328, gauges, palette cycling 41:50D2 (table 41:6486), and the character sprite 42:4074 through 41:5088.
+  - Each skill is shown as a gauge from -4 to +4 (41:4F71). The preview delta comes from 02:503C.
+- **Stats screen** (41:6506, the "Char. Data" menu item) reuses the same drawing with phase 0. **CharYesNoPrompt** (41:6784) asks "Is this OK?", "Copy <name>?" or "Erase <name>?" over it. It saves and restores the whole screen (palettes, WRAM2/3 buffers, VRAM1 $9000, VRAM $8400) with 41:6D4E / 41:6DC7, and returns a = 1 for Yes.
+- **Menus**: every menu export sets bit 7 of +$2D, calls a set-up routine (text id of the options, handler word table, window size) and then RunMenu (41:6FF4). RunMenu opens the window with 05:4BB0 (wMenuWindow `$C3F8`), reads the choice with 05:4CD7 and jumps through the handler table. Handlers leave their result in wMenuResult `$C3FD`.
+
+| Export | Text | Options |
+|---|---|---|
+| $06 41:6E49 | $147F | Camera Mode, Course Map, Scorecard, Settings, Give Up, Quit |
+| $08 41:6E6E | $1480 / $1481 | Char. Data, Stars, Message, Save & Quit (Navigation first on map 2): the map start menu, wMapEvent +4 |
+| $0A 41:6E96 | $1482 / $1483 | golf pause menu with Save & Quit |
+| $0C 41:6EBB | $1482 | same text, handlers 41:756F |
+| $0E 41:6EE0 | $1484 | Camera Mode, Course Map, Hole Out, Wind Direction, Wind Speed, Settings, Back to Menu |
+| $10 / $12 | $1485 / $1486 | Quit Practice (+ Wind Direction / Wind Speed), Settings |
+| $14 / $16 | $1488 / $1489 | Continue, Mulligan, Hole Out / Start Over, Back to Main Menu |
+| $18 41:6F9F | $148A | Quit Mini-Game, Settings |
+| $1A 41:6FC4 | $1480 | the map menu from bank 70 |
+
+- **Credits** (41:7E07): plays song 3 and scrolls `hSCY` one pixel per two frames. Each 16 pixels it prints the next string from text $181C onward ("MARIO GOLF STAFF" ...) and stops at a string that starts with '#'. A, B or Start then leaves through 01:41B3.
+- **Debug leftover**: 41:77EA is a points editor, reached from 08:46F3 after a golf pause menu when `hDebugMode` is set and Select is held. It shows wPoints `$C83C`; A adds 100, Right adds 10 and Left subtracts 10 (02:544E); B gives the points as EXP (48:4D70).
+- **RAM**: the screen variables are WRAM6 scratch (`$D400-$D4D2`, `$D5A4`, `$D630-$D657`). They overlap the golf ball variables (wBallX ... wCameraX), so the names that labels.csv gives to those addresses do not apply inside this bank.
+- **Corrections to the hints**:
+  - 41:4780 writes `$D345` with WRAM bank **2** selected (41:450B), so it is a byte of the level-up attribute-map buffer and not the 3B caption state.
+  - 41:4A99, 41:4B80 and 41:557D write `$D455` with WRAM6 selected, but here it holds a copy of skill points (+$22) that the screen shows, not the HUD flag of 12:4B19.
+  - These are address overlaps, not real accesses to those variables.
+
+##### Bank 48: EXP award screen and character card
+
+Exports: $00 48:4053 ExpScreen, $02/$04 48:4A81/4AC3 (graphic prompts, 32:7D3C/7D4D), $06 48:4A27 (Yes/No input, no caller found), $08 48:4D70 AwardExpPoints, $0A 48:5E42 ShowPictureScreen, $0C `$6C00` (no caller; neither code nor LZ, left unlabelled).
+
+- **ExpScreen**(a, de, h): a = 0 shows only the character card (name and level 48:4639; mode, course, hole and score 48:4696, or the map name 48:480D when +$34 = 9).
+  - Otherwise de EXP are counted into the character (48:4C02; award `$D630`, counted `$D632`, points to the next level `$D63C`/`$D642`, done `$D638`).
+  - h picks the message (48:4C7D): 0 "Calculating EXP Pts.", 1 "Bring EXP Pts from N64 Mario Golf." (the N64 transfer text), 2 "Pts to next level:", 3 "Level up!" (sound $63), 4 "Your level increased.", 5 "It's the highest level!".
+  - The count runs one step per 4 frames. After A or B (latched in `$D639`) it runs every frame, with extra steps while 1000+ or 10000+ EXP remain.
+  - A bonus line (48:4DFF) is drawn from `$CAAD`: 1-3 Gold / Silver / Bronze Trophy, or "for beating" an opponent ($14-$19 -> text $47-$4C Putts, Grace, Tiny, Gene Yuss, Mario, Luigi; others Wario). `$CAAE` is the amount added.
+  - It commits with 02:5465.
+- **AwardExpPoints** (48:4D70) is called by 08:4F29 after a round with wPoints, by map script 32:5146 and by the debug editor. It runs ExpScreen and, when a level is reached (`$D63B`), LevelUpScreen 41:402A and then ExpScreen with message 4.
+- **ShowPictureScreen** (48:5E42) runs from 08:4F75 when wHolesLeft = $0A. It shows an LZ full-screen picture for up to $0E10 frames (one minute) or until a key is pressed. What the picture is has not been looked at.
+- Drawing goes into the WRAM1 buffers (`$D000` attributes, `$D400` tiles, 32 wide; 48:48CF). Tile strings handle dakuten codes $9E/$9F/$DE/$DF (48:4867), a leftover of the Japanese text.
+- **Leftovers**: 48:47D7 is the same code as 48:4791. 48:4A27 and export $0C have no callers.
+
+##### Bank 42: menu character sprite (animated golfer with shadow)
+
+Exports: $00 42:400A and $02 42:4008 are `ret` stubs (called from 62/66 and 01:4118). $04 42:400B InitCharSprite and $06 42:4074 CharSpriteTask are used by 41, 48 and 66.
+
+- 42:41F2 holds four records, one per character (`$C810` = 0-3). Each gives an OBJ palette (loaded as OBJ palette 6) and pointers to frame tiles, metasprites and animations; the pointers are copied to `$D540-$D547`.
+- The animation state is `$D548` animation, `$D549` frame, `$D54A` frame timer, `$D54B` next animation (bit 7 = none), `$D54C/$D54D` position, `$D54E/$D54F` offset (the jump height), `$D550` delay and `$D551` tile upload pending.
+- Each frame of an animation is 4 bytes: tile set, metasprite, dx and dy. Tiles are LZ-decompressed to VRAM1 `$8000`. Frame $FF ends the animation.
+- The shadow sprite size depends on the height (42:41B1, table 42:4254; tiles 42:4200-4238).
+- These WRAM6 addresses are also used heavily by bank 3C (`$D548`/`$D551`), so they are not labelled as RAM.
+
+##### Bank 44: debug palette editor and hole records
+
+Exports: $00 44:7E74 CopyHoleRecord (17:4298, 66:4982) and $02 44:42FB DebugPaletteEditor (05:6B83 in the debug menu 05:6B2E, and 08:4708 after a pause menu when `hDebugMode` is set and Up is held).
+
+- **DebugPaletteEditor** loads hex digit tiles 44:4020 to `$8600` and draws a 16 x 4 grid of the colours in `$C100` (wPalLive: BG palettes 0-7, then OBJ).
+  - The cursor is `$C3F6` (colour) and `$C3F7` (palette). A opens an R G B window (44:4156): Left/Right pick a component, Up/Down change it with AdjustColorRed/Green/Blue, and the palettes are uploaded at once (`$FF9D` = 3). B leaves.
+  - This is development code that the retail game can still reach through the debug mode.
+- **CopyHoleRecord** copies $C0 bytes for course `$C836` and hole `$C837` (table 44:4311: a pointer per course to a list of record pointers) to de; bank 17 passes `$C640`.
+  - The records are about $88 bytes apart, so the copy reads past the end of each one.
+  - A record holds a grid of 4-bit values (10-byte rows; nibbles 0/1/3/F), then a list of tile numbers ending with $FF. It is probably a picture of the hole or green for the bank-17 view. Not confirmed.
+- The rest of the bank (44:43E8-7E73) is data, not traced.
+
 ### Data Structures
 
 *(none yet)*

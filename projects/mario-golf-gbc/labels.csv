@@ -970,3 +970,166 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,C96E,wMatchHoles,18 bytes: hole won by 1 (P1) or 2 (P2) in match play (MatchHolesUp)
 *,C2AC,wCreditsPart,ending credits part (CreditsRun)
 *,D243,wCreditsLines,WRAM6: lines on the current credits page
+# --- banks 41 48 42 44 (story screens, menus, EXP, debug editors) ---
+41,402A,LevelUpScreen,bank 41 export 0 (map scripts 30-35 / 48:4DA2 / 57): returns at once unless 02:546B says a level is due; skill-point screen ("Improve which skill?") with cursor $D630 / phase $D632 / Yes-No $D40A; B undoes (41:550C)
+41,42B4,WaitLevelUpCheer,starts character animation 1 ($D54B) then waits for A or 256 frames ($D5A4)
+41,42FA,DrawSkillCursorTask,phase 1: blinking cursor sprite (tile $30) at the y of skill $D630 (y list $D400-$D403)
+41,4328,DrawYesNoCursorTask,phase 2: blinking cursor sprite at the Yes/No row $D40A (y list $D409-$D40A)
+41,4357,TickCursorBlink,$D631 = ($D631 - 1) & $1F (cursor shown while >= $10)
+41,4366,InitLevelUpVars,WRAM6 screen scratch: cursor y list $D400 / anim $D4A0-$D4A7 / $D630-$D632 cursor+blink+phase / $D5AE
+41,43C0,LoadLevelUpSpriteGfx,OBJ palettes 9/13/15 and four LZ sprite tile sets (41:5950 41:5A10 41:5AA7 41:5ACB) to $8300/$8460/$85A0/$82C0
+41,446D,LoadLevelUpBgAndTilemap,LZ BG tiles and attribute maps (41:5D80 ...) to VRAM; builds the WRAM2 attr / WRAM3 tile buffers ($D000) for the level-up screen; BG palettes
+41,48E5,FillBytes_41,[hl..hl+bc) = d
+41,48ED,WriteTileRun,b bytes a a+1 a+2 ... at hl (consecutive tile ids)
+41,48F4,CountPendingLevelUps,saves level (+$12) and stat points (+$20-$24) of the character at $C800; counts how many levels 02:546B grants into $D435; then 41:4970
+41,4970,RestoreStatsAndHistory,puts back the values saved by 41:48F4; $D43C = points to spend; clears the 100-byte pick history $D4D2 and its count $D4D1; farcall 02:4EF6
+41,49ED,LoadStatDisplayValues,a = 0: level / $1A / stat values $1C-$1F / points $20-$24 of the character -> $D63C-$D647 and $D453-$D456 (level shown +1); a != 0 also clears phase $D632 and deltas $D648-$D64C; formats level and points left
+41,4BAB,DrawLevelUpLabels,a = 0: "Improve which skill?" (text $10DF) else name and EXP (41:5598); then Level / Drive / Height / Shot / Meet Area and / Control / "Moving up a level!" / Yes / No (texts $10E0-$10EA) into the WRAM3 tile buffer
+41,4C4A,CopyLevelUpTilemapToVRAM,queues $12 rows of the WRAM3 tile buffer to $9800 and the WRAM2 attribute buffer to VRAM1 $9800
+41,4CC1,FormatLevelDigits,level byte $D63C -> two digit indices at $D406 (41:546A)
+41,4D2A,SignExtendAToHL,hl = sign-extended a
+41,4E94,DrawStatGaugeRow1,stat value $D642 (+ preview delta $D64A in phase != 0) as a gauge on tile row 9 (41:4F71); queues the row
+41,4ECE,DrawStatGaugeRow0,stat value $D640 (+ delta $D649) as a gauge on tile row 6
+41,4F08,DrawStatGaugeRow2,stat value $D644 (+ delta $D64B) as a gauge on tile row $0D
+41,4F42,DrawStatGaugeRow3,stat value $D646 (+ delta $D64C) as a gauge on tile row $0F (not queued here)
+41,4F71,DrawStatGauge,l = -4..+4: gauge tiles $06-$0E / $15-$1D growing right (1-4) or left ($FC-$FF) from the centre column; de = row offset in the WRAM3 buffer
+41,506F,ClearStatGauge,6 blank gauge tiles ($00 / $0F) on both rows at de
+41,508C,RefreshStatGauges,in phases 1/3 previews skill $D630 (farcall 02:503C -> deltas $D648); redraws the four gauges
+41,50D2,CycleSkillHighlightPalette,phase 1: steps colour table 41:6486 (index $D430) into the palette of the selected skill row (BG palettes 3-5 via 00:056C); idle rows flash every 32 frames
+41,51DE,IncIfNonzero,[hl]++ unless it is 0
+41,51E4,UpdateLevelUpPanels,per phase $D632 (0-4) copies the matching parts of the WRAM2/3 buffers (prompt / Yes-No box / panel) to VRAM
+41,537B,CopyBytesB,b bytes from hl to de
+41,5383,HighlightSkillRow,loads palette 41:5D71 into BG palette 3/4/5 for skill $D630 = 1/2/3 or clears $D432-$D434 for skill 0
+41,546A,FormatTwoDigits,byte [hl] -> two digit values at bc (leading blank = $FF) via FormatDecimalNumber
+41,550C,UndoLastSkillPoint,B on the level-up screen: if history $D4D1 is not empty gives back the last point (level $C812 - 1 / stat - 1 / $D43C + 1); else sound $5D
+41,5598,DrawNameAndExpHeader,character name (41:5765) and EXP (41:57A9) in the level-up header; badge tiles 41:63CB / 41:6428; registers frame task 41:587C
+41,5669,ClearLevelUpBuffers,zeroes $D000-$D7FF in WRAM2 and WRAM3 (attr and tile buffers)
+41,5765,CopyNameToTilemap,string at hl -> tile buffer de in WRAM3; $DE / $DF put dakuten tiles $0E / $0F on the row above
+41,57A9,FormatExp24,24-bit EXP at hl (word + high byte) -> 5 decimal digits at $D64F (adds 65536 per high-byte unit digit by digit)
+41,5867,SetNameAttrs,attribute 6 in WRAM2 for every character of the string at hl
+41,6506,CharDataScreen,bank 41 export $22 (0B:4F18 / the Char. Data menu 41:7945): the character's stats screen built with the level-up code (read only); A or B leaves
+41,65D1,DrawCharBadge,prints ($C819 >> 1) & 3 at (3 $0F); values 1/2 load badge tiles (41:66D4 / 41:6670) and palettes
+41,665E,LoadCharDataPalette,BG palette 6 from 41:677C
+41,6784,CharYesNoPrompt,bank 41 export $24 (map scripts 31/32): a = 0 "Is this OK?" / 1 "Copy <name>?" / 2 "Erase <name>?" over the stats screen; c = default; returns a = 1 for Yes; saves and restores the screen (41:6D4E / 41:6DC7)
+41,68AD,LoadCharPromptBgAndTilemap,variant of 41:446D for the Yes/No prompt screen (same LZ assets)
+41,6C30,DrawCharPromptText,a = 0/1/2: "Is this OK?" / "Copy" + name + "?" / "Erase" + name + "?" (texts $10EB-$10EE) plus Yes / No / LV. and the skill labels
+41,6D25,CopyPlayerNameToTilemap,name at $C800 -> WRAM3 tile buffer at de
+41,6D4E,SaveScreenState,copies wBGPalMaster to $D554 and the WRAM2/3 buffers / VRAM1 $9000 / VRAM $8400 to WRAM $D800 / $DC00 backups
+41,6DC7,RestoreScreenState,undoes 41:6D4E (palettes from $D554 and the four backups)
+41,6E49,GolfPauseMenu,bank 41 export 6 (08 / 2D): menu text $147F (Camera Mode / Course Map / Scorecard / Settings / Give Up / Quit) via 41:6FF4; returns wMenuResult $C3FD
+41,6E6E,MapStartMenu,bank 41 export 8 (map event +4 from 0A:4AEF): Char. Data / Stars / Message / Save & Quit (text $1480; $1481 with Navigation on map 2); clears flags #49 #50
+41,6E96,GolfPauseMenuSave,bank 41 export $0A (08:46BB): golf pause menu with Save & Quit ($1482) or Quit ($1483) when $C2A5 & $0F = $0F
+41,6EBB,GolfPauseMenuSave2,bank 41 export $0C (08:46CC): text $1482 (Save & Quit) with handler table 41:756F
+41,6EE0,TrainingPauseMenu,bank 41 export $0E (08:46D7): Camera Mode / Course Map / Hole Out / Wind Direction / Wind Speed / Settings / Back to Menu ($1484); clears flag #51
+41,6F08,PracticeWindMenu,bank 41 export $10 (08:46E7 when flag #100): Quit Practice / Wind Direction / Wind Speed / Settings ($1485); clears flag #52
+41,6F30,PracticeMenu,bank 41 export $12 (08:46EB/46EF): Quit Practice / Settings ($1486)
+41,6F55,ContinueMulliganMenu,bank 41 export $14 (08:4A57): Continue / Mulligan / Hole Out ($1488)
+41,6F7A,ContinueMulliganRestartMenu,bank 41 export $16 (08:4A45): Continue / Mulligan / Start Over / Back to Main Menu ($1489)
+41,6F9F,MiniGamePauseMenu,bank 41 export $18 (08:46DE): Quit Mini-Game / Settings ($148A)
+41,6FC4,CharStartMenu,bank 41 export $1A (70:6F79): Char. Data / Stars / Message / Save & Quit ($1480) without the map-menu set-up
+41,6FF4,RunMenu,hl = text id of the options / bc = handler word table / de = window size: opens a window (05:4BB0 -> wMenuWindow $C3F8) / prints / reads a choice (05:4CD7) and jumps to the handler; $FF = cancel
+41,707C,ClearMenuState,zeroes $C3F9-$C3FC (menu flags)
+41,708A,DrawMenuIcons,by wMenuFlags $C3FC bits 4-6: three-tile icons from the $C818 option bits (bit 0 / bit 1) or five-tile columns chosen by $C82D & $7F
+41,726C,MenuTileAddr,hl = window-relative tile position: VRAM address in de from the window record ($D800 + 4 x wMenuWindow) via 05:414F
+41,77EA,DebugPointsEditor,bank 41 export $20 (08:46FF when hDebugMode and Select held): window showing wPoints; A +100 / Right +10 / Left -10 (02:544E); B awards them as EXP (48:4D70)
+41,7A53,SetupGolfPauseMenu,RunMenu arguments: text $147F / table 41:7317 / size $0502
+41,7A65,SetupMapStartMenu,draws Slow / Normal / Fast (texts $1492-$1494) to $8D10; RunMenu arguments $1480 / 41:73DC or on map 2 $1481 / 41:7409; sets flag #49 or #50
+41,7AEF,SetupGolfPauseMenuSave,text $1483 if $C2A5 & $0F = $0F else $1482; table 41:743F
+41,7B1C,SetupGolfPauseMenuSave2,text $1482 / table 41:756F
+41,7B2E,SetupTrainingPauseMenu,text $1484 / table 41:7654; sets flag #51
+41,7B4D,SetupPracticeWindMenu,text $1485 / table 41:76FF; sets flag #52
+41,7B6C,SetupPracticeMenu,text $1486 / table 41:7741
+41,7B7E,SetupContinueMulliganMenu,text $1488 / table 41:76B9
+41,7B90,SetupContinueMulliganRestartMenu,text $1489 / table 41:76D7
+41,7BA2,SetupMiniGamePauseMenu,text $148A / table 41:775B
+41,7BB4,PutMenuTile,tile $80xx (l) at the window-relative position de (41:726C + QueueBGTileWrite)
+41,7BBD,LoadTextToWram7,text id hl -> 16 zero bytes then the string at WRAM7 $DC00 (for 03:50CD glyph rendering)
+41,7C7D,DrawCharSummary,name ($149B) / Level ($149C) / Drive yards ($149D) / mode + course + hole or the map name; tilemap from 41:7BFD-7C5D; to VRAM
+41,7DB3,OpenCharSummaryScreen,bank 41 export $1C (no caller found): 41:7C7D + character sprite (42:400B) + frame task 41:7E03
+41,7DF4,CloseCharSummaryScreen,bank 41 export $1E (32:7D77): unregisters frame task 41:7E03
+41,7E07,StaffCredits,bank 41 export $26 (01:4115 / 31:7835): song 3; scrolls the staff roll from text $181C one line per 16 pixels until a line starting with '#'; then A/B/Start fades out and farcalls 01:41B3
+41,7EF1,InitCreditsScroll,$D630/$D631 = 2 / text pointer $D632 = $181C / done flag $D634 = 0; clears both BG maps
+41,7F41,CreditsRowAddr,de = $9800 address of the row de lines below the current hSCY
+41,7F5A,CreditsLineIsEnd,a = first character of the line buffer - '#' (0 = end of the roll)
+41,7F60,CopyCreditsLine,LoadText hl -> WRAM3 de (lower case shifted down $20)
+41,6486,SkillHighlightColorTable,64 colour words cycled by 41:50D2
+41,7317,GolfPauseMenuHandlers,6 handler words for RunMenu (Camera Mode ... Quit)
+41,73DC,MapStartMenuHandlers,4 handler words (Char. Data / Stars / Message / Save & Quit)
+41,7409,MapStartMenuNavHandlers,5 handler words (Navigation first; map 2)
+41,743F,GolfPauseMenuSaveHandlers,6 handler words
+41,756F,GolfPauseMenuSave2Handlers,6 handler words
+41,7654,TrainingPauseMenuHandlers,7 handler words
+41,76FF,PracticeWindMenuHandlers,4 handler words
+41,7741,PracticeMenuHandlers,2 handler words
+41,76B9,ContinueMulliganMenuHandlers,3 handler words
+41,76D7,ContinueMulliganRestartMenuHandlers,4 handler words
+41,775B,MiniGamePauseMenuHandlers,2 handler words
+48,4053,ExpScreen,bank 48 export 0 (32:7D39 / 6B:41ED / 48:4D70): a = 0 shows the character card only; else counts de EXP into the character with message h (48:4C7D) / trophy bonus (48:4DFF) / pts to next level; $D63B set when a level is reached; commits with 02:5465
+48,4362,LoadExpScreenGfx,LZ tiles 48:4F70 / frame / palettes / character sprite (42:400B at $78 $28) / more LZ art for the EXP screen
+48,4527,DrawExpFrameBlock,20 x 5 tile + attribute block from table 48:445F into the WRAM1 buffers
+48,458C,DrawYesNoBox,6 x 5 block from 48:4550 at rows 5-9 plus "Yes / No" (text $001A)
+48,460E,DrawExpMessageBox,8 x 4 tile + attribute block from table 48:45CE at x 1-8 y $0B-$0E
+48,4639,DrawCardNameLevel,clears the name area (48:4673) then name ($149B) and Level ($149C)
+48,4673,ClearCardNameArea,tile $20 attr 0 at x 6-13 y 6-8
+48,4696,DrawCardRoundInfo,mode name ($14A8 + mode) / course / Hole ($14A0) / Score ($14A1) with the signed score (48:48F3) from the character record
+48,4791,ClearCardRows13,tile $20 attr 1 at x 1-19 y $0D-$11
+48,47B4,ClearCardRows11,tile $20 attr 1 at x 1-9 y $0B-$0C
+48,47D7,ClearCardRows13b,same code as 48:4791 (duplicate)
+48,480D,DrawCardMapName,map name (text $12C + MapIndexOf $C960) for a character saved on the overworld (+$34 = 9)
+48,4852,DrawTileStringRecord,record at hl: x / y / attr / tile string -> 48:4867
+48,4867,DrawTileString,tile string at hl from (b c) attr e into the WRAM1 buffers; $9E/$9F/$DE/$DF put a dakuten mark on the row above
+48,48B9,CardBufferAddr,hl = $D000 + 32 c + b (WRAM1 attr buffer; tiles at +$400)
+48,48CF,PutCardTile,tile d attr e at (b c) in the WRAM1 buffers ($D000 attr / $D400 tile)
+48,48F3,DrawSignedScore,'+' / '-' / even sign then hundreds / tens / units of the score byte a (48:4A08)
+48,497E,SignOfDiff,a = 0 / 1 / 2 for bc - de zero / positive / negative
+48,49A2,TensDigitOfScore,tens digit of |score a| (below 100)
+48,49CF,UnitsDigitOfScore,units digit of |score a|
+48,4A08,ScoreByteToSigned,hl = a with values >= $91 taken as negative
+48,4A27,YesNoCursorInput,no caller found: Up/Down toggle $D251; A returns it / B returns $FF
+48,4A81,DrawGfxPromptA,bank 48 export 2 (32:7D3C): frame (48:4527) and two tile strings (48:400E / 48:4019 tiles $40-$5B)
+48,4AC3,DrawGfxPromptB,bank 48 export 4 (32:7D4D): frame and tile strings 48:4029 / 48:4039 (tiles $60-$7B)
+48,4C02,ExpCountStep,counted EXP $D632 + 1 until it equals the award $D630 ($D638 = done); $D642 = pts to next level $D63C - counted (min 0)
+48,4C7D,DrawExpMessage,a = 0 "Calculating EXP Pts." / 1 "Bring EXP Pts from N64 Mario Golf." / 2 "Pts to next level:" / 3 "Level up!" (sound $63) / 4 "Your level increased." / 5 "It's the highest level!" ($14AE-$14B4)
+48,4D70,AwardExpPoints,bank 48 export 8 (08:4F29 after a round with wPoints / 32:5146 / debug 41:7870): ExpScreen with de EXP; on a level LevelUpScreen (41:402A) then ExpScreen message 4
+48,4DC4,ShowBonusLine,a != 0: after the sprite upload copies the WRAM7 rows $DA00/$DB00 to the window rows $9820
+48,4DFA,FillBytesD,d bytes a at hl
+48,4DFF,DrawBonusExpMessage,$CAAD = 1/2/3 Gold / Silver / Bronze Trophy ($14B6-$14B8); $14-$19 "for beating" Putts .. Luigi (text $47+); other Wario; plus "Adding EXP Pts" ($14B5)
+48,4F37,CopyEvenBytes,c bytes from every second byte of de to hl
+48,4F3F,DrawBeatingLine,"for beating" ($14B9) + opponent name text hl
+48,5E42,ShowPictureScreen,bank 48 export $0A (08:4F7B when wHolesLeft = $0A): LZ full-screen picture (48:5F4C 48:6776 48:6801) for up to $0E10 frames (1 min) or a key
+48,445F,ExpFrameTileTable,20 x 5 (tile attr) pairs
+48,400E,GfxPromptStrings,tile-string records (x y attr tiles 0) used by 48:4A81 / 48:4AC3
+42,4008,CharAnimStub1,bank 42 export 2 (01:4118): ret
+42,400A,CharAnimStub0,bank 42 export 0 (62 / 66): ret
+42,400B,InitCharSprite,bank 42 export 4: character $C810 -> record from 42:41F2 (OBJ palette 6 and four pointers to $D540-$D547); anim state $D548-$D551; loads the shadow tiles (42:416B)
+42,4074,CharSpriteTask,bank 42 export 6 (frame task of 41 / 48 / 66): advances the animation ($D54A frame timer / $D549 frame / $D548 anim; $FF ends it and takes the next $D54B) and draws the sprite and shadow
+42,40D2,CharAnimFramePtr,hl = entry of frame $D549 in animation $D548 (4 bytes each) from the pointer at $D544
+42,40F1,LoadCharAnimTiles,LZ tiles of the current frame -> VRAM1 $8000 ($20 blocks); $D551 = 1 (upload pending)
+42,4128,DrawCharMetasprite,applies the frame offset (42:414A) and draws the frame's metasprite (00:26EA) with palette 6
+42,414A,ApplyCharFrameOffset,adds the frame's dx dy to $D54E/$D54F; returns de = sprite position ($D54C/$D54D + offset)
+42,416B,LoadCharShadowTiles,three LZ shadow sizes (42:4200 / 421C / 4238) -> VRAM1 $8200 / $8280 / $8300
+42,41B1,DrawCharShadow,shadow metasprite chosen by the jump height $D54F (table 42:4254) under the character
+42,41F2,CharSpriteDataTable,4 words: per character ($C810 = 0-3) the palette / tiles / metasprite / animation pointers
+42,4254,CharShadowSpriteTable,3 metasprite pointers by height
+44,4004,PrintWindowString,string at hl (0 ends) into window a from (d e) one tile at a time (05:4408)
+44,40E0,PalEditColorPtr,hl = $C100 + 2 x (4 x row $C3F7 + column $C3F6)
+44,40F4,DrawColorRGB,prints the selected colour's R G B as 3 decimal numbers ($C470); e = component marked with tile $0D
+44,4156,EditColorDialog,A on a colour: window with R G B; Left/Right pick a component / Up/Down change it (AdjustColorRed/Green/Blue) and upload ($FF9D = 3); A/B close
+44,41EB,DebugPaletteEditorLoop,window with the 16 x 4 colour grid of $C100; d-pad moves $C3F6/$C3F7; A edits (44:4156); B leaves
+44,42FB,DebugPaletteEditor,bank 44 export 2 (debug menu 05:6B83 / 08:4708 with hDebugMode and Up held): hex digit tiles 44:4020 to $8600; starts at colour 0
+44,7E74,CopyHoleRecord,bank 44 export 0 (17:4298 / 66:4982): $C0 bytes of the record for course $C836 and hole $C837 (table 44:4311) to de (nibble grid + tile list?)
+44,4311,HoleRecordTable,per course ($C836) a pointer to per-hole word lists of 44:7E74 records
+*,C3F8,wMenuWindow,window id of the open RunMenu menu (05:4BB0)
+*,C3FC,wMenuFlags,menu options: bit 7 set by every menu set-up; bits 4-6 pick the icons of 41:708A
+*,C3FD,wMenuResult,value a RunMenu handler leaves (returned by the bank 41 menu exports)
+*,C3F4,wPalEditWindow,debug palette editor: grid window id
+*,C3F5,wPalEditRGBWindow,debug palette editor: R G B window id
+*,C3F7,wPalEditRow,debug palette editor: palette 0-15 (BG 0-7 then OBJ)
+*,C100,wPalLive,128 bytes: BG then OBJ palettes uploaded by ApplyPendingPaletteUpdates (filled from $C200 by RestorePalettesFromMaster)
+*,FF9D,hPalUpdate,palette upload request bits (3 = BG and OBJ; ApplyPendingPaletteUpdates)
+*,C810,wCharId,character record +$10: 0-3 (selects 42:41F2)
+*,C812,wCharLevel,character record +$12: level (max $63; 02:546B / 02:4FFA)
+*,C820,wCharSkillPoints,character record +$20-$24: points given to the four skills (+$23 unused by 02:4FFA)
+*,C826,wCharExp,character record +$26: 24-bit EXP (41:57A9)
+*,CAAD,wExpBonusKind,bonus line on the EXP screen: 1-3 trophy / $14-$19 and others = beaten opponent; $CAAE = bonus amount
+48,6C00,UnusedExport0C,export $0C of bank 48: no caller; the bytes are neither sensible code nor LZ data
