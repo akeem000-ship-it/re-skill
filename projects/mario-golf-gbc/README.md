@@ -23,7 +23,7 @@ python3 -m http.server 8765          # from this folder, with the ROM at rom/mar
 ```
 
 The page runs the game on this project's own Game Boy Color core (identical to PyBoy frame for frame in the
-checks) and keeps the battery save in the browser. Details: [docs/architecture_web.md](docs/architecture_web.md).
+checks) and keeps the battery save in the browser. Details: [docs/architecture_web.md](docs/architecture_web.md). An Android app (APK) wraps the same page: [android/README.md](android/README.md).
 
 ## Tools so far
 
@@ -53,6 +53,7 @@ checks) and keeps the battery save in the browser. Details: [docs/architecture_w
 | `emu_play_hole.py`, `plan_shot.py` | a bot that plays holes in the emulator (swings chosen by the Python engine); the planner |
 | `swing_py.py`, `joypad.py` | the swing (address step, meter, impact pad, animation timing, landing preview) and the joypad in Python |
 | `trace_code.py`, `coverage.py` | static code trace (copied from Tennis; also seeds map scripts, frame tasks); share of the traced code inside named routines (100% now; REVERSE.md "Decompile Coverage") |
+| `make_android_icons.py` | the Android launcher icon (drawn from shapes) |
 | `emu_frame_hashes.py`, `emu_dump_snapshot.py`, `emu_postboot_state.py` | PyBoy frame hashes (from power-on or a state, with a press script); a PyBoy state as a JS-core snapshot; the state at the boot ROM's handover |
 | `map_scripts.py` | the overworld map scripts (enter / talk / object / trigger) per map header, with the texts they show |
 | `launch_py.py`, `test_launch.py`, `emu_launch_record.py` | ShotLaunch (swing result -> ball velocity) in Python; checked on recorded launches and random swings |

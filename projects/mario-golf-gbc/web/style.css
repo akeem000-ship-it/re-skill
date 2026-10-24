@@ -35,3 +35,22 @@ footer { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wr
 .ab { display: flex; gap: 12px; align-items: center; }
 .ab button { width: 60px; height: 60px; border-radius: 50%; font-size: 18px; }
 .ab .a { transform: translateY(-14px); }
+
+/* phones: the screen as large as fits, the pad beside it in landscape (and in the Android app, no page chrome) */
+body.app header, body.app footer { display: none; }
+body.app main { padding: 8px; }
+@media (pointer: coarse) and (orientation: landscape) {
+  main { max-width: none; height: 100vh; padding: 8px env(safe-area-inset-right) 8px env(safe-area-inset-left);
+    display: grid; grid-template: "screen" 1fr / 1fr; }
+  header, footer { display: none; }
+  #loader { position: fixed; inset: 16px; z-index: 2; margin: auto; height: fit-content; max-width: 520px; }
+  #stage { grid-area: screen; align-items: center; }
+  #screen { width: auto; height: calc(100vh - 16px); max-width: calc(100vw - 340px); max-height: calc((100vw - 340px) * 144 / 160); }
+  #pad { position: fixed; inset: 0; display: flex; align-items: flex-end; justify-content: space-between;
+    padding: 0 max(16px, env(safe-area-inset-right)) 24px max(16px, env(safe-area-inset-left)); pointer-events: none; }
+  #pad > * { pointer-events: auto; }
+  #pad .mid { position: fixed; top: 12px; right: max(16px, env(safe-area-inset-right)); flex-direction: column; }
+}
+@media (pointer: coarse) and (orientation: portrait) {
+  #pad { padding: 8px 4px 24px; }
+}
