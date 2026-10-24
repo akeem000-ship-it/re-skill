@@ -209,3 +209,25 @@ bank,addr,name,comment
 0,30C9,SerialStoreNibble,a = received $5x byte: packs its nibble into wSerialRecvBuf (index hFFC6)
 *,CB00,wSerialSendBuf,
 *,CB40,wSerialRecvBuf,64 bytes
+# --- top level: map engine (bank 0A) ---
+1,40A6,DebugBootMenu,unreachable (GameMain jumps over it to 41A6): prints BuildStamp; Up/Down/A/Start/B/Right/Select pick tests
+1,41A6,GameMainStart,wMapId = 0; wMapEntrance = 3; farcall MapEngine
+1,41CE,LoadFontTiles,01:42A0 -> $9000 ($80 tiles) and 01:4AA0 -> $8800 ($60 tiles)
+A,498C,MapEngine,never returns: per map ClearFrameTasks / RegisterFrameTask 1 = 0A:4950 / MapRun / MapTakeWarp
+A,4A21,MapRun,fade out; load header (MapLoadHeader) and entrance; music; graphics (0B:46DF with wMapGfx); fade in; event loop until a warp (wMapEvent+1)
+A,4AAA,MapEventLoop,checks the event bytes $C440-$C444: warp / talk / object / sign / menu
+A,4BBC,MapLoadHeader,map record (MapTable) -> $C450-$C455; header (14 bytes) -> $C456; wMapBank
+A,4C0D,MapPlaceAtEntrance,finds wMapEntrance in the entrance list (else the first); position -> $C466/$C468
+A,5146,MapTakeWarp,warp wMapEvent+1 ($C46B) from the warp list: 8 bytes -> $C400; wMapId = +6; wMapEntrance = +7
+A,5188,MapTable,6-byte records; ends with $FF (tools/dump_maps.py)
+A,5303,MapFindRecord,a = map id -> hl = its MapTable record (the first one if not found)
+A,5348,MapIndexOf,a = map id -> a = record number
+*,C440,wMapEvent,5 event bytes cleared at map start: +0 ? / +1 warp id / +2 action (A button) / +3 / +4 menu
+*,C450,wMapId,
+*,C451,wMapGfx,passed to 0B:46DF
+*,C454,wMapMusic,
+*,C456,wMapHeader,14 bytes: entrances / warps / init / talk / objects / ? / ?
+*,C464,wMapBank,bank of the map header and its lists
+*,C46A,wMapEntrance,entrance id ($FA = keep position)
+*,C4BF,wMapLoadPhase,$10 / $20 / $30 / $40 while MapRun loads a map
+A,4950,MapDebugCoordsTask,frame task 1 during maps: prints the player's coordinates with PrintHexWord when flag #32 is set

@@ -254,7 +254,49 @@ that, and `scan_jumptables.kind()` now uses it.
 
 ### State Machine
 
-*(not yet)*
+#### Top level: the map engine (bank 0A; tools/dump_maps.py)
+
+GameMain (01:400E) initialises WRAM, palettes and the font tiles (01:41CE LoadFontTiles), runs three bank-02
+setup calls (02:41F6, 02:45D3, 02:4E3D), clears the shadow OAM, then `jp 01:41A6`, skipping a debug boot menu at
+01:40A6-41A2 that nothing reaches (it prints BuildStamp and starts tests on Up + a button). 01:41A6 sets
+`wMapId` = 0 and `wMapEntrance` = 3 and farcalls **MapEngine (0A:498C)**, which never returns:
+
+```
+MapEngine:  forever:
+    ClearFrameTasks; RegisterFrameTask(1, MapDebugCoordsTask 0A:4950)
+    MapRun (0A:4A21):
+        fade out (c = $0C); wMapLoadPhase = $10
+        clear wMapEvent; MapLoadHeader (0A:4BBC); MapPlaceAtEntrance (0A:4C0D)
+        play wMapMusic unless $FF (00:2C19); phase $20: header +4 -> 0A:4F45; farcall 04:4D2B
+        phase $30: player position -> $C320/$C322; farcall 0B:46DF with wMapGfx; phase $40: 0A:4F71
+        fade in; MapEventLoop (0A:4AAA): each frame (AdvanceFrame via 0A:4BAC) look at wMapEvent:
+            +0: 0A:50CB     +1: warp id -> $C46B, leave MapRun
+            +4: sound $62, menu farcall 41:6E6E
+            +3: a timer at $C28C-$C28E (>= 30) raises flag #23 and an action
+            +2 (the A button): talk list (0A:49C6 -> 0A:4F96), object list (0A:49E9 -> 0A:5066),
+                0A:4D1F -> 0A:5109; otherwise the debug menu 05:6B2E when hDebugMode,
+                or 0A:7174 on map 2 (sound $5C)
+    MapTakeWarp (0A:5146): warp record (8 bytes) -> wMapId = +6, wMapEntrance = +7
+```
+
+**MapTable (0A:5188)**: 6-byte records `[map id, gfx id, header idx, header bank, music, ?]`, ending with `$FF`.
+63 maps (`$00-$3E`); the header is the word at `bank:$4000 + idx`. Header banks are 30-35, which explains their
+many far calls into 0A. Some maps share a header (08-0B; 0E/11/14/17; 18-1B; 2E/2F), presumably the same room
+in different states.
+
+**Map header** (14 bytes, copied to `$C456`; every pointer is in the header's bank, `wMapBank`):
+
+| Offset | Field | Used by |
+|--------|-------|---------|
+| +0 | entrances: 6-byte records `[entry id, ?, x (word), y (word)]`, end `$FF` | MapPlaceAtEntrance |
+| +2 | warps: 8-byte records, bytes 6/7 = destination map / entrance | MapTakeWarp |
+| +4 | data right after the header; passed to 0A:4F45 at map start | MapRun |
+| +6 | talk targets | 0A:49C6 |
+| +8 | objects | 0A:49E9 |
+| +10, +12 | not yet known | |
+
+The pointers in each header point just past it and increase in this order, which supports the layout. The map
+engine is the RPG ("story") side; how golf rounds and the menus are entered from it is the next thing to trace.
 
 ---
 
@@ -262,6 +304,7 @@ that, and `scan_jumptables.kind()` now uses it.
 
 | File | Contents |
 |------|----------|
+| `python3 tools/dump_maps.py [--entrances]` (stdout) | map table and headers |
 | `docs/text_dump.txt` (gitignored) | every string: `id bank:index text`, control codes as `{XX}` (`python3 tools/dump_text.py`) |
 
 ---
@@ -300,7 +343,11 @@ that, and `scan_jumptables.kind()` now uses it.
 - [x] Name the unmatched bank-0 code: 0458, 2683/2688, 304D, 3038, 2C4A, the VBlank handler, the serial protocol
 - [ ] 00:2B31 (copies a column into WRAM bank 3, sets `hFFB9`): no `call` to it; find how it is reached
 - [ ] Link modes: trace the InitSerialLink callers in banks 02, 03, 07, 09 and 32
-- [ ] GameMain 01:400E: follow it to the scene / mode dispatcher
+- [x] GameMain 01:400E: followed to MapEngine 0A:498C (map table, header, warps, event loop)
+- [ ] Map 00 (the boot map, entrance 3): is it the title screen? Trace its init data (32:4FF7) and 0A:4F45
+- [ ] How a golf round is started from a map (talk/object handlers 0A:4F96 / 0A:5066 / 0A:5109) and how it returns
+- [ ] Map header fields +10/+12; warp record bytes 0-5; entrance byte 1; MapTable byte 5
+- [ ] The bank-02 setup calls in GameMain (02:41F6, 02:45D3, 02:4E3D) and the save check at 02:4078 ("CAMELOT GAMEBOY" at 02:4162)
 - [ ] Bank 7E: confirm the sound engine (entries 7E:4016/4072/40EB) and the sound id tables
 - [x] Text: text banks 18-1F, id format, control codes, font 03:50F0 (dump_text.py)
 - [ ] Text: render the font (03:50F0) to an image to confirm the glyph format (16 bytes: 8 rows x 2 bytes?)
