@@ -1217,6 +1217,36 @@ joypad (A+B+Select+Start = soft reset to `$2582`), sound.
 
 ---
 
+### Link cable — VERIFIED (bank 07 `4048-4CFE`, home `2821-28F8`; port `web/js/port/match/link/`)
+
+Tested on two emulated machines joined by a cable (`web/js/gb/cable.js`, `web/tests/port/link_pair.mjs`): a whole
+session (connect, link menus, character select, a match) plays the same with the ROM's code and with the port.
+
+* **Roles.** `TryEstablishLink 07:4048` (main menu, Link cell): the console that finds the peer's probe already in
+  (`hLinkRxByte` = `$C1`) becomes the slave (`hLinkState` 2, external clock), the other the master (1, internal
+  clock). Pressed on the same frame both become master and the game says "You are improperly linked".
+  The master clocks `$C1` at LY `$8C` up to 1000 times and waits for the slave's `$C2`; carry clear = linked.
+* **A frame of link play.** The master waits for LY `$8C`, clocks `hLinkTxByte` out (the slave's serial handler,
+  `00:2861`, answers with the byte it armed) and runs AdvanceFrame; the slave waits (`AwaitSerialByte 07:4A29`: a
+  VBlank, then up to 20000 tries for `hLinkTransferDone`) and its AdvanceFrame does not wait. A frame byte carries
+  6 bits (the pad, packed by `SerialEncodeInput 00:2924`) under a sequence tag in bits 6-7 that alternates `$40` /
+  `$80` each frame; a repeated byte is a lost frame (the master waits two VBlanks and tries again, a second repeat or
+  any repeat on the slave is the link error). `$00` / `$FF` mean no peer. `hMatchFrameCounter` counts link frames.
+* **Menus** send commands, not pads (`RunLinkCommandFrame 07:4BF3`): six bits `$14` START, `$15` A, `$19` B
+  (`DecodeLinkCommandCode 07:4CE4`); the slave reads the peer's input through a two-slot delay line.
+* **Blocks** (`ExchangeLinkDataBlock 07:496E`: each player's character records with the unlocked-court mask, or the partners' for doubles; the unlock flags) go as nibbles tagged `$40` (master) /
+  `$80` (slave), with the LCD off: sync `$C3`/`$C4`, the nibbles, end `$C5`/`$C6`, the checksums (sum of nibbles,
+  exchanged a nibble at a time) and the verdict `$CD` ok / `$CB` again. Control bytes are `$C0-$CF`
+  (`include/constants/link.inc` of the disassembly).
+* **Ready signal** before a match or menu (`ExchangeLinkReadySignal 07:477D`): the master waits 100 ShortDelays,
+  then clocks `$4B` until the slave's `$8A` comes back.
+* **Quirks** kept by the port: `TryLinkHandshakeMaster` tests carry after two far calls, so the carry it tests is
+  FarCall's (from the stack pointer's low byte), not the timeout's; `RunLinkInputFrameMaster` and
+  `RunLinkCommandFrameMaster` pop bc and hl the wrong way round (they return swapped).
+* **Timing.** `ShortDelay 00:2821` is about 2000 cycles, `LongDelay 07:4BC2` 16 of them, `WaitSerialTransfer 00:282E`
+  gives up after 50000 tries (about 3.2 M cycles). The port runs these waits, and every loop that polls LY, SC or
+  the serial note, instruction by instruction with the CPU's cycles.
+
 ## Intermediate Output Files
 
 | File | Contents |

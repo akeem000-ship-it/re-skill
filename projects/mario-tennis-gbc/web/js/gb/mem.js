@@ -81,7 +81,10 @@ export class Memory {
     switch (r) {
       case 0x00: this.joypad.write(v); return;
       case 0x01: this.io[1] = v; return;
-      case 0x02: this.io[2] = v & 0x83; if (v & 0x80 && v & 1) { this.serialPending = true; } return;   // internal clock: transfer completes later
+      case 0x02:                                         // internal clock: the transfer completes later (no peer: $FF in;
+        this.io[2] = v & 0x83;                           // with a link cable, gb/cable.js, the peer's byte after 8 bits)
+        if (v & 0x80 && v & 1) { if (this.cable) this.cable.start(); else this.serialPending = true; }
+        return;
       case 0x04: this.timer.div = 0; return;
       case 0x05: this.timer.tima = v; return;
       case 0x06: this.timer.tma = v; return;

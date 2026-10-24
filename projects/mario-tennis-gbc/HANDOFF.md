@@ -29,28 +29,30 @@ leave them alone.
 ## Where things stand
 
 - The ROM's code is mapped: banks, the main loop, the scene system, text, maps, sprites, sound, saves, the match
-  engine, the CPU AI, story scripts (`REVERSE.md`).
+  engine, the CPU AI, story scripts, the link cable (`REVERSE.md`).
 - The match engine is ported in full (`web/js/engine/`, verified in lockstep against the ROM).
-- The rest of the game is ported module by module in `web/js/port/` (home, audio, text, menus, story, cutscenes,
-  minigames, save, match hooks). Every row of `docs/port_status.md` is "verified" except the last one.
-- Anything not yet ported still runs as the ROM's own code on the emulator's CPU, so the game always runs while
-  the port grows.
+- **The rest of the game is ported in full** in `web/js/port/` (home, audio, text, menus, story, cutscenes,
+  minigames, save, match hooks, the link cable). Every row of `docs/port_status.md` is verified, and nothing of the
+  ROM's code is left: every code routine of the disassembly is hooked or reached only from ported code
+  (`web/tests/port_static_coverage.mjs`), and playing all 886 recordings on the port runs no ROM code
+  (`web/tests/port_rom_trace.mjs`) beyond what a saved state was already running when its recording began.
+- The waits on the hardware (rLY / serial polling, delay counts) run cycle for cycle as the ROM's (`P.instr`,
+  `docs/port_guide.md`, Timing); link play is tested on two emulated machines joined by a cable
+  (`web/tests/port/link_pair.mjs`).
 
-## What is left (in order)
+## What is left
 
-1. **Enable story scripts part 2** (`lessonmenu_10` … `wall_room_12`, in `web/js/port/story_scripts/`). They are
-   ported and pass 130 routine tests and strict lockstep on 371 scripted recordings, but are not switched on in the
-   program yet. 75 of the 445 waiting scenes have never been reached by a recording. Make recordings that reach
-   them, fix what differs, then enable the modules and re-run the full lockstep.
-2. **The busy loops that measure CPU time** (`DisableLCDSafely`, `ShortDelay`, `WaitSerialTransfer`) are still ROM
-   code. Ported code takes no CPU time, so these need a design that keeps the ROM's observable results (see "Timing"
-   in `docs/port_guide.md`).
-3. **Whatever still runs as ROM code.** Trace which ROM addresses the CPU still executes while the port runs a set
-   of recordings, list them by bank, and port them like the rest (one module per source file, hooks, both tests).
-4. **Open questions** (see `REVERSE.md`): names for the story's event flags (704 flags have a usage map; their
-   meanings are mostly unnamed); the exact animation frame of the ball's launch after racket contact.
-5. **Known, accepted differences:** link-cable play cannot be tested; rec2 shows two actor-position differences on
-   the overworld long after the EXP screens, caused by ported code taking no CPU time (lag frames fall differently).
+1. **Names for the story's event flags.** 704 flags are referenced (usage map in `REVERSE.md`, tool
+   `tools/dump_flags.py`); the disassembly names 166 of them (every flag the code sets, clears or tests by name),
+   the rest appear only as numbers in scene and actor condition data.
+2. **Scenes no recording reaches.** 75 of the 445 waiting story scenes have no recording (their code is ported and
+   passes the routine tests, but has not been played in lockstep). Recordings that reach them would close this.
+3. **Link error paths.** The link test plays a whole session but never a broken one: the link error screen, a
+   checksum retry and the timeouts are ported but not exercised. A cable that drops or corrupts bytes on request
+   (web/js/gb/cable.js) would reach them.
+4. **Known, accepted differences:** rec2 shows two actor-position differences on the overworld long after the EXP
+   screens, caused by ported code taking no CPU time (lag frames fall differently); the exact animation frame of
+   the ball's launch after racket contact is an open question (`REVERSE.md`).
 
 ## How to check work
 

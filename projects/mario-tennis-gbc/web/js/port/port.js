@@ -130,6 +130,36 @@ export class GamePort {
     gb.frames++; this.frames++;
     return true;
   }
+  // ---- CPU time in ported code ----
+  // Ported code takes no time, except where the ROM's code waits on the hardware itself (a loop polling rLY, a delay
+  // count, a wait for a serial byte with a timeout): there the port spends the instructions' cycles as the CPU does.
+  // instr(pc, cycles, fn): the instruction at ROM address pc. An interrupt due is taken first, as the CPU takes it
+  // before an instruction (its entry, the handler, the return to pc); then a pending `ei` takes effect; then fn (the
+  // instruction's reads and writes, which the core makes before its cycles pass) and its cycles. Returns fn's value.
+  instr(pc, cycles, fn) {
+    const cpu = this.cpu, m = this.mem;
+    if (cpu.ime && (m.iflag & m.ie & 0x1F)) this.takeInterrupt(pc);
+    if (cpu.eiPending) { cpu.eiPending = false; cpu.ime = true; }
+    const r = fn ? fn() : undefined;
+    this.gb.sync(cycles);
+    this.tick(cycles);
+    return r;
+  }
+  // the CPU takes the interrupt due at ROM address pc: from there, through the CPU's steps (its 20-cycle entry, the
+  // vector, the handler's hook), until the handler returns to pc
+  takeInterrupt(pc) {
+    const cpu = this.cpu, sp = cpu.sp, at = cpu.pc;
+    cpu.pc = pc;
+    let n = 0;
+    do {
+      const it = this.step();
+      if (it && !it.next().done) throw new Error(`an interrupt handler waited at ${pc.toString(16)}`);
+      if (++n > 50_000_000) throw new Error(`an interrupt taken at ${pc.toString(16)} did not return`);
+    } while (!(cpu.pc === pc && cpu.sp === sp));
+    const top = this.cpuHandlers[this.cpuHandlers.length - 1];
+    if (top && top.ret === pc && top.sp === sp) { this.cpuHandlers.pop(); this.inHandler--; }   // (as step() notes a return)
+    cpu.pc = at;
+  }
   // ---- ROM code that has no port yet ----
   // Run bank:addr on the CPU until it returns. Yields "halt" each time the CPU halts (waits for an interrupt): the
   // caller's frame loop then runs the hardware and the interrupt, and resuming wakes the CPU. Interrupts that come
@@ -237,7 +267,7 @@ export class GamePort {
     const atWaitEnd = pc === 0x2719 && this.onFrameWaitEnd && !this.hooks.has(0x2631) && !this.inHandler;
     if (atWaitEnd && !this.waitProbed) { this.waitProbed = true; return this.atFrameWaitEnd(); }
     if (pc < 0x8000 && !(cpu.ime && (m.iflag & m.ie & 0x1F))) {          // (an interrupt due now comes first, as on the CPU)
-      const fn = pc < 0x100 && VECTORS[pc] ? (this.program[VECTORS[pc]] ? "vector" : null) : this.hooks.get(hookKey(m.romBank, pc));
+      const fn = pc < 0x100 && VECTORS[pc] && this.program[VECTORS[pc]] ? "vector" : this.hooks.get(hookKey(m.romBank, pc));
       if (fn === "vector") {                                             // the CPU took an interrupt: the program's handler, then reti
         if (this.cpuHandlers.length && this.cpuHandlers[this.cpuHandlers.length - 1].vector === pc) { this.cpuHandlers.pop(); this.inHandler--; }
         this.inHandler++;
@@ -245,7 +275,9 @@ export class GamePort {
         this.ret(); this.ime = true; this.lastRet = true; return null;
       }
       if (fn) {
+        this.jumpTarget = -1;
         const r = fn(this, cpu);
+        if (this.jumpTarget >= 0) { cpu.pc = this.jumpTarget; this.jumpTarget = -1; return null; }   // it ended in a jump (P.jump)
         if (r && typeof r.next === "function") return (function* (P) { yield* r; P.ret(); P.lastRet = true; })(this);
         this.ret(); this.lastRet = true; return null;
       }
@@ -270,6 +302,8 @@ export class GamePort {
     this.tick(this.gb.cycles - c0);
     return null;
   }
+  // a hook that ends in a `jp` (not a return): the CPU goes on at addr, the stack as it is
+  jump(addr) { this.jumpTarget = addr; }
   ret() { const cpu = this.cpu, m = this.mem; cpu.pc = m.read(cpu.sp) | (m.read((cpu.sp + 1) & 0xFFFF) << 8); cpu.sp = (cpu.sp + 2) & 0xFFFF; }
   // ---- the game's coroutine ----
   start() { this.co = this.program.main(this); }

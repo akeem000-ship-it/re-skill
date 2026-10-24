@@ -16,5 +16,6 @@ import { HOOKS as BGBLIT } from "./bgblit.js";
 import { HOOKS as LINK } from "./link.js";
 import { HOOKS as VBLANK } from "./vblank.js";
 import { HOOKS as FRAME } from "./frame.js";
+import { HOOKS as BUSY } from "./busy.js";
 export const HOOKS = [...JOYPAD, ...MATH, ...SYSTEM, ...MEMORY, ...PALETTES, ...DECOMPRESS, ...VIEW, ...COLORFADE, ...FADE,
-  ...FLAGS, ...DEBUGTEXT, ...UI, ...BGBLIT, ...LINK, ...VBLANK, ...FRAME];
+  ...FLAGS, ...DEBUGTEXT, ...UI, ...BGBLIT, ...LINK, ...VBLANK, ...FRAME, ...BUSY];

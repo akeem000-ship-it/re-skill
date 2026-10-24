@@ -102,6 +102,12 @@ export const HOOKS = [
   [8, 0x5153, now(E => ball.updateBallVisuals(E))],                                        // UpdateBallVisuals
   [8, 0x440D, (P, c) => { c.a = flow.inputHeld(engine(P)); }],                             // ReadMatchInputHeld
   [8, 0x4415, (P, c) => { c.a = flow.inputPressed(engine(P)); }],                          // ReadMatchInputPressed
+  [8, 0x441D, (P, c) => {                                                                  // ReadMatchInputRepeat: the
+    const link = P.V.linkExchangeActive;                                                   // pad with repeats (hInput-
+    c.a = link ? P.V.linkInput : P.V.inputPressed; c.f = link ? 0x20 : 0xA0;               // Pressed), or over the link
+  }],                                                                                      // the peer's; F from `and a`
+  [8, 0x4425, (P, c) => { c.a = P.V.linkInput; }],                                         // ReadScriptedMatchInput
+  [8, 0x59B8, P => { P.jump(0x2D8C); }],                                                   // ProjectWorldToScreen_08: jp
   // ---- sets, games, points (match_loop_08, point_08) ----
   [8, 0x4714, waits(E => flow.runMatchPlayLoop(E))],                                       // RunMatchPlayLoop
   [8, 0x4737, waits(E => flow.playSet(E))],                                                // PlaySet

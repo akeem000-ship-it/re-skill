@@ -47,7 +47,7 @@ in place.
 - ROM data: `P.rom.u8(bank, addr)`, `u16`, `slice`, `lz` (decompressed). For code that indexes ROM through the
   bank mapped at the time, use `P.bus.romByte(P.mem.romBank, addr)`.
 - Frames: a routine that waits is a generator, and `AdvanceFrame` is `yield* advanceFrame(P)` (home). Never
-  busy-wait.
+  busy-wait for a frame. (Waits on the hardware itself are the exception: see Timing below.)
 - Sounds: `rst $08 ; db id` is a call to the sound request routine with `id`. Port it as a call (home/audio).
 - Far calls (`farcall X`, `rst $18 ; db idx, bank`): call the JS directly, or call the ROM with
   `P.callRom(bank, addr)` (the port maps the bank and sets hRomBank as FarCall does).
@@ -58,13 +58,24 @@ in place.
 ## Special routines
 
 - **Interrupt handlers** (VBlankHandler 00:2749, LCDStatHandler, TimerHandler, SerialHandler) are hooked at
-  their own address; the vectors at $40-$60 jump there. A handler's hook ends with `P.ime = true` (its `reti`).
-  `jp SoftReset` from a handler is `throw new SoftResetSignal()` (port.js).
+  their own address; the vectors at $40-$58 are hooked too (home/busy.js: each `jp` with its 16 cycles). A
+  handler's hook ends with `P.ime = true` (its `reti`). `jp SoftReset` from a handler is
+  `throw new SoftResetSignal()` (port.js).
+- **A hook that ends in a jump** (`jp addr`, not a return) calls `P.jump(addr)`: the CPU goes on at addr with the
+  stack as it is. (`jumpTo` in home/cpu.js is for a routine whose own `ret` pops the target: it writes below sp.)
 - **AdvanceFrame (00:2631)** as a generator: it starts with `yield* P.atAdvanceFrame()`, the point where the
   lockstep lines the port up with the ROM. Its wait is `do { yield "halt"; } while (!P.V.vBlankOccurred)`:
   each `yield "halt"` lets one frame of hardware pass, with the VBlank handler run at its start.
-- **Timing.** Ported code takes no CPU time. Code that measures time (rLY polling, hPeakLY, DIV) gives other
-  values. Keep reading the hardware exactly as the ROM does; the tests know which differences come from timing.
+- **Timing.** Ported code takes no CPU time. Code that measures time (hPeakLY, DIV) gives other values; the tests
+  know which differences come from timing. Code that *waits on the hardware* (a loop polling rLY or rSC, a delay
+  count, a serial wait with a timeout: DisableLCDSafely, ShortDelay, WaitSerialTransfer, the link code) runs
+  instruction by instruction with the CPU's cycles: `P.instr(pc, cycles, fn)` (port.js) is the instruction at ROM
+  address pc. An interrupt due is taken first, as the CPU takes it before an instruction (through the CPU's own
+  steps, returning to pc); a pending `ei` then takes effect; then fn (the instruction's reads and writes, which the
+  core makes before its cycles pass) and its cycles. `P.cpu.eiPending = true` is `ei` (on after the next
+  instruction), `P.di()` is `di`. home/busy.js and web/js/port/match/link/common.js show the pattern; a busy loop
+  ported this way is cycle for cycle the ROM's (web/tests/port/busy_loops.mjs checks the cycle count, the frame
+  boundaries passed and the whole machine, interrupts on).
 
 - **Routine-test buffers:** keep test buffers away from $CF00-$CFFF (the stack page) and its echo at $EF00-$EFFF.
   `P.callRom(bank, addr, regs)` takes 8-bit registers (a, b, ...) and pairs (bc, de, hl).
@@ -95,6 +106,22 @@ in place.
    - This is the test for routines that wait, and for the program as a whole.
 3. Make power-on recordings for the parts of the game you port with `web/tests/engine/make_rec.mjs`, which takes
    a scripted pad. Put them in `out/port/` (gitignored), and say in your module which recording covers it.
+4. **Link play** (two Game Boys): `node web/tests/port/link_pair.mjs` runs two machines joined by an emulated
+   link cable (web/js/gb/cable.js), each in a worker thread, from power on with a button script for each. `--kind
+   core` plays the ROM (pictures with `--shots`), `--check` plays the port twice, once with the link routines as the
+   ROM's code and once with their port, and compares both machines at every AdvanceFrame (the scripts then count
+   the game's frames, so the runs' timing may drift apart but their games must not). `--watch addr,...` logs when
+   ROM addresses are reached; `--diff-at K` names the bytes that differ at AdvanceFrame K. A script that plays a
+   whole session (connect, the link menus, character select, a match) is in docs/port_status.md.
+
+## What still runs as the ROM's code
+
+- `node web/tests/port_rom_trace.mjs [recs...]` plays recordings on the port alone and counts every instruction the
+  CPU runs (not in a hook), by routine. A recording that starts from a saved state starts inside the ROM's code
+  (the routines on its stack run on as the ROM's until they return): that is listed apart.
+- `node web/tests/port_static_coverage.mjs` reads the disassembly instead: every routine is hooked, a tail of a
+  covered one, reached only from covered code or data (a jump-table case, an inner step of a routine ported
+  whole), or unused; it lists any that is none of these.
 
 Never commit the ROM or anything extracted from it (`rom/`, `gfx/`, `out/`, `web/gen/`,
 `third_party/.../data|build`).

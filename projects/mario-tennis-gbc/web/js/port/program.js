@@ -12,10 +12,12 @@ import { HOOKS as STORY_SCRIPTS } from "./story_scripts/index.js";
 import { HOOKS as MINIGAMES } from "./minigames/index.js";
 import { HOOKS as MATCH } from "./match/index.js";
 import { HOOKS as TWINS } from "./twins/index.js";
+import { HOOKS as FETCH_TEXT } from "./standalone/fetch_text.js";
+import { HOOKS as LINK } from "./match/link/index.js";
 
 import { entry } from "./entry.js";
 
 export const program = {
   ...entry,
-  hooks: [...HOME, ...AUDIO, ...TEXT, ...SAVE, ...CUTSCENES, ...MENUS, ...STORY, ...STORY_SCRIPTS, ...MINIGAMES, ...MATCH, ...TWINS],
+  hooks: [...HOME, ...AUDIO, ...TEXT, ...SAVE, ...CUTSCENES, ...MENUS, ...STORY, ...STORY_SCRIPTS, ...MINIGAMES, ...MATCH, ...TWINS, ...FETCH_TEXT, ...LINK],
 };
