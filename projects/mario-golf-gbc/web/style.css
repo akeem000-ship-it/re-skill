@@ -1,0 +1,37 @@
+:root {
+  --bg: #f4f1ea; --fg: #1d1c1a; --dim: #6b675f; --panel: #ffffff; --line: #d9d4c8; --accent: #2f7d32;
+  --btn: #e8e3d8; --btn-on: #c9c2b2;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #151514; --fg: #ece9e2; --dim: #9a958b; --panel: #1f1e1c; --line: #34322e; --accent: #6cc070;
+    --btn: #2b2a27; --btn-on: #45433e; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 system-ui, sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font-size: 20px; margin: 0; }
+.dim { color: var(--dim); }
+code, kbd { font: 13px ui-monospace, monospace; }
+kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+.panel p { margin: 0 0 10px; }
+.file { display: inline-block; background: var(--accent); color: #fff; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+.file input { display: none; }
+#stage { display: flex; justify-content: center; }
+#screen { width: 100%; max-width: 640px; aspect-ratio: 160 / 144; image-rendering: pixelated; background: #000;
+  border-radius: 6px; outline: none; }
+footer { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+
+#pad { display: none; justify-content: space-between; align-items: center; user-select: none; touch-action: none; }
+@media (pointer: coarse) { #pad { display: flex; } }
+#pad button { background: var(--btn); color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
+  font: 600 14px system-ui; touch-action: none; }
+#pad button.on { background: var(--btn-on); }
+.dpad { display: grid; grid-template: repeat(3, 48px) / repeat(3, 48px); }
+.dpad .up { grid-area: 1 / 2; } .dpad .left { grid-area: 2 / 1; } .dpad .right { grid-area: 2 / 3; } .dpad .down { grid-area: 3 / 2; }
+.mid { display: flex; gap: 8px; }
+.mid .small { padding: 6px 10px; font-size: 11px; border-radius: 14px; }
+.ab { display: flex; gap: 12px; align-items: center; }
+.ab button { width: 60px; height: 60px; border-radius: 50%; font-size: 18px; }
+.ab .a { transform: translateY(-14px); }
