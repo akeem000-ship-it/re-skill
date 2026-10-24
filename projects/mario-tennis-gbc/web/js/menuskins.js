@@ -34,6 +34,8 @@
 //            one standing in the panel with the handedness START flips
 //   name     the name entry (RunNameEntryScreen): its 15 x 6 keys (NameEntryCharset_38 38:71B6, the bottom row's DEL /
 //            END from 38:722D) as an HD keyboard by the ball, the name typed so far (wNameEntryBuffer, WRAM 3 $D800) large
+//            the match pause menu and its options / save-and-quit / minigame-end menus (06:46E7) use it too, with each
+//            item's caption (text 30:319 + item)
 //   frame    the pages to read (the records tables, the N64 data, the trophies, a minigame's rules): the page itself, as the
 //            game draws it (the LCD picture), large and sharp in the menu's panel by the ball, with a title
 // The link screens use the same skins (rules: format; courts; characters), with their link titles.
@@ -288,7 +290,7 @@ export class MenuSkins {
     this.icon(g, cx, py + 150 * k, k, s.icon, s.sel, on, label);
     g.textAlign = "center"; g.fillStyle = on ? "#281e0a" : "#9aa0b8"; g.font = `${(label.length > 15 ? 32 : 40) * k}px "${FONT}", ${BODY}`;
     g.fillText(on ? label.toUpperCase() : "? ? ?", cx, py + 300 * k);
-    const cap = gameText(hd, 120, 144);                                        // the game's own caption ("Clear this first.", ...)
+    const cap = s.captions ? this.text(rom, s.captions[s.sel]) : gameText(hd, 120, 144);   // the game's own caption ("Clear this first.", ...)
     if (cap && cap.toLowerCase() !== label.toLowerCase()) { g.fillStyle = "#464a64"; g.font = `${24 * k}px ${BODY}`; g.fillText(cap, cx, py + 345 * k); }
     // the choices as dots, the chosen one gold
     const n = labels.length; for (let i = 0; i < n; i++) { g.fillStyle = i === s.sel ? "#ffd65a" : locked[i] ? "#d0d3de" : "#a9adc2"; g.beginPath(); g.arc(cx + (i - (n - 1) / 2) * 26 * k, py + 395 * k, (i === s.sel ? 8 : 6) * k, 0, 6.2832); g.fill(); }
@@ -358,7 +360,7 @@ export class MenuSkins {
     const sc = Math.min((W - 300 * k) / 160, (H - 210 * k) / 144), w = 160 * sc, h = 144 * sc, x = Math.max(260 * k, (W - w) / 2 + 80 * k), y = 100 * k;
     g.fillStyle = "rgba(250,250,255,0.94)"; this.mw.pill(g, x - 14 * k, y - 14 * k, w + 28 * k, h + 28 * k, 24 * k); g.fill(); g.lineWidth = 4 * k; g.strokeStyle = "#ffd65a"; g.stroke();
     g.save(); this.mw.pill(g, x, y, w, h, 12 * k); g.clip(); g.imageSmoothingEnabled = false; g.drawImage(cv, x, y, w, h); g.restore();
-    this.hint(g, W, H, k, s.title === "RULES" ? "A next page" : s.title === "CHARACTER DATA" ? "◀ ▶ page   A / B back" : "✚ look   A / B back");
+    this.hint(g, W, H, k, s.hint || (s.title === "RULES" ? "A next page" : s.title === "CHARACTER DATA" ? "◀ ▶ page   A / B back" : "✚ look   A / B back"));
   }
 
   // ---- the name entry ----
@@ -466,6 +468,9 @@ export class MenuSkins {
       g.fillStyle = "#3d6fd8"; g.beginPath(); g.moveTo(x - 40 * k, y - r - 30 * k); g.lineTo(x - 10 * k, y - r + 20 * k); g.lineTo(x + 10 * k, y - r + 20 * k); g.lineTo(x + 40 * k, y - r - 30 * k); g.fill();   // the ribbon
       g.fillStyle = cols[i % 3]; g.beginPath(); g.arc(x, y, r, 0, 6.2832); g.fill(); g.lineWidth = 6 * k; g.strokeStyle = "rgba(0,0,0,0.18)"; g.stroke();
       g.fillStyle = "#281e0a"; g.textAlign = "center"; g.font = `${96 * k}px "${FONT}", ${BODY}`; g.fillText(on ? String(i + 1) : "?", x, y + 34 * k);
+    } else if (kind === "pause") {
+      g.fillStyle = "#3d6fd8"; g.beginPath(); g.arc(x, y, 76 * k, 0, 6.2832); g.fill();
+      g.fillStyle = "#fff"; this.mw.pill(g, x - 30 * k, y - 36 * k, 20 * k, 72 * k, 8 * k); g.fill(); this.mw.pill(g, x + 10 * k, y - 36 * k, 20 * k, 72 * k, 8 * k); g.fill();
     } else if (kind === "data") {
       g.fillStyle = "#e4e6f0"; this.mw.pill(g, x - 110 * k, y - 80 * k, 220 * k, 160 * k, 20 * k); g.fill();
       [0.5, 0.8, 0.35, 0.95, 0.65].forEach((h, j) => { g.fillStyle = j === 3 ? "#ffb43a" : "#7a9be0"; g.fillRect(x - 85 * k + j * 36 * k, y + 60 * k - h * 120 * k, 24 * k, h * 120 * k); });

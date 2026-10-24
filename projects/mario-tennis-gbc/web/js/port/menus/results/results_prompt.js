@@ -152,6 +152,7 @@ export function updateResultsCharSprite(P, a) {
 export function* runContinuePrompt(P) {
   for (;;) {
     drawContinuePromptCursor(P);
+    if (P.menuWheel && P.menuWheel.on) P.menuWheel.skin = { id: "frame", at: P.frames, title: "RESULTS", hint: "▲ ▼ choose   A ok   B back" };   // MENU: Wheel (menuskins.js), read only
     yield* advanceFrame(P);
     const edge = P.bus.u8(hInputRisingEdge);
     if (edge & (PADF_UP | PADF_DOWN)) {                              // .playSfx

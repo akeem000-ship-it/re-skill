@@ -44,6 +44,10 @@ const Text_26_37 = 0x2C25, Text_26_43 = 0x2C2B, Text_26_71 = 0x2C47, Text_26_98 
 const Text_30_343 = 0x0157, Text_30_344 = 0x0158, Text_30_345 = 0x0159, Text_30_346 = 0x015A, Text_30_347 = 0x015B;
 const Text_30_348 = 0x015C, Text_30_349 = 0x015D, Text_30_350 = 0x015E;
 const MATCH_MENU_CAPTIONS = 0x013F;                        // + the item id: the caption text of each menu item
+// MENU: Wheel: short names for the item labels (drawn as tiles by the game) and the menus' titles, from their captions
+const MENU_ITEM_LABELS = ["RULES", "CONTROLS", "OPTIONS", "SAVE", "CAMERA", "MUSIC", "NORMAL", "PLAYER", "ON", "OFF", "RETURN", "SAVE",
+  "QUIT", "NEW LEVEL", "RETRY", "RETRY", "RETRY", "RETRY", "RETRY", "QUIT", "QUIT", "QUIT", "QUIT", "QUIT"];
+const MENU_TITLES = ["PAUSE", "PAUSE", "OPTIONS", "CAMERA", "MUSIC", "PAUSE", "PAUSE", "PAUSE", "PAUSE", "PAUSE", "PAUSE", "PAUSE", "PAUSE", "PAUSE", "MINI-GAME"];
 // the pause menus (wPauseMenuId)
 const MENU_PAUSE = 0, MENU_PAUSE_LOCKED_VIEW = 1, MENU_OPTIONS = 2, MENU_CAMERA = 3, MENU_MUSIC = 4;
 const MENU_PRACTICE_LESSON = 8, MENU_MINIGAME_END = 0x0E;
@@ -166,6 +170,10 @@ export function* runMatchMenu(P) {
       yield* stepMatchFrame(P);
     }
     drawMatchMenuCursor(P);
+    if (P.menuWheel && P.menuWheel.on) {                     // MENU: Wheel (menuskins.js): the items and their captions, read only
+      const ids = Array.from({ length: rd(P, "pauseMenuItemCount") }, (_, i) => getMatchMenuItemId(P, i)), menu = rd(P, "pauseMenuId");
+      P.menuWheel.skin = { id: "tabs", at: P.frames, icon: "pause", title: MENU_TITLES[menu] || "PAUSE", labels: ids.map(i => MENU_ITEM_LABELS[i] || ""), captions: ids.map(i => (MATCH_MENU_CAPTIONS + i) & 0xFFFF), sel: rd(P, "matchMenuSelection") };
+    }
     yield* stepMatchFrame(P);
     redraw = false;
     if (readMatchInputPressed(P) & (PADF_B | PADF_START)) {
