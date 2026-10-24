@@ -100,6 +100,7 @@ export function* tennisDictionaryScreen(P, mode) {
     state = STATE_LIST;
   }
   do {
+    if (P.menuWheel && P.menuWheel.on && (state === STATE_LIST || state === STATE_INDEX)) P.menuWheel.skin = { id: "dict", at: P.frames, index: state === STATE_INDEX };   // MENU: Wheel (menuskins.js reads the list's state), read only
     yield* advanceFrame(P);
     let r;
     if (state === STATE_TO_LIST) r = yield* showTennisDictionaryPageDefault(P);

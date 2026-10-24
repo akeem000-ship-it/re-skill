@@ -24,6 +24,11 @@
 //   confirm  the erase warning (3E:4C12): its own words (text bank $30, by the warning's kind) in a red panel, YES / NO round the ball
 //   cardconfirm  the file-erase question over the character-data cards (1A:7945): the game's own cards (its picture) in the
 //            panel, "Erase this data?" (text 30:313), YES / NO round the ball
+//   dict     the tennis dictionary's list page (3F:407A): the terms of the category shown round the ball (the term grid
+//            3F:539E filtered by wTennisDictCategoryMask; the cursor wTennisDictScrollTop + CursorRow), the chosen term
+//            with its definition in the panel (names: text 34:240 on into bank $35; definitions: 35:48 + term); the index
+//            page: its nine rows of letters (3F:545F: each row's first letter; letters 35:143 + n) round the ball, the row's
+//            terms in the panel
 // The link screens use the same skins (rules: format; courts; characters), with their link titles.
 import { courtImage } from "./assets.js";
 import { matchPicture, charScheme } from "./crowdfans.js";
@@ -61,6 +66,7 @@ export class MenuSkins {
     else if (skin.id === "tabs") this.tabs(g, W, H, k, skin, gb, hd);
     else if (skin.id === "confirm") this.confirm(g, W, H, k, skin, gb);
     else if (skin.id === "cardconfirm") this.cardConfirm(g, W, H, k, skin, gb);
+    else if (skin.id === "dict") (skin.index ? this.dictIndex(g, W, H, k, gb) : this.dict(g, W, H, k, gb));
   }
   // the turning: the ball's position eases to the chosen item, the shorter way round n
   ease(sel, n) { let d = sel - this.pos; if (n > 5) { if (d > n / 2) d -= n; if (d < -n / 2) d += n; } this.pos += d * 0.3; if (Math.abs(d) < 0.01) this.pos = sel; return this.pos; }   // (a short list does not wrap)
@@ -312,6 +318,68 @@ export class MenuSkins {
     g.fillStyle = s.sel === 0 ? red : "#7a7f98"; g.font = `${22 * k}px "${FONT}", ${BODY}`; g.fillText(s.sel === 0 ? "A ERASES IT: IT CANNOT BE UNDONE" : "A KEEPS IT", cx, py + ph - 30 * k);
     g.textAlign = "start";
     this.hint(g, W, H, k, "▲ ▼ choose   A ok   B keep");
+  }
+  // ---- the tennis dictionary ----
+  // a string of text bank b, message i, as plain words: control codes dropped, a page break ({02}) a new paragraph
+  textAt(rom, bank, i) {
+    const base = bank * 0x4000 - 0x4000, at = rom[base + 0x4004 + 2 * i] | rom[base + 0x4004 + 2 * i + 1] << 8;
+    const stub = rom[base + 0x4000] | rom[base + 0x4001] << 8, call = rom[base + stub + 4] | rom[base + stub + 5] << 8;   // (dump_text.py: the stub's ld hl, BASE)
+    let p = base + call; for (let n = 0; n < 0x20 && !(rom[p] === 0x21 && rom[p - 1] === 0x56); n++) p++;
+    const tb = rom[p + 1] | rom[p + 2] << 8; let o = base + tb + at, t = "";
+    for (let n = 0; n < 400; n++) { const c = rom[o++]; if (!c || c === 0x03) break; t += c === 0x01 ? " " : c === 0x02 ? "\n" : c >= 32 && c < 127 ? String.fromCharCode(c) : ""; }
+    return t.replace(/ +/g, " ").trim();
+  }
+  dictTerms(rom, mask) {
+    const key = mask; if (this.dictKey === key) return this.dictList;
+    const out = []; let o = 0x3F * 0x4000 - 0x4000 + 0x539E, d = 0;
+    for (let n = 0; n < 400; n++) { const a = rom[o++]; if (a === 0x40) break; if (!a) continue; if (a & mask) out.push(d); d++; }
+    this.dictKey = key; return (this.dictList = out);
+  }
+  // the grid's letter groups (A-Z): the first term of each and how many
+  dictGroups(rom) {
+    if (this.dictG) return this.dictG;
+    const G = []; let o = 0x3F * 0x4000 - 0x4000 + 0x539E, n = 0, cur = { first: 0, count: 0 };
+    for (let i = 0; i < 400; i++) { const a = rom[o++]; if (a === 0x40) break; if (!a) { G.push(cur); cur = { first: n, count: 0 }; continue; } cur.count++; n++; }
+    G.push(cur); return (this.dictG = G);
+  }
+  dictIndex(g, W, H, k, gb) {
+    const rom = gb.mem.rom, w = gb.mem.wram[0], G = this.dictGroups(rom), first = Array.from({ length: 9 }, (_, r) => rom[0x3F * 0x4000 - 0x4000 + 0x545F + r]);
+    const letter = i => this.textAt(rom, 0x35, 143 + i), rows = first.map((a, r) => { const b = (r < 8 ? first[r + 1] : G.length) - 1; return a === b ? letter(a) : letter(a) + " – " + letter(b); });
+    const sel = Math.min(8, w[0xB2E]), a = first[sel], b = sel < 8 ? first[sel + 1] : G.length;
+    this.title(g, k, "DICTIONARY");
+    this.arc(g, k, H, rows, sel, 0.3);
+    const { px, py, pw, ph } = this.panel(g, W, k, 96, 540), cx = px + pw / 2;
+    // the row's letters as tiles, then its terms
+    const L = []; for (let i = a; i < b; i++) L.push(i);
+    const tw = Math.min(70, 360 / L.length) * k; g.textAlign = "center";
+    L.forEach((i, j) => { const x = cx + (j - (L.length - 1) / 2) * (tw + 10 * k); g.fillStyle = G[i] && G[i].count ? "#ffd65a" : "#e4e6f0"; this.mw.pill(g, x - tw / 2, py + 30 * k, tw, tw, 12 * k); g.fill();
+      g.fillStyle = G[i] && G[i].count ? "#281e0a" : "#9aa0b8"; g.font = `${tw * 0.6}px "${FONT}", ${BODY}`; g.fillText(letter(i), x, py + 30 * k + tw * 0.72); });
+    const terms = []; for (let i = a; i < b; i++) if (G[i]) for (let t = 0; t < G[i].count; t++) terms.push(G[i].first + t);
+    g.fillStyle = "#8a7a50"; g.font = `${22 * k}px "${FONT}", ${BODY}`; g.fillText(terms.length + (terms.length === 1 ? " TERM" : " TERMS"), cx, py + 30 * k + tw + 44 * k);
+    g.fillStyle = "#281e0a"; g.font = `${25 * k}px ${BODY}`;
+    const top = py + 30 * k + tw + 84 * k, rowsFit = Math.floor((py + ph - 30 * k - top) / (32 * k)), cols = terms.length > rowsFit ? 2 : 1;
+    terms.slice(0, rowsFit * cols).forEach((t, j) => { const c = cols === 2 ? Math.floor(j / rowsFit) : 0, r = cols === 2 ? j % rowsFit : j;
+      g.fillText(this.dictName(rom, t), cols === 2 ? px + pw * (c ? 0.73 : 0.27) : cx, top + r * 32 * k); });
+    g.textAlign = "start";
+    this.hint(g, W, H, k, "▲ ▼ choose   A open   B back");
+  }
+  dictName(rom, i) { return i < 47 ? this.textAt(rom, 0x34, 240 + i) : this.textAt(rom, 0x35, i - 47); }
+  dict(g, W, H, k, gb) {
+    const rom = gb.mem.rom, w = gb.mem.wram[0], terms = this.dictTerms(rom, w[0xB32]), n = terms.length || 1;
+    const sel = (w[0xB2D] + w[0xB2E]) % n, term = terms[sel] ?? 0;
+    this.title(g, k, "DICTIONARY");
+    this.arc(g, k, H, terms.map(t => this.dictName(rom, t).toUpperCase()), sel, 0.26);
+    const { px, py, pw, ph } = this.panel(g, W, k, 96, 540), cx = px + pw / 2;
+    g.textAlign = "center"; g.fillStyle = "#8a7a50"; g.font = `${22 * k}px "${FONT}", ${BODY}`; g.fillText(`${sel + 1} / ${terms.length}`, cx, py + 46 * k);
+    const name = this.dictName(rom, term); g.fillStyle = "#281e0a"; g.font = `${(name.length > 14 ? 36 : 46) * k}px "${FONT}", ${BODY}`; g.fillText(name.toUpperCase(), cx, py + 100 * k);
+    // the definition, wrapped to the panel; its pages as paragraphs
+    g.fillStyle = "#464a64"; g.font = `${25 * k}px ${BODY}`; g.textAlign = "start";
+    let y = py + 160 * k; const maxW = pw - 70 * k, x0 = px + 35 * k;
+    for (const para of this.textAt(rom, 0x35, 48 + term).split("\n")) {
+      let line = ""; for (const word of para.split(" ")) { const t = line ? line + " " + word : word; if (g.measureText(t).width > maxW && line) { g.fillText(line, x0, y); y += 34 * k; line = word; } else line = t; }
+      if (line) { g.fillText(line, x0, y); y += 34 * k; } y += 12 * k; if (y > py + ph - 30 * k) break;
+    }
+    this.hint(g, W, H, k, "▲ ▼ choose   ◀ ▶ letter   A read   B back");
   }
   // an icon for a choice: players (one ball or two), a level's medal, a data chart, the N64
   icon(g, x, y, k, kind, i, on, label) {
