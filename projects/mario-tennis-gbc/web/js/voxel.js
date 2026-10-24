@@ -168,18 +168,79 @@ const NET = { x0: -640, x1: 640, height: 96 };                           // post
 const CUTS = [
   { name: "net",      x0: 40,  y0: 116, x1: 216, y1: 130, fill: "below" },              // the net band (top of the tape .. ground line)
   { name: "judge",    x0: 208, y0: 104, x1: 226, y1: 136, fill: "tile", key: true, skip: [6, 14] },   // umpire chair / referee right of the net post
-  { name: "backdrop", x0: 0,   y0: 0,   x1: 256, y1: 50,  fill: "below", skip: [6, 14, 4, 5] },   // far fence, stands, castle
+  { name: "backdrop", x0: 0,   y0: 0,   x1: 256, y1: 50,  fill: "below", skip: [6, 14, 3, 4, 5, 8] },   // far fence, stands, castle
   // the clay and hard courts (maps 4, 5): the garden beyond the far fence (rows 0-15) lies flat behind it (flat: its depth per px, in the
   // fence's units per px), and the chain-link (rows 16-49) stands with its mesh see-through (holes: the green behind the wires, from row
   // 19; keep: the gate in it stays solid); stadium3d.js gives the garden's bushes, its flower bed and the gate their volume
-  { name: "backdrop", x0: 0,   y0: 16,  x1: 256, y1: 50,  fill: "below", courts: [4, 5], holes: 19, keep: [[64, 24, 96, 39]] },
-  { name: "garden",   x0: 0,   y0: 0,   x1: 256, y1: 16,  fill: "below", courts: [4, 5], flat: 3 },
+  { name: "backdrop", x0: 0,   y0: 16,  x1: 256, y1: 50,  fill: "below", courts: [3, 4, 5], holes: 19, keep: [[64, 24, 96, 39]] },
+  { name: "garden",   x0: 0,   y0: 0,   x1: 256, y1: 16,  fill: "below", courts: [3, 4, 5], flat: 3 },
+  { name: "backdrop", x0: 0,   y0: 8,   x1: 256, y1: 50,  fill: "below", courts: [8], holes: 10, keep: [[64, 24, 96, 47]] },   // (court 8: a thinner garden, the gate on posts)
+  { name: "garden",   x0: 0,   y0: 0,   x1: 256, y1: 8,   fill: "below", courts: [8], flat: 3 },
   { name: "backdrop", x0: 0,   y0: 0,   x1: 256, y1: 64,  fill: "below", courts: [6] }, // training court: sky and the stands band
   // Wall Practice: the practice wall stands right behind the net (its face rows 44-118), with the sky and the side buildings above
   // it; the game's target arrows (sprites) are drawn on its face (decal)
   { name: "backdrop", x0: 0,   y0: 0,   x1: 256, y1: 118, fill: "below", courts: [14], decal: [60, 40, 196, 118] },
   { name: "fence",    x0: 0,   y0: 206, x1: 256, y1: 256, fill: "above", courts: [2, 3, 4, 5, 7, 8] },   // near chain-link fence (courts that have one)
 ];
+// RELIEF: the far backdrops of the other courts as voxel reliefs instead of flat cards (per court map, picture px of the backdrop):
+// base: the wall's depth (px); shapes in order, each over its rectangle r:
+//   box d       stands out d               inflate d   what differs from the rectangle's border colours bulges, rounded at its edges
+//   pillar d    an upright half-cylinder   pipe d      a lying half-cylinder
+//   stairs d    steps coming forward, the lowest d     recess d    sunk back to d (gates, windows, openings)
+// (the voxel mesh is drawn in both the 3D and the VOX views for these)
+const RELIEF = {
+  0: { base: 2, shapes: [{ r: [0, 24, 256, 31], k: "box", d: 4 }, { r: [48, 40, 208, 50], k: "recess", d: 0.4 }, { r: [2, 42, 12, 50], k: "recess", d: 0.4 }, { r: [26, 42, 38, 50], k: "recess", d: 0.4 },
+    { r: [218, 42, 230, 50], k: "recess", d: 0.4 }, { r: [244, 42, 254, 50], k: "recess", d: 0.4 }] },
+  1: { base: 2.5, shapes: [{ r: [0, 0, 88, 7], k: "box", d: 4.5 }, { r: [168, 0, 256, 7], k: "box", d: 4.5 }, { r: [0, 40, 88, 47], k: "box", d: 4 }, { r: [168, 40, 256, 47], k: "box", d: 4 },
+    { r: [26, 17, 38, 32], k: "recess", d: 0.6 }, { r: [58, 17, 70, 32], k: "recess", d: 0.6 }, { r: [186, 17, 198, 32], k: "recess", d: 0.6 }, { r: [218, 17, 230, 32], k: "recess", d: 0.6 },
+    { r: [102, 8, 154, 34], k: "recess", d: 0.4 }, { r: [102, 34, 154, 48], k: "stairs", d: 5 }, { r: [88, 0, 103, 48], k: "pillar", d: 9 }, { r: [153, 0, 168, 48], k: "pillar", d: 9 },
+    { r: [0, 47, 46, 50], k: "inflate", d: 4 }, { r: [208, 47, 256, 50], k: "inflate", d: 4 }] },
+  2: { base: 2, shapes: [{ r: [0, 22, 256, 44], k: "box", d: 4 }, { r: [86, 25, 168, 41], k: "inflate", d: 7 }, { r: [40, 24, 80, 46], k: "box", d: 8 }] },
+  9: { base: 1, shapes: [{ r: [0, 0, 256, 30], k: "inflate", d: 9 }, { r: [0, 30, 256, 45], k: "box", d: 4 }] },
+  10: { base: 0.6, shapes: [{ r: [0, 8, 96, 25], k: "pipe", d: 8 }, { r: [160, 8, 256, 25], k: "pipe", d: 8 }, { r: [34, 7, 47, 26], k: "pipe", d: 10 }, { r: [82, 7, 96, 26], k: "pipe", d: 10 },
+    { r: [160, 7, 172, 26], k: "pipe", d: 10 }, { r: [208, 7, 221, 26], k: "pipe", d: 10 }, { r: [0, 26, 256, 48], k: "box", d: 5 }] },
+  11: { base: 2.5, shapes: [{ r: [80, 0, 96, 32], k: "inflate", d: 6 }, { r: [160, 0, 176, 32], k: "inflate", d: 6 }, { r: [0, 32, 256, 48], k: "inflate", d: 6 },
+    { r: [96, 0, 106, 48], k: "pillar", d: 7 }, { r: [150, 0, 160, 48], k: "pillar", d: 7 }, { r: [106, 0, 150, 48], k: "stairs", d: 8 }] },
+  12: { base: 1.5, shapes: [{ r: [88, 0, 168, 48], k: "recess", d: 0.3 }, { r: [96, 14, 160, 47], k: "inflate", d: 8 }, { r: [24, 8, 48, 22], k: "box", d: 6 }, { r: [0, 24, 30, 48], k: "box", d: 6 },
+    { r: [48, 24, 80, 48], k: "box", d: 6 }, { r: [192, 8, 216, 22], k: "box", d: 6 }, { r: [176, 24, 208, 48], k: "box", d: 6 }, { r: [216, 24, 256, 48], k: "box", d: 6 }] },
+  15: { base: 1, shapes: [{ r: [16, 0, 112, 48], k: "inflate", d: 9 }, { r: [144, 0, 240, 48], k: "inflate", d: 9 }, { r: [0, 0, 16, 50], k: "inflate", d: 5 }, { r: [240, 0, 256, 50], k: "inflate", d: 5 },
+    { r: [112, 6, 144, 46], k: "stairs", d: 9 }] },
+};
+RELIEF[13] = RELIEF[1]; RELIEF[7] = RELIEF[2];
+// the front depth of every pixel of a relief backdrop (rgba w x h, the cut's picture from row y0)
+function reliefDepth(rgba, w, h, y0, spec) {
+  const D = new Float32Array(w * h).fill(spec.base || 0.5), op = i => rgba[i * 4 + 3] >= 128, key = i => rgba[i * 4] << 16 | rgba[i * 4 + 1] << 8 | rgba[i * 4 + 2];
+  for (const sh of spec.shapes) {
+    const [X0, Y0, X1, Y1] = sh.r, x0 = Math.max(0, X0), x1 = Math.min(w, X1), ya = Math.max(0, Y0 - y0), yb = Math.min(h, Y1 - y0); if (x1 <= x0 || yb <= ya) continue;
+    const rw = x1 - x0, rh = yb - ya, cx = (X0 + X1) / 2, cy = (Y0 + Y1) / 2 - y0;
+    let mask = null;
+    if (sh.k === "inflate") {                                  // the border's colours are the ground; the rest bulges, rounded within its outline
+      const hist = new Map(); let n = 0;
+      for (let x = x0; x < x1; x++) for (const y of [ya, yb - 1]) { const k = key(y * w + x); hist.set(k, (hist.get(k) || 0) + 1); n++; }
+      for (let y = ya; y < yb; y++) for (const x of [x0, x1 - 1]) { const k = key(y * w + x); hist.set(k, (hist.get(k) || 0) + 1); n++; }
+      const bgk = new Set([...hist].filter(([, v]) => v >= n * 0.12).map(([k]) => k));
+      mask = new Float32Array(rw * rh);
+      for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) { const i = (ya + y) * w + x0 + x; mask[y * rw + x] = op(i) && !bgk.has(key(i)) ? 1e9 : 0; }
+      for (let p = 0; p < 2; p++) for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) {   // chamfer distance to the outline
+        const xx = p ? rw - 1 - x : x, yy = p ? rh - 1 - y : y, i = yy * rw + xx; if (!mask[i]) continue;
+        for (const [dx, dy, c] of [[-1, 0, 1], [0, -1, 1], [-1, -1, 1.4], [1, -1, 1.4]]) { const X = xx + (p ? -dx : dx), Y = yy + (p ? -dy : dy); const v = X < 0 || Y < 0 || X >= rw || Y >= rh ? 0 : mask[Y * rw + X]; if (v + c < mask[i]) mask[i] = v + c; }
+      }
+    }
+    const R = Math.max(2, Math.min(rw, rh) / 3);
+    for (let y = ya; y < yb; y++) for (let x = x0; x < x1; x++) {
+      const i = y * w + x; if (!op(i)) continue;
+      let d;
+      if (sh.k === "box") d = sh.d;
+      else if (sh.k === "recess") { D[i] = Math.min(D[i], sh.d); continue; }
+      else if (sh.k === "pillar") { const u = (x + 0.5 - cx) / (rw / 2); d = sh.d * Math.sqrt(Math.max(0, 1 - u * u)); }
+      else if (sh.k === "pipe") { const u = (y + 0.5 - cy) / (rh / 2); d = sh.d * Math.sqrt(Math.max(0, 1 - u * u)); }
+      else if (sh.k === "stairs") d = sh.d * (0.2 + 0.8 * Math.floor((y - ya) / Math.max(2, rh / 6)) / 5);
+      else { const m = mask[(y - ya) * rw + x - x0]; if (!m) continue; const u = Math.min(m, R) / R; d = sh.d * Math.sqrt(1 - (1 - u) * (1 - u)); }
+      if (sh.k === "stairs") D[i] = Math.max(spec.base || 0.5, d); else D[i] = Math.max(D[i], d);
+    }
+  }
+  return D;
+}
 const BG_CENTRE = 128.5;                       // BG px of the projection centre: (0x1010 + 0) / 32 + 0.5
 // bleachers with spectators from the stadium map (RPG map 32, 512x512 px): rectangles in map px, and the
 // sloped planes they stand on beside the court (inner edge at ground level, outer edge raised)
@@ -500,6 +561,25 @@ export class Voxel3D {
     }
     return this.uploadMesh(pos, col);
   }
+  // a relief: each opaque pixel a column from a flat back (-B) out to its own front depth D[i] (px), side faces where a neighbour is shallower
+  reliefMesh(rgba, w, h, D, B = 1) {
+    const pos = [], col = [], op = i => rgba[i * 4 + 3] >= 128;
+    const face = (a, b, c, d, rgb, k) => { for (const q of [a, b, c, a, c, d]) { pos.push(...q); col.push(rgb[0] * k, rgb[1] * k, rgb[2] * k); } };
+    const dAt = (x, y) => (x >= 0 && x < w && y >= 0 && y < h && op(y * w + x)) ? D[y * w + x] : -B;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x; if (!op(i)) continue;
+      const c = [rgba[i * 4] / 255, rgba[i * 4 + 1] / 255, rgba[i * 4 + 2] / 255], t = D[i];
+      const x0 = x - w / 2, x1 = x0 + 1, y0 = h - 1 - y, y1 = h - y, z0 = -B, z1 = t;
+      face([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], c, 1.0);
+      face([x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], c, 0.6);
+      const tu = dAt(x, y - 1), td = dAt(x, y + 1), tl = dAt(x - 1, y), tr = dAt(x + 1, y);
+      if (tu < t) face([x0, y1, z1], [x1, y1, z1], [x1, y1, tu], [x0, y1, tu], c, 0.92);
+      if (td < t) face([x0, y0, td], [x1, y0, td], [x1, y0, z1], [x0, y0, z1], c, 0.55);
+      if (tl < t) face([x0, y0, tl], [x0, y0, z1], [x0, y1, z1], [x0, y1, tl], c, 0.75);
+      if (tr < t) face([x1, y0, z1], [x1, y0, tr], [x1, y1, tr], [x1, y1, z1], c, 0.75);
+    }
+    return this.uploadMesh(pos, col);
+  }
   // GL buffers for a triangle list (positions and colours, 3 floats each)
   uploadMesh(pos, col) {
     const gl = this.gl, vao = gl.createVertexArray(); gl.bindVertexArray(vao);
@@ -707,7 +787,8 @@ export class Voxel3D {
       let X = g.X, Yw = g.Y, width = w * g.upp, height = h * g.upp;
       if (c.name === "net") { X = (NET.x0 + NET.x1) / 2; Yw = 0; width = (NET.x1 - NET.x0) * w / 160; height = NET.height; }
       const wide = c.name === "backdrop" || c.name === "fence" || !!c.flat;   // the stands and the fence continue sideways
-      this.cuts.push({ name: c.name, tex: this.texture(w, h, d, false, wide), mesh: c.flat ? null : this.meshFromPixels(d, w, h, c.key ? 3 : 0, c.key ? 2.5 : 0.5), w, h, X, Y: Yw, width, height, wide, x0: c.x0, y0: c.y0, x1: c.x1, y1: c.y1, decal: c.decal, flat: c.flat || 0, holes: c.holes || 0, keep: c.keep || null });
+      const rel = c.name === "backdrop" && RELIEF[this.courtId] ? reliefDepth(d, w, h, c.y0, RELIEF[this.courtId]) : null;   // RELIEF: the far backdrop in depth
+      this.cuts.push({ name: c.name, relief: !!rel, tex: this.texture(w, h, d, false, wide), mesh: c.flat ? null : rel ? this.reliefMesh(d, w, h, rel) : this.meshFromPixels(d, w, h, c.key ? 3 : 0, c.key ? 2.5 : 0.5), w, h, X, Y: Yw, width, height, wide, x0: c.x0, y0: c.y0, x1: c.x1, y1: c.y1, decal: c.decal, flat: c.flat || 0, holes: c.holes || 0, keep: c.keep || null });
     }
     // a flat cut lies on the ground behind the backdrop it belongs to: its near edge at the backdrop's foot, as wide, its rows going back
     const back = this.cuts.find(o => o.name === "backdrop");
@@ -899,7 +980,7 @@ export class Voxel3D {
       if (c.flat) { this.gl.useProgram(this.prog); this.gl.bindVertexArray(this.vao); this.gl.disable(this.gl.CULL_FACE); this.draw(c.tex, m4.trs(c.X, 0.6, c.Y, c.width * 3, c.depth, -Math.PI / 2, 0), mvp, [-1, 0, 3, 1], [1, 1, 1, 1], 0); continue; }   // the garden behind the far fence
       if (this.stadium && this.stadium.active && this.stadium.cut(c)) continue;   // STADIUM: replaced (umpire chair)
       const np = fx && c.name === "net" ? fx.netPost(c) : null, pm = np ? m => m4.mul(np, m) : m => m;   // BALLFX: the net rocks when the ball hits it
-      if (this.voxelSprites) {
+      if (this.voxelSprites || c.relief) {
         for (const k of (c.wide ? [-1, 0, 1] : [0])) this.drawMesh(c.mesh, pm(m4.trs3(c.X + k * c.width, 0, c.Y, c.width / c.w, c.height / c.h, c.width / c.w * 1.2, 0)), mvp);
       } else if (c.wide) this.draw(c.tex, m4.trs(c.X, 0, c.Y, c.width * 3, c.height, 0, 0), mvp, [-1, 0, 3, 1], [1, 1, 1, 1], 0.5);
       else this.draw(c.tex, pm(m4.trs(c.X, 0, c.Y, c.width, c.height, 0, 0)), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);

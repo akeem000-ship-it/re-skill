@@ -21,6 +21,11 @@ const KEY = "mt-stadium";
 export const STADIUM_MODES = ["classic", "3d"];
 const STADIUM_MAP = 32, SIZES_KEY = "mt-crowd2", JUDGE_TOP = 0.5;   // the part of the chair picture (from the top) that is the umpire
 
+// the gardens behind the far fences (court map: bushes [x, row, radius] in picture px, the flower bed [x0, y0, x1, y1], the flower beds
+// before the fence [x0, x1], the gate [x0, x1, top row, bottom row])
+const GARDEN_A = { bushes: [[8, 4, 9], [7, 12, 7], [24, 8, 9], [48, 12, 7], [206, 12, 7], [232, 8, 9], [248, 4, 9], [249, 12, 7]], bed: [106, 1, 148, 12], corners: [[0, 36], [220, 256]], gate: [64, 96, 24, 39] };
+const GARDENS = { 3: GARDEN_A, 4: GARDEN_A, 5: GARDEN_A,
+  8: { bushes: [[8, 3, 6], [40, 3, 7], [104, 3, 6], [120, 3, 7], [136, 3, 6], [152, 3, 6], [184, 3, 7], [232, 3, 6], [248, 3, 7]], bed: null, corners: null, gate: [64, 96, 24, 40] } };
 // ---- small helpers ----
 function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 // the tour's matches in order ($C8F7: 0 junior practice, 1-4 junior ranking, 5 senior practice, 6-9 senior ranking, $0A-$0D varsity, $10-$13
@@ -302,13 +307,14 @@ export class Stadium3D {
     if (E.ball === 2 && p.ball !== 2 && Math.abs(ballY) > 1400 && sound) sound.rattle(Math.min(1, Math.abs(ballY) > 1700 ? 1 : 0.7));
   }
 
-  // the garden beyond the far fence (voxel.js cut "garden", courts 4 and 5): its bushes as rounded voxel domes, its kerbed flower bed
+  // the garden beyond the far fence (voxel.js cut "garden", courts 3, 4, 5 and 8): its bushes as rounded voxel domes, its kerbed flower bed
   // with flowers in the bed's own colour, the low flower beds before the fence's corners, and a frame round the gate in the chain-link;
   // positions in the court picture's pixels (the same on both courts), colours from the picture
-  garden(B, P, bg, bd, gd, rnd) {
+  garden(B, P, bg, bd, gd, rnd, court) {
     const W = 256, upp = bd.width / bd.w, uv = bd.height / bd.h, deep = upp * gd.flat;
     const flower = (x0, y0, x1, y1, d) => { const c = colours(bg, W, x0, y0, x1, y1, c => sat(c) > 0.35 && lum(c) > 0.25 && !isGreen(c)); return c.length ? c[0].c : d; };
-    const bedC = flower(106, 1, 148, 12, [90, 160, 255]), cornerC = flower(0, 49, 36, 54, [240, 80, 240]), white = shade(P.wallLight, 1.02), soil = shade(P.hedgeA, 0.55);
+    const G = GARDENS[court] || GARDENS[5];
+    const bedC = G.bed ? flower(...G.bed, [90, 160, 255]) : null, cornerC = G.corners ? flower(0, 49, 36, 54, [240, 80, 240]) : null, white = shade(P.wallLight, 1.02), soil = shade(P.hedgeA, 0.55);
     const top = mix(P.hedgeB, [255, 255, 255], 0.3);
     const dome = (cx, cz, rx, hy, rz, cs, y0 = 0) => {                 // a bush: layers of cubes in a shrinking ellipse, lit on top (from height y0)
       for (let y = y0 % cs; y < hy; y += cs) {
@@ -320,27 +326,26 @@ export class Stadium3D {
         }
       }
     };
-    const BUSHES = [[8, 4, 9], [7, 12, 7], [24, 8, 9], [48, 12, 7], [206, 12, 7], [232, 8, 9], [248, 4, 9], [249, 12, 7]];   // x, row, radius (px)
     for (let copy = -1; copy <= 1; copy++) {
       const X = x => bd.X + copy * bd.width + (x - 128) * upp, Zg = row => bd.Y - (gd.h - row) * deep;
       // the bushes grow into small trees whose crowns show over the fence (a trunk, then a round crown from two thirds of its height)
-      for (const [x, row, r] of BUSHES) {
+      for (const [x, row, r] of G.bushes) {
         const h0 = bd.height * (0.62 + 0.2 * rnd()), rx = r * upp * 1.25;
         B.add(X(x), 0, Zg(row), 12, h0 + 20, 12, [96, 70, 44], 0.08);
         dome(X(x), Zg(row), rx, rx * 1.5, Math.max(rx * 0.8, r * deep * 0.5), 16, h0);
       }
       // the flower bed: a white kerb, soil, flowers
-      const bx = X(127.5), bz = Zg(6.5), bw = 44 * upp, bdp = 12 * deep;
-      B.add(bx, 0, bz, bw, 10, bdp, white); B.add(bx, 10, bz, bw - 12, 3, bdp - 12, soil);
-      for (let i = 0; i < 70; i++) B.add(bx + (rnd() - 0.5) * (bw - 18), 12, bz + (rnd() - 0.5) * (bdp - 18), 8, 6 + rnd() * 6, 8, rnd() > 0.25 ? bedC : [250, 250, 240], 0.15);
+      const bx = G.bed ? X((G.bed[0] + G.bed[2]) / 2) : 0, bz = G.bed ? Zg((G.bed[1] + G.bed[3]) / 2) : 0, bw = G.bed ? (G.bed[2] - G.bed[0]) * upp : 0, bdp = G.bed ? (G.bed[3] - G.bed[1]) * deep : 0;
+      if (G.bed) { B.add(bx, 0, bz, bw, 10, bdp, white); B.add(bx, 10, bz, bw - 12, 3, bdp - 12, soil); }
+      for (let i = 0; G.bed && i < 70; i++) B.add(bx + (rnd() - 0.5) * (bw - 18), 12, bz + (rnd() - 0.5) * (bdp - 18), 8, 6 + rnd() * 6, 8, rnd() > 0.25 ? bedC : [250, 250, 240], 0.15);
       // the flower beds before the fence's corners
-      for (const [x0, x1] of [[0, 36], [220, 256]]) {
+      for (const [x0, x1] of G.corners || []) {
         const cx = X((x0 + x1) / 2), w = (x1 - x0) * upp;
         B.add(cx, 0, bd.Y + 22, w, 8, 36, soil);
         for (let i = 0; i < 26; i++) B.add(cx + (rnd() - 0.5) * (w - 12), 8, bd.Y + 22 + (rnd() - 0.5) * 26, 9, 7 + rnd() * 5, 9, rnd() > 0.3 ? cornerC : P.hedgeB, 0.15);
       }
       // the gate in the chain-link: posts, a lintel and a sill standing out of the fence
-      const gx0 = X(64), gx1 = X(96), gh = (bd.y1 - 24) * uv, gl = (bd.y1 - 39) * uv;
+      const gx0 = X(G.gate[0]), gx1 = X(G.gate[1]), gh = (bd.y1 - G.gate[2]) * uv, gl = (bd.y1 - G.gate[3]) * uv;
       B.add(gx0, 0, bd.Y + 5, 8, gh + 6, 10, white); B.add(gx1, 0, bd.Y + 5, 8, gh + 6, 10, white);
       B.add((gx0 + gx1) / 2, gh, bd.Y + 5, gx1 - gx0 + 8, 7, 10, white); B.add((gx0 + gx1) / 2, gl - 4, bd.Y + 5, gx1 - gx0, 5, 8, white);
     }
@@ -499,7 +504,7 @@ export class Stadium3D {
       if (gd) for (let x = -span / 2; x < span / 2; x += 26) B.add(bd.X + x + 13, 0, bd.Y - behind - 10, 27, 70 + ((x * 7) % 3) * 6, 40, ((x / 26) | 0) % 2 ? P.hedgeA : shade(P.hedgeA, 0.88), 0.1);   // (a garden: a low hedge closes it, not a wall)
       else { B.add(bd.X, 0, bd.Y - 62, span, bd.height, 118, shade(P.wallDark, 0.8)); B.add(bd.X, bd.height, bd.Y - 66, span + 30, 16, 150, shade(P.wallTop, 1.1), 0.03); }
       const upp = bd.width / 256;
-      if (gd) this.garden(B, P, bg, bd, gd, rnd);
+      if (gd) this.garden(B, P, bg, bd, gd, rnd, courtId);
       else for (const seg of P.hedges) for (let copy = -1; copy <= 1; copy++) {
         const xa = bd.X + copy * bd.width + (seg.g0 * 8 - 128) * upp, xb = bd.X + copy * bd.width + (seg.g1 * 8 - 128) * upp, cs = 26, depth = 5, layers = [[5, 0], [5, 0], [4, 1], [2, 1]];
         for (let x = xa + cs / 2; x < xb; x += cs) {
