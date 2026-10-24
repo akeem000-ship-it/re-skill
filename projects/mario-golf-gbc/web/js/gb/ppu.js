@@ -42,7 +42,7 @@ export class PPU {
           // the LCD restarts when the writing instruction ends (step() skips its remaining dots); its first line is
           // 8 dots short and line 153 of that frame 8 dots long, so the frame keeps its length (PyBoy's timing)
           this.dots = 8; this.mode = 2; this.stat = (this.stat & 0xFC) | 2; this.checkStat(); this.frameStart = true; this.firstFrame = true;
-          this.startDelay = !globalThis.NO_DELAY;
+          this.startDelay = true;
         }
         return;
       }
