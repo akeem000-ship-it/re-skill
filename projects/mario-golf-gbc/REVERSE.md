@@ -363,7 +363,7 @@ sound `$51` and drops the ball: water). BallTerrainCheck (10:527C) reads the ter
    variables. Distance first: ClubBaseDistance (10:68B1) = ClubDistance (02:511A) x `$20`, where ClubDistance
    is the golfer's driver distance (wDriverDistance `D4C6`: `$010E` = 270 for Mario, the "270Y" on the HUD)
    times ClubDistanceTable[club] (02:5171: 1, .932, .864, .796, .75, .704, .659, .614, .568, .523, .477, .409,
-   .318); then the lie factor (LieFactor 10:65EF: per club and terrain, table 10:660E), the power
+   .318; checked in the emulator: Down on the tee switches to "3W 252Y" = 270 x .932); then the lie factor (LieFactor 10:65EF: per club and terrain, table 10:660E), the power
    (ScaleByPower 10:6865: linear, p/60 below full power), and 08:60BC. `$20` per yard matches the ~32 position
    units per yard measured on the drive.
 3. Impact: `D44C` (impact height) scales the speed (x `$F9`/256 or + 7/256) and the spin; `D44B` (impact side)
