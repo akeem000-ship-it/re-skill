@@ -20,6 +20,7 @@ import * as F3 from "./field3d.js";
 import { FS_SHIM, VS_GLASS, FS_GLASS, WindowShimmer } from "./shimmer.js";   // SHIMMER: window shimmer + glass walls
 import { roundedMeshData } from "./voxround.js";
 import { surfaceKind, buildDetail, paintFloor, lineColours } from "./courtfloor.js";
+import { tallWall, FAR_WALL_MAPS, farWallsOn } from "./farwalls.js";   // FAR END: Walls
 import { paintConcept, COURT_CONCEPTS } from "./courtconcepts.js";   // COURT concepts (?court=junior|senior|varsity|open|final)   // HD court floors   // VOXSTYLE: "VOX: Blocky / Rounded"
 
 const VS = `#version 300 es
@@ -311,6 +312,7 @@ export class Voxel3D {
     this.shadowTex = this.blobTexture();                     // soft round shadow on the ground (players, ball)
     this.stadium = null;                                     // STADIUM: stadium3d.js (attachStadium) sets this; null = the flat stands
     this.light = null;                                       // LIGHT: lighting.js (attachLighting) sets this; null = off
+    this.farWalls = farWallsOn();   // FAR END: Walls (farwalls.js; the button: addFarEndButton)
     try { const c = new URLSearchParams(location.search).get("court"); this.courtConcept = COURT_CONCEPTS.includes(c) ? c : null; } catch (e) { this.courtConcept = null; }   // COURT concepts
     this.rounded = false;                                    // VOXSTYLE: voxround.js (attachVoxStyle) sets this: rounded solid bodies instead of cubes
     this.ballfx = null;                                      // BALLFX: ballfx.js (attachBallFX) sets this; null = off
@@ -787,8 +789,11 @@ export class Voxel3D {
       let X = g.X, Yw = g.Y, width = w * g.upp, height = h * g.upp;
       if (c.name === "net") { X = (NET.x0 + NET.x1) / 2; Yw = 0; width = (NET.x1 - NET.x0) * w / 160; height = NET.height; }
       const wide = c.name === "backdrop" || c.name === "fence" || !!c.flat;   // the stands and the fence continue sideways
-      const rel = c.name === "backdrop" && RELIEF[this.courtId] ? reliefDepth(d, w, h, c.y0, RELIEF[this.courtId]) : null;   // RELIEF: the far backdrop in depth
-      this.cuts.push({ name: c.name, relief: !!rel, tex: this.texture(w, h, d, false, wide), mesh: c.flat ? null : rel ? this.reliefMesh(d, w, h, rel) : this.meshFromPixels(d, w, h, c.key ? 3 : 0, c.key ? 2.5 : 0.5), w, h, X, Y: Yw, width, height, wide, x0: c.x0, y0: c.y0, x1: c.x1, y1: c.y1, decal: c.decal, flat: c.flat || 0, holes: c.holes || 0, keep: c.keep || null });
+      const tall = c.name === "backdrop" && this.farWalls && FAR_WALL_MAPS.includes(this.courtId) ? tallWall(this.courtId, d, w, h) : null;   // FAR END: Walls
+      const R = RELIEF[this.courtId], tw = tall ? { d: tall.d, h: tall.h, y0: c.y0 - tall.EX, spec: { base: R ? R.base : 1, shapes: [...(R ? R.shapes : []), ...tall.shapes] } } : { d, h, y0: c.y0, spec: R };
+      if (tall) height = tall.h * g.upp;
+      const rel = c.name === "backdrop" && tw.spec ? reliefDepth(tw.d, w, tw.h, tw.y0, tw.spec) : null;   // RELIEF: the far backdrop in depth
+      this.cuts.push({ name: c.name, relief: !!rel, tex: this.texture(w, tw.h, tw.d, false, wide), mesh: c.flat ? null : rel ? this.reliefMesh(tw.d, w, tw.h, rel) : this.meshFromPixels(d, w, h, c.key ? 3 : 0, c.key ? 2.5 : 0.5), w, h: tw.h, X, Y: Yw, width, height, wide, x0: c.x0, y0: c.y0, x1: c.x1, y1: c.y1, decal: c.decal, flat: c.flat || 0, holes: c.holes || 0, keep: c.keep || null });
     }
     // a flat cut lies on the ground behind the backdrop it belongs to: its near edge at the backdrop's foot, as wide, its rows going back
     const back = this.cuts.find(o => o.name === "backdrop");

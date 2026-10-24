@@ -16,6 +16,7 @@
 import { palettes, tilePixel } from "./rom.js";
 import { buildFanAtlas, CELL } from "./crowdfans.js";
 import { FLOODS, FLOOD_HEIGHT } from "./lighting.js";
+import { FAR_WALL_MAPS } from "./farwalls.js";   // FAR END: Walls
 import { poseCanvas, POSE_FRAMES } from "./look/poses.js";
 const KEY = "mt-stadium";
 export const STADIUM_MODES = ["classic", "3d"];
@@ -407,6 +408,7 @@ export class Stadium3D {
     const conc = [shade(P.conc, 1.05), shade(P.conc, 0.92)], ads = [P.seatA, P.seatB, ...P.accent, [240, 240, 236]];
     for (const S of hall ? [] : STANDS) {                // (the Training Center's drills are indoors: its hall instead, below)
       if (S.skip && S.skip.includes(courtId)) continue;
+      if (S.id === "far" && this.v.farWalls && FAR_WALL_MAPS.includes(courtId)) continue;   // FAR END: Walls (farwalls.js): the wall goes up instead
       // box in stand coordinates: u = distance outward from the inner edge, vv = along the stand
       const box = (u0, u1, v0, v1, y0, y1, rgb, jit = 0) => {
         const uc = (u0 + u1) / 2, vc = (v0 + v1) / 2, a = Math.abs(u1 - u0), l = Math.abs(v1 - v0);
@@ -543,8 +545,14 @@ export class Stadium3D {
       for (let a = 0; a < 4; a++) for (let b = 0; b < 2; b++) B.add(x + px * 40 - 90 + a * 60, FLOOD_HEIGHT - 66 + b * 66, z + fz * 30, 46, 46, 8, [255, 246, 205]);
     }
     // scoreboard above the far stands
-    const far = !(courtId === 2 || courtId === 6 || courtId === 7 || courtId === 14), bz = (far ? -2150 : -2000) - GS, by = 540;
-    if (!hall) {
+    const far = !(courtId === 2 || courtId === 6 || courtId === 7 || courtId === 14 || (v.farWalls && FAR_WALL_MAPS.includes(courtId))), bz = (far ? -2150 : -2000) - GS, by = 540;
+    const tall = v.farWalls && FAR_WALL_MAPS.includes(courtId) && v.cuts.find(c => c.name === "backdrop");   // FAR END: Walls: the board hangs on the wall
+    if (!hall && tall) {
+      const wz = tall.Y + 150, wy = Math.max(300, tall.height * 0.5);
+      B.add(0, wy - 16, wz - 6, 720, 250, 48, [38, 40, 48]); B.add(0, wy + 232, wz - 6, 740, 14, 56, [120, 122, 134]);
+      for (const x of [-300, 300]) B.add(x, wy + 60, wz - 70, 24, 24, 140, [88, 90, 100]);   // (its brackets into the wall)
+      this.boardPos = { x: 0, y: wy + 12, z: wz + 20, w: 640, h: 210 }; this.boardDirty = true;
+    } else if (!hall) {
       B.add(-230, 0, bz - 6, 30, by, 30, [88, 90, 100]); B.add(230, 0, bz - 6, 30, by, 30, [88, 90, 100]); B.add(0, by - 16, bz - 6, 720, 250, 48, [38, 40, 48]); B.add(0, by + 232, bz - 6, 740, 14, 56, [120, 122, 134]);
       this.boardPos = { x: 0, y: by + 12, z: bz + 20, w: 640, h: 210 }; this.boardDirty = true;
     } else this.boardPos = null;
