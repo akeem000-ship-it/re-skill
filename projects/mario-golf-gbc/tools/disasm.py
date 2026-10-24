@@ -1,6 +1,7 @@
 """Targeted SM83 disassembler with labels.csv annotation.
 
-usage: disasm.py <bank> <addr> [nbytes]       e.g. dis.py 0 0150 64
+usage: disasm.py <bank> <addr> [nbytes]       e.g. disasm.py 0 0150 64
+       (a bank disassembled from $4000 lists its export table as dw first)
        disasm.py <label> [nbytes]
        disasm.py BB:AAAA [nbytes] [--stop]    --stop: stop at first unconditional ret/jp
 """
@@ -66,6 +67,16 @@ def disasm(rom, bank, addr, nbytes, labels, stop=False, out=sys.stdout):
     off = to_offset(bank, addr)
     end = off + nbytes
     pc = addr
+    if bank and addr == 0x4000:
+        # the bank's $4000 export table: list it as data, then disassemble from its end
+        from scan_jumptables import table, kind
+        ents = table(rom, bank)
+        if kind(rom, bank, ents) == "exports":
+            for i, w in enumerate(ents):
+                n = labels.name(bank, w)
+                out.write("%02x:%04x  %02x %02x     dw $%04x              ; idx $%02x%s\n" % (
+                    bank, pc, w & 0xFF, w >> 8, w, i * 2, (" " + n) if n else ""))
+                off += 2; pc += 2
     while off < end and off < len(rom):
         lab = labels.get(bank, pc)
         if lab and lab[0]:

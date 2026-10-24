@@ -168,10 +168,48 @@ bank. Assets are LZ: banks 28-2F, 40, 4B-4E, 72-74 have 12-37 clean LZ entries e
 | 28-2F, 72-74 | 22-52 entries, ~60% LZ | compressed graphics |
 | 30-35 | 900-1400 `rst $18` call sites each, mostly into 0A | script-like code (story / RPG mode?) |
 | 7C-7E | 11-entry tables at the same layout | sound engine and its data (7E called from bank 0) |
-| 18-1F, 44, 46 | 2-entry "tables" whose first word is far from `$4000` | probably no table (heuristic false positive) |
+| 18-1F | 2 exports each, at the end of the bank, called from LoadText 05:6179 | **text banks** (confirmed, see Text) |
+| 0D, 3D, 44 | 1-2 exports far from `$4000`, but real: far-called from code (0D:4AA7 from 32/3D/58; 3D:431A from 3C; 44:42FB from 05/08/32) | code |
+| 46 | 2 words, no far call uses them (`scan_jumptables.py` kind `header`) | data, no export table |
 | 27, 47 | no table; 27 is all `$FF` | empty / data |
 
-These roles are guesses from counts only; they are listed so they can be checked.
+These roles are guesses from counts only (except the text banks); they are listed so they can be checked.
+A first pass called banks 18-1F, 44 and 46 heuristic false positives; the far-call evidence above corrected
+that, and `scan_jumptables.kind()` now uses it.
+
+#### Text (tools/dump_text.py, tools/text_stats.py; read from 05:6179, 18:7D14 and the printer 05:5235)
+
+- **Text id** (16 bit): bank `$18 + ((id >> 10) & 7)`, index `id & $3FF`. LoadText (05:6179, export `$24` of
+  bank 05) decodes it and farcalls that bank's export 0, which copies `$180` bytes of the string to wTextBuffer
+  (`$C600`). LoadTextShort (05:61D4) farcalls export 1, which copies `$20` bytes to `$D880` (names, labels).
+- **Text bank layout**: each bank's loader holds its own constants `ld hl, TABLE ... ld hl, DATA`. The word
+  table at TABLE (`$4004` in every bank seen) holds string offsets relative to DATA (bank 18: `$4404`, 19:
+  `$41B4`, ...); the table runs up to DATA. 2963 strings: 18: 512, 19: 216, 1A: 252, 1B: 285, 1C: 264, 1D: 497,
+  1E: 768, 1F: 169.
+- **Encoding**: ASCII `$20-$7E`; strings end with `$00`. Font: 03:50F0, 16 bytes per glyph, glyph = char - `$20`
+  (102 glyphs, `$20-$85`), drawn by 03:4B45 into WRAM bank 7; per-glyph widths at 03:5750 (variable width).
+- **Control codes**: the printer 05:5235 ends on `$00`, reads `$0E`'s argument byte into `$C361`, sends every
+  byte below `$20` to the handler table at 05:592C (dispatcher 05:58E2), and maps `$DE`/`$DF` to handlers `$1E`/`$1F`.
+
+| Code | Handler | Meaning (from the handler; text examples in `docs/text_dump.txt`) |
+|------|---------|-----------------------------|
+| `$01` (and `$00`, `$14-$1D` in the table) | 05:52EF | new line |
+| `$02` | 05:538E | new text box (next page) |
+| `$03` | 05:5433 | wait for A/B (joypad `& $F3`) unless flag #22 is set, then close (farcall 03:4F7D) |
+| `$04` | 05:546A | insert the next string argument (list at `$DFAE`, counter `$D847`) |
+| `$05` | 05:534C | pause 30 frames |
+| `$06` | 05:5369 | pause up to 15 frames, skipped by a button |
+| `$07` | 05:55C0 | insert the string at `$C800` (the player's name: "`{07}` checked the chest...") |
+| `$08` | 05:564C | insert the next byte argument (list at `$DFEE`) |
+| `$09` | 05:56AB | insert the next number argument (WRAM bank 5; "You earned `{09}` EXP Pts!") |
+| `$0A` | 05:5307 | cursor down one row |
+| `$0B` | 05:5786 | club / course name: text `$3C + [$D85D]` (Marion, Palm, Dune, Links, Peach, Pitch & Putt) |
+| `$0C` | 05:5465 | pause 60 frames (calls WaitFramesCmd with the inline byte `$3C`) |
+| `$0D` | 05:531B | uses the pointer at `$D864` and `$C362` (not yet understood) |
+| `$0E xx` | 05:57DF | character name: text `$43 + xx` (`$43` Kid, `$44` Sherry, `$45` Azalea, `$46` Joe, ...) |
+| `$0F` | 05:5828 | placing: text `$1CA3 + ([$DFCE] & 3)` ("000", "1st", "2nd", "3rd") |
+| `$10-$13` | 05:5900-5921 | write tile `$0A-$0D` directly (special glyphs) |
+| `$DE`, `$DF` | 05:5580, 05:55A0 | modify the previous glyph (Japanese dakuten / handakuten, left over from the Japanese version) |
 
 ### Data Structures
 
@@ -187,7 +225,7 @@ These roles are guesses from counts only; they are listed so they can be checked
 
 | File | Contents |
 |------|----------|
-| (none yet) | |
+| `docs/text_dump.txt` (gitignored) | every string: `id bank:index text`, control codes as `{XX}` (`python3 tools/dump_text.py`) |
 
 ---
 
@@ -217,16 +255,18 @@ These roles are guesses from counts only; they are listed so they can be checked
 - [x] Ph1: RST and interrupt vectors, entry point, Start / SoftReset / AdvanceFrame
 - [x] Ph1: bank 0 comparison with Mario Tennis (compare_home.py, 108 labels)
 - [x] Ph1: confirm LZ format (LZDecompress 00:1F2F = Tennis format)
-- [ ] Teach `disasm.py` the bank-0 table: list `$4000` table entries as `dw` when disassembling a bank from `$4000`
-- [ ] Make `scan_jumptables.table()` reject 2-entry false positives (banks 18-1F, 44, 46): require the first
-      target at or near the end of the table, or a far-call into the bank
+- [x] Teach `disasm.py` the `$4000` table: it lists the entries as `dw` when disassembling a bank from `$4000`
+- [x] Short `$4000` tables: classified by far-call evidence (`scan_jumptables.kind()`); only bank 46 is a header,
+      banks 18-1F turned out to be the text banks
 - [ ] Resolve 00:11CB (MulSin vs DivBySin) by reading 00:11DB
 - [ ] Read the 14 partial matches (ReadJoypad 02EB, ProcessVRAMCopyQueues 04DE, SoftReset, AdvanceFrame,
       VBlankHandler 2EF9, ...) and name them from the code
 - [ ] Name the unmatched bank-0 code: 00:0458, 00:2683/2688, 00:304D, the VBlank handler, the serial protocol
 - [ ] GameMain 01:400E: follow it to the scene / mode dispatcher
 - [ ] Bank 7E: confirm the sound engine (entries 7E:4016/4072/40EB) and the sound id tables
-- [ ] Text: find the font and the text banks (Tennis is ASCII; check `strings_dump.py`)
+- [x] Text: text banks 18-1F, id format, control codes, font 03:50F0 (dump_text.py)
+- [ ] Text: render the font (03:50F0) to an image to confirm the glyph format (16 bytes: 8 rows x 2 bytes?)
+- [ ] Text: control code `$0D` (05:531B) and where the argument lists `$DFAE`/`$DFEE` are filled
 - [ ] Decompress and render a few LZ entries from banks 28-2F (needs a tile renderer copied from Tennis)
 - [ ] Milestone 3: run the game on `web/js/gb` (copy from Tennis) with SRAM saving; `core_vs_pyboy.mjs`
 

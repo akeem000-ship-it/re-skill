@@ -149,3 +149,16 @@ bank,addr,name,comment
 0,2DA0,Start,(as in Mario Tennis 00:2578)
 0,2ED5,WaitFramesCmd,(as in Mario Tennis 00:2725)
 0,2EF0,WaitFrames,(as in Mario Tennis 00:2740)
+# --- text (tools/dump_text.py) ---
+5,6179,LoadText,hl = text id: bank $18 + ((h >> 2) & 7) and index id & $3FF; farcalls that bank's export 0 (copy $180 bytes to wTextBuffer)
+5,61D4,LoadTextShort,same id decoding; farcalls export 1 (copy $20 bytes to $D880)
+18,7D04,TextBank18_Load,a = 0 -> TextBank18_Copy (each text bank 18-1F has the same pair of exports)
+18,7D0C,TextBank18_LoadShort,a = 1 -> TextBank18_Copy
+18,7D14,TextBank18_Copy,e = index; offset table $4004; data $4404; a = 0: $180 bytes to $C600 / a = 1: $20 bytes to $D880 (CopyMemoryBC)
+*,C600,wTextBuffer,$180 bytes: the current message (LoadText)
+5,5235,PrintText,hl = string; draws until $00; control codes < $20 via TextControlDispatch
+5,58E2,TextControlDispatch,a = code; jumps through TextControlTable
+5,592C,TextControlTable,32 words; see REVERSE.md Text
+3,4B45,DrawGlyph,a = char; 16 bytes from Font + (a - $20) * 16 into WRAM bank 7
+3,50F0,Font,102 glyphs x 16 bytes; chars $20-$85
+3,5750,FontWidths,1 byte per glyph

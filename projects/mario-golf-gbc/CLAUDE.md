@@ -17,10 +17,11 @@ Start with HANDOFF.md (the plan) if this project is new to you.
 - ROM conventions (add one only after a tool has shown it in this ROM; see REVERSE.md "Architecture"):
   - `rst $18 ; db idx, bank` is the far call (FarCall 00:01B6, same code as Tennis); `rst $10 ; db idx, bank` is
     a second, rarer far call (00:01F6). Both jump to the word at `bank:$4000+idx`.
-  - most banks start with a `$4000` word table of exports/assets (`tools/scan_jumptables.py`; a few 2-entry hits
-    are false positives);
+  - most banks start with a `$4000` word table of exports/assets (`tools/scan_jumptables.py`; bank 46's two
+    words are not one);
   - `rst $00` is followed by an inline `dw` jump table indexed by A (00:0690);
   - `rst $08 ; db id` plays a sound (00:2BBB);
   - `rst $20/$28/$30 ; dw n<<5` set / clear / test flag n (same routines as Tennis);
   - assets are LZ-compressed in Tennis's format (LZDecompress 00:1F2F; `tools/decompress.py`).
-  - Text encoding: not checked yet.
+  - text is ASCII in banks 18-1F; a text id is `bank = $18 + ((id >> 10) & 7)`, `index = id & $3FF`; control
+    codes below `$20` (REVERSE.md "Text"; `tools/dump_text.py`).
