@@ -17,6 +17,7 @@ CASES = [
     ("mul_hl_by_de_both_signed", 0x0C8E, lambda: dict(hl=R16(), de=R16()), lambda i: g.mul_hl_by_de_both_signed(i["hl"], i["de"]), lambda o: o["HL"]),
     ("mul_sin_cos_signed", 0x11AC, lambda: dict(hl=R16(), bc=R16()), lambda i: g.mul_sin_cos_signed(i["hl"], i["bc"]), lambda o: (o["HL"], o["DE"])),
     ("div_ahl_by_de", 0x0DDB, lambda: dict(a=R8(), hl=R16(), de=R16() | 1), lambda i: g.div_ahl_by_de(i["a"], i["hl"], i["de"]), lambda o: (o["A"], o["HL"])),
+    ("div_hl_by_de", 0x09AE, lambda: dict(hl=R16(), de=R16() >> random.choice([0, 4, 8, 12])), lambda i: g.div_hl_by_de(i["hl"], i["de"]), lambda o: o["HL"]),
     ("isqrt_hl", 0x0F04, lambda: dict(hl=R16()), lambda i: g.isqrt_hl(i["hl"]), lambda o: o["A"]),
     ("angle_from_vector16", 0x1A03, lambda: dict(hl=R16() >> random.choice([0, 4, 8]), de=R16() >> random.choice([0, 4, 8])), lambda i: g.angle_from_vector16(i["hl"], i["de"]), lambda o: o["BC"]),
     ("mul_hl_by_sin", 0x0B3C, lambda: dict(hl=R16(), a=R8()), lambda i: g.mul_hl_by_sin(i["hl"], i["a"]), lambda o: o["HL"]),

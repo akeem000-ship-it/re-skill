@@ -543,6 +543,29 @@ the button script through joypad.py, and both match every event of every suite c
 drive goes about 250 yards, an early or late impact hooks or slices, holding right through the swing pushes
 it into a bunker, a club down per press shortens it.
 
+**A hole** (tools/hole_py.py; hole_run.py checks recorded holes, play_hole.py plays one in Python). After the
+shot (PostShot 10:4A82): a putt is counted when the shot started on the green; OutcomeRules (3B:7260) applies
+the result: the hole's bonus `D4F1` (+10 for a water skip; +4 reaching the green off the pin, +2 reaching it with three
+or more strokes to spare against par, or two and within `$21` of the pin), points `C83C` when holed (the bonus, +10 off the pin, +6 / +8
+holed from off the green, +4 for a putt from `$280`, +6 birdie, +10 eagle, +16 albatross, +20 hole in one,
+each x the course factor / 2, in modes 1-3, 5, `$0A`, `$0B`), **water**: a penalty stroke and the ball back to
+the last safe spot `D51D`, **out of bounds**: a penalty stroke and the old spot kept (stroke and distance);
+the new spot goes to the player's record (PlayerField `$22`). The loop (10:45E7): a stroke limit of 3 x par
+in some modes, the scorecard when holed (Scorecard 10:4101), the next player (PickNextPlayer 10:4674: the
+farther from the pin; it loads the ball and the golfer's stats). ShotSetup (10:4798): lie and lie quality,
+the club the game picks (PickClub 10:6341: the most lofted club that reaches the pin, from those the lie
+allows), the aim (AimMenu 10:5BA6 -> SmartAim 10:6406: at the cup, or a direction whose landing is fairway or
+green), the putter's range by distance (`D32B`: 0, 1 from `$140`, 2 from `$42B`), the view behind the golfer
+and its camera (11:476E: at the ball, angle `$C000` - aim). The flight camera also ends when the ball leaves
+its picture (BallView4 11:4795 sets `D331`), which decides how many frames a long shot spends in it.
+
+Four recorded holes (tools/hole_suite.py: bot play chosen by the Python engine; hole 1 in par, hole 2 in six,
+hole 2 with two balls in the water, hole 1 with one out of bounds) match the game in every shot frame by frame,
+at every address step, and in the round and player records at the end. Only the display state that depends on
+how long the menus took (the golfer's idle animation, the landing preview, the target marker) is taken from the
+recording at an address step; all of it is rebuilt before it is read. `play_hole.py` plays a whole hole in Python
+in about two seconds, and on hole 1 its shots are the ones the game played.
+
 **From swing to outcome in Python.** With `emu_shot_record.py --from-launch` the recording starts at ShotLaunch's
 entry (event S); `shot_run.py` then runs the launch, the flight, the main loop and the cup in Python. All the
 suite's swing cases are recorded that way, and every event of every case matches. `shot_run.py REC --free
@@ -748,8 +771,10 @@ Result over 4800 frames:
       the outcome match the game in every case
 - [x] The swing in Python from the address step: club and aim changes, the meter, the impact pad, the swing
       animation's timing, the landing preview, the stroke count (swing_py.py, joypad.py; 27 suite cases)
-- [ ] The aiming menu (AimMenu 10:5BA6: shot modes, map view, club list) and the computer's swing (10:5643)
-      and its choice of club and target; then a whole hole (and round) in Python
+- [x] A whole hole in Python (hole_py.py): penalties, drops, points, scorecard, the game's club and aim choice;
+      four recorded holes match (hole_suite.py); play_hole.py plays a hole with the Python engine choosing swings
+- [ ] The aiming menu's other answers (club list, shot modes, power shots, map view), two players, the stroke
+      limit, a retry (B), the computer's swing (10:5643) and choices; then the round (next hole, wind) in Python
 - [ ] Golf engine: aiming loop (10:486B), club select, CPU golfers' targets, scoring (strokes, PlayerField `+$20`)
 - [x] Hole data: HoleAssetTable 13:4A16, overhead assets, terrain table; all 90 holes render (render_hole.py)
 - [ ] Holes: the per-hole data still unidentified (ref 1 entries 2-3: tee/pin positions? par/length?), terrain

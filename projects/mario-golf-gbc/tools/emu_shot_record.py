@@ -10,6 +10,8 @@ each with WRAM6 $D400-$D4FF (and, since F, $C800-$C8FF: round and player data; W
   --from-address: the snapshot is taken where the golfer addresses the ball (10:56B0, event A; or at its
   loop top 10:5713, event a, for a state saved inside it): the swing meter, its joypad input and the launch
   are replayed too
+  --hole: as without options (snapshot at the first loop pass) but every later address step is an A event too
+  (for tools/hole_run.py from a ball in flight)
 The joypad bytes $FF90-$FF94 of each frame (read at 00:2EBF, after VBlank) are kept in "joy" by F event index.
 usage: emu_shot_record.py OUT.json FRAMES [--state FILE] [--from-launch | --from-address] [--press FRAME:BUTTON ...]
 """
@@ -56,9 +58,11 @@ def main():
     e.hook(0x10, 0x49DD, ev("P"))
     from_launch = "--from-launch" in a or "--from-address" in a
     if "--from-address" in a:                   # the snapshot at the swing's address step (10:56B0)
-        e.hook(0x10, 0x56B0, ev("A"))
+        e.hook(0x10, 0x56B0, ev("A"))           # (every later address step is an A event too)
         first_a = ev("a")                       # or, from a state already in it, at its loop top (10:5713)
         e.hook(0x10, 0x5713, lambda emu: first_a(emu) if rec["snapshot"] is None else None)
+    elif "--hole" in a:                         # from the first loop pass, with every later address step
+        e.hook(0x10, 0x56B0, ev("A"))
     else:
         e.hook(0x10, 0x5F94, ev("S"))
 

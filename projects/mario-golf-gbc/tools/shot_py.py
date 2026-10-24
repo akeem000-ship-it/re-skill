@@ -144,20 +144,38 @@ class Shot:
     """The main thread of a shot. ev(kind) is called at the points tools/emu_shot_record.py records: F at each
     AdvanceFrame, T at each BallTask, L / P at the loop tops; it may compare the RAM with a recording."""
 
+    TASKS = {"task_on": (0x10, 0x4D45),               # BallTask
+             "meter_on": (0x10, 0x55AC),              # the swing's d-pad task
+             "anim_on": (0x11, 0x6E3E),               # the golfer's animation
+             "display_on": (0x11, 0x4113)}            # the ball display
+
     def __init__(self, w, hole, ev=lambda kind: None):
         self.w, self.hole, self.ev = w, hole, ev
-        self.task_on = registered(w, 0x10, 0x4D45)     # BallTask
-        self.meter_on = registered(w, 0x10, 0x55AC)    # the swing's d-pad task
-        self.anim_on = registered(w, 0x11, 0x6E3E)     # the golfer's animation
+        if not hasattr(w, "tasks"):                   # which frame tasks run: from the snapshot's task table,
+            w.tasks = {k: registered(w, *v) for k, v in self.TASKS.items()}   # then kept here
         self.fx = []
+
+    def __getattr__(self, k):
+        if k in Shot.TASKS:
+            return self.w.tasks[k]
+        raise AttributeError(k)
+
+    def __setattr__(self, k, v):
+        if k in Shot.TASKS:
+            self.w.tasks[k] = v
+        else:
+            object.__setattr__(self, k, v)
 
     def advance(self, n=1):             # 00:2E3B AdvanceFrame: the frame tasks in their slot order
         for _ in range(n):
             self.ev("F")
             if self.anim_on:                            # 11:6E3E
                 sw.anim_task(self.w)
-            if sw.preview_on(self.w):                   # 11:4113 -> 11:4E5E
-                sw.preview_frame(self.w, self.hole, self.fx)
+            if self.display_on:                         # 11:4113: the ball display
+                if sw.preview_on(self.w):               # -> 11:4E5E
+                    sw.preview_frame(self.w, self.hole, self.fx)
+                if self.w.wram[6][0x443] & 7 in (4, 5, 6):
+                    sw.ball_view_cut(self.w)            # 11:47A2
             if self.meter_on:                           # 10:55AC
                 sw.meter_task(self.w)
             if self.task_on:                            # 10:4D45 BallTask

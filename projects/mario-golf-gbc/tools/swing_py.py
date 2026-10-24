@@ -193,3 +193,38 @@ def shot_record(w):                     # 02:46B0: the shot's 13-byte record -> 
         return
     base = 0x680 + (0x40 if w0[0x835] else 0) + ((w0[player_field(w, 0x20)] & 3) << 4)
     r6[base:base + 13] = rec
+
+
+# -- 11:4795: the ball in the view behind the golfer (views 4-6) --
+def ball_view_cut(w):                   # 11:47A2-489A: project the ball; $D331 = 1 once it leaves the picture
+    """The camera ($D456 x, $D458 y, angle $D45A) sees the ball at depth Z and sideways X; the flight camera
+    ends ($D331) when the ball is behind it, off the sides (screen x >= $A0) or off the top or bottom."""
+    r6 = w.wram[6]
+    ang = rd16(r6, 0x45A)
+    dy = (rd16(r6, 0x404) - rd16(r6, 0x458)) & 0xFFFF
+    dx = (rd16(r6, 0x401) - rd16(r6, 0x456)) & 0xFFFF
+    xc, xs = g.mul_sin_cos_signed(dx, ang)
+    wr16(r6, 0x45C, xc)
+    wr16(r6, 0x45E, xs)
+    yc, ys = g.mul_sin_cos_signed(dy, (ang + 0x4000) & 0xFFFF)
+    x = (yc + xc) & 0xFFFF
+    z = (rd16(r6, 0x45E) + ys) & 0xFFFF
+    w.high[0x1B6] = z >> 8
+    nz = g.neg16(z)
+    if nz & 0x8000:                     # in front of the camera's plane: behind it, out of the picture
+        r6[0x331] = 1
+        return
+    if not nz >> 8 and (nz & 0xFF) < 8:
+        return                          # right at the camera: drawn at a fixed spot
+    scale = g.div_hl_by_de(0x5000, ((nz + 0x280) & 0xFFFF) >> 3) & 0xFF
+    sx = ((g.mul_hl_by_a_frac_signed(x, scale) + 1) & 0xFFFF) >> 1
+    c = ((sx & 0xFF) + 0x50) & 0xFF
+    if c >= 0xA0:
+        r6[0x331] = 1
+        return
+    h = (0x80 - (r6[0x407] | r6[0x408] << 8)) & 0xFFFF
+    sy = (g.mul_hl_by_a_frac_signed(h, scale) + 1) & 0xFFFF
+    sy = ((sy >> 1) | (sy & 0x8000)) & 0xFFFF
+    sy = (sy + 0x3C) & 0xFFFF
+    if sy & 0x80:
+        r6[0x331] = 1

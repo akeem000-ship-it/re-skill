@@ -10,7 +10,7 @@ By default the Python ports in ball_sim.py replace their ROM routines (overrides
 bounce (10:4EE0, including water, water skips and bunker plugs), BallLandCheck (10:4D09), BallRollStep
 (10:4D86) and CupPull (10:7CAB); the splash graphics they start are still ROM calls, and their sound requests
 are left out. --rom runs pure ROM code.
-usage: shot_sim.py RECORDING.json [--rom] [--quiet]
+usage: shot_sim.py RECORDING.json [--rom] [--task]
 """
 import sys, os, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -24,9 +24,11 @@ LOOP_TOP, LOOP_CALL, LOOP_RET = 0x6EAA, 0x6EA7, 0x4A25
 PRE_TOP, PRE_CALL = 0x49DD, 0x49DA     # the flight-camera loop (10:49D8) that runs before the main loop
 # camera and display bytes that other frame tasks update between the events (not simulated here)
 SKIP_C8 = set()
-SKIP_D3 = {0x26, 0x27, 0x6B, 0x6C}  # wind indicator animation, HUD blink timer (bank 12 frame task, 12:502C)
+SKIP_D3 = {0x22, 0x26, 0x27, 0x6B, 0x6C}  # HUD distance readout (12:4CA6), wind indicator animation, HUD blink timer (12:502C)
+SKIP_D3 |= set(range(0x35, 0x46))   # captions and camera scroll (3B:4339, task 3B:4433; $D335-$D345)
 SKIP_D5 = set()
 SKIP = set(range(0x2E, 0x38)) | set(range(0x5C, 0x60)) | set(range(0x65, 0x68)) | set(range(0x6B, 0x80))
+SKIP |= {0x54, 0x55}                # HUD flags (12:4B19-12:4B2E)
 
 
 def ball_view(m):

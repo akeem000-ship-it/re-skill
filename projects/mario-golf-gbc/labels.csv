@@ -260,7 +260,7 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 10,45E7,GolfShotLoop,shot loop of GolfRound (AdvanceFrame is reached through 10:486B -> 10:5D19 during aiming)
 *,C833,wRoundId,also copied to $C839
 *,C838,wWindDir,rand & 3 at hole start (unless $D4ED forces $D4EE)
-10,4134,ShotPreCheck,
+10,4134,StrokeLimit,modes other than 0 and 4: a player at 3 x par ($D325) strokes stops (10:4158)
 10,4674,PickNextPlayer,chooses wCurPlayer for the next shot (players not yet holed out: player field +$2A)
 10,4798,ShotSetup,per shot: club / lie (12:4B19), then the swing and the flight; registers BallTask
 10,49B7,ShotFly,RegisterFrameTask(1, BallTask); the flight-camera loop (10:49D8) until the first touch-down, then LoadShotView and ShotMainLoop
@@ -469,3 +469,28 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,D464,wClubContact,WRAM6: 1 when the swing animation reaches the contact mark
 *,D480,wPreviewTimer,WRAM6: frames since the preview started (restart every 32)
 *,D513,wPreviewStopped,WRAM6: the ghost ball hit a tree
+10,4101,Scorecard,hole done: PlayerField $2C + hole = strokes + putts x 16; PlayerField $3E += strokes - par
+10,4A82,PostShot,putts (PlayerField $21) when the shot started on the green; outcome to $D4DC and PlayerField $14; OutcomeRules; the new spot to PlayerField $22 unless it returned nonzero; returns the shot's own outcome
+10,61FA,AimAtCup,bc = angle from the ball to the cup
+10,6276,ShotLength,|start ($D5F8) - ball| (PinDist's tail 10:62DA)
+10,6341,PickClub,the most lofted club that reaches the pin, among those the lie allows (table 10:639A by lie class); the putter on the green
+10,6406,SmartAim,at the cup if the club reaches; else up to 36 directions (offsets 10:63BE) for a fairway or green landing, then a club less
+10,6145,AimMarker,the aim arrow's end ($D481-$D484) across the aim
+10,6472,DropAtSafeSpot,the ball back to $D51D (water)
+10,63BE,AimSearchOffsets,36 words added to the aim in turn by SmartAim
+10,639A,ClubCountTable,clubs PickClub may try, by lie class
+3B,7260,OutcomeRules,after a shot: bonus and points, the green flag, water (penalty and drop), out of bounds (penalty, $FF: stroke and distance), the score for a holed ball; captions
+3B,4339,ShowCaption,a = caption: the caption system (task 3B:4433, $D335-$D345)
+02,5411,AddPoints,$C83C += de x course factor (02:543E) / 2, in modes 1-3, 5, $0A, $0B for a human player
+02,53F5,AddBonus,$D4F1 (the hole's bonus) += de
+02,4679,KeepShotStart,$D5F8-$D5FD = the ball's position at the shot's set-up
+02,4714,RecordShot,birdie / eagle / albatross / hole in one records in the save data (modes 1-3)
+11,4795,BallView4,ball in the view behind the golfer: projection; $D331 when it leaves the picture (ends the flight camera)
+12,4B19,HudFlags,$D454 / $D455 HUD flags (4B19, 4B1F, 4B24, 4B29)
+12,4CA6,HudDistance,the distance readout ($D322)
+*,C83C,wPoints,WRAM0: points earned (16-bit)
+*,D4F1,wHoleBonus,WRAM6: bonus earned on this hole, turned into points when holed
+*,D5F8,wShotStart,WRAM6: the ball's position when the shot was set up (KeepShotStart; the shot record 02:46B0 also writes here)
+*,D426,wTargetMarker,WRAM6: the target marker (x, y); $D42A the marker's previous spot
+*,D481,wAimArrow,WRAM6: the aim arrow's end (x, y)
+*,D456,wCameraX,WRAM6: the view-4 camera: x, y ($D458), angle ($D45A = $C000 - aim)

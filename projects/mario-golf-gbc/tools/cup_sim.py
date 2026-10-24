@@ -189,10 +189,19 @@ def pin_bounce(s, fx):                  # 10:765F: off the pin: velocity = half 
 
 
 def pin_dist(s):                        # 10:62AD: |ball - cup| with the fractions, normalised before squaring
-    def abs24(o_int, o_frac, o_cup):
-        v = ((rd16(s, o_int) - rd16(s, o_cup)) & 0xFFFF) << 8 | s[o_frac]
-        return (-v) & 0xFFFFFF if v & 0x800000 else v
-    x, y = abs24(0x01, 0x00, 0x3D), abs24(0x04, 0x03, 0x3F)
+    return dist24(((rd16(s, 0x01) - rd16(s, 0x3D)) & 0xFFFF) << 8 | s[0x00],
+                  ((rd16(s, 0x04) - rd16(s, 0x3F)) & 0xFFFF) << 8 | s[0x03])
+
+
+def shot_length(s, start):              # 10:6276: |start - ball| (start = $D5F8-$D5FD, kept by 02:4679)
+    def p24(b, o):
+        return b[o] | b[o + 1] << 8 | b[o + 2] << 16
+    return dist24((p24(start, 0) - p24(s, 0)) & 0xFFFFFF, (p24(start, 3) - p24(s, 3)) & 0xFFFFFF)
+
+
+def dist24(x, y):                       # 10:62DA: the length of a 24-bit (8.8 + 8) vector
+    x = (-x) & 0xFFFFFF if x & 0x800000 else x
+    y = (-y) & 0xFFFFFF if y & 0x800000 else y
     m = (y >> 16) | (x >> 16)
     a, n = ((m << 1) | 1) & 0xFF, 0
     if not m & 0x80:

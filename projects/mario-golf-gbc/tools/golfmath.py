@@ -115,6 +115,10 @@ def div_ahl_by_de(a, hl, de):          # 00:0DDB: a:hl / de -> (a, hl), bit for 
     return qa, (qh << 8) | ql
 
 
+def div_hl_by_de(hl, de):              # 00:09AE DivHLByDE: hl = hl / de; de = 0 -> $FFFF
+    return 0xFFFF if de == 0 else hl // de
+
+
 def isqrt_hl(hl):                      # 00:0F04: a = floor(sqrt(hl))
     r = int(hl ** 0.5)
     while r * r > hl:

@@ -39,6 +39,8 @@ global checksum `$0FC7`.
 | `golfmath.py`, `test_math.py`, `emu_callfn.py`, `probe_fn.py` | bank-0 math in Python; checked against the ROM routines called inside PyBoy |
 | `ball_sim.py`, `emu_ball_record.py`, `emu_regs_at.py` | exact ball simulator; per-step ball recordings; registers at an address |
 | `sm83.py`, `test_sm83.py` | SM83 interpreter that runs ROM code with Python overrides; checked against the math ports |
+| `hole_py.py`, `hole_run.py`, `hole_suite.py`, `play_hole.py` | the rules between shots; a recorded hole checked in Python; four holes; a hole played in Python |
+| `emu_play_hole.py`, `plan_shot.py` | a bot that plays holes in the emulator (swings chosen by the Python engine); the planner |
 | `swing_py.py`, `joypad.py` | the swing (address step, meter, impact pad, animation timing, landing preview) and the joypad in Python |
 | `trace_code.py`, `coverage.py` | static code trace (copied from Tennis); share of the traced code inside named routines |
 | `launch_py.py`, `test_launch.py`, `emu_launch_record.py` | ShotLaunch (swing result -> ball velocity) in Python; checked on recorded launches and random swings |

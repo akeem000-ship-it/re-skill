@@ -382,6 +382,13 @@ class Machine:
                 raise RuntimeError("no stop after %d steps (pc %04x)" % (max_steps, self.pc))
         return self.pc
 
+    def snapshot(self):
+        """The machine's memory as a load_snapshot dict."""
+        snap = {"wram%d" % i: bytes(self.wram[i]).hex() for i in range(8)}
+        snap.update({"vram%d" % i: bytes(self.vram[i]).hex() for i in range(2)})
+        snap.update(high=bytes(self.high).hex(), sram=bytes(self.sram).hex(), rom_bank=self.rom_bank)
+        return snap
+
     def load_snapshot(self, snap):
         """snap: dict from tools/emu_shot_record.py (hex strings): wram0-7, vram0-1, high, sram, rom_bank, sp."""
         for i in range(8):
