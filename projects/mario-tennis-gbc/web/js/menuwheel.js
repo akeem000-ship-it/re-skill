@@ -79,7 +79,7 @@ const NC = CELLS.length;
 // is first turned on) are left out until they exist.
 const OPTION_CATS = [
   ["PICTURE", "the view, the camera, the screen", ["view3d", "cam", "aspect", "smoothbtn", "voxstylebtn", "lightbtn", "fieldlifebtn", "groundbtn", "treesbtn"]],
-  ["STADIUM", "the court, the crowd, the effects", ["stadiumbtn", "courtbtn", "farendbtn", "weatherbtn", "crowdsndbtn", "ballfxbtn", "matchfxbtn", "kitbtn", "introbtn", "vsbtn", "callsbtn", "aimbtn"]],
+  ["STADIUM", "the court, the crowd, the effects", ["stadiumbtn", "stadiumqbtn", "courtbtn", "farendbtn", "weatherbtn", "crowdsndbtn", "ballfxbtn", "matchfxbtn", "kitbtn", "introbtn", "vsbtn", "callsbtn", "aimbtn"]],
   ["MENUS & TEXT", "how menus and words are drawn", ["uibtn", "fontbtn", "sprbtn"]],
   ["MODES", "exhibition rules, rematch, practice, partner, text", ["mode-sets", "mode-games", "mode-tiebreak", "mode-noAd", "mode-rematch", "mode-machine", "mode-mgHard", "mode-partner", "mode-fastText", "recordsbtn"]],
   ["PLAY", "the rules, the feel, the controls", ["physbtn", "netbtn", "plusbtn", "tourlenbtn", "runaheadbtn", "padmode", "vibratebtn", "batterybtn", "tourplusbtn", "tourbtn"]],

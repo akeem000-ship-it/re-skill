@@ -16,12 +16,11 @@
 // The hour is the lighting's (lighting.js hourFor("court"): matches by class, random, day, night, or the clock; a sunset from the
 // weather); rain greys the sky over. Without LIGHT the afternoon. Nothing in the game is read but the court and match.
 import { invert } from "./lighting.js";
+import { THEME_BY_MAP } from "./venues.js";
 
 const STRETCH = 3.5, TEX_TOP = 1.05, TEX_BOT = -0.35, TW = 4096, TH = 1024;   // the panorama covers elevations TEX_BOT..TEX_TOP (radians)
 const SUN_LOW = 0.45, MOON = [-0.5, 0.13];                                     // the sun drawn lower than it is (a sunset sits in the view), the moon's place
 const HORIZON_AT = [0, 380, -2450];                                            // the horizon is drawn through this point: about the far stand's top (world)
-const THEME_BY_MAP = { 0: "castle", 1: "castle", 13: "castle", 2: "city", 7: "city", 3: "campus", 4: "campus", 5: "campus", 8: "campus", 6: "campus",
-  9: "tropics", 14: "tropics", 10: "pipes", 11: "volcano", 12: "airfield", 15: "jungle" };
 // the sky through the day: zenith, horizon (0..255), how much night (stars, moon), the sun's colour
 const SKY = [
   { h: 0,    top: [5, 9, 28],     hor: [26, 38, 80],    night: 1,   sun: [255, 200, 150] },
@@ -108,7 +107,8 @@ export class SkyBox {
       const key = theme + ":" + (Math.round(S.h * 4) / 4) + (rain ? "r" : "");
       if (key !== this.key) { this.key = key; this.upload(gl, panorama(theme, S)); }
       const inv = invert(mvp), un = q => { const w = inv[3] * q[0] + inv[7] * q[1] + inv[11] * q[2] + inv[15]; return [0, 1, 2].map(i => (inv[i] * q[0] + inv[4 + i] * q[1] + inv[8 + i] * q[2] + inv[12 + i]) / w); };
-      const eye = un([0, 0, -1]), dx = HORIZON_AT[0] - eye[0], dz = HORIZON_AT[2] - eye[2], e0 = Math.atan2(HORIZON_AT[1] - eye[1], Math.hypot(dx, dz));
+      const st = this.v.stadium, hy = st && st.active && st.built && st.built.skyY != null ? st.built.skyY : HORIZON_AT[1];   // (the far stand's height: VENUES rows)
+      const eye = un([0, 0, -1]), dx = HORIZON_AT[0] - eye[0], dz = HORIZON_AT[2] - eye[2], e0 = Math.atan2(hy - eye[1], Math.hypot(dx, dz));
       const U = this.u, c3 = a => a.map(x => x / 255);
       gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
       gl.disable(gl.DEPTH_TEST); gl.depthMask(false); gl.disable(gl.BLEND);
