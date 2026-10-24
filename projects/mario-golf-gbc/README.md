@@ -31,6 +31,11 @@ global checksum `$0FC7`.
 | `extract_tiles.py`, `byte_hist.py`, `hexdump.py` | LZ tile sheets; value histograms; hex dumps |
 | `gen_all.py` | rebuilds every derived file (`docs/text_dump.txt`, `gfx/`) |
 | `emu/session.py`, `emu_boot.py`, `emu_verify.py` | PyBoy wrapper; boot with screenshots; decoders checked against the running game |
+| `emu_script.py` | shared button scripts; writes `states/stroke_hole1.state` (hole 1 of a Stroke round) |
+| `emu_watch.py`, `emu_peek.py`, `emu_state_peek.py` | memory changes frame by frame; memory dumps at a frame or from a state |
+| `emu_callers.py`, `emu_lzlog.py` | who calls a routine (stack walk); every LZ load with source and destination |
+| `render_hole.py`, `hole_stats.py`, `emu_hole_check.py` | golf holes and terrain maps; hole statistics; hole assets vs the game's memory |
+| `dump_save.py` | SRAM save: signature, checksum, backup, block directory |
 | `xref.py`, `search_bytes.py`, `find_bytes.py`, `decode_tables.py`, `relsearch.py`, `strings_dump.py` | generic, copied from Tennis |
 
 The ROM and everything extracted from it are gitignored. Only tools and notes are versioned.
