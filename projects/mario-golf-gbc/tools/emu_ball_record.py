@@ -1,4 +1,4 @@
-"""Record the ball state (WRAM6 $D400-$D45F) and the wind ($C815/$C816) at every BallTask (10:4D45) entry.
+"""Record the ball state (WRAM6 $D400-$D4FF) and the wind ($C815/$C816) at every BallTask (10:4D45) entry.
 
 usage: emu_ball_record.py OUT.json FRAMES [--state FILE] [--press FRAME:BUTTON ...]
   default state states/stroke_hole1.state; output: {"wind": [mph, dir], "frames": [[f, "hex of 96 bytes"], ...]}
@@ -19,7 +19,7 @@ def main():
     rec, cur = [], [0]
 
     def task(emu):
-        rec.append([cur[0], emu.wram(6, 0xD400, 0x60).hex()])
+        rec.append([cur[0], emu.wram(6, 0xD400, 0x100).hex()])
 
     def each(f):
         cur[0] = f

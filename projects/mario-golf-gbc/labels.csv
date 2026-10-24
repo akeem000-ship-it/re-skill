@@ -291,7 +291,7 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,D413,wBallSpeed,WRAM6: |(vx vy)|
 *,D414,wBallDir,WRAM6: direction of (vx vy); 256 = full turn
 *,D415,wBallInAir,WRAM6: 1 in flight / 0 rolling
-*,D443,wOnGreen,WRAM6: positions relative to $D441/$D442 and x4 on the green
+*,D443,wOnGreen,WRAM6 shot view: 0 course; 1 green (putting view; green maps; positions relative to $D441/$D442 and x4); 2 cup close-up; 3 also uses the green maps; 4 seen in normal shots (course maps)
 *,D44E,wSwingCount,WRAM6: frames since the meter started
 *,D44F,wSwingCursor,WRAM6: meter cursor 0..$3C..0..-18
 *,D450,wSwingPower,WRAM6: cursor at the power press ($3C = full; $80 = none)
@@ -359,3 +359,39 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 0,0B69,SineTable8,65 bytes for angles 0..$40
 0,0DDB,DivAHLByDE,a:hl / de in three 8-bit phases (golfmath.div_ahl_by_de reproduces its quirks)
 0,1B68,TangentTable,257 words used by AngleFromVector16
+0,0C67,NegDE,de = -de
+10,5617,BallInGreenArea,c = 1 when the ball is within 5 x 4 map units of the green corner ($D441/$D442): the putting view
+10,648B,BallLieTerrain,terrain type under the ball at rest (green-relative on the green views)
+10,6E90,ShotOutOfBounds,ball left the hole's bounds ($C329-$C32C): sound $40, wait 30 frames, return a = 7
+10,6E99,ShotMainLoop,per frame after the launch: bounds, view switches, pin and cup checks, CupPull, rest -> a = lie terrain or $80 holed
+10,7029,ShotAtRest,ball rested 40 frames (or B): height and vz cleared; lie quality for fairway / rough; returns the terrain type
+10,7052,ShotHoled,cup entered: $D444 = 1; CupDrop; sound $5A; HoleOutPlace; returns $80
+10,70B4,SetLieFairway,PlayerField $3F and $D446 = LieFairwayTable[(x + y fraction nibbles) & 15] (10:70DB)
+10,70EB,SetLieRough,PlayerField $3F and $D446 = LieRoughTable[(x + y fraction nibbles) & 15] (10:7112)
+10,7122,NearCup,a = 1 when |x - cup x| and |y - cup y| are both below $20 (integer parts)
+10,716B,CupRollIn,ball on the ground within 6 of the cup: decides whether it drops ($D4B1)
+10,7263,CupFlyIn,ball falling (vz < 0): predicts the next height and tests the cup (holed on the fly)
+10,72E7,PinCheck,low ball next to the flagstick: $D4B9 bit 0; height >= $C0: hits the pin (sound $59, $D48E bit 2, velocity zeroed)
+10,7372,Dist16,about sqrt(hl^2 + de^2) in steps of 16 (saturating)
+10,7888,HoleOutPlace,ball put on the cup position, velocity cleared, 30-frame wait
+10,79AF,CupDrop,unregisters BallTask; a = 2 when the ball pops back out (put back in the air)
+10,7CAB,CupPull,near the cup the ball is pulled toward it; a = 1 when it pulled
+12,6A7F,WaterSplashGfx,loads the splash tiles to $8200 and their sprite (water landing)
+12,6A9C,WaterSplashAt,hl = x, de = y: places the splash (not in view 4)
+13,432B,LoadShotView,a = view ($D443): loads that view's maps and graphics (several frames)
+13,44A4,CupViewEnter,switches the green view to the cup close-up ($D443 = 2)
+13,4528,CupViewLeave,back from the cup close-up to the green view ($D443 = 1)
+3B,431F,ShotViewLeave,called before LoadShotView when the view changes
+*,D331,wBallTouched,WRAM6: set to 1 at every bounce and stop
+*,D43D,wCupX,WRAM6: cup x (16-bit integer part)
+*,D43F,wCupY,WRAM6: cup y
+*,D441,wGreenCornerX,WRAM6: green corner (map units) for the green views
+*,D442,wGreenCornerY,WRAM6: green corner y
+*,D444,wHoled,WRAM6: 1 once the ball entered the cup
+*,D446,wLie,WRAM6: lie quality after the shot (copied to PlayerField $3F); 1 / 2 for a plugged ball
+*,D489,wFirstLanding,WRAM6: 1 until the first bounce, which stores the spot in $D48A-$D48D
+*,D48A,wLandingSpot,WRAM6: x and y integer parts of the first landing
+*,D48E,wBallFlags,WRAM6: bit 0 skipped on water; bit 2 hit the pin
+*,D4B9,wPinFlags,WRAM6: bit 0 pin tested; bit 1 hit the pin
+*,D4CF,wStopSpot,WRAM6: x and y integer parts where the ball stopped (BallStop)
+*,D4D3,wBallRestCount,WRAM6: frames at rest; the shot ends at $28 ($C8 after BallStop)

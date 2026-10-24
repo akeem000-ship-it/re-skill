@@ -357,7 +357,7 @@ sound `$51` and drops the ball: water). BallTerrainCheck (10:527C) reads the ter
 
 **Ball simulator** (`tools/ball_sim.py`, with the bank-0 math in `tools/golfmath.py`): a Python port of BallTask
 that reproduces the game's ball state (`D400-D415`) **exactly, step for step**. Recordings come from
-`tools/emu_ball_record.py`, which snapshots WRAM6 `D400-D45F` at every BallTask entry. Result on five shots on
+`tools/emu_ball_record.py`, which snapshots WRAM6 `D400-D4FF` at every BallTask entry. Result on five shots on
 hole 1 (wind 7 mph): perfect drive 437 steps, topped shot 216, late-impact shot 387, 3-wood 486, aimed-left
 shot 257: **all 1783 steps identical**, through flight, bounces and roll. Details the port pinned down:
 
@@ -370,15 +370,15 @@ shot 257: **all 1783 steps identical**, through flight, bounces and roll. Detail
 - Wind (10:52EE): only in the air; size WindSpeedTable[`$C815` mph] (10:5315), direction `$C816`.
 - Bounce (10:4FF2): terrain factors `D448` / `D449` = TerrainPropTable bytes 0 and 2; height, vz, spin, curve
   x `D448` (height and vz negated); slope push (size -32 along the slope; plus vz x `$DD`/256 along it, vz
-  halved); curve x `$40` and spin x `$40` pushes; vx, vy x `D449`. Water (type 3) and the bunker plug (types
-  2 / `$0D`, entry angle below `$14`) branch off (not simulated).
+  halved); curve x `$40` and spin x `$40` pushes; vx, vy x `D449`. Water and bunkers: see "Putting, the cup,
+  water and bunkers" below.
 - Landing (10:4D09): integer height 0 and |vz| < `$20` -> rolling.
 - Roll (10:4D86): curve push (x `$40`) and spin push along the direction, both decaying x `$FC`/256 each
   frame; slope push; then vx, vy x the terrain's friction byte (TerrainPropTable byte 1).
 - **Slopes**: off the green, a 4 x 4-cell nibble map per tile (course asset ref 0 entry 4, WRAM1 `$D800`; bit 3
   = sloped, bits 0-2 = direction through SlopeDirTable 10:6516 with the tile's flips), push `$20`
   (SlopeCellAt 10:674E). On the green, a per-tile byte (hole asset ref 1 entry 2, WRAM6 `$D700`; strength in
-  bits 4-5, push 0/2/4/6, scaled by the ball speed in 10:4E98) — the green branch is not simulated yet.
+  bits 4-5, push 0/2/4/6, scaled by the ball speed in 10:4E98), used while `D443` is 1-3.
 - The math routines used are all checked against the ROM on random inputs (`tools/test_math.py`, via
   `tools/emu_callfn.py`, which calls a ROM routine inside PyBoy): multiplies, MulSin/MulSinCos (16- and 8-bit
   angles), AngleFromVector16, IsqrtHL (00:0F04; the Tennis name "AngleFromVector" was wrong) and DivAHLByDE
@@ -403,6 +403,64 @@ shot 257: **all 1783 steps identical**, through flight, bounces and roll. Detail
 
 On the test drive: speed `$298E`, elevation `$0A39` (14.4 deg), direction `$C194` (272 deg, up the screen) gave
 vz `$0A4B` and (vx, vy) = (`$018B`, `-$2841`), equal to speed x sin / cos to within rounding.
+
+**Putting, the cup, water and bunkers** (read from the code; every branch below is reproduced by the whole-shot
+replay further down):
+
+- **Views** (`D443` wOnGreen): 0 is the course view; 1 the green view (putting view; BallInGreenArea 10:5617:
+  the ball within 5 x 4 map units of the green corner `D441`/`D442`); 2 the cup close-up; 4 occurs in normal
+  shots. In views 1-3 the ball step reads the **green maps** (hole asset ref 1: terrain, slope bytes at WRAM6
+  `$D700`) with positions relative to the green corner and x4; otherwise the course maps. A view change runs
+  ShotViewLeave (3B:431F) and LoadShotView (13:432B), which take several frames with AdvanceFrame calls inside.
+- **ShotMainLoop** (10:6E99) runs once per frame after the launch (the flight-camera loop 10:49D8 runs first) and
+  returns to 10:4A25 with the shot's **outcome** in `a`:
+  - outside the hole's bounds (`$C329-$C32C`) -> ShotOutOfBounds (10:6E90): sound `$40`, 30-frame wait, `a` = 7;
+  - view 1: NearCup (10:7122; within `$20` of the cup `D43D`/`D43F`) and PinCheck (10:72E7) -> a low ball enters
+    the cup close-up (CupViewEnter 13:44A4, `D443` = 2); view 2 goes back (CupViewLeave 13:4528) when the ball
+    is high again or no longer near; otherwise BallInGreenArea picks view 0 / 1;
+  - view 2: CupFlyIn (10:7263; a falling ball whose next height is below 0 over the cup) or, on the ground
+    within 6 of the cup (IsqrtHL of the squared distance), CupRollIn (10:716B, `D4B1`) -> ShotHoled (10:7052): `D444` = 1,
+    CupDrop (10:79AF; `a` = 2 when the ball pops back out and the loop goes on), sound `$5A`, HoleOutPlace
+    (10:7888, the ball set on the cup), `a` = **`$80`**;
+  - PinCheck: a ball at height `$C0-$E7` next to the pin hits it (sound `$59`, `D48E` bit 2, velocity zeroed);
+  - CupPull (10:7CAB): near the cup the ball is pulled toward it (ported: `ball_sim.cup_pull`);
+  - at rest (`D4D3` reaches `$28`, or B) -> ShotAtRest (10:7029): height and vz cleared, BallLieTerrain
+    (10:648B) gives the terrain type, the lie quality PlayerField `$3F` / `D446` comes from a 16-byte table indexed
+    by the position's fraction nibbles (fairway and type `$0E`: 10:70DB; rough: 10:7112); `a` = the terrain type
+    (0 fairway, 1 rough, 2 bunker, 3 water, 6 green, 9 semirough).
+- **Water** (BallBounce 10:5021, type 3): sound `$51` and the splash (WaterSplashAt 12:6A9C at the ball,
+  WaterSplashGfx 12:6A7F); a ball with speed >= 5 and a landing angle (AngleFromVector16(speed x 256, -vz))
+  of `$28` or more **skips**: `D48E` bit 0 and a normal bounce with the water's factors; otherwise BallStop
+  (10:521C: velocity and height 0, the spot in `D4CF-D4D2`, `D4D3` = `$C8`, `D331` = 1) and the shot ends in
+  the water. Rolling into water (BallRollStep 10:4E3F) splashes and stops the same way.
+- **Bunkers** (types 2 and `$0D`, 10:5068): every landing sets PlayerField `$15` bit 0; a landing angle below
+  `$14` **plugs**: lie `D446` / PlayerField `$3F` = 1 (2 below `$0E`), sound `$4B`, BallStop. Otherwise the ball
+  bounces with the sand's factors.
+
+**Whole-shot replay** (`tools/sm83.py`, `tools/shot_sim.py`, `tools/shot_suite.py`). `sm83.py` is an SM83
+interpreter (MBC5 banking, WRAM/VRAM banks, rLY/rSTAT faked for the LCD-off waits) checked against the math ports
+(`tools/test_sm83.py`). `emu_shot_record.py` records a shot in PyBoy: a full RAM snapshot at the first pass of
+the main thread's loop (ShotMainLoop 10:6EAA or the flight-camera loop 10:49DD), then every AdvanceFrame entry
+(F), BallTask entry (T) and loop pass (L / P) with WRAM6 `D400-D4FF` and `C800-C8FF` (round and player data).
+`shot_sim.py` restores the snapshot and runs **the game's own main thread** in the interpreter from that point;
+each AdvanceFrame it calls runs that frame's recorded BallTask calls (keeping hROMBank, hWRAMBank and rSVBK as
+RunFrameTasks 00:247D does) and returns. At every event both RAM ranges are compared with the game, except bytes
+owned by other frame tasks: the camera and display bytes `D42E-D437`, `D465-D467`, and bank 11's sprite state
+`D45C-D45F`, `D46B-D47F`. With the Python ports switched in (BallFlightStep with BallBounce, BallLandCheck,
+BallRollStep, CupPull) the remaining ROM is the main loop, the cup routines and the splash graphics; `--rom`
+runs only ROM code. The suite (24 cases from saved states, button scripts and RAM pokes) matches **every event
+in both modes**, with the game's outcome:
+
+| Cases | Outcome |
+|-------|---------|
+| tee shots, approaches, a sand shot out of a bunker, flight and roll from mid-shot states | `$00` fairway, `$01` rough, `$09` semirough, `$06` green |
+| a putt from 3.6 ft that misses; three that **hole out** (the hole finished in 5); a chip falling into the cup view | `$06`, `$80` x 4 |
+| a ball rolling into a bunker; a sand shot landing in sand; a flat bunker landing | `$02` |
+| two vertical bunker landings (poked: no horizontal speed) -> **plugged** (lie 2) | `$02` |
+| a shot over water that **skips twice** and then rolls in; a vertical water landing (poked) | `$03` |
+
+The cases the old frame-by-frame comparison could not reach were the view switches: the game spends several
+frames inside LoadShotView, so the replay must know which AdvanceFrame each ball step belongs to (the F events).
 
 #### Holes (bank 13 loaders; tools/render_hole.py, tools/emu_hole_check.py, tools/hole_stats.py)
 
@@ -516,6 +574,7 @@ engine is the RPG ("story") side; how golf rounds and the menus are entered from
 | `gfx/lz_BB_AAAA.png`, `gfx/raw_03_50f0.png` (gitignored) | LZ entries as tile sheets; the font |
 | `python3 tools/gen_all.py` | rebuilds all of the above |
 | `out/boot_FFFFF.png` (gitignored) | emulator screenshots from `emu_boot.py` |
+| `out/suite_<case>.json`, `states/suite_<case>.state` (gitignored) | shot recordings and poked states from `shot_suite.py` |
 | `docs/text_dump.txt` (gitignored) | every string: `id bank:index text`, control codes as `{XX}` (`python3 tools/dump_text.py`) |
 
 ---
@@ -582,10 +641,13 @@ Result over 4800 frames:
 - [x] Golf engine, first pass: round and shot loop, swing meter, ball state and the flight / roll steps
 - [x] Golf engine: shot launch (ShotLaunch 10:5F94): club distance table, power curve, speed / elevation / direction
 - [x] Golf engine: ball step ported exactly (ball_sim.py: flight, wind, drag, bounce, roll, slopes; 5 shots, 1783 steps)
-- [ ] Ball step: the green (putting) branches, water drop and bunker plug; record a putt and a water shot
+- [x] Ball step: the green (putting) branches, water drop and skip, bunker plug; the cup and holing out
+      (ShotMainLoop 10:6E99; whole-shot replay in the interpreter, shot_suite.py: 24 cases, every event matches)
+- [ ] Cup routines in Python (CupFlyIn 10:7263, CupRollIn 10:716B, PinCheck 10:72E7, CupDrop 10:79AF): they
+      run as ROM code in the replay; port them, then ShotMainLoop itself
 - [ ] Golf engine: the lie factor table (10:660E), 08:60BC (distance -> speed), the impact offsets (10:6B03,
       6B1F, 6C18, 6C54, 6C9F): port ShotLaunch and check launch values the same way
-- [ ] Golf engine: aiming loop (10:486B), club select, putting on the green, CPU golfers' targets, scoring
+- [ ] Golf engine: aiming loop (10:486B), club select, CPU golfers' targets, scoring (strokes, PlayerField `+$20`)
 - [x] Hole data: HoleAssetTable 13:4A16, overhead assets, terrain table; all 90 holes render (render_hole.py)
 - [ ] Holes: the per-hole data still unidentified (ref 1 entries 2-3: tee/pin positions? par/length?), terrain
       types 4, 5, 8, A-F, the behind-the-golfer view assets (refs 2-4), hole ids `$00-$09` and `$64` up

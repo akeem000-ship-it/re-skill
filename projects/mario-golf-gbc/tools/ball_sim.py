@@ -7,7 +7,7 @@ Implemented: the air step (BallFlightStep 10:4EE0), the bounce (10:4FF2-5212, ex
 plug), the landing test (BallLandCheck 10:4D09) and the roll (BallRollStep 10:4D86), off the green.
 Wind: mph = $C815, direction = $C816.
 usage: ball_sim.py RECORDING.json [--from FRAME] [--hole ID]   (hole id hex, default 0A)
-  starts from the recorded state at FRAME (default: the first frame with the ball in the air) and steps the
+  starts from the recorded state at FRAME (default: the first frame with the ball in the air or moving) and steps the
   simulator once per recorded change, printing the first bytes that differ.
 """
 import sys, os, json
@@ -35,6 +35,12 @@ class Hole:
         self.slope = asset(_rom, r[1], 2)       # WRAM6 $D700, one byte per tile
         self.terrain = asset(_rom, r[0], 3)     # WRAM6 $D800, 8 bytes per tile
         self.slopes = asset(_rom, r[0], 4)      # WRAM1 $D800, 8 bytes per tile: slope nibble per cell
+        # the putting view replaces the WRAM maps (13:4077; checked with emu_green_check.py)
+        self.course = (self.attrs, self.tmap, self.slope, self.terrain)
+        self.green = (asset(_rom, r[3], 1), asset(_rom, r[3], 2), asset(_rom, r[3], 3), asset(_rom, r[2], 2))
+
+    def use(self, green):
+        self.attrs, self.tmap, self.slope, self.terrain = self.green if green else self.course
 
     def _cell(self, table, hl, de):
         i = ((de >> 8) * 64 + (hl >> 8)) & 0xFFF
@@ -162,43 +168,79 @@ def land_check(s):                     # 10:4D09 BallLandCheck
     s[0x15] = 0
     s[0x06] = s[0x07] = s[0x08] = 0
     s[0x0D] = s[0x0E] = 0
+    s[0x89] = 0                        # (sound $40 when it was set)
 
 
 def ball_xy(s):
     return rd16(s, 0x01), rd16(s, 0x04)
 
 
-def slope(s, hole):                    # 10:66DB: (magnitude, direction byte, nonzero)
+def green_xy(s):                       # 10:66F1 / 10:67FA: relative to the green's corner ($D441/$D442), x4
     x, y = ball_xy(s)
+    x = ((((x >> 8) - s[0x41]) & 0xFF) << 8 | (x & 0xFF)) << 2 & 0xFFFF
+    y = ((((y >> 8) - s[0x42]) & 0xFF) << 8 | (y & 0xFF)) << 2 & 0xFFFF
+    return x, y
+
+
+def slope(s, hole):                    # 10:66DB: (magnitude, direction byte, nonzero)
     if not s[0x43] or s[0x43] == 4:     # off the green: 10:674E
-        nz, b = hole.slope_cell(x, y)
+        nz, b = hole.slope_cell(*ball_xy(s))
         return (0x20, b, nz) if nz else (0, 0, 0)
-    raise NotImplementedError("slope on the green (10:66F1 / 10:64D1)")
+    x, y = green_xy(s)                  # on the green: 10:66F1, GreenSlopeAt 10:64D1
     v, b = hole.slope_at(x, y)
     strength = (v >> 4) & 3
     if not strength:
         return 0, 0, 0
-    if hole.terrain_at(x, y) == 6:
+    if hole.terrain_at(x, y) == 6:      # (x, y) are the green coordinates here
         return GREEN_SLOPE[strength], b, 0xFF
     return 0x20, b, 0xFF
 
 
-def terrain_props(s, hole):            # 10:67E4 (off the green): (type, props)
-    if s[0x43] and s[0x43] < 4:
-        raise NotImplementedError("terrain on the green")
-    t = hole.terrain_at(*ball_xy(s))
+def terrain_props(s, hole):            # 10:67E4: (type, props)
+    xy = green_xy(s) if s[0x43] and s[0x43] < 4 else ball_xy(s)
+    t = hole.terrain_at(*xy)
     return t, TERRAIN_PROPS[t]
 
 
-def bounce(s, hole):                   # 10:4FF2-5212: the ball went below the ground in the air step
+def ball_stop(s):                      # 10:521C BallStop (the caller sets $D331 = 1)
+    for o in range(0x09, 0x0F):
+        s[o] = 0
+    s[0x06] = s[0x07] = s[0x08] = 0
+    s[0xCF], s[0xD0], s[0xD1], s[0xD2] = s[0x01], s[0x02], s[0x04], s[0x05]
+    s[0xD3] = 0xC8
+
+
+def landing_angle(s):                  # angle of (speed, -vz): small = steep
+    return g.angle_from_vector16(s[0x13] << 8, neg16(rd16(s, 0x0D))) >> 8
+
+
+def bounce(s, hole, fx=None):          # 10:4FF2-5212: the ball went below the ground in the air step
+    """Returns "bounce", "water" (stopped in the water), or "plugged". fx collects what the ROM does outside
+    $D400-$D4FF, for the caller: "splash" (12:6A9C, 12:6A7F at the ball), ("bunker", depth) = PlayerField $15
+    bit 0 set and, with a depth, PlayerField $3F = depth. Sounds ($49, $51 water, $4B plug) are left out."""
+    fx = [] if fx is None else fx
+    if s[0x89]:                        # first landing: remember where ($D48A-$D48D = x and y integer parts)
+        s[0x89] = 0
+        s[0x8A], s[0x8B], s[0x8C], s[0x8D] = s[0x01], s[0x02], s[0x04], s[0x05]
     t, props = terrain_props(s, hole)
     s[0x48], s[0x49] = props[0], props[2]
-    if t == 3:
-        return "water"
-    if t in (2, 0x0D):
-        b = g.angle_from_vector16(s[0x13] << 8, neg16(rd16(s, 0x0D))) >> 8
+    if t == 3:                         # 10:5021 water: a fast, flat ball skips (bounces with the water factors)
+        fx.append("splash")
+        if s[0x13] >= 5 and landing_angle(s) >= 0x28:
+            s[0x8E] |= 1
+        else:
+            s[0x8E] &= 0xFE
+            ball_stop(s)
+            return "water"
+    elif t in (2, 0x0D):               # 10:5068 bunker: a steep landing plugs (depth 2 when steeper than $0E)
+        b = landing_angle(s)
         if b < 0x14:
+            depth = 1 if b >= 0x0E else 2
+            s[0x46] = depth
+            fx.append(("bunker", depth))
+            ball_stop(s)
             return "plugged"
+        fx.append(("bunker", None))
     h = g.mul_hl_by_a_frac_signed(rd16(s, 0x06), s[0x48])
     wr16(s, 0x06, neg16(h))
     s[0x08] = 0
@@ -242,7 +284,7 @@ def green_scale(s, hl, de):            # 10:4E98: on the green the slope push sc
     return g.mul_hl_by_a_frac_signed(hl, b), g.mul_hl_by_a_frac_signed(de, b)
 
 
-def roll_step(s, hole):                # 10:4D86 BallRollStep
+def roll_step(s, hole, fx=None):       # 10:4D86 BallRollStep (fx as in bounce)
     speed_and_dir(s)
     hl = g.mul_hl_by_a_frac_signed(rd16(s, 0x0F), s[0x13])
     hl = g.mul_hl_by_a_frac_signed(hl, 0x40)
@@ -259,7 +301,10 @@ def roll_step(s, hole):                # 10:4D86 BallRollStep
     mag, b, nz = slope(s, hole)
     p_hl, p_de = g.mul_sin_cos(mag, b << 8) if nz else (0, 0)
     t, props = terrain_props(s, hole)
-    if t == 3:
+    if t == 3:                         # 10:4E3F rolled into the water: splash and stop
+        if fx is not None:
+            fx.append("splash")
+        ball_stop(s)
         return "water"
     if t == 6:
         p_hl, p_de = green_scale(s, p_hl, p_de)
@@ -272,21 +317,80 @@ def roll_step(s, hole):                # 10:4D86 BallRollStep
     return "roll"
 
 
+def _abs16(v):
+    return neg16(v) if v & 0x8000 else v
+
+
+def dist(hl, de):                      # 10:7372: about sqrt(hl^2 + de^2) in steps of 16 (saturating)
+    def sq(v):
+        p = _abs16(v) * _abs16(v)                       # MulHLByDE's 32-bit product ($FFA8-$FFAB)
+        return 0xFFFF if p >> 24 else (p >> 8) & 0xFFFF
+    t = sq(hl) + sq(de)
+    if t > 0xFFFF:
+        return 0x0FFF
+    return (g.isqrt_hl(t) << 4) & 0xFFFF
+
+
+def cup_pull(s):                       # 10:7CAB CupPull: near the cup, pull the ball toward it
+    if s[0xB9] & 2:
+        return 0
+    if dist(rd16(s, 0x09), rd16(s, 0x0B)) >> 8 >= 3:
+        return 0
+    cx, cy = rd16(s, 0x3D), rd16(s, 0x3F)
+    if dist((rd16(s, 0x01) - cx) & 0xFFFF, (rd16(s, 0x04) - cy) & 0xFFFF):
+        return 0
+    ax = _abs16((rd16(s, 0x00) - ((cx & 0xFF) << 8)) & 0xFFFF)
+    wr16(s, 0xB3, ax)
+    if not ((ax - 0x0B00) & 0x8000):
+        return 0
+    ay = _abs16((rd16(s, 0x03) - ((cy & 0xFF) << 8)) & 0xFFFF)
+    if not ((ay - 0x0D00) & 0x8000):
+        return 0
+    k = _abs16((dist(ax, ay) - 0x1000) & 0xFFFF)
+    k = (k - 0x10000 if k & 0x8000 else k) >> 2
+    s[0xA5], s[0xA6] = (k >> 8) & 0xFF, 0
+
+    def rel(c, o):                     # (cup << 8) - position, with the ROM's sign handling
+        de = c
+        if de & 0x8000:
+            de = neg16(de)
+        de = (de & 0xFF) << 8
+        if c & 0x8000:
+            de = neg16(de)
+        return (de - rd16(s, o)) & 0xFFFF
+    dx, dy = rel(cx, 0x00), rel(cy, 0x03)
+    wr16(s, 0x99, dx)
+    wr16(s, 0x9B, dy)
+    r = dist(dx, dy)
+    for d, o in ((dx, 0x09), (dy, 0x0B)):
+        p = ((rd16(s, 0xA5) + 4) & 0xFFFF) * _abs16(d)
+        a, hl = (0xFF, 0xFFFF) if p >> 24 else ((p >> 16) & 0xFF, p & 0xFFFF)
+        a, q = g.div_ahl_by_de(a, hl, r)
+        if a:
+            q = 0x3FFF
+        if d & 0x8000:
+            q = neg16(q)
+        wr16(s, o, rd16(s, o) + q)
+    return 1
+
+
 def neg16(v):
     return (-v) & 0xFFFF
 
 
 def ball_step(s, mph, wdir, hole):
-    """One BallTask frame; returns what happened ('air', 'bounce', or a branch not simulated)."""
+    """One BallTask frame; returns what happened ('air', 'bounce', 'roll', or a branch not simulated)."""
+    hole.use(1 <= s[0x43] <= 3)          # $D443 1-3: putting view (green maps loaded); 4 also occurs in normal shots
     if s[0x15]:
         what = "air"
         if flight_step(s, mph, wdir):
-            what = bounce(s, hole)
-            if what not in ("bounce",):
-                return what
+            what = bounce(s, hole)     # water and plugged stop the ball; BallTask goes on to the land check
         land_check(s)
         return what
-    return roll_step(s, hole)
+    what = roll_step(s, hole)
+    if what == "roll" and s[0x43] and s[0x43] < 4 and cup_pull(s):   # main loop, after the ball task
+        what = "pull"
+    return what
 
 
 def main():
@@ -294,7 +398,7 @@ def main():
     rec = json.load(open(a[0]))
     mph, wdir = rec["wind"]
     frames = [(f, bytearray(bytes.fromhex(h))) for f, h in rec["frames"]]
-    start = int(a[a.index("--from") + 1]) if "--from" in a else next(f for f, d in frames if d[0x15])
+    start = int(a[a.index("--from") + 1]) if "--from" in a else next(f for f, d in frames if d[0x15] or any(d[0x09:0x0D]))
     i = next(k for k, (f, _) in enumerate(frames) if f >= start)
     s = bytearray(frames[i][1])
     hole = Hole(int(a[a.index("--hole") + 1], 16) if "--hole" in a else 0x0A)
@@ -309,9 +413,8 @@ def main():
                 print("   %-5s sim %s  game %s" % (names[k], s[k:k + 3].hex(), want[k:k + 3].hex()))
             break
         ok += 1
-        if what not in ("air", "bounce", "roll"):
-            print("frame %d: %s (not simulated further)" % (f, what))
-            break
+        if what in ("water", "plugged"):
+            print("frame %d: %s" % (f, what))
     print("%d frames matched from frame %d" % (ok, frames[i][0]))
 
 
