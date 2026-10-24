@@ -1143,6 +1143,98 @@ id; golfers 4-11 have their own route (b - 3), others use route 0; table 3D:4252
 bank holds more copies of bank 10 code (twins of GreenSlopeAt at 3D:4048, LieClass at 3D:41E9) not reached by
 coverage.
 
+Method: export tables, callers (`xref.py`), code reading, and screenshots taken by jumping into each export
+from `states/stroke_hole1.state` (PyBoy, scratch script; the HUD of the round shows through the edges).
+
+##### Bank 0C: records screens (clubhouse records and profile stats)
+
+Ten exports. Bank 0B's records menu (0B:4E5D, choice from 07:51A6) calls 0 -> `$0C`, 1 -> `$0A`, 2 -> `$04`,
+3 -> `$02`, 4 -> `$00`; the profile menu (0B:4ECA, choice from 07:63EC) calls `$0C` with `$D23B` = 1 and `$06`.
+Bank 35 (35:7777-778F) also calls `$00`, `$0C`, `$02`. Every screen has the same shape: init (LCD off, frame
+graphics from banks 4B/4C/4D, palettes 0C:419B + 0C:5C00), register frame tasks, fade in, input loop until
+B returns `$FF`, unregister, fade out.
+
+| Export | Routine | Screen (screenshot title) | Data |
+|--------|---------|---------------------------|------|
+| `$00` | 0C:4014 StarsScreen | "Stars": 6 stars per course, total, "Remaining" = 36 - total | save block 3 `$DC00+$15F` (0B:5009) |
+| `$02` | 0C:5AEC RankingScreen | per course: rank 1-3, time h:m:s, score | record entries (0B:522D) |
+| `$04` | 0C:5FC5 WinnersScreen | "Winners": 18 x 14 grid, who beat whom; scrolls 2 ways | `$DC00+$166` (0B:5133) |
+| `$06` | 0C:65B2 VsResultScreen | "Vs. Result": profile character vs 7 rivals | flags #80-#93, #117 |
+| `$08` | 0C:67F8 ShotRecordsScreen | Birdie / Eagle / Albatross / Hole-in-One, 5 faces each | save blocks 4-7 (0B:5260) |
+| `$0A` | 0C:6EE0 BestScoreScreen | "Characters' Best Score" per course, sorted | 0B:51B9 |
+| `$0C` | 0C:4A15 StatsScreen | "Tournament Total" / per-course stats pages | `$DC00` records or `$C980` profile |
+| `$0E` | 0C:43AD InitRecordsTileAnim | animated tiles at `$8FC0/$8FE0` | called from 0A:6F38, 0A:72D5 |
+| `$10` | 0C:7380 | points into data (`f5 00 ff`), no callers | dead export |
+| `$12` | 0C:5772 CopyTextIdToBuffer | LoadText + copy 20 chars to de | no callers |
+
+Details:
+- **Stats** (4A15): `$D23B` = 0 shows the save records: `$32`-byte records at `$DC00 + 50 n` (0B:4FE5), 6 courses
+  + total (record 6). Fields read by DrawRecordStatsPage 0C:4D08: `+0` rounds (word), `+2` best score (54 =
+  even, shown as +/-), `+3` average, `+4` best drive, `+6` average drive, `+8` fairway %, `+9` putts (x10, drawn
+  with a decimal point), `+A/+B/+C` par saves / par ons / sand saves %, `+D` bits 2-0 = three medal icons, `+2F`
+  18-bit birdie badge mask (0B:5303). `$D23B` = 1 (profile menu) computes the same lines from the profile's
+  per-course records at `$C980 + 25 n` (GetProfileCourseRecord 0C:5ACC): averages are word / byte ratios selected
+  by `$D23C/$D23D`; the total page sums over courses with rounds (0C:5820-5A31). Hole mask at `+$16` (bits 0-17
+  badges, 21-23 medals; also read by 02:5C77).
+- **Winners** (5FC5): 6240 hides the headers of locked characters: columns 4-9 and `$0C` with no result at all,
+  `$0A` under 50 birdie badges, `$0D` under 108 (all 6 x 18), `$0B` under 30 stars, rows `$0E-$11` with no result.
+  These look like the unlock conditions of the hidden characters.
+- **Shot records** (67F8): cursor over a 5 x 4 grid (`$D214`, kept in `$CA7F`); A returns `$FE` and the caller
+  (0B:4E02) then farcalls 10:435E, which presumably replays the recorded shot (02:4714 RecordShot writes these
+  records). The cursor palette cycles (6B55, table 0C:6BF6).
+- **Best score** (6EE0): `$D227` list of characters 0-17 with a score on the course, sorted (70FC), faces at
+  0C:726F slots.
+- WRAM6 work RAM of the bank: `$D214` page / cursor, `$D215` sub-page / scroll, `$D218-$D222` cursor palette and
+  colour phases, `$D223` stars course, `$D224` record pointer, `$D226` page count (0B:506E / 0B:50B6), `$D227` list
+  (20 bytes), `$D23B-$D23D` stats source and field offsets, `$D23E/$D240` animated tile targets, `$D244` carry byte
+  of the 24-bit sums. Tilemaps are built in WRAM1 (`$D000/$D400`, attributes at `+$400` or in WRAM2/3) and queued to
+  VRAM with 00:0468; destinations `$A000-$BFFF` in that queue mean VRAM bank 1 (`$B800` = attribute map `$9800`).
+- Leftovers: LoadCourseBanner 0C:49C1 (and its unreferenced copy 0C:6E80) prints the course index with
+  PrintHexByte at `$0D02` (debug overlay). Unreferenced: 0C:55B7, 0C:5725, 0C:57E7, 0C:6E80; 0C:6783 is an empty
+  stub that is called; three copies of a fill loop (576D, 6794, 6E7B).
+
+##### Bank 0F: course select and hole select
+
+Exports: `$00` 0F:4AB7 CourseSelect, `$02` 0F:4AD6 CourseHoleSelect, `$04` 0F:4B7A BuildCourseList. Real
+callers are in bank 32 (32:5202/5262/52A6/535B call `$00`; 32:52D2 calls `$02` with hl = `$0101`); the refs from
+11:5235 and 7D:6F76 are byte patterns inside data.
+
+- Screen (screenshot): "Course" title, a film strip of course pictures that scrolls sideways, a name box
+  ("1. Marion Club", "2. Palm Club"), arrows; then for `$02` a "1H"-style hole number chosen with the d-pad.
+- BuildCourseList 0F:4B7A writes count + ids 1-6 to `$D658`, depending on `$C834` (mode), `$C33F`, `hFFCF` and the
+  course unlock flags #112, #113, #114, #139, #159 (or 02:44F2 checks in mode `$C2A5 & $0F = $0F`).
+- CourseSelectInit 0F:400B takes hl = id list, bc = descriptor table (0F:4C78), e = start, d = count; keeps them in
+  `$D207/$D200`, `hFFB0/hFFB2`. The descriptor table starts with two hook words (0F:4CD4 draw name box with texts
+  `$21+id` and `$28+id`, 0F:4D33 clear it), then 12-byte course entries read by GetCourseField 0F:4613.
+- Scrolling: the strip is a 32-wide map at `$C600/$C700` shifted one column per step (426B/4285), new picture
+  columns are uploaded to a rotating tile slot `hFFB4` (`$10-$A8`, step 8) from `hFFB6`; 12 steps per course.
+- Hole select 0F:77B3: hole 1-18 wraps both ways, digits from 0F:78EA (BCD) and 0F:7934 graphics; B sets `$D209` = 1
+  and returns `$FF` so CourseHoleSelect goes back to the course choice.
+
+##### Bank 0E: scorecard and tournament standings
+
+Most of the bank is not traced (601 code bytes found so far); the exports:
+- `$00` 0E:43D6 ShowScorecard (callers 08:4B5D, 08:4BA0, 31:4938, 3E:675C, 3E:676F, 41:788F): picks a pair of page
+  routines from 0E:4422 by `$C834` (1, 2, else `$C8D0` = `$FF` or not) and calls one; a page returning 1 switches
+  to the other (Right / Left). Screenshot: the "SCORECARD" with HOLE / PAR / face / PUTT / OVER columns.
+- `$06` 0E:78B4 BuildStandings (08:4775, 08:4B43, 08:4C06): leaderboard of 28 golfers in WRAM6 `$D800`, 4-byte
+  entries `[score, tiebreak, id, rank]` ending with `$96`. The player is entry id 0, score = SumScoreToPar
+  0E:6EDB over `$C4BE` holes of `$C8AC`; the others come from 3C:6686 and get name indices from the per-course
+  list 0E:4633 skipping the player's character (`$C810`). Sorted by score then tiebreak (79BD), ranked (7A1C),
+  ties flagged with bit 7 of the rank (7A36).
+- `$02` 0E:7871 FindPlayerInStandings and `$04` 0E:7887 GetPlayerRank read that list (callers bank 08 and 0E:5466).
+  The refs from 7D/7E to `$02` look like data patterns.
+- SumScoreToPar 0E:6EDB: strokes (low nibbles at de) minus the per-hole value from 13:7044 (h = `$C836`, l = hole),
+  presumably the par.
+
+##### RAM
+
+New labels (others were labelled meanwhile by other passes: `$D200`, `$D214`, `$D224`, `$D226`, `$DC00`, `$C836`):
+`$D207` wSelectIdList, `$D209` wHoleSelectFlags, `$D215` wRecordsSubPage, `$D218` wCursorPalette, `$D223`
+wStarsCourse, `$D227` wRecordsList, `$D23B-$D23E` stats source / field offsets / anim targets, `$D658`
+wCourseIdList, `$C980` wProfileCourseStats, `$C4BE` wHolesDone, `$CA7F` wLastShotRecord, `hFFB0-hFFB6` course
+select state. Note `$D214`/`$D200` are reused per screen (records page in bank 0C, select descriptors in 0F).
+
 ### Data Structures
 
 *(none yet)*

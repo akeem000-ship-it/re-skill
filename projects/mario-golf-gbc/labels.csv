@@ -1794,3 +1794,195 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,D598,wPreviewSave,WRAM6: launch dir / $D41C / club saved around CpuPreviewHitsTree
 *,D608,wCpuTeeClub,WRAM6: club picked by CpuPickTeeClub
 *,C9FE,wRoundSeed,random word saved at round start (10:4B8C); seeds SimulateRivalScores
+# --- banks 0C 0F 0E (records screens, course select, scorecard, standings) ---
+0C,4014,StarsScreen,export $00: per-course star records (6 stars per course and Remaining = 36 - total); loads save block 3 (0B:4FB7); left/right = course ($D223); B exits
+0C,408B,StarsScreenInput,left/right cycles wRecordsCourse ($D223) through wRecordsPageCount and redraws (4248/433A); B returns $FF
+0C,40F3,StarsScreenInit,LCD off; loads frame tiles (4B:$1C/$20/$1E/$18/$1A) and palettes 0C:419B/0C:5C00; tilemaps to WRAM1 $D000/$D300 then VRAM
+0C,419B,RecordsCursorPalette,2 palettes (8 bytes) loaded to slot 1 by every records screen init
+0C,41AB,DrawStarMark,c = row (0-5; 6 = total row): tile $BF with attribute $0A at $D129 + 32c in the WRAM1 tilemap
+0C,41E9,DrawStarCountDigits,b = number (capped 99) at row c of the stars table ($D129 + 32c); digit tiles from $E6
+0C,4248,DrawStarsPage,reloads the stars tilemaps; course banner (49C1); star marks of wRecordsCourse via 0B:5009; total collected at $D16E and 36 - total at $D1EE
+0C,433A,CopyStarsTilemapToVRAM,queues WRAM1 $D300 -> attributes $9800 (VRAM1) and $D000 -> map $9800; $24 blocks each
+0C,436A,AnimateRecordsTiles,frame counter / 8 picks 1 of 16 frames at 0C:43E0 (+$200 for the second tile pair): 2 tiles each to [$D23E] and [$D240]
+0C,43AD,InitRecordsTileAnim,export $0E (called from bank 0A): animated tile targets $8FC0/$8FE0 -> $D23E/$D240; first step of AnimateRecordsTiles
+0C,43E0,RecordsAnimTileFrames,2 x 16 frames x 32 bytes of animated tile graphics used by AnimateRecordsTiles
+0C,47E0,AnimateStarIconTiles,frame counter / 8 picks 1 of 4 frames in WRAM5 $D000: 2 tiles to VRAM1 $8D40 and $8E40
+0C,4821,StarsAnimTask,frame task of StarsScreen: tile animation to VRAM1 $91C0/$91E0 (436A) + AnimateStarIconTiles
+0C,4852,PageArrowsTask,frame task: two bobbing page arrow sprites (0C:4947) at d = $0A - bob / $96 + bob and e = $1C (00:26EA); bob from 0C:4950
+0C,4894,PageArrowsTaskLow,same as PageArrowsTask with e = $14 and 00:26A4
+0C,48D6,PageArrowsScrolledTask,page arrows placed in world coordinates from the scroll position $C320 (PositionSpriteWorld)
+0C,4947,PageArrowSprite,sprite definition of the page arrow used by the arrow tasks
+0C,4950,ArrowBobTable,8 offsets 0 1 2 3 4 3 2 1 for bobbing arrows
+0C,4958,DecompressPanelPieces,hl = tilemap dest and de = attribute dest and b = stride: 499A then 4973
+0C,4973,DecompressPanelAttrPieces,decompresses 4B:$08/$0A/$0C to de / de+b / de+2b (attribute maps)
+0C,499A,DecompressPanelMapPieces,decompresses 4B:$02/$04/$06 to de / de+b / de+2b (tile maps)
+0C,49C1,LoadCourseBanner,a = course: decompresses its name banner (CourseBannerGfxTable) and queues 10 tiles to de; leftover PrintHexByte debug print
+0C,4A07,CourseBannerGfxTable,7 asset refs bank 40 entries $24-$30 (6 courses + total)
+0C,4A15,StatsScreen,export $0C: player stats pages (Round/Best Score/Average/Drive/Fairway/Putt/Par saves/Sand saves/Birdie badges); $D23B = 0 save records / 1 current profile
+0C,4AAB,StatsScreenInit,LCD off; frame gfx (4B:$20/$0E) and palettes; maps 4B:$12/$10 to WRAM2/3; draws the page (4D08 or 52A2); scroll via 04:4072
+0C,4B68,StatsPalettes,BG palettes of the stats screen (LoadPalettesMasterOnly slot 0)
+0C,4BA8,StatsScreenInput,left/right = page $D214 (StatsChangePage); up/down scroll $C322 within the page height; B returns $FF
+0C,4C63,StatsAnimTask,frame task: AnimateRecordsTiles to VRAM1 $9620/$9640
+0C,4C89,StatsChangePage,fade out; $D215 = $14 on the total page; redraws the page (4D08 or 52A2); fade in
+0C,4D08,DrawRecordStatsPage,stats of the save record of course $D214 (or the total record 6) from 0B:4FE5: fields +0 rounds +2 best +3 average +4/+6 drive +8 fairway +9 putts +A/+B/+C saves +D medals +2F badges
+0C,5001,SetStatsUnitsAndAttrs,clears the number attributes (WRAM2) and writes the unit tiles (Y $38 and % $37) and end tiles in the stats column (WRAM3)
+0C,50C4,SetBadgeCountAttrs,clears the attributes of the birdie badge count ($D610) and writes its end tile
+0C,5100,DrawRecordBadgeHoles,marks (tile $4E) the holes 1-18 whose birdie badge bit is set in the save record (0B:5303)
+0C,5153,DrawProfileBadgeHoles,marks (tile $4E) the holes 1-18 of course $D214 whose bit is set in the profile record (02:5C77)
+0C,51B1,SplitScoreSign,a = score byte (54 = even): c = |a - 54| and b = sign tile ($2B + / $2D - / $60 even)
+0C,51D2,DrawStatsMedal,c = 0-2: draws a 2x3 medal icon (tiles 0C:528D / palette 0C:529F) at the position in 0C:5287
+0C,5287,StatsMedalPosTable,3 tilemap addresses of the medal icons
+0C,528D,StatsMedalTileTable,3 x 6 tile ids of the medal icons
+0C,529F,StatsMedalPalTable,3 attribute bytes of the medal icons
+0C,52A2,DrawProfileStatsPage,same layout as DrawRecordStatsPage from the profile records at $C980 (5820/5843/58CC/5955/59A5/5A31); medals from bits $15-$17
+0C,55B7,RedrawStatsFrame,unreferenced: redraws the panel pieces (4973/499A) and a title text ($1105 or $140A + page) via 05:62AA
+0C,5665,LoadStatsPageFrame,decompresses the frame maps to WRAM2/3 and the page title banner (0C:570B or 0C:5719) to VRAM1 $8900; sets its palette
+0C,570B,StatsTitleGfxTable,7 asset refs bank 40 $0A-$16: title banners of the record pages (courses + total)
+0C,5719,ProfileStatsTitleGfxTable,6 asset refs bank 40 $18-$22: title banners of the profile pages
+0C,5725,ClearStatsColumn,unreferenced: clears 22 rows of 12 tiles at $D101 + $D215 (attr 0 / tile $20)
+0C,576D,FillBytesHLC,hl = dest c = count a = value
+0C,5772,CopyTextIdToBuffer,export $12 (no callers): LoadText hl then copies up to 20 chars of wTextBuffer to de
+0C,579D,CountProfileBadges,e = badge holes of course $D214 or the sum over played courses on the total page
+0C,57D0,CountCourseProfileBadges,a = course: e = number of holes 1-18 with the profile bit set (02:5C77)
+0C,57E7,TestProfileHoleBit,unreferenced: a = bit c of the 3-byte hole mask at profile record b +$16
+0C,5820,GetProfileRounds,a = course (b = total index): hl = rounds word (+0) or the sum over courses
+0C,5843,GetProfileBestScore,a = course: best score byte (+2; minimum over courses on the total page); hl = |score - 54| and d = 0 over / 1 under / 2 even
+0C,58CC,GetProfileAverage,a = course: word at +[$D23C] / byte at +[$D23D] (sums over courses on the total page)
+0C,5955,GetProfileBestDrive,a = course: max of the word +6 over courses / 32 (yards)
+0C,59A5,GetProfilePercent,a = course: 100 x word +[$D23C] / byte +[$D23D] (percent stats)
+0C,5A31,GetProfileAverageX10,a = course: 10 x word +[$D23C] / byte +[$D23D] (average putts with one decimal)
+0C,5ACC,GetProfileCourseRecord,a = course: hl = $C980 + 25a
+0C,5AEC,RankingScreen,export $02: top 3 time and score per course from save block 3; left/right = course
+0C,5B5A,RankingScreenInit,LCD off; frame gfx (4B:$20/$1E/$14/$16) and face sheets (4C:$18/$16) to WRAM2
+0C,5C00,RecordsPalettes,BG palettes shared by the records screens (slot 0 x 8)
+0C,5C40,RankingScreenInput,left/right = course $D214 (DrawCourseRankingPage); B returns $FF
+0C,5CAA,DrawCourseRankingPage,course banner (49C1); for ranks 0-2 (03:4EB8 / 0B:522D): time and score (5DB8) / face (0B:51E7 + 5F32) / name text $1410+char
+0C,5DB8,DrawRankingTimeAndScore,c = rank row: time as h:m:s and the score vs 54 with its sign into the WRAM1 tilemap
+0C,5EF6,CopyPanelTilemapToVRAM,queues $D000/$D400 -> $9800 and $D120/$D520 -> $9920 (18 blocks each) over 2 frames
+0C,5F32,DrawRecordsFaceIcon,c = character and hl = tilemap offset: copies a 2x2 face (tiles and attributes) from the face sheet in WRAM2 to WRAM1
+0C,5FB0,IsRankEntryUsed,a = 1 if any of the 3 bytes at hl is non-zero
+0C,5FC5,WinnersScreen,export $04: grid of which character beat which (save block 3 via 0B:5133); scrolls in both directions
+0C,600A,WinnersScreenInit,LCD off; loads grid gfx (4B:$22/$24 4D:$24/$26 4C:$02-$08); draws marks and hides locked characters
+0C,60F8,WinnersScreenInput,up/down = row scroll $D215 (0-12) / left/right = column scroll $D214 (0-7); B returns $FF
+0C,6179,AnimateWinnersTiles,frame counter / 8 picks 1 of 8 frames at 0C:43E0: 2 tiles to VRAM1 $91C0 and $91E0
+0C,61A8,WinnersAnimTask,frame task calling AnimateWinnersTiles
+0C,61B2,DrawWinnersMarks,18 rows x 14 columns: 0B:5133 result -> mark (DrawWinnersMark) in the WRAM2 grid at $D502
+0C,61F5,DrawWinnersMark,a = 2 (beaten) or 1: copies the 2x2 mark from $D55E or $D51E (6217)
+0C,6217,Copy2x2Tiles,copies a 2x2 tile block from hl to de (rows 32 bytes apart)
+0C,6240,HideLockedWinners,hides headers of characters not unlocked: columns 4-9 / $0C never won; $0A under 50 badges; $0D under 108 badges; $0B under 30 stars; rows $0E-$11
+0C,62F3,HideWinnersHeader,c = character: covers its column header and row header with the blank 2x2 block
+0C,6352,CopyWinnersColumnHeaders,copies 2 rows x 14 tiles of headers scrolled by $D214
+0C,63A9,CopyWinnersRowHeaders,copies c rows of 2-tile headers scrolled by $D215
+0C,6410,CopyWinnersGridCells,copies 12 rows x 14 tiles of the grid scrolled by $D214/$D215
+0C,6481,RedrawWinnersView,headers and cells into the tilemap and attributes then CopyWinnersTilemapToVRAM
+0C,64CD,WinnersCursorTask,frame task: animates tiles at $8E00 and draws the scroll arrows not at an edge
+0C,6563,CopyWinnersTilemapToVRAM,queues $D000/$D400 -> $9800 and $D120/$D520 -> $9920 over 4 frames
+0C,65B2,VsResultScreen,export $06 (profile menu): the profile character against the 7 rivals with won/lost marks
+0C,65E3,VsResultScreenInit,LCD off; frame (4B:$1E 4C:$0C/$0A) and DrawVsResultMarks
+0C,6641,VsResultScreenInput,B returns $FF (hJoyHeld)
+0C,665A,DrawVsResultMarks,face of $C810; per rival flag pairs #80-#93 pick mark 1 or 0; flag #117 clear -> mark 2 at $D110
+0C,6783,EmptyStub,saves and restores registers only
+0C,6794,FillBytes2,hl = dest c = count a = value (copy of FillBytesHLC)
+0C,6799,DrawVsResultMark,c = mark 0-2: 2x2 tiles from $D014/$D054/$D094 to de (tiles and attributes)
+0C,67F8,ShotRecordsScreen,export $08: birdie / eagle / albatross / hole-in-one records (4 x 5 faces); A returns $FE to replay the chosen shot
+0C,687C,ShotRecordsScreenInit,clears $D227 list; loads cursor gfx (4C:$12/$14) and palettes; frame 4B:$08/4C:$10/$0E; faces 4C:$1C/$1A
+0C,6987,ShotCursorPalette,cursor palette (also copied to $D218 for cycling)
+0C,698F,ShotCursorTask,frame task: draws the cursor sprite (0C:69B4) at the slot position from 6AE5
+0C,69B4,ShotCursorSprite,sprite definition of the record cursor
+0C,69D5,ShotRecordsInput,d-pad moves the cursor (6A48); A -> $FE; B -> $FF
+0C,6A48,MoveShotCursor,e = direction 0-3: moves $D214 in the 5 x 4 grid wrapping and skipping empty slots; stores it in $CA7F
+0C,6AE5,GetShotCursorPos,d = x and e = y of slot $D214 from ShotCursorPosTable
+0C,6B05,ShotCursorPosTable,20 x 4 bytes: x and y per slot
+0C,6B55,CycleCursorPaletteTask,frame task: steps 3 colour phases ($D220-$D222) through 0C:6BF6 and loads the palette at $D218
+0C,6BF6,CursorColourCycleTable,32 5-bit colour levels for the cursor palette cycle
+0C,6C29,LoadShotRecordList,for the 4 categories: 0B:5260 (save block 4+c) = $FF -> empty slots else 5 entries via 6C54
+0C,6C54,LoadShotCategory,c = category: 5 slots at $D227 + 5c: $FF if 0B:52D2 says empty else the character (0B:5296)
+0C,6C91,ClearShotCategory,c = category: 5 slots at $D227 + 5c = $FF
+0C,6CBC,DrawShotRecordFaces,draws the faces (DrawRecordsFaceIcon) of all used slots in the 5 x 4 grid; CopyPanelTilemapToVRAM
+0C,6D2D,InitShotCursor,cursor $D214 = last choice $CA7F or the first used slot; $D215 = 1 when any slot is used
+0C,6D76,DrawSelectedShotInfo,when $D215: category and slot of the cursor (6DA3) -> 0B:5260 / 0B:52D2 -> DrawShotInfoLine
+0C,6DA3,SplitShotCursor,b = $D214 / 5 (category) and c = $D214 mod 5 (slot)
+0C,6DC8,DrawShotInfoLine,clears the info rows; text $1424 + b - 1 / number / text $1423 via 05:62AA; copies the rows to VRAM
+0C,6E7B,FillBytes3,hl = dest c = count a = value (copy of FillBytesHLC)
+0C,6E80,LoadBannerGfxUnused,unreferenced copy of LoadCourseBanner using table 0C:6EC3 (bank 40 $18-$22)
+0C,6EE0,BestScoreScreen,export $0A: Characters' Best Score per course (save block 3); left/right = course
+0C,6F4B,BestScoreScreenInit,LCD off; frame gfx 4B:$20 and 4D:$1A-$22
+0C,6FF1,BestScoreScreenInput,left/right = course $D214 (DrawBestScorePage); B returns $FF
+0C,705D,BestScoreAnimTask,frame task: AnimateRecordsTiles to VRAM1 $9220/$9240
+0C,7083,DrawBestScorePage,course banner (49C1 to $A860) then the list (70C2) and CopyPanelTilemapToVRAM
+0C,70C2,BuildBestScoreList,$D227 = characters 0-17 with a best score on course $D214 (0B:51B9); sort / faces / scores
+0C,70FC,SortBestScoreList,sorts the $D227 character list by best score (0B:51B9) ascending
+0C,7136,DrawBestScoreFaces,draws each listed character's face at its slot (BestScoreSlotTable)
+0C,726F,BestScoreSlotTable,18 x (column row) slots of the best score list
+0C,7297,DrawBestScoreValues,score vs 54 per listed character: sign tile $3D/$3E/$3F then DrawNumberTiles with base $33
+0C,7326,DrawNumberTiles,a = value b = digit tile base: 1-2 digits at hl; 100+ draws three tiles b + $0B
+0C,7380,BadExport10,export $10 points into data after the last routine (bytes f5 00 ff); no callers
+0F,400B,CourseSelectInit,hl = id list e = start index d = count bc = descriptor table: LCD off; film strip and name box gfx; picture of the current course; tasks 4160/4292
+0F,4160,CourseTitleWaveTask,frame task: a row of 10 title sprites (0F:41B9) bobs with hVBlankCount through 0F:4179 (the Course title?)
+0F,41E2,CourseSelectInput,left/right scroll the film (4401/4328) when 2+ courses; A returns the id at [$D207 + hFFB0]; B returns $FF
+0F,4247,CopyFilmRowsToVRAM,queues $C600 (attributes) and $C700 (tiles) to $9880 (16 blocks)
+0F,425E,NextFilmTileColumn,hFFB4 += 8 wrapping $B0 -> $10
+0F,426B,ShiftFilmMapLeft,moves the film maps at $C600 one byte left ($1FF bytes)
+0F,4278,PrevFilmTileColumn,hFFB4 -= 8 wrapping $08 -> $A8
+0F,4285,ShiftFilmMapRight,moves the film maps at $C600 one byte right (reverse copy)
+0F,4292,CourseArrowsTask,frame task: animated tile (42B4) and blinking left/right arrows when 2+ courses
+0F,42B4,AnimateArrowTile,hFFB1 += 1: 1 of 8 frames at 0F:4740 to VRAM1 $9060
+0F,42CD,FilmScrollLeftStep,shift left; next picture column (hFFB6) to the tile slot hFFB4; column tile ids at $C613
+0F,4328,CourseSelectNext,next course (hFFB0 wraps 1..count): decompresses the pictures and scrolls 12 steps; redraws the name box
+0F,43AC,FilmScrollRightStep,shift right; previous picture column to the tile slot; column ids at $C600
+0F,4401,CourseSelectPrev,previous course: same as CourseSelectNext scrolling right
+0F,4481,DrawFilmGapColumn,writes the sprocket column (tile $09) and the slot tile ids; blank tile 0F:4680 to the slot
+0F,44BA,ReloadCoursePicture,queued: palette (field $0A) and picture tiles (field $04) to VRAM1 $8B00-$8F00; then the picture maps
+0F,44FD,LoadCoursePicture,same as ReloadCoursePicture with immediate copies (LCD off); 4538 writes the 8 x 10 picture maps
+0F,4592,StoreFilmTileId,[hl+] = a then a += 8 wrapping $B0 -> $10
+0F,459B,InitFilmMaps,fills the film rows at $C600 (tile $0B with $09 sprockets) and the tile ids from hFFB4
+0F,4613,GetCourseField,h = relative item (-1/0/+1 wrapping) l = field: hl = word at [$D200] + 12 x id + 8 + l
+0F,4963,CallSelectHook0,jumps to the first word of the descriptor table [$D200] (draw name box)
+0F,497B,CallSelectHook1,jumps to the second word of the descriptor table (clear name box)
+0F,4995,LoadNameBoxMaps,decompresses 0F:4954/0F:4929 to $D1A0/$D4A0
+0F,49AA,DrawCourseEmblem,field 0 tiles to VRAM1 $9070 (9 tiles) and a 3x3 tile block at $D4C1 with attributes from field 6
+0F,4A11,OpenNameBoxAnim,unfolds the name box in 3 frames (CopyMemoryFast + 4AA0)
+0F,4AA0,CopyNameBoxToVRAM,queues $D1A0 -> $99A0 (VRAM1) and $D4A0 -> $99A0 (10 blocks)
+0F,4AB7,CourseSelect,export $00: builds the course list (4B7A) and runs the film strip course select; a = course id or $FF
+0F,4AD6,CourseHoleSelect,export $02: l = flags ($D209; bit 7 keeps the current course): course select then hole select (77B3); a = course b = hole
+0F,4B7A,BuildCourseList,$D658 = count then course ids 1-6 available for $C834 mode / $C33F / hFFCF and flags #112-114 #139 #159 or 02:44F2
+0F,4C78,CourseSelectDescriptors,hooks 4CD4/4D33 and frame assets then 12 bytes per course (emblem / picture tiles / emblem attrs / picture maps / palette)
+0F,4CD4,DrawCourseNameBox,hook 0: emblem and texts $21+id and $28+id (or $2F+id when $C2A5 & $0F = $0F) via 05:62AA
+0F,4D33,ClearCourseNameBox,hook 1: reloads the empty name box
+0F,77B3,HoleSelectInput,course name and text $3B in the box; d-pad changes the hole 1-18 (wraps; DrawHoleNumber); A returns it; B returns $FF and sets $D209 = 1
+0F,789F,HoleArrowsTask,frame task: animated tile and the 3 blinking hole number sprites
+0F,78C5,DrawHoleNumber_0F,a = hole 1-18: two digit tiles from HoleNumberBCDTable then the H tile ($0B)
+0F,78EA,HoleNumberBCDTable,BCD 01-18
+0F,78FE,LoadHoleDigitTile,b = digit c = slot: decompresses the digit graphics (0F:7934) to WRAM1 and queues 4 tiles to VRAM1 $8200 + $40c
+0E,43D6,ShowScorecard,export $00: picks 2 scorecard pages by mode ($C834 / $C8D0) from ScorecardPageTable; switches pages while a page returns 1
+0E,4422,ScorecardPageTable,4 modes x 2 page routines (0E:5209 0E:6C7A 0E:4432 0E:762F 0E:4436 0E:7199)
+0E,6EDB,SumScoreToPar,l = holes de = per-hole strokes (low nibble): a = sum of strokes - par (13:7044 with course $C836)
+0E,7871,FindPlayerInStandings,export $02: hl = standings list: a = index of the entry with id 0 (the player)
+0E,7887,GetPlayerRank,export $04: rank of the player in the standings without the tie bit
+0E,788D,GetPlayerRankRaw,rank byte of the player entry (id 0) in the standings at WRAM6 $D800 (bit 7 = tie)
+0E,78B4,BuildStandings,export $06: $C4BE = holes done; fills the 28 golfers (3C:6686) then names / sort / ranks / ties into WRAM6 $D800
+0E,790A,CopyStandingsScores,copies 28 score entries backwards into 4-byte entries: entry $1C = player (SumScoreToPar of $C8AC) / $1B gets $C836 + 3 / others id $80; ends with $96
+0E,7950,AssignStandingsNames,gives each $80 entry a name index from the course list 0E:4633 skipping the player's character name ($C810)
+0E,79BD,SortStandings,insertion sort of the entries into the destination by score then by the second byte
+0E,7A1C,RankStandings,byte 3 of each entry = index of the first entry with the same score
+0E,7A36,MarkStandingsTies,sets bit 7 of both ranks when neighbouring entries share a rank
+*,D207,wSelectIdList,WRAM6: pointer to the list of selectable course ids (0F:400B)
+*,D209,wHoleSelectFlags,WRAM6: CourseHoleSelect argument; bit 7 = keep the current course; low bits = hole
+*,D215,wRecordsSubPage,WRAM6: records screens: $14 on the stats total page; row scroll in Winners; any-entry flag in shot records
+*,D218,wCursorPalette,WRAM6: 8-byte palette cycled by CycleCursorPaletteTask
+*,D223,wStarsCourse,WRAM6: course shown on the stars screen
+*,D227,wRecordsList,WRAM6: 20-byte character list of the shot records and best score screens ($FF = empty)
+*,D23B,wStatsSource,WRAM6: 0 = save block 3 records / 1 = current profile records at $C980
+*,D23C,wStatsNumOffset,WRAM6: field offset of the numerator for the profile averages
+*,D23D,wStatsDenOffset,WRAM6: field offset of the denominator for the profile averages
+*,D23E,wAnimTileDest,WRAM6: VRAM targets (2 words to $D241) of AnimateRecordsTiles
+*,D658,wCourseIdList,WRAM6: count then the selectable course ids (BuildCourseList)
+*,C980,wProfileCourseStats,6 x 25 bytes of per-course stats of the current profile (rounds / best / sums / hole mask at +$16)
+*,C4BE,wHolesDone,holes completed for the standings (BuildStandings)
+*,CA7F,wLastShotRecord,cursor slot kept between visits of the shot records screen
+*,FFB0,hSelectIndex,course select: current item (1-based)
+*,FFB1,hSelectAnimCount,course select: arrow animation / blink counter
+*,FFB2,hSelectCount,course select: number of items
+*,FFB3,hHoleBlinkCount,hole select: blink counter of the hole number
+*,FFB4,hFilmTileSlot,course select: tile slot ($10-$A8) of the next picture column
+*,FFB6,hFilmColumnPtr,course select: pointer to the next picture column graphics
