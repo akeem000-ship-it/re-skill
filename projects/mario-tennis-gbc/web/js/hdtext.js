@@ -262,6 +262,20 @@ export class HDText {
       let gap = 16; for (const o of this.lines) if (o !== l && o.win === l.win && o.x < l.x + l.w && l.x < o.x + o.w && o.y !== l.y) gap = Math.min(gap, Math.abs(o.y - l.y));
       const em = f.em * Math.min(1, Math.max(0.7, gap / 14));
       if (!(ui && this.covered(l))) { g.fillStyle = bg; g.fillRect(l.x * HD, l.y * HD, (l.w + 1) * HD, 8 * HD); }
+      // a grid of bold rows stacked 8 px apart (the name-entry keyboard): each letter centred in its own 8 px cell, smaller,
+      // so the rows have room between them and the letters stay under the cursor
+      if (l.bold && this.lines.some(o => o !== l && o.bold && o.win === l.win && Math.abs(o.y - l.y) === 8 && o.x < l.x + l.w && l.x < o.x + o.w)) {
+        const ge = f.em * 0.6, k = ge / f.em, o = HD * 0.6;
+        g.font = `${ge * HD}px "${f.family}"`; g.textBaseline = "alphabetic"; g.textAlign = "center";
+        for (let i = 0; i < l.text.length; i++) {
+          const ch = l.text[i]; if (ch === " ") continue;
+          const cw = g.measureText(ch).width, s = cw > 7.2 * HD ? 7.2 * HD / cw : 1;
+          g.save(); g.translate((l.x + i * 8 + 4) * HD, (l.y + 4 + (f.base - 4) * k) * HD); g.scale(s, 1);
+          g.fillStyle = sh; g.fillText(ch, o, o); g.fillStyle = ink; g.fillText(ch, 0, 0);
+          g.restore();
+        }
+        g.textAlign = "start"; continue;
+      }
       g.font = `${em * HD}px "${f.family}"`; g.textBaseline = "alphabetic";
       const w = tightWidth(g, l.text), room = (l.w - 1.5) * HD, sx = w > room ? room / w : 1;
       g.save(); g.translate(l.x * HD, (l.y + f.base) * HD); g.scale(sx, 1);
