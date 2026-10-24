@@ -139,6 +139,7 @@ export function* runMarioCastExhibResults(P) {
   P.wramBank(WRAM_SCREEN);
   for (;;) {
     yield* advanceFrame(P);
+    if (P.menuWheel && P.menuWheel.on) P.menuWheel.skin = { id: "frame", at: P.frames, title: "EXHIBITION DATA" };   // MENU: Wheel (menuskins.js: the page itself, framed), read only
     P.V.menuInputPressed = P.bus.u8(hInputPressed);
     if (checkMarioCastChartExpanded(P).a) yield* scrollMarioCastChartCursorFull(P);
     else yield* scrollMarioCastChartCursorSmall(P);

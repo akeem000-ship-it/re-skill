@@ -100,6 +100,7 @@ export function* showMinigameDataScreen(P) {
   for (;;) {
     P.V.menuInputPressed = P.V.inputPressed;
     yield* scrollMinigameDataList(P);
+    if (P.menuWheel && P.menuWheel.on) P.menuWheel.skin = { id: "frame", at: P.frames, title: "MINI-GAME DATA" };   // MENU: Wheel (menuskins.js: the page itself, framed), read only
     yield* advanceFrame(P);
     const input = P.V.menuInputPressed;
     if (input & (PADF_A | PADF_B)) {

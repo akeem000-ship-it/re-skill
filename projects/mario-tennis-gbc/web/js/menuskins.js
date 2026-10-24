@@ -34,6 +34,8 @@
 //            one standing in the panel with the handedness START flips
 //   name     the name entry (RunNameEntryScreen): its 15 x 6 keys (NameEntryCharset_38 38:71B6, the bottom row's DEL /
 //            END from 38:722D) as an HD keyboard by the ball, the name typed so far (wNameEntryBuffer, WRAM 3 $D800) large
+//   frame    the pages to read (the records tables, the N64 data, the trophies, a minigame's rules): the page itself, as the
+//            game draws it (the LCD picture), large and sharp in the menu's panel by the ball, with a title
 // The link screens use the same skins (rules: format; courts; characters), with their link titles.
 import { courtImage } from "./assets.js";
 import { matchPicture, charScheme } from "./crowdfans.js";
@@ -72,6 +74,7 @@ export class MenuSkins {
     else if (skin.id === "confirm") this.confirm(g, W, H, k, skin, gb);
     else if (skin.id === "cardconfirm") this.cardConfirm(g, W, H, k, skin, gb);
     else if (skin.id === "pick") this.pick(g, W, H, k, skin, gb);
+    else if (skin.id === "frame") this.frame(g, W, H, k, skin, gb);
     else if (skin.id === "name") this.nameEntry(g, W, H, k, skin, gb);
     else if (skin.id === "dict") (skin.index ? this.dictIndex(g, W, H, k, gb) : this.dict(g, W, H, k, gb));
   }
@@ -342,6 +345,20 @@ export class MenuSkins {
     g.fillStyle = "#c79a2a"; g.font = `${24 * k}px "${FONT}", ${BODY}`; g.fillText(s.left ? "LEFT-HANDED" : "RIGHT-HANDED", cx, fb + 104 * k);
     g.textAlign = "start";
     this.hint(g, W, H, k, "◀ ▶ choose   START hand   A pick   B back");
+  }
+
+  // ---- a page to read: the game's own picture, framed ----
+  frame(g, W, H, k, s, gb) {
+    this.title(g, k, s.title || "");
+    this.mw.menuBall(g, -60 * k, H / 2, 250 * k, performance.now() / 5000);
+    const fr = gb.ppu.frame, cv = this.frameCv || (this.frameCv = document.createElement("canvas")); cv.width = 160; cv.height = 144;
+    const cg = cv.getContext("2d"), im = cg.createImageData(160, 144), u32 = new Uint32Array(im.data.buffer);
+    for (let i = 0; i < 160 * 144; i++) u32[i] = fr[i] | 0xFF000000;
+    cg.putImageData(im, 0, 0);
+    const sc = Math.min((W - 300 * k) / 160, (H - 210 * k) / 144), w = 160 * sc, h = 144 * sc, x = Math.max(260 * k, (W - w) / 2 + 80 * k), y = 100 * k;
+    g.fillStyle = "rgba(250,250,255,0.94)"; this.mw.pill(g, x - 14 * k, y - 14 * k, w + 28 * k, h + 28 * k, 24 * k); g.fill(); g.lineWidth = 4 * k; g.strokeStyle = "#ffd65a"; g.stroke();
+    g.save(); this.mw.pill(g, x, y, w, h, 12 * k); g.clip(); g.imageSmoothingEnabled = false; g.drawImage(cv, x, y, w, h); g.restore();
+    this.hint(g, W, H, k, s.title === "RULES" ? "A next page" : "✚ look   A / B back");
   }
 
   // ---- the name entry ----

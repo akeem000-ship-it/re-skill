@@ -98,6 +98,7 @@ export function* minigameRulesPageLoop(P, table, list) {
     yield* queueRulesPageToVRAM(P);
     for (;;) {
       yield* advanceFrame(P);
+      if (P.menuWheel && P.menuWheel.on) P.menuWheel.skin = { id: "frame", at: P.frames, title: "RULES" };   // MENU: Wheel (menuskins.js: the page itself, framed), read only
       const edge = P.V.inputRisingEdge;
       if (edge & (PADF_A | PADF_DOWN)) {
         sound(P, SFX_MENU_SELECT);

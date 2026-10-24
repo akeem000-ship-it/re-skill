@@ -64,12 +64,13 @@ function put2x2(P, de, t) {
 }
 function fill2x2(P, de, v) { w8(P, de, v); w8(P, de + 1, v); w8(P, de + ROW, v); w8(P, de + ROW + 1, v); }
 // a records screen's loop: each frame the pad into wMenuInputPressed, the scroll, a frame; A or B end it
-function* recordsLoop(P, scroll, onA = null) {
+function* recordsLoop(P, scroll, onA = null, title = "N64 DATA") {
   const { V } = P;
   wramBank(P, WRAM_SCREEN);
   for (;;) {
     V.menuInputPressed = V.inputPressed;
     if (scroll) yield* callGen(P, scroll(P));
+    if (P.menuWheel && P.menuWheel.on) P.menuWheel.skin = { id: "frame", at: P.frames, title };   // MENU: Wheel (menuskins.js: the page itself, framed), read only
     yield* advanceFrame(P);
     const input = V.menuInputPressed;
     if (input & PADF_A) {
@@ -321,7 +322,7 @@ export function* runTrophiesScreen(P) {
   registerTask(P, UpdateAnimatedTilesTask_3b);
   w8(P, wN64RecordsBlock + 1, 0); w8(P, wN64RecordsBlock, 0);
   yield* openRecordsScreen(P);
-  return yield* recordsLoop(P, null, function* (P2, input) { if (input & PADF_SELECT) checkTrophiesCheatCode(P2); });
+  return yield* recordsLoop(P, null, function* (P2, input) { if (input & PADF_SELECT) checkTrophiesCheatCode(P2); }, "TROPHIES");
 }
 // the cheat-code counters: left counts up wN64RecordsBlock + 1, right wN64RecordsBlock
 function* trophyCounters(P, input) {
