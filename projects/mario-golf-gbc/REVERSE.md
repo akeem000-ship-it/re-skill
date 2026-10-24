@@ -441,15 +441,17 @@ replay further down):
 interpreter (MBC5 banking, WRAM/VRAM banks, rLY/rSTAT faked for the LCD-off waits) checked against the math ports
 (`tools/test_sm83.py`). `emu_shot_record.py` records a shot in PyBoy: a full RAM snapshot at the first pass of
 the main thread's loop (ShotMainLoop 10:6EAA or the flight-camera loop 10:49DD), then every AdvanceFrame entry
-(F), BallTask entry (T) and loop pass (L / P) with WRAM6 `D400-D4FF` and `C800-C8FF` (round and player data).
+(F), BallTask entry (T) and loop pass (L / P) with WRAM6 `D300-D5FF` and `C800-C8FF` (round and player data).
 `shot_sim.py` restores the snapshot and runs **the game's own main thread** in the interpreter from that point;
 each AdvanceFrame it calls runs that frame's recorded BallTask calls (keeping hROMBank, hWRAMBank and rSVBK as
 RunFrameTasks 00:247D does) and returns. At every event both RAM ranges are compared with the game, except bytes
-owned by other frame tasks: the camera and display bytes `D42E-D437`, `D465-D467`, and bank 11's sprite state
-`D45C-D45F`, `D46B-D47F`. With the Python ports switched in (BallFlightStep with BallBounce, BallLandCheck,
-BallRollStep, CupPull) the remaining ROM is the main loop, the cup routines and the splash graphics; `--rom`
-runs only ROM code. The suite (24 cases from saved states, button scripts and RAM pokes) matches **every event
-in both modes**, with the game's outcome:
+owned by other frame tasks: the camera and display bytes `D42E-D437`, `D465-D467`, bank 11's sprite state
+`D45C-D45F`, `D46B-D47F`, and the wind indicator's counters `D326-D327`. Modes: `--rom` runs only ROM code; by
+default the Python ports replace BallFlightStep with BallBounce, BallLandCheck, BallRollStep, CupPull and the
+cup routines (cup_sim.py); `--task` replaces BallTask as a whole (shot_py.ball_task). **`shot_run.py` runs the
+whole shot in Python** (shot_py.Shot: BallTask and the main thread, the machine used only as memory) and compares
+the same events. The suite (27 cases from saved states, button scripts and RAM pokes) matches **every event in
+all four modes**, with the game's outcome:
 
 | Cases | Outcome |
 |-------|---------|
@@ -458,9 +460,48 @@ in both modes**, with the game's outcome:
 | a ball rolling into a bunker; a sand shot landing in sand; a flat bunker landing | `$02` |
 | two vertical bunker landings (poked: no horizontal speed) -> **plugged** (lie 2) | `$02` |
 | a shot over water that **skips twice** and then rolls in; a vertical water landing (poked) | `$03` |
+| a ball sent into a tree trunk (bounces back at half speed) and through its canopy (slowed) (poked) | `$01` |
+| a ball sent over the hole's left edge (poked) -> **out of bounds** | `$07` |
 
 The cases the old frame-by-frame comparison could not reach were the view switches: the game spends several
 frames inside LoadShotView, so the replay must know which AdvanceFrame each ball step belongs to (the F events).
+
+**The cup in detail** (tools/cup_sim.py; each routine checked against the ROM on random states by
+tools/test_cup.py, and in the suite). Offsets are 8.8 from the cup (`D43D`/`D43F`):
+
+- CupOffsets (10:73CA): `D499`/`D49B` = ball - cup, `D4A5` = Dist16 (sqrt in steps of 16). Dist16 below `$200`
+  on the ground in the cup view (and `D4D5` clear) drops the ball at once (CupRollIn 10:716B); otherwise
+  PathNearest (10:74A1, via PathOffset 10:741D) finds where the path passes the cup, and the ball drops when
+  3 x speed is below twice that miss distance scaled by the angle (`D4B1`).
+- CupDrop (10:79AF) unregisters BallTask and runs its own loop, one AdvanceFrame per pass: the ball moves by
+  vx / vy; RimClamp (10:78AD) keeps it within 6 x 256 of the centre (`D4B8` bit 0 at the wall, bit 1 near the
+  centre); CupSink (10:7860) adds gravity `-$38` per frame until the height reaches `-$14` (in: `a` = 1). At the
+  wall, CupDeflect (10:760E: Reflect 10:771E about the contact point from PinContact 10:750B, and CupWall
+  10:7A63 when lower than 4) turns the velocity; if the height comes back above 0 the ball pops out (`a` = 2:
+  back in the air, BallTask on again, the main loop goes on; seen in three of the suite's putts).
+- PinCheck (10:72E7): with the height below `$E8` and PinDist (10:62AD, a 24-bit distance through Isqrt24
+  00:1D6A) at most 2, a ball at `$C0-$E7` hits the flagstick and drops (velocity 0, sound `$59`); lower it
+  bounces off (PinBounce 10:765F: half the reflected velocity, sound `$58`). Once per shot (`D4B9`).
+
+**Trees** (TreeCheck 08:51D2, part of BallTask, not in the green views 1 / 2). A tile is a tree when bit 7 of its
+`$D700` byte is set. The height (`D407-D408` x 8 / 256, below `$18`) picks a half width from `D4F3` (hole 1:
+`$11` for levels 0-3, then `$40`-`$50`); the ball's spot in the tile (4 + 4 bits) gives the distance and angle
+to the trunk (tables 08:5426 and 08:5326); the tree is hit when the sideways distance of the trunk from the
+ball's direction is below the width. Bit 0 of the width means solid: the direction is mirrored about the trunk
+and the speed halved; otherwise (leaves) vx, vy x `$E6`/256 and vz x `$F0`/256. `D48E` bit 4 is set and the tile
+is remembered (`D516`/`D519`) so it hits once.
+
+**The rest of BallTask** (10:4D45, all in shot_py.ball_task): after the step, BallTerrainCheck (10:527C) saves
+the position to `D51D` unless on water or out of bounds; TreeCheck; B sets `D360`; RestWatch (10:7077) counts
+frames at the same integer spot in `D4D3` (the main loop ends the shot at `$28`); the height goes to `CAAB` and
+`D4C1`.
+
+**The main thread's frames** (what decides how many ball steps a shot gets): the flight-camera loop (10:49D8)
+runs until the first touch-down (`D331`), the green area, or `$5A` frames; then LoadShotView (one AdvanceFrame,
+13:4462), WaitFramesCmd 1, the cue 3B:4339 (`D48E` bit 3 without bit 4), WaitFramesCmd 1, and ShotMainLoop.
+In the loop a change between views 0 and 1 costs ShotViewLeave (one AdvanceFrame, 3B:432F) and LoadShotView
+(one); the cup close-up (1 <-> 2) costs none; out of bounds waits 30 frames; HoleOutPlace 30. A fade
+(WaitFade 00:2625) only runs when the screen was faded out, which does not happen mid-shot.
 
 #### Holes (bank 13 loaders; tools/render_hole.py, tools/emu_hole_check.py, tools/hole_stats.py)
 
@@ -643,8 +684,9 @@ Result over 4800 frames:
 - [x] Golf engine: ball step ported exactly (ball_sim.py: flight, wind, drag, bounce, roll, slopes; 5 shots, 1783 steps)
 - [x] Ball step: the green (putting) branches, water drop and skip, bunker plug; the cup and holing out
       (ShotMainLoop 10:6E99; whole-shot replay in the interpreter, shot_suite.py: 24 cases, every event matches)
-- [ ] Cup routines in Python (CupFlyIn 10:7263, CupRollIn 10:716B, PinCheck 10:72E7, CupDrop 10:79AF): they
-      run as ROM code in the replay; port them, then ShotMainLoop itself
+- [x] Cup routines in Python (cup_sim.py, test_cup.py), trees (TreeCheck 08:51D2), the rest of BallTask, and
+      ShotMainLoop with the flight-camera loop (shot_py.py): whole shots run in Python (shot_run.py, 27 cases)
+- [ ] ShotMainLoop's retry branch (10:6FC9, A with `D35F` set) and 13:4276: not reached yet
 - [ ] Golf engine: the lie factor table (10:660E), 08:60BC (distance -> speed), the impact offsets (10:6B03,
       6B1F, 6C18, 6C54, 6C9F): port ShotLaunch and check launch values the same way
 - [ ] Golf engine: aiming loop (10:486B), club select, CPU golfers' targets, scoring (strokes, PlayerField `+$20`)

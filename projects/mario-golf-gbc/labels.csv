@@ -395,3 +395,34 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,D4B9,wPinFlags,WRAM6: bit 0 pin tested; bit 1 hit the pin
 *,D4CF,wStopSpot,WRAM6: x and y integer parts where the ball stopped (BallStop)
 *,D4D3,wBallRestCount,WRAM6: frames at rest; the shot ends at $28 ($C8 after BallStop)
+0,1D6A,Isqrt24,hl = floor(sqrt(hl * 256 + a)) (12-bit result; cup_sim.isqrt24)
+0,2625,WaitFade,AdvanceFrame while a fade runs ($FFA2)
+08,51D2,TreeCheck,trees: tile flag bit 7 in the $D700 table; per-height half width at $D4F3 (bit 0 = trunk: bounce back at half speed; else canopy: x $E6, vz x $F0); $D516/$D519 = tile hit
+08,5326,TreeAngleTable,256 bytes: angle from each 16 x 16 spot of a tile to the trunk
+08,5426,TreeDistTable,256 bytes: distance from each spot of a tile to the trunk
+08,5526,TreeSound,a = 0 bounce / 1 leaves: sound by course ($C836)
+10,62AD,PinDist,|ball - cup| from the 24-bit offsets, normalised, squared, Isqrt24
+10,7077,RestWatch,$D4D3 counts frames at the same integer position (height 0 / -1); reset with the spot in $D4CF-$D4D2
+10,70DB,LieFairwayTable,16 lie qualities indexed by the ball's fraction nibbles
+10,7112,LieRoughTable,16 lie qualities (rough)
+10,735A,PinFar,a = 1 when PinDist is above hl
+10,73CA,CupOffsets,$D499 / $D49B = ball - cup (8.8 from the integer low byte and fraction); $D4A5 = Dist16
+10,741D,PathOffset,$D49B - $D499 x vy / vx: where the ball's path passes the cup
+10,74A1,PathNearest,the path's closest point to the cup -> $D49D / $D49F
+10,750B,PinContact,ball speed $D4A7; contact point on the rim or pin -> $D4A1 / $D4A3
+10,760E,CupDeflect,off the rim (and the wall when low, CupWall): new vx / vy
+10,765F,PinBounce,off the pin: velocity = half the reflected difference (sound $58)
+10,76BA,ReflectLine,vy - vx x $D4A3 / $D4A1
+10,771E,Reflect,the velocity reflected at the contact point -> $D4A9-$D4B0, signs in $D4BA
+10,7860,CupSink,vz -= $38; a = 1 once the height is at -$14 or below
+10,78AD,RimClamp,inside the cup the ball is kept within 6 of the centre; $D4B8 bit 0 at the wall, bit 1 near the centre
+10,7A63,CupWall,low in the cup: part of the horizontal speed turns into vz
+10,7BAC,DebugHoleSelect,unreachable: COURSE / HOLE number picker (prints 10:7C9B, 10:7CA2)
+*,D326,wWindAnim,WRAM6: wind indicator animation counters (bank 12 frame task)
+*,D499,wCupOffset,WRAM6: ball - cup x / y (8.8) at $D499 / $D49B
+*,D4B1,wCupDrops,WRAM6: 1 when CupRollIn lets the ball drop
+*,D4B8,wRimFlags,WRAM6: RimClamp bit 0 at the wall, bit 1 near the centre
+*,D4D5,wNoPin,WRAM6: nonzero skips PinCheck and the early drop
+*,D4F3,wTreeWidth,WRAM6: tree half width per height level ($18 levels of 32 units; bit 0 = solid trunk)
+*,D516,wTreeHitX,WRAM6: tile x of the last tree hit ($D519 = tile y)
+*,D51D,wSafeSpot,WRAM6: last position not on water / out of bounds (BallTerrainCheck)

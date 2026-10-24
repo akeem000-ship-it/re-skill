@@ -39,7 +39,8 @@ global checksum `$0FC7`.
 | `golfmath.py`, `test_math.py`, `emu_callfn.py`, `probe_fn.py` | bank-0 math in Python; checked against the ROM routines called inside PyBoy |
 | `ball_sim.py`, `emu_ball_record.py`, `emu_regs_at.py` | exact ball simulator; per-step ball recordings; registers at an address |
 | `sm83.py`, `test_sm83.py` | SM83 interpreter that runs ROM code with Python overrides; checked against the math ports |
-| `shot_sim.py`, `emu_shot_record.py`, `shot_suite.py` | whole-shot replay (the game's main loop in the interpreter vs a PyBoy recording); the 24-case shot suite |
+| `cup_sim.py`, `test_cup.py`, `shot_py.py`, `shot_run.py` | the cup and pin in Python (checked against the ROM on random states); BallTask and the shot's main thread in Python; a recorded shot run in Python only |
+| `shot_sim.py`, `emu_shot_record.py`, `shot_suite.py` | whole-shot replay (the game's main loop in the interpreter vs a PyBoy recording); the shot suite (27 cases, four modes) |
 | `emu_mkstate.py`, `emu_poke_state.py` | new states from a button script or from RAM pokes |
 | `emu_between.py`, `emu_green_check.py`, `find_terrain.py` | ball-state writes outside BallTask; hole assets in WRAM; positions of a terrain type |
 | `xref.py`, `search_bytes.py`, `find_bytes.py`, `decode_tables.py`, `relsearch.py`, `strings_dump.py` | generic, copied from Tennis |

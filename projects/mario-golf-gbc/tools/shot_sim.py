@@ -17,11 +17,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gbrom import load_rom
 from sm83 import Machine
 import ball_sim as bs
+import cup_sim as cs
+import shot_py as sp
 
 LOOP_TOP, LOOP_CALL, LOOP_RET = 0x6EAA, 0x6EA7, 0x4A25
 PRE_TOP, PRE_CALL = 0x49DD, 0x49DA     # the flight-camera loop (10:49D8) that runs before the main loop
 # camera and display bytes that other frame tasks update between the events (not simulated here)
 SKIP_C8 = set()
+SKIP_D3 = {0x26, 0x27}            # wind indicator animation (bank 12 frame task)
+SKIP_D5 = set()
 SKIP = set(range(0x2E, 0x38)) | set(range(0x5C, 0x60)) | set(range(0x65, 0x68)) | set(range(0x6B, 0x80))
 
 
@@ -32,7 +36,7 @@ def ball_view(m):
 WHAT = {}                              # ported branches taken (water, plugged, splash, bunker)
 
 
-def make_overrides(hole):
+def make_overrides(hole, task=False):
     def wind(m):
         return m.wram[0][0x815], m.wram[0][0x816]
 
@@ -80,12 +84,73 @@ def make_overrides(hole):
         t = bytearray(s)
         m.a = bs.cup_pull(t)
         s[:] = t
-    return {(0x10, 0x4EE0): flight, (0x10, 0x4D09): land, (0x10, 0x4D86): roll, (0x10, 0x7CAB): pull}
+
+    def frames(m, n):                  # AdvanceFrame n times (the replay's frame hook runs that frame's ball steps)
+        for _ in range(n):
+            if m.frame_hook:
+                m.frame_hook(m)
+
+    def cup(fn, result=True, keep=False):
+        """Run a cup_sim port on the ball state; a = its result; the other registers are kept like the ROM's
+        push / pop pairs (keep: a too)."""
+        def run(m):                    # in place: CupDrop's frames compare the RAM while it runs
+            regs = (m.a, m.b, m.c, m.d, m.e, m.h, m.l)
+            r = fn(m, ball_view(m))
+            m.a, m.b, m.c, m.d, m.e, m.h, m.l = regs
+            if result and not keep:
+                m.a = r
+            WHAT[fn.__name__] = WHAT.get(fn.__name__, 0) + 1
+        return run
+
+    def near_cup(m, t):
+        return cs.near_cup(t)
+    def roll_in(m, t):
+        cs.roll_in(t)
+    def fly_in(m, t):
+        return cs.fly_in(t)
+    def pin_check(m, t):               # 10:72E7 also selects WRAM bank 6
+        m.high[0x196] = m.high[0x170] = 6
+        cs.pin_check(t, [])
+    def cup_drop(m, t):                # BallTask is unregistered meanwhile (00:2449 / 00:23E8)
+        sp = m.sp
+        m.call(0, 0x2449, hl=0x4D45)
+        r = cs.cup_drop(t, lambda n: frames(m, n), [])
+        m.call(0, 0x23E8, a=1, hl=0x4D45)
+        m.sp = sp
+        return r
+    def hole_out_place(m, t):
+        cs.hole_out_place(t, lambda n: frames(m, n))
+    def ball_task(m):                  # the whole of 10:4D45 in Python (--task)
+        fx = []
+        sp.ball_task(m, hole, fx)
+        effects(m, [f for f in fx if f == "splash"])
+        WHAT["ball_task"] = WHAT.get("ball_task", 0) + 1
+    ports = {(0x10, 0x4EE0): flight, (0x10, 0x4D09): land, (0x10, 0x4D86): roll, (0x10, 0x7CAB): pull,
+             (0x10, 0x7122): cup(near_cup), (0x10, 0x716B): cup(roll_in, keep=True), (0x10, 0x7263): cup(fly_in),
+             (0x10, 0x72E7): cup(pin_check, keep=True), (0x10, 0x79AF): cup(cup_drop),
+             (0x10, 0x7888): cup(hole_out_place, result=False)}
+    if task:
+        ports[(0x10, 0x4D45)] = ball_task
+    return ports
 
 
 def set_regs(m, regs):
     m.a, m.f, m.b, m.c, m.d, m.e = regs[:6]
     m.h, m.l = regs[6] >> 8, regs[6] & 0xFF
+
+
+def event_diff(m, e):
+    """[(address, simulated, game)] for the RAM recorded with event e (except the bytes other tasks own)."""
+    want, got = bytes.fromhex(e[2]), m.wram[6][0x400:0x500]
+    diff = [(0xD400 + k, got[k], want[k]) for k in range(0x100) if got[k] != want[k] and k not in SKIP]
+    if len(e) > 5:                     # $C800-$C8FF (round and player data), in newer recordings
+        want, got = bytes.fromhex(e[5]), m.wram[0][0x800:0x900]
+        diff += [(0xC800 + k, got[k], want[k]) for k in range(0x100) if got[k] != want[k] and k not in SKIP_C8]
+    if len(e) > 6:                     # WRAM6 $D300-$D3FF and $D500-$D5FF
+        for k0, i, skip in ((0xD300, 6, SKIP_D3), (0xD500, 7, SKIP_D5)):
+            want, got = bytes.fromhex(e[i]), m.wram[6][k0 - 0xD000:k0 - 0xCF00]
+            diff += [(k0 + k, got[k], want[k]) for k in range(0x100) if got[k] != want[k] and k not in skip]
+    return diff
 
 
 class Mismatch(Exception):
@@ -104,7 +169,7 @@ def main():
     m.rom_bank = 0x10
     hole = bs.Hole(m.wram[6][0x320])
     if "--rom" not in a:
-        m.overrides = make_overrides(hole)
+        m.overrides = make_overrides(hole, "--task" in a)
     ev = rec["events"]
     pos = [0]                          # next event to match
     stats = {"ok": 0}
@@ -117,11 +182,7 @@ def main():
         e = ev[pos[0]]
         if e[0] != kind:
             raise Mismatch("event %d: game had %s (frame %d), simulation reached %s" % (pos[0], e[0], e[1], kind))
-        want, got = bytes.fromhex(e[2]), m.wram[6][0x400:0x500]
-        diff = [(0xD400 + k, got[k], want[k]) for k in range(0x100) if got[k] != want[k] and k not in SKIP]
-        if len(e) > 5:                 # $C800-$C8FF (round and player data), in newer recordings
-            want, got = bytes.fromhex(e[5]), m.wram[0][0x800:0x900]
-            diff += [(0xC800 + k, got[k], want[k]) for k in range(0x100) if got[k] != want[k] and k not in SKIP_C8]
+        diff = event_diff(m, e)
         if diff:
             lines = ["event %d (%s, frame %d): differs at %s" % (pos[0], kind, e[1], " ".join("$%04x" % d[0] for d in diff[:24]))]
             lines += ["   $%04x sim %02x game %02x" % d for d in diff[:8]]

@@ -3,7 +3,7 @@ replay starts with the main thread at a known point), then the ordered events
   T  BallTask entry (10:4D45)       L  main-loop pass (10:6EAA, just after its AdvanceFrame; with SP)
   P  pass of the flight-camera loop before it (10:49DD, after its AdvanceFrame; with SP)
   F  AdvanceFrame entry (00:2E3B): the T events up to the next F ran in that frame
-each with WRAM6 $D400-$D4FF (and, since F, $C800-$C8FF: round and player data), until FRAMES have run. (Recordings made before F existed started at the first T.)
+each with WRAM6 $D400-$D4FF (and, since F, $C800-$C8FF: round and player data; WRAM6 $D300-$D3FF, $D500-$D5FF), until FRAMES have run. (Recordings made before F existed started at the first T.)
 
 usage: emu_shot_record.py OUT.json FRAMES [--state FILE] [--press FRAME:BUTTON ...]
 """
@@ -42,7 +42,8 @@ def main():
             r = emu.regs()
             rec["events"].append([kind, cur[0], emu.wram(6, 0xD400, 0x100).hex(), r["SP"],
                                   [r["A"], r["F"], r["B"], r["C"], r["D"], r["E"], r["HL"]],
-                                  bytes(emu.pb.memory[0xC800:0xC900]).hex()])
+                                  bytes(emu.pb.memory[0xC800:0xC900]).hex(),
+                                  emu.wram(6, 0xD300, 0x100).hex(), emu.wram(6, 0xD500, 0x100).hex()])
         return f
     e.hook(0x10, 0x4D45, ev("T"))
     e.hook(0x10, 0x6EAA, ev("L"))
