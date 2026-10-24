@@ -513,6 +513,36 @@ into vx, vy, vz. After it (10:49A3): the stop spot is cleared, the lie reset, in
 uses up a power shot (PowerShotUse 10:433B), `D438` = `$11`, and BallTask starts (ShotFly 10:49B7; on the green
 views the flight camera is skipped).
 
+**The swing** (tools/swing_py.py and shot_py.Shot.address / swing / after_swing; the whole golf shot from the
+moment the golfer addresses the ball). ShotSetup (10:4798) is the whole shot: lie and club set-up, the aiming
+menu (AimMenu 10:5BA6), then AddressBall (10:56B0): Up / Down change club (view 4), Left / Right nudge the aim
+`D418` by `$80` per frame (at most 8 steps either way), A starts the swing, B returns to the menu. The meter
+(SwingMeterLoop 10:57E0, main thread) counts `D44E` up each frame; the cursor `D44F` follows it to `$3C` and
+back; presses are read every second frame (odd frames latched in `D453`). The first A sets the power (the
+putter swings at once, with its range `D32B` as the shot mode), the second the impact (perfect at cursor 0);
+without power the swing is cancelled at count `$78` (or B): 20 frames and back to the address; without impact
+it ends at count `$8A`. Meanwhile frame task 10:55AC turns the d-pad held into the impact side and height
+(`D44B` / `D44C`, table 10:55CE): those are the hook / slice and top / low controls. After the swing
+(10:4921): the shot record (ShotRecord 02:46B0), in view 4 the wait until the swing animation reaches the
+club's contact mark (`D464`, script 11:6ECD by golfer and club), otherwise a fixed `$30` / `$24` / `$32`
+frames; the retry copy (`D359-D36A`), one stroke more (CountStroke 10:477C), and ShotLaunch.
+
+Two frame tasks matter for the RAM before the launch: the golfer's animation (11:6E3E; LoadShotView stops it)
+and, while aiming and addressing (`D485` bit 4), the **landing preview** (11:4E5E): every 32 frames a ghost
+ball is launched from a perfect full swing with the current aim (PreviewRestart 10:543C, which reuses
+ShotClubParams and ShotSpeed and so rewrites `D40F-D41D`), then flown each frame with BallFlightStep's
+rules (PreviewStep 10:5355: it borrows the real ball's speed, direction, curve and spin, and the real ball's
+height for the wind, so on the tee it flies without wind) until a tree stops it (08:5109). None of what it
+writes survives into the launch: ShotLaunch rebuilds those values.
+
+The joypad (ReadJoypad 00:02EB, in VBlank; tools/joypad.py): held, newly pressed, and auto-repeat (on the
+first frame of a change, then every `$FFA6` frames after 18). `emu_shot_record.py --from-address` records from
+AddressBall with the joypad of every frame; `shot_run.py` replays it in Python either from those bytes or from
+the button script through joypad.py, and both match every event of every suite case. `shot_run.py REC --free
+--press 100:a 160:a 220:a 150:left:80` plays any swing from the address: e.g. from hole 1's tee a well-timed
+drive goes about 250 yards, an early or late impact hooks or slices, holding right through the swing pushes
+it into a bunker, a club down per press shortens it.
+
 **From swing to outcome in Python.** With `emu_shot_record.py --from-launch` the recording starts at ShotLaunch's
 entry (event S); `shot_run.py` then runs the launch, the flight, the main loop and the cup in Python. All the
 suite's swing cases are recorded that way, and every event of every case matches. `shot_run.py REC --free
@@ -716,8 +746,10 @@ Result over 4800 frames:
 - [ ] ShotMainLoop's retry branch (10:6FC9, A with `D35F` set) and 13:4276: not reached yet
 - [x] ShotLaunch in Python (launch_py.py, test_launch.py), chained into shot_run.py: swings from the launch to
       the outcome match the game in every case
-- [ ] The swing meter itself (10:57E0 player, 10:5643 computer) and the aiming loop, so a shot can start from
-      button presses in Python; the computer golfers' choice of club and target
+- [x] The swing in Python from the address step: club and aim changes, the meter, the impact pad, the swing
+      animation's timing, the landing preview, the stroke count (swing_py.py, joypad.py; 27 suite cases)
+- [ ] The aiming menu (AimMenu 10:5BA6: shot modes, map view, club list) and the computer's swing (10:5643)
+      and its choice of club and target; then a whole hole (and round) in Python
 - [ ] Golf engine: aiming loop (10:486B), club select, CPU golfers' targets, scoring (strokes, PlayerField `+$20`)
 - [x] Hole data: HoleAssetTable 13:4A16, overhead assets, terrain table; all 90 holes render (render_hole.py)
 - [ ] Holes: the per-hole data still unidentified (ref 1 entries 2-3: tee/pin positions? par/length?), terrain

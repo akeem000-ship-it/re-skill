@@ -76,7 +76,7 @@ def main():
         rec = "out/suite_%s.json" % name
         if "--replay-only" not in a or not os.path.exists(os.path.join(HERE, rec)):
             run(["tools/emu_shot_record.py", rec, str(frames), "--state", path] +
-                (["--from-launch", "--press"] + presses if presses else []))      # swings: from the launch on
+                (["--from-address", "--press"] + presses if presses else []))     # swings: from the address on
         rom = run(["tools/shot_sim.py", rec, "--rom"])
         port = run(["tools/shot_sim.py", rec])
         task = run(["tools/shot_sim.py", rec, "--task"])

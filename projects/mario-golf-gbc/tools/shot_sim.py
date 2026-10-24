@@ -24,7 +24,7 @@ LOOP_TOP, LOOP_CALL, LOOP_RET = 0x6EAA, 0x6EA7, 0x4A25
 PRE_TOP, PRE_CALL = 0x49DD, 0x49DA     # the flight-camera loop (10:49D8) that runs before the main loop
 # camera and display bytes that other frame tasks update between the events (not simulated here)
 SKIP_C8 = set()
-SKIP_D3 = {0x26, 0x27}            # wind indicator animation (bank 12 frame task)
+SKIP_D3 = {0x26, 0x27, 0x6B, 0x6C}  # wind indicator animation, HUD blink timer (bank 12 frame task, 12:502C)
 SKIP_D5 = set()
 SKIP = set(range(0x2E, 0x38)) | set(range(0x5C, 0x60)) | set(range(0x65, 0x68)) | set(range(0x6B, 0x80))
 
@@ -173,7 +173,9 @@ def main():
     ev = rec["events"]
     pos = [0]                          # next event to match
     stats = {"ok": 0}
-    has_f = any(e[0] == "F" for e in ev)   # newer recordings mark each AdvanceFrame of the main thread
+    has_f = any(e[0] == "F" for e in ev)
+    joy = rec.get("joy", {})
+    all_tasks = bool(joy)              # recordings with the joypad (--from-address): all frame tasks run here   # newer recordings mark each AdvanceFrame of the main thread
 
     def check(kind):
         """The game is at an event of this kind: compare with the recording and consume it."""
@@ -194,9 +196,21 @@ def main():
         """AdvanceFrame: run the ball steps the game ran in this frame (T events), then return at once."""
         if has_f:
             if pos[0] < len(ev) and ev[pos[0]][0] == "F":
+                j = joy.get(str(pos[0]))
                 check("F")
+                if j:                  # the joypad as VBlank read it this frame
+                    m.high[0x190:0x195] = bytes(j)
             else:
                 raise Mismatch("event %d: game had %s (frame %d), simulation reached AdvanceFrame" % (pos[0], ev[pos[0]][0], ev[pos[0]][1]))
+        if all_tasks:                  # run every frame task in ROM (RunFrameTasks 00:247D), BallTask included
+            regs = (m.pc, m.sp, m.rom_bank, m.a, m.f, m.b, m.c, m.d, m.e, m.h, m.l)
+            banks = (m.high[0x195], m.high[0x196], m.high[0x170])
+            m.call(0, 0x247D, a=0)
+            m.pc, m.sp, m.rom_bank, m.a, m.f, m.b, m.c, m.d, m.e, m.h, m.l = regs
+            m.high[0x195], m.high[0x196], m.high[0x170] = banks
+            if pos[0] >= len(ev):
+                raise Finished()
+            return True
         while pos[0] < len(ev) and ev[pos[0]][0] == "T":
             check("T")
             # RunFrameTasks (00:247D) keeps hROMBank, hWRAMBank and rSVBK for the interrupted main thread
@@ -210,6 +224,8 @@ def main():
         return True
 
     m.watches = {(0x10, LOOP_TOP): lambda mm: check("L"), (0x10, PRE_TOP): lambda mm: check("P")}
+    if all_tasks:
+        m.watches[(0x10, 0x4D45)] = lambda mm: check("T")
     outcome, note = None, ""
     try:
         # ball steps before the first main-thread event, then enter the main thread there
@@ -219,9 +235,9 @@ def main():
             if kind == "T":
                 m.call(0x10, 0x4D45)
         e = ev[pos[0]]
-        if e[0] == "S":                # from ShotLaunch's entry (recorded with --from-launch)
-            check("S")
-        m.sp, m.pc = e[3], {"L": LOOP_TOP, "P": PRE_TOP, "S": 0x5F94}[e[0]]
+        if e[0] in "SAa":              # from ShotLaunch's entry (--from-launch) or the address step (--from-address)
+            check(e[0])
+        m.sp, m.pc = e[3], {"L": LOOP_TOP, "P": PRE_TOP, "S": 0x5F94, "A": 0x56B0, "a": 0x5713}[e[0]]
         set_regs(m, e[4])
         m.frame_hook = ball_tasks
         m.rom_bank = 0x10

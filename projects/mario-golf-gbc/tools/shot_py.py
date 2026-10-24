@@ -11,8 +11,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gbrom import load_rom, to_offset
 import golfmath as g
 import ball_sim as bs
+from ball_sim import rd16, wr16
 import cup_sim as cs
 import launch_py as lp
+import swing_py as sw
 
 _rom = load_rom()
 TREE_ANGLE = _rom[to_offset(0x08, 0x5326):to_offset(0x08, 0x5326) + 256]   # angle to the trunk per tile spot
@@ -132,21 +134,179 @@ def lie_terrain(hole, s):               # 10:648B BallLieTerrain
     return hole.terrain_at(hl, de)
 
 
+def registered(w, bank, addr):          # is bank:addr in the frame task table ($C1C0: 16 x flags, address, bank)?
+    t = w.wram[0][0x1C0:0x200]
+    return any(t[i] and not t[i] & 0x80 and t[i + 1] | t[i + 2] << 8 == addr and t[i + 3] == bank
+               for i in range(0, 0x40, 4))
+
+
 class Shot:
     """The main thread of a shot. ev(kind) is called at the points tools/emu_shot_record.py records: F at each
     AdvanceFrame, T at each BallTask, L / P at the loop tops; it may compare the RAM with a recording."""
 
     def __init__(self, w, hole, ev=lambda kind: None):
         self.w, self.hole, self.ev = w, hole, ev
-        self.task_on = True
+        self.task_on = registered(w, 0x10, 0x4D45)     # BallTask
+        self.meter_on = registered(w, 0x10, 0x55AC)    # the swing's d-pad task
+        self.anim_on = registered(w, 0x11, 0x6E3E)     # the golfer's animation
         self.fx = []
 
-    def advance(self, n=1):             # 00:2E3B AdvanceFrame (BallTask is frame task 1)
+    def advance(self, n=1):             # 00:2E3B AdvanceFrame: the frame tasks in their slot order
         for _ in range(n):
             self.ev("F")
-            if self.task_on:
+            if self.anim_on:                            # 11:6E3E
+                sw.anim_task(self.w)
+            if sw.preview_on(self.w):                   # 11:4113 -> 11:4E5E
+                sw.preview_frame(self.w, self.hole, self.fx)
+            if self.meter_on:                           # 10:55AC
+                sw.meter_task(self.w)
+            if self.task_on:                            # 10:4D45 BallTask
                 self.ev("T")
                 ball_task(self.w, self.hole, self.fx)
+
+    # -- 10:56B0: the golfer at the ball: club (Up / Down in view 4), aim (Left / Right), A swings, B goes back --
+    def address(self, entered=False):   # entered: at the loop top 10:5713 (after its AdvanceFrame)
+        w, s = self.w, ball(self.w)
+        r6 = w.wram[6]
+        self.task_on = False
+        if not entered:
+            s[0x60] = s[0x61] = 0
+        label = "5713" if entered else "56B6"
+        while True:
+            if label == "56B6":
+                sw.meter_reset(w)
+                self.advance()
+                if s[0xD7]:
+                    raise NotImplementedError("the computer's swing (10:5643)")
+                s[0x53] = 0
+                s[0x51] = 1
+                label = "56CC"
+            if label == "56CC":
+                r6[0x321] = sw.miss_table(w)
+                self.advance(2)
+                lp.club_params(w)
+                label = "56E7"
+            if label == "56E7":
+                s[0x80] = 0
+                r6[0x382] = 1
+                sw.marker(w)
+            if label != "5713":
+                self.advance()
+            label = "5710"
+            joy = w.high[0x194]
+            if joy & 1:
+                r = self.swing()
+                if r == "again":
+                    label = "56B6"
+                    continue
+                return r
+            if joy & 2:
+                return 0xFF                              # back to the aiming menu (not modelled further)
+            if s[0x43] != 4:
+                continue
+            rep, club = w.high[0x191], r6[0x329]
+            if rep & 0x40 or rep & 0x80:
+                if s[0xCD] != 6 and ((rep & 0x40 and club != 0) or (not rep & 0x40 and club != 0x0C)):
+                    r6[0x329] = club - 1 if rep & 0x40 else club + 1
+                    label = "56CC"
+                continue
+            held = w.high[0x190]
+            if held & 0x20:
+                bc = 0 if ((s[0x61] - 0xF8) & 0x80) else 0xFF80
+            elif held & 0x10:
+                bc = 0x80 if ((s[0x61] - 0x08) & 0x80) else 0
+            else:
+                continue
+            wr16(s, 0x18, (rd16(s, 0x18) + bc) & 0xFFFF)
+            wr16(s, 0x60, (rd16(s, 0x60) + bc) & 0xFFFF)
+            label = "56E7"
+
+    def swing(self):                    # 10:57C0 / SwingMeterLoop 10:57E0: A for power, A for impact
+        w, s = self.w, ball(self.w)
+        r6 = w.wram[6]
+        s[0x4D] = 0
+        s[0x51] = 0
+        if r6[0x329] != 0x0D:
+            self.meter_on = True
+        sw.anim_start(w, 1)
+        b = 0
+        while True:
+            self.advance()
+            a = s[0x4E]
+            s[0x4F] = (0x78 - a) & 0xFF if a >= 0x3C else a
+            if s[0x4E] >= 0x78 and not b:
+                return self.swing_off()
+            if not s[0x4E] & 1:
+                c = w.high[0x194] | s[0x53]
+            else:
+                s[0x53] = w.high[0x194]
+                c = 0
+            if c & 2 and not b:
+                return self.swing_off()
+            if c & 1:
+                if b:
+                    return self.swing_end(True)
+                s[0x50] = s[0x4F]
+                b = 1
+                if r6[0x329] == 0x0D:                   # the putter: one press
+                    r6[0x32A] = r6[0x32B]
+                    return self.swing_end(False)
+                if s[0x50] == 0x3C:
+                    s[0x52] = 1
+            s[0x4E] = (s[0x4E] + 1) & 0xFF
+            if s[0x4E] == 0x8A:
+                return self.swing_end(True) if b else self.swing_off()
+
+    def swing_end(self, impact):        # 10:587A (impact: downswing; perfect at cursor 0) and 10:588D
+        w, s = self.w, ball(self.w)
+        if impact:
+            sw.anim_start(w, 2)
+            if s[0x4F] == 0:
+                s[0x51] = 1
+        self.meter_on = False
+        return 0
+
+    def swing_off(self):                # 10:5861: no power or B: back to the address after 20 frames
+        w, s = self.w, ball(self.w)
+        s[0x4D] = 0xF0
+        self.meter_on = False
+        sw.anim_start(w, 3)
+        self.advance(20)
+        return "again"
+
+    def after_swing(self):              # 10:4921-10:49A0: from the swing to ShotLaunch
+        w, s = self.w, ball(self.w)
+        r6, w0 = w.wram[6], w.wram[0]
+        s[0x85] &= 0xEF
+        sw.shot_record(w)                               # 02:46B0 (02:48B8 is for link play)
+        s[0x85] = 0x2D
+        if s[0x43] == 4:
+            while True:                                 # 11:6E34: until the club meets the ball
+                self.advance()
+                if s[0x64]:
+                    break
+        else:                                           # 10:4AEF
+            self.advance(0x30 if r6[0x329] == 0x0D else 0x24 if r6[0x32A] >= 2 else 0x32)
+        r6[0x35A], r6[0x35B] = w0[0x8A0], w0[0x8A1]
+        r6[0x35D], r6[0x35E] = r6[0x32A], r6[0x32B]
+        r6[0x35C] = w0[player_field(w, 0x2B)]
+        r6[0x369], r6[0x36A] = s[0x18], s[0x19]
+        r6[0x359] = w0[player_field(w, 0x29)]
+        s[0x47] = s[0x46]
+        f = player_field(w, 0x20)                       # 10:477C: one more stroke
+        if w0[f] < 0x14:
+            w0[f] += 1
+            self.advance()
+        r6[0x35F] = r6[0x360] = 0
+        r6[0x519], r6[0x516] = s[0x05], s[0x02]
+        s[0x85] |= 4
+        return self.launch()
+
+    def from_address(self, entered=False):  # the swing as played, then the shot: the outcome
+        r = self.address(entered)
+        if r != 0:
+            return r
+        return self.after_swing()
 
     # -- the view changes: maps and graphics; only their RAM effects on the shot state are kept --
     def view_leave(self):               # 3B:431F ShotViewLeave
@@ -155,6 +315,7 @@ class Shot:
 
     def load_view(self, c):             # 13:432B LoadShotView (not view 4): one AdvanceFrame (13:4462)
         w, s = self.w, ball(self.w)
+        self.anim_on = False                            # 13:433A -> 11:6D88: the golfer's animation stops
         s[0x44] = 0
         w.wram[0][0xA80] = w.wram[0][0xA81] = 0
         if c:

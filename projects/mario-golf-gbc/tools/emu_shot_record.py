@@ -7,7 +7,11 @@ each with WRAM6 $D400-$D4FF (and, since F, $C800-$C8FF: round and player data; W
 
   --from-launch: the snapshot is taken at ShotLaunch's entry (10:5F94, event S) instead, so the swing's
   result is replayed through the launch too
-usage: emu_shot_record.py OUT.json FRAMES [--state FILE] [--from-launch] [--press FRAME:BUTTON ...]
+  --from-address: the snapshot is taken where the golfer addresses the ball (10:56B0, event A; or at its
+  loop top 10:5713, event a, for a state saved inside it): the swing meter, its joypad input and the launch
+  are replayed too
+The joypad bytes $FF90-$FF94 of each frame (read at 00:2EBF, after VBlank) are kept in "joy" by F event index.
+usage: emu_shot_record.py OUT.json FRAMES [--state FILE] [--from-launch | --from-address] [--press FRAME:BUTTON ...]
 """
 import sys, os, json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -38,7 +42,7 @@ def main():
     def ev(kind):
         def f(emu):
             if rec["snapshot"] is None:
-                if kind in "TF" or (from_launch and kind != "S"):
+                if kind in "TF" or (from_launch and kind not in "SAa"):
                     return
                 rec["snapshot"] = snapshot(emu)
             r = emu.regs()
@@ -50,9 +54,21 @@ def main():
     e.hook(0x10, 0x4D45, ev("T"))
     e.hook(0x10, 0x6EAA, ev("L"))
     e.hook(0x10, 0x49DD, ev("P"))
-    from_launch = "--from-launch" in a
-    if from_launch:
+    from_launch = "--from-launch" in a or "--from-address" in a
+    if "--from-address" in a:                   # the snapshot at the swing's address step (10:56B0)
+        e.hook(0x10, 0x56B0, ev("A"))
+        first_a = ev("a")                       # or, from a state already in it, at its loop top (10:5713)
+        e.hook(0x10, 0x5713, lambda emu: first_a(emu) if rec["snapshot"] is None else None)
+    else:
         e.hook(0x10, 0x5F94, ev("S"))
+
+    def joy(emu):                               # 00:2EBF: this frame's joypad, read in VBlank, for its F event
+        if rec["snapshot"] is not None:
+            last_f = max((i for i, x in enumerate(rec["events"]) if x[0] == "F"), default=None)
+            if last_f is not None:
+                rec["joy"][str(last_f)] = [emu.pb.memory[0xFF90 + i] for i in range(5)]
+    rec["joy"] = {}
+    e.hook(0x00, 0x2EBF, joy)
     e.hook(0x00, 0x2E3B, ev("F"))
 
     def each(f):

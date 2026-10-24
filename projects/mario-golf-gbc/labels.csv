@@ -442,3 +442,30 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 10,6C9F,MissCurve,curve change for the miss index (10:6CB5) through Control
 10,6D6A,SpeedTableJump,16 words by $D4C8 (trajectory class): the bank 38-3A distance -> launch speed tables (same code, own tables at +$11 / +$36)
 10,706C,ClearStopSpot,$D4CF-$D4D4 = 0
+10,56B0,AddressBall,golfer at the ball: Up / Down change club (view 4), Left / Right nudge the aim by $80 (up to 8 steps), A starts the swing, B back to the aiming menu (a = $FF)
+10,57C0,SwingStart,registers the d-pad task 10:55AC, backswing animation, then SwingMeterLoop
+10,55AC,SwingPadTask,frame task during the swing: $D44D = held; impact side / height $D44B / $D44C from table 10:55CE by the d-pad
+10,55FF,SwingMeterReset,count, cursor, perfect, full = 0; power $80 (not set); $D44D = $F0
+10,587A,SwingEnd,downswing animation; perfect when the cursor is 0; d-pad task off
+10,5861,SwingCancel,no power (cursor back to 0) or B: sound $5F, 20 frames, back to AddressBall
+10,5BA6,AimMenu,the aiming menu before the address (returns $8F / $82 / $80 / $81 / $FF or swing)
+10,6907,MissTable,$D321 = the miss table for the club, lie class and the golfer's $D4C9 (10:6983 / 10:6A43, 10:693B)
+10,5EE2,TargetMarker,club base distance along the aim -> marker $D426-$D429
+10,477C,CountStroke,PlayerField $20 (strokes on the hole) + 1, below 20; one frame
+10,4AEF,PuttWait,views other than 4: waits $30 (putter), $24 (shot mode 2+) or $32 frames before the launch
+10,543C,PreviewRestart,landing preview: ghost ball from a perfect full swing with the current aim ($D373-$D382; aim kept in $D51A)
+10,5355,PreviewStep,BallFlightStep on the ghost ball, with the real ball's speed, direction, curve and spin
+10,550B,SaveAddressSpot,$D514-$D519 = the ball's position (the preview's start; $D516 / $D519 also mark the tree tile)
+11,4113,BallDisplayTask,frame task: ball sprites by view (11:412C); with $D485 bit 4 the landing preview (11:4E5E) in views 0, 1, 4-6
+11,4E5E,PreviewFrame,every 32 frames ($D480) PreviewRestart; PreviewStep until a tree stops it ($D513, sound $56)
+11,6D69,GolfAnimInit,idle animation and the animation task (bank 11 export $12)
+11,6D88,GolfAnimStop,unregisters the animation task (LoadShotView does this)
+11,6D8F,GolfAnimStart,a = kind (0 idle, 1 backswing, 2 downswing, 3 back): script from 11:6ECD by $D332 and club / kind (11:6DEE, 11:6DFE)
+11,6E34,WaitClubContact,AdvanceFrame until $D464
+11,6E3E,GolfAnimTask,frame task: (frame, duration) script at $D462; $FE = contact ($D464 = 1), $FF = end
+02,46B0,ShotRecord,13 bytes (position, aim, club, mode, power, cursor, pad) -> $D5F8 and, for a human's first 4 strokes, $D680 + player x $40 + stroke x 16
+08,5109,PreviewTreeCheck,the ghost ball against trees (as TreeCheck; direction from its velocity)
+*,D453,wSwingPressLatch,WRAM6: presses of odd frames, merged on even frames by the meter
+*,D464,wClubContact,WRAM6: 1 when the swing animation reaches the contact mark
+*,D480,wPreviewTimer,WRAM6: frames since the preview started (restart every 32)
+*,D513,wPreviewStopped,WRAM6: the ghost ball hit a tree
