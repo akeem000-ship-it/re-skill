@@ -221,7 +221,8 @@ export class MatchIntro {
     let eye, at, fov = 0.75;
     if (this.inPass) {                            // the big matches: high round the stadium under the fireworks
       const u = ease((this.rt - T_A) / PASS), a = -1.0 + 2.0 * u;
-      eye = [3900 * Math.sin(a), 1750 - 350 * u, 3600 * Math.cos(a) - 400]; at = [0, 380, -500]; fov = 0.8;
+      const st = this.v.stadium, G = !!(st && st.built && st.built.giant);              // (GIANT: higher and wider, over the finals' roof)
+      eye = G ? [4700 * Math.sin(a), 3000 - 500 * u, 4400 * Math.cos(a) - 400] : [3900 * Math.sin(a), 1750 - 350 * u, 3600 * Math.cos(a) - 400]; at = G ? [0, 200, -500] : [0, 380, -500]; fov = 0.8;
     } else if (t < T_A) {                                // A: low along the right-hand stand
       const u = ease(t / T_A), z = 1500 - 2400 * u;
       eye = [350, 170, z]; at = [1500, 300, z - 260];

@@ -209,11 +209,15 @@ export class Stadium3D {
     this.v = voxel; this.gl = voxel.gl;
     const q = new URLSearchParams(typeof location !== "undefined" ? location.search : "");
     let m = q.get("stadium"); if (m === null) { try { m = localStorage.getItem(KEY); } catch (e) { m = null; } }
+    this.forceGiant = m === "giant" || q.get("giant") === "1"; if (m === "giant") m = "3d";   // GIANT: ?stadium=giant tries the finals' stadium anywhere
     this.mode = STADIUM_MODES.includes(m) ? m : "3d";
     this.pend = null; this.built = null; this.sig = ""; this.buildAt = -99; this.cheer = 0; this.cheerAt = -99; this.fill = 0.6; this.scoreSig = ""; this.stats = { boxes: 0, crowd: 0, ms: 0 };
     this.board = null; this.stadiumImg = null; this.onMode = null;
   }
   get active() { return this.mode === "3d" && !this.broken; }
+  // GIANT: the finals (the Island Open's rounds and the dream matches: crowdClass "major") get the giant stadium: an upper deck all round
+  // over a concourse, closing the far corners, under a roof with floodlight banks along its edge, flags, and two video screens
+  wantGiant() { return !this.v.isDrill() && (this.forceGiant || this.crowdClass() === "major"); }
   setMode(m) { this.mode = STADIUM_MODES.includes(m) ? m : "3d"; try { localStorage.setItem(KEY, this.mode); } catch (e) { /* private mode */ } if (this.onMode) this.onMode(this.mode); }
   reset() { this.free(); this.pend = null; this.sig = ""; this.stadiumImg = null; }
   free() {
@@ -339,7 +343,8 @@ export class Stadium3D {
     const t0 = performance.now(), { bg, courtId } = this.pend, v = this.v, gl = this.gl; this.pend = null;
     const tg = performance.now(); this.gfx(); const tp = performance.now(); const P = this.palette(bg, v.rom), rnd = mulberry32(0x57AD1 + courtId * 977);
     this.fanTexture(); const tb = performance.now(); const B = new Boxes(), crowd = [];
-    const N = 8, D = 80, RISE = 38, BASE = 130, SEAT = 44, hall = this.v.isDrill();
+    const N = 8, D = 80, RISE = 38, BASE = 130, SEAT = 44, hall = this.v.isDrill(), giant = this.wantGiant();
+    const UN = 12, RISE2 = 56, G0 = N * D + 120, UB = 660, topU = UB + UN * RISE2, roofY = topU + 300, screens = [];   // GIANT: the upper deck
     const STANDS = [{ id: "left", side: true, dir: -1, inner: -SIDE_IN, v0: -1640, v1: 1900 }, { id: "right", side: true, dir: 1, inner: SIDE_IN, v0: -1640, v1: 1900 },
                     { id: "far", side: false, dir: -1, inner: -1800, v0: -2030, v1: 2030, skip: [2, 6, 7, 14] }];
     const adBoards = [], banners = [], rb = mulberry32(0xBA77 + courtId);   // (banners: their own random numbers, the crowd's stay as they were)
@@ -395,6 +400,45 @@ export class Stadium3D {
           }
         }
       }
+      if (giant) {
+        // GIANT: behind the lower bowl a concourse (dark, with a band of lit windows), then the upper deck: UN rows rising steeply from
+        // UB, its front a fascia in the seat colour; it runs on past the side stands' far ends and the far stand's corners, closing the bowl
+        const V0 = S.side ? S.v0 - 920 : -3140, V1 = S.side ? S.v1 : 3140;
+        box(N * D + 34, G0, V0, V1, 0, UB - 90, shade(P.dark, 0.7), 0.03);
+        for (let v0 = V0 + 40; v0 + 160 < V1; v0 += 220) box(N * D + 30, N * D + 36, v0, v0 + 160, UB - 250, UB - 170, [255, 226, 150]);   // the concourse's windows
+        box(G0 - 14, G0, V0, V1, UB - 90, UB + 36, P.seatB, 0.03); box(G0 - 18, G0 - 12, V0, V1, UB + 30, UB + 40, shade(P.conc, 1.25));
+        for (let i = 0; i < UN; i++) {
+          const y = UB + (i + 1) * RISE2, u = G0 + i * D;
+          box(u, u + D, V0, V1, UB - 90, y, conc[i & 1], 0.03);
+          for (let sec = 0, v0 = V0 + 60; v0 + SEAT * 5 < V1 - 40; sec++, v0 += SEAT * 5 + 36) {
+            const c = ((sec * 2 + (i >> 1)) % 5 < 3) ? P.seatA : P.seatB;
+            box(u + 14, u + 44, v0, v0 + SEAT * 5 - 6, y, y + 14, c, 0.05); box(u + 44, u + 51, v0, v0 + SEAT * 5 - 6, y + 14, y + 42, shade(c, 0.88), 0.05);
+            for (let s = 0; s < 5; s++) {
+              const [x, z] = at(u + 28, v0 + s * SEAT + SEAT / 2 - 3), fan = Math.floor(rnd() * (this.fans ? this.fans.n : 1));
+              crowd.push(x, y + 14, z, rnd(), fan, 0.88 + rnd() * 0.24, rnd(), this.fans && this.fans.hops[fan] ? 1 : 0);
+            }
+          }
+        }
+        const back = G0 + UN * D;
+        box(back, back + 40, V0 - 30, V1 + 30, 0, topU + 170, shade(P.dark, 0.9), 0.03);                                 // the back wall
+        // the roof over the upper rows: a canopy on columns from the back wall, floodlight banks along its inner edge, flags on top
+        const r0 = G0 + 3 * D;
+        for (let v0 = V0 - 40, k = 0; v0 < V1 + 40; v0 += 280, k++) {                                          // panels, ribs between them
+          const v1 = Math.min(V1 + 40, v0 + 280); box(r0, back + 60, v0, v1, roofY, roofY + 34, shade(P.conc, k & 1 ? 0.86 : 0.96), 0.02);
+          box(r0, back + 60, v0, v0 + 12, roofY + 34, roofY + 50, shade(P.conc, 1.2));
+          box(r0 + 60, back, v0 + 40, v1 - 40, roofY + 34, roofY + 38, [150, 190, 220]);                       // a skylight strip
+        }
+        box(r0 - 10, r0, V0 - 40, V1 + 40, roofY - 40, roofY + 40, shade(P.conc, 0.8));
+        for (let v0 = V0; v0 < V1; v0 += 420) box(back + 8, back + 36, v0, v0 + 28, topU + 170, roofY, shade(P.conc, 0.95));
+        for (let v0 = V0 + 30; v0 + 130 < V1; v0 += 200) box(r0 - 18, r0 - 8, v0, v0 + 130, roofY - 34, roofY - 4, [255, 246, 205]);
+        for (let v0 = V0 + 100, k = 0; v0 < V1; v0 += 360, k++) { box(r0 + 20, r0 + 28, v0, v0 + 8, roofY + 34, roofY + 190, [200, 200, 210]); box(r0 + 20, r0 + 24, v0 + 8, v0 + 90, roofY + 120, roofY + 186, P.shirts[k % P.shirts.length]); }
+        // the video screens: on the far stand's roof, either side of the middle
+        if (!S.side) for (const sx of [-1, 1]) {
+          const cx = sx * 1550, z = S.inner + S.dir * (r0 + 40), W = 760, Hs = 260, y = roofY + 40;
+          B.add(cx, roofY + 34, z - 30, 40, 40, 40, [70, 72, 82]); B.add(cx, y, z - 10, W + 40, Hs + 40, 30, [30, 32, 40]);
+          screens.push({ x: cx, y: y + 20, z: z + 8, w: W, h: Hs });
+        }
+      }
     }
     // back wall: thickness behind the backdrop picture, a coping on top, rounded-voxel hedges in front
     const cut = n => v.cuts.find(c => c.name === n);
@@ -433,7 +477,7 @@ export class Stadium3D {
     }
     // floodlight towers (lighting.js hangs its lights at the same x / z, FLOOD_HEIGHT up)
     if (hall) this.buildHall(B, P);
-    for (const [x, z] of hall ? [] : FLOODS) {
+    for (const [x, z] of hall || giant ? [] : FLOODS) {                // (GIANT: the roof carries the lights)
       if (z > 0) continue;                                   // the near towers stand behind the camera: only their light (lighting.js) shows
       const fz = z < 0 ? 1 : -1, px = x < 0 ? 1 : -1;
       B.add(x, 0, z, 30, FLOOD_HEIGHT + 20, 30, [150, 152, 160], 0.02); B.add(x, 0, z, 56, 60, 56, [110, 112, 120]);
@@ -456,7 +500,7 @@ export class Stadium3D {
     const vaoC = gl.createVertexArray(); gl.bindVertexArray(vaoC);
     gl.bindBuffer(gl.ARRAY_BUFFER, bufC); for (const [loc, off] of [[0, 0], [1, 16]]) { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, 32, off); gl.vertexAttribDivisor(loc, 1); }
     gl.bindVertexArray(null);
-    this.built = { boxBuf: bufB, boxVao: vaoB, boxN: B.n, crowdBuf: bufC, crowdVao: vaoC, crowdN: crowd.length / 8, court: courtId, judge, adBoards, banners: banners.sort((a, b) => a.order - b.order), hall };
+    this.built = { boxBuf: bufB, boxVao: vaoB, boxN: B.n, crowdBuf: bufC, crowdVao: vaoC, crowdN: crowd.length / 8, court: courtId, judge, adBoards, banners: banners.sort((a, b) => a.order - b.order), hall, giant, screens };
     this.stats = { boxes: B.n, crowd: crowd.length / 8, ms: performance.now() - t0, gfx: tp - tg, palette: tb - tp, geom: performance.now() - tb };
   }
 
@@ -587,6 +631,7 @@ export class Stadium3D {
     const gl = this.gl, v = this.v;
     try {
       if (this.built && this.built.hall !== v.isDrill() && this.painted && !this.pend) this.pend = this.painted;   // a drill starts or ends on the same court
+      if (this.built && !this.built.hall && this.built.giant !== this.wantGiant() && this.painted && !this.pend) this.pend = this.painted;   // GIANT: a final starts / ends
       if (this.pend && (!this.built || v.gb.ppu.frames - this.buildAt >= 6 || v.gb.ppu.frames < this.buildAt)) { this.buildAt = v.gb.ppu.frames; this.build(); }
       if (!this.built) return; this.tick(); this.applyFill();
       const T = performance.now() / 1000, cheer = clamp(1 - (T - this.cheerAt) / 3.4) ** 0.7;
@@ -617,6 +662,7 @@ export class Stadium3D {
         if (this.boardDirty || !this.board) this.boardTexture();
         const b = this.boardPos; gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
         v.draw(this.board.tex, new Float32Array([b.w, 0, 0, 0, 0, b.h, 0, 0, 0, 0, 1, 0, b.x, b.y, b.z, 1]), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
+        for (const s of this.built.screens || []) v.draw(this.board.tex, new Float32Array([s.w, 0, 0, 0, 0, s.h, 0, 0, 0, 0, 1, 0, s.x, s.y, s.z, 1]), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);   // GIANT: the video screens
       }
     } catch (e) { console.warn("stadium", e); this.broken = true; gl.disable(gl.CULL_FACE); }
     gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
