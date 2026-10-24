@@ -21,12 +21,13 @@ checked in the emulator (`tools/emu_verify.py`).
 | 08 | golf round helpers (hole setup, frame waits during the round) | seen in traces |
 | 0A | the map engine (MapEngine 0A:498C, MapTable 0A:5188) — the main loop of the game | confirmed |
 | 0B | map graphics loader (MapGfxTable 0B:4048) | confirmed |
-| 10 | the golf round (GolfRound 10:4451) | entry confirmed in the emulator |
+| 10 | the golf round (GolfRound 10:4451): swing, launch, ball physics, cup | shot engine ported and verified |
 | 12, 13 | hole setup (LZ data during hole load) | seen in traces |
 | 18-1F | text banks: 2963 ASCII strings | confirmed (emulator) |
 | 28-2F, 72-74 | overworld map graphics (35 descriptors) | confirmed (emulator) |
 | 30-35 | map headers and their lists (63 maps) | confirmed |
 | 40, 4B-4E, 58 | LZ UI tiles, faces, sprites | partly seen |
+| 38-3A | distance -> launch speed tables, one per trajectory class (10:6D6A) | confirmed (test_launch.py) |
 | 50-5D, 5F-71 | course and hole data (HoleAssetTable 13:4A16) | confirmed (emulator) |
 | 7C, 7D, 7E | sound driver (identical code in each) + music | confirmed |
 | 7F | sound effects | confirmed |
@@ -81,7 +82,22 @@ protocol (nibble-coded `$5x` bytes, `$70/$71` handshake; LinkLostReset after 32 
 | music request / effect request | PlaySoundCmd | `$C4C0` / `$C4C2` -> sound driver |
 | link send / receive buffers | golf round, menus | `$CB00` / `$CB40` |
 
+## The golf shot (bank 10; details in REVERSE.md "Golf round")
+
+```
+swing meter (10:57E0) -> ShotLaunch 10:5F94: club, golfer stats, lie, power, impact -> speed / elevation /
+                         direction (distance -> speed tables in banks 38-3A) -> vx vy vz, spin, curve
+  -> ShotFly 10:49B7: BallTask 10:4D45 becomes frame task 1 (flight / bounce / roll, terrain, trees, rest count)
+     flight-camera loop 10:49D8 until the first touch-down -> LoadShotView 13:432B
+  -> ShotMainLoop 10:6E99, once per frame: bounds (out of bounds = 7), view changes (course 0 / green 1 /
+     cup close-up 2), pin and cup (10:7122-10:7CAB; CupDrop runs its own frames), at rest -> the lie's terrain
+     type, or $80 holed
+```
+
+All of it is reproduced in Python (tools/launch_py.py, ball_sim.py, cup_sim.py, shot_py.py) and checked event by
+event against recordings of the game (tools/shot_suite.py).
+
 ## Not yet mapped
 
-The golf engine itself (shots, ball physics, terrain, putting, CPU players, scoring), the course and hole data
-format, the save layout in SRAM, the menu system, and the story scripts. See REVERSE.md "Next Tasks".
+The swing meter and aiming in Python, the computer golfers, scoring and the round flow, the menu system, and the
+story scripts. See REVERSE.md "Next Tasks".

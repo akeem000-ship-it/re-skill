@@ -263,7 +263,7 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 10,4134,ShotPreCheck,
 10,4674,PickNextPlayer,chooses wCurPlayer for the next shot (players not yet holed out: player field +$2A)
 10,4798,ShotSetup,per shot: club / lie (12:4B19), then the swing and the flight; registers BallTask
-10,49B7,ShotLaunch,RegisterFrameTask(1, BallTask) and waits for the ball
+10,49B7,ShotFly,RegisterFrameTask(1, BallTask); the flight-camera loop (10:49D8) until the first touch-down, then LoadShotView and ShotMainLoop
 10,4B14,PlayerField,a = field offset -> hl = wPlayer1 + a (+$40 for player 2 when wCurPlayer)
 10,4CDE,BallSpeedAndDir,wBallDir = angle of (vx vy); wBallSpeed = 0F04 of vx*vx + vy*vy (magnitude)
 10,4D09,BallLandCheck,height 0 and |vz| < $20: flight over (wBallInAir = 0); sound $40
@@ -426,3 +426,19 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,D4F3,wTreeWidth,WRAM6: tree half width per height level ($18 levels of 32 units; bit 0 = solid trunk)
 *,D516,wTreeHitX,WRAM6: tile x of the last tree hit ($D519 = tile y)
 *,D51D,wSafeSpot,WRAM6: last position not on water / out of bounds (BallTerrainCheck)
+02,518B,ClubElevation,a = club, l = trajectory class ($D4C8): launch elevation (word tables 02:51DC per club + 02:51BC per class)
+02,534B,DriverShape,a = shape ($D4CA), d = club, e = equipment ($D4CC): the driver's shape nudged by the equipment bits
+08,607C,ShapeDirection,launch direction offset for the shot shape (table 08:609C) scaled by the club distance
+08,60BC,ShapeSpeed,hl x (1 + table 08:60D6[shape] / 256)
+10,433B,PowerShotUse,shot mode 1: a swing that is not perfect uses up one power shot (PlayerField $28)
+10,6134,ScaleSpeed,hl x e / 256, or hl x (1 + e / 256) when d is nonzero
+10,6672,LieClass,lie class from the lie terrain ($D4CD) and quality ($D446): 0 with $D445, else 5 / 6 bunker, 9 / $0A fairway, $0B rough, or 10:66CB[terrain]
+10,6B03,ShotShape,DriverShape, mirrored with $D333 bit 0
+10,6B1F,MissIndex,impact cursor ($D44F, clamped to -14..14) -> signed miss index through the golfer's table (10:6B5B by $D321)
+10,6BC7,MissSpeed,speed factor for the miss index (10:6BDC; $C9FD = the index)
+10,6BEF,Control,hl x table 10:6C08[$D4CB + 4] (the golfer's control), then x 2
+10,6C18,MissElevation,elevation change for the miss index (10:6C2E) through Control
+10,6C54,MissDirection,direction change for the miss index (10:6C79) through Control; x 1.5 from lie terrain $0C
+10,6C9F,MissCurve,curve change for the miss index (10:6CB5) through Control
+10,6D6A,SpeedTableJump,16 words by $D4C8 (trajectory class): the bank 38-3A distance -> launch speed tables (same code, own tables at +$11 / +$36)
+10,706C,ClearStopSpot,$D4CF-$D4D4 = 0

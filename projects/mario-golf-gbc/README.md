@@ -39,6 +39,7 @@ global checksum `$0FC7`.
 | `golfmath.py`, `test_math.py`, `emu_callfn.py`, `probe_fn.py` | bank-0 math in Python; checked against the ROM routines called inside PyBoy |
 | `ball_sim.py`, `emu_ball_record.py`, `emu_regs_at.py` | exact ball simulator; per-step ball recordings; registers at an address |
 | `sm83.py`, `test_sm83.py` | SM83 interpreter that runs ROM code with Python overrides; checked against the math ports |
+| `launch_py.py`, `test_launch.py`, `emu_launch_record.py` | ShotLaunch (swing result -> ball velocity) in Python; checked on recorded launches and random swings |
 | `cup_sim.py`, `test_cup.py`, `shot_py.py`, `shot_run.py` | the cup and pin in Python (checked against the ROM on random states); BallTask and the shot's main thread in Python; a recorded shot run in Python only |
 | `shot_sim.py`, `emu_shot_record.py`, `shot_suite.py` | whole-shot replay (the game's main loop in the interpreter vs a PyBoy recording); the shot suite (27 cases, four modes) |
 | `emu_mkstate.py`, `emu_poke_state.py` | new states from a button script or from RAM pokes |

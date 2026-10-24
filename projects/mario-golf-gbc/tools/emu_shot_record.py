@@ -5,7 +5,9 @@ replay starts with the main thread at a known point), then the ordered events
   F  AdvanceFrame entry (00:2E3B): the T events up to the next F ran in that frame
 each with WRAM6 $D400-$D4FF (and, since F, $C800-$C8FF: round and player data; WRAM6 $D300-$D3FF, $D500-$D5FF), until FRAMES have run. (Recordings made before F existed started at the first T.)
 
-usage: emu_shot_record.py OUT.json FRAMES [--state FILE] [--press FRAME:BUTTON ...]
+  --from-launch: the snapshot is taken at ShotLaunch's entry (10:5F94, event S) instead, so the swing's
+  result is replayed through the launch too
+usage: emu_shot_record.py OUT.json FRAMES [--state FILE] [--from-launch] [--press FRAME:BUTTON ...]
 """
 import sys, os, json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -36,7 +38,7 @@ def main():
     def ev(kind):
         def f(emu):
             if rec["snapshot"] is None:
-                if kind in "TF":
+                if kind in "TF" or (from_launch and kind != "S"):
                     return
                 rec["snapshot"] = snapshot(emu)
             r = emu.regs()
@@ -48,6 +50,9 @@ def main():
     e.hook(0x10, 0x4D45, ev("T"))
     e.hook(0x10, 0x6EAA, ev("L"))
     e.hook(0x10, 0x49DD, ev("P"))
+    from_launch = "--from-launch" in a
+    if from_launch:
+        e.hook(0x10, 0x5F94, ev("S"))
     e.hook(0x00, 0x2E3B, ev("F"))
 
     def each(f):

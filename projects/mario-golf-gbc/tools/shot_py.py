@@ -12,6 +12,7 @@ from gbrom import load_rom, to_offset
 import golfmath as g
 import ball_sim as bs
 import cup_sim as cs
+import launch_py as lp
 
 _rom = load_rom()
 TREE_ANGLE = _rom[to_offset(0x08, 0x5326):to_offset(0x08, 0x5326) + 256]   # angle to the trunk per tile spot
@@ -165,6 +166,26 @@ class Shot:
     def cup_view(self, v):              # 13:44A4 CupViewEnter (2) / 13:4528 CupViewLeave (1): no frames
         pass
 
+    # -- 10:5F94 ShotLaunch and what follows it up to the flight-camera loop (10:49A0-10:49D8) --
+    def launch(self):
+        w, s = self.w, ball(self.w)
+        r6 = w.wram[6]
+        lp.shot_launch(w, self.fx)
+        for o in range(0xCF, 0xD5):                     # 10:706C
+            s[o] = 0
+        s[0x46] = 0
+        if r6[0x32A] == 1 and r6[0x329] != 0x0D and not (r6[0x44F] == 0 and r6[0x450] == 0x3C):
+            f = player_field(w, 0x28)                   # 10:433B: a power shot used up (unless perfect)
+            w.wram[0][f] = (w.wram[0][f] - 1) & 0xFF
+        s[0x38] = 0x11
+        self.task_on = True                             # 10:49B7 RegisterFrameTask(1, BallTask)
+        if s[0x43] != 4:                                # on the green views: no flight camera
+            return self.after_flight()
+        r6[0x331] = 1 if w.wram[0][0x33F] and s[0x17] < 8 else 0
+        self.advance()
+        self.ev("P")
+        return self.flight_cam(0x5A)
+
     # -- 10:49DD: the flight-camera loop, from its top (after its AdvanceFrame), with its counter c --
     def flight_cam(self, c):
         w, s = self.w, ball(self.w)
@@ -176,6 +197,10 @@ class Shot:
             self.ev("P")
         self.load_view(ball_in_green_area(s))          # 10:4A00 (graphics before it: 30EB, 15:47B1, 04:...)
         self.advance()                                  # 10:4A0A WaitFramesCmd 1
+        return self.after_flight()
+
+    def after_flight(self):             # 10:4A0E
+        s = ball(self.w)
         if not s[0x8E] & 0x10 and s[0x8E] & 0x08:
             self.fx.append(("cue", 8))                  # 3B:4339
         self.advance()                                  # 10:4A1E WaitFramesCmd 1

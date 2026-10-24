@@ -491,6 +491,33 @@ ball's direction is below the width. Bit 0 of the width means solid: the directi
 and the speed halved; otherwise (leaves) vx, vy x `$E6`/256 and vz x `$F0`/256. `D48E` bit 4 is set and the tile
 is remembered (`D516`/`D519`) so it hits once.
 
+**ShotLaunch in detail** (tools/launch_py.py; tools/test_launch.py checks recorded launches and 300 random swings
+against the ROM). In order: the position is saved to `D51D`; ShotClubParams (10:5EEF) loads spin and base speed
+(ClubParamTable 10:61A6), the elevation (ClubElevation 02:518B: per club + per trajectory class `D4C8`), the
+direction offset of the shot shape (ShotShape 10:6B03: the golfer's `D4CA`, nudged for the driver by equipment
+bits `D4CC`, mirrored by `D333` bit 0; ShapeDirection 08:607C) and the curve start (CurveStartTable). Then the
+speed: the computer copies its targets into the meter; the player's is ShotSpeed (10:6CDB):
+ClubBaseDistance (driver distance `D4C6` x ClubDistanceTable, x `$20`, +10% in shot mode 1) x the lie factor
+(LieFactor 10:65EF by LieClass 10:6672: terrain `D4CD` and lie quality `D446`; a factor sum of `$A0` or more
+with a perfect full swing sets the cue bit `D48E` bit 3) x the miss factor (MissSpeed 10:6BC7 by MissIndex
+10:6B1F: the impact cursor through a per-golfer table `D321`) x the power curve, then / 32 and ShapeSpeed
+(08:60BC); that distance indexes one of nine **distance -> launch speed tables** in banks 38-3A chosen by the
+trajectory class (10:6D6A; odd indices average two entries; shot mode 2 uses a byte table). The putter instead
+reads a speed straight from 10:6DCD by range `D32B` and power. The club's base speed is scaled by that
+(ScaleSpeed 10:6134), and by the impact height `D44C` (x `$F9`/256 above, + 7/256 below). Except for the putter,
+the miss index adds an elevation change (MissElevation 10:6C18, capped at `$3F00`), a direction change
+(MissDirection 10:6C54, x 1.5 from lie terrain `$0C`) and a curve change (MissCurve 10:6C9F), each through the
+golfer's control `D4CB` (Control 10:6BEF); the spin is scaled by the impact height and the power, and the impact
+side `D44B` adds `-32 x side` to the curve. Last, MulSinCos splits the speed by the elevation and the direction
+into vx, vy, vz. After it (10:49A3): the stop spot is cleared, the lie reset, in shot mode 1 an imperfect swing
+uses up a power shot (PowerShotUse 10:433B), `D438` = `$11`, and BallTask starts (ShotFly 10:49B7; on the green
+views the flight camera is skipped).
+
+**From swing to outcome in Python.** With `emu_shot_record.py --from-launch` the recording starts at ShotLaunch's
+entry (event S); `shot_run.py` then runs the launch, the flight, the main loop and the cup in Python. All the
+suite's swing cases are recorded that way, and every event of every case matches. `shot_run.py REC --free
+W6:D450=20 ...` plays a recorded swing out with a changed power, club or impact, without the game.
+
 **The rest of BallTask** (10:4D45, all in shot_py.ball_task): after the step, BallTerrainCheck (10:527C) saves
 the position to `D51D` unless on water or out of bounds; TreeCheck; B sets `D360`; RestWatch (10:7077) counts
 frames at the same integer spot in `D4D3` (the main loop ends the shot at `$28`); the height goes to `CAAB` and
@@ -687,8 +714,10 @@ Result over 4800 frames:
 - [x] Cup routines in Python (cup_sim.py, test_cup.py), trees (TreeCheck 08:51D2), the rest of BallTask, and
       ShotMainLoop with the flight-camera loop (shot_py.py): whole shots run in Python (shot_run.py, 27 cases)
 - [ ] ShotMainLoop's retry branch (10:6FC9, A with `D35F` set) and 13:4276: not reached yet
-- [ ] Golf engine: the lie factor table (10:660E), 08:60BC (distance -> speed), the impact offsets (10:6B03,
-      6B1F, 6C18, 6C54, 6C9F): port ShotLaunch and check launch values the same way
+- [x] ShotLaunch in Python (launch_py.py, test_launch.py), chained into shot_run.py: swings from the launch to
+      the outcome match the game in every case
+- [ ] The swing meter itself (10:57E0 player, 10:5643 computer) and the aiming loop, so a shot can start from
+      button presses in Python; the computer golfers' choice of club and target
 - [ ] Golf engine: aiming loop (10:486B), club select, CPU golfers' targets, scoring (strokes, PlayerField `+$20`)
 - [x] Hole data: HoleAssetTable 13:4A16, overhead assets, terrain table; all 90 holes render (render_hole.py)
 - [ ] Holes: the per-hole data still unidentified (ref 1 entries 2-3: tee/pin positions? par/length?), terrain

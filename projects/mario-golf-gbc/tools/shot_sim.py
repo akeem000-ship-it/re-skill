@@ -219,7 +219,9 @@ def main():
             if kind == "T":
                 m.call(0x10, 0x4D45)
         e = ev[pos[0]]
-        m.sp, m.pc = e[3], (LOOP_TOP if e[0] == "L" else PRE_TOP)
+        if e[0] == "S":                # from ShotLaunch's entry (recorded with --from-launch)
+            check("S")
+        m.sp, m.pc = e[3], {"L": LOOP_TOP, "P": PRE_TOP, "S": 0x5F94}[e[0]]
         set_regs(m, e[4])
         m.frame_hook = ball_tasks
         m.rom_bank = 0x10
