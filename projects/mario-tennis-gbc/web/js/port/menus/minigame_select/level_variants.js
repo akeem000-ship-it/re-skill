@@ -19,7 +19,7 @@ import { moveMenuCursorGrid, getMenuCursorIndex, setMenuCursorFromIndex } from "
 import { openChoiceTabPanel, closeChoiceTabPanel } from "../equipment/choicetab.js";
 import { loadChoiceTabGraphics } from "../equipment/racket_choice.js";
 import {
-  LEVEL_CLEARED, LEVEL_SHOWN, LEVEL_CHOSEN, levelState, loadMinigameLevelSelectPalette, drawMinigameLevelDescription,
+  LEVEL_MINIGAME, LEVEL_CLEARED, LEVEL_SHOWN, LEVEL_CHOSEN, levelState, loadMinigameLevelSelectPalette, drawMinigameLevelDescription,
 } from "./level_select.js";
 import { redrawSavedDataTypeSelect, TickMenuBgScrollTask_1b, DrawSavedDataTypeSelectCursor } from "./minigame_data.js";
 
@@ -34,6 +34,7 @@ const MinigameLevelSelect3CursorTable0 = 0x7154, MinigameLevelSelect3CursorTable
 const SavedDataTypeSelectGfx0 = 0x729A, SavedDataTypeSelectGfx1 = 0x729E;
 const BANK_CHOICE_TAB = 0x3E;
 const N64RecordTypeSlideIn = [0x3B, 0x72EC], N64RecordTypeSlideOut = [0x3B, 0x731E], ResumeBGM = 0x2F32;
+const MINIGAME_NAMES = 0x00B2, SAVED_DATA_TYPE_NAMES = 0x00CA;   // Text_30_178: the minigames' names; Text_30_202: Exhibition / Mini-Game Data                          // Text_30_178: the minigames' names (MENU: Wheel)
 const BGM_MARIO_MINIGAME = 0x08, LEVEL_COLUMNS = 3, PANEL_ACTIVE = 0x0C, PANEL_INACTIVE = 0x0D;
 const CURSOR_LABEL_OFFSET = 0x17F8, CURSOR_LABEL_TILE = 0x70;
 const FRAME_TOP = 0x03, FRAME_LEFT_CORNER = 0x02, FRAME_RIGHT_CORNER = 0x04, BLANK = 0x20;
@@ -88,6 +89,11 @@ function* runLevelPanel(P, { open, close, cols, cursorTask, redraw, locked }) {
     yield* advanceFrame(P);
     P.V.menuInputPressed = P.V.inputPressed;
     if (moveMenuCursorGrid(P, getMinigameLevelColumnCount(P).b, 1).a) { sound(P, SFX_MENU_MOVE); redraw(P); }
+    if (P.menuWheel && P.menuWheel.on) {                     // MENU: Wheel (menuskins.js): the minigame, the levels shown, the locked one; read only
+      const [game, cleared] = P.withWramBank(WRAM_COURT_PLANES, () => [levelState(P, LEVEL_MINIGAME), levelState(P, LEVEL_CLEARED)]);
+      P.menuWheel.skin = { id: "tabs", at: P.frames, icon: "level", titleText: MINIGAME_NAMES + game, labels: Array.from({ length: cols }, (_, i) => "LEVEL " + (i + 1)),
+        locked: Array.from({ length: cols }, (_, i) => cols === 2 && i > 0 && !cleared), sel: getMenuCursorIndex(P, LEVEL_COLUMNS).a };
+    }
     const input = P.V.menuInputPressed;
     if (input & PADF_A) {
       if (locked(P)) { sound(P, SFX_MENU_LOCKED); continue; }
@@ -194,6 +200,7 @@ export function* runSavedDataTypeSelect(P) {
     yield* advanceFrame(P);
     P.V.menuInputPressed = P.V.inputPressed;
     if (moveMenuCursorGrid(P, 2, 1).a) { sound(P, SFX_MENU_MOVE); redrawSavedDataTypeSelect(P); }
+    if (P.menuWheel && P.menuWheel.on) P.menuWheel.skin = { id: "tabs", at: P.frames, title: "MARIO CHARACTERS", icon: "data", texts: [SAVED_DATA_TYPE_NAMES, SAVED_DATA_TYPE_NAMES + 1], sel: getMenuCursorIndex(P, 2).a };   // MENU: Wheel, read only
     const input = P.V.menuInputPressed;
     if (input & PADF_A) {
       sound(P, SFX_MENU_SELECT);

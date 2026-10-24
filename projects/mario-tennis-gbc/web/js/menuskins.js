@@ -17,6 +17,10 @@
 //            play time (the summaries at WRAM 3 $D300, as the main menu reads them), or what the cell holds; Erase in red
 //   minigames the Mario mini-games (bank $3B RunMinigameSelect, 6 or 9 cells): their names (text 30:178 + cell) round the ball, the
 //            chosen one's host standing in the panel (match frame 4), a locked one as "? ? ?"
+//   tabs     the two-to-four-choice panels: Play Alone / with Partner (3E:5192), a minigame's levels (1B:6E31 / 6FD2: the second
+//            locked until the first is cleared), Status's data types (1B:715D), the N64 record types (3B:71B0) and transfer
+//            items (3B:74BF): the choices (the game's own words, text bank $30) round the ball, the chosen one large in the
+//            panel with an icon and the game's own caption line
 import { courtImage } from "./assets.js";
 import { matchPicture, charScheme } from "./crowdfans.js";
 import { Rom } from "./rom.js";
@@ -50,6 +54,7 @@ export class MenuSkins {
     else if (skin.id === "chars") this.chars(g, W, H, k, gb);
     else if (skin.id === "files") this.files(g, W, H, k, skin, gb);
     else if (skin.id === "minigames") this.minigames(g, W, H, k, skin, gb, hd);
+    else if (skin.id === "tabs") this.tabs(g, W, H, k, skin, gb, hd);
   }
   // the turning: the ball's position eases to the chosen item, the shorter way round n
   ease(sel, n) { let d = sel - this.pos; if (n > 5) { if (d > n / 2) d -= n; if (d < -n / 2) d += n; } this.pos += d * 0.3; if (Math.abs(d) < 0.01) this.pos = sel; return this.pos; }   // (a short list does not wrap)
@@ -194,7 +199,7 @@ export class MenuSkins {
   // ---- Status and Erase: the tour files, the Game Pak, the N64 ----
   files(g, W, H, k, s, gb) {
     const erase = s.mode === "erase", F = [0, 1, 2].map(i => this.mw.file(gb, i)), w3 = gb.mem.wram[3];
-    const labels = [...F.map((f, i) => f ? f.name.toUpperCase() : "FILE " + (i + 1)), erase ? "N64 DATA" : "GAME PAK", erase ? "ALL DATA" : "N64"];   // (Erase: the N64's records, then everything)
+    const labels = [...F.map((f, i) => f ? f.name.toUpperCase() : "FILE " + (i + 1)), ...(erase ? [204, 205] : [201, 199]).map(t => this.text(gb.mem.rom, t).replace(/^Erase /, "").toUpperCase())];   // (the game's own words: Mario Char. Data / N64 Tennis Data; Erase: N64 Data / All Data)
     this.title(g, k, erase ? "ERASE" : "STATUS");
     this.arc(g, k, H, labels, s.sel, 0.4);
     const { px, py, pw, ph } = this.panel(g, W, k, 110, 500), cx = px + pw / 2, red = "#d8443a";
@@ -217,13 +222,13 @@ export class MenuSkins {
         g.fillStyle = "#464a64"; g.font = `${26 * k}px ${BODY}`; g.fillText("No tour on this file", cx, py + 330 * k);
       }
     } else {
-      const n64 = erase ? s.sel === 3 : s.sel === 4, icon = n64 ? "N64" : erase ? "ALL" : "GB";
+      const n64 = erase ? s.sel === 3 : s.sel === 4, icon = n64 ? "N64" : erase ? "ALL" : "DATA";
       g.fillStyle = erase ? red : "#ffd65a"; this.mw.pill(g, cx - 90 * k, py + 90 * k, 180 * k, 150 * k, 26 * k); g.fill();
       g.fillStyle = erase ? "#fff" : "#281e0a"; g.font = `${64 * k}px "${FONT}", ${BODY}`; g.fillText(icon, cx, py + 190 * k);
       g.fillStyle = "#281e0a"; g.font = `${38 * k}px "${FONT}", ${BODY}`; g.fillText(labels[s.sel], cx, py + 310 * k);
       g.fillStyle = "#464a64"; g.font = `${23 * k}px ${BODY}`;
       const lines = erase ? (n64 ? ["The records sent over from", "Mario Tennis on the N64"] : ["Every tour file and record", "on this Game Pak"])
-                          : (n64 ? ["The records sent over from", "Mario Tennis on the N64"] : ["The records kept", "on this Game Pak"]);
+                          : (n64 ? ["The records sent over from", "Mario Tennis on the N64"] : ["The Mario characters'", "exhibition and mini-game records"]);
       lines.forEach((t, i) => g.fillText(t, cx, py + 352 * k + i * 32 * k));
       if (erase) { g.fillStyle = red; g.font = `${22 * k}px "${FONT}", ${BODY}`; g.fillText("CANNOT BE UNDONE", cx, py + 440 * k); }
     }
@@ -250,6 +255,41 @@ export class MenuSkins {
     g.fillStyle = "#464a64"; g.font = `${24 * k}px ${BODY}`; if (locked(c)) g.fillText(this.text(rom, 0xBB) || "Not unlocked yet", cx, fb + 100 * k);   // (the game's own "can't play yet")
     g.textAlign = "start";
     this.hint(g, W, H, k, "▲ ▼ ◀ ▶ choose   A play   B back");
+  }
+
+  // ---- the small choice panels ----
+  tabs(g, W, H, k, s, gb, hd) {
+    const rom = gb.mem.rom, labels = s.labels || s.texts.map(t => this.text(rom, t)), locked = s.locked || [];
+    this.title(g, k, s.titleText != null ? this.text(rom, s.titleText).toUpperCase() : s.title);
+    this.arc(g, k, H, labels.map((l, i) => locked[i] ? "? ? ?" : l.toUpperCase()), s.sel, 0.5);
+    const { px, py, pw } = this.panel(g, W, k, 130, 440), cx = px + pw / 2, on = !locked[s.sel], label = labels[s.sel] || "";
+    this.icon(g, cx, py + 150 * k, k, s.icon, s.sel, on, label);
+    g.textAlign = "center"; g.fillStyle = on ? "#281e0a" : "#9aa0b8"; g.font = `${(label.length > 15 ? 32 : 40) * k}px "${FONT}", ${BODY}`;
+    g.fillText(on ? label.toUpperCase() : "? ? ?", cx, py + 300 * k);
+    const cap = gameText(hd, 120, 144);                                        // the game's own caption ("Clear this first.", ...)
+    if (cap && cap.toLowerCase() !== label.toLowerCase()) { g.fillStyle = "#464a64"; g.font = `${24 * k}px ${BODY}`; g.fillText(cap, cx, py + 345 * k); }
+    // the choices as dots, the chosen one gold
+    const n = labels.length; for (let i = 0; i < n; i++) { g.fillStyle = i === s.sel ? "#ffd65a" : locked[i] ? "#d0d3de" : "#a9adc2"; g.beginPath(); g.arc(cx + (i - (n - 1) / 2) * 26 * k, py + 395 * k, (i === s.sel ? 8 : 6) * k, 0, 6.2832); g.fill(); }
+    g.textAlign = "start";
+    this.hint(g, W, H, k, (n > 3 ? "▲ ▼ ◀ ▶" : "◀ ▶") + " choose   A ok   B back");
+  }
+  // an icon for a choice: players (one ball or two), a level's medal, a data chart, the N64
+  icon(g, x, y, k, kind, i, on, label) {
+    g.save(); if (!on) g.globalAlpha = 0.4;
+    if (kind === "players") { const n = i + 1; for (let j = 0; j < n; j++) this.mw.menuBall(g, x + (j - (n - 1) / 2) * 120 * k, y, 62 * k, performance.now() / 1600 + j); }
+    else if (kind === "level") {
+      const cols = ["#d9a35a", "#c9ced8", "#ffd65a"], r = 78 * k;
+      g.fillStyle = "#3d6fd8"; g.beginPath(); g.moveTo(x - 40 * k, y - r - 30 * k); g.lineTo(x - 10 * k, y - r + 20 * k); g.lineTo(x + 10 * k, y - r + 20 * k); g.lineTo(x + 40 * k, y - r - 30 * k); g.fill();   // the ribbon
+      g.fillStyle = cols[i % 3]; g.beginPath(); g.arc(x, y, r, 0, 6.2832); g.fill(); g.lineWidth = 6 * k; g.strokeStyle = "rgba(0,0,0,0.18)"; g.stroke();
+      g.fillStyle = "#281e0a"; g.textAlign = "center"; g.font = `${96 * k}px "${FONT}", ${BODY}`; g.fillText(on ? String(i + 1) : "?", x, y + 34 * k);
+    } else if (kind === "data") {
+      g.fillStyle = "#e4e6f0"; this.mw.pill(g, x - 110 * k, y - 80 * k, 220 * k, 160 * k, 20 * k); g.fill();
+      [0.5, 0.8, 0.35, 0.95, 0.65].forEach((h, j) => { g.fillStyle = j === 3 ? "#ffb43a" : "#7a9be0"; g.fillRect(x - 85 * k + j * 36 * k, y + 60 * k - h * 120 * k, 24 * k, h * 120 * k); });
+    } else {
+      g.fillStyle = "#3a3f9a"; this.mw.pill(g, x - 100 * k, y - 75 * k, 200 * k, 150 * k, 26 * k); g.fill();
+      g.fillStyle = "#fff"; g.textAlign = "center"; g.font = `${66 * k}px "${FONT}", ${BODY}`; g.fillText("N64", x, y + 24 * k);
+    }
+    g.restore(); g.textAlign = "start";
   }
 
   // ---- the court select ----

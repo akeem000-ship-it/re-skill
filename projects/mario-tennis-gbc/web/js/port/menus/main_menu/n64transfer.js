@@ -52,6 +52,7 @@ export function* runN64RecordTypeSelect(P) {
     yield* advanceFrame(P);
     V.menuInputPressed = V.inputPressed;
     if (moveMenuCursorGrid(P, RECORD_TYPE_COLS, 1).a) { sound(P, SFX_MENU_MOVE); drawN64RecordTypeGrid(P); }
+    if (P.menuWheel && P.menuWheel.on) P.menuWheel.skin = { id: "tabs", at: P.frames, title: "N64 DATA", icon: "n64", texts: Array.from({ length: RECORD_TYPES }, (_, i) => Text_30_207 + i), sel: getMenuCursorIndex(P, RECORD_TYPE_COLS).a };   // MENU: Wheel, read only
     const input = V.menuInputPressed;
     if (input & (PADF_A | PADF_B)) {
       const forward = input & PADF_A ? 1 : 0;
@@ -125,6 +126,7 @@ export function* runN64TransferItemSelect(P) {
     yield* advanceFrame(P);
     V.menuInputPressed = V.inputPressed;
     if (moveMenuCursorGrid(P, ITEM_COLS, ITEM_ROWS).a) { sound(P, SFX_MENU_MOVE); drawN64TransferItemGrid(P); }
+    if (P.menuWheel && P.menuWheel.on) P.menuWheel.skin = { id: "tabs", at: P.frames, title: "N64 DATA", icon: "n64", texts: Array.from({ length: ITEMS }, (_, i) => Text_30_210 + i), sel: getMenuCursorIndex(P, ITEM_COLS).a };   // MENU: Wheel, read only
     const input = V.menuInputPressed;
     if (input & (PADF_A | PADF_B)) {
       const forward = input & PADF_A ? 1 : 0;

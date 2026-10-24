@@ -98,6 +98,7 @@ export function* runPlayAlonePartnerMenu(P) {
     yield* advanceFrame(P);
     P.V.menuInputPressed = P.V.inputPressed;
     if (moveMenuCursorGrid(P, CHOICE_TABS, 1).a) { sound(P, SFX_MENU_MOVE); redrawPlayAlonePartnerMenu(P); }
+    if (P.menuWheel && P.menuWheel.on) P.menuWheel.skin = { id: "tabs", at: P.frames, title: "MINI-GAMES", icon: "players", texts: [Text_30_226, Text_30_226 + 1], sel: getMenuCursorIndex(P, CHOICE_TABS).a };   // MENU: Wheel (menuskins.js), read only
     const input = P.V.menuInputPressed;
     if (input & PADF_A) {
       sound(P, SFX_MENU_SELECT);
