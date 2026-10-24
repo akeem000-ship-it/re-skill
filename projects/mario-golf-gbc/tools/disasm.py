@@ -29,6 +29,10 @@ def annotate(ins, bank, labels):
 
 INLINE = {0x08: 1, 0x10: 2, 0x18: 2, 0x20: 2, 0x28: 2, 0x30: 2}
 FARCALL_INLINE = 0x01F6   # call $01f6 ; db idx, bank
+# routines called with `call` that read inline bytes after the call (they move the return address)
+CALL_INLINE = {0x2BBB: 1,   # PlaySoundCmd: db sound
+               0x2D79: 2, 0x2D86: 2, 0x2D93: 2,   # Test / Set / ClearGameFlagCmd: dw flag << 5
+               0x2ED5: 1}   # WaitFramesCmd: db frames
 
 
 def inline_len(ins):
@@ -36,6 +40,8 @@ def inline_len(ins):
         return INLINE.get(ins.target, 0)
     if ins.kind == "call" and ins.target == FARCALL_INLINE:
         return 2
+    if ins.kind == "call" and ins.target in CALL_INLINE:
+        return CALL_INLINE[ins.target]
     return 0
 
 
@@ -49,6 +55,12 @@ def farcall_target(rom, idx, bank):
 
 def describe_inline(rom, ins, data, labels):
     t = ins.target if ins.kind == "rst" else FARCALL_INLINE
+    if ins.kind == "call" and ins.target in CALL_INLINE:
+        if len(data) == 1:
+            return "db $%02x        ; inline argument" % data[0]
+        w = data[0] | data[1] << 8
+        op = {0x2D79: "test", 0x2D86: "set", 0x2D93: "clear"}.get(ins.target, "?")
+        return "dw $%04x      ; %s flag #%d (byte $%02x bit %d)" % (w, op, w >> 5, w >> 8, (w >> 5) & 7)
     if t in (0x10, 0x18, FARCALL_INLINE):
         idx, bank = data[0], data[1]
         tgt = farcall_target(rom, idx, bank)

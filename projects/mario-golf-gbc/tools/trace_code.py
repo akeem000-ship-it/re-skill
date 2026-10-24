@@ -46,7 +46,7 @@ OPENERS = {0xC5, 0xD5, 0xE5, 0xF5, 0xCD, 0xC3, 0xAF, 0xA7, 0xB7, 0xFA, 0xF0, 0x2
            0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0xE8, 0xF8, 0xCB, 0xEA, 0xE0, 0x1A}
 # Golf's asset banks (REVERSE.md "Bank map"): text, map graphics and headers, LZ graphics, holes
 DATA_BANKS = set(range(0x18, 0x20)) | set(range(0x28, 0x36)) | {0x40} | set(range(0x4B, 0x4F)) | {0x58} | \
-    set(range(0x50, 0x75))
+    set(range(0x50, 0x75)) | {0x36, 0x37}          # 36, 37: LZ graphics only (export words look like code)
 CODE_BANKS = []
 for b in range(1, NB):
     t = table(rom, b)
@@ -84,6 +84,7 @@ while work:
         off = to_offset(cb, pc)
         ins = decode(rom, off, pc)
         if ins.kind == "illegal": break
+        if ins.raw[0] == 0xFF: break                     # rst $38: the $FF fill (RST38_Fill), never a real call
         for i in range(ins.length): code[cb].add(pc + i)
         nxt = pc + ins.length
         op = ins.raw[0]
@@ -99,7 +100,7 @@ while work:
         if n:
             data = rom[off + ins.length:off + ins.length + n]
             for i in range(n): code[cb].add(nxt + i)
-            if ins.kind == "rst" and ins.target in (0x10, 0x18) or ins.kind == "call":
+            if ins.kind == "rst" and ins.target in (0x10, 0x18) or ins.kind == "call" and n == 2 and ins.target == 0x01F6:
                 idx, fb = data[0], data[1]
                 if (fb, idx) == (0x0A, 0x18) and "de" in imm:            # ActorSetHandler: de = handler, this bank
                     push(cb, imm["de"], True)

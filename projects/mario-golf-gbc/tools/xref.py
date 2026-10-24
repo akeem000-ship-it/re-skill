@@ -50,7 +50,7 @@ def main():
         for ins, off in scan(rom, b):
             if ins[0] == "inline":
                 _, rins, data, pc = ins
-                if rins.kind == "rst" and rins.target in (0x10, 0x18) or rins.kind == "call":
+                if rins.kind == "rst" and rins.target in (0x10, 0x18) or rins.kind == "call" and rins.target == 0x01F6:
                     idx, fb = data[0], data[1]
                     if 0 < fb < nbanks(rom):
                         t = farcall_target(rom, idx, fb)

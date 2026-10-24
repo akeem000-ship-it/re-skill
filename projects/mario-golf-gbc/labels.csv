@@ -2220,3 +2220,166 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,D373,wPreviewBall,WRAM6: landing preview ghost ball position (6 bytes) then height and velocity
 *,D514,wAddressSpot,WRAM6: ball position at the address (SaveAddressSpot)
 *,C96D,wReplayActive,1 while ReplaySavedHole replays a saved hole
+# --- banks 00 01 08 13 3B leftovers (home library, game-mode hooks, hole info, captions) ---
+0,0038,RST38_Fill,no rst $38 handler: $FF fill; executing it calls $0038 again forever
+0,027F,LoadBGPaletteData,hl = 8 BG palettes -> BCPS/BCPD from palette 0 (as in Mario Tennis 00:027F)
+0,0371,EnableLCD,sets LCDC bit 7 then one SoundUpdate (rst $10 to 7E:40EB) since the timer only runs sound while the LCD is off
+0,0460,QueueVRAMCopyBreak,queues a marker entry (src $FFFF): ProcessVRAMCopyQueue stops there and moves the later entries to the front for the next VBlank
+0,0468,QueueVRAMCopy,hl = src / de = VRAM dst ($A000-$BFFF = VRAM bank 1) / c = 16-byte blocks: adds an HDMA entry (ROM bank / WRAM bank / src / vbk / dst / len) to wVRAMCopyQueue; a = 0 if all 10 slots are full
+0,04DB,QueueAndRunVRAMCopy,QueueVRAMCopy then ProcessVRAMCopyQueue at once (used with the LCD off)
+0,056C,LoadPalettesImmediate,hl = colors / d = first palette (0-15) / e = count: copies to wPalLive and wBGPalMaster and sets hPalUpdate bits (same logic as Mario Tennis 00:05B5 LoadPalettesImmediate)
+0,05A8,LoadPalettesUnlessFaded,as LoadPalettesImmediate but writes wPalLive and hPalUpdate only while hScreenFadedOut = 0 (master copy always)
+0,0684,DisableOAMDMA,writes $C9 (ret) to $067A (OAMDMARoutine's ROM copy): meant to stop the OAM DMA but in ROM the write only reaches MBC5 RAMG (?)
+0,068A,EnableOAMDMA,writes $3E (ld a) back to $067A; counterpart of DisableOAMDMA
+0,0699,JumpToHL,jp hl (the tail of JumpTableDispatch; call $0699 = call hl)
+0,08A5,SignExtendLToHL,(as in Mario Tennis 00:090D)
+0,08AC,SubDEFromHL,hl -= de (keeps af)
+0,0AF2,VectorFromLengthAndAngle,hl = length / a = 8-bit angle: de = hl x sin(a) and hl = hl x cos(a) (hl pre-shifted >> 4 then results << 4)
+0,0B3A,MulHLByCos,a += $40 then MulHLBySin
+0,0C60,NegHL,hl = -hl
+0,11BA,VectorFromLengthAndAngle16,hl = length / bc = 16-bit angle (low nibble dropped): de = MulSin and hl = MulCos16
+0,11C7,MulCos16,b += $40 then MulSin: hl x cos(bc)
+0,2036,ClearDebugTextBuffer,clears $CC00 ($240 bytes) (as in Mario Tennis 00:188B)
+0,2096,StartVRAMDMAFromHL,(as in Mario Tennis 00:18EB)
+0,24BD,SortFrameTasks,bubble-sorts the 16 four-byte frame task entries at $C1C0 by their first byte (priority) descending; called by RegisterFrameTask
+0,258A,ForceFadeOut,BeginFadeOut without the already-faded check (c = speed)
+0,258D,ForceFadeIn,BeginFadeIn without the already-faded check (c = speed)
+0,269F,SetSpriteQueueBase,hOAMUsed = hSpriteQueueIndex (as in Mario Tennis 00:1E50)
+0,26A4,QueueSprite16,two 8x16 OAM entries side by side at (e = y / d = x) tile c / attr b; X flip (b bit 5) swaps them (Tennis 00:1E55 same logic but its page is a variable; here wShadowOAM $C000)
+0,26EA,QueueSpriteTemplate,hl = list of 4-byte entries (dy dx tile attr) ended by $80: queues each at (e d) + offsets / tile + c / attr | b; X-flip variant mirrors dx (Tennis 00:1E9D)
+0,2756,QueueSpriteGrid,h columns x l rows of 8x16 sprites from (e d) + OAM offset $10/$08; tile c += 2 per column (Tennis 00:1F0D)
+0,2798,QueueSprite,one OAM entry at (e + $0C / d + $04) tile c attr b (Tennis 00:1F51)
+0,28DA,NumberFontGlyphPtrs,16 words: glyph data for chars $30-$3F (entries $C-$F share 00:28CC)
+0,2917,RenderCharToTiles,a = char ('0' based): RenderGlyphToTiles with its glyph from NumberFontGlyphPtrs
+0,2933,RenderTextToTiles,hl = 0-terminated string: renders each char >= '0' and advances b by the glyph width; chars below '0' advance 6 pixels (Tennis 00:20E5)
+0,2962,RenderGlyphToTiles,hl = glyph (width / rows / 1bpp rows): sets or clears pixels in the 2bpp tile buffer de from x = b / row c; temps $C280-$C283
+0,29E3,PixelMaskTable,8 bytes $80 >> n
+0,2C19,PlaySoundManaged,a = sound id (same as rst $08 without the inline byte: jumps into PlaySoundCmd); Tennis 00:3024 has the same code
+0,2D08,FlagMaskTable,8 bytes $80 >> n (game flag bit masks)
+0,2D10,TestGameFlag,de = n << 5: tests bit n&7 of wGameFlags[n >> 3] (keeps a; result in Z) (like Mario Tennis 00:249F)
+0,2D2E,SetGameFlag,de = n << 5: sets bit n of wGameFlags ($C840)
+0,2D49,ClearGameFlag,de = n << 5: clears bit n of wGameFlags ($C840)
+0,2FF8,SerialLoadSendByte,loads rSB by hSerialSendMode: 0 idle byte / 1 next nibble (count hSerialSendCount; at 0 back to idle with hSerialNextIdleByte) / 2 $40 block start
+0,3021,SerialHandleRecvByte,received $4x resets hSerialRecvIndex; $5x goes to SerialStoreNibble
+0,306E,SerialSendLinkRequest,sends $71 on the internal clock then waits 2 VBlanks (02:63D5 07:7CAD 09:488D before InitSerialLink)
+0,3081,SerialSendBlock,a = bytes of wSerialSendBuf to send: waits for the previous send; hSerialSendCount = 2a nibbles and mode 2; a = 0 or $FF when no link (hLinkRole = 0)
+0,30EB,SerialWaitSendDone,AdvanceFrame until hSerialSendMode = 0
+0,30F8,SetLinkActive,hLinkActive = 1
+0,30FD,ClearLinkActive,hLinkActive = 0 (called at the end of a link round 10:466A)
+01,41B3,LoadDefaultPalettes,BG palettes 0-7 from 01:50A0 and OBJ palettes 0-7 from 01:50E0 (master copy only)
+01,41E8,InitFontScreen,LCD off: LoadFontTiles / cursor tiles 01:5120 -> $87C0 / default palettes / EnableLCD (bank 01 export $0A)
+01,421A,ReloadFontTiles,LCD off: LoadFontTiles then EnableLCD (export $06)
+01,422C,QueueFontTiles,queues the font tiles (01:44A0-50A0) to $9200-$97FF and $8800-$8DFF in 6 copies of $20 tiles one frame apart (LCD on; export $04)
+01,4289,LoadCursorSprite,queues the 4 cursor tiles 01:5120 to de and loads OBJ palette b from 01:50E0 (export $0C)
+01,42A0,FontTiles,$E0 2bpp tiles: $80 for $9000 then $60 for $8800 (LoadFontTiles)
+01,50A0,DefaultBGPalettes,8 BG palettes
+01,50E0,DefaultOBJPalettes,8 OBJ palettes
+01,5120,CursorSpriteTiles,4 tiles: one 16x16 sprite (pointer?)
+08,4028,GetCurPlayerField,hl = wPlayer1 or wPlayer2 (wCurPlayer) + a
+08,403C,MatchLeadP1,a = holes won by P1 - holes won by P2 in wMatchHoles before wHoleNumber; 0 in a playoff (wMatchPlayoff); prints debug hex bytes
+08,407C,MatchLeadP2,a = -MatchLeadP1
+08,4082,MatchStatusDebug,MatchStatus and print the result to the debug text buffer
+08,4091,MatchStatus,|lead| vs wHolesLeft: $FF lead > holes left (decided) / 1 or 2 lead = holes left (leader P1 / P2) / 3 lead = holes left - 1 or one hole left / 0
+08,40D5,SetHonourFromHole,a = hole outcome 1/2: wHonour = winner index
+08,40E1,MatchHoleStatus,compares the current player's strokes (+$20) with the other player's holed flag (+$2A) and strokes and MatchStatus: a = 0-3 for the match captions $1C / $1A of RoundHookPlayerUp
+08,4161,MatchHoleResult,a = hole outcome (MatchHoleOutcome); c = 1 or 2 when this hole also ends the match for P1 / P2 (MatchStatus) else 0
+08,4199,MatchHoleOutcome,from both players' holed flags and strokes: 0 undecided / 1 P1 wins / 2 P2 wins / 3 halved
+08,4203,ClearContestWins,clears the near-pin and drive contest counts of both players (P1 +$17/+$18 and P2)
+08,420F,InitHoleContest,par 3 ($D325 = 3): near-pin contest (best $1900; caption $2A); par 5: drive contest (best 0; caption $29); leader $D491 = $FF
+08,4250,UpdateHoleContest,first shot of each player (count $D498 <= 2): near pin = PinDist on the green (lie 6); drive = ShotLength on lie 0/6/$A/$E; a better shot sets the leader; after 2 shots the leader gets a win and caption $22 / $20 with a marker sprite
+08,432F,AddContestWinsToPlayers,adds this hole's contest wins $D494-$D497 to P1/P2 +$17/+$18 (prints them on the debug screen)
+08,43B8,GetLongestDriveRecord,hl = word at $C96E (the course's longest drive record) or $1900 when 0
+08,43C5,CheckStatsCourse,a = 0 (Z) when wCourse is 1-5 (a course with saved stats) else 1
+08,43D4,GetCourseStatsAddr,hl = wProfileCourseStats + 25 x (wCourse - 1)
+08,43EE,LoadCourseStatsWork,copies 16 bytes of the course record (+6) to $C96E-$C97D
+08,4405,IsGoodLie,a = 1 for lie 0 / 6 / $0A / $0E (fairway and green types?) else 0
+08,441A,UpdateTeeShotStats,mode 1 tee shot ($D445): fairway count $C973/$C974; driver distance count/sum $C970-$C972; a new longest drive (< $18FF) goes to $C96E with caption $1D
+08,44D8,UpdateHoleEndStats,mode 1 hole end: putts $C975-$C977 / greens in regulation $C97A / par or better $C978 / $C97C when P1 +$15 bit 0 (sand save?); counts saturate at $FF as running averages
+08,459E,SaveCourseStats,round end: $C96E stats back to the course record; rounds (max 9999 by ClampTo9999) / best score / score count and sum
+08,4607,ClampTo9999,hl = min(hl / 9999)
+08,4617,ClearHonour,wHonour = 0
+08,461C,SetTeeOrderByHonour,two players: the one with the lower score on the last hole (P1/P2 +$2C per hole) tees first; tie keeps wHonour
+08,4666,PauseMenu,Start during aiming (10:5D9D): sound $62 then the per-mode pause menu (table 08:4695 -> banks 41 / 44 debug); returns the choice
+08,470D,DispatchByGameMode,hl = 16-word table indexed by wGameMode (< $10): jumps to the entry (0 = nothing)
+08,4722,RoundHookRoundStart,export 0 (GolfRound start): mode 1 LoadCourseStatsWork and 0E:78B4 / 0E:7887 -> $C875 / mode 2 clears the match / mode 3 tee order and contest totals
+08,47B4,RoundHookSaveAtHole,export $0C (hole setup): modes 1-3 SaveGameMidRound
+08,47FD,RoundHookHoleStart,export 2 (hole setup): mode 2 tee order / InitHoleContest / caption $1E in a playoff or $26 + wDecisiveHole music when MatchStatus is 1 or 2 / mode 3 SetTeeOrderByHonour and InitHoleContest with two players
+08,4880,RoundHookPlayerUp,export 4 (before each shot 10:484F): putt-for captions (ShowPuttForCaption); in match play also hole status captions $1C / $1A
+08,4901,RoundHookAfterShot,export 6 (after each shot 10:460C): mode 1 UpdateTeeShotStats / mode 2 hole and match result into wMatchHoles / mode 3 UpdateHoleContest / mode 4 retry-quit menu
+08,4AA3,RetryShotRestore,export $26 (10:4624 when $D4DD is set; mode-4 menu option 2): P1 ball position = wBallX; P1 strokes / putts etc. restored from $D359-$D35C and $D447; $D4E7 = 1 then club / $D369 / $D35D-$D35E
+08,4B02,RoundHookHoleEnd,export 8 (hole done 10:4635): mode 1 UpdateHoleEndStats / mode 2 playoff when the match is level after the last hole / mode 3 contest totals; picture after 9 holes
+08,4BBC,RoundHookRoundEnd,export $0A (10:466D): mode 1 SaveCourseStats and rank result screen / mode 2 VS result and first-win bonuses / mode 3 VS result by score; then RoundEndFadeAndExp
+08,4D18,SetRankExpBonus,wExpBonusKind = rank ($C96C < 4) and the bonus word $CAAE from table 08:4D3D by course
+08,4E97,AwardFirstWinBonus,if game flag de is clear: bonus kind c / amount hl; sets flag de (and de + $20 when $C814 = 0)
+08,4EF4,SaveGameMidRound,SaveGame (02:4489) with $C96D = 2 meanwhile
+08,4F03,RoundEndFadeAndExp,fade out / clear tasks and sprites / AwardExpPoints(wPoints) unless profile slot $C2A5 & $0F = $0F / SaveGameMidRound
+08,4F30,ShowPuttForCaption,on the green (lie 6): strokes + 1 - par = 0 / -1 / -2 / -3 -> caption $15 / $17 / $14 / $16 with song $0D or $0E; else song $23; off the green PlayRoundMusic
+08,4F75,ShowHalfwayPicture,when wHolesLeft = 10: ShowPictureScreen then InitFontScreen
+08,5062,PlayRoundMusic,export $10: song by $C82C / mode 8 (5) / mode 4 (7) / decisive hole $C832 ($2A) / opponent $C8D0 (08:50D6) / else course (08:50C6)
+08,50C6,CourseMusicTable,16 song ids by wCourse
+08,50D6,OpponentMusicTable,16 song ids by opponent $C8D0 (0 = use the course song)
+08,50E6,PlayGreenMusic,export $12: on the green (lie 6; music on) song $0E when strokes < par else $0D; otherwise PlayRoundMusic
+08,555F,LinkLostScreen,export $18 (LinkLostReset): LZ tiles 08:55E2 -> VRAM1 / map 08:5E87 / attributes 08:5FD5 / palettes 08:603C; song 6; waits for a button
+08,55E2,LinkLostTilesLZ,LZ tiles of the link-lost screen
+08,5E87,LinkLostMapLZ,LZ tilemap of the link-lost screen
+08,5FD5,LinkLostAttrLZ,LZ attribute map of the link-lost screen
+08,603C,LinkLostPalettes,8 BG palettes
+08,60E6,AimStepForDistance,export $20: hl = club base distance -> bc = aim turn step from AimStepTable[hl >> 5]; / 4 in the green view
+08,6110,AimStepTable,words falling with distance ($4000 $3FE9 $154E ...)
+08,6432,HoleIntroFlyover,export $24 (hole setup): modes 1-3 green view and fade in / 180 frames or a button / course view and camera pan until CameraAtGoal or a button (SnapCameraToGoal); other modes just set the camera
+13,411D,DrawHoleViewAtCamera,scroll = camera goal ($D42E/$D430; 0 when hFFB0): copies 20 x 22 tiles of attributes (WRAM2) and tilemap (WRAM3) into the BG map; sets wCameraPos and SCX/SCY (LCD off)
+13,4276,SnapCameraToGoal,export 2: course view only: CameraComputeGoal; if the camera tile changed redraws the view with the LCD off
+13,42A8,ReloadHoleViewMaps,export $10: hFFB0 = wOnGreen; LZ maps of the course view (ref 1 entries 0/1 and ref 0 entry 4) or green view (ref 3 entries 1/2) then DrawHoleViewAtCamera
+13,446D,LoadCoursePalettes,export $12: palette set 13:45AB[wCourse] from 13:45BB ($30 bytes each): BG palettes 2-6 and OBJ palette 2
+13,45AB,CoursePaletteIndexTable,16 bytes: palette set per course
+13,45BB,CoursePaletteTable,$30 bytes per set
+13,55F6,LoadHoleInfo,export 8: HoleInfoTable[wHoleId] -> wHolePar / wHoleYards / $C329-$C32C / $D441 / tee $D439 (or $D4DF when $D4DE) / pin by wWindDir -> wCupX; tree widths by course (13:5684)
+13,5684,CourseTreeWidthTable,32 bytes per course -> wTreeWidth
+13,5884,HoleInfoTable,32 bytes per hole id: +0 par / +4 yards (word) / +6 4 bytes -> $C329 / +$A -> $D441 (2) / +$C -> $D439 (4) / +$10 4 pin positions of 4 bytes (by wWindDir) -> wCupX
+13,7044,GetHoleParAndYards,export $0C: l = hole 1-18 / h = course code -> hole id -> a = par and hl = yards
+13,7076,StartCourseAnimTask,course view: farcalls the course bank's (50-54 by hole asset ref 4) export that starts its frame task (slots $C330)
+13,70A2,StopCourseAnimTasks,export $0E: farcalls the stop export of banks 50-54
+3B,4310,WaitCaptionOrButton,export 2: AdvanceFrame until $D337 = 0 or a button (then ShotViewLeave)
+3B,76A8,OutcomeMode7,OutcomeRules for wGameMode 7: outcome b = $80 -> song $1D / picture 4 / caption $18; a = 0
+3B,76C0,OutcomeModeC,OutcomeRules for wGameMode $0C: outcome b = $80 -> song $1D / picture 4 / caption $21; a = 0
+3B,76D8,StrokeLimitPickUp,export $12 (StrokeLimit 10:4167): green view / wOnGreen = $FF / song $1F / picture 5 / caption $19
+3B,76F8,ShowCaptionAndWait,export 8: a = caption; clears $D485 bits 1 and 4 meanwhile; ShowCaption / WaitCaptionOrButton / StopCaptionAnim
+3B,7717,ShowPlayerPicture,export $0A: a = picture; $D34D = $F0; LoadStoryPicture with the player's +$10 / +$19 bit 4
+3B,773F,WaitPictureTimeout,export $0C: AdvanceFrame until $D34D = 0 or A/B
+3B,7766,HideBannerSprite,export $0E: unregisters the banner task 3B:7858
+3B,776D,ShowBannerSprite,export $10: OBJ palette 3 (3B:7850) / 12 tiles 3B:7790 -> $8C00 / registers task 3B:7858 (6 8x16 sprites at y $40 blinking)
+3B,7858,BannerSpriteTask,frame task: QueueSpriteTemplate 3B:786E (tiles $C0 palette 3) when hVBlankCount & $0F >= 6
+*,FF9B,hSpriteQueueIndex,next free byte of wShadowOAM (QueueSprite*)
+*,FFBC,hScreenFadedOut,1 after BeginFadeOut / 0 after BeginFadeIn (LoadPalettesUnlessFaded)
+*,FFA2,hFadeState,1 fading out / 2 fading in (bit 7 white) / 0 idle (WaitFade)
+*,FFA3,hFadeSpeed,c of BeginFadeOut / BeginFadeIn (min 1)
+*,FFC5,hSerialSendCount,nibbles left to send (SerialSendBlock)
+*,FFC6,hSerialRecvIndex,receive nibble index (reset by a $4x byte)
+*,FFC7,hSerialSendIndex,send nibble index
+*,FFC9,hSerialNextIdleByte,idle byte restored after a block
+*,C840,wGameFlags,bit array of rst $20/$28/$30 flags (TestGameFlag)
+*,C1C0,wFrameTasks,16 x 4 bytes (priority / address / bank) (RegisterFrameTask / SortFrameTasks)
+*,C280,wGlyphBlitCount,RenderGlyphToTiles: columns left in the row
+*,C281,wGlyphBlitRowsLeft,RenderGlyphToTiles
+*,C282,wGlyphBlitWidth,RenderGlyphToTiles
+*,C283,wGlyphBlitDestMask,RenderGlyphToTiles: pixel mask from PixelMaskTable
+*,CC00,wDebugTextBuffer,$240 bytes (ClearDebugTextBuffer / PrintString)
+*,C83A,wMatchPlayoff,1 after a level match: extra holes (08:4B7E; caption $1E)
+*,C83B,wHonour,player index that tees first (winner of the last hole)
+*,C832,wDecisiveHole,1 -> song $2A (match dormie or holes 17-18 with two players)
+*,C96C,wRoundResult,1 P1 / 2 P2 / 3 tie (VS); rank + 1 in mode 1 (RoundResultScreen)
+*,C970,wStatDrives,count + word sum of driver distances (mode 1 course stats work copy)
+*,C973,wStatFairways,count + fairway hits
+*,C975,wStatPutts,count + word putt sum
+*,C978,wStatParOrBetter,count + holes at par or better
+*,C97A,wStatGreensInReg,count + greens in regulation
+*,C97C,wStatSandSaves,count + hits when P1 +$15 bit 0 (sand save?)
+*,D445,wTeeShot,1 at hole start (HoleIntroFlyover; 10:45BF); tee-shot stats only when set (?)
+*,D48F,wContestBest,word: best near-pin distance or drive length this hole
+*,D491,wContestLeader,player leading the hole contest ($FF none)
+*,D494,wDriveContestWins,2 bytes: P1 / P2 drive contest wins this hole
+*,D496,wNearPinWins,2 bytes: P1 / P2 near-pin wins this hole
+*,D498,wContestShots,tee shots counted for the contest (max 2)
+*,D337,wCaptionActive,nonzero while a caption shows (WaitCaptionOrButton)
+*,D34D,wPictureTimer,set $F0 by ShowPlayerPicture; WaitPictureTimeout waits for 0
+0,1B52,SubHLBC,hl -= bc (returns at once with z set when bc = 0); called by map scripts 34/35

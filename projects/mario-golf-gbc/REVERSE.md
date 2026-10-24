@@ -1352,6 +1352,135 @@ Most new names are the **golf event API** used by the story / RPG script banks 3
 - 10:67CB is not a routine: it is the operand of `and $18` inside SlopeCellAt (the "call nc, $67CB" at 10:4A10
   is data decoded as code). Left unnamed.
 
+Labels: `a8/labels.csv` (161 lines: routines, tables, RAM). All from static reading; one emulator peek
+(`states/stroke_hole1.state`) for the round variables.
+
+##### Bank 00 (home): the remaining helpers
+
+Mostly small library routines next to the Tennis-matched ones. Tennis tags `(as in Mario Tennis 00:XXXX)` were
+given only where the Tennis source (vendored disasm) has the same instructions and the same relative offsets:
+LoadBGPaletteData 027F, SignExtendLToHL 08A5, ClearDebugTextBuffer 2036 (`$CC00`, `$24` x 16 = Tennis's 576-byte
+wDebugTextBuffer), StartVRAMDMAFromHL 2096, SetSpriteQueueBase 269F (Tennis hSpriteQueueIndex/Base are also
+`$FF9B/$FF9C`). Same-logic-but-different-bytes routines name the Tennis routine without the tag
+(QueueSprite16/Template/Grid/QueueSprite: Golf uses a fixed OAM page `$C0` instead of wSpriteBufferPage;
+TestGameFlag/SetGameFlag/ClearGameFlag: different push order; PlaySoundManaged: same code, other jump distance).
+
+- **VRAM copy queue** (wVRAMCopyQueue `$C0A0`, 10 x 8 bytes): QueueVRAMCopy 0468 (hl src, de dst, c = 16-byte
+  blocks) stores `ROM bank, WRAM bank, src, VBK, dst, len-1`. A destination `$A000-$BFFF` means VRAM bank 1 (bit 5
+  of d is moved to the VBK byte), seen in LinkLostScreen 08:555F (`$B000`, `$A800`, `$B800`). Returns a = 0 when
+  the queue is full (the copy is dropped). If `c - 1` has bit 7 (c = 0 or > `$80`) it plays sounds `$00` and `$1F`
+  and clamps the length: a leftover error alarm (00:04A4).
+  QueueVRAMCopyBreak 0460 queues src `$FFFF`: ProcessVRAMCopyQueue treats an odd source as "stop here" (00:0503
+  -> 0550) and moves the remaining entries to the front for the next VBlank, so callers spread big uploads over
+  frames (e.g. 08:5059, 77:7251, 3B:436B). QueueAndRunVRAMCopy 04DB runs the queue at once (LCD off).
+- **Palettes**: LoadPalettesImmediate 056C (both copies + hPalUpdate bits; = Tennis 00:05B5 logic),
+  LoadPalettesUnlessFaded 05A8 (live copy only when `hScreenFadedOut` `$FFBC` = 0). ForceFadeOut/ForceFadeIn
+  258A/258D enter BeginFadeOut/In past the "already faded" test. Fade state `$FFA2` (1 out, 2 in, bit 7 white),
+  speed `$FFA3`.
+- **OAM DMA switch**: DisableOAMDMA 0684 / EnableOAMDMA 068A patch the first byte of the ROM copy of
+  OAMDMARoutine (`$067A`) to `ret` / `ld a`; note this patches *ROM* address `$067A` (a write to the MBC
+  register range: it has no effect on the routine itself, which runs from HRAM `$FF80`); 14 + 8 callers in banks
+  41 and 77. In MBC5 space a write to `$0000-$1FFF` is RAMG, so the effect is only to disable SRAM; a leftover
+  from a version that ran the routine from RAM? Not checked at runtime.
+- **Math**: VectorFromLengthAndAngle 0AF2 (8-bit angle), VectorFromLengthAndAngle16 11BA (16-bit angle),
+  MulHLByCos 0B3A, MulCos16 11C7, NegHL 0C60, SubDEFromHL 08AC, JumpToHL 0699 (`call $0699` = call hl).
+- **Sprites/glyphs**: QueueSprite 2798, QueueSprite16 26A4, QueueSpriteTemplate 26EA (4-byte entries ended by
+  `$80`), QueueSpriteGrid 2756; hSpriteQueueIndex `$FF9B`. RenderGlyphToTiles 2962 / RenderTextToTiles 2933 /
+  RenderCharToTiles 2917 draw the 1bpp number font (NumberFontGlyphPtrs 28DA, chars `$30-$3F`) into a 2bpp tile
+  buffer (temps `$C280-$C283`); RenderNumberToTiles 28FA uses them.
+- **Frame tasks**: SortFrameTasks 24BD bubble-sorts the 16 entries at `$C1C0` by priority after each register.
+- **Game flags**: wGameFlags `$C840`, bit masks FlagMaskTable 2D08.
+- **Serial** (completes REVERSE "Serial link"): SerialLoadSendByte 2FF8 (mode 2 sends `$40`, then mode 1 sends
+  nibbles until hSerialSendCount `$FFC5` = 0, then idle byte := `$FFC9`), SerialHandleRecvByte 3021,
+  SerialSendBlock 3081 (a = bytes; returns `$FF` without a link), SerialWaitSendDone 30EB,
+  SerialSendLinkRequest 306E (`$71` on the internal clock), SetLinkActive 30F8 / ClearLinkActive 30FD.
+- **Tracer artefacts**: `coverage.py` gives 00:30FD 3219 bytes: the traced range `00:3374-4002` is `$FF` fill
+  reached from `36:71EA jp nc, $3374` (data decoded as code in bank 36), so ClearLinkActive "covers" it. 00:0038
+  (`RST38_Fill`) and 00:0057 (called from 36:5491, also data) are fill bytes; 0057 left unnamed.
+
+##### Bank 01: font and default palettes (plus GameMain)
+
+Exports `$04-$0C`: QueueFontTiles 422C (font re-upload over 6 frames, LCD on), ReloadFontTiles 421A,
+LoadDefaultPalettes 41B3, InitFontScreen 41E8 (font + cursor + palettes with the LCD off; used after picture
+screens, e.g. 08:4F7E), LoadCursorSprite 4289 (4 tiles 01:5120 to de, OBJ palette b). Data: FontTiles 01:42A0
+(`$E0` tiles), DefaultBGPalettes 01:50A0, DefaultOBJPalettes 01:50E0, CursorSpriteTiles 01:5120 (a 16x16
+pointer-like shape). The 272 bytes of 01:4289 in coverage are font data traced as code.
+
+##### Bank 08: golf round rules by game mode
+
+Bank 08 holds the per-mode hooks that GolfRound (bank 10) calls at fixed points. DispatchByGameMode 470D jumps
+through a 16-word table indexed by wGameMode `$C834` (`$C834` = 3 in the Stroke practice round, from the save
+state). From the handlers: **mode 1** keeps per-course statistics (wProfileCourseStats `$C980`, 25 bytes per
+course) and ends with a rank result; **mode 2** is match play (wMatchHoles, MatchStatus, VS result); **mode 3**
+is stroke play (honour, near-pin / drive contests with two players, VS result by score); **mode 4** has a
+retry/quit menu after each shot (10:4A39 branch: retry the shot, replay the hole, quit).
+
+| Export | Routine | Called from | Per mode |
+|---|---|---|---|
+| 00 | RoundHookRoundStart 4722 | GolfRound 10:4472 | 1 stats load; 2 clear match; 3 tee order + contest totals |
+| 0C | RoundHookSaveAtHole 47B4 | hole setup 10:45C8 | 1-3 SaveGameMidRound (SaveGame with `$C96D` = 2) |
+| 24 | HoleIntroFlyover 6432 | 10:45D0 | 1-3 green view 180 frames, then camera pan (button skips) |
+| 02 | RoundHookHoleStart 47FD | 10:45D6 | 2 playoff/dormie captions + music; 3 honour + contest init |
+| 04 | RoundHookPlayerUp 4880 | before each shot 10:484F | putt-for captions; match status captions |
+| 06 | RoundHookAfterShot 4901 | 10:460C | 1 tee-shot stats; 2 hole result -> wMatchHoles; 3 contest; 4 menu |
+| 26 | RetryShotRestore 4AA3 | 10:4624 | restores P1's ball/strokes from `$D359-$D369` |
+| 08 | RoundHookHoleEnd 4B02 | 10:4635 | 1 hole stats; 2 playoff when level after the last hole |
+| 0A | RoundHookRoundEnd 4BBC | 10:466D | result screens, EXP bonuses, game flags, return map |
+| 0E | PauseMenu 4666 | Start while aiming 10:5D9D | menu by mode (banks 41/44) |
+| 10/12 | PlayRoundMusic 5062 / PlayGreenMusic 50E6 | | song by course / opponent / decisive hole |
+| 18 | LinkLostScreen 555F | LinkLostReset 00:2F8D | |
+| 20 | AimStepForDistance 60E6 | aiming 10:5E6A | AimStepTable 08:6110 |
+
+- **Match play**: MatchLeadP1 403C counts wMatchHoles before the current hole; MatchStatus 4091 compares the lead
+  with wHolesLeft (`$FF` decided, 1/2 dormie for P1/P2, 3, 0). MatchHoleOutcome 4199 / MatchHoleResult 4161 give
+  0 undecided / 1 / 2 / 3 halved. After the last hole a level match sets wMatchPlayoff `$C83A` and wHolesLeft = 2
+  (08:4B7E), and caption `$1E` shows at each extra hole.
+- **Hole contests** (mode 3, two players): on par 3 the near pin (PinDist when the tee shot is on the green, best
+  starts at `$1900`), on par 5 the longest drive (ShotLength on lie 0/6/`$A`/`$E`). `$D48F` best, `$D491` leader,
+  `$D494-$D497` wins this hole, added to the players' +`$17`/+`$18` at hole end. Captions `$2A`/`$29` (intro),
+  `$22`/`$20` (winner) via ShowCaptionAndWait 3B:76F8.
+- **Course stats** (mode 1): work copy `$C96E-$C97D` (shared with wMatchHoles) holds longest drive (word),
+  drive count/sum, fairways, putts, par-or-better, greens in regulation, and a sixth stat gated by P1 +`$15`
+  bit 0 (sand save?). Counters stop at `$FF` (`$80` for drives) and then the sums decay as running averages
+  (`sum += x - sum/256`). SaveCourseStats 459E writes them back with rounds played (ClampTo9999), best score
+  (+`$36` offset of P1 +`$3E`) and a score count/sum.
+- **Results/EXP**: RoundEndFadeAndExp 4F03 awards wPoints as EXP unless the profile slot is `$xF`;
+  SetRankExpBonus 4D18 (table 08:4D3D by course and rank) and AwardFirstWinBonus 4E97 set wExpBonusKind/`$CAAE`
+  once per game flag.
+- **Debug leftovers**: MatchLeadP1/MatchStatus/MatchStatusDebug and AddContestWinsToPlayers print hex/decimal
+  values into the debug text buffer (PrintHexByte at rows 9 / PrintDecimalByte at row 8); PauseMenu calls
+  41:77EA (Select held) / 44:42FB (Up held) when hDebugMode is set (08:46F3).
+- RAM: wHonour `$C83B`, wDecisiveHole `$C832` (song `$2A`), wRoundResult `$C96C`, wTeeShot `$D445` (?).
+  `$C96D` (labelled wReplayActive by another pass) is also set to 1 by GolfRound (10:446B) and cleared at round end
+  (10:4650); PlayRoundMusic plays nothing while it is 0, and SaveGameMidRound sets it to 2: it is a "golf session
+  active" byte rather than replay-only.
+
+##### Bank 13: hole data and views
+
+- LoadHoleInfo 55F6 (export 8) reads HoleInfoTable 13:5884 (32 bytes per hole id): +0 par (wHolePar), +4 yards
+  (wHoleYards; hole 1 = `$0176` = 374 as shown in game), +6 4 bytes to `$C329`, +`$A` to `$D441`, +`$C` to `$D439`,
+  then one of 4 pin positions chosen by `$C838` (labelled wWindDir; the pin choice suggests it is a more general
+  per-hole random value) -> wCupX. Par counts over all 102 rows: 22 x 3, 50 x 4, 21 x 5 (+ special rows 7/9).
+  Tree widths per course (13:5684) -> wTreeWidth.
+- GetHoleParAndYards 7044 (export `$0C`) reads the same table by hole and course code.
+- Views: DrawHoleViewAtCamera 411D copies a 22 x 20 window of the 64 x 64 attribute (WRAM2) and tile (WRAM3) maps
+  into the 32 x 32 BG map at the camera goal; ReloadHoleViewMaps 42A8 (export `$10`) reloads course or green maps
+  first; SnapCameraToGoal 4276 (export 2) redraws when the flyover is skipped. (In 411D, `ld de, $FFC0/$FFE0` are
+  -64/-32 wrap constants, not hSerialRecv as disasm.py annotates.)
+- LoadCoursePalettes 446D (export `$12`): 13:45AB[wCourse] picks a `$30`-byte set at 13:45BB: BG palettes 2-6 and
+  OBJ palette 2.
+- StartCourseAnimTask 7076 / StopCourseAnimTasks 70A2 (export `$0E`): far calls into the course banks 50-54
+  (start: the bank named by hole asset ref 4; it registers a frame task, e.g. 50:71B3, slots `$C330`).
+
+##### Bank 3B: captions, pictures and outcome rules
+
+Besides ShowCaption/OutcomeRules (already named): WaitCaptionOrButton 4310, ShowCaptionAndWait 76F8 (export 8,
+used by bank 08 for all round captions), ShowPlayerPicture 7717 (LoadStoryPicture with timeout `$D34D` = `$F0`)
+and WaitPictureTimeout 773F, StrokeLimitPickUp 76D8 (called by StrokeLimit 10:4167: green view, song `$1F`,
+picture 5, caption `$19`), OutcomeMode7 76A8 / OutcomeModeC 76C0 (OutcomeRules branches for game modes 7 and
+`$0C`), ShowBannerSprite 776D / HideBannerSprite 7766 / BannerSpriteTask 7858 (a blinking 48 x 16 sprite banner,
+12 tiles at 3B:7790; the text was not read reliably).
+
 ### Data Structures
 
 *(none yet)*
