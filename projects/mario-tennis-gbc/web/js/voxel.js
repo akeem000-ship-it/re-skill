@@ -168,7 +168,12 @@ const NET = { x0: -640, x1: 640, height: 96 };                           // post
 const CUTS = [
   { name: "net",      x0: 40,  y0: 116, x1: 216, y1: 130, fill: "below" },              // the net band (top of the tape .. ground line)
   { name: "judge",    x0: 208, y0: 104, x1: 226, y1: 136, fill: "tile", key: true, skip: [6, 14] },   // umpire chair / referee right of the net post
-  { name: "backdrop", x0: 0,   y0: 0,   x1: 256, y1: 50,  fill: "below", skip: [6, 14] },   // far fence, stands, castle
+  { name: "backdrop", x0: 0,   y0: 0,   x1: 256, y1: 50,  fill: "below", skip: [6, 14, 4, 5] },   // far fence, stands, castle
+  // the clay and hard courts (maps 4, 5): the garden beyond the far fence (rows 0-15) lies flat behind it (flat: its depth per px, in the
+  // fence's units per px), and the chain-link (rows 16-49) stands with its mesh see-through (holes: the green behind the wires, from row
+  // 19; keep: the gate in it stays solid); stadium3d.js gives the garden's bushes, its flower bed and the gate their volume
+  { name: "backdrop", x0: 0,   y0: 16,  x1: 256, y1: 50,  fill: "below", courts: [4, 5], holes: 19, keep: [[64, 24, 96, 39]] },
+  { name: "garden",   x0: 0,   y0: 0,   x1: 256, y1: 16,  fill: "below", courts: [4, 5], flat: 3 },
   { name: "backdrop", x0: 0,   y0: 0,   x1: 256, y1: 64,  fill: "below", courts: [6] }, // training court: sky and the stands band
   // Wall Practice: the practice wall stands right behind the net (its face rows 44-118), with the sky and the side buildings above
   // it; the game's target arrows (sprites) are drawn on its face (decal)
@@ -693,6 +698,7 @@ export class Voxel3D {
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
         const s = ((c.y0 + y) * 256 + c.x0 + x) * 4, o = (y * w + x) * 4, rgb = bg[s] << 16 | bg[s + 1] << 8 | bg[s + 2];
         if (keys && keys.has(rgb)) continue;
+        if (c.holes && c.y0 + y >= c.holes && bg[s + 1] > bg[s] + 40 && bg[s + 1] > bg[s + 2] + 40 && !(c.keep || []).some(([x0, y0, x1, y1]) => c.x0 + x >= x0 && c.x0 + x < x1 && c.y0 + y >= y0 && c.y0 + y < y1)) continue;   // a hole in the chain-link
         d[o] = bg[s]; d[o + 1] = bg[s + 1]; d[o + 2] = bg[s + 2]; d[o + 3] = 255; opaque++;
       }
       if (opaque < w * h * 0.05) continue;                 // nothing stands there on this court
@@ -700,9 +706,12 @@ export class Voxel3D {
       const g = this.unprojectBG((c.x0 + c.x1) / 2, c.y1);
       let X = g.X, Yw = g.Y, width = w * g.upp, height = h * g.upp;
       if (c.name === "net") { X = (NET.x0 + NET.x1) / 2; Yw = 0; width = (NET.x1 - NET.x0) * w / 160; height = NET.height; }
-      const wide = c.name === "backdrop" || c.name === "fence";   // the stands and the fence continue sideways
-      this.cuts.push({ name: c.name, tex: this.texture(w, h, d, false, wide), mesh: this.meshFromPixels(d, w, h, c.key ? 3 : 0, c.key ? 2.5 : 0.5), w, h, X, Y: Yw, width, height, wide, x0: c.x0, y0: c.y0, x1: c.x1, y1: c.y1, decal: c.decal });
+      const wide = c.name === "backdrop" || c.name === "fence" || !!c.flat;   // the stands and the fence continue sideways
+      this.cuts.push({ name: c.name, tex: this.texture(w, h, d, false, wide), mesh: c.flat ? null : this.meshFromPixels(d, w, h, c.key ? 3 : 0, c.key ? 2.5 : 0.5), w, h, X, Y: Yw, width, height, wide, x0: c.x0, y0: c.y0, x1: c.x1, y1: c.y1, decal: c.decal, flat: c.flat || 0, holes: c.holes || 0, keep: c.keep || null });
     }
+    // a flat cut lies on the ground behind the backdrop it belongs to: its near edge at the backdrop's foot, as wide, its rows going back
+    const back = this.cuts.find(o => o.name === "backdrop");
+    for (const o of this.cuts) if (o.flat && back) { const upp = back.width / back.w; o.X = back.X; o.Y = back.Y; o.width = back.width; o.depth = o.h * upp * o.flat; }
   }
   // the stadium's bleachers as textures: u runs along the court (repeats), v across the stand with the
   // inner (court-side) edge at v = 1
@@ -887,6 +896,7 @@ export class Voxel3D {
     // upright cut-outs: net, chair, backdrop (cards, or voxels in voxel mode)
     const fx = this.ballfx && this.ballfx.on ? this.ballfx : null;       // BALLFX
     for (const c of this.cuts) {
+      if (c.flat) { this.gl.useProgram(this.prog); this.gl.bindVertexArray(this.vao); this.gl.disable(this.gl.CULL_FACE); this.draw(c.tex, m4.trs(c.X, 0.6, c.Y, c.width * 3, c.depth, -Math.PI / 2, 0), mvp, [-1, 0, 3, 1], [1, 1, 1, 1], 0); continue; }   // the garden behind the far fence
       if (this.stadium && this.stadium.active && this.stadium.cut(c)) continue;   // STADIUM: replaced (umpire chair)
       const np = fx && c.name === "net" ? fx.netPost(c) : null, pm = np ? m => m4.mul(np, m) : m => m;   // BALLFX: the net rocks when the ball hits it
       if (this.voxelSprites) {
