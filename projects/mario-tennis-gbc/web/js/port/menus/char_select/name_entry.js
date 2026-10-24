@@ -53,6 +53,7 @@ export function* runNameEntryScreen(P, slot, mugshot) {
     printDecimalByte(P, 3, 3, rd(P, "menuCursorX"));     // (a debug readout of the column)
     wr(P, "menuInputPressed", P.V.inputPressed);
     if (rom(P, FAR.MoveMenuCursorGrid_38, { b: GRID_COLUMNS, c: GRID_ROWS }).a) handleNameEntryCursorMove(P);
+    if (P.menuWheel && P.menuWheel.on) P.menuWheel.skin = { id: "name", at: P.frames, x: rd(P, "menuCursorX"), y: rd(P, "menuCursorY") };   // MENU: Wheel (menuskins.js), read only
     // .inputLoop: a frame, then the buttons (of the input read before it)
     yield* advanceFrame(P);
     const input = rd(P, "menuInputPressed");

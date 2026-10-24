@@ -23,12 +23,17 @@
 //            panel with an icon and the game's own caption line
 //   confirm  the erase warning (3E:4C12): its own words (text bank $30, by the warning's kind) in a red panel, YES / NO round the ball
 //   cardconfirm  the file-erase question over the character-data cards (1A:7945): the game's own cards (its picture) in the
-//            panel, "Erase this data?" (text 30:313), YES / NO round the ball
+//            panel, "Erase this data?" (text 30:313), YES / NO round the ball; with `ok` the new tour's "OK?" over the new
+//            player's stat cards (1D:5A63), in gold
 //   dict     the tennis dictionary's list page (3F:407A): the terms of the category shown round the ball (the term grid
 //            3F:539E filtered by wTennisDictCategoryMask; the cursor wTennisDictScrollTop + CursorRow), the chosen term
 //            with its definition in the panel (names: text 34:240 on into bank $35; definitions: 35:48 + term); the index
 //            page: its nine rows of letters (3F:545F: each row's first letter; letters 35:143 + n) round the ball, the row's
 //            terms in the panel
+//   pick     a new tour's player (38:47C7: Alex or Nina, then the partner Harry or Kate): the two round the ball, the chosen
+//            one standing in the panel with the handedness START flips
+//   name     the name entry (RunNameEntryScreen): its 15 x 6 keys (NameEntryCharset_38 38:71B6, the bottom row's DEL /
+//            END from 38:722D) as an HD keyboard by the ball, the name typed so far (wNameEntryBuffer, WRAM 3 $D800) large
 // The link screens use the same skins (rules: format; courts; characters), with their link titles.
 import { courtImage } from "./assets.js";
 import { matchPicture, charScheme } from "./crowdfans.js";
@@ -66,6 +71,8 @@ export class MenuSkins {
     else if (skin.id === "tabs") this.tabs(g, W, H, k, skin, gb, hd);
     else if (skin.id === "confirm") this.confirm(g, W, H, k, skin, gb);
     else if (skin.id === "cardconfirm") this.cardConfirm(g, W, H, k, skin, gb);
+    else if (skin.id === "pick") this.pick(g, W, H, k, skin, gb);
+    else if (skin.id === "name") this.nameEntry(g, W, H, k, skin, gb);
     else if (skin.id === "dict") (skin.index ? this.dictIndex(g, W, H, k, gb) : this.dict(g, W, H, k, gb));
   }
   // the turning: the ball's position eases to the chosen item, the shorter way round n
@@ -303,8 +310,8 @@ export class MenuSkins {
   }
   // the file-erase question: the cards as the game draws them (LCD rows 24-143, below its own question box), large and sharp
   cardConfirm(g, W, H, k, s, gb) {
-    const red = "#d8443a";
-    this.title(g, k, "ERASE FILE");
+    const red = s.ok ? "#ffd65a" : "#d8443a";
+    this.title(g, k, s.ok ? "YOUR PLAYER" : "ERASE FILE");
     this.arc(g, k, H, ["YES", "NO"], s.sel, 0.5);
     const { px, py, pw, ph } = this.panel(g, W, k, 96, 540), cx = px + pw / 2;
     g.lineWidth = 6 * k; g.strokeStyle = red; this.mw.pill(g, px, py, pw, ph, 30 * k); g.stroke();
@@ -314,11 +321,63 @@ export class MenuSkins {
     cg.putImageData(im, 0, 0);
     const sc = Math.min((pw - 40 * k) / 160, 340 * k / ch); g.imageSmoothingEnabled = false;
     g.save(); this.mw.pill(g, cx - 80 * sc, py + 24 * k, 160 * sc, ch * sc, 14 * k); g.clip(); g.drawImage(cv, cx - 80 * sc, py + 24 * k, 160 * sc, ch * sc); g.restore();
-    g.textAlign = "center"; g.fillStyle = "#281e0a"; g.font = `${34 * k}px "${FONT}", ${BODY}`; g.fillText(this.text(gb.mem.rom, 313).toUpperCase(), cx, py + 24 * k + ch * sc + 52 * k);
-    g.fillStyle = s.sel === 0 ? red : "#7a7f98"; g.font = `${22 * k}px "${FONT}", ${BODY}`; g.fillText(s.sel === 0 ? "A ERASES IT: IT CANNOT BE UNDONE" : "A KEEPS IT", cx, py + ph - 30 * k);
+    g.textAlign = "center"; g.fillStyle = "#281e0a"; g.font = `${34 * k}px "${FONT}", ${BODY}`; g.fillText(s.ok ? "OK?" : this.text(gb.mem.rom, 313).toUpperCase(), cx, py + 24 * k + ch * sc + 52 * k);
+    if (!s.ok) { g.fillStyle = s.sel === 0 ? red : "#7a7f98"; g.font = `${22 * k}px "${FONT}", ${BODY}`; g.fillText(s.sel === 0 ? "A ERASES IT: IT CANNOT BE UNDONE" : "A KEEPS IT", cx, py + ph - 30 * k); }
     g.textAlign = "start";
-    this.hint(g, W, H, k, "▲ ▼ choose   A ok   B keep");
+    this.hint(g, W, H, k, s.ok ? "▲ ▼ choose   A ok   B back" : "▲ ▼ choose   A ok   B keep");
   }
+  // ---- a new tour's player and partner ----
+  pick(g, W, H, k, s, gb) {
+    const rom = gb.mem.rom, ids = s.partner ? [2, 3] : [0, 1], names = ids.map(i => this.text(rom, TEXT_NAME + i));
+    this.title(g, k, s.partner ? "YOUR PARTNER" : "YOUR PLAYER");
+    this.arc(g, k, H, names.map(n => n.toUpperCase()), s.sel, 0.5);
+    const { px, py, pw, ph } = this.panel(g, W, k, 96, 540), cx = px + pw / 2, id = ids[s.sel] ?? 0, fb = py + 340 * k;
+    const gr = g.createRadialGradient(cx, fb - 140 * k, 10 * k, cx, fb - 140 * k, 220 * k); gr.addColorStop(0, "rgba(255,214,90,0.55)"); gr.addColorStop(1, "rgba(255,214,90,0)");
+    g.fillStyle = gr; g.fillRect(px, py, pw, 360 * k);
+    g.fillStyle = "rgba(40,30,10,0.18)"; g.beginPath(); g.ellipse(cx, fb, 90 * k, 18 * k, 0, 0, 6.2832); g.fill();
+    const fig = this.figure(gb, id);
+    if (fig) { const sc = Math.floor(Math.min(290 * k / fig.height, 230 * k / fig.width)); g.save(); g.imageSmoothingEnabled = false; if (s.left) { g.translate(cx, 0); g.scale(-1, 1); g.translate(-cx, 0); }
+      g.drawImage(fig, cx - fig.width * sc / 2, fb - fig.height * sc + Math.round(Math.sin(performance.now() / 420) * 3 * k), fig.width * sc, fig.height * sc); g.restore(); }
+    g.textAlign = "center"; g.fillStyle = "#281e0a"; g.font = `${48 * k}px "${FONT}", ${BODY}`; g.fillText(names[s.sel].toUpperCase(), cx, fb + 64 * k);
+    g.fillStyle = "#c79a2a"; g.font = `${24 * k}px "${FONT}", ${BODY}`; g.fillText(s.left ? "LEFT-HANDED" : "RIGHT-HANDED", cx, fb + 104 * k);
+    g.textAlign = "start";
+    this.hint(g, W, H, k, "◀ ▶ choose   START hand   A pick   B back");
+  }
+
+  // ---- the name entry ----
+  nameEntry(g, W, H, k, s, gb) {
+    const rom = gb.mem.rom, B = 0x38 * 0x4000 - 0x4000, w3 = gb.mem.wram[3], key = (x, y) => rom[B + 0x71B6 + y * 15 + x], act = x => rom[B + 0x722D + x];
+    let name = ""; for (let i = 0; i < 7; i++) { const c = w3[0x800 + i]; if (!c) break; name += c >= 32 && c < 127 ? String.fromCharCode(c) : ""; }
+    this.title(g, k, "YOUR NAME");
+    this.mw.menuBall(g, -60 * k, H / 2, 250 * k, performance.now() / 4000);
+    // the name, large, with a blank for each letter still free (7 at most), in a box over the keys
+    const kx = 230 * k, ks = 50 * k, gap = 6 * k, kw = 15 * (ks + gap) - gap + 24 * k, ky = 250 * k;
+    const bx = kx, by = 110 * k, bw = kw, bh = 110 * k, cx = bx + bw / 2;
+    g.fillStyle = "rgba(250,250,255,0.94)"; this.mw.pill(g, bx, by, bw, bh, 24 * k); g.fill(); g.lineWidth = 4 * k; g.strokeStyle = "#ffd65a"; g.stroke();
+    g.textAlign = "center";
+    const cw = 64 * k, x0 = cx - 3.5 * cw;
+    for (let i = 0; i < 7; i++) {
+      const x = x0 + i * cw + cw / 2; g.fillStyle = i === name.length ? "#ffd65a" : "#c8ccd8"; g.fillRect(x - cw * 0.36, by + 86 * k, cw * 0.72, 6 * k);
+      if (name[i]) { g.fillStyle = "#281e0a"; g.font = `700 ${56 * k}px ${BODY}`; g.fillText(name[i], x, by + 74 * k); }
+    }
+    // the keys: 15 x 5 letters, then the bottom row's actions as wide keys
+    for (let y = 0; y < 5; y++) for (let x = 0; x < 15; x++) {
+      const c = key(x, y), ch = c >= 32 && c < 127 ? String.fromCharCode(c) : "", on = s.x === x && s.y === y, X = kx + x * (ks + gap) + Math.floor(x / 5) * 12 * k, Y = ky + y * (ks + gap);
+      if (!ch.trim() && !on) continue;
+      g.fillStyle = on ? "#ffd65a" : "rgba(250,250,255,0.9)"; this.mw.pill(g, X, Y, ks, ks, 12 * k); g.fill();
+      g.fillStyle = "#281e0a"; g.font = `700 ${30 * k}px ${BODY}`; g.fillText(ch, X + ks / 2, Y + ks * 0.7);   // (the body font: the keys have lower case)
+    }
+    const spans = []; for (let x = 0; x < 15; x++) { const a = act(x); if (!a) continue; const last = spans[spans.length - 1]; if (last && last.a === a && last.x1 === x - 1) last.x1 = x; else spans.push({ a, x0: x, x1: x }); }
+    for (const sp of spans) {
+      const X = kx + sp.x0 * (ks + gap) + Math.floor(sp.x0 / 5) * 12 * k, X1 = kx + sp.x1 * (ks + gap) + Math.floor(sp.x1 / 5) * 12 * k + ks, Y = ky + 5 * (ks + gap) + 8 * k;
+      const on = s.y === 5 && s.x >= sp.x0 && s.x <= sp.x1;
+      g.fillStyle = on ? "#ffd65a" : sp.a === 1 ? "#f2c9c4" : "#c9e8c4"; this.mw.pill(g, X, Y, X1 - X, ks, 16 * k); g.fill();
+      g.fillStyle = "#281e0a"; g.font = `${26 * k}px "${FONT}", ${BODY}`; g.fillText(sp.a === 1 ? "DEL" : "END", (X + X1) / 2, Y + ks * 0.68);
+    }
+    g.textAlign = "start";
+    this.hint(g, W, H, k, "✚ move   A type   B delete   END: done");
+  }
+
   // ---- the tennis dictionary ----
   // a string of text bank b, message i, as plain words: control codes dropped, a page break ({02}) a new paragraph
   textAt(rom, bank, i) {

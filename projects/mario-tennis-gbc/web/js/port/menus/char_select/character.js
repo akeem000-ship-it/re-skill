@@ -71,6 +71,9 @@ export function* runCharacterSelectScreen(P, partner) {
     const move = rom(P, FAR.MoveMenuCursorGrid_38, { b: 2, c: 1 });
     de = move.de;
     if (move.a) de = refreshCharacterSelectHighlight(P).de ?? de;
+    if (P.menuWheel && P.menuWheel.on) withWram(P, WRAM_COURT_PLANES, () => {      // MENU: Wheel (menuskins.js), read only
+      P.menuWheel.skin = { id: "pick", at: P.frames, partner: rd(P, "charSelectIsPartner"), sel: getMenuCursorIndex(P, 2), left: rd(P, "charSelectHandedness") };
+    });
     yield* advanceFrame(P);
     const input = P.V.inputPressed;
     if (input & PADF_A) break;
