@@ -160,9 +160,10 @@ export class Shot {
 
   // 00:2E3B AdvanceFrame: VBlank 00:2EF9 (its display work, ReadJoypad 00:02EB, the fades, the VBlank tasks), then
   // ClearUnusedSprites 00:2688 and the frame tasks in table order
-  advance(n = 1) {
+  *advance(n = 1) {                              // (a generator: the round is a coroutine, yield* at every caller)
     const w = this.w, h = w.high;
     for (let k = 0; k < n; k++) {
+      yield;                                     // (the frame: a caller running the round frame by frame steps here)
       this.ev("F");
       this.fx = [];                              // this frame's sounds and effects
       if (w.vram) vblankDisplay(w);              // palettes, scroll, OAM DMA, the VRAM queues
@@ -198,7 +199,7 @@ export class Shot {
 
   // 10:56B0 AddressBall: Up / Down change club (view 4), Left / Right nudge the aim, A swings, B goes back.
   // entered: start at the loop top 10:5713 (after its AdvanceFrame)
-  address(entered = false) {
+  *address(entered = false) {
     const w = this.w, s = ball(w), r6 = w.wram[6];
     this.t.taskOn = false;
     if (!entered) s[0x60] = s[0x61] = 0;
@@ -206,8 +207,8 @@ export class Shot {
     for (;;) {
       if (label === "56B6") {
         S.meterReset(w);
-        this.advance();
-        if (s[0xD7]) return this.cpuSwing();
+        yield* this.advance();
+        if (s[0xD7]) return yield* this.cpuSwing();
         s[0x53] = 0;
         s[0x51] = 1;
         label = "56CC";
@@ -216,9 +217,9 @@ export class Shot {
         r6[0x321] = S.missTable(w);
         D.hud(w, "hudDrawShotPanel");            // 12:46A6
         D.hud(w, "hudDrawClubIcon");             // 12:465C
-        this.advance();
+        yield* this.advance();
         D.hud(w, "hudDrawPinDistance");          // 12:4CB1
-        this.advance();
+        yield* this.advance();
         D.hud(w, "hudDrawLieIcon");              // 12:45F4
         L.clubParams(w);
         label = "56E7";
@@ -228,11 +229,11 @@ export class Shot {
         r6[0x382] = 1;
         S.marker(w);
       }
-      if (label !== "5713") this.advance();
+      if (label !== "5713") yield* this.advance();
       label = "5710";
       const joy = w.high[0x194];
       if (joy & 1) {
-        const r = this.swing();
+        const r = yield* this.swing();
         if (r === "again") { label = "56B6"; continue; }
         return r;
       }
@@ -257,7 +258,7 @@ export class Shot {
     }
   }
 
-  swing() {                                      // 10:57C0 / SwingMeterLoop 10:57E0: A for power, A for impact
+  *swing() {                                      // 10:57C0 / SwingMeterLoop 10:57E0: A for power, A for impact
     const w = this.w, s = ball(w), r6 = w.wram[6];
     s[0x4D] = 0;
     s[0x51] = 0;
@@ -265,14 +266,14 @@ export class Shot {
     S.animStart(w, 1);
     let b = 0;
     for (;;) {
-      this.advance();
+      yield* this.advance();
       const a = s[0x4E];
       s[0x4F] = a >= 0x3C ? (0x78 - a) & 0xFF : a;
-      if (s[0x4E] >= 0x78 && !b) return this.swingOff();
+      if (s[0x4E] >= 0x78 && !b) return yield* this.swingOff();
       let c;
       if (!(s[0x4E] & 1)) c = w.high[0x194] | s[0x53];
       else { s[0x53] = w.high[0x194]; c = 0; }
-      if (c & 2 && !b) return this.swingOff();
+      if (c & 2 && !b) return yield* this.swingOff();
       if (c & 1) {
         if (b) return this.swingEnd(true);
         s[0x50] = s[0x4F];
@@ -284,21 +285,21 @@ export class Shot {
         if (s[0x50] === 0x3C) s[0x52] = 1;
       }
       s[0x4E] = (s[0x4E] + 1) & 0xFF;
-      if (s[0x4E] === 0x8A) return b ? this.swingEnd(true) : this.swingOff();
+      if (s[0x4E] === 0x8A) return b ? this.swingEnd(true) : yield* this.swingOff();
     }
   }
 
   // 10:5643 SwingMeterCPU: the computer's swing, no buttons: the cursor runs up the whole meter ($3C frames) and
   // the power is taken where it passes wSwingTargetPower (the putter swings there and then); with the d-pad of
   // wSwingTargetPad, back down to wSwingTargetImpact (perfect at 0). (Sounds $90, $5E, ~10:5534 MaxMissSound.)
-  cpuSwing() {
+  *cpuSwing() {
     const w = this.w, s = ball(w), r6 = w.wram[6];
     s[0x4D] = 0;
     S.animStart(w, 1);                           // 11:6D8F
     for (let c = 0x3C; c; c--) {
       s[0x4E] = (s[0x4E] + 1) & 0xFF;
       s[0x4F] = s[0x4E];
-      this.advance();
+      yield* this.advance();
       if (r6[0x4D8] === s[0x4E]) {
         s[0x50] = r6[0x4D8];
         if (r6[0x329] === 0x0D) { S.animStart(w, 2); return 0; }
@@ -310,7 +311,7 @@ export class Shot {
     do {
       s[0x4E] = (s[0x4E] - 1) & 0xFF;
       s[0x4F] = s[0x4E];
-      this.advance();
+      yield* this.advance();
     } while (r6[0x4D9] !== s[0x4E]);
     if (s[0x4F] === 0) s[0x51] = 1;              // wSwingPerfect
     S.animStart(w, 2);
@@ -327,26 +328,26 @@ export class Shot {
     return 0;
   }
 
-  swingOff() {                                   // 10:5861: no power or B: back to the address after 20 frames
+  *swingOff() {                                   // 10:5861: no power or B: back to the address after 20 frames
     const w = this.w, s = ball(w);
     s[0x4D] = 0xF0;
     this.t.meterOn = false;
     S.animStart(w, 3);
-    this.advance(20);
+    yield* this.advance(20);
     return "again";
   }
 
-  afterSwing() {                                 // 10:4921-10:49A0: from the swing to ShotLaunch
+  *afterSwing() {                                 // 10:4921-10:49A0: from the swing to ShotLaunch
     const w = this.w, s = ball(w), r6 = w.wram[6], w0 = w.wram[0];
     s[0x85] &= 0xEF;
     S.shotRecord(w);                             // 02:46B0 (~02:48B8 is for link play)
     s[0x85] = 0x2D;
     if (s[0x43] === 4) {
-      for (;;) { this.advance(); if (s[0x64]) break; }   // 11:6E34: until the club meets the ball
+      for (;;) { yield* this.advance(); if (s[0x64]) break; }   // 11:6E34: until the club meets the ball
     } else {                                     // 10:4AEF PuttWait: the golfer's map sprite swings (04:57A1)
       const [anim, n] = r6[0x329] === 0x0D ? [4, 0x30] : r6[0x32A] >= 2 ? [8, 0x24] : [3, 0x32];
       D.golferActorSetAnim(w, anim);
-      this.advance(n);
+      yield* this.advance(n);
     }
     r6[0x35A] = w0[0x8A0]; r6[0x35B] = w0[0x8A1];
     r6[0x35D] = r6[0x32A]; r6[0x35E] = r6[0x32B];
@@ -358,28 +359,28 @@ export class Shot {
     if (w0[f] < 0x14) {
       w0[f]++;
       D.hud(w, w0[0x835] ? "hudDrawPlayer2" : "hudDrawPlayer1");   // 10:4786 HudRedrawCurPlayer
-      this.advance();
+      yield* this.advance();
     }
     r6[0x35F] = r6[0x360] = 0;
     r6[0x519] = s[0x05]; r6[0x516] = s[0x02];
     s[0x85] |= 4;
-    return this.launch();
+    return yield* this.launch();
   }
 
-  fromAddress(entered = false) {                 // the swing as played, then the shot: the outcome
-    const r = this.address(entered);
+  *fromAddress(entered = false) {                 // the swing as played, then the shot: the outcome
+    const r = yield* this.address(entered);
     if (r !== 0) return r;
-    return this.afterSwing();
+    return yield* this.afterSwing();
   }
 
   // -- the view changes: maps and graphics; only their RAM effects on the shot state are kept --
-  viewLeave() { V.viewLeave(this); }             // 3B:431F ShotViewLeave
+  *viewLeave() { yield* V.viewLeave(this); }             // 3B:431F ShotViewLeave
 
-  loadView(c) { V.loadShotView(this, c); }       // 13:432B LoadShotView
+  *loadView(c) { yield* V.loadShotView(this, c); }       // 13:432B LoadShotView
 
   cupView() {}                                   // ~13:44A4 CupViewEnter / ~13:4528 CupViewLeave: graphics only, no frames
 
-  launch() {                                     // 10:5F94 ShotLaunch and 10:49A0-10:49D8 after it
+  *launch() {                                     // 10:5F94 ShotLaunch and 10:49A0-10:49D8 after it
     const w = this.w, s = ball(w), r6 = w.wram[6];
     L.shotLaunch(w, this.fx);
     for (let o = 0xCF; o < 0xD5; o++) s[o] = 0;  // 10:706C
@@ -391,63 +392,63 @@ export class Shot {
     }
     s[0x38] = 0x11;
     this.t.taskOn = true;                        // 10:49B7 ShotFly: RegisterFrameTask(1, BallTask)
-    if (s[0x43] !== 4) return this.afterFlight();   // on the green views: no flight camera
+    if (s[0x43] !== 4) return yield* this.afterFlight();   // on the green views: no flight camera
     r6[0x331] = w.wram[0][0x33F] && s[0x17] < 8 ? 1 : 0;
-    this.advance();
+    yield* this.advance();
     this.ev("P");
-    return this.flightCam(0x5A);
+    return yield* this.flightCam(0x5A);
   }
 
-  flightCam(c) {                                 // 10:49DD: the flight-camera loop from its top, counter c
+  *flightCam(c) {                                 // 10:49DD: the flight-camera loop from its top, counter c
     const w = this.w, s = ball(w);
     while (!(ballInGreenArea(s) || w.wram[6][0x331])) {
       c = (c - 1) & 0xFF;
       if (!c) break;
-      this.advance();
+      yield* this.advance();
       this.ev("P");
     }
     D.behindViewTaskStop(w);                     // 15:47B1
     D.golferActorShow(this);                     // 04:57BA
     D.golferActorAnim3(w);                       // 04:5808
     D.mapScrollTaskStart(w);                     // 04:4062
-    this.loadView(ballInGreenArea(s));           // 10:4A00
+    yield* this.loadView(ballInGreenArea(s));           // 10:4A00
     V.hudDrawWind(w);                            // 12:4A81
-    this.advance();                              // 10:4A0A WaitFramesCmd 1
-    return this.afterFlight();
+    yield* this.advance();                              // 10:4A0A WaitFramesCmd 1
+    return yield* this.afterFlight();
   }
 
-  afterFlight() {                                // 10:4A0E
+  *afterFlight() {                                // 10:4A0E
     const s = ball(this.w);
-    if (!(s[0x8E] & 0x10) && s[0x8E] & 0x08) { this.fx.push(["cue", 8]); showCaption(this, 8); }   // 3B:4339
-    this.advance();                              // 10:4A1E WaitFramesCmd 1
-    return this.mainLoop();
+    if (!(s[0x8E] & 0x10) && s[0x8E] & 0x08) { this.fx.push(["cue", 8]); yield* showCaption(this, 8); }   // 3B:4339
+    yield* this.advance();                              // 10:4A1E WaitFramesCmd 1
+    return yield* this.mainLoop();
   }
 
-  mainLoop(entered = false) {                    // 10:6E99 ShotMainLoop; entered: at its top (after AdvanceFrame)
+  *mainLoop(entered = false) {                    // 10:6E99 ShotMainLoop; entered: at its top (after AdvanceFrame)
     const s = ball(this.w);
     if (!entered) {
       s[0xBB] = s[0xBC] = s[0xBD] = s[0xBE] = 0;
       s[0xB9] = 0;
       s[0x44] = 0;
     }
-    return this.loop(entered);
+    return yield* this.loop(entered);
   }
 
-  loop(entered) {                                // 10:6EA7 / 10:6EAA
+  *loop(entered) {                                // 10:6EA7 / 10:6EAA
     for (;;) {
       if (entered) entered = false;
-      else { this.advance(); this.ev("L"); }
-      const r = this.body();
+      else { yield* this.advance(); this.ev("L"); }
+      const r = yield* this.body();
       if (r !== null) return r;
     }
   }
 
-  body() {                                       // one pass of 10:6EAA; null = next frame, else the outcome
+  *body() {                                       // one pass of 10:6EAA; null = next frame, else the outcome
     const w = this.w, s = ball(w), fx = this.fx, w0 = w.wram[0], w6 = w.wram[6];
     const x = s[0x02], y = s[0x05];
     if (w0[0x329] > x || x >= w0[0x32B] || w0[0x32A] > y || y >= ((w0[0x32C] - 2) & 0xFF)) {
       fx.push(["sound", 0x40]);                  // 10:6E90 ShotOutOfBounds
-      this.advance(30);
+      yield* this.advance(30);
       return 7;
     }
     let to6F28 = true;
@@ -464,14 +465,14 @@ export class Shot {
     }
     if (to6F28) {
       const c = ballInGreenArea(s);
-      if (s[0x43] !== c) { this.viewLeave(); s[0x43] = c; this.loadView(c); }
+      if (s[0x43] !== c) { yield* this.viewLeave(); s[0x43] = c; yield* this.loadView(c); }
     }
     if (s[0x43] === 2) {                         // 10:6F43
-      if (C.flyIn(s)) return this.holed();
+      if (C.flyIn(s)) return yield* this.holed();
       if (!((((s[0x07] | s[0x08] << 8) - 4)) & 0x8000)) return null;
       if (C.cupClose(s) < 6) {
         C.rollIn(s);
-        return s[0xB1] ? this.holed() : null;
+        return s[0xB1] ? yield* this.holed() : null;
       }
     }
     if (B.cupPull(s)) return null;               // 10:6F9E
@@ -480,18 +481,18 @@ export class Shot {
     const joy = w.high[0x194];
     if (joy & 2) return this.atRest();
     if (!(joy & 1)) return null;
-    return this.retry();
+    return yield* this.retry();
   }
 
-  holed() {                                      // 10:7052 ShotHoled
+  *holed() {                                      // 10:7052 ShotHoled
     const s = ball(this.w);
     s[0x44] = 1;
     this.t.taskOn = false;
-    const a = C.cupDrop(s, n => this.advance(n), []);
+    const a = yield* C.cupDrop(s, n => this.advance(n), []);
     this.t.taskOn = true;
-    if (a === 2) return this.loop(false);        // jp 10:6EA7: back into the loop without its set-up
+    if (a === 2) return yield* this.loop(false);        // jp 10:6EA7: back into the loop without its set-up
     this.fx.push(["sound", 0x5A]);
-    C.holeOutPlace(s, n => this.advance(n));
+    yield* C.holeOutPlace(s, n => this.advance(n));
     s[0x85] &= 0xFB;
     return 0x80;
   }
@@ -510,7 +511,7 @@ export class Shot {
     return t;
   }
 
-  retry() {                                      // 10:6FC9: A after the ball stopped, with $D35F set
+  *retry() {                                      // 10:6FC9: A after the ball stopped, with $D35F set
     const w = this.w, s = ball(w), w6 = w.wram[6];
     s.set(w6.subarray(0x361, 0x367), 0);
     w6.copyWithin(0x51D, 0x36D, 0x373);
@@ -520,10 +521,17 @@ export class Shot {
     s[0x15] = 0;
     this.fx.push(["sound", 0x40]);
     const c = ballInGreenArea(s);
-    if (c) this.loadView(1);
-    else if (s[0x43]) this.loadView(0);
+    if (c) yield* this.loadView(1);
+    else if (s[0x43]) yield* this.loadView(0);
     else throw new Error("~13:4276 is not ported");
     w6[0x360] = 0;
     return w6[0x367];
   }
+}
+
+// run a generator (a part of the round) to its end at once: the tests and tools that do not step it frame by frame
+export function runSync(g) {
+  let r;
+  do r = g.next(); while (!r.done);
+  return r.value;
 }

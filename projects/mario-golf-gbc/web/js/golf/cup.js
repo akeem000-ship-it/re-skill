@@ -253,7 +253,7 @@ export function cupSink(s) {                     // 10:7860 CupSink: vz -= $38; 
 
 // 10:79AF CupDrop: BallTask is off; one AdvanceFrame (frame(1)) per pass. 1 = the ball reached the bottom,
 // 2 = it bounced out (back in the air).
-export function cupDrop(s, frame, fx) {
+export function* cupDrop(s, frame, fx) {
   s[0x15] = 0;
   s[0xB8] = 0;
   fx.push(["task", "off"]);
@@ -270,16 +270,16 @@ export function cupDrop(s, frame, fx) {
     addVelToPos(s, 0x03, rd16(s, 0x0B));
     rimClamp(s);
     a = cupSink(s);
-    frame(1);
+    yield* frame(1);
     if (a) break;
   }
   fx.push(["task", "on"]);
   return a;
 }
 
-export function holeOutPlace(s, frame) {         // 10:7888 HoleOutPlace: the ball on the cup, 30 frames
+export function* holeOutPlace(s, frame) {         // 10:7888 HoleOutPlace: the ball on the cup, 30 frames
   for (let o = 0x09; o < 0x0D; o++) s[o] = 0;
   s[0x00] = 0; s[0x01] = s[0x3D]; s[0x02] = s[0x3E];
   s[0x03] = 0; s[0x04] = s[0x3F]; s[0x05] = s[0x40];
-  frame(30);
+  yield* frame(30);
 }

@@ -86,7 +86,7 @@ export function drawHoleViewAtCamera(w, view) {
 }
 
 // 13:4276 SnapCameraToGoal (course view): a new goal tile redraws the view there (one frame)
-export function snapToGoal(sh) {
+export function* snapToGoal(sh) {
   const w = sh.w, r6 = w.wram[6], w0 = w.wram[0];
   if (r6[0x443]) return;
   w.high[0x1B0] = 0;                             // hFFB0
@@ -96,5 +96,5 @@ export function snapToGoal(sh) {
   drawHoleViewAtCamera(w, 0);
   if (w.vram) enableLCD(w);
   r6[0x36C] = 0;                                 // wMarkerBlink
-  sh.advance();
+  yield* sh.advance();
 }

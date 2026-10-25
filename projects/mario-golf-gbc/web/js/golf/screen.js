@@ -80,8 +80,8 @@ function applyWhiteFade(w, c) {
     w0[0x100 + 2 * k] = a; w0[0x101 + 2 * k] = b;
   }
 }
-export function waitFade(sh) {                   // 00:2625 WaitFade
-  while (sh.w.high[ST]) sh.advance();
+export function* waitFade(sh) {                   // 00:2625 WaitFade
+  while (sh.w.high[ST]) yield* sh.advance();
 }
 
 // 00:2C6B UpdateGameTimer (VBlank): the countdown (wCountdownState $C0F4 = 1: seconds at $C0F6/$C0F7, sounds $9F

@@ -25,7 +25,7 @@ const mode = w => w.wram[0][0x834];             // wGameMode
 function notPorted(what) { throw new Error(`${what} is not ported`); }
 
 // ---- the round start: 10:4451-10:44B1 ----
-export function golfRoundStart(sh, roundId) {    // 10:4451 GolfRound up to the per-hole loop
+export function* golfRoundStart(sh, roundId) {    // 10:4451 GolfRound up to the per-hole loop
   const w = sh.w, w0 = w.wram[0], r6 = w.wram[6];
   r6[0x4F0] = roundId;
   if (roundId !== 0xFF) {
@@ -43,15 +43,15 @@ export function golfRoundStart(sh, roundId) {    // 10:4451 GolfRound up to the 
     w0[0x8BE] = w0[0x876];
     w0[0x8FE] = w0[0x877];
   }
-  initWindowSystem(sh);                          // 05:407A
+  yield* initWindowSystem(sh);                          // 05:407A
   resetPlayersForHole(w);                        // 10:405C
   w0[0x835] = 0;                                 // wCurPlayer
   w0[0x2A6] = 0;
 }
 
-function initWindowSystem(sh) {                  // 05:407A InitWindowSystem: clears WRAM5 over 4 frames, frees the windows
+function* initWindowSystem(sh) {                  // 05:407A InitWindowSystem: clears WRAM5 over 4 frames, frees the windows
   const w = sh.w, r5 = w.wram[5];
-  for (let k = 0; k < 4; k++) { r5.fill(0, 0x400 * k, 0x400 * k + 0x400); sh.advance(); }
+  for (let k = 0; k < 4; k++) { r5.fill(0, 0x400 * k, 0x400 * k + 0x400); yield* sh.advance(); }
   for (let k = 0; k < 6; k++) r5[0x802 + 4 * k] = 3;   // wWindowSlots
   r5[0x83E] = 0xFF;                              // wMenuStackDepth
   r5[0x824] = 0xFF;                              // wMessageWindow
@@ -184,26 +184,26 @@ export function holeWind(w) {
 
 // 08:6432 HoleIntroFlyover (modes 1-3): the green view for 180 frames (or until a button), then the course view
 // and the camera's pan from the pin to the ball (until it gets there, or a button)
-function holeIntroFlyover(sh) {
+function* holeIntroFlyover(sh) {
   const w = sh.w, r6 = w.wram[6];
   if (![1, 2, 3].includes(mode(w))) notPorted("the hole start of other modes (~08:64B1)");
   r6[0x445] = 1;                                 // wTeeShot
   r6[0x4D5] = 0; r6[0x454] = 0; r6[0x44F] = 0; r6[0x450] = 0x80;
   golfViewInit(sh);                              // 10:420E
-  loadShotView(sh, 1);
+  yield* loadShotView(sh, 1);
   Scr.forceFadeIn(w, 0x7F);
   r6[0x328] = 0;
   for (let c = 0xB4; c; c--) {
-    sh.advance();
+    yield* sh.advance();
     if (w.high[0x194]) break;                    // a button: on at once (sound $5C)
   }
   r6[0x438] = 4;
-  loadShotView(sh, 0);
+  yield* loadShotView(sh, 0);
   r6[0x438] = 1;
-  sh.advance(10);                                // WaitFramesCmd 10
+  yield* sh.advance(10);                                // WaitFramesCmd 10
   for (;;) {
-    sh.advance();
-    if (w.high[0x194]) { Cam.snapToGoal(sh); return; }   // 13:4276 SnapCameraToGoal
+    yield* sh.advance();
+    if (w.high[0x194]) { yield* Cam.snapToGoal(sh); return; }   // 13:4276 SnapCameraToGoal
     if (Cam.atGoal(w)) return;                   // 11:41F7 CameraAtGoal
   }
 }
@@ -221,10 +221,10 @@ function golfViewInit(sh) {                      // 10:420E GolfViewInit
   r6[0x443] = 0xFF;                              // no view yet
 }
 
-function strongWindIntro(sh) {                   // 12:6F8D StrongWindIntro: wind of 12 mph or more, a gust sprite
+function* strongWindIntro(sh) {                   // 12:6F8D StrongWindIntro: wind of 12 mph or more, a gust sprite
   if (sh.w.wram[0][0x815] < 0x0C) return;
-  sh.advance();
-  sh.advance(0x3D);                              // (the sprite crosses the screen; display)
+  yield* sh.advance();
+  yield* sh.advance(0x3D);                              // (the sprite crosses the screen; display)
 }
 
 function roundHookHoleStart(w) {                 // 08:47FD RoundHookHoleStart
@@ -261,7 +261,7 @@ function initHoleContest(w) {                    // 08:420F InitHoleContest (cap
 }
 
 // ---- one hole up to the first address step: 10:44B4-10:45E4 and ShotSetup ----
-export function holeStart(sh) {
+export function* holeStart(sh) {
   const w = sh.w, w0 = w.wram[0], r6 = w.wram[6];
   sh.mark("hole");
   r6[0x485] = 1;                                 // wBallObjectFlags
@@ -287,16 +287,16 @@ export function holeStart(sh) {
   if (w0[0x870]) notPorted("golf event hooks (~10:4CC3)");
   sh.hole = new Hole(r6[0x320]);
   sh.mark("flyover");
-  holeIntroFlyover(sh);
+  yield* holeIntroFlyover(sh);
   sh.mark("windintro");
-  strongWindIntro(sh);
+  yield* strongWindIntro(sh);
   roundHookHoleStart(w);
-  nextShot(sh);
+  yield* nextShot(sh);
   return sh.hole;
 }
 
 // ---- between shots and holes: GolfShotLoop 10:45E7-10:4673 ----
-export function strokeLimit(sh, a) {             // 10:4134 StrokeLimit: 3 x par strokes picks the ball up
+export function* strokeLimit(sh, a) {             // 10:4134 StrokeLimit: 3 x par strokes picks the ball up
   const w = sh.w;
   if (a === 0x80) return a;
   const m = mode(w);
@@ -306,19 +306,19 @@ export function strokeLimit(sh, a) {             // 10:4134 StrokeLimit: 3 x par
   const f = pf(w, 0x20);
   if (w0[f] < d) return a;
   w0[f] = d;
-  sh.advance();                                  // 10:4786 HudRedrawCurPlayer
+  yield* sh.advance();                                  // 10:4786 HudRedrawCurPlayer
   r6[0x485] &= 0xEF;
   r6[0x48E] |= 0x80;
-  if (!r6[0x443]) loadShotView(sh, 1);           // 3B:76D8 StrokeLimitPickUp
+  if (!r6[0x443]) yield* loadShotView(sh, 1);           // 3B:76D8 StrokeLimitPickUp
   r6[0x443] = 0xFF;                              // (its song, picture and caption waits are not modelled)
   return 0x81;
 }
 
 // 10:45E7-10:4632 after a shot's PostShot: true when every player has holed out
-export function afterShot(sh, a) {
+export function* afterShot(sh, a) {
   const w = sh.w, w0 = w.wram[0], r6 = w.wram[6];
   r6[0x438] = 0;
-  a = strokeLimit(sh, a);
+  a = yield* strokeLimit(sh, a);
   if (a & 0x80) {                                // holed, picked up or out of bounds ($FF)
     w0[pf(w, 0x2A)] = w0[pf(w, 0x2B)] = 1;
     w0.fill(0, pf(w, 0x22), pf(w, 0x28));
@@ -326,7 +326,7 @@ export function afterShot(sh, a) {
   }
   roundHookAfterShot(w);                         // 08:4901
   if (w0[0x870]) notPorted("golf event hooks (~10:4CC3)");
-  sh.advance();                                  // (after ~4A:629C PictureCycleStop: display)
+  yield* sh.advance();                                  // (after ~4A:629C PictureCycleStop: display)
   if (r6[0x4DD]) notPorted("the golf event flag $D4DD (~08:4AA3 RetryShotRestore, ~10:464A)");
   // ~12:4F1D ShotLengthTaskStop (display)
   return !!(w0[0x8AA] && w0[0x8EA]);
@@ -343,14 +343,14 @@ function roundHookAfterShot(w) {                 // 08:4901 RoundHookAfterShot
 }
 
 // 10:45D9-10:45E4: the next player, the view, ShotSetup up to the address step
-export function nextShot(sh) {
+export function* nextShot(sh) {
   const w = sh.w;
   sh.mark("pick");
   pickNextPlayer(w);
   w.wram[6][0x438] = 1;
-  shotViewUpdate(sh);
+  yield* shotViewUpdate(sh);
   sh.mark("shotsetup");
-  H.shotSetup(sh);
+  yield* H.shotSetup(sh);
 }
 
 // 10:4635-10:4647 the hole is over: true when another hole follows (then holeStart)

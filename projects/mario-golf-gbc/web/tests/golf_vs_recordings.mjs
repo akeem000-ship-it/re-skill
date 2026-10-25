@@ -9,7 +9,7 @@ import path from "path";
 import { useRom } from "../js/golf/rom.js";
 import { GolfMemory, ball } from "../js/golf/memory.js";
 import { Hole } from "../js/golf/ball.js";
-import { Shot } from "../js/golf/shot.js";
+import { Shot, runSync } from "../js/golf/shot.js";
 import * as H from "../js/golf/hole.js";
 import * as R from "../js/golf/round.js";
 
@@ -83,10 +83,10 @@ function runShot(rec) {                          // tools/shot_run.py
   try {
     const e = ev[0];
     check(e[0]);
-    if (e[0] === "L") outcome = shot.mainLoop(true);
-    else if (e[0] === "A" || e[0] === "a") outcome = shot.fromAddress(e[0] === "a");
-    else if (e[0] === "S") outcome = shot.launch();
-    else if (e[0] === "P") outcome = shot.flightCam(e[4][3]);
+    if (e[0] === "L") outcome = runSync(shot.mainLoop(true));
+    else if (e[0] === "A" || e[0] === "a") outcome = runSync(shot.fromAddress(e[0] === "a"));
+    else if (e[0] === "S") outcome = runSync(shot.launch());
+    else if (e[0] === "P") outcome = runSync(shot.flightCam(e[4][3]));
     else throw new Mismatch(`recording starts with ${e[0]}`);
   } catch (x) {
     if (x instanceof Finished) note = " (end of recording)";
@@ -130,11 +130,11 @@ function runHole(rec) {                          // tools/hole_run.py, on throug
       const shot = new Shot(w, hole, check);
       const first = ev[pos.i - 1][0];
       let a;
-      if (first === "A" || first === "a") a = shot.fromAddress(first === "a");
-      else if (first === "L") a = shot.mainLoop(true);
-      else a = shot.flightCam(ev[pos.i - 1][4][3]);
+      if (first === "A" || first === "a") a = runSync(shot.fromAddress(first === "a"));
+      else if (first === "L") a = runSync(shot.mainLoop(true));
+      else a = runSync(shot.flightCam(ev[pos.i - 1][4][3]));
       outs.push(H.postShot(w, a));
-      if (R.afterShot(quiet, a)) {               // the hole is over
+      if (runSync(R.afterShot(quiet, a))) {               // the hole is over
         const w0 = w.wram[0], f = o => w0[0x880 + o + (w0[0x835] ? 0x40 : 0)];
         holes.push([f(0x20), f(0x21), w0[0x83C] | w0[0x83D] << 8]);
         if (!ev.slice(pos.i).some(e => e[0] === "A")) {    // the recording ends in this hole's end
@@ -144,8 +144,8 @@ function runHole(rec) {                          // tools/hole_run.py, on throug
           break;
         }
         if (!R.holeEnd(w)) { note = " the round ended before the recording"; break; }
-        hole = R.holeStart(quiet);
-      } else R.nextShot(quiet);
+        hole = runSync(R.holeStart(quiet));
+      } else runSync(R.nextShot(quiet));
       if (!sync()) { note = ` recording ends before shot ${outs.length + 1}`; break; }
     }
   } catch (x) {

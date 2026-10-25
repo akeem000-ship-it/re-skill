@@ -124,7 +124,7 @@ export function smartAim(w, hole) {              // 10:6406 SmartAim: at the cup
 // 10:5978: the computer golfer's turn of the menu: CpuPlanShotMain 3C:426A picks the club, shot mode, aim and
 // the swing it will make (wSwingTargetPower $D4D8, wSwingTargetImpact $D4D9, the d-pad wSwingTargetPad $D4DA);
 // the marker slides out, then a second's pause. Returns 0 (as A's swing).
-function cpuAim(sh) {
+function* cpuAim(sh) {
   const w = sh.w, r6 = w.wram[6];
   const p = planShot(w, sh.hole);
   r6[0x329] = p.club;
@@ -133,14 +133,14 @@ function cpuAim(sh) {
   r6[0x4D9] = p.impact; r6[0x4D8] = p.power; r6[0x4DA] = p.pad;
   r6[0x44D] = 0xF0;
   r6[0x438] = 2;                                 // wCameraMode
-  sh.advance();
+  yield* sh.advance();
   r6[0x321] = S.missTable(w);                    // 10:6907
   L.clubParams(w);                               // 10:5EEF
   r6.copyWithin(0x42A, 0x426, 0x42A);
-  slideOut(sh);
+  yield* slideOut(sh);
   aimMarker(w);                                  // 10:6145
   placeTargetMarker(w);                          // 40:640E (10:5A2E stores its hl, the y it left, again)
-  sh.advance(0x3C);                              // WaitFramesCmd 60
+  yield* sh.advance(0x3C);                              // WaitFramesCmd 60
   return 0;
 }
 
@@ -157,13 +157,13 @@ function aimStep(w) {                            // 08:60E6 AimStepForDistance a
   return v;
 }
 
-function slideMarker(sh) {                       // 10:5C87-10:5D0A: club set-up, the marker slides out over 3 frames
+function* slideMarker(sh) {                       // 10:5C87-10:5D0A: club set-up, the marker slides out over 3 frames
   const w = sh.w, r6 = w.wram[6];
   r6[0x321] = S.missTable(w);                    // 10:6907
   L.clubParams(w);                               // 10:5EEF
   r6[0x480] = 0;
   r6.copyWithin(0x42A, 0x426, 0x42A);
-  slideOut(sh);
+  yield* slideOut(sh);
 }
 
 function hudRedrawPart(w, c) {                   // 10:5B81 HudRedrawPart: c = 1 the shot panel, 2 the pin distance, 3 the lie
@@ -172,7 +172,7 @@ function hudRedrawPart(w, c) {                   // 10:5B81 HudRedrawPart: c = 1
   else D.hud(w, "hudDrawLieIcon");
 }
 
-function slideOut(sh) {                          // the marker from $D42A/$D42C to the club's distance in 3 frames
+function* slideOut(sh) {                          // the marker from $D42A/$D42C to the club's distance in 3 frames
   const w = sh.w, r6 = w.wram[6];
   const [dx, dy] = g.mulSinCos(L.baseDistance(w), rd16(r6, 0x418));   // 10:5EE2 TargetMarker
   for (let b = 1; b <= 3; b++) {
@@ -183,13 +183,13 @@ function slideOut(sh) {                          // the marker from $D42A/$D42C 
       wr16(r6, o, (v + old) & 0xFFFF);
     }
     hudRedrawPart(w, 4 - b);                     // 10:5B81 HudRedrawPart
-    sh.advance();
+    yield* sh.advance();
   }
 }
 
 // 10:5BA6 AimMenu: a = 0 sets the shot up (aim, shot mode, the putter's range), a = 1 comes back to it.
 // Returns the buttons newly pressed when it ends (A: the swing; Start's pause menu is not ported).
-export function aimMenu(sh, a) {
+export function* aimMenu(sh, a) {
   const w = sh.w, r6 = w.wram[6], w0 = w.wram[0], s = ball(w);
   sh.mark("aimmenu");
   if (!a) {
@@ -210,37 +210,37 @@ export function aimMenu(sh, a) {
   if (r6[0x329] === 0x0D) r6[0x32A] = 0;
   r6[0x480] = r6[0x382] = 0;
   D.hud(w, "hudDrawDigit", w0[pf(w, 0x28)]);     // 12:4AF6: the power shots left
-  sh.advance();
+  yield* sh.advance();
   D.hud(w, "hudDrawShotPanel");                  // 12:46A6
-  sh.advance();
+  yield* sh.advance();
   D.hud(w, "hudDrawClubIcon");                   // 12:465C
   D.hud(w, "hudSetMeterSpritesY");               // 12:4968
-  sh.advance();
+  yield* sh.advance();
   D.hud(w, "hudDistance");                       // 12:4CA6
-  sh.advance();
+  yield* sh.advance();
   r6[0x513] = 0;
-  if (r6[0x4D7] === 1) return cpuAim(sh);
+  if (r6[0x4D7] === 1) return yield* cpuAim(sh);
   if (r6[0x4D7] === 2) notPorted("the replayed stroke (~10:5973)");
   if (r6[0x4D7] === 3) notPorted("link play (~10:5943)");
   w.high[0x1C1] = 0x21;                          // 02:482C SerialIdleSet21
   r6[0x44D] = 0xF0;
   r6[0x438] = r6[0x443] ? 4 : 2;                 // the camera on the target marker (the cup on the green)
   r6[0x4D4] = 1;
-  sh.advance();
+  yield* sh.advance();
   let at = "5C87";
   for (;;) {
-    if (at === "5C87") { slideMarker(sh); at = "5D0D"; }
+    if (at === "5C87") { yield* slideMarker(sh); at = "5D0D"; }
     if (at === "5D0D") {
       aimMarker(w);                              // 10:6145
       placeTargetMarker(w);                      // 40:640E
     }
     at = "5D16";
-    sh.advance();
+    yield* sh.advance();
     if (w0[0x0F4]) notPorted("the shot clock (~10:5D1C)");
     if (r6[0x438] === 1 && !(w.high[0x190] & 4)) r6[0x438] = 2;
     const p = w.high[0x194];
     if (p & 1) { w.high[0x1C1] = 0x20; r6[0x4D4] = 0; return p; }   // A (10:5EAF; 02:4833 SerialIdleSet20)
-    if (p & 4) { lookAtPin(sh); at = "5D0D"; continue; }
+    if (p & 4) { yield* lookAtPin(sh); at = "5D0D"; continue; }
     if (p & 8) notPorted("the pause menu (~08:4666)");
     if (p & 2) { shotModeButton(w); at = "5C87"; continue; }
     const rep = w.high[0x191];
@@ -278,21 +278,21 @@ function shotModeButton(w) {                     // 10:5DB7: B in the menu
   r6[0x32A] = rb(0x10, 0x5E0A + r6[0x32A]);      // near the pin: the approach shots 0 -> 3 -> 2 -> 0 (table 10:5E0A)
 }
 
-function lookAtPin(sh) {                         // 10:5D51: Select looks at the pin and back
+function* lookAtPin(sh) {                         // 10:5D51: Select looks at the pin and back
   const w = sh.w, r6 = w.wram[6];
   if (r6[0x438] === 2) {
     r6[0x438] = 4;                               // the camera pans to the cup
     for (;;) {
-      sh.advance();
+      yield* sh.advance();
       if (w.high[0x194]) break;
       if (C.atGoal(w)) {
-        do sh.advance(); while (w.high[0x190] & 4);   // until Select is let go
+        do { yield* sh.advance(); } while (w.high[0x190] & 4);   // until Select is let go
         break;
       }
     }
-    loadShotView(sh, 1);
+    yield* loadShotView(sh, 1);
   } else if (r6[0x438] === 4) {
     r6[0x438] = 1;
-    loadShotView(sh, 0);
+    yield* loadShotView(sh, 0);
   }
 }

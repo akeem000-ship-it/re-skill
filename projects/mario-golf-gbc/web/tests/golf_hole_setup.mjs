@@ -13,7 +13,7 @@ import fs from "fs";
 import path from "path";
 import { useRom } from "../js/golf/rom.js";
 import { GolfMemory } from "../js/golf/memory.js";
-import { Shot } from "../js/golf/shot.js";
+import { Shot, runSync } from "../js/golf/shot.js";
 import * as R from "../js/golf/round.js";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
@@ -83,8 +83,8 @@ for (const f of fs.readdirSync(path.join(root, "out")).filter(n => /^holesetup_.
   const out = [];
   let hole = null;
   try {
-    R.golfRoundStart(sh, start.a);
-    hole = R.holeStart(sh);
+    runSync(R.golfRoundStart(sh, start.a));
+    hole = runSync(R.holeStart(sh));
     check("M", "address");
   } catch (e) {
     if (e instanceof Mismatch) out.push(e.message);

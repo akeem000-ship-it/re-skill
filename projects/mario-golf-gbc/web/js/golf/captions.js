@@ -81,7 +81,7 @@ export function captionMotionTask(w) {           // 3B:4433 CaptionMotionTask
 }
 
 // 3B:4339 ShowCaption: a = caption; advance(n) runs the frames it waits (captions $2C up)
-export function showCaption(sh, a) {
+export function* showCaption(sh, a) {
   const w = sh.w, r = w.wram[6];
   r[0x454] = 0;                                  // 12:4B1F HudBlinkOff
   r[0x455] = 1;                                  // 12:4B29 HudPanelsHide
@@ -90,10 +90,10 @@ export function showCaption(sh, a) {
   if (a >= 0x2C) {                               // two parts of the frame first ($3D, and $3E from $33 up)
     const k = a < 0x3D ? a : 0x3C;
     dsp(() => { D.queueVRAMCopy(w, r16(entry(0x3D) + 2), 0x8C00, 2); D.queueVRAMCopyBreak(w); });
-    sh.advance();
+    yield* sh.advance();
     if (k >= 0x33) {
       dsp(() => { D.queueVRAMCopy(w, r16(entry(0x3E) + 2), 0x8C20, 2); D.queueVRAMCopyBreak(w); });
-      sh.advance();
+      yield* sh.advance();
     }
   }
   const p = entry(a);
