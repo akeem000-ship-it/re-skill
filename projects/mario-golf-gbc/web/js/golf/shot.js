@@ -16,6 +16,7 @@ import { taskFacade, runFrameTasks } from "./tasks.js";
 import { showCaption, captionMotionTask, captionAnimTask } from "./captions.js";
 import * as P from "./pictures.js";
 import { scorecardStrokesTask } from "./scorecard.js";
+import { contestLeaderSpriteTask } from "./match.js";
 import { vblankDisplay, clearUnusedSprites } from "./render/display.js";
 import * as D from "./render/hooks.js";
 import { ball, rd16, wr16, playerField } from "./memory.js";
@@ -160,6 +161,8 @@ export class Shot {
       "4a:62a3": () => P.pictureCycleTask(w),          // 4A:62A3
       "48:5ee9": () => P.pictureAnimTiles(w),          // 48:5EE9
       "0e:6d47": () => scorecardStrokesTask(w),        // 0E:6D47
+      "08:439e": () => contestLeaderSpriteTask(w, 0),  // 08:439E
+      "08:43ab": () => contestLeaderSpriteTask(w, 1),  // 08:43AB
       ...D.displayTasks(this),                   // tasks that only draw (render/hooks.js)
     };
   }

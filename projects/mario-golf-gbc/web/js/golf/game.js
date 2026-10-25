@@ -22,7 +22,7 @@ export function* playRoundFrames(w, roundId, input, { ev = () => {}, maxHoles = 
     result.holes.push({ hole: w0[0x837], strokes: w0[p + 0x20], putts: w0[p + 0x21] });
     onHoleEnd(result);
     if (result.holes.length >= maxHoles) break;
-    if (!(yield* R.holeEnd(sh))) { R.roundEnd(w); break; }
+    if (!(yield* R.holeEnd(sh))) { yield* R.roundEnd(sh); break; }   // (then 10:4670 StopBGMIfPlaying: only with the music option off)
     yield* R.holeStart(sh);
   }
   return result;

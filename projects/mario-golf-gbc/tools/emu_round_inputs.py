@@ -8,7 +8,7 @@ usage: emu_round_inputs.py OUT.json FRAMES (--state FILE | --boot) [--poke ADDR=
           starts at GolfRound's entry (10:4451), where the pokes are made (as for out/holesetup_*.json)
   --poke: bytes written after the state loads, or at GolfRound's entry with --boot (C893=01: player 1 is the
           computer golfer; 6:D4D7=01 a WRAM bank's byte)
-  --holes N: stop at the Nth hole end
+  --holes N: stop at the Nth hole end (and in any case where the round ends, 10:464A)
   --every N: also A for 4 frames every N frames (from GolfRound's entry with --boot): captions and menus when a
           computer golfer plays
 """
@@ -95,6 +95,11 @@ def main():
     e.hook(0x10, 0x56B0, address)
     e.hook(0x10, 0x4A25, outcome)
     e.hook(0x10, 0x4635, hole_end)
+    ended = [False]
+
+    def round_end(emu):                        # 10:464A: the round is over (a match can end early)
+        ended[0] = True
+    e.hook(0x10, 0x464A, round_end)
     release = {}
     for f in range(frames):
         cur[0] = f
@@ -106,6 +111,8 @@ def main():
             e.pb.button_release(release.pop(f))
         e.run(1)
         if "--holes" in a and len(rec["hole_ends"]) >= int(args("--holes")[0]):
+            break
+        if ended[0]:
             break
     json.dump(rec, open(out, "w"))
     print("%s: %d frames, %d address steps, %d outcomes, %d holes" % (out, len(rec["held"]), len(rec["addresses"]),

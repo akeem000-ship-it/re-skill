@@ -17,6 +17,7 @@ import * as Dp from "./render/display.js";
 import * as P from "./pictures.js";
 import { showScorecard } from "./scorecard.js";
 import { showCaptionAndWait } from "./captions.js";
+import * as M from "./match.js";
 
 export function advanceRandomSeed(w) {           // 00:0A61 AdvanceRandomSeed: seed ($FFFC) = seed x 5 + $3573
   const seed = w.high[0x1FC] | w.high[0x1FD] << 8;
@@ -70,13 +71,13 @@ function roundHookRoundStart(w, sound) {         // 08:4722 RoundHookRoundStart 
     case 2:                                      // 08:478C RoundStartMode2Match
       w0[0x83A] = w0[0x83B] = 0;
       w0.fill(0, 0x96E, 0x96E + 0x12);
-      clearContestWins(w);
+      M.clearContestWins(w);
       w0[0x96C] = 0;
       break;
     case 3:                                      // 08:47A6 RoundStartMode3Stroke
       sound(0x38);
       w0[0x83B] = 0;                             // 08:4617 ClearHonour
-      if (w0[0x8D0] !== 0xFF) clearContestWins(w);
+      if (w0[0x8D0] !== 0xFF) M.clearContestWins(w);
       break;
     default: break;
   }
@@ -97,11 +98,6 @@ export function playRoundMusic(sh) {
     if (s) return sh.sound(s);
   }
   sh.sound(rb(0x08, 0x50C6 + (w0[0x836] & 0x0F)));
-}
-
-function clearContestWins(w) {                   // 08:4203 ClearContestWins
-  const w0 = w.wram[0];
-  w0[0x897] = w0[0x898] = w0[0x8D7] = w0[0x8D8] = 0;
 }
 
 export function resetPlayersForHole(w) {         // 10:405C ResetPlayersForHole
@@ -267,13 +263,13 @@ function* strongWindIntro(sh) {
   }
 }
 
-function roundHookHoleStart(w) {                 // 08:47FD RoundHookHoleStart
-  const w0 = w.wram[0];
+function* roundHookHoleStart(sh) {                // 08:47FD RoundHookHoleStart
+  const w = sh.w, w0 = w.wram[0];
   switch (mode(w)) {
-    case 2: notPorted("the match-play hole start (~08:4847)"); break;
+    case 2: yield* M.holeStartMode2(sh, playRoundMusic); break;   // 08:4847
     case 3:                                      // 08:483B HoleStartMode3Stroke
       setTeeOrderByHonour(w);
-      if (w0[0x8D0] !== 0xFF) initHoleContest(w);
+      if (w0[0x8D0] !== 0xFF) yield* M.initHoleContest(sh);   // 08:420F
       break;
     default: break;
   }
@@ -287,17 +283,6 @@ function setTeeOrderByHonour(w) {                // 08:461C SetTeeOrderByHonour
   const d = w0[(0x8AC + h) & 0xFFF] & 0x0F, e = w0[(0x8EC + h) & 0xFFF] & 0x0F;
   if (e !== d) w0[0x83B] = e < d ? 1 : 0;
   w0[0x835] = w0[0x83B] ^ 1;
-}
-
-function initHoleContest(w) {                    // 08:420F InitHoleContest (captions left out)
-  const r6 = w.wram[6];
-  r6.fill(0, 0x494, 0x498);
-  r6[0x498] = 0;
-  const contest = r6[0x325] === 3 ? 0x1900 : r6[0x325] === 5 ? 0 : null;
-  if (contest !== null) {                        // 08:4244 SetContestLeader
-    r6[0x491] = 0xFF;
-    wr16(r6, 0x48F, contest);
-  }
 }
 
 // ---- one hole up to the first address step: 10:44B4-10:45E4 and ShotSetup ----
@@ -330,7 +315,7 @@ export function* holeStart(sh) {
   yield* holeIntroFlyover(sh);
   sh.mark("windintro");
   yield* strongWindIntro(sh);
-  roundHookHoleStart(w);
+  yield* roundHookHoleStart(sh);
   yield* nextShot(sh);
   return sh.hole;
 }
@@ -368,7 +353,7 @@ export function* afterShot(sh, a) {
     w0.fill(0, pf(w, 0x22), pf(w, 0x28));
     H.scorecard(w);                              // 10:4101
   }
-  roundHookAfterShot(w);                         // 08:4901
+  yield* roundHookAfterShot(sh);                 // 08:4901
   if (w0[0x870]) notPorted("golf event hooks (~10:4CC3)");
   P.pictureCycleStop(w);                         // 4A:629C
   yield* sh.advance();
@@ -377,11 +362,12 @@ export function* afterShot(sh, a) {
   return !!(w0[0x8AA] && w0[0x8EA]);
 }
 
-function roundHookAfterShot(w) {                 // 08:4901 RoundHookAfterShot
+function* roundHookAfterShot(sh) {                // 08:4901 RoundHookAfterShot
+  const w = sh.w;
   switch (mode(w)) {
     case 1: notPorted("the tournament's shot statistics (~08:441A)"); break;
-    case 2: notPorted("the match-play hole result (~08:494B)"); break;
-    case 3: if (w.wram[0][0x8D0] !== 0xFF) notPorted("the two-player contest (~08:4250)"); break;   // 08:4942
+    case 2: yield* M.afterShotMode2(sh, H.scorecard); break;   // 08:494B
+    case 3: if (w.wram[0][0x8D0] !== 0xFF) yield* M.updateHoleContest(sh); break;   // 08:4942
     case 4: notPorted("the training retry menu (~08:4A39)"); break;
     default: break;
   }
@@ -412,21 +398,26 @@ function* roundHookHoleEnd(sh) {                  // 08:4B02 RoundHookHoleEnd
   const w = sh.w, w0 = w.wram[0];
   switch (mode(w)) {
     case 1: notPorted("the tournament's hole end (~08:4B3F)"); break;
-    case 2: notPorted("the match-play hole end (~08:4B64)"); break;
+    case 2: yield* M.holeEndMode2(sh, P.showHalfwayPicture, setDecisiveHoleOnLast); break;   // 08:4B64
     case 3:                                      // 08:4B93 HoleEndMode3Stroke
-      if (w0[0x8D0] !== 0xFF) notPorted("the two-player contest totals (~08:432F)");
+      if (w0[0x8D0] !== 0xFF) M.addContestWinsToPlayers(w);   // 08:432F
       w0[0x4BD] = 1;                             // wStandingsPhase
       yield* showScorecard(sh);                  // 0E:43D6
       yield* P.showHalfwayPicture(sh);           // 08:4F75
-      if (w0[0x837] >= 0x11 && w0[0x8D0] !== 0xFF) w0[0x832] = 1;   // 08:4BAA SetDecisiveHoleOnLast
+      setDecisiveHoleOnLast(w);                  // 08:4BAA
       break;
     default: break;
   }
 }
 
+function setDecisiveHoleOnLast(w) {              // 08:4BAA SetDecisiveHoleOnLast: from hole 17 with a player 2
+  const w0 = w.wram[0];
+  if (w0[0x837] >= 0x11 && w0[0x8D0] !== 0xFF) w0[0x832] = 1;
+}
+
 // 10:464A-10:4673 the round is over
-export function roundEnd(w) {
-  const w0 = w.wram[0], r6 = w.wram[6];
+export function* roundEnd(sh) {
+  const w = sh.w, w0 = w.wram[0], r6 = w.wram[6];
   r6[0x328] = 1;                                 // wHudBusy
   w0[0x96D] = 0;                                 // wReplayActive
   if (w0[0x33F]) notPorted("link play (~10:4659)");
@@ -436,12 +427,33 @@ export function roundEnd(w) {
         const b = (w0[0x8BE] + 0x36) & 0xFF, c = (w0[0x8FE] + 0x36) & 0xFF;
         w0[0x96C] = c === b ? 3 : c < b ? 2 : 1;   // wRoundResult (~0B:59DE RoundResultScreen: display)
       }
+      if (w0[0x8D0] !== 0xFF) notPorted("the two-player result screen (~0B:59DE RoundResultScreen)");
       addPointsRaw(w, 0x0A);
-      notPorted("the EXP award after the round (~08:4F03 RoundEndFadeAndExp)");
+      yield* roundEndFadeAndExp(sh);             // 08:4F03
+      break;
+    case 2:                                      // 08:4D7D RoundEndMode2Match
+      yield* M.roundResultScreen(sh, 0);         // 0B:59DE
+      M.matchRoundEndFlags(w);
+      addPointsRaw(w, 0x0A);
+      yield* roundEndFadeAndExp(sh);             // 08:4F03
       break;
     case 4: case 5: case 0x0A: case 0x0B: break;   // 08:4EF2 / 08:4EF3
     default: notPorted(`the round end of mode ${mode(w)} (~08:4BBC)`);
   }
+}
+
+// 08:4F03 RoundEndFadeAndExp: fade out, no tasks or sprites; the EXP (~48:4D70 AwardExpPoints) only for a saved
+// character (wSaveSlot $C2A5 not $0F); SaveGameMidRound 08:4EF4 (02:4489 SaveGame saves only slots 0-2: the save
+// data is not modelled)
+function* roundEndFadeAndExp(sh) {
+  const w = sh.w, w0 = w.wram[0];
+  Scr.beginFadeOut(w, 0x08);
+  yield* Scr.waitFade(sh);
+  clearFrameTasks(w);
+  Dp.resetSprites(w);
+  w.high[0x18B] = w.high[0x18A] = 0;
+  if ((w0[0x2A5] & 0x0F) !== 0x0F) notPorted("the EXP award (~48:4D70 AwardExpPoints)");
+  if (w0[0x2A5] < 3) notPorted("saving the game (~02:4489 SaveGame)");
 }
 
 function addPointsRaw(w, de) {                   // 02:5415 AddPointsRaw: $C83C += de x course factor (02:543E) / 2

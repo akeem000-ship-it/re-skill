@@ -6,7 +6,9 @@
 // Start: out/holesetup_h1.json (the same round, tools/hole_setup_suite.py).
 // Recordings made with --poke (rec.pokes) get the same bytes: roundin_cpu18 has player 1 played by the computer
 // golfer (C893 = 1): its aim, club and swing come from ai.js (bank 3C) and must come out as the game's.
-// usage: node web/tests/golf_native_round.mjs [name ...]   (default r18 cpu18 r18:setup: all 18 holes of the Stroke
+// roundin_match18 is match play (C834 = 2) of two computer golfers, Mario against Luigi (player 2's record poked
+// as the VS menus make it): the match ends after 16 holes; match.js decides each hole, the honour, the contests.
+// usage: node web/tests/golf_native_round.mjs [name ...]   (default r18 cpu18 r18:setup match18: all 18 holes of the Stroke
 // practice round, by the bot's buttons and by the computer golfer; r18:setup starts from empty RAM through the
 // menus' path ported in start.js, with only the random seed taken from the recording, as the play page starts)
 import fs from "fs";
@@ -83,7 +85,7 @@ function run(spec) {
   return !errors.length;
 }
 
-const names = process.argv.slice(2).length ? process.argv.slice(2) : ["r18", "cpu18", "r18:setup"];
+const names = process.argv.slice(2).length ? process.argv.slice(2) : ["r18", "cpu18", "r18:setup", "match18"];
 let bad = 0;
 for (const name of names) if (!run(name)) bad++;
 process.exit(bad ? 1 : 0);

@@ -100,7 +100,7 @@ function newRound() {
   w.onSound(0x01);                                 // ModeSelectMain plays song 1 in the menus (32:508B); the round's own songs follow
   game = { w, g: null, frames: 0, done: null, error: null, mark: "", marks: [], shots: [], holes: 0 };
   const ev = (kind, name) => { if (kind === "M") { game.mark = name; game.marks.push([game.frames, name]); } };
-  game.g = playRoundFrames(w, holes, held, { ev, maxHoles: holes,
+  game.g = playRoundFrames(w, holes, held, { ev, maxHoles: Infinity,
     onShot: s => game.shots.push(s.outcome), onHoleEnd: r => { game.holes = r.holes.length; } });
   window.__golf = game;
   $("message").textContent = "";

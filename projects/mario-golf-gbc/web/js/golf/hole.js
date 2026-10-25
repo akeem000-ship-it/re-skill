@@ -17,6 +17,7 @@ import * as Cam from "./camera.js";
 import * as D from "./render/hooks.js";
 import { showCaptionAndWait, startCaptionAnim } from "./captions.js";
 import * as P from "./pictures.js";
+import * as M from "./match.js";
 import { playRoundMusic } from "./round.js";
 
 // 08:4880 RoundHookPlayerUp: before each shot, by wGameMode (PlayerUpModeTable 08:489D)
@@ -24,7 +25,7 @@ function* roundHookPlayerUp(sh) {
   const w0 = sh.w.wram[0];
   switch (w0[0x834]) {
     case 1: case 3: case 0x0A: yield* showPuttForCaption(sh); break;   // 08:48FD PlayerUpMode1Tournament
-    case 2: throw new Error("the match-play captions (~08:48BD PlayerUpMode2Match) are not ported");
+    case 2: yield* M.playerUpMode2(sh, showPuttForCaption); break;   // 08:48BD PlayerUpMode2Match
     case 4: yield* showPuttForCaption(sh); w0[0x8A8] = 0x0F; break;     // 08:48EB PlayerUpMode4Training
     case 6: case 7: case 0x0C: playRoundMusic(sh); w0[0x8A8] = 0x0F; break;   // 08:48F4 PlayerUpMode6Practice
     default: break;

@@ -8,7 +8,10 @@ Also out/roundin_r18.json for web/tests/golf_native_round.mjs: the bot plays all
 steps, outcomes and hole ends.
 And out/roundin_cpu18.json: the computer golfer plays the 18 holes (player 1's PlayerField $13 = 1, poked at
 GolfRound's entry after a fresh boot; A every 20 frames for the captions).
-usage: round_suite.py [NAME ...]   (r3, r18, cpu18)
+And out/roundin_match18.json: match play (wGameMode $C834 = 2) of the computer as Mario against the computer as Luigi:
+at GolfRound's entry player 1 is made a computer golfer and player 2's record ($C8C0-$C8FF) is what the VS menus'
+SetupPlayerGolfer 02:4A28 makes for preset golfer 9 (computed by tools/player_record.py from the ROM).
+usage: round_suite.py [NAME ...]   (r3, r18, cpu18, match18)
 """
 import json
 import sys, os, subprocess
@@ -36,11 +39,19 @@ def cpu18():
                          cwd=HERE, capture_output=True, text=True).stdout.strip())
 
 
+def match18():
+    rec = subprocess.run([sys.executable, "tools/player_record.py", "9", "1"], cwd=HERE, capture_output=True,
+                         text=True).stdout.split()
+    print(subprocess.run([sys.executable, "tools/emu_round_inputs.py", "out/roundin_match18.json", "90000", "--boot",
+                          "--poke", "C893=01", "C834=02"] + rec + ["--every", "20", "--holes", "18"],
+                         cwd=HERE, capture_output=True, text=True).stdout.strip())
+
+
 def main():
-    names = [x for x in sys.argv[1:] if not x.startswith("--")] or list(CASES) + ["r18", "cpu18"]
+    names = [x for x in sys.argv[1:] if not x.startswith("--")] or list(CASES) + ["r18", "cpu18", "match18"]
     for name in names:
-        if name in ("r18", "cpu18"):
-            {"r18": r18, "cpu18": cpu18}[name]()
+        if name in ("r18", "cpu18", "match18"):
+            {"r18": r18, "cpu18": cpu18, "match18": match18}[name]()
             continue
         state, frames, presses = CASES[name]
         out = subprocess.run([sys.executable, "tools/emu_shot_record.py", "out/round_%s.json" % name, str(frames),
