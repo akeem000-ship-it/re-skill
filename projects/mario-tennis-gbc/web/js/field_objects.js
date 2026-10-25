@@ -33,6 +33,8 @@
 //  walls: false (no collision-grid boxes), patch: "row" (the floor under cut-outs is filled from its row),
 //  backdrop: {y1, z, extend, side, tile} (side-view maps: rows 0..y1 stand up at z as a sky backdrop, the ground
 //          behind it and around the map is the ground tile at `tile`), clear: "sky" (the view's background colour)
+//  art: [x, y] on a plant stamp: its body is taken from a clean copy there (the example's tiles, which find the copies, have a kerb
+//          painted through them)
 //  from: [x, y] on a card: its picture is taken from the same-sized rectangle there (a clean copy: a kerb row whose own picture has
 //          tree crowns painted over it)
 //  lampBanners: true: a tour banner (the class colours in turn) hangs on every lamp and ripples in the wind; pathFlowers: true: small
@@ -1175,7 +1177,8 @@ export const FIELD_OBJECTS = {
     "y": 64,
     "w": 16,
     "h": 32,
-    "plant": "tree"
+    "plant": "tree",
+    "art": [304, 256]
    },
    {
     "x": 304,

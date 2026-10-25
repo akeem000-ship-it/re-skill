@@ -1490,7 +1490,9 @@ export class Voxel3D {
       let hits = this.findStamps(st);
       if (st.plant) {                            // plants: also every pixel-exact copy off the tile grid
         for (const m of F3.matchSprite(art, d, st.x, st.y, st.w, st.h, MWp, MHp, 0.9)) if (!hits.some(q => Math.abs(q.x - m.x) < 6 && Math.abs(q.y - m.y) < 6)) hits.push(m);
-        const shape = shapeOf(t.d, st.x, st.y, st.w, t.h, st.plant);
+        // art: [x, y]: the plant's body taken from a clean copy there (the example's own tiles, which find the copies, have a kerb painted through them)
+        const ta = st.art ? trim(F3.cutOut(art, st.art[0], st.art[1], st.w, st.h, plantCut(st)), st.w, st.h) : t;
+        const shape = st.art ? shapeOf(ta.d, st.art[0], st.art[1], st.w, ta.h, st.plant) : shapeOf(t.d, st.x, st.y, st.w, t.h, st.plant);
         for (const hit of hits) { if (taken(hit.x, hit.y, st.w, st.h)) continue; placed.push([hit.x, hit.y]); plantHole(d, hit.x, hit.y, st.w, st.h); cover(hit.x, hit.y, hit.x + st.w, hit.y + st.h); placePlant(shape, hit.x + st.w / 2, hit.y + t.h + (st.dz || 0), st); }
         continue;
       }
