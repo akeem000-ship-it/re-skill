@@ -56,6 +56,17 @@ const ppm = (file, rgb5) => {
   fs.writeFileSync(file, Buffer.concat([Buffer.from("P6 160 144 255\n"), out]));
 };
 const shotMarks = new Set(["address", "pick"]);
+// the situations: at the address step, the swing and the roll, the ball in the air, the holed ball's captions and
+// pictures with the scorecard between holes
+const sits = {};
+function situation(ctx) {
+  const w = ctx.w, r6 = w.wram[6], w0 = w.wram[0];
+  if (w0[0x8AA] && (w0[0x8EA] || w0[0x8D0] === 0xFF)) return "holed out, the scorecard, between holes";
+  if (r6[0x415] && r6[0x408] < 0x80 && (r6[0x407] | r6[0x408])) return "ball in the air";
+  if (ctx.mark !== "address") return null;
+  if (r6[0x44E]) return "swing and roll";
+return r6[0x443] === 1 ? "address step on the green" : "address step";
+}
 let shotN = 0;
 
 const t0 = Date.now();
@@ -112,6 +123,8 @@ try {
       for (let i = 0; i < mine.length; i += 3) if (mine[i] !== ref[i] || mine[i + 1] !== ref[i + 1] || mine[i + 2] !== ref[i + 2]) px++;
       if (!out.length) stats.modelExact++;
       if (!px) stats.pixelExact++;
+      const sit = situation(ctx);                // the frames of a few situations, counted apart
+      if (sit) { const t = (sits[sit] ||= { frames: 0, px: 0, model: 0 }); t.frames++; if (!px) t.px++; if (!out.length) t.model++; }
       if (shotsDir && shotMarks.has(ctx.mark) && ctx.lastShot !== ctx.mark + ctx.shot) {
         ctx.lastShot = ctx.mark + ctx.shot;
         ppm(path.join(shotsDir, `render_${String(shotN++).padStart(3, "0")}_${ctx.mark}_native.ppm`), mine);
@@ -155,6 +168,7 @@ const slips = lctx ? lctx.slips : [];
 stats.slips = slips.length;
 console.log(`  steps the core reached later than the native round: ${slips.length}` + slips.slice(0, 8).map(s => ` [frame ${s.frame} ${s.mark} shot ${s.shot + 1}: ${s.frames} frames]`).join("") +
   ` (lag frames that changed the buttons the game's code saw: ${lctx ? lctx.lagInputs.length : 0})`);
+for (const [k, v] of Object.entries(sits)) console.log(`  ${k}: ${v.frames} frames, ${v.px} pixel-exact, ${v.model} with the display state equal`);
 if (verbose) console.log("lag frames:", [...lagFrames].sort((a, b) => a - b).join(" "));
 console.log(`${stats.frames} frames compared (${holes} hole(s) of ${name}, ${((Date.now() - t0) / 1000).toFixed(1)} s): ` +
   `${stats.pixelExact} pixel-exact screens, ${stats.modelExact} with VRAM / OAM / palettes / registers equal`);

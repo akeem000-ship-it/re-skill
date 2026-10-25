@@ -80,8 +80,10 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + frame-exact set-up: camera, fades, the aiming menu and target marker (aim.js, view.js, camera.js, screen.js) | 21,904 | 9.03% |
 | + the computer golfer's shot planner, all of bank 3C's planning (ai.js) | 29,973 (web/js/golf; `--dir golf`) | 12.35% |
 | + the computer golfer in play: its turn of the aiming menu (10:5978) and its swing (SwingMeterCPU 10:5643) | 30,105 | 12.40% |
+| + the native screen (render/: display model, rasterizer, the views, HUD, sprites, the view behind the golfer), the captions, pictures and scorecard between shots and holes, match play (match.js), a new game's set-up (start.js) | 51,952 | 21.41% |
 
-(All sources together, with the sound driver of web/js/sound: 34,056 bytes, 14.03%.)
+(All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05%; before the native screen
+34,056 bytes, 14.03%.)
 
 The JS engine (`rom.js` ROM and LZ access, `memory.js` the RAM layout, `math.js`, `ball.js`, `cup.js`,
 `launch.js`, `swing.js`, `shot.js`, `hole.js`, `joypad.js`, `round.js`) is checked by two Node tests:
@@ -117,11 +119,73 @@ The JS engine (`rom.js` ROM and LZ access, `memory.js` the RAM layout, `math.js`
 - `web/tests/golf_native_round.mjs`: **all 18 holes of the Stroke practice round played natively** (game.js:
   GolfRound from its entry, no state taken from the game on the way): with the swings' buttons a bot played in the
   game (tools/round_suite.py r18: tools/emu_round_inputs.py), all 69 outcomes, the ball, club and aim at all 69
-  address steps and the records at every hole's end match the game (between the shots the captions and screens
-  are not ported; their frames are left out, which the play does not depend on).
+  address steps and the records at every hole's end match the game (the captions, pictures and the scorecard
+  between shots and holes now run their frames too; see "The native screen").
   Frame details learnt: frame tasks are off while `$FF8F` is 0 (BuildBehindView's second frame); fades step once
   per VBlank (`$FFA2-$FFA4`, WaitFade 00:2625: 8 frames at speed `$10`); HudInit sets `$D328`/`$D44D`, HudDrawWind
   clears `$D326-$D328`.
+
+#### The native screen (web/js/golf/render; web/tests/golf_render_vs_core.mjs)
+
+The ported routines write a display model instead of the hardware: VRAM banks 0 and 1, OAM, the BG and OBJ
+palette RAM and LCDC / SCX / SCY / WX / WY (`render/display.js`, with the bank-0 display helpers: the VRAM copy
+queue `$C0A0`, the BG row / column blits `$C300-$C3FF`, the palette loaders and `hPalUpdate`, the sprite queue,
+LZ to RAM, VRAM DMA, LCD off / on and VBlankHandler's display part). `render/raster.js` draws 160 x 144 from the
+model by the CGB's rules (no dependency on the emulator core). The engine is a generator (`yield` at each
+AdvanceFrame), so a page steps it one frame at a time.
+Ported for the screen: the course and green views (bank 13 loaders, `DrawHoleViewTiles`, MapScrollTask 04:4072,
+the water tile animation of bank 50), the HUD (bank 12), the ball display objects (bank 11), the golfer's map
+sprite and animation (banks 04, 11, 26), the view behind the golfer (banks 15, 16 and the scenery banks 4A-4F),
+the captions (3B:4339 ShowCaption, CaptionMotionTask, ShowCaptionAndWait) with the caption pictures of bank 4F
+(StartCaptionAnim / CaptionAnimTask), OutcomeRules 3B:7260 with all its branches, the player's pictures (3B:7717
+ShowPlayerPicture, bank 77 LoadStoryPicture / StoryPictureAnimTask / DrawStoryPictureFrame, 3B:773F
+WaitPictureTimeout), the cup close-up (13:44A4 / 13:4528), the water splash (12:6A7F / 12:6A9C), StrongWindIntro's
+gust sprite, the scorecard between holes (0E:43D6 ShowScorecard, the one-player page 0E:6C7A and its drawing,
+MapDrawFullScreen 0B:4306), the picture after nine holes (48:5E42, 01:41E8) and the round's end fade (08:4F03).
+The ported routines also give their sound commands (`rst $08`, tools/sound_sites.py lists them per routine).
+
+`golf_render_vs_core.mjs` runs the native round beside the emulator core (`web/tests/golf/lockstep.mjs`: the
+same buttons; the core runs each frame's code ahead to its next AdvanceFrame, so that the buttons a lag frame makes
+the game's code read are given to the native frame too; a slip is a step the core reaches frames later) and at
+every frame compares VRAM, OAM, the palette RAM, the LCD registers and the display RAM, and the two rasterized
+screens; at every finished core frame it also checks the rasterizer against the core's own PPU. Lag frames (the
+game's code running past a VBlank: the fades, the play clock and the queues advance without it) are counted
+apart, and so are later differences in bytes that have differed since one (a lag VBlank can blit a BG row before
+the LCD goes off). Results (all 18 holes, no slips, all sound commands the same):
+
+| Round | Frames | Pixel-exact | Rasterizer vs PPU | Sound commands |
+|-------|--------|-------------|-------------------|----------------|
+| r18 (the bot's Stroke round) | 45,693 | 45,518 (the other 175 in lag frames) | 47,135 frames, 0 differ | 712 / 712 |
+| cpu18 (the computer golfer) | 34,459 | 34,307 (the other 152 in lag frames) | 35,816 frames, 0 differ | 620 / 620 |
+
+By situation (r18): at the address step 7,194 of 7,194 frames pixel-exact, on the green 4,279 of 4,279, the swing
+and the roll 17,881 of 17,884, the ball in the air 13,823 of 13,827, holed out and between holes 54 of 54 (the
+lockstep presses A on alternate frames there, so captions and the scorecard are short).
+
+#### The play page (web/play.html, web/js/play.js; web/tests/play_page.mjs)
+
+The page loads the user's ROM (fetched from rom/ or picked; SHA-1 checked), sets up a new game's Stroke round
+(`start.js`: the path ModeSelectMain 32:5037 takes for a new game: NewGame 02:4E3D, CreateCharacter 02:4E82,
+CharComputeStats 02:4F07, SetupPlayerGolfer 02:4A28 for preset golfer 8 (Mario), GolfSessionInit 10:4B28,
+SetCourseHole 10:423B, course 1, 18 holes; the random seed from the browser), steps the round generator once per
+59.73 Hz frame, rasterizes the display model to a canvas and plays the native sound driver (js/sound) through Web
+Audio; keyboard, gamepad and touch as on the emulated page. The title and the menus, the pause menu and link play
+are not ported (the page says so; Start pauses the page). A round from empty RAM through start.js plays exactly
+as the recorded one (`golf_native_round.mjs r18:setup`). `play_page.mjs` plays three shots in headless Chromium
+with scripted keys (no page errors; screenshots in out/).
+
+#### Match play and the contests (web/js/golf/match.js)
+
+Bank 08's match-play rules: each hole to the player who holes out in fewer strokes (MatchHoleOutcome 08:4199, a
+given putt by `$D48E` bit 7), the honour, the match decided when the lead passes the holes left (MatchStatus
+08:4091), a playoff when level after the last hole, the dormie music and captions, the near-pin / longest-drive
+contests of two-player rounds (InitHoleContest, UpdateHoleContest, AddContestWinsToPlayers) and the flags after a
+match; quirks kept: PrintHexByte prints four hex digits (its skip of the first two is lost), the contest and
+match routines print to the debug text buffer `$CC00`. `golf_native_round.mjs match18` (tools/round_suite.py
+match18: the computer as Mario against the computer as Luigi, player 2's record from tools/player_record.py)
+matches all 102 outcomes and the records at the 16 hole ends (the match is decided on hole 16). Not ported yet:
+the match standings screen between holes (3E:675C ShowStandingsFar, bank 3E), the two-player scorecard pages and
+RoundResultScreen 0B:59DE (display only; a native match round runs headless).
 
 #### The hole set-up (GolfRound 10:4451, per hole 10:44B4; tools/sm83_calltree.py lists what it calls)
 
