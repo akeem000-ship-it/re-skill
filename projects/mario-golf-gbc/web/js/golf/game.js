@@ -14,7 +14,7 @@ export function* playRoundFrames(w, roundId, input, { ev = () => {}, maxHoles = 
   yield* R.holeStart(sh);
   for (;;) {
     const a = yield* H.addressLoop(sh);                 // the swing, the flight: the outcome (10:4A25)
-    H.postShot(w, a);                            // 10:4A82
+    yield* H.postShot(sh, a);                    // 10:4A82
     result.shots.push(a);
     onShot({ outcome: a, hole: w.wram[0][0x837] });
     if (!(yield* R.afterShot(sh, a))) { yield* R.nextShot(sh); continue; }

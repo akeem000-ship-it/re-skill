@@ -133,7 +133,7 @@ function runHole(rec) {                          // tools/hole_run.py, on throug
       if (first === "A" || first === "a") a = runSync(shot.fromAddress(first === "a"));
       else if (first === "L") a = runSync(shot.mainLoop(true));
       else a = runSync(shot.flightCam(ev[pos.i - 1][4][3]));
-      outs.push(H.postShot(w, a));
+      outs.push(runSync(H.postShot(quiet, a)));
       if (runSync(R.afterShot(quiet, a))) {               // the hole is over
         const w0 = w.wram[0], f = o => w0[0x880 + o + (w0[0x835] ? 0x40 : 0)];
         holes.push([f(0x20), f(0x21), w0[0x83C] | w0[0x83D] << 8]);

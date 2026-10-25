@@ -15,7 +15,8 @@ import * as A from "./aim.js";
 import * as V from "./view.js";
 import * as Cam from "./camera.js";
 import * as D from "./render/hooks.js";
-import { showCaptionAndWait } from "./captions.js";
+import { showCaptionAndWait, startCaptionAnim } from "./captions.js";
+import * as P from "./pictures.js";
 import { playRoundMusic } from "./round.js";
 
 // 08:4880 RoundHookPlayerUp: before each shot, by wGameMode (PlayerUpModeTable 08:489D)
@@ -44,9 +45,12 @@ function* showPuttForCaption(sh) {
 
 function notPorted(what) { throw new Error(`${what} is not ported`); }
 
-export function countStroke(w) {                // 10:477C CountStroke (its frame is not counted here)
-  const f = pf(w, 0x20);
-  if (w.wram[0][f] < 0x14) w.wram[0][f]++;
+export function* countStroke(sh) {               // 10:477C CountStroke: falls into 10:4786 HudRedrawCurPlayer
+  const w = sh.w, f = pf(w, 0x20);
+  if (w.wram[0][f] >= 0x14) return;
+  w.wram[0][f]++;
+  D.hud(w, w.wram[0][0x835] ? "hudDrawPlayer2" : "hudDrawPlayer1");   // 12:4B8A / 12:4C18
+  yield* sh.advance();
 }
 
 function pointsAllowed(w) {                      // 02:5C19: modes 1, 2, 3, 5, $0A, $0B, for a human player
@@ -66,43 +70,64 @@ function addPoints(w, de) {                      // 02:5411: $C83C += de x cours
   wr16(w0, 0x83C, (rd16(w0, 0x83C) + (g.mulHLByA(de, f) >> 1)) & 0xFFFF);
 }
 
-export function outcomeRules(w, a) {             // 3B:7260 OutcomeRules (the gameplay effects; captions left out)
-  const r6 = w.wram[6], w0 = w.wram[0];
-  if ([5, 6, 7, 0x0B, 0x0C].includes(w0[0x834])) throw new Error(`play mode $${w0[0x834].toString(16)} (~3B:75CC-~3B:76C0) is not ported`);
-  if (r6[0x48E] & 1) addBonus(w, 0x0A);          // skipped on water
-  if (a === 0x80) return holedRules(w);
-  const i = a & 0x0F;
-  if (i === 3) {                                 // 3B:7426 water: a penalty stroke, back to the last safe spot
-    r6[0x485] &= 0xFB;
-    countStroke(w);
-    r6.copyWithin(0x400, 0x51D, 0x523);
+// 3B:7260 OutcomeRules: a = the shot's outcome: penalties, the water drop, bonus and points, the "on the green" flag,
+// with the captions, the caption pictures (4F:619C) and the player's picture (3B:7717); returns 0, or $FF (out of
+// bounds: the old spot is kept). (~02:4714 RecordShot keeps birdies and better in the save data: not modelled.)
+export function* outcomeRules(sh, a) {
+  const w = sh.w, r6 = w.wram[6], w0 = w.wram[0];
+  yield* sh.viewLeave();                         // 3B:431F ShotViewLeave
+  const m = w0[0x834];
+  if (m === 5 || m === 0x0B) return 0;           // 3B:75CC
+  if (m === 7 || m === 0x0C) {                   // 3B:76A8 / 3B:76C0
+    if (a !== 0x80) return 0;
+    sh.sound(0x1D);
+    yield* P.showPlayerPicture(sh, 4);
+    yield* showCaptionAndWait(sh, m === 7 ? 0x18 : 0x21);
+    yield* P.waitPictureTimeout(sh);
     return 0;
   }
-  if (i === 7) { countStroke(w); return 0xFF; }  // 3B:7411 out of bounds: a penalty stroke
-  if (i === 6) {                                 // 3B:7447 on the green
-    const f = pf(w, 0x2B);
-    if (!w0[f]) {
-      w0[f] = 1;
-      if (r6[0x48E] & 2) addBonus(w, 4);         // off the pin
-      else {
-        const d = (r6[0x325] - w0[pf(w, 0x20)]) & 0xFF;
-        if (!(d & 0x80) && d >= 3) addBonus(w, 2);
-        else if (!(d & 0x80) && d >= 2 && (C.pinDist(ball(w)) - 0x21) & 0x8000) addBonus(w, 2);
-      }
+  if (m === 6) {                                 // 3B:75CE OutcomeMode6
+    if (a === 0x80) {
+      if (w0[pf(w, 0x20)] === 1) return yield* holeInOne(sh);
+      sh.sound(0x1D);
+      yield* P.showPlayerPicture(sh, 4);
+      yield* showCaptionAndWait(sh, 0x18);
+      yield* P.waitPictureTimeout(sh);
+      return 0;
     }
-    return 0;
+    return yield* byTerrain(sh, rw(0x3B, 0x75E2 + (a & 0x0F) * 2));   // OutcomeMode6ByTerrainTable
   }
-  if (i === 0x0A) r6[0x485] &= 0xF7;             // 3B:7555
+  if (r6[0x48E] & 1) addBonus(w, 0x0A);          // skipped on water
+  if (a === 0x80) return yield* holed(sh);
+  return yield* byTerrain(sh, rw(0x3B, 0x72A3 + (a & 0x0F) * 2));      // OutcomeByTerrainTable
+}
+
+function* holeInOne(sh) {                        // 3B:733D / 3B:760E
+  sh.sound(0x1B);
+  yield* P.showPlayerPicture(sh, 0);
+  markHoleCleared(sh.w);
+  addPoints(sh.w, 0x14);
+  yield* P.waitPictureTimeout(sh);
   return 0;
 }
 
-function holedRules(w) {                         // 3B:72C3: the hole's bonus, how it went in, the score vs par
-  const r6 = w.wram[6], w0 = w.wram[0];          // (the memorable-shot records ~02:4714 / ~02:5C50 left out)
+function markHoleCleared(w) {                    // 02:5C50 MarkHoleCleared: tournament (mode 1, course 1-5, human)
+  const w0 = w.wram[0];
+  if (!(w0[0x836] >= 1 && w0[0x836] <= 5 && w0[0x834] === 1 && w0[pf(w, 0x13)] === 0)) return;   // 02:5BEC
+  const p = 0x996 + 25 * (w0[0x836] - 1) + (w0[0x837] >> 3);   // 02:5CD3 SetBitN
+  w0[p] |= 1 << (w0[0x837] & 7);
+}
+
+function* holed(sh) {                            // 3B:72C3: the hole's bonus, how it went in, the score against par
+  const w = sh.w, r6 = w.wram[6], w0 = w.wram[0];
   addPoints(w, rd16(r6, 0x4F1));
   const start = r6.subarray(0x5F8, 0x5FE);
-  if (r6[0x48E] & 4) addPoints(w, 0x0A);         // off the flagstick
-  else if (r6[0x4CD] !== 6) {
+  if (r6[0x48E] & 4) {                           // off the flagstick
+    yield* showCaptionAndWait(sh, 0x28);
+    addPoints(w, 0x0A);
+  } else if (r6[0x4CD] !== 6) {
     if (w0[pf(w, 0x20)] !== 1) {                 // holed from off the green: 8 from $780 or more, else 6
+      yield* showCaptionAndWait(sh, 0x21);
       const far = !((C.shotLength(ball(w), start) - 0x780) & 0x8000);
       addPoints(w, far ? 8 : 6);
     }
@@ -110,21 +135,108 @@ function holedRules(w) {                         // 3B:72C3: the hole's bonus, h
     if (!((C.shotLength(ball(w), start) - 0x280) & 0x8000)) addPoints(w, 4);
   }
   const strokes = w0[pf(w, 0x20)];
-  if (strokes === 1) { addPoints(w, 0x14); return 0; }   // hole in one
+  if (strokes === 1) return yield* holeInOne(sh);
   const d = (strokes - r6[0x325]) & 0xFF;
-  addPoints(w, { 0xFF: 6, 0xFE: 0x0A, 0xFD: 0x10 }[d] || 0);   // birdie, eagle, albatross
+  const good = { 0x00: [0x1D, 4, 1, 0], 0xFF: [0x1C, 3, 2, 6], 0xFE: [0x1B, 2, 0, 0x0A], 0xFD: [0x1B, 1, 7, 0x10] }[d];
+  if (good) {                                    // par (no points), birdie, eagle, albatross
+    const [song, pic, cap, pts] = good;
+    sh.sound(song);
+    yield* P.showPlayerPicture(sh, pic);
+    yield* showCaptionAndWait(sh, cap);
+    if (d) { markHoleCleared(w); addPoints(w, pts); }
+    yield* P.waitPictureTimeout(sh);
+    return 0;
+  }
+  sh.sound(0x1E);                                // 3B:73D4: over par
+  if (d === 1) {
+    yield* P.showPlayerPicture(sh, 5);
+    yield* showCaptionAndWait(sh, 4);
+  } else {
+    sh.sound(0x1F);
+    yield* P.showPlayerPicture(sh, 5);
+    yield* showCaptionAndWait(sh, d === 2 ? 6 : (d + 0x29) & 0xFF);
+  }
+  yield* P.waitPictureTimeout(sh);
   return 0;
 }
 
-export function postShot(w, a) {                 // 10:4A82-10:4AEE PostShot (B held for a retry not modelled)
-  const r6 = w.wram[6], w0 = w.wram[0];
+// the outcome by the terrain the ball stopped on (3B:7411-3B:75CB): the caption picture and the caption
+function* byTerrain(sh, addr) {
+  const w = sh.w, r6 = w.wram[6];
+  const anim = (a, cap) => { startCaptionAnim(sh, a, 0x10, 0x50, 0x34); return showCaptionAndWait(sh, cap); };   // 4F:619C
+  switch (addr) {
+    case 0x7411:                                 // OutcomeOutOfBounds: a penalty stroke, stroke and distance
+      yield* anim(0, 5);
+      yield* countStroke(sh);
+      return 0xFF;
+    case 0x7426:                                 // OutcomeWater: a penalty stroke, back to the last safe spot
+      r6[0x485] &= 0xFB;
+      yield* sh.advance(0x1E);
+      r6[0x485] &= 0xF7;
+      yield* anim(1, 0x0C);
+      yield* countStroke(sh);
+      r6.copyWithin(0x400, 0x51D, 0x523);        // 10:6472 DropAtSafeSpot
+      return 0;
+    case 0x7447: return yield* green(sh, false);
+    case 0x7639: return yield* green(sh, true);  // OutcomeMode6Green
+    case 0x7529:                                 // OutcomeBunker
+      yield* sh.advance(0x1E);
+      yield* anim((r6[0x446] + 2) & 0xFF, 0x0D);
+      return 0;
+    case 0x7541: yield* anim((r6[0x446] + 5) & 0xFF, 0x0E); return 0;   // OutcomeFairway
+    case 0x7555: r6[0x485] &= 0xF7; yield* anim(5, 0x0F); return 0;     // OutcomeTerrainA
+    case 0x756B: yield* anim((r6[0x446] + 8) & 0xFF, 0x10); return 0;   // OutcomeRough
+    case 0x757F: yield* anim(6, 0x12); return 0;                        // OutcomeSemiRough
+    case 0x7590: yield* anim(0x0A, 0x11); return 0;                     // OutcomeTerrain5
+    case 0x75A1: yield* anim(0x0A, 0x2B); return 0;                     // OutcomeTerrainC
+    case 0x75B2:                                                        // OutcomeTerrainD
+      yield* sh.advance(0x1E);
+      yield* anim((r6[0x446] + 0x0B) & 0xFF, 0x25);
+      return 0;
+    case 0x75CA: return 0;                       // OutcomeNoCaption
+    default: notPorted(`the outcome 3B:${addr.toString(16)}`);
+  }
+}
+
+function* green(sh, mode6) {                     // 3B:7447 OutcomeGreen / 3B:7639 OutcomeMode6Green
+  const w = sh.w, r6 = w.wram[6], w0 = w.wram[0], s = ball(w);
+  const f = pf(w, 0x2B);
+  const near = lim => (C.pinDist(s) - lim) & 0x8000;
+  const approach = () => r6[0x329] === 0x0D || r6[0x32A] >= 2;
+  if (w0[f]) {                                   // a later shot on the green: a long putt near the pin
+    if (!((C.shotLength(s, r6.subarray(0x5F8, 0x5FE)) - 0x140) & 0x8000) && near(0x21)) yield* showCaptionAndWait(sh, 9);
+    else { if (!mode6) r6[0x485] &= 0xF7; yield* showCaptionAndWait(sh, 0x24); }
+    return 0;
+  }
+  w0[f] = 1;
+  if (r6[0x48E] & 2) {                           // off the pin
+    yield* showCaptionAndWait(sh, 0x1B);
+    if (!mode6) addBonus(w, 4);
+    return 0;
+  }
+  if (mode6) {
+    yield* showCaptionAndWait(sh, approach() && near(0x35) ? 0x0B : 0x0A);
+    return 0;
+  }
+  const d = (r6[0x325] - w0[pf(w, 0x20)]) & 0xFF;
+  if (d & 0x80 || d === 0) { r6[0x485] &= 0xF7; yield* showCaptionAndWait(sh, 0x24); return 0; }
+  if (d >= 3) { yield* showCaptionAndWait(sh, 0x1F); addBonus(w, 2); return 0; }
+  if (d === 2 && near(0x21)) { yield* showCaptionAndWait(sh, 0x13); addBonus(w, 2); return 0; }
+  yield* showCaptionAndWait(sh, approach() && near(0x35) ? 0x0B : 0x0A);
+  return 0;
+}
+
+export function* postShot(sh, a) {                // 10:4A82-10:4AEE PostShot (B held for a retry not modelled)
+  const w = sh.w, r6 = w.wram[6], w0 = w.wram[0];
   if (w.tasks) w.tasks.taskOn = false;           // 10:4A26: BallTask off
+  D.hud(w, "hudDistance");                       // 12:4CA6
+  yield* sh.advance();
   if (r6[0x4CD] === 6) w0[pf(w, 0x21)]++;        // a putt
   r6[0x438] &= 0x0F;
   r6[0x4DC] = a;
   w0[pf(w, 0x14)] = a;
   S.meterReset(w);
-  if (outcomeRules(w, a) === 0) {                // $FF (out of bounds): the old spot is kept
+  if ((yield* outcomeRules(sh, a)) === 0) {      // $FF (out of bounds): the old spot is kept
     w0[pf(w, 0x29)] = 1;
     w0.set(r6.subarray(0x400, 0x406), pf(w, 0x22));
   }

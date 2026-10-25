@@ -219,3 +219,34 @@ export function mapScrollTask(w) {
   const sx = ((((w0[0x321] + (ty > 0xFF ? 1 : 0)) & 0xFF) << 3) | (w0[0x320] >> 5)) & 0xFF;   // (the carry of the
   w.high[0x18B] = (sx + w0[0x368]) & 0xFF;       // shaken y carries into x)
 }
+
+// ---- the cup close-up on the green view (wOnGreen 2): 10 x 8 tiles (CupViewTable 13:494E: 80 attributes then 80
+// tiles) over BG rows 4-11, columns 5-14; the rest of the 20-column rows from the view's maps (WRAM2 / WRAM3 $D100,
+// stride $40), built in $C600 (attributes) / $C700 (tiles) and queued to $9880 ----
+function cupViewRows(w, src) {
+  const w0 = w.wram[0];
+  let de = 0x600;
+  for (const bank of [2, 3]) {
+    const map = w.wram[bank];
+    let hl = 0x100;
+    for (let row = 0; row < 8; row++) {
+      if (src === null) for (let k = 0; k < 20; k++) w0[de++] = map[hl++];
+      else {
+        for (let k = 0; k < 5; k++) w0[de++] = map[hl++];
+        hl += 0x0A;
+        for (let k = 0; k < 10; k++) w0[de++] = rb(0x13, src++);
+        for (let k = 0; k < 5; k++) w0[de++] = map[hl++];
+      }
+      hl += 0x2C;
+      de += 0x0C;
+    }
+  }
+  if (src !== null) { w.high[0x1B0] = src & 0xFF; w.high[0x1B1] = src >> 8; }
+  inBank(w, 0x13, () => {                        // 13:458E
+    D.queueVRAMCopy(w, 0xC600, 0xB880, 0x10);
+    D.queueVRAMCopy(w, 0xC700, 0x9880, 0x10);
+  });
+  setWramBank(w, 6);
+}
+export function cupViewEnter(w) { cupViewRows(w, 0x494E); }   // 13:44A4 CupViewEnter
+export function cupViewLeave(w) { cupViewRows(w, null); }     // 13:4528 CupViewLeave

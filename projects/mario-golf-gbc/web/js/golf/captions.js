@@ -35,6 +35,8 @@ const STEPS = {
   0x4277: r => { set16(r, 0x33C, 0x0000); },
   0x4283: r => { set16(r, 0x33C, get16(r, 0x33C) + 0x0020); },
   0x4296: r => { set16(r, 0x33C, 0x8000); },
+  0x42A8: r => { set16(r, 0x338, 0x0000); set16(r, 0x33A, 0x1C00); },   // (entries into 3B:42A2 / 3B:42BF past the test)
+  0x42C5: r => { set16(r, 0x338, 0x0000); set16(r, 0x33A, 0xF200); },
   0x42E2: r => { set16(r, 0x338, 0x0000); set16(r, 0x33A, 0x8000); },
   0x42F9: r => { set16(r, 0x338, 0x0000); set16(r, 0x33A, 0x1A00); },
 };
@@ -133,4 +135,59 @@ export function* showCaptionAndWait(sh, a) {
   unregisterFrameTask(w, 0x4F, 0x62A7);          // 4F:6184 StopCaptionAnim
   yield* sh.advance();
   r6[0x485] = keep;
+}
+
+// ---- the caption's picture object (bank 4F): an animated 12-tile word picture beside the caption ("Fairway",
+// "Bunker" ...) at wCaptionObj $CAA0: +0 script (frame, delay pairs; $FF ends), +2 step, +3 delay, +4 tiles,
+// +6 VRAM, +8 y, +9 x, +$0A first tile ----
+const B4F = 0x4F;
+const r4F = a => rb(B4F, a) | rb(B4F, a + 1) << 8;
+const OBJ = 0xAA0;
+
+// 4F:619C StartCaptionAnim: a = animation, c = first tile, d / e = position
+export function startCaptionAnim(sh, a, c, d, e) {
+  const w = sh.w, r = w.wram[0];
+  sh.sound(0x8A);
+  registerFrameTask(w, 0x64, B4F, 0x62A7);       // CaptionAnimTask
+  r[OBJ + 0x0A] = c;
+  const v = (c * 16) | 0x8000;
+  r[OBJ + 6] = v & 0xFF; r[OBJ + 7] = (v >> 8) & 0xFF;
+  r[OBJ + 8] = d; r[OBJ + 9] = e;
+  const s = r4F(0x632B + 2 * a);
+  r[OBJ] = s & 0xFF; r[OBJ + 1] = s >> 8;
+  r[OBJ + 2] = r[OBJ + 3] = 0;
+  const t = r4F(0x6569 + 2 * a);
+  r[OBJ + 4] = t & 0xFF; r[OBJ + 5] = t >> 8;
+  if (!w.vram) return;
+  let p = (0x63A9 + a * 32) & 0xFFFF;            // OBJ palette 7 by course (and hole)
+  const course = r[0x836], hole = r[0x837];
+  if (course === 0) { if (hole === 0x0A) p += 16; }
+  else if ([1, 2, 6, 0x0A].includes(course)) { /* the first */ }
+  else if (course === 7) {                       // 4F:627B CaptionPaletteByHole3
+    if (hole >= 0x0D) p += 8;
+    if (hole >= 0x10) p += 8;
+    if (hole >= 0x13) p += 8;
+  } else if (course === 9) {                     // 4F:6294 CaptionPaletteByHole6
+    if (hole >= 0x0D) { p += 16; if (hole >= 0x10) p += 8; }
+  } else p += course === 3 ? 8 : course === 4 ? 16 : 24;
+  D.inBank(w, B4F, () => D.loadPalettesImmediate(w, p, 0x0F, 0x01));
+}
+
+export function captionAnimTask(w) {             // 4F:62A7 CaptionAnimTask: 4F:62B4 CaptionObjStep on $CAA0
+  const r = w.wram[0];
+  D.setWramBank(w, 6);
+  if (!r[OBJ] && !r[OBJ + 1]) return;
+  if (!r[OBJ + 3]) {
+    const s = (r[OBJ] | r[OBJ + 1] << 8) + 2 * r[OBJ + 2];
+    r[OBJ + 2] = (r[OBJ + 2] + 1) & 0xFF;
+    const f = rb(B4F, s);
+    if (f === 0xFF) { r[OBJ] = r[OBJ + 1] = 0; return; }
+    r[OBJ + 3] = rb(B4F, s + 1);
+    if (w.vram) {                                // 12 tiles of frame f
+      const src = ((r[OBJ + 4] | r[OBJ + 5] << 8) + (f & 0x0F) * 0xC0) & 0xFFFF;
+      D.inBank(w, B4F, () => D.queueVRAMCopy(w, src, r[OBJ + 6] | r[OBJ + 7] << 8, 0x0C));
+    }
+  }
+  r[OBJ + 3] = (r[OBJ + 3] - 1) & 0xFF;
+  if (w.vram) D.inBank(w, B4F, () => D.queueSpriteTemplate(w, 0x6312, r[OBJ + 9], r[OBJ + 8], r[OBJ + 0x0A], 0x07));
 }

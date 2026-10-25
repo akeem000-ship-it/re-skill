@@ -13,6 +13,8 @@ import * as Cam from "./camera.js";
 import * as Scr from "./screen.js";
 import { clearFrameTasks } from "./tasks.js";
 import * as D from "./render/hooks.js";
+import * as P from "./pictures.js";
+import { showCaptionAndWait } from "./captions.js";
 
 export function advanceRandomSeed(w) {           // 00:0A61 AdvanceRandomSeed: seed ($FFFC) = seed x 5 + $3573
   const seed = w.high[0x1FC] | w.high[0x1FD] << 8;
@@ -330,7 +332,10 @@ export function* strokeLimit(sh, a) {             // 10:4134 StrokeLimit: 3 x pa
   r6[0x48E] |= 0x80;
   if (!r6[0x443]) yield* loadShotView(sh, 1);           // 3B:76D8 StrokeLimitPickUp
   r6[0x443] = 0xFF;
-  sh.sound(0x1F);                                // 3B:76E8 (its picture and caption waits are not modelled)
+  sh.sound(0x1F);                                // 3B:76E8
+  yield* P.showPlayerPicture(sh, 5);             // 3B:7717
+  yield* showCaptionAndWait(sh, 0x19);           // 3B:76F8
+  yield* P.waitPictureTimeout(sh);               // 3B:773F
   return 0x81;
 }
 
@@ -346,9 +351,10 @@ export function* afterShot(sh, a) {
   }
   roundHookAfterShot(w);                         // 08:4901
   if (w0[0x870]) notPorted("golf event hooks (~10:4CC3)");
-  yield* sh.advance();                                  // (after ~4A:629C PictureCycleStop: display)
+  P.pictureCycleStop(w);                         // 4A:629C
+  yield* sh.advance();
   if (r6[0x4DD]) notPorted("the golf event flag $D4DD (~08:4AA3 RetryShotRestore, ~10:464A)");
-  // ~12:4F1D ShotLengthTaskStop (display)
+  D.shotLengthTaskStop(w);                       // 12:4F1D
   return !!(w0[0x8AA] && w0[0x8EA]);
 }
 

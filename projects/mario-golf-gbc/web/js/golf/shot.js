@@ -13,7 +13,8 @@ import * as V from "./view.js";
 import { ballInGreenArea } from "./view.js";
 import { readJoypad } from "./joypad.js";
 import { taskFacade, runFrameTasks } from "./tasks.js";
-import { showCaption, captionMotionTask } from "./captions.js";
+import { showCaption, captionMotionTask, captionAnimTask } from "./captions.js";
+import * as P from "./pictures.js";
 import { vblankDisplay, clearUnusedSprites } from "./render/display.js";
 import * as D from "./render/hooks.js";
 import { ball, rd16, wr16, playerField } from "./memory.js";
@@ -151,6 +152,11 @@ export class Shot {
       "11:6e3e": () => D.golfAnimDraw(this, S.animTask(w)),        // 11:6E3E GolfAnimTask
       "11:4113": () => this.displayTask(),       // 11:4113 BallDisplayTask
       "3b:4433": () => captionMotionTask(w),     // 3B:4433 CaptionMotionTask
+      "4f:62a7": () => captionAnimTask(w),       // 4F:62A7 CaptionAnimTask
+      "77:7033": () => P.storyPictureAnimTask(w),      // 77:7033
+      "77:6f8e": () => P.storyPicturePaletteTask(w),   // 77:6F8E
+      "77:70b6": () => P.storyPictureTimerTask(w),     // 77:70B6
+      "4a:62a3": () => P.pictureCycleTask(w),          // 4A:62A3
       ...D.displayTasks(this),                   // tasks that only draw (render/hooks.js)
     };
   }
@@ -408,7 +414,9 @@ export class Shot {
 
   *loadView(c) { yield* V.loadShotView(this, c); }       // 13:432B LoadShotView
 
-  cupView() {}                                   // ~13:44A4 CupViewEnter / ~13:4528 CupViewLeave: graphics only, no frames
+  cupView(v) {                                   // 13:44A4 CupViewEnter (v = 2) / 13:4528 CupViewLeave (v = 1): display only
+    if (v === 2) D.cupViewEnter(this.w); else D.cupViewLeave(this.w);
+  }
 
   *launch() {                                     // 10:5F94 ShotLaunch and 10:49A0-10:49D8 after it
     const w = this.w, s = ball(w), r6 = w.wram[6];
