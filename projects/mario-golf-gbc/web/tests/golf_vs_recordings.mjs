@@ -108,6 +108,10 @@ function runHole(rec) {                          // tools/hole_run.py, on throug
   const check = checker(w, ev, joy, pos);
   const outs = [], holes = [];
   let note = "", records = null, addresses = 0;
+  // between the shots the frames are not compared (captions and screens are not ported): the menus are
+  // answered with A as soon as they read it, and the display state is taken from the game at the address step
+  let toggle = 0;
+  const quiet = new Shot(w, hole, () => {}, () => (toggle ^= 1) ? 1 : 0);
   const sync = () => {                           // to the next address step in the recording
     let nxt = -1;
     for (let i = pos.i; i < ev.length; i++) if (ev[i][0] === "A") { nxt = i; break; }
@@ -130,7 +134,7 @@ function runHole(rec) {                          // tools/hole_run.py, on throug
       else if (first === "L") a = shot.mainLoop(true);
       else a = shot.flightCam(ev[pos.i - 1][4][3]);
       outs.push(H.postShot(w, a));
-      if (R.afterShot(w, a)) {                   // the hole is over
+      if (R.afterShot(quiet, a)) {               // the hole is over
         const w0 = w.wram[0], f = o => w0[0x880 + o + (w0[0x835] ? 0x40 : 0)];
         holes.push([f(0x20), f(0x21), w0[0x83C] | w0[0x83D] << 8]);
         if (!ev.slice(pos.i).some(e => e[0] === "A")) {    // the recording ends in this hole's end
@@ -140,8 +144,8 @@ function runHole(rec) {                          // tools/hole_run.py, on throug
           break;
         }
         if (!R.holeEnd(w)) { note = " the round ended before the recording"; break; }
-        hole = R.holeStart(w);
-      } else R.nextShot(w, hole);
+        hole = R.holeStart(quiet);
+      } else R.nextShot(quiet);
       if (!sync()) { note = ` recording ends before shot ${outs.length + 1}`; break; }
     }
   } catch (x) {

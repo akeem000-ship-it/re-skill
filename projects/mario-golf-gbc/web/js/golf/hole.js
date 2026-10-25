@@ -10,7 +10,12 @@ import * as C from "./cup.js";
 import * as L from "./launch.js";
 import * as S from "./swing.js";
 import { ball, rd16, wr16, playerField as pf } from "./memory.js";
-import { lieTerrain, ballInGreenArea } from "./shot.js";
+import { lieTerrain, initBallCamera } from "./shot.js";
+import * as A from "./aim.js";
+import * as V from "./view.js";
+import * as Cam from "./camera.js";
+
+function notPorted(what) { throw new Error(`${what} is not ported`); }
 
 export function countStroke(w) {                // 10:477C CountStroke (its frame is not counted here)
   const f = pf(w, 0x20);
@@ -128,131 +133,76 @@ export function pickClub(w) {                    // 10:6341 PickClub: the most l
   r6[0x329] = ffb0;
 }
 
-export function aimAtCup(w) {                    // 10:61FA: the angle from the ball to the cup
-  const r6 = w.wram[6];
-  const dx = (rd16(r6, 0x43D) - rd16(r6, 0x401)) & 0xFFFF;
-  const dy = (rd16(r6, 0x43F) - rd16(r6, 0x404)) & 0xFFFF;
-  return g.angleFromVector16(dy, dx);
-}
-
-export function aimMarker(w) {                   // 10:6145: the aim arrow's end ($D481-$D484), across the aim
-  const r6 = w.wram[6];
-  const turn = r6[0x333] & 1 ? 0x4000 : 0xC000;
-  const hl = r6[0x443] ? 0x20 : 0x80;
-  const [c, s] = g.mulSinCos(hl, (rd16(r6, 0x418) + turn) & 0xFFFF);
-  wr16(r6, 0x481, (rd16(r6, 0x401) + c) & 0xFFFF);
-  wr16(r6, 0x483, (rd16(r6, 0x404) + s) & 0xFFFF);
-}
-
-export function shotSetup(w, hole) {             // 10:4798 ShotSetup up to the address step, the menu answered with A
-  const r6 = w.wram[6], w0 = w.wram[0], s = ball(w);
+// 10:4798 ShotSetup up to the address step (10:56B0): lie and club, the camera, the HUD frames, a 30-frame pause
+// (or a button), the aiming menu, then the view behind the golfer
+export function shotSetup(sh) {
+  const w = sh.w, r6 = w.wram[6], w0 = w.wram[0], s = ball(w);
+  if (w0[0x0F4]) w0[0x0F4] = 1;                  // the shot clock
+  w.high[0x1C1] = 0x20;                          // hSerialIdleByte
   r6[0x48E] = 0;
   r6[0x445] = w0[pf(w, 0x29)] ? 0 : 1;           // the tee shot
   r6[0x446] = w0[pf(w, 0x3F)];
   w0[pf(w, 0x3F)] = 0;
-  r6[0x4CD] = lieTerrain(hole, s);
+  r6[0x4CD] = lieTerrain(sh.hole, s);            // 10:648B (after ~12:4B19 HudFlags: display)
   r6[0x4D5] = r6[0x4CD] === 6 ? 1 : 0;
   r6[0x332] = w0[pf(w, 0x10)];
   r6[0x333] = w0[pf(w, 0x11)];
   pickClub(w);
   L.clubParams(w);
   r6[0x485] = 0x25;
-  wr16(r6, 0x418, aimAtCup(w));
-  if (r6[0x443] === 2) r6[0x443] = 1;
+  wr16(r6, 0x418, A.aimAtCup(w));
+  if (r6[0x443] === 2) { r6[0x443] = 1; sh.advance(); }   // ~13:4528 CupViewLeave (graphics)
+  Cam.snapToGoal(sh);                            // 13:4276
   r6[0x438] = 1;
-  aimMarker(w);
-  S.meterReset(w);
+  V.aimMarker(w);
+  sh.advance(4);                                 // (12:45F4 HudDrawLieIcon, 12:4CA6 HudDistance: display)
+  S.meterReset(w);                               // 10:55FF
+  sh.advance();
   r6[0x485] = 0x2D;
-  r6.copyWithin(0x5F8, 0x400, 0x406);            // 02:4679
+  r6.copyWithin(0x5F8, 0x400, 0x406);            // 02:4679 KeepShotStart
   r6[0x51C] = w0[pf(w, 0x28)];
+  if (w0[0x870]) notPorted("golf event hooks (~10:4CC3)");
+  if (w0[0x834] === 2) notPorted("the match-play captions (~08:48BD)");   // 08:4880 RoundHookPlayerUp (captions)
+  for (let c = 0x1E; c; c--) {
+    sh.advance();
+    if (w.high[0x194]) break;
+  }
   r6[0x485] = 0x3F;
-  r6.copyWithin(0x514, 0x400, 0x406);            // 10:550B
-  aimMenuA(w, hole);
-  if (r6[0x443] <= 1) S.drawSortedBallObjects(w);   // the display task's last frame in the menu (11:4361 / 11:4970)
-  // the aiming menu (AimMenu 10:5BA6) answered with A: the swing
+  r6.copyWithin(0x514, 0x400, 0x406);            // 10:550B SaveAddressSpot
+  return toAddress(sh, A.aimMenu(sh, 0));
+}
+
+// 10:486B-10:48FB: what the aiming menu ended with, up to the address step (true there)
+function toAddress(sh, a) {
+  const w = sh.w, r6 = w.wram[6], w0 = w.wram[0];
+  if ([0x8F, 0x82, 0x80, 0x81, 0xFF].includes(a)) notPorted(`the menu's result $${a.toString(16)} (~10:486B)`);
   if (r6[0x332] < 0x0B && r6[0x329] !== 0x0D && w0[pf(w, 0x13)] !== 3 && !(w0[0x818] & 2)) {
-    r6[0x337] = 0;                               // ShotViewLeave
-    wr16(r6, 0x456, rd16(r6, 0x401));            // 11:476E: the camera behind the ball
-    wr16(r6, 0x458, rd16(r6, 0x404));
-    wr16(r6, 0x45A, (0xC000 - rd16(r6, 0x418)) & 0xFFFF);
+    V.viewLeave(sh);                             // 3B:431F
+    initBallCamera(w);                           // 11:476E (after ~04:5801 GolferActorTaskStop)
     r6[0x438] = 0;
-    loadView4(w, hole);
+    V.loadShotView(sh, 4);
+  } else {
+    r6[0x438] = 1;
+    Cam.snapToGoal(sh);
   }
   r6[0x438] = 1;
-  if (r6[0x443] !== 4) {                         // 10:5632
-    const c = ballInGreenArea(s);
-    if (r6[0x443] !== c) { r6[0x444] = 0; r6[0x443] = c; }
-    aimMarker(w);
-  }
+  if (r6[0x443] !== 4) V.shotViewUpdate(sh);
+  return true;
 }
 
-function loadView4(w) {                          // 13:432B LoadShotView with a = 4: the view behind the golfer
-  const r6 = w.wram[6];
-  r6[0x444] = 0;
-  w.wram[0][0xA80] = w.wram[0][0xA81] = 0;
-  S.animStart(w, 0);                             // 11:6D69 (and the animation task registered)
-  if (w.tasks) w.tasks.animOn = true;
-  r6[0x443] = 4;
-  r6[0x480] = 0;
-  r6[0x328] = 0;
-}
-
-export function smartAim(w, hole) {              // 10:6406 SmartAim: at the cup, or a direction whose landing
-  const r6 = w.wram[6], s = ball(w);             // is fairway or green (else one club less)
-  if ((C.pinDist(s) - L.baseDistance(w)) & 0x8000) return aimAtCup(w);
+// a whole shot as the player plays it: ShotSetup, then AddressBall and the swing (B there goes back to the
+// menu: 10:4902-10:491E), the launch and the flight: the outcome (10:4A25)
+export function playShot(sh) {
+  const w = sh.w, r6 = w.wram[6];
+  shotSetup(sh);
   for (;;) {
-    let bc = aimAtCup(w);
-    for (let d = 0; d < 0x24; d++) {
-      const [hl, de] = g.mulSinCos(L.baseDistance(w), bc);
-      const x = (rd16(r6, 0x401) + hl) & 0xFFFF, y = (rd16(r6, 0x404) + de) & 0xFFFF;
-      if (!((x >> 8) & 0xC0) && !((y >> 8) & 0xC0)) {
-        hole.use(r6[0x443] >= 1 && r6[0x443] <= 3);
-        if ([0, 6, 0x0A, 0x0E].includes(hole.terrainAt(x, y))) return bc;
-      }
-      bc = (bc + rw(0x10, 0x63BE + 2 * d)) & 0xFFFF;   // 10:63AA
+    sh.mark("address");
+    const r = sh.address();
+    if (r === 0) return sh.afterSwing();
+    if (r6[0x443] === 4) {                       // ~15:47B1 BehindViewTaskStop, ~04:57BA, ~04:4062 (display)
+      V.shotViewUpdate(sh);
     }
-    if (r6[0x329] >= 0x0C) return aimAtCup(w);
-    r6[0x329]++;
+    sh.advance(5);                               // WaitFramesCmd 5
+    toAddress(sh, A.aimMenu(sh, 1));
   }
-}
-
-export function aimMenuA(w, hole) {              // AimMenu 10:5BA6 with a = 0, answered at once with A
-  const r6 = w.wram[6], s = ball(w);
-  r6[0x426] = s[0x01]; r6[0x427] = s[0x02]; r6[0x428] = s[0x04]; r6[0x429] = s[0x05];
-  if (r6[0x4E7]) {                               // settings kept from before (a retry)
-    r6[0x329] = r6[0x4E8];
-    r6[0x418] = r6[0x4E9]; r6[0x419] = r6[0x4EA];
-    r6[0x32A] = r6[0x4EB]; r6[0x32B] = r6[0x4EC];
-    r6[0x4E7] = 0;
-  } else {
-    wr16(r6, 0x418, smartAim(w, hole));
-    r6[0x32A] = r6[0x32B] = 0;
-    const d = C.pinDist(s);                      // the putter's range from the distance
-    r6[0x32B] = !((d - 0x42B) & 0x8000) ? 2 : !((d - 0x140) & 0x8000) ? 1 : 0;
-  }
-  if (r6[0x329] === 0x0D) r6[0x32A] = 0;
-  r6[0x480] = r6[0x382] = 0;
-  r6[0x513] = 0;
-  if (r6[0x4D7]) throw new Error("the computer's aiming (~10:5943-~10:5978) is not ported");
-  r6[0x44D] = 0xF0;
-  r6[0x438] = r6[0x443] ? 4 : 2;
-  r6[0x4D4] = 1;
-  r6[0x321] = S.missTable(w);
-  L.clubParams(w);
-  r6[0x480] = 0;
-  r6.copyWithin(0x42A, 0x426, 0x42A);
-  const [dx, dy] = g.mulSinCos(L.baseDistance(w), rd16(r6, 0x418));   // 10:5EE2
-  const tx = (rd16(r6, 0x401) + dx) & 0xFFFF, ty = (rd16(r6, 0x404) + dy) & 0xFFFF;
-  for (const b of [1, 2, 3, 4]) {                // the marker slides out in quarters
-    for (const [o, t] of [[0x426, tx], [0x428, ty]]) {
-      const old = rd16(r6, o + 4);
-      let v = g.mulSignedFull((t - old) & 0xFFFF, b);
-      v = ((v >> 2) | (v & 0x8000 ? 0xC000 : 0)) & 0xFFFF;
-      wr16(r6, o, (v + old) & 0xFFFF);
-    }
-  }
-  aimMarker(w);
-  r6[0x4D4] = 0;
-  S.previewRestart(w);                           // the landing preview restarted at least once in the menu
-  B.speedAndDir(s);                              // and stepped (10:5355 starts with BallSpeedAndDir)
 }

@@ -5,7 +5,8 @@ counts as rewritten when a source file names its entry address as BB:AAAA (bank-
 routine named only to say it is not rewritten (display, sound, a branch not ported) is written ~BB:AAAA and does
 not count.
 
-Sources: the JavaScript engine (web/js/golf/*.js) and the Python ports (tools/golfmath.py, ball_sim.py,
+Sources: every web/js/**/*.js except the emulator core web/js/gb/ (the golf engine web/js/golf, the sound
+driver web/js/sound, ...) and the Python ports (tools/golfmath.py, ball_sim.py,
 cup_sim.py, launch_py.py, swing_py.py, shot_py.py, hole_py.py, joypad.py).
 usage: decomp_progress.py [--list] [--js | --py]   (--list: the cited routines with their sizes)
 """
@@ -20,7 +21,9 @@ CITE = re.compile(r"(?<![~\w])([0-9A-Fa-f]{2}):([0-9A-Fa-f]{4})\b")
 def sources(which):
     out = []
     if which in ("all", "js"):
-        out += sorted(glob.glob(os.path.join(ROOT, "web", "js", "golf", "*.js")))
+        gb = os.path.join(ROOT, "web", "js", "gb") + os.sep
+        out += sorted(p for p in glob.glob(os.path.join(ROOT, "web", "js", "**", "*.js"), recursive=True)
+                      if not p.startswith(gb))
     if which in ("all", "py"):
         out += [os.path.join(ROOT, "tools", n + ".py") for n in PY]
     return out

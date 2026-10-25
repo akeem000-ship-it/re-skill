@@ -66,7 +66,8 @@ nothing left in the code banks. Data banks (graphics, holes, text, songs) are no
 ### Rewrite progress (tools/decomp_progress.py)
 
 The rewrite runs the game's behaviour in JavaScript without an emulated Game Boy (`web/js/golf/`), reading only
-data from the ROM. `decomp_progress.py` counts the traced code bytes in routines that the rewrite cites by
+data from the ROM. `decomp_progress.py` counts the traced code bytes in routines that the rewrite (every
+`web/js/**/*.js` except the emulator core `web/js/gb/`, and the Python ports) cites by
 `BB:AAAA` (byte -> routine as in coverage.py); a routine named only to say it is not rewritten (display, sound,
 a branch not ported) is written `~BB:AAAA` and does not count.
 
@@ -76,20 +77,25 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + JS engine web/js/golf: math, ball, cup, launch, swing, shot, hole, joypad | (JS port of the same) | |
 | + round.js: the round start and the hole set-up from the ROM | 17,558 | 7.23% |
 | + round.js: after a shot, the stroke limit, hole end, next hole, round end (mode 3) | 17,900 | 7.38% |
+| + frame-exact set-up: camera, fades, the aiming menu and target marker (aim.js, view.js, camera.js, screen.js) | 21,904 | 9.03% |
 
 The JS engine (`rom.js` ROM and LZ access, `memory.js` the RAM layout, `math.js`, `ball.js`, `cup.js`,
 `launch.js`, `swing.js`, `shot.js`, `hole.js`, `joypad.js`, `round.js`) is checked by two Node tests:
 - `web/tests/golf_vs_recordings.mjs`: the 27 shot recordings and the 4 whole holes of tools/shot_suite.py and
   hole_suite.py match event for event, and so do the first three holes of the Stroke round (tools/round_suite.py),
   through each hole's end and the next hole's set-up (wind, pin, tee) to its address step;
-- `web/tests/golf_hole_setup.mjs`: from the RAM at GolfRound's entry (or, with `--minimal`, from zeroed RAM plus
-  only the inputs: the records `$C800-$C8FF`, the random seed `$FFFC`, the event overrides `$D4DE-$D4EF`) the
-  round start and the hole set-up (wind, HoleIdFromCourse, LoadHoleInfo, players at the tee, the intro fly-over's
-  state, PickNextPlayer, ShotSetup) reach the game's RAM at the first address step (10:56B0) on 16 holes
-  (tools/emu_hole_setup.py: hole 1 of the practice round, and holes of courses 0-10 and random seeds poked in at
-  GolfRound's entry), the course or green maps included. As in tools/hole_run.py, the display state that depends
-  on how long the menus took (the golfer's idle animation, the landing preview, the target marker) is taken from
-  the game, and the camera and HUD bytes are not compared.
+- `web/tests/golf_hole_setup.mjs`: **frame by frame** from the RAM at GolfRound's entry to the first address step
+  (10:56B0): the round start, the hole set-up (wind, HoleIdFromCourse, LoadHoleInfo, players at the tee), the
+  intro fly-over (180 frames on the green, the camera's pan until CameraAtGoal), StrongWindIntro, ShotSetup, the
+  aiming menu (club changes, aim turning with its acceleration, B shot modes and putter ranges, Select's look at
+  the pin) and the load of the view behind the golfer, with the joypad the game read: every AdvanceFrame's RAM
+  ($C800-$C8FF, WRAM6 $D300-$D5FF except camera/HUD/caption bytes) and the steps' frames match on 20 cases
+  (tools/hole_setup_suite.py: holes of courses 0-10, random seeds, menus used), the landing preview and target
+  marker included; with `--minimal` the same from zeroed RAM plus only the inputs (records `$C800-$C8FF`, seed
+  `$FFFC`, event overrides `$D4DE-$D4EF`).
+  Frame details learnt: frame tasks are off while `$FF8F` is 0 (BuildBehindView's second frame); fades step once
+  per VBlank (`$FFA2-$FFA4`, WaitFade 00:2625: 8 frames at speed `$10`); HudInit sets `$D328`/`$D44D`, HudDrawWind
+  clears `$D326-$D328`.
 
 #### The hole set-up (GolfRound 10:4451, per hole 10:44B4; tools/sm83_calltree.py lists what it calls)
 

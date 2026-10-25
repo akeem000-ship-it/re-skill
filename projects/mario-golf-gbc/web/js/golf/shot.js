@@ -7,6 +7,11 @@ import * as B from "./ball.js";
 import * as C from "./cup.js";
 import * as L from "./launch.js";
 import * as S from "./swing.js";
+import * as Cam from "./camera.js";
+import { fadeVBlank } from "./screen.js";
+import * as V from "./view.js";
+import { ballInGreenArea } from "./view.js";
+import { readJoypad } from "./joypad.js";
 import { ball, rd16, wr16, playerField } from "./memory.js";
 
 export function applyFx(w, fx) {                 // what the ported branches do outside $D400-$D4FF
@@ -91,7 +96,7 @@ export function ballTask(w, hole, fx) {          // 10:4D45 BallTask
 const lieFairway = i => rb(0x10, 0x70DB + i);    // lie quality by position: fairway (10:70DB), rough (10:7112)
 const lieRough = i => rb(0x10, 0x7112 + i);
 
-export const ballInGreenArea = s => (((s[0x05] - s[0x42]) & 0xFF) < 4 && ((s[0x02] - s[0x41]) & 0xFF) < 5 ? 1 : 0);   // 10:5617
+export { ballInGreenArea };                      // 10:5617 BallInGreenArea (view.js)
 
 export function lieTerrain(hole, s) {            // 10:648B BallLieTerrain
   let hl = rd16(s, 0x01), de = rd16(s, 0x04);
@@ -101,6 +106,13 @@ export function lieTerrain(hole, s) {            // 10:648B BallLieTerrain
   }
   hole.use(s[0x43] >= 1 && s[0x43] <= 3);
   return hole.terrainAt(hl, de);
+}
+
+export function initBallCamera(w) {             // 11:476E InitBallCamera: view-4 camera at the ball, angle $C000 - aim
+  const r6 = w.wram[6];
+  wr16(r6, 0x456, rd16(r6, 0x401));
+  wr16(r6, 0x458, rd16(r6, 0x404));
+  wr16(r6, 0x45A, (0xC000 - rd16(r6, 0x418)) & 0xFFFF);
 }
 
 export function registered(w, bank, addr) {      // bank:addr in the frame task table ($C1C0: 16 x flags, addr, bank)?
@@ -118,11 +130,13 @@ export const TASKS = {
 };
 
 
-// The main thread of a shot. ev(kind) is called at the points tools/emu_shot_record.py records: F at each
-// AdvanceFrame, T at each BallTask, L / P at the loop tops; a test compares the RAM there.
+// The main thread of a shot (and the frame runner the round's code uses). ev(kind) is called at the points
+// tools/emu_shot_record.py records: F at each AdvanceFrame, T at each BallTask, L / P at the loop tops, and
+// M (ev("M", name)) at the steps tools/emu_hole_setup.py marks; a test compares the RAM there. input(), if set,
+// gives the buttons held for each frame (else the joypad bytes are left as they are, e.g. set by a test).
 export class Shot {
-  constructor(w, hole, ev = () => {}) {
-    this.w = w; this.hole = hole; this.ev = ev;
+  constructor(w, hole, ev = () => {}, input = null) {
+    this.w = w; this.hole = hole; this.ev = ev; this.input = input;
     if (!w.tasks) {                              // which frame tasks run: from the snapshot's task table
       w.tasks = {};
       for (const [k, v] of Object.entries(TASKS)) w.tasks[k] = registered(w, ...v);
@@ -131,18 +145,34 @@ export class Shot {
     this.fx = [];
   }
 
-  advance(n = 1) {                               // 00:2E3B AdvanceFrame: the frame tasks in slot order
+  mark(name) { this.ev("M", name); }
+
+  advance(n = 1) {                               // 00:2E3B AdvanceFrame: VBlank, then the frame tasks in slot order
     const w = this.w, t = this.t;
     for (let k = 0; k < n; k++) {
       this.ev("F");
+      if (this.input) readJoypad(w.high, this.input());   // VBlank 00:2EF9: ReadJoypad 00:02EB
+      fadeVBlank(w);                             // VBlank: 00:25DF / 00:25C9
+      if (!w.high[0x18F]) continue;              // 00:247D RunFrameTasks: off while $FF8F is 0
       if (t.animOn) S.animTask(w);               // 11:6E3E
-      if (t.displayOn) {                         // 11:4113
-        if (S.previewOn(w)) S.previewFrame(w, this.hole, this.fx);   // -> 11:4E5E
-        if ((w.wram[6][0x443] & 7) <= 1) S.drawSortedBallObjects(w);  // 11:4361 / 11:4970
-        if ([4, 5, 6].includes(w.wram[6][0x443] & 7)) S.ballViewCut(w);   // 11:47A2
-      }
+      if (t.displayOn) this.displayTask();       // 11:4113
+
       if (t.meterOn) S.meterTask(w);             // 10:55AC
       if (t.taskOn) { this.ev("T"); ballTask(w, this.hole, this.fx); }   // 10:4D45
+    }
+  }
+
+  displayTask() {                                // 11:4113 BallDisplayTask by view (the sprites are display)
+    const w = this.w, r6 = w.wram[6], v = r6[0x443] & 7;
+    if (v <= 1) {                                // 11:4361 course view / 11:4970 green view
+      Cam.step(w);                               // 11:422F
+      if (r6[0x485] & 0x10) S.previewFrame(w, this.hole, this.fx);   // 11:4E5E
+      S.drawSortedBallObjects(w);                // 11:4D79
+    } else if (v === 3) {
+      initBallCamera(w);                         // 11:476E
+    } else if (v >= 4 && v <= 6) {               // 11:4795 BallView4
+      if (r6[0x485] & 0x10) S.previewFrame(w, this.hole, this.fx);
+      S.ballViewCut(w);                          // 11:47A2
     }
   }
 
@@ -281,21 +311,9 @@ export class Shot {
   }
 
   // -- the view changes: maps and graphics; only their RAM effects on the shot state are kept --
-  viewLeave() {                                  // 3B:431F ShotViewLeave
-    this.w.wram[6][0x337] = 0;
-    this.advance();
-  }
+  viewLeave() { V.viewLeave(this); }             // 3B:431F ShotViewLeave
 
-  loadView(c) {                                  // 13:432B LoadShotView (not view 4): one AdvanceFrame (13:4462)
-    const w = this.w, s = ball(w);
-    this.t.animOn = false;                       // 13:433A -> 11:6D88: the golfer's animation stops
-    s[0x44] = 0;
-    w.wram[0][0xA80] = w.wram[0][0xA81] = 0;
-    if (c) w.wram[0].fill(0, 0x320, 0x324);
-    s[0x43] = c;
-    w.wram[6][0x36B] = w.wram[6][0x36C] = 0;
-    this.advance();
-  }
+  loadView(c) { V.loadShotView(this, c); }       // 13:432B LoadShotView
 
   cupView() {}                                   // ~13:44A4 CupViewEnter / ~13:4528 CupViewLeave: graphics only, no frames
 
