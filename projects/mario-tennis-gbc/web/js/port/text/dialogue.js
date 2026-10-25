@@ -41,7 +41,7 @@ export function fetchDialogueText(P, textId, de) {
 const TEXT_CODE_PLUS = 13;
 export const TEXT_PLUS_STAMINA = TEXT_CODE_PLUS << 10;
 const PLUS_LINES = [
-  "One more thing:\x01long rallies wear\x01you out.\x02It's STAMINA. Tired\x01players run slower\x01and hit softer.\x03",
+  "One more thing:\x01every swing tires\x01you out.\x02Charged power shots\x01tire you the most.\x01That's STAMINA.\x02Tired players run\x01slower and hit\x01softer.\x03",
   "Your breath comes\x01back after every\x01point.\x02Eat well and rest in\x01your dorm room to\x01keep your energy up.\x02When you level up,\x01train STAMINA to\x01last even longer.\x03",
 ];
 function fetchPlusText(P, text) {

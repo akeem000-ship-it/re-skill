@@ -12,7 +12,7 @@
 // returns it as an unsigned 16-bit number.
 import { advanceMatchRng, setBallVelocityPolar } from "./ball.js";
 import { predictBallXAtDepth } from "./ai.js";
-import { plusShotSpeed, plusServeSpeed } from "./plus.js";   // PLAY+                         // 08:7C86, farcalled by the serve banks
+import { plusShotSpeed, plusServeSpeed, plusSwing } from "./plus.js";   // PLAY+                         // 08:7C86, farcalled by the serve banks
 
 export const SHOTTYPE = {
   TOPSPIN: 0x00, POWER_TOPSPIN: 0x01, SLICE: 0x02, POWER_SLICE: 0x03, NEUTRAL: 0x04, REACH: 0x05,
@@ -73,6 +73,7 @@ export function executeShot(E) {
   const handler = EXECUTE_SHOT_HANDLERS[S.currentShotType];
   if (!handler) throw new Error(`ExecuteShot: shot type $${S.currentShotType.toString(16)} past the jump table`);
   handler(E);
+  if (E.plus) plusSwing(E);                                              // PLAY+: the swing's effort (STAMINA)
   shotRecoilFrameTask(E);
 }
 

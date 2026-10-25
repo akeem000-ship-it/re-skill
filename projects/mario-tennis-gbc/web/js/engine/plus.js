@@ -2,9 +2,11 @@
 // made without PLAY+ replay without it). Each hook is called from the routine it changes:
 //   momentum   three points in a row in your favour and your shots leave the racket about 6% faster until you lose a point
 //              (flow.js scorePoint counts the run, shot.js finalizeShotSpeed applies it)
-//   stamina    a long rally tires the players: past 10 + e shots they run up to 12% slower and past 12 + e hit up to 8% softer
-//              (chars.js clampCharXSpeed / clampCharDepthSpeed, shot.js finalizeShotSpeed). e is the player's endurance in
-//              shots from their STAMINA s (plusStamina, as each is loaded): e = 16 s / (s + 16), the slope easing by 30 / (30 + s).
+//   stamina    each swing tires the player who makes it, the charged ones most: a point's effort counts 2 for a quick swing,
+//              up to 5 for one charged in full and one more for a power shot (plusSwing, shot.js executeShot), back to 0 at every
+//              point. Past 10 + e of effort a player runs up to 12% slower and past 12 + e hits up to 8% softer (chars.js
+//              clampCharXSpeed / clampCharDepthSpeed, shot.js finalizeShotSpeed): a rally of quick swings tires as the rally's
+//              length used to (each player's swings are half its shots). e is the player's endurance from their STAMINA s (plusStamina, as each is loaded): e = 16 s / (s + 16), the slope easing by 30 / (30 + s).
 //              s is the character's speed skills (SPEED, DASH, REACTION, STOP: their mean, 0-9) plus: 2 in an exhibition (both
 //              sides alike: an average character keeps the 14 / 16 shots of before); 2 a STAMINA level for the tour's player and
 //              partner (record +$3F, given at a level-up: port/menus/char_data/screen.js); for the tour's opponents a curve by
@@ -42,7 +44,7 @@ export function plusShotSpeed(E, bc) {
   let k = 1;
   const side = E.C.index & 1, m = E.mom;
   if (P.momentum && m && m[side] >= 3) k += 0.06;
-  const r = E.S.rallyLength, t = 12 + endurance(E); if (P.stamina && r > t) k -= Math.min(0.08, (r - t) * 0.004 * slope(E));
+  const r = P.stamina ? effortOf(E) : 0, t = 12 + endurance(E); if (P.stamina && r > t) k -= Math.min(0.08, (r - t) * 0.004 * slope(E));
   return k === 1 ? bc : U16(Math.round((bc & 0xFFFF) * k));
 }
 // a serve's speed (shot.js shotPlacement, serve rows): timing against the top of the toss
@@ -54,7 +56,7 @@ export function plusServeSpeed(E, bc) {
 // running speed (chars.js): fatigue in long rallies
 export function plusRunSpeed(E, s) {
   const P = E.plus; if (!P || !P.stamina) return s;
-  const r = E.S.rallyLength, t = 10 + endurance(E); if (r <= t) return s;
+  const r = effortOf(E), t = 10 + endurance(E); if (r <= t) return s;
   return U16(Math.round((s & 0xFFFF) * (1 - Math.min(0.12, (r - t) * 0.006 * slope(E)))));
 }
 // STAMINA (chars.js loadCharacterAttributes): the character's stamina s as it is loaded (r8: its record), kept in E.stamina by index
@@ -73,6 +75,21 @@ function endurance(E) {
   return Math.round(16 * s / (s + 16) - 6 * tired);
 }
 const slope = E => 30 / (30 + staminaOf(E));
+// a point's effort so far, by character (E.effort), cleared when the rally count starts again (a new point or serve)
+function effort(E) {
+  const r = E.S.rallyLength;
+  if (!E.effort || r < E.effortRally) E.effort = [0, 0, 0, 0];
+  E.effortRally = r;
+  return E.effort;
+}
+// STAMINA (shot.js executeShot, the shot's handler done): the swing's effort to the hitter: 2, + up to 3 by the charge
+// (wShotChargeLevel, the swing's windup frames: a quick swing has under 8, a full charge 63), + 1 for a power shot
+export function plusSwing(E) {
+  const P = E.plus; if (!P || !P.stamina) return;
+  const S = E.S, c = Math.min(S.shotChargeLevel, 63), power = S.lastShotWasPowerShot || S.specialShotFlag ? 1 : 0;
+  effort(E)[E.C.index & 3] += 2 + 3 * Math.max(0, c - 8) / 55 + power;
+}
+const effortOf = E => effort(E)[E.C.index & 3];
 // the court's friction and bounce bytes (enhanced.js): [friction, bounce]
 export function plusSurface(E, fB, eB) {
   const P = E.plus; if (!P || !P.courts) return [fB, eB];
