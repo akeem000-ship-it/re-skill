@@ -64,7 +64,7 @@ public class MainActivity extends Activity {
                 return v.onApplyWindowInsets(insets);
             });
         }
-        web.loadUrl("https://appassets.androidplatform.net/assets/web/full.html");
+        web.loadUrl("https://appassets.androidplatform.net/assets/web/" + getString(R.string.start_page));   // (full.html#port: the port edition)
     }
     /** Saves a file from the page (base64) to Downloads/MTenn3D (recordings: and offers the share sheet); buzzes the phone. */
     private class FileBridge {
