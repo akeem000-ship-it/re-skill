@@ -75,11 +75,13 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | Python ports only (tools/golfmath.py ... hole_py.py) | 15,506 | 6.39% |
 | + JS engine web/js/golf: math, ball, cup, launch, swing, shot, hole, joypad | (JS port of the same) | |
 | + round.js: the round start and the hole set-up from the ROM | 17,558 | 7.23% |
+| + round.js: after a shot, the stroke limit, hole end, next hole, round end (mode 3) | 17,900 | 7.38% |
 
 The JS engine (`rom.js` ROM and LZ access, `memory.js` the RAM layout, `math.js`, `ball.js`, `cup.js`,
 `launch.js`, `swing.js`, `shot.js`, `hole.js`, `joypad.js`, `round.js`) is checked by two Node tests:
 - `web/tests/golf_vs_recordings.mjs`: the 27 shot recordings and the 4 whole holes of tools/shot_suite.py and
-  hole_suite.py match event for event;
+  hole_suite.py match event for event, and so do the first three holes of the Stroke round (tools/round_suite.py),
+  through each hole's end and the next hole's set-up (wind, pin, tee) to its address step;
 - `web/tests/golf_hole_setup.mjs`: from the RAM at GolfRound's entry (or, with `--minimal`, from zeroed RAM plus
   only the inputs: the records `$C800-$C8FF`, the random seed `$FFFC`, the event overrides `$D4DE-$D4EF`) the
   round start and the hole set-up (wind, HoleIdFromCourse, LoadHoleInfo, players at the tee, the intro fly-over's

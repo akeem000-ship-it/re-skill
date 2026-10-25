@@ -19,7 +19,7 @@ const minimal = process.argv.includes("--minimal");
 
 const range = (a, b) => Array.from({ length: b - a }, (_, i) => a + i);
 const SKIP_D4 = new Set([...range(0x2E, 0x38), ...range(0x5C, 0x60), ...range(0x65, 0x68), ...range(0x6B, 0x80), 0x54, 0x55]);
-const SKIP_D3 = new Set([0x22, 0x26, 0x27, 0x6B, 0x6C, ...range(0x35, 0x46)]);
+const SKIP_D3 = new Set([0x22, 0x26, 0x27, 0x6B, 0x6C, ...range(0x35, 0x46), ...range(0x46, 0x50)]);   // + the story picture ($D346-$D34F)
 const DISPLAY = [[0x462, 0x468], [0x373, 0x383], [0x480, 0x481], [0x513, 0x514], [0x426, 0x42A]];
 const hexBytes = s => Uint8Array.from({ length: s.length / 2 }, (_, i) => parseInt(s.substr(2 * i, 2), 16));
 const h2 = v => v.toString(16).padStart(2, "0"), h4 = v => v.toString(16).padStart(4, "0");

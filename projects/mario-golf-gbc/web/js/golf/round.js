@@ -264,3 +264,108 @@ export function holeStart(w) {
   H.shotSetup(w, hole);
   return hole;
 }
+
+// ---- between shots and holes: GolfShotLoop 10:45E7-10:4673 ----
+export function strokeLimit(w, a) {              // 10:4134 StrokeLimit: 3 x par strokes picks the ball up
+  if (a === 0x80) return a;
+  const m = mode(w);
+  if (m === 0 || m === 4) return a;
+  const r6 = w.wram[6], w0 = w.wram[0];
+  const d = (r6[0x325] * 3) & 0xFF;
+  const f = pf(w, 0x20);
+  if (w0[f] < d) return a;
+  w0[f] = d;                                     // (10:4786 HudRedrawCurPlayer: the HUD and one frame)
+  r6[0x485] &= 0xEF;
+  r6[0x48E] |= 0x80;
+  if (!r6[0x443]) loadView(w, 1);                // 3B:76D8 StrokeLimitPickUp (picture and caption: display)
+  r6[0x443] = 0xFF;
+  return 0x81;
+}
+
+// 10:45E7-10:4632 after a shot's PostShot: true when every player has holed out
+export function afterShot(w, a) {
+  const w0 = w.wram[0], r6 = w.wram[6];
+  r6[0x438] = 0;
+  a = strokeLimit(w, a);
+  if (a & 0x80) {                                // holed, picked up or out of bounds ($FF)
+    w0[pf(w, 0x2A)] = w0[pf(w, 0x2B)] = 1;
+    w0.fill(0, pf(w, 0x22), pf(w, 0x28));
+    H.scorecard(w);                              // 10:4101
+  }
+  roundHookAfterShot(w);                         // 08:4901
+  if (w0[0x870]) notPorted("golf event hooks (~10:4CC3)");
+  // ~4A:629C PictureCycleStop (display) and an AdvanceFrame
+  if (r6[0x4DD]) notPorted("the golf event flag $D4DD (~08:4AA3 RetryShotRestore, ~10:464A)");
+  // ~12:4F1D ShotLengthTaskStop (display)
+  return !!(w0[0x8AA] && w0[0x8EA]);
+}
+
+function roundHookAfterShot(w) {                 // 08:4901 RoundHookAfterShot
+  switch (mode(w)) {
+    case 1: notPorted("the tournament's shot statistics (~08:441A)"); break;
+    case 2: notPorted("the match-play hole result (~08:494B)"); break;
+    case 3: if (w.wram[0][0x8D0] !== 0xFF) notPorted("the two-player contest (~08:4250)"); break;   // 08:4942
+    case 4: notPorted("the training retry menu (~08:4A39)"); break;
+    default: break;
+  }
+}
+
+// 10:45D9-10:45E4: the next player, the view, ShotSetup up to the address step
+export function nextShot(w, hole) {
+  pickNextPlayer(w);
+  w.wram[6][0x438] = 1;
+  if (ballInGreenArea(ball(w)) !== w.wram[6][0x443]) loadView(w, ballInGreenArea(ball(w)));   // 10:5632 ShotViewUpdate
+  H.aimMarker(w);
+  H.shotSetup(w, hole);
+}
+
+// 10:4635-10:4647 the hole is over: true when another hole follows (then holeStart)
+export function holeEnd(w) {
+  const w0 = w.wram[0];
+  roundHookHoleEnd(w);                           // 08:4B02
+  w0[0x837] = (w0[0x837] + 1) & 0xFF;            // wHoleNumber, 18 -> 1
+  if (w0[0x837] >= 0x13) w0[0x837] = 1;
+  w0[0x839] = (w0[0x839] - 1) & 0xFF;            // wHolesLeft
+  return w0[0x839] !== 0;
+}
+
+function roundHookHoleEnd(w) {                   // 08:4B02 RoundHookHoleEnd
+  const w0 = w.wram[0];
+  switch (mode(w)) {
+    case 1: notPorted("the tournament's hole end (~08:4B3F)"); break;
+    case 2: notPorted("the match-play hole end (~08:4B64)"); break;
+    case 3:                                      // 08:4B93 HoleEndMode3Stroke
+      if (w0[0x8D0] !== 0xFF) notPorted("the two-player contest totals (~08:432F)");
+      w0[0x4BD] = 1;                             // wStandingsPhase (~0E:43D6 ShowScorecard: display)
+      // ~08:4F75 ShowHalfwayPicture: display
+      if (w0[0x837] >= 0x11 && w0[0x8D0] !== 0xFF) w0[0x832] = 1;   // 08:4BAA SetDecisiveHoleOnLast
+      break;
+    default: break;
+  }
+}
+
+// 10:464A-10:4673 the round is over
+export function roundEnd(w) {
+  const w0 = w.wram[0], r6 = w.wram[6];
+  r6[0x328] = 1;                                 // wHudBusy
+  w0[0x96D] = 0;                                 // wReplayActive
+  if (w0[0x33F]) notPorted("link play (~10:4659)");
+  switch (mode(w)) {                             // 08:4BBC RoundHookRoundEnd
+    case 3:                                      // 08:4EBF RoundEndMode3Stroke
+      if (w0[0x8D0] !== 0xFF) {
+        const b = (w0[0x8BE] + 0x36) & 0xFF, c = (w0[0x8FE] + 0x36) & 0xFF;
+        w0[0x96C] = c === b ? 3 : c < b ? 2 : 1;   // wRoundResult (~0B:59DE RoundResultScreen: display)
+      }
+      addPointsRaw(w, 0x0A);
+      notPorted("the EXP award after the round (~08:4F03 RoundEndFadeAndExp)");
+      break;
+    case 4: case 5: case 0x0A: case 0x0B: break;   // 08:4EF2 / 08:4EF3
+    default: notPorted(`the round end of mode ${mode(w)} (~08:4BBC)`);
+  }
+}
+
+function addPointsRaw(w, de) {                   // 02:5415 AddPointsRaw: $C83C += de x course factor (02:543E) / 2
+  const w0 = w.wram[0];
+  const f = rb(0x02, 0x543E + (w0[0x836] & 0x0F));
+  wr16(w0, 0x83C, (rd16(w0, 0x83C) + (g.mulHLByA(de, f) >> 1)) & 0xFFFF);
+}

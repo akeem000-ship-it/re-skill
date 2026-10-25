@@ -107,41 +107,6 @@ export function scorecard(w) {                   // 10:4101 Scorecard: strokes a
   w0[pf(w, 0x3E)] = (strokes + w0[pf(w, 0x3E)] - r6[0x325]) & 0xFF;
 }
 
-export function shotLoopEnd(w, a) {              // 10:45E7-10:4632 for one shot's result: true when the hole is over
-  const w0 = w.wram[0], r6 = w.wram[6];
-  r6[0x438] = 0;
-  if (w0[0x834] !== 0 && w0[0x834] !== 4 && w0[pf(w, 0x20)] >= ((r6[0x325] * 3) & 0xFF))
-    throw new Error("the stroke limit (~10:4158) is not ported");
-  if (a & 0x80) {                                // holed (or $FF)
-    w0[pf(w, 0x2A)] = w0[pf(w, 0x2B)] = 1;
-    w0.fill(0, pf(w, 0x22), pf(w, 0x28));
-    scorecard(w);
-  }
-  return !!(w0[0x8AA] && w0[0x8EA]);
-}
-
-export function nextPlayer(w) {                  // 10:4674 PickNextPlayer (one player: always player 1)
-  const w0 = w.wram[0], r6 = w.wram[6];
-  if (!w0[0x8EA] && !w0[0x8AA]) throw new Error("two players (~10:4680) are not ported");
-  let rec, other, p;
-  if (w0[0x8EA]) { rec = 0x880; other = w0[0x8E9] ? 0xE3 : null; p = 0; }   // 10:46D9: player 1
-  else { rec = 0x8C0; other = w0[0x8A9] ? 0xA3 : null; p = 1; }             // 10:46EE: player 2
-  w0[0x835] = p;
-  r6.set(w0.subarray(rec + 0x22, rec + 0x28), 0x400);
-  r6[0x406] = r6[0x407] = r6[0x408] = 0;
-  const src = other === null ? Array.from({ length: 6 }, (_, i) => rb(0x10, 0x4771 + i))   // 10:4771
-    : Array.from({ length: 6 }, (_, i) => w0[0x800 + other + i]);
-  r6[0x41E] = src[0]; r6[0x41F] = src[1]; r6[0x420] = src[3]; r6[0x421] = src[4];
-  for (let o = 0x409; o < 0x40F; o++) r6[o] = src[4];
-  wr16(r6, 0x4C6, rd16(w0, rec + 0x1A));
-  r6[0x4CA] = w0[rec + 0x1D];
-  r6[0x4C8] = w0[rec + 0x1C];
-  r6[0x4C9] = w0[rec + 0x1E];
-  r6[0x4CB] = w0[rec + 0x1F];
-  r6[0x4CC] = w0[rec + 0x19];
-  r6[0x4D7] = w0[rec + 0x13];
-}
-
 export function pickClub(w) {                    // 10:6341 PickClub: the most lofted club that reaches the pin
   const r6 = w.wram[6];
   let ffb0 = 0x0C;

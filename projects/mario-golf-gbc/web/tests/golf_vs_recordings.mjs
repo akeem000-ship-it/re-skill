@@ -11,6 +11,7 @@ import { GolfMemory, ball } from "../js/golf/memory.js";
 import { Hole } from "../js/golf/ball.js";
 import { Shot } from "../js/golf/shot.js";
 import * as H from "../js/golf/hole.js";
+import * as R from "../js/golf/round.js";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 useRom(new Uint8Array(fs.readFileSync(path.join(root, "rom/mario_golf.gbc"))));
@@ -26,18 +27,20 @@ const SHOTS = {
   putt_miss: [0x06, 715], rollbunker: [0x02, 247], sand_semi: [0x09, 595], sand_to_sand: [0x02, 1078],
   tree_canopy: [0x01, 388], tree_trunk: [0x01, 274], water_stop: [0x03, 67],
 };
-// whole holes (tools/hole_suite.py): the shots' outcomes, strokes / putts / points and the events matched
+// whole holes (tools/hole_suite.py) and rounds (round_*.json): the shots' outcomes, strokes / putts / points
+// of each hole and the events matched
 const HOLES = {
-  hole1: [[0x00, 0x06, 0x06, 0x80], 4, 2, 0, 5678],
-  hole1_ob: [[0x07, 0x00, 0x06, 0x06, 0x80], 6, 2, 0, 5847],
-  hole2: [[0x01, 0x01, 0x01, 0x09, 0x06, 0x80], 6, 1, 0, 6624],
-  hole2_water: [[0x03, 0x03, 0x01, 0x09, 0x06, 0x80], 9, 1, 0x0A, 6043],
+  hole_hole1: [[0x00, 0x06, 0x06, 0x80], [[4, 2, 0]], 5678],
+  hole_hole1_ob: [[0x07, 0x00, 0x06, 0x06, 0x80], [[6, 2, 0]], 5847],
+  hole_hole2: [[0x01, 0x01, 0x01, 0x09, 0x06, 0x80], [[6, 1, 0]], 6624],
+  hole_hole2_water: [[0x03, 0x03, 0x01, 0x09, 0x06, 0x80], [[9, 1, 0x0A]], 6043],
+  round_r3: [[0x00, 0x06, 0x06, 0x80, 0x01, 0x09, 0x06, 0x80, 0x06, 0x80], [[4, 2, 0], [4, 1, 0], [2, 1, 6]], 14289],
 };
 
 // bytes other frame tasks own (camera, HUD, captions; tools/shot_sim.py SKIP*)
 const range = (a, b) => Array.from({ length: b - a }, (_, i) => a + i);
 const SKIP = new Set([...range(0x2E, 0x38), ...range(0x5C, 0x60), ...range(0x65, 0x68), ...range(0x6B, 0x80), 0x54, 0x55]);
-const SKIP_D3 = new Set([0x22, 0x26, 0x27, 0x6B, 0x6C, ...range(0x35, 0x46)]);
+const SKIP_D3 = new Set([0x22, 0x26, 0x27, 0x6B, 0x6C, ...range(0x35, 0x46), ...range(0x46, 0x50)]);   // + the story picture ($D346-$D34F)
 const hexBytes = s => Uint8Array.from({ length: s.length / 2 }, (_, i) => parseInt(s.substr(2 * i, 2), 16));
 const h2 = v => v.toString(16).padStart(2, "0"), h4 = v => v.toString(16).padStart(4, "0");
 
@@ -97,14 +100,26 @@ function runShot(rec) {                          // tools/shot_run.py
 // (tools/hole_run.py DISPLAY): rebuilt before it is read
 const DISPLAY = [[0x462, 0x468], [0x373, 0x383], [0x480, 0x481], [0x513, 0x514], [0x426, 0x42A]];
 
-function runHole(rec) {                          // tools/hole_run.py
+function runHole(rec) {                          // tools/hole_run.py, on through the next holes of a round
   const ev = rec.events, joy = rec.joy || {};
   const w = new GolfMemory().loadSnapshot(rec.snapshot);
-  const hole = new Hole(w.wram[6][0x320]);
+  let hole = new Hole(w.wram[6][0x320]);
   const pos = { i: 0 };
   const check = checker(w, ev, joy, pos);
-  const outs = [];
-  let note = "", done = null, records = null, addresses = 0;
+  const outs = [], holes = [];
+  let note = "", records = null, addresses = 0;
+  const sync = () => {                           // to the next address step in the recording
+    let nxt = -1;
+    for (let i = pos.i; i < ev.length; i++) if (ev[i][0] === "A") { nxt = i; break; }
+    if (nxt < 0) return false;
+    const e = ev[nxt];
+    const pages = { 0x300: hexBytes(e[6]), 0x400: hexBytes(e[2]), 0x500: hexBytes(e[7]) };
+    for (const [lo, hi] of DISPLAY) w.wram[6].set(pages[lo & 0xF00].subarray(lo & 0xFF, (lo & 0xFF) + hi - lo), lo);
+    pos.i = nxt;
+    check("A");
+    addresses++;
+    return true;
+  };
   try {
     check(ev[0][0]);
     for (;;) {
@@ -115,31 +130,25 @@ function runHole(rec) {                          // tools/hole_run.py
       else if (first === "L") a = shot.mainLoop(true);
       else a = shot.flightCam(ev[pos.i - 1][4][3]);
       outs.push(H.postShot(w, a));
-      if (H.shotLoopEnd(w, a)) {
+      if (R.afterShot(w, a)) {                   // the hole is over
         const w0 = w.wram[0], f = o => w0[0x880 + o + (w0[0x835] ? 0x40 : 0)];
-        done = [f(0x20), f(0x21), w0[0x83C] | w0[0x83D] << 8];
-        const want = hexBytes(ev[ev.length - 1][5]);
-        const d = range(0, 0x100).filter(k => want[k] !== w0[0x800 + k]);
-        records = d.length ? "differ at " + d.map(k => `$${h4(0xC800 + k)} js ${h2(w0[0x800 + k])} game ${h2(want[k])}`).join(" ") : "match";
-        break;
-      }
-      H.nextPlayer(w);
-      H.shotSetup(w, hole);
-      let nxt = -1;
-      for (let i = pos.i; i < ev.length; i++) if (ev[i][0] === "A") { nxt = i; break; }
-      if (nxt < 0) { note = ` recording ends before shot ${outs.length + 1}`; break; }
-      const e = ev[nxt];
-      const pages = { 0x300: hexBytes(e[6]), 0x400: hexBytes(e[2]), 0x500: hexBytes(e[7]) };
-      for (const [lo, hi] of DISPLAY) w.wram[6].set(pages[lo & 0xF00].subarray(lo & 0xFF, (lo & 0xFF) + hi - lo), lo);
-      pos.i = nxt;
-      check("A");
-      addresses++;
+        holes.push([f(0x20), f(0x21), w0[0x83C] | w0[0x83D] << 8]);
+        if (!ev.slice(pos.i).some(e => e[0] === "A")) {    // the recording ends in this hole's end
+          const want = hexBytes(ev[ev.length - 1][5]);
+          const d = range(0, 0x100).filter(k => want[k] !== w0[0x800 + k]);
+          records = d.length ? "differ at " + d.map(k => `$${h4(0xC800 + k)} js ${h2(w0[0x800 + k])} game ${h2(want[k])}`).join(" ") : "match";
+          break;
+        }
+        if (!R.holeEnd(w)) { note = " the round ended before the recording"; break; }
+        hole = R.holeStart(w);
+      } else R.nextShot(w, hole);
+      if (!sync()) { note = ` recording ends before shot ${outs.length + 1}`; break; }
     }
   } catch (x) {
     if (x instanceof Mismatch) note = " " + x.message;
     else throw x;
   }
-  return { outs, done, records, events: pos.i, addresses, note };
+  return { outs, holes, records, events: pos.i, addresses, note };
 }
 
 let pass = 0, fail = 0;
@@ -153,16 +162,16 @@ for (const [name, [want, wantEvents]] of Object.entries(SHOTS)) {
   report(ok, `shot ${name}: ${r.events} events matched, outcome ${r.outcome === null ? "none" : "$" + h2(r.outcome)}` +
     (ok ? "" : ` (want $${h2(want)} after ${wantEvents} events)`) + r.note);
 }
-for (const [name, [outs, strokes, putts, points, wantEvents]] of Object.entries(HOLES)) {
+for (const [name, [outs, holes, wantEvents]] of Object.entries(HOLES)) {
   if (!name.includes(filter)) continue;
-  const file = path.join(root, `out/hole_${name}.json`);
+  const file = path.join(root, `out/${name}.json`);
   if (!fs.existsSync(file)) { report(false, `${name}: no recording (run tools/hole_suite.py)`); continue; }
   const r = runHole(JSON.parse(fs.readFileSync(file)));
-  const ok = !r.note && r.records === "match" && JSON.stringify(r.outs) === JSON.stringify(outs) && r.events === wantEvents &&
-    r.done && r.done[0] === strokes && r.done[1] === putts && r.done[2] === points;
-  report(ok, `hole ${name}: shots ${r.outs.map(h2).join(" ")}, ${r.addresses} address steps match, ` +
-    (r.done ? `${r.done[0]} strokes, ${r.done[1]} putts, points $${h4(r.done[2])}, records ${r.records}` : "not finished") +
-    `, ${r.events} events` + r.note);
+  const ok = !r.note && r.records === "match" && JSON.stringify(r.outs) === JSON.stringify(outs) &&
+    (!wantEvents || r.events === wantEvents) && JSON.stringify(r.holes) === JSON.stringify(holes);
+  report(ok, `${name}: shots ${r.outs.map(h2).join(" ")}, ${r.addresses} address steps match, ` +
+    r.holes.map(([s, p, pts]) => `${s} strokes ${p} putts`).join(" / ") + (r.holes.length ? `, points $${h4(r.holes[r.holes.length - 1][2])}` : "") +
+    `, records ${r.records}, ${r.events} events` + r.note);
 }
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

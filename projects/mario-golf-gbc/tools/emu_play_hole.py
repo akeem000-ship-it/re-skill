@@ -10,7 +10,8 @@ same play can be replayed with tools/emu_script.py presses.
 
   --plan: each swing chosen by tools/plan_shot.py (the Python engine run from the address snapshot)
   --seek XX: until one is found, look for a swing (and aim) whose outcome is XX (e.g. 03 water, 07 out of bounds)
-usage: emu_play_hole.py OUT.json FRAMES [--state FILE] [--plan] [--seek XX] [--swings P,I P,I ...]
+  --holes N: play on until N holes are done (or the round ends, 10:466D)
+usage: emu_play_hole.py OUT.json FRAMES [--state FILE] [--plan] [--seek XX] [--swings P,I P,I ...] [--holes N]
 """
 import sys, os, json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -82,8 +83,18 @@ def main():
         cur["last"] = cur["f"]
         rec["outcomes"].append([cur["f"], emu.regs()["A"]])
 
+    holes = int(a[a.index("--holes") + 1]) if "--holes" in a else 1
+    cur["holes"] = 0
+
     def hole_done(emu):
+        cur["holes"] += 1
+        print("hole %d done at frame %d" % (cur["holes"], cur["f"]))
+        if cur["holes"] >= holes:
+            cur["done"] = True
+
+    def round_done(emu):
         cur["done"] = True
+    e.hook(0x10, 0x466D, round_done)
     e.hook(0x10, 0x5BA6, menu)
     e.hook(0x10, 0x56B0, address)
     e.hook(0x10, 0x4798, setup)
