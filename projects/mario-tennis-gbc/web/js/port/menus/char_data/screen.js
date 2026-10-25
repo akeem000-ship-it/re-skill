@@ -72,12 +72,41 @@ const ROW = { B0: 0xD000 + 18 * 32, B1: 0xD000 + 20 * 32, B2: 0xD000 + 22 * 32 +
 const run = (band, step) => [RUNS[band][step - 1], ROW[band]];
 const SCREEN_MAP = 0xD000, SCREEN_BACKUP = 0xD430, SCREEN_BLOCKS = SCREEN_HEIGHT * TILEMAP_WIDTH / 16;
 const PAGE_NONE = 4, LEVEL_CAP = 99;
+// PLAY+ STAMINA (engine/plus.js): a fifth stat, its level the story record's +$3F (a byte the game leaves unused). Here it is
+// a strip under SPEED where the grass runs (row 17: "STAMINA" and the level, in the ASCII font the screen has in VRAM bank
+// 0), reached with DOWN from SPEED (UP goes back, LEFT to no page); A there gives it the point: LevelUpPlayer with d = 4 (a
+// level and no skill), noted in the choice log as 4 so B takes it back like any other. Only with P.plus.stamina; the
+// strip shows the level + 1 in the page highlight while chosen, as the pages do.
+const STAMINA_LEVEL = 0x3F, STAMINA_PAGE = 4, STAMINA_STRIP = SCREEN_MAP + 17 * TILEMAP_WIDTH + 10;
+const staminaOn = P => !!(P.plus && P.plus.stamina);
+const staminaSel = P => staminaOn(P) && !!(P.cdStamina && P.cdStamina.sel);
+const stamina = P => P.cdStamina || (P.cdStamina = { sel: false, base: [] });
 const NUM_STATS = 11;
 // story record fields (wStoryModeNameOfMainCharacter + 64 * slot)
 export { F };
 const slotField = (P, off) => storyField(rd(P, "storyCharacterSlot"), off);
 const rlca = a => ((a << 1) | (a >> 7)) & 0xFF;
 const word = (P, addr) => P.rom.u16(BANK, addr);
+// STAMINA: the record's level as the screen started plus the stamina choices in the log
+function syncStaminaLevel(P) {
+  if (!staminaOn(P)) return;
+  P.withWramBank(WRAM_SCENE, () => {
+    const base = stamina(P).base[rd(P, "storyCharacterSlot")];
+    if (base === undefined) return;
+    let n = 0; for (let i = 0, c = rd(P, "charDataChoiceCount"); i < c; i++) if (u8(P, 0xD02A + i) === STAMINA_PAGE) n++;
+    w8(P, slotField(P, STAMINA_LEVEL), Math.min(99, base + n));
+  });
+}
+// STAMINA: the strip into both maps (WRAM 3 tiles, WRAM 2 attributes: palette 0, or 1 chosen), before they go to VRAM
+function drawStaminaStrip(P) {
+  if (!staminaOn(P) || !stamina(P).shown) return;
+  const bank = P.V.wramBank;
+  P.wramBank(WRAM_SCENE);
+  const sel = staminaSel(P), lv = Math.min(99, u8(P, slotField(P, STAMINA_LEVEL)) + (sel ? 1 : 0)), text = "STAMINA " + String(lv).padStart(2);
+  P.wramBank(WRAM_SCREEN); for (let i = 0; i < 10; i++) w8(P, STAMINA_STRIP + i, text.charCodeAt(i));
+  P.wramBank(WRAM_COURT_PLANES); for (let i = 0; i < 10; i++) w8(P, STAMINA_STRIP + i, sel ? 1 : 0);
+  P.wramBank(bank);
+}
 const hasReachedNextLevelExp = (P, slot) => (rom(P, FAR.HasReachedNextLevelExp, { a: slot }).f & FZ) !== 0;
 
 // ---- the screen ----
@@ -142,7 +171,9 @@ export function charDataScreenInitState(P, slot) {
   wr(P, "charDataRevealTimer", 0x0A);
   wr(P, "charDataRevealStep", 3);
   wr(P, "charDataLevelPreview", 3);
+  stamina(P).sel = false; stamina(P).shown = !!rd(P, "charDataViewOnly");   // (shown at once, or once the stats are in)
   if (rd(P, "charDataViewOnly")) return;
+  stamina(P).base[slot] = u8(P, slotField(P, STAMINA_LEVEL));
   wr(P, "charDataPointsWorking", 0);
   wr(P, "charDataLevel", u8(P, slotField(P, F.LEVEL)));
   for (let i = 0; i < 4; i++) {
@@ -161,6 +192,7 @@ export function charDataScreenBuildTilemap(P) {
   charDataScreenLoadUIGraphics(P);
   charDataScreenDrawStats(P);
   charDataScreenDrawPortrait(P);
+  drawStaminaStrip(P);
   P.wramBank(WRAM_SCREEN);
   queueVRAMCopy(P, SCREEN_MAP, vBGMap0, SCREEN_BLOCKS);
   P.wramBank(WRAM_COURT_PLANES);
@@ -292,6 +324,7 @@ export function* animateCharDataStatsReveal(P) {
   }
   yield* waitFrames(P, 6);
   for (let step = 1; step <= 3; step++) { blitRuns(P, [["B4", step]]); yield* flushCharDataTilemaps(P); }
+  stamina(P).shown = true;                                 // STAMINA: the strip with the points box
   for (let step = 1; step <= 3; step++) {
     blitRuns(P, [["B6", step], ["B5", step]]);
     P.wramBank(WRAM_SCENE);
@@ -350,6 +383,7 @@ export function* flushCharDataTilemapChunk(P) {
   const chunk = rd(P, "charDataFlushChunk");
   const [row, rows] = FLUSH_CHUNKS[chunk === 0 ? 0 : chunk === 1 ? 1 : 2];
   const at = row * TILEMAP_WIDTH, blocks = rows * TILEMAP_WIDTH / 16;
+  if (!chunk) drawStaminaStrip(P);
   P.wramBank(WRAM_SCREEN);
   queueVRAMCopy(P, SCREEN_MAP + at, vBGMap0 + at, blocks);
   P.wramBank(WRAM_COURT_PLANES);
@@ -365,6 +399,7 @@ export function writeCharStatsToDisplayBuffer(P) {
   restoreRecordLevels(P);
   for (let i = 0; i < 0x64; i++) wr(P, "charDataChoiceLog", 0, i);
   wr(P, "charDataChoiceCount", 0);
+  syncStaminaLevel(P);
   rom(P, FAR.RefreshPlayerStatsAndGetPtr, { a: rd(P, "storyCharacterSlot") });
 }
 // the record's level and stat levels from wCharDataLevel / wCharDataNewLevels (wCharDataLevels follows)
@@ -406,6 +441,7 @@ export function loadCharStats(P) {
 // the data); on a stat page every other row also marks the two cells before its end with attribute 1
 export function charDataScreenDrawPageColumns(P) {
   P.wramBank(WRAM_SCENE);
+  if (staminaSel(P)) return;                               // STAMINA: the strip is the highlight (not the points box)
   const page = rd(P, "charDataPage"), p2 = rlca(page), p4 = rlca(p2);
   const at = idx(CharDataScreen_DrawPageColumnsTable0, p4);
   let de = P.bus.u8(at + 1) << 8 | P.bus.u8(at);
@@ -483,6 +519,7 @@ export function* charDataScreenInputLoop(P) {
       if (startExits() && edge & PADF_START) finish = true;
       else if (edge & PADF_B) {
         P.wramBank(WRAM_SCENE);
+        if (staminaSel(P)) { stamina(P).sel = false; yield* redraw(P); continue; }   // STAMINA: back to no page
         if (rd(P, "charDataPage") === PAGE_NONE) {
           if (!applyCharStatLevelUp(P).a) return 1;
           yield* redraw(P);                               // (inside ApplyCharStatLevelUp)
@@ -494,6 +531,7 @@ export function* charDataScreenInputLoop(P) {
         finish = yield* pressA(P);
       } else if (edge & PADF_A) finish = yield* pressA(P);
       else {
+        if (yield* moveStaminaSelection(P, edge)) continue;
         const table = edge & 0x10 ? CharDataPageRightTargets_1c : edge & 0x20 ? CharDataPageLeftTargets_1c
           : edge & 0x80 ? CharDataPageDownTargets_1c : edge & 0x40 ? CharDataPageUpTargets_1c : 0;
         if (table) yield* moveCharDataScreenSelection(P, table);
@@ -517,15 +555,16 @@ function* redraw(P, deltas = false) {
 // .pressA: a point to the page under the cursor (noted in the choice log); returns whether the points are done
 function* pressA(P) {
   P.wramBank(WRAM_SCENE);
-  const page = rd(P, "charDataPage");
-  if (page === PAGE_NONE) return false;
+  const toStamina = staminaSel(P), page = toStamina ? STAMINA_PAGE : rd(P, "charDataPage");
+  if (page === PAGE_NONE && !toStamina) return false;
   sound(P, SFX_MENU_SELECT);
   rom(P, FAR.LevelUpPlayer, { a: rd(P, "storyCharacterSlot"), d: page });
   P.wramBank(WRAM_SCENE);
   wr(P, "charDataPointsLeft", rd(P, "charDataPointsLeft") - 1);
-  w8(P, 0xD02A + rd(P, "charDataChoiceCount"), rd(P, "charDataPage"));
+  w8(P, 0xD02A + rd(P, "charDataChoiceCount"), page);
   wr(P, "charDataChoiceCount", rd(P, "charDataChoiceCount") + 1);
   wr(P, "charDataPage", PAGE_NONE);
+  if (toStamina) { stamina(P).sel = false; syncStaminaLevel(P); }
   if (!testGameFlag(P, FLAG_CHAR_DATA_START_EXITS)) {
     if (!hasReachedNextLevelExp(P, rd(P, "storyCharacterSlot"))) return true;
   } else if (u8(P, slotField(P, F.LEVEL)) === LEVEL_CAP) return true;
@@ -621,6 +660,26 @@ export function* moveCharDataScreenSelection(P, table) {
   sound(P, SFX_MENU_MOVE);
   yield* redraw(P, page !== PAGE_NONE);
 }
+// STAMINA: DOWN from SPEED to the strip; on it UP back to SPEED, LEFT to no page, the rest nothing. Returns whether the
+// press was taken (else the game's page tables decide)
+function* moveStaminaSelection(P, edge) {
+  if (!staminaOn(P) || !(edge & 0xF0)) return false;
+  P.wramBank(WRAM_SCENE);
+  const st = stamina(P);
+  if (!st.sel) {
+    if (!(edge & 0x80) || rd(P, "charDataPage") !== 3) return false;
+    st.sel = true; wr(P, "charDataPage", PAGE_NONE);
+    sound(P, SFX_MENU_MOVE);
+    yield* redraw(P);
+    return true;
+  }
+  if (edge & 0x60) {
+    st.sel = false; wr(P, "charDataPage", edge & 0x40 ? 3 : PAGE_NONE);
+    sound(P, SFX_MENU_MOVE);
+    yield* redraw(P, !!(edge & 0x40));
+  }
+  return true;
+}
 // ApplyCharStatLevelUp (1C:5404): take the last point back: the record back to before the level-ups, all choices but
 // the last one given again, the page redrawn. Returns a = 1, or 0 when no choice was made.
 export function applyCharStatLevelUp(P) {
@@ -635,6 +694,7 @@ export function applyCharStatLevelUp(P) {
   }
   wr(P, "charDataChoiceCount", rd(P, "charDataChoiceCount") - 1);
   wr(P, "charDataPage", PAGE_NONE);
+  stamina(P).sel = false; syncStaminaLevel(P);
   return { a: 1 };
 }
 // SelectCharDataConfirmSlot (1C:54E3): page none, the record back to before the level-ups
@@ -663,6 +723,7 @@ export function* setupCharDataScreen(P) {
   blitRuns(P, [["B0", 7], ["B1", 6], ["B2", 6], ["B3", 7], ["B4", 3]]);
   P.wramBank(WRAM_SCENE);
   wr(P, "charDataRevealTimer", 0);
+  drawStaminaStrip(P);
   P.wramBank(WRAM_SCREEN);
   queueVRAMCopy(P, SCREEN_MAP, vBGMap0, SCREEN_BLOCKS);
   P.wramBank(WRAM_COURT_PLANES);
@@ -722,6 +783,7 @@ export function restoreCharData(P) {
     rom(P, FAR.LevelUpPlayer, { a: 0, d: u8(P, hl) });
     hl = (hl + 1) & 0xFFFF; b = (b - 1) & 0xFF;
   } while (b);
+  syncStaminaLevel(P);
 }
 // LoadCharDataScreenGraphics (1C:73F4): the EXP screen's background and the two mugshots
 export function loadCharDataScreenGraphics(P) {

@@ -2,19 +2,34 @@
 // made without PLAY+ replay without it). Each hook is called from the routine it changes:
 //   momentum   three points in a row in your favour and your shots leave the racket about 6% faster until you lose a point
 //              (flow.js scorePoint counts the run, shot.js finalizeShotSpeed applies it)
-//   stamina    a long rally tires both players: past 14 shots they run up to 12% slower and past 16 hit up to 8% softer
-//              (chars.js clampCharXSpeed / clampCharDepthSpeed, shot.js finalizeShotSpeed)
+//   stamina    a long rally tires the players: past 10 + e shots they run up to 12% slower and past 12 + e hit up to 8% softer
+//              (chars.js clampCharXSpeed / clampCharDepthSpeed, shot.js finalizeShotSpeed). e is the player's endurance in
+//              shots from their STAMINA s (plusStamina, as each is loaded): e = 16 s / (s + 16), the slope easing by 30 / (30 + s).
+//              s is the character's speed skills (SPEED, DASH, REACTION, STOP: their mean, 0-9) plus: 2 in an exhibition (both
+//              sides alike: an average character keeps the 14 / 16 shots of before); 2 a STAMINA level for the tour's player and
+//              partner (record +$3F, given at a level-up: port/menus/char_data/screen.js); for the tour's opponents a curve by
+//              the match's place in the tour (as `tour`: 0 at the first junior matches up to 14 at the finals; 2 otherwise)
 //   serve      the serve hit at the top of the toss (the ball nearly still) is up to 7% faster (shot.js shotPlacement, the serve rows)
 //   courts     PHYSICS: Enhanced only: the courts' own bounce and grip bytes pushed apart: clay grips more and sits up, grass skids
 //              low (enhanced.js bounce)
 //   netcord    a ball that clips the top of the net dribbles over from within 12 units of the tape (the game: 6) (ball.js)
-//   fatigue    TOUR+ (tour.js): a player low on the tour's energy tires sooner: the stamina thresholds come down by up to 6 shots
-//              (plus.fatigue 0..1, fixed for the match; stamina must be on)
+//   fatigue    TOUR+ (tour.js): a player low on the tour's energy tires sooner: their side's stamina thresholds come down by up
+//              to 6 shots (plus.fatigue 0..1, fixed for the match; stamina must be on; the tour's player and partner only)
 //   tour       the tour's opponents react two frames slower at the first junior matches, two faster at the finals (chars.js
 //              loadCharacterAttributes, the CPU side of a tour match)
 // Every hook only scales or offsets numbers the game already computes; integers stay integers.
 const TOUR = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0x0A, 0x0B, 0x0C, 0x0D, 0x10, 0x11, 0x12, 0x13, 0x16, 0x17, 0x18];
 const U16 = v => v & 0xFFFF;
+const STAMINA_LEVEL = 0x3F, STORY_RECORDS = [0xC900, 0xC940];       // the story records' unused last byte: the STAMINA level
+const storyMatch = mode => mode === 1 || mode === 2 || mode === 3 || mode === 10;
+// the match's place in the tour (wGameMode, the match list and its entry) as 0..1, or -1 when it is not one of the tour's matches
+function tourStage(m) {
+  const mode = m.u8(0xC8A6), list = m.u8(0xC8F6), idx = m.u8(0xC8F7);
+  if (mode === 2 || mode === 10) return 1;
+  if (!((mode === 1 || mode === 3) && list <= 1)) return -1;
+  let k = 0; for (let i = 0; i < TOUR.length; i++) if (TOUR[i] <= idx) k = i;
+  return k / (TOUR.length - 1);
+}
 
 // after each point (flow.js scorePoint): the current run of points won by each side
 export function plusPoint(E) {
@@ -27,7 +42,7 @@ export function plusShotSpeed(E, bc) {
   let k = 1;
   const side = E.C.index & 1, m = E.mom;
   if (P.momentum && m && m[side] >= 3) k += 0.06;
-  const r = E.S.rallyLength, t = 16 - Math.round(6 * (P.fatigue || 0)); if (P.stamina && r > t) k -= Math.min(0.08, (r - t) * 0.004);
+  const r = E.S.rallyLength, t = 12 + endurance(E); if (P.stamina && r > t) k -= Math.min(0.08, (r - t) * 0.004 * slope(E));
   return k === 1 ? bc : U16(Math.round((bc & 0xFFFF) * k));
 }
 // a serve's speed (shot.js shotPlacement, serve rows): timing against the top of the toss
@@ -39,9 +54,25 @@ export function plusServeSpeed(E, bc) {
 // running speed (chars.js): fatigue in long rallies
 export function plusRunSpeed(E, s) {
   const P = E.plus; if (!P || !P.stamina) return s;
-  const r = E.S.rallyLength, t = 14 - Math.round(6 * (P.fatigue || 0)); if (r <= t) return s;
-  return U16(Math.round((s & 0xFFFF) * (1 - Math.min(0.12, (r - t) * 0.006))));
+  const r = E.S.rallyLength, t = 10 + endurance(E); if (r <= t) return s;
+  return U16(Math.round((s & 0xFFFF) * (1 - Math.min(0.12, (r - t) * 0.006 * slope(E)))));
 }
+// STAMINA (chars.js loadCharacterAttributes): the character's stamina s as it is loaded (r8: its record), kept in E.stamina by index
+export function plusStamina(E, r8) {
+  const P = E.plus, C = E.C, m = E.mem; if (!P || !P.stamina) return;
+  const base = Math.round((r8(0x27) + r8(0x28) + r8(0x29) + r8(0x2A)) / 4), story = storyMatch(m.u8(0xC8A6));
+  let s = base + 2;
+  if (story && !(C.index & 1)) s = base + 2 * Math.min(50, m.u8(STORY_RECORDS[C.index >> 1] + STAMINA_LEVEL));
+  else if (story) { const k = tourStage(m); if (k >= 0) s = base + Math.round(14 * k); }
+  (E.stamina || (E.stamina = [6, 6, 6, 6]))[C.index] = s;
+}
+const staminaOf = E => (E.stamina ? E.stamina[E.C.index & 3] : 6);
+// the hitter's / runner's endurance in shots, less up to 6 for a tired tour player's side (TOUR+)
+function endurance(E) {
+  const s = staminaOf(E), tired = !(E.C.index & 1) && storyMatch(E.mem.u8(0xC8A6)) ? E.plus.fatigue || 0 : 0;
+  return Math.round(16 * s / (s + 16) - 6 * tired);
+}
+const slope = E => 30 / (30 + staminaOf(E));
 // the court's friction and bounce bytes (enhanced.js): [friction, bounce]
 export function plusSurface(E, fB, eB) {
   const P = E.plus; if (!P || !P.courts) return [fB, eB];
@@ -56,10 +87,8 @@ export const plusNetCordBand = E => (E.plus && E.plus.netcord ? 12 : 6);
 // the CPU side of a tour match (chars.js loadCharacterAttributes): reaction delays by the match's place in the tour
 export function plusTourDifficulty(E) {
   const P = E.plus, C = E.C, m = E.mem; if (!P || !P.tour || !(C.index & 1)) return;
-  const mode = m.u8(0xC8A6), list = m.u8(0xC8F6), idx = m.u8(0xC8F7);
-  if (!((mode === 1 || mode === 3) && list <= 1) && mode !== 2 && mode !== 10) return;
-  let k = 0; for (let i = 0; i < TOUR.length; i++) if (TOUR[i] <= idx) k = i;
-  const d = Math.round(2 - 4 * (mode === 2 || mode === 10 ? 1 : k / (TOUR.length - 1)));
+  const k = tourStage(m); if (k < 0) return;
+  const d = Math.round(2 - 4 * k);
   C.aiReactionDelayNear = Math.max(1, Math.min(40, C.aiReactionDelayNear + d));
   C.aiReactionDelayFar = Math.max(1, Math.min(40, C.aiReactionDelayFar + d));
 }

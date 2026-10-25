@@ -17,8 +17,16 @@ import {
   waitJump, waitMove, waitPlayerMove, writeBehaviorCell,
 } from "./common.js";
 import { attachActorWaypointFollower } from "../story/actor_slots.js";
+import { TEXT_PLUS_STAMINA } from "../text/dialogue.js";
 
 const BANK = 0x11;
+// PLAY+ STAMINA (engine/plus.js): the coach's two lines on it (port/text/dialogue.js), before she shows the player round
+function* staminaTalk(P, actor) {
+  if (!(P.plus && P.plus.stamina)) return;
+  yield* setText(P, TEXT_PLUS_STAMINA);
+  yield* speak(P, actor);
+  yield* speak(P, actor);
+}
 const ACTORF_OAM_ATTR = 0x37, OAM_YFLIP = 0x40;
 const OBJ_ALEX_B = 0x56, OBJ_HARRY_B = 0x58;
 const ActorList_11_0 = 0x537D;              // (junior_doubles_11.asm: the arrival scene's actors)
@@ -367,6 +375,7 @@ export function* academyArrivalGreetingScene(P) {
     armAcademyEntranceTileTrigger(P);
     return;
   }
+  yield* staminaTalk(P, ACTOR_ACADEMY_ARRIVAL_EMILY);                 // (PLAY+)
   yield* setText(P, Text_30_426);                                    // .done
   yield* speak(P, ACTOR_ACADEMY_ARRIVAL_EMILY);
   yield* followGuideIntoAcademy(P);
@@ -392,6 +401,10 @@ export function* resumeAcademyGuideTour(P) {
   yield* waitIdle(P, ACTOR_ACADEMY_ARRIVAL_EMILY);
   yield* setText(P, Text_30_428);
   yield* speak(P, ACTOR_ACADEMY_ARRIVAL_EMILY);
+  if (P.plus && P.plus.stamina) {                                    // (PLAY+: STAMINA, then her next line)
+    yield* staminaTalk(P, ACTOR_ACADEMY_ARRIVAL_EMILY);
+    yield* setText(P, Text_30_428 + 1);
+  }
   yield* speak(P, ACTOR_ACADEMY_ARRIVAL_EMILY);
   yield* followGuideIntoAcademy(P);
 }

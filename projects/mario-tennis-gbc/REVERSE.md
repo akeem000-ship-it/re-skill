@@ -1149,6 +1149,7 @@ counters, `wC900` player name, `wC940` second name, `wCA0B/CA8B` rosters, …).
 | +$30-$36 | copy of the template header |
 | +$38-$3B | tour **training values** T0-T3 |
 | +$3C | `wC93C`: nonzero → stats need a rebuild (`02:47C6`) |
+| +$3D-$3F | unused by the game (`ds 3` after the equipment byte, saved with the record); the port's PLAY+ keeps the **STAMINA level** in +$3F (`web/js/engine/plus.js`, `port/menus/char_data/screen.js`) |
 
 **Other save-image fields** (`$C800-$CAFF`, from their readers/writers):
 

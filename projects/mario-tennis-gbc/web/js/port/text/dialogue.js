@@ -32,7 +32,22 @@ const VOICE_SILENT = 0x08;
 // it loads de from the id. So the callers pass the de they have.
 export function fetchDialogueText(P, textId, de) {
   if (textId & 0x8000) { fetchSRAMDialogueText(P, de); return; }
+  if (((textId >> 10) & 0x0F) === TEXT_CODE_PLUS && PLUS_LINES[textId & 0x3FF]) { fetchPlusText(P, PLUS_LINES[textId & 0x3FF]); return; }
   farcall(P, TEXT_BANKS[(textId >> 10) & 0x0F], 0x00, { d: (textId >> 8) & 3, e: textId & 0xFF, b: textId >> 8 });   // FetchDialogueText_XX
+}
+// PLAY+: the port's own lines, as text ids of bank code 13 (DialogueTextFetchers_05 sends 13-15 to bank $30 too; the
+// game uses none of them): 0-1 the coach on STAMINA at the Academy's gate (story_scripts/student_11.js). The game's
+// encoding: $01 a new line, $02 the next page, $03 the end; into wTextBuffer through the 0 that ends it (159 at most).
+const TEXT_CODE_PLUS = 13;
+export const TEXT_PLUS_STAMINA = TEXT_CODE_PLUS << 10;
+const PLUS_LINES = [
+  "One more thing:\x01long rallies wear\x01you out.\x02It's STAMINA. Tired\x01players run slower\x01and hit softer.\x03",
+  "Your breath comes\x01back after every\x01point.\x02Eat well and rest in\x01your dorm room to\x01keep your energy up.\x02When you level up,\x01train STAMINA to\x01last even longer.\x03",
+];
+function fetchPlusText(P, text) {
+  const n = Math.min(text.length, 159);
+  for (let i = 0; i < n; i++) P.bus.w8(0xC600 + i, text.charCodeAt(i));
+  P.bus.w8(0xC600 + n, 0);
 }
 // FetchShortText (05:5CA8): string `textId` of a text bank (bits 13-10, no SRAM case) into wShortTextBuffer
 export function fetchShortText(P, textId) {
@@ -45,6 +60,7 @@ export function fetchShortText(P, textId) {
 export function addTextIdOffset(P, textId, offset, entryF = 0) {
   if (textId & 0x8000) return { hl: textId, f: H | (entryF & C) };
   const h = textId >> 8, f = Z | (entryF & C);                // (the flags of bit 7, h, kept by its push af)
+  if (((h >> 2) & 0x0F) === TEXT_CODE_PLUS && PLUS_LINES[textId & 0x3FF]) return { hl: (textId + offset) & 0xFFFF, f };   // PLAY+
   const sum = ((((h & 3) << 8) | (textId & 0xFF)) + offset) & 0xFFFF;
   const candidate = ((((sum >> 8) | (h & 0x3C)) & 0xFF) << 8) | (sum & 0xFF);
   const count = P.bus.u16(AddTextIdOffsetWordLookupTable + ((h & 0x3C) >> 1));

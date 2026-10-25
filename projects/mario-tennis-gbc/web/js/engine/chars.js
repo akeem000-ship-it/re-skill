@@ -14,7 +14,7 @@
 import * as ball from "./ball.js";
 import * as shot from "./shot.js";
 import * as ai from "./ai.js";
-import { plusRunSpeed, plusTourDifficulty } from "./plus.js";   // PLAY+
+import { plusRunSpeed, plusTourDifficulty, plusStamina } from "./plus.js";   // PLAY+
 
 export const CHARSTATE = { INERT: 0, RALLY: 1, RECOVER: 2, SERVE: 3, AWAIT_SERVE: 4, STANDBY: 5, WALK: 6, POINT_END: 7 };
 export const CHARANIM = {
@@ -135,6 +135,7 @@ export function loadCharacterAttributes(E) {
   C.dropPlacementIndex = (C.swingAttrWord >> 9) & 1;
   if (E.S.debugMatchFlags & 0x02) overrideCharStatsForDebug(E);
   if (E.plus) plusTourDifficulty(E);                                     // PLAY+: the tour's opponents by its stage
+  if (E.plus) plusStamina(E, r8);                                        // PLAY+: STAMINA
 }
 // 07:5CF4 OverrideCharStatsForDebug: a fixed, accurate CPU
 export function overrideCharStatsForDebug(E) {
