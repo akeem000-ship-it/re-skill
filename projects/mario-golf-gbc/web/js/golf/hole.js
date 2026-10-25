@@ -211,8 +211,12 @@ export function addressLoop(sh) {                // from the address step (after
     sh.mark("address");
     const r = sh.address();
     if (r === 0) return sh.afterSwing();
-    if (r6[0x443] === 4) {                       // ~15:47B1 BehindViewTaskStop, ~04:57BA, ~04:4062 (display)
+    if (r6[0x443] === 4) {                       // B: back to the overhead view
+      D.behindViewTaskStop(sh.w);                // 15:47B1
+      D.golferActorShow(sh);                     // 04:57BA
+      D.mapScrollTaskStart(sh.w);                // 04:4062
       V.shotViewUpdate(sh);
+      V.hudDrawWind(sh.w);                       // 12:4A81
     }
     sh.advance(5);                               // WaitFramesCmd 5
     toAddress(sh, A.aimMenu(sh, 1));

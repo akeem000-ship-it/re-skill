@@ -39,6 +39,7 @@ export function runLockstep({ name = "r18", holes = 1, onFrame = () => {}, onMar
   const ev = (kind, mname) => {
     if (kind === "M") {
       if (MARKS[mname]) {
+        ctx.resynced = !ctx.synced;              // the core caught up through frames the native round leaves out
         if (!core.at(...MARKS[mname])) {         // through the captions and screens the native round leaves out: A
           let t = 0;
           core.onFrame = () => core.setHeld((t ^= 1) ? 1 : 0);

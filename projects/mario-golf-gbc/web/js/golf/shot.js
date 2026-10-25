@@ -13,6 +13,7 @@ import * as V from "./view.js";
 import { ballInGreenArea } from "./view.js";
 import { readJoypad } from "./joypad.js";
 import { taskFacade, runFrameTasks } from "./tasks.js";
+import { showCaption, captionMotionTask } from "./captions.js";
 import { vblankDisplay, clearUnusedSprites } from "./render/display.js";
 import * as D from "./render/hooks.js";
 import { ball, rd16, wr16, playerField } from "./memory.js";
@@ -147,8 +148,9 @@ export class Shot {
     this.dispatch = {                            // the frame tasks by ROM address
       "10:4d45": () => { this.ev("T"); ballTask(w, this.hole, this.fx); },   // 10:4D45 BallTask
       "10:55ac": () => S.meterTask(w),           // 10:55AC
-      "11:6e3e": () => { S.animTask(w); D.golfAnimDraw(this); },   // 11:6E3E GolfAnimTask
+      "11:6e3e": () => D.golfAnimDraw(this, S.animTask(w)),        // 11:6E3E GolfAnimTask
       "11:4113": () => this.displayTask(),       // 11:4113 BallDisplayTask
+      "3b:4433": () => captionMotionTask(w),     // 3B:4433 CaptionMotionTask
       ...D.displayTasks(this),                   // tasks that only draw (render/hooks.js)
     };
   }
@@ -212,7 +214,12 @@ export class Shot {
       }
       if (label === "56CC") {
         r6[0x321] = S.missTable(w);
-        this.advance(2);
+        D.hud(w, "hudDrawShotPanel");            // 12:46A6
+        D.hud(w, "hudDrawClubIcon");             // 12:465C
+        this.advance();
+        D.hud(w, "hudDrawPinDistance");          // 12:4CB1
+        this.advance();
+        D.hud(w, "hudDrawLieIcon");              // 12:45F4
         L.clubParams(w);
         label = "56E7";
       }
@@ -336,7 +343,11 @@ export class Shot {
     s[0x85] = 0x2D;
     if (s[0x43] === 4) {
       for (;;) { this.advance(); if (s[0x64]) break; }   // 11:6E34: until the club meets the ball
-    } else this.advance(r6[0x329] === 0x0D ? 0x30 : r6[0x32A] >= 2 ? 0x24 : 0x32);   // 10:4AEF
+    } else {                                     // 10:4AEF PuttWait: the golfer's map sprite swings (04:57A1)
+      const [anim, n] = r6[0x329] === 0x0D ? [4, 0x30] : r6[0x32A] >= 2 ? [8, 0x24] : [3, 0x32];
+      D.golferActorSetAnim(w, anim);
+      this.advance(n);
+    }
     r6[0x35A] = w0[0x8A0]; r6[0x35B] = w0[0x8A1];
     r6[0x35D] = r6[0x32A]; r6[0x35E] = r6[0x32B];
     r6[0x35C] = w0[playerField(w, 0x2B)];
@@ -344,7 +355,11 @@ export class Shot {
     r6[0x359] = w0[playerField(w, 0x29)];
     s[0x47] = s[0x46];
     const f = playerField(w, 0x20);              // 10:477C CountStroke
-    if (w0[f] < 0x14) { w0[f]++; this.advance(); }
+    if (w0[f] < 0x14) {
+      w0[f]++;
+      D.hud(w, w0[0x835] ? "hudDrawPlayer2" : "hudDrawPlayer1");   // 10:4786 HudRedrawCurPlayer
+      this.advance();
+    }
     r6[0x35F] = r6[0x360] = 0;
     r6[0x519] = s[0x05]; r6[0x516] = s[0x02];
     s[0x85] |= 4;
@@ -369,6 +384,7 @@ export class Shot {
     L.shotLaunch(w, this.fx);
     for (let o = 0xCF; o < 0xD5; o++) s[o] = 0;  // 10:706C
     s[0x46] = 0;
+    D.shotLengthTaskStart(w);                    // 12:4F14
     if (r6[0x32A] === 1 && r6[0x329] !== 0x0D && !(r6[0x44F] === 0 && r6[0x450] === 0x3C)) {
       const f = playerField(w, 0x28);            // 10:433B PowerShotUse (unless perfect)
       w.wram[0][f] = (w.wram[0][f] - 1) & 0xFF;
@@ -390,14 +406,19 @@ export class Shot {
       this.advance();
       this.ev("P");
     }
+    D.behindViewTaskStop(w);                     // 15:47B1
+    D.golferActorShow(this);                     // 04:57BA
+    D.golferActorAnim3(w);                       // 04:5808
+    D.mapScrollTaskStart(w);                     // 04:4062
     this.loadView(ballInGreenArea(s));           // 10:4A00
+    V.hudDrawWind(w);                            // 12:4A81
     this.advance();                              // 10:4A0A WaitFramesCmd 1
     return this.afterFlight();
   }
 
   afterFlight() {                                // 10:4A0E
     const s = ball(this.w);
-    if (!(s[0x8E] & 0x10) && s[0x8E] & 0x08) this.fx.push(["cue", 8]);   // the caption ~3B:4339 (display)
+    if (!(s[0x8E] & 0x10) && s[0x8E] & 0x08) { this.fx.push(["cue", 8]); showCaption(this, 8); }   // 3B:4339
     this.advance();                              // 10:4A1E WaitFramesCmd 1
     return this.mainLoop();
   }

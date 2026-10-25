@@ -8,6 +8,7 @@ import * as D from "./display.js";
 import { rd, queueSprite, queueSprite16 } from "./display.js";
 import { testGameFlag } from "./actors.js";
 import { blinkTargetMarker } from "./hud.js";
+import * as g from "../math.js";
 
 const W16 = (r, a) => r[a] | r[a + 1] << 8;
 const shl3 = v => ((v << 3) >> 8) & 0xFF;            // sla l / rla x3: the screen pixel of an 8.8 tile offset
@@ -254,4 +255,23 @@ export function view4Ball(w, p) {                // 11:4879: tile $30 + the size
   let a = (-w.high[0x1B6]) & 0xFF;
   if (a >= 0x1F) a = 0x1F;
   queueSprite(w, p.e, p.d, (0x30 + rd(w, 0x48A3 + (a >> 2))) & 0xFF, 0x08);
+}
+
+// 11:48AB PreviewMarkerView4: the landing preview ($D374 / $D377, height $D37A) seen from the view-4 camera
+// ($D456 / $D458, angle $D45A): rotated (-> $D45C-$D45F), divided by the depth, drawn as tile $3E
+export function previewMarkerView4(w) {
+  const r6 = w.wram[6], W = a => r6[a] | r6[a + 1] << 8;
+  const ang = W(0x45A);
+  const dy = (W(0x377) - W(0x458)) & 0xFFFF, dx = (W(0x374) - W(0x456)) & 0xFFFF;
+  const [xc, xs] = g.mulSinCosSigned(dx, ang);
+  r6[0x45C] = xc & 0xFF; r6[0x45D] = xc >> 8; r6[0x45E] = xs & 0xFF; r6[0x45F] = xs >> 8;
+  const [yc, ys] = g.mulSinCosSigned(dy, (ang + 0x4000) & 0xFFFF);
+  const x = (yc + xc) & 0xFFFF;
+  const z = g.neg16((xs + ys) & 0xFFFF);
+  if (!(z >> 8) && (z & 0xFF) < 0x10) { queueSprite(w, 0x7C, 0x50, 0x3E, 0x08); return; }
+  const b = g.divHLByDE(0x5000, ((z + 0x280) & 0xFFFF) >> 3) & 0xFF;
+  const sx = ((((g.mulHLByAFracSigned(x, b) + 1) & 0xFFFF) << 16 >> 16) >> 1) & 0xFF;
+  const h = (0x80 - W(0x37A)) & 0xFFFF;
+  const sy = ((((g.mulHLByAFracSigned(h, b) + 1) & 0xFFFF) << 16 >> 16) >> 1) & 0xFF;
+  queueSprite(w, (sy + 0x3C) & 0xFF, (sx + 0x50) & 0xFF, 0x3E, 0x08);
 }

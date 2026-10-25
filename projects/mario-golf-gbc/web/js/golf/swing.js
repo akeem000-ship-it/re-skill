@@ -47,7 +47,7 @@ export function animTask(w) {                    // 11:6E3E
     }
     r6[0x467] = a;
     r6[0x466] = rb(0x11, p + 1);
-    return;
+    return true;                                 // a new frame: its tiles are loaded (render/golfer.js)
   }
 }
 

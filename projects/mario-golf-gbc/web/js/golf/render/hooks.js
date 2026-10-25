@@ -8,6 +8,8 @@ import * as H from "./hud.js";
 import * as A from "./actors.js";
 import * as V from "./holeview.js";
 import * as O from "./objects.js";
+import * as Bh from "./behind.js";
+import * as G from "./golfer.js";
 
 const on = w => !!w.vram;
 function notPorted(what) { throw new Error(`${what} is not ported`); }
@@ -33,8 +35,8 @@ export function golferActorTaskStop(w) { unregisterFrameTask(w, 0x04, 0x573F); }
 export function shotLengthTaskStart(w) { registerFrameTask(w, 0x10, 0x12, 0x4F07); } // 12:4F14 ShotLengthTaskStart
 export function shotLengthTaskStop(w) { unregisterFrameTask(w, 0x12, 0x4F07); }      // 12:4F1D ShotLengthTaskStop
 
-export function golfAnimDraw(sh) {               // the drawing part of 11:6E3E GolfAnimTask
-  if (on(sh.w)) notPorted("11:6E3E GolfAnimTask's sprites");
+export function golfAnimDraw(sh, loaded) {       // the drawing part of 11:6E3E GolfAnimTask
+  if (on(sh.w)) Dp.inBank(sh.w, 0x11, () => G.golfAnimDraw(sh.w, loaded));
 }
 
 // frame tasks that only draw: no-ops headless
@@ -47,10 +49,9 @@ export function displayTasks(sh) {
     "04:4072": draw("", () => V.mapScrollTask(w)),
     "04:573f": draw("", () => A.golferActorTask(w, id => sh.sound(id))),
     "50:71b3": draw("", () => V.holeTileAnimTask(w)),
-    "15:47ad": draw("15:47AD BehindViewTask"),
-    "15:47b8": draw("15:47B8 CountLoadFramesTask_15"),
-    "12:4f07": draw("12:4F07 ShotLengthTask"),
-    "3b:4433": draw("3B:4433"),
+    "15:47ad": draw("", () => Bh.drawFlagSprite(w)),
+    "15:47b8": () => { w.wram[0][0x3B6] = (w.wram[0][0x3B6] + 1) & 0xFF; },   // 15:47B8 CountLoadFramesTask_15
+    "12:4f07": draw("", () => H.shotLengthTask(w)),
   };
 }
 
@@ -68,10 +69,26 @@ export function lookCursor(w) { if (on(w)) O.lookCursor(w); }
 export function drawBallObject(w, id) { if (on(w)) O.drawBallObject(w, id); }
 export function cupView(w) { if (on(w)) O.cupView(w); }
 export function view4Ball(w, p) { if (on(w)) O.view4Ball(w, p); }
-export function previewMarkerView4(w) { if (on(w)) notPorted("11:48AB PreviewMarkerView4"); }
+export function previewMarkerView4(w) { if (on(w)) O.previewMarkerView4(w); }
 export function markerIconNormal(w) { if (on(w)) H.markerIconNormal(w); }
 export function markerIconFrame(w, a) { if (on(w)) H.markerIconFrame(w, a); }
 
 // a HUD part by name (render/hud.js), in bank 12
 export function hud(w, name, ...args) { if (on(w)) Dp.inBank(w, 0x12, () => H[name](w, ...args)); }
 export function cupViewLeave(w) { if (on(w)) notPorted("13:4528 CupViewLeave"); }
+
+// ---- the view behind the golfer (render/behind.js) ----
+export function behind(w, part) {
+  if (!on(w)) return;
+  Dp.inBank(w, 0x15, () => [null, Bh.buildPart1, Bh.buildPart2, Bh.buildPart3][part](w));
+}
+export function holeLoadCourseMaps(w) { if (on(w)) { const k = w.high[0x1B0]; w.high[0x1B0] = 0; V.holeLoadMaps(w); w.high[0x1B0] = k; } }
+export function enableLCD(w) { if (on(w)) Dp.enableLCD(w); }
+export function golfAnimInit(w) {                // 11:6D69: the golfer's sprite tiles (11:6E1E LoadGolferSpriteTiles)
+  if (!on(w)) return;
+  Dp.setWramBank(w, 6);
+  Dp.inBank(w, 0x11, () => G.loadGolferSpriteTiles(w, w.wram[6][0x332], 0, 0xA000));
+}
+export function behindViewTaskStop(w) { unregisterFrameTask(w, 0x15, 0x47AD); }      // 15:47B1 BehindViewTaskStop
+export function golferActorSetAnim(w, a) { if (on(w)) A.golferActorSetAnim(w, a); }   // 04:57A1
+export function golferActorAnim3(w) { if (on(w)) A.golferActorAnim3(w); }             // 04:5808
