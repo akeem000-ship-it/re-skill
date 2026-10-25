@@ -33,10 +33,12 @@ export const hookKey = (bank, addr) => (addr < 0x4000 ? addr : (bank << 16) | ad
 export class GamePort {
   // program: { main(P) -> generator (from EntryPoint), softReset(P) -> generator, vblank(P), lcdStat(P), timer(P),
   //            serial(P), hooks: [[bank, addr, fn(P, cpu) (may return a generator)], ...] }
-  // noCpu: the machine without the SM83's instruction set (gb/registers.js) and P.trap on: the game is the JS alone
-  constructor(romBytes, program, { audio = false, sampleRate = 44100, noCpu = false } = {}) {
-    this.gb = new GBC(romBytes, { audio, sampleRate, cpu: !noCpu });
-    this.trap = noCpu;
+  // noCpu: the machine without the SM83's instruction set (gb/registers.js) and P.trap on: the game is the JS alone;
+  // events (by default with noCpu): the hardware run from event to event (nextEvent), not in 4-cycle steps;
+  // synth (by default with events): the sound from gb/synth.js; display (the same): the picture from gb/display.js
+  constructor(romBytes, program, { audio = false, sampleRate = 44100, noCpu = false, events = noCpu, synth = events, display = events } = {}) {
+    this.gb = new GBC(romBytes, { audio, sampleRate, cpu: !noCpu, synth, display });
+    this.trap = noCpu; this.events = events;
     this.rom = new Rom(romBytes);
     this.bus = new Bus(this.gb);
     const { A, V, B } = makeVars(this.bus);
@@ -120,8 +122,9 @@ export class GamePort {
   runHardware(wake = false) {
     const gb = this.gb, m = this.mem, v0 = this.vblanks;
     for (;;) {
-      gb.sync(4);
-      this.tick(4);
+      const c = this.events ? this.nextEvent() : 4;
+      gb.sync(c);
+      this.tick(c);
       if (this.vblanks !== v0) break;
       if (m.iflag & m.ie & 0x1F) {
         if (m.iflag & m.ie & 0x1E) this.dispatch();                      // STAT / timer / serial / joypad mid-frame
@@ -131,6 +134,22 @@ export class GamePort {
     }
     gb.frames++; this.frames++;
     return true;
+  }
+  // EVENTS (P.events, native step 2): the hardware between two things that can matter to the game, in one go: the CPU
+  // cycles (a multiple of 4, as runHardware steps) to the first of: the screen's next mode change (its line drawn,
+  // HBlank, the next line, VBlank: the interrupts it raises), the frame boundary with the LCD off, the timer's
+  // overflow, a serial byte due. Nothing can be raised between, so the interrupts come at the same cycle as in
+  // 4-cycle steps: about 460 jumps a frame instead of 17,556 steps.
+  nextEvent() {
+    const m = this.mem, ppu = this.ppu, tm = this.gb.timer, ds = m.doubleSpeed;
+    if (m.serialPending || this.mem.cable) return 4;
+    let c;
+    if (ppu.lcdc & 0x80) {
+      const d = ppu.ly < 144 ? (ppu.mode === 2 ? 80 : ppu.mode === 3 ? 252 : 456) - ppu.dots : 456 - ppu.dots;
+      c = ds ? d * 2 : d;
+    } else c = ds ? (70224 - this.offDots) * 2 : 70224 - this.offDots;
+    if (tm.tac & 4) c = Math.min(c, (0x100 - tm.tima) * tm.period - tm.counter);
+    return c <= 4 ? 4 : (c + 3) & ~3;
   }
   // ---- CPU time in ported code ----
   // Ported code takes no time, except where the ROM's code waits on the hardware itself (a loop polling rLY, a delay

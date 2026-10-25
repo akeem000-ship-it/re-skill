@@ -138,5 +138,25 @@ serial stay as the hardware the game's JS drives, so pictures and sound are the 
   instruction fails the test. `--nocpu-count` runs them on the core instead and lists them (a survey).
 - Only recordings from power on can be played this way: one from a saved state starts inside the ROM's code.
 
+### Steps 2 and 3: no clocked hardware
+
+With `noCpu` the machine is also built native (each its own option, all on by default with it):
+
+- **events** (port.js `nextEvent`): the hardware runs from one event to the next: the screen's next mode change (its
+  line drawn, HBlank, the next line, VBlank), the frame boundary with the LCD off, the timer's overflow, a serial
+  byte due. Nothing can be raised between two, so every interrupt comes at the cycle it came at in 4-cycle steps:
+  about 460 jumps a frame instead of 17,556 steps.
+- **display** (`gb/display.js`): the picture drawn by a renderer: palettes turned into colours once a line, the
+  background and window tile by tile, no buffers made per line. Every output is ppu.js's, value for value
+  (`node web/tests/port/display_vs_ppu.mjs [--look]` draws every line both ways and compares the picture, the
+  background layer, the tile-map cells, the window and the sprite layer).
+- **synth** (`gb/synth.js`): the sound as a synthesiser: from one output sample or frame-sequencer tick to the next,
+  each channel's waveform moved on by the whole stretch, its timers counting single dots. What the game reads back
+  (NR52, the lengths, envelopes, sweep) is apu.js's exactly; the waveforms are dot exact where apu.js's moved in
+  2-dot steps (`node web/tests/port/synth_vs_apu.mjs`: reads and state the same, the sound about 32 dB alike).
+
+`port_lockstep.mjs --native` plays a recording on the native machine (all of it), `--events` the event clock alone.
+The port is about 1.9 times faster per frame than on the clocked machine with the CPU.
+
 Never commit the ROM or anything extracted from it (`rom/`, `gfx/`, `out/`, `web/gen/`,
 `third_party/.../data|build`).

@@ -6,14 +6,18 @@ import { CPU } from "./cpu.js";
 import { Registers } from "./registers.js";
 import { PPU } from "./ppu.js";
 import { APU } from "./apu.js";
+import { Synth } from "./synth.js";
+import { Display } from "./display.js";
 import { Exec } from "./exec.js";
 
 export class GBC {
-  // cpu: false builds the machine without the instruction set (gb/registers.js): the JS port's hardware (port.js noCpu)
-  constructor(romBytes, { sampleRate = 44100, audio = true, cpu = true } = {}) {
+  // cpu: false builds the machine without the instruction set (gb/registers.js): the JS port's hardware (port.js noCpu);
+  // synth: the sound as gb/synth.js's synthesiser in place of apu.js's clocked channels; display: the picture drawn by
+  // gb/display.js's renderer in place of ppu.js's
+  constructor(romBytes, { sampleRate = 44100, audio = true, cpu = true, synth = false, display = false } = {}) {
     this.mem = new Memory(romBytes);
     this.cpu = cpu ? new CPU(this.mem) : new Registers(this.mem);
-    this.ppu = new PPU(this.mem); this.apu = new APU(sampleRate); this.timer = new Timer(this.mem); this.joypad = new Joypad(this.mem);
+    this.ppu = display ? new Display(this.mem) : new PPU(this.mem); this.apu = synth ? new Synth(sampleRate) : new APU(sampleRate); this.timer = new Timer(this.mem); this.joypad = new Joypad(this.mem);
     this.mem.ppu = this.ppu; this.mem.apu = this.apu; this.mem.timer = this.timer; this.mem.joypad = this.joypad;
     this.mem.machine = this; this.exec = null;       // installRecomp(table) switches to the recompiled blocks
     this.audioOn = audio;

@@ -36,6 +36,7 @@
 //   --nocpu: the port on a machine without the CPU's instruction set (GamePort noCpu): any instruction it would run
 //   fails the test, named;
 //   --nocpu-count: run them on the core, and list them at the end (a survey)
+//   --events: the hardware run from event to event (port.js nextEvent); --native: both, as the page plays
 //   env HOOKS=home/joypad,audio/index: only these modules' hooks (web/js/port/<m>.js); NOHOOKS=1: none
 import { readRecording, newCore, loadRom } from "./engine/corpus.mjs";
 import { diffMachines } from "./port/machine.mjs";
@@ -105,7 +106,7 @@ else if (process.env.HOOKS) {
   prog = { ...entry, hooks };
 } else prog = (await import("../js/port/program.js")).program;
 const powerOn = rec.start.cpu.pc === 0x100;
-const P = new GamePort(loadRom(), powerOn ? prog : { ...prog, *main(P) { yield* P.continueCpu(); } }, { noCpu: a.includes("--nocpu") });
+const P = new GamePort(loadRom(), powerOn ? prog : { ...prog, *main(P) { yield* P.continueCpu(); } }, { noCpu: a.includes("--nocpu") || a.includes("--native"), events: a.includes("--events") || a.includes("--native") });
 loadState(P.gb, rec.start);
 if (a.includes("--nocpu-count")) P.trap = "count";
 let portWin = 1, portIdx = 0;                // the port's window and the boundaries it has passed in it
