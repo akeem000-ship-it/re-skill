@@ -12,7 +12,7 @@ export function portraitArea() {                       // the game's box in CSS 
   const b = document.body, on = b.classList.contains("touch") && innerHeight > innerWidth * PORTRAIT;
   b.classList.toggle("portrait", on);
   if (!on) return null;
-  const w = innerWidth, h = Math.round(Math.min(w * 1.02, innerHeight * 0.58));
+  const w = innerWidth, h = Math.round(Math.min(w * 1.02, innerHeight * (w >= 600 ? 0.62 : 0.58)));   // (a wide upright screen, a foldable's inner one: the deck has room to spare)
   b.style.setProperty("--game-h", h + "px"); b.style.setProperty("--deck-h", (innerHeight - h) + "px");
   return { w, h };
 }

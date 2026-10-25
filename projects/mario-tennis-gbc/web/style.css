@@ -12,11 +12,15 @@
   #pad { display:none; user-select:none; -webkit-user-select:none; touch-action:none; margin:10px auto; width:100%; max-width:480px; grid-template-columns: 1fr 1fr; align-items:center; }
   @media (pointer: coarse) { #pad { display:grid; } }
   body.touch #pad { display:grid; }
-  .dpad { display:grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); gap:4px; justify-content:start; }
+  .dpad { display:grid; grid-template-columns: repeat(3, var(--d, 52px)); grid-template-rows: repeat(3, var(--d, 52px)); gap:4px; justify-content:start; }
   .dpad .k, .btns .k { background:#2c3140; border:1px solid #555; border-radius:8px; color:#fff; font:bold 16px system-ui; display:flex; align-items:center; justify-content:center; touch-action:none; }
   .dpad .k:active, .btns .k:active, .k.on { background:var(--acc); }
-  .btns { display:grid; grid-template-columns: 64px 64px; grid-template-rows: 64px 36px; gap:10px; justify-content:end; align-items:center; }
-  .btns .k { border-radius:50%; width:64px; height:64px; }
+  .btns { display:grid; grid-template-columns: var(--b, 64px) var(--b, 64px); grid-template-rows: var(--b, 64px) 36px; gap:10px; justify-content:end; align-items:center; }
+  .btns .k { border-radius:50%; width:var(--b, 64px); height:var(--b, 64px); }
+  /* a big touch screen held sideways (a foldable's inner screen; full.js sets body.big): bigger buttons for the thumbs */
+  body.touch.big { --b: 84px; --d: 66px; }
+  body.touch.big .btns .k { font-size: 20px; }
+  body.touch.big:not(.portrait) .btns .k.start { width: 150px; height: 38px; font-size: 14px; }
   .btns .k.start { border-radius:18px; width:140px; height:36px; grid-column: 1 / 3; justify-self:end; font-size:13px; }
   /* touch layout (phones, foldables, the Android wrapper): the screen fills the viewport keeping 10:9,
      the controls float over it semi-transparent, the status bar is a thin overlay */

@@ -244,6 +244,7 @@ let aspect = q.get("aspect") || stored("mt-aspect") || "fill"; if (!ASPECTS.incl
 function applyAspect() {
   $("aspect").textContent = "VIEW: " + (aspect === "fill" ? "Fill" : aspect);
   const touch = document.body.classList.contains("touch"), gl = $("gl"), area = portraitArea();   // area: the game's part of an upright screen
+  document.body.classList.toggle("big", touch && !area && Math.min(innerWidth, innerHeight) >= 600);   // a big screen held sideways (a foldable's inner screen): bigger buttons
   const vw = area ? area.w : innerWidth, vh = area ? area.h : innerHeight;
   const box = r => {                          // CSS size of an r-aspect box fitted to the viewport / the portrait game area (touch) or 480 px wide (desktop)
     if (!touch) return { w: 480, h: 480 / r };

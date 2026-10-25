@@ -126,6 +126,11 @@ public class MainActivity extends Activity {
                 | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
     }
     @Override public void onWindowFocusChanged(boolean f) { super.onWindowFocusChanged(f); if (f) immersive(); }
+    /** A foldable's other screen (folding / unfolding), a turn, a new density: the game keeps running (the manifest takes these
+     *  changes instead of restarting the activity); the bars are hidden again and the page gets the new screen's cutout. */
+    @Override public void onConfigurationChanged(android.content.res.Configuration c) {
+        super.onConfigurationChanged(c); immersive(); web.requestApplyInsets(); web.post(this::pushCut);
+    }
 
     // ---- Bluetooth / USB controllers: forward buttons and sticks to the page as a bit mask ----
     private int padMask = 0, hatMask = 0, sentMask = -1;
