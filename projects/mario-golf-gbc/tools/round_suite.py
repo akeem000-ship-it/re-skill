@@ -6,7 +6,9 @@ ends and the next holes' set-up.
 Also out/roundin_r18.json for web/tests/golf_native_round.mjs: the bot plays all 18 holes of the Stroke round
 (emu_play_hole.py --plan --holes 18; deterministic) and tools/emu_round_inputs.py records its joypad, address
 steps, outcomes and hole ends.
-usage: round_suite.py [NAME ...]   (r3, r18)
+And out/roundin_cpu18.json: the computer golfer plays the 18 holes (player 1's PlayerField $13 = 1, poked at
+GolfRound's entry after a fresh boot; A every 20 frames for the captions).
+usage: round_suite.py [NAME ...]   (r3, r18, cpu18)
 """
 import json
 import sys, os, subprocess
@@ -28,11 +30,17 @@ def r18():
                "--press"] + presses))
 
 
+def cpu18():
+    print(subprocess.run([sys.executable, "tools/emu_round_inputs.py", "out/roundin_cpu18.json", "80000", "--boot",
+                          "--poke", "C893=01", "--every", "20", "--holes", "18"],
+                         cwd=HERE, capture_output=True, text=True).stdout.strip())
+
+
 def main():
-    names = [x for x in sys.argv[1:] if not x.startswith("--")] or list(CASES) + ["r18"]
+    names = [x for x in sys.argv[1:] if not x.startswith("--")] or list(CASES) + ["r18", "cpu18"]
     for name in names:
-        if name == "r18":
-            r18()
+        if name in ("r18", "cpu18"):
+            {"r18": r18, "cpu18": cpu18}[name]()
             continue
         state, frames, presses = CASES[name]
         out = subprocess.run([sys.executable, "tools/emu_shot_record.py", "out/round_%s.json" % name, str(frames),

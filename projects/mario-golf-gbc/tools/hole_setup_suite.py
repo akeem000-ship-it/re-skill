@@ -20,6 +20,9 @@ CASES = {                                       # name: pokes at GolfRound's ent
     "m2look": ["C836=02", "C837=03", "--menu", "10:select", "200:select", "230:right:70", "320:b"],
     "m3putt": ["C836=00", "C837=04", "--menu", "10:b", "30:b", "50:left:20", "90:b", "110:select"],
     "m4long": ["C836=03", "C837=07", "FFFC=2468", "--menu", "5:left:100", "120:down", "135:down", "150:down", "170:b"],
+    # the computer golfer plays player 1 (PlayerField $13 = 1): its aim (10:5978, bank 3C) up to its address step
+    "cpu1": ["C893=01"], "cpu2": ["C893=01", "C836=02", "C837=03", "FFFC=1234"], "cpu3": ["C893=01", "C836=05", "C837=12"],
+    "cpu4": ["C893=01", "C836=00", "C837=04", "FFFC=beef"],
 }
 
 

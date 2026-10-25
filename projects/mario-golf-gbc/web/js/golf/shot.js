@@ -189,7 +189,7 @@ export class Shot {
       if (label === "56B6") {
         S.meterReset(w);
         this.advance();
-        if (s[0xD7]) throw new Error("the computer's swing (~10:5643) is not ported");
+        if (s[0xD7]) return this.cpuSwing();
         s[0x53] = 0;
         s[0x51] = 1;
         label = "56CC";
@@ -263,6 +263,35 @@ export class Shot {
       s[0x4E] = (s[0x4E] + 1) & 0xFF;
       if (s[0x4E] === 0x8A) return b ? this.swingEnd(true) : this.swingOff();
     }
+  }
+
+  // 10:5643 SwingMeterCPU: the computer's swing, no buttons: the cursor runs up the whole meter ($3C frames) and
+  // the power is taken where it passes wSwingTargetPower (the putter swings there and then); with the d-pad of
+  // wSwingTargetPad, back down to wSwingTargetImpact (perfect at 0). (Sounds $90, $5E, ~10:5534 MaxMissSound.)
+  cpuSwing() {
+    const w = this.w, s = ball(w), r6 = w.wram[6];
+    s[0x4D] = 0;
+    S.animStart(w, 1);                           // 11:6D8F
+    for (let c = 0x3C; c; c--) {
+      s[0x4E] = (s[0x4E] + 1) & 0xFF;
+      s[0x4F] = s[0x4E];
+      this.advance();
+      if (r6[0x4D8] === s[0x4E]) {
+        s[0x50] = r6[0x4D8];
+        if (r6[0x329] === 0x0D) { S.animStart(w, 2); return 0; }
+      }
+    }
+    if (s[0x50] === 0x3C) s[0x52] = 1;           // wSwingFullPower
+    s[0x4D] = r6[0x4DA];
+    S.setImpactFromPad(w, r6[0x4DA]);
+    do {
+      s[0x4E] = (s[0x4E] - 1) & 0xFF;
+      s[0x4F] = s[0x4E];
+      this.advance();
+    } while (r6[0x4D9] !== s[0x4E]);
+    if (s[0x4F] === 0) s[0x51] = 1;              // wSwingPerfect
+    S.animStart(w, 2);
+    return 0;
   }
 
   swingEnd(impact) {                             // 10:587A (downswing; perfect at cursor 0) and 10:588D

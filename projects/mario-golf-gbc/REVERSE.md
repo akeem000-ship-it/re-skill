@@ -79,8 +79,9 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + round.js: after a shot, the stroke limit, hole end, next hole, round end (mode 3) | 17,900 | 7.38% |
 | + frame-exact set-up: camera, fades, the aiming menu and target marker (aim.js, view.js, camera.js, screen.js) | 21,904 | 9.03% |
 | + the computer golfer's shot planner, all of bank 3C's planning (ai.js) | 29,973 (web/js/golf; `--dir golf`) | 12.35% |
+| + the computer golfer in play: its turn of the aiming menu (10:5978) and its swing (SwingMeterCPU 10:5643) | 30,105 | 12.40% |
 
-(All sources together, with the sound driver of web/js/sound: 33,924 bytes, 13.98%.)
+(All sources together, with the sound driver of web/js/sound: 34,056 bytes, 14.03%.)
 
 The JS engine (`rom.js` ROM and LZ access, `memory.js` the RAM layout, `math.js`, `ball.js`, `cup.js`,
 `launch.js`, `swing.js`, `shot.js`, `hole.js`, `joypad.js`, `round.js`) is checked by two Node tests:
@@ -92,8 +93,8 @@ The JS engine (`rom.js` ROM and LZ access, `memory.js` the RAM layout, `math.js`
   intro fly-over (180 frames on the green, the camera's pan until CameraAtGoal), StrongWindIntro, ShotSetup, the
   aiming menu (club changes, aim turning with its acceleration, B shot modes and putter ranges, Select's look at
   the pin) and the load of the view behind the golfer, with the joypad the game read: every AdvanceFrame's RAM
-  ($C800-$C8FF, WRAM6 $D300-$D5FF except camera/HUD/caption bytes) and the steps' frames match on 20 cases
-  (tools/hole_setup_suite.py: holes of courses 0-10, random seeds, menus used), the landing preview and target
+  ($C800-$C8FF, WRAM6 $D300-$D5FF except camera/HUD/caption bytes) and the steps' frames match on 24 cases
+  (tools/hole_setup_suite.py: holes of courses 0-10, random seeds, menus used, the computer golfer), the landing preview and target
   marker included; with `--minimal` the same from zeroed RAM plus only the inputs (records `$C800-$C8FF`, seed
   `$FFFC`, event overrides `$D4DE-$D4EF`).
 - `web/tests/golf_ai_routines.mjs`: the computer golfer (`ai.js`, bank 3C: CpuPlanShotMain 3C:426A and the 40
@@ -106,6 +107,13 @@ The JS engine (`rom.js` ROM and LZ access, `memory.js` the RAM layout, `math.js`
   circle for ever: the game hangs; JS throws there); NextAimOffset indexes its table with an 8-bit `d x 2`;
   CpuFindClearAim stores its caller's leftover bc at `$D553`; CpuClubDistanceForLie uses the lie row of the
   current club, not the one asked; CpuHazardNear scans only the first row; route tables past hole `$63` read code.
+  In play (`aim.js` cpuAim, `shot.js` cpuSwing): a golfer whose PlayerField `$13` is 1 (`$D4D7`) gets
+  CpuPlanShotMain's club, mode, aim and swing targets (`$D4D8` power, `$D4D9` impact, `$D4DA` d-pad); the marker
+  slides out over 3 frames, then 60 frames; the CPU swing runs the cursor the whole way up ($3C frames, the power
+  taken where it passes the target; the putter stops there), then down to the impact target.
+  The hole set-up cases cpu1-cpu4 (player 1 poked to the computer at GolfRound's entry) match frame by frame to the
+  address step, and `golf_native_round.mjs cpu18` (tools/round_suite.py cpu18) has the computer play all 18 holes
+  of the Stroke round: all 58 shots, address steps and hole-end records match the game.
 - `web/tests/golf_native_round.mjs`: **all 18 holes of the Stroke practice round played natively** (game.js:
   GolfRound from its entry, no state taken from the game on the way): with the swings' buttons a bot played in the
   game (tools/round_suite.py r18: tools/emu_round_inputs.py), all 69 outcomes, the ball, club and aim at all 69

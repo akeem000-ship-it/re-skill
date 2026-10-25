@@ -11,6 +11,7 @@ import * as C from "./camera.js";
 import { pinDist } from "./cup.js";
 import { ball, rd16, wr16, playerField as pf } from "./memory.js";
 import { loadShotView, aimMarker } from "./view.js";
+import { planShot } from "./ai.js";
 
 function notPorted(what) { throw new Error(`${what} is not ported`); }
 
@@ -119,6 +120,29 @@ export function smartAim(w, hole) {              // 10:6406 SmartAim: at the cup
   }
 }
 
+// 10:5978: the computer golfer's turn of the menu: CpuPlanShotMain 3C:426A picks the club, shot mode, aim and
+// the swing it will make (wSwingTargetPower $D4D8, wSwingTargetImpact $D4D9, the d-pad wSwingTargetPad $D4DA);
+// the marker slides out, then a second's pause. Returns 0 (as A's swing).
+function cpuAim(sh) {
+  const w = sh.w, r6 = w.wram[6];
+  const p = planShot(w, sh.hole);
+  r6[0x329] = p.club;
+  r6[0x32A] = r6[0x32B] = p.mode;
+  wr16(r6, 0x418, p.aim);
+  r6[0x4D9] = p.impact; r6[0x4D8] = p.power; r6[0x4DA] = p.pad;
+  r6[0x44D] = 0xF0;
+  r6[0x438] = 2;                                 // wCameraMode
+  sh.advance();
+  r6[0x321] = S.missTable(w);                    // 10:6907
+  L.clubParams(w);                               // 10:5EEF
+  r6.copyWithin(0x42A, 0x426, 0x42A);
+  slideOut(sh);                                  // (10:5B81 HudRedrawPart c = 3: display)
+  aimMarker(w);                                  // 10:6145
+  placeTargetMarker(w);                          // 40:640E (10:5A2E stores its hl, the y it left, again)
+  sh.advance(0x3C);                              // WaitFramesCmd 60
+  return 0;
+}
+
 function aimStep(w) {                            // 08:60E6 AimStepForDistance and 10:5EB9 AimStepAccel
   const r6 = w.wram[6];
   const hl = L.baseDistance(w);
@@ -138,6 +162,11 @@ function slideMarker(sh) {                       // 10:5C87-10:5D0A: club set-up
   L.clubParams(w);                               // 10:5EEF
   r6[0x480] = 0;
   r6.copyWithin(0x42A, 0x426, 0x42A);
+  slideOut(sh);
+}
+
+function slideOut(sh) {                          // the marker from $D42A/$D42C to the club's distance in 3 frames
+  const w = sh.w, r6 = w.wram[6];
   const [dx, dy] = g.mulSinCos(L.baseDistance(w), rd16(r6, 0x418));   // 10:5EE2 TargetMarker
   for (let b = 1; b <= 3; b++) {
     for (const [o, base, d] of [[0x426, 0x401, dx], [0x428, 0x404, dy]]) {
@@ -174,7 +203,9 @@ export function aimMenu(sh, a) {
   r6[0x480] = r6[0x382] = 0;
   sh.advance(4);                                 // the HUD redrawn (12:4AF6, 12:46A6, 12:465C, 12:4968, 12:4CA6)
   r6[0x513] = 0;
-  if ([1, 2, 3].includes(r6[0x4D7])) notPorted("the computer's aiming (~10:5943-~10:5978)");
+  if (r6[0x4D7] === 1) return cpuAim(sh);
+  if (r6[0x4D7] === 2) notPorted("the replayed stroke (~10:5973)");
+  if (r6[0x4D7] === 3) notPorted("link play (~10:5943)");
   r6[0x44D] = 0xF0;
   r6[0x438] = r6[0x443] ? 4 : 2;                 // the camera on the target marker (the cup on the green)
   r6[0x4D4] = 1;

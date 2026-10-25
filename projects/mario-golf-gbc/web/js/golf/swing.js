@@ -147,9 +147,13 @@ export function previewOn(w) {                   // 11:4113's views 0, 1 and 4-6
 }
 
 export function meterTask(w) {                   // 10:55AC: the d-pad held during the swing
-  const r6 = w.wram[6], held = w.high[0x190];
-  r6[0x44D] = held;
-  const i = (((held >> 3) | (held << 5)) & 0xFF) & 0x1E;
+  const held = w.high[0x190];
+  w.wram[6][0x44D] = held;
+  setImpactFromPad(w, held);
+}
+
+export function setImpactFromPad(w, a) {         // 10:55B7: wImpactSide / wImpactHeight from ImpactPadTable 10:55CE
+  const r6 = w.wram[6], i = (((a >> 3) | (a << 5)) & 0xFF) & 0x1E;
   r6[0x44B] = rb(0x10, 0x55CE + i); r6[0x44C] = rb(0x10, 0x55CF + i);
 }
 
