@@ -21,7 +21,7 @@ export class EngineMatch {
     // UI the page draws itself: the pause menu waits for START again; message windows wait for A
     E.pauseMenu = function* () { this.paused = true; do yield "frame"; while (!(E.mem.u8(0xFF94) & PAD.START)); this.paused = false; }.bind(this);
     E.messageWindow = function* (_, text) { this.message = text; do yield "frame"; while (!(E.mem.u8(0xFF94) & (PAD.A | PAD.B))); this.message = null; }.bind(this);
-    this.G = setup.runMatch(E, { vblankCounter: (Math.random() * 256) | 0 });
+    this.G = setup.runMatch(E, { vblankCounter: cfg.seed ?? ((Math.random() * 256) | 0) });   // (seed: a fixed start for tests)
     this.G.next();                                                        // up to the first frame
   }
   // one Game Boy frame with the pad held this frame; returns the events of the frame

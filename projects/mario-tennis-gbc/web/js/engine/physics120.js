@@ -22,7 +22,7 @@ export class Physics120 extends EnhancedPhysics {
   step(E) {
     const S = E.S, m = E.mem, k = this.k;
     if (this.launchFrame(S)) this.launch(E);
-    S.ballBounceEvent = 0;
+    S.ballBounceEvent = 0; this.bounceHalf = -1;                      // (which half-step bounced this frame: for tests)
     const from = { X: m.s32(0xC400) / 65536, Y: m.s32(0xC404) / 65536, Z: m.s32(0xC408) / 65536 };
     let damped = false;
     for (let h = 0; h < 2; h++) {
@@ -42,7 +42,7 @@ export class Physics120 extends EnhancedPhysics {
         S.ballHeightFull = -S.ballHeightFull | 0;
       } else {                                                             // through the ground: reflected, the model's bounce
         S.ballHeightFull = -S.ballHeightFull | 0;
-        S.ballBounceEvent = 1;
+        S.ballBounceEvent = 1; this.bounceHalf = h;
         const r = this.bounce(vx, vy, Math.max(vzd, 0), tau, sig, ...plusSurface(E, S.courtSurfaceFriction, S.courtSurfaceBounce), k);
         m.w24(0xC420, S24(r.vx)); m.w24(0xC423, S24(r.vy)); S.ballTopspin = Math.trunc(r.tau); S.ballSideSpin = Math.trunc(sig * k.SIDE_BOUNCE);
         if (r.up < k.REST) { S.ballHeightFull = 0; m.w24(0xC426, 0); } else m.w24(0xC426, S24(-r.up));
