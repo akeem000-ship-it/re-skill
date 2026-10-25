@@ -33,6 +33,9 @@
 // than the ROM: it went another way and runs on without coming back), the test stops and says so (FAIL).
 // usage: node web/tests/port_lockstep.mjs [a.mtrec] [--frames N] [--show K] [--stop] [--resync]
 //   --resync: after any difference, copy the ROM's state into the port and go on
+//   --nocpu: the port on a machine without the CPU's instruction set (GamePort noCpu): any instruction it would run
+//   fails the test, named;
+//   --nocpu-count: run them on the core, and list them at the end (a survey)
 //   env HOOKS=home/joypad,audio/index: only these modules' hooks (web/js/port/<m>.js); NOHOOKS=1: none
 import { readRecording, newCore, loadRom } from "./engine/corpus.mjs";
 import { diffMachines } from "./port/machine.mjs";
@@ -102,8 +105,9 @@ else if (process.env.HOOKS) {
   prog = { ...entry, hooks };
 } else prog = (await import("../js/port/program.js")).program;
 const powerOn = rec.start.cpu.pc === 0x100;
-const P = new GamePort(loadRom(), powerOn ? prog : { ...prog, *main(P) { yield* P.continueCpu(); } });
+const P = new GamePort(loadRom(), powerOn ? prog : { ...prog, *main(P) { yield* P.continueCpu(); } }, { noCpu: a.includes("--nocpu") });
 loadState(P.gb, rec.start);
+if (a.includes("--nocpu-count")) P.trap = "count";
 let portWin = 1, portIdx = 0;                // the port's window and the boundaries it has passed in it
 const STALL_FRAMES = 300;                    // frames the port may pass in a window beyond the ROM's
 const portPics = [];                         // [ROM boundary, scanline hashes]
@@ -307,6 +311,7 @@ for (const [n, h] of portPics) {
   else { picBad++; log(`picture of ROM frame ${n} differs (${lines} scanlines)`); }
 }
 if (courseChanged) console.log(courseChanged);
+if (P.trap) console.log(`NO CPU: ${P.trapped ? [...P.trapped].map(([k, n]) => `${(k >>> 16).toString(16)}:${(k & 0xFFFF).toString(16)} ×${n}`).join(", ") : "no instruction run on the CPU"}`);
 if (stalled) console.log(stalled);
 console.log(`${recPath}: ${core.vblanks} frames, ${compared} AdvanceFrames compared, ${bad} with RAM/state differences` +
   ` (${timingUnexplained} of them after a timing event; +${timingDiffs} timing, +${soundDiffs} sound timing only); ${picCompared} pictures compared, ${picBad} differ (+${picTiming} timing);` +

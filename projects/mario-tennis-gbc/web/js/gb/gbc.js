@@ -3,14 +3,16 @@
 // the CPU clock which doubles in CGB double-speed mode).
 import { Memory, Timer, Joypad } from "./mem.js";
 import { CPU } from "./cpu.js";
+import { Registers } from "./registers.js";
 import { PPU } from "./ppu.js";
 import { APU } from "./apu.js";
 import { Exec } from "./exec.js";
 
 export class GBC {
-  constructor(romBytes, { sampleRate = 44100, audio = true } = {}) {
+  // cpu: false builds the machine without the instruction set (gb/registers.js): the JS port's hardware (port.js noCpu)
+  constructor(romBytes, { sampleRate = 44100, audio = true, cpu = true } = {}) {
     this.mem = new Memory(romBytes);
-    this.cpu = new CPU(this.mem);
+    this.cpu = cpu ? new CPU(this.mem) : new Registers(this.mem);
     this.ppu = new PPU(this.mem); this.apu = new APU(sampleRate); this.timer = new Timer(this.mem); this.joypad = new Joypad(this.mem);
     this.mem.ppu = this.ppu; this.mem.apu = this.apu; this.mem.timer = this.timer; this.mem.joypad = this.joypad;
     this.mem.machine = this; this.exec = null;       // installRecomp(table) switches to the recompiled blocks
@@ -32,6 +34,7 @@ export class GBC {
   // run one instruction and sync the hardware
   stepInstruction() {
     if (this.exec) { this.exec.step(); return; }
+    if (!this.cpu.step) throw new Error("this machine has no CPU (built with cpu: false)");
     const cpuCycles = this.cpu.step();
     this.sync(cpuCycles);
   }

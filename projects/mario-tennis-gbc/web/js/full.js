@@ -269,25 +269,26 @@ function setPreset(name) {                  // court camera preset (CAM button c
 }
 let hdLast = 0, hdDt = 16;
 // INTRO: while the walk-out holds the game, a copy of the machine plays on with no buttons pressed, for its music only (the court music
-// goes on instead of silence); it is dropped when the match starts and the game itself carries on from where it was held
-let recomp = null, introGb = null, introAcc = 0, introLast = 0;
+// goes on instead of silence); it is dropped when the match starts and the game itself carries on from where it was held. With the
+// port the copy runs only the sound driver (UpdateSoundEngine 00:2F1A, the port's JS) and the hardware, its interrupts off: no CPU needed
+let recomp = null, introGb = null, introPort = null, introAcc = 0, introLast = 0;
 function introMusic(now) {
   if (!introGb) {
-    try { introGb = new GBC(gb.mem.rom, { sampleRate: 44100, audio: true }); if (recomp) { introGb.installRecomp(recomp.T); if (recomp.sig) introGb.exec.setHramSig(recomp.sig); } loadState(introGb, saveState(gb)); }
+    try { if (port) { introPort = new port.constructor(gb.mem.rom, port.program, { sampleRate: 44100, audio: true, noCpu: port.trap === true }); introGb = introPort.gb; loadState(introGb, saveState(gb)); introPort.ime = false; } else { introGb = new GBC(gb.mem.rom, { sampleRate: 44100, audio: true }); if (recomp) { introGb.installRecomp(recomp.T); if (recomp.sig) introGb.exec.setHramSig(recomp.sig); } loadState(introGb, saveState(gb)); } }
     catch (e) { console.warn("intro music", e); introGb = false; return; }
     introAcc = 0; introLast = now;
   }
   if (!introGb) return;
   introAcc = Math.min(introAcc + now - introLast, STEP * 4); introLast = now;
   for (; introAcc >= STEP; introAcc -= STEP) {
-    introGb.setInput(stateOf(0)); introGb.runFrame();
+    if (introPort) { introPort.callRom(0, 0x2F1A); introPort.runHardware(); } else { introGb.setInput(stateOf(0)); introGb.runFrame(); }
     if (audioReady && anode) { const n = introGb.apu.drain(abuf); if (n) anode.port.postMessage(abuf.slice(0, n)); } else introGb.apu.outPos = 0;
   }
 }
 function loop(now) {
   if (gb && !paused && voxel && view3d && ((voxel.intro && voxel.intro.holding) || (voxel.stadium && voxel.stadium.holding))) { last = now; acc = 0; renderedAt = -1; draw(1); if (voxel.intro && voxel.intro.holding) introMusic(now); }   // (BIG MOMENTS: the trophy ceremony holds too)   // INTRO: the game waits, the camera moves, the music plays on
   else if (gb && !paused) {
-    introGb = null;
+    introGb = null; introPort = null;
     if (!last) last = now;
     acc = Math.min(acc + (now - last), STEP * 4); last = now;
     const per = turbo || modes.fastText(lastInp) ? 4 : 1;   // (MODES: FAST TEXT)
@@ -341,7 +342,8 @@ async function makePort(bytes) {
     hooks = [];
     for (const m of want.split(",")) hooks.push(...(await import(`./port/${m}.js`)).HOOKS);
   }
-  const P = new GamePort(bytes, { ...entry, hooks }, { audio: true, sampleRate: 44100 });
+  // NO CPU (the default): the machine without the Game Boy's CPU, nothing of the cartridge's code run (?cpu: with it)
+  const P = new GamePort(bytes, { ...entry, hooks }, { audio: true, sampleRate: 44100, noCpu: want === "all" && !q.has("cpu") });
   if (physicsMode() === "enhanced") { const { EnhancedPhysics } = await import("./engine/enhanced.js"); P.physics = new EnhancedPhysics(); }
   P.evenNet = netMode() === "even";
   P.tourLength = tourLen();
@@ -368,7 +370,7 @@ async function loadRom(buf) {
   if (voxel) { voxel.attach(gb, new Rom(gb.mem.rom)); voxel.hdText = hd; }      // a ROM loaded after the 3D view was created
   // the statically translated game (tools/recomp.py -> gen/game.js) runs the traced code as native
   // functions; without it everything is interpreted (same results, see web/tests/recomp_vs_interp.mjs)
-  if (port) $("romstatus").textContent += ` · JS port (${port.hooks.size} routines)`;
+  if (port) $("romstatus").textContent += ` · JS port (${port.hooks.size} routines${port.trap === true ? ", no Game Boy CPU" : ""})`;
   else try { const mod = await import("../gen/game.js"); const T = {}; mod.install(T); gb.installRecomp(T); if (mod.HRAM_SIG) gb.exec.setHramSig(mod.HRAM_SIG); recomp = { T, sig: mod.HRAM_SIG }; $("romstatus").textContent += " · recompiled code"; } catch (e) { $("romstatus").textContent += " · interpreter"; }
   loadSave();
   if (port) { session.start(gb, recMeta()); sessionLook = creator.look; analogAt = "stick:"; }

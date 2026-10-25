@@ -123,5 +123,20 @@ in place.
   covered one, reached only from covered code or data (a jump-table case, an inner step of a routine ported
   whole), or unused; it lists any that is none of these.
 
+## Without the Game Boy's CPU (the native game, step 1)
+
+Every routine is JavaScript, so the port needs nothing of the SM83 but its registers and stack: the calling
+convention the game's code had (registers in, registers out, return addresses on the stack, the interrupt master
+enable). `new GamePort(rom, program, { noCpu: true })` builds the machine without the instruction set
+(`gb/registers.js` in place of `gb/cpu.js`) and turns `P.trap` on: what the CPU did without running an instruction
+(taking an interrupt: IME off, the IF bit cleared, the return address pushed, the vector, 20 cycles; idling while
+halted) is done in `port.js noCpuStep`, and an instruction it would run throws, naming its address. The page plays
+this way by default (status: "no Game Boy CPU"; `?cpu` builds it with the CPU). The memory map, PPU, APU, timer and
+serial stay as the hardware the game's JS drives, so pictures and sound are the cartridge's, byte for byte.
+
+- `node web/tests/port_lockstep.mjs REC --nocpu`: the strict lockstep with the port on the CPU-less machine; any
+  instruction fails the test. `--nocpu-count` runs them on the core instead and lists them (a survey).
+- Only recordings from power on can be played this way: one from a saved state starts inside the ROM's code.
+
 Never commit the ROM or anything extracted from it (`rom/`, `gfx/`, `out/`, `web/gen/`,
 `third_party/.../data|build`).

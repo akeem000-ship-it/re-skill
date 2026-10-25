@@ -1,13 +1,11 @@
 // SM83 (Game Boy CPU) interpreter over gb/mem.js. step() executes one instruction (or services an
 // interrupt) and returns the T-cycles it took. Flags: Z $80, N $40, H $20, C $10.
+import { Registers } from "./registers.js";
 const Z = 0x80, N = 0x40, H = 0x20, C = 0x10;
 
-export class CPU {
+export class CPU extends Registers {
   constructor(mem) {
-    this.m = mem;
-    this.a = 0; this.f = 0; this.b = 0; this.c = 0; this.d = 0; this.e = 0; this.h = 0; this.l = 0;
-    this.sp = 0; this.pc = 0; this.ime = false; this.eiPending = false; this.halted = false; this.haltBug = false;
-    this.stopped = false;
+    super(mem);
     this.cyc = 0;                       // cycles accumulated by recompiled code since the last hardware sync
   }
   // Prologue of every instruction inside recompiled code (same order as step()): service a pending
@@ -49,21 +47,8 @@ export class CPU {
     }
     return op < 0xC0 ? v & ~(1 << bit) : v | (1 << bit);
   }
-  // post-boot register state of a CGB running a CGB-aware cartridge
-  reset() {
-    this.a = 0x11; this.f = 0x80; this.b = 0x00; this.c = 0x00; this.d = 0xFF; this.e = 0x56; this.h = 0x00; this.l = 0x0D;
-    this.sp = 0xFFFE; this.pc = 0x0100; this.ime = false; this.eiPending = false; this.halted = false; this.stopped = false;
-  }
-  get hl() { return (this.h << 8) | this.l; } set hl(v) { this.h = (v >> 8) & 0xFF; this.l = v & 0xFF; }
-  get bc() { return (this.b << 8) | this.c; } set bc(v) { this.b = (v >> 8) & 0xFF; this.c = v & 0xFF; }
-  get de() { return (this.d << 8) | this.e; } set de(v) { this.d = (v >> 8) & 0xFF; this.e = v & 0xFF; }
-  get af() { return (this.a << 8) | this.f; } set af(v) { this.a = (v >> 8) & 0xFF; this.f = v & 0xF0; }
-  rd(a) { return this.m.read(a & 0xFFFF); }
-  wr(a, v) { this.m.write(a & 0xFFFF, v); }
   fetch() { const v = this.m.read(this.pc); this.pc = (this.pc + 1) & 0xFFFF; return v; }
   fetch16() { const lo = this.fetch(); return lo | (this.fetch() << 8); }
-  push(v) { this.sp = (this.sp - 2) & 0xFFFF; this.wr(this.sp, v & 0xFF); this.wr(this.sp + 1, v >> 8); }
-  pop() { const v = this.rd(this.sp) | (this.rd(this.sp + 1) << 8); this.sp = (this.sp + 2) & 0xFFFF; return v; }
 
   step() {
     const m = this.m;

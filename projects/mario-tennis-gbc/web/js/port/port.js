@@ -33,8 +33,10 @@ export const hookKey = (bank, addr) => (addr < 0x4000 ? addr : (bank << 16) | ad
 export class GamePort {
   // program: { main(P) -> generator (from EntryPoint), softReset(P) -> generator, vblank(P), lcdStat(P), timer(P),
   //            serial(P), hooks: [[bank, addr, fn(P, cpu) (may return a generator)], ...] }
-  constructor(romBytes, program, { audio = false, sampleRate = 44100 } = {}) {
-    this.gb = new GBC(romBytes, { audio, sampleRate });
+  // noCpu: the machine without the SM83's instruction set (gb/registers.js) and P.trap on: the game is the JS alone
+  constructor(romBytes, program, { audio = false, sampleRate = 44100, noCpu = false } = {}) {
+    this.gb = new GBC(romBytes, { audio, sampleRate, cpu: !noCpu });
+    this.trap = noCpu;
     this.rom = new Rom(romBytes);
     this.bus = new Bus(this.gb);
     const { A, V, B } = makeVars(this.bus);
@@ -283,7 +285,7 @@ export class GamePort {
       }
     }
     const op = m.read(pc), c0 = this.gb.cycles;
-    this.gb.stepInstruction();
+    if (this.trap) this.gb.sync(this.noCpuStep(pc)); else this.gb.stepInstruction();
     this.lastRet = RETS.has(op) && cpu.pc !== pc + 1;                    // (a conditional ret not taken goes on to pc + 1)
     if (atAdvance) this.probed = false;
     if (atWaitEnd) this.waitProbed = false;
@@ -301,6 +303,28 @@ export class GamePort {
     }
     this.tick(this.gb.cycles - c0);
     return null;
+  }
+  // NO CPU (P.trap): the SM83 core never runs an instruction. What the core's step() does without one is done here
+  // (an interrupt taken: IME off, its IF bit cleared, the return address pushed, the vector, 20 cycles; a halted CPU
+  // idling 4); an instruction it would run throws, naming its address (trap "count": counted in P.trapped instead
+  // and run on the core, for a survey). Returns the cycles.
+  noCpuStep(pc) {
+    const cpu = this.cpu, m = this.mem, pending = m.iflag & m.ie & 0x1F;
+    if (pending) {
+      cpu.halted = false;
+      if (cpu.ime) {
+        cpu.ime = false; cpu.eiPending = false;
+        const i = 31 - Math.clz32(pending & -pending);
+        m.iflag &= ~(1 << i); cpu.push(pc); cpu.pc = 0x40 + 8 * i;
+        return 20;
+      }
+    }
+    if (cpu.halted) return 4;
+    const key = pc < 0x4000 ? pc : pc < 0x8000 ? (m.romBank << 16) | pc : 0x1000000 | pc;
+    if (this.trap !== "count") throw new Error(`NO CPU: an instruction at ${pc < 0x8000 && pc >= 0x4000 ? m.romBank.toString(16) + ":" : ""}${pc.toString(16)} (no JS for it)`);
+    (this.trapped ||= new Map()).set(key, (this.trapped.get(key) || 0) + 1);
+    if (cpu.eiPending) { cpu.eiPending = false; cpu.ime = true; }
+    return cpu.exec(cpu.fetch());
   }
   // a hook that ends in a `jp` (not a return): the CPU goes on at addr, the stack as it is
   jump(addr) { this.jumpTarget = addr; }
