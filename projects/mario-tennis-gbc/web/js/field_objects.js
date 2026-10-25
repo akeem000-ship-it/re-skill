@@ -33,6 +33,8 @@
 //  walls: false (no collision-grid boxes), patch: "row" (the floor under cut-outs is filled from its row),
 //  backdrop: {y1, z, extend, side, tile} (side-view maps: rows 0..y1 stand up at z as a sky backdrop, the ground
 //          behind it and around the map is the ground tile at `tile`), clear: "sky" (the view's background colour)
+//  from: [x, y] on a card: its picture is taken from the same-sized rectangle there (a clean copy: a kerb row whose own picture has
+//          tree crowns painted over it)
 //  lampBanners: true: a tour banner (the class colours in turn) hangs on every lamp and ripples in the wind; pathFlowers: true: small
 //          flowers line the paths on the lawn beside them (voxel.js, our own decorations in fixed colours)
 export const FIELD_OBJECTS = {
@@ -123,7 +125,8 @@ export const FIELD_OBJECTS = {
    { "x0": 32, "y0": 111, "x1": 80, "y1": 128, "h": 7, "cut": "hull" },
    { "x0": 80, "y0": 111, "x1": 128, "y1": 128, "h": 7, "cut": "hull" },
    { "x0": 256, "y0": 111, "x1": 304, "y1": 128, "h": 7, "cut": "hull" },
-   { "x0": 304, "y0": 111, "x1": 352, "y1": 128, "h": 7, "cut": "hull" }
+   { "x0": 304, "y0": 111, "x1": 352, "y1": 128, "h": 7, "cut": "hull" },
+   {"x0": 0, "y0": 344, "x1": 160, "y1": 352, "h": 3, "cut": "rect"}, {"x0": 224, "y0": 344, "x1": 384, "y1": 352, "h": 3, "cut": "rect"}
   ],
   "flowers": [ { "on": 0 }, { "on": 1 }, { "on": 2 }, { "on": 3 } ],
   "flowerTiles": [ [40, 136], [56, 144] ]
@@ -1211,12 +1214,7 @@ export const FIELD_OBJECTS = {
     "x1": 128,
     "y1": 224
    },
-   {
-    "x0": 128,
-    "y0": 192,
-    "x1": 144,
-    "y1": 224
-   },
+   {"x0": 128, "y0": 192, "x1": 144, "y1": 224, "cut": "enclosed"},
    {"x0": 320, "y0": 163, "x1": 337, "y1": 197, "plant": "statue", "cut": "outline", "lift": 3, "bg": [[350, 160], [352, 168], [346, 150]]},
    {
     "x0": 0,
@@ -1242,24 +1240,14 @@ export const FIELD_OBJECTS = {
     "x1": 368,
     "y1": 112
    },
-   {
-    "x0": 0,
-    "y0": 352,
-    "x1": 224,
-    "y1": 360
-   },
+   {"x0": 0, "y0": 352, "x1": 224, "y1": 360, "from": [0, 392]},
    {
     "x0": 0,
     "y0": 392,
     "x1": 224,
     "y1": 400
    },
-   {
-    "x0": 320,
-    "y0": 352,
-    "x1": 512,
-    "y1": 360
-   },
+   {"x0": 320, "y0": 352, "x1": 512, "y1": 360, "from": [320, 392]},
    {
     "x0": 320,
     "y0": 392,
@@ -1595,7 +1583,8 @@ export const FIELD_OBJECTS = {
     "x": 288,
     "y": 64,
     "w": 16,
-    "h": 32
+    "h": 32,
+    "solid": 5
    }
   ],
   "cards": [
@@ -1625,12 +1614,6 @@ export const FIELD_OBJECTS = {
     "y0": 126,
     "x1": 466,
     "y1": 140
-   },
-   {
-    "x0": 144,
-    "y0": 110,
-    "x1": 160,
-    "y1": 146
    },
    {
     "x0": 16,
@@ -1694,7 +1677,8 @@ export const FIELD_OBJECTS = {
     "plant": "bush"
    }
   ],
-  "sprites": [{"x": 272, "y": 48, "w": 16, "h": 32, "cut": "outline", "match": 0.8, "plant": "tree"}, {"x": 272, "y": 48, "w": 16, "h": 24, "cut": "outline", "seal": "b", "match": 0.85, "plant": "tree"}, {"x": 16, "y": 16, "w": 16, "h": 8, "cut": "dome", "match": 0.85, "plant": "bush"}]
+  "sprites": [{"x": 272, "y": 48, "w": 16, "h": 32, "cut": "outline", "match": 0.8, "plant": "tree"}, {"x": 272, "y": 48, "w": 16, "h": 24, "cut": "outline", "seal": "b", "match": 0.85, "plant": "tree"}, {"x": 16, "y": 16, "w": 16, "h": 8, "cut": "dome", "match": 0.85, "plant": "bush"}],
+  "solids": [{"x0": 144, "y0": 110, "x1": 160, "y1": 146, "h": 5, "cut": "outline"}]
  },
  "25": {
   "blocks": [

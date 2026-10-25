@@ -1516,7 +1516,10 @@ export class Voxel3D {
         cd.X = c.copy[0] + w / 2; cd.Z = c.copy[1] + cd.h + (c.dz || 0); f.cards.push(cd); continue;
       }
       cover(c.x0, c.y0, c.x1, c.y1);
-      const w = c.x1 - c.x0, h = c.y1 - c.y0; let d = F3.cutOut(art, c.x0, c.y0, w, h, plantCut(c));
+      const w = c.x1 - c.x0, h = c.y1 - c.y0; let d = F3.cutOut(art, c.from ? c.from[0] : c.x0, c.from ? c.from[1] : c.y0, w, h, plantCut(c));
+      if (c.from) {                              // from: [x, y] its picture taken from a clean copy there (a kerb row with tree crowns painted over it), the ground under it patched as usual
+        patch(d, c.x0, c.y0, w, h); const cd = card(d, c.x0, c.y0, w, h, c); cd.src = srcOf(c.from[0], c.from[1], w, cd.h); f.cards.push(cd); continue;
+      }
       if (c.onTop) {                             // standing on a counter (a block's top, lift its height): its picture there is painted over with the top's colour (onTop: an art point)
         const bi = c.onTop[1] * 512 + c.onTop[0];
         for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3]) { const i = (c.y0 + y) * 512 + c.x0 + x; art[i * 4] = art[bi * 4]; art[i * 4 + 1] = art[bi * 4 + 1]; art[i * 4 + 2] = art[bi * 4 + 2]; f.artSrc[i] = bi; f.artMod[i] = 1; }
