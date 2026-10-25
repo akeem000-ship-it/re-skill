@@ -77,6 +77,13 @@ export function previewRestart(w) {              // 10:543C PreviewRestart: a pe
 
 // 10:5355 PreviewStep: BallFlightStep's rules on the ghost ball ($D373-$D381), with the real ball's speed,
 // direction, curve and spin (and its height for the wind)
+export function previewResetBall(w) {           // 10:5518 PreviewResetBall: the ghost ball at the address spot
+  const r6 = w.wram[6];
+  r6.copyWithin(0x373, 0x514, 0x51A);
+  r6.fill(0, 0x379, 0x37C);
+  r6.fill(0, 0x37C, 0x382);
+}
+
 export function previewStep(w) {
   const r6 = w.wram[6];
   const s = r6.subarray(0x400, 0x500);

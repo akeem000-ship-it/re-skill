@@ -8,7 +8,8 @@ not count.
 Sources: every web/js/**/*.js except the emulator core web/js/gb/ (the golf engine web/js/golf, the sound
 driver web/js/sound, ...) and the Python ports (tools/golfmath.py, ball_sim.py,
 cup_sim.py, launch_py.py, swing_py.py, shot_py.py, hole_py.py, joypad.py).
-usage: decomp_progress.py [--list] [--js | --py]   (--list: the cited routines with their sizes)
+usage: decomp_progress.py [--list] [--js | --py | --dir golf]   (--list: the cited routines with their sizes;
+       --dir: only web/js/<dir>)
 """
 import sys, os, re, json, bisect, glob
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -18,11 +19,12 @@ PY = ["golfmath", "ball_sim", "cup_sim", "launch_py", "swing_py", "shot_py", "ho
 CITE = re.compile(r"(?<![~\w])([0-9A-Fa-f]{2}):([0-9A-Fa-f]{4})\b")
 
 
-def sources(which):
+def sources(which, sub=None):
     out = []
     if which in ("all", "js"):
         gb = os.path.join(ROOT, "web", "js", "gb") + os.sep
-        out += sorted(p for p in glob.glob(os.path.join(ROOT, "web", "js", "**", "*.js"), recursive=True)
+        top = os.path.join(ROOT, "web", "js", *([sub] if sub else []))
+        out += sorted(p for p in glob.glob(os.path.join(top, "**", "*.js"), recursive=True)
                       if not p.startswith(gb))
     if which in ("all", "py"):
         out += [os.path.join(ROOT, "tools", n + ".py") for n in PY]
@@ -65,7 +67,10 @@ def measure(cites):
 
 def main():
     which = "js" if "--js" in sys.argv else "py" if "--py" in sys.argv else "all"
-    tot, done, sizes, labels = measure(cited(sources(which)))
+    sub = sys.argv[sys.argv.index("--dir") + 1] if "--dir" in sys.argv else None   # e.g. --dir golf
+    if sub:
+        which = "js"
+    tot, done, sizes, labels = measure(cited(sources(which, sub)))
     if "--list" in sys.argv:
         for (b, a), n in sorted(sizes.items()):
             name = (labels.get(b, a) or ("",))[0]

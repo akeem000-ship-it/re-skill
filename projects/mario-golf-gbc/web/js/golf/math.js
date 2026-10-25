@@ -39,6 +39,13 @@ export function mulSinCos(hl, bc) {                                       // 00:
   const de = mulSin(hl, bc);
   return [mulSin(hl, (bc + 0x4000) & 0xFFFF), de];
 }
+// the bc that 00:11BA leaves behind (it does not save bc): the cosine's sine-table index, (angle + $4000) mirrored
+// into the first quarter and shifted right 3
+export function mulSinCosLeftBC(bc) {
+  let b = ((bc >> 8) + 0x40) & 0x7F, c = bc & 0xF0;
+  if (b & 0x40) { const borrow = c ? 1 : 0; c = -c & 0xFF; b = (0x80 - b - borrow) & 0xFF; }
+  return (b << 8 | c) >> 3;
+}
 export function mulSinCosSigned(hl, bc) {                                 // 00:11AC: a negative length turns half a turn
   if (hl & 0x8000) { hl = neg16(hl); bc = (bc + 0x8000) & 0xFFFF; }
   return mulSinCos(hl, bc);

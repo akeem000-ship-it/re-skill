@@ -35,3 +35,15 @@ export const rd16 = (s, o) => s[o] | s[o + 1] << 8;
 export const wr16 = (s, o, v) => { s[o] = v & 0xFF; s[o + 1] = (v >> 8) & 0xFF; };
 // 10:4B14 PlayerField: the WRAM0 offset of the current player's ($C835) record byte f (records at $C880 / $C8C0)
 export const playerField = (w, f) => 0x880 + f + (w.wram[0][0x835] ? 0x40 : 0);
+
+// a CPU read as the game's code would see it with ROM bank `bank` and WRAM bank 6 mapped (for tables the code
+// reads with addresses that run past their end); VRAM and SRAM are not modelled
+import { rb as romByte } from "./rom.js";
+export function busRead(w, bank, a) {
+  a &= 0xFFFF;
+  if (a < 0x8000) return romByte(a < 0x4000 ? 0 : bank, a);
+  if (a < 0xC000) throw new Error(`a table read in VRAM / SRAM at $${a.toString(16)}`);
+  if (a < 0xE000) return a < 0xD000 ? w.wram[0][a - 0xC000] : w.wram[6][a - 0xD000];
+  if (a < 0xFE00) return busRead(w, bank, a - 0x2000);
+  return w.high[a - 0xFE00];
+}

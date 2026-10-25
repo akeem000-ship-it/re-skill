@@ -78,6 +78,9 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + round.js: the round start and the hole set-up from the ROM | 17,558 | 7.23% |
 | + round.js: after a shot, the stroke limit, hole end, next hole, round end (mode 3) | 17,900 | 7.38% |
 | + frame-exact set-up: camera, fades, the aiming menu and target marker (aim.js, view.js, camera.js, screen.js) | 21,904 | 9.03% |
+| + the computer golfer's shot planner, all of bank 3C's planning (ai.js) | 29,973 (web/js/golf; `--dir golf`) | 12.35% |
+
+(All sources together, with the sound driver of web/js/sound: 33,924 bytes, 13.98%.)
 
 The JS engine (`rom.js` ROM and LZ access, `memory.js` the RAM layout, `math.js`, `ball.js`, `cup.js`,
 `launch.js`, `swing.js`, `shot.js`, `hole.js`, `joypad.js`, `round.js`) is checked by two Node tests:
@@ -93,6 +96,16 @@ The JS engine (`rom.js` ROM and LZ access, `memory.js` the RAM layout, `math.js`
   (tools/hole_setup_suite.py: holes of courses 0-10, random seeds, menus used), the landing preview and target
   marker included; with `--minimal` the same from zeroed RAM plus only the inputs (records `$C800-$C8FF`, seed
   `$FFFC`, event overrides `$D4DE-$D4EF`).
+- `web/tests/golf_ai_routines.mjs`: the computer golfer (`ai.js`, bank 3C: CpuPlanShotMain 3C:426A and the 40
+  routines under it: putts, approach, tee club, target and landing-spot searches, hazards, trees, wind) is fuzzed
+  against the ROM itself: each routine runs in the emulator core (`web/tests/golf/romcall.mjs`, a call from a
+  register set to its `ret`) and in JS from the same random RAM (hole set-up states, random ball, wind, golfer,
+  stroke, seed), and the returned registers, `$D300-$D5FF` and the seed must match (300 states each: all match).
+  Quirks kept: CpuFindFairwaySpot 3C:4A51 calls VectorFromLengthAndAngle16 00:11BA without saving bc after a
+  hazard, so the aim becomes the sine-table index it leaves, and d/e become the point's y (the search can then
+  circle for ever: the game hangs; JS throws there); NextAimOffset indexes its table with an 8-bit `d x 2`;
+  CpuFindClearAim stores its caller's leftover bc at `$D553`; CpuClubDistanceForLie uses the lie row of the
+  current club, not the one asked; CpuHazardNear scans only the first row; route tables past hole `$63` read code.
 - `web/tests/golf_native_round.mjs`: **all 18 holes of the Stroke practice round played natively** (game.js:
   GolfRound from its entry, no state taken from the game on the way): with the swings' buttons a bot played in the
   game (tools/round_suite.py r18: tools/emu_round_inputs.py), all 69 outcomes, the ball, club and aim at all 69
@@ -112,14 +125,6 @@ reads CourseHoleIdTable 10:4265 (course 0: the 10 practice holes; 1-5 the five c
 course from 13:5684 (32 bytes). `$D321` is set to the byte at 10:6907 (the first code byte of MissTable), until
 ShotSetup recomputes it. The intro fly-over (08:6432) loads the green view, then the course view, and pans the
 camera (display); DrawSortedBallObjects (11:4D79) leaves the cup's y at `$D468` in the course and green views.
-
-------|----------------------|-------|
-| Python ports only (tools/golfmath.py ... hole_py.py) | 16,521 | 6.81% |
-| JS engine web/js/golf: math, ball, cup, launch, swing, shot, hole, joypad | 17,020 (JS + Python) | 7.01% |
-
-The JS engine (`rom.js` ROM and LZ access, `memory.js` the RAM layout, `math.js`, `ball.js`, `cup.js`,
-`launch.js`, `swing.js`, `shot.js`, `hole.js`, `joypad.js`) is checked by `node web/tests/golf_vs_recordings.mjs`:
-the 27 shot recordings and the 4 whole holes of tools/shot_suite.py and hole_suite.py match event for event.
 
 ---
 

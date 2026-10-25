@@ -103,14 +103,14 @@ function missDirection(w, b) {                   // 10:6C54 MissDirection (x 1.5
 }
 const missCurve = (w, b) => control(w, wordAt(0x6CB5, b));          // 10:6C9F MissCurve
 
-export function lieClass(w) {                    // 10:6672 LieClass
+export function lieClass(w, table = 0x66CB, bank = 0x10) {   // 10:6672 LieClass (3C:41ED is a copy, table 3C:4246)
   const r6 = w.wram[6];
   if (r6[0x445]) return 0;
   const t = r6[0x4CD], q = r6[0x446];
   if (t === 0x0D || t === 0x02) { if (q) return q === 1 ? 5 : 6; }
   else if (t === 0x00 || t === 0x0E) { if (q) return q === 1 ? 9 : 0x0A; }
   else if (t === 1) { if (q) return 0x0B; }
-  return rb(0x10, ptr(0x66CB, t));
+  return rb(bank, ptr(table, t));
 }
 
 function lieFactor(w) {                          // 10:65EF LieFactor: [d, e] of the club's row
@@ -120,9 +120,8 @@ function lieFactor(w) {                          // 10:65EF LieFactor: [d, e] of
 
 export const scaleByPower = (hl, a) => (a >= 0x3C ? hl : g.mulHLByAFrac(hl, rb(0x10, 0x6875 + a)));   // 10:6865
 
-export function baseDistance(w) {                // 10:68B1 ClubBaseDistance
+export function baseDistance(w, club = w.wram[6][0x329]) {   // 10:68B1 ClubBaseDistance (10:68B4 for a given club)
   const r6 = w.wram[6];
-  const club = r6[0x329];
   if (club === 0x0D) return r6[0x32B] === 0 ? 0x140 : r6[0x32B] === 1 ? 0x42A : 0x855;
   if (r6[0x32A] === 2) return 0x780;
   if (r6[0x32A] === 3) return 0x3C0;
