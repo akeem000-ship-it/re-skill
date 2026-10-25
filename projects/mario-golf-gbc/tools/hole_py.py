@@ -53,7 +53,7 @@ def add_points(w, de):                  # 02:5411: $C83C += de x course factor (
 def outcome_rules(w, a):                # 3B:7260 (the gameplay effects; captions left out)
     r6, w0 = w.wram[6], w.wram[0]
     if w0[0x834] in (5, 6, 7, 0x0B, 0x0C):
-        raise NotImplementedError("play mode $%02x (3B:75CC-3B:76C0)" % w0[0x834])
+        raise NotImplementedError("play mode $%02x (~3B:75CC-~3B:76C0)" % w0[0x834])
     if r6[0x48E] & 1:                   # skipped on water
         add_bonus(w, 0x0A)
     if a == 0x80:
@@ -86,7 +86,7 @@ def outcome_rules(w, a):                # 3B:7260 (the gameplay effects; caption
 
 
 def holed_rules(w):                     # 3B:72C3: the hole's bonus, how it went in, the score against par
-    r6, w0 = w.wram[6], w.wram[0]       # (the memorable-shot records in the save, 02:4714 / 02:5C50, left out)
+    r6, w0 = w.wram[6], w.wram[0]       # (the memorable-shot records in the save, ~02:4714 / ~02:5C50, left out)
     add_points(w, rd16(r6, 0x4F1))
     start = r6[0x5F8:0x5FE]
     if r6[0x48E] & 4:                   # off the flagstick
@@ -107,7 +107,7 @@ def holed_rules(w):                     # 3B:72C3: the hole's bonus, how it went
     return 0
 
 
-def post_shot(w, a):                    # 10:4A82-10:4AEE (B held for a retry, 10:4A38, is not modelled)
+def post_shot(w, a):                    # 10:4A82-10:4AEE (B held for a retry, ~10:4A38, is not modelled)
     r6, w0 = w.wram[6], w.wram[0]
     if hasattr(w, "tasks"):
         w.tasks["task_on"] = False                   # 10:4A26: BallTask off
@@ -136,7 +136,7 @@ def shot_loop_end(w, a):                # 10:45E7-10:4632 for one shot's result:
     w0, r6 = w.wram[0], w.wram[6]
     r6[0x438] = 0
     if w0[0x834] not in (0, 4) and w0[pf(w, 0x20)] >= (r6[0x325] * 3) & 0xFF:
-        raise NotImplementedError("stroke limit (10:4158)")
+        raise NotImplementedError("stroke limit (~10:4158)")
     if a & 0x80:                        # holed (or $FF)
         w0[pf(w, 0x2A)] = w0[pf(w, 0x2B)] = 1
         w0[pf(w, 0x22):pf(w, 0x28)] = b"\0" * 6
@@ -147,7 +147,7 @@ def shot_loop_end(w, a):                # 10:45E7-10:4632 for one shot's result:
 def next_player(w):                     # 10:4674 PickNextPlayer (one player: always player 1)
     w0, r6 = w.wram[0], w.wram[6]
     if not w0[0x8EA] and not w0[0x8AA]:
-        raise NotImplementedError("two players (10:4680)")
+        raise NotImplementedError("two players (~10:4680)")
     if w0[0x8EA]:                       # 10:46D9: player 1
         rec, other, p = 0x880, (0xE3 if w0[0x8E9] else None), 0
     else:                               # 10:46EE: player 2
@@ -308,7 +308,7 @@ def aim_menu_a(w, hole):                # 10:5BA6 with a = 0, answered at once w
     r6[0x480] = r6[0x382] = 0
     r6[0x513] = 0
     if r6[0x4D7]:
-        raise NotImplementedError("the computer's aiming (10:5943-10:5978)")
+        raise NotImplementedError("the computer's aiming (~10:5943-~10:5978)")
     r6[0x44D] = 0xF0
     r6[0x438] = 4 if r6[0x443] else 2
     r6[0x4D4] = 1

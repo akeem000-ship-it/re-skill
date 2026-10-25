@@ -67,10 +67,40 @@ nothing left in the code banks. Data banks (graphics, holes, text, songs) are no
 
 The rewrite runs the game's behaviour in JavaScript without an emulated Game Boy (`web/js/golf/`), reading only
 data from the ROM. `decomp_progress.py` counts the traced code bytes in routines that the rewrite cites by
-`BB:AAAA` (byte -> routine as in coverage.py).
+`BB:AAAA` (byte -> routine as in coverage.py); a routine named only to say it is not rewritten (display, sound,
+a branch not ported) is written `~BB:AAAA` and does not count.
 
 | Step | Rewritten code bytes | Share |
 |------|----------------------|-------|
+| Python ports only (tools/golfmath.py ... hole_py.py) | 15,506 | 6.39% |
+| + JS engine web/js/golf: math, ball, cup, launch, swing, shot, hole, joypad | (JS port of the same) | |
+| + round.js: the round start and the hole set-up from the ROM | 17,558 | 7.23% |
+
+The JS engine (`rom.js` ROM and LZ access, `memory.js` the RAM layout, `math.js`, `ball.js`, `cup.js`,
+`launch.js`, `swing.js`, `shot.js`, `hole.js`, `joypad.js`, `round.js`) is checked by two Node tests:
+- `web/tests/golf_vs_recordings.mjs`: the 27 shot recordings and the 4 whole holes of tools/shot_suite.py and
+  hole_suite.py match event for event;
+- `web/tests/golf_hole_setup.mjs`: from the RAM at GolfRound's entry (or, with `--minimal`, from zeroed RAM plus
+  only the inputs: the records `$C800-$C8FF`, the random seed `$FFFC`, the event overrides `$D4DE-$D4EF`) the
+  round start and the hole set-up (wind, HoleIdFromCourse, LoadHoleInfo, players at the tee, the intro fly-over's
+  state, PickNextPlayer, ShotSetup) reach the game's RAM at the first address step (10:56B0) on 16 holes
+  (tools/emu_hole_setup.py: hole 1 of the practice round, and holes of courses 0-10 and random seeds poked in at
+  GolfRound's entry), the course or green maps included. As in tools/hole_run.py, the display state that depends
+  on how long the menus took (the golfer's idle animation, the landing preview, the target marker) is taken from
+  the game, and the camera and HUD bytes are not compared.
+
+#### The hole set-up (GolfRound 10:4451, per hole 10:44B4; tools/sm83_calltree.py lists what it calls)
+
+Wind: `wWindDir` = `rand >> 8 & 3`, speed = (rand x 20) >> 16 mph, angle = the top nibble of the next random high
+byte (AdvanceRandomSeed 00:0A61: seed x 5 + `$3573`); none on course 0 (`hl = $4000`). HoleIdFromCourse 10:4246
+reads CourseHoleIdTable 10:4265 (course 0: the 10 practice holes; 1-5 the five clubs; 6-10 more lists). LoadHoleInfo
+13:55F6 reads 32 bytes per hole id at HoleInfoTable 13:5884: par, (3 bytes not read here), yards, map bounds
+`$C329-$C32C`, green corner `$D441`, tee `$D439`, then four pin positions picked by `wWindDir`; tree widths by
+course from 13:5684 (32 bytes). `$D321` is set to the byte at 10:6907 (the first code byte of MissTable), until
+ShotSetup recomputes it. The intro fly-over (08:6432) loads the green view, then the course view, and pans the
+camera (display); DrawSortedBallObjects (11:4D79) leaves the cup's y at `$D468` in the course and green views.
+
+------|----------------------|-------|
 | Python ports only (tools/golfmath.py ... hole_py.py) | 16,521 | 6.81% |
 | JS engine web/js/golf: math, ball, cup, launch, swing, shot, hole, joypad | 17,020 (JS + Python) | 7.01% |
 

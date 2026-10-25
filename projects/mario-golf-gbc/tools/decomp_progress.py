@@ -1,7 +1,9 @@
 """How much of the game's traced code is rewritten: the share of traced code bytes (states/code_map.json) in
 routines that a rewrite cites by BB:AAAA. Bytes map to routines as in tools/coverage.py (each code byte belongs
 to the nearest routine entry at or below it: states/code_entries.json plus every labels.csv address). A routine
-counts as rewritten when a source file names its entry address as BB:AAAA (bank-0 routines as 00:AAAA).
+counts as rewritten when a source file names its entry address as BB:AAAA (bank-0 routines as 00:AAAA). A
+routine named only to say it is not rewritten (display, sound, a branch not ported) is written ~BB:AAAA and does
+not count.
 
 Sources: the JavaScript engine (web/js/golf/*.js) and the Python ports (tools/golfmath.py, ball_sim.py,
 cup_sim.py, launch_py.py, swing_py.py, shot_py.py, hole_py.py, joypad.py).
@@ -12,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gbrom import ROOT, Labels
 
 PY = ["golfmath", "ball_sim", "cup_sim", "launch_py", "swing_py", "shot_py", "hole_py", "joypad"]
-CITE = re.compile(r"\b([0-9A-Fa-f]{2}):([0-9A-Fa-f]{4})\b")
+CITE = re.compile(r"(?<![~\w])([0-9A-Fa-f]{2}):([0-9A-Fa-f]{4})\b")
 
 
 def sources(which):

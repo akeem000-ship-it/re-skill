@@ -195,7 +195,7 @@ class Shot:
                 sw.meter_reset(w)
                 self.advance()
                 if s[0xD7]:
-                    raise NotImplementedError("the computer's swing (10:5643)")
+                    raise NotImplementedError("the computer's swing (~10:5643)")
                 s[0x53] = 0
                 s[0x51] = 1
                 label = "56CC"
@@ -296,7 +296,7 @@ class Shot:
         w, s = self.w, ball(self.w)
         r6, w0 = w.wram[6], w.wram[0]
         s[0x85] &= 0xEF
-        sw.shot_record(w)                               # 02:46B0 (02:48B8 is for link play)
+        sw.shot_record(w)                               # 02:46B0 (~02:48B8 is for link play)
         s[0x85] = 0x2D
         if s[0x43] == 4:
             while True:                                 # 11:6E34: until the club meets the ball
@@ -342,7 +342,7 @@ class Shot:
         w.wram[6][0x36B] = w.wram[6][0x36C] = 0
         self.advance()
 
-    def cup_view(self, v):              # 13:44A4 CupViewEnter (2) / 13:4528 CupViewLeave (1): no frames
+    def cup_view(self, v):              # ~13:44A4 CupViewEnter (2) / ~13:4528 CupViewLeave (1): graphics only, no frames
         pass
 
     # -- 10:5F94 ShotLaunch and what follows it up to the flight-camera loop (10:49A0-10:49D8) --
@@ -381,7 +381,7 @@ class Shot:
     def after_flight(self):             # 10:4A0E
         s = ball(self.w)
         if not s[0x8E] & 0x10 and s[0x8E] & 0x08:
-            self.fx.append(("cue", 8))                  # 3B:4339
+            self.fx.append(("cue", 8))                  # the caption ~3B:4339
         self.advance()                                  # 10:4A1E WaitFramesCmd 1
         return self.main_loop()
 
@@ -501,6 +501,6 @@ class Shot:
         elif s[0x43]:
             self.load_view(0)
         else:
-            raise NotImplementedError("13:4276")
+            raise NotImplementedError("~13:4276")
         w6[0x360] = 0
         return w6[0x367]

@@ -138,6 +138,7 @@ export class Shot {
       if (t.animOn) S.animTask(w);               // 11:6E3E
       if (t.displayOn) {                         // 11:4113
         if (S.previewOn(w)) S.previewFrame(w, this.hole, this.fx);   // -> 11:4E5E
+        if ((w.wram[6][0x443] & 7) <= 1) S.drawSortedBallObjects(w);  // 11:4361 / 11:4970
         if ([4, 5, 6].includes(w.wram[6][0x443] & 7)) S.ballViewCut(w);   // 11:47A2
       }
       if (t.meterOn) S.meterTask(w);             // 10:55AC
@@ -156,7 +157,7 @@ export class Shot {
       if (label === "56B6") {
         S.meterReset(w);
         this.advance();
-        if (s[0xD7]) throw new Error("the computer's swing (10:5643) is not ported");
+        if (s[0xD7]) throw new Error("the computer's swing (~10:5643) is not ported");
         s[0x53] = 0;
         s[0x51] = 1;
         label = "56CC";
@@ -254,7 +255,7 @@ export class Shot {
   afterSwing() {                                 // 10:4921-10:49A0: from the swing to ShotLaunch
     const w = this.w, s = ball(w), r6 = w.wram[6], w0 = w.wram[0];
     s[0x85] &= 0xEF;
-    S.shotRecord(w);                             // 02:46B0 (02:48B8 is for link play)
+    S.shotRecord(w);                             // 02:46B0 (~02:48B8 is for link play)
     s[0x85] = 0x2D;
     if (s[0x43] === 4) {
       for (;;) { this.advance(); if (s[0x64]) break; }   // 11:6E34: until the club meets the ball
@@ -296,7 +297,7 @@ export class Shot {
     this.advance();
   }
 
-  cupView() {}                                   // 13:44A4 CupViewEnter / 13:4528 CupViewLeave: no frames
+  cupView() {}                                   // ~13:44A4 CupViewEnter / ~13:4528 CupViewLeave: graphics only, no frames
 
   launch() {                                     // 10:5F94 ShotLaunch and 10:49A0-10:49D8 after it
     const w = this.w, s = ball(w), r6 = w.wram[6];
@@ -331,7 +332,7 @@ export class Shot {
 
   afterFlight() {                                // 10:4A0E
     const s = ball(this.w);
-    if (!(s[0x8E] & 0x10) && s[0x8E] & 0x08) this.fx.push(["cue", 8]);   // 3B:4339
+    if (!(s[0x8E] & 0x10) && s[0x8E] & 0x08) this.fx.push(["cue", 8]);   // the caption ~3B:4339 (display)
     this.advance();                              // 10:4A1E WaitFramesCmd 1
     return this.mainLoop();
   }
@@ -435,7 +436,7 @@ export class Shot {
     const c = ballInGreenArea(s);
     if (c) this.loadView(1);
     else if (s[0x43]) this.loadView(0);
-    else throw new Error("13:4276 is not ported");
+    else throw new Error("~13:4276 is not ported");
     w6[0x360] = 0;
     return w6[0x367];
   }

@@ -36,7 +36,7 @@ function addPoints(w, de) {                      // 02:5411: $C83C += de x cours
 
 export function outcomeRules(w, a) {             // 3B:7260 OutcomeRules (the gameplay effects; captions left out)
   const r6 = w.wram[6], w0 = w.wram[0];
-  if ([5, 6, 7, 0x0B, 0x0C].includes(w0[0x834])) throw new Error(`play mode $${w0[0x834].toString(16)} (3B:75CC-3B:76C0) is not ported`);
+  if ([5, 6, 7, 0x0B, 0x0C].includes(w0[0x834])) throw new Error(`play mode $${w0[0x834].toString(16)} (~3B:75CC-~3B:76C0) is not ported`);
   if (r6[0x48E] & 1) addBonus(w, 0x0A);          // skipped on water
   if (a === 0x80) return holedRules(w);
   const i = a & 0x0F;
@@ -65,7 +65,7 @@ export function outcomeRules(w, a) {             // 3B:7260 OutcomeRules (the ga
 }
 
 function holedRules(w) {                         // 3B:72C3: the hole's bonus, how it went in, the score vs par
-  const r6 = w.wram[6], w0 = w.wram[0];          // (the memorable-shot records 02:4714 / 02:5C50 left out)
+  const r6 = w.wram[6], w0 = w.wram[0];          // (the memorable-shot records ~02:4714 / ~02:5C50 left out)
   addPoints(w, rd16(r6, 0x4F1));
   const start = r6.subarray(0x5F8, 0x5FE);
   if (r6[0x48E] & 4) addPoints(w, 0x0A);         // off the flagstick
@@ -111,7 +111,7 @@ export function shotLoopEnd(w, a) {              // 10:45E7-10:4632 for one shot
   const w0 = w.wram[0], r6 = w.wram[6];
   r6[0x438] = 0;
   if (w0[0x834] !== 0 && w0[0x834] !== 4 && w0[pf(w, 0x20)] >= ((r6[0x325] * 3) & 0xFF))
-    throw new Error("the stroke limit (10:4158) is not ported");
+    throw new Error("the stroke limit (~10:4158) is not ported");
   if (a & 0x80) {                                // holed (or $FF)
     w0[pf(w, 0x2A)] = w0[pf(w, 0x2B)] = 1;
     w0.fill(0, pf(w, 0x22), pf(w, 0x28));
@@ -122,7 +122,7 @@ export function shotLoopEnd(w, a) {              // 10:45E7-10:4632 for one shot
 
 export function nextPlayer(w) {                  // 10:4674 PickNextPlayer (one player: always player 1)
   const w0 = w.wram[0], r6 = w.wram[6];
-  if (!w0[0x8EA] && !w0[0x8AA]) throw new Error("two players (10:4680) are not ported");
+  if (!w0[0x8EA] && !w0[0x8AA]) throw new Error("two players (~10:4680) are not ported");
   let rec, other, p;
   if (w0[0x8EA]) { rec = 0x880; other = w0[0x8E9] ? 0xE3 : null; p = 0; }   // 10:46D9: player 1
   else { rec = 0x8C0; other = w0[0x8A9] ? 0xA3 : null; p = 1; }             // 10:46EE: player 2
@@ -203,6 +203,7 @@ export function shotSetup(w, hole) {             // 10:4798 ShotSetup up to the 
   r6[0x485] = 0x3F;
   r6.copyWithin(0x514, 0x400, 0x406);            // 10:550B
   aimMenuA(w, hole);
+  if (r6[0x443] <= 1) S.drawSortedBallObjects(w);   // the display task's last frame in the menu (11:4361 / 11:4970)
   // the aiming menu (AimMenu 10:5BA6) answered with A: the swing
   if (r6[0x332] < 0x0B && r6[0x329] !== 0x0D && w0[pf(w, 0x13)] !== 3 && !(w0[0x818] & 2)) {
     r6[0x337] = 0;                               // ShotViewLeave
@@ -267,7 +268,7 @@ export function aimMenuA(w, hole) {              // AimMenu 10:5BA6 with a = 0, 
   if (r6[0x329] === 0x0D) r6[0x32A] = 0;
   r6[0x480] = r6[0x382] = 0;
   r6[0x513] = 0;
-  if (r6[0x4D7]) throw new Error("the computer's aiming (10:5943-10:5978) is not ported");
+  if (r6[0x4D7]) throw new Error("the computer's aiming (~10:5943-~10:5978) is not ported");
   r6[0x44D] = 0xF0;
   r6[0x438] = r6[0x443] ? 4 : 2;
   r6[0x4D4] = 1;

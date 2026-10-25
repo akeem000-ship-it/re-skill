@@ -206,3 +206,35 @@ export function ballViewCut(w) {
   sy = (sy + 0x3C) & 0xFFFF;
   if (sy & 0x80) r6[0x331] = 1;
 }
+
+// 11:4D79 DrawSortedBallObjects, as the course and green views' display task leaves the RAM (11:4361 /
+// 11:4970; the sprite handlers themselves are display): the objects enabled by $D485 bits 0-5 (pin, target
+// marker, ball, aim arrow, preview spot, other ball) listed with their y at $D468, then drawn from the largest
+// y down, each one's id cleared once drawn
+const OBJECT_Y = [0x43F, 0x428, 0x404, 0x483, 0x377, 0x420];
+export function drawSortedBallObjects(w) {
+  const r6 = w.wram[6];
+  wr16(r6, 0x47E, (r6[0x443] & 7) === 1 ? 0x4984 : 0x4375);   // the handler table
+  for (let k = 0; k < 6; k++) r6[0x46A + 3 * k] = 0;
+  let o = 0x468;
+  for (let k = 0; k < 6; k++) {
+    if (!(r6[0x485] >> k & 1)) continue;
+    r6[o] = r6[OBJECT_Y[k]]; r6[o + 1] = r6[OBJECT_Y[k] + 1]; r6[o + 2] = k + 1;
+    o += 3;
+  }
+  for (;;) {
+    r6[0x47A] = r6[0x47B] = 0;
+    let c = 0;
+    for (let k = 0; k < 6; k++) {
+      const p = 0x468 + 3 * k;
+      const de = rd16(r6, p);
+      if (!r6[p + 2]) continue;
+      if (!((rd16(r6, 0x47A) - de) & 0x8000)) continue;
+      wr16(r6, 0x47A, de);
+      wr16(r6, 0x47C, 0xD000 + p + 2);           // wBallObjectPick: the id byte
+      c = r6[p + 2];
+    }
+    if (!c) return;
+    r6[rd16(r6, 0x47C) - 0xD000] = 0;
+  }
+}
