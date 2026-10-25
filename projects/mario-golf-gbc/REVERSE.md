@@ -376,6 +376,71 @@ that, and `scan_jumptables.kind()` now uses it.
 - **Effects**: bank 7F (2 exports: SFXStart 7F:400A, SFXUpdate 7F:406C). Two effect tables: ids `< $65` at
   7F:495C (count) / 7F:495D (pointers), ids `>= $65` at 7F:615F / 7F:6160.
 
+#### Sound driver (native) (web/js/sound/driver.js, web/js/sound/apu.js, web/sound.html)
+
+The whole sound driver is rewritten in JavaScript and runs without the CPU core. `SoundDriver` keeps the driver's
+RAM at the game's addresses (`$C4C0-$C629`, `$C33E` wCurrentBGM, `$CAAB` wSFXBallHeight, hFFBF / hFFCD / hFFCE) and
+reads songs, effects, tables and waves from the ROM by address while it runs, with the ROM bank mapped as the game
+maps it: 7E on entry, the song's bank after SongStart, 7F inside the effect code. Each call returns the
+sound-register writes (FF10-FF3F) the game's code makes, in order:
+
+| JS | ROM |
+|----|-----|
+| `init()` | SoundInit 7E:4072 |
+| `playSound(id)` | PlaySoundCmd 00:2BBB / PlaySoundManaged 00:2C19, then SoundCmdDispatch 7E:4016 or SoundRequestSFX 7E:4022 |
+| `playSong(n)`, `stop()` | SoundCmdDispatch 7E:4016 (song 0 = silence) |
+| `frame()` | the VBlank's sound work: SoundUpdate 7E:40EB, then ResumeBGMAfterJingle 00:2C4A |
+| `update()` | SoundUpdate alone (TimerHandler 00:2F6F with the LCD off; EnableLCD 00:0371) |
+| `resumeBGM()`, `stopBGMIfPlaying()`, `syncBGMEnableFlag(opt)`, `applyMusicOption(opt)`, `endJingle()` | 00:2B54, 00:2B6C, 00:2B7A, 00:2B98, the tail 00:2C35 of WaitJingleEnd |
+| `setBallHeight(h)` | the copy BallTask (10:4D6E) writes to `$CAAB` for effect command `$Ex` |
+
+Ported routines (one JS method each, the address in a comment): SoundHandleRequests 4119,
+SoundSilenceMusicChannels 4145, SongStart 4186, MusicUpdateCh1-4 42B9/4308/4359/43AE, MusicRunScript 43EF with
+every command of MusicCommandTable (456F-46D8), MusicPlayNote 4467, MusicAddDetune 4982, MusicCh1-4NoteOn /
+NoteOff (46F8-4870), LoadWavePattern 4831, MusicCh4NoiseStep 487F, SoundUpdatePanning 48A0, MusicVibratoFreq 48D0,
+MusicApplyVibrato 492E, SoundSilenceAll 499B, SoundCheckMusicEnd 49CC, the unused exports (SoundSetMuteMask,
+SoundTogglePause, SoundSetMasterVolume, SoundSaveState 49F7 / SoundRestoreState 4B1C and the two wrappers); bank 7F:
+SFXStart 400A, SFXUpdate 406C, SFXRunScript 40A4 with the commands of SFXCommandTable (40DE-429B), SFXApplySlide 419D,
+SFXApplyNoiseSlide 41DD, SFXClearState 42BE, SFXSilenceActive 42E2. (Not ported: SFXSilenceAllBroken 7F:42CB,
+unreferenced; the `$9x-$Dx` effect commands, which hang the ROM: the JS throws.)
+
+The driver reads hardware registers back in three places: MusicApplyVibrato keeps NR11/NR21's duty bits, and the
+effect code's frequency writes (SFXCmdNote, SFXApplySlide, SFXCmdBallPitch) rewrite NRx1 of the effect's channel with
+its read-back `& $C0`. For the wave and noise channels that NRx1 (NR31, NR41) reads `$FF`, so `$C0` is written.
+`RegFile` models those reads with the chip's read-back masks.
+
+Quirks the port keeps (they change the writes):
+- SongStart's channel 2 block writes the initial envelope `$C0` and release `$46` to channel 1's bytes (`$C527`,
+  `$C52A`): channel 2's envelope and release are never reset by a new song. Channels 3 and 4 get no envelope reset.
+- wChEnvelope, wChRelease and wChDetune are 3-byte arrays: on channel 4, music command `$E6` writes wChRelease[0],
+  `$EE` writes wChDetune[0] and `$E4` writes the low byte of wNoisePtr.
+- A negative detune subtracts its complement (MusicAddDetune 7E:4991): `$FF` (-1) leaves the frequency unchanged.
+- A rest on the wave channel clears channel 1's note state `$C4D1` (MusicCh3NoteOn 7E:4828).
+- A note followed by `$D9` (tie) sounds its whole length whatever the gate; durations and gates are 8-bit
+  products (`(n + 1) x unit`, `duration x gate / 8`, gate 0 = 256).
+- MusicVibratoFreq masks the result to 11 bits (`& 7` on the high byte); the plain note-on path does not.
+- SoundRequestSFX: the lower SFXPriorityTable value wins and an equal one replaces; effect 0 always replaces
+  (priority 0). The priority stays until every effect channel has ended (SFXClearState).
+- SFXUpdate applies SFXApplySlide (16-bit, on NR41/NR43/NR44) to the noise channel between its script steps, while
+  the wait command uses SFXApplyNoiseSlide (8-bit on `$C580`, retrigger when NR43 bit 3 flips).
+- SoundSilenceAll (only reached while paused, which the game never does) writes the swapped effect mask to
+  NR22/NR24/NR42/NR44 when channel 1 is held by an effect.
+
+**Checks.** `web/tests/sound_ref.mjs` runs the ROM's own entry points on the CPU core (web/js/gb) and records the
+writes; `node web/tests/sound_vs_core.mjs` compares them with the JS driver: all 43 songs for 3600 frames (18000, five minutes, with `--frames 18000`), all 108
+effects (`$00-$6B`, command `$40-$AB`) alone until they end and over a song for 600 frames, the 5 jingles over a song,
+and 40 random sequences of songs, jingles, effects and invalid ids over 2400 frames: 304 of 304 identical, write for
+write (and 300 of 300 random sequences with `--random 300`). `node web/tests/sound_in_game.mjs [frames] [seed]` runs the game from power-on with scripted buttons and
+replays every sound call it makes (SoundInit, every PlaySoundCmd / PlaySoundManaged, the bank-0 music helpers, the
+VBlank, timer and EnableLCD updates) on the JS driver: 3 x 60000 frames, about 186,000 calls, all identical, and no
+sound-register write outside the sound code.
+
+**Synth.** `web/js/sound/apu.js` (SynthAPU) is the chip only: the core's channel model (pulse with sweep, wave,
+noise, frame sequencer, DACs, NR50/NR51) with frame-paced rendering (70224 dots per driver frame, 59.73 Hz), a box
+filter per output sample and a DC-blocking high-pass. `SoundPlayer` pairs it with the driver;
+`node web/tests/sound_wav.mjs song 3` writes out/song_03.wav. `web/sound.html` loads the ROM and plays any song,
+jingle or effect through driver.js and SynthAPU with Web Audio, with channel mutes and level meters.
+
 #### Graphics (tools/render_map.py, tools/extract_tiles.py)
 
 - **Overworld map graphics**: MapStartGfx (0B:46DF, a = wMapGfx from the MapTable record) -> MapLoadGfxScreen
