@@ -321,7 +321,11 @@ const plusOn = () => { const v = q.get("plus") || stored("mt-plus"); return v !=
 const plusRules = () => (plusOn() ? { momentum: 1, stamina: 1, serve: 1, courts: 1, netcord: 1, tour: 1, wet: false } : null);
 const tourLen = () => { const v = q.get("tourlen") || stored("mt-tourlen"); return v === "game" ? "game" : "3x3"; };
 const netMode = () => { const v = netChoice(); return v === "even" || v === "original" ? v : portMode() !== "rom" ? "even" : "original"; };
-const portMode = () => { const h = location.hash.slice(1), sel = $("engine") && $("engine").value, m = h === "port" || h === "portall" || q.has("port") ? "port" : sel || "rom"; return m === "rom" && (physicsMode() === "enhanced" || netChoice() === "even") ? "port" : m; };
+// The JS port is the only way to play (0.35.67): the original code (CODE: ROM) is kept for the automated tests only
+// (navigator.webdriver: Playwright), many of which start from saved machine states that the port can't load.
+const ROM_FOR_TESTS = typeof navigator !== "undefined" && !!navigator.webdriver;
+const portMode = () => { if (!ROM_FOR_TESTS) return "port"; const h = location.hash.slice(1), sel = $("engine") && $("engine").value, m = h === "port" || h === "portall" || q.has("port") ? "port" : sel || "rom"; return m === "rom" && (physicsMode() === "enhanced" || netChoice() === "even") ? "port" : m; };
+if (!ROM_FOR_TESTS && $("engine")) { $("engine").value = "port"; $("engine").disabled = true; }   // port only: no engine choice
 if ($("engine")) {
   const saved = stored("mt-engine");
   if (location.hash === "#port" || location.hash === "#portall") $("engine").value = "port";
@@ -572,6 +576,8 @@ $("engbtn").addEventListener("pointerdown", () => {
 // a private build bundles the ROM; a shared one doesn't, so the app starts with the ROM the player picked last time
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom)
   .catch(() => { if (navigator.userAgent.includes("MarioTennisWrapper")) romStore("readonly", s => s.get("rom")).then(b => { if (b && !gb) loadRom(b.buffer.slice(0)); }).catch(() => {}); });
+// port only: the buttons for what needs the original code (the engine switch, run-ahead, the quick save slots) hidden
+if (!ROM_FOR_TESTS) for (const id of ["engbtn", "runaheadbtn", "qsave1", "qsave2", "qload1", "qload2"]) { const e = document.getElementById(id); if (e) e.hidden = true; }
 window.__gb = { get port() { return port; }, get session() { return session; }, get deck() { return deck; }, get smooth() { return smooth; }, set smooth(v) { smooth = !!v; renderedAt = -1; applySmooth(); }, get fpsInfo() { return fps; }, get gb() { return gb; }, get hd() { return hd; }, keys, rec, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { if (n) settle(); for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, get creator() { return creator; }, get tour() { return tour; }, get modes() { return modes; }, get menuWheel() { return menuWheel; }, get replay() { return replay; }, loadSnapshot(s) { raSnap = null; loadSnapshot(gb, s); }, saveState() { settle(); return saveState(gb); }, loadState(s) { raSnap = null; loadState(gb, s); drawnFrame = -1; }, get runAhead() { return runAhead; }, settle };
 organizeHud($("hud"));
 requestAnimationFrame(loop);
