@@ -117,3 +117,20 @@ export function* showCaption(sh, a) {
   registerFrameTask(w, 0x1F, B, 0x4433);
   captionMotionTask(w);                          // (it runs on into the task once)
 }
+
+// 3B:76F8 ShowCaptionAndWait: a = caption; the ball objects' flags $D485 bits 1 and 4 are off meanwhile
+export function* showCaptionAndWait(sh, a) {
+  const w = sh.w, r6 = w.wram[6];
+  yield* sh.advance();
+  const keep = r6[0x485];
+  r6[0x485] &= 0xED;
+  yield* showCaption(sh, a);
+  for (;;) {                                     // 3B:4310 WaitCaptionOrButton
+    yield* sh.advance();
+    if (w.high[0x194]) { yield* sh.viewLeave(); break; }   // 3B:431F ShotViewLeave
+    if (!r6[0x337]) break;
+  }
+  unregisterFrameTask(w, 0x4F, 0x62A7);          // 4F:6184 StopCaptionAnim
+  yield* sh.advance();
+  r6[0x485] = keep;
+}

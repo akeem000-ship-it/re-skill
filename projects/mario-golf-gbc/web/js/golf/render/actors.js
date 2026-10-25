@@ -10,7 +10,7 @@ import * as D from "./display.js";
 const far = (bank, a) => rb(a < 0x4000 ? 0 : bank, a);
 const farWord = (bank, a) => far(bank, a) | far(bank, (a + 1) & 0xFFFF) << 8;   // 00:0626 FarReadWord
 
-export function testGameFlag(w, n) { return (w.wram[0][0x840 + (n >> 3)] >> (n & 7)) & 1; }   // 00:2D10 TestGameFlag
+export function testGameFlag(w, n) { return w.wram[0][0x840 + (n >> 3)] & (0x80 >> (n & 7)) ? 1 : 0; }   // 00:2D10 TestGameFlag (masks 00:2D08: $80 >> (n & 7))
 
 export function golferActorShow(w) {             // 04:57BA GolferActorShow (the task is registered by the caller)
   const keep = w.high[0x196];

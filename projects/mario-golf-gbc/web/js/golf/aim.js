@@ -206,6 +206,7 @@ export function* aimMenu(sh, a) {
       const d = pinDist(s);                      // the putter's range from the distance
       r6[0x32B] = !((d - 0x42B) & 0x8000) ? 2 : !((d - 0x140) & 0x8000) ? 1 : 0;
     }
+    sh.sound(0x60);                              // 10:5C1D
   }
   if (r6[0x329] === 0x0D) r6[0x32A] = 0;
   r6[0x480] = r6[0x382] = 0;
@@ -237,19 +238,19 @@ export function* aimMenu(sh, a) {
     at = "5D16";
     yield* sh.advance();
     if (w0[0x0F4]) notPorted("the shot clock (~10:5D1C)");
-    if (r6[0x438] === 1 && !(w.high[0x190] & 4)) r6[0x438] = 2;
+    if (r6[0x438] === 1 && !(w.high[0x190] & 4)) { r6[0x438] = 2; sh.sound(0x60); }   // 10:5D44
     const p = w.high[0x194];
     if (p & 1) { w.high[0x1C1] = 0x20; r6[0x4D4] = 0; return p; }   // A (10:5EAF; 02:4833 SerialIdleSet20)
     if (p & 4) { yield* lookAtPin(sh); at = "5D0D"; continue; }
     if (p & 8) notPorted("the pause menu (~08:4666)");
-    if (p & 2) { shotModeButton(w); at = "5C87"; continue; }
+    if (p & 2) { shotModeButton(w, id => sh.sound(id)); at = "5C87"; continue; }
     const rep = w.high[0x191];
     if (rep & 0x40) {                            // Up: a longer club (not on the green)
-      if (r6[0x4CD] !== 6 && r6[0x329]) { r6[0x329]--; at = "5C87"; }
+      if (r6[0x4CD] !== 6 && r6[0x329]) { r6[0x329]--; sh.sound(0x8C); at = "5C87"; }   // 10:5E3F
       continue;
     }
     if (rep & 0x80) {                            // Down: a shorter club
-      if (r6[0x4CD] !== 6 && r6[0x329] !== 0x0D) { r6[0x329]++; at = "5C87"; }
+      if (r6[0x4CD] !== 6 && r6[0x329] !== 0x0D) { r6[0x329]++; sh.sound(0x8C); at = "5C87"; }   // 10:5E5C
       continue;
     }
     const held = w.high[0x190];
@@ -263,24 +264,28 @@ export function* aimMenu(sh, a) {
   }
 }
 
-function shotModeButton(w) {                     // 10:5DB7: B in the menu
+function shotModeButton(w, sound) {              // 10:5DB7: B in the menu
   const r6 = w.wram[6];
   if (r6[0x329] === 0x0D) {                      // the putter: the range 0 -> 1 -> 2 -> 0 (table 10:5E22)
     r6[0x32B] = rb(0x10, 0x5E22 + r6[0x32B]);
+    sound(0x8D);                                 // 10:5E1D
     return;
   }
   if (!((pinDist(ball(w)) + 0xF860) & 0x8000)) {   // $7A0 or farther: the power shot on / off
-    if (r6[0x32A]) { r6[0x32A] = 0; return; }
-    if (!w.wram[0][pf(w, 0x28)]) return;         // none left (sound $54)
+    if (r6[0x32A]) { r6[0x32A] = 0; sound(0x8D); return; }   // 10:5DD7
+    if (!w.wram[0][pf(w, 0x28)]) { sound(0x54); return; }   // none left (10:5DE5)
     r6[0x32A] ^= 1;
+    sound(0x8D);                                 // 10:5DF1
     return;
   }
   r6[0x32A] = rb(0x10, 0x5E0A + r6[0x32A]);      // near the pin: the approach shots 0 -> 3 -> 2 -> 0 (table 10:5E0A)
+  sound(0x8D);                                   // 10:5E05
 }
 
 function* lookAtPin(sh) {                         // 10:5D51: Select looks at the pin and back
   const w = sh.w, r6 = w.wram[6];
   if (r6[0x438] === 2) {
+    sh.sound(0x60);                              // 10:5D58
     r6[0x438] = 4;                               // the camera pans to the cup
     for (;;) {
       yield* sh.advance();
@@ -291,8 +296,10 @@ function* lookAtPin(sh) {                         // 10:5D51: Select looks at th
       }
     }
     yield* loadShotView(sh, 1);
+    sh.sound(0x61);                              // 10:5D7B
   } else if (r6[0x438] === 4) {
     r6[0x438] = 1;
     yield* loadShotView(sh, 0);
+    sh.sound(0x61);                              // 10:5D8C
   }
 }

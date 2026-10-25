@@ -6,18 +6,21 @@
 // Start: out/holesetup_h1.json (the same round, tools/hole_setup_suite.py).
 // Recordings made with --poke (rec.pokes) get the same bytes: roundin_cpu18 has player 1 played by the computer
 // golfer (C893 = 1): its aim, club and swing come from ai.js (bank 3C) and must come out as the game's.
-// usage: node web/tests/golf_native_round.mjs [name ...]   (default r18 cpu18: all 18 holes of the Stroke practice
-// round, by the bot's buttons and by the computer golfer)
+// usage: node web/tests/golf_native_round.mjs [name ...]   (default r18 cpu18 r18:setup: all 18 holes of the Stroke
+// practice round, by the bot's buttons and by the computer golfer; r18:setup starts from empty RAM through the
+// menus' path ported in start.js, with only the random seed taken from the recording, as the play page starts)
 import fs from "fs";
 import path from "path";
 import { useRom } from "../js/golf/rom.js";
 import { GolfMemory } from "../js/golf/memory.js";
 import { playRound } from "../js/golf/game.js";
+import { strokeRoundSetup } from "../js/golf/start.js";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 useRom(new Uint8Array(fs.readFileSync(path.join(root, "rom/mario_golf.gbc"))));
 const start = JSON.parse(fs.readFileSync(path.join(root, "out/holesetup_h1.json"))).points.find(p => p.kind === "round");
-function run(name) {
+function run(spec) {
+  const [name, how] = spec.split(":");          // "r18:setup": the start made by start.js instead of the recorded RAM
   const rec = JSON.parse(fs.readFileSync(path.join(root, `out/roundin_${name}.json`)));
   const hexBytes = s => Uint8Array.from({ length: s.length / 2 }, (_, i) => parseInt(s.substr(2 * i, 2), 16));
   const h2 = v => v.toString(16).padStart(2, "0");
@@ -25,7 +28,13 @@ function run(name) {
   // the swings: for each address step the held buttons of the frames after it
   const streams = rec.addresses.map((ad, k) => rec.held.slice(ad.frame, k + 1 < rec.addresses.length ? rec.addresses[k + 1].frame : rec.held.length));
 
-  const w = new GolfMemory().loadSnapshot(start.snapshot);
+  let w = new GolfMemory().loadSnapshot(start.snapshot);
+  if (how === "setup") {                         // the menus' path (start.js) from empty RAM; only the random seed
+    const seed = w.high[0x1FC] | w.high[0x1FD] << 8;   // (the menus' frames advance it) is taken from the recording
+    w = new GolfMemory();
+    if (strokeRoundSetup(w, { golfer: 8, course: 1 }) !== start.a) throw new Error("hole count");
+    w.high[0x1FC] = seed & 0xFF; w.high[0x1FD] = seed >> 8;
+  }
   for (const [a, v] of Object.entries(rec.pokes || {})) {   // e.g. C893: player 1 played by the computer
     if (a.includes(":")) continue;                 // banked copies (6:D4D7) the round start here makes itself
     const addr = parseInt(a, 16);
@@ -68,13 +77,13 @@ function run(name) {
     return false;
   }
   if (JSON.stringify(res.shots) !== JSON.stringify(rec.outcomes)) errors.push(`outcomes ${res.shots.map(h2).join(" ")}, the game's ${rec.outcomes.map(h2).join(" ")}`);
-  console.log(`${errors.length ? "FAIL" : "ok  "} native round ${name}: ${res.shots.length} shots (${res.shots.map(h2).join(" ")}), ` +
+  console.log(`${errors.length ? "FAIL" : "ok  "} native round ${spec}: ${res.shots.length} shots (${res.shots.map(h2).join(" ")}), ` +
     res.holes.map(h => `hole ${h.hole}: ${h.strokes} strokes ${h.putts} putts`).join(", ") + `, points ${w.wram[0][0x83C]}`);
   for (const e of errors) console.log("     " + e);
   return !errors.length;
 }
 
-const names = process.argv.slice(2).length ? process.argv.slice(2) : ["r18", "cpu18"];
+const names = process.argv.slice(2).length ? process.argv.slice(2) : ["r18", "cpu18", "r18:setup"];
 let bad = 0;
 for (const name of names) if (!run(name)) bad++;
 process.exit(bad ? 1 : 0);

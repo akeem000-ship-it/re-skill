@@ -33,7 +33,7 @@ export function* golfRoundStart(sh, roundId) {    // 10:4451 GolfRound up to the
     w0[0x833] = roundId;                         // wRoundId
     w0[0x96D] = 1;                               // wReplayActive
     w0[0x814] = 0;
-    roundHookRoundStart(w);                      // 08:4722
+    roundHookRoundStart(w, id => sh.sound(id));  // 08:4722
     w0[0x83C] = w0[0x83D] = 0;                   // 02:540A ClearPoints
     if (w0[0x890] === w0[0x8D0]) w0[0x8D9] |= 0x10;
   } else {                                       // continuing a saved round
@@ -59,7 +59,7 @@ function* initWindowSystem(sh) {                  // 05:407A InitWindowSystem: c
   w.wram[0].fill(0, 0x3F9, 0x3FD);               // 41:707C ClearMenuState
 }
 
-function roundHookRoundStart(w) {                // 08:4722 RoundHookRoundStart (DispatchByGameMode 08:470D)
+function roundHookRoundStart(w, sound) {         // 08:4722 RoundHookRoundStart (DispatchByGameMode 08:470D)
   const w0 = w.wram[0];
   switch (mode(w)) {
     case 1: notPorted("the tournament round start (~08:475F)"); break;
@@ -69,12 +69,30 @@ function roundHookRoundStart(w) {                // 08:4722 RoundHookRoundStart 
       clearContestWins(w);
       w0[0x96C] = 0;
       break;
-    case 3:                                      // 08:47A6 RoundStartMode3Stroke (sound $38)
+    case 3:                                      // 08:47A6 RoundStartMode3Stroke
+      sound(0x38);
       w0[0x83B] = 0;                             // 08:4617 ClearHonour
       if (w0[0x8D0] !== 0xFF) clearContestWins(w);
       break;
     default: break;
   }
+}
+
+// 08:5062 PlayRoundMusic: only in a round (wReplayActive $C96D); the round's song $C82C, else by mode (8: 5, 4: 7),
+// the decisive hole ($2A), the opponent's song (08:50D6 by $C8D0, not in link play) or the course's (08:50C6)
+export function playRoundMusic(sh) {
+  const w0 = sh.w.wram[0];
+  if (!w0[0x96D]) return;
+  if (w0[0x82C]) return sh.sound(w0[0x82C]);    // 00:2C19 PlaySoundManaged
+  const m = w0[0x834];
+  if (m === 8) return sh.sound(0x05);
+  if (m === 4) return sh.sound(0x07);
+  if (w0[0x832]) return sh.sound(0x2A);
+  if (!w0[0x33F] && w0[0x8D0] !== 0xFF) {
+    const s = rb(0x08, 0x50D6 + (w0[0x8D0] & 0x0F));
+    if (s) return sh.sound(s);
+  }
+  sh.sound(rb(0x08, 0x50C6 + (w0[0x836] & 0x0F)));
 }
 
 function clearContestWins(w) {                   // 08:4203 ClearContestWins
@@ -195,7 +213,7 @@ function* holeIntroFlyover(sh) {
   r6[0x328] = 0;
   for (let c = 0xB4; c; c--) {
     yield* sh.advance();
-    if (w.high[0x194]) break;                    // a button: on at once (sound $5C)
+    if (w.high[0x194]) { sh.sound(0x5C); break; }   // a button: on at once (08:6480)
   }
   r6[0x438] = 4;
   yield* loadShotView(sh, 0);
@@ -203,7 +221,7 @@ function* holeIntroFlyover(sh) {
   yield* sh.advance(10);                                // WaitFramesCmd 10
   for (;;) {
     yield* sh.advance();
-    if (w.high[0x194]) { yield* Cam.snapToGoal(sh); return; }   // 13:4276 SnapCameraToGoal
+    if (w.high[0x194]) { sh.sound(0x5C); yield* Cam.snapToGoal(sh); return; }   // 08:64AB; 13:4276 SnapCameraToGoal
     if (Cam.atGoal(w)) return;                   // 11:41F7 CameraAtGoal
   }
 }
@@ -224,6 +242,7 @@ function golfViewInit(sh) {                      // 10:420E GolfViewInit
 function* strongWindIntro(sh) {                   // 12:6F8D StrongWindIntro: wind of 12 mph or more, a gust sprite
   if (sh.w.wram[0][0x815] < 0x0C) return;
   yield* sh.advance();
+  sh.sound(0x9C);                                // 12:6FAA
   yield* sh.advance(0x3D);                              // (the sprite crosses the screen; display)
 }
 
@@ -274,7 +293,7 @@ export function* holeStart(sh) {
   if (w0[0x893] === 3) notPorted("link play (~10:44EA)");
   holeWind(w);
   if (w0[0x8D3] === 3) notPorted("link play (~10:4567)");
-  // ~08:5062 PlayRoundMusic: sound
+  playRoundMusic(sh);                            // 08:5062
   holeIdFromCourse(w);                           // 10:4246
   loadHoleInfo(w);                               // 13:55F6
   resetPlayersForHole(w);
@@ -310,7 +329,8 @@ export function* strokeLimit(sh, a) {             // 10:4134 StrokeLimit: 3 x pa
   r6[0x485] &= 0xEF;
   r6[0x48E] |= 0x80;
   if (!r6[0x443]) yield* loadShotView(sh, 1);           // 3B:76D8 StrokeLimitPickUp
-  r6[0x443] = 0xFF;                              // (its song, picture and caption waits are not modelled)
+  r6[0x443] = 0xFF;
+  sh.sound(0x1F);                                // 3B:76E8 (its picture and caption waits are not modelled)
   return 0x81;
 }
 

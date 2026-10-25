@@ -15,6 +15,32 @@ import * as A from "./aim.js";
 import * as V from "./view.js";
 import * as Cam from "./camera.js";
 import * as D from "./render/hooks.js";
+import { showCaptionAndWait } from "./captions.js";
+import { playRoundMusic } from "./round.js";
+
+// 08:4880 RoundHookPlayerUp: before each shot, by wGameMode (PlayerUpModeTable 08:489D)
+function* roundHookPlayerUp(sh) {
+  const w0 = sh.w.wram[0];
+  switch (w0[0x834]) {
+    case 1: case 3: case 0x0A: yield* showPuttForCaption(sh); break;   // 08:48FD PlayerUpMode1Tournament
+    case 2: throw new Error("the match-play captions (~08:48BD PlayerUpMode2Match) are not ported");
+    case 4: yield* showPuttForCaption(sh); w0[0x8A8] = 0x0F; break;     // 08:48EB PlayerUpMode4Training
+    case 6: case 7: case 0x0C: playRoundMusic(sh); w0[0x8A8] = 0x0F; break;   // 08:48F4 PlayerUpMode6Practice
+    default: break;
+  }
+}
+
+// 08:4F30 ShowPuttForCaption: on the green, the putt for par / birdie / eagle / albatross (strokes + 1 - par = 0 / -1 /
+// -2 / -3): song $0D (par) or $0E and caption $15 / $17 / $14 / $16; other putts song $23; off the green PlayRoundMusic
+function* showPuttForCaption(sh) {
+  const w = sh.w;
+  if (w.wram[6][0x4CD] !== 6) return playRoundMusic(sh);
+  const d = (w.wram[0][pf(w, 0x20)] + 1 - w.wram[6][0x325]) & 0xFF;   // 08:4028 GetCurPlayerField
+  const cap = { 0x00: 0x15, 0xFF: 0x17, 0xFE: 0x14, 0xFD: 0x16 }[d];
+  if (cap === undefined) return sh.sound(0x23);
+  sh.sound(d ? 0x0E : 0x0D);
+  yield* showCaptionAndWait(sh, cap);            // 3B:76F8
+}
 
 function notPorted(what) { throw new Error(`${what} is not ported`); }
 
@@ -169,7 +195,7 @@ export function* shotSetup(sh) {
   r6.copyWithin(0x5F8, 0x400, 0x406);            // 02:4679 KeepShotStart
   r6[0x51C] = w0[pf(w, 0x28)];
   if (w0[0x870]) notPorted("golf event hooks (~10:4CC3)");
-  if (w0[0x834] === 2) notPorted("the match-play captions (~08:48BD)");   // 08:4880 RoundHookPlayerUp (captions)
+  yield* roundHookPlayerUp(sh);                  // 08:4880
   for (let c = 0x1E; c; c--) {
     yield* sh.advance();
     if (w.high[0x194]) break;

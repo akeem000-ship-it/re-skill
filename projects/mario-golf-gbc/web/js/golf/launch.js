@@ -211,5 +211,16 @@ export function shotLaunch(w, fx) {              // 10:5F94 ShotLaunch
   wr16(r6, 0x40B, de);
   r6[0x415] = r6[0x489] = club === 0x0D ? 0 : 1;
   r6[0x48A] = r6[0x401]; r6[0x48B] = r6[0x402]; r6[0x48C] = r6[0x404]; r6[0x48D] = r6[0x405];
-  if (fx) fx.push(["sound", "launch"]);
+  if (fx) fx.push(["sound", launchSound(w, club)]);
+}
+
+function launchSound(w, club) {                  // 10:60E9-10:6133: the sound of the hit
+  const r6 = w.wram[6];
+  if (club === 0x0D) return 0x48;                // the putter
+  if (club >= 7) {                               // by the lie: bunker $47, rough $46, else $45
+    const t = r6[0x4CD];
+    return t === 2 || t === 0x0D ? 0x47 : t === 1 || t === 0x0C ? 0x46 : 0x45;
+  }
+  if (club) return 0x43;
+  return r6[0x32A] === 1 && r6[0x44F] === 0 && r6[0x450] === 0x3C ? 0x42 : 0x41;   // the driver: a perfect power shot
 }

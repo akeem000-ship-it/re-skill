@@ -8,6 +8,8 @@
 //     pixel), and, once per frame the core finishes, render/raster.js on the core's state against the core's own
 //     PPU output (so the rasterizer itself is checked: the core's first frame after the LCD is switched on is blank
 //     on the hardware and is left out).
+// The sound commands (rst $08 / PlaySoundManaged: the id as PlaySoundCmd 00:2BCA has it) the core's code gives
+// and the ones the native round gives (w.onSound) are compared too, frame by frame where the two are in step.
 // Frames where the game lags (its main loop took more than one frame: extra VBlanks run the fades, the clock and
 // the joypad again, and the VRAM queues may be cut in two) are reported apart: the native code takes no CPU time,
 // so it has no lag frames. Between a shot's outcome and the next shot's set-up the native round leaves the captions
@@ -37,7 +39,8 @@ const coreDisplay = core => core.display();
 // row / column blit buffers (the VRAM copy queue $C0A0 is left to the VRAM it fills: lag frames can cut it in two)
 const WRAM0_DISPLAY = [[0x000, 0x0A0], [0x100, 0x1C0], [0x1C0, 0x200], [0x200, 0x280], [0x300, 0x320], [0x340, 0x360], [0x380, 0x3A0], [0x3C0, 0x3E0]];
 
-let vb = 0, early = false, afterUnsynced = false;
+let vb = 0, early = false, afterUnsynced = false, lctx = null;
+const coreSounds = [], nativeSounds = [];
 const lagFrames = new Set(), mismatches = [];
 const stats = { frames: 0, modelExact: 0, pixelExact: 0, lag: 0, unported: 0, bad: 0, rasterChecked: 0, rasterBad: 0, rasterBlank: 0 };
 const badRuns = [];
@@ -56,8 +59,10 @@ try {
   runLockstep({ name, holes,
     setup(w, core) {
       initDisplay(w); displayFromCore(w, core.gb);
+      w.onSound = id => { if (lctx && lctx.synced) nativeSounds.push(`${lctx.frame}:${h2(id)}`); };
       const gb = core.gb, orig = core.step.bind(core);
       core.step = () => {
+        if (gb.cpu.pc === 0x2BCA && lctx && lctx.synced) coreSounds.push(`${lctx.frame}:${h2(gb.cpu.a)}`);
         if (gb.cpu.pc === 0x2EF9) {              // VBlank: lag when it interrupts the game's code, not AdvanceFrame's wait
           vb++;
           const sp = gb.cpu.sp, ret = gb.mem.read(sp) | gb.mem.read(sp + 1) << 8;
@@ -76,7 +81,7 @@ try {
       const origStep = core.step;
       core.step = () => { const p = gb.ppu; origStep(); if (p.frameDone && p.ly === 144) check(); };
     },
-    onMark(ctx, m) { if (ctx.resynced) afterUnsynced = true; },
+    onMark(ctx, m) { lctx = ctx; if (ctx.resynced) afterUnsynced = true; },
     onFrame(ctx) {
       stats.frames++;
       if (vb > 1 || early) lagFrames.add(ctx.frame);
@@ -118,6 +123,13 @@ for (const m of mismatches) {                  // a frame within 3 frames after 
   if (run && run.kind === kind && run.to === m.frame - 1) { run.to = m.frame; run.px = Math.max(run.px, m.px); }
   else badRuns.push({ kind, from: m.frame, to: m.frame, mark: m.mark, shot: m.shot, px: m.px, what: m.out.slice(0, verbose ? 20 : 3) });
 }
+{                                              // the sound commands where in step
+  let i = 0;
+  while (i < coreSounds.length && i < nativeSounds.length && coreSounds[i] === nativeSounds[i]) i++;
+  stats.soundBad = i < Math.max(coreSounds.length, nativeSounds.length);
+  console.log(`  sound commands (frame:id): ${coreSounds.length} by the game, ${nativeSounds.length} native, ` +
+    (stats.soundBad ? `first difference at #${i}: game ${coreSounds.slice(i, i + 4).join(" ")} / js ${nativeSounds.slice(i, i + 4).join(" ")}` : "the same"));
+}
 if (verbose) console.log("lag frames:", [...lagFrames].sort((a, b) => a - b).join(" "));
 console.log(`${stats.frames} frames compared (${holes} hole(s) of ${name}, ${((Date.now() - t0) / 1000).toFixed(1)} s): ` +
   `${stats.pixelExact} pixel-exact screens, ${stats.modelExact} with VRAM / OAM / palettes / registers equal`);
@@ -126,4 +138,4 @@ console.log(`  rasterizer vs the core's PPU: ${stats.rasterChecked} frames check
   ` (${stats.rasterBlank} blank frames after the LCD is switched on left out)${first.raster ? "; first " + first.raster : ""}`);
 for (const r of badRuns.filter(r => verbose || r.kind === "bad").slice(0, verbose ? 200 : 12))
   console.log(`  ${r.kind} frames ${r.from}-${r.to} (${r.mark}, shot ${r.shot + 1}), up to ${r.px} pixels:\n      ${r.what.join("\n      ")}`);
-process.exit(stats.bad || stats.rasterBad || stats.error ? 1 : 0);
+process.exit(stats.bad || stats.rasterBad || stats.soundBad || stats.error ? 1 : 0);

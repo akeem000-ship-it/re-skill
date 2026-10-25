@@ -86,7 +86,7 @@ export function ballTask(w, hole, out) {         // 10:4D45 BallTask (out collec
       B.bounce(s, hole, fx);
       w.wram[6][0x331] = 1;                      // 10:500D, 10:522C
     }
-    B.landCheck(s);
+    B.landCheck(s, fx);
   } else if (B.rollStep(s, hole, fx) === "water") w.wram[6][0x331] = 1;
   applyFx(w, fx);
   terrainCheck(w, hole, s);
@@ -144,7 +144,7 @@ export class Shot {
     this.w = w; this.hole = hole; this.ev = ev; this.input = input;
     if (!w.tasks) w.tasks = taskFacade(w, TASKS); // the task table $C1C0 (tasks.js) as on/off flags
     this.t = w.tasks;
-    this.fx = [];
+    this.fx = this.newFx();
     this.dispatch = {                            // the frame tasks by ROM address
       "10:4d45": () => { this.ev("T"); ballTask(w, this.hole, this.fx); },   // 10:4D45 BallTask
       "10:55ac": () => S.meterTask(w),           // 10:55AC
@@ -157,6 +157,20 @@ export class Shot {
 
   mark(name) { this.ev("M", name); }
   sound(id) { if (this.w.onSound) this.w.onSound(id); }   // rst $08 PlaySoundCmd 00:2BBB: to the sound driver, if any
+  // the list the ported routines put their sounds and effects in: a ["sound", id] entry is played as it is added
+  // (["sound", "tree", k]: 08:5526 TreeSound, k = 0 the trunk / 1 the leaves, by course from the table 08:553F)
+  newFx() {
+    const a = [];
+    a.push = (...xs) => {
+      for (const x of xs) {
+        if (!Array.isArray(x) || x[0] !== "sound") continue;
+        if (typeof x[1] === "number") this.sound(x[1]);
+        else if (x[1] === "tree") this.sound(rb(0x08, 0x553F + (((this.w.wram[0][0x836] & 0x0F) * 2 + (x[2] & 1)) & 0xFF)));
+      }
+      return Array.prototype.push.apply(a, xs);
+    };
+    return a;
+  }
 
   // 00:2E3B AdvanceFrame: VBlank 00:2EF9 (its display work, ReadJoypad 00:02EB, the fades, the VBlank tasks), then
   // ClearUnusedSprites 00:2688 and the frame tasks in table order
@@ -165,7 +179,7 @@ export class Shot {
     for (let k = 0; k < n; k++) {
       yield;                                     // (the frame: a caller running the round frame by frame steps here)
       this.ev("F");
-      this.fx = [];                              // this frame's sounds and effects
+      this.fx = this.newFx();                    // this frame's sounds and effects
       if (w.vram) vblankDisplay(w);              // palettes, scroll, OAM DMA, the VRAM queues
       else if (!h[0x18D]) { h[0x18D] = 1; h[0x18C] = (h[0x18C] + 1) & 0xFF; }
       if (this.input) readJoypad(h, this.input());
@@ -243,6 +257,7 @@ export class Shot {
       if (rep & 0x40 || rep & 0x80) {
         if (s[0xCD] !== 6 && ((rep & 0x40 && club !== 0) || (!(rep & 0x40) && club !== 0x0C))) {
           r6[0x329] = rep & 0x40 ? club - 1 : club + 1;
+          this.sound(0x8C);                      // 10:5750 / 10:576D
           label = "56CC";
         }
         continue;
@@ -262,6 +277,7 @@ export class Shot {
     const w = this.w, s = ball(w), r6 = w.wram[6];
     s[0x4D] = 0;
     s[0x51] = 0;
+    this.sound(0x90);                            // 10:57C0
     if (r6[0x329] !== 0x0D) this.t.meterOn = true;
     S.animStart(w, 1);
     let b = 0;
@@ -275,6 +291,7 @@ export class Shot {
       else { s[0x53] = w.high[0x194]; c = 0; }
       if (c & 2 && !b) return yield* this.swingOff();
       if (c & 1) {
+        this.sound(0x90);                        // 10:5822
         if (b) return this.swingEnd(true);
         s[0x50] = s[0x4F];
         b = 1;
@@ -282,7 +299,7 @@ export class Shot {
           r6[0x32A] = r6[0x32B];
           return this.swingEnd(false);
         }
-        if (s[0x50] === 0x3C) s[0x52] = 1;
+        if (s[0x50] === 0x3C) { s[0x52] = 1; this.sound(0x5E); }   // 10:5850
       }
       s[0x4E] = (s[0x4E] + 1) & 0xFF;
       if (s[0x4E] === 0x8A) return b ? this.swingEnd(true) : yield* this.swingOff();
@@ -296,16 +313,18 @@ export class Shot {
     const w = this.w, s = ball(w), r6 = w.wram[6];
     s[0x4D] = 0;
     S.animStart(w, 1);                           // 11:6D8F
+    this.sound(0x90);                            // 10:564C
     for (let c = 0x3C; c; c--) {
       s[0x4E] = (s[0x4E] + 1) & 0xFF;
       s[0x4F] = s[0x4E];
       yield* this.advance();
       if (r6[0x4D8] === s[0x4E]) {
+        this.sound(0x90);                        // 10:5661
         s[0x50] = r6[0x4D8];
         if (r6[0x329] === 0x0D) { S.animStart(w, 2); return 0; }
       }
     }
-    if (s[0x50] === 0x3C) s[0x52] = 1;           // wSwingFullPower
+    if (s[0x50] === 0x3C) { s[0x52] = 1; this.sound(0x5E); }   // wSwingFullPower (10:567C)
     s[0x4D] = r6[0x4DA];
     S.setImpactFromPad(w, r6[0x4DA]);
     do {
@@ -313,7 +332,9 @@ export class Shot {
       s[0x4F] = s[0x4E];
       yield* this.advance();
     } while (r6[0x4D9] !== s[0x4E]);
-    if (s[0x4F] === 0) s[0x51] = 1;              // wSwingPerfect
+    this.sound(0x90);                            // 10:5697
+    if (s[0x4F] === 0) { s[0x51] = 1; this.sound(0x5E); }   // wSwingPerfect (10:56A4)
+    this.maxMissSound();                         // 10:56A6
     S.animStart(w, 2);
     return 0;
   }
@@ -322,14 +343,23 @@ export class Shot {
     const w = this.w, s = ball(w);
     if (impact) {
       S.animStart(w, 2);
-      if (s[0x4F] === 0) s[0x51] = 1;
+      if (s[0x4F] === 0) { s[0x51] = 1; this.sound(0x5E); }   // 10:588B
     }
     this.t.meterOn = false;
+    this.maxMissSound();                         // 10:5893
     return 0;
+  }
+
+  maxMissSound() {                               // 10:5534 MaxMissSound: not the putter, sound $5F at |MissIndex| 9
+    if (this.w.wram[6][0x329] === 0x0D) return;
+    let a = L.missIndex(this.w);
+    if (a & 0x80) a = (-a) & 0xFF;
+    if (a === 9) this.sound(0x5F);
   }
 
   *swingOff() {                                   // 10:5861: no power or B: back to the address after 20 frames
     const w = this.w, s = ball(w);
+    this.sound(0x5F);                            // 10:5861
     s[0x4D] = 0xF0;
     this.t.meterOn = false;
     S.animStart(w, 3);
