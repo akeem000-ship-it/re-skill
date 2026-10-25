@@ -325,6 +325,40 @@ export function swayVoxels(out, px, w, h, X, Y, Z, depth, phase, stem = null) {
   if (stem) for (let k = 0; k < stem.h; k++) { const x = X - 0.5; add(x, Y + k, Z - 0.4, x + 1, Y + k + 1, Z + 0.4, stem.c, (k + 0.5) / top, [true, true, k === stem.h - 1 && !has.has(Math.floor(w / 2) + "," + (h - 1))], stem.src); }
 }
 
+// TOUR BANNERS (field_objects.js lampBanners): a cloth banner hanging from an arm on a street lamp, in a tour class's colour with a
+// ball on it and a swallowtail hem; 7 x 15 px, [dx, dy, r, g, b] (dy 0 the top). Built from fixed colours (nothing from the ROM)
+export function bannerArt(c) {
+  const px = [], dk = c.map(v => Math.round(v * 0.62)), lt = c.map(v => Math.min(255, Math.round(v * 1.18 + 18)));
+  const ball = [[2, 4], [3, 4], [4, 4], [1, 5], [2, 5], [3, 5], [4, 5], [5, 5], [1, 6], [2, 6], [3, 6], [4, 6], [5, 6], [1, 7], [2, 7], [3, 7], [4, 7], [5, 7], [2, 8], [3, 8], [4, 8]];
+  const seam = new Set(["1,5", "2,6", "3,6", "4,6", "5,7", "1,7"]), isBall = new Set(ball.map(([x, y]) => x + "," + y));
+  for (let y = 0; y < 15; y++) for (let x = 0; x < 7; x++) {
+    if (y === 13 && x === 3) continue;                                         // the swallowtail
+    if (y === 14 && x >= 2 && x <= 4) continue;
+    let col = y < 2 ? dk : (x === 0 || x === 6) ? dk : y === 11 ? lt : c;
+    if (isBall.has(x + "," + y)) col = seam.has(x + "," + y) ? [250, 250, 250] : [214, 236, 80];
+    px.push([x, y, ...col]);
+  }
+  return px;
+}
+// the banner's voxels (out: { pos, col, sway } for voxel.js VSW): pixel (dx, dy) at x = X + dx, dy rows below the top at up = Y,
+// on the plane of a card standing at Z and leaning back by `tilt` (as the lamp's post does). The sway weight grows from 0 at the
+// pole to 1 at the free edge and the wind's phase runs along the cloth, so the banner ripples out from its arm.
+// arm: an iron bar above it (still) from the post to the banner's end
+export function bannerVoxels(out, px, w, X, Y, Z, tilt, phase, arm = null, k = 1) {   // k: the size of a banner pixel (map px)
+  const c = Math.cos(tilt), sn = Math.sin(tilt), P = (x, u, d) => [x, u * c + d * sn, Z - u * sn + d * c];
+  const box = (x0, u0, x1, u1, col, wgt, ph) => {
+    const d0 = -0.35, d1 = 0.35;
+    const face = (a, b, cc, d, k) => { for (const v of [a, b, cc, a, cc, d]) { out.pos.push(...v); out.col.push(col[0] / 255 * k, col[1] / 255 * k, col[2] / 255 * k); out.sway.push(wgt, ph); } };
+    face(P(x0, u0, d1), P(x1, u0, d1), P(x1, u1, d1), P(x0, u1, d1), 1.0);   // front
+    face(P(x1, u0, d0), P(x0, u0, d0), P(x0, u1, d0), P(x1, u1, d0), 0.6);   // back
+    face(P(x0, u1, d1), P(x1, u1, d1), P(x1, u1, d0), P(x0, u1, d0), 0.9);   // top
+    face(P(x0, u0, d0), P(x0, u0, d1), P(x0, u1, d1), P(x0, u1, d0), 0.75);  // left
+    face(P(x1, u0, d1), P(x1, u0, d0), P(x1, u1, d0), P(x1, u1, d1), 0.75);  // right
+  };
+  for (const [dx, dy, r, g, b] of px) box(X + dx * k, Y - (dy + 1) * k, X + (dx + 1) * k, Y - dy * k, [r, g, b], (dx + 1) / w * (0.6 + 0.4 * dy / 15), phase + dx * 0.55 + dy * 0.12);
+  if (arm) box(X - 1, Y, X + w * k + 0.5, Y + 1, arm, 0, 0);
+}
+
 // Fountain jet as droplets: one small box per droplet; each carries (phase, angle, speed, kind) for the shader,
 // which flies it along its arc (see voxel.js VSJ). kind 0: the rising column, 1: the falling crown, 2: splashes.
 export function jetDroplets(n = 150) {

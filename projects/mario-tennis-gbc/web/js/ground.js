@@ -254,6 +254,9 @@ export class Ground {
       allLawn[my * 32 + mx] = n >= 58 ? 1 : 0;                                  // 58 of the 64 samples
     }
     const open = (x, y) => { const mx = x >> 4, my = y >> 4, i = my * 32 + mx; return mx < MW && my < MH && (allLawn[i] || (coll[i] !== 0x0F && !(f.covered && f.covered[i]))); };
+    // the dirt's surface and grit also run on under and round an annotated object (a bench, an umpire chair): only the map's own walls
+    // are left bare, so no flat rectangle of the plain map colour shows round a prop on a path or a clay court
+    const openDirt = (x, y) => { const mx = x >> 4, my = y >> 4, i = my * 32 + mx; return mx < MW && my < MH && (coll[i] !== 0x0F || !!(f.covered && f.covered[i])); };
     const dirt = o => { const r = d[o], g = d[o + 1], b = d[o + 2]; return r > 120 && r > g * 1.25 && b < r * 0.45; };
     const kerb = o => { const r = d[o], g = d[o + 1], b = d[o + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b); return (mx - mn < 40 && mx > 90) || (r < 80 && g < 30 && b < 60); };
     const kept = this.carpet && KEPT.has(v.mapId());
@@ -331,7 +334,7 @@ export class Ground {
     {
       const t = new Uint8Array(512 * H * 4), D = (x, y) => inMap(x, y) && dirt(px(x, y)), sh = shadeMap(512, H, 0, 0); let n = 0;
       for (let y = 0; y < H; y++) for (let x = 0; x < 512; x++) {
-        if (!D(x, y) || !open(x, y)) continue;
+        if (!D(x, y) || !openDirt(x, y)) continue;
         let r = 1; for (; r <= 7; r++) if (!D(x + r, y) || !D(x - r, y) || !D(x, y + r) || !D(x, y - r) || !D(x + r, y + r) || !D(x - r, y - r) || !D(x + r, y - r) || !D(x - r, y + r)) break;
         const c = mean(x, y, 3, dirt); if (!c) continue; const o = (y * 512 + x) * 4;
         const k = sh ? sh[y * 512 + x] : 1;
@@ -343,9 +346,9 @@ export class Ground {
     const at = [], size = [], bcol = [];
     const nearDirt = (x, y) => { for (const [dx, dy] of [[4, 0], [-4, 0], [0, 4], [0, -4], [2, 0], [-2, 0], [0, 2], [0, -2]]) if (inMap(x + dx, y + dy) && dirt(px(x + dx, y + dy))) return true; return false; };
     for (let y = 1; y < H; y += 2) for (let x = 1; x < 512; x += 2) {
-      if (!open(x, y)) continue;
+      const op = open(x, y); if (!op && !openDirt(x, y)) continue;
       const o = px(x, y);
-      if (kerb(o) && nearDirt(x, y)) {
+      if (op && kerb(o) && nearDirt(x, y)) {
         const dark = d[o] < 80, course = Math.floor((x + y * 0.5) / 6) & 1;   // brick courses a shade apart
         const hh = (dark ? 1.9 : 2.6) + course * 0.25 + rnd(x, y, 7) * 0.15, k = 0.92 + course * 0.08;
         at.push(x, 0, y, 0); size.push(2.05, hh, 2.05, 0); bcol.push(d[o] / 255 * k, d[o + 1] / 255 * k, d[o + 2] / 255 * k);

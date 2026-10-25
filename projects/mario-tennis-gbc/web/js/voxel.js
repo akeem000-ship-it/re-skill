@@ -1375,7 +1375,7 @@ export class Voxel3D {
   }
   freeFieldFx(fx) {
     if (!fx) return; const gl = this.gl;
-    for (const m of [...(fx.flowerGroups || []), ...(fx.shapes || [])]) if (m) { for (const b of m.bufs) gl.deleteBuffer(b); gl.deleteVertexArray(m.vao); }
+    for (const m of [...(fx.flowerGroups || []), ...(fx.shapes || []), ...(fx.decor || [])]) if (m) { for (const b of m.bufs) gl.deleteBuffer(b); gl.deleteVertexArray(m.vao); }
   }
   // Builds what stands up on this map from its annotations (field_objects.js): cut-out cards (stamps, cards, sprites,
   // the sky backdrop of a side-view map), building blocks, extruded solids (planters, fountain basins), swaying
@@ -1548,9 +1548,16 @@ export class Voxel3D {
     // street lamps (lamps: [[x, y], ...] map px of the foot; lampLight {r, k}: their reach and strength, wider on the courts): a post with a
     // lantern, drawn here (not in the map); the lantern's warm glass
     // glows at night (lighting.js finds warm lamps) and each lamp is a point light (lighting.js lights)
+    // decorations of our own (TOUR BANNERS on the lamps, flower borders along the paths): swaying voxels in fixed colours, in groups of
+    // 64 x 64 map px as the flowers are, never recoloured from the map picture
+    const decor = new Map(), decorOf = (X, Z) => { const key = (X >> 6) * 16 + (Z >> 6); let g = decor.get(key); if (!g) decor.set(key, g = { pos: [], col: [], sway: [], src: [], centre: [((X >> 6) + 0.5) * 64, 8, ((Z >> 6) + 0.5) * 64] }); return g; };
+    const CLASS_COLOURS = [[64, 160, 90], [70, 120, 220], [200, 60, 60], [230, 180, 50]];   // junior, senior, varsity, finals
     f.lamps = [];
+    let lampN = 0;
     for (const [lx, ly] of def.lamps || []) {
       if (!inMap(lx, ly)) continue;
+      // TOUR BANNERS (lampBanners: true): a banner in a class colour on each lamp, the colours in turn, rippling in the wind
+      if (def.lampBanners) F3.bannerVoxels(decorOf(lx, ly), F3.bannerArt(CLASS_COLOURS[lampN++ % 4]), 7, lx + 1, 32, ly, FIELD_TILT, lx * 0.07 + ly * 0.05, [40, 44, 56], 1.5);
       const d = lampArt(), cd = card(d, lx - 6, ly - 46, 12, 46, {}); cd.src = null; f.cards.push(cd); f.lamps.push({ x: lx, y: ly, h: 40, r: (def.lampLight || {}).r || 110, k: (def.lampLight || {}).k || 1 });
     }
     // sprites: one example cut out; every pixel-exact copy anywhere in the map (not tile-aligned) stands up too
@@ -1746,6 +1753,25 @@ export class Voxel3D {
         F3.swayVoxels(flOf(X, Z), tuftPx, 3, 3, X, 0, Z, 0.8, X * 0.13 + Z * 0.09 + (hsh & 15) * 0.2, null);
       }
     }
+    // FLOWER BORDERS (pathFlowers: true): small flowers on the lawn along the paths, just beyond the kerb (or the dirt's edge), about
+    // one every 4 px, in five colours; tested on the ground picture under the objects (floor), so hedges and trees standing at a path's
+    // edge are lawn there and their flowers stand at their feet
+    if (def.pathFlowers && !this.inNeighbour) {
+      const P = ["250,90,140", "255,210,70", "250,250,250", "180,110,240", "255,130,60"].map(t => t.split(",").map(Number));
+      const at = (x, y) => (y * 512 + x) * 4, dirt = (x, y) => { const o = at(x, y), r = floor[o], g = floor[o + 1], b = floor[o + 2]; return r > 120 && r > g * 1.25 && b < r * 0.45; };
+      const lawn = (x, y) => { const o = at(x, y), r = floor[o], g = floor[o + 1], b = floor[o + 2]; return g > 70 && g >= r && b < g * 0.45; };
+      for (let y = 12; y < MHp - 12; y += 4) for (let x = 12; x < MWp - 12; x += 4) {
+        if (!lawn(x, y) || !lawn(x - 1, y) || !lawn(x + 1, y)) continue;
+        // beyond the kerb: a path (dirt) within 12 px and the kerb (a grey or white stone) within 4 px, or the dirt itself within 4 px
+        const kerb = (x, y) => { const o = at(x, y), r = floor[o], g = floor[o + 1], b = floor[o + 2], mx = Math.max(r, g, b); return mx - Math.min(r, g, b) < 30 && mx > 100; };
+        let k = false, d = false;
+        for (let r = 1; r <= 12 && !d; r++) for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r]]) { if (r <= 4 && kerb(x + dx, y + dy)) k = true; if (dirt(x + dx, y + dy) && (r <= 4 || k)) { d = true; break; } }
+        if (!d || !lawn(x, y - 1) || !lawn(x, y + 1)) continue;
+        const h = Math.imul((Math.imul(x, 73856093) ^ Math.imul(y, 19349663)) >>> 0, 2654435761) >>> 0; if ((h >>> 29) === 0) continue;   // (x, y are multiples of 4: mixed again)
+        const c = P[(h >>> 3) % 5], c2 = P[(h >>> 11) % 5], st = [60, 140, 50], ey = [255, 236, 120], X = x + ((h >>> 6) & 1), Z = y + ((h >>> 8) & 1);
+        F3.swayVoxels(decorOf(X, Z), [[1, 0, ...c, 0], [0, 1, ...c, 0], [1, 1, ...ey, 0], [2, 1, ...c, 0], [1, 2, ...c, 0], [3, 2, ...c2, 0], [4, 2, ...c2, 0], [3, 3, ...st, 0], [1, 3, ...st, 0]], 5, 4, X, 0, Z, 0.9, X * 0.13 + Z * 0.09, { h: 2, c: st, src: 0 });
+      }
+    }
     const fx = f.fx = { flowerGroups: [], fountains: [], shapes: [], plants };
     for (const sh of shapes) {
       const m = sh.m, vao = gl.createVertexArray(); gl.bindVertexArray(vao); const bufs = [];
@@ -1758,6 +1784,12 @@ export class Voxel3D {
       const vao = gl.createVertexArray(); gl.bindVertexArray(vao); const bufs = [];
       [[fl.pos, 3], [fl.col, 3], [fl.sway, 2]].forEach(([a, n], i) => { const b = gl.createBuffer(); bufs.push(b); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(a), gl.STATIC_DRAW); gl.enableVertexAttribArray(i); gl.vertexAttribPointer(i, n, gl.FLOAT, false, 0, 0); });
       fx.flowerGroups.push({ vao, bufs, count: fl.pos.length / 3, src: Float32Array.from(fl.src), centre: fl.centre });
+    }
+    fx.decor = [];
+    for (const dg of decor.values()) {
+      const vao = gl.createVertexArray(); gl.bindVertexArray(vao); const bufs = [];
+      [[dg.pos, 3], [dg.col, 3], [dg.sway, 2]].forEach(([a, n], i) => { const b = gl.createBuffer(); bufs.push(b); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(a), gl.STATIC_DRAW); gl.enableVertexAttribArray(i); gl.vertexAttribPointer(i, n, gl.FLOAT, false, 0, 0); });
+      fx.decor.push({ vao, bufs, count: dg.pos.length / 3, centre: dg.centre });
     }
     gl.bindVertexArray(this.vao);
     // fountains: a jet from the middle of the pool (on the solid it is the top of) and rings on the water; colours
@@ -2108,6 +2140,7 @@ export class Voxel3D {
     const inView = (p, r) => { const c = m4.apply(mvp, [p[0], p[1], p[2], 1]), mg = r * 1.2 * Math.abs(mvp[5]) + 0.2 * c[3]; return c[3] <= 0 || !(c[0] < -c[3] - mg || c[0] > c[3] + mg || c[1] < -c[3] - mg || c[1] > c[3] + mg); };
     gl.uniformMatrix4fv(this.uW.uModel, false, m4.identity()); gl.uniform1f(this.uW.uPhase, 0); gl.uniform1f(this.uW.uAmp, 1.1);
     for (const g of fx.flowerGroups || []) if (inView(g.centre, 48)) { gl.bindVertexArray(g.vao); gl.drawArrays(gl.TRIANGLES, 0, g.count); }
+    for (const g of fx.decor || []) if (inView(g.centre, 64)) { gl.bindVertexArray(g.vao); gl.drawArrays(gl.TRIANGLES, 0, g.count); }   // (TOUR BANNERS, flower borders)
     if (fx.plants.length && f.artTex) {   // trees and bushes: voxel bodies rustling in the same wind, those in view
       gl.useProgram(this.progP); gl.uniformMatrix4fv(this.uP.uMVP, false, mvp); gl.uniform1f(this.uP.uTime, T); gl.uniform1f(this.uP.uGem, this.groundFx && this.groundFx.gemini ? 1 : 0); gl.bindTexture(gl.TEXTURE_2D, f.artTex);
       let drawn = 0;

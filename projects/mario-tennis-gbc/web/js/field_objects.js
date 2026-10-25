@@ -33,6 +33,8 @@
 //  walls: false (no collision-grid boxes), patch: "row" (the floor under cut-outs is filled from its row),
 //  backdrop: {y1, z, extend, side, tile} (side-view maps: rows 0..y1 stand up at z as a sky backdrop, the ground
 //          behind it and around the map is the ground tile at `tile`), clear: "sky" (the view's background colour)
+//  lampBanners: true: a tour banner (the class colours in turn) hangs on every lamp and ripples in the wind; pathFlowers: true: small
+//          flowers line the paths on the lawn beside them (voxel.js, our own decorations in fixed colours)
 export const FIELD_OBJECTS = {
  "19": {
   "grassFrom": {"map": 20, "block": [208, 128]},
@@ -1123,6 +1125,8 @@ export const FIELD_OBJECTS = {
  "20": {
   "backdropMap": {"map": 19, "dx": -124, "strip": [0, 64], "seam": [232, 40, 312, 120]},
   "lamps": [[250, 112], [296, 112], [250, 196], [250, 300], [296, 300], [250, 384], [296, 384], [348, 218]],
+  "lampBanners": true,
+  "pathFlowers": true,
   "blocks": [
    {
     "x0": 368,
@@ -1407,48 +1411,18 @@ export const FIELD_OBJECTS = {
    }
   ],
   "cards": [
-   {
-    "x0": 8,
-    "y0": 24,
-    "x1": 232,
-    "y1": 48
-   },
-   {
-    "x0": 224,
-    "y0": 72,
-    "x1": 344,
-    "y1": 96
-   },
-   {
-    "x0": 360,
-    "y0": 72,
-    "x1": 488,
-    "y1": 96
-   },
+   {"x0": 8, "y0": 24, "x1": 232, "y1": 48, "see": "green", "R": 0, "T": 1.2},
+   {"x0": 224, "y0": 72, "x1": 344, "y1": 96, "see": "green", "R": 0, "T": 1.2},
+   {"x0": 360, "y0": 72, "x1": 488, "y1": 96, "see": "green", "R": 0, "T": 1.2},
    {
     "x0": 344,
     "y0": 72,
     "x1": 360,
     "y1": 104
    },
-   {
-    "x0": 8,
-    "y0": 216,
-    "x1": 232,
-    "y1": 240
-   },
-   {
-    "x0": 8,
-    "y0": 264,
-    "x1": 344,
-    "y1": 288
-   },
-   {
-    "x0": 344,
-    "y0": 264,
-    "x1": 488,
-    "y1": 288
-   },
+   {"x0": 8, "y0": 216, "x1": 232, "y1": 240, "see": "green", "R": 0, "T": 1.2},
+   {"x0": 8, "y0": 264, "x1": 344, "y1": 288, "see": "green", "R": 0, "T": 1.2},
+   {"x0": 344, "y0": 264, "x1": 488, "y1": 288, "see": "green", "R": 0, "T": 1.2},
    {
     "x0": 48,
     "y0": 126,
@@ -1472,24 +1446,6 @@ export const FIELD_OBJECTS = {
     "y0": 174,
     "x1": 448,
     "y1": 188
-   },
-   {
-    "x0": 16,
-    "y0": 158,
-    "x1": 32,
-    "y1": 192
-   },
-   {
-    "x0": 352,
-    "y0": 158,
-    "x1": 370,
-    "y1": 192
-   },
-   {
-    "x0": 208,
-    "y0": 78,
-    "x1": 224,
-    "y1": 112
    },
    {
     "x0": 464,
@@ -1606,7 +1562,7 @@ export const FIELD_OBJECTS = {
   ],
   "flowerTiles": [[336, 32], [240, 32]],
   "sprites": [{"x": 288, "y": 16, "w": 16, "h": 32, "cut": "outline", "match": 0.8, "plant": "tree"}, {"x": 288, "y": 16, "w": 16, "h": 24, "cut": "outline", "seal": "b", "match": 0.85, "plant": "tree"}],
-  "solids": [{"x0": 11, "y0": 42, "x1": 48, "y1": 64, "h": 5, "cut": "hull"}, {"x0": 192, "y0": 42, "x1": 229, "y1": 64, "h": 5, "cut": "hull"}, {"x0": 223, "y0": 96, "x1": 256, "y1": 112, "h": 5, "cut": "hull"}, {"x0": 320, "y0": 90, "x1": 350, "y1": 112, "h": 4, "cut": "hull"}, {"x0": 354, "y0": 90, "x1": 384, "y1": 112, "h": 4, "cut": "hull"}, {"x0": 448, "y0": 90, "x1": 485, "y1": 116, "h": 6, "cut": "hull"}, {"x0": 208, "y0": 160, "x1": 240, "y1": 185, "h": 3, "cut": "hull"}, {"x0": 208, "y0": 234, "x1": 229, "y1": 275, "h": 6, "cut": "hull"}, {"x0": 136, "y0": 240, "x1": 176, "y1": 256, "h": 5, "cut": "hull"}, {"x0": 16, "y0": 288, "x1": 81, "y1": 304, "h": 5, "cut": "hull"}, {"x0": 79, "y0": 288, "x1": 145, "y1": 304, "h": 5, "cut": "hull"}, {"x0": 143, "y0": 288, "x1": 209, "y1": 304, "h": 5, "cut": "hull"}, {"x0": 207, "y0": 288, "x1": 273, "y1": 304, "h": 5, "cut": "hull"}, {"x0": 271, "y0": 288, "x1": 336, "y1": 304, "h": 5, "cut": "hull"}, {"x0": 352, "y0": 288, "x1": 417, "y1": 304, "h": 5, "cut": "hull"}, {"x0": 415, "y0": 288, "x1": 480, "y1": 304, "h": 5, "cut": "hull"}],
+  "solids": [{"x0": 11, "y0": 42, "x1": 48, "y1": 64, "h": 5, "cut": "hull"}, {"x0": 192, "y0": 42, "x1": 229, "y1": 64, "h": 5, "cut": "hull"}, {"x0": 223, "y0": 96, "x1": 256, "y1": 112, "h": 5, "cut": "hull"}, {"x0": 320, "y0": 90, "x1": 350, "y1": 112, "h": 4, "cut": "hull"}, {"x0": 354, "y0": 90, "x1": 384, "y1": 112, "h": 4, "cut": "hull"}, {"x0": 448, "y0": 90, "x1": 485, "y1": 116, "h": 6, "cut": "hull"}, {"x0": 208, "y0": 160, "x1": 240, "y1": 185, "h": 3, "cut": "hull"}, {"x0": 208, "y0": 234, "x1": 229, "y1": 275, "h": 6, "cut": "hull"}, {"x0": 136, "y0": 240, "x1": 176, "y1": 256, "h": 5, "cut": "hull"}, {"x0": 16, "y0": 288, "x1": 81, "y1": 304, "h": 5, "cut": "hull"}, {"x0": 79, "y0": 288, "x1": 145, "y1": 304, "h": 5, "cut": "hull"}, {"x0": 143, "y0": 288, "x1": 209, "y1": 304, "h": 5, "cut": "hull"}, {"x0": 207, "y0": 288, "x1": 273, "y1": 304, "h": 5, "cut": "hull"}, {"x0": 271, "y0": 288, "x1": 336, "y1": 304, "h": 5, "cut": "hull"}, {"x0": 352, "y0": 288, "x1": 417, "y1": 304, "h": 5, "cut": "hull"}, {"x0": 415, "y0": 288, "x1": 480, "y1": 304, "h": 5, "cut": "hull"}, {"x0": 208, "y0": 78, "x1": 224, "y1": 112, "h": 5, "cut": "outline"}, {"x0": 16, "y0": 158, "x1": 32, "y1": 192, "h": 5, "cut": "outline"}, {"x0": 352, "y0": 158, "x1": 370, "y1": 192, "h": 5, "cut": "outline"}],
   "flowers": [{"on": 0, "region": [15, 48, 44, 58]}, {"on": 1, "region": [196, 48, 225, 58]}, {"on": 2, "region": [228, 96, 252, 106]}, {"on": 3, "region": [324, 96, 345, 107]}, {"on": 4, "region": [359, 96, 380, 107]}, {"on": 5, "region": [452, 96, 481, 106]}, {"on": 6, "region": [213, 164, 235, 185]}, {"on": 7, "region": [213, 239, 225, 265]}, {"on": 8, "region": [140, 240, 172, 250]}, {"on": 9, "region": [20, 288, 76, 298]}, {"on": 10, "region": [84, 288, 140, 298]}, {"on": 11, "region": [148, 288, 204, 298]}, {"on": 12, "region": [212, 288, 268, 298]}, {"on": 13, "region": [276, 288, 332, 298]}, {"on": 14, "region": [356, 288, 412, 298]}, {"on": 15, "region": [420, 288, 476, 298]}]
  },
  "24": {
