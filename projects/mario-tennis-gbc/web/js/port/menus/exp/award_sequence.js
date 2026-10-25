@@ -151,6 +151,7 @@ export function* processMatchRewards(P) {
     hl = applyMatchSettingsExpBonus(P, hl, P.V.player1MainEquipment).hl;
     const won = P.V.matchWinLoseFlag === WINLOSE_WIN;
     hl = (hl + (won ? getFirstClearRewardExp(P).de : 0)) & 0xFFFF;
+    hl = Math.min(0xFFFF, hl + (P.extraMatchExp ? P.extraMatchExp(mode) : 0));   // (the page's practice goals: not the game's)
     yield* showExpAwardForMatch(P, hl);
     if (P.V.matchWinLoseFlag === WINLOSE_WIN) {
       setRewardGameFlag(P);

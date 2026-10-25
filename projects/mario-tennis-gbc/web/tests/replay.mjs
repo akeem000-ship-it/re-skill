@@ -41,7 +41,10 @@ else {
 if (!port && !a.includes("--interp")) { try { const mod = await import("../gen/game.js"); const T = {}; mod.install(T); gb.installRecomp(T); if (mod.HRAM_SIG) gb.exec.setHramSig(mod.HRAM_SIG); } catch (e) { console.log("interpreter only:", e.message); } }
 loadState(gb, rec.start);
 if (lookMgr) lookMgr.attach(gb);
-const inputs = Buffer.from(rec.inputs, "base64"), hashes = new Map(rec.hashes), events = new Map(rec.events.map(([f, e]) => [f, e]));
+const inputs = Buffer.from(rec.inputs, "base64"), hashes = new Map(rec.hashes), events = new Map();
+for (const [f, e] of rec.events) events.set(f, [...(events.get(f) || []), e]);   // (a frame may have more than one)
+// STICK FEEL: Analog with the port: events "stick:<angle>,<speed>" (web/js/stick.js), the stick's angle and tilt from that frame on
+const { parseAnalogEvent } = await import("../js/stick.js");
 const crcT = new Int32Array(256).map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c; });
 const crc = b => { let c = -1; for (const x of b) c = crcT[(c ^ x) & 255] ^ (c >>> 8); return (c ^ -1) >>> 0; };
 const chunk = (t, d) => { const l = Buffer.alloc(4); l.writeUInt32BE(d.length); const td = Buffer.concat([Buffer.from(t), d]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([l, td, c]); };
@@ -50,8 +53,11 @@ const png = p => { const f = gb.ppu.frame, r = Buffer.alloc(144 * 481); for (let
   fs.writeFileSync(p, Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ih), chunk("IDAT", zlib.deflateSync(r)), chunk("IEND", Buffer.alloc(0))])); };
 let checked = 0, bad = null; const maps = new Map();
 for (let f = 0; f < to; f++) {
-  if (events.get(f) === "reset") gb.reset();
-  else if (lookMgr && parseLookEvent(events.get(f)) !== undefined) lookMgr.set(parseLookEvent(events.get(f)));
+  for (const e of events.get(f) || []) {
+    if (e === "reset") gb.reset();
+    else if (lookMgr && parseLookEvent(e) !== undefined) lookMgr.set(parseLookEvent(e));
+    else if (port && parseAnalogEvent(e) !== undefined) port.analog = parseAnalogEvent(e);
+  }
   gb.setInput(stateOf(inputs[f])); if (port) port.frame(); else gb.runFrame();
   const n = f + 1, h = hashes.get(n);
   if (h) { checked++; if (h !== gb.frameHash() && !bad) bad = n; }

@@ -555,17 +555,30 @@ export function captureShotAim(E) {
   const i = E.C.inputBits;
   E.C.aimOffset = i === PAD.LEFT ? 0xFE : i & PAD.LEFT ? 0xFF : i === PAD.RIGHT ? 2 : i & PAD.RIGHT ? 1 : 0;
 }
+// ANALOG (not the game's: a port setting, the page's STICK FEEL: Analog): for the character on the local pad, the stick's
+// own direction and tilt. E.analog = { facing: the facing angle 0-255 (0 right, $40 down, as DpadToFacingTable_08),
+// speed: 0..1 of the running speed } while the stick is pushed, else null: the d-pad's eight directions as the game has them.
+const onLocalPad = C => C.inputSource === 0 || C.inputSource === 2 || C.inputSource === 3;
+const analogFor = (E, C) => (E.analog && onLocalPad(C) ? E.analog : null);
+const ANALOG_AXIS = 0x0C;                                              // a steered axis: more than about 4 degrees of it
 // 08:719A ApplyCharMovementInput: the d-pad sets the desired facing; steering (reach flags bits 6/7) only
 // once the shown facing is within $30 of it
 export function applyCharMovementInput(E) {
   const C = E.C;
   const pad = C.inputBits & 0xF0;
   if (!pad) return;
-  const f = E.rom.u8(8, indexed(DPAD_TO_FACING, pad >> 4));
-  if (f === 0xFF) return;
+  const f0 = E.rom.u8(8, indexed(DPAD_TO_FACING, pad >> 4));
+  if (f0 === 0xFF) return;
+  const A = analogFor(E, C), f = A ? A.facing : f0;                       // ANALOG: the stick's angle
   C.facingDesired = f;
   let diff = U8(f - C.facingShown); if (diff & 0x80) diff = U8(-diff);
   if (diff >= 0x30) return;
+  if (A) {                                                               // ANALOG: the axes the stick's angle has
+    const fromX = U8(f & 0x7F), fromY = U8((f + 0x40) & 0x7F);           // (0 or $80 is all X; $40 or $C0 all depth)
+    if (Math.min(fromY, 0x80 - fromY) > ANALOG_AXIS) C.ballReachFlags |= REACH.STEER_X;
+    if (Math.min(fromX, 0x80 - fromX) > ANALOG_AXIS) C.ballReachFlags |= REACH.STEER_DEPTH;
+    return;
+  }
   if (C.inputBits & (PAD.RIGHT | PAD.LEFT)) C.ballReachFlags |= REACH.STEER_X;
   if (C.inputBits & (PAD.UP | PAD.DOWN)) C.ballReachFlags |= REACH.STEER_DEPTH;
 }
@@ -680,9 +693,16 @@ function clampSpeed(v, max) {
   if (NEG(v)) { l = NEG16(v); c = NEG16(max); }
   return c >= l ? null : max;
 }
+// the running speed limit: the character's, PLAY+'s for a tired player, ANALOG's for a light tilt
+function runLimit(E, C, max) {
+  let v = E.plus ? plusRunSpeed(E, max) : max;
+  const A = analogFor(E, C);
+  if (A && A.speed < 1) v = Math.max(1, Math.round(U16(v) * A.speed));
+  return U16(v);
+}
 // 08:74D7 ClampCharDepthSpeed / 08:750C ClampCharXSpeed
-export function clampCharDepthSpeed(E) { const C = E.C, v = clampSpeed(C.velDepth, E.M.mulHLBySinSigned(U16(E.plus ? plusRunSpeed(E, C.maxSpeedDepth) : C.maxSpeedDepth), C.facingDesired)); if (v !== null) C.velDepth = v; }
-export function clampCharXSpeed(E) { const C = E.C, v = clampSpeed(C.velX, E.M.mulHLByCosSigned(U16(E.plus ? plusRunSpeed(E, C.maxSpeedX) : C.maxSpeedX), C.facingDesired)); if (v !== null) C.velX = v; }
+export function clampCharDepthSpeed(E) { const C = E.C, v = clampSpeed(C.velDepth, E.M.mulHLBySinSigned(runLimit(E, C, C.maxSpeedDepth), C.facingDesired)); if (v !== null) C.velDepth = v; }
+export function clampCharXSpeed(E) { const C = E.C, v = clampSpeed(C.velX, E.M.mulHLByCosSigned(runLimit(E, C, C.maxSpeedX), C.facingDesired)); if (v !== null) C.velX = v; }
 // 08:7541 MoveCharTowardTarget: a fixed $1000 step toward the walk target (returns 1), or snap onto it once
 // within $18 on both axes (returns 0)
 export function moveCharTowardTarget(E) {

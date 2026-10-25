@@ -54,6 +54,13 @@ leave them alone.
    screens, caused by ported code taking no CPU time (lag frames fall differently); the exact animation frame of
    the ball's launch after racket contact is an open question (`REVERSE.md`).
 
+5. **Saving the port mid-play.** A machine state can't hold the port's place in its own code (the JS generators),
+   and nearly all of the game runs inside one chain of them from power-on (00:2578 Start onward), so a state can't
+   be resumed by the port; resuming it as the ROM (CPU halted in AdvanceFrame) fails because the port's stack holds
+   no ROM return addresses (tried: exh1 2 of 5, story1 0 of 5, mg_01 2 of 5 points resumed). Ways out: replay the
+   session log from power-on (exact; about 1,500 frames a second headless in Node, so slow for long sessions),
+   resumable safe points, or a ROM-faithful stack. Until then the page's quick save is CODE: ROM only.
+
 ## How to check work
 
 ```bash

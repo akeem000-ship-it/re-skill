@@ -14,7 +14,21 @@ export function readJoypad(P) {
   bus.w8(rJOYP, 0x10);                                   // select the buttons (six reads)
   for (let i = 0; i < 5; i++) bus.u8(rJOYP);
   a = bus.u8(rJOYP);
-  const held = (~a & 0x0F) | dpad;
+  return storePad(P, (~a & 0x0F) | dpad);
+}
+// ReadJoypad entered at $0300: the operand byte of its `ldh a, [rJOYP]` at $02FF, which runs as `nop`. InitObjectScene
+// (menus/scenes) gets here by a stray `ret` (its pushed WRAM bank 3 and flags $00 as the return address). The buttons
+// are read with no row selected (the last ReadJoypad wrote $30), and b, whatever the caller left in it, stands in for
+// the d-pad half: it becomes the held buttons. Returns the registers it leaves: a, b, c.
+export function readJoypadFrom0300(P, b) {
+  const { bus } = P;
+  bus.u8(rJOYP); bus.u8(rJOYP);
+  const a = bus.u8(rJOYP);
+  return storePad(P, (~a & 0x0F) | b);
+}
+// the rest of ReadJoypad ($030D on): held buttons, rising edges, the auto-repeat, the deselected pad
+function storePad(P, held) {
+  const { bus, V } = P;
   V.inputRisingEdge = (V.playerInputFlags ^ held) & held;
   V.playerInputFlags = held;
   bus.w8(rJOYP, 0x30);
@@ -39,5 +53,6 @@ export function advanceRandomSeed(P) {
 
 export const HOOKS = [
   [0, 0x02EB, (P, c) => { const r = readJoypad(P); c.a = r.a; c.b = r.b; c.c = r.c; }],
+  [0, 0x0300, (P, c) => { const r = readJoypadFrom0300(P, c.b); c.a = r.a; c.b = r.b; c.c = r.c; }],
   [0, 0x0A3A, (P, c) => { const hl = advanceRandomSeed(P); c.h = hl >> 8; c.l = hl & 0xFF; }],
 ];

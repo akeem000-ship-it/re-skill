@@ -2,7 +2,8 @@
 //   VIBRATE      a short buzz when your player hits the ball, a longer one when you win a point (the score $C8E0-$C8E5, the rally's
 //                shot count $C4B6 and the ball's side $C404 at the hit); read only
 //   SHOT         saves a picture of the game view to Downloads/MTenn3D (a download in a browser)
-//   SAVE / LOAD  two quick slots holding the exact moment (the machine state, as save states), kept in this browser's IndexedDB
+//   SAVE / LOAD  two quick slots holding the exact moment (the machine state, as save states), kept in this browser's IndexedDB;
+//                with CODE: ROM only: the JS port's game is partly JavaScript (its coroutines), which a machine state can't hold
 //   BATTERY      saver: the 3D view drawn at most 60 times a second and the lighting at its low quality
 //   WHAT'S NEW   the changelog (web/whatsnew.md)
 const stored = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
@@ -17,7 +18,7 @@ const quickStore = (mode, fn) => new Promise((ok, fail) => {
 });
 
 export class Phone {
-  // ctx: gb(), voxel(), view3d(), redraw(), saveState(), loadState(s), romHash(), hint(text), status(text)
+  // ctx: gb(), voxel(), view3d(), redraw(), saveState(), loadState(s), romHash(), hint(text), status(text), isPort()
   constructor(ctx) {
     this.ctx = ctx; this.vibrate = stored("mt-vibrate") !== "off"; this.battery = stored("mt-battery") === "on"; this.prev = null; this.lastDraw = 0;
   }
@@ -51,13 +52,14 @@ export class Phone {
     else { const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
     c.hint("Picture saved: " + name);
   }
+  portBlocked() { if (!this.ctx.isPort || !this.ctx.isPort()) return false; this.ctx.hint("Quick save works with CODE: ROM only (GAME menu): the JS port's game can't be saved mid-play yet. The game's own save works."); return true; }
   async quickSave(slot) {
-    const c = this.ctx; if (!c.gb()) return;
+    const c = this.ctx; if (!c.gb() || this.portBlocked()) return;
     try { const s = JSON.stringify(c.saveState()); await quickStore("readwrite", st => st.put({ s, rom: c.romHash(), at: Date.now() }, "slot" + slot)); c.hint("Saved to slot " + slot); }   // (as JSON: the state holds a function IndexedDB cannot store)
     catch (e) { c.hint("Could not save: " + e); }
   }
   async quickLoad(slot) {
-    const c = this.ctx; if (!c.gb()) return;
+    const c = this.ctx; if (!c.gb() || this.portBlocked()) return;
     try {
       const r = await quickStore("readonly", st => st.get("slot" + slot));
       if (!r) { c.hint("Slot " + slot + " is empty"); return; }

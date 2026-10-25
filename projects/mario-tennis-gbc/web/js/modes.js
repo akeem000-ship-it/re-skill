@@ -12,7 +12,8 @@
 //   RECORDS     a panel: the DAILY challenge (one a day, the same for everyone that day, a streak for days in a row), career STATS
 //               (every match you play on a court: points, aces, winners, errors, double faults, the fastest serve, the longest
 //               rally), the MINI-GAMES' best scores by level, and practice GOALS: in the tour's practice matches a 10-shot rally, an
-//               ace, a game won to love and the match itself each give bonus EXP, added to your tour character when you are back on
+//               ace, a game won to love and the match itself each give bonus EXP, counted into the match's own EXP award (the
+//               game's EXP screen shares it out: P.extraMatchExp); with CODE: ROM added to your tour character when you are back on
 //               the campus (wC900 + $2C, capped at 99999 like the game's own)
 // Reading the game: the score ($C8E0-$C8E8), wRallyLength $C4B6, wPointOutcome $C4D8, the ball's velocity, wGameMode $C8A6,
 // wCurrentlyUsedCourt $C8F4, wMatchIsDoubles $C8F2, the minigame's score $C47C and level $C376.
@@ -84,6 +85,7 @@ export class Modes extends HdPanel {
     P.rematchOn = s.rematch === "on";
     P.machineCourt = s.machine === "room" ? null : +s.machine;
     P.minigameHard = s.mgHard === "on";
+    P.extraMatchExp = mode => this.takeMatchExp(mode);
     if (s.partner !== "on") P.partnerCmd = null;
   }
   w0() { const gb = this.getGb(); return gb && gb.mem.wram[0]; }
@@ -119,7 +121,7 @@ export class Modes extends HdPanel {
     else if (this.m && !onCourt) this.m = null;
     if (onCourt && mode === GM_MINIGAME) { const sc = w[0x47C] | w[0x47D] << 8; if (!this.mg) this.mg = { id: w[0x8F7], lv: w[0x376], best: 0 }; this.mg.best = Math.max(this.mg.best, sc); }
     if (!onCourt && this.lastMap <= 15 && this.mg) this.mgEnd();
-    if (!onCourt && this.rec.goals.pending && map >= 17 && map <= 36) this.payGoals(w);
+    if (!onCourt && this.rec.goals.pending && map >= 17 && map <= 36 && !(this.getPort && this.getPort())) this.payGoals(w);
     this.lastMap = map;
   }
   watch(w, mode) {
@@ -164,6 +166,17 @@ export class Modes extends HdPanel {
     }
     this.save();
   }
+  // the port's award sequence (port/menus/exp/award_sequence.js), as a story match's EXP is worked out: the practice
+  // goals' EXP goes into the match's award, so the game's own EXP screen counts it in and shares it out (level-ups,
+  // the stats screen) like the rest. Bonus EXP still owed from before (CODE: ROM) comes with it.
+  takeMatchExp(mode) {
+    const G = this.rec.goals, exp = G.pending;
+    if (mode !== GM_PRACTICE || !exp) return 0;
+    G.total += exp; G.pending = 0; this.save();
+    return exp;
+  }
+  // CODE: ROM only (its code cannot be changed): the EXP added straight to the tour character's total (wC900 + $2C)
+  // back on the campus
   payGoals(w) {
     let name = ""; for (let i = 0; i < 8; i++) { const c = w[0x900 + i]; if (c < 0x20 || c > 0x7E) break; name += String.fromCharCode(c); }
     if (!name.trim()) return;
@@ -221,7 +234,8 @@ export class Modes extends HdPanel {
   }
   pGoals() {
     const G = this.rec.goals;
-    return `<p class="hint">In the tour's practice matches each of these gives bonus EXP once per match, added to your tour character when you are back on the campus (the game's own level-up screen comes after your next match or mini-game).</p><table>${GOALS.map(g => `<tr><td>${g.name}</td><td class="n"><b>+${g.exp} EXP</b></td></tr>`).join("")}</table><p>Bonus EXP so far: <b>${G.total}</b>${G.pending ? ` (+${G.pending} waiting for the campus)` : ""}</p>`;
+    const port = !!(this.getPort && this.getPort());
+    return `<p class="hint">In the tour's practice matches each of these gives bonus EXP once per match, ${port ? "counted into the match's EXP on the game's own EXP screen" : "added to your tour character when you are back on the campus (the game's own level-up screen comes after your next match or mini-game)"}.</p><table>${GOALS.map(g => `<tr><td>${g.name}</td><td class="n"><b>+${g.exp} EXP</b></td></tr>`).join("")}</table><p>Bonus EXP so far: <b>${G.total}</b>${G.pending ? ` (+${G.pending} waiting for ${port ? "your next practice match" : "the campus"})` : ""}</p>`;
   }
 }
 

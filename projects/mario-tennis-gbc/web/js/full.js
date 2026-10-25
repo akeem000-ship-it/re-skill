@@ -29,7 +29,7 @@ import { organizeHud } from "./hudmenu.js";      // the button bar in categories
 import { loadSnapshot } from "./gb/snapshot.js";
 import { saveState, loadState, snapshot, restore } from "./gb/state.js";
 import { composeWide, WIDE_W, WIDE_H } from "./wide.js";
-import { mountStick, stickDir, stickFrame, addStickFeelButton } from "./stick.js";
+import { mountStick, stickDir, stickFrame, stickAnalog, analogEvent, addStickFeelButton } from "./stick.js";
 import { portraitArea, attachPortrait } from "./portrait.js";   // touch screens held upright: the game on top, a control deck below
 import { Recorder, maskOf, packRecording, bytesToBase64, stateOf } from "./recorder.js";
 import { HDText, FONTS, FONT_ORDER, HD } from "./hdtext.js";
@@ -102,13 +102,19 @@ const smoothQ = new URLSearchParams(location.search).get("smooth");
 let smooth = smoothQ ? !(smoothQ === "0" || smoothQ === "off") : (() => { try { return localStorage.getItem("mt-smooth") !== "off"; } catch (e) { return true; } })();
 let renderedAt = -1;
 // the page's input: the keys, the touch d-pad and buttons, a controller (pollGamepad); withStick: the analog stick's direction too (full
-// presses: the menus and panels); the game's frames take the stick through stickFrame instead (STICK FEEL: its walking)
+// presses: the menus and panels); the game's frames take the stick through stickFrame instead (STICK FEEL: its walking, with CODE: ROM)
 function input(withStick = true) {
   const k = keys, s = withStick ? stickDir() : {};
   return { a: k.KeyZ || k.KeyA, b: k.KeyX || k.KeyS, start: k.Enter, select: k.ShiftRight || k.Backspace || k.KeyQ,
            right: k.ArrowRight || !!s.right, left: k.ArrowLeft || !!s.left, up: k.ArrowUp || !!s.up, down: k.ArrowDown || !!s.down };
 }
-const frameInput = () => stickFrame(input(false), !!gb && onCourt());   // (a match on the court: a light tilt walks)
+const frameInput = () => stickFrame(input(false), !!gb && !port && onCourt());   // (a match on the court, CODE: ROM: a light tilt walks)
+// STICK FEEL: Analog with the port: the stick's angle and tilt for the match code (chars.js ANALOG), a recording event when it changes
+let analogAt = "stick:";
+function setAnalog() {
+  const A = onCourt() ? stickAnalog() : null, e = analogEvent(A);
+  port.analog = A; if (e !== analogAt) { analogAt = e; session.event(e); }
+}
 const rec = new Recorder();
 // with the JS port the game's state is partly JavaScript (its coroutines), which a machine state can't hold: a
 // recording made mid-game could not be replayed. So the port keeps a log of every frame from power-on, and REC
@@ -147,7 +153,7 @@ function resultsGate(inp) {
 }
 function frame() {
   pollGamepad(keys); const inp = modes.filterInput(resultsGate(frameInput())), mask = maskOf(inp); gb.setInput(inp); lastInp = inp;   // (MODES: the partner's commands kept from the game)
-  if (port) portFrame(); else gb.runFrame();
+  if (port) { setAnalog(); portFrame(); } else gb.runFrame();
   if (view3d && voxel && voxel.mode === "3d") voxel.tick();
   if (phone) phone.frame(gb);                // VIBRATE: hits and points
   if (replay) replay.afterFrame(gb, inp);   // INSTANT REPLAY: the buttons of the point (the port: the point's tape)
@@ -361,7 +367,7 @@ async function loadRom(buf) {
   if (port) $("romstatus").textContent += ` · JS port (${port.hooks.size} routines)`;
   else try { const mod = await import("../gen/game.js"); const T = {}; mod.install(T); gb.installRecomp(T); if (mod.HRAM_SIG) gb.exec.setHramSig(mod.HRAM_SIG); recomp = { T, sig: mod.HRAM_SIG }; $("romstatus").textContent += " · recompiled code"; } catch (e) { $("romstatus").textContent += " · interpreter"; }
   loadSave();
-  if (port) { session.start(gb, recMeta()); sessionLook = creator.look; }
+  if (port) { session.start(gb, recMeta()); sessionLook = creator.look; analogAt = "stick:"; }
   $("loader").hidden = true; cv.focus();
   showHud(!document.body.classList.contains("touch"));            // phones: the bar stays hidden until Back
   if (document.body.classList.contains("touch")) hint("Swipe back (or press Back) for the menu");
@@ -438,7 +444,7 @@ addEventListener("visibilitychange", () => { if (document.hidden && recording())
 window.__stopRec = () => { if (recording()) saveRecording(true); };   // called by the Android wrapper from onPause
 replay = new InstantReplay({ gb: () => gb, voxel: () => voxel, canRun: () => view3d && !!voxel && voxel.mode === "3d", isPort: () => !!port, settle });
 phone = attachPhone($("hud"), { gb: () => gb, voxel: () => voxel, view3d: () => view3d, redraw: () => { renderedAt = -1; drawnFrame = -1; if (gb) draw(1); },
-  saveState: () => { settle(); return saveState(gb); }, loadState: st => { raSnap = null; loadState(gb, st); drawnFrame = -1; }, romHash: () => romHash, hint });
+  saveState: () => { settle(); return saveState(gb); }, loadState: st => { raSnap = null; loadState(gb, st); drawnFrame = -1; }, romHash: () => romHash, hint, isPort: () => !!port });
 $("view3d").addEventListener("pointerdown", () => { if (!gb) return; const vox = voxel && voxel.voxelSprites; setView3d(!view3d || !vox, view3d && !vox); });   // off -> cards -> voxels -> off
 function applySmooth() {
   $("smoothbtn").textContent = "SMOOTH: " + (smooth ? "on" : "off");
@@ -566,6 +572,6 @@ $("engbtn").addEventListener("pointerdown", () => {
 // a private build bundles the ROM; a shared one doesn't, so the app starts with the ROM the player picked last time
 fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom)
   .catch(() => { if (navigator.userAgent.includes("MarioTennisWrapper")) romStore("readonly", s => s.get("rom")).then(b => { if (b && !gb) loadRom(b.buffer.slice(0)); }).catch(() => {}); });
-window.__gb = { get port() { return port; }, get deck() { return deck; }, get smooth() { return smooth; }, set smooth(v) { smooth = !!v; renderedAt = -1; applySmooth(); }, get fpsInfo() { return fps; }, get gb() { return gb; }, get hd() { return hd; }, keys, rec, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { if (n) settle(); for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, get creator() { return creator; }, get tour() { return tour; }, get modes() { return modes; }, get menuWheel() { return menuWheel; }, get replay() { return replay; }, loadSnapshot(s) { raSnap = null; loadSnapshot(gb, s); }, saveState() { settle(); return saveState(gb); }, loadState(s) { raSnap = null; loadState(gb, s); drawnFrame = -1; }, get runAhead() { return runAhead; }, settle };
+window.__gb = { get port() { return port; }, get session() { return session; }, get deck() { return deck; }, get smooth() { return smooth; }, set smooth(v) { smooth = !!v; renderedAt = -1; applySmooth(); }, get fpsInfo() { return fps; }, get gb() { return gb; }, get hd() { return hd; }, keys, rec, aspect(a) { aspect = a; drawnFrame = -1; applyAspect(); }, pause(p = true) { paused = p; }, step(n = 1) { if (n) settle(); for (let i = 0; i < n; i++) frame(); draw(1); }, frameHash() { return gb.frameHash(); }, view3d: setView3d, preset: setPreset, get voxel() { return voxel; }, get creator() { return creator; }, get tour() { return tour; }, get modes() { return modes; }, get menuWheel() { return menuWheel; }, get replay() { return replay; }, loadSnapshot(s) { raSnap = null; loadSnapshot(gb, s); }, saveState() { settle(); return saveState(gb); }, loadState(s) { raSnap = null; loadState(gb, s); drawnFrame = -1; }, get runAhead() { return runAhead; }, settle };
 organizeHud($("hud"));
 requestAnimationFrame(loop);
