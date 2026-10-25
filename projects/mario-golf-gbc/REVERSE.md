@@ -63,6 +63,21 @@ data names). Code it cannot see would be reached only through pointers computed 
 above; the scans used to look for such code (pointer tables into untraced code, code-like untraced runs) found
 nothing left in the code banks. Data banks (graphics, holes, text, songs) are not code and are not counted.
 
+### Rewrite progress (tools/decomp_progress.py)
+
+The rewrite runs the game's behaviour in JavaScript without an emulated Game Boy (`web/js/golf/`), reading only
+data from the ROM. `decomp_progress.py` counts the traced code bytes in routines that the rewrite cites by
+`BB:AAAA` (byte -> routine as in coverage.py).
+
+| Step | Rewritten code bytes | Share |
+|------|----------------------|-------|
+| Python ports only (tools/golfmath.py ... hole_py.py) | 16,521 | 6.81% |
+| JS engine web/js/golf: math, ball, cup, launch, swing, shot, hole, joypad | 17,020 (JS + Python) | 7.01% |
+
+The JS engine (`rom.js` ROM and LZ access, `memory.js` the RAM layout, `math.js`, `ball.js`, `cup.js`,
+`launch.js`, `swing.js`, `shot.js`, `hole.js`, `joypad.js`) is checked by `node web/tests/golf_vs_recordings.mjs`:
+the 27 shot recordings and the 4 whole holes of tools/shot_suite.py and hole_suite.py match event for event.
+
 ---
 
 ## Data-Range Map
