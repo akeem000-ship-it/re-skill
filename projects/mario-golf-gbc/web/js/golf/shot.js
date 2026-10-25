@@ -15,6 +15,7 @@ import { readJoypad } from "./joypad.js";
 import { taskFacade, runFrameTasks } from "./tasks.js";
 import { showCaption, captionMotionTask, captionAnimTask } from "./captions.js";
 import * as P from "./pictures.js";
+import { scorecardStrokesTask } from "./scorecard.js";
 import { vblankDisplay, clearUnusedSprites } from "./render/display.js";
 import * as D from "./render/hooks.js";
 import { ball, rd16, wr16, playerField } from "./memory.js";
@@ -157,6 +158,8 @@ export class Shot {
       "77:6f8e": () => P.storyPicturePaletteTask(w),   // 77:6F8E
       "77:70b6": () => P.storyPictureTimerTask(w),     // 77:70B6
       "4a:62a3": () => P.pictureCycleTask(w),          // 4A:62A3
+      "48:5ee9": () => P.pictureAnimTiles(w),          // 48:5EE9
+      "0e:6d47": () => scorecardStrokesTask(w),        // 0E:6D47
       ...D.displayTasks(this),                   // tasks that only draw (render/hooks.js)
     };
   }

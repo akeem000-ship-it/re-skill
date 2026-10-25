@@ -44,6 +44,7 @@ const WRAM0_DISPLAY = [[0x000, 0x0A0], [0x100, 0x1C0], [0x1C0, 0x200], [0x200, 0
 
 let vb = 0, early = false, afterUnsynced = false, lctx = null;
 const coreSounds = [], nativeSounds = [];
+let lastSound = null;
 const lagFrames = new Set(), mismatches = [], taint = new Set();
 const stats = { frames: 0, modelExact: 0, pixelExact: 0, lag: 0, unported: 0, bad: 0, rasterChecked: 0, rasterBad: 0, rasterBlank: 0 };
 const badRuns = [];
@@ -66,7 +67,11 @@ try {
       w.onSound = id => { if (lctx && lctx.synced) nativeSounds.push(`${lctx.frame}:${h2(id)}`); };
       const gb = core.gb, orig = core.step.bind(core);
       core.step = () => {
-        if (gb.cpu.pc === 0x2BCA && lctx && lctx.synced) coreSounds.push(`${lctx.frame}:${h2(gb.cpu.a)}`);
+        if (gb.cpu.pc === 0x2BCA && lctx && lctx.synced) {   // (an interrupt taken there comes back to it: once)
+          const key = `${lctx.frame}:${h2(gb.cpu.a)}`;
+          if (!(lastSound && lastSound.key === key && lastSound.sp === gb.cpu.sp)) coreSounds.push(key);
+          lastSound = { key, sp: gb.cpu.sp };
+        }
         if (gb.cpu.pc === 0x2EF9) {              // VBlank: lag when it interrupts the game's code, not AdvanceFrame's wait
           vb++;
           const sp = gb.cpu.sp, ret = gb.mem.read(sp) | gb.mem.read(sp + 1) << 8;

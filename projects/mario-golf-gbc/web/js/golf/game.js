@@ -22,7 +22,7 @@ export function* playRoundFrames(w, roundId, input, { ev = () => {}, maxHoles = 
     result.holes.push({ hole: w0[0x837], strokes: w0[p + 0x20], putts: w0[p + 0x21] });
     onHoleEnd(result);
     if (result.holes.length >= maxHoles) break;
-    if (!R.holeEnd(w)) { R.roundEnd(w); break; }
+    if (!(yield* R.holeEnd(sh))) { R.roundEnd(w); break; }
     yield* R.holeStart(sh);
   }
   return result;

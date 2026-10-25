@@ -13,6 +13,11 @@ export function beginFadeOut(w, c) {             // 00:25A1 BeginFadeOut
   h[ST] = 1; h[OUT] = 1;
   begin(h, 1, c);
 }
+export function forceFadeOut(w, c) {             // 00:258A ForceFadeOut
+  const h = w.high;
+  h[ST] = 1; h[OUT] = 1;
+  begin(h, 1, c);
+}
 export function beginWhiteFadeOut(w, c) {        // 00:2590 BeginWhiteFadeOut
   beginFadeOut(w, c);
   if (w.high[ST]) w.high[ST] |= 0x80;

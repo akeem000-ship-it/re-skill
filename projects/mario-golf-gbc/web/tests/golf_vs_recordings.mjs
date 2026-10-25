@@ -143,7 +143,7 @@ function runHole(rec) {                          // tools/hole_run.py, on throug
           records = d.length ? "differ at " + d.map(k => `$${h4(0xC800 + k)} js ${h2(w0[0x800 + k])} game ${h2(want[k])}`).join(" ") : "match";
           break;
         }
-        if (!R.holeEnd(w)) { note = " the round ended before the recording"; break; }
+        if (!runSync(R.holeEnd(quiet))) { note = " the round ended before the recording"; break; }
         hole = runSync(R.holeStart(quiet));
       } else runSync(R.nextShot(quiet));
       if (!sync()) { note = ` recording ends before shot ${outs.length + 1}`; break; }

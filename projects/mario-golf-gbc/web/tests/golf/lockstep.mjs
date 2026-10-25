@@ -8,10 +8,8 @@
 // from each address step, A on alternate frames elsewhere. When the game lags (its code runs past the next VBlank),
 // that VBlank reads the joypad again and the code sees those bytes (a press can be lost): the native frame gets
 // them too (ctx.lagInputs: the frames where they differed).
-// The native round leaves out the screens between holes (the scorecard): from a hole's end to the next step it
-// marks the two are not in step; there the core is run on to that step and `synced` is false until it gets
-// there. When the core has to run whole frames to reach a step while the two are meant to be in step, that is a
-// slip (ctx.slips: the native round took fewer AdvanceFrames than the game).
+// When the core has to run whole frames to reach a step the native round marks, that is a slip (ctx.slips: the
+// native round took fewer AdvanceFrames than the game); the two are in step again from there.
 import fs from "fs";
 import path from "path";
 import { CoreRun, MARKS } from "./corerun.mjs";
@@ -107,7 +105,6 @@ export function runLockstep({ name = "r18", holes = 1, onFrame = () => {}, onMar
     w.high.set(core.hram().subarray(0x10, 0x15), 0x190);
   };
   ev.v = true;                                 // also an event after each frame's VBlank work
-  const result = playRound(w, roundId, null, { ev, maxHoles: holes, onShot: () => { ctx.phase = "menus"; },
-    onHoleEnd: () => { ctx.synced = false; } });
+  const result = playRound(w, roundId, null, { ev, maxHoles: holes, onShot: () => { ctx.phase = "menus"; } });
   return { ctx, result };
 }

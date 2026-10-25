@@ -7,7 +7,8 @@
 // display (render/display.js). (EnableOAMDMA 00:068A / DisableOAMDMA 00:0684 write to the ROM area, the MBC's RAM
 // enable register: no display effect, left out.)
 import { rb, rw } from "./rom.js";
-import { registerFrameTask, unregisterFrameTask } from "./tasks.js";
+import { registerFrameTask, unregisterFrameTask, clearFrameTasks } from "./tasks.js";
+import * as Scr from "./screen.js";
 import { playerField as pf } from "./memory.js";
 import * as D from "./render/display.js";
 
@@ -199,4 +200,57 @@ export function pictureCycleTask(w) {            // 4A:62A3 PictureCycleTask: pa
 
 function copyMapToScrollBuffers() {              // ~00:0804 CopyMapToScrollBuffers
   throw new Error("the hole-in-one picture (~00:0804 CopyMapToScrollBuffers) is not ported");
+}
+
+// ---- after nine holes (08:4F75 ShowHalfwayPicture, when wHolesLeft is $0A): ShowPictureScreen 48:5E42, a full
+// screen picture with animated tiles for up to $0E10 frames or a button, then InitFontScreen 01:41E8 ----
+export function* showHalfwayPicture(sh) {
+  const w = sh.w;
+  if (w.wram[0][0x839] !== 0x0A) return;
+  Scr.forceFadeOut(w, 0x7F);                     // 48:5E42 ShowPictureScreen
+  yield* Scr.waitFade(sh);
+  clearFrameTasks(w);
+  D.setWramBank(w, 1);
+  D.resetSprites(w);
+  w.high[0x18B] = w.high[0x18A] = 0;
+  if (w.vram) D.inBank(w, 0x48, () => {
+    D.disableLCDSafely(w);
+    w.lcd.wy = 0x90;
+    D.loadPalettesMasterOnly(w, 0x5F0C, 0x00, 0x08);
+    D.lzTo(w, 0x48, 0x5F4C, 0xD000);
+    D.queueVRAMCopy(w, 0xD000, 0xB000, 0x40);
+    D.queueVRAMCopy(w, 0xD400, 0xB400, 0x40);
+    D.queueAndRunVRAMCopy(w, 0xD800, 0xA800, 0x40);
+    D.lzTo(w, 0x48, 0x6776, 0xD000);
+    D.queueAndRunVRAMCopy(w, 0xD000, 0xB800, 0x24);
+    D.lzTo(w, 0x48, 0x6801, 0xD000);
+    D.queueAndRunVRAMCopy(w, 0xD000, 0x9800, 0x24);
+    D.enableLCD(w);
+  });
+  w.wram[0][0x0F8] = 0;
+  registerFrameTask(w, 0x01, 0x48, 0x5EE9);      // PictureAnimTiles
+  Scr.forceFadeIn(w, 0x08);
+  yield* Scr.waitFade(sh);
+  for (let n = 0x0E10; n; n--) {
+    yield* sh.advance();
+    if (w.high[0x194]) { sh.sound(0x5C); break; }
+  }
+  if (w.vram) D.inBank(w, 0x01, () => {          // 01:41E8 InitFontScreen
+    D.disableLCDSafely(w);
+    w.lcd.vbk = 0;                               // 01:41CE LoadFontTiles
+    D.startVRAMDMAFromHL(w, 0x42A0, 0x9000, 0x80);
+    D.startVRAMDMAFromHL(w, 0x4AA0, 0x8800, 0x60);
+    w.lcd.vbk = 0;
+    D.startVRAMDMAFromHL(w, 0x5120, 0x87C0, 0x04);
+    D.loadPalettesMasterOnly(w, 0x50A0, 0x00, 0x08);
+    D.loadPalettesMasterOnly(w, 0x50E0, 0x08, 0x08);
+    D.enableLCD(w);
+  });
+}
+
+export function pictureAnimTiles(w) {           // 48:5EE9 PictureAnimTiles: 4 tiles 48:6900 + (frame & $FC) x 16
+  const w0 = w.wram[0];
+  if (w.vram) D.inBank(w, 0x48, () => D.queueVRAMCopy(w, (0x6900 + (w0[0x0F8] & 0xFC) * 16) & 0xFFFF, 0xB000, 0x04));
+  w0[0x0F8] = (w0[0x0F8] + 1) & 0xFF;
+  if (w0[0x0F8] >= 0x30) w0[0x0F8] = 0;
 }

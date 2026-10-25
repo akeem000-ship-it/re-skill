@@ -13,7 +13,9 @@ import * as Cam from "./camera.js";
 import * as Scr from "./screen.js";
 import { clearFrameTasks } from "./tasks.js";
 import * as D from "./render/hooks.js";
+import * as Dp from "./render/display.js";
 import * as P from "./pictures.js";
+import { showScorecard } from "./scorecard.js";
 import { showCaptionAndWait } from "./captions.js";
 
 export function advanceRandomSeed(w) {           // 00:0A61 AdvanceRandomSeed: seed ($FFFC) = seed x 5 + $3573
@@ -241,11 +243,28 @@ function golfViewInit(sh) {                      // 10:420E GolfViewInit
   r6[0x443] = 0xFF;                              // no view yet
 }
 
-function* strongWindIntro(sh) {                   // 12:6F8D StrongWindIntro: wind of 12 mph or more, a gust sprite
-  if (sh.w.wram[0][0x815] < 0x0C) return;
+// 12:6F8D StrongWindIntro: wind of 12 mph or more: a gust sprite blown across the screen along the wind angle
+function* strongWindIntro(sh) {
+  const w = sh.w, w0 = w.wram[0];
+  if (w0[0x815] < 0x0C) return;
+  if (w.vram) Dp.inBank(w, 0x12, () => {
+    Dp.loadPalettesImmediate(w, 0x7308, 0x0B, 0x01);
+    Dp.queueVRAMCopy(w, 0x70C0, 0xA2C0, 0x04);
+  });
   yield* sh.advance();
   sh.sound(0x9C);                                // 12:6FAA
-  yield* sh.advance(0x3D);                              // (the sprite crosses the screen; display)
+  for (let b = 0xA6, c = 0x3D; c; c--, b = (b + 3) & 0xFF) {
+    if (w.vram) {
+      const [hl, de] = g.mulSinCosSigned(b & 0x80 ? 0xFF00 | b : b, w0[0x816] << 8);   // 00:08A5, 00:11AC
+      const y = ((de & 0xFF) + 0x48) & 0xFF;
+      if (!(y & 0x80)) {
+        Dp.queueSprite16(w, y, ((hl & 0xFF) + 0x50) & 0xFF, 0x2C, 0x0B);   // 00:26A4
+        const n = w.high[0x18C];                 // 12:7019 AnimateGustSprite: a new frame every 8
+        if (!(n & 7)) Dp.inBank(w, 0x12, () => Dp.queueVRAMCopy(w, (0x70C0 + (n & 0x38) * 8) & 0xFFFF, 0xA2C0, 0x04));
+      }
+    }
+    yield* sh.advance();
+  }
 }
 
 function roundHookHoleStart(w) {                 // 08:47FD RoundHookHoleStart
@@ -380,24 +399,25 @@ export function* nextShot(sh) {
 }
 
 // 10:4635-10:4647 the hole is over: true when another hole follows (then holeStart)
-export function holeEnd(w) {
-  const w0 = w.wram[0];
-  roundHookHoleEnd(w);                           // 08:4B02
+export function* holeEnd(sh) {
+  const w = sh.w, w0 = w.wram[0];
+  yield* roundHookHoleEnd(sh);                   // 08:4B02
   w0[0x837] = (w0[0x837] + 1) & 0xFF;            // wHoleNumber, 18 -> 1
   if (w0[0x837] >= 0x13) w0[0x837] = 1;
   w0[0x839] = (w0[0x839] - 1) & 0xFF;            // wHolesLeft
   return w0[0x839] !== 0;
 }
 
-function roundHookHoleEnd(w) {                   // 08:4B02 RoundHookHoleEnd
-  const w0 = w.wram[0];
+function* roundHookHoleEnd(sh) {                  // 08:4B02 RoundHookHoleEnd
+  const w = sh.w, w0 = w.wram[0];
   switch (mode(w)) {
     case 1: notPorted("the tournament's hole end (~08:4B3F)"); break;
     case 2: notPorted("the match-play hole end (~08:4B64)"); break;
     case 3:                                      // 08:4B93 HoleEndMode3Stroke
       if (w0[0x8D0] !== 0xFF) notPorted("the two-player contest totals (~08:432F)");
-      w0[0x4BD] = 1;                             // wStandingsPhase (~0E:43D6 ShowScorecard: display)
-      // ~08:4F75 ShowHalfwayPicture: display
+      w0[0x4BD] = 1;                             // wStandingsPhase
+      yield* showScorecard(sh);                  // 0E:43D6
+      yield* P.showHalfwayPicture(sh);           // 08:4F75
       if (w0[0x837] >= 0x11 && w0[0x8D0] !== 0xFF) w0[0x832] = 1;   // 08:4BAA SetDecisiveHoleOnLast
       break;
     default: break;

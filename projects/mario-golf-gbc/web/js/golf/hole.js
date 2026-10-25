@@ -72,7 +72,7 @@ function addPoints(w, de) {                      // 02:5411: $C83C += de x cours
 
 // 3B:7260 OutcomeRules: a = the shot's outcome: penalties, the water drop, bonus and points, the "on the green" flag,
 // with the captions, the caption pictures (4F:619C) and the player's picture (3B:7717); returns 0, or $FF (out of
-// bounds: the old spot is kept). (~02:4714 RecordShot keeps birdies and better in the save data: not modelled.)
+// bounds: the old spot is kept).
 export function* outcomeRules(sh, a) {
   const w = sh.w, r6 = w.wram[6], w0 = w.wram[0];
   yield* sh.viewLeave();                         // 3B:431F ShotViewLeave
@@ -102,7 +102,26 @@ export function* outcomeRules(sh, a) {
   return yield* byTerrain(sh, rw(0x3B, 0x72A3 + (a & 0x0F) * 2));      // OutcomeByTerrainTable
 }
 
+// 02:4714 RecordShot: b = 0 birdie / 1 eagle / 2 albatross / 3 hole in one (modes 1-3, a human player, $C878 = 0):
+// the record in $C600 (the player's record, the course, hole and wind, the strokes, the stroke records $D680) copied to
+// WRAM1 $D000 and stored as save block 4 + b. (The save data itself, ~02:4355 SaveBlockLoad / ~02:429B SaveBlockStore,
+// is not modelled.)
+function recordShot(w, b) {
+  const w0 = w.wram[0];
+  if (![1, 2, 3].includes(w0[0x834]) || w0[pf(w, 0x13)] || w0[0x878]) return;
+  w0.fill(0, 0x600, 0x680);
+  const strokes = w0[pf(w, 0x20)];
+  w0.copyWithin(0x600, pf(w, 0), pf(w, 0) + 0x20);
+  w0[0x620] = w0[0x836]; w0[0x621] = w0[0x837];
+  w0[0x622] = w0[0x815]; w0[0x623] = w0[0x816]; w0[0x624] = w0[0x838];
+  w0[0x625] = strokes;
+  const slot = 0x680 + (w0[0x835] ? 0x40 : 0);   // 02:4602 ShotRecordSlot
+  w0.set(w.wram[6].subarray(slot, slot + 0x40), 0x640);
+  w.wram[1].set(w0.subarray(0x600, 0x680), 0x000);
+}
+
 function* holeInOne(sh) {                        // 3B:733D / 3B:760E
+  recordShot(sh.w, 3);
   sh.sound(0x1B);
   yield* P.showPlayerPicture(sh, 0);
   markHoleCleared(sh.w);
@@ -140,6 +159,7 @@ function* holed(sh) {                            // 3B:72C3: the hole's bonus, h
   const good = { 0x00: [0x1D, 4, 1, 0], 0xFF: [0x1C, 3, 2, 6], 0xFE: [0x1B, 2, 0, 0x0A], 0xFD: [0x1B, 1, 7, 0x10] }[d];
   if (good) {                                    // par (no points), birdie, eagle, albatross
     const [song, pic, cap, pts] = good;
+    if (d) recordShot(w, (-d - 1) & 3);          // (birdie 0, eagle 1, albatross 2)
     sh.sound(song);
     yield* P.showPlayerPicture(sh, pic);
     yield* showCaptionAndWait(sh, cap);
