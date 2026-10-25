@@ -29,6 +29,7 @@ import { organizeHud } from "./hudmenu.js";      // the button bar in categories
 import { loadSnapshot } from "./gb/snapshot.js";
 import { saveState, loadState, snapshot, restore } from "./gb/state.js";
 import { composeWide, WIDE_W, WIDE_H } from "./wide.js";
+import { TitleShow } from "./titleshow.js";
 import { mountStick, stickDir, stickFrame, stickAnalog, analogEvent, addStickFeelButton } from "./stick.js";
 import { portraitArea, attachPortrait } from "./portrait.js";   // touch screens held upright: the game on top, a control deck below
 import { Recorder, maskOf, packRecording, bytesToBase64, stateOf } from "./recorder.js";
@@ -535,6 +536,7 @@ $("engbtn").textContent = ENGINE_LABEL[portMode()] || "CODE: ROM";
 }
 // MENU: Wheel / Game (menuwheel.js): the main menu as a ball wheel over the game's own (through the port)
 menuWheel = attachMenuWheel(() => gb, () => port, $("hud"), () => hd);
+menuWheel.show = new TitleShow(() => (view3d && voxel ? voxel : null));   // TITLE SHOW: the venues in 3D behind PRESS START
 menuWheel.isCourt = () => !!(view3d && voxel && voxel.mode === "3d" && voxel.isCourt());   // (BACKDROP: a match is up, stop holding the menu)
 // TOUR MATCH: 3x3 / Game's: remembered, read by the port when a tour match is set up (the next match, no reload)
 {

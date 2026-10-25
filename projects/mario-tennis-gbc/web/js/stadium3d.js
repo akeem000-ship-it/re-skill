@@ -233,7 +233,7 @@ export class Stadium3D {
     let qv = q.get("detail"); if (qv === null) { try { qv = localStorage.getItem(QKEY); } catch (e) { qv = null; } } this.quality = qv === "lite" ? "lite" : "full";   // DETAIL: Full / Lite
   }
   get active() { return this.mode === "3d" && !this.broken; }
-  get holding() { return this.active && ((this.mom && this.mom.holding) || !!this.v.venueTour); }   // (VENUE TOUR holds it too)   // (BIG MOMENTS: the trophy ceremony holds the game, as the intro does)
+  get holding() { return this.active && ((this.mom && this.mom.holding) || !!(this.v.venueTour && !this.v.venueTour.attract)); }   // (VENUE TOUR holds it too; the title show does not)   // (BIG MOMENTS: the trophy ceremony holds the game, as the intro does)
   // GIANT: the finals (the Island Open's rounds and the dream matches: crowdClass "major") get the giant stadium: an upper deck all round
   // over a concourse, closing the far corners, under a roof with floodlight banks along its edge, flags, and two video screens
   wantGiant() { return !this.v.isDrill() && (this.forceGiant || this.crowdClass() === "major"); }

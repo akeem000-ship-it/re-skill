@@ -16,6 +16,21 @@ const SEEN_KEY = "mt-venues-seen", CAMS = ["ORBIT", "FLYOVER", "COURTSIDE", "THE
 export function markSeen(venue) { try { const s = new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || "[]")); if (!s.has(venue)) { s.add(venue); localStorage.setItem(SEEN_KEY, JSON.stringify([...s])); } } catch (e) { /* private mode */ } }
 function seen() { try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || "[]")); } catch (e) { return new Set(); } }
 
+// a venue's court colours: the court map's own palette from the ROM (bank $0A's map table)
+export function venuePalette(rom, map) {
+  const base = 0x59D9 + map * 16, pi = rom.u8(0x0A, base + 2), pb = rom.u8(0x0A, base + 3);
+  try { return Uint8Array.from(rom.rawRef(pi, pb, 64)); } catch (e) { return new Uint8Array(64).fill(0x7F); }
+}
+// the tour's cameras (CAMS), t seconds into the shot
+export function tourCamera(cam, t, aspect, m4, clip) {
+  let eye, at, fov = 0.8;
+  if (cam === 0) { const a = t * 0.12 + 0.6; eye = [Math.sin(a) * 4300, 1700 + 250 * Math.sin(t * 0.2), Math.cos(a) * 4300]; at = [0, 150, 0]; }
+  else if (cam === 1) { const u = (t % 16) / 16, a = u * 6.283; eye = [Math.sin(a) * (2600 + 900 * Math.sin(a * 2)), 700 + 900 * (0.5 + 0.5 * Math.cos(a * 2)), Math.cos(a) * 3000]; at = [Math.sin(a + 0.8) * 600, 250, Math.cos(a + 0.8) * 900]; fov = 0.9; }
+  else if (cam === 2) { const z = 1700 * Math.sin(t * 0.18); eye = [-1150, 120, z]; at = [1400, 360, z * 0.6]; fov = 0.85; }
+  else { const a = Math.sin(t * 0.15) * 0.9; eye = [-1560, 700, 900]; at = [600 * Math.cos(a), 120, -1600 * Math.sin(a) - 200]; fov = 0.95; }
+  return { mvp: m4.mul(m4.perspective(fov, aspect, clip.near, clip.far), m4.lookAt(eye, at, [0, 1, 0])), tilt: 0 };
+}
+
 export class VenueTour {
   constructor({ getVoxel, setView3d, getView3d, pad }) { this.getVoxel = getVoxel; this.setView3d = setView3d; this.getView3d = getView3d; this.pad = pad; this.on = false; this.i = 0; this.hour = 16; this.cam = 0; }
   stops() { const S = seen(); const all = new URLSearchParams(location.search).has("allvenues"); return STOPS.filter(s => all || s.venue === "junior" || S.has(s.venue)); }
@@ -39,9 +54,7 @@ export class VenueTour {
   // the venue: its court from the ROM (map, palette), the stadium in its style
   apply() {
     const v = this.v, s = this.stops()[this.i]; if (!s) return;
-    const rom = v.rom, base = 0x59D9 + s.map * 16, pi = rom.u8(0x0A, base + 2), pb = rom.u8(0x0A, base + 3);
-    let pal = null; try { pal = Uint8Array.from(rom.rawRef(pi, pb, 64)); } catch (e) { pal = new Uint8Array(64).fill(0x7F); }
-    v.venueTour = { map: s.map, pal, camera: (a, m4, clip) => this.camera(a, m4, clip) };
+    v.venueTour = { map: s.map, pal: venuePalette(v.rom, s.map), camera: (a, m4, clip) => this.camera(a, m4, clip) };
     v.stadium.forceVenue = s.venue; v.ground = null; v.groundHash = -1; v.courtId = s.map; v.stadium.reset(); this.t0 = performance.now() / 1000;
     this.render();
   }
@@ -59,12 +72,7 @@ export class VenueTour {
   // the camera (voxel.js renderCourt asks first while the tour is open); the hour goes to the lighting as the weather's hour does
   camera(aspect, m4, clip) {
     const v = this.v; if (v.light) v.light.weatherHour = this.hour + 0.01;
-    const t = performance.now() / 1000 - this.t0; let eye, at, fov = 0.8;
-    if (this.cam === 0) { const a = t * 0.12 + 0.6; eye = [Math.sin(a) * 4300, 1700 + 250 * Math.sin(t * 0.2), Math.cos(a) * 4300]; at = [0, 150, 0]; }
-    else if (this.cam === 1) { const u = (t % 16) / 16, a = u * 6.283; eye = [Math.sin(a) * (2600 + 900 * Math.sin(a * 2)), 700 + 900 * (0.5 + 0.5 * Math.cos(a * 2)), Math.cos(a) * 3000]; at = [Math.sin(a + 0.8) * 600, 250, Math.cos(a + 0.8) * 900]; fov = 0.9; }
-    else if (this.cam === 2) { const z = 1700 * Math.sin(t * 0.18); eye = [-1150, 120, z]; at = [1400, 360, z * 0.6]; fov = 0.85; }
-    else { const a = Math.sin(t * 0.15) * 0.9; eye = [-1560, 700, 900]; at = [600 * Math.cos(a), 120, -1600 * Math.sin(a) - 200]; fov = 0.95; }
-    return { mvp: m4.mul(m4.perspective(fov, aspect, clip.near, clip.far), m4.lookAt(eye, at, [0, 1, 0])), tilt: 0 };
+    return tourCamera(this.cam, performance.now() / 1000 - this.t0, aspect, m4, clip);
   }
   // ---- the bar along the bottom: the venue, the hour, the camera, the buttons ----
   ui() {

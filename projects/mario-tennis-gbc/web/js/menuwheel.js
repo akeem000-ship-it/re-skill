@@ -176,7 +176,10 @@ export class MenuWheel {
     Object.assign(root.style, { position: "fixed", zIndex: 1, pointerEvents: "none", overflow: "hidden", display: "none", backdropFilter: "blur(7px) brightness(0.62)", WebkitBackdropFilter: "blur(7px) brightness(0.62)", background: "rgba(8,10,32,0.35)" });
     this.bgcv = document.createElement("canvas"); Object.assign(this.bgcv.style, { position: "absolute", left: "0", top: "0", width: "100%", height: "100%", maxWidth: "none", aspectRatio: "auto", transform: "none", display: "none" }); root.appendChild(this.bgcv);   // BACKDROP
     this.cv = document.createElement("canvas"); Object.assign(this.cv.style, { position: "absolute", left: "0", top: "0", width: "100%", height: "100%", maxWidth: "none", aspectRatio: "auto", background: "transparent", transform: "none", display: "block" }); root.appendChild(this.cv);   // (not the page's own canvas look)
-    this.cell = document.createElement("canvas"); document.body.appendChild(root);
+    this.cell = document.createElement("canvas");
+    // inside <main>: on a phone <main> is fixed (a stacking context of its own), and the menu must sit over the game view but under
+    // the button bar (#hud, z 3) and the touch controls (#pad, z 2) there, not over all of <main>
+    (document.querySelector("main") || document.body).appendChild(root);
   }
   // once a frame (full.js draw): shown while the port's main menu waits for a choice
   isTitle() {
@@ -197,6 +200,8 @@ export class MenuWheel {
     } else if (this.phase === "attract" && (!this.on || wheel || F - this.attractAt > 1200 || F < this.attractAt)) this.phase = "none";
     const title = onTitle || this.phase === "attract";
     if (this.phase === "zoom" && T - this.zoomAt > ZOOM && (wheel || T - this.zoomAt > ZOOM + 1.5)) this.phase = "none";   // (the wheel up, or soon after: a quick player may already be past the main menu)
+    // TITLE SHOW (titleshow.js): behind the title and its zoom, the 3D view's flight through the venues (with the 3D view on)
+    const live = !!(this.show && this.show.update(title || this.phase === "zoom"));
     const skin = this.on && P && P.menuWheel && P.menuWheel.skin, skinOn = !!(skin && !wheel && !title && this.phase !== "zoom" && P.frames - skin.at <= 2);   // (a sub-menu's loop running now)
     const opts = !!(this.on && P && P.menuWheel && P.menuWheel.optionsOpen && this.opts);   // OPTIONS: open (from the main menu or a match's options)
     const show = title || wheel || this.phase === "zoom" || skinOn || opts;
@@ -216,14 +221,15 @@ export class MenuWheel {
     const W = Math.round(r.width * dpr), H = Math.round(r.height * dpr); if (this.cv.width !== W || this.cv.height !== H) { this.cv.width = W; this.cv.height = H; }
     if (!this.ball) this.ball = makeBall();
     const zooming = this.phase === "zoom", opaque = title || (zooming && T - this.zoomAt < ZOOM);
-    this.root.style.background = opaque || front || hold ? "#0b1024" : "rgba(8,10,32,0.35)";
+    this.root.style.background = live && !front && !hold ? "transparent" : opaque || front || hold ? "#0b1024" : "rgba(8,10,32,0.35)";
+    const blur = live && !front && !hold ? "none" : "blur(7px) brightness(0.62)"; if (this.root.style.backdropFilter !== blur) { this.root.style.backdropFilter = blur; this.root.style.webkitBackdropFilter = blur; }
     this.bgcv.style.display = front || hold ? "block" : "none";
     if (front || hold) this.backdrop(W, H, T);
     if (hold) {                                                                   // between two screens: the last one, fading
       const g = this.cv.getContext("2d"); g.clearRect(0, 0, W, H); g.globalAlpha = Math.max(0, 1 - (F - this.lastFront) / HOLD); g.drawImage(this.snap, 0, 0, W, H); g.globalAlpha = 1; return;
     }
-    if (title) { this.drawTitle(gb, W, H, T); return; }
-    if (zooming && (T - this.zoomAt < ZOOM || !wheel)) { this.drawZoom(gb, W, H, Math.min(1, (T - this.zoomAt) / ZOOM), T); return; }
+    if (title) { this.drawTitle(gb, W, H, T, live); return; }
+    if (zooming && (T - this.zoomAt < ZOOM || !wheel)) { this.drawZoom(gb, W, H, Math.min(1, (T - this.zoomAt) / ZOOM), T, live); return; }
     this.phase = "none";
     if (opts) { this.drawOptions(W, H); this.keep(front); return; }
     if (skinOn) { (this.skins || (this.skins = new MenuSkins(this))).draw(this.cv.getContext("2d"), W, H, skin, gb, this.getHd && this.getHd()); this.keep(front); return; }
@@ -313,9 +319,9 @@ export class MenuWheel {
     const v = g.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.75); v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,0.6)"); g.fillStyle = v; g.fillRect(0, 0, W, H);
     return c;
   }
-  drawTitle(gb, W, H, T) {
+  drawTitle(gb, W, H, T, live) {
     const g = this.cv.getContext("2d"), k = Math.min(W / 1280, H / 720);
-    g.drawImage(this.scene(W, H), 0, 0);
+    if (live) this.showShade(g, W, H, k); else g.drawImage(this.scene(W, H), 0, 0);
     g.drawImage(crestLogo(), 20 * k, 10 * k, 800 * k, 450 * k);
     this.menuBall(g, W - 300 * k, H - 210 * k, 150 * k, -this.pos * 0.35 + Math.sin(T * 0.6) * 0.15);
     const pulse = 0.65 + 0.35 * Math.sin(T * 4);
@@ -323,14 +329,27 @@ export class MenuWheel {
     g.fillStyle = `rgba(255,255,255,${pulse})`; g.fillText("PRESS START", 60 * k, H - 80 * k);
   }
   // Start: the ball zooms in towards the camera, then rolls left to the wheel's place as the scene fades into the menu
-  drawZoom(gb, W, H, u, T) {
+  drawZoom(gb, W, H, u, T, live) {
     const g = this.cv.getContext("2d"), k = Math.min(W / 1280, H / 720), e = u * u * (3 - 2 * u);
     g.clearRect(0, 0, W, H);
-    g.globalAlpha = 1 - e; g.drawImage(this.scene(W, H), 0, 0); g.drawImage(crestLogo(), 20 * k - e * 400 * k, 10 * k, 800 * k, 450 * k); g.globalAlpha = 1;
+    if (live) { g.fillStyle = `rgba(11,16,36,${e})`; g.fillRect(0, 0, W, H); }      // (the venues fade to the menu's night blue)
+    g.globalAlpha = 1 - e; if (!live) g.drawImage(this.scene(W, H), 0, 0); g.drawImage(crestLogo(), 20 * k - e * 400 * k, 10 * k, 800 * k, 450 * k); g.globalAlpha = 1;
     const x0 = W - 300 * k, y0 = H - 210 * k, r0 = 150 * k, x1 = -60 * k, y1 = H / 2, r1 = 250 * k;
     const grow = Math.sin(Math.min(1, u * 1.6) * Math.PI) * 0.55;                 // in towards the camera first
     const x = x0 + (x1 - x0) * e, y = y0 + (y1 - y0) * e, r = (r0 + (r1 - r0) * e) * (1 + grow);
     this.menuBall(g, x, y, r, -this.pos * 0.35 - e * 6.2832);             // one whole turn, landing as the wheel shows it
+  }
+  // TITLE SHOW: over the venue's shot, a shade where the crest and PRESS START sit, and the venue's name in the corner
+  showShade(g, W, H, k) {
+    g.clearRect(0, 0, W, H);
+    const gr = g.createLinearGradient(0, 0, W * 0.75, 0); gr.addColorStop(0, "rgba(6,8,20,0.55)"); gr.addColorStop(1, "rgba(6,8,20,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    const gb2 = g.createLinearGradient(0, H * 0.7, 0, H); gb2.addColorStop(0, "rgba(6,8,20,0)"); gb2.addColorStop(1, "rgba(6,8,20,0.5)");
+    g.fillStyle = gb2; g.fillRect(0, H * 0.7, W, H * 0.3);
+    const name = this.show && this.show.name; if (!name) return;
+    g.font = `${26 * k}px "${FONT}", ${BODY}`; g.textBaseline = "middle"; g.textAlign = "right";
+    g.fillStyle = "rgba(0,0,0,0.55)"; g.fillText(name, W - 28 * k, 38 * k); g.fillStyle = "rgba(255,255,255,0.9)"; g.fillText(name, W - 30 * k, 36 * k);
+    g.textAlign = "left";
   }
   // the one ball of the title, the zoom and the wheel: the same picture, the same green glow, turned by `turn`
   menuBall(g, x, y, r, turn) {
