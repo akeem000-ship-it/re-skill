@@ -27,6 +27,7 @@ What runs as readable JavaScript (web/js/port), checked against the ROM by the r
 | Text banks' string fetch (13 banks x 3 entries) | twins/fetch_text | standalone/fetch_text.js | verified: 39 routines x 384 tests, 0 differences; now enabled; 0 differences on exh1 and story1 |
 | Link cable (connecting, the ready signal, each frame's byte, blocks of nibbles with checksums, the menus' commands, the match session) | engine/match/link_connect, link_sync, link_handshake, nibble (07) | match/link/ | verified: two machines on an emulated cable, a whole session (connect, link menus, character select, a match) played with the ROM's link code and with the port: every AdvanceFrame alike on both (6313 and 6432 frames), the sound engine's timing apart (web/tests/port/link_pair.mjs --check); error paths (the link error screen, checksum retries, timeouts) not reached |
 | Match input with repeats, the scripted-input reader, the projection thunk | engine/match/match, match_frames, project (08) | match/match_loop.js | verified: routine tests (1779 states); 0 differences on mg_01, mg_02 |
+| No Game Boy CPU (native step 1): the machine without the SM83's instruction set, the calling convention kept (registers, stack, interrupts) | — | gb/registers.js, port.js noCpuStep (GamePort noCpu) | verified: all 29 recordings from power on (149,621 frames) in strict lockstep with --nocpu: 0 differences, no instruction run; the page's default |
 
 ## Coverage
 
