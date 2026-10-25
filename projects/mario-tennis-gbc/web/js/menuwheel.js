@@ -85,9 +85,12 @@ const OPTION_CATS = [
   ["PLAY", "the rules, the feel, the controls", ["physbtn", "netbtn", "plusbtn", "tourlenbtn", "runaheadbtn", "padmode", "stickfeelbtn", "vibratebtn", "batterybtn", "tourplusbtn", "tourbtn"]],
 ];
 const OPTION_NAMES = { view3d: "3D VIEW", aspect: "SCREEN", cam: "CAMERA", padmode: "TOUCH PAD", lightbtn: "LIGHT", uibtn: "MENUS", sprbtn: "SPRITES" };
-// the BACKDROP's court in perspective: u across (-1..1), v along (0 the far baseline at the horizon .. 1.4 past the near
-// baseline, off the bottom); d grows with the distance, so the far end is small and the near end runs wide off the screen
-const courtPoint = (u, v, W, H) => { const d = 1 + (1.2 - v) * 2, f = (1 / d - 1 / 3.4) / (1 - 1 / 3.4); return [W * 0.5 + (u * W * 0.75) / d, H * 0.43 + H * 0.62 * f, d]; };
+// the BACKDROP's court in perspective, seen from behind the near baseline (a camera 6 m back, its eye about 3.7 m up): u across
+// (-1..1, the doubles sidelines at +-0.62), v along (0 the far baseline, 0.6 the net, 1.2 the near baseline, low on the screen).
+// A point at z metres from the camera sits 1/z below the horizon, so the far half is small and the near half comes towards you;
+// d is z over the near baseline's z (1 there), for the sizes of the ball and its shadow
+const courtPoint = (u, v, W, H) => { const z = Math.max(0.5, 6 + (1.2 - v) * 19.81); return [W * 0.5 + (u * 8.85 * W * 0.47) / z, H * 0.4 + (H * 3.12) / z, z / 6]; };
+const courtHeight = (z, H) => (H * 0.836) / z;                                   // one metre up at z metres, on the screen
 export class MenuWheel {
   constructor(getGb, getPort) {
     this.getGb = getGb; this.getPort = getPort; this.shown = 0; this.pos = 0; this.root = null;
@@ -112,13 +115,19 @@ export class MenuWheel {
       return { el, name, value, help: el.title || "" };
     });
   }
-  openOptions() { const P = this.getPort(); this.opts = { cat: this.opts ? this.opts.cat : 0, row: 0, pos: this.opts ? this.opts.cat : 0, flash: 0 }; if (P && P.menuWheel) P.menuWheel.optionsOpen = true; }
+  // two steps, as every menu: ▲ ▼ the category round the ball, A opens it; then ▲ ▼ its settings, A changes one, B back to the categories
+  openOptions() { const P = this.getPort(); this.opts = { cat: this.opts ? this.opts.cat : 0, row: 0, pos: this.opts ? this.opts.cat : 0, flash: 0, inCat: false }; if (P && P.menuWheel) P.menuWheel.optionsOpen = true; }
   // a frame's pad (the edges) while the panel is open; returns the sound to play ("move", "select", "cancel") or null
   optionsInput(input) {
     const o = this.opts, P = this.getPort(); if (!o) return null;
     const rows = this.optionRows(o.cat);
-    if (input & 0x0A) { if (P && P.menuWheel) P.menuWheel.optionsOpen = false; return "cancel"; }        // B or START: back to the wheel
-    if (input & 0x30) { o.cat = (o.cat + (input & 0x10 ? 1 : -1) + OPTION_CATS.length) % OPTION_CATS.length; o.row = 0; return "move"; }   // right / left: the category
+    if (input & 0x08 || (input & 0x02 && !o.inCat)) { if (P && P.menuWheel) P.menuWheel.optionsOpen = false; return "cancel"; }   // START, or B on the categories: back to the wheel
+    if (input & 0x02) { o.inCat = false; return "cancel"; }                                              // B in a category: back to the categories
+    if (!o.inCat) {                                                                                      // the categories: ▲ ▼ (◀ ▶ too), A opens one
+      if (input & 0xF0) { o.cat = (o.cat + (input & 0x90 ? 1 : -1) + OPTION_CATS.length) % OPTION_CATS.length; o.row = 0; return "move"; }
+      if (input & 0x01 && rows.length) { o.inCat = true; o.row = 0; return "select"; }
+      return null;
+    }
     if (input & 0xC0) { if (!rows.length) return null; o.row = (o.row + (input & 0x80 ? 1 : -1) + rows.length) % rows.length; return "move"; }
     if (input & 0x01 && rows[o.row]) {                                                                   // A: the button pressed, as a tap
       const el = rows[o.row].el, before = el.textContent + el.className;
@@ -151,21 +160,21 @@ export class MenuWheel {
     g.fillStyle = "#8a7a50"; g.font = `${20 * k}px ${BODY}`; g.fillText(OPTION_CATS[o.cat][1], px + 30 * k, py + 36 * k);
     if (!rows.length) { g.fillStyle = "#7a7f98"; g.font = `${24 * k}px ${BODY}`; g.fillText("Turn on 3D VIEW (PICTURE) for these", px + 30 * k, py + 100 * k); }
     rows.forEach((r, i) => {
-      const y = py + 80 * k + i * rh, on = i === Math.min(o.row, rows.length - 1);
+      const y = py + 80 * k + i * rh, on = o.inCat && i === Math.min(o.row, rows.length - 1);
       if (on) { g.fillStyle = "rgba(255,214,90,0.35)"; this.pill(g, px + 14 * k, y - rh / 2 + 3 * k, pw - 28 * k, rh - 6 * k, 14 * k); g.fill(); }
       g.fillStyle = "#281e0a"; g.font = `${(on ? 26 : 24) * k}px "${FONT}", ${BODY}`; g.textAlign = "left"; g.fillText(r.name, px + 32 * k, y + 2 * k);
       g.font = `700 ${22 * k}px ${BODY}`; const vw = Math.max(90 * k, g.measureText(r.value).width + 30 * k), flash = on && performance.now() - o.flash < 250;
       g.fillStyle = flash ? "#ffb43a" : on ? "#ffd65a" : "#e4e6f0"; this.pill(g, px + pw - 30 * k - vw, y - 17 * k, vw, 34 * k, 17 * k); g.fill();
       g.fillStyle = "#281e0a"; g.textAlign = "center"; g.fillText(r.value, px + pw - 30 * k - vw / 2, y + 1 * k); g.textAlign = "left";
     });
-    const cur = rows[Math.min(o.row, rows.length - 1)];
+    const cur = o.inCat ? rows[Math.min(o.row, rows.length - 1)] : null;
     if (cur && cur.help) {                                                            // the setting's help (the button's own tooltip)
       g.fillStyle = "#464a64"; g.font = `${18 * k}px ${BODY}`; let line = ""; const maxW = pw - 60 * k, lines = [];
       for (const w of cur.help.split(" ")) { const t = line ? line + " " + w : w; if (g.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t; } if (line) lines.push(line);
       g.strokeStyle = "rgba(70,74,100,0.18)"; g.lineWidth = 2 * k; g.beginPath(); g.moveTo(px + 30 * k, py + ph - 82 * k); g.lineTo(px + pw - 30 * k, py + ph - 82 * k); g.stroke();
       lines.slice(0, 3).forEach((l, i) => g.fillText(l, px + 30 * k, py + ph - 62 * k + i * 22 * k));
     }
-    g.fillStyle = "#dce2f5"; g.font = `${24 * k}px ${BODY}`; g.textAlign = "right"; g.fillText("◀ ▶ category   ▲ ▼ setting   A change   B done", W - 60 * k, H - 40 * k); g.textAlign = "start";
+    g.fillStyle = "#dce2f5"; g.font = `${24 * k}px ${BODY}`; g.textAlign = "right"; g.fillText(o.inCat ? "▲ ▼ setting   A change   B back" : "▲ ▼ category   A open   B back", W - 60 * k, H - 40 * k); g.textAlign = "start";
   }
   // the tour files' summaries (main_menu.js BuildSaveSlotSummaries: WRAM 3 $D300, 16 bytes each: character or $3F, colour, level, name, minutes (+14), hours (+15))
   file(gb, k) {
@@ -203,8 +212,6 @@ export class MenuWheel {
     } else if (this.phase === "attract" && (!this.on || wheel || F - this.attractAt > 1200 || F < this.attractAt)) this.phase = "none";
     const title = onTitle || this.phase === "attract";
     if (this.phase === "zoom" && T - this.zoomAt > ZOOM && (wheel || T - this.zoomAt > ZOOM + 1.5)) this.phase = "none";   // (the wheel up, or soon after: a quick player may already be past the main menu)
-    // TITLE SHOW (titleshow.js): behind the title and its zoom, the 3D view's flight through the venues (with the 3D view on)
-    const live = !!(this.show && this.show.update(title || this.phase === "zoom"));
     const skin = this.on && P && P.menuWheel && P.menuWheel.skin, skinOn = !!(skin && !wheel && !title && this.phase !== "zoom" && P.frames - skin.at <= 2);   // (a sub-menu's loop running now)
     const opts = !!(this.on && P && P.menuWheel && P.menuWheel.optionsOpen && this.opts);   // OPTIONS: open (from the main menu or a match's options)
     const show = title || wheel || this.phase === "zoom" || skinOn || opts;
@@ -216,6 +223,9 @@ export class MenuWheel {
     if (front) this.lastFront = F;
     const court = this.isCourt && this.isCourt();                                  // (a match's court is up: no more holding)
     const hold = !show && !court && this.on && this.lastFront && F - this.lastFront < HOLD && F >= this.lastFront && this.snap;
+    // TITLE SHOW (titleshow.js): behind the title and its zoom, the 3D view's flight through the venues (with the 3D view on), and on
+    // behind the main menu and its sub-menus, softened under the panels (the drawn night court only without it)
+    const live = !!(this.show && this.show.update(title || this.phase === "zoom" || front || hold));
     if (!show && !hold) { this.lastFront = 0; if (this.root && this.root.style.display !== "none") this.root.style.display = "none"; return; }
     this.ui();
     const view = [document.getElementById("gl"), document.getElementById("screen")].find(e => e && !e.hidden && e.offsetWidth > 0); if (!view) return;
@@ -224,10 +234,10 @@ export class MenuWheel {
     const W = Math.round(r.width * dpr), H = Math.round(r.height * dpr); if (this.cv.width !== W || this.cv.height !== H) { this.cv.width = W; this.cv.height = H; }
     if (!this.ball) this.ball = makeBall();
     const zooming = this.phase === "zoom", opaque = title || (zooming && T - this.zoomAt < ZOOM);
-    this.root.style.background = live && !front && !hold ? "transparent" : opaque || front || hold ? "#0b1024" : "rgba(8,10,32,0.35)";
+    this.root.style.background = live ? (front || hold ? "rgba(8,10,32,0.3)" : "transparent") : opaque || front || hold ? "#0b1024" : "rgba(8,10,32,0.35)";
     const blur = live && !front && !hold ? "none" : "blur(7px) brightness(0.62)"; if (this.root.style.backdropFilter !== blur) { this.root.style.backdropFilter = blur; this.root.style.webkitBackdropFilter = blur; }
-    this.bgcv.style.display = front || hold ? "block" : "none";
-    if (front || hold) this.backdrop(W, H, T);
+    this.bgcv.style.display = (front || hold) && !live ? "block" : "none";
+    if ((front || hold) && !live) this.backdrop(W, H, T);
     if (hold) {                                                                   // between two screens: the last one, fading
       const g = this.cv.getContext("2d"); g.clearRect(0, 0, W, H); g.globalAlpha = Math.max(0, 1 - (F - this.lastFront) / HOLD); g.drawImage(this.snap, 0, 0, W, H); g.globalAlpha = 1; return;
     }
@@ -260,7 +270,7 @@ export class MenuWheel {
     let s = (Math.floor(T * 6) * 2654435761) >>> 0; const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
     for (let i = 0; i < 3; i++) if (rnd() < 0.5) { const fx = X(rnd() * w), fy = Y(h * (0.1 + rnd() * 0.3)), r = g.createRadialGradient(fx, fy, 0, fx, fy, w * 0.02); r.addColorStop(0, "rgba(255,255,255,0.9)"); r.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = r; g.fillRect(fx - w * 0.02, fy - w * 0.02, w * 0.04, w * 0.04); }
     const ball = t => { const q = (t % 2.4) / 1.2, back = q > 1, f = back ? q - 1 : q, v = back ? 0.12 + 1.0 * f : 1.12 - 1.0 * f, u = 0.32 * Math.sin(t * 0.9) * (back ? 1 - f : f) + 0.1;
-      const [bx, by, d] = P(u, v), hgt = Math.sin(Math.min(1, f * 1.25) * Math.PI) * h * 0.16 / d + Math.abs(Math.sin((f - 0.8) * Math.PI * 5)) * (f > 0.8 ? h * 0.03 / d : 0); return [bx, by, by - hgt, d]; };
+      const [bx, by, d] = P(u, v), m = courtHeight(d * 6, h), hgt = Math.sin(Math.min(1, f * 1.25) * Math.PI) * m * 2.6 + Math.abs(Math.sin((f - 0.8) * Math.PI * 5)) * (f > 0.8 ? m * 0.5 : 0); return [bx, by, by - hgt, d]; };
     const [sx, sy, , d0] = ball(T); g.fillStyle = "rgba(0,0,0,0.35)"; g.beginPath(); g.ellipse(sx, sy, w * 0.012 / d0 * 2, w * 0.005 / d0 * 2, 0, 0, 6.2832); g.fill();
     for (let i = 6; i >= 0; i--) { const [bx, , gy, d] = ball(T - i * 0.025), r = w * 0.009 / d * 2 * (1 - i * 0.08); g.fillStyle = i ? `rgba(232,240,74,${0.12 * (7 - i) / 7})` : "#e8f04a"; g.beginPath(); g.arc(bx, gy, r, 0, 6.2832); g.fill(); }
     g.fillStyle = "rgba(6,8,24,0.28)"; g.fillRect(0, 0, w, h);
@@ -310,13 +320,23 @@ export class MenuWheel {
     let gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, "#070a1c"); gr.addColorStop(0.42, "#141a3a"); gr.addColorStop(0.43, "#3a2a6a"); gr.addColorStop(1, "#24184c"); g.fillStyle = gr; g.fillRect(0, 0, W, H);
     let a = 0x9e3779b9; const rnd = () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; };
     for (let i = 0; i < 2600; i++) { const x = rnd() * W, y = H * (0.08 + rnd() * 0.33); g.fillStyle = `hsla(${rnd() * 360},55%,${35 + rnd() * 30}%,0.8)`; g.fillRect(x, y, 2 + rnd() * 3, 3 + rnd() * 3); }   // the crowd
-    const P = (u, v) => courtPoint(u, v, W, H);                                     // court u -1..1, v 0 (far)..1.4 (near)
+    const P = (u, v) => courtPoint(u, v, W, H);                                     // court u -1..1, v 0 (far)..1.2 (near)
     const quad = (u0, v0, u1, v1, fill) => { g.fillStyle = fill; g.beginPath(); for (const [u, v] of [[u0, v0], [u1, v0], [u1, v1], [u0, v1]]) g.lineTo(...P(u, v)); g.fill(); };
-    quad(-0.62, 0.02, 0.62, 1.4, "#1c3a92");
+    g.fillStyle = "#0c1230"; g.fillRect(0, H * 0.41, W, P(0, -0.35)[1] - H * 0.41 + 1);           // the back wall under the stand, its boards
+    for (let i = 0; i < 7; i++) { const x0 = W * (0.06 + i * 0.13); g.fillStyle = i % 2 ? "#23306a" : "#2c2560"; g.fillRect(x0, H * 0.425, W * 0.11, (P(0, -0.35)[1] - H * 0.425) * 0.8); }
+    quad(-1.2, -0.35, 1.2, 1.4, "#1f5468");                                       // the run-off round the court
+    quad(-0.62, 0, 0.62, 1.2, "#1c3a92");                                         // the court: doubles width, baseline to baseline
     g.strokeStyle = "rgba(255,255,255,0.92)"; g.lineWidth = Math.max(2, W / 400);
     const line = (u0, v0, u1, v1) => { g.beginPath(); g.moveTo(...P(u0, v0)); g.lineTo(...P(u1, v1)); g.stroke(); };
-    for (const u of [-0.62, -0.47, 0.47, 0.62]) line(u, 0.02, u, 1.4); for (const v of [0.02, 0.32, 1.1]) line(-0.62, v, 0.62, v); line(0, 0.32, 0, 1.1);
-    g.fillStyle = "rgba(20,24,30,0.9)"; const n0 = P(-0.68, 0.62), n1 = P(0.68, 0.62); g.fillRect(n0[0], n0[1] - H * 0.07, n1[0] - n0[0], H * 0.07);   // the net
+    for (const u of [-0.62, -0.465, 0.465, 0.62]) line(u, 0, u, 1.2);              // the doubles and singles sidelines
+    for (const v of [0, 1.2]) line(-0.62, v, 0.62, v);                            // the baselines
+    for (const v of [0.297, 0.903]) line(-0.465, v, 0.465, v);                    // the service lines, 6.4 m either side of the net
+    line(0, 0.297, 0, 0.903); line(0, 0, 0, 0.012); line(0, 1.2, 0, 1.17);        // the centre service line and the centre marks
+    const nz = 6 + 0.6 * 19.81, nh = courtHeight(nz, H) * 1.07, na = P(-0.68, 0.6), nb = P(0.68, 0.6), mh = courtHeight(nz, H) * 0.914;   // the net: posts 1.07 m, 0.914 m in the middle
+    g.fillStyle = "rgba(10,12,20,0.72)"; g.beginPath(); g.moveTo(na[0], na[1]); g.lineTo(na[0], na[1] - nh); g.lineTo(W / 2, na[1] - mh); g.lineTo(nb[0], nb[1] - nh); g.lineTo(nb[0], nb[1]); g.closePath(); g.fill();
+    g.strokeStyle = "rgba(255,255,255,0.16)"; g.lineWidth = 1; for (let i = 1; i < 40; i++) { const x = na[0] + (nb[0] - na[0]) * i / 40; g.beginPath(); g.moveTo(x, na[1]); g.lineTo(x, na[1] - nh + (nh - mh) * (1 - Math.abs(x - W / 2) / ((nb[0] - na[0]) / 2))); g.stroke(); }
+    g.strokeStyle = "#f4f6ff"; g.lineWidth = Math.max(2, W / 360); g.beginPath(); g.moveTo(na[0], na[1] - nh); g.lineTo(W / 2, na[1] - mh); g.lineTo(nb[0], nb[1] - nh); g.stroke();   // the white tape
+    g.fillStyle = "#c8ccd8"; const pw = Math.max(2, W / 300); g.fillRect(na[0] - pw, na[1] - nh, pw * 2, nh); g.fillRect(nb[0] - pw, nb[1] - nh, pw * 2, nh);   // the posts
     for (const x of [0.12, 0.88]) { const r = g.createRadialGradient(W * x, H * 0.05, 0, W * x, H * 0.05, W * 0.5); r.addColorStop(0, "rgba(255,248,210,0.35)"); r.addColorStop(1, "rgba(255,248,210,0)"); g.fillStyle = r; g.fillRect(0, 0, W, H); }   // floodlights
     const soft = document.createElement("canvas"); soft.width = W; soft.height = H; const sg = soft.getContext("2d"); sg.filter = "blur(" + Math.round(W / 160) + "px)"; sg.drawImage(c, 0, 0); g.clearRect(0, 0, W, H); g.drawImage(soft, 0, 0);
     const v = g.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.75); v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,0.6)"); g.fillStyle = v; g.fillRect(0, 0, W, H);
@@ -335,7 +355,7 @@ export class MenuWheel {
   drawZoom(gb, W, H, u, T, live) {
     const g = this.cv.getContext("2d"), k = Math.min(W / 1280, H / 720), e = u * u * (3 - 2 * u);
     g.clearRect(0, 0, W, H);
-    if (live) { g.fillStyle = `rgba(11,16,36,${e})`; g.fillRect(0, 0, W, H); }      // (the venues fade to the menu's night blue)
+    if (live) { g.fillStyle = `rgba(11,16,36,${e * 0.15})`; g.fillRect(0, 0, W, H); }      // (the venues stay on behind the menu, softened)
     g.globalAlpha = 1 - e; if (!live) g.drawImage(this.scene(W, H), 0, 0); g.drawImage(crestLogo(), 20 * k - e * 400 * k, 10 * k, 800 * k, 450 * k); g.globalAlpha = 1;
     const x0 = W - 300 * k, y0 = H - 210 * k, r0 = 150 * k, x1 = -60 * k, y1 = H / 2, r1 = 250 * k;
     const grow = Math.sin(Math.min(1, u * 1.6) * Math.PI) * 0.55;                 // in towards the camera first

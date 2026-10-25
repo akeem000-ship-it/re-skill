@@ -9,8 +9,7 @@
 //               (go for the balls in the middle), SELECT alone their own game again (P.partnerCmd: engine/ai.js); SELECT and the
 //               direction are kept from the game meanwhile
 //   FAST TEXT   hold B while a dialogue window is open (off the court) and the game runs four times as fast
-//   RECORDS     a panel: the DAILY challenge (one a day, the same for everyone that day, a streak for days in a row), career STATS
-//               (every match you play on a court: points, aces, winners, errors, double faults, the fastest serve, the longest
+//   RECORDS     a panel: career STATS (every match you play on a court: points, aces, winners, errors, double faults, the fastest serve, the longest
 //               rally), the MINI-GAMES' best scores by level, and practice GOALS: in the tour's practice matches a 10-shot rally, an
 //               ace, a game won to love and the match itself each give bonus EXP, counted into the match's own EXP award (the
 //               game's EXP screen shares it out: P.extraMatchExp); with CODE: ROM added to your tour character when you are back on
@@ -24,7 +23,7 @@ import { KMH } from "./ballfx.js";
 const textAt = MenuSkins.prototype.textAt;
 const REC_KEY = "mt-records";
 const OUT_WINNER = 6, OUT_NET = 4, OUT_OUT = 5, OUT_DOUBLE = 2;
-const GM_EXHIB = 4, GM_MINIGAME = 8, GM_PRACTICE = 3, MATCH_MODES = [1, 2, 3, 4, 9, 10];
+const GM_MINIGAME = 8, GM_PRACTICE = 3, MATCH_MODES = [1, 2, 3, 4, 9, 10];
 const COURTS = ["Hard", "Clay", "Grass", "Composition", "Star", "Castle", "Tropics", "Jungle", "Warehouse"];
 const SETTINGS = {
   sets: { key: "mt-ex-sets", vals: ["game", "1", "3", "5"], def: "game", name: "SETS", label: v => v === "game" ? "Game's" : v,
@@ -47,22 +46,13 @@ const SETTINGS = {
     title: "hold B while a dialogue window is open and the text runs four times as fast" },
 };
 const PARTNER_NAMES = { net: "AT THE NET", back: "STAY BACK", poach: "POACH" };
-const DAILY = [
-  { id: "court", text: d => `Win an exhibition match on the ${COURTS[d.court]} court`, test: (m, d) => m.mode === GM_EXHIB && m.won && m.court === d.court },
-  { id: "love", text: () => "Win a game to love (any match)", test: m => m.loveGames > 0 },
-  { id: "aces", text: () => "Hit 3 aces in one match", test: m => m.aces >= 3 },
-  { id: "rally", text: () => "Win a point after a rally of 15 shots or more", test: m => m.longWin >= 15 },
-  { id: "doubles", text: () => "Win an exhibition doubles match", test: m => m.mode === GM_EXHIB && m.won && m.doubles },
-  { id: "clean", text: () => "Win a match without a double fault", test: m => m.won && m.doubleFaults === 0 },
-];
 const GOALS = [
   { id: "rally", name: "A rally of 10 shots", exp: 150, test: m => m.longest >= 10 },
   { id: "ace", name: "An ace", exp: 100, test: m => m.aces >= 1 },
   { id: "love", name: "A game won to love", exp: 150, test: m => m.loveGames >= 1 },
   { id: "win", name: "The match won", exp: 200, test: m => m.won },
 ];
-const today = () => { const d = new Date(); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); };
-const freshRec = () => ({ v: 1, stats: { matches: 0, wins: 0, won: 0, lost: 0, aces: 0, winners: 0, errors: 0, doubleFaults: 0, longest: 0, fastest: 0, loveGames: 0 }, mg: {}, daily: { date: 0, done: false, streak: 0, last: 0 }, goals: { pending: 0, total: 0 } });
+const freshRec = () => ({ v: 1, stats: { matches: 0, wins: 0, won: 0, lost: 0, aces: 0, winners: 0, errors: 0, doubleFaults: 0, longest: 0, fastest: 0, loveGames: 0 }, mg: {}, goals: { pending: 0, total: 0 } });
 
 export class Modes extends HdPanel {
   constructor({ getGb, getPort, pause, pad }) {
@@ -128,7 +118,7 @@ export class Modes extends HdPanel {
     const S = { sets: [w[0x8E0], w[0x8E1]], games: [w[0x8E2], w[0x8E3]], pts: [w[0x8E4], w[0x8E5]], won: w[0x8E8], hits: w[0x4B6] };
     const p = this.prev; this.prev = S;
     const zero = ![...S.sets, ...S.games, ...S.pts].some(x => x), sig = s => [...s.sets, ...s.games, ...s.pts].join();
-    if (!this.m || (zero && p && sig(p) !== sig(S))) this.m = { mode, court: this.court(w), doubles: !!w[0x8F2], won: false, done: false, points: [0, 0], aces: 0, winners: 0, errors: 0, doubleFaults: 0, longest: 0, longWin: 0, fastest: 0, loveGames: 0, ptMax: 0, serveAt: 0, lost: [0, 0], gamePts: [0, 0] };
+    if (!this.m || (zero && p && sig(p) !== sig(S))) this.m = { mode, court: this.court(w), doubles: !!w[0x8F2], won: false, done: false, points: [0, 0], aces: 0, winners: 0, errors: 0, doubleFaults: 0, longest: 0, fastest: 0, loveGames: 0, ptMax: 0, serveAt: 0, lost: [0, 0], gamePts: [0, 0] };
     const m = this.m; if (!p || m.done) return;
     const h = S.hits; m.ptMax = Math.max(m.ptMax, h);
     const gb = this.getGb();
@@ -141,7 +131,7 @@ export class Modes extends HdPanel {
     if (sig(S) !== sig(p) && !zero) {                                       // a point went into the score
       const d = i => (S.sets[i] - p.sets[i]) * 1e4 + (S.games[i] - p.games[i]) * 100 + (S.pts[i] - p.pts[i]), win = d(0) > d(1) ? 0 : 1, o = w[0x4D8], r = m.ptMax; m.ptMax = 0;
       m.points[win]++; m.longest = Math.max(m.longest, r);
-      if (win === 0) { if (o === OUT_WINNER) { m.winners++; if (r === 1) m.aces++; } if (r >= m.longWin) m.longWin = r; }
+      if (win === 0) { if (o === OUT_WINNER) { m.winners++; if (r === 1) m.aces++; } }
       else if (o === OUT_NET || o === OUT_OUT) m.errors++;
       else if (o === OUT_DOUBLE) m.doubleFaults++;
       const gameDone = S.games[0] + S.games[1] !== p.games[0] + p.games[1] || S.sets[0] + S.sets[1] !== p.sets[0] + p.sets[1];
@@ -155,11 +145,6 @@ export class Modes extends HdPanel {
     m.done = true; m.won = won; const T = this.rec.stats;
     T.matches++; if (won) T.wins++; T.won += m.points[0]; T.lost += m.points[1]; T.aces += m.aces; T.winners += m.winners; T.errors += m.errors;
     T.doubleFaults += m.doubleFaults; T.longest = Math.max(T.longest, m.longest); T.fastest = Math.max(T.fastest, m.fastest); T.loveGames += m.loveGames;
-    const D = this.daily();
-    if (!D.done && D.c.test(m, D)) {
-      const R = this.rec.daily; R.done = true; R.streak = R.last === this.yesterday() ? R.streak + 1 : 1; R.last = R.date;
-      this.toast(`DAILY CHALLENGE DONE! ${R.streak > 1 ? R.streak + " days in a row" : "Come back tomorrow for the next"}`);
-    }
     if (m.mode === GM_PRACTICE) {                                           // GOALS: the tour's practice matches
       const got = GOALS.filter(g => g.test(m)); const exp = got.reduce((a, g) => a + g.exp, 0);
       if (exp) { this.rec.goals.pending += exp; this.toast(`Practice goals: ${got.map(g => g.name.toLowerCase()).join(", ")}: +${exp} EXP`); }
@@ -190,15 +175,6 @@ export class Modes extends HdPanel {
     if (!(R[k] >= g.best)) { const first = R[k] === undefined; R[k] = g.best; this.save(); if (!first) this.toast(`New best: ${g.best} (${this.mgName(g.id)}, level ${g.lv + 1})`); }
   }
   mgName(id) { try { const gb = this.getGb(), t = gb ? textAt(gb.mem.rom, 0x30, 0xB2 + id - 0x1C) : ""; return t ? t.toLowerCase().replace(/(^|[ .-])([a-z])/g, (m, a, b) => a + b.toUpperCase()) : "Mini-game " + (id - 0x1B); } catch (e) { return "Mini-game " + (id - 0x1B); } }
-  yesterday() { const d = new Date(); d.setDate(d.getDate() - 1); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); }
-  // today's challenge (seeded by the date): which one, and the court for the court challenge
-  daily() {
-    const R = this.rec.daily, t = today();
-    if (R.date !== t) { R.date = t; R.done = false; this.save(); }
-    let s = (t * 2654435761) >>> 0; const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
-    const c = DAILY[(rnd() * DAILY.length) | 0], court = (rnd() * 4) | 0;
-    return { c, court, done: R.done, text: c.text({ court }) };
-  }
 
   // ---------------- the overlays: the rematch question, the partner's command ----------------
   overlay() {
@@ -214,12 +190,8 @@ export class Modes extends HdPanel {
   }
 
   // ---------------- the RECORDS panel ----------------
-  pages() { return ["DAILY", "STATS", "MINI-GAMES", "GOALS"]; }
-  pageFns() { return [this.pDaily, this.pStats, this.pMinigames, this.pGoals]; }
-  pDaily() {
-    const D = this.daily(), R = this.rec.daily;
-    return `<h3>TODAY'S CHALLENGE</h3><p class="big">${esc(D.text)}</p><p>${D.done ? '<span class="up">✔ Done today!</span>' : "Not done yet."} ${R.streak ? `Streak: <b>${R.streak}</b> day${R.streak > 1 ? "s" : ""}${R.last === today() || R.last === this.yesterday() ? "" : " (broken: do today's to start again)"}` : ""}</p><p class="hint">A new challenge every day, the same for everyone that day. Do one on consecutive days for a streak. Exhibition matches count, and so do the tour's where it says "any match".</p>`;
-  }
+  pages() { return ["STATS", "MINI-GAMES", "GOALS"]; }
+  pageFns() { return [this.pStats, this.pMinigames, this.pGoals]; }
   pStats() {
     const T = this.rec.stats, pc = (a, b) => b ? Math.round(a * 100 / b) + "%" : "-";
     const rows = [["Matches", T.matches], ["Won", `${T.wins} (${pc(T.wins, T.matches)})`], ["Points won", `${T.won} of ${T.won + T.lost} (${pc(T.won, T.won + T.lost)})`], ["Aces", T.aces], ["Winners", T.winners],
@@ -248,7 +220,7 @@ export function addModeButtons(hud, modes) {
     b.addEventListener("pointerdown", () => { const i = S.vals.indexOf(modes.s[k]); modes.set(k, S.vals[(i + 1) % S.vals.length]); });
     hud.appendChild(document.createTextNode(" ")); hud.appendChild(b);
   }
-  const r = document.createElement("span"); r.className = "k"; r.id = "recordsbtn"; r.textContent = "RECORDS"; r.title = "the daily challenge, your career stats, mini-game best scores and practice goals";
+  const r = document.createElement("span"); r.className = "k"; r.id = "recordsbtn"; r.textContent = "RECORDS"; r.title = "your career stats, mini-game best scores and practice goals";
   r.addEventListener("pointerdown", () => modes.toggle());
   hud.appendChild(document.createTextNode(" ")); hud.appendChild(r);
 }

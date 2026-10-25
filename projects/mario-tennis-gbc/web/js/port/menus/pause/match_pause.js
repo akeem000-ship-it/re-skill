@@ -191,9 +191,9 @@ export function* runMatchMenu(P) {
         }
         continue;
       }
-      if (readMatchInputRepeat(P) & PADF_LEFT) { P.menuWheel.pauseMore = false; sound(P, SFX_MENU_MOVE); continue; }
+      if (wheelRepeat(P) & PADF_LEFT) { P.menuWheel.pauseMore = false; sound(P, SFX_MENU_MOVE); continue; }
       if (!(input & (PADF_B | PADF_START))) continue;
-    } else if (more && (readMatchInputRepeat(P) & PADF_RIGHT) && rd(P, "matchMenuSelection") === rd(P, "pauseMenuItemCount") - 1) {
+    } else if (more && (wheelRepeat(P) & PADF_RIGHT) && rd(P, "matchMenuSelection") === rd(P, "pauseMenuItemCount") - 1) {
       P.menuWheel.pauseMore = true; sound(P, SFX_MENU_MOVE); continue;
     }
     if (readMatchInputPressed(P) & (PADF_B | PADF_START)) {
@@ -202,7 +202,7 @@ export function* runMatchMenu(P) {
       break;
     }
     if (readMatchInputPressed(P) & PADF_A) { sound(P, SFX_MENU_SELECT); break; }
-    const pad = readMatchInputRepeat(P) & (PADF_LEFT | PADF_RIGHT);
+    const pad = wheelRepeat(P) & (PADF_LEFT | PADF_RIGHT);
     if (pad) {
       wr(P, "matchMenuSelection", moveCursorHorizontal(rd(P, "matchMenuSelection"), pad, rd(P, "pauseMenuItemCount"), 0).a);
       sound(P, SFX_MENU_MOVE);
@@ -210,6 +210,14 @@ export function* runMatchMenu(P) {
     }
   }
   yield* stepMatchFrame(P);
+}
+
+// MENU: Wheel: the pause menu is drawn as a list round the ball, so ▲ ▼ move through it as ◀ ▶ do (as in every menu with the
+// wheel: joypad.js wheelPad); the game's own pause menu (MENU: Game) keeps ◀ ▶ only
+function wheelRepeat(P) {
+  const r = readMatchInputRepeat(P);
+  if (!(P.menuWheel && P.menuWheel.on) || (r & (PADF_LEFT | PADF_RIGHT))) return r;
+  return (r & ~0xC0) | (r & PADF_UP ? PADF_LEFT : 0) | (r & 0x80 ? PADF_RIGHT : 0);
 }
 
 // DrawScoreboardCaption (06:477A): the scoreboard's caption, by wScoreboardLayout (0-2 "SET / GAME / POINT",

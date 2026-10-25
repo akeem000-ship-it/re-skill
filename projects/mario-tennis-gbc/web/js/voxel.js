@@ -452,14 +452,20 @@ export class Voxel3D {
     }
     return out;
   }
-  sampleState() { const p = this.gb.ppu; return { players: this.players(), ball: this.ballWorld(), scx: p.scx, scy: p.scy }; }
+  // ballMidSrc (full.js, PHYSICS: 120 Hz): the ball's position half a game frame before this one (physics120.js mid)
+  sampleState() { const p = this.gb.ppu, mid = this.ballMidSrc ? this.ballMidSrc() : null; return { players: this.players(), ball: this.ballWorld(), mid: mid ? { ...mid } : null, scx: p.scx, scy: p.scy }; }
   // interpolated world state for the current display frame (positions that jumped are not interpolated)
   interp() { const r0 = this.interp0(), r = this.intro ? this.intro.adjust(r0) : r0; return this.matchfx && this.stadium && this.stadium.active ? this.matchfx.adjust(r) : r; }   // INTRO: the walk-out moves the drawn players; MATCH FX: the point winner's hop
   interp0() {
     const a = this.alpha, c = this.cur, q = this.prev; if (!c) return this.sampleState(); if (!q || a >= 1) return c;
     const mix = (u, v, lim) => Math.abs(u - v) > lim ? u : v + (u - v) * a;
     const players = c.players.map((pl, i) => { const o = q.players.find(u => u.slot === pl.slot); return o ? { X: mix(pl.X, o.X, 300), Y: mix(pl.Y, o.Y, 300), Z: mix(pl.Z, o.Z, 300), slot: pl.slot } : pl; });
-    const ball = { X: mix(c.ball.X, q.ball.X, 600), Y: mix(c.ball.Y, q.ball.Y, 600), Z: mix(c.ball.Z, q.ball.Z, 600) };
+    let ball = { X: mix(c.ball.X, q.ball.X, 600), Y: mix(c.ball.Y, q.ball.Y, 600), Z: mix(c.ball.Z, q.ball.Z, 600) };
+    const md = c.mid, near = (u, v) => Math.abs(u - v) < 0.5;   // PHYSICS: 120 Hz: through the true half-step position of the frame from q to c
+    if (md && near(md.from.X, q.ball.X) && near(md.from.Y, q.ball.Y) && near(md.from.Z, q.ball.Z)) {
+      const [u, v, t] = a < 0.5 ? [md, q.ball, a * 2] : [c.ball, md, a * 2 - 1];
+      ball = { X: v.X + (u.X - v.X) * t, Y: v.Y + (u.Y - v.Y) * t, Z: v.Z + (u.Z - v.Z) * t };
+    }
     return { players, ball, scx: mix(c.scx, q.scx, 8), scy: mix(c.scy, q.scy, 8) };
   }
   // the overworld at a game frame: the field scroll and the actor table (the slots' map positions), for interpolation

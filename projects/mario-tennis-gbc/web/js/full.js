@@ -258,7 +258,7 @@ addEventListener("resize", () => applyAspect());
 let preset = q.get("cam") || stored("mt-cam") || "low"; if (!PRESETS[preset]) preset = "low";
 function setView3d(on, vox = false) {
   view3d = on; $("view3d").classList.toggle("on", on); $("view3d").textContent = on ? (vox ? "VOX" : "3D") : "3D";
-  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.hdText = hd; voxel.freeCam = q.has("freecam"); attachLighting(voxel, $("hud")); attachLightPanel(voxel); if (phone) phone.applyBattery(); attachStadium(voxel, $("hud")); addCourtButton(voxel, $("hud")); addFarEndButton(voxel, $("hud")); attachCrowdSound(voxel.stadium, $("hud"), () => actx); attachBallFX(voxel, $("hud")); voxel.tour = tour; attachIntro(voxel, $("hud")); attachMatchFx(voxel, $("hud")); attachFieldLife(voxel, $("hud")); attachCloseCall(voxel, $("hud")); attachGround(voxel, $("hud")); attachVoxStyle(voxel, $("hud")); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
+  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.hdText = hd; voxel.freeCam = q.has("freecam"); attachLighting(voxel, $("hud")); attachLightPanel(voxel); if (phone) phone.applyBattery(); attachStadium(voxel, $("hud")); addCourtButton(voxel, $("hud")); addFarEndButton(voxel, $("hud")); attachCrowdSound(voxel.stadium, $("hud"), () => actx); attachBallFX(voxel, $("hud")); voxel.tour = tour; voxel.ballMidSrc = () => (port && port.physics && port.physics.mid) || null; attachIntro(voxel, $("hud")); attachMatchFx(voxel, $("hud")); attachFieldLife(voxel, $("hud")); attachCloseCall(voxel, $("hud")); attachGround(voxel, $("hud")); attachVoxStyle(voxel, $("hud")); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
   if (voxel) voxel.voxelSprites = on && vox;
   $("gl").hidden = !view3d; cv.hidden = view3d; $("cam").hidden = !view3d; $("smoothbtn").hidden = !view3d; if ($("ballfxbtn")) $("ballfxbtn").hidden = !view3d; if ($("voxstylebtn")) $("voxstylebtn").hidden = !(view3d && vox); if ($("lightbtn")) $("lightbtn").hidden = !view3d; if ($("stadiumbtn")) $("stadiumbtn").hidden = !view3d; if ($("crowdsndbtn")) $("crowdsndbtn").hidden = !view3d;
   try { localStorage.setItem("mt-3d", on ? (vox ? "vox" : "3d") : "off"); } catch (e) { /* private mode */ }
@@ -309,7 +309,8 @@ let port = null, portError = null;
 // the mode: the page's selector, or #port in the link, or ?port in the URL
 // PHYSICS: Classic / Enhanced (web/js/engine/enhanced.js): ?physics=enhanced|classic, else the remembered choice; Enhanced runs only through the port
 // (the ROM's own code cannot be changed), so it turns the default CODE: ROM into the port
-const physicsMode = () => { const v = q.get("physics") || stored("mt-physics"); return v === "enhanced" ? "enhanced" : "classic"; };
+const PHYSICS_MODES = ["classic", "enhanced", "120"], PHYSICS_LABEL = { classic: "Classic", enhanced: "Enhanced", 120: "120 Hz" };
+const physicsMode = () => { const v = q.get("physics") || stored("mt-physics"); return PHYSICS_MODES.includes(v) ? v : "classic"; };
 // NET: Original / Even (engine/chars.js): ?net=even|original, else the remembered choice; Even runs only through the port: chosen, it
 // switches the engine to the port; with no choice it is the default wherever the port already runs (both sides reach the net)
 const netChoice = () => q.get("net") || stored("mt-net");
@@ -325,7 +326,7 @@ const netMode = () => { const v = netChoice(); return v === "even" || v === "ori
 // The JS port is the only way to play (0.35.67): the original code (CODE: ROM) is kept for the automated tests only
 // (navigator.webdriver: Playwright), many of which start from saved machine states that the port can't load.
 const ROM_FOR_TESTS = typeof navigator !== "undefined" && !!navigator.webdriver;
-const portMode = () => { if (!ROM_FOR_TESTS) return "port"; const h = location.hash.slice(1), sel = $("engine") && $("engine").value, m = h === "port" || h === "portall" || q.has("port") ? "port" : sel || "rom"; return m === "rom" && (physicsMode() === "enhanced" || netChoice() === "even") ? "port" : m; };
+const portMode = () => { if (!ROM_FOR_TESTS) return "port"; const h = location.hash.slice(1), sel = $("engine") && $("engine").value, m = h === "port" || h === "portall" || q.has("port") ? "port" : sel || "rom"; return m === "rom" && (physicsMode() !== "classic" || netChoice() === "even") ? "port" : m; };
 if (!ROM_FOR_TESTS && $("engine")) { $("engine").value = "port"; $("engine").disabled = true; }   // port only: no engine choice
 if ($("engine")) {
   const saved = stored("mt-engine");
@@ -345,6 +346,7 @@ async function makePort(bytes) {
   // NO CPU (the default): the machine without the Game Boy's CPU, nothing of the cartridge's code run (?cpu: with it)
   const P = new GamePort(bytes, { ...entry, hooks }, { audio: true, sampleRate: 44100, noCpu: want === "all" && !q.has("cpu") });
   if (physicsMode() === "enhanced") { const { EnhancedPhysics } = await import("./engine/enhanced.js"); P.physics = new EnhancedPhysics(); }
+  else if (physicsMode() === "120") { const { Physics120 } = await import("./engine/physics120.js"); P.physics = new Physics120(); }   // PHYSICS: 120 Hz
   P.evenNet = netMode() === "even";
   P.tourLength = tourLen();
   P.plus = plusRules();
@@ -427,7 +429,7 @@ $("forgetrom").addEventListener("click", () => romStore("readwrite", s => s.dele
 $("reset").addEventListener("click", () => { if (port) { location.reload(); return; } if (gb) { settle(); gb.reset(); rec.event("reset"); } });
 // ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
 // a .mtrec file (Android: Downloads/MTenn3D and the share sheet; browser: a download). Hiding the app stops and saves.
-const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? "enhanced" : undefined, net: port ? (port.evenNet ? "even" : "original") : undefined, tourlen: port ? port.tourLength : undefined, menu: port && port.menuWheel && port.menuWheel.on ? "wheel" : "game", plus: port ? (port.plus ? "on" : "off") : undefined, rules: port && port.rules ? port.rules : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
+const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? (port.physics.hz === 120 ? "120" : "enhanced") : undefined, net: port ? (port.evenNet ? "even" : "original") : undefined, tourlen: port ? port.tourLength : undefined, menu: port && port.menuWheel && port.menuWheel.on ? "wheel" : "game", plus: port ? (port.plus ? "on" : "off") : undefined, rules: port && port.rules ? port.rules : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
   port: port ? q.get("port") || "all" : undefined });
 async function saveRecording(now = false) {     // now: the app is being hidden; skip compression so it finishes at once
   if (!recording()) return; settle();
@@ -501,14 +503,14 @@ $("turbo").addEventListener("pointerdown", () => { turbo = !turbo; $("turbo").cl
 // remembered, then the page reloads
 const ENGINE_LABEL = { rom: "CODE: ROM", port: "CODE: PORT" };
 $("engbtn").textContent = ENGINE_LABEL[portMode()] || "CODE: ROM";
-// PHYSICS: Classic / Enhanced: remembered, then the page reloads (Enhanced needs the port; a running game is lost, as with CODE)
+// PHYSICS: Classic / Enhanced / 120 Hz: remembered, then the page reloads (a running game is lost, as with CODE)
 {
-  const b = document.createElement("span"); b.className = "k"; b.id = "physbtn"; b.title = "ball physics: the game's own, or Enhanced (Tennis-Elbow-style flight, spin and bounce on the same landing points); runs through the JS port";
-  const show = () => { b.textContent = "PHYSICS: " + (physicsMode() === "enhanced" ? "Enhanced" : "Classic"); b.classList.toggle("on", physicsMode() === "enhanced"); }; show();
+  const b = document.createElement("span"); b.className = "k"; b.id = "physbtn"; b.title = "ball physics: the game's own; Enhanced (Tennis-Elbow-style flight, spin and bounce on the same landing points); or 120 Hz (Enhanced with the ball moved, and the net, fences and court tested, 120 times a second: the 3D view shows its true position between game frames)";
+  const show = () => { b.textContent = "PHYSICS: " + PHYSICS_LABEL[physicsMode()]; b.classList.toggle("on", physicsMode() !== "classic"); }; show();
   b.addEventListener("pointerdown", () => {
-    const next = physicsMode() === "enhanced" ? "classic" : "enhanced";
-    try { localStorage.setItem("mt-physics", next); if (next === "enhanced" && portMode() === "rom") localStorage.setItem("mt-engine", "port"); } catch (e) { /* private mode */ }
-    if ($("engine") && next === "enhanced" && $("engine").value === "rom") $("engine").value = "port";
+    const next = PHYSICS_MODES[(PHYSICS_MODES.indexOf(physicsMode()) + 1) % PHYSICS_MODES.length];
+    try { localStorage.setItem("mt-physics", next); if (next !== "classic" && portMode() === "rom") localStorage.setItem("mt-engine", "port"); } catch (e) { /* private mode */ }
+    if ($("engine") && next !== "classic" && $("engine").value === "rom") $("engine").value = "port";
     const u = new URL(location.href); u.searchParams.delete("physics"); history.replaceState(null, "", u.pathname + u.search + u.hash);
     location.reload();
   });

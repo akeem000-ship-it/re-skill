@@ -40,8 +40,37 @@ function storePad(P, held) {
   } else {                                               // a new combination (or none): it counts as pressed now
     V.inputRepeatTimer = 0x12; V.inputRepeatButtons = held; pressed = held;
   }
+  if (P.menuWheel && P.menuWheel.on) { pressed = wheelPad(P, pressed, true); V.inputRisingEdge = wheelPad(P, V.inputRisingEdge, false); }   // MENU: Wheel: ▲ ▼ through every sub-menu's list
   V.inputPressed = pressed;
   return { a: pressed, b: held, c: held };
+}
+// MENU: Wheel (menuwheel.js, menuskins.js): every screen is drawn as one list round the ball, so ▲ ▼ step through it in that
+// order everywhere, as on the main menu (A chooses, B goes back). On a row of choices (P.menuWheel.skin: tabs, a new tour's
+// player, the CPU level (wCharSelectPrompt $D824), the character data's pages) ▲ / ▼ are the game's ◀ / ▶. On a grid (Status / Erase's files, the
+// courts, the GB DATA items, the minigames) ▼ is the next cell in reading order and ▲ the one before: the cursor is put next to it in its row and the game
+// given ◀ or ▶, so the game's own move (its sound, its redraw) lands on it. ◀ ▶ still work as the game's. The skin is the one
+// the screen wrote last frame; screens with their own two-way layout (the match format's rows and values, the character grid,
+// the dictionary's terms and letters) keep the game's pad.
+const PAD_R = 0x10, PAD_L = 0x20, PAD_U = 0x40, PAD_D = 0x80;
+function wheelPad(P, pressed, move) {   // move: the grids' cursor placed (once a frame: for the pressed buttons)
+  const s = P.menuWheel.skin;
+  if (!s || P.frames - s.at > 2 || !(pressed & (PAD_U | PAD_D)) || (pressed & (PAD_L | PAD_R))) return pressed;
+  const down = !!(pressed & PAD_D), rest = pressed & ~(PAD_U | PAD_D), V = P.V;
+  if ((s.id === "tabs" && !(s.rows > 1) && s.icon !== "pause") || s.id === "pick" || (s.id === "chars" && P.mem.wram[3][0x824]) || (s.id === "frame" && s.title === "CHARACTER DATA")) return rest | (down ? PAD_R : PAD_L);
+  let rows = null;                                                    // the grid's rows in reading order: each row's cursor x positions
+  const line = (n, w) => Array.from({ length: n }, () => Array.from({ length: w }, (_, x) => x));
+  if (s.id === "files") rows = [[0, 1, 2], [0, 1]];
+  else if (s.id === "court" && s.cols) rows = line(s.cols, s.cols);
+  else if (s.id === "tabs" && s.rows > 1 && s.cols) rows = line(s.rows, s.cols);   // (the GB DATA items, 2 x 2)
+  else if (s.id === "minigames" && s.cells) rows = s.cells.length === 6 ? [[0, 1, 2], [0, 2]] : line(3, 3);   // (the minigames: 3 over 2 (the bottom row's ends), or 3 x 3)
+  if (!rows) return pressed;
+  if (!move) return rest | (P.menuWheel.gridDir || 0);                 // (the rising edge: the same ◀ / ▶ as the move just made)
+  const cells = rows.flatMap((xs, y) => xs.map(x => [x, y])), n = cells.length;
+  const at = Math.max(0, cells.findIndex(([x, y]) => x === V.menuCursorX && y === V.menuCursorY)), [tx, ty] = cells[(at + (down ? 1 : n - 1)) % n];
+  const xs = rows[ty], i = xs.indexOf(tx), fromRight = i < xs.length - 1;   // (the cursor next to the target, in its row: no wrap needed)
+  V.menuCursorY = ty; V.menuCursorX = fromRight ? xs[i + 1] : xs[i - 1];
+  P.menuWheel.gridDir = fromRight ? PAD_L : PAD_R;
+  return rest | P.menuWheel.gridDir;
 }
 
 // AdvanceRandomSeed (00:0A3A): hRandomSeed = hRandomSeed * 5 + $3573 (16-bit). Leaves hl = the new seed.

@@ -217,7 +217,7 @@ export class MenuSkins {
         g.fillStyle = on ? "#281e0a" : "#7a7f98"; g.font = `${17 * k}px "${FONT}", ${BODY}`; g.fillText(SLOT_TAGS[p.s], x, by + 92 * k); g.textAlign = "start";
       });
     }
-    this.hint(g, W, H, k, prompt ? "◀ ▶ level   A ok   B back" : "▲ ▼ ◀ ▶ choose   A pick   B back   START hand");
+    this.hint(g, W, H, k, prompt ? "▲ ▼ level   A ok   B back" : "▲ ▼ ◀ ▶ choose   A pick   B back   START hand");
   }
 
   // ---- Status and Erase: the tour files, the Game Pak, the N64 ----
@@ -257,14 +257,15 @@ export class MenuSkins {
       if (erase) { g.fillStyle = red; g.font = `${22 * k}px "${FONT}", ${BODY}`; g.fillText("CANNOT BE UNDONE", cx, py + 440 * k); }
     }
     g.textAlign = "start";
-    this.hint(g, W, H, k, erase ? "▲ ▼ ◀ ▶ choose   A erase   B back" : "▲ ▼ ◀ ▶ choose   A view   B back");
+    this.hint(g, W, H, k, erase ? "▲ ▼ choose   A erase   B back" : "▲ ▼ choose   A view   B back");
   }
 
   // ---- the Mario mini-games ----
   minigames(g, W, H, k, s, gb, hd) {
-    const rom = gb.mem.rom, locked = c => c === 0x15, names = s.cells.map((c, i) => locked(c) ? "? ? ?" : this.text(rom, 0xB2 + i).toUpperCase());
+    const rom = gb.mem.rom, locked = c => c === 0x15, name = i => locked(s.cells[i]) ? "? ? ?" : this.text(rom, 0xB2 + i).toUpperCase();
+    const order = s.cells.length === 6 ? [0, 1, 2, 3, 5] : s.cells.map((_, i) => i);   // (the first grid: 3 cells over 2, the bottom row's left and right)
     this.title(g, k, "MINI-GAMES");
-    this.arc(g, k, H, names, s.sel, 0.34);
+    this.arc(g, k, H, order.map(name), Math.max(0, order.indexOf(s.sel)), 0.34);
     const { px, py, pw } = this.panel(g, W, k, 110, 500), cx = px + pw / 2, c = s.cells[s.sel], fb = py + 300 * k;
     g.textAlign = "center";
     if (!locked(c)) {
@@ -275,10 +276,10 @@ export class MenuSkins {
       if (fig) { const sc = Math.floor(Math.min(220 * k / fig.height, 180 * k / fig.width)); g.imageSmoothingEnabled = false; g.drawImage(fig, cx - fig.width * sc / 2, fb - fig.height * sc + Math.round(Math.sin(performance.now() / 420) * 3 * k), fig.width * sc, fig.height * sc); }
       g.fillStyle = "#8a7a50"; g.font = `${22 * k}px "${FONT}", ${BODY}`; g.fillText(this.text(rom, TEXT_NAME + c).toUpperCase() + "'S GAME", cx, py + 48 * k);
     } else { g.fillStyle = "#9aa0b8"; g.font = `${130 * k}px "${FONT}", ${BODY}`; g.fillText("?", cx, py + 270 * k); }
-    g.fillStyle = "#281e0a"; g.font = `${(names[s.sel].length > 14 ? 34 : 42) * k}px "${FONT}", ${BODY}`; g.fillText(names[s.sel], cx, fb + 62 * k);
+    g.fillStyle = "#281e0a"; g.font = `${(name(s.sel).length > 14 ? 34 : 42) * k}px "${FONT}", ${BODY}`; g.fillText(name(s.sel), cx, fb + 62 * k);
     g.fillStyle = "#464a64"; g.font = `${24 * k}px ${BODY}`; if (locked(c)) g.fillText(this.text(rom, 0xBB) || "Not unlocked yet", cx, fb + 100 * k);   // (the game's own "can't play yet")
     g.textAlign = "start";
-    this.hint(g, W, H, k, "▲ ▼ ◀ ▶ choose   A play   B back");
+    this.hint(g, W, H, k, "▲ ▼ choose   A play   B back");
   }
 
   // ---- the small choice panels ----
@@ -295,7 +296,7 @@ export class MenuSkins {
     // the choices as dots, the chosen one gold
     const n = labels.length; for (let i = 0; i < n; i++) { g.fillStyle = i === s.sel ? "#ffd65a" : locked[i] ? "#d0d3de" : "#a9adc2"; g.beginPath(); g.arc(cx + (i - (n - 1) / 2) * 26 * k, py + 395 * k, (i === s.sel ? 8 : 6) * k, 0, 6.2832); g.fill(); }
     g.textAlign = "start";
-    this.hint(g, W, H, k, (n > 3 ? "▲ ▼ ◀ ▶" : "◀ ▶") + " choose   A ok   B back");
+    this.hint(g, W, H, k, "▲ ▼ choose   A ok   B back");
   }
   // ---- the erase warning ----
   confirm(g, W, H, k, s, gb) {
@@ -346,7 +347,7 @@ export class MenuSkins {
     g.textAlign = "center"; g.fillStyle = "#281e0a"; g.font = `${48 * k}px "${FONT}", ${BODY}`; g.fillText(names[s.sel].toUpperCase(), cx, fb + 64 * k);
     g.fillStyle = "#c79a2a"; g.font = `${24 * k}px "${FONT}", ${BODY}`; g.fillText(s.left ? "LEFT-HANDED" : "RIGHT-HANDED", cx, fb + 104 * k);
     g.textAlign = "start";
-    this.hint(g, W, H, k, "◀ ▶ choose   START hand   A pick   B back");
+    this.hint(g, W, H, k, "▲ ▼ choose   START hand   A pick   B back");
   }
 
   // ---- a page to read: the game's own picture, framed ----
@@ -360,7 +361,7 @@ export class MenuSkins {
     const sc = Math.min((W - 300 * k) / 160, (H - 210 * k) / 144), w = 160 * sc, h = 144 * sc, x = Math.max(260 * k, (W - w) / 2 + 80 * k), y = 100 * k;
     g.fillStyle = "rgba(250,250,255,0.94)"; this.mw.pill(g, x - 14 * k, y - 14 * k, w + 28 * k, h + 28 * k, 24 * k); g.fill(); g.lineWidth = 4 * k; g.strokeStyle = "#ffd65a"; g.stroke();
     g.save(); this.mw.pill(g, x, y, w, h, 12 * k); g.clip(); g.imageSmoothingEnabled = false; g.drawImage(cv, x, y, w, h); g.restore();
-    this.hint(g, W, H, k, s.hint || (s.title === "RULES" ? "A next page" : s.title === "CHARACTER DATA" ? "◀ ▶ page   A / B back" : "✚ look   A / B back"));
+    this.hint(g, W, H, k, s.hint || (s.title === "RULES" ? "A next page" : s.title === "CHARACTER DATA" ? "▲ ▼ page   A / B back" : "✚ look   A / B back"));
   }
 
   // ---- the name entry ----
@@ -510,7 +511,7 @@ export class MenuSkins {
       };
       bar("BALL SPEED", (fr - 150) / 100, fy + fh + 128 * k); bar("BOUNCE", (bo - 130) / 110, fy + fh + 166 * k);
     }
-    this.hint(g, W, H, k, "▲ ▼ ◀ ▶ choose   A play   B back");
+    this.hint(g, W, H, k, "▲ ▼ choose   A play   B back");
   }
   // a court seen from a camera gliding in low over its near baseline: each screen row below the horizon is a row of the picture
   // (the ground plane), scaled by its distance; a ball crosses it on an arc, bouncing once each way

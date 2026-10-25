@@ -126,7 +126,7 @@ export function* runN64TransferItemSelect(P) {
     yield* advanceFrame(P);
     V.menuInputPressed = V.inputPressed;
     if (moveMenuCursorGrid(P, ITEM_COLS, ITEM_ROWS).a) { sound(P, SFX_MENU_MOVE); drawN64TransferItemGrid(P); }
-    if (P.menuWheel && P.menuWheel.on) P.menuWheel.skin = { id: "tabs", at: P.frames, title: "GB DATA", icon: "data", texts: Array.from({ length: ITEMS }, (_, i) => Text_30_210 + i), sel: getMenuCursorIndex(P, ITEM_COLS).a };   // MENU: Wheel, read only
+    if (P.menuWheel && P.menuWheel.on) P.menuWheel.skin = { id: "tabs", at: P.frames, cols: ITEM_COLS, rows: ITEM_ROWS, title: "GB DATA", icon: "data", texts: Array.from({ length: ITEMS }, (_, i) => Text_30_210 + i), sel: getMenuCursorIndex(P, ITEM_COLS).a };   // MENU: Wheel, read only
     const input = V.menuInputPressed;
     if (input & (PADF_A | PADF_B)) {
       const forward = input & PADF_A ? 1 : 0;
