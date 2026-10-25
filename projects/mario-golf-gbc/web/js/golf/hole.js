@@ -193,8 +193,12 @@ function toAddress(sh, a) {
 // a whole shot as the player plays it: ShotSetup, then AddressBall and the swing (B there goes back to the
 // menu: 10:4902-10:491E), the launch and the flight: the outcome (10:4A25)
 export function playShot(sh) {
-  const w = sh.w, r6 = w.wram[6];
   shotSetup(sh);
+  return addressLoop(sh);
+}
+
+export function addressLoop(sh) {                // from the address step (after ShotSetup) to the outcome
+  const r6 = sh.w.wram[6];
   for (;;) {
     sh.mark("address");
     const r = sh.address();
