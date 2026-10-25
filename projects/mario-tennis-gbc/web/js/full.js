@@ -398,6 +398,9 @@ if (navigator.userAgent.includes("MarioTennisWrapper") || location.search.includ
 function showHud(on) { $("hud").hidden = !on; insetAt = 0; applyAspect(); }
 function toggleHud() { if (!gb) return false; showHud($("hud").hidden); return true; }
 window.__backPressed = toggleHud;
+// Android's Game Mode (the wrapper, Samsung Game Booster): Battery turns the battery saver on while it lasts, the other modes
+// give back the player's own BATTERY choice (stored, not changed)
+window.__gameMode = m => { if (!phone) return; const own = stored("mt-battery") === "on"; phone.battery = m === 3 ? true : own; phone.applyBattery(); };
 function hint(text) {                         // a short notice over the game that fades out
   const d = document.createElement("div"); d.textContent = text;
   d.style.cssText = "position:fixed;left:50%;top:18%;transform:translateX(-50%);z-index:9;padding:8px 14px;border-radius:8px;background:rgba(20,22,30,.85);color:#fff;font:14px sans-serif;pointer-events:none;transition:opacity .6s";

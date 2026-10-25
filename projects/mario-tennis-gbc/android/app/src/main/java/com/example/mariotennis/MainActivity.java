@@ -35,7 +35,7 @@ public class MainActivity extends Activity {
             @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
                 return loader.shouldInterceptRequest(r.getUrl());
             }
-            @Override public void onPageFinished(WebView v, String url) { pushCut(); }
+            @Override public void onPageFinished(WebView v, String url) { pushCut(); pushGameMode(); }
         });
         // the page's <input type=file> (load your own ROM): open the system file picker. Any type, since .gbc has no MIME type.
         web.setWebChromeClient(new android.webkit.WebChromeClient() {
@@ -200,5 +200,14 @@ public class MainActivity extends Activity {
         web.evaluateJavascript("window.__flushSave && window.__flushSave(); window.__stopRec && window.__stopRec();", null);
         super.onPause(); web.onPause();
     }
-    @Override protected void onResume() { super.onResume(); web.onResume(); }
+    @Override protected void onResume() { super.onResume(); web.onResume(); pushGameMode(); }
+    // Android's Game Mode (Samsung Game Booster's Performance / Battery profiles, Android 12+): passed to the page, which turns
+    // its battery saver on in Battery mode (window.__gameMode: 1 standard, 2 performance, 3 battery, 4 custom)
+    private void pushGameMode() {
+        if (android.os.Build.VERSION.SDK_INT < 31) return;
+        android.app.GameManager gm = getSystemService(android.app.GameManager.class);
+        if (gm == null) return;
+        final int m = gm.getGameMode();
+        web.post(() -> web.evaluateJavascript("window.__gameMode && window.__gameMode(" + m + ")", null));
+    }
 }
