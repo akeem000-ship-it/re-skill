@@ -5,7 +5,9 @@
 //               fireflies at night at the class courts; camera flashes in the city bowl's crowd at night
 //   sound       a quiet loop under the crowd (through crowdsound.js's bus, so the venue's echo applies): waves and gulls, birds,
 //               the lava's rumble and bubbling, a distant bell, a far-off plane, the city's hum and a horn, a coin's chime
+// The particles are a STADIUM EXTRA (venues.js EXTRAS.particles, off): without them only the bursts (bounces, big moments) are drawn.
 // Night is the lighting's (lighting.js sky.lamps): fireflies and flashes come out with the floodlights. Nothing in the game is read.
+import { EXTRAS } from "./venues.js";
 const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
 function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 // kinds of particle: where they start (a box in world units), how they move (velocity, sway), size, colour, life (s), glow (blinking)
@@ -49,7 +51,7 @@ export class Ambience {
     if (!this.watch && typeof setInterval === "function") this.watch = setInterval(() => { if (this.venue && performance.now() / 1000 - this.lastT > 1) this.leave(); }, 1000);   // (the court left, or the 3D view off: quiet)
     if (venue !== this.venue) {                                                    // (venue ":" season: the season's particles too)
       this.venue = venue; this.parts = []; const [ven, season] = venue.split(":"), S = { halloween: ["bat"], winter: ["snow"], spring: ["petal"] }[season] || [];
-      for (const kind of [...(BY_VENUE[ven] || []), ...S.filter(k => !(BY_VENUE[ven] || []).includes(k))]) for (let i = 0; i < K[kind].n; i++) this.parts.push(this.spawn(kind)); this.sound(ven);
+      for (const kind of EXTRAS.particles ? [...(BY_VENUE[ven] || []), ...S.filter(k => !(BY_VENUE[ven] || []).includes(k))] : []) for (let i = 0; i < K[kind].n; i++) this.parts.push(this.spawn(kind)); this.sound(ven);
     }
     if (this.snd) this.snd.tick(T);
     const nk = this.night(), rx = Math.hypot(mvp[0], mvp[8]) || 1, R = [mvp[0] / rx, 0, mvp[8] / rx], soft = this.softTex(), solid = this.solidTex();

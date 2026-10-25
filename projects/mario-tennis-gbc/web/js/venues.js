@@ -17,6 +17,16 @@
 //   senior    (class courts) a club: five rows, hedges along the top, the clubhouse with its veranda and flag behind a corner
 //   varsity   (class courts) the academy's stadium: all eight rows, flags in the academy's colours, the crest banner on the far stand
 // Nothing is read from the game but the court and the match class; nothing written.
+// STADIUM EXTRAS: since 0.35.70 the stadiums are the venues above as they were first built (on the class courts a park for the junior
+// class, the club for the senior, the academy's stadium for varsity, the finals' bowl), without what came on top of them; each of
+// those is off here and can be turned back on:
+//   courtside   ball kids, line judges, the players' benches, the TV crane and photographers, flags waving, a row of flags on the far stand
+//   particles   the venues' particles (sea mist and spray, leaves, fireflies, embers and ash, petals, sparkles, dust, butterflies,
+//               camera flashes); the venue's background sound stays
+//   vip         the VIP box in the left stand, where the rivals you have beaten watch
+//   homeCourt   the class courts upgraded with your ranking wins (a row more and flags, a roof over the far stand, a big screen)
+//   seasons     Halloween, winter and spring dressing, with its bats, snow and petals (and the SEASON button)
+export const EXTRAS = { courtside: false, particles: false, vip: false, homeCourt: false, seasons: false };
 export const THEME_BY_MAP = { 0: "castle", 1: "castle", 13: "castle", 2: "city", 7: "city", 3: "campus", 4: "campus", 5: "campus", 8: "campus", 6: "campus",
   9: "tropics", 14: "tropics", 10: "pipes", 11: "volcano", 12: "airfield", 15: "jungle" };
 // the theme of the court on screen (the sky's): the finals by their title, else by map
@@ -241,7 +251,7 @@ const SEASON_KEY = "mt-season";
 export function seasonSetting() { try { const q = new URLSearchParams(location.search).get("season"); if (q) return q; return localStorage.getItem(SEASON_KEY) || "auto"; } catch (e) { return "auto"; } }
 export function setSeasonSetting(s) { try { localStorage.setItem(SEASON_KEY, s); } catch (e) { /* private mode */ } }
 export function seasonNow(d = new Date()) {
-  const set = seasonSetting(); if (set === "off") return null; if (SEASONS[set]) return set;
+  const set = seasonSetting(); if (!EXTRAS.seasons || set === "off") return null; if (SEASONS[set]) return set;
   const m = d.getMonth() + 1, day = d.getDate();
   if ((m === 10 && day >= 10) || (m === 11 && day <= 2)) return "halloween";
   if (m === 12 || (m === 1 && day <= 6)) return "winter";

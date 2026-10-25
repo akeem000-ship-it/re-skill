@@ -8,8 +8,8 @@
 //                   the cooler and the shade in your TOUR+ sponsors' colours in a tour match (tour.js sponsorAds), else the venue's
 //   TV crane        behind the far corner a camera on a crane arm, sweeping slowly, faster after a point; photographers kneel along
 //                   the far baseline, their flashes going off after points and now and then
-//   flags           every flag of the venue (venues.js ctx.flag) and a row along the far stand wave in the wind: a breeze, more in rain,
-//                   a gale in WEATHER: Wind, blowing the way its leaves do
+//   flags           every flag of the venue (venues.js ctx.flag) and a row along the far stand wave in a breeze
+// All of it is a STADIUM EXTRA (venues.js EXTRAS.courtside, off): without it only the venue's lamps and BIG MOMENTS' boxes are drawn.
 // Read only: the score bytes, the rally length and the point's outcome; nothing written.
 const shade = (c, k) => c.map(x => Math.max(0, Math.min(255, x * k)));
 const pack = c => ((Math.max(0, Math.min(255, Math.round(c[0]))) << 16) | (Math.max(0, Math.min(255, Math.round(c[1]))) << 8) | Math.max(0, Math.min(255, Math.round(c[2]))));
@@ -19,6 +19,7 @@ const ease = u => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u);
 const KITS = { castle: [[200, 40, 70], [240, 240, 240]], pipes: [[220, 40, 40], [40, 70, 200]], volcano: [[40, 36, 40], [150, 30, 30]], hangar: [[250, 190, 40], [60, 64, 74]],
   jungle: [[70, 140, 60], [150, 110, 64]], tropics: [[40, 190, 204], [255, 255, 255]], city: [[30, 40, 60], [230, 230, 236]], junior: [[60, 150, 80], [40, 50, 70]],
   senior: [[240, 240, 236], [40, 90, 60]], varsity: [[40, 80, 190], [240, 190, 40]] };
+import { EXTRAS } from "./venues.js";
 const SKIN = [[240, 196, 160], [214, 160, 120], [170, 116, 80], [120, 80, 56]];
 
 export class Courtside {
@@ -30,6 +31,7 @@ export class Courtside {
     // the sponsors' colours (tour.js sponsorAds: indices into stadium3d.js ADS), else the venue's kit and a neutral
     const sp = (opt.sponsors || []).map(i => opt.ads[i]).filter(Boolean), cols = sp.length ? sp.map(a => hex(a.bg[0])) : [kit[0], kit[1], [240, 240, 236]];
     const fg = sp.length ? sp.map(a => hex(a.fg)) : [[255, 255, 255]];
+    this.people = EXTRAS.courtside; this.flags = opt.flags || []; this.lights = opt.lights || []; if (!this.people) return;
     // the benches: either side of the umpire's chair, along the right edge of the court
     const bx = 1180, wood = [150, 112, 70], metal = [170, 174, 184];
     for (const [bz, k] of [[-360, 0], [360, 1]]) {
@@ -46,7 +48,6 @@ export class Courtside {
     this.crane = { x: -1180, z: -1560 };
     B.add(-1180, 0, -1560, 160, 40, 160, [60, 62, 70]); B.add(-1180, 40, -1560, 50, 300, 50, [80, 82, 92]);
     this.bench = [[bx - 80, -360], [bx - 80, 360]];
-    this.flags = opt.flags || []; this.lights = opt.lights || []; this.spots = opt.spots || [];
   }
   // ---- once per game frame (stadium3d.js step): a point, an out call, a changeover ----
   step(w, E, p, now) {
@@ -82,44 +83,46 @@ export class Courtside {
     const gl = this.gl; if (!this.kit) return; this.n = 0;
     const kit = this.kit, jk = this.judgeKit, cap = shade(kit[0], 0.8);
     const sinceP = T - this.pointAt, change = T - this.changeAt < 30, cu = ease((T - this.changeAt) / 1.6);
-    // ball kids: two at the net (left side; the umpire sits right), four at the baselines' corners
-    const KIDS = [[-780, -70, 1], [-780, 70, -1], [-860, -1440, 1], [860, -1440, 1], [-860, 1440, -1], [860, 1440, -1]];
-    KIDS.forEach(([x, z, f], i) => {
-      let px = x, pz = z, pose = "crouch", kk = 0;
-      if (i < 2 && sinceP > 0.2 && sinceP < 2.6) {                                   // the dash in for the ball after a point, and back
-        const u = sinceP < 1.4 ? (sinceP - 0.2) / 1.2 : 1 - (sinceP - 1.4) / 1.2; px = x + ease(u) * 420; pose = "run"; kk = T * 14;
-      } else if (change && i < 4) {                                                   // a changeover: to the benches with towels
-        const [bx, bz] = this.bench[i & 1], m = cu; px = x + (bx - 60 - x) * m; pz = z + (bz + (i < 2 ? -110 : 110) - z) * m; pose = m < 1 ? "run" : "stand"; kk = T * 14;
-        if (m >= 1) this.add(px, 90, pz + 10, 50, 40, 8, [250, 250, 250]);         // the towel held out
-      } else kk = 0;
-      this.person(px, 0, pz, f, pose, kit[0], kit[1], SKIN[i % 4], { s: 0.82, cap, k: kk, side: pose === "run" && !change });
-    });
-    // line judges: at the ends of the baselines, on chairs, facing across; the nearest one to the ball calls an out with an arm up
-    const out = T - this.outAt < 1.6, ball = this.v.ballWorld ? this.v.ballWorld() : null;
-    const JUDGES = [[-800, -1250], [800, -1250], [-800, 1250], [800, 1250]];
-    let near = -1; if (out && ball) { let best = 1e9; JUDGES.forEach(([x, z], i) => { const d = Math.hypot(x - ball.X, z - ball.Y); if (d < best) { best = d; near = i; } }); }
-    JUDGES.forEach(([x, z], i) => {
-      this.add(x, 0, z, 46, 44, 46, [70, 70, 80]); this.add(x + (x < 0 ? -22 : 22), 44, z, 8, 56, 46, [70, 70, 80]);
-      this.person(x, 44, z, 1, "sit", jk[0], jk[1], SKIN[(i + 2) % 4], { cap: [240, 240, 240], arm: i === near, side: true });
-    });
-    // the TV crane: the arm turning on its column, the camera at its end, a counterweight behind
-    const C = this.crane, yaw = 0.55 * Math.sin(T * (sinceP < 3 ? 0.9 : 0.35)) + 0.6, pitch = 0.25 + 0.12 * Math.sin(T * 0.5), L = 760, n = 16;
-    const dx = Math.sin(yaw) * Math.cos(pitch), dy = Math.sin(pitch), dz = Math.cos(yaw) * Math.cos(pitch), py = 340;
-    for (let i = -4; i <= n; i++) { const t = i / n; this.add(C.x + dx * L * t, py + dy * L * t, C.z + dz * L * t, 28, 28, 28, i < 0 ? [50, 52, 60] : [200, 204, 214]); }
-    this.add(C.x - dx * L * 0.3, py - dy * L * 0.3 - 30, C.z - dz * L * 0.3, 80, 80, 80, [40, 42, 48]);
-    const ex = C.x + dx * L, ey = py + dy * L, ez = C.z + dz * L; this.add(ex, ey - 70, ez, 60, 50, 70, [30, 30, 34]); this.add(ex + dx * 40, ey - 60, ez + dz * 40, 26, 26, 26, [20, 20, 24]);
-    this.add(ex, ey - 20, ez, 8, 30, 8, [255, 40, 40]);
-    this.person(C.x + 60, 0, C.z + 80, 1, "stand", [60, 60, 70], [40, 40, 50], SKIN[1], { cap: [30, 30, 30] });   // the operator
-    // photographers along the far baseline, kneeling, their cameras up; flashes after points and now and then
-    for (let i = 0; i < 5; i++) {
-      const x = -520 + i * 260, z = -1540; this.person(x, 0, z, 1, "crouch", [50, 54, 64], [30, 32, 40], SKIN[(i + 1) % 4], { s: 0.9 });
-      this.add(x, 96, z + 26, 30, 22, 26, [24, 24, 28]); this.add(x, 100, z + 46, 14, 14, 18, [60, 60, 70]);
-      const fl = this.flashes.find(e => e.i === i && T >= e.at && T < e.at + 0.09) || (Math.sin(T * 1.7 + i * 2.1) > 0.995 ? {} : null);
-      if (fl) this.add(x, 116, z + 34, 26, 16, 8, [255, 255, 255]);
+    if (this.people) {
+      // ball kids: two at the net (left side; the umpire sits right), four at the baselines' corners
+      const KIDS = [[-780, -70, 1], [-780, 70, -1], [-860, -1440, 1], [860, -1440, 1], [-860, 1440, -1], [860, 1440, -1]];
+      KIDS.forEach(([x, z, f], i) => {
+        let px = x, pz = z, pose = "crouch", kk = 0;
+        if (i < 2 && sinceP > 0.2 && sinceP < 2.6) {                                   // the dash in for the ball after a point, and back
+          const u = sinceP < 1.4 ? (sinceP - 0.2) / 1.2 : 1 - (sinceP - 1.4) / 1.2; px = x + ease(u) * 420; pose = "run"; kk = T * 14;
+        } else if (change && i < 4) {                                                   // a changeover: to the benches with towels
+          const [bx, bz] = this.bench[i & 1], m = cu; px = x + (bx - 60 - x) * m; pz = z + (bz + (i < 2 ? -110 : 110) - z) * m; pose = m < 1 ? "run" : "stand"; kk = T * 14;
+          if (m >= 1) this.add(px, 90, pz + 10, 50, 40, 8, [250, 250, 250]);         // the towel held out
+        } else kk = 0;
+        this.person(px, 0, pz, f, pose, kit[0], kit[1], SKIN[i % 4], { s: 0.82, cap, k: kk, side: pose === "run" && !change });
+      });
+      // line judges: at the ends of the baselines, on chairs, facing across; the nearest one to the ball calls an out with an arm up
+      const out = T - this.outAt < 1.6, ball = this.v.ballWorld ? this.v.ballWorld() : null;
+      const JUDGES = [[-800, -1250], [800, -1250], [-800, 1250], [800, 1250]];
+      let near = -1; if (out && ball) { let best = 1e9; JUDGES.forEach(([x, z], i) => { const d = Math.hypot(x - ball.X, z - ball.Y); if (d < best) { best = d; near = i; } }); }
+      JUDGES.forEach(([x, z], i) => {
+        this.add(x, 0, z, 46, 44, 46, [70, 70, 80]); this.add(x + (x < 0 ? -22 : 22), 44, z, 8, 56, 46, [70, 70, 80]);
+        this.person(x, 44, z, 1, "sit", jk[0], jk[1], SKIN[(i + 2) % 4], { cap: [240, 240, 240], arm: i === near, side: true });
+      });
+      // the TV crane: the arm turning on its column, the camera at its end, a counterweight behind
+      const C = this.crane, yaw = 0.55 * Math.sin(T * (sinceP < 3 ? 0.9 : 0.35)) + 0.6, pitch = 0.25 + 0.12 * Math.sin(T * 0.5), L = 760, n = 16;
+      const dx = Math.sin(yaw) * Math.cos(pitch), dy = Math.sin(pitch), dz = Math.cos(yaw) * Math.cos(pitch), py = 340;
+      for (let i = -4; i <= n; i++) { const t = i / n; this.add(C.x + dx * L * t, py + dy * L * t, C.z + dz * L * t, 28, 28, 28, i < 0 ? [50, 52, 60] : [200, 204, 214]); }
+      this.add(C.x - dx * L * 0.3, py - dy * L * 0.3 - 30, C.z - dz * L * 0.3, 80, 80, 80, [40, 42, 48]);
+      const ex = C.x + dx * L, ey = py + dy * L, ez = C.z + dz * L; this.add(ex, ey - 70, ez, 60, 50, 70, [30, 30, 34]); this.add(ex + dx * 40, ey - 60, ez + dz * 40, 26, 26, 26, [20, 20, 24]);
+      this.add(ex, ey - 20, ez, 8, 30, 8, [255, 40, 40]);
+      this.person(C.x + 60, 0, C.z + 80, 1, "stand", [60, 60, 70], [40, 40, 50], SKIN[1], { cap: [30, 30, 30] });   // the operator
+      // photographers along the far baseline, kneeling, their cameras up; flashes after points and now and then
+      for (let i = 0; i < 5; i++) {
+        const x = -520 + i * 260, z = -1540; this.person(x, 0, z, 1, "crouch", [50, 54, 64], [30, 32, 40], SKIN[(i + 1) % 4], { s: 0.9 });
+        this.add(x, 96, z + 26, 30, 22, 26, [24, 24, 28]); this.add(x, 100, z + 46, 14, 14, 18, [60, 60, 70]);
+        const fl = this.flashes.find(e => e.i === i && T >= e.at && T < e.at + 0.09) || (Math.sin(T * 1.7 + i * 2.1) > 0.995 ? {} : null);
+        if (fl) this.add(x, 116, z + 34, 26, 16, 8, [255, 255, 255]);
+      }
+      this.flashes = this.flashes.filter(e => T < e.at + 0.2);
     }
-    this.flashes = this.flashes.filter(e => T < e.at + 0.2);
     // flags in the wind: strips across the flag, each further strip swung more
-    const W = this.v.weather, wind = W && W.cur === "wind" ? 1 : W && W.cur === "rain" ? 0.6 : 0.3;
+    const wind = 0.3;
     for (const fl of this.flags) {
       const m = 6, along = fl.along || "x";
       for (let k = 0; k < m; k++) {
@@ -127,12 +130,6 @@ export class Courtside {
         if (along === "x") this.add(fl.x + t * fl.w, fl.y - droop, fl.z + wave, fl.w / m + 1, fl.h, 4, k & 1 ? fl.col : shade(fl.col, 0.9));
         else this.add(fl.x + wave, fl.y - droop, fl.z + t * fl.w, 4, fl.h, fl.w / m + 1, k & 1 ? fl.col : shade(fl.col, 0.9));
       }
-    }
-    // RAIN: umbrellas go up over the crowd, more as the rain goes on (WEATHER: Rain), in all colours
-    if (W && W.cur === "rain" && this.spots.length) {
-      const share = Math.min(1, Math.max(0, (T - (W.since > 0 ? W.since : T - 20)) / 8)), fill = this.st.fill || 0, UC = [[230, 60, 60], [60, 110, 220], [250, 200, 50], [60, 170, 90], [240, 240, 240], [150, 70, 190], [30, 30, 40]];
-      for (let i = 0; i < this.spots.length; i++) { const [x, y, z, th] = this.spots[i]; if (th >= fill || (i * 0.618) % 1 > share) continue; const c = UC[i % UC.length];
-        this.add(x, y + 110, z, 96, 12, 96, c); this.add(x, y + 122, z, 60, 10, 60, c); this.add(x, y + 132, z, 20, 8, 20, c.map(v => v * 0.8)); }
     }
     // the venue's lamps: unlit by day, glowing as the floodlights come on (lighting.js sky.lamps)
     const LT = this.v.light, sky = LT && !LT.broken && LT.active && LT.skyFor ? LT.skyFor("court") : null, nk = sky ? sky.lamps || 0 : 0;

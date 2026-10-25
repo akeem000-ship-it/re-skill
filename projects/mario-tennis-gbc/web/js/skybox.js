@@ -13,8 +13,8 @@
 //   volcano    dark peaks and a smoking volcano, lava glowing, the sky reddened (Bowser's court)
 //   airfield   flat fields, hangars, a control tower and a windsock (the hangar court)
 //   jungle     jagged green peaks, mist and a canopy (the jungle court)
-// The hour is the lighting's (lighting.js hourFor("court"): matches by class, random, day, night, or the clock; a sunset from the
-// weather); rain greys the sky over. Without LIGHT the afternoon. Nothing in the game is read but the court and match.
+// The hour is the lighting's (lighting.js hourFor("court"): matches by class, random, day, night, or the clock; the title show's
+// and the venue tour's own hour). Without LIGHT the afternoon. Nothing in the game is read but the court and match.
 import { invert } from "./lighting.js";
 import { THEME_BY_MAP } from "./venues.js";
 
@@ -36,14 +36,13 @@ const SKY = [
   { h: 24,   top: [5, 9, 28],     hor: [26, 38, 80],    night: 1,   sun: [255, 200, 150] },
 ];
 const mixA = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
-export function skyColours(hour, rain = false) {
+export function skyColours(hour) {
   const h = ((hour % 24) + 24) % 24; let i = 0; while (i < SKY.length - 2 && h >= SKY[i + 1].h) i++;
   const a = SKY[i], b = SKY[i + 1], t0 = Math.min(1, Math.max(0, (h - a.h) / (b.h - a.h))), t = t0 * t0 * (3 - 2 * t0);
-  let top = mixA(a.top, b.top, t), hor = mixA(a.hor, b.hor, t); const night = a.night + (b.night - a.night) * t, sunC = mixA(a.sun, b.sun, t);
-  if (rain) { const grey = c => { const l = (c[0] + c[1] + c[2]) / 3; return c.map(v => (v * 0.25 + l * 0.75) * 0.82); }; top = grey(top); hor = grey(hor); }
+  const top = mixA(a.top, b.top, t), hor = mixA(a.hor, b.hor, t); const night = a.night + (b.night - a.night) * t, sunC = mixA(a.sun, b.sun, t);
   // the sun: up at 6, down at 19.8, highest (62 degrees) between; from the left of the far end in the morning to its right in the evening
   const k = (h - 6) / 13.8, sunEl = k > 0 && k < 1 ? 62 * Math.sin(Math.PI * k) * Math.PI / 180 : -0.3, sunAz = (-50 + 90 * Math.min(1, Math.max(0, k))) * Math.PI / 180;
-  return { h, top, hor, night, sunC, sunEl, sunAz, rain };
+  return { h, top, hor, night, sunC, sunEl, sunAz };
 }
 const dirOf = (az, el) => [Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el)];
 
@@ -52,7 +51,7 @@ out vec2 vUV;
 void main() { vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); vUV = p; gl_Position = vec4(p * 2.0 - 1.0, 1.0, 1.0); }`;
 const FS = `#version 300 es
 precision highp float; in vec2 vUV; out vec4 o;
-uniform mat4 uInv; uniform float uE0, uK, uNight, uT, uSunOn, uRain; uniform vec3 uTop, uHor, uSunV, uSunC, uMoonV; uniform vec2 uTexE; uniform sampler2D uTex;
+uniform mat4 uInv; uniform float uE0, uK, uNight, uT, uSunOn; uniform vec3 uTop, uHor, uSunV, uSunC, uMoonV; uniform vec2 uTexE; uniform sampler2D uTex;
 float hash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 void main() {
   vec2 n = vUV * 2.0 - 1.0;
@@ -64,15 +63,15 @@ void main() {
   vec3 c = mix(uHor, uTop, pow(clamp(e / 0.9, 0.0, 1.0), 0.6));
   // the sun: a wide glow, a tight one, the disc
   float sd = max(dot(r, uSunV), 0.0);
-  c += uSunC * (pow(sd, 6.0) * 0.22 + pow(sd, 90.0) * 0.55) * uSunOn * (1.0 - uRain * 0.8);
-  c = mix(c, mix(uSunC, vec3(1.0), 0.6), smoothstep(0.99955, 0.99975, sd) * uSunOn * (1.0 - uRain));
+  c += uSunC * (pow(sd, 6.0) * 0.22 + pow(sd, 90.0) * 0.55) * uSunOn;
+  c = mix(c, mix(uSunC, vec3(1.0), 0.6), smoothstep(0.99955, 0.99975, sd) * uSunOn);
   // the moon (night), a faint halo round it
-  float md = max(dot(r, uMoonV), 0.0), moon = smoothstep(0.99975, 0.99985, md) * uNight * (1.0 - uRain);
-  c += vec3(0.5, 0.6, 0.9) * pow(md, 400.0) * 0.25 * uNight * (1.0 - uRain);
+  float md = max(dot(r, uMoonV), 0.0), moon = smoothstep(0.99975, 0.99985, md) * uNight;
+  c += vec3(0.5, 0.6, 0.9) * pow(md, 400.0) * 0.25 * uNight;
   vec2 mq = (r.xy - uMoonV.xy) * 3000.0; float spots = 0.88 + 0.12 * sin(mq.x * 0.7) * sin(mq.y * 0.9);
   c = mix(c, vec3(0.96, 0.95, 0.86) * spots, moon);
-  // stars (night, clear): a few per cell of a grid on the sky, twinkling
-  if (uNight > 0.01 && uRain < 0.5) {
+  // stars (night): a few per cell of a grid on the sky, twinkling
+  if (uNight > 0.01) {
     vec2 g = vec2(az, e) * 160.0, id = floor(g); float h = hash(id);
     if (h > 0.975) { vec2 f = fract(g) - 0.5 - (vec2(hash(id + 3.1), hash(id + 7.7)) - 0.5) * 0.6; float s = smoothstep(0.16, 0.0, length(f)) * (h - 0.975) * 40.0;
       c += vec3(0.9, 0.93, 1.0) * s * uNight * smoothstep(0.02, 0.3, e) * (0.75 + 0.25 * sin(uT * 3.0 + h * 90.0)); }
@@ -96,15 +95,15 @@ export class SkyBox {
     const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(p);
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
     this.gl = gl; this.prog = p; this.vao = gl.createVertexArray(); this.u = {};
-    for (const k of ["uInv", "uE0", "uK", "uNight", "uT", "uSunOn", "uRain", "uTop", "uHor", "uSunV", "uSunC", "uMoonV", "uTexE", "uTex"]) this.u[k] = gl.getUniformLocation(p, k);
+    for (const k of ["uInv", "uE0", "uK", "uNight", "uT", "uSunOn", "uTop", "uHor", "uSunV", "uSunC", "uMoonV", "uTexE", "uTex"]) this.u[k] = gl.getUniformLocation(p, k);
   }
   // draw the sky into the bound target for this court view (mvp: the scene's view-projection); the caller restores its program
   draw(gl, mvp) {
     if (this.broken) return false;
     try {
       if (!this.prog) this.init(gl);
-      const rain = !!(this.v.light && this.v.light.weatherRain), S = skyColours(this.hour(), rain), theme = this.theme();
-      const key = theme + ":" + (Math.round(S.h * 4) / 4) + (rain ? "r" : "");
+      const S = skyColours(this.hour()), theme = this.theme();
+      const key = theme + ":" + (Math.round(S.h * 4) / 4);
       if (key !== this.key) { this.key = key; this.upload(gl, panorama(theme, S)); }
       const inv = invert(mvp), un = q => { const w = inv[3] * q[0] + inv[7] * q[1] + inv[11] * q[2] + inv[15]; return [0, 1, 2].map(i => (inv[i] * q[0] + inv[4 + i] * q[1] + inv[8 + i] * q[2] + inv[12 + i]) / w); };
       const st = this.v.stadium, hy = st && st.active && st.built && st.built.skyY != null ? st.built.skyY : HORIZON_AT[1];   // (the far stand's height: VENUES rows)
@@ -114,7 +113,7 @@ export class SkyBox {
       gl.disable(gl.DEPTH_TEST); gl.depthMask(false); gl.disable(gl.BLEND);
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tex); gl.uniform1i(U.uTex, 0);
       gl.uniformMatrix4fv(U.uInv, false, inv); gl.uniform1f(U.uE0, e0); gl.uniform1f(U.uK, STRETCH);
-      gl.uniform1f(U.uNight, S.night); gl.uniform1f(U.uT, performance.now() / 1000); gl.uniform1f(U.uSunOn, S.sunEl > -0.05 ? 1 : 0); gl.uniform1f(U.uRain, rain ? 1 : 0);
+      gl.uniform1f(U.uNight, S.night); gl.uniform1f(U.uT, performance.now() / 1000); gl.uniform1f(U.uSunOn, S.sunEl > -0.05 ? 1 : 0);
       gl.uniform3fv(U.uTop, c3(S.top)); gl.uniform3fv(U.uHor, c3(S.hor)); gl.uniform3fv(U.uSunC, c3(S.sunC));
       gl.uniform3fv(U.uSunV, dirOf(S.sunAz, Math.max(S.sunEl * SUN_LOW, -0.2))); gl.uniform3fv(U.uMoonV, dirOf(MOON[0], MOON[1])); gl.uniform2f(U.uTexE, TEX_TOP, TEX_BOT);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -151,7 +150,7 @@ export function panorama(theme, S) {
   // haze: far shapes take the horizon's colour; a shape's own colour dimmed at night
   const tone = (c, haze) => mixA(c.map(v => v * dim), S.hor, haze);
   const sunX = X(S.sunAz);
-  // ---- clouds: soft puffs in loose clusters, lit from the sun's side (rain: a low grey deck over all of it) ----
+  // ---- clouds: soft puffs in loose clusters, lit from the sun's side ----
   const cloudLit = mixA(mixA([255, 255, 255], S.sunC, 0.35 + sunset * 0.5), S.top, night * 0.85), cloudShade = mixA(mixA(S.hor, [120, 130, 150], 0.5), S.top, 0.3 + night * 0.5);
   const puffs = (n, elLo, elHi, alpha) => {
     for (let i = 0; i < n; i++) {
@@ -164,13 +163,8 @@ export function panorama(theme, S) {
       }
     }
   };
-  if (S.rain) {
-    const gr = g.createLinearGradient(0, Y(TEX_TOP), 0, HY); gr.addColorStop(0, rgb(mixA(S.top, [90, 95, 105], 0.4), 0.9)); gr.addColorStop(1, rgb(S.hor, 0.6));
-    g.fillStyle = gr; g.fillRect(0, 0, TW, HY); puffs(90, 4 * DEG, 40 * DEG, 0.55);
-  } else {
-    const n = { tropics: 26, volcano: 10, city: 22 }[theme] ?? 34;
-    puffs(n, 3 * DEG, 14 * DEG, 0.85 - night * 0.45); puffs(Math.round(n * 0.6), 14 * DEG, 40 * DEG, 0.7 - night * 0.4);
-  }
+  const n = { tropics: 26, volcano: 10, city: 22 }[theme] ?? 34;
+  puffs(n, 3 * DEG, 14 * DEG, 0.85 - night * 0.45); puffs(Math.round(n * 0.6), 14 * DEG, 40 * DEG, 0.7 - night * 0.4);
   // ---- the land round the court (themes) ----
   const land = (near, far) => { const gr = g.createLinearGradient(0, HY, 0, TH); gr.addColorStop(0, rgb(tone(far, 0.55))); gr.addColorStop(1, rgb(tone(near, 0.1))); g.fillStyle = gr; g.fillRect(0, HY, TW, TH - HY); };
   const hills = (c, base, amp, haze, n = 5) => ridge(g, waves(r, n, amp, base), rgb(tone(c, haze)));
@@ -186,7 +180,7 @@ export function panorama(theme, S) {
     const gr = g.createLinearGradient(0, HY, 0, TH); gr.addColorStop(0, rgb(mixA(S.hor, [40, 120, 170], 0.35 + 0.3 * dim))); gr.addColorStop(1, rgb(mixA([10, 60, 110], S.top, 0.3).map(v => v * (0.4 + 0.6 * dim))));
     g.fillStyle = gr; g.fillRect(0, HY, TW, TH - HY);
     const glitter = (x0, c, a) => { for (let i = 0; i < 700; i++) { const y = HY + Math.pow(r(), 1.7) * (TH - HY), sp = 8 + (y - HY) * 0.35, x = x0 + (r() - 0.5) * sp * 2; g.fillStyle = rgb(c, a * (1 - (y - HY) / (TH - HY))); g.fillRect(x, y, 6 + r() * 14, 1.5); } };
-    if (S.sunEl > -0.05 && !S.rain) glitter(sunX, mixA(S.sunC, [255, 255, 255], 0.4), 0.8); else if (night > 0.5 && !S.rain) glitter(X(MOON[0]), [220, 225, 255], 0.45);
+    if (S.sunEl > -0.05) glitter(sunX, mixA(S.sunC, [255, 255, 255], 0.4), 0.8); else if (night > 0.5) glitter(X(MOON[0]), [220, 225, 255], 0.45);
     for (let i = 0; i < 6; i++) {                                               // islands, a palm or two on each
       const cx = r() * TW, w = 60 + r() * 160, h = (0.5 + r() * 1.5) * DEG, c = tone([40, 110, 60], 0.45);
       g.fillStyle = rgb(c); g.beginPath(); g.ellipse(cx, HY, w, (HY - Y(h)), 0, Math.PI, 0); g.fill();

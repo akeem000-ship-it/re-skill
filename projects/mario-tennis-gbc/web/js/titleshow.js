@@ -27,7 +27,7 @@ export class TitleShow {
     const v = this.v, i = k % ORDER.length, s = this.stop = STOPS[ORDER[i]], cam = CAMS[i], hour = HOURS[i], s0 = now;
     this.k = k;
     v.venueTour = { map: s.map, pal: venuePalette(v.rom, s.map), attract: true,
-      camera: (aspect, m4, clip) => { if (v.light) v.light.weatherHour = hour + 0.01; return tourCamera(cam, performance.now() / 1000 - s0, aspect, m4, clip); } };
+      camera: (aspect, m4, clip) => { if (v.light) v.light.fixedHour = hour + 0.01; return tourCamera(cam, performance.now() / 1000 - s0, aspect, m4, clip); } };
     v.stadium.forceVenue = s.venue; v.ground = null; v.groundHash = -1; v.courtId = s.map; v.stadium.reset();
   }
   // the title gone: the game's own view back (as the VENUE TOUR's close)
@@ -35,7 +35,7 @@ export class TitleShow {
     const v = this.v; if (!v) return; this.v = null; this.stop = null;
     if (v.venueTour && v.venueTour.attract) {
       v.venueTour = null; v.stadium.forceVenue = this.prevVenue; v.ground = null; v.courtId = -1; v.detectAt = 0; v.groundHash = -1;
-      if (v.light) v.light.weatherHour = null;
+      if (v.light) v.light.fixedHour = null;
       if (v.stadium.painted) v.stadium.pend = null; v.stadium.reset();
     }
   }

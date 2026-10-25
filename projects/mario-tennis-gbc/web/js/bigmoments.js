@@ -12,6 +12,7 @@
 // Nothing in the game is written; the score bytes, the players' records and positions are read.
 import { matchPicture } from "./crowdfans.js";
 import { crestIcon } from "./crestlogo.js";
+import { EXTRAS } from "./venues.js";
 const ease = u => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
 const FW = { castle: [[255, 150, 210], [255, 220, 90], [255, 255, 255]], city: [[90, 220, 255], [255, 90, 200], [255, 255, 255]], varsity: [[60, 110, 230], [250, 200, 50], [255, 255, 255]],
   senior: [[250, 250, 240], [60, 160, 90], [255, 210, 70]] };
@@ -23,6 +24,7 @@ export class BigMoments {
   // ---- built with the stadium: the VIP box (glass front, roof, its seats) in the left stand ----
   build(B, stands, opt) {
     this.vip = null; const L = stands.find(s => s.S.side && s.S.dir < 0); if (!L || opt.hall) return;
+    this.far = stands.find(s => !s.S.side) || L; this.geo = opt; if (!EXTRAS.vip) return;   // (STADIUM EXTRAS: the VIP box off; the cards stay)
     const { N, D, RISE, BASE } = opt, u0 = (N - VIP.rows) * D, y0 = BASE + (N - VIP.rows) * RISE, frame = [230, 230, 236];
     L.box(u0 - 10, L.outer, VIP.v0 - 20, VIP.v0, 0, L.top + 90, frame); L.box(u0 - 10, L.outer, VIP.v1, VIP.v1 + 20, 0, L.top + 90, frame);   // the side walls
     L.box(u0 - 30, L.outer + 10, VIP.v0 - 30, VIP.v1 + 30, L.top + 90, L.top + 110, frame);                                                  // the roof
@@ -30,7 +32,6 @@ export class BigMoments {
     for (const vv of [VIP.v0 + 170, VIP.v1 - 170]) L.box(u0 - 14, u0 - 8, vv - 6, vv + 6, y0 + 70, L.top + 90, frame);                          // its posts
     L.box(u0 - 30, u0 - 10, VIP.v0 - 30, VIP.v1 + 30, L.top + 60, L.top + 90, [30, 30, 40]);                                                // the fascia
     this.vip = { seats: [-240, -80, 80, 240].map(vv => { const [x, z] = L.at(u0 + D * 1.2, vv); return { x, y: BASE + (N - 1) * RISE + 14, z }; }), L };
-    this.far = stands.find(s => !s.S.side) || L; this.geo = opt;
   }
   rivals() {
     const t = this.v.tour, w = this.v.gb.mem.wram[0], cur = w[0xA8B] & 0x3F; if (!t || !t.data) return [];

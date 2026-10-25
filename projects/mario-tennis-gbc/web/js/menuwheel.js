@@ -79,12 +79,15 @@ const NC = CELLS.length;
 // is first turned on) are left out until they exist.
 const OPTION_CATS = [
   ["PICTURE", "the view, the camera, the screen", ["view3d", "cam", "aspect", "smoothbtn", "voxstylebtn", "lightbtn", "fieldlifebtn", "groundbtn", "treesbtn"]],
-  ["STADIUM", "the court, the crowd, the effects", ["stadiumbtn", "stadiumqbtn", "seasonbtn", "venuetourbtn", "courtbtn", "farendbtn", "weatherbtn", "crowdsndbtn", "ballfxbtn", "matchfxbtn", "kitbtn", "introbtn", "vsbtn", "callsbtn", "aimbtn"]],
+  ["STADIUM", "the court, the crowd, the effects", ["stadiumbtn", "stadiumqbtn", "seasonbtn", "venuetourbtn", "courtbtn", "farendbtn", "crowdsndbtn", "ballfxbtn", "matchfxbtn", "kitbtn", "introbtn", "vsbtn", "callsbtn", "aimbtn"]],
   ["MENUS & TEXT", "how menus and words are drawn", ["uibtn", "fontbtn", "sprbtn"]],
   ["MODES", "exhibition rules, rematch, practice, partner, text", ["mode-sets", "mode-games", "mode-tiebreak", "mode-noAd", "mode-rematch", "mode-machine", "mode-mgHard", "mode-partner", "mode-fastText", "recordsbtn"]],
   ["PLAY", "the rules, the feel, the controls", ["physbtn", "netbtn", "plusbtn", "tourlenbtn", "runaheadbtn", "padmode", "stickfeelbtn", "vibratebtn", "batterybtn", "tourplusbtn", "tourbtn"]],
 ];
 const OPTION_NAMES = { view3d: "3D VIEW", aspect: "SCREEN", cam: "CAMERA", padmode: "TOUCH PAD", lightbtn: "LIGHT", uibtn: "MENUS", sprbtn: "SPRITES" };
+// the BACKDROP's court in perspective: u across (-1..1), v along (0 the far baseline at the horizon .. 1.4 past the near
+// baseline, off the bottom); d grows with the distance, so the far end is small and the near end runs wide off the screen
+const courtPoint = (u, v, W, H) => { const d = 1 + (1.2 - v) * 2, f = (1 / d - 1 / 3.4) / (1 - 1 / 3.4); return [W * 0.5 + (u * W * 0.75) / d, H * 0.43 + H * 0.62 * f, d]; };
 export class MenuWheel {
   constructor(getGb, getPort) {
     this.getGb = getGb; this.getPort = getPort; this.shown = 0; this.pos = 0; this.root = null;
@@ -253,7 +256,7 @@ export class MenuWheel {
     const g = c.getContext("2d"), z = 1.08 + 0.05 * Math.sin(T * 0.11), ox = Math.sin(T * 0.07) * w * 0.03, oy = Math.cos(T * 0.09) * h * 0.015;
     const X = x => (x - w / 2) * z + w / 2 + ox, Y = y => (y - h / 2) * z + h / 2 + oy;
     g.drawImage(this.scene(w, h), X(0), Y(0), w * z, h * z);
-    const P = (u, v) => { const d = 1 + v * 2.2; return [X(w * 0.5 + (u * w * 0.75) / d), Y(h * 0.43 + (h * 0.57) * (1 - 1 / d) * 1.55), d]; };   // (scene()'s court)
+    const P = (u, v) => { const [x, y, d] = courtPoint(u, v, w, h); return [X(x), Y(y), d]; };   // (scene()'s court)
     let s = (Math.floor(T * 6) * 2654435761) >>> 0; const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
     for (let i = 0; i < 3; i++) if (rnd() < 0.5) { const fx = X(rnd() * w), fy = Y(h * (0.1 + rnd() * 0.3)), r = g.createRadialGradient(fx, fy, 0, fx, fy, w * 0.02); r.addColorStop(0, "rgba(255,255,255,0.9)"); r.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = r; g.fillRect(fx - w * 0.02, fy - w * 0.02, w * 0.04, w * 0.04); }
     const ball = t => { const q = (t % 2.4) / 1.2, back = q > 1, f = back ? q - 1 : q, v = back ? 0.12 + 1.0 * f : 1.12 - 1.0 * f, u = 0.32 * Math.sin(t * 0.9) * (back ? 1 - f : f) + 0.1;
@@ -307,7 +310,7 @@ export class MenuWheel {
     let gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, "#070a1c"); gr.addColorStop(0.42, "#141a3a"); gr.addColorStop(0.43, "#3a2a6a"); gr.addColorStop(1, "#24184c"); g.fillStyle = gr; g.fillRect(0, 0, W, H);
     let a = 0x9e3779b9; const rnd = () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; };
     for (let i = 0; i < 2600; i++) { const x = rnd() * W, y = H * (0.08 + rnd() * 0.33); g.fillStyle = `hsla(${rnd() * 360},55%,${35 + rnd() * 30}%,0.8)`; g.fillRect(x, y, 2 + rnd() * 3, 3 + rnd() * 3); }   // the crowd
-    const P = (u, v) => { const z = 1 + v * 2.2; return [W * 0.5 + (u * W * 0.75) / z, H * 0.43 + (H * 0.57) * (1 - 1 / z) * 1.55]; };       // court u -1..1, v 0 (far)..1 (near)
+    const P = (u, v) => courtPoint(u, v, W, H);                                     // court u -1..1, v 0 (far)..1.4 (near)
     const quad = (u0, v0, u1, v1, fill) => { g.fillStyle = fill; g.beginPath(); for (const [u, v] of [[u0, v0], [u1, v0], [u1, v1], [u0, v1]]) g.lineTo(...P(u, v)); g.fill(); };
     quad(-0.62, 0.02, 0.62, 1.4, "#1c3a92");
     g.strokeStyle = "rgba(255,255,255,0.92)"; g.lineWidth = Math.max(2, W / 400);

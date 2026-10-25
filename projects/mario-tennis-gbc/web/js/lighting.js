@@ -265,7 +265,7 @@ export class Lighting {
   get active() { return !this.broken && (this.mode !== "off" || this.cfg.matches !== "same"); }
   hourFor(kind) {
     const m = this.cfg.matches;
-    if (kind === "court" && this.weatherHour != null) return this.weatherHour;   // WEATHER: Sunset
+    if (kind === "court" && this.fixedHour != null) return this.fixedHour;   // (the title show's and the venue tour's hour)
     if (kind === "court" && m === "tour") return Math.min(23.5, this.tourHour() + this.flow());
     if (kind === "court" && m !== "same") return m === "day" ? 15 : m === "night" ? 22 : Math.min(23.5, (this.matchHour ?? 12) + this.flow());
     return this.hour();
@@ -284,12 +284,10 @@ export class Lighting {
     return idx <= 4 ? 13.5 + idx * 0.4 : idx <= 9 ? 15.5 + (idx - 5) * 0.4 : idx <= 0x0D ? 18.2 + (idx - 0x0A) * 0.1 : 20;
   }
   skyFor(kind) {
-    const h = this.hourFor(kind), clock = this.hourOverride == null && this.mode === "auto" && !(kind === "court" && (this.cfg.matches !== "same" || this.weatherHour != null));
-    const rain = kind === "court" && !!this.weatherRain, k = kind + ":" + (clock ? Math.floor(performance.now() / 1000) : h) + (rain ? "r" : "");
+    const h = this.hourFor(kind), clock = this.hourOverride == null && this.mode === "auto" && !(kind === "court" && (this.cfg.matches !== "same" || this.fixedHour != null));
+    const k = kind + ":" + (clock ? Math.floor(performance.now() / 1000) : h);
     if (this.skyKey !== k) {
-      this.skyKey = k; let P = skyAt(h);
-      if (rain) P = { ...P, sun: P.sun.map(x => x * 0.5), amb: P.amb.map(x => x * 0.9), sat: P.sat * 0.78, shade: (P.shade ?? 1) * 0.35, bloom: P.bloom * 0.6 };   // WEATHER: Rain: overcast
-      this.skyVal = P;
+      this.skyKey = k; this.skyVal = skyAt(h);
     }
     return this.skyVal;
   }

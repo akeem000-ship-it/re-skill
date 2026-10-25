@@ -7,8 +7,6 @@
 //   walkers        on the outdoor maps a few people walk the paths: the map's own kinds of people (copied from the actor table as they
 //                  are seen), on the open squares of its collision grid, turning at the junctions and now and then stopping; their frames
 //                  are the game's own for each facing (read from the ROM as voxel.js does for people off the Game Boy screen)
-//   puddles        after a rainy match (WEATHER: Rain / Wet, weather.js) the ground keeps puddles for a while: dark wet patches with the
-//                  sky's sheen on them (at night the lamps' glow), fixed in place on the map
 import { INDOOR_MAPS } from "./lighting.js";
 const KEY = "mt-fieldlife";
 const hash = (a, b) => { let h = Math.imul(a, 374761393) ^ Math.imul(b, 668265263); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
@@ -49,20 +47,6 @@ export class FieldLife {
           v.draw(this.bird, m4.trs(x, 150 + Math.sin(T * 1.3 + b.ph) * 4, F.z + b.dz, F.dir * 9, flap ? 5 : 3, -1.0), mvp, [0, flap ? 0 : 0.5, 1, 0.5], [0.15, 0.14, 0.18, day], 0.3);
         }
       }
-    }
-    // puddles after a rainy match: in a fixed grid of 96-px cells about the view, one cell in four holds one (jittered, sized by its hash)
-    const W = v.weather, left = W && W.wetUntil ? W.wetUntil - performance.now() / 1000 : 0, wet = Math.max(0, Math.min(1, left / 60));   // (the last minute: drying up)
-    if (wet > 0 && !f.noGlass) {
-      gl.depthMask(false); const C = 96, i0 = Math.floor((cx - 260) / C), i1 = Math.floor((cx + 260) / C), j0 = Math.floor((cz - 220) / C), j1 = Math.floor((cz + 220) / C);
-      for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
-        const h = hash(i + id * 131, j); if (h > 0.25) continue;
-        const x = (i + 0.2 + hash(i, j + 7) * 0.6) * C, z = (j + 0.2 + hash(i + 3, j) * 0.6) * C, rx = 18 + 30 * hash(j, i), rz = rx * (0.45 + 0.25 * hash(i + 9, j));
-        v.draw(v.shadowTex, m4.trs(x, 0.3, z, rx * 2, rz * 2, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 0.3 * wet], 0);                     // the wet patch
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-        v.draw(this.glow, m4.trs(x - rx * 0.15, 0.5, z - rz * 0.1, rx * 1.3, rz * 1.1, -Math.PI / 2), mvp, [0, 0, 1, 1], night > 0.3 ? [1, 0.85, 0.55, 0.18 * wet * night] : [0.7, 0.8, 0.95, 0.22 * wet * day], 0);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-      }
-      gl.depthMask(true);
     }
     // fireflies at night: 22 lights wandering low round the view's centre, each blinking on its own slow beat
     if (night > 0.3 && !f.noGlass) {

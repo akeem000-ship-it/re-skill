@@ -18,7 +18,7 @@ import { buildFanAtlas, CELL } from "./crowdfans.js";
 import { FLOODS, FLOOD_HEIGHT } from "./lighting.js";
 import { FAR_WALL_MAPS } from "./farwalls.js";   // FAR END: Walls
 import { poseCanvas, POSE_FRAMES } from "./look/poses.js";
-import { venueFor, seasonNow, seasonSetting, setSeasonSetting, SEASONS, homeLevel, homeUpgrades } from "./venues.js";
+import { venueFor, seasonNow, seasonSetting, setSeasonSetting, SEASONS, homeLevel, homeUpgrades, EXTRAS } from "./venues.js";
 import { toast } from "./hdpanel.js";
 import { markSeen } from "./venuetour.js";   // VENUES: each court's stadium in its own style
 import { Courtside } from "./courtside.js";
@@ -428,10 +428,10 @@ export class Stadium3D {
     const tb = performance.now(); const B = new Boxes(), crowd = [];
     const hall = this.v.isDrill(), VEN = hall ? null : venueFor(this), lite = this.quality === "lite";
     if (courtId !== (this.built && this.built.court)) this.flood = null;                            // (FLOODLIGHTS: a new court starts as the sky is)   // VENUES; DETAIL: Lite
-    const up = VEN && VEN.home ? homeLevel(v.gb.mem.wram[0]) : 0, season = hall ? null : seasonNow();   // HOME COURT upgrades; SEASONS
+    const up = VEN && VEN.home && EXTRAS.homeCourt ? homeLevel(v.gb.mem.wram[0]) : 0, season = hall ? null : seasonNow();   // HOME COURT upgrades; SEASONS
     const N = VEN ? VEN.rows + (up >= 1 ? 1 : 0) : 8, D = 80, RISE = 38, BASE = 130, SEAT = 44, giantWant = this.wantGiant(), giant = giantWant || !!(VEN && VEN.giant);
     if (VEN && VEN.seats) { P.seatA = VEN.seats[0]; P.seatB = VEN.seats[1]; }
-    this.boardInk = VEN && VEN.boardInk || null; const standList = [], flags = [], lights = []; this.fanTexture(VEN);
+    this.boardInk = VEN && VEN.boardInk || null; const standList = [], flags = EXTRAS.courtside ? [] : null, lights = []; this.fanTexture(VEN);   // (flags: waving with COURTSIDE, else still)
     if (this.sound && this.sound.setVenue) this.sound.setVenue(VEN ? VEN.name : "varsity");   // ACOUSTICS: the venue's echo
     const UN = 12, RISE2 = 56, G0 = N * D + 120, UB = 660, topU = UB + UN * RISE2, roofY = topU + 300, screens = [];   // GIANT: the upper deck
     const gdn = v.cuts.find(c => c.name === "garden"), GS = gdn && !hall ? gdn.depth + 40 : 0;   // (the garden behind the far fence: the far stand stands back beyond it)
@@ -480,7 +480,7 @@ export class Stadium3D {
         const y = BASE + (i + 1) * RISE, u = i * D;
         for (let sec = 0, v0 = S.v0 + 60; v0 + SEAT * 5 < S.v1 - 40; sec++, v0 += SEAT * 5 + 36) {
           if (i < K && inOpen(v0, v0 + SEAT * 5)) continue;                                                  // (the tunnel's roof)
-          if (!hall && S.side && S.dir < 0 && i >= N - VIP.rows && v0 + SEAT * 5 > VIP.v0 && v0 < VIP.v1) continue;   // (BIG MOMENTS: the VIP box)
+          if (!hall && EXTRAS.vip && S.side && S.dir < 0 && i >= N - VIP.rows && v0 + SEAT * 5 > VIP.v0 && v0 < VIP.v1) continue;   // (BIG MOMENTS: the VIP box)
           const c = ((sec * 2 + (i >> 1)) % 5 < 3) ? P.seatA : P.seatB;
           box(u + 14, u + 44, v0, v0 + SEAT * 5 - 6, y, y + 14, c, 0.05); box(u + 44, u + 51, v0, v0 + SEAT * 5 - 6, y + 14, y + 42, shade(c, 0.88), 0.05);
           if (i >= 1 && i <= 6 && rb() < 0.13) {                                                           // CROWD BANNERS: a fan holds one up here
@@ -543,7 +543,7 @@ export class Stadium3D {
       if (up > was) { try { localStorage.setItem(key, String(up)); } catch (e) { /* private mode */ } toast(["", "HOME COURT: a new row of seats and the academy's flags", "HOME COURT: a roof over the far stand", "HOME COURT: a big screen"][up]); } }
     this.mom.build(B, standList, { N, D, RISE, BASE, hall });                                          // BIG MOMENTS: the VIP box
     const farS = standList.find(s => !s.S.side);                          // COURTSIDE: flags along the far stand's top (the varsity has its own)
-    if (farS && VEN && VEN.name !== "varsity") for (let k = 0; k < 5; k++) { const vv = -1600 + k * 800, [x, z] = farS.at(farS.outer - 16, vv); B.add(x, farS.top + 14, z, 8, 250, 8, [220, 220, 226]); flags.push({ x: x + 3, y: farS.top + 200, z, w: 90, h: 56, col: P.shirts[k % P.shirts.length], along: "x" }); }
+    if (farS && flags && VEN && VEN.name !== "varsity") for (let k = 0; k < 5; k++) { const vv = -1600 + k * 800, [x, z] = farS.at(farS.outer - 16, vv); B.add(x, farS.top + 14, z, 8, 250, 8, [220, 220, 226]); flags.push({ x: x + 3, y: farS.top + 200, z, w: 90, h: 56, col: P.shirts[k % P.shirts.length], along: "x" }); }
     // back wall: thickness behind the backdrop picture, a coping on top, rounded-voxel hedges in front
     const cut = n => v.cuts.find(c => c.name === n);
     const bd = cut("backdrop"), gd = cut("garden");
@@ -604,8 +604,7 @@ export class Stadium3D {
       this.boardPos = { x: 0, y: by + 12, z: bz + 20, w: 640, h: 210 }; this.boardDirty = true; if (VEN && VEN.board) VEN.board({ B }, this.boardPos);
     } else this.boardPos = null;
     if (!hall) { const k = surfaceKind(v.mapId()); this.wear.reset(k === "clay" || k === "grass" ? k : "hard"); this.surface = k; }
-    const spots = []; for (let i = 0; i < crowd.length; i += 8 * 5) spots.push([crowd[i], crowd[i + 1], crowd[i + 2], crowd[i + 6]]);   // (RAIN: every 5th fan's seat may put up an umbrella)
-    if (!hall) this.side.build(B, VEN, { spots, sponsors: v.tour && v.tour.sponsorAds ? v.tour.sponsorAds() : null, ads: ADS, flags, lights });   // COURTSIDE: the benches (the people move: draw)
+    if (!hall) this.side.build(B, VEN, { sponsors: v.tour && v.tour.sponsorAds ? v.tour.sponsorAds() : null, ads: ADS, flags, lights });   // COURTSIDE: the benches (the people move: draw)
     // upload
     const boxes = B.data(); this.free();
     const bufB = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bufB); gl.bufferData(gl.ARRAY_BUFFER, boxes, gl.STATIC_DRAW);
@@ -890,6 +889,7 @@ export function addStadiumButton(hud, st) {
   const showQ = () => { q.textContent = "DETAIL: " + (st.quality === "lite" ? "Lite" : "Full"); q.classList.toggle("on", st.quality !== "lite"); };
   q.addEventListener("pointerdown", () => { st.setQuality(st.quality === "lite" ? "full" : "lite"); showQ(); });
   hud.appendChild(document.createTextNode(" ")); hud.appendChild(q); showQ(); st.onQuality = showQ;
+  if (!EXTRAS.seasons) return b;                                       // (STADIUM EXTRAS: seasons off)
   const se = document.createElement("span"); se.className = "k"; se.id = "seasonbtn"; se.title = "the stadiums dressed for the time of year: Auto (Halloween, winter, spring by the date) or Off";
   const showS = () => { const on = seasonSetting() !== "off"; se.textContent = "SEASON: " + (on ? "Auto" : "Off"); se.classList.toggle("on", on); };
   se.addEventListener("pointerdown", () => { setSeasonSetting(seasonSetting() === "off" ? "auto" : "off"); showS(); if (st.painted) st.pend = st.painted; });

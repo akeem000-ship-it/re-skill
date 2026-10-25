@@ -6,7 +6,7 @@
 //              (chars.js clampCharXSpeed / clampCharDepthSpeed, shot.js finalizeShotSpeed)
 //   serve      the serve hit at the top of the toss (the ball nearly still) is up to 7% faster (shot.js shotPlacement, the serve rows)
 //   courts     PHYSICS: Enhanced only: the courts' own bounce and grip bytes pushed apart: clay grips more and sits up, grass skids
-//              low, a wet court (WEATHER: Rain / Wet, plus.wet) is slower and lower (enhanced.js bounce)
+//              low (enhanced.js bounce)
 //   netcord    a ball that clips the top of the net dribbles over from within 12 units of the tape (the game: 6) (ball.js)
 //   fatigue    TOUR+ (tour.js): a player low on the tour's energy tires sooner: the stamina thresholds come down by up to 6 shots
 //              (plus.fatigue 0..1, fixed for the match; stamina must be on)
@@ -49,7 +49,6 @@ export function plusSurface(E, fB, eB) {
   let f = fB, e = eB;
   if (c === 1) { f *= 0.82; e *= 1.07; }                                // clay: more grip, a higher bounce
   else if (c === 2) { f = f + (256 - f) * 0.3; e *= 0.86; }            // grass: skids, stays low
-  if (P.wet) { f = f + (256 - f) * 0.15; e *= 0.92; }                   // wet: skiddy and dead
   return [Math.max(0, Math.min(255, Math.round(f))), Math.max(0, Math.min(255, Math.round(e)))];
 }
 // the net cord's band below the tape (ball.js handleBallNetCrossing): the game's 6, PLAY+ 12

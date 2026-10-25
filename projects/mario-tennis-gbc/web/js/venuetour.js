@@ -46,7 +46,7 @@ export class VenueTour {
   }
   close() {
     if (!this.on) return; const v = this.v; this.on = false; globalThis.__venueTourOn = false; removeEventListener("keydown", this.keyH, true);
-    v.venueTour = null; v.stadium.forceVenue = this.prevVenue; v.ground = null; v.courtId = -1; v.detectAt = 0; v.groundHash = -1; if (v.light) v.light.weatherHour = null;
+    v.venueTour = null; v.stadium.forceVenue = this.prevVenue; v.ground = null; v.courtId = -1; v.detectAt = 0; v.groundHash = -1; if (v.light) v.light.fixedHour = null;
     if (v.stadium.painted) v.stadium.pend = null; v.stadium.reset();
     if (this.root) this.root.hidden = true;
     if (this.was2d) this.setView3d(false);
@@ -69,9 +69,9 @@ export class VenueTour {
     if (!this.pad) return; const p = this.pad(), m = (p.a ? 1 : 0) | (p.b ? 2 : 0) | (p.start ? 8 : 0) | (p.right ? 0x10 : 0) | (p.left ? 0x20 : 0) | (p.up ? 0x40 : 0) | (p.down ? 0x80 : 0);
     if (this.lastPad === null) { this.lastPad = m; return; } const edge = m & ~this.lastPad; this.lastPad = m; if (edge) this.input(edge);
   }
-  // the camera (voxel.js renderCourt asks first while the tour is open); the hour goes to the lighting as the weather's hour does
+  // the camera (voxel.js renderCourt asks first while the tour is open); the hour goes to the lighting (fixedHour)
   camera(aspect, m4, clip) {
-    const v = this.v; if (v.light) v.light.weatherHour = this.hour + 0.01;
+    const v = this.v; if (v.light) v.light.fixedHour = this.hour + 0.01;
     return tourCamera(this.cam, performance.now() / 1000 - this.t0, aspect, m4, clip);
   }
   // ---- the bar along the bottom: the venue, the hour, the camera, the buttons ----
