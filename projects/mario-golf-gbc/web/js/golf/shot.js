@@ -8,10 +8,13 @@ import * as C from "./cup.js";
 import * as L from "./launch.js";
 import * as S from "./swing.js";
 import * as Cam from "./camera.js";
-import { fadeVBlank } from "./screen.js";
+import { fadeVBlank, updateGameTimer } from "./screen.js";
 import * as V from "./view.js";
 import { ballInGreenArea } from "./view.js";
 import { readJoypad } from "./joypad.js";
+import { taskFacade, runFrameTasks } from "./tasks.js";
+import { vblankDisplay, clearUnusedSprites } from "./render/display.js";
+import * as D from "./render/hooks.js";
 import { ball, rd16, wr16, playerField } from "./memory.js";
 
 export function applyFx(w, fx) {                 // what the ported branches do outside $D400-$D4FF
@@ -124,10 +127,10 @@ export function registered(w, bank, addr) {      // bank:addr in the frame task 
 }
 
 export const TASKS = {
-  taskOn: [0x10, 0x4D45],                        // BallTask
-  meterOn: [0x10, 0x55AC],                       // the swing's d-pad task
-  animOn: [0x11, 0x6E3E],                        // the golfer's animation
-  displayOn: [0x11, 0x4113],                     // the ball display
+  taskOn: [1, 0x10, 0x4D45],                     // BallTask
+  meterOn: [1, 0x10, 0x55AC],                    // the swing's d-pad task
+  animOn: [0x0F, 0x11, 0x6E3E],                  // the golfer's animation
+  displayOn: [0x0C, 0x11, 0x4113],               // the ball display
 };
 
 
@@ -138,29 +141,39 @@ export const TASKS = {
 export class Shot {
   constructor(w, hole, ev = () => {}, input = null) {
     this.w = w; this.hole = hole; this.ev = ev; this.input = input;
-    if (!w.tasks) {                              // which frame tasks run: from the snapshot's task table
-      w.tasks = {};
-      for (const [k, v] of Object.entries(TASKS)) w.tasks[k] = registered(w, ...v);
-    }
+    if (!w.tasks) w.tasks = taskFacade(w, TASKS); // the task table $C1C0 (tasks.js) as on/off flags
     this.t = w.tasks;
     this.fx = [];
+    this.dispatch = {                            // the frame tasks by ROM address
+      "10:4d45": () => { this.ev("T"); ballTask(w, this.hole, this.fx); },   // 10:4D45 BallTask
+      "10:55ac": () => S.meterTask(w),           // 10:55AC
+      "11:6e3e": () => { S.animTask(w); D.golfAnimDraw(this); },   // 11:6E3E GolfAnimTask
+      "11:4113": () => this.displayTask(),       // 11:4113 BallDisplayTask
+      ...D.displayTasks(this),                   // tasks that only draw (render/hooks.js)
+    };
   }
 
   mark(name) { this.ev("M", name); }
+  sound(id) { if (this.w.onSound) this.w.onSound(id); }   // rst $08 PlaySoundCmd 00:2BBB: to the sound driver, if any
 
-  advance(n = 1) {                               // 00:2E3B AdvanceFrame: VBlank, then the frame tasks in slot order
-    const w = this.w, t = this.t;
+  // 00:2E3B AdvanceFrame: VBlank 00:2EF9 (its display work, ReadJoypad 00:02EB, the fades, the VBlank tasks), then
+  // ClearUnusedSprites 00:2688 and the frame tasks in table order
+  advance(n = 1) {
+    const w = this.w, h = w.high;
     for (let k = 0; k < n; k++) {
       this.ev("F");
       this.fx = [];                              // this frame's sounds and effects
-      if (this.input) readJoypad(w.high, this.input());   // VBlank 00:2EF9: ReadJoypad 00:02EB
-      fadeVBlank(w);                             // VBlank: 00:25DF / 00:25C9
-      if (!w.high[0x18F]) continue;              // 00:247D RunFrameTasks: off while $FF8F is 0
-      if (t.animOn) S.animTask(w);               // 11:6E3E
-      if (t.displayOn) this.displayTask();       // 11:4113
-
-      if (t.meterOn) S.meterTask(w);             // 10:55AC
-      if (t.taskOn) { this.ev("T"); ballTask(w, this.hole, this.fx); }   // 10:4D45
+      if (w.vram) vblankDisplay(w);              // palettes, scroll, OAM DMA, the VRAM queues
+      else if (!h[0x18D]) { h[0x18D] = 1; h[0x18C] = (h[0x18C] + 1) & 0xFF; }
+      if (this.input) readJoypad(h, this.input());
+      updateGameTimer(w, id => this.sound(id));  // 00:2C6B
+      fadeVBlank(w);                             // 00:25DF / 00:25C9
+      runFrameTasks(w, true, this.dispatch);     // 00:247D with a = $80
+      if (this.ev.v) this.ev("V");               // (VBlank done: AdvanceFrame leaves its wait, 00:2EBF)
+      if (w.vram) clearUnusedSprites(w);
+      runFrameTasks(w, false, this.dispatch);    // 00:247D (off while $FF8F is 0)
+      h[0x18D] = 0;
+      w.wram[0][0x4B2] = (w.wram[0][0x4B2] + 1) & 0xFF;   // wFrameCounter
     }
   }
 
@@ -169,12 +182,15 @@ export class Shot {
     if (v <= 1) {                                // 11:4361 course view / 11:4970 green view
       Cam.step(w);                               // 11:422F
       if (r6[0x485] & 0x10) S.previewFrame(w, this.hole, this.fx);   // 11:4E5E
-      S.drawSortedBallObjects(w);                // 11:4D79
+      D.lookCursor(w);                           // 11:4704 / 11:4C12
+      S.drawSortedBallObjects(w, id => D.drawBallObject(w, id));     // 11:4D79
+    } else if (v === 2) {
+      D.cupView(w);                              // 11:4CBB BallDisplayCupView
     } else if (v === 3) {
       initBallCamera(w);                         // 11:476E
     } else if (v >= 4 && v <= 6) {               // 11:4795 BallView4
-      if (r6[0x485] & 0x10) S.previewFrame(w, this.hole, this.fx);
-      S.ballViewCut(w);                          // 11:47A2
+      if (r6[0x485] & 0x10) { S.previewFrame(w, this.hole, this.fx); D.previewMarkerView4(w); }   // 11:48AB
+      D.view4Ball(w, S.ballViewCut(w));          // 11:47A2
     }
   }
 

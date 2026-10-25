@@ -26,18 +26,88 @@ export function beginFadeIn(w, c) {              // 00:25AF BeginFadeIn
   if (!w.high[OUT]) return;
   forceFadeIn(w, c);
 }
-function update(h) {                             // the common tail 00:25F7-00:261E
-  let a = h[LEVEL] - h[SPEED];
-  if (a < 0) a = 0;
+// the common tail 00:25F7-00:261E: the live palettes ($C100) from the master copy ($C200) at the fade level c
+function update(w, a, c) {
+  const h = w.high;
+  if (h[ST] & 0x80) { if (!(c & 4)) applyWhiteFade(w, c); }
+  else adjustColorsBrightness(w, c >> 2);
   if (!a) h[ST] = 0;
   h[LEVEL] = a;
   h[0x19D] = 3;                                  // hPalUpdate
 }
 export function fadeVBlank(w) {                  // 00:25DF UpdateFadeOut, 00:25C9 UpdateFadeIn (in VBlank)
   const h = w.high;
-  if (h[ST] & 1) update(h);
-  if (h[ST] & 2) update(h);
+  if (h[ST] & 1) {                               // out: the level runs from 0 up to $7C
+    const b = Math.max(0, h[LEVEL] - h[SPEED]);
+    update(w, b, (0x7C - b) & 0xFF);
+  }
+  if (h[ST] & 2) {                               // in: from $7C down to 0
+    const a = Math.max(0, h[LEVEL] - h[SPEED]);
+    update(w, a, a);
+  }
+}
+
+// 00:255A AdjustColorsBrightness: the 64 colours of $C200 with d (0-$1F) added to each component, clamped to
+// $1F (00:24EB SplitColorComponents, 00:2521 AddClampColorComponent, 00:2504 CombineColorComponents) -> $C100
+function adjustColorsBrightness(w, d) {
+  const w0 = w.wram[0];
+  for (let k = 0; k < 0x40; k++) {
+    const v = w0[0x200 + 2 * k] | w0[0x201 + 2 * k] << 8;
+    const comp = x => { const s = (x + d) & 0xFF; return s & 0x80 ? 0 : s >= 0x1F ? 0x1F : s; };
+    const r = comp(v & 0x1F), g = comp((v >> 5) & 0x1F), b = comp((v >> 10) & 0x1F);
+    const o = r | g << 5 | b << 10;
+    w0[0x100 + 2 * k] = o & 0xFF; w0[0x101 + 2 * k] = o >> 8;
+  }
+}
+
+// 00:2632 ApplyWhiteFade: the 64 colours of $C200 brightened by the level (c & $78) towards white -> $C100
+function applyWhiteFade(w, c) {
+  const w0 = w.wram[0];
+  const d0 = c & 0x78, e0 = (d0 >> 2) & 0xFF;
+  let de = (((((d0 >> 2) << 4 | (d0 >> 2) >> 4) & 0xFF) >> 1 | ((((d0 >> 2) << 4 | (d0 >> 2) >> 4) & 1) << 7)) & 0xFF);
+  de = ((de << 2) + (d0 << 8 | e0)) & 0xFFFF;
+  const d = de >> 8, e = de & 0xFF;
+  for (let k = 0; k < 0x40; k++) {
+    const lo = w0[0x200 + 2 * k], hi = w0[0x201 + 2 * k];
+    let cc = (lo & 0xDF) + e;
+    const carry = cc > 0xFF ? 1 : 0;
+    cc &= 0xFF;
+    let b = ((hi & 0xFB) + d + carry) & 0xFF;
+    if (b & 0x80) b |= 0x78;
+    if (b & 0x04) { b = ((b & 0xFC) - 1) & 0xFF; cc |= 0xC0; }
+    let a = cc;
+    if (a & 0x20) a = ((a & 0xE0) - 1) & 0xFF;
+    w0[0x100 + 2 * k] = a; w0[0x101 + 2 * k] = b;
+  }
 }
 export function waitFade(sh) {                   // 00:2625 WaitFade
   while (sh.w.high[ST]) sh.advance();
+}
+
+// 00:2C6B UpdateGameTimer (VBlank): the countdown (wCountdownState $C0F4 = 1: seconds at $C0F6/$C0F7, sounds $9F
+// each second and $A0 at zero), then the play clock wPlayClock $C0F0 (frames, seconds, minutes, hours to 99)
+export function updateGameTimer(w, sound = () => {}) {
+  const w0 = w.wram[0];
+  if (w0[0x0F4] === 1) {                         // 00:2C98 TickSecondaryTimerCountdown
+    w0[0x0F5] = (w0[0x0F5] + 1) & 0xFF;
+    if (w0[0x0F5] === 0x3C) {
+      w0[0x0F5] = 0;
+      sound(0x9F);
+      w0[0x0F6] = (w0[0x0F6] - 1) & 0xFF;
+      if (w0[0x0F6] === 0xFF) { w0[0x0F6] = 0x3B; w0[0x0F7] = (w0[0x0F7] - 1) & 0xFF; }
+    }
+    if (!(w0[0x0F6] | w0[0x0F7])) {
+      w0[0x0F4] = 0xFF; w0[0x0F5] = w0[0x0F6] = w0[0x0F7] = 0;
+      sound(0xA0);
+    }
+  }
+  let p = 0x0F0;                                 // 00:2C73 TickSecondaryTimer
+  for (const lim of [0x3C, 0x3C, 0x3C]) {
+    w0[p] = (w0[p] + 1) & 0xFF;
+    if (w0[p] < lim) return;
+    w0[p++] = 0;
+  }
+  w0[p] = (w0[p] + 1) & 0xFF;
+  if (w0[p] < 0x64) return;
+  w0[p]--; w0[p - 1] = 0x3B;
 }

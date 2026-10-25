@@ -11,6 +11,8 @@ import { loadShotView, shotViewUpdate } from "./view.js";
 import * as H from "./hole.js";
 import * as Cam from "./camera.js";
 import * as Scr from "./screen.js";
+import { clearFrameTasks } from "./tasks.js";
+import * as D from "./render/hooks.js";
 
 export function advanceRandomSeed(w) {           // 00:0A61 AdvanceRandomSeed: seed ($FFFC) = seed x 5 + $3573
   const seed = w.high[0x1FC] | w.high[0x1FD] << 8;
@@ -41,10 +43,20 @@ export function golfRoundStart(sh, roundId) {    // 10:4451 GolfRound up to the 
     w0[0x8BE] = w0[0x876];
     w0[0x8FE] = w0[0x877];
   }
-  sh.advance(4);                                 // 05:407A InitWindowSystem: clears WRAM5 over 4 frames
+  initWindowSystem(sh);                          // 05:407A
   resetPlayersForHole(w);                        // 10:405C
   w0[0x835] = 0;                                 // wCurPlayer
   w0[0x2A6] = 0;
+}
+
+function initWindowSystem(sh) {                  // 05:407A InitWindowSystem: clears WRAM5 over 4 frames, frees the windows
+  const w = sh.w, r5 = w.wram[5];
+  for (let k = 0; k < 4; k++) { r5.fill(0, 0x400 * k, 0x400 * k + 0x400); sh.advance(); }
+  for (let k = 0; k < 6; k++) r5[0x802 + 4 * k] = 3;   // wWindowSlots
+  r5[0x83E] = 0xFF;                              // wMenuStackDepth
+  r5[0x824] = 0xFF;                              // wMessageWindow
+  r5[0x84D] = 0x80;                              // wWindowAttr
+  w.wram[0].fill(0, 0x3F9, 0x3FD);               // 41:707C ClearMenuState
 }
 
 function roundHookRoundStart(w) {                // 08:4722 RoundHookRoundStart (DispatchByGameMode 08:470D)
@@ -196,14 +208,17 @@ function holeIntroFlyover(sh) {
   }
 }
 
-function golfViewInit(sh) {                      // 10:420E GolfViewInit (HUD, sprites, actors: display)
-  const t = sh.t, r6 = sh.w.wram[6];
-  for (const k of Object.keys(t)) t[k] = false;  // 00:23B6 ClearFrameTasks (and $FF8F on)
-  sh.w.high[0x18F] = 1;
-  r6[0x44D] = 0xF0;                              // 12:442C HudInit (and its frame task 12:449F: display)
+function golfViewInit(sh) {                      // 10:420E GolfViewInit
+  const w = sh.w, r6 = w.wram[6];
+  clearFrameTasks(w);                            // 00:23B6 ClearFrameTasks
+  D.resetSprites(w);                             // 00:2683 ResetSprites
+  D.hudInit(sh);                                 // 12:442C HudInit (registers the HUD task 12:449F)
+  r6[0x44D] = 0xF0;
   r6[0x328] = 1;                                 // wHudBusy
-  t.displayOn = true;                            // 11:4103 BallDisplayStart
-  sh.w.wram[6][0x443] = 0xFF;                    // no view yet
+  D.mapScrollTaskStart(w);                       // 04:4062 MapScrollTaskStart
+  sh.t.displayOn = true;                         // 11:4103 BallDisplayStart
+  D.golferActorShow(sh);                         // 04:57BA GolferActorShow
+  r6[0x443] = 0xFF;                              // no view yet
 }
 
 function strongWindIntro(sh) {                   // 12:6F8D StrongWindIntro: wind of 12 mph or more, a gust sprite

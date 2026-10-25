@@ -5,6 +5,8 @@
 // look at the pin take.
 import * as g from "./math.js";
 import { rd16, wr16 } from "./memory.js";
+import { drawHoleViewTiles } from "./render/holeview.js";
+import { disableLCDSafely, enableLCD } from "./render/display.js";
 
 export function computeGoal(w) {                 // 11:413C CameraComputeGoal: [bc = x, de = y]
   const r6 = w.wram[6], w0 = w.wram[0];
@@ -80,15 +82,19 @@ export function drawHoleViewAtCamera(w, view) {
     w0[0x322] = r6[0x430]; w0[0x323] = r6[0x431]; w0[0x325] = r6[0x431];
   }
   r6.set(w0.subarray(0x320, 0x324), 0x432);
+  if (w.vram) drawHoleViewTiles(w);              // the BG map, SCX / SCY
 }
 
 // 13:4276 SnapCameraToGoal (course view): a new goal tile redraws the view there (one frame)
 export function snapToGoal(sh) {
   const w = sh.w, r6 = w.wram[6], w0 = w.wram[0];
   if (r6[0x443]) return;
+  w.high[0x1B0] = 0;                             // hFFB0
   computeGoal(w);
   if (w0[0x321] === r6[0x42F] && w0[0x323] === r6[0x431]) return;
+  if (w.vram) disableLCDSafely(w);
   drawHoleViewAtCamera(w, 0);
+  if (w.vram) enableLCD(w);
   r6[0x36C] = 0;                                 // wMarkerBlink
   sh.advance();
 }

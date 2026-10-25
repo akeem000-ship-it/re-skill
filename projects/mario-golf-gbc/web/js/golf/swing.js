@@ -9,6 +9,7 @@
 //   10:55AC  during the swing: the d-pad held -> impact side and height ($D44B / $D44C, table 10:55CE)
 import { rb, rw } from "./rom.js";
 import * as g from "./math.js";
+import * as D from "./render/hooks.js";
 import * as B from "./ball.js";
 import * as L from "./launch.js";
 import { rd16, wr16, playerField } from "./memory.js";
@@ -131,13 +132,16 @@ export function previewTree(w, hole) {           // 08:5109: does the ghost ball
 
 export function previewFrame(w, hole, fx) {      // 11:4E5E, once per frame while the preview is on
   const r6 = w.wram[6];
-  if (!(r6[0x480] & 0x1F)) previewRestart(w);    // every 32 frames: start again
-  else if (r6[0x382]) r6[0x382] = 0;
+  if (!(r6[0x480] & 0x1F)) {                     // every 32 frames: start again
+    previewRestart(w);
+    if (r6[0x382]) D.markerIconNormal(w);        // 12:507E
+    else D.markerIconFrame(w, 0);                // 12:508A
+  } else if (r6[0x382]) { r6[0x382] = 0; D.markerIconFrame(w, 0); }
   if (!r6[0x513]) previewStep(w);
   const a = previewTree(w, hole);
   const old = r6[0x513];
   r6[0x513] = a;
-  if (a && !old) fx.push(["sound", 0x56]);      // the ghost ball hits a tree
+  if (a && !old) { D.markerIconFrame(w, 1); fx.push(["sound", 0x56]); }   // the ghost ball hits a tree
   r6[0x480] = (r6[0x480] + 1) & 0xFF;
 }
 
@@ -206,7 +210,7 @@ export function ballViewCut(w) {
   w.high[0x1B6] = z >> 8;
   const nz = g.neg16(z);
   if (nz & 0x8000) { r6[0x331] = 1; return; }
-  if (!(nz >> 8) && (nz & 0xFF) < 8) return;     // right at the camera: drawn at a fixed spot
+  if (!(nz >> 8) && (nz & 0xFF) < 8) return { e: 0x7C, d: 0x50 };   // right at the camera: drawn at a fixed spot
   const scale = g.divHLByDE(0x5000, ((nz + 0x280) & 0xFFFF) >> 3) & 0xFF;
   const sx = ((g.mulHLByAFracSigned(x, scale) + 1) & 0xFFFF) >> 1;
   const c = ((sx & 0xFF) + 0x50) & 0xFF;
@@ -215,7 +219,8 @@ export function ballViewCut(w) {
   let sy = (g.mulHLByAFracSigned(h, scale) + 1) & 0xFFFF;
   sy = ((sy >> 1) | (sy & 0x8000)) & 0xFFFF;
   sy = (sy + 0x3C) & 0xFFFF;
-  if (sy & 0x80) r6[0x331] = 1;
+  if (sy & 0x80) { r6[0x331] = 1; return null; }
+  return { e: sy & 0xFF, d: c };                 // the sprite's place (11:4877)
 }
 
 // 11:4D79 DrawSortedBallObjects, as the course and green views' display task leaves the RAM (11:4361 /
@@ -223,7 +228,7 @@ export function ballViewCut(w) {
 // marker, ball, aim arrow, preview spot, other ball) listed with their y at $D468, then drawn from the largest
 // y down, each one's id cleared once drawn
 const OBJECT_Y = [0x43F, 0x428, 0x404, 0x483, 0x377, 0x420];
-export function drawSortedBallObjects(w) {
+export function drawSortedBallObjects(w, draw = () => {}) {
   const r6 = w.wram[6];
   wr16(r6, 0x47E, (r6[0x443] & 7) === 1 ? 0x4984 : 0x4375);   // the handler table
   for (let k = 0; k < 6; k++) r6[0x46A + 3 * k] = 0;
@@ -246,6 +251,7 @@ export function drawSortedBallObjects(w) {
       c = r6[p + 2];
     }
     if (!c) return;
+    draw(c);                                     // 11:4E50 CallBallObjectHandler (render/objects.js)
     r6[rd16(r6, 0x47C) - 0xD000] = 0;
   }
 }

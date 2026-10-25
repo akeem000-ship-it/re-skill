@@ -14,6 +14,7 @@ import { lieTerrain, initBallCamera } from "./shot.js";
 import * as A from "./aim.js";
 import * as V from "./view.js";
 import * as Cam from "./camera.js";
+import * as D from "./render/hooks.js";
 
 function notPorted(what) { throw new Error(`${what} is not ported`); }
 
@@ -143,19 +144,25 @@ export function shotSetup(sh) {
   r6[0x445] = w0[pf(w, 0x29)] ? 0 : 1;           // the tee shot
   r6[0x446] = w0[pf(w, 0x3F)];
   w0[pf(w, 0x3F)] = 0;
-  r6[0x4CD] = lieTerrain(sh.hole, s);            // 10:648B (after ~12:4B19 HudFlags: display)
+  r6[0x454] = 1;                                 // 12:4B19 HudFlags: wHudBlink
+  r6[0x4CD] = lieTerrain(sh.hole, s);            // 10:648B
   r6[0x4D5] = r6[0x4CD] === 6 ? 1 : 0;
   r6[0x332] = w0[pf(w, 0x10)];
   r6[0x333] = w0[pf(w, 0x11)];
   pickClub(w);
   L.clubParams(w);
   r6[0x485] = 0x25;
+  D.golferActorShow(sh);                         // 04:57BA GolferActorShow
   wr16(r6, 0x418, A.aimAtCup(w));
-  if (r6[0x443] === 2) { r6[0x443] = 1; sh.advance(); }   // ~13:4528 CupViewLeave (graphics)
+  if (r6[0x443] === 2) { D.cupViewLeave(w); r6[0x443] = 1; sh.advance(); }   // 13:4528 CupViewLeave
   Cam.snapToGoal(sh);                            // 13:4276
   r6[0x438] = 1;
   V.aimMarker(w);
-  sh.advance(4);                                 // (12:45F4 HudDrawLieIcon, 12:4CA6 HudDistance: display)
+  sh.advance();
+  D.hud(w, "hudDrawLieIcon");                    // 12:45F4
+  sh.advance();
+  D.hud(w, "hudDistance");                       // 12:4CA6
+  sh.advance(2);
   S.meterReset(w);                               // 10:55FF
   sh.advance();
   r6[0x485] = 0x2D;
@@ -178,7 +185,8 @@ function toAddress(sh, a) {
   if ([0x8F, 0x82, 0x80, 0x81, 0xFF].includes(a)) notPorted(`the menu's result $${a.toString(16)} (~10:486B)`);
   if (r6[0x332] < 0x0B && r6[0x329] !== 0x0D && w0[pf(w, 0x13)] !== 3 && !(w0[0x818] & 2)) {
     V.viewLeave(sh);                             // 3B:431F
-    initBallCamera(w);                           // 11:476E (after ~04:5801 GolferActorTaskStop)
+    D.golferActorTaskStop(w);                    // 04:5801
+    initBallCamera(w);                           // 11:476E
     r6[0x438] = 0;
     V.loadShotView(sh, 4);
   } else {

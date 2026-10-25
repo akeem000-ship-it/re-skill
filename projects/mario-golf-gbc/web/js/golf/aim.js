@@ -12,6 +12,7 @@ import { pinDist } from "./cup.js";
 import { ball, rd16, wr16, playerField as pf } from "./memory.js";
 import { loadShotView, aimMarker } from "./view.js";
 import { planShot } from "./ai.js";
+import * as D from "./render/hooks.js";
 
 function notPorted(what) { throw new Error(`${what} is not ported`); }
 
@@ -136,7 +137,7 @@ function cpuAim(sh) {
   r6[0x321] = S.missTable(w);                    // 10:6907
   L.clubParams(w);                               // 10:5EEF
   r6.copyWithin(0x42A, 0x426, 0x42A);
-  slideOut(sh);                                  // (10:5B81 HudRedrawPart c = 3: display)
+  slideOut(sh);
   aimMarker(w);                                  // 10:6145
   placeTargetMarker(w);                          // 40:640E (10:5A2E stores its hl, the y it left, again)
   sh.advance(0x3C);                              // WaitFramesCmd 60
@@ -165,6 +166,12 @@ function slideMarker(sh) {                       // 10:5C87-10:5D0A: club set-up
   slideOut(sh);
 }
 
+function hudRedrawPart(w, c) {                   // 10:5B81 HudRedrawPart: c = 1 the shot panel, 2 the pin distance, 3 the lie
+  if (c === 1) { D.hud(w, "hudDrawShotPanel"); D.hud(w, "hudDrawClubIcon"); D.hud(w, "hudSetMeterSpritesY"); }
+  else if (c === 2) D.hud(w, "hudDrawPinDistance");
+  else D.hud(w, "hudDrawLieIcon");
+}
+
 function slideOut(sh) {                          // the marker from $D42A/$D42C to the club's distance in 3 frames
   const w = sh.w, r6 = w.wram[6];
   const [dx, dy] = g.mulSinCos(L.baseDistance(w), rd16(r6, 0x418));   // 10:5EE2 TargetMarker
@@ -175,7 +182,8 @@ function slideOut(sh) {                          // the marker from $D42A/$D42C 
       v = ((v >> 2) | (v & 0x8000 ? 0xC000 : 0)) & 0xFFFF;
       wr16(r6, o, (v + old) & 0xFFFF);
     }
-    sh.advance();                                // (10:5B81 HudRedrawPart: display)
+    hudRedrawPart(w, 4 - b);                     // 10:5B81 HudRedrawPart
+    sh.advance();
   }
 }
 
@@ -201,11 +209,20 @@ export function aimMenu(sh, a) {
   }
   if (r6[0x329] === 0x0D) r6[0x32A] = 0;
   r6[0x480] = r6[0x382] = 0;
-  sh.advance(4);                                 // the HUD redrawn (12:4AF6, 12:46A6, 12:465C, 12:4968, 12:4CA6)
+  D.hud(w, "hudDrawDigit", w0[pf(w, 0x28)]);     // 12:4AF6: the power shots left
+  sh.advance();
+  D.hud(w, "hudDrawShotPanel");                  // 12:46A6
+  sh.advance();
+  D.hud(w, "hudDrawClubIcon");                   // 12:465C
+  D.hud(w, "hudSetMeterSpritesY");               // 12:4968
+  sh.advance();
+  D.hud(w, "hudDistance");                       // 12:4CA6
+  sh.advance();
   r6[0x513] = 0;
   if (r6[0x4D7] === 1) return cpuAim(sh);
   if (r6[0x4D7] === 2) notPorted("the replayed stroke (~10:5973)");
   if (r6[0x4D7] === 3) notPorted("link play (~10:5943)");
+  w.high[0x1C1] = 0x21;                          // 02:482C SerialIdleSet21
   r6[0x44D] = 0xF0;
   r6[0x438] = r6[0x443] ? 4 : 2;                 // the camera on the target marker (the cup on the green)
   r6[0x4D4] = 1;
@@ -222,7 +239,7 @@ export function aimMenu(sh, a) {
     if (w0[0x0F4]) notPorted("the shot clock (~10:5D1C)");
     if (r6[0x438] === 1 && !(w.high[0x190] & 4)) r6[0x438] = 2;
     const p = w.high[0x194];
-    if (p & 1) { r6[0x4D4] = 0; return p; }      // A (10:5EAF)
+    if (p & 1) { w.high[0x1C1] = 0x20; r6[0x4D4] = 0; return p; }   // A (10:5EAF; 02:4833 SerialIdleSet20)
     if (p & 4) { lookAtPin(sh); at = "5D0D"; continue; }
     if (p & 8) notPorted("the pause menu (~08:4666)");
     if (p & 2) { shotModeButton(w); at = "5C87"; continue; }
