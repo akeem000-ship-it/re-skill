@@ -166,12 +166,17 @@ export class Shot {
 
   mark(name) { this.ev("M", name); }
   sound(id) { if (this.w.onSound) this.w.onSound(id); }   // rst $08 PlaySoundCmd 00:2BBB: to the sound driver, if any
-  // the list the ported routines put their sounds and effects in: a ["sound", id] entry is played as it is added
+  // the list the ported routines put their sounds and effects in: a ["sound", id] entry is played as it is added, a
+  // ["splash", x, y] one drawn
   // (["sound", "tree", k]: 08:5526 TreeSound, k = 0 the trunk / 1 the leaves, by course from the table 08:553F)
   newFx() {
     const a = [];
     a.push = (...xs) => {
       for (const x of xs) {
+        if (Array.isArray(x) && x[0] === "splash") {   // the water splash (display)
+          D.hud(this.w, "waterSplashAt", x[1], x[2]);
+          D.hud(this.w, "waterSplashGfx");
+        }
         if (!Array.isArray(x) || x[0] !== "sound") continue;
         if (typeof x[1] === "number") this.sound(x[1]);
         else if (x[1] === "tree") this.sound(rb(0x08, 0x553F + (((this.w.wram[0][0x836] & 0x0F) * 2 + (x[2] & 1)) & 0xFF)));

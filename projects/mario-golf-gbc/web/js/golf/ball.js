@@ -170,7 +170,7 @@ export function ballStop(s) {                    // 10:521C BallStop (the caller
 const landingAngle = s => g.angleFromVector16(s[0x13] << 8, neg16(rd16(s, 0x0D))) >> 8;   // small = steep
 
 // 10:4FF2-5212: the ball went below the ground in the air step. Returns "bounce", "water" (stopped in it) or
-// "plugged". fx collects what the ROM does outside $D400-$D4FF: "splash" (12:6A9C / 12:6A7F), ["bunker",
+// "plugged". fx collects what the ROM does outside $D400-$D4FF: ["splash", x, y] (12:6A9C / 12:6A7F), ["bunker",
 // depth] (PlayerField $15 bit 0 and, with a depth, PlayerField $3F), and the sounds ["sound", id].
 export function bounce(s, hole, fx = []) {
   if (s[0x89]) {                                 // the first landing: remember where ($D48A-$D48D)
@@ -182,7 +182,7 @@ export function bounce(s, hole, fx = []) {
   fx.push(["sound", 0x49]);                     // 10:501F
   if (t === 3) {                                 // 10:5021 water: a fast, flat ball skips
     fx.push(["sound", 0x51]);                   // 10:5025
-    fx.push("splash");
+    fx.push(["splash", rd16(s, 0x01), rd16(s, 0x04)]);   // 12:6A9C WaterSplashAt, 12:6A7F WaterSplashGfx
     if (s[0x13] >= 5 && landingAngle(s) >= 0x28) s[0x8E] |= 1;
     else { s[0x8E] &= 0xFE; ballStop(s); return "water"; }
   } else if (t === 2 || t === 0x0D) {            // 10:5068 bunker: a steep landing plugs
@@ -256,7 +256,7 @@ export function rollStep(s, hole, fx) {          // 10:4D86 BallRollStep (fx as 
   let [pHL, pDE] = nz ? g.mulSinCos(mag, b << 8) : [0, 0];
   const [t, props] = terrainPropsAt(s, hole);
   if (t === 3) {                                 // 10:4E3F rolled into the water: splash and stop
-    if (fx) fx.push(["sound", 0x51], "splash");   // 10:4E43
+    if (fx) fx.push(["sound", 0x51], ["splash", rd16(s, 0x01), rd16(s, 0x04)]);   // 10:4E43, 10:4E51
     ballStop(s);
     return "water";
   }

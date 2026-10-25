@@ -28,7 +28,10 @@ export function runLockstep({ name = "r18", holes = 1, onFrame = () => {}, onMar
   const streams = rec.addresses.map((ad, k) => rec.held.slice(ad.frame, k + 1 < rec.addresses.length ? rec.addresses[k + 1].frame : rec.held.length));
   const core = new CoreRun();
   core.runTo([[0x10, 0x4451]]);
-  for (const [a, v] of Object.entries(pokes)) core.wram(0)[parseInt(a, 16) - 0xC000] = v;
+  for (const [a, v] of Object.entries({ ...(rec.pokes || {}), ...pokes })) {   // e.g. C893: player 1 by the computer
+    if (a.includes(":")) continue;             // (banked copies the round start makes itself)
+    core.wram(0)[parseInt(a, 16) - 0xC000] = v;
+  }
   const roundId = core.gb.cpu.a;
   const w = new GolfMemory();
   for (let i = 0; i < 8; i++) w.wram[i].set(core.wram(i));
