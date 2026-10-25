@@ -6,7 +6,7 @@ import * as H from "./hole.js";
 import * as R from "./round.js";
 
 // onShot(info) is told each shot's outcome; returns the outcomes and each hole's strokes and putts
-export function playRound(w, roundId, input, { ev = () => {}, maxHoles = 18, onShot = () => {} } = {}) {
+export function playRound(w, roundId, input, { ev = () => {}, maxHoles = 18, onShot = () => {}, onHoleEnd = () => {} } = {}) {
   const sh = new Shot(w, null, ev, input);
   const result = { shots: [], holes: [] };
   R.golfRoundStart(sh, roundId);
@@ -19,6 +19,7 @@ export function playRound(w, roundId, input, { ev = () => {}, maxHoles = 18, onS
     if (!R.afterShot(sh, a)) { R.nextShot(sh); continue; }
     const w0 = w.wram[0], p = 0x880 + (w0[0x835] ? 0x40 : 0);
     result.holes.push({ hole: w0[0x837], strokes: w0[p + 0x20], putts: w0[p + 0x21] });
+    onHoleEnd(result);
     if (result.holes.length >= maxHoles) break;
     if (!R.holeEnd(w)) { R.roundEnd(w); break; }
     R.holeStart(sh);

@@ -93,6 +93,11 @@ The JS engine (`rom.js` ROM and LZ access, `memory.js` the RAM layout, `math.js`
   (tools/hole_setup_suite.py: holes of courses 0-10, random seeds, menus used), the landing preview and target
   marker included; with `--minimal` the same from zeroed RAM plus only the inputs (records `$C800-$C8FF`, seed
   `$FFFC`, event overrides `$D4DE-$D4EF`).
+- `web/tests/golf_native_round.mjs`: **all 18 holes of the Stroke practice round played natively** (game.js:
+  GolfRound from its entry, no state taken from the game on the way): with the swings' buttons a bot played in the
+  game (tools/round_suite.py r18: tools/emu_round_inputs.py), all 69 outcomes, the ball, club and aim at all 69
+  address steps and the records at every hole's end match the game (between the shots the captions and screens
+  are not ported; their frames are left out, which the play does not depend on).
   Frame details learnt: frame tasks are off while `$FF8F` is 0 (BuildBehindView's second frame); fades step once
   per VBlank (`$FFA2-$FFA4`, WaitFade 00:2625: 8 frames at speed `$10`); HudInit sets `$D328`/`$D44D`, HudDrawWind
   clears `$D326-$D328`.

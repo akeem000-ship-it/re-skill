@@ -3,8 +3,12 @@ the button script a bot played over several holes (made with tools/emu_play_hole
 swing chosen by the Python engine, A between shots for the messages). Records out/round_<name>.json with
 emu_shot_record.py --from-address (every address step is an A event); the JS engine plays it through the hole
 ends and the next holes' set-up.
-usage: round_suite.py [NAME ...]
+Also out/roundin_r18.json for web/tests/golf_native_round.mjs: the bot plays all 18 holes of the Stroke round
+(emu_play_hole.py --plan --holes 18; deterministic) and tools/emu_round_inputs.py records its joypad, address
+steps, outcomes and hole ends.
+usage: round_suite.py [NAME ...]   (r3, r18)
 """
+import json
 import sys, os, subprocess
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -15,9 +19,21 @@ CASES = {
 }
 
 
+def r18():
+    run = lambda args: subprocess.run([sys.executable] + args, cwd=HERE, capture_output=True, text=True).stdout.strip()
+    run(["tools/emu_play_hole.py", "out/round18_bot.json", "80000", "--plan", "--holes", "18"])
+    bot = json.load(open(os.path.join(HERE, "out/round18_bot.json")))
+    presses = ["%s:%s" % (f, b) for f, b in sorted(bot["presses"].items(), key=lambda x: int(x[0]))]
+    print(run(["tools/emu_round_inputs.py", "out/roundin_r18.json", "55800", "--state", "states/stroke_hole1.state",
+               "--press"] + presses))
+
+
 def main():
-    names = [x for x in sys.argv[1:] if not x.startswith("--")] or list(CASES)
+    names = [x for x in sys.argv[1:] if not x.startswith("--")] or list(CASES) + ["r18"]
     for name in names:
+        if name == "r18":
+            r18()
+            continue
         state, frames, presses = CASES[name]
         out = subprocess.run([sys.executable, "tools/emu_shot_record.py", "out/round_%s.json" % name, str(frames),
                               "--state", "states/%s.state" % state, "--from-address", "--press"] + presses.split(),

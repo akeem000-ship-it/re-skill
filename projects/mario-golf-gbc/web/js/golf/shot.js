@@ -74,8 +74,8 @@ export function restWatch(s) {                   // 10:7077 RestWatch: $D4D3 cou
   s[0xD3] = 0;
 }
 
-export function ballTask(w, hole, fx) {          // 10:4D45 BallTask
-  const s = ball(w);
+export function ballTask(w, hole, out) {         // 10:4D45 BallTask (out collects its sounds and effects)
+  const s = ball(w), fx = [];
   hole.use(s[0x43] >= 1 && s[0x43] <= 3);
   if (s[0x15]) {
     if (B.flightStep(s, w.wram[0][0x815], w.wram[0][0x816])) {
@@ -90,6 +90,7 @@ export function ballTask(w, hole, fx) {          // 10:4D45 BallTask
   if (w.high[0x194] & 2) w.wram[6][0x360] = 2;   // B pressed
   restWatch(s);
   w.wram[0][0xAAB] = s[0x07]; w.wram[0][0xAAC] = s[0x08];
+  out.push(...fx);
   s[0xC1] = s[0x07]; s[0xC2] = s[0x08];
 }
 
@@ -151,6 +152,7 @@ export class Shot {
     const w = this.w, t = this.t;
     for (let k = 0; k < n; k++) {
       this.ev("F");
+      this.fx = [];                              // this frame's sounds and effects
       if (this.input) readJoypad(w.high, this.input());   // VBlank 00:2EF9: ReadJoypad 00:02EB
       fadeVBlank(w);                             // VBlank: 00:25DF / 00:25C9
       if (!w.high[0x18F]) continue;              // 00:247D RunFrameTasks: off while $FF8F is 0
