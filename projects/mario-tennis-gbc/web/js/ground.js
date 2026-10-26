@@ -7,7 +7,7 @@
 //             their picture, two or three deep, lit from above (light yellow-green on top, dark below and inside)
 //   edging    the light bricks and their dark outline lining the dirt paths stand up as a low kerb, a brick per 2 x 2 px
 //   paths     the dirt is strewn with fine grit (its own colour, some grey) and the odd small stone
-// Two kinds of grass (the GROUND button: Pixel / Tufts / Carpet): tufts as above, or a carpet: a dense, short, flat turf of
+// The grass is a carpet (0.35.81: the only choice; the tufts above, Pixel and Gemini are kept in the code): a dense, short, flat turf of
 // fine strands over every lawn (shells: the lawn drawn in thin layers one above another, each keeping only the strands
 // that reach it, thinning to their tips), with a few taller tufts standing out of it. On the school grounds (KEPT: the
 // courts, the plaza and school entrance, the dorm) the lawns inside the map are mown: short and even, in light and dark
@@ -16,7 +16,7 @@
 // walk. Three instanced draws per map (blades, boxes, leaves), made when the floor picture is (voxel.js buildField).
 import { INDOOR_MAPS } from "./lighting.js";
 const TREES = ["original", "round", "leaves"], TREE_LABEL = { original: "Original", round: "Round", leaves: "Leaves" };
-const KEY = "mt-ground", MODES = ["pixel", "detail", "carpet", "gemini"], LABEL = { pixel: "Pixel", detail: "Tufts", carpet: "Carpet", gemini: "Gemini" };
+const KEY = "mt-ground";
 const KEPT = new Set([20, 22, 23, 24, 26, 27, 28, 29, 30, 31, 36]);   // maps whose lawns are mown (wCurMapID; 19, the road, stays rough)
 const WIND = `float wind(float t, float ph) { return sin(t * 1.9 + ph) * 0.75 + sin(t * 3.3 + ph * 1.7) * 0.25; }`;
 const VS_BLADE = `#version 300 es
@@ -176,10 +176,7 @@ const rnd = (x, y, k) => { const s = Math.sin(x * 12.9898 + y * 78.233 + k * 37.
 export class Ground {
   constructor(voxel) {
     this.v = voxel; this.built = null;
-    let m = null; try { m = new URLSearchParams(location.search).get("ground"); } catch (e) { /* no location */ }
-    if (m === null) { try { m = localStorage.getItem(KEY); } catch (e) { m = null; } }
-    if (m === null) m = "carpet";                                      // the default: carpet (with mown campus lawns)
-    this.mode = MODES.includes(m) ? m : m === "on" ? "detail" : "pixel"; this.apply(); this.density = 1;
+    this.mode = "carpet"; this.apply(); this.density = 1;              // carpet, the only choice (with mown campus lawns)
     let t = null; try { t = new URLSearchParams(location.search).get("trees") || localStorage.getItem(KEY + "-trees"); } catch (e) { /* no storage */ }
     this.trees = TREES.includes(t) ? t : "original";                      // TREES: Original (the default), Round or Leaves
     this.round = this.trees === "round";
@@ -537,11 +534,7 @@ export class Ground {
 export function attachGround(voxel, hud) {
   const g = voxel.groundFx = new Ground(voxel);
   if (hud) {
-    const b = document.createElement("span"); b.className = "k"; b.id = "groundbtn"; b.title = "3D overworld: the ground as the game's pixels, or in detail: grass that sways and parts as you walk, leafy trees, raised path edging and pebbles on the paths";
-    const show = () => { b.textContent = "GROUND: " + LABEL[g.mode]; b.classList.toggle("on", g.mode !== "pixel"); };
-    b.addEventListener("pointerdown", () => { g.setMode(MODES[(MODES.indexOf(g.mode) + 1) % MODES.length]); show(); });
-    hud.appendChild(document.createTextNode(" ")); hud.appendChild(b); show();
-    const t = document.createElement("span"); t.className = "k"; t.id = "treesbtn"; t.title = "3D overworld, with GROUND on Tufts or Carpet: the game's own trees made round (Original), trees and shrubs as clumps of leaves (Round), or the game's crowns covered in small leaves (Leaves)";
+    const t = document.createElement("span"); t.className = "k"; t.id = "treesbtn"; t.title = "3D overworld: the game's own trees made round (Original), trees and shrubs as clumps of leaves (Round), or the game's crowns covered in small leaves (Leaves)";
     const showT = () => { t.textContent = "TREES: " + TREE_LABEL[g.trees]; };
     t.addEventListener("pointerdown", () => { g.setTrees(TREES[(TREES.indexOf(g.trees) + 1) % TREES.length]); showT(); });
     hud.appendChild(document.createTextNode(" ")); hud.appendChild(t); showT();
