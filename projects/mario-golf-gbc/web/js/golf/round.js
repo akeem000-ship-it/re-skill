@@ -19,6 +19,7 @@ import { showScorecard } from "./scorecard.js";
 import { showCaptionAndWait } from "./captions.js";
 import * as M from "./match.js";
 import { roundResultScreen } from "./result.js";
+import * as Sv from "./save.js";
 function* inBankGen(w, bank, g) {                // a far call to a routine that runs frames
   const old = w.high[0x195];
   w.high[0x195] = bank;
@@ -315,7 +316,7 @@ export function* holeStart(sh) {
   r6[0x329] = r6[0x32A] = r6[0x32B] = 0;         // wClub, wShotMode
   r6[0x445] = 1;                                 // wTeeShot
   r6[0x321] = rb(0x10, 0x6907);                  // (a code byte: the first of MissTable 10:6907)
-  // ~08:47B4 RoundHookSaveAtHole: modes 1-3 save the game mid-round (SRAM; not modelled)
+  if ([1, 2, 3].includes(mode(w))) saveGameMidRound(w);   // 08:47B4 RoundHookSaveAtHole (WRAM bank 6 kept)
   if (w0[0x870]) notPorted("golf event hooks (~10:4CC3)");
   sh.hole = new Hole(r6[0x320]);
   sh.mark("flyover");
@@ -449,9 +450,17 @@ export function* roundEnd(sh) {
   }
 }
 
+// 08:4EF4 SaveGameMidRound: SaveGame 02:4489 with wReplayActive $C96D = 2 meanwhile (so a save made in a round
+// loads back to the mode select)
+export function saveGameMidRound(w) {
+  const w0 = w.wram[0], a = w0[0x96D];
+  w0[0x96D] = 2;
+  Sv.saveGame(w);
+  w0[0x96D] = a;
+}
+
 // 08:4F03 RoundEndFadeAndExp: fade out, no tasks or sprites; the EXP (~48:4D70 AwardExpPoints) only for a saved
-// character (wSaveSlot $C2A5 not $0F); SaveGameMidRound 08:4EF4 (02:4489 SaveGame saves only slots 0-2: the save
-// data is not modelled)
+// character (wSaveSlot $C2A5 not $0F); SaveGameMidRound
 function* roundEndFadeAndExp(sh) {
   const w = sh.w, w0 = w.wram[0];
   Scr.beginFadeOut(w, 0x08);
@@ -460,7 +469,7 @@ function* roundEndFadeAndExp(sh) {
   Dp.resetSprites(w);
   w.high[0x18B] = w.high[0x18A] = 0;
   if ((w0[0x2A5] & 0x0F) !== 0x0F) notPorted("the EXP award (~48:4D70 AwardExpPoints)");
-  if (w0[0x2A5] < 3) notPorted("saving the game (~02:4489 SaveGame)");
+  saveGameMidRound(w);
 }
 
 function addPointsRaw(w, de) {                   // 02:5415 AddPointsRaw: $C83C += de x course factor (02:543E) / 2

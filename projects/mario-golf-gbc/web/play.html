@@ -63,8 +63,10 @@
   <section id="note" class="panel dim">
     <p>This page runs the game's own rules rewritten in JavaScript (<code>web/js/golf</code>), with no Game Boy CPU:
       the shots, the ball, the computer's play, the course drawing, the HUD, the sprites and the sound driver.</p>
-    <p>It starts at power-on: the opening picture, the demo, the title, then the menus as far as a new game has
-      them (one player, a preset golfer, <b>Stroke</b>, the course). The selector below the screen can also start
+    <p>It starts at power-on: the opening picture, the demo, the title, then the menus: one player, a preset golfer
+      or a <b>saved character</b>, <b>Stroke</b> or <b>Match</b>, the course. The battery save is kept in this
+      browser in the same place and format as the <a href="index.html">emulated version</a>'s, so a character made
+      there (creating one, the story, Tournament and Training are not ported yet) plays here, and its saves go back. The selector below the screen can also start
       straight at a round as a new game would: Mario on course 1, a Stroke round of 18 holes, or <b>match play</b>
       against a computer golfer, with the standings between holes, the scorecard and the result screen.
       <kbd>Start</kbd> while aiming opens the pause menu (its Scorecard works; the other items are not ported yet).</p>
@@ -75,7 +77,7 @@
   <footer class="dim">
     <span>Keys: arrows, <kbd>Z</kbd> A, <kbd>X</kbd> B, <kbd>Shift</kbd> Select, <kbd>Enter</kbd> Start, <kbd>P</kbd> pause the page,
       <kbd>Space</kbd> fast, <kbd>M</kbd> mute. Gamepads work too. <a href="index.html">Emulated version</a></span>
-    <span id="score"></span>
+    <span><span id="save"></span> <span id="score"></span></span>
   </footer>
 </main>
 <script type="module" src="js/play.js"></script>

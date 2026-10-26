@@ -4,7 +4,7 @@
 // optionally the core's state at the stop (for web/tests/golf/screenstep.mjs) or at the first time it reaches a
 // routine (--save-at BB:AAAA --state out/state_X.json).
 // usage: node web/tests/golf/boottrace.mjs out/trace_boot.json [--press F:BITS ...] [--stop BB:AAAA]
-//        [--save-at BB:AAAA --state out/state_X.json] [--frames N] [--callers N] (the return addresses on the stack
+//        [--save-at BB:AAAA --state out/state_X.json] [--sram out/X.sav] [--frames N] [--callers N] (the return addresses on the stack
 //        at AdvanceFrame 00:2E3B every N frames)
 import fs from "fs";
 import path from "path";
@@ -25,6 +25,7 @@ const saveAt = arg("--save-at") ? ba(arg("--save-at")) : null;
 const maxFrames = +arg("--frames", 20000);
 
 const gb = new GBC(new Uint8Array(fs.readFileSync(path.join(root, "rom/mario_golf.gbc"))), { audio: false });
+if (arg("--sram")) gb.mem.sram.set(fs.readFileSync(path.join(root, arg("--sram"))).subarray(0, gb.mem.sram.length));   // a save RAM (8 KB file)
 const cpu = gb.cpu, m = gb.mem, ppu = gb.ppu;
 const seen = new Set();
 let frame = 0;

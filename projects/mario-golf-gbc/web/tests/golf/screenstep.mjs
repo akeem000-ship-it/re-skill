@@ -176,6 +176,12 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
     if (n) end.push(`wram${b}: ${n} (${first.join(", ")})`);
   }
   for (let i = 0; i < 0x7F; i++) if (w.high[0x180 + i] !== core.hram()[i] && i !== 0x15 && i !== 0x3F && i !== 0x4D && i !== 0x4E) end.push(`hram $ff${h2(0x80 + i)} js ${h2(w.high[0x180 + i])} game ${h2(core.hram()[i])}`);
+  {                                              // the save RAM (bank 0, 8 KB)
+    const cs = gb.mem.sram;
+    let n = 0, first = [];
+    for (let i = 0; i < 0x2000; i++) if (w.sram[i] !== cs[i]) { n++; if (first.length < 6) first.push(`$${h4(0xA000 + i)} js ${h2(w.sram[i])} game ${h2(cs[i])}`); }
+    if (n) end.push(`sram: ${n} (${first.join(", ")})`);
+  }
   const fin = compare();
   if (fin.out.length) end.push(...fin.out.map(s => "display " + s));
   res.end = end;

@@ -192,3 +192,15 @@ export function matchRoundSetup(w, { golfer = 8, opponent = 9, course = 1, seed 
 }
 // 0A:4D5B MapSaveReturnPoint with b = $FF: the current map, entrance $FF, the position $C2A0 (5 bytes) -> $C962
 export function mapSaveReturnPoint(w) { const r = w.wram[0]; r[0x960] = r[0x450]; r[0x961] = 0xFF; r.copyWithin(0x962, 0x2A0, 0x2A5); }
+// 0A:4D8A MapWarpToReturnPoint: warp request $FA (wMapEvent+1 $C441), wMapId = $C960, wMapEntrance = $C961; entrance $FF
+// (a saved position): entrance $FA, the facing $C966 -> $C465, x $C962 -> $C466, y $C964 -> $C468
+export function mapWarpToReturnPoint(w) {
+  const r = w.wram[0];
+  r[0x441] = 0xFA;
+  r[0x450] = r[0x960];
+  if (r[0x961] !== 0xFF) { r[0x46A] = r[0x961]; return; }
+  r[0x46A] = 0xFA;
+  r[0x465] = r[0x966];
+  r[0x466] = r[0x962]; r[0x467] = r[0x963];
+  r[0x468] = r[0x964]; r[0x469] = r[0x965];
+}

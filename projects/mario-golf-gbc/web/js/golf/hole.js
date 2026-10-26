@@ -18,6 +18,7 @@ import * as D from "./render/hooks.js";
 import { showCaptionAndWait, startCaptionAnim } from "./captions.js";
 import * as P from "./pictures.js";
 import * as M from "./match.js";
+import * as Sv from "./save.js";
 import { playRoundMusic, loadHoleInfo, golfViewInit } from "./round.js";
 import * as Scr from "./screen.js";
 
@@ -105,12 +106,16 @@ export function* outcomeRules(sh, a) {
 }
 
 // 02:4714 RecordShot: b = 0 birdie / 1 eagle / 2 albatross / 3 hole in one (modes 1-3, a human player, $C878 = 0):
-// the record in $C600 (the player's record, the course, hole and wind, the strokes, the stroke records $D680) copied to
-// WRAM1 $D000 and stored as save block 4 + b. (The save data itself, ~02:4355 SaveBlockLoad / ~02:429B SaveBlockStore,
-// is not modelled.)
+// save block 4 + b (five $80-byte records, the newest first) loaded to WRAM1 $D080 (cleared when it does not load),
+// the new record built in $C600 (the player's record, the course, hole, wind, the strokes, the player's stroke records
+// $D680) and copied to $D000 before them; the block stored again (no header) and verified
 function recordShot(w, b) {
   const w0 = w.wram[0];
   if (![1, 2, 3].includes(w0[0x834]) || w0[pf(w, 0x13)] || w0[0x878]) return;
+  w.high[0x196] = 1;
+  b = (b + 4) & 0xFF;
+  if (Sv.saveBlockLoad(w, b, 0xD080)) w.wram[1].fill(0, 0x080, 0x300);
+  w.high[0x196] = 6;
   w0.fill(0, 0x600, 0x680);
   const strokes = w0[pf(w, 0x20)];
   w0.copyWithin(0x600, pf(w, 0), pf(w, 0) + 0x20);
@@ -119,7 +124,11 @@ function recordShot(w, b) {
   w0[0x625] = strokes;
   const slot = 0x680 + (w0[0x835] ? 0x40 : 0);   // 02:4602 ShotRecordSlot
   w0.set(w.wram[6].subarray(slot, slot + 0x40), 0x640);
+  w.high[0x196] = 1;
   w.wram[1].set(w0.subarray(0x600, 0x680), 0x000);
+  Sv.saveBlockStore(w, b, 0xD000, 0);
+  Sv.saveBlockVerify(w, b, 0xD000);
+  w.high[0x196] = 6;
 }
 
 function* holeInOne(sh) {                        // 3B:733D / 3B:760E
@@ -136,7 +145,7 @@ function markHoleCleared(w) {                    // 02:5C50 MarkHoleCleared: tou
   const w0 = w.wram[0];
   if (!(w0[0x836] >= 1 && w0[0x836] <= 5 && w0[0x834] === 1 && w0[pf(w, 0x13)] === 0)) return;   // 02:5BEC
   const p = 0x996 + 25 * (w0[0x836] - 1) + (w0[0x837] >> 3);   // 02:5CD3 SetBitN
-  w0[p] |= 1 << (w0[0x837] & 7);
+  w0[p] |= 0x80 >> (w0[0x837] & 7);             // (mask table 02:5CEA: bit 0 is $80)
 }
 
 function* holed(sh) {                            // 3B:72C3: the hole's bonus, how it went in, the score against par

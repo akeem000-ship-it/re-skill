@@ -84,6 +84,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the text printer and the glyph renderer (text.js, banks 03 / 05), the match standings screen (3E:403F), the match-play scorecard page (0E:762F), the result screen (0B:59DE) with the map actors (bank 04), map graphics (0B) and BG shadow (05) | (all sources) 70,512 | 29.05% |
 | + the window and menu engine (windows.js, bank 05) and the golf pause menu (pause.js: 08:4666, bank 41) | 75,192 | 30.98% |
 | + the front end: power-on (boot.js: SoftReset, GameMain, the save RAM's set-up, map 0's run with its actors and tile animation), the title and its demo (title.js, bank 40), LinkMenu (menu09.js), the character select (charsel.js, bank 06), the mode and course selects (select.js, banks 0D / 0F), ModeSelectMain (modesel.js) | 86,427 | 35.61% |
+| + saved games (save.js: bank 02's save code, SaveGame, RecordShot, the mid-round saves; loading a slot in ModeSelectMain) | 87,023 | 35.86% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -201,7 +202,9 @@ lockstep presses A on alternate frames there, so captions and the scorecard are 
 The page loads the user's ROM (fetched from rom/ or picked; SHA-1 checked) and runs the game natively from
 power-on (`game.js` playFromPowerOn: `boot.js` SoftReset, GameMain and map 0's run; the opening picture, the demo,
 the title; LinkMenu, the character select, the mode and course selects as far as a new game has them: one player,
-a preset golfer, Stroke), then the round. It steps the generator once per 59.73 Hz frame, rasterizes the display
+a preset golfer or a saved character, Stroke or match play), then the round. The save RAM is kept in
+localStorage as the emulated page keeps it (`mg-sram-` + the ROM's SHA-1, 12 digits; base64 of the 8 KB), read at
+power-on and stored when the game writes it. It steps the generator once per 59.73 Hz frame, rasterizes the display
 model to a canvas and plays the native sound driver (js/sound) through Web Audio; keyboard, gamepad and touch as on
 the emulated page; Start is the game's (the pause menu while aiming: its Scorecard works), P pauses the page. The
 selector can also start straight at a round as a new game would (`start.js`: the path ModeSelectMain 32:5037 takes
@@ -241,8 +244,36 @@ for wGameMode 0; BuildCourseList leaves the count byte at $D658 0; GetTextBoxWid
 rebuilds the message window's record, slot 0's when there is none (with a zero pointer: writes to the MBC's RAM
 enable register); SaveBlockLoad / SaveBlockStore write a block's size low byte as the SRAM bank; SaveBlockStore
 rewrites the directory defaults each time. The film-strip select code is the same in banks 0D and 0F at shifted
-addresses. Not ported: saved games (loading, saving, the new character's naming and story), link play, Tournament,
-Training, the map engine after the enter script (ScriptEnd and the map's event loop after a round).
+addresses. Not ported: the new character's creation and the story (the map engine), link play, Tournament,
+Training, the map engine after the enter script (ScriptEnd and the map's event loop after a round). Saved characters load
+and save (see "Saved games").
+
+#### Saved games (web/js/golf/save.js; web/tests/golf/coreplay.mjs)
+
+save.js holds bank 02's save code: SaveLoad 02:41F6 (signature, sum, backup), SaveBlockLoad 02:4355, SaveBlockStore
+02:429B, SaveBlockVerify 02:43CC, SaveBlockClear 02:431D, SaveBlockHeader 02:4454, SaveCheckAllBlocks 02:45D3 with
+CheckSlotBlock 02:457F (quirk: `ld a, 8 / add a, b / ld b, 8` restores every damaged slot from block 8, slot 0's
+backup), the save flags 02:44F2 / 02:4522, SaveGame 02:4489 (SaveGameTimer 00:2CC3, 14 bytes 02:6392 -> `$C94E`,
+BuildClubTable 02:51F6, the header 02:63A0, the record `$C800-$C9FF` into slot b and b + 8, each verified).
+In a round: RoundHookSaveAtHole 08:47B4 (modes 1-3) and RoundEndFadeAndExp call SaveGameMidRound 08:4EF4 (SaveGame
+with `$C96D` = 2 meanwhile, so a save made in a round loads back to the mode select); RecordShot 02:4714 keeps five
+`$80`-byte records per kind (birdie, eagle, albatross, hole in one: blocks 4-7, the newest first, the old ones loaded
+to WRAM1 `$D080` and shifted down). MarkHoleCleared's bit order is `$80 >> n` (mask table 02:5CEA).
+Where a save comes from: an empty slot in the character select warps (5) into the map engine: map `$1E`, then map 0
+entrance 2's scripts (pick male / female, the character, the hand, the name; "Start by creating a new character"),
+the story's first scene in the Director's Room (map 5), and back to the mode select, where ModeSelectMain stores the
+new character (32:51D1). Loading (32:5114): SaveBlockLoad of the slot to `$C800` (a bad or empty one: warp 5),
+RestoreGameTimer 00:2CDE, pending EXP (`$C95E` = `$64`: ScaleExpByLevel 32:54B5 and AwardExpPoints 48:4D70, not
+ported), MapWarpToReturnPoint 0A:4D8A; a save made at the mode select or in a round (`$C96D` 2, or map 0) goes to the
+mode select (with a save file: the story, Tournament, Match, Stroke, Training), one made in the story to the summary
+prompt (32:7D35) and the map engine (not ported). The character select lists a stored slot's character
+(ListSaveSlotGolfer 02:5ACA: wSaveSlot is set to 0 whatever the slot).
+`web/tests/golf/coreplay.mjs --recipe kid --sram-out out/kid.sav` makes such a save on the emulator core (a new
+character "Kid", saved at the mode select); `golf_screens_vs_core.mjs` loads it from power-on: `boot_poweron_kid_stroke`
+and `_match` (to GolfRound's call through the save-file mode select), `boot_kid_round` (two holes of the round:
+the mid-round saves): every frame and the save RAM at the end match the game. The play page keeps the save RAM in
+localStorage under the emulated page's key and format; `play_page.mjs --save out/kid.sav` loads a core-made save
+there, plays Stroke with it and checks the page stored the save the game wrote.
 
 #### Match play and the contests (web/js/golf/match.js)
 

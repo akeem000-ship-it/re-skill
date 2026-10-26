@@ -4,7 +4,7 @@
 // engine (MapEngine 0A:498C) on map $00 at entrance 3: MapRun 0A:4A21 loads the map's header, places the player,
 // spawns the map's actors, starts its graphics (0B:46DF) and runs its enter script, ModeSelectMain (32:5033 ->
 // 32:5037: modesel.js), which returns when a golf round starts.
-// Save RAM: GolfMemory.sram (bank 0; the blocks' "bank" bytes are size bytes whose MBC bank is 0 too).
+// The save RAM: save.js.
 import { rb, rw } from "./rom.js";
 import * as D from "./render/display.js";
 import * as Scr from "./screen.js";
@@ -14,6 +14,7 @@ import { mapStartGfx } from "./mapgfx.js";
 import { initFontScreen } from "./pictures.js";
 import { newGame } from "./start.js";
 import { initSerialLink, modeSelectMain } from "./modesel.js";
+import { saveLoad, saveCheckAllBlocks } from "./save.js";
 
 const rd = D.rd, wr = D.wr;
 const setW = (w, n) => D.setWramBank(w, n);
@@ -26,98 +27,6 @@ function* inBankGen(w, bank, g) {
   const old = w.high[0x195];
   w.high[0x195] = bank;
   try { return yield* g; } finally { w.high[0x195] = old; }
-}
-
-// ---- the save RAM (bank 02) ----
-const S = a => a - 0xA000;                       // an SRAM address in GolfMemory.sram
-const SIG = 0x4162;                              // SaveSignature 02:4162 "CAMELOT GAMEBOY"
-function strCopy(w, hl, de) {                    // 02:427A StrCopy (ROM -> SRAM, with its $00)
-  for (;; hl++, de++) { const a = rb(0x02, hl); w.sram[S(de)] = a; if (!a) return; }
-}
-function strCompare(w, hl, de) {                 // 02:4267 StrCompare: 0 when equal
-  for (;; hl++, de++) {
-    const a = rb(0x02, de);
-    if (a !== w.sram[S(hl)]) return 1;
-    if (!a) return 0;
-  }
-}
-// 02:4078 SaveWriteDefaults: the signature at $A020 and the block directory's offsets and sizes ($A041 + 32 n)
-const DIR = [[0x00, 0x00, 0x02, 0x00, 0x02], [0x00, 0x00, 0x04, 0x00, 0x02], [0x00, 0x00, 0x06, 0x00, 0x02],
-  [0x00, 0x00, 0x08, 0x00, 0x04], [0x00, 0x00, 0x0C, 0x80, 0x02], [0x00, 0x80, 0x0E, 0x80, 0x02],
-  [0x00, 0x00, 0x11, 0x80, 0x02], [0x00, 0x80, 0x13, 0x80, 0x02], [0x00, 0x00, 0x18, 0x00, 0x02],
-  [0x00, 0x00, 0x1A, 0x00, 0x02], [0x00, 0x00, 0x1C, 0x00, 0x02], [0x00, 0x00, 0x1E, 0x00, 0x02]];
-function saveWriteDefaults(w) {
-  w.high[0x197] = 0;
-  strCopy(w, SIG, 0xA020);
-  DIR.forEach((e, n) => e.forEach((v, k) => { w.sram[0x41 + 32 * n + k] = v; }));
-  w.sram[S(0xA032)] = 0x0C;
-}
-function saveErase(w) { w.high[0x197] = 0; w.sram.fill(0, 0, 0x2000); }   // 02:4172 SaveErase (bank 0)
-function saveChecksum(w) {                       // 02:419D SaveChecksum: $A032-$A1BF
-  w.high[0x197] = 0;
-  let s = 0;
-  for (let k = 0; k < 0x18E; k++) s = (s + w.sram[0x32 + k]) & 0xFFFF;
-  return s;
-}
-function saveCommit(w) {                         // 02:41C1 SaveCommit: the sum at $A030, $A020-$A1BF -> $B620
-  const s = saveChecksum(w);
-  w.sram[0x30] = s & 0xFF; w.sram[0x31] = s >> 8;
-  w.sram.copyWithin(S(0xB620), S(0xA020), S(0xA020) + 0x1A0);
-}
-const saveVerify = w => saveChecksum(w) !== (w.sram[0x30] | w.sram[0x31] << 8);   // 02:41E1 SaveVerify
-// 02:41F6 SaveLoad: the signature and sum, else the backup's, else erased and reset
-function saveLoad(w) {
-  w.high[0x197] = 0;
-  if (!strCompare(w, 0xA020, SIG) && !saveVerify(w)) return 0;
-  w.sram.copyWithin(S(0xA020), S(0xB620), S(0xB620) + 0x1A0);
-  if (!strCompare(w, 0xA020, SIG) && !saveVerify(w)) return 1;
-  saveErase(w); saveWriteDefaults(w); saveCommit(w);
-  return 0xFF;
-}
-// a block's directory entry ($A040 + 32 b): +0 used, +2 offset, +4 size (its low byte is written to the MBC's RAM
-// bank: 0 here), +6 the sum, +8 a 24-byte header
-const entry = b => 0x40 + ((b << 5) & 0xFF);
-// 02:4355 SaveBlockLoad: block b to hl; 0 ok, $FE unused, $FF a bad sum
-function saveBlockLoad(w, b, hl) {
-  w.high[0x197] = 0;
-  const e = entry(b);
-  if (!w.sram[e]) return 0xFE;
-  const off = w.sram[e + 2] | w.sram[e + 3] << 8, n = w.sram[e + 4] | w.sram[e + 5] << 8;
-  w.high[0x197] = n & 0xFF;
-  for (let k = 0; k < (n || 0x10000); k++) wr(w, (hl + k) & 0xFFFF, w.sram[(off + k) & 0x1FFF]);
-  let s = 0;
-  for (let k = 0; k < (n || 0x10000); k++) s = (s + rd(w, (hl + k) & 0xFFFF)) & 0xFFFF;
-  w.high[0x197] = 0;
-  return s === (w.sram[e + 6] | w.sram[e + 7] << 8) ? 0 : 0xFF;
-}
-// 02:429B SaveBlockStore: hl's data into block b (SaveWriteDefaults first), its sum, the header de (0: zeros), commit
-function saveBlockStore(w, b, hl, de) {
-  w.high[0x197] = 0;
-  saveWriteDefaults(w);
-  const e = entry(b);
-  const off = w.sram[e + 2] | w.sram[e + 3] << 8, n = w.sram[e + 4] | w.sram[e + 5] << 8;
-  w.high[0x197] = n & 0xFF;
-  for (let k = 0; k < (n || 0x10000); k++) w.sram[(off + k) & 0x1FFF] = rd(w, (hl + k) & 0xFFFF);
-  let s = 0;
-  for (let k = 0; k < (n || 0x10000); k++) s = (s + rd(w, (hl + k) & 0xFFFF)) & 0xFFFF;
-  w.high[0x197] = 0;
-  w.sram[e] = 1;
-  w.sram[e + 6] = s & 0xFF; w.sram[e + 7] = s >> 8;
-  for (let k = 0; k < 0x18; k++) w.sram[e + 8 + k] = de ? rd(w, (de + k) & 0xFFFF) : 0;
-  saveCommit(w);
-}
-// 02:45D3 SaveCheckAllBlocks: slots 0-2 (02:457F: a bad one from its backup b + 8, or cleared), block 3 (02:45AA),
-// blocks 4-7 (02:45B7: a block not loading is stored fresh, $280 zeros)
-function saveCheckAllBlocks(w) {
-  setW(w, 1);
-  for (let b = 0; b < 4; b++) {
-    if (saveBlockLoad(w, b, 0xD000) === 0xFF) notPorted("restoring a damaged save block (~02:4588)");
-  }
-  for (let b = 4; b < 8; b++) {
-    if (!saveBlockLoad(w, b, 0xD000)) continue;
-    D.clearMemory16(w, 0xD000, 0x28);
-    saveBlockStore(w, b, 0xD000, 0);
-  }
 }
 
 // ---- 00:2DAA SoftReset ----

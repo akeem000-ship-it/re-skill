@@ -8,8 +8,8 @@ import { powerOn } from "./boot.js";
 
 // onShot(info) is told each shot's outcome; returns the outcomes and each hole's strokes and putts. A generator:
 // each next() runs one frame (shot.js Shot.advance); playRound() below runs it to the end.
-export function* playRoundFrames(w, roundId, input, { ev = () => {}, maxHoles = 18, onShot = () => {}, onHoleEnd = () => {} } = {}) {
-  const sh = new Shot(w, null, ev, input);
+export function* playRoundFrames(w, roundId, input, { ev = () => {}, maxHoles = 18, onShot = () => {}, onHoleEnd = () => {}, sh = null } = {}) {
+  sh = sh || new Shot(w, null, ev, input);
   const result = { shots: [], holes: [] };
   yield* R.golfRoundStart(sh, roundId);
   yield* R.holeStart(sh);

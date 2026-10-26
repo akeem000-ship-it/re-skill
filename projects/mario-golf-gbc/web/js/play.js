@@ -22,7 +22,7 @@ const $ = id => document.getElementById(id);
 const canvas = $("screen"), ctx = canvas.getContext("2d"), image = ctx.createImageData(160, 144);
 const rgb5 = new Uint8Array(160 * 144 * 3), rgba = new Uint32Array(image.data.buffer);
 const keys = {};
-let rom = null, game = null, paused = false, fast = false, muted = false, last = 0, acc = 0;
+let rom = null, sha = "", game = null, paused = false, fast = false, muted = false, last = 0, acc = 0;
 let fps = 0, fpsFrames = 0, fpsT = 0;
 
 async function sha1Hex(bytes) {
@@ -30,6 +30,32 @@ async function sha1Hex(bytes) {
   const h = await crypto.subtle.digest("SHA-1", bytes);
   return [...new Uint8Array(h)].map(x => x.toString(16).padStart(2, "0")).join("");
 }
+
+// ---- the battery save: the 8 KB save RAM in localStorage under the emulated page's key and format (js/main.js:
+// "mg-sram-" + the ROM's SHA-1 (12 digits), base64 of the bytes), so a save made on either page loads on the other ----
+const saveKey = () => "mg-sram-" + (sha || EXPECTED_SHA1).slice(0, 12);
+function loadSave(w) {
+  try {
+    const s = localStorage.getItem(saveKey());
+    if (s) { w.sram.set(Uint8Array.from(atob(s), c => c.charCodeAt(0)).subarray(0, w.sram.length)); return true; }
+  } catch (e) { console.warn("save", e); }
+  return false;
+}
+let savedCopy = null, saveCheckAt = 0;
+function writeSave(w) {
+  try {
+    let bin = ""; const b = w.sram; for (let i = 0; i < b.length; i += 0x2000) bin += String.fromCharCode.apply(null, b.subarray(i, i + 0x2000));
+    localStorage.setItem(saveKey(), btoa(bin));
+    $("save").textContent = "saved " + new Date().toLocaleTimeString();
+  } catch (e) { console.warn("save", e); }
+}
+function checkSave(w, force) {                     // the game wrote the save RAM: store it (at most twice a second)
+  if (!savedCopy || (!force && game.frames < saveCheckAt)) return;
+  saveCheckAt = game.frames + 30;
+  for (let i = 0; i < w.sram.length; i++) if (w.sram[i] !== savedCopy[i]) { savedCopy.set(w.sram); writeSave(w); return; }
+}
+addEventListener("pagehide", () => { if (game) checkSave(game.w, true); });
+window.__flushSave = () => { if (game) checkSave(game.w, true); };
 
 // ---- sound: the driver's register writes for each frame go to the chip, which renders that frame's samples ----
 let actx = null, apu = null, driver = null, nextTime = 0, chunkL = null, chunkR = null, chunkAt = 0, chunkFrames = 0;
@@ -100,6 +126,12 @@ function newRound() {
     holes = mode.startsWith("match:") ? matchRoundSetup(w, { golfer: 8, opponent: +mode.slice(6), course: 1, seed })
       : strokeRoundSetup(w, { golfer: 8, course: 1, seed });
   }
+  savedCopy = null;
+  if (mode === "title") {                          // power-on reads the save RAM (GameMain's SaveLoad 02:41F6)
+    $("save").textContent = loadSave(w) ? "save loaded" : "";
+    savedCopy = w.sram.slice();
+    saveCheckAt = 0;
+  }
   initDisplay(w);
   driver = new SoundDriver(rom);
   apu = new SynthAPU(RATE);
@@ -118,6 +150,7 @@ function step() {                                  // one frame of the game
   const r = game.g.next();
   game.frames++;
   soundFrame(game.w);
+  checkSave(game.w);
   if (r.done) {
     game.done = r.value;
     const total = r.value.holes.reduce((s, h) => s + h.strokes, 0);
@@ -171,7 +204,7 @@ function loop(now) {
 
 async function start(buffer) {
   const bytes = new Uint8Array(buffer);
-  const sha = await sha1Hex(bytes);
+  sha = await sha1Hex(bytes);
   if (sha && sha !== EXPECTED_SHA1) $("status").textContent = "unexpected ROM (SHA-1 " + sha.slice(0, 8) + "…); running it anyway";
   rom = bytes;
   useRom(rom);

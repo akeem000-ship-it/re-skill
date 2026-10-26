@@ -9,7 +9,11 @@
 // By default the page starts at power-on and the test goes through the menus (A skips the demo, Start on the title,
 // A on the link menu, Right to Mario and A in the character select, A for Stroke and course 1); --stroke starts the
 // round directly (the page's selector).
-// usage: node web/tests/play_page.mjs [shots=3] [outdir=out] [--match] [--stroke] [--pause]
+// With --save F the browser's localStorage holds the save RAM file F (8 KB, e.g. out/kid.sav, a save the game made on
+// the emulator core: web/tests/golf/coreplay.mjs) under the emulated page's key: the test picks save slot 0 in the
+// character select and Stroke in the mode select, and at the end checks that the page stored the save RAM again
+// (signature, checksum, slot 0's block holding the character).
+// usage: node web/tests/play_page.mjs [shots=3] [outdir=out] [--match] [--stroke] [--pause] [--save out/kid.sav]
 import { createRequire } from "module";
 import http from "http";
 import fs from "fs";
@@ -20,7 +24,8 @@ const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../.
 const match = process.argv.includes("--match");
 const pause = process.argv.includes("--pause");
 const direct = process.argv.includes("--stroke");
-const [shotsArg = "3", outDir = path.join(root, "out")] = process.argv.slice(2).filter(a => !a.startsWith("--"));
+const saveFile = process.argv.includes("--save") ? process.argv[process.argv.indexOf("--save") + 1] : null;
+const [shotsArg = "3", outDir = path.join(root, "out")] = process.argv.slice(2).filter((a, i, all) => !a.startsWith("--") && all[i - 1] !== "--save");
 const want = +shotsArg;
 fs.mkdirSync(outDir, { recursive: true });
 
@@ -37,6 +42,8 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 800, height: 900 } });
 const errors = [];
 page.on("pageerror", e => errors.push(e.message));
+const SAVE_KEY = "mg-sram-7f2062e51b4f";        // js/main.js: "mg-sram-" + the ROM's SHA-1, 12 digits
+if (saveFile) await page.addInitScript(([k, v]) => { localStorage.setItem(k, v); }, [SAVE_KEY, fs.readFileSync(path.resolve(root, saveFile)).toString("base64")]);
 page.on("console", m => { if (m.type() === "error") errors.push(m.text()); });
 await page.goto(`http://localhost:${port}/web/play.html`);
 await page.waitForFunction(() => window.__golf && window.__golf.frames > 0, null, { timeout: 30000 });
@@ -67,7 +74,8 @@ const log = [];
 const screenNow = () => page.evaluate(() => {
   const w = window.__golf.w, t = w.wram[0];
   const has = (b, a) => { for (let p = 0x1C0; p < 0x200; p += 4) if (t[p] && t[p + 3] === b && (t[p + 1] | t[p + 2] << 8) === a) return true; return false; };
-  return { mark: window.__golf.mark, error: window.__golf.error, title: has(0x40, 0x4D1D), chars: has(0x06, 0x65D9), cursor: w.wram[6][0x214] };
+  return { mark: window.__golf.mark, error: window.__golf.error, title: has(0x40, 0x4D1D), chars: has(0x06, 0x65D9), cursor: w.wram[6][0x214],
+    modes: has(0x0D, 0x428E), mode: w.high[0x1B0] };
 });
 try {
   if (!match && !direct) {
@@ -76,7 +84,8 @@ try {
       const st = await screenNow();
       if (st.error || st.mark !== "menus") break;
       if (st.title) { if (!shots++) await shot("title"); await press("Enter"); }
-      else if (st.chars && st.cursor !== 4) await press("ArrowRight");
+      else if (st.chars && st.cursor !== (saveFile ? 0 : 4)) await press("ArrowRight");
+      else if (saveFile && st.modes && st.mode !== 3) await press("ArrowRight");   // (the list 1 2 3 4 9 from 1: Stroke at 3)
       else { if (st.chars) await shot("character_select"); await press("KeyZ"); }
       await untilFrames((await frames()) + 40);
     }
@@ -123,11 +132,19 @@ try {
   errors.push("script: " + e.message.split("\n")[0]);
 }
 const s = await state();
+let saveOk = true;
+if (saveFile) {                                    // the page stored the save RAM the game wrote (SaveGame 02:4489)
+  const b = Buffer.from(await page.evaluate(k => localStorage.getItem(k) || "", SAVE_KEY), "base64");
+  const sum = b.subarray(0x32, 0x1C0).reduce((a, v) => (a + v) & 0xFFFF, 0);
+  saveOk = b.length === 0x2000 && b.subarray(0x20, 0x30).equals(fs.readFileSync(path.resolve(root, saveFile)).subarray(0x20, 0x30)) && sum === b.readUInt16LE(0x30) &&
+    b[0x40] === 1 && b.subarray(0x200, 0x203).toString("latin1") === "Kid" && !b.equals(fs.readFileSync(path.resolve(root, saveFile)));   // (saved again: the play clock moved)
+  log.push(`the stored save RAM: ${b.length} bytes, ${saveOk ? "valid, slot 0 holds Kid" : "NOT as expected"}`);
+}
 await page.screenshot({ path: path.join(outDir, "play_page.png") });
 console.log(log.join("\n"));
 console.log(JSON.stringify({ frames: s.frames, shots: s.shots, mark: s.mark, error: s.error, status: await page.locator("#status").textContent(), errors: errors.slice(0, 5) }));
 await browser.close();
 server.close();
-const ok = !errors.length && !s.error && s.shots >= want;
+const ok = !errors.length && !s.error && s.shots >= want && saveOk;
 console.log(ok ? `ok   play page: ${s.shots} shots, ${s.frames} frames, no page errors` : "FAIL play page");
 process.exit(ok ? 0 : 1);

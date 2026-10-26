@@ -18,6 +18,7 @@ import { characterSelectScreen } from "../js/golf/charsel.js";
 import { gameModeSelect, courseSelect } from "../js/golf/select.js";
 import { modeSelectMain } from "../js/golf/modesel.js";
 import { powerOn } from "../js/golf/boot.js";
+import { playRoundFrames } from "../js/golf/game.js";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const filter = process.argv.slice(2).find(a => !a.startsWith("--")) || "";
@@ -38,6 +39,23 @@ function frontEndPolicy(f) {
   if (f % 40) return 0;
   if (menuW && hasTask(menuW, 0x06, 0x65D9) && menuW.wram[6][0x214] !== 4) return 0x10;
   return 1;
+}
+
+// with a saved character (a save RAM the game made: out/kid.sav, see REVERSE.md "Saved games"): Start on the title,
+// then every 40 frames A (LinkMenu's one player, the character select's slot 0), in the game mode select Right
+// `rights` times (from the story's item), then A on the mode, the course, ...
+function savedPolicy(rights) {
+  let n = 0, last = -100;
+  return f => {
+    if (f < 2600) { n = 0; last = -100; return 0; }
+    if (f === 2600) return 8;
+    if (f - last < 40) return 0;
+    last = f;
+    if (menuW && hasTask(menuW, 0x0D, 0x428E) && n < rights) { n++; return 0x10; }
+    // (match play: the opponent's character select, Right to Luigi, the first listed: 3)
+    if (menuW && menuW.wram[0][0x834] === 2 && hasTask(menuW, 0x06, 0x65D9) && menuW.wram[6][0x214] !== 3) return 0x10;
+    return 1;
+  };
 }
 
 // name, the state (round, routine), the native routine, buttons
@@ -97,6 +115,22 @@ const CASES = [
   // power-on (00:0100, an empty save RAM) to the Stroke round's GolfRound call, the same buttons
   { name: "boot_poweron", state: "boot_poweron", open: true, noRet: true,
     run: sh => { menuW = sh.w; return powerOn(sh); }, policy: frontEndPolicy },
+  // power-on with a save RAM the game made (a new character "Kid" created, saved at the mode select; out/kid.sav from
+  // web/tests/golf/coreplay.mjs, then boottrace.mjs --sram out/kid.sav --save-at 00:0100): slot 0 loaded
+  // (SaveBlockLoad, MapWarpToReturnPoint), SaveGame, the mode select with a save file, Stroke, course 1
+  { name: "boot_poweron_kid_stroke", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
+    run: sh => { menuW = sh.w; return powerOn(sh); }, policy: savedPolicy(3) },
+  // Match (Right twice), Luigi, course 1
+  { name: "boot_poweron_kid_match", state: "boot_poweron_kid", open: true, noRet: true,
+    run: sh => { menuW = sh.w; return powerOn(sh); }, policy: savedPolicy(2) },
+  // the same into the round, two holes (the saved character's round: SaveGameMidRound at each hole's start), A every
+  // 40 frames for the swings
+  { name: "boot_kid_round", state: "boot_poweron_kid", open: true, noRet: true,
+    run: sh => (function* () {
+      menuW = sh.w;
+      const holes = yield* powerOn(sh);
+      return (yield* playRoundFrames(sh.w, holes, null, { sh, maxHoles: 2 })).shots.length;
+    })(), policy: savedPolicy(3) },
 ];
 
 let bad = 0;

@@ -29,7 +29,7 @@ export function elevation(club, l) {             // 02:518B ClubElevation: per c
   return (rw(0x02, ptr(0x51BC, ((l + 8) & 0x0F) * 2)) + de) & 0xFFFF;
 }
 
-function driverShape(a, club, e) {               // 02:534B: the driver's shot shape with equipment bits e
+export function driverShape(a, club, e) {               // 02:534B: the driver's shot shape with equipment bits e
   let h = a;
   if (club) return h;
   if (e & 2) {

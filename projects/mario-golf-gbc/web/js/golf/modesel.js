@@ -11,6 +11,7 @@ import { linkMenu } from "./menu09.js";
 import { characterSelectScreen, resetCharSelectCursor } from "./charsel.js";
 import { gameModeSelect, courseSelect } from "./select.js";
 import * as St from "./start.js";
+import * as Sv from "./save.js";
 
 const rd = D.rd, wr = D.wr;
 const setW = (w, n) => D.setWramBank(w, n);
@@ -34,17 +35,6 @@ function resumeBGM(sh) {
   if (w.high[0x1CE] & 1) { w.high[0x1CE] &= 0xFE; sh.sound(rd(w, 0xC33E)); }
 }
 
-// 02:4355 SaveBlockLoad: block b's directory entry ($A040 + 32 b) empty: $FE (a stored block is not ported)
-function saveBlockLoad(w, b) {
-  w.high[0x197] = 0;                             // hSRAMBank
-  if (!w.sram[0x40 + ((b << 5) & 0xFF)]) return 0xFE;
-  notPorted("loading a saved game (~02:4372 SaveBlockLoad)");
-}
-// 02:44F2 TestSaveFlag: SRAM $A038[d] & the mask 02:44EA by e (rlca x3)
-function testSaveFlag(w, d, e) {
-  w.high[0x197] = 0;
-  return w.sram[0x38 + d] & rb(0x02, (0x44EA + (((e << 3) | (e >> 5)) & 0xFF)) & 0xFFFF);
-}
 
 // 02:5AFB WriteGolferListEntry: entry c of the list de (32 bytes, cleared): +0 the golfer ($C890), +1 b, +2 player 1's
 // first 11 bytes (the name), +$0D [$C892], +$0E [$C89A] [$C89B], +$10 [$C891], +$11 [$C89D]
@@ -63,14 +53,15 @@ const listGolfer = (w, b, c) => St.setupPlayerGolfer(w, b, c);
 // $FF); wOptionFlags $C818 = 0
 function buildGolferListBySave(w, de) {
   setW(w, 6);
-  for (let s = 0; s < 3; s++) {                  // 02:5ACA ListSaveSlotGolfer
-    if (saveBlockLoad(w, s)) wr(w, 0xC890, rd(w, 0xC33F) ? 0xFF : 0x0F);
+  for (let s = 0; s < 3; s++) {                  // 02:5ACA ListSaveSlotGolfer: the slot's character into $C800
+    if (Sv.saveBlockLoad(w, s, 0xC800)) wr(w, 0xC890, rd(w, 0xC33F) ? 0xFF : 0x0F);
+    else { wr(w, 0xC2A5, 0); listGolfer(w, 0x80, 0x00); }   // (wSaveSlot 0 whatever the slot)
     writeGolferListEntry(w, de, s, s);
   }
   listGolfer(w, 0x09, 0x00); writeGolferListEntry(w, de, 0x0F, 3);
   listGolfer(w, 0x08, 0x00); writeGolferListEntry(w, de, 0x0F, 4);
   for (const [g, k] of [[4, 5], [5, 6], [6, 7], [7, 8], [0x0A, 9]]) {   // 02:5AA9 ListGolferIfSaveFlag
-    if (w.high[0x1CF] || testSaveFlag(w, g >> 3, (g << 5) & 0xFF)) listGolfer(w, g, 0x00);
+    if (w.high[0x1CF] || Sv.testSaveFlag(w, g >> 3, (g << 5) & 0xFF)) listGolfer(w, g, 0x00);
     else wr(w, 0xC890, 0xFF);
     writeGolferListEntry(w, de, 0x0F, k);
   }
@@ -134,7 +125,27 @@ export function* modeSelectMain(sh) {
       const e = (0xD658 + ((r << 5) & 0xFFFF)) & 0xFFFF;
       const c = rd(w, e), b = rd(w, e + 1), d = rd(w, e + 0x10);
       wr(w, 0xC2A5, b & 0x0F);
-      if ((b & 0x0F) !== 0x0F) notPorted("playing a saved character (~32:5114)");
+      if ((b & 0x0F) !== 0x0F) {                 // 32:5114 a save slot
+        w.high[0x1CF] = 0;                       // hUnlockAll
+        if (Sv.saveBlockLoad(w, b & 0x0F, 0xC800)) {
+          // an empty (or bad) slot: ResumeBGM, warp 5 (the map engine's new character: map $1E, then map $00
+          // entrance 2's scripts)
+          notPorted("creating a character (~32:5121, the map engine's warp 5)");
+        }
+        Sv.restoreGameTimer(w);                  // 00:2CDE
+        wr(w, 0xC2A7, 0xFF);                     // wNavDestination
+        if (rd(w, 0xC95E) === 0x64) notPorted("the pending EXP (~32:5139, ~48:4D70 AwardExpPoints)");
+        St.mapWarpToReturnPoint(w);              // 0A:4D8A
+        const rp = rd(w, 0xC96D);
+        if (rp !== 2 && (rp === 1 || rd(w, 0xC450) !== 0)) {
+          // 32:516C the saved place is in the story (or a round): the summary prompt (32:7D35 LoadSummaryPrompt), then
+          // the map engine (or GolfRound $FF and GolfSessionEnd for a round saved at a hole)
+          notPorted("continuing the story (~32:516C, ~32:7D35 LoadSummaryPrompt)");
+        }
+        wr(w, 0xC834, 9);                        // 32:51A3
+        at = "modes1";
+        continue;
+      }
       St.newGame(w);                             // 02:4E3D
       St.setupPlayerGolfer(w, c & 0x0F, 0);      // 02:4A28
       St.setPlayerControl(w, 0, 0);              // 02:4994
@@ -150,7 +161,7 @@ export function* modeSelectMain(sh) {
       wr(w, 0xC96D, 0);
       St.mapSaveReturnPoint(w);                  // 0A:4D5B
       for (const n of [144, 145, 146, 147]) clearFlag(w, n);
-      if (rd(w, 0xC2A5) < 3) notPorted("saving the game (~02:4489 SaveGame)");
+      Sv.saveGame(w);                            // 02:4489 (a save slot only)
       const m = yield* inBankGen(w, 0x0D, gameModeSelect(sh));
       if (m === 0xFF) { at = "player"; continue; }
       wr(w, 0xC834, m);
