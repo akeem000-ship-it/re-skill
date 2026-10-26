@@ -81,9 +81,12 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the computer golfer's shot planner, all of bank 3C's planning (ai.js) | 29,973 (web/js/golf; `--dir golf`) | 12.35% |
 | + the computer golfer in play: its turn of the aiming menu (10:5978) and its swing (SwingMeterCPU 10:5643) | 30,105 | 12.40% |
 | + the native screen (render/: display model, rasterizer, the views, HUD, sprites, the view behind the golfer), the captions, pictures and scorecard between shots and holes, match play (match.js), a new game's set-up (start.js) | 51,952 | 21.41% |
+| + the text printer and the glyph renderer (text.js, banks 03 / 05), the match standings screen (3E:403F), the match-play scorecard page (0E:762F), the result screen (0B:59DE) with the map actors (bank 04), map graphics (0B) and BG shadow (05) | (all sources) 70,512 | 29.05% |
+| + the window and menu engine (windows.js, bank 05) and the golf pause menu (pause.js: 08:4666, bank 41) | 75,192 | 30.98% |
+| + the front end: power-on (boot.js: SoftReset, GameMain, the save RAM's set-up, map 0's run with its actors and tile animation), the title and its demo (title.js, bank 40), LinkMenu (menu09.js), the character select (charsel.js, bank 06), the mode and course selects (select.js, banks 0D / 0F), ModeSelectMain (modesel.js) | 86,427 | 35.61% |
 
-(All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05%; before the native screen
-34,056 bytes, 14.03%.)
+(All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
+added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
 
 The JS engine (`rom.js` ROM and LZ access, `memory.js` the RAM layout, `math.js`, `ball.js`, `cup.js`,
 `launch.js`, `swing.js`, `shot.js`, `hole.js`, `joypad.js`, `round.js`) is checked by two Node tests:
@@ -151,12 +154,43 @@ every frame compares VRAM, OAM, the palette RAM, the LCD registers and the displ
 screens; at every finished core frame it also checks the rasterizer against the core's own PPU. Lag frames (the
 game's code running past a VBlank: the fades, the play clock and the queues advance without it) are counted
 apart, and so are later differences in bytes that have differed since one (a lag VBlank can blit a BG row before
-the LCD goes off). Results (all 18 holes, no slips, all sound commands the same):
+the LCD goes off).
+The game's lag VBlanks are replayed on the native side: a VBlank that finds hVBlankDone set does only the
+every-frame work (00:2F46-00:2F64: the palette update, the game timer, the fades, the VBlank tasks). AdvanceFrame's
+`halt` always waits for one more interrupt, so the frame's own VBlank is the one its wait wakes at (with the LCD
+off, the code's last one); the native frame's VBlank stands for it and the others are replayed right after the
+game's code for the frame, a fade step only when the native fade is where the game's was at that VBlank (in the
+long loads the game lags through, the view behind the golfer, the native round has its own frames). A step the
+native round marks that the core passed k frames earlier (its code lagged past a fade's VBlank) holds the core k
+frames. Results (all 18 holes, no slips, all sound commands the same):
 
 | Round | Frames | Pixel-exact | Rasterizer vs PPU | Sound commands |
 |-------|--------|-------------|-------------------|----------------|
 | r18 (the bot's Stroke round) | 45,693 | 45,518 (the other 175 in lag frames) | 47,135 frames, 0 differ | 712 / 712 |
 | cpu18 (the computer golfer) | 34,459 | 34,307 (the other 152 in lag frames) | 35,816 frames, 0 differ | 620 / 620 |
+| match18 (match play, computer vs computer, through the standings, scorecards and the result screen) | 63,558 | 63,239 (the other 319 in lag frames) | 66,286 frames, 0 differ | 1,049 / 1,049 |
+
+`web/tests/golf_screens_vs_core.mjs` checks single screens: the core is saved at a routine's entry
+(`web/tests/golf/mkstate.mjs` in a lockstep round, `mkstate_core.mjs` by the core alone, `boottrace.mjs` from
+power-on with a button script), the native routine runs from the same RAM and display (`web/tests/golf/screenstep.mjs`)
+with scripted buttons, and every frame's display and, at the routine's return, all RAM are compared (a free entry
+of the VRAM copy or tile-write queue is left out: which slot a copy takes follows the lag; the game's rDIV reads are
+given to the native code). All cases match frame for frame:
+
+| Case | Routine | Frames |
+|------|---------|--------|
+| standings_match18 | 3E:403F MatchStandingsScreen | 22 |
+| scorecard_match18 | 0E:43D6 ShowScorecard (match play: Right / Left between the pages, A) | 152 |
+| result_match18 | 0B:59DE RoundResultScreen (match play) | 137 |
+| pause_r18_b / _move / _scorecard | 08:4666 PauseMenu (B; cursor moves and Start; Scorecard) | 69 / 129 / 152 |
+| pause_scorecard_back | 10:4798 ShotSetup through the pause menu's Scorecard and back to the address step | 612 |
+| picture_hole_in_one | 3B:7717 ShowPlayerPicture with picture 0 (and 4A:6205 LoadCyclingPicture) | 18 |
+| boot_title / _skip | 40:4032 TitleScreen with its attract loop (the demo skipped, the title timing out) | 2,617 / 2,217 |
+| boot_linkmenu / _b | 09:4A12 LinkMenu | 290 / 311 |
+| boot_charselect / _moves | 06:6071 CharacterSelectScreen | 247 / 309 |
+| boot_modeselect / _moves, boot_courseselect / _moves | 0D:4AA7 GameModeSelect, 0F:4AB7 CourseSelect | 257 / 317, 289 / 309 |
+| boot_modeselectmain | 32:5037 ModeSelectMain, the title to the Stroke round's GolfRound call | 2,929 |
+| boot_poweron | power-on (00:0100, an empty save RAM) to the Stroke round's GolfRound call | 2,929 |
 
 By situation (r18): at the address step 7,194 of 7,194 frames pixel-exact, on the green 4,279 of 4,279, the swing
 and the roll 17,881 of 17,884, the ball in the air 13,823 of 13,827, holed out and between holes 54 of 54 (the
@@ -164,15 +198,51 @@ lockstep presses A on alternate frames there, so captions and the scorecard are 
 
 #### The play page (web/play.html, web/js/play.js; web/tests/play_page.mjs)
 
-The page loads the user's ROM (fetched from rom/ or picked; SHA-1 checked), sets up a new game's Stroke round
-(`start.js`: the path ModeSelectMain 32:5037 takes for a new game: NewGame 02:4E3D, CreateCharacter 02:4E82,
-CharComputeStats 02:4F07, SetupPlayerGolfer 02:4A28 for preset golfer 8 (Mario), GolfSessionInit 10:4B28,
-SetCourseHole 10:423B, course 1, 18 holes; the random seed from the browser), steps the round generator once per
-59.73 Hz frame, rasterizes the display model to a canvas and plays the native sound driver (js/sound) through Web
-Audio; keyboard, gamepad and touch as on the emulated page. The title and the menus, the pause menu and link play
-are not ported (the page says so; Start pauses the page). A round from empty RAM through start.js plays exactly
-as the recorded one (`golf_native_round.mjs r18:setup`). `play_page.mjs` plays three shots in headless Chromium
-with scripted keys (no page errors; screenshots in out/).
+The page loads the user's ROM (fetched from rom/ or picked; SHA-1 checked) and runs the game natively from
+power-on (`game.js` playFromPowerOn: `boot.js` SoftReset, GameMain and map 0's run; the opening picture, the demo,
+the title; LinkMenu, the character select, the mode and course selects as far as a new game has them: one player,
+a preset golfer, Stroke), then the round. It steps the generator once per 59.73 Hz frame, rasterizes the display
+model to a canvas and plays the native sound driver (js/sound) through Web Audio; keyboard, gamepad and touch as on
+the emulated page; Start is the game's (the pause menu while aiming: its Scorecard works), P pauses the page. The
+selector can also start straight at a round as a new game would (`start.js`: the path ModeSelectMain 32:5037 takes
+for a new game: NewGame 02:4E3D, CreateCharacter 02:4E82, CharComputeStats 02:4F07, SetupPlayerGolfer 02:4A28 for
+preset golfer 8 (Mario), GolfSessionInit 10:4B28, SetCourseHole 10:423B, course 1, 18 holes; the random seed from
+the browser), or a match against Luigi or Putts (the VS path 32:5240-32:52A2; match play needs a saved character
+in the menus). A round from empty RAM through start.js plays exactly as the recorded one (`golf_native_round.mjs
+r18:setup`). `play_page.mjs` goes through the menus (A skips the demo, Start on the title, Right to Mario) and plays
+a few shots in headless Chromium with scripted keys (no page errors; screenshots in out/); `--stroke` / `--match`
+start a round directly, `--pause` opens the pause menu's Scorecard on the first shot.
+
+#### The front end (web/js/golf: boot.js, title.js, menu09.js, charsel.js, select.js, modesel.js)
+
+Power-on: Start 00:2DA0 sets hIsCGB; SoftReset 00:2DAA clears WRAM0 ($C000-$CFEF) and HRAM $FF80-$FFEF, copies
+the OAM DMA routine (00:067A) to $FF80, clears VRAM, resets the sprites, frame tasks and VRAM queue, starts the sound
+driver and turns the LCD on (LCDC $E7); GameMain 01:400E clears WRAM banks 1-7, loads the font and default
+palettes, checks the save RAM (SaveLoad 02:41F6: the signature "CAMELOT GAMEBOY" at $A020 and the sum of
+$A032-$A1BF at $A030, else the backup at $B620, else erase + defaults + commit; SaveCheckAllBlocks 02:45D3: slots
+0-2, block 3, blocks 4-7 stored fresh ($280 zeros) when they do not load), makes a new game's character, fades in,
+and starts the map engine on map 0 at entrance 3. MapRun 0A:4A21 loads the header (MapTable 0A:5188), places the
+player, spawns the map's actors, starts the map graphics (0B:46DF, with the tile animation of banks 28-2F / 72-74:
+4 tracks of 4-byte frames, MapTileAnimTask) and runs the enter script: 32:5033 -> ModeSelectMain 32:5037.
+ModeSelectMain: the title (TitleScreen 40:4032: the opening picture 40:61CB, 16 demo slides 40:5C72, the title
+with its golfer sprite rows, logo palette cycling and the code Up Up Down Up Left Right Left Right B Select (twice)
+that sets hUnlockAll $FFCF), LinkMenu 09:4A12 (bank 09's menu engine), the character select 06:6071 on the golfer
+list 02:5A2D (3 save slots, Luigi, Mario, golfers 4-7 and $0A by save flags), then for a preset golfer NewGame
+and the mode select 0D:4AA7 (Stroke / Training without a save file; Tournament, Match, Stroke, Training and Mario's
+story with one), the course select 0F:4AB7 (BuildCourseList 0F:4B7A by mode, unlock flags and save flags), and
+GolfRound. Match play takes an opponent from the list 02:5985 in a second character select.
+Quirks kept: IntroCheckSkip 40:6238 never skips (the opening picture cannot be skipped); each demo frame prints
+hVBlankCount, rDIV, the frame and Sqrt24 40:5775 of the three to the debug text buffer (Sqrt24 works on the
+complements in two stages and is not the root of a:h:l; fuzzed bit-exact against the ROM); CharSelectMove 06:6839
+loops for ever on Up / Down when both rows' slots are empty; CharSelectMarksRight 06:6AC0 with a count of 0 queues
+256 sprites; CharSelectLoadPortrait 06:6D9A unbalances the stack for an empty previous slot (never reached);
+GetCourseField 0F:4613 reads the last item for index 0 and FindModeIndex 0D:70A9 gives index 0 (the list's pad byte)
+for wGameMode 0; BuildCourseList leaves the count byte at $D658 0; GetTextBoxWidth 05:615D (SizeMessageBox 05:5B3B)
+rebuilds the message window's record, slot 0's when there is none (with a zero pointer: writes to the MBC's RAM
+enable register); SaveBlockLoad / SaveBlockStore write a block's size low byte as the SRAM bank; SaveBlockStore
+rewrites the directory defaults each time. The film-strip select code is the same in banks 0D and 0F at shifted
+addresses. Not ported: saved games (loading, saving, the new character's naming and story), link play, Tournament,
+Training, the map engine after the enter script (ScriptEnd and the map's event loop after a round).
 
 #### Match play and the contests (web/js/golf/match.js)
 
@@ -183,9 +253,12 @@ contests of two-player rounds (InitHoleContest, UpdateHoleContest, AddContestWin
 match; quirks kept: PrintHexByte prints four hex digits (its skip of the first two is lost), the contest and
 match routines print to the debug text buffer `$CC00`. `golf_native_round.mjs match18` (tools/round_suite.py
 match18: the computer as Mario against the computer as Luigi, player 2's record from tools/player_record.py)
-matches all 102 outcomes and the records at the 16 hole ends (the match is decided on hole 16). Not ported yet:
-the match standings screen between holes (3E:675C ShowStandingsFar, bank 3E), the two-player scorecard pages and
-RoundResultScreen 0B:59DE (display only; a native match round runs headless).
+matches all 102 outcomes and the records at the 16 hole ends (the match is decided on hole 16). The screens are
+ported too: the match standings between holes (MatchStandingsScreen 3E:403F, standings.js: tallies, the holes-won
+marks, "n Up" / dormie, the banners, the portraits, MatchStandingsTask), the scorecard's match-play page (0E:762F,
+scorecard.js) and the result screen (RoundResultScreen 0B:59DE, result.js: map graphics from bank 0B, the map's
+actors (bank 04's script engine), confetti, the palette cycle); the match18 render test above runs all of it.
+Not ported: the two-player stroke result (0B:6143) and the tournament placing (0B:5B00).
 
 #### The hole set-up (GolfRound 10:4451, per hole 10:44B4; tools/sm83_calltree.py lists what it calls)
 
@@ -388,6 +461,11 @@ that, and `scan_jumptables.kind()` now uses it.
   at 03:5750 (variable width).
 - **Control codes**: the printer 05:5235 ends on `$00`, reads `$0E`'s argument byte into `$C361`, sends every
   byte below `$20` to the handler table at 05:592C (dispatcher 05:58E2), and maps `$DE`/`$DF` to handlers `$1E`/`$1F`.
+- **Native** (web/js/golf/text.js, windows.js): the glyph renderer of bank 03 (DrawGlyph, the pen, the glyph
+  buffer and its uploads), PrintTextToBuffer 05:62AA with codes `$04 $07 $08 $09 $0B $0E $0F`, the window printer
+  PrintText 05:5235 with `$00/$01`, the argument lists and TextCharDelay are ported; `web/tests/golf_text_routines.mjs`
+  fuzzes 34 of them against the ROM from random RAM, VRAM and registers (300 states each, all equal). PrintText's
+  wrap of the shadow address at a row's end restores the old value (`push de ... pop de`): it does nothing.
 
 | Code | Handler | Meaning (from the handler; text examples in `docs/text_dump.txt`) |
 |------|---------|-----------------------------|
@@ -1223,6 +1301,15 @@ DrawStringToWindow 05:65FF (characters as tile numbers straight into a window re
 Flag". Scene = DebugWarpMenu 05:6C25 (pick a MapTable record by index with its name, text `$012C + n`, and an
 entrance 0-15; A sets wMapId / wMapEntrance and `$C441 = $FA`); Map = farcall 0B:4579; Palette = farcall 44:42FB;
 Flag = DebugFlagEditor 05:6A57 (4 pages of 64 game flags `$C840`; A toggles, Start next page, tiles `$65`/`$40`).
+
+**Native** (windows.js, pause.js): the slots and records (AllocWindowSlot, BuildTextWindowRecord, DrawWindowToShadow,
+FreeWindowSlot), UpdateWindows, CopyWindowRowsFramed, MeasureTextBox, OpenMenuWindow, RunMenu 05:4CD7 and
+MenuCursorTask, and the golf pause menu (08:4666, GolfPauseMenuSave 41:6E96 / Save2 41:6EBB, RunMenu 41:6FF4,
+QueueFontTiles 01:422C): B / Start close it, Scorecard shows 0E:43D6 and returns `$FF`, which makes ShotSetup load
+the hole's info and start the scene again (10:489D) before aiming on. Camera Mode, Course Map, Settings, Give Up
+and Save & Quit are not ported. Quirks: FreeWindowSlot frees the buffer whose number is the slot's (a slot whose
+number is not a used buffer stays); CloseWindow indexes 16-bit (CloseMessageWindow without a message window marks
+$DBFD); RunMenu tests the paged flag of slot 0's record (a is 0 there), not the menu's.
 
 **Leftovers / oddities.**
 - No callers (dead code): ClearBGShadow 05:40E6, DebugHDMAShadowToVRAM 05:4102 (HDMA while A is held),
