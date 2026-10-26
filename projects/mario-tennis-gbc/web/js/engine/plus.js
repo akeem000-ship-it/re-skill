@@ -2,11 +2,13 @@
 // made without PLAY+ replay without it). Each hook is called from the routine it changes:
 //   momentum   three points in a row in your favour and your shots leave the racket about 6% faster until you lose a point
 //              (flow.js scorePoint counts the run, shot.js finalizeShotSpeed applies it)
-//   stamina    each swing tires the player who makes it, the charged ones most: a point's effort counts 2 for a quick swing,
-//              up to 5 for one charged in full and one more for a power shot (plusSwing, shot.js executeShot), back to 0 at every
-//              point. Past 10 + e of effort a player runs up to 12% slower and past 12 + e hits up to 8% softer (chars.js
+//   stamina    running and swinging tire every player, CPU or not, the charged swings most: a point's effort counts 1 for every
+//              650 units run in the rally (plusMove, chars.js updateChar: a player runs about that much a swing), 1 for a quick
+//              swing, up to 4 for one charged in full and one more for a power shot (plusSwing, shot.js executeShot); back to 0
+//              at every point. Past 10 + e of effort a player runs up to 12% slower and past 12 + e hits up to 8% softer (chars.js
 //              clampCharXSpeed / clampCharDepthSpeed, shot.js finalizeShotSpeed): a rally of quick swings tires as the rally's
-//              length used to (each player's swings are half its shots). e is the player's endurance from their STAMINA s (plusStamina, as each is loaded): e = 16 s / (s + 16), the slope easing by 30 / (30 + s).
+//              length used to (each player's swings are half its shots). The match HUD's meters (staminameter.js) read
+//              plusStaminaGauge. e is the player's endurance from their STAMINA s (plusStamina, as each is loaded): e = 16 s / (s + 16), the slope easing by 30 / (30 + s).
 //              s is the character's speed skills (SPEED, DASH, REACTION, STOP: their mean, 0-9) plus: 2 in an exhibition (both
 //              sides alike: an average character keeps the 14 / 16 shots of before); 2 a STAMINA level for the tour's player and
 //              partner (record +$3F, given at a level-up: port/menus/char_data/screen.js); for the tour's opponents a curve by
@@ -68,13 +70,13 @@ export function plusStamina(E, r8) {
   else if (story) { const k = tourStage(m); if (k >= 0) s = base + Math.round(14 * k); }
   (E.stamina || (E.stamina = [6, 6, 6, 6]))[C.index] = s;
 }
-const staminaOf = E => (E.stamina ? E.stamina[E.C.index & 3] : 6);
-// the hitter's / runner's endurance in shots, less up to 6 for a tired tour player's side (TOUR+)
-function endurance(E) {
-  const s = staminaOf(E), tired = !(E.C.index & 1) && storyMatch(E.mem.u8(0xC8A6)) ? E.plus.fatigue || 0 : 0;
+const staminaOf = (E, i = E.C.index & 3) => (E.stamina ? E.stamina[i] : 6);
+// character i's endurance in effort, less up to 6 for a tired tour player's side (TOUR+)
+function endurance(E, i = E.C.index & 3) {
+  const s = staminaOf(E, i), tired = !(i & 1) && storyMatch(E.mem.u8(0xC8A6)) ? E.plus.fatigue || 0 : 0;
   return Math.round(16 * s / (s + 16) - 6 * tired);
 }
-const slope = E => 30 / (30 + staminaOf(E));
+const slope = (E, i = E.C.index & 3) => 30 / (30 + staminaOf(E, i));
 // a point's effort so far, by character (E.effort), cleared when the rally count starts again (a new point or serve)
 function effort(E) {
   const r = E.S.rallyLength;
@@ -82,14 +84,27 @@ function effort(E) {
   E.effortRally = r;
   return E.effort;
 }
-// STAMINA (shot.js executeShot, the shot's handler done): the swing's effort to the hitter: 2, + up to 3 by the charge
+// STAMINA (shot.js executeShot, the shot's handler done): the swing's effort to the hitter: 1, + up to 3 by the charge
 // (wShotChargeLevel, the swing's windup frames: a quick swing has under 8, a full charge 63), + 1 for a power shot
 export function plusSwing(E) {
   const P = E.plus; if (!P || !P.stamina) return;
   const S = E.S, c = Math.min(S.shotChargeLevel, 63), power = S.lastShotWasPowerShot || S.specialShotFlag ? 1 : 0;
-  effort(E)[E.C.index & 3] += 2 + 3 * Math.max(0, c - 8) / 55 + power;
+  effort(E)[E.C.index & 3] += 1 + 3 * Math.max(0, c - 8) / 55 + power;
+}
+// STAMINA (chars.js updateChar, after the move): running in a rally (the serve hit, no outcome yet) costs 1 per 650 units
+export function plusMove(E) {
+  const P = E.plus, S = E.S; if (!P || !P.stamina || !S.rallyLength || S.pointOutcome) return;
+  const C = E.C, v = Math.hypot(C.velX << 16 >> 16, C.velDepth << 16 >> 16) / 256;
+  if (v < 64) effort(E)[C.index & 3] += v / 650;
 }
 const effortOf = E => effort(E)[E.C.index & 3];
+// STAMINA for the HUD: character i's stamina left, 1 (fresh) .. 0 (as slow as it gets), and whether they are tiring (past
+// the running threshold); null while PLAY+ stamina is off or no match has run
+export function plusStaminaGauge(E, i) {
+  const P = E.plus; if (!P || !P.stamina || !E.effort) return null;
+  const t = 10 + endurance(E, i), empty = t + 20 / slope(E, i), r = effort(E)[i];
+  return { left: Math.max(0, 1 - r / empty), tiring: r > t, mark: 1 - t / empty };
+}
 // the court's friction and bounce bytes (enhanced.js): [friction, bounce]
 export function plusSurface(E, fB, eB) {
   const P = E.plus; if (!P || !P.courts) return [fB, eB];

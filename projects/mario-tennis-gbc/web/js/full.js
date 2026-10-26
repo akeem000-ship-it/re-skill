@@ -19,6 +19,7 @@ import { attachMenuWheel } from "./menuwheel.js";
 import { addCourtButton } from "./courtconcepts.js";
 import { addFarEndButton } from "./farwalls.js";
 import { attachMatchFx } from "./matchfx.js";
+import { StaminaMeter } from "./staminameter.js";   // STAMINA METER: each player's stamina in a match (PLAY+)
 import { attachFieldLife } from "./fieldlife.js";
 import { attachCloseCall } from "./closecall.js";   // CALLS: the TV line-call review after a close bounce
 import { attachGround } from "./ground.js";     // GROUND: grass, leafy trees, brick path edging and pebbles on the overworld
@@ -160,8 +161,10 @@ function frame() {
   rec.frame(gb, mask); session.frame(gb, mask);
   creator.frame(); deck.frame(); tour.frame(); modes.frame();
   if (port && port.plus) port.plus.fatigue = tour.fatigue();   // TOUR+: a tired player (PLAY+ stamina)
+  stamMeter.frame(port, view3d && voxel && voxel.mode === "3d" ? $("gl") : cv, onCourt());   // STAMINA METER
   if (audioReady && anode) { const n = gb.apu.drain(abuf); if (n) anode.port.postMessage(abuf.slice(0, n)); } else gb.apu.outPos = 0;
 }
+const stamMeter = new StaminaMeter();
 let drawnFrame = -1;
 const wideImg = g.createImageData(WIDE_W, WIDE_H), wideBuf = new Uint32Array(wideImg.data.buffer), wideIdx = new Uint8Array(WIDE_W * WIDE_H);
 const onCourt = () => gb.mem.wram[0][0x32E] <= 15;   // wCurMapID: courts (the map is wider than the screen)

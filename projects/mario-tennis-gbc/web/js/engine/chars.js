@@ -14,7 +14,7 @@
 import * as ball from "./ball.js";
 import * as shot from "./shot.js";
 import * as ai from "./ai.js";
-import { plusRunSpeed, plusTourDifficulty, plusStamina } from "./plus.js";   // PLAY+
+import { plusRunSpeed, plusTourDifficulty, plusStamina, plusMove } from "./plus.js";   // PLAY+
 
 export const CHARSTATE = { INERT: 0, RALLY: 1, RECOVER: 2, SERVE: 3, AWAIT_SERVE: 4, STANDBY: 5, WALK: 6, POINT_END: 7 };
 export const CHARANIM = {
@@ -176,6 +176,7 @@ export function updateChar(E) {
   checkCharBallContact(E);
   updateCharVelocityFromInput(E);
   stepCharMovement(E);
+  if (E.plus) plusMove(E);                                               // PLAY+: running tires (STAMINA)
   stepCharJumpPhysics(E);
   easeCharFacing(E);
   stepCharAnimation(E);
