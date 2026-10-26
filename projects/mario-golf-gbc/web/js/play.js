@@ -2,12 +2,13 @@
 // its display model drawn by js/golf/render/raster.js, the native sound driver (js/sound) through Web Audio, with
 // keyboard / gamepad / touch input. The round is a generator (js/golf/game.js playRoundFrames): each next() runs
 // the game's code for one frame (up to its next AdvanceFrame 00:2E3B), at the hardware's 59.73 frames per second.
-// The menus are not ported: the round starts as a new game's Stroke round or match against the computer would
-// (js/golf/start.js; the page's mode selector).
+// The page starts at power-on: the title, the menus (one player, a preset golfer; Stroke), then the round
+// (js/golf/boot.js, modesel.js). The mode selector can also start a round directly as a new game's Stroke round or
+// match against the computer would (js/golf/start.js).
 // window.__golf exposes the running state for tests (web/tests/play_page.mjs).
 import { useRom } from "./golf/rom.js";
 import { GolfMemory, playerField } from "./golf/memory.js";
-import { playRoundFrames } from "./golf/game.js";
+import { playRoundFrames, playFromPowerOn } from "./golf/game.js";
 import { strokeRoundSetup, matchRoundSetup } from "./golf/start.js";
 import { initDisplay } from "./golf/render/display.js";
 import { rasterize } from "./golf/render/raster.js";
@@ -92,20 +93,24 @@ function initAudioSoon() { if (driver) initAudio(); }
 // ---- the round ----
 function newRound() {
   const w = new GolfMemory();
-  const seed = crypto.getRandomValues(new Uint16Array(1))[0];   // (the menus' frames would have moved the seed)
-  const mode = $("mode").value;                    // "stroke", or "match:N" against preset golfer N
-  const holes = mode.startsWith("match:") ? matchRoundSetup(w, { golfer: 8, opponent: +mode.slice(6), course: 1, seed })
-    : strokeRoundSetup(w, { golfer: 8, course: 1, seed });
+  const mode = $("mode").value;                    // "title" (power-on), "stroke", or "match:N" against preset golfer N
+  let holes = 0;
+  if (mode !== "title") {
+    const seed = crypto.getRandomValues(new Uint16Array(1))[0];   // (the menus' frames would have moved the seed)
+    holes = mode.startsWith("match:") ? matchRoundSetup(w, { golfer: 8, opponent: +mode.slice(6), course: 1, seed })
+      : strokeRoundSetup(w, { golfer: 8, course: 1, seed });
+  }
   initDisplay(w);
   driver = new SoundDriver(rom);
   apu = new SynthAPU(RATE);
   apu.writeAll(driver.init());                     // SoundInit 7E:4072 at power-on
   w.onSound = id => apu.writeAll(driver.playSound(id));   // rst $08 PlaySoundCmd 00:2BBB
-  w.onSound(0x01);                                 // ModeSelectMain plays song 1 in the menus (32:508B); the round's own songs follow
-  game = { w, g: null, frames: 0, done: null, error: null, mark: "", marks: [], shots: [], holes: 0 };
+  if (mode !== "title") w.onSound(0x01);           // ModeSelectMain plays song 1 in the menus (32:508B); the round's own songs follow
+  game = { w, g: null, frames: 0, done: null, error: null, mark: mode === "title" ? "menus" : "", marks: [], shots: [], holes: 0 };
   const ev = (kind, name) => { if (kind === "M") { game.mark = name; game.marks.push([game.frames, name]); } };
-  game.g = playRoundFrames(w, holes, held, { ev, maxHoles: Infinity,
-    onShot: s => game.shots.push(s.outcome), onHoleEnd: r => { game.holes = r.holes.length; } });
+  const opts = { ev, maxHoles: Infinity, onShot: s => game.shots.push(s.outcome), onHoleEnd: r => { game.holes = r.holes.length; },
+    onRoundStart: () => { game.mark = "round"; } };
+  game.g = mode === "title" ? playFromPowerOn(w, held, opts) : playRoundFrames(w, holes, held, opts);
   window.__golf = game;
   $("message").textContent = "";
 }
@@ -125,7 +130,7 @@ function showMessage(text) {
   const m = $("message");
   m.textContent = text;
   const b = document.createElement("button");
-  b.textContent = "New round"; b.onclick = () => { newRound(); canvas.focus(); };
+  b.textContent = $("mode").value === "title" ? "Power on again" : "New round"; b.onclick = () => { newRound(); canvas.focus(); };
   m.appendChild(b);
 }
 $("mode").addEventListener("change", () => { if (rom) { newRound(); canvas.focus(); } });

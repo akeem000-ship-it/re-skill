@@ -6,7 +6,10 @@
 // With --match the page's mode selector picks match play against Luigi (the computer plays its own turns; the test
 // plays the human's).
 // With --pause the first aiming menu opens the pause menu (Start), picks Scorecard, leaves it and aims on.
-// usage: node web/tests/play_page.mjs [shots=3] [outdir=out] [--match] [--pause]
+// By default the page starts at power-on and the test goes through the menus (A skips the demo, Start on the title,
+// A on the link menu, Right to Mario and A in the character select, A for Stroke and course 1); --stroke starts the
+// round directly (the page's selector).
+// usage: node web/tests/play_page.mjs [shots=3] [outdir=out] [--match] [--stroke] [--pause]
 import { createRequire } from "module";
 import http from "http";
 import fs from "fs";
@@ -16,6 +19,7 @@ const { chromium } = createRequire(import.meta.url)("playwright");
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const match = process.argv.includes("--match");
 const pause = process.argv.includes("--pause");
+const direct = process.argv.includes("--stroke");
 const [shotsArg = "3", outDir = path.join(root, "out")] = process.argv.slice(2).filter(a => !a.startsWith("--"));
 const want = +shotsArg;
 fs.mkdirSync(outDir, { recursive: true });
@@ -39,6 +43,9 @@ await page.waitForFunction(() => window.__golf && window.__golf.frames > 0, null
 if (match) {
   await page.selectOption("#mode", "match:9");
   await page.waitForFunction(() => window.__golf && window.__golf.w.wram[0][0x834] === 2 && window.__golf.frames > 0, null, { timeout: 30000 });
+} else if (direct) {
+  await page.selectOption("#mode", "stroke");
+  await page.waitForFunction(() => window.__golf && window.__golf.mark !== "menus" && window.__golf.frames > 0, null, { timeout: 30000 });
 }
 
 const state = () => page.evaluate(() => { const g = window.__golf;
@@ -55,7 +62,26 @@ let shotN = 0;
 const shot = async name => page.locator("#screen").screenshot({ path: path.join(outDir, `play_${String(shotN++).padStart(2, "0")}_${name}.png`) });
 
 const log = [];
+// the menus: which screen the page is on, by its frame tasks (the title's PRESS START 40:4D1D, the character
+// select's cursor 06:65D9 with the cursor at WRAM6 $D214)
+const screenNow = () => page.evaluate(() => {
+  const w = window.__golf.w, t = w.wram[0];
+  const has = (b, a) => { for (let p = 0x1C0; p < 0x200; p += 4) if (t[p] && t[p + 3] === b && (t[p + 1] | t[p + 2] << 8) === a) return true; return false; };
+  return { mark: window.__golf.mark, error: window.__golf.error, title: has(0x40, 0x4D1D), chars: has(0x06, 0x65D9), cursor: w.wram[6][0x214] };
+});
 try {
+  if (!match && !direct) {
+    let shots = 0;
+    for (;;) {
+      const st = await screenNow();
+      if (st.error || st.mark !== "menus") break;
+      if (st.title) { if (!shots++) await shot("title"); await press("Enter"); }
+      else if (st.chars && st.cursor !== 4) await press("ArrowRight");
+      else { if (st.chars) await shot("character_select"); await press("KeyZ"); }
+      await untilFrames((await frames()) + 40);
+    }
+    log.push(`menus done at frame ${await frames()}`);
+  }
   for (let k = 0; k < want; k++) {
     await until(() => (window.__golf.mark === "aimmenu" && !window.__golf.w.wram[0][0x835]) || window.__golf.error, null, 600000);
     await untilFrames((await frames()) + 40);     // the menu's HUD frames

@@ -4,6 +4,7 @@
 import { Shot, runSync } from "./shot.js";
 import * as H from "./hole.js";
 import * as R from "./round.js";
+import { powerOn } from "./boot.js";
 
 // onShot(info) is told each shot's outcome; returns the outcomes and each hole's strokes and putts. A generator:
 // each next() runs one frame (shot.js Shot.advance); playRound() below runs it to the end.
@@ -29,3 +30,11 @@ export function* playRoundFrames(w, roundId, input, { ev = () => {}, maxHoles = 
 }
 
 export function playRound(...args) { return runSync(playRoundFrames(...args)); }
+
+// the game from power-on: the title and the menus (boot.js, modesel.js), then the round they start
+export function* playFromPowerOn(w, input, opts = {}) {
+  const sh = new Shot(w, null, opts.ev || (() => {}), input);
+  const holes = yield* powerOn(sh);
+  if (opts.onRoundStart) opts.onRoundStart(holes);
+  return yield* playRoundFrames(w, holes, input, opts);
+}

@@ -35,7 +35,8 @@
   </div>
   <div id="message" class="dim"></div>
   <div id="modes" class="dim">
-    <label>Round <select id="mode">
+    <label>Start <select id="mode">
+      <option value="title">Power on: the title and the menus</option>
       <option value="stroke">Stroke: Mario, 18 holes</option>
       <option value="match:9">Match play: Mario vs Luigi (computer)</option>
       <option value="match:4">Match play: Mario vs Putts (computer)</option>
@@ -62,9 +63,10 @@
   <section id="note" class="panel dim">
     <p>This page runs the game's own rules rewritten in JavaScript (<code>web/js/golf</code>), with no Game Boy CPU:
       the shots, the ball, the computer's play, the course drawing, the HUD, the sprites and the sound driver.</p>
-    <p>The title screen and the menus are not ported yet, so it starts straight at a round as a new game would:
-      Mario on course 1, a <b>Stroke</b> round of 18 holes, or <b>match play</b> against a computer golfer (the
-      selector below the screen), with the standings between holes, the scorecard and the result screen.
+    <p>It starts at power-on: the opening picture, the demo, the title, then the menus as far as a new game has
+      them (one player, a preset golfer, <b>Stroke</b>, the course). The selector below the screen can also start
+      straight at a round as a new game would: Mario on course 1, a Stroke round of 18 holes, or <b>match play</b>
+      against a computer golfer, with the standings between holes, the scorecard and the result screen.
       <kbd>Start</kbd> while aiming opens the pause menu (its Scorecard works; the other items are not ported yet).</p>
     <p>Aim with ◀ ▶, change club with ▲ ▼, <kbd>B</kbd> for the shot type, <kbd>Select</kbd> to look at the pin,
       <kbd>A</kbd> to address the ball, then <kbd>A</kbd> for power and <kbd>A</kbd> for impact.</p>
