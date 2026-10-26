@@ -3,8 +3,8 @@
 // Scorecard / Settings / Give Up / Save & Quit" (text $1482; "Quit" $1483 without a save slot) in a menu window
 // (windows.js) run by RunMenu 41:6FF4. B or Start closes it (result 0: back to aiming); an item's handler sets
 // wMenuResult $C3FD ($FF after Camera Mode, Course Map and Scorecard: the shot view is redrawn; $81 Give Up, $80
-// Quit). Ported items: Camera Mode (freelook.js), Scorecard, Settings, Give Up, Quit / Save & Quit (with the message
-// box: msgbox.js); Course Map is not.
+// Quit). All the items are ported: Camera Mode (freelook.js), Course Map (coursemap.js), Scorecard, Settings, Give
+// Up, Quit / Save & Quit (with the message box: msgbox.js).
 import { rw } from "./rom.js";
 import * as D from "./render/display.js";
 import * as W from "./windows.js";
@@ -13,6 +13,7 @@ import { showScorecard } from "./scorecard.js";
 import * as M from "./msgbox.js";
 import * as T from "./text.js";
 import { freeLookCursor } from "./freelook.js";
+import { courseMapScreen } from "./coursemap.js";
 import { saveGame } from "./save.js";
 import { playerField } from "./memory.js";
 
@@ -238,6 +239,11 @@ function* menuHandler(sh, h) {
     }
     case 0x744B: case 0x757B:                    // Camera Mode: 41:7879 FreeLookMenuHandler (12:6D3D), wMenuResult $FF
       yield* inBankGen(w, 0x12, freeLookCursor(sh));
+      wr(w, 0xC3FD, 0xFF);
+      clearMenuState(w);
+      return;
+    case 0x7451: case 0x7581:                    // Course Map: 41:7882 MenuShowCourseMap (17:437D), wMenuResult $FF
+      yield* inBankGen(w, 0x17, courseMapScreen(sh));
       wr(w, 0xC3FD, 0xFF);
       clearMenuState(w);
       return;

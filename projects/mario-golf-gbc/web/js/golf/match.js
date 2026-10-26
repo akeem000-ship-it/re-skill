@@ -34,7 +34,7 @@ const hexDigit = v => (v < 10 ? 0x30 + v : 0x37 + v);
 export function printHexByte(w, a, de) {
   printString(w, [0x30, 0x30, hexDigit(a >> 4), hexDigit(a & 0x0F), 0], de >> 8, de & 0xFF);
 }
-function printDecimalByte(w, a, de) {            // 00:22D2 PrintDecimalByte (width 4)
+export function printDecimalByte(w, a, de) {     // 00:22D2 PrintDecimalByte (width 4)
   printString(w, formatDecimalNumber(a, 4), de >> 8, de & 0xFF);
 }
 

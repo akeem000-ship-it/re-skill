@@ -3,6 +3,7 @@
 // 10:6E99 to the outcome. Graphics, sprites and sounds are left out; what they would do goes to fx.
 import { moreArrowTask } from "./text.js";
 import { expCharSpriteTask, expDrawCounters, yesNoCursorTask } from "./exp.js";
+import { countLoadFramesTask17, courseMapTask } from "./coursemap.js";
 import { rb } from "./rom.js";
 import * as g from "./math.js";
 import * as B from "./ball.js";
@@ -180,6 +181,8 @@ export class Shot {
       "05:4f20": () => menuCursorTask(w),              // 05:4F20 MenuCursorTask
       "05:53f9": () => moreArrowTask(w),               // 05:53F9 MoreArrowTask
       "48:4336": () => expCharSpriteTask(w),           // 48:4336 ExpCharSpriteTask
+      "17:43a7": () => countLoadFramesTask17(w),       // 17:43A7 CountLoadFramesTask_17
+      "17:43ac": () => courseMapTask(this),            // 17:43AC CourseMapTask
       "48:4b05": () => expDrawCounters(w),             // 48:4B05 ExpDrawCounters
       "48:42f7": () => yesNoCursorTask(w),             // 48:42F7 YesNoCursorTask
       "04:4234": () => actorsUpdateTask(w),            // 04:4234

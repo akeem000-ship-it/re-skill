@@ -145,7 +145,7 @@ function* cpuAim(sh) {
   return 0;
 }
 
-function aimStep(w) {                            // 08:60E6 AimStepForDistance and 10:5EB9 AimStepAccel
+export function aimStep(w) {                     // 08:60E6 AimStepForDistance and 10:5EB9 AimStepAccel
   const r6 = w.wram[6];
   const hl = L.baseDistance(w);
   let bc = rw(0x08, (0x6110 + ((hl >> 4) & 0xFFFE)) & 0xFFFF);   // AimStepTable 08:6110

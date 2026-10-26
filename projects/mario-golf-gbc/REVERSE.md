@@ -86,6 +86,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the front end: power-on (boot.js: SoftReset, GameMain, the save RAM's set-up, map 0's run with its actors and tile animation), the title and its demo (title.js, bank 40), LinkMenu (menu09.js), the character select (charsel.js, bank 06), the mode and course selects (select.js, banks 0D / 0F), ModeSelectMain (modesel.js) | 86,427 | 35.61% |
 | + saved games (save.js: bank 02's save code, SaveGame, RecordShot, the mid-round saves; loading a slot in ModeSelectMain) | 87,023 | 35.86% |
 | + the message box (msgbox.js, bank 05 / 0A), the pause menu's Give Up and Quit, the flow after a round (GolfSessionEnd, the map engine's next run), the EXP screen and AwardExpPoints (exp.js, bank 48) with the menu character sprite (charsprite.js, bank 42) | 93,495 | 38.52% |
+| + the rest of the pause menu: Settings, Camera Mode (freelook.js), Course Map (coursemap.js, bank 17) | 96,695 | 39.84% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -311,8 +312,12 @@ $C818 bits 0 / 1 and come back to 41:701E), the on / off icons of DrawMenuIcons 
 MenuCursorTask with flag #48 (05:500A; PutMenuTile 41:7BB4), ApplyMusicOption 00:2B98; quirk: match play's Settings
 reopens the stroke-play menu 41:743F) and Camera Mode (FreeLookCursor 12:6D3D: the look cursor, the course / green
 view switch 12:6EB8, PlaceTargetMarkerClamped 10:5A3C; quirk: on leaving, $D4D4 and wCameraMode get the pressed
-buttons; A does nothing outside debug mode) also run frame for frame (`boot_settings`, `boot_camera`). Not ported
-yet: Course Map (17:437D), Give Up after a stroke has not been run against the game, and a
+buttons; A does nothing outside debug mode) also run frame for frame (`boot_settings`, `boot_camera`), and so does
+the Course Map (`boot_coursemap`; coursemap.js, all of bank 17's screen: the record's nibble grid, the detail tiles
+packed from the overhead maps' terrain through the colour tables 17:4490 / 17:44A0, the overlay sprites, the side
+panel from the HUD's routines, the markers, CourseMapInput's club / shot mode / aim; quirk: its task's
+UpdateWindIndicator 12:50A0 reads wHudBusy and the wind animation counters $D326-$D328 in WRAM1, the bank the screen's
+loop leaves mapped, not WRAM6). Give Up after a stroke has not been run against the game, and a
 round saved by Save & Quit (`$C96D` = 1) loads through the summary prompt (32:7D35: the EXP screen of bank 48) to
 GolfRound `$FF`.
 

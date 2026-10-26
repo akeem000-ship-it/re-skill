@@ -388,8 +388,11 @@ export function markerIconFrame(w, a) {          // 12:508A MarkerIconFrame
   inBank(w, B, () => queueVRAMCopy(w, 0x6340 + ((a & 1) << 5), 0xA3E0, 2));
 }
 
-function updateWindIndicator(w) {                // 12:50A0 UpdateWindIndicator
-  const r = r6(w), w0 = w.wram[0];
+// (wHudBusy $D328, wWindAnim $D326 and $D327 are read in the mapped WRAM bank: WRAM6 from the HUD task, whatever the
+// caller left from the course map's task 17:43AC, WRAM1 there)
+export function updateWindIndicator(w) {         // 12:50A0 UpdateWindIndicator
+  const w0 = w.wram[0];
+  const r = new Proxy({}, { get: (_, k) => rd(w, 0xD000 + +k), set: (_, k, v) => { wr(w, 0xD000 + +k, v); return true; } });
   if (r[0x328] || !w0[0x815]) return;
   if (!r[0x326]) {
     const t = 0x5110 + ((w0[0x815] & 0x1E) << 1);

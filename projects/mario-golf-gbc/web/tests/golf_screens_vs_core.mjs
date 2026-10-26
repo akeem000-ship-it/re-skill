@@ -177,6 +177,12 @@ const CASES = [
     policy: (() => { const p = pausePolicy([[60, 8], [140, 1], [700, 2]]); return f => { const b = p(f);
       if (lastMark !== "aimmenu") return b; const d = f - markAt;
       return b | (d >= 250 && d < 340 ? 0x40 : d >= 340 && d < 380 ? 0x20 : d >= 450 && d < 600 ? 0x90 : 0); }; })() },
+  // Course Map (Down, A): Up (a club up), Left held (the aim), B (the shot mode), Right, Down; A leaves
+  { name: "boot_coursemap", state: "boot_poweron", open: true, noRet: true,
+    run: sh => gameCase(sh, 1, () => lastMark === "aimmenu" && frameNow > markAt + 1300),
+    policy: (() => { const p = pausePolicy([[60, 8], [130, 0x80], [170, 1], [500, 0x40], [600, 2], [700, 0x80], [800, 1]]); return f => { const b = p(f);
+      if (lastMark !== "aimmenu") return b; const d = f - markAt;
+      return b | (d >= 530 && d < 580 ? 0x20 : d >= 640 && d < 660 ? 0x10 : 0); }; })() },
   // the saved character's Stroke round: Save & Quit (Up: row 5), "Save current progress?" A (Yes): SaveGame, $C2A6 = 1:
   // GolfSessionEnd warps to map 0 entrance 1, the link menu (stopped 10 frames into it); the save RAM compared
   { name: "boot_kid_savequit", state: "boot_poweron_kid", open: true, noRet: true,

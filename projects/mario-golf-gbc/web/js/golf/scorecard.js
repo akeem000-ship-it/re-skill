@@ -128,7 +128,7 @@ function loadCommonGfx(w) {                      // 0E:42F0 ScorecardLoadCommonG
 
 // 12:6CF0 DrawFaceIcon: a = face ($FF none): 4 tiles 12:5730 + a x $40 to de (VRAM1 from $A000), palette 12:5B30 +
 // a x 8 (+$80 with c bit 4) to OBJ / BG palette b
-function drawFaceIcon(w, a, c, b, de) {
+export function drawFaceIcon(w, a, c, b, de) {
   if (a === 0xFF) return;
   D.inBank(w, 0x12, () => {
     w.lcd.vbk = 0;
