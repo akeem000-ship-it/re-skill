@@ -10,6 +10,7 @@ import { mapDrawFullScreen } from "./scorecard.js";
 import { initWindowSystem } from "./standings.js";
 
 const B = 0x0B;
+const testFlag = (w, n) => w.wram[0][0x840 + (n >> 3)] & (0x80 >> (n & 7));
 const rd = D.rd, wr = D.wr;
 const setW = (w, n) => D.setWramBank(w, n);
 const r16 = (w, a) => rd(w, a) | rd(w, (a + 1) & 0xFFFF) << 8;
@@ -82,25 +83,101 @@ export function* mapStartGfx(sh, a) {
 }
 
 // 0B:4900 MapGfxStartTileAnim: MapGfxAnimTable 0B:42C0 (sub id, bank slot) -> MapTileAnimStart in bank 28-2F, 72,
-// 73 or 74 (each bank has its own copy: 28:7D0B 29:7927 2A:76BF 2B:73ED 2C:7AD1 2D:739D 2E:79D5 2F:7D20 72:76BD
-// 73:76C7 74:79AE)
+// 73 or 74 (each bank has its own copy of the code: start / task, and its script table)
 const ANIM_BANKS = [0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x72, 0x73];
+const ANIM = {                                   // bank: [MapTileAnimStart, the script table]
+  0x28: [0x7D0B, 0x405E], 0x29: [0x7927, 0x403A], 0x2A: [0x76BF, 0x4028], 0x2B: [0x73ED, 0x403A],
+  0x2C: [0x7AD1, 0x405E], 0x2D: [0x739D, 0x4028], 0x2E: [0x79D5, 0x403A], 0x2F: [0x7D20, 0x403A],
+  0x72: [0x76BD, 0x403A], 0x73: [0x76C7, 0x403A], 0x74: [0x79AE, 0x403A],
+};
 export function mapGfxStartTileAnim(w, a) {
-  const p = (0x42C0 + ((a << 1) & 0x1FE)) & 0xFFFF;
+  const p = 0x42C0 + ((a << 1) & 0x1FE);
   const sub = rb(B, p), slot = rb(B, p + 1);
-  mapTileAnimStart(w, ANIM_BANKS[slot] ?? 0x74, sub);
+  const bank = ANIM_BANKS[slot] ?? 0x74;
+  D.inBank(w, bank, () => mapTileAnimStart(w, bank, sub));
 }
-// MapTileAnimStart (bank 28-2F / 72-74 export 0): $C32F = a; the four tracks' frame / timer $C330-$C337 = $FF / 1 and
-// their starts $C338-$C33B = $FF; the script bank:$403A[a] ($FE: no animation) is split into tracks and the bank's
-// MapTileAnimTask registered (that part is not ported)
+// MapTileAnimStart (28:7D0B and copies): $C32F = a; the four tracks' (frame offset, timer) $C330-$C337 = ($FF, 1) and
+// their starts $C338-$C33B = $FF; the script (table[a]; $FE first: no animation) is split at its $FF bytes: track 0
+// from offset 0 (timer 1), each next one from the byte after its first ($C338 + n and its offset = that + 1, its
+// timer = the first byte + 1); the last track before $FE is left unused; then the bank's MapTileAnimTask
 function mapTileAnimStart(w, bank, a) {
+  const [, table] = ANIM[bank];
   wr(w, 0xC32F, a);
   for (let k = 0; k < 4; k++) { wr(w, 0xC330 + 2 * k, 0xFF); wr(w, 0xC331 + 2 * k, 1); }
   for (let k = 0; k < 4; k++) wr(w, 0xC338 + k, 0xFF);
-  const s = rw(bank, (0x403A + ((a << 1) & 0x1FE)) & 0xFFFF);
-  if (rb(bank, s) === 0xFE) return;
-  throw new Error(`the map tile animation (~${bank.toString(16)}:741F, its tracks and task) is not ported`);
+  let de = rw(bank, (table + ((a << 1) & 0x1FE)) & 0xFFFF);
+  if (rb(bank, de) === 0xFE) return;
+  let sv = 0xC332;                               // (a stack variable: the next track's offset byte)
+  let b = 0xFF, c = 3;
+  wr(w, 0xC330, 0);
+  wr(w, 0xC338, 0);
+  let hl = 0xC339;
+  for (;;) {
+    b = (b + 1) & 0xFF;
+    const v = rb(bank, de); de = (de + 1) & 0xFFFF;
+    if (v === 0xFE) break;
+    if (v !== 0xFF) continue;
+    b = (b + 1) & 0xFF;
+    const o = (b + 1) & 0xFF;
+    wr(w, hl, o);
+    wr(w, sv, o); sv += 2;
+    const t = (rb(bank, de) + 1) & 0xFF; de = (de + 1) & 0xFFFF;
+    wr(w, 0xC330 + 2 * (4 - c) + 1, t);
+    hl++;
+    c--;
+    if (!c) break;
+  }
+  hl--;
+  wr(w, hl, 0xFF);
+  wr(w, sv - 2, 0xFF);
+  registerFrameTask(w, 0x01, bank, ANIM[bank][0] + 0xB6);   // MapTileAnimTask
 }
+// MapTileAnimTask (28:7DC1 and copies): unless flag #24 is set (and #28 clear), WRAM6: each track's timer down from
+// its start ($C338 + n, $FF ends the list: the loop reads on past track 3 while the timers run), a step at 0
+function mapTileAnimTask(w, bank) {
+  if (!testFlag(w, 28) && testFlag(w, 24)) return;
+  const old = w.high[0x196];
+  setW(w, 6);
+  let c = 0, hl = 0xC338;
+  for (let guard = 0; ; guard++) {
+    if (guard > 0x100) throw new Error("MapTileAnimTask: no $FF after the tracks (the game reads on)");
+    if (rd(w, hl) === 0xFF) break;
+    const t = (0xC330 + ((c << 1) & 0xFFFF) + 1) & 0xFFFF;
+    const a = (rd(w, t) - 1) & 0xFF;
+    wr(w, t, a);
+    hl = (hl + 1) & 0xFFFF;
+    const b = c; c = (c + 1) & 0xFF;
+    if (a) continue;
+    mapTileAnimStep(w, bank, b);
+    if (c === 4) break;
+  }
+  setW(w, old);
+}
+// MapTileAnimStep (28:7E08 and copies): track a's frame at its offset (src tile, count, dest tile, frames; $FF: back
+// to the track's start): count tiles from WRAM6 $D800 + 16 src queued to VRAM1 $9000 + 16 dest; the offset moves 4
+// (scratch $C33C), the timer = frames
+function mapTileAnimStep(w, bank, a) {
+  const [, table] = ANIM[bank];
+  wr(w, 0xC33C, rd(w, 0xC330 + 2 * a));
+  let hl;
+  for (;;) {
+    hl = (rw(bank, (table + ((rd(w, 0xC32F) << 1) & 0x1FE)) & 0xFFFF) + rd(w, 0xC33C)) & 0xFFFF;
+    if (rb(bank, hl) !== 0xFF) break;
+    wr(w, 0xC33C, rd(w, 0xC338 + a));
+  }
+  const src = rb(bank, hl), n = rb(bank, hl + 1), dest = rb(bank, hl + 2), frames = rb(bank, hl + 3);
+  D.queueVRAMCopy(w, (0xD800 + (src << 4)) & 0xFFFF, (0xB000 + (dest << 4)) & 0xFFFF, n);
+  wr(w, 0xC33C, (rd(w, 0xC33C) + 4) & 0xFF);
+  wr(w, 0xC330 + 2 * a, rd(w, 0xC33C));
+  wr(w, 0xC331 + 2 * a, frames);
+}
+export const mapTileAnimTasks = w => {
+  const o = {};
+  for (const [bank, [start]] of Object.entries(ANIM)) {
+    o[`${(+bank).toString(16).padStart(2, "0")}:${(start + 0xB6).toString(16)}`] = () => mapTileAnimTask(w, +bank);
+  }
+  return o;
+};
 
 // 0B:49D3 MapCenterCamera: the scroll on the player actor ($C290) less 9.F / 10.F tiles, within the map bounds
 // (columns $C329 .. [$C32B] - $14, rows $C32A .. [$C32C] - $12); leaves WRAM4 mapped

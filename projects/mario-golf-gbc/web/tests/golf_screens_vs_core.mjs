@@ -17,6 +17,7 @@ import { linkMenu } from "../js/golf/menu09.js";
 import { characterSelectScreen } from "../js/golf/charsel.js";
 import { gameModeSelect, courseSelect } from "../js/golf/select.js";
 import { modeSelectMain } from "../js/golf/modesel.js";
+import { powerOn } from "../js/golf/boot.js";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const filter = process.argv.slice(2).find(a => !a.startsWith("--")) || "";
@@ -93,6 +94,9 @@ const CASES = [
   // is then into GolfRound's first frame: $C833 $C839 $C96D $D4F0 and hFF96 differ)
   { name: "boot_modeselectmain", state: "boot_modeselectmain", open: true, noRet: true,
     run: sh => { menuW = sh.w; return inBank(sh, 0x32, modeSelectMain(sh)); }, policy: frontEndPolicy },
+  // power-on (00:0100, an empty save RAM) to the Stroke round's GolfRound call, the same buttons
+  { name: "boot_poweron", state: "boot_poweron", open: true, noRet: true,
+    run: sh => { menuW = sh.w; return powerOn(sh); }, policy: frontEndPolicy },
 ];
 
 let bad = 0;

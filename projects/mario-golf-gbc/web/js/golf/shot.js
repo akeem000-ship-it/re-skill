@@ -22,6 +22,8 @@ import { demoTasks } from "./title.js";
 import { menuBobSpriteTask } from "./menu09.js";
 import { charSelTasks } from "./charsel.js";
 import { selectTasks } from "./select.js";
+import { mapDebugCoordsTask } from "./boot.js";
+import { mapTileAnimTasks } from "./mapgfx.js";
 import { actorsUpdateTask, actorsDrawTask } from "./actors.js";
 import { confettiTask, resultPaletteCycleTask, resultSpriteTask } from "./result.js";
 import { mapScrollTask } from "./render/holeview.js";
@@ -186,6 +188,8 @@ export class Shot {
       "09:4990": () => menuBobSpriteTask(w),          // 09:4990 MenuBobSpriteTask09
       ...charSelTasks(w),                        // the character select (bank 06)
       ...selectTasks(w),                         // the mode and course selects (banks 0D, 0F)
+      "0a:4950": () => mapDebugCoordsTask(w),         // 0A:4950 MapDebugCoordsTask
+      ...mapTileAnimTasks(w),                    // the map tile animations (banks 28-2F, 72-74)
       ...D.displayTasks(this),                   // tasks that only draw (render/hooks.js)
     };
   }
