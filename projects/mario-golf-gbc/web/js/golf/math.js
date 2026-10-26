@@ -133,3 +133,38 @@ export function mulHLBySin(hl, a) {               // 00:0B3C MulHLBySin: 8-bit a
 export function vectorFromLengthAndAngleRaw(hl, a) {   // 00:0B31: [hl*sin(a+$40), hl*sin(a)]
   return [mulHLBySin(hl, (a + 0x40) & 0xFF), mulHLBySin(hl, a)];
 }
+// 00:0AF2 VectorFromLengthAndAngle: hl >> 4 (arithmetic), then [hl x cos(a) << 4, hl x sin(a) << 4] (00:0B3A
+// MulHLByCos is MulHLBySin of a + $40)
+export function vectorFromLengthAndAngle(hl, a) {
+  const h = ((hl & 0x8000 ? hl | 0xFFFF0000 : hl) >> 4) & 0xFFFF;
+  const s = mulHLBySin(h, a), c = mulHLBySin(h, (a + 0x40) & 0xFF);
+  return [(c << 4) & 0xFFFF, (s << 4) & 0xFFFF];
+}
+
+// 00:0A7B AngleFromVectorCoarse: the 8-bit angle of (y = hl, x = de) from the 16 slopes at 00:0AE1 (quarter
+// turns, then reflected by the signs)
+export function angleFromVectorCoarse(hl, de, rb0) {
+  let c = 0;
+  if (hl) {
+    c = 0x10;
+    if (de) {
+      let e = abs16(de), h = abs16(hl);
+      if ((h >> 8) >= 0x10) { e = e >> 2; h = (h << 2) & 0xFFFF; } else h = (h << 4) & 0xFFFF;
+      const q = divHLByDE(h, e);
+      c = 0x0F;
+      if (!(q >> 8)) {
+        const b = q & 0xFF;
+        c = 0xFF;
+        for (let p = 0x0AE1; ; p++) {
+          c = (c + 1) & 0xFF;
+          const a = rb0(p);
+          if (a === 0xFF || a >= b) break;
+        }
+      }
+    }
+  }
+  let a = (c << 2) & 0xFF;
+  if (de & 0x8000) a = (0x80 - a) & 0xFF;
+  if (hl & 0x8000) a = (-a) & 0xFF;
+  return a;
+}

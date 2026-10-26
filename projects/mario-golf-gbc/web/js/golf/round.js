@@ -18,6 +18,12 @@ import * as P from "./pictures.js";
 import { showScorecard } from "./scorecard.js";
 import { showCaptionAndWait } from "./captions.js";
 import * as M from "./match.js";
+import { roundResultScreen } from "./result.js";
+function* inBankGen(w, bank, g) {                // a far call to a routine that runs frames
+  const old = w.high[0x195];
+  w.high[0x195] = bank;
+  try { return yield* g; } finally { w.high[0x195] = old; }
+}
 
 export function advanceRandomSeed(w) {           // 00:0A61 AdvanceRandomSeed: seed ($FFFC) = seed x 5 + $3573
   const seed = w.high[0x1FC] | w.high[0x1FD] << 8;
@@ -432,7 +438,7 @@ export function* roundEnd(sh) {
       yield* roundEndFadeAndExp(sh);             // 08:4F03
       break;
     case 2:                                      // 08:4D7D RoundEndMode2Match
-      yield* M.roundResultScreen(sh, 0);         // 0B:59DE
+      yield* inBankGen(sh.w, 0x0B, roundResultScreen(sh, 0));   // 0B:59DE
       M.matchRoundEndFlags(w);
       addPointsRaw(w, 0x0A);
       yield* roundEndFadeAndExp(sh);             // 08:4F03

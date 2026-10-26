@@ -293,10 +293,6 @@ function* showStandingsFar(sh) {                 // 3E:675C ShowStandingsFar: fa
   yield* showScorecard(sh);
 }
 
-export function* roundResultScreen(sh, a) {       // ~0B:59DE RoundResultScreen: a = 0 match / 2 two-player stroke
-  void a;
-  if (sh.w.vram) throw new Error("the round result screen (~0B:59DE RoundResultScreen) is not ported");
-}
 
 // 08:4D7D-08:4E8C after a match: a win against golfers 4-$0A: the first-win EXP bonus (08:4E97 AwardFirstWinBonus:
 // game flags $0A00-$0B80 by golfer) and a save flag ($80-$140; 02:4522 SetSaveFlag sets bit e of SRAM $A038[d], its

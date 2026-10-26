@@ -12,6 +12,9 @@ import { GolfMemory } from "../../js/golf/memory.js";
 import { Shot } from "../../js/golf/shot.js";
 import { initDisplay, displayFromCore } from "../../js/golf/render/display.js";
 import { rasterize } from "../../js/golf/render/raster.js";
+import { applyPendingPaletteUpdates } from "../../js/golf/render/display.js";
+import { fadeVBlank, updateGameTimer } from "../../js/golf/screen.js";
+import { runFrameTasks } from "../../js/golf/tasks.js";
 import { loadState } from "../../js/gb/state.js";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../..");
@@ -20,7 +23,7 @@ const WRAM0_DISPLAY = [[0x000, 0x0A0], [0x100, 0x1C0], [0x1C0, 0x200], [0x200, 0
 
 // stateFile: out/...json from mkstate.mjs; run(sh, regs) -> the native routine (a generator); policy(frame) -> the
 // buttons held (default: A on alternate frames); returns { frames, pixelExact, modelExact, lag, bad: [...], end }
-export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFrames = 20000, verbose = false }) {
+export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFrames = 20000, verbose = false, trace = false, hook = null, lagVBlanks = true }) {
   useRom(new Uint8Array(fs.readFileSync(path.join(root, "rom/mario_golf.gbc"))));
   const saved = JSON.parse(fs.readFileSync(path.join(root, stateFile)));
   const core = new CoreRun();
@@ -36,11 +39,16 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
   initDisplay(w); displayFromCore(w, gb);
   w.high[0x195] = gb.mem.romBank;
   const res = { frames: 0, pixelExact: 0, modelExact: 0, lag: 0, bad: [], sounds: { core: [], native: [] } };
-  let frame = 0, vb = 0, early = false, lagFrames = new Set(), coreDone = false;
+  let frame = 0, vb = 0, partial = 0, partialSeen = 0, early = false, lagFrames = new Set(), coreDone = false;
   w.onSound = id => res.sounds.native.push(`${frame}:${h2(id)}`);
   const orig = core.step.bind(core);
   let lastSound = null;
+  let lastCall = "";
   core.step = () => {
+    if (trace && cpu.pc === 0x2E3B) {             // (trace: the caller of each of the game's AdvanceFrames)
+      const sp = cpu.sp, rd = a => gb.mem.read(a);
+      lastCall = `${gb.mem.romBank.toString(16)}:${(rd(sp) | rd(sp + 1) << 8).toString(16)}<${(rd(sp + 2) | rd(sp + 3) << 8).toString(16)}<${(rd(sp + 4) | rd(sp + 5) << 8).toString(16)}`;
+    }
     if (cpu.pc === 0x2BCA) {
       const key = `${frame}:${h2(cpu.a)}`;
       if (!(lastSound && lastSound.key === key && lastSound.sp === cpu.sp)) res.sounds.core.push(key);
@@ -48,11 +56,12 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
     }
     if (cpu.pc === 0x2EF9) {
       vb++;
+      if (gb.mem.hram[0x0D]) partial++;          // hVBlankDone still set: a VBlank of the every-frame work only
       const sp = cpu.sp, r = gb.mem.read(sp) | gb.mem.read(sp + 1) << 8;
       if (!(r >= 0x2EAC && r < 0x2EBF) && !gb.mem.hram[0x0D]) early = true;
     }
     orig();
-    if (!coreDone && cpu.pc === ret && cpu.sp === ((sp0 + 2) & 0xFFFF) && gb.mem.romBank === retBank) coreDone = true;
+    if (!coreDone && cpu.pc === ret && cpu.sp === ((sp0 + 2) & 0xFFFF) && gb.mem.romBank === retBank) { coreDone = true; res.coreA = cpu.a; res.coreFrame = frame; }
   };
   const runAhead = () => {                       // the core's code for the frame, to its next AdvanceFrame (or return)
     const m = gb.mem, read = m.read, seen = {};
@@ -62,16 +71,29 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
       if (a >= 0xFF90 && a <= 0xFF94 && !(a in seen) && (cpu.pc < 0x02EB || cpu.pc > 0x0341)) seen[a] = lag ? v : null;
       return v;
     };
+    partial = 0;
     core.step();
     while (!coreDone && cpu.pc !== 0x2E3B) { if (cpu.pc === 0x0340) lag = true; core.step(); }
+    let extra = partial; partialSeen = partial;
     delete m.read;
     for (const [a, v] of Object.entries(seen)) if (v !== null) w.high[a - 0xFE00] = v;
+    // the game's code ran past a VBlank that found the frame's VRAM work done (lag): that VBlank's every-frame work
+    // (00:2F46-00:2F64: the game timer, the fades, the palette update) runs on the native side too, before the
+    // native code of the frame, so that the code after it sees the same fade (the native code takes no CPU time)
+    lagWork(extra);
+  };
+  const lagWork = n => {
+    if (lagVBlanks) for (; n > 0; n--) {
+      applyPendingPaletteUpdates(w); updateGameTimer(w); fadeVBlank(w);
+      if (w.sh) runFrameTasks(w, true, w.sh.dispatch);
+      res.lagVBlanks = (res.lagVBlanks || 0) + 1;
+    }
   };
   const compare = () => {
-    const cd = core.display(), out = [];
+    const cd = core.display(), out = [], keys = [];
     const diff = (k, a, b, base) => {
       let n = 0, first = [];
-      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) { n++; if (first.length < 4) first.push(`$${h4(base + i)} js ${h2(a[i])} game ${h2(b[i])}`); }
+      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) { n++; keys.push(`${k}${base + i}`); if (first.length < 4) first.push(`$${h4(base + i)} js ${h2(a[i])} game ${h2(b[i])}`); }
       if (n) out.push(`${k}: ${n} (${first.join(", ")})`);
     };
     diff("vram0", w.vram[0], cd.vram[0], 0x8000); diff("vram1", w.vram[1], cd.vram[1], 0x8000);
@@ -81,24 +103,39 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
     const a = rasterize({ vram: w.vram, oam: w.oam, bgPal: w.bgPal, objPal: w.objPal, ...w.lcd }), b = rasterize(cd);
     let px = 0;
     for (let i = 0; i < a.length; i += 3) if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2]) px++;
-    return { out, px };
+    return { out, px, keys };
   };
+  const taint = new Set();                       // bytes that have differed in every frame since a lag frame
   const ev = kind => {
     if (kind === "F") {
       if (!core.at(0, 0x2E3B)) runAhead();       // (the first frame: the core's code from the entry)
       core.setHeld(policy(frame));
+      partial = 0;
       core.runToNext([[0, 0x2EBF]]);
       w.high.set(core.hram().subarray(0x10, 0x15), 0x190);
+      lagWork(partial);                          // (AdvanceFrame's halt woke at a VBlank that found the work done)
       return;
     }
     if (kind !== "V") return;
     const lagNow = vb > 1 || early;
+    res.vbs = res.vbs || []; res.vbs.push(vb + (early ? 'e' : '') + '/' + partialSeen);
     vb = 0; early = false;
     if (lagNow) lagFrames.add(frame);
     res.frames++;
-    const { out, px } = compare();
+    if (hook) hook(frame, w, core);
+    if (trace) {
+      const js = new Error().stack.split("\n").slice(2).map(l => (l.match(/at (?:Generator\.next \()?(\S+)/) || [])[1])
+        .filter(n => n && !n.startsWith("file") && !/\.next$|ev$|advance|runScreen/.test(n)).slice(0, 4).join("<");
+      console.log(`frame ${frame}: game ${lastCall} / js ${js}`);
+    }
+    const { out, px, keys } = compare();
     let lag = false;
     for (let f = frame - 3; f <= frame; f++) if (lagFrames.has(f)) lag = true;
+    const now = new Set(keys);
+    for (const k of taint) if (!now.has(k)) taint.delete(k);
+    if (lag) for (const k of keys) taint.add(k);
+    else if (keys.length && keys.every(k => taint.has(k))) lag = true;
+    if (trace && lagNow) console.log(`frame ${frame}: a lag frame`);
     if (!px) res.pixelExact++;
     if (!out.length) res.modelExact++;
     else if (lag) res.lag++;
@@ -117,7 +154,7 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
     if (core.at(0, 0x2E3B)) runAhead();
     while (!coreDone) core.step();
   }
-  res.coreA = cpu.a;
+
   const end = [];
   for (let b = 0; b < 8; b++) {
     let n = 0, first = [];

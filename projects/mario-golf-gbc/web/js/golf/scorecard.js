@@ -106,7 +106,7 @@ function strokesSetup(w) {                       // 0E:6CA8 ScorecardStrokesSetu
   });
   if (w0[0x837] >= 0x0A) w0[0x323] = 0x0C;       // the back nine in view
   w0[0x32C] = 0x1E;
-  if (w.vram) mapDrawFullScreen(w);             // 0B:4306 with a = 1
+  mapDrawFullScreen(w);                          // 0B:4306 with a = 1
   D.inBank(w, 0x04, () => mapScrollTask(w));     // 04:4072
   if (w.vram) D.enableLCD(w);                    // 00:0371
 }
@@ -222,6 +222,8 @@ function drawStrokesScorecard(w) {               // 0E:6E61 DrawStrokesScorecard
 // into the BG map (WRAM2 attributes -> VRAM1, WRAM3 tiles -> VRAM0). (When the source row wraps, the BG map
 // column wraps too.)
 export function mapDrawFullScreen(w) {
+  D.setWramBank(w, 3);                           // (it leaves WRAM3 mapped)
+  if (!w.vram) return;
   const w0 = w.wram[0];
   const x = w0[0x321], y = w0[0x323];
   const de0 = 0x9800 + ((((y & 0x1F) * 32) & 0xFF00) | ((((y & 0x1F) * 32) + (x & 0x1F)) & 0xFF));
@@ -305,7 +307,7 @@ function matchPlaySetup(w) {                     // 0E:7656 ScorecardMatchPlaySe
   else drawMatchPlayHoleResults(w);              // (headless: the holes-up count $C484 only)
   if (w0[0x837] >= 0x0A) w0[0x323] = 0x0A;
   w0[0x32C] = 0x1C;
-  if (w.vram) mapDrawFullScreen(w);              // 0B:4306 with a = 1
+  mapDrawFullScreen(w);                          // 0B:4306 with a = 1
   D.inBank(w, 0x04, () => mapScrollTask(w));     // 04:4072
   if (w.vram) D.enableLCD(w);                    // 00:0371
 }

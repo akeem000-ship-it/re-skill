@@ -64,7 +64,7 @@ export function actorSetCharacter(w, hl, a) {
     if (was) b--;
     actorLoadPalette(w, p, b, 0xC410);
   } else if (testGameFlag(w, 21)) {
-    actorLoadPalette(w, p, 3, (0x4D0B + ((r[p + 0x2D] - 4) & 0xFF) * 8) & 0xFFFF, 0x04);
+    actorLoadPalette(w, p, 3, 0x4D0B + ((((r[p + 0x2D] - 4) & 0xFF) << 3) & 0xFF), 0x04);
   }
   r[p + 0x28] = 0xFF; r[p + 0x29] = 0xFF;
   r[p + 0x35] = 1; r[p + 0x36] = 4;
@@ -87,7 +87,7 @@ export function actorSetAnim(w, hl, a) {         // 04:4E51 ActorSetAnim
 }
 
 // 04:4ACD ActorAnimStep: returns the frame (c); sound(id) for the list's $FC entries
-function actorAnimStep(w, p, sound) {
+export function actorAnimStep(w, p, sound) {
   const r = w.wram[4], bank = w.wram[0][0x286];
   let c;
   if (r[p + 0x34] || r[p + 0x2A]) c = r[p + 0x28];

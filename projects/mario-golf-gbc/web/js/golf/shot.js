@@ -17,6 +17,9 @@ import { showCaption, captionMotionTask, captionAnimTask } from "./captions.js";
 import * as P from "./pictures.js";
 import { scorecardStrokesTask, scorecardMatchPlayTask } from "./scorecard.js";
 import { matchStandingsTask } from "./standings.js";
+import { actorsUpdateTask, actorsDrawTask } from "./actors.js";
+import { confettiTask, resultPaletteCycleTask, resultSpriteTask } from "./result.js";
+import { mapScrollTask } from "./render/holeview.js";
 import { contestLeaderSpriteTask } from "./match.js";
 import { vblankDisplay, clearUnusedSprites } from "./render/display.js";
 import * as D from "./render/hooks.js";
@@ -146,6 +149,7 @@ export const TASKS = {
 export class Shot {
   constructor(w, hole, ev = () => {}, input = null) {
     this.w = w; this.hole = hole; this.ev = ev; this.input = input;
+    w.sh = this;                                 // (the frame runner of this memory: a test replays lag VBlanks with it)
     if (!w.tasks) w.tasks = taskFacade(w, TASKS); // the task table $C1C0 (tasks.js) as on/off flags
     this.t = w.tasks;
     this.fx = this.newFx();
@@ -164,6 +168,12 @@ export class Shot {
       "0e:6d47": () => scorecardStrokesTask(w),        // 0E:6D47
       "0e:76f5": () => scorecardMatchPlayTask(w),      // 0E:76F5
       "3e:465a": () => matchStandingsTask(w),          // 3E:465A
+      "04:4234": () => actorsUpdateTask(w),            // 04:4234
+      "04:4b69": () => actorsDrawTask(w, id => this.sound(id)),   // 04:4B69
+      "0b:4784": () => mapScrollTask(w),               // 0B:4784 MapGfxScrollTask: farcall 04:4072
+      "0b:5de1": () => confettiTask(w),                // 0B:5DE1
+      "0b:648f": () => resultPaletteCycleTask(w),      // 0B:648F
+      "0b:6694": () => resultSpriteTask(w),            // 0B:6694
       "08:439e": () => contestLeaderSpriteTask(w, 0),  // 08:439E
       "08:43ab": () => contestLeaderSpriteTask(w, 1),  // 08:43AB
       ...D.displayTasks(this),                   // tasks that only draw (render/hooks.js)

@@ -7,6 +7,7 @@ import path from "path";
 import { runScreen } from "./golf/screenstep.mjs";
 import { matchStandingsScreen } from "../js/golf/standings.js";
 import { showScorecard } from "../js/golf/scorecard.js";
+import { roundResultScreen } from "../js/golf/result.js";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const filter = process.argv.slice(2).find(a => !a.startsWith("--")) || "";
@@ -23,6 +24,8 @@ const CASES = [
   // Left there back, A leaves
   { name: "scorecard_match18", round: "match18", at: "0E:43D6", run: sh => inBank(sh, 0x0E, showScorecard(sh)), noRet: true,
     policy: f => (f === 30 ? 0x10 : f === 70 ? 0x20 : f === 110 ? 0x10 : f > 150 && f & 1 ? 1 : 0) },
+  { name: "result_match18", round: "match18", at: "0B:59DE", run: (sh, r) => inBank(sh, 0x0B, roundResultScreen(sh, r.a)),
+    policy: f => (f > 120 && f & 1 ? 1 : 0) },
 ];
 
 let bad = 0;
@@ -34,7 +37,7 @@ for (const c of CASES) {
     continue;
   }
   let r;
-  try { r = runScreen({ stateFile, run: c.run, policy: c.policy, verbose }); }
+  try { r = runScreen({ stateFile, run: c.run, policy: c.policy, verbose, trace: process.argv.includes("--trace") }); }
   catch (e) { console.log(`FAIL ${c.name}: ${e.stack}`); bad++; continue; }
   const sounds = r.sounds.core.join(" ") === r.sounds.native.join(" ");
   const ok = !r.bad.length && !r.end.length && sounds && (c.noRet || r.native === r.coreA);

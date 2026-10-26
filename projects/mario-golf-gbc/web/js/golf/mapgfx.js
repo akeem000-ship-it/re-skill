@@ -1,0 +1,141 @@
+// The map graphics of bank 0B (the overworld's screens, the result screens): MapGfxTable 0B:4048 has 18 bytes per
+// graphics id, nine (idx, bank) references: the header (map bounds), the palettes, the tile map (WRAM3), the
+// attribute map (WRAM2), three maps for WRAM6 and the tiles (VRAM1 $8800-$97FF). MapStartGfx loads one and starts
+// the map's frame tasks; MapDrawFullScreen draws the view from the 64 x 64 buffers.
+import { rb, rw } from "./rom.js";
+import { divHLByDE } from "./math.js";
+import { registerFrameTask } from "./tasks.js";
+import * as D from "./render/display.js";
+import { mapDrawFullScreen } from "./scorecard.js";
+import { initWindowSystem } from "./standings.js";
+
+const B = 0x0B;
+const rd = D.rd, wr = D.wr;
+const setW = (w, n) => D.setWramBank(w, n);
+const r16 = (w, a) => rd(w, a) | rd(w, (a + 1) & 0xFFFF) << 8;
+
+// 00:0234 DecompressDataFromBank / 00:021A CopyDataFromBank: hl = (h bank, l idx): the pointer at bank:$4000 + l
+const refPtr = hl => rw(hl >> 8, 0x4000 + (hl & 0xFF));
+export function decompressDataFromBank(w, hl, de) { return D.lzTo(w, hl >> 8, refPtr(hl), de); }
+export function copyDataFromBank(w, hl, de, bc) {
+  const bank = hl >> 8;
+  D.inBank(w, bank, () => D.copyMemoryBC(w, refPtr(hl), de, bc));
+}
+
+const entry = id => (0x4048 + ((id * 18) & 0xFFFF)) & 0xFFFF;
+export function mapGfxGetRef(w, a) {             // 0B:43E8 MapGfxGetRef: word a of MapGfxTable[wMapGfxLoaded]
+  return rw(B, (entry(rd(w, 0xC32E)) + 2 * a) & 0xFFFF);
+}
+
+// 0B:440C MapLoadGfx: a = graphics id (the tiles by VRAM DMA: the LCD is off)
+export function mapLoadGfx(w, a) {
+  const e = entry(a), ref = k => rw(B, (e + 2 * k) & 0xFFFF);
+  setW(w, 1);
+  decompressDataFromBank(w, ref(8), 0xD000);
+  if (w.vram) {
+    w.lcd.vbk = 1;
+    D.startVRAMDMAFromHL(w, 0xD000, 0x9000, 0x80);
+    D.startVRAMDMAFromHL(w, 0xD800, 0x8800, 0x80);
+  }
+  setW(w, 6);
+  decompressDataFromBank(w, ref(7), 0xD800);
+  decompressDataFromBank(w, ref(5), 0xD400);
+  decompressDataFromBank(w, ref(4), 0xD000);
+  setW(w, 2);
+  decompressDataFromBank(w, ref(3), 0xD000);
+  setW(w, 3);
+  decompressDataFromBank(w, ref(2), 0xD000);
+  setW(w, 1);
+  copyDataFromBank(w, ref(1), 0xD000, 0x40);
+  if (w.vram) D.loadPalettesMasterOnly(w, 0xD010, 0x02, 0x06);
+}
+
+// 0B:44C4 MapLoadGfxScreen: a = id, b = MapDrawFullScreen's a: LCD off, the graphics, the bounds $C329-$C32C from the
+// header (via $C600), the view, LCD on, two frames
+export function* mapLoadGfxScreen(sh, a, b) {
+  const w = sh.w;
+  if (w.vram) D.disableLCDSafely(w);
+  mapLoadGfx(w, a);
+  copyDataFromBank(w, mapGfxGetRef(w, 0), 0xC600, 0x10);
+  for (let k = 0; k < 4; k++) wr(w, 0xC329 + k, rd(w, 0xC602 + k));
+  if (b === 0) mapCenterCamera(w);               // (0B:4306 MapDrawFullScreen with a = 0)
+  mapDrawFullScreen(w);                          // 0B:4306
+  if (w.vram) D.enableLCD(w);
+  yield* sh.advance(2);
+}
+
+// 0B:46DF MapStartGfx: a = graphics id (bit 7: keep what is loaded); wMapGfxCount $C32D = the table's entries; the
+// window system, MapGfxScrollTask and the tile animation
+export function* mapStartGfx(sh, a) {
+  const w = sh.w;
+  wr(w, 0xC32E, a & 0x7F);
+  w.high[0x18A] = w.high[0x18B] = 0;             // hSCY / hSCX
+  wr(w, 0xC33D, 0xFF);
+  let n = 0;
+  for (let p = 0x4048; rw(B, p); p += 2) n++;
+  wr(w, 0xC32D, divHLByDE(n, 9) & 0xFF);
+  if (!(a & 0x80)) yield* mapLoadGfxScreen(sh, a & 0x7F, 0);
+  w.high[0x1B9] = w.high[0x1B8] = 0;
+  yield* initWindowSystem(sh);                   // 05:407A
+  D.inBank(w, B, () => registerFrameTask(w, 0x01, B, 0x4784));   // MapGfxScrollTask
+  mapGfxStartTileAnim(w, rd(w, 0xC32E));
+}
+
+// 0B:4900 MapGfxStartTileAnim: MapGfxAnimTable 0B:42C0 (sub id, bank slot) -> MapTileAnimStart in bank 28-2F, 72,
+// 73 or 74 (each bank has its own copy: 28:7D0B 29:7927 2A:76BF 2B:73ED 2C:7AD1 2D:739D 2E:79D5 2F:7D20 72:76BD
+// 73:76C7 74:79AE)
+const ANIM_BANKS = [0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x72, 0x73];
+export function mapGfxStartTileAnim(w, a) {
+  const p = (0x42C0 + ((a << 1) & 0x1FE)) & 0xFFFF;
+  const sub = rb(B, p), slot = rb(B, p + 1);
+  mapTileAnimStart(w, ANIM_BANKS[slot] ?? 0x74, sub);
+}
+// MapTileAnimStart (bank 28-2F / 72-74 export 0): $C32F = a; the four tracks' frame / timer $C330-$C337 = $FF / 1 and
+// their starts $C338-$C33B = $FF; the script bank:$403A[a] ($FE: no animation) is split into tracks and the bank's
+// MapTileAnimTask registered (that part is not ported)
+function mapTileAnimStart(w, bank, a) {
+  wr(w, 0xC32F, a);
+  for (let k = 0; k < 4; k++) { wr(w, 0xC330 + 2 * k, 0xFF); wr(w, 0xC331 + 2 * k, 1); }
+  for (let k = 0; k < 4; k++) wr(w, 0xC338 + k, 0xFF);
+  const s = rw(bank, (0x403A + ((a << 1) & 0x1FE)) & 0xFFFF);
+  if (rb(bank, s) === 0xFE) return;
+  throw new Error(`the map tile animation (~${bank.toString(16)}:741F, its tracks and task) is not ported`);
+}
+
+// 0B:49D3 MapCenterCamera: the scroll on the player actor ($C290) less 9.F / 10.F tiles, within the map bounds
+// (columns $C329 .. [$C32B] - $14, rows $C32A .. [$C32C] - $12); leaves WRAM4 mapped
+export function mapCenterCamera(w) {
+  setW(w, 4);
+  const p = r16(w, 0xC290);
+  const clamp = (v, lo, hi) => {
+    if ((((v >> 8) - lo) & 0xFF) & 0x80) return lo << 8;
+    if (!((((v >> 8) - hi) & 0xFF) & 0x80)) return hi << 8;
+    return v;
+  };
+  const x = clamp((r16(w, p + 4) + 0xF610) & 0xFFFF, rd(w, 0xC329), (rd(w, 0xC32B) - 0x14) & 0xFF);
+  const y = clamp((r16(w, p + 6) + 0xF510) & 0xFFFF, rd(w, 0xC32A), (rd(w, 0xC32C) - 0x12) & 0xFF);
+  wr(w, 0xC320, x & 0xFF); wr(w, 0xC321, x >> 8);
+  wr(w, 0xC322, y & 0xFF); wr(w, 0xC323, y >> 8);
+}
+
+// 0B:48EA MapBufAddr: h = tile x, l = tile y -> the 64 x 64 buffers' address
+export const mapBufAddr = (h, l) => (0xD000 + ((((l & 0x80 ? (l << 8) | ~0xFFFF : l << 8) >> 2) & 0xFFFF) + h)) & 0xFFFF;
+
+// 0B:6DC7 MapBufCopyRect: the rectangle (b, c) -> (d, e), h wide and l tall, in both 64 x 64 buffers (WRAM2
+// attributes, WRAM3 tiles); no redraw
+export function mapBufCopyRect(w, b, c, d, e, h, l) {
+  const old = w.high[0x196];
+  const dst0 = mapBufAddr(d, e), src0 = mapBufAddr(b, c);
+  for (const bank of [2, 3]) {
+    setW(w, bank);
+    let dst = dst0, src = src0;
+    let rows = l;
+    do {
+      D.copyMemoryBC(w, src, dst, h);            // 00:03D3 (bc = h)
+      dst = (dst + 0x40) & 0xFFFF; src = (src + 0x40) & 0xFFFF;
+      rows = (rows - 1) & 0xFF;
+    } while (rows);
+  }
+  setW(w, 5);
+  setW(w, old);
+}

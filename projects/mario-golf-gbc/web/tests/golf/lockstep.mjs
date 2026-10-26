@@ -16,6 +16,9 @@ import { CoreRun, MARKS } from "./corerun.mjs";
 import { useRom } from "../../js/golf/rom.js";
 import { GolfMemory } from "../../js/golf/memory.js";
 import { playRound } from "../../js/golf/game.js";
+import { applyPendingPaletteUpdates } from "../../js/golf/render/display.js";
+import { fadeVBlank, updateGameTimer } from "../../js/golf/screen.js";
+import { runFrameTasks } from "../../js/golf/tasks.js";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../..");
 
@@ -38,6 +41,24 @@ export function runLockstep({ name = "r18", holes = 1, onFrame = () => {}, onMar
   w.high.set(core.hram().subarray(0, 0x7F), 0x180);
   const ctx = { core, w, frame: 0, shot: -1, n: 0, phase: "menus", synced: true, toggle: 0, mark: "round", slips: [],
     passed: [], lagInputs: [], recent: [], hold: 0, lates: [] };
+  // a VBlank that finds the frame's VRAM work done (hVBlankDone set: the game's code ran past a VBlank, or
+  // AdvanceFrame's halt woke at one) does only the every-frame work (00:2F46-00:2F64); the native code takes no CPU
+  // time, so the native side replays that work (the palette update, the game timer, the fades, the VBlank tasks)
+  // right after it happened in the game, before its own code for the frame: the code after it sees the same state
+  let partial = 0;
+  {
+    const gb = core.gb, step = core.step.bind(core);
+    core.step = () => { if (gb.cpu.pc === 0x2EF9 && gb.mem.hram[0x0D]) partial++; step(); };
+  }
+  const lagWork = () => {
+    if (process.env.LOCKSTEP_NOLAG) { partial = 0; return; }
+    for (; partial > 0; partial--) {
+      if (w.vram) applyPendingPaletteUpdates(w);
+      updateGameTimer(w); fadeVBlank(w);
+      if (w.sh) runFrameTasks(w, true, w.sh.dispatch);
+      ctx.lagVBlanks = (ctx.lagVBlanks || 0) + 1;
+    }
+  };
   setup(w, core, ctx);
   const policy = () => {
     if (ctx.phase === "swing") return (streams[ctx.shot] || [])[ctx.n++] || 0;
@@ -67,6 +88,7 @@ export function runLockstep({ name = "r18", holes = 1, onFrame = () => {}, onMar
     }
     delete m.read;
     core.advances++;
+    lagWork();
     return seen;
   };
   const ev = (kind, mname) => {
@@ -124,6 +146,7 @@ export function runLockstep({ name = "r18", holes = 1, onFrame = () => {}, onMar
     core.setHeld(policy());
     core.runToNext([[0, 0x2EBF]]);             // past its wait: the joypad its VBlank read
     w.high.set(core.hram().subarray(0x10, 0x15), 0x190);
+    lagWork();
   };
   ev.v = true;                                 // also an event after each frame's VBlank work
   const result = playRound(w, roundId, null, { ev, maxHoles: holes, onShot: () => { ctx.phase = "menus"; } });
