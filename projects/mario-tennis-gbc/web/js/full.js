@@ -261,9 +261,9 @@ addEventListener("resize", () => applyAspect());
 let preset = q.get("cam") || stored("mt-cam") || "low"; if (!PRESETS[preset]) preset = "low";
 function setView3d(on, vox = false) {
   view3d = on; $("view3d").classList.toggle("on", on); $("view3d").textContent = on ? (vox ? "VOX" : "3D") : "3D";
-  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.hdText = hd; voxel.freeCam = q.has("freecam"); attachLighting(voxel, $("hud")); attachLightPanel(voxel); if (phone) phone.applyBattery(); attachStadium(voxel, $("hud")); addCourtButton(voxel, $("hud")); addFarEndButton(voxel, $("hud")); attachCrowdSound(voxel.stadium, $("hud"), () => actx); attachBallFX(voxel, $("hud")); voxel.tour = tour; voxel.ballMidSrc = () => (port && port.physics && port.physics.mid) || null; attachIntro(voxel, $("hud")); attachMatchFx(voxel, $("hud")); attachFieldLife(voxel, $("hud")); attachCloseCall(voxel, $("hud")); attachGround(voxel, $("hud")); attachVoxStyle(voxel, $("hud")); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
+  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.res = res; voxel.hdText = hd; voxel.freeCam = q.has("freecam"); attachLighting(voxel, $("hud")); attachLightPanel(voxel); if (phone) phone.applyBattery(); attachStadium(voxel, $("hud")); addCourtButton(voxel, $("hud")); addFarEndButton(voxel, $("hud")); attachCrowdSound(voxel.stadium, $("hud"), () => actx); attachBallFX(voxel, $("hud")); voxel.tour = tour; voxel.ballMidSrc = () => (port && port.physics && port.physics.mid) || null; attachIntro(voxel, $("hud")); attachMatchFx(voxel, $("hud")); attachFieldLife(voxel, $("hud")); attachCloseCall(voxel, $("hud")); attachGround(voxel, $("hud")); attachVoxStyle(voxel, $("hud")); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
   if (voxel) voxel.voxelSprites = on && vox;
-  $("gl").hidden = !view3d; cv.hidden = view3d; $("cam").hidden = !view3d; $("smoothbtn").hidden = !view3d; if ($("ballfxbtn")) $("ballfxbtn").hidden = !view3d; if ($("voxstylebtn")) $("voxstylebtn").hidden = !(view3d && vox); if ($("lightbtn")) $("lightbtn").hidden = !view3d; if ($("stadiumbtn")) $("stadiumbtn").hidden = !view3d; if ($("crowdsndbtn")) $("crowdsndbtn").hidden = !view3d;
+  $("gl").hidden = !view3d; cv.hidden = view3d; $("cam").hidden = !view3d; $("smoothbtn").hidden = !view3d; if ($("resbtn")) $("resbtn").hidden = !view3d; if ($("ballfxbtn")) $("ballfxbtn").hidden = !view3d; if ($("voxstylebtn")) $("voxstylebtn").hidden = !(view3d && vox); if ($("lightbtn")) $("lightbtn").hidden = !view3d; if ($("stadiumbtn")) $("stadiumbtn").hidden = !view3d; if ($("crowdsndbtn")) $("crowdsndbtn").hidden = !view3d;
   try { localStorage.setItem("mt-3d", on ? (vox ? "vox" : "3d") : "off"); } catch (e) { /* private mode */ }
 }
 function setPreset(name) {                  // court camera preset (CAM button cycles PRESET_ORDER)
@@ -469,6 +469,18 @@ const raBtn = document.createElement("span"); raBtn.className = "k"; raBtn.id = 
 const showRA = () => { raBtn.textContent = "RUN-AHEAD: " + (runAhead ? "on" : "off"); raBtn.classList.toggle("on", runAhead); };
 raBtn.addEventListener("pointerdown", () => { runAhead = !runAhead; if (!runAhead) settle(); try { localStorage.setItem("mt-runahead", runAhead ? "on" : "off"); } catch (e) { /* private mode */ } showRA(); });
 $("smoothbtn").after(document.createTextNode(" "), raBtn); showRA();
+// RES: the 3D view's resolution against the screen's pixels (voxel.js resScale): Auto follows the frame rate; 100% (the default) is
+// the screen's own pixels; less is faster and softer, more is sharper and slower
+const RES_STEPS = ["auto", 0.5, 0.67, 0.75, 1, 1.25, 1.5];
+let res = (() => { const v = q.get("res") || stored("mt-res"); return v === "auto" ? "auto" : RES_STEPS.includes(+v) ? +v : 1; })();
+const resBtn = document.createElement("span"); resBtn.className = "k"; resBtn.id = "resbtn"; resBtn.hidden = true;
+resBtn.title = "3D / VOX resolution: Auto (lower while the frame rate drops, back up when there is room), 50% to 150% of the screen's pixels";
+const applyRes = () => {
+  resBtn.textContent = "RES: " + (res === "auto" ? "Auto" : Math.round(res * 100) + "%"); resBtn.classList.toggle("on", res !== 1);
+  if (voxel) { voxel.res = res; voxel.resK = 1; renderedAt = -1; }
+};
+resBtn.addEventListener("pointerdown", () => { res = RES_STEPS[(RES_STEPS.indexOf(res) + 1) % RES_STEPS.length]; try { localStorage.setItem("mt-res", String(res)); } catch (e) { /* private mode */ } applyRes(); });
+raBtn.after(document.createTextNode(" "), resBtn); applyRes();
 applySmooth();
 $("cam").addEventListener("pointerdown", () => setPreset(PRESET_ORDER[(PRESET_ORDER.indexOf(preset) + 1) % PRESET_ORDER.length]));
 $("aspect").addEventListener("pointerdown", () => { aspect = ASPECTS[(ASPECTS.indexOf(aspect) + 1) % ASPECTS.length]; drawnFrame = -1; applyAspect(); });

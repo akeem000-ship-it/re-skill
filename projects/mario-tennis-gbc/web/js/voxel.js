@@ -929,6 +929,22 @@ export class Voxel3D {
   // alpha: how far the display is between the last two game frames (0..1); the 3D view renders at the
   // display's refresh rate and interpolates world positions, the game itself stays at 60 Hz
   render(frame2d, alpha = 1) { this.renderFrame(frame2d, alpha); this.seamAfter(); }
+  // RES (full.js, the RES button): the 3D view drawn at k times the screen's pixels (its device pixels, at most 2 a CSS pixel; the
+  // browser stretches the picture to fit): a fixed k (0.5-1.5), or "auto": k lowered by 0.1 (to 0.5) while the view draws under
+  // 50 frames a second, raised by 0.1 (to 1) after 3 s above 58. The frame rate is an average of the time between draws.
+  resScale() {
+    if (this.res !== "auto") return this.res || 1;
+    const now = performance.now(), dt = now - (this.resT || now); this.resT = now;
+    if (dt > 0 && dt < 250) this.resDt = this.resDt ? this.resDt * 0.95 + dt * 0.05 : dt;   // (a pause or a hidden page is no slow frame)
+    if (!this.resK) this.resK = 1;
+    if (now - (this.resAt || 0) > 1000 && this.resDt) {
+      this.resAt = now; const fps = 1000 / this.resDt;
+      if (fps < 50 && this.resK > 0.5) { this.resK = Math.max(0.5, Math.round((this.resK - 0.1) * 10) / 10); this.resGood = 0; }
+      else if (fps > 58 && this.resK < 1) { if (++this.resGood >= 3) { this.resK = Math.min(1, Math.round((this.resK + 0.1) * 10) / 10); this.resGood = 0; } }
+      else this.resGood = 0;
+    }
+    return this.resK;
+  }
   renderFrame(frame2d, alpha) {
     const gl = this.gl, cv = this.cv, fr = this.gb.ppu.frames;
     this.frameChanged = false;
@@ -938,8 +954,8 @@ export class Voxel3D {
       this.lastFrame = fr; this.frameChanged = true;
     }
     this.alpha = Math.max(0, Math.min(1, alpha));
-    const dpr = Math.min(2, (typeof devicePixelRatio === "number" && devicePixelRatio) || 1), W = Math.round((cv.clientWidth || 160) * dpr), H = Math.round((cv.clientHeight || 144) * dpr);
-    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }   // render at device pixels (capped at 2x)
+    const dpr = Math.min(2, (typeof devicePixelRatio === "number" && devicePixelRatio) || 1) * this.resScale(), W = Math.max(1, Math.round((cv.clientWidth || 160) * dpr)), H = Math.max(1, Math.round((cv.clientHeight || 144) * dpr));
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }   // render at device pixels (capped at 2x) times RES
     // LIGHT: field and court scenes are drawn into lighting.js's off-screen target; post() / finish() put them on the canvas
     const LT = this.light && (this.isField() || this.isCourt()) && this.light.activeFor(this.isField() ? "field" : "court") && this.light.begin(cv.width, cv.height) ? this.light : null;
     gl.viewport(0, 0, cv.width, cv.height); gl.clearColor(0.05, 0.08, 0.12, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
