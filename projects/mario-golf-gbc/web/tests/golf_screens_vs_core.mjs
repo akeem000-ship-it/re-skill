@@ -13,6 +13,8 @@ import { Hole } from "../js/golf/ball.js";
 import { shotSetup } from "../js/golf/hole.js";
 import { showPlayerPicture } from "../js/golf/pictures.js";
 import { titleScreen } from "../js/golf/title.js";
+import { linkMenu } from "../js/golf/menu09.js";
+import { characterSelectScreen } from "../js/golf/charsel.js";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const filter = process.argv.slice(2).find(a => !a.startsWith("--")) || "";
@@ -55,6 +57,16 @@ const CASES = [
   // A during the demo skips to the title; the title times out back to the attract loop; Start skips that; Start
   { name: "boot_title_skip", state: "boot_title", run: (sh, r) => inBank(sh, 0x40, titleScreen(sh, r.a)),
     policy: f => (f >= 400 && f < 404 ? 1 : f >= 1900 && f < 1904 ? 8 : f >= 2200 && f < 2204 ? 8 : 0) },
+  // LinkMenu 09:4A12: A on the first item; Up (wraps to the last), Up, Down, Down, Down, B
+  { name: "boot_linkmenu", state: "boot_linkmenu", run: sh => inBank(sh, 0x09, linkMenu(sh)), policy: f => (f === 280 ? 1 : 0) },
+  { name: "boot_linkmenu_b", state: "boot_linkmenu", run: sh => inBank(sh, 0x09, linkMenu(sh)),
+    policy: f => (f === 60 || f === 100 ? 0x40 : f === 140 || f === 180 || f === 220 ? 0x80 : f === 300 ? 2 : 0) },
+  // CharacterSelectScreen 06:6071 (hl = the roster $D658, b = 0): Right x4 to Mario, A (the boot script's presses)
+  { name: "boot_charselect", state: "boot_charselect", run: (sh, r) => inBank(sh, 0x06, characterSelectScreen(sh, r.h << 8 | r.l, r.b)),
+    policy: f => ([88, 118, 148, 178].includes(f) ? 0x10 : f === 238 ? 1 : 0) },
+  // Down, Up, Left (wraps), Left, Down, Right, Select+A on a preset (sets its +$10), ...; then B
+  { name: "boot_charselect_moves", state: "boot_charselect", run: (sh, r) => inBank(sh, 0x06, characterSelectScreen(sh, r.h << 8 | r.l, r.b)),
+    policy: f => ({ 80: 0x80, 110: 0x40, 140: 0x20, 170: 0x20, 200: 0x80, 230: 0x10, 260: 0x80, 300: 2 })[f] || 0 },
 ];
 
 let bad = 0;

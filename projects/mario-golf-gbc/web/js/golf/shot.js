@@ -19,6 +19,8 @@ import { scorecardStrokesTask, scorecardMatchPlayTask } from "./scorecard.js";
 import { matchStandingsTask } from "./standings.js";
 import { menuCursorTask } from "./windows.js";
 import { demoTasks } from "./title.js";
+import { menuBobSpriteTask } from "./menu09.js";
+import { charSelTasks } from "./charsel.js";
 import { actorsUpdateTask, actorsDrawTask } from "./actors.js";
 import { confettiTask, resultPaletteCycleTask, resultSpriteTask } from "./result.js";
 import { mapScrollTask } from "./render/holeview.js";
@@ -180,6 +182,8 @@ export class Shot {
       "08:439e": () => contestLeaderSpriteTask(w, 0),  // 08:439E
       "08:43ab": () => contestLeaderSpriteTask(w, 1),  // 08:43AB
       ...demoTasks(w),                           // the title and its demo (bank 40)
+      "09:4990": () => menuBobSpriteTask(w),          // 09:4990 MenuBobSpriteTask09
+      ...charSelTasks(w),                        // the character select (bank 06)
       ...D.displayTasks(this),                   // tasks that only draw (render/hooks.js)
     };
   }
