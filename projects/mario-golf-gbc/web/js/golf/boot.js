@@ -197,8 +197,7 @@ function* mapRunToEnterScript(sh) {
   const p = r16(w, 0xC290);
   wr(w, p + 0x33, 0); wr(w, p + 0x10, rd(w, 0xC28A));
   if (bank !== 0x32 || hl !== 0x5033) notPorted(`the enter script ~${bank.toString(16)}:${hl.toString(16)}`);
-  // 32:5033 Map00EnterModeSelect: ModeSelectMain returns here when it calls GolfRound (the caller runs the round
-  // and mapRunAfterRound below)
+  // 32:5033 Map00EnterModeSelect: ModeSelectMain (with sh.playGolfRound it runs the rounds and GolfSessionEnd too)
   return yield* inBankGen(w, 0x32, modeSelectMain(sh));
 }
 
@@ -223,13 +222,12 @@ function mapTakeWarp(w) {
   if (rd(w, 0xC46B) !== 0xFA) notPorted(`the map's warp ${rd(w, 0xC46B).toString(16)} (~0A:5151 MapListFindIfFlag)`);
 }
 
-// after a round started from map 0's enter script: GolfSessionEnd (32:523C, 32:52C6), the script's end (MapRunScript
+// after map 0's enter script (ModeSelectMain, its round and GolfSessionEnd): the script's end (MapRunScript
 // 0A:4F38 ScriptEnd, WRAM bank back as at MapRunEnterScript), MapRun 0A:4A90 taking the warp request (a request is
 // always there after a round: none would go on to the map's event loop, not ported), then MapEngine 0A:49C1: the
 // warp, the frame tasks cleared and MapDebugCoordsTask again, ready for the next MapRun
-export function* mapRunAfterRound(sh, wbank) {
+export function* mapRunAfterScript(sh, wbank) {
   const w = sh.w;
-  yield* inBankGen(w, 0x10, golfSessionEnd(sh));
   D.inBank(w, 0x0A, () => scriptEnd(w));
   setW(w, wbank);
   const a = rd(w, 0xC441);
@@ -240,18 +238,21 @@ export function* mapRunAfterRound(sh, wbank) {
   D.inBank(w, 0x0A, () => registerFrameTask(w, 0x01, 0x0A, 0x4950));   // MapDebugCoordsTask
 }
 
-// the game from power-on, round after round: playRound(holes) runs each round GolfRound is called for
+// the game from power-on, round after round: playRound(holes) runs each round GolfRound is called for (ModeSelectMain
+// calls it through sh.playGolfRound, then GolfSessionEnd; Training plays hole after hole that way)
 export function* gameFromPowerOn(sh, playRound) {
-  let holes = yield* powerOn(sh);
-  for (;;) {
-    const wb = sh.w.mapScriptBank;
-    yield* playRound(holes);
-    yield* mapRunAfterRound(sh, wb);
-    holes = yield* inBankGen(sh.w, 0x0A, mapRunToEnterScript(sh));
-  }
+  sh.playGolfRound = playRound;
+  try {
+    yield* powerOn(sh);
+    for (;;) {
+      yield* mapRunAfterScript(sh, sh.w.mapScriptBank);
+      yield* inBankGen(sh.w, 0x0A, mapRunToEnterScript(sh));
+    }
+  } finally { sh.playGolfRound = undefined; }
 }
 
-// from power-on to the start of a golf round: returns the GolfRound argument
+// from power-on to the start of a golf round: returns the GolfRound argument (without sh.playGolfRound; with it,
+// from power-on to the end of map 0's enter script)
 export function* powerOn(sh) {
   const w = sh.w;
   softReset(w);

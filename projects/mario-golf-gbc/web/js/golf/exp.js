@@ -14,6 +14,7 @@ import { initFontScreen } from "./pictures.js";
 import { copyMapToScrollBuffers } from "./standings.js";
 import { initWindowSystem } from "./round.js";
 import { initCharSprite, charSpriteTask } from "./charsprite.js";
+import { levelUpScreen } from "./levelup.js";
 
 const rd = D.rd, wr = D.wr;
 const wbank = w => w.high[0x196];
@@ -40,6 +41,15 @@ function add24Capped(w, hl, de) {
 export function addExp(w, de) { add24Capped(w, 0xC826, de); }   // 02:5465 AddExp
 // the next level's threshold entry: 02:54CD by wCharId & 3, 3 bytes per level
 const thresholdAt = w => (rw(0x02, 0x54CD + 2 * (rd(w, 0xC810) & 3)) + 3 * rd(w, 0xC812)) & 0xFFFF;
+// 02:546B CheckLevelUp: true (z) when the 24-bit EXP is at least the next level's threshold (02:53E8 Compare24: bit 7
+// of the difference's top byte clear); never at level 99
+export function checkLevelUp(w) {
+  if (rd(w, 0xC812) >= 0x63) return false;
+  const t = thresholdAt(w);
+  const v = rd(w, 0xC826) | rd(w, 0xC827) << 8 | rd(w, 0xC828) << 16;
+  const th = rb(0x02, t) | rb(0x02, t + 1) << 8 | rb(0x02, t + 2) << 16;
+  return !(((v - th) >> 16) & 0x80);
+}
 // 02:5498 ExpToNextLevel: the threshold's low 16 bits - the EXP's (0 at level 99)
 export function expToNextLevel(w) {
   if (rd(w, 0xC812) >= 0x63) return 0;
@@ -373,7 +383,7 @@ function* showBonusLine(sh, a) {
 }
 
 // 48:4D70 AwardExpPoints: de EXP with message h: wBallX $D400 = 0, ExpScreen(1, de, h); a level reached ($D63B):
-// LevelUpScreen 41:402A (not ported), then ExpScreen(1, 0, 4) with $D400 = 1. The WRAM bank is restored.
+// LevelUpScreen 41:402A (levelup.js), then ExpScreen(1, 0, 4) with $D400 = 1. The WRAM bank is restored.
 export function* awardExpPoints(sh, de, h) {
   const w = sh.w, old = wbank(w);
   setW(w, 6);
@@ -381,6 +391,11 @@ export function* awardExpPoints(sh, de, h) {
   setW(w, old);
   yield* expScreen(sh, 1, de, h);
   setW(w, 6);
-  if (rd(w, 0xD63B)) notPorted("the level-up screen (~41:402A LevelUpScreen)");
+  if (rd(w, 0xD63B)) {
+    yield* levelUpScreen(sh);                    // 41:402A
+    setW(w, 6);
+    wr(w, 0xD400, 1);
+    yield* expScreen(sh, 1, 0, 4);
+  }
   setW(w, old);
 }

@@ -42,6 +42,20 @@ function frontEndPolicy(f) {
   return 1;
 }
 
+// the same, with Right `rights` times in the game mode select first
+function frontEndRights(rights) {
+  let n = 0, last = -100;
+  return f => {
+    if (f < 2600) { n = 0; last = -100; return 0; }
+    if (f === 2600) return 8;
+    if (f - last < 40) return 0;
+    last = f;
+    if (menuW && hasTask(menuW, 0x0D, 0x428E) && n < rights) { n++; return 0x10; }
+    if (menuW && hasTask(menuW, 0x06, 0x65D9) && menuW.wram[6][0x214] !== 4) return 0x10;
+    return 1;
+  };
+}
+
 // with a saved character (a save RAM the game made: out/kid.sav, see REVERSE.md "Saved games"): Start on the title,
 // then every 40 frames A (LinkMenu's one player, the character select's slot 0), in the game mode select Right
 // `rights` times (from the story's item), then A on the mode, the course, ...
@@ -60,13 +74,62 @@ function savedPolicy(rights) {
   };
 }
 
+// in the level-up screen (its banner task 41:5694 registered): `script` ([frames after it began, bits]); else `base`
+function levelUpPolicy(script, base) {
+  let at = -1;
+  return f => {
+    frameNow = f;
+    if (!(menuW && hasTask(menuW, 0x41, 0x5694))) return base(f);
+    if (at < 0) at = f;
+    for (const [d, b] of script) if (f === at + d) return b;
+    return 0;
+  };
+}
+// the character's EXP ($C826-$C828) set to `v` on both sides when the mode select first shows (a test's poke)
+function expPoke(v) {
+  let done = false;
+  return (f, w, core) => {
+    if (done || !hasTask(w, 0x0D, 0x428E)) return;
+    done = true;
+    for (const m of [w.wram[0], core.wram(0)]) { m[0x826] = v & 0xFF; m[0x827] = (v >> 8) & 0xFF; m[0x828] = v >> 16; }
+  };
+}
+
+// a scripted policy for the rounds: `scripts` = {"mark:n": [[frames after it, bits], ...]} for the n-th time (from
+// 1) the native passes that mark (markLog; "holesel" when the hole select's task 0F:789F appears); while a script
+// runs nothing else is pressed; otherwise `menus` before the first round, A every 40 frames after
+function scriptedPolicy(scripts, menus) {
+  const counts = {};
+  let cur = null, at = 0, seen = 0, inHoleSel = false;
+  const start = (n, f) => {
+    const k = `${n}:${(counts[n] = (counts[n] || 0) + 1)}`;
+    if (scripts[k]) { cur = scripts[k]; at = f; }
+  };
+  return f => {
+    frameNow = f;
+    const hs = !!(menuW && hasTask(menuW, 0x0F, 0x789F));
+    if (hs && !inHoleSel) start("holesel", f);
+    inHoleSel = hs;
+    for (; seen < markLog.length; seen++) start(markLog[seen].n, f);
+    if (cur) {
+      for (const [d, b] of cur) if (f === at + d) return b;
+      if (f > at + Math.max(...cur.map(([d]) => d))) cur = null;
+      return 0;
+    }
+    if (!roundsDone && !markLog.length) return menus(f);
+    return f % 40 ? 0 : 1;
+  };
+}
+let markLog = [];
+
 // the game from power-on through rounds (boot.js gameFromPowerOn, game.js playRoundFrames), the marks the native
 // engine passes noted; it stops when the mode select's input runs again after `rounds` rounds, or when stop() says
 let lastMark = "", markAt = 0, roundsDone = 0, frameNow = 0;
 function gameCase(sh, rounds = 1, stop = () => false) {
   menuW = sh.w; lastMark = ""; roundsDone = 0;
   const m = sh.mark.bind(sh);
-  sh.mark = n => { if (n !== lastMark) markAt = frameNow; lastMark = n; m(n); };
+  markLog = [];
+  sh.mark = n => { if (n !== lastMark) markAt = frameNow; lastMark = n; markLog.push({ n, f: frameNow }); if (process.env.MARKS) console.error("MARK", n, frameNow, sh.w.wram[0][0x8AA]); m(n); };
   const g = gameFromPowerOn(sh, function* (holes) { yield* playRoundFrames(sh.w, holes, null, { sh }); roundsDone++; lastMark = "menus"; });
   return (function* () {
     for (;;) {
@@ -193,6 +256,42 @@ const CASES = [
   // mode select again; the save RAM compared at the end
   { name: "boot_kid74_match_exp", state: "boot_poweron_kid74", open: true, noRet: true, run: sh => gameCase(sh),
     policy: f => { frameNow = f; return savedPolicy2(f); } },
+  // the same from the save made after that match (out/kid74b.sav): the EXP reaches level 2, so after the EXP screen
+  // the level-up screen (41:402A): A picks Drive, A gives the point, A on Yes, A ends the cheer; then the EXP screen
+  // again (message 4) and the mode select
+  { name: "boot_kid74b_levelup", state: "boot_poweron_kid74b", open: true, noRet: true, sram: true, run: sh => gameCase(sh),
+    policy: f => { frameNow = f; return savedPolicy2(f); } },
+  // the same with the EXP set to 100 at the mode select (several levels due): in the level-up screen the cursor, B,
+  // the picks and their undo, No on the Yes / No box (start over), B there, and the cheer left to time out
+  { name: "boot_kid74b_levelup_keys", state: "boot_poweron_kid74b", open: true, noRet: true, sram: true, run: sh => gameCase(sh),
+    hook: expPoke(100), policy: levelUpPolicy([[260, 1], [280, 0x80], [300, 0x80], [320, 0x40], [340, 0x40], [360, 0x40],
+      [380, 1], [400, 1], [420, 0x40], [440, 1], [460, 2], [480, 2], [500, 2], [520, 1], [540, 2], [560, 1], [580, 1], [600, 1],
+      [620, 1], [640, 1], [660, 0x80], [680, 1], [700, 0x80], [720, 0x40], [740, 0x80], [760, 1], [780, 1], [800, 1], [820, 1],
+      [840, 1], [860, 1], [880, 1], [900, 2], [920, 1], [940, 0x80], [960, 1], [980, 1], [1000, 1], [1020, 1], [1040, 1],
+      [1060, 1]], savedPolicy2) },
+  // a new game's Training (Right once in the mode select): course 1, hole 1 (CourseHoleSelect 0F:4AD6); after the
+  // first shot Mulligan (the shot again), after the second Continue, after the third Hole Out: the hole select again
+  // (Right, Right, Left: hole 2; B: the course select, Right: course 2, A; its hole select: Down, A: hole 2); there
+  // the pause menu (TrainingPauseMenu 41:6EE0): Wind Direction Right twice,
+  // Wind Speed Left, Right twice, B; the next time Back to Menu (Up: the last row): the mode select
+  { name: "boot_training", state: "boot_poweron", open: true, noRet: true, run: sh => gameCase(sh, 2),
+    policy: scriptedPolicy({
+      "aftershot:1": [[100, 0x80], [120, 1]],
+      "aftershot:2": [[100, 1]],
+      "aftershot:3": [[100, 0x80], [120, 0x80], [140, 1]],
+      "holesel:2": [[60, 0x10], [80, 0x10], [100, 0x20], [130, 2], [220, 0x10], [320, 1], [420, 0x80], [460, 1]],
+      "aimmenu:4": [[60, 8], [100, 0x80], [115, 0x80], [130, 0x80], [160, 0x10], [180, 0x10], [200, 0x80], [220, 0x20],
+        [240, 0x10], [260, 0x10], [300, 2]],
+      "aimmenu:5": [[60, 8], [100, 0x40], [130, 1]],
+    }, frontEndRights(1)) },
+  // Training with A every 40 frames until the ball is holed (the 27th shot): Continue / Mulligan / Start Over / Back to
+  // Main Menu (41:6F7A): Mulligan (holed again), then Start Over: the hole again; there the pause menu: Settings, B,
+  // Hole Out (Up x 3); the hole select (A), the pause menu again: Back to Menu
+  { name: "boot_holed_training", state: "boot_poweron", open: true, noRet: true, run: sh => gameCase(sh, 2),
+    policy: scriptedPolicy({ "aftershot:27": [[100, 0x80], [120, 1]], "aftershot:28": [[100, 0x80], [120, 0x80], [140, 1]],
+      "hole:2": [[160, 8], [200, 0x80], [215, 0x80], [230, 0x80], [245, 0x80], [260, 0x80], [290, 1], [450, 2], [560, 0x40],
+        [580, 0x40], [600, 0x40], [630, 1]],
+      "hole:3": [[160, 8], [200, 0x40], [230, 1]] }, frontEndRights(1)) },
   // the same into the round, two holes (the saved character's round: SaveGameMidRound at each hole's start), A every
   // 40 frames for the swings
   { name: "boot_kid_round", state: "boot_poweron_kid", open: true, noRet: true,
@@ -212,7 +311,7 @@ for (const c of CASES) {
     continue;
   }
   let r;
-  try { r = runScreen({ stateFile, run: c.run, policy: c.policy, verbose, open: c.open, setRegs: c.regs, trace: process.argv.includes("--trace") }); }
+  try { r = runScreen({ stateFile, run: c.run, policy: c.policy, hook: c.hook, verbose, open: c.open, setRegs: c.regs, trace: process.argv.includes("--trace") }); }
   catch (e) { console.log(`FAIL ${c.name}: ${e.stack}`); bad++; continue; }
   if (c.open) r.sounds.core = r.sounds.core.filter(x => +x.split(":")[0] < r.frames);   // (the game's next frame's)
   const sounds = r.sounds.core.join(" ") === r.sounds.native.join(" ");

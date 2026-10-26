@@ -4,6 +4,7 @@
 import { moreArrowTask } from "./text.js";
 import { expCharSpriteTask, expDrawCounters, yesNoCursorTask } from "./exp.js";
 import { countLoadFramesTask17, courseMapTask } from "./coursemap.js";
+import { levelUpTasks } from "./levelup.js";
 import { rb } from "./rom.js";
 import * as g from "./math.js";
 import * as B from "./ball.js";
@@ -195,6 +196,7 @@ export class Shot {
       "08:43ab": () => contestLeaderSpriteTask(w, 1),  // 08:43AB
       ...demoTasks(w),                           // the title and its demo (bank 40)
       "09:4990": () => menuBobSpriteTask(w),          // 09:4990 MenuBobSpriteTask09
+      ...levelUpTasks(w),                        // the level-up screen (bank 41)
       ...charSelTasks(w),                        // the character select (bank 06)
       ...selectTasks(w),                         // the mode and course selects (banks 0D, 0F)
       "0a:4950": () => mapDebugCoordsTask(w),         // 0A:4950 MapDebugCoordsTask

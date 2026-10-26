@@ -77,6 +77,7 @@ export function markerIconFrame(w, a) { if (on(w)) H.markerIconFrame(w, a); }
 export function hud(w, name, ...args) { if (on(w)) Dp.inBank(w, 0x12, () => H[name](w, ...args)); }
 export function cupViewEnter(w) { if (on(w)) V.cupViewEnter(w); }    // 13:44A4
 export function cupViewLeave(w) { if (on(w)) V.cupViewLeave(w); }    // 13:4528
+export function loadCoursePalettes(w) { if (on(w)) V.loadCoursePalettes(w); }   // 13:446D
 
 // ---- the view behind the golfer (render/behind.js) ----
 export function behind(w, part) {

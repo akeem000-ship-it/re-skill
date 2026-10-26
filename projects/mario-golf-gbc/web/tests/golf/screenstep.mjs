@@ -45,6 +45,7 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
   w.high[0x195] = gb.mem.romBank;
   const res = { frames: 0, pixelExact: 0, modelExact: 0, lag: 0, bad: [], sounds: { core: [], native: [] } };
   let frame = 0, vb = 0, partial = 0, partialSeen = 0, early = false, lagFrames = new Set(), coreDone = false;
+  let partialFade = [];
   w.onSound = id => res.sounds.native.push(`${frame}:${h2(id)}`);
   const orig = core.step.bind(core);
   let lastSound = null;
@@ -64,7 +65,7 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
     }
     if (cpu.pc === 0x2EF9) {
       vb++;
-      if (gb.mem.hram[0x0D]) partial++;          // hVBlankDone still set: a VBlank of the every-frame work only
+      if (gb.mem.hram[0x0D]) { partial++; partialFade.push([gb.mem.hram[0x22], gb.mem.hram[0x24]]); }   // hVBlankDone still set: a VBlank of the every-frame work only (the fade state it found)
       const sp = cpu.sp, r = gb.mem.read(sp) | gb.mem.read(sp + 1) << 8;
       if (!(r >= 0x2EAC && r < 0x2EBF) && !gb.mem.hram[0x0D]) early = true;
     }
@@ -79,7 +80,7 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
       if (a >= 0xFF90 && a <= 0xFF94 && !(a in seen) && (cpu.pc < 0x02EB || cpu.pc > 0x0341)) seen[a] = lag ? v : null;
       return v;
     };
-    partial = 0;
+    partial = 0; partialFade = [];
     core.step();
     while (!coreDone && cpu.pc !== 0x2E3B) { if (cpu.pc === 0x0340) lag = true; core.step(); }
     let extra = partial; partialSeen = partial;
@@ -90,9 +91,14 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
     // native code of the frame, so that the code after it sees the same fade (the native code takes no CPU time)
     lagWork(extra);
   };
+  // (the fade step left out when the native fade is the same one but already further, $FFA2 / $FFA4 (cf.
+  // lockstep.mjs): in the loads the game lags through, the native fade may be a step on already)
   const lagWork = n => {
-    if (lagVBlanks) for (; n > 0; n--) {
-      applyPendingPaletteUpdates(w); updateGameTimer(w); fadeVBlank(w);
+    const fades = partialFade.splice(0);
+    if (lagVBlanks) for (let k = 0; k < n; k++) {
+      applyPendingPaletteUpdates(w); updateGameTimer(w);
+      const f = fades[k];
+      if (!f || w.high[0x1A2] !== f[0] || w.high[0x1A4] >= f[1]) fadeVBlank(w);
       if (w.sh) runFrameTasks(w, true, w.sh.dispatch);
       res.lagVBlanks = (res.lagVBlanks || 0) + 1;
     }
@@ -114,11 +120,12 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
     return { out, px, keys };
   };
   const taint = new Set();                       // bytes that have differed in every frame since a lag frame
+  let fadeTaint = 0;
   const ev = kind => {
     if (kind === "F") {
       if (!core.at(0, 0x2E3B)) runAhead();       // (the first frame: the core's code from the entry)
       core.setHeld(policy(frame));
-      partial = 0;
+      partial = 0; partialFade = [];
       core.runToNext([[0, 0x2EBF]]);
       w.high.set(core.hram().subarray(0x10, 0x15), 0x190);
       lagWork(partial);                          // (AdvanceFrame's halt woke at a VBlank that found the work done)
@@ -144,6 +151,15 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
     for (const k of taint) if (!now.has(k)) taint.delete(k);
     if (lag) for (const k of keys) taint.add(k);
     else if (keys.length && keys.every(k => taint.has(k))) lag = true;
+    // a fade a step apart since a lag frame (the game's full VBlank came during its code, before the fade began, and
+    // its next AdvanceFrame needed none; the native's VBlank comes at the frame's end): its palettes differ, by other
+    // bytes each frame, until the fade levels ($FFA2 / $FFA4) agree and one frame more (the palette RAM is written
+    // at the next VBlank)
+    const fadeOff = w.high[0x1A2] !== core.hram()[0x22] || w.high[0x1A4] !== core.hram()[0x24];
+    const palOnly = keys.every(k => /^(bgpal|objpal)/.test(k) || (k.startsWith("wram0") && +k.slice(5) >= 0xC100 && +k.slice(5) < 0xC180));
+    if (fadeOff && lag) fadeTaint = 2;
+    else if (fadeTaint && !lag && palOnly) lag = true;
+    if (!fadeOff && fadeTaint) fadeTaint--;
     if (trace && lagNow) console.log(`frame ${frame}: a lag frame`);
     if (!px) res.pixelExact++;
     if (!out.length) res.modelExact++;

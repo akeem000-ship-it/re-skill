@@ -87,6 +87,8 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + saved games (save.js: bank 02's save code, SaveGame, RecordShot, the mid-round saves; loading a slot in ModeSelectMain) | 87,023 | 35.86% |
 | + the message box (msgbox.js, bank 05 / 0A), the pause menu's Give Up and Quit, the flow after a round (GolfSessionEnd, the map engine's next run), the EXP screen and AwardExpPoints (exp.js, bank 48) with the menu character sprite (charsprite.js, bank 42) | 93,495 | 38.52% |
 | + the rest of the pause menu: Settings, Camera Mode (freelook.js), Course Map (coursemap.js, bank 17) | 96,695 | 39.84% |
+| + the level-up screen (levelup.js, bank 41; CheckLevelUp, CharLevelUpDiff, CharRefreshStats of bank 02) | 101,871 | 41.98% |
+| + Training (the course and hole select 0F:4AD6, the after-shot menus and RetryShotRestore, the training pause menu, the menu arrows of flags #49-#52) | 103,011 | 42.45% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -332,11 +334,69 @@ sprite (bank 42: InitCharSprite 42:400B, CharSpriteTask 42:4074; an animation's 
 its metasprite, the second is its time), then counts the points one per 4 frames (A or B: every frame, with 6 / 14
 more steps while 1,000 / 10,000 remain; ExpCountStep 48:4C02), the counters drawn as digit sprites by ExpDrawCounters
 48:4B05 (00:2326 FormatDecimalNumberUnsigned), the bonus ($CAAD / $CAAE) shown and added, then up to 240 frames or a
-button, and AddExp 02:5465 (Add24Capped: at most 99,999). A level reached ($D63B) would go on to LevelUpScreen
-41:402A (not ported yet). The test: `coreplay.mjs --recipe kid74` makes the save with game flag #74 (match play is
+button, and AddExp 02:5465 (Add24Capped: at most 99,999). A level reached ($D63B) goes on to LevelUpScreen
+41:402A (below). The test: `coreplay.mjs --recipe kid74` makes the save with game flag #74 (match play is
 then one hole, hole 18), and `golf_screens_vs_core.mjs boot_kid74_match_exp` plays from power-on: the save loaded,
 match play against Luigi, the hole, the standings, the result screen, the EXP screen, GolfSessionEnd and the mode
 select again: 8,300 frames, all frame for frame, RAM and save RAM equal at the end.
+
+#### The level-up screen (levelup.js, bank 41)
+
+AwardExpPoints goes on, when the count reached a level ($D63B), to LevelUpScreen 41:402A and then ExpScreen once
+more (message 4, nothing to count, wBallX $D400 = 1: the next level's points shown). LevelUpScreen returns at once
+unless CheckLevelUp 02:546B (Compare24 of the EXP with the threshold 02:54CD[type] + 3 x level) says a level is due;
+CountPendingLevelUps 41:48F4 counts how many (CharLevelUp 0 while one is due), keeps the level and skill points at
+$D436-$D43B and puts them back (41:4970): one skill point per level, $D43C. The screen is built in the WRAM2
+(attributes) and WRAM3 (tiles) buffers at $D000, 32 bytes a row, with the LCD off (41:446D: LZ tiles, the frames
+and gauge boxes, tile runs; PrintTextToBuffer for "Improve which skill?", Level, Drive, Height, Shot, Meet Area and
+Control, "Moving up a level!", "Is this OK?", Yes, No: texts $10DF-$10EA), and copied by parts as the phase
+$D632 changes (UpdateLevelUpPanels 41:51E4: 0 the top "Moving up a level!" rows from $D240, 1 the prompt rows
+$D000, 2 the Yes / No box $D2C0 with the label rows copied into it, 3 / 4 the first 8 rows again with $D280 /
+$D240). The numbers are sprites: the level (41:4D2F), the drive in yards (41:4CD1, each digit's y from its own
+byte $D434 / $D433 / $D432, which the idle highlight sets to $FC by turns: the digits hop), the points left
+bouncing (41:4D79), the four skills' points (41:53B8: the selected one blinks with its value + 1); the gauges
+(41:4F71, -4..+4 tiles out from the centre, with the change the pick would bring: CharLevelUpDiff 02:503C, which
+levels up a copy of the record on the stack and writes the differences of +$1A and +$1C-+$1F). The input waits
+for the timer $D4A0 (40 frames) and the banner ("1 UP", 12 tiles sliding in from the right, 41:5694, delays from
+41:6463); A picks a skill (phase 1, the cursor 41:42FA and the row's palette cycling 41:50D2 through 41:6486), A again
+gives the point (CharLevelUp, the pick history $D4D2 / $D4D1), B goes back or undoes the last point (41:550C); with
+no points left the Yes / No box (41:4328): No (or B) starts over (41:54CA), Yes plays the cheer (animation 1, up to
+256 frames or A) and leaves. Quirks kept: the loop's first test of $D4A4 and the banner task's read the mapped WRAM
+bank (2 or 3 after a panel copy: tile bytes, not the flag); the yard digits' sprites of a blank are drawn too
+(tile $12); hFFB2 / hFFB3 keep the stack copy's address ($CF56 on the way from a round's end). Not ported: the
+header with the name and EXP (41:5598, a != 0) and its clock task (41:587C), used by other callers.
+`golf_screens_vs_core.mjs boot_kid74b_levelup` plays a match from out/kid74b.sav (the kid74 save after one match:
+the EXP is past level 2) through the EXP screen, the level-up (one point) and back to the mode select;
+`boot_kid74b_levelup_keys` sets the EXP to 100 at the mode select (three points) and drives the screen with the
+cursor, B, picks, undo, No, B on the box and the cheer's time-out: 9,680 frames, all frame for frame, RAM and save
+RAM equal at the end. (screenstep.mjs now also counts as lag a fade a step apart after a lag frame, until the fade
+levels agree: here the game's full VBlank came during the screen's set-up, before ForceFadeIn, and its first
+AdvanceFrame needed none.)
+
+#### Training (game mode 4: modesel.js, select.js, round.js, pause.js)
+
+ModeSelectMain's Training (32:52CD) plays one hole at a time: CourseHoleSelect 0F:4AD6 (the course select from the
+course last played, then HoleSelectInput 0F:77B3: "Select a hole.", the hole's number as three sprite tiles drawn
+from LZ glyphs (0F:78C5 / 0F:78FE, BCD table 0F:78EA, $A a blank), Left / Up down and Right / Down up with wrapping,
+A takes it, B goes back to the course select with hole 1; after a hole $D209 bit 7 skips the course select),
+GolfSessionInit, SetCourseHole, GolfRound with one hole, GolfSessionEnd, and again unless wRoundResult $C96C is set.
+The hole starts without the fly-over (08:64B1: camera mode 1, GolfSceneStart). After each shot AfterShotMode4Training
+08:4A39 leaves the cup / picture view (GolfViewExit 10:4C6E) and asks Continue / Mulligan / Hole Out (41:6F55; holed:
+Continue / Mulligan / Start Over / Back to Main Menu, 41:6F7A): Mulligan puts the ball and the player back
+(RetryShotRestore 08:4AA3: BallToShotStart 02:4691, the strokes and lie flags from $D359-$D35C / $D447, wForcedShot
+$D4E7 with the club and aim), Start Over plays the hole again (hole number - 1, holes left + 1), Hole Out and Back to
+Main Menu end the round (wRoundResult 0: the hole select; 1: the mode select). The pause menu is TrainingPauseMenu
+41:6EE0 (Camera Mode, Course Map, Hole Out, Wind Direction, Wind Speed, Settings, Back to Menu; flag #51): Wind
+Direction turns wWindAngle $C816 by $10, Wind Speed changes wWindSpeed $C815 within 0-19, both with Left / Right in
+the open menu (MenuWindDirectionAdjust 41:72A1, 41:72D8), whose arrows MenuCursorTask 05:4F20 now draws for all
+of flags #48-#52 (the arrow column and rows by flag). Hole Out and Back to Menu return $80, which (as Quit) makes
+the round's mode 0 and ends it after the hole. With this the native game drives ModeSelectMain's rounds itself
+(boot.js gameFromPowerOn passes the round as sh.playGolfRound; ModeSelectMain runs GolfRound and GolfSessionEnd).
+`golf_screens_vs_core.mjs boot_training` (6,287 frames) and `boot_holed_training` (18,919 frames, 28 shots: the
+holed menu, Mulligan after holing, Start Over, Settings and Hole Out from the pause menu, Back to Menu) play from
+power-on, all frame for frame. (screenstep.mjs replays a lag VBlank's fade step only when the native fade is not
+already further in the same fade, as lockstep.mjs does: in the view behind the golfer's load the native fade could
+end a frame early.) Not ported: Tournament (mode 1), the story (mode 9), the mini-games and practice modes.
 
 #### Match play and the contests (web/js/golf/match.js)
 

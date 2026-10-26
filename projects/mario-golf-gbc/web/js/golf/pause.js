@@ -16,6 +16,7 @@ import { freeLookCursor } from "./freelook.js";
 import { courseMapScreen } from "./coursemap.js";
 import { saveGame } from "./save.js";
 import { playerField } from "./memory.js";
+import { hudDrawWind } from "./view.js";
 
 const rd = D.rd, wr = D.wr;
 const wbank = w => w.high[0x196];
@@ -217,6 +218,55 @@ function* quit(sh, match) {
   yield* reopen(sh, match, 5);
 }
 
+// 41:72A1 MenuWindDirectionAdjust / 41:72D8 MenuWindSpeedAdjust (Left / Right on the row: $C3FC low nibble 1 / 2):
+// the wind's angle wWindAngle $C816 -/+ $10, its speed wWindSpeed $C815 -/+ 1 within 0-$13 (sound $8B when it
+// changes), HudDrawWind 12:4A81; WRAM5 after
+function menuWindDirectionAdjust(sh) {
+  const w = sh.w;
+  setW(w, 6);
+  const lr = rd(w, 0xC3FC) & 0x0F;
+  if (lr === 1 || lr === 2) {
+    sh.sound(0x8B);
+    wr(w, 0xC816, (rd(w, 0xC816) + (lr === 1 ? -0x10 : 0x10)) & 0xFF);
+  }
+  hudDrawWind(w);
+  setW(w, 5);
+}
+function menuWindSpeedAdjust(sh) {
+  const w = sh.w;
+  setW(w, 6);
+  const lr = rd(w, 0xC3FC) & 0x0F, s = rd(w, 0xC815);
+  if (lr === 1 && s) { sh.sound(0x8B); wr(w, 0xC815, s - 1); }
+  else if (lr === 2 && s !== 0x13) { sh.sound(0x8B); wr(w, 0xC815, s + 1); }
+  hudDrawWind(w);
+  setW(w, 5);
+}
+// 41:7B2E SetupTrainingPauseMenu: Left / Right on rows 3 and 4 (Wind Direction, Speed), the window kept for them
+// ($C3FA = $C3FB = $98), flag #51 set (text $1484, handlers 41:7654, at (3, 0))
+function setupTrainingPauseMenu(w) {
+  clearMenuState(w);
+  wr(w, 0xC3FC, rd(w, 0xC3FC) | 0x80);
+  wr(w, 0xC3FA, 0x98); wr(w, 0xC3FB, 0x98);
+  setFlag(w, 51);
+}
+// 41:6EE0 TrainingPauseMenu / 41:6F55 ContinueMulliganMenu / 41:6F7A ContinueMulliganRestartMenu: the font tiles
+// (01:422C), the text speed's bit 7 set meanwhile, the menu (Training: then flag #51 cleared); returns wMenuResult
+function* bank41Menu(sh, setup, id, bc, de, clear) {
+  const w = sh.w;
+  yield* inBankGen(w, 0x01, queueFontTiles(sh));
+  const old = wbank(w);
+  wr(w, 0xC82D, rd(w, 0xC82D) | 0x80);
+  setup(w);
+  yield* runMenu(sh, id, bc, de);
+  wr(w, 0xC82D, rd(w, 0xC82D) & 0x7F);
+  setW(w, old);
+  if (clear) clearFlag(w, clear);
+  return rd(w, 0xC3FD);
+}
+const setupPlain = w => { clearMenuState(w); wr(w, 0xC3FC, rd(w, 0xC3FC) | 0x80); };   // 41:7B7E / 41:7B90
+export const continueMulliganMenu = sh => bank41Menu(sh, setupPlain, 0x1488, 0x76B9, 0x0504, 0);
+export const continueMulliganRestartMenu = sh => bank41Menu(sh, setupPlain, 0x1489, 0x76D7, 0x0204, 0);
+
 // the golf pause menus' handlers (41:743F stroke play, 41:756F match play)
 function* menuHandler(sh, h) {
   const w = sh.w;
@@ -251,6 +301,42 @@ function* menuHandler(sh, h) {
     case 0x759B: yield* giveUp(sh, true); return;
     case 0x74AE: yield* quit(sh, false); return;
     case 0x75DE: yield* quit(sh, true); return;
+    // Training (41:7654): Camera Mode, Course Map as above (then 41:7078); Hole Out $80 with wRoundResult 0; Wind
+    // Direction / Wind Speed change the wind and stay in the menu; Settings, then the menu again on row 5; Back to
+    // Menu $80 with wRoundResult 1
+    case 0x7662:
+      yield* inBankGen(w, 0x12, freeLookCursor(sh));   // 41:7879
+      wr(w, 0xC3FD, 0xFF);
+      clearMenuState(w);
+      return;
+    case 0x7668:
+      yield* inBankGen(w, 0x17, courseMapScreen(sh));  // 41:7882
+      wr(w, 0xC3FD, 0xFF);
+      clearMenuState(w);
+      return;
+    case 0x766E: case 0x76AC:
+      wr(w, 0xC3FD, 0x80);
+      wr(w, 0xC96C, h === 0x76AC ? 1 : 0);
+      clearMenuState(w);
+      return;
+    case 0x767A: case 0x768C:
+      if (h === 0x767A) menuWindDirectionAdjust(sh);   // 41:72A1
+      else menuWindSpeedAdjust(sh);              // 41:72D8
+      wr(w, 0xC3F9, rd(w, 0xD830));
+      yield* runMenuBody(sh, 0x7654);            // (jp 41:701E)
+      return;
+    case 0x769E:
+      yield* menuSettings(sh);
+      setupTrainingPauseMenu(w);                 // 41:7B2E
+      wr(w, 0xC3F9, 5);
+      yield* runMenu(sh, 0x1484, 0x7654, 0x0300);
+      return;
+    // after a training shot (41:76B9 Continue / Mulligan / Hole Out; 41:76D7 Continue / Mulligan / Start Over / Back
+    // to Main Menu): wMenuResult 0, 2, 5; 0, 2, 3, 4
+    case 0x76BF: case 0x76C7: case 0x76CF: case 0x76DF: case 0x76E7: case 0x76EF: case 0x76F7:
+      wr(w, 0xC3FD, { 0x76BF: 0, 0x76C7: 2, 0x76CF: 5, 0x76DF: 0, 0x76E7: 2, 0x76EF: 3, 0x76F7: 4 }[h]);
+      clearMenuState(w);
+      return;
     case 0x7457: case 0x7587:                    // 41:7457 / 41:7587 Scorecard: 41:788B MenuShowScorecard
       wr(w, 0xC4BD, 0);
       yield* inBankGen(w, 0x0E, showScorecard(sh));   // 0E:43D6
@@ -303,6 +389,7 @@ export function* pauseMenu(sh) {
   let b;
   if (mode === 1 || mode === 3) b = yield* inBankGen(w, 0x41, golfPauseMenu(sh, false));
   else if (mode === 2) b = yield* inBankGen(w, 0x41, golfPauseMenu(sh, true));
+  else if (mode === 4) b = yield* inBankGen(w, 0x41, bank41Menu(sh, setupTrainingPauseMenu, 0x1484, 0x7654, 0x0300, 51));   // 08:46D7
   else notPorted(`the pause menu of game mode ${mode} (~08:4695)`);
   setW(w, old);
   wr(w, 0xD438, cam);

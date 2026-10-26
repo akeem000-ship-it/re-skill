@@ -21,6 +21,7 @@ import * as M from "./match.js";
 import { roundResultScreen } from "./result.js";
 import * as Sv from "./save.js";
 import { awardExpPoints } from "./exp.js";
+import { queueFontTiles, continueMulliganMenu, continueMulliganRestartMenu } from "./pause.js";
 function* inBankGen(w, bank, g) {                // a far call to a routine that runs frames
   const old = w.high[0x195];
   w.high[0x195] = bank;
@@ -210,10 +211,16 @@ export function holeWind(w) {
 }
 
 // 08:6432 HoleIntroFlyover (modes 1-3): the green view for 180 frames (or until a button), then the course view
-// and the camera's pan from the pin to the ball (until it gets there, or a button)
+// and the camera's pan from the pin to the ball (until it gets there, or a button); other modes (08:64B1): camera
+// mode 1, wNoPin when the club is the putter ($0D), GolfSceneStart 10:4226
 function* holeIntroFlyover(sh) {
   const w = sh.w, r6 = w.wram[6];
-  if (![1, 2, 3].includes(mode(w))) notPorted("the hole start of other modes (~08:64B1)");
+  if (![1, 2, 3].includes(mode(w))) {
+    r6[0x438] = 1;
+    r6[0x4D5] = r6[0x329] === 0x0D ? 1 : 0;
+    yield* H.golfSceneStart(sh);
+    return;
+  }
   r6[0x445] = 1;                                 // wTeeShot
   r6[0x4D5] = 0; r6[0x454] = 0; r6[0x44F] = 0; r6[0x450] = 0x80;
   golfViewInit(sh);                              // 10:420E
@@ -371,15 +378,91 @@ export function* afterShot(sh, a) {
   return !!(w0[0x8AA] && w0[0x8EA]);
 }
 
-function* roundHookAfterShot(sh) {                // 08:4901 RoundHookAfterShot
-  const w = sh.w;
+function* roundHookAfterShot(sh) {                // 08:4901 RoundHookAfterShot (WRAM6 meanwhile)
+  const w = sh.w, old = w.high[0x196];
+  Dp.setWramBank(w, 6);
   switch (mode(w)) {
     case 1: notPorted("the tournament's shot statistics (~08:441A)"); break;
     case 2: yield* M.afterShotMode2(sh, H.scorecard); break;   // 08:494B
     case 3: if (w.wram[0][0x8D0] !== 0xFF) yield* M.updateHoleContest(sh); break;   // 08:4942
-    case 4: notPorted("the training retry menu (~08:4A39)"); break;
+    case 4: yield* afterShotMode4Training(sh); break;          // 08:4A39
     default: break;
   }
+  Dp.setWramBank(w, old);
+}
+
+// 11:4224 WaitCameraAtGoal
+function* waitCameraAtGoal(sh) {
+  while (!Cam.atGoal(sh.w)) yield* sh.advance();
+}
+// 10:4C6E GolfViewExit: from the cup view back to the green view (13:4528, a frame, 13:446D LoadCoursePalettes); from
+// a picture ($FF) the course view again (4A:629C, 13:432B LoadShotView 1); $D4DD = 0; the font tiles (01:422C); the
+// camera at its goal; InitWindowSystem 05:407A; the text speed's bit 7 cleared
+function* golfViewExit(sh) {
+  const w = sh.w, r6 = w.wram[6];
+  Dp.setWramBank(w, 6);
+  if (r6[0x443] === 2) {
+    D.cupViewLeave(w);
+    r6[0x443] = 1;
+    yield* sh.advance();
+    D.loadCoursePalettes(w);
+  } else if (r6[0x443] === 0xFF) {
+    P.pictureCycleStop(w);
+    yield* loadShotView(sh, 1);
+  }
+  r6[0x4DD] = 0;
+  yield* inBankGen(w, 0x01, queueFontTiles(sh));
+  yield* waitCameraAtGoal(sh);
+  yield* inBankGen(w, 0x05, initWindowSystem(sh));
+  w.wram[0][0x82D] &= 0x7F;
+}
+// 08:4A39 AfterShotMode4Training: GolfViewExit; holed out: Continue / Mulligan / Start Over / Back to Main Menu
+// (41:6F7A), else (a frame, the camera) Continue / Mulligan / Hole Out (41:6F55): 2 (Mulligan) the shot again
+// (08:4AA3, HudDrawPlayer1), 3 the hole again, 4 / 5 the round over (wRoundResult 1: back to the menus; 0: the hole
+// select), 0 on (wRoundResult 0)
+function* afterShotMode4Training(sh) {
+  const w = sh.w, w0 = w.wram[0];
+  sh.mark("aftershot");
+  yield* inBankGen(w, 0x10, golfViewExit(sh));
+  yield* waitCameraAtGoal(sh);
+  let a;
+  if (w0[0x8AA]) a = yield* inBankGen(w, 0x41, continueMulliganRestartMenu(sh));
+  else {
+    yield* sh.advance();                         // (wOnGreen 2 tested: the same either way)
+    yield* waitCameraAtGoal(sh);
+    a = yield* inBankGen(w, 0x41, continueMulliganMenu(sh));
+  }
+  if (a === 2) {
+    retryShotRestore(w);
+    D.hud(w, "hudDrawPlayer1");                  // 12:4B8A
+  } else if (a === 3) {
+    w0[0x8AA] = 1;
+    w0[0x837] = (w0[0x837] - 1) & 0xFF;
+    w0[0x839] = (w0[0x839] + 1) & 0xFF;
+  } else if (a === 4 || a === 5) {
+    w0[0x8AA] = 1;
+    w0[0x839] = 1;
+    w0[0x96C] = a === 4 ? 1 : 0;
+  } else w0[0x96C] = 0;
+}
+// 08:4AA3 RetryShotRestore: not holed; the ball back at the shot's start (02:4691 BallToShotStart: $D5F8, height 0)
+// and player 1's position with it; wForcedShot $D4E7 = 1 with the club, the aim $D369 and $D35D / $D35E (the shot
+// to repeat); the strokes, putts and lie flags back from $D359-$D35C / $D447
+function retryShotRestore(w) {
+  const w0 = w.wram[0], r6 = w.wram[6];
+  w0[0x8AA] = 0;
+  r6.copyWithin(0x400, 0x5F8, 0x5FE);
+  r6[0x406] = r6[0x407] = r6[0x408] = 0;
+  for (let k = 0; k < 6; k++) w0[0x8A2 + k] = r6[0x400 + k];
+  r6[0x4E7] = 1;
+  r6[0x4E8] = r6[0x329];
+  r6[0x4E9] = r6[0x369]; r6[0x4EA] = r6[0x36A];
+  r6[0x4EB] = r6[0x35D]; r6[0x4EC] = r6[0x35E];
+  w0[0x8BF] = r6[0x447];
+  w0[0x8A0] = r6[0x35A];
+  w0[0x8A1] = r6[0x35B];
+  w0[0x8A9] = r6[0x359];
+  w0[0x8AB] = r6[0x35C];
 }
 
 // 10:45D9-10:45E4: the next player, the view, ShotSetup up to the address step

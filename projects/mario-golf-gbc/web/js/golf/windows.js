@@ -527,28 +527,35 @@ export function putMenuTile(w, l, d, e) {
 }
 
 // 05:4F20 MenuCursorTask: the cursor tile at [$D842] (in VRAM: + $C800) blinks between $0D and blank by bit 4 of
-// [$D841]; the old position [$D844] is blanked once. With flag #48 (the Settings menu) the arrows right of rows 0 and 1
-// are blanked; on its Left / Right rows (wMenuLRMask $C3FA) instead the arrows blink at the cursor's row (tiles $0C at
-// x 1 and $0D at x 13; blank at x 1) and the cursor tile is not drawn. (Flags #49-#52: other menus' arrows, not
-// ported.) Leaves WRAM5 mapped
+// [$D841]; the old position [$D844] is blanked once. Flags #48-#52 mark menus with Left / Right rows (#48 Settings,
+// #51 Training, #52 the practice wind menu; #49 / #50 others): the arrow places right of those rows are blanked
+// (05:4F7D-05:4FC3); on a Left / Right row (wMenuLRMask $C3FA) the arrows blink at it instead (05:500A: tiles $0C at
+// x 1 and $0D right of the row; blank at x 1; 05:5184 MenuBlinkPhase) and the cursor tile is not drawn. Leaves WRAM5
+// mapped
+const ARROW_ROWS = {                             // by flag: [the right arrow's x, the rows], the row for a cursor
+  48: [0x0D, [1, 3], c => (c ? 3 : 1)], 49: [0x0E, [5], () => 5], 50: [0x0E, [7], () => 7],
+  51: [0x0B, [7, 9], c => (c === 3 ? 7 : 9)], 52: [0x0B, [3, 5], c => (c === 1 ? 3 : 5)],
+};
 export function menuCursorTask(w) {
   setW(w, 5);
-  const fl = w.wram[0][0x846] & 0xF8;            // flags #48-#52
-  if (fl & 0x78) notPorted("the menu cursor's arrows for flags #49-#52 (~05:4F8F, 05:509A)");
+  const fl = [48, 49, 50, 51, 52].find(n => w.wram[0][0x840 + (n >> 3)] & (0x80 >> (n & 7)));
   const lr = rd(w, 0xC3FA);
-  if (lr & 0x80 && maskBit(lr, rd(w, 0xD830)) && fl) {   // 05:500A a Left / Right row with flag #48: the arrows
+  const blankArrows = ([x, rows]) => D.inBank(w, 0x41, () => { for (const y of rows) putMenuTile(w, 0x20, x, y); });
+  if (lr & 0x80 && maskBit(lr, rd(w, 0xD830)) && fl !== undefined) {   // 05:500A
     if (rd(w, 0xD845)) { D.queueBGTileWrite(w, r16(w, 0xD844), 0x20, 0x80); wr(w, 0xD845, 0); }
     setW(w, 5);
     wr(w, 0xD841, (rd(w, 0xD841) + 1) & 0xFF);
+    const [x, , row] = ARROW_ROWS[fl];
+    blankArrows(ARROW_ROWS[fl]);
+    const y = row(rd(w, 0xD830));
     D.inBank(w, 0x41, () => {
-      putMenuTile(w, 0x20, 0x0D, 0x01); putMenuTile(w, 0x20, 0x0D, 0x03);
-      const y = rd(w, 0xD830) ? 3 : 1;
-      if (!(rd(w, 0xD841) & 0x10)) { putMenuTile(w, 0x0C, 0x01, y); putMenuTile(w, 0x0D, 0x0D, y); }
-      else putMenuTile(w, 0x20, 0x01, y);        // 05:517E (05:5184 MenuBlinkPhase)
+      setW(w, 5);
+      if (!(rd(w, 0xD841) & 0x10)) { putMenuTile(w, 0x0C, 0x01, y); putMenuTile(w, 0x0D, x, y); }
+      else putMenuTile(w, 0x20, 0x01, y);        // 05:517E
     });
     return;
   }
-  if (fl & 0x80) D.inBank(w, 0x41, () => { putMenuTile(w, 0x20, 0x0D, 0x01); putMenuTile(w, 0x20, 0x0D, 0x03); });   // 05:4F7D
+  if (fl !== undefined) blankArrows(ARROW_ROWS[fl]);   // 05:4F7D-05:4FC3
   const t = rd(w, 0xD841) & 0x10 ? 0x20 : 0x0D;
   D.queueBGTileWrite(w, (r16(w, 0xD842) + 0x3000 + 0x9800) & 0xFFFF, t, 0x80);
   wr(w, 0xD841, (rd(w, 0xD841) + 1) & 0xFF);

@@ -1,15 +1,18 @@
 // ModeSelectMain 32:5037, the front end's driver (map $00's enter script, 32:5033): the title (40:4032), LinkMenu
 // (09:4A12), the character select (06:6071) on the golfer list (02:5A2D), the game mode select (0D:4AA7), then for
-// Stroke the course select (0F:4AB7) and for match play the opponent's character select (list 02:5985) and the
-// course; it ends where it calls GolfRound 10:4451 (the caller runs the round: game.js). Ported paths: one player,
-// a preset golfer (no save file), Stroke and match play; the others throw.
+// Stroke the course select (0F:4AB7), for match play the opponent's character select (list 02:5985) and the course,
+// for Training the course and hole select (0F:4AD6) hole after hole; then GolfRound 10:4451 and GolfSessionEnd
+// 10:4B94 through sh.playGolfRound (boot.js gameFromPowerOn; without it, it returns the holes where it would call
+// GolfRound). Ported paths: one player, a preset golfer or a saved character, Stroke, match play and Training; the
+// others throw.
 import { rb } from "./rom.js";
 import * as D from "./render/display.js";
 import { clearFrameTasks } from "./tasks.js";
 import { titleScreen } from "./title.js";
 import { linkMenu } from "./menu09.js";
 import { characterSelectScreen, resetCharSelectCursor } from "./charsel.js";
-import { gameModeSelect, courseSelect } from "./select.js";
+import { gameModeSelect, courseSelect, courseHoleSelect } from "./select.js";
+import { golfSessionEnd } from "./boot.js";
 import * as St from "./start.js";
 import * as Sv from "./save.js";
 
@@ -86,7 +89,18 @@ function roundHoles(w) {
   return flag(w, 73) ? 3 : 0x12;
 }
 
-// 32:5037 ModeSelectMain: returns the GolfRound argument (the holes) when a round starts
+// GolfRound 10:4451 with `holes`, then GolfSessionEnd 10:4B94 (32:523C, 32:52C6, 32:52F1): run through
+// sh.playGolfRound when the caller gives one (boot.js gameFromPowerOn); else the holes are returned (the caller
+// runs the round)
+function* golfRound(sh, holes) {
+  if (!sh.playGolfRound) return holes;
+  yield* sh.playGolfRound(holes);
+  yield* inBankGen(sh.w, 0x10, golfSessionEnd(sh));
+  return null;
+}
+
+// 32:5037 ModeSelectMain: returns the GolfRound argument (the holes) when a round starts (with sh.playGolfRound:
+// at the script's end, after the round)
 export function* modeSelectMain(sh) {
   const w = sh.w;
   for (let k = 0; k < 6; k++) wr(w, 0xCAB8 + k, 0);
@@ -173,7 +187,7 @@ export function* modeSelectMain(sh) {
         St.setCourseHole(w, course, course, 1);  // 10:423B
         St.setupPlayerGolfer(w, 0xFF, 1);
         wr(w, 0xC834, 3);
-        return 0x12;
+        return yield* golfRound(sh, 0x12);
       }
       if (m === 2) {                             // 32:5240 match play
         for (;;) {
@@ -188,7 +202,25 @@ export function* modeSelectMain(sh) {
           St.setCourseHole(w, course, course, 1);
           St.setupPlayerGolfer(w, c, 1);
           wr(w, 0xC834, 2);
-          return roundHoles(w);
+          return yield* golfRound(sh, roundHoles(w));
+        }
+        at = "modes1";
+        continue;
+      }
+      if (m === 4) {                             // 32:52CD Training: one hole at a time
+        let h = 1, l = 1;
+        for (;;) {
+          sh.sound(0x01);                        // 32:52D0
+          const [course, hole] = yield* inBankGen(w, 0x0F, courseHoleSelect(sh, h, l));
+          if (course === 0xFF) break;
+          St.golfSessionInit(w);                 // 10:4B28
+          St.setCourseHole(w, course, course, hole);   // 10:423B
+          wr(w, 0xC834, 4);
+          const r = yield* golfRound(sh, 1);
+          if (r !== null) return r;
+          h = course; l = hole | 0x80;
+          wr(w, 0xC834, 4);
+          if (rd(w, 0xC96C)) return null;        // wRoundResult: Back to Menu
         }
         at = "modes1";
         continue;

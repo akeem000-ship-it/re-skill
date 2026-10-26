@@ -190,17 +190,23 @@ function getTextBoxWidth(w, hl) {
   return a;
 }
 
+// 0F:49AA DrawCourseEmblem: field 0's tiles (LZ to $D600) queued to VRAM1 $9070, a 3 x 3 block of tiles 7-$0F at
+// $D4C1 with the attributes of field 6 at $D1C1
+function drawCourseEmblem(w, c) {
+  lz(w, c, getField(w, c, 0, 0), 0xD600);
+  D.queueVRAMCopy(w, 0xD600, 0xB070, 0x09);
+  for (let r = 0, t = 7; r < 3; r++) for (let k = 0; k < 3; k++) wr(w, 0xD4C1 + 32 * r + k, t++);
+  const at = getField(w, c, 0, 6);
+  for (let r = 0, p = at; r < 3; r++) for (let k = 0; k < 3; k++, p++) wr(w, 0xD1C1 + 32 * r + k, rd(w, p));
+}
+
 // the descriptors' hooks: draw (0) and clear (1) the name box
 const HOOKS = {
   0x4CD4: function* (sh, c) {                    // 0F:4CD4 DrawCourseNameBox: the emblem; texts $21 + id and $28 + id
     const w = sh.w;                              // ($2F + id without a save file)
     D.inBank(w, 0x03, () => T.resetGlyphBuffer(w));
     loadNameBoxMaps(w, c);
-    lz(w, c, getField(w, c, 0, 0), 0xD600);      // 0F:49AA DrawCourseEmblem
-    D.queueVRAMCopy(w, 0xD600, 0xB070, 0x09);
-    for (let r = 0, t = 7; r < 3; r++) for (let k = 0; k < 3; k++) wr(w, 0xD4C1 + 32 * r + k, t++);
-    const at = getField(w, c, 0, 6);
-    for (let r = 0, p = at; r < 3; r++) for (let k = 0; k < 3; k++, p++) wr(w, 0xD1C1 + 32 * r + k, rd(w, p));
+    drawCourseEmblem(w, c);                      // 0F:49AA
     const id = currentId(w);
     yield* inBankGen(w, 0x05, T.printTextToBuffer(sh, (0x21 + id) & 0xFFFF, 0xD4C5, 0x20));
     const base = (rd(w, 0xC2A5) & 0x0F) === 0x0F ? 0x2F : 0x28;
@@ -371,6 +377,16 @@ export const selectTasks = w => {
       D.queueSprite16(w, 0x48, 0x8C, 0x70, 0x29);
     };
   }
+  o["0f:789f"] = () => {                         // 0F:789F HoleArrowsTask: the animated tile (0F:42B4), the hole's
+    const c = CFG[0x0F];                         // three sprite tiles (palette 5) while hFFB3 & $0F < $0C
+    const n = (H(w, 0xB1) + 1) & 0xFF;
+    setH(w, 0xB1, n);
+    D.queueVRAMCopy(w, (c.arrowFrames + ((n & 0x1C) << 2)) & 0xFFFF, 0xB060, 0x01);
+    if ((H(w, 0xB3) & 0x0F) >= 0x0C) return;
+    D.queueSprite16(w, 0x60, 0x50, 0x20, 0x0D);
+    D.queueSprite16(w, 0x60, 0x60, 0x24, 0x0D);
+    D.queueSprite16(w, 0x60, 0x70, 0x28, 0x0D);
+  };
   return o;
 };
 
@@ -423,6 +439,106 @@ export function* courseSelect(sh) {
   Scr.beginFadeOut(w, 0x10);
   yield* Scr.waitFade(sh);
   return a;
+}
+
+// 0F:4AD6 CourseHoleSelect (Training): h = the course to start on, l = $D209 (bit 7: keep that course and go
+// straight to the hole; the low bits: the hole shown first): the course select (from h's place in the list), then
+// the hole select (0F:77B3); B there goes back to the course select (with hole 1). Returns [course, hole], course
+// $FF for B in the course select
+export function* courseHoleSelect(sh, h, l) {
+  const w = sh.w, c = CFG[0x0F];
+  setW(w, 6);
+  wr(w, 0xD209, l);
+  const d = buildCourseList(w);
+  let e = 0, hl = 0xD658;
+  do { e = (e + 1) & 0xFF; hl++; } while (rd(w, hl) !== h);
+  yield* selectInit(sh, c, 0xD658, e, d, 0x4C78);
+  setW(w, 6);
+  if (rd(w, 0xD209) & 0x80) unregisterFrameTask(w, c.bank, c.arrows);
+  Scr.beginFadeIn(w, 0x10);
+  yield* Scr.waitFade(sh);
+  let course, hole;
+  for (;;) {
+    setW(w, 6);
+    if (rd(w, 0xD209) & 0x80) {
+      unregisterFrameTask(w, c.bank, c.arrows);
+      course = rd(w, (r16(w, 0xD207) + H(w, 0xB0)) & 0xFFFF);
+    } else {
+      setW(w, 1);
+      course = yield* selectInput(sh, c);        // 0F:41E2
+      if (course === 0xFF) break;
+    }
+    setW(w, 6);
+    drawHoleNumber(w, rd(w, 0xD209) & 0x7F);
+    yield* sh.advance();
+    registerFrameTask(w, 0x01, c.bank, 0x789F);  // HoleArrowsTask
+    hole = yield* holeSelectInput(sh, c);
+    if (hole !== 0xFF) break;
+    unregisterFrameTask(w, c.bank, 0x789F);
+  }
+  Scr.beginFadeOut(w, 0x10);
+  yield* Scr.waitFade(sh);
+  return [course, hole];
+}
+// 0F:77B3 HoleSelectInput: OBJ palette 5 (0F:7B9A); the name box with the course's name (text $21 + id) and "Which
+// hole?" ($3B); the hole ([$D209] & $7F) changed by Left / Up (down, 1 -> 18) and Right / Down (up, 18 -> 1), each
+// time the digits redrawn and the blink count hFFB3 restarted; A returns it, B $FF with $D209 = 1
+function* holeSelectInput(sh, c) {
+  const w = sh.w;
+  D.loadPalettesImmediate(w, 0x7B9A, 0x0D, 0x01);
+  setW(w, 1);
+  D.inBank(w, 0x03, () => T.resetGlyphBuffer(w));   // 03:4EB8
+  loadNameBoxMaps(w, c);                         // 0F:4995
+  drawCourseEmblem(w, c);                        // 0F:49AA
+  const id = currentId(w);
+  yield* inBankGen(w, 0x05, T.printTextToBuffer(sh, (0x21 + id) & 0xFFFF, 0xD4C5, 0x20));
+  yield* inBankGen(w, 0x05, T.printTextToBuffer(sh, 0x3B, 0xD505, 0x20));
+  yield* inBankGen(w, 0x03, T.uploadGlyphTiles(sh));
+  copyNameBox(w);                                // 0F:4AA0
+  const old = wbank(w);
+  setW(w, 6);
+  let b = rd(w, 0xD209) & 0x7F;
+  setW(w, old);
+  for (;;) {
+    setH(w, 0xB3, H(w, 0xB3) + 1);
+    yield* sh.advance();
+    const a = w.high[0x191];
+    let n = null;
+    if (a & 0x20) n = b - 1 || 0x12;             // Left
+    else if (a & 0x10) n = b + 1 === 0x13 ? 1 : b + 1;   // Right
+    else if (a & 0x40) n = b - 1 || 0x12;        // Up
+    else if (a & 0x80) n = b + 1 === 0x13 ? 1 : b + 1;   // Down
+    if (n !== null) {
+      sh.sound(0x5B);
+      setH(w, 0xB3, 0);
+      drawHoleNumber(w, n);
+      b = n;
+      continue;
+    }
+    if (a & 1) { sh.sound(0x5C); return b; }
+    if (a & 2) {
+      sh.sound(0x5D);
+      setW(w, 6);
+      wr(w, 0xD209, 1);
+      return 0xFF;
+    }
+  }
+}
+// 0F:78C5 DrawHoleNumber_0F: hole a's two digits (BCD 0F:78EA, $A: blank) and the H ($0B) into the sprite tiles
+function drawHoleNumber(w, a) {
+  const v = rb(0x0F, 0x78EA + a);
+  loadHoleDigitTile(w, v >> 4, 0);
+  loadHoleDigitTile(w, v & 0x0F, 1);
+  loadHoleDigitTile(w, 0x0B, 2);
+}
+// 0F:78FE LoadHoleDigitTile: glyph b (LZ, list 0F:7934) to WRAM1 $D000 + $100 c, queued to VRAM1 $8200 + $40 c
+function loadHoleDigitTile(w, b, c) {
+  const old = wbank(w);
+  setW(w, 1);
+  const de = (0xD0 + c) << 8;
+  D.lzTo(w, 0x0F, rw(0x0F, (0x7934 + ((2 * b) & 0xFF)) & 0xFFFF), de);
+  D.inBank(w, 0x0F, () => D.queueVRAMCopy(w, de, 0xA200 | ((c << 6) & 0xFF), 0x04));
+  setW(w, old);
 }
 
 // 0D:4AA7 GameModeSelect: the mode list (0D:707A GetModeList: 1 2 3 4 9; 3 4 without a save file; 2 3 in link

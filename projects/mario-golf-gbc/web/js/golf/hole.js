@@ -364,7 +364,7 @@ function* aimMenuLoop(sh, a) {
 }
 
 // 10:4226 GolfSceneStart: GolfViewInit, ShotViewUpdate, wHudBusy off, the fade in (00:258D, c = $7F), golf event 4
-function* golfSceneStart(sh) {
+export function* golfSceneStart(sh) {
   const w = sh.w;
   golfViewInit(sh);                              // 10:420E
   yield* V.shotViewUpdate(sh);                   // 10:5632
