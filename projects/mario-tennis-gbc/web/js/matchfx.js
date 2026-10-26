@@ -43,6 +43,15 @@ const PAUSE_SHOTS = [
   u => [[lerp(1600, 1300, u), 1050, lerp(400, -400, u)], [0, 90, 0]],                            // the net from the umpire's side, drifting
   u => [[lerp(-1200, 1200, u), 1250, 300], [lerp(-900, 900, u), 420, -2300]],                     // over the court, panning the far stand's crowd
 ];
+// between the wide shots, close shots of a player (p: X, Y as the pause found them): [eye, look at, lens] (a narrower lens than the wide
+// shots' 0.7 rad zooms in). The players are cut-outs facing the near end, so every close shot looks at them from that side (eye Y
+// beyond theirs), within about 35 degrees of straight on; the look-at point sits a little below them so they stand in the upper part of
+// the picture, clear of the pause bar along the bottom
+const PLAYER_SHOTS = [
+  (u, p) => { const a = lerp(-0.55, 0.15, u), R = lerp(1150, 600, ease(u)); return [[p.X + R * Math.sin(a), lerp(430, 250, u), p.Y + R * Math.cos(a)], [p.X, 40, p.Y], lerp(0.55, 0.4, u)]; },   // swinging round and pushing in
+  (u, p) => [[p.X + lerp(-300, 300, u), lerp(1500, 560, ease(u)), p.Y + lerp(1500, 950, u)], [p.X, 30, p.Y], 0.5],                                       // a crane coming down onto them
+  (u, p) => [[p.X + lerp(-500, 500, u), 170, p.Y + 780], [p.X, 80, p.Y], lerp(0.46, 0.36, u)],                                                         // low, tracking across, zooming
+];
 export class MatchFX {
   constructor(voxel) {
     this.v = voxel; this.on = (() => { try { return localStorage.getItem(KEY) !== "off"; } catch (e) { return true; } })();
@@ -310,9 +319,12 @@ export class MatchFX {
     const c = this.cine; if (!c || !this.on) return null;
     const t = performance.now() / 1000 - c.t0;
     let eye, at;
-    if (c.kind === "pause") {                               // TV shots cut one after another, each a slow pan (PAUSE_SHOTS)
-      const k = Math.floor(t / PAUSE_SHOT), u = (t % PAUSE_SHOT) / PAUSE_SHOT, sh = PAUSE_SHOTS[(k + c.first) % PAUSE_SHOTS.length](u);
-      eye = sh[0]; at = sh[1];
+    let lens = 0.7;
+    if (c.kind === "pause") {                               // TV shots cut one after another, each moving: a wide shot (PAUSE_SHOTS), then a close
+      const k = Math.floor(t / PAUSE_SHOT), u = (t % PAUSE_SHOT) / PAUSE_SHOT, j = (k >> 1) + c.first;   // one of a player (PLAYER_SHOTS), the two players in turn
+      const p = k & 1 ? (c.players || (c.players = (players || []).map(q => ({ X: q.X, Y: q.Y, slot: q.slot })))).find(q => q.slot === 4 + ((k >> 1) & 1)) : null;
+      const sh = p ? PLAYER_SHOTS[j % PLAYER_SHOTS.length](u, p) : PAUSE_SHOTS[j % PAUSE_SHOTS.length](u);
+      eye = sh[0]; at = sh[1]; if (sh[2]) lens = sh[2];
     } else if (c.kind === "sweep") {                               // a slow arc high round the stadium, centred on the court
       const u = ease(t / SWEEP), a = c.a0 * (-0.55 + 1.1 * u), R = 4200;
       eye = [R * Math.sin(a), 1500 - 200 * Math.sin(Math.PI * u), R * Math.cos(a)]; at = [0, 0, -200];
@@ -321,7 +333,7 @@ export class MatchFX {
       const u = t / CELEB, a = c.a0 + 1.6 * ease(u), R = 1300 - 500 * ease(u);
       eye = [h.X + R * Math.sin(a), 300 + 200 * (1 - ease(u)), h.Y + R * Math.cos(a)]; at = [h.X, 110, h.Y];
     }
-    return { mvp: m4.mul(m4.perspective(0.7, aspect, clip.near, clip.far), m4.lookAt(eye, at, [0, 1, 0])), tilt: 0 };
+    return { mvp: m4.mul(m4.perspective(lens, aspect, clip.near, clip.far), m4.lookAt(eye, at, [0, 1, 0])), tilt: 0 };
   }
   // confetti over the stands (after the stadium): small paper squares falling, swaying and turning
   draw(mvp, m4) {

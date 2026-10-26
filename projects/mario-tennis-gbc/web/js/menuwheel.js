@@ -235,7 +235,10 @@ export class MenuWheel {
     if (!this.ball) this.ball = makeBall();
     const zooming = this.phase === "zoom", opaque = title || (zooming && T - this.zoomAt < ZOOM);
     this.root.style.background = live ? (front || hold ? "rgba(8,10,32,0.3)" : "transparent") : opaque || front || hold ? "#0b1024" : "rgba(8,10,32,0.35)";
-    const blur = live && !front && !hold ? "none" : "blur(7px) brightness(0.62)"; if (this.root.style.backdropFilter !== blur) { this.root.style.backdropFilter = blur; this.root.style.webkitBackdropFilter = blur; }
+    // the match's pause (menuskins.js pauseBar): the match stays in view; in 3D the pause camera moves round it (matchfx.js), unblurred
+    const pauseBar = skinOn && skin.icon === "pause" && !opts, in3d = view.id === "gl";
+    if (pauseBar) this.root.style.background = in3d ? "transparent" : "rgba(8,10,32,0.3)";
+    const blur = pauseBar ? (in3d ? "none" : "blur(2px)") : live && !front && !hold ? "none" : "blur(7px) brightness(0.62)"; if (this.root.style.backdropFilter !== blur) { this.root.style.backdropFilter = blur; this.root.style.webkitBackdropFilter = blur; }
     this.bgcv.style.display = (front || hold) && !live ? "block" : "none";
     if ((front || hold) && !live) this.backdrop(W, H, T);
     if (hold) {                                                                   // between two screens: the last one, fading

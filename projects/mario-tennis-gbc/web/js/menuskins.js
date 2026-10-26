@@ -284,6 +284,7 @@ export class MenuSkins {
 
   // ---- the small choice panels ----
   tabs(g, W, H, k, s, gb, hd) {
+    if (s.icon === "pause") { this.pauseBar(g, W, H, k, s, gb); return; }
     const rom = gb.mem.rom, labels = s.labels || s.texts.map(t => this.text(rom, t)), locked = s.locked || [];
     this.title(g, k, s.titleText != null ? this.text(rom, s.titleText).toUpperCase() : s.title);
     this.arc(g, k, H, labels.map((l, i) => locked[i] ? "? ? ?" : l.toUpperCase()), s.sel, 0.5);
@@ -297,6 +298,50 @@ export class MenuSkins {
     const n = labels.length; for (let i = 0; i < n; i++) { g.fillStyle = i === s.sel ? "#ffd65a" : locked[i] ? "#d0d3de" : "#a9adc2"; g.beginPath(); g.arc(cx + (i - (n - 1) / 2) * 26 * k, py + 395 * k, (i === s.sel ? 8 : 6) * k, 0, 6.2832); g.fill(); }
     g.textAlign = "start";
     this.hint(g, W, H, k, "▲ ▼ choose   A ok   B back");
+  }
+  // ---- the match's pause: a TV broadcast's lower third ----
+  // the match stays in full view (in 3D the camera cuts between moving shots of the stadium and the players: matchfx.js); along the bottom
+  // the score as a TV score bug (names, sets, games, the point) and the pause menu's items as a row of tabs, LEFT / RIGHT as the game's own
+  pauseBar(g, W, H, k, s, gb) {
+    const rom = gb.mem.rom, w = gb.mem.wram[0], labels = s.labels || [], n = labels.length, sel = Math.min(s.sel ?? 0, n - 1);
+    globalThis.__pauseBarAt = gb.frames;                   // (voxel.js: the game's own pause panel stays out of the 3D picture meanwhile)
+    const RED = "#e8342a", BLUE = "#3c78eb", GOLD = "#ffd65a", INK = "#0c0e1e";
+    const name = a => { let t = ""; for (let i = 0; i < 7; i++) { const c = w[a - 0xC000 + i]; if (c < 0x20 || c > 0x7E) break; t += String.fromCharCode(c); } return t.trim(); };
+    const dbl = w[0x8F3] >= 4, names = [[0xCA00, 0xCA40], [0xCA80, 0xCAC0]].map(([a, b]) => dbl ? `${name(a)} & ${name(b)}` : name(a));
+    const tb = w[0x8E7], pt = i => { const p = w[0x8E4 + i], q = w[0x8E4 + 1 - i]; return tb ? String(p) : p >= 3 && q >= 3 ? (p > q ? "AD" : "40") : ["0", "15", "30", "40", "AD"][Math.min(4, p)]; };
+    const bh = 196 * k, by = H - bh;
+    const grad = g.createLinearGradient(0, by - 60 * k, 0, H); grad.addColorStop(0, "rgba(10,12,28,0)"); grad.addColorStop(0.24, "rgba(10,12,28,0.88)"); grad.addColorStop(1, "rgba(10,12,28,0.95)");
+    g.fillStyle = grad; g.fillRect(0, by - 60 * k, W, bh + 60 * k); g.fillStyle = GOLD; g.fillRect(0, by, W, 5 * k);
+    // the tag on the bar's top edge: PAUSED (or the sub-menu's own title) and the set being played
+    const set = w[0x8E0] + w[0x8E1] + 1, tag = (s.title && s.title !== "PAUSE" ? s.title : "PAUSED");
+    g.font = `${34 * k}px "${FONT}", ${BODY}`; const tw = g.measureText(tag).width;
+    g.fillStyle = GOLD; this.mw.pill(g, 40 * k, by - 26 * k, tw + 40 * k, 52 * k, 14 * k); g.fill();
+    g.fillStyle = INK; g.textBaseline = "middle"; g.fillText(tag, 60 * k, by + 2 * k);
+    g.fillStyle = "#e6e8f5"; g.font = `${22 * k}px ${BODY}`; g.fillText(tb ? `SET ${set} · TIEBREAK` : `SET ${set}`, 100 * k + tw, by + 2 * k);
+    // the score bug
+    const x0 = 40 * k, bw = 520 * k, rh = 50 * k;
+    g.font = `${15 * k}px ${BODY}`; g.fillStyle = "#9aa0c0"; g.textAlign = "center"; g.fillText("SET", x0 + 330 * k, by + 44 * k); g.fillText("GAME", x0 + 395 * k, by + 44 * k); g.textAlign = "start";
+    for (let i = 0; i < 2; i++) {
+      const y = by + 58 * k + i * (rh + 6 * k);
+      g.fillStyle = "#1c2038"; g.fillRect(x0, y, bw, rh); g.fillStyle = i ? BLUE : RED; g.fillRect(x0, y, 9 * k, rh);
+      g.fillStyle = "#fff"; g.font = `${(names[i].length > 14 ? 22 : 28) * k}px "${FONT}", ${BODY}`; g.fillText(names[i].toUpperCase(), x0 + 26 * k, y + rh / 2 + 2 * k);
+      g.textAlign = "center"; g.fillStyle = "#c8cde6"; g.font = `${28 * k}px "${FONT}", ${BODY}`;
+      g.fillText(String(w[0x8E0 + i]), x0 + 330 * k, y + rh / 2 + 2 * k); g.fillText(String(w[0x8E2 + i]), x0 + 395 * k, y + rh / 2 + 2 * k);
+      g.fillStyle = GOLD; g.fillRect(x0 + bw - 90 * k, y, 90 * k, rh); g.fillStyle = INK; g.font = `${30 * k}px "${FONT}", ${BODY}`; g.fillText(pt(i), x0 + bw - 45 * k, y + rh / 2 + 2 * k); g.textAlign = "start";
+    }
+    // the items: a row of tabs, the chosen one gold; its caption under the row
+    let fs = 26, gap = 12 * k, avail = W - 600 * k - 40 * k;
+    const widths = () => labels.map(l => { g.font = `${fs * k}px "${FONT}", ${BODY}`; return g.measureText(l.toUpperCase()).width + 40 * k; });
+    let ws = widths(); while (fs > 16 && ws.reduce((a, b) => a + b, 0) + gap * (n - 1) > avail) { fs -= 2; ws = widths(); }
+    let tx = 600 * k; const ty = by + 52 * k;
+    labels.forEach((l, i) => {
+      const on = i === sel; g.fillStyle = on ? GOLD : "#22264a"; this.mw.pill(g, tx, ty, ws[i], 50 * k, 25 * k); g.fill();
+      g.fillStyle = on ? INK : "#f0f2fa"; g.font = `${fs * k}px "${FONT}", ${BODY}`; g.textAlign = "center"; g.fillText(l.toUpperCase(), tx + ws[i] / 2, ty + 27 * k); g.textAlign = "start"; tx += ws[i] + gap;
+    });
+    const cap = s.captions ? (typeof s.captions[sel] === "string" ? s.captions[sel] : this.text(rom, s.captions[sel])) : "";
+    if (cap) { g.fillStyle = "#c8cde6"; g.font = `${22 * k}px ${BODY}`; g.fillText(cap, 604 * k, ty + 82 * k); }
+    g.textBaseline = "alphabetic";
+    g.fillStyle = "#dce2f5"; g.font = `${20 * k}px ${BODY}`; g.textAlign = "right"; g.fillText("◀ ▶ choose    A ok    B / START resume", W - 40 * k, H - 22 * k); g.textAlign = "start";
   }
   // ---- the erase warning ----
   confirm(g, W, H, k, s, gb) {

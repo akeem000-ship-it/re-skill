@@ -1091,11 +1091,11 @@ export class Voxel3D {
       }
     }
     // the point-won face: the game draws the winner's face by the net with their body's tiles, so the body leaves the court while it
-    // shows (player-bank tiles that joined no body); the last whole body stands in, as off the screen
-    const faceUp = sprs.some(sp => !sp.owner && (sp.attr & 8) && sp.tile < 0x40 && !menuArt(sp));
+    // shows (player-bank tiles that joined no body); the last whole body stands in, as off the screen (and while the pause menu is up)
+    const faceUp = sprs.some(sp => !sp.owner && (sp.attr & 8) && sp.tile < 0x40 && !menuArt(sp)), held = menuUp && !this.isDrill();   // (held: a match's pause menu or message window)
     for (let k = 0; k < feet.length; k++) {
       const f = feet[k], ghost = this.lastBody && this.lastBody[f.pl.slot];
-      if (!f.list.length && ghost && (faceUp || f.fy < 8 || f.fy > 144 || f.fx < 0 || f.fx > 160)) {   // off the 2D screen, or the face up
+      if (ghost && (held || (!f.list.length && (faceUp || f.fy < 8 || f.fy > 144 || f.fx < 0 || f.fx > 160)))) {   // off the 2D screen, the face up, or paused (the pause menu hides the players: what is left by their feet is HUD)
         const pl = sm.players[k] || f.pl, scale = SCALE * 1024 / (project(pl.X, pl.Y, 0).s || 128) / 8;
         this.draw(this.shadowTex, m4.trs(pl.X, 0.6, pl.Y + 4, 150, 70, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 0.75], 0);
         this.drawBody(ghost, pl.X, pl.Y, -pl.Z, scale, tilt, mvp);
@@ -1121,7 +1121,7 @@ export class Voxel3D {
       const robot = this.courtId === 6 && pl.Y < 0 && this.isDrill();
       const run = this.intro && this.intro.walkBody(pl), body = run || this.bodyOf(f.list, f.fx, f.fy, robot); this.drawBody(body, pl.X, pl.Y, -pl.Z, scale, tilt, mvp);   // INTRO: running on
       // the last whole body seen (feet on screen) stands in while the player is off the Game Boy screen
-      if (!run && f.fy <= 144 && f.fy >= 16) (this.lastBody ||= [])[f.pl.slot] = body;
+      if (!run && !held && f.fy <= 156 && f.fy >= 16) (this.lastBody ||= [])[f.pl.slot] = body;   // (a player on the near baseline has their feet a little below the screen, the body whole)
       if (this.debug) this.debug.push({ X: pl.X, Y: pl.Y, Z: pl.Z, n: f.list.length, tiles: f.list.map(s => `${s.sx},${s.sy},${s.tile}`) });
     }
     if (ballGroup.length) {                               // the ball's projection point is the anchor: its tiles keep their 2D offsets
@@ -1187,6 +1187,7 @@ export class Voxel3D {
     if (this.light) this.light.post();   // LIGHT: the lit scene goes to the canvas; the HUD is drawn over it, unlit
     if (this.stadium && this.stadium.active) { try { this.stadium.drawBeams(mvp); this.stadium.drawGlow(mvp); } catch (e) { /* no beams */ } gl.useProgram(this.prog); gl.bindVertexArray(this.vao); }   // STADIUM: floodlight beams at night
     if (this.venueTour) return;                                          // VENUE TOUR: no HUD, no game picture over it
+    if (globalThis.__pauseBarAt !== undefined && this.gb.frames - globalThis.__pauseBarAt <= 3 && this.gb.frames >= globalThis.__pauseBarAt) return;   // the broadcast pause (menuskins.js pauseBar) shows the score and the items: not the game's own panel
     gl.disable(gl.DEPTH_TEST);
     const { ortho, l, r, t, b } = this.hudOrtho();
     // HUD sprites at HUD_SCALE of the full-screen Game Boy scale, anchored to the nearest edge with a margin; on
