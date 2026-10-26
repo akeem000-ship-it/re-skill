@@ -69,6 +69,32 @@ const DRILL_SKILL = { [GM.MACHINE]: 3, [GM.WALL]: 2, [GM.MINIGAME]: 3 };   // a 
 const fresh = () => ({ v: 1, day: 1, energy: 100, meals: {}, today: [], matches: [], practice: [0, 0, 0, 0], sponsors: [], news: 0 });
 const css = c => `rgb(${c.join(",")})`;
 
+// the rewards card (rewardHtml): the ladder's rows slide when the card gets "go" (yours up a row, the rival's down a row)
+const REWARD_CSS = `
+.hdreward { position: fixed; z-index: 30; width: 660px; transform-origin: top center; background: rgba(12,14,30,.93); border: 3px solid #ffcf3a; border-radius: 18px; color: #f0f2fa; font: 16px Itim, system-ui, sans-serif; padding: 10px 14px 12px; pointer-events: none; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+.hdreward .top { font: 20px "MT Luckiest Guy", Impact, sans-serif; letter-spacing: .5px; margin-bottom: 8px; }
+.hdreward .res { padding: 1px 10px; border-radius: 9px; color: #0c0e1e; } .hdreward .res.w { background: #ffd65a; } .hdreward .res.l { background: #8fb0ff; }
+.hdreward .cols { display: flex; gap: 12px; } .hdreward .lad { flex: 1.6; } .hdreward .side { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.hdreward h4 { margin: 0 0 6px; font: 17px "MT Luckiest Guy", Impact, sans-serif; letter-spacing: .5px; color: #fff; }
+.hdreward .rows { position: relative; }
+.hdreward .row { position: absolute; left: 0; right: 0; height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 10px; background: #222642; transition: transform .9s cubic-bezier(.5,-0.3,.4,1.4), background .4s; }
+.hdreward .row.you { background: #463a14; outline: 2px solid #ffd65a; z-index: 2; } .hdreward .row.rival { background: #2c1e28; }
+.hdreward.go .row { transform: translateY(var(--dy)); } .hdreward.go .row.you { animation: hdlift .9s; }
+@keyframes hdlift { 50% { box-shadow: 0 0 18px #ffd65a; margin-left: -8px; } }
+.hdreward .rk { width: 34px; height: 100%; position: relative; font: 18px "MT Luckiest Guy", Impact, sans-serif; } .hdreward .rk i { font-style: normal; position: absolute; top: 50%; transform: translateY(-42%); transition: opacity .3s .6s; }
+.hdreward .rk .n2 { opacity: 0; } .hdreward.go .rk .n2 { opacity: 1; } .hdreward.go .row.you .rk i:first-child, .hdreward.go .row.rival .rk i:first-child { opacity: 0; }
+.hdreward .row.you .rk { color: #ffd65a; }
+.hdreward img { width: 28px; height: 28px; image-rendering: pixelated; border-radius: 6px; border: 2px solid #8b90b8; } .hdreward .you img { border-color: #ffd65a; } .hdreward .rival img { border-color: #e8342a; transition: filter .9s; }
+.hdreward.go .rival img { filter: grayscale(.6); }
+.hdreward .row b { font-weight: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px; } .hdreward .row small { color: #b8bede; font-size: 13px; }
+.hdreward .chg, .hdreward .tag { margin-left: auto; padding: 0 9px; border-radius: 10px; font-size: 14px; color: #0c0e1e; }
+.hdreward .chg { opacity: 0; transition: opacity .3s .9s; } .hdreward:not(.go) .chg { display: none; } .hdreward.go .chg { opacity: 1; } .hdreward .chg.up { background: #5adc78; } .hdreward .chg.dn { background: #e8342a; color: #fff; }
+.hdreward .tag { background: #e8342a; color: #fff; } .hdreward.go .row.rival .tag { display: none; }
+.hdreward .tag.nx { background: #78aaff; color: #0c0e1e; opacity: 0; transition: opacity .4s 1.4s; } .hdreward.go .tag.nx { opacity: 1; }
+.hdreward.go .row.next { outline: 2px solid #78aaff; transition: outline-color .4s 1.4s; }
+.hdreward .card { background: #1c2038; border-radius: 12px; padding: 6px 10px; display: flex; flex-direction: column; }
+.hdreward .card i { font-style: normal; font-size: 12px; color: #ffd65a; letter-spacing: .5px; } .hdreward .card b { font: 22px "MT Luckiest Guy", Impact, sans-serif; } .hdreward .card small { color: #c8cde6; font-size: 13px; }`;
+
 export class Tour extends HdPanel {
   constructor({ getGb, getPort, pause, pad, toast }) {
     super({ pause, pad, toast }); this.getGb = getGb; this.getPort = getPort; this.needs = "This page needs a tour file loaded (the campus).";
@@ -122,6 +148,7 @@ export class Tour extends HdPanel {
   begin(w, mode) {
     const match = mode === GM.RANKING || mode === GM.OPEN || mode === GM.PRACTICE || mode === GM.DREAM;
     const list = w[W.list], id = w[W.match], opp = w[W.opp + 0x0B];
+    this.reward = null;
     this.cur = { mode, match, list, id, opp, oppName: this.nameOf(opp), oppLevel: w[W.opp + 0x18], setLog: [], sets: [0, 0], games: [0, 0], done: false, hits: 0 };
     this.fatigueNow = this.data.energy < 50 ? Math.min(1, (50 - this.data.energy) / 50) : 0;     // PLAY+: fixed for the match
     this.lastHits = w[W.hits];
@@ -151,9 +178,80 @@ export class Tour extends HdPanel {
     D.matches.push({ day: D.day, list: c.list, id: c.id, mode: c.mode, opp: c.oppName, oppId: c.opp, lv: c.oppLevel, won, score, sets: c.sets });
     if (won && prev.some(m => !m.won) && !prev.slice(prev.findLastIndex(m => !m.won) + 1).some(m => m.won)) D.revenge = (D.revenge || 0) + 1;
     this.save();
+    this.reward = this.rewardOf(c, won, score);
+  }
+  // ---------------- the rewards card over the game's WIN! / LOSE screen ----------------
+  // what the match changed, worked out as it ends (the game sets its won-rank flags later, so the ladder here is the one before):
+  // a ranking match won against the player just above you swaps the two of you; your record against them; the next sponsor; who is next
+  rewardOf(c, won, score) {
+    const R = this.rivals().find(r => r.name === c.oppName) || { w: won ? 1 : 0, l: won ? 0 : 1 };
+    const L = c.mode === GM.RANKING ? this.ladders().find(l => l.list === c.list && l.rows.some(r => r.id === c.id)) : null;
+    let rows = null, from = -1, to = -1, next = null;
+    if (L) {
+      rows = L.rows.map(r => ({ ...r })); from = rows.findIndex(r => r.you); const k = rows.findIndex(r => r.id === c.id);
+      if (won && k === from - 1) { to = k; next = rows[k - 1] || null; } else next = rows[from - 1] || null;
+      if (k >= 0) rows[k].rival = true;
+    }
+    const st = this.stats(), f = n => this.flag(n), S = SPONSORS.find(s => !this.data.sponsors.includes(s.id) && !s.test(this.data, st, f));
+    return { won, score, opp: c.oppName, list: c.list, title: `${MATCH_NAMES[c.id] || "Match"} · ${classOf(c.id)}`, h2h: [R.w, R.l], ladder: L ? L.name : "",
+      rows, from, to, next, sponsor: S ? S.goal : "", faces: null, shownAt: 0 };
+  }
+  // per frame (full.js): the card shows while the WIN! / LOSE screen runs (port/menus/results/result.js sets P.winLoseSeen)
+  rewardFrame(canvas) {
+    const P = this.getPort && this.getPort(), s = P && P.winLoseSeen, R = this.reward;
+    const live = this.on && R && s && P.frames - s.at <= 2;
+    if (!live) { if (this.rewardEl && this.rewardEl.style.display !== "none") this.rewardEl.style.display = "none"; return; }
+    if (!this.rewardEl) this.buildReward();
+    const el = this.rewardEl;
+    if (el.style.display === "none") {                                      // (again after the statistics: the climb is not played twice)
+      if (!R.faces && !R.list) R.faces = this.grabFaces();
+      el.innerHTML = this.rewardHtml(R); el.style.display = "block";
+      if (R.to >= 0 && !R.shownAt) { R.shownAt = performance.now(); setTimeout(() => el.classList.add("go"), 700); } else if (R.to >= 0) el.classList.add("go");
+    }
+    const r = canvas.getBoundingClientRect(), k = Math.min(r.width * 0.94 / 660, r.height * 0.52 / 300);
+    el.style.left = r.left + r.width / 2 + "px"; el.style.top = r.top + r.height * 0.45 + "px"; el.style.transform = `translateX(-50%) scale(${k.toFixed(3)})`;
+  }
+  // the two portraits on the WIN! / LOSE screen (singles: yours at the top right, theirs at the bottom left; 24 x 24)
+  grabFaces() {
+    const fr = this.getGb().ppu.frame, out = [];
+    for (const [x0, y0] of [[104, 40], [24, 96]]) {
+      const cv = document.createElement("canvas"); cv.width = cv.height = 24; const c2 = cv.getContext("2d"), im = c2.createImageData(24, 24);
+      for (let y = 0; y < 24; y++) for (let x = 0; x < 24; x++) { const v = fr[(y0 + y) * 160 + x0 + x], o = (y * 24 + x) * 4; im.data[o] = v & 255; im.data[o + 1] = v >> 8 & 255; im.data[o + 2] = v >> 16 & 255; im.data[o + 3] = 255; }
+      c2.putImageData(im, 0, 0); out.push(cv.toDataURL());
+    }
+    return out;
+  }
+  buildReward() {
+    if (!document.getElementById("hdreward-css")) {
+      const st = document.createElement("style"); st.id = "hdreward-css"; st.textContent = REWARD_CSS; document.head.appendChild(st);
+    }
+    this.rewardEl = document.createElement("div"); this.rewardEl.className = "hdreward"; this.rewardEl.style.display = "none"; document.body.appendChild(this.rewardEl);
+  }
+  rewardHtml(R) {
+    const e = s => this.esc(s), face = i => R.list || !R.faces ? "" : `<img alt="" src="${R.faces[i]}">`;
+    let lad = "";
+    if (R.rows) {
+      const H = 40, rows = R.rows.map((r, i) => {
+        const you = !!r.you, cls = you ? "you" : r.rival ? "rival" : "";
+        const moved = R.to >= 0 && (you || r.rival), dy = moved ? (you ? -H : H) : 0;
+        const rk = `<span class="rk"><i>#${i + 1}</i>${moved ? `<i class="n2">#${i + 1 + (you ? -1 : 1)}</i>` : ""}</span>`;
+        const who = you ? `${face(0)}<b>${e(r.name)}</b>` : `${r.rival ? face(1) : ""}<b>${e(r.name)}</b><small>Lv ${r.level}</small>`;
+        const chip = (r.rival ? `<span class="tag">RIVAL</span>` : "") + (moved ? `<span class="chg ${you ? "up" : "dn"}">${you ? "▲ 1" : "▼ 1"}</span>` : "");
+        const next = R.next && r.id === R.next.id ? " next" : "";
+        return `<div class="row ${cls}${next}" style="top:${i * H}px;--dy:${dy}px">${rk}${who}${chip}${next ? `<span class="tag nx">NEXT TO BEAT</span>` : ""}</div>`;
+      }).join("");
+      lad = `<div class="lad"><h4>${e(R.ladder)}</h4><div class="rows" style="height:${R.rows.length * H}px">${rows}</div></div>`;
+    }
+    const side = [
+      [`VS ${e(R.opp)}`, `${R.h2h[0]} – ${R.h2h[1]}`, R.h2h[0] > R.h2h[1] ? "you lead" : R.h2h[0] < R.h2h[1] ? "they lead" : "all square"],
+      ...(R.sponsor ? [["NEXT SPONSOR", "", e(R.sponsor)]] : []),
+      ...(R.next ? [["NEXT", e(R.next.name), `Lv ${R.next.level}`]] : []),
+    ].map(([k, big, small]) => `<div class="card"><i>${k}</i>${big ? `<b>${big}</b>` : ""}<small>${small}</small></div>`).join("");
+    return `<div class="top"><span class="res ${R.won ? "w" : "l"}">${R.won ? "WON" : "LOST"}</span> ${e(R.title)}${R.score ? ` · ${e(R.score)}` : ""}</div><div class="cols">${lad}<div class="side">${side}</div></div>`;
   }
   // back on the campus after a match: the ladders moved? new sponsors?
   afterMatch() {
+    this.reward = null;
     const before = this.pendingSpots; this.pendingSpots = null; if (!before) return;
     const spots = this.ladderSpots(), i = spots.findIndex((s, k) => s.you !== before[k].you);
     if (i >= 0) this.toast(`${spots[i].name}: you are now #${spots[i].you} (from #${before[i].you})`);

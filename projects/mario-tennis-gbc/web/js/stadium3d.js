@@ -343,24 +343,30 @@ export class Stadium3D {
     const flower = (x0, y0, x1, y1, d) => { const c = colours(bg, W, x0, y0, x1, y1, c => sat(c) > 0.35 && lum(c) > 0.25 && !isGreen(c)); return c.length ? c[0].c : d; };
     const G = GARDENS[court] || GARDENS[5];
     const bedC = G.bed ? flower(...G.bed, [90, 160, 255]) : null, cornerC = G.corners ? flower(0, 49, 36, 54, [240, 80, 240]) : null, white = shade(P.wallLight, 1.02), soil = shade(P.hedgeA, 0.55);
-    const top = mix(P.hedgeB, [255, 255, 255], 0.3);
-    const dome = (cx, cz, rx, hy, rz, cs, y0 = 0) => {                 // a bush: layers of cubes in a shrinking ellipse, lit on top (from height y0)
-      for (let y = y0 % cs; y < hy; y += cs) {
-        const t = (y + cs * 0.5) / hy, k = Math.sqrt(Math.max(0, 1 - t * t)), ax = rx * k, az = rz * k, last = y + cs >= hy;
+    // a campus tree (the courtyard's, for continuity): an egg-shaped crown rising to a point, pale yellow-green with white glints up
+    // the lit side, deep green below its waist and round the back, on an orange-soil base
+    const LEAF = [143, 197, 0], LEAF_LO = [0, 136, 0], GLINT = [248, 248, 248], RIM = [48, 0, 32], SOIL = [233, 143, 0];
+    const egg = (cx, cz, rx, rz, hy, cs, y0) => {
+      const waist = 0.32;
+      for (let y = 0; y < hy; y += cs) {
+        const t = (y + cs * 0.5) / hy, u = t < waist ? (waist - t) / waist : (t - waist) / (1 - waist);
+        const k = Math.sqrt(Math.max(0, 1 - u * u)) * (t < waist ? 1 : 1 - 0.25 * u), ax = rx * k, az = rz * k;
         for (let x = -ax; x <= ax; x += cs) for (let z = -az; z <= az; z += cs) {
-          if ((x * x) / (ax * ax + 1) + (z * z) / (az * az + 1) > 1) continue;
-          const lit = last || (x * x) / (ax * ax + 1) + (z * z) / (az * az + 1) > 0.55 && y > hy * 0.4;
-          B.add(cx + x, y0 + y, cz + z, cs * 1.05, cs * 1.05, cs * 1.05, last ? top : lit ? P.hedgeB : rnd() > 0.5 ? P.hedgeA : shade(P.hedgeA, 0.85), 0.1);
+          const e = (x * x) / (ax * ax + 1) + (z * z) / (az * az + 1); if (e > 1) continue;
+          const lit = z > -az * 0.2 && x < ax * 0.5, rim = e > 0.8 && x > ax * 0.3;
+          const c = rim ? (t < waist ? RIM : shade(LEAF_LO, 0.8)) : t < waist ? (lit ? mix(LEAF_LO, LEAF, 0.35) : LEAF_LO) : lit && t > 0.45 && rnd() < 0.18 ? GLINT : lit ? LEAF : mix(LEAF, LEAF_LO, 0.55);
+          B.add(cx + x, y0 + y, cz + z, cs * 1.05, cs * 1.05, cs * 1.05, c, 0.1);
         }
       }
     };
     for (let copy = -1; copy <= 1; copy++) {
       const X = x => bd.X + copy * bd.width + (x - 128) * upp, Zg = row => bd.Y - (gd.h - row) * deep;
-      // the bushes grow into small trees whose crowns show over the fence (a trunk, then a round crown from two thirds of its height)
+      // the bushes grow into campus trees whose crowns show over the fence (a trunk on an orange-soil base, then the egg-shaped crown)
       for (const [x, row, r] of G.bushes) {
-        const h0 = bd.height * (0.62 + 0.2 * rnd()), rx = r * upp * 1.25;
+        const h0 = bd.height * (0.55 + 0.2 * rnd()), rx = r * upp * 1.1;
+        B.add(X(x), 0, Zg(row), rx * 0.9, 14, rx * 0.9, SOIL, 0.1);
         B.add(X(x), 0, Zg(row), 12, h0 + 20, 12, [96, 70, 44], 0.08);
-        dome(X(x), Zg(row), rx, rx * 1.5, Math.max(rx * 0.8, r * deep * 0.5), 16, h0);
+        egg(X(x), Zg(row), rx, Math.max(rx * 0.8, r * deep * 0.5), rx * 2.6, 16, h0);
       }
       // the flower bed: a white kerb, soil, flowers
       const bx = G.bed ? X((G.bed[0] + G.bed[2]) / 2) : 0, bz = G.bed ? Zg((G.bed[1] + G.bed[3]) / 2) : 0, bw = G.bed ? (G.bed[2] - G.bed[0]) * upp : 0, bdp = G.bed ? (G.bed[3] - G.bed[1]) * deep : 0;

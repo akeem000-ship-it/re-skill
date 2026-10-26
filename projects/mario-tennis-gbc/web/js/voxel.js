@@ -1090,9 +1090,12 @@ export class Voxel3D {
         }
       }
     }
+    // the point-won face: the game draws the winner's face by the net with their body's tiles, so the body leaves the court while it
+    // shows (player-bank tiles that joined no body); the last whole body stands in, as off the screen
+    const faceUp = sprs.some(sp => !sp.owner && (sp.attr & 8) && sp.tile < 0x40 && !menuArt(sp));
     for (let k = 0; k < feet.length; k++) {
       const f = feet[k], ghost = this.lastBody && this.lastBody[f.pl.slot];
-      if (!f.list.length && ghost && (f.fy < 8 || f.fy > 144 || f.fx < 0 || f.fx > 160)) {   // off the 2D screen
+      if (!f.list.length && ghost && (faceUp || f.fy < 8 || f.fy > 144 || f.fx < 0 || f.fx > 160)) {   // off the 2D screen, or the face up
         const pl = sm.players[k] || f.pl, scale = SCALE * 1024 / (project(pl.X, pl.Y, 0).s || 128) / 8;
         this.draw(this.shadowTex, m4.trs(pl.X, 0.6, pl.Y + 4, 150, 70, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 0.75], 0);
         this.drawBody(ghost, pl.X, pl.Y, -pl.Z, scale, tilt, mvp);

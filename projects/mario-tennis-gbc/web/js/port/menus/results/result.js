@@ -186,6 +186,7 @@ export function* runMatchWinLoseScreen(P) {
       printDecimalByte(P, 3, 3, P.bus.u8(P.A.currentMinigameStoryMatch + 1));
       input = P.bus.u8(hInputPressed);
       P.V.menuInputPressed = input;
+      P.winLoseSeen = { at: P.frames, lost: !!lost(P) };             // TOUR+ (tour.js: the rewards card over this screen), read only
       if (input & (PADF_A | PADF_B | PADF_RIGHT)) break;
     }
     const rasterOff = () => P.bus.w8(rIE, P.bus.u8(rIE) & ~IE_STAT);

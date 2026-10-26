@@ -176,6 +176,7 @@ function draw(alpha = 1) {                 // alpha: fraction of the next game f
   if (hd && hd.update()) drawnFrame = -1;    // the text on screen (HD font) changed
   if (menuWheel) menuWheel.update();         // MENU: Wheel
   tour.coachFrame();                         // TOUR+: the coach's pick on the stat screen
+  tour.rewardFrame(view3d && voxel && voxel.mode === "3d" ? $("gl") : cv);   // TOUR+: the rewards card over the WIN! / LOSE screen
   modes.overlay();                           // MODES: the rematch question
   if (voxel && voxel.ballfx) { voxel.ballfx.serveCue = !!(port && port.plus && port.plus.serve); voxel.ballfx.fire = port && port.plus && port.plus.momentum && port.E ? port.E.mom || null : null; }   // PLAY+: its cues
   if (view3d && voxel) {
