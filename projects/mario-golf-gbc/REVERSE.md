@@ -90,6 +90,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the level-up screen (levelup.js, bank 41; CheckLevelUp, CharLevelUpDiff, CharRefreshStats of bank 02) | 101,871 | 41.98% |
 | + Training (the course and hole select 0F:4AD6, the after-shot menus and RetryShotRestore, the training pause menu, the menu arrows of flags #49-#52) | 103,011 | 42.45% |
 | + Tournament (tournament.js: the rivals of bank 3C, the standings of bank 0E, the course statistics of bank 08; the standings page 0E:5209; the placing screen 0B:5B00) | 107,090 | 44.13% |
+| + continuing a saved round (the card ExpScreen a = 0, LoadSummaryPrompt 32:7D35, TwoChoicePrompt) | 108,218 | 44.59% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -279,6 +280,16 @@ and `_match` (to GolfRound's call through the save-file mode select), `boot_kid_
 the mid-round saves): every frame and the save RAM at the end match the game. The play page keeps the save RAM in
 localStorage under the emulated page's key and format; `play_page.mjs --save out/kid.sav` loads a core-made save
 there, plays Stroke with it and checks the page stored the save the game wrote.
+A save made by Save & Quit in a round (wReplayActive 1) loads to the card (32:5474 clears the maps; LoadSummaryPrompt
+32:7D35: ExpScreen 48:4053 with a = 0: DrawYesNoBox 48:458C with "Yes" / "No" from one text, the second line through
+PrintTextToBufferSkipLine 05:638A; DrawCardRoundInfo 48:4696: the mode, the course, "Hole n", "Score" with
+DrawSignedScore 48:48F3, whose hundreds digit is always a '1' and whose tens show a 0 only for score bytes $64-$E3),
+then "Continue previous game?" (48:4A81) and "Saved data will be erased, OK?" (48:4AC3) with TwoChoicePrompt 32:7D82:
+Yes continues the round (ScriptEnd, GolfRound $FF, GolfSessionEnd), Yes on the second goes to the mode select, B on
+the first back to the character select. `boot_kidsq_continue` and `boot_kidsq_prompts` load the save
+`boot_kid_savequit` leaves (SRAM_OUT=out/kidsq.sav keeps the game's save RAM after a case) and take both ways, frame
+for frame. Not ported: the match card's holes-up line (48:4724), the story's card (48:480D) and its map engine, the
+pending EXP of a save (32:5139).
 
 #### The message box, the pause menu's items, after a round (msgbox.js, pause.js, boot.js)
 

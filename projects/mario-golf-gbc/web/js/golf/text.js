@@ -361,8 +361,9 @@ export function normalizeTextId(id, a) {
 // 05:62AA PrintTextToBuffer: hl = text id, de = tile map buffer, c = its row stride. The glyphs go at the pen from
 // tile [$C36E] (line length c), then the tile numbers they cover are written at de. $00, $01 and $03 end the text;
 // the codes $04 $07 $08 $09 $0B $0E insert their strings; any other byte (other codes included) is drawn as a
-// glyph. A following $DE / $DF (dakuten) rewrites the byte a row above in the buffer (de - stride).
-export function* printTextToBuffer(sh, id, de, c) {
+// glyph. A following $DE / $DF (dakuten) rewrites the byte a row above in the buffer (de - stride). skipLine: 05:638A
+// PrintTextToBufferSkipLine (the text from after its first $01, a later $01 stepping back as $0D does).
+export function* printTextToBuffer(sh, id, de, c, skipLine = false) {
   const w = sh.w;
   const de0 = de;
   setTextLineLength(w, c);
@@ -375,13 +376,16 @@ export function* printTextToBuffer(sh, id, de, c) {
   wr(w, 0xC362, bc & 0xFF);
   loadText(w, id);
   let hl = 0xC600;
+  if (skipLine) {                                // 05:638A PrintTextToBufferSkipLine: from after the first $01
+    for (;;) { const a = rd(w, hl); if (!a) break; if (a === 1) { hl++; break; } hl++; }
+  }
   setW(w, old);
   for (;;) {
     let a = rd(w, hl);
-    if (!a || a === 3 || a === 1) break;
-    if (a === 7 || a === 4 || a === 9 || a === 8 || a === 0x0B || a === 0x0E) {
+    if (!a || a === 3 || (a === 1 && !skipLine)) break;
+    if (a === 7 || a === 4 || a === 9 || a === 8 || a === 0x0B || a === 0x0E || a === 1) {
       if (a === 0x0E) { hl = (hl + 1) & 0xFFFF; wr(w, 0xC361, rd(w, hl)); }
-      de = yield* textControlDispatch(sh, a, de);
+      de = yield* textControlDispatch(sh, a === 1 ? 0x0D : a, de);   // (the skip-line copy: $01 as $0D)
       hl = (hl + 1) & 0xFFFF;
       continue;
     }

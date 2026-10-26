@@ -121,6 +121,7 @@ function scriptedPolicy(scripts, menus) {
   };
 }
 let markLog = [];
+let cards = 0;
 
 // the game from power-on through rounds (boot.js gameFromPowerOn, game.js playRoundFrames), the marks the native
 // engine passes noted; it stops when the mode select's input runs again after `rounds` rounds, or when stop() says
@@ -216,6 +217,33 @@ const CASES = [
   // Match (Right twice), Luigi, course 1
   { name: "boot_poweron_kid_match", state: "boot_poweron_kid", open: true, noRet: true,
     run: sh => { menuW = sh.w; return powerOn(sh); }, policy: savedPolicy(2) },
+  // the save Save & Quit made in a round (out/kidsq.sav: SRAM_OUT of boot_kid_savequit): loading it shows the card and
+  // the continue prompts (32:7D35 LoadSummaryPrompt), then the round goes on (GolfRound $FF), stopped 300 frames into
+  // its second shot. (At the end the play clock SaveGame copied, $C82E and the save, is 2 frames on: the game saved
+  // before its code ran past two VBlanks that the native side replays at the frame's start.)
+  { name: "boot_kidsq_continue", state: "boot_poweron_kidsq", open: true, noRet: true, sram: true,
+    run: sh => gameCase(sh, 1, () => markLog.filter(m => m.n === "aimmenu").length >= 2 && frameNow > markLog.filter(m => m.n === "aimmenu")[1].f + 300),
+    policy: scriptedPolicy({}, savedPolicy(0)) },
+  // the same, the prompts: No ("Saved data will be erased, OK?"), B (back), No, No (the first prompt again), B: the
+  // character select;
+  // the card again: No, Yes on the second prompt: the mode select
+  { name: "boot_kidsq_prompts", state: "boot_poweron_kidsq", open: true, noRet: true, sram: true,
+    run: sh => gameCase(sh, 9, () => cards >= 2 && hasTask(sh.w, 0x0D, 0x428E)),
+    policy: (() => {
+      const base = savedPolicy(0), scripts = [
+        [[40, 0x80], [80, 1], [140, 2], [200, 0x80], [240, 1], [300, 1], [360, 2]],
+        [[40, 0x80], [80, 1], [120, 0x40], [160, 1]]];
+      let on = false, at = 0;
+      return f => {
+        frameNow = f;
+        const t = menuW && hasTask(menuW, 0x48, 0x42F7);
+        if (t && !on) { cards++; at = f; if (process.env.MARKS) console.error("CARD", cards, f); }
+        on = t;
+        if (!t) return base(f);
+        for (const [d, b] of scripts[cards - 1] || []) if (f === at + d) return b;
+        return 0;
+      };
+    })() },
   // Tournament (Right once) with the kid74 save (game flag #74: one hole, hole 18): at the second shot the pause
   // menu's Scorecard: the standings page (0E:5209), Right: the strokes page, A; the hole, the standings, the placing
   // (0B:5B00), the EXP

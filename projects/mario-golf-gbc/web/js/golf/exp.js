@@ -302,7 +302,23 @@ export function* expScreen(sh, a, de, h) {
   w.high[0x18A] = 0; w.high[0x18B] = 0;
   loadExpScreenGfx(w, a);
   yield* drawCardNameLevel(sh);
-  if (!a) notPorted("the saved game's card (~48:4088, ~48:4696 DrawCardRoundInfo)");
+  if (!a) {                                      // 48:4088 the card
+    yield* drawYesNoBox(sh);                     // 48:458C
+    registerFrameTask(w, 0x0E, B, 0x42F7);       // YesNoCursorTask
+    if (rd(w, 0xC834) !== 9) yield* drawCardRoundInfo(sh);   // 48:4696
+    else notPorted("the card's place in the story (~48:480D DrawCardMapName)");
+    setW(w, 1);                                  // 48:42B9
+    D.queueVRAMCopy(w, 0xD000, 0xB800, 0x24);
+    D.queueAndRunVRAMCopy(w, 0xD400, 0x9800, 0x24);
+    copyMapToScrollBuffers(w);                   // 00:0804
+    yield* inBankGen(w, 3, T.uploadGlyphTiles(sh));   // 03:4F6C
+    registerFrameTask(w, 0x0F, B, 0x4336);       // ExpCharSpriteTask
+    D.enableLCD(w);
+    Scr.beginFadeIn(w, 0x10);
+    yield* Scr.waitFade(sh);
+    setW(w, bank0);
+    return;
+  }
   drawExpMessageBox(w);
   setW(w, bank0);
   const bank1 = wbank(w);
@@ -397,5 +413,57 @@ export function* awardExpPoints(sh, de, h) {
     wr(w, 0xD400, 1);
     yield* expScreen(sh, 1, 0, 4);
   }
+  setW(w, old);
+}
+
+// ---- the saved game's card (ExpScreen a = 0, from 32:7D35 LoadSummaryPrompt) ----
+// 48:458C DrawYesNoBox: the 6 x 5 block of 48:4550 at rows 5-9; "Yes" / "No" (text $1A: its first line at $D4C2, the
+// rest at $D502: 05:638A)
+function* drawYesNoBox(sh) {
+  const w = sh.w;
+  for (let c = 5, hl = 0x4550; c < 0x0A; c++) for (let b = 0; b < 6; b++, hl += 2) putCardTile(w, b, c, rb(B, hl), rb(B, hl + 1));
+  yield* inBankGen(w, 5, T.printTextToBuffer(sh, 0x1A, 0xD4C2, 0x20));
+  yield* inBankGen(w, 5, T.printTextToBuffer(sh, 0x1A, 0xD502, 0x20, true));
+}
+// 48:4696 DrawCardRoundInfo: rows $0B-$11 cleared (48:47B4, 48:4791); the mode's name (text $14A8 + mode - 1), the
+// course (text $21 + course), "Hole n" ($14A0 with the hole pushed) and "Score" ($14A1) with the score to par
+// (48:48F3) from the record; in match play the holes up instead (~48:4724, not ported)
+function* drawCardRoundInfo(sh) {
+  const w = sh.w;
+  fillTiles(w, 1, 0x14, 0x0D, 0x12, 0x20, 0x01);   // 48:4791 ClearCardRows13
+  fillTiles(w, 1, 0x0A, 0x0B, 0x0D, 0x20, 0x01);   // 48:47B4 ClearCardRows11 (x 1-9)
+  yield* inBankGen(w, 5, T.printTextToBuffer(sh, (0x14A8 + ((rd(w, 0xC834) - 1) & 0xFF)) & 0xFFFF, 0xD581, 0x20));
+  yield* inBankGen(w, 5, T.printTextToBuffer(sh, (0x21 + rd(w, 0xC836)) & 0xFFFF, 0xD5C1, 0x20));
+  T.pushTextNumberArg(w, rd(w, 0xC837));         // 05:551F
+  setW(w, 1);
+  yield* inBankGen(w, 5, T.printTextToBuffer(sh, 0x14A0, 0xD601, 0x20));
+  if (rd(w, 0xC834) === 2) notPorted("the match card's holes-up line (~48:4724)");
+  yield* inBankGen(w, 5, T.printTextToBuffer(sh, 0x14A1, 0xD608, 0x20));
+  drawSignedScore(w, rd(w, 0xC8BE), 0x0C, 0x10);
+}
+// 48:4A08 ScoreByteToSigned: $91 and up negative
+const scoreSigned = a => (a >= 0x91 ? (a - 0x100) : a);
+// 48:48F3 DrawSignedScore: at (b, c), attribute 1: '+' ($2B), '-' ($2D) or even ($47); a hundred as '1'; the tens
+// (also a 0 when the byte is $64-$E3); the units (48:49A2 / 48:49CF: of |score| less 100 when at least 100)
+function drawSignedScore(w, d, b, c) {
+  const s = scoreSigned(d), m = Math.abs(s), r = m >= 100 ? m - 100 : m;
+  putCardTile(w, b++, c, !s ? 0x47 : s > 0 ? 0x2B : 0x2D, 0x01);
+  if (d && Math.floor(m / 100)) putCardTile(w, b++, c, 0x31, 0x01);
+  const t = Math.floor(r / 10);
+  if (t) putCardTile(w, b++, c, 0x30 + t, 0x01);
+  else if (!((d - 0x64) & 0x80)) putCardTile(w, b++, c, 0x30, 0x01);
+  putCardTile(w, b, c, 0x30 + r % 10, 0x01);
+}
+// 48:4A81 DrawGfxPromptA / 48:4AC3 DrawGfxPromptB: the frame (48:4527) and two tile strings (48:400E / 48:4019 or
+// 48:4029 / 48:4039) in the WRAM1 maps, their top 8 rows queued to the BG map
+export function drawGfxPrompt(w, b) {
+  const old = wbank(w);
+  setW(w, 1);
+  drawExpFrameBlock(w);
+  drawTileStringRecord(w, b ? 0x4029 : 0x400E);
+  drawTileStringRecord(w, b ? 0x4039 : 0x4019);
+  setW(w, 1);
+  D.queueVRAMCopy(w, 0xD000, 0xB800, 0x08);
+  D.queueVRAMCopy(w, 0xD400, 0x9800, 0x08);
   setW(w, old);
 }

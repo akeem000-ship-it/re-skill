@@ -7,12 +7,16 @@
 // Training; the others throw.
 import { rb } from "./rom.js";
 import * as D from "./render/display.js";
-import { clearFrameTasks } from "./tasks.js";
+import { clearFrameTasks, unregisterFrameTask } from "./tasks.js";
+import * as Scr from "./screen.js";
+import { initFontScreen } from "./pictures.js";
+import { initWindowSystem } from "./round.js";
+import { expScreen, drawGfxPrompt } from "./exp.js";
 import { titleScreen } from "./title.js";
 import { linkMenu } from "./menu09.js";
 import { characterSelectScreen, resetCharSelectCursor } from "./charsel.js";
 import { gameModeSelect, courseSelect, courseHoleSelect } from "./select.js";
-import { golfSessionEnd } from "./boot.js";
+import { golfSessionEnd, scriptEnd } from "./boot.js";
 import * as St from "./start.js";
 import * as Sv from "./save.js";
 
@@ -152,9 +156,19 @@ export function* modeSelectMain(sh) {
         St.mapWarpToReturnPoint(w);              // 0A:4D8A
         const rp = rd(w, 0xC96D);
         if (rp !== 2 && (rp === 1 || rd(w, 0xC450) !== 0)) {
-          // 32:516C the saved place is in the story (or a round): the summary prompt (32:7D35 LoadSummaryPrompt), then
-          // the map engine (or GolfRound $FF and GolfSessionEnd for a round saved at a hole)
-          notPorted("continuing the story (~32:516C, ~32:7D35 LoadSummaryPrompt)");
+          // 32:516C the saved place is in the story or in a round: the card and its prompts (32:7D35), then (A on
+          // "continue") GolfRound $FF and GolfSessionEnd for a round; the story's map engine is not ported
+          clearBgMapsBlank(w);                   // 32:5474
+          yield* inBankGen(w, 0x05, initWindowSystem(sh));   // 05:407A
+          const r = yield* loadSummaryPrompt(sh);
+          if (r === 0xFF) { at = "player"; continue; }
+          D.inBank(w, 0x0A, () => scriptEnd(w)); // 0A:40D6
+          Scr.beginFadeOut(w, 0x10);
+          yield* Scr.waitFade(sh);
+          if (!r) {
+            if (!rd(w, 0xC96D)) notPorted("continuing the story (~32:5199: the map engine)");
+            return yield* golfRound(sh, 0xFF);   // 32:519A
+          }
         }
         wr(w, 0xC834, 9);                        // 32:51A3
         at = "modes1";
@@ -238,4 +252,57 @@ export function* modeSelectMain(sh) {
       notPorted(`the game mode ${m} (~32:51DF)`);
     }
   }
+}
+
+// 32:5474 ClearBgMapsBlank: LCD off; the WRAM2 / WRAM3 maps at $D000 cleared ($900 bytes); the BG map and its
+// attributes from WRAM3 (both from the cleared tiles); LCD on
+function clearBgMapsBlank(w) {
+  const old = w.high[0x196];
+  if (w.vram) D.disableLCDSafely(w);
+  setW(w, 2); D.clearMemory16(w, 0xD000, 0x90);
+  setW(w, 3); D.clearMemory16(w, 0xD000, 0x90);
+  if (w.vram) {
+    D.queueAndRunVRAMCopy(w, 0xD000, 0x9800, 0x24);
+    D.queueAndRunVRAMCopy(w, 0xD000, 0xB800, 0x24);
+    D.enableLCD(w);
+  }
+  setW(w, old);
+}
+// 32:7D82 TwoChoicePrompt: the cursor [$D251] (WRAM6) from a, its blink $D253; Up / Down switch it (sound $5B); A gives
+// it (sound $5C), B $FF (sound $5D), a frame after
+function* twoChoicePrompt(sh, a) {
+  const w = sh.w;
+  setW(w, 6);
+  wr(w, 0xD251, a);
+  wr(w, 0xD253, 0);
+  for (;;) {
+    yield* sh.advance();
+    const p = w.high[0x194];
+    if (!p) continue;
+    wr(w, 0xD253, 0);
+    if (p & 1) { sh.sound(0x5C); setW(w, 6); const r = rd(w, 0xD251); yield* sh.advance(); return r; }
+    if (p & 2) { sh.sound(0x5D); yield* sh.advance(); return 0xFF; }
+    if (p & 0xC0) { sh.sound(0x5B); setW(w, 6); wr(w, 0xD251, (rd(w, 0xD251) + 1) & 1); }
+  }
+}
+// 32:7D35 LoadSummaryPrompt: the card (48:4053 with a = 0); the first prompt (48:4A81): B $FF, the first choice 0,
+// the second the next prompt (48:4AC3; from its second row): its first choice 1, B or the second back to the first
+// prompt; then the fade out, 41:7DF4 CloseCharSummaryScreen (its task 41:7E03 off), the font screen
+function* loadSummaryPrompt(sh) {
+  const w = sh.w;
+  yield* inBankGen(w, 0x48, expScreen(sh, 0, 0, 0));
+  let r;
+  for (;;) {
+    D.inBank(w, 0x48, () => drawGfxPrompt(w, 0));
+    const a = yield* twoChoicePrompt(sh, 0);
+    if (a === 0xFF || a === 0) { r = a; break; }
+    D.inBank(w, 0x48, () => drawGfxPrompt(w, 1));
+    const b = yield* twoChoicePrompt(sh, 1);
+    if (b === 0) { r = 1; break; }
+  }
+  Scr.beginFadeOut(w, 0x10);
+  yield* Scr.waitFade(sh);
+  unregisterFrameTask(w, 0x41, 0x7E03);
+  initFontScreen(w);                             // 01:41E8
+  return r;
 }

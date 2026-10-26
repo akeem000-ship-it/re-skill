@@ -201,6 +201,8 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
     let n = 0, first = [];
     for (let i = 0; i < 0x2000; i++) if (w.sram[i] !== cs[i]) { n++; if (first.length < 6) first.push(`$${h4(0xA000 + i)} js ${h2(w.sram[i])} game ${h2(cs[i])}`); }
     if (n) end.push(`sram: ${n} (${first.join(", ")})`);
+    // SRAM_OUT=out/X.sav keeps the game's save RAM at the end (a save to load in another case)
+    if (process.env.SRAM_OUT) fs.writeFileSync(path.join(root, process.env.SRAM_OUT), cs.subarray(0, 0x2000));
   }
   const fin = compare();
   if (fin.out.length) end.push(...fin.out.map(s => "display " + s));
