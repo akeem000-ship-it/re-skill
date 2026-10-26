@@ -15,6 +15,7 @@ import { showPlayerPicture } from "../js/golf/pictures.js";
 import { titleScreen } from "../js/golf/title.js";
 import { linkMenu } from "../js/golf/menu09.js";
 import { characterSelectScreen } from "../js/golf/charsel.js";
+import { gameModeSelect, courseSelect } from "../js/golf/select.js";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const filter = process.argv.slice(2).find(a => !a.startsWith("--")) || "";
@@ -67,6 +68,13 @@ const CASES = [
   // Down, Up, Left (wraps), Left, Down, Right, Select+A on a preset (sets its +$10), ...; then B
   { name: "boot_charselect_moves", state: "boot_charselect", run: (sh, r) => inBank(sh, 0x06, characterSelectScreen(sh, r.h << 8 | r.l, r.b)),
     policy: f => ({ 80: 0x80, 110: 0x40, 140: 0x20, 170: 0x20, 200: 0x80, 230: 0x10, 260: 0x80, 300: 2 })[f] || 0 },
+  // GameModeSelect 0D:4AA7 and CourseSelect 0F:4AB7 (the boot script's A); Right, Right, Left, then A or B
+  { name: "boot_modeselect", state: "boot_modeselect", run: sh => inBank(sh, 0x0D, gameModeSelect(sh)), policy: f => (f === 240 ? 1 : 0) },
+  { name: "boot_modeselect_moves", state: "boot_modeselect", run: sh => inBank(sh, 0x0D, gameModeSelect(sh)),
+    policy: f => ({ 100: 0x10, 160: 0x10, 220: 0x20, 300: 2 })[f] || 0 },
+  { name: "boot_courseselect", state: "boot_courseselect", run: sh => inBank(sh, 0x0F, courseSelect(sh)), policy: f => (f === 280 ? 1 : 0) },
+  { name: "boot_courseselect_moves", state: "boot_courseselect", run: sh => inBank(sh, 0x0F, courseSelect(sh)),
+    policy: f => ({ 100: 0x10, 160: 0x10, 220: 0x20, 300: 1 })[f] || 0 },
 ];
 
 let bad = 0;

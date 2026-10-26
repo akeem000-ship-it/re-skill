@@ -37,6 +37,7 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
   const w = new GolfMemory();
   for (let i = 0; i < 8; i++) w.wram[i].set(core.wram(i));
   w.high.set(core.hram().subarray(0, 0x7F), 0x180);
+  w.sram.set(gb.mem.sram.subarray(0, 0x2000));   // (the save RAM's first bank)
   initDisplay(w); displayFromCore(w, gb);
   w.high[0x195] = gb.mem.romBank;
   const res = { frames: 0, pixelExact: 0, modelExact: 0, lag: 0, bad: [], sounds: { core: [], native: [] } };
@@ -166,7 +167,11 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
     for (let i = 0; i < 0x1000; i++) {
       if (b === 0 && i >= 0xE00) break;          // (the stack: WRAM0 $CE00-$CFFF)
       if (b === 0 && (i >= 0x4C0 && i < 0x62A || i === 0x33E || i === 0xAAB)) continue;   // (the sound driver's RAM)
-      if (w.wram[b][i] !== core.wram(b)[i]) { n++; if (first.length < 6) first.push(`$${h4((b ? 0xD000 : 0xC000) + i)} js ${h2(w.wram[b][i])} game ${h2(core.wram(b)[i])}`); }
+      // (a free entry of the VRAM copy queue $C0A0 or the BG tile write queue $C180, free in both: its other bytes
+      // are what an earlier copy left, and which slot a copy takes follows the game's lag frames)
+      if (b === 0 && i >= 0x0A0 && i < 0x0F0 && !w.wram[0][i & ~7] && !core.wram(0)[i & ~7]) continue;
+      if (b === 0 && i >= 0x180 && i < 0x1C0 && !w.wram[0][i & ~3] && !core.wram(0)[i & ~3]) continue;
+      if (w.wram[b][i] !== core.wram(b)[i]) { n++; if (first.length < (process.env.SCREEN_ENDN ? +process.env.SCREEN_ENDN : 6)) first.push(`$${h4((b ? 0xD000 : 0xC000) + i)} js ${h2(w.wram[b][i])} game ${h2(core.wram(b)[i])}`); }
     }
     if (n) end.push(`wram${b}: ${n} (${first.join(", ")})`);
   }

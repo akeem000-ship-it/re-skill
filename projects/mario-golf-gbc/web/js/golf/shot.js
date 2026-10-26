@@ -21,6 +21,7 @@ import { menuCursorTask } from "./windows.js";
 import { demoTasks } from "./title.js";
 import { menuBobSpriteTask } from "./menu09.js";
 import { charSelTasks } from "./charsel.js";
+import { selectTasks } from "./select.js";
 import { actorsUpdateTask, actorsDrawTask } from "./actors.js";
 import { confettiTask, resultPaletteCycleTask, resultSpriteTask } from "./result.js";
 import { mapScrollTask } from "./render/holeview.js";
@@ -184,6 +185,7 @@ export class Shot {
       ...demoTasks(w),                           // the title and its demo (bank 40)
       "09:4990": () => menuBobSpriteTask(w),          // 09:4990 MenuBobSpriteTask09
       ...charSelTasks(w),                        // the character select (bank 06)
+      ...selectTasks(w),                         // the mode and course selects (banks 0D, 0F)
       ...D.displayTasks(this),                   // tasks that only draw (render/hooks.js)
     };
   }
