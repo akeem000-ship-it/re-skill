@@ -11,6 +11,7 @@ import { roundResultScreen } from "../js/golf/result.js";
 import { pauseMenu } from "../js/golf/pause.js";
 import { Hole } from "../js/golf/ball.js";
 import { shotSetup } from "../js/golf/hole.js";
+import { showPlayerPicture } from "../js/golf/pictures.js";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const filter = process.argv.slice(2).find(a => !a.startsWith("--")) || "";
@@ -42,6 +43,10 @@ const CASES = [
   // into the address step's first frame: its HRAM scratch $FFA7, $FFAC-$FFAE differ)
   { name: "pause_scorecard_back", state: "shotsetup_r18", noRet: true, open: true, run: sh => onHole(sh, inBank(sh, 0x10, shotSetup(sh))),
     policy: f => (f === 200 ? 8 : f === 260 || f === 270 ? 0x80 : f === 290 ? 1 : f === 400 ? 1 : f === 600 ? 1 : 0) },
+  // ShowPlayerPicture 3B:7717 (r18's first picture, mkstate.mjs --name r18 --at 3B:7717) given a = 0: the hole in
+  // one's picture with its full-screen cycling picture (4A:6205)
+  { name: "picture_hole_in_one", state: "picture_r18", regs: { a: 0 },
+    run: (sh, r) => onHole(sh, inBank(sh, 0x3B, showPlayerPicture(sh, r.a))), noRet: true },
 ];
 
 let bad = 0;
@@ -53,7 +58,7 @@ for (const c of CASES) {
     continue;
   }
   let r;
-  try { r = runScreen({ stateFile, run: c.run, policy: c.policy, verbose, open: c.open, trace: process.argv.includes("--trace") }); }
+  try { r = runScreen({ stateFile, run: c.run, policy: c.policy, verbose, open: c.open, setRegs: c.regs, trace: process.argv.includes("--trace") }); }
   catch (e) { console.log(`FAIL ${c.name}: ${e.stack}`); bad++; continue; }
   const sounds = r.sounds.core.join(" ") === r.sounds.native.join(" ");
   // (an open routine's end is compared with the core already into its next frame's code: listed, not failed)

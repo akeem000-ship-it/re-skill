@@ -23,7 +23,7 @@ const WRAM0_DISPLAY = [[0x000, 0x0A0], [0x100, 0x1C0], [0x1C0, 0x200], [0x200, 0
 
 // stateFile: out/...json from mkstate.mjs; run(sh, regs) -> the native routine (a generator); policy(frame) -> the
 // buttons held (default: A on alternate frames); returns { frames, pixelExact, modelExact, lag, bad: [...], end }
-export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFrames = 20000, verbose = false, trace = false, hook = null, lagVBlanks = true, open = false }) {
+export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFrames = 20000, verbose = false, trace = false, hook = null, lagVBlanks = true, open = false, setRegs = null }) {
   useRom(new Uint8Array(fs.readFileSync(path.join(root, "rom/mario_golf.gbc"))));
   const saved = JSON.parse(fs.readFileSync(path.join(root, stateFile)));
   const core = new CoreRun();
@@ -31,6 +31,7 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
   const [bank, addr] = saved.at;
   if (!core.at(bank, addr)) throw new Error("the state is not at the routine's entry");
   const gb = core.gb, cpu = gb.cpu;
+  if (setRegs) for (const [k, v] of Object.entries(setRegs)) cpu[k] = v;   // (a case's own arguments)
   const regs = { a: cpu.a, b: cpu.b, c: cpu.c, d: cpu.d, e: cpu.e, h: cpu.h, l: cpu.l };
   const sp0 = cpu.sp, ret = gb.mem.read(sp0) | gb.mem.read(sp0 + 1) << 8, retBank = gb.mem.romBank;
   const w = new GolfMemory();

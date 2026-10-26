@@ -163,6 +163,7 @@ export function loadCyclingPicture(sh, a) {
   if (a >= 1) return;
   const w = sh.w;
   const rec = rw(0x4A, 0x62F1 + 2 * a);
+  const old = w.high[0x196];
   D.setWramBank(w, 1);
   D.inBank(w, 0x4A, () => {
     D.lzTo(w, 0x4A, rw(0x4A, rec), 0xD800);
@@ -181,6 +182,7 @@ export function loadCyclingPicture(sh, a) {
     w.wram[6][0x34E] = pal & 0xFF; w.wram[6][0x34F] = pal >> 8;   // wCyclePalettePtr
   });
   w.wram[6][0x443] = 0xFF;                       // wOnGreen
+  D.setWramBank(w, old);
   registerFrameTask(w, 0x01, 0x4A, 0x62A3);      // PictureCycleTask
 }
 export function pictureCycleStop(w) { unregisterFrameTask(w, 0x4A, 0x62A3); }   // 4A:629C PictureCycleStop
