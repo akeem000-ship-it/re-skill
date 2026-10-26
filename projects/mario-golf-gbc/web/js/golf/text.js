@@ -305,9 +305,11 @@ export function drawStringToGlyphs(w, hl, de) {
 
 // ---- bank 05 ----
 
-// the text bank's export 0 / 1 (18:7D04 TextBank18_Load / 18:7D0C TextBank18_LoadShort and the same pair in banks
-// 19-1F) -> TextBankXX_Copy (18:7D14 ...): the string at index de (a word index) of the bank's offset table to
-// wTextBuffer $C600 ($180 bytes) or wTextShortBuffer $D880 ($20 bytes)
+// the text bank's export 0 / 1 (TextBankXX_Load / TextBankXX_LoadShort) -> TextBankXX_Copy: the string at index de
+// (a word index) of the bank's offset table to wTextBuffer $C600 ($180 bytes) or wTextShortBuffer $D880 ($20 bytes).
+// The same three routines sit in each text bank: 18:7D04 18:7D0C 18:7D14, 19:7AC3 19:7ACB 19:7AD3, 1A:7B20 1A:7B28
+// 1A:7B30, 1B:7B4B 1B:7B53 1B:7B5B, 1C:7B14 1C:7B1C 1C:7B24, 1D:7CF5 1D:7CFD 1D:7D05, 1E:6B4D 1E:6B55 1E:6B5D,
+// 1F:73B1 1F:73B9 1F:73C1 (their tables and strings are read from where each copy's own code points)
 function textBankCopy(w, bank, de, short) {
   const copy = rw(bank, 0x4002) + 8;             // the routine after LoadShort
   const offsets = rw(bank, copy + 4), strings = rw(bank, copy + 0x0F);

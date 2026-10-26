@@ -41,20 +41,27 @@ export function runLockstep({ name = "r18", holes = 1, onFrame = () => {}, onMar
   w.high.set(core.hram().subarray(0, 0x7F), 0x180);
   const ctx = { core, w, frame: 0, shot: -1, n: 0, phase: "menus", synced: true, toggle: 0, mark: "round", slips: [],
     passed: [], lagInputs: [], recent: [], hold: 0, lates: [] };
-  // a VBlank that finds the frame's VRAM work done (hVBlankDone set: the game's code ran past a VBlank, or
-  // AdvanceFrame's halt woke at one) does only the every-frame work (00:2F46-00:2F64); the native code takes no CPU
-  // time, so the native side replays that work (the palette update, the game timer, the fades, the VBlank tasks)
-  // right after it happened in the game, before its own code for the frame: the code after it sees the same state
-  let partial = 0;
+  // the game's code can run past VBlanks: the first does the frame's VRAM work and sets hVBlankDone, the others find
+  // it set and do only the every-frame work (00:2F46-00:2F64); AdvanceFrame's halt then still waits for the next
+  // interrupt, normally a VBlank: the frame's own, which the native frame's VBlank stands for. The native code takes
+  // no CPU time, so the native side replays the every-frame work of the others (the palette update, the game timer,
+  // the fades, the VBlank tasks) right after the game's code for the frame ran, before its own: the code after it
+  // sees the same state. With the LCD off at AdvanceFrame (no VBlank to wake it) the code's last VBlank is the
+  // frame's own. The fade step is replayed only when the native fade is where the game's was at that VBlank
+  // (hFadeState $FFA2, the level $FFA4): in the long loads the game lags through (the view behind the golfer) the
+  // native round has its own frames, and its fade may already be done or not begun
+  const vbl = [];
   {
     const gb = core.gb, step = core.step.bind(core);
-    core.step = () => { if (gb.cpu.pc === 0x2EF9 && gb.mem.hram[0x0D]) partial++; step(); };
+    core.step = () => { if (gb.cpu.pc === 0x2EF9) vbl.push([gb.mem.hram[0x22], gb.mem.hram[0x24]]); step(); };
   }
-  const lagWork = () => {
-    if (process.env.LOCKSTEP_NOLAG) { partial = 0; return; }
-    for (; partial > 0; partial--) {
+  const lagWork = atWait => {
+    if (atWait || !(core.gb.mem.read(0xFF40) & 0x80)) vbl.pop();
+    if (process.env.LOCKSTEP_NOLAG) { vbl.length = 0; return; }
+    for (const [st, lv] of vbl.splice(0)) {
       if (w.vram) applyPendingPaletteUpdates(w);
-      updateGameTimer(w); fadeVBlank(w);
+      updateGameTimer(w);
+      if (w.high[0x1A2] === st && w.high[0x1A4] === lv) fadeVBlank(w);
       if (w.sh) runFrameTasks(w, true, w.sh.dispatch);
       ctx.lagVBlanks = (ctx.lagVBlanks || 0) + 1;
     }
@@ -120,6 +127,7 @@ export function runLockstep({ name = "r18", holes = 1, onFrame = () => {}, onMar
           while (core.runTo([MARKS[mname], [0, 0x2E3B]], 400_000_000)) { adv++; core.step(); }
           core.onFrame = null;
           ctx.passed = [];
+          vbl.length = 0;                        // (VBlanks in screens the native round leaves out)
           if (ctx.synced && adv) ctx.slips.push({ frame: ctx.frame, mark: mname, shot: ctx.shot, frames: adv });
         }
         ctx.synced = true;
@@ -146,7 +154,7 @@ export function runLockstep({ name = "r18", holes = 1, onFrame = () => {}, onMar
     core.setHeld(policy());
     core.runToNext([[0, 0x2EBF]]);             // past its wait: the joypad its VBlank read
     w.high.set(core.hram().subarray(0x10, 0x15), 0x190);
-    lagWork();
+    lagWork(true);
   };
   ev.v = true;                                 // also an event after each frame's VBlank work
   const result = playRound(w, roundId, null, { ev, maxHoles: holes, onShot: () => { ctx.phase = "menus"; } });

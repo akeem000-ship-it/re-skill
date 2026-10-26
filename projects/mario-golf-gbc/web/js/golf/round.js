@@ -75,6 +75,7 @@ function roundHookRoundStart(w, sound) {         // 08:4722 RoundHookRoundStart 
   switch (mode(w)) {
     case 1: notPorted("the tournament round start (~08:475F)"); break;
     case 2:                                      // 08:478C RoundStartMode2Match
+      sound(0x38);
       w0[0x83A] = w0[0x83B] = 0;
       w0.fill(0, 0x96E, 0x96E + 0x12);
       M.clearContestWins(w);

@@ -23,7 +23,7 @@ let frame = 0;
 core.onFrame = () => { frame++; core.setHeld(frame in presses ? presses[frame] : Object.keys(presses).length ? 0 : (frame & 1)); };
 for (;;) {
   const pc = cpu.pc;
-  seen.add((pc < 0x4000 ? 0 : m.romBank) * 0x10000 + pc);
+  if (pc < 0x8000) seen.add((pc < 0x4000 ? 0 : m.romBank) * 0x10000 + pc);
   core.step();
   if (cpu.pc === ret && cpu.sp === ((sp0 + 2) & 0xFFFF) && m.romBank === retBank) break;
   if (frame > maxFrames) { console.log("stopped after", maxFrames, "frames"); break; }
