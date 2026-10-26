@@ -166,6 +166,17 @@ const CASES = [
   { name: "boot_quit_no", state: "boot_poweron", open: true, noRet: true,
     run: sh => gameCase(sh, 1, () => lastMark === "aimmenu" && frameNow > markAt + 800),
     policy: pausePolicy([[60, 8], [120, 0x40], [150, 1], [450, 1], [600, 2]]) },
+  // Settings (Down x3, A): Right (Music off), Down, Right (3-D Screen on), Left (off), B: the pause menu again on
+  // Settings; B closes it
+  { name: "boot_settings", state: "boot_poweron", open: true, noRet: true,
+    run: sh => gameCase(sh, 1, () => lastMark === "aimmenu" && frameNow > markAt + 900),
+    policy: pausePolicy([[60, 8], [130, 0x80], [150, 0x80], [170, 0x80], [200, 1], [340, 0x10], [380, 0x80], [420, 0x10], [460, 0x20], [510, 2], [640, 2]]) },
+  // Camera Mode (row 0, A): the look cursor moved Up (held 90 frames: to the green view), Left, then Down and Right; B
+  { name: "boot_camera", state: "boot_poweron", open: true, noRet: true,
+    run: sh => gameCase(sh, 1, () => lastMark === "aimmenu" && frameNow > markAt + 1200),
+    policy: (() => { const p = pausePolicy([[60, 8], [140, 1], [700, 2]]); return f => { const b = p(f);
+      if (lastMark !== "aimmenu") return b; const d = f - markAt;
+      return b | (d >= 250 && d < 340 ? 0x40 : d >= 340 && d < 380 ? 0x20 : d >= 450 && d < 600 ? 0x90 : 0); }; })() },
   // the saved character's Stroke round: Save & Quit (Up: row 5), "Save current progress?" A (Yes): SaveGame, $C2A6 = 1:
   // GolfSessionEnd warps to map 0 entrance 1, the link menu (stopped 10 frames into it); the save RAM compared
   { name: "boot_kid_savequit", state: "boot_poweron_kid", open: true, noRet: true,

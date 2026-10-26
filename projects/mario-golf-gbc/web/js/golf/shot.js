@@ -201,7 +201,8 @@ export class Shot {
   }
 
   mark(name) { this.ev("M", name); }
-  sound(id) { if (this.w.onSound) this.w.onSound(id); }   // rst $08 PlaySoundCmd 00:2BBB: to the sound driver, if any
+  sound(id) { if (this.w.onSound) this.w.onSound(id); }
+  musicOption(flags) { if (this.w.onMusicOption) this.w.onMusicOption(flags); }   // 00:2B98 ApplyMusicOption's driver call   // rst $08 PlaySoundCmd 00:2BBB: to the sound driver, if any
   // the list the ported routines put their sounds and effects in: a ["sound", id] entry is played as it is added, a
   // ["splash", x, y] one drawn
   // (["sound", "tree", k]: 08:5526 TreeSound, k = 0 the trunk / 1 the leaves, by course from the table 08:553F)

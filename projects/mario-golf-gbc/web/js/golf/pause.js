@@ -3,13 +3,16 @@
 // Scorecard / Settings / Give Up / Save & Quit" (text $1482; "Quit" $1483 without a save slot) in a menu window
 // (windows.js) run by RunMenu 41:6FF4. B or Start closes it (result 0: back to aiming); an item's handler sets
 // wMenuResult $C3FD ($FF after Camera Mode, Course Map and Scorecard: the shot view is redrawn; $81 Give Up, $80
-// Quit). Ported items: Scorecard, Give Up, Quit / Save & Quit (with the message box: msgbox.js).
+// Quit). Ported items: Camera Mode (freelook.js), Scorecard, Settings, Give Up, Quit / Save & Quit (with the message
+// box: msgbox.js); Course Map is not.
 import { rw } from "./rom.js";
 import * as D from "./render/display.js";
 import * as W from "./windows.js";
 import { restoreShadowFromMap } from "./shadow.js";
 import { showScorecard } from "./scorecard.js";
 import * as M from "./msgbox.js";
+import * as T from "./text.js";
+import { freeLookCursor } from "./freelook.js";
 import { saveGame } from "./save.js";
 import { playerField } from "./memory.js";
 
@@ -17,6 +20,7 @@ const rd = D.rd, wr = D.wr;
 const wbank = w => w.high[0x196];
 const setW = (w, n) => D.setWramBank(w, n);
 const setFlag = (w, n) => { w.wram[0][0x840 + (n >> 3)] |= 0x80 >> (n & 7); };      // rst $20
+const clearFlag = (w, n) => { w.wram[0][0x840 + (n >> 3)] &= ~(0x80 >> (n & 7)); }; // rst $28
 function notPorted(what) { throw new Error(`${what} is not ported`); }
 function* inBankGen(w, bank, g) {                // a far call to a routine that waits frames
   const old = w.high[0x195];
@@ -38,10 +42,22 @@ export function* queueFontTiles(sh) {
 // 41:707C ClearMenuState: $C3F9-$C3FC
 export function clearMenuState(w) { w.wram[0].fill(0, 0x3F9, 0x3FD); }
 
-// 41:708A DrawMenuIcons: the option icons of the menus with wMenuFlags $C3FC bits 4-6 (not ported); the golf menus
-// have none
-function drawMenuIcons(w) {
-  if (rd(w, 0xC3FC) & 0x70) notPorted("the menu's option icons (~41:708A DrawMenuIcons)");
+// 41:708A DrawMenuIcons: by wMenuFlags $C3FC: bit 6 the Settings menu's on / off icons (Music: wOptionFlags $C818
+// bit 0, tiles $DD-$DF set / $DA-$DC clear, at x 10-12 of row 1; 3-D Screen: bit 1, row 3), a frame after each
+// tile; bits 4 and 5 (other menus' icons) are not ported
+function* drawMenuIcons(sh) {
+  const w = sh.w;
+  const f = rd(w, 0xC3FC);
+  if (f & 0x10) notPorted("the menu's option icons (~41:71D6)");
+  if (f & 0x20) notPorted("the text speed icons (~41:7141)");
+  if (!(f & 0x40)) return;
+  for (const [bit, y] of [[1, 1], [2, 3]]) {
+    const t = rd(w, 0xC818) & bit ? 0xDD : 0xDA;
+    for (let k = 0; k < 3; k++) {
+      W.putMenuTile(w, t + k, 0x0A + k, y);
+      yield* sh.advance();
+    }
+  }
 }
 
 // 41:6FF4 RunMenu: hl = text id, bc = the handler table (bank 41), de = the window's position: wMenuResult $C3FD
@@ -61,7 +77,13 @@ export function* runMenu(sh, hl, bc, de) {
   yield* inBankGen(w, 0x05, restoreShadowFromMap(sh));
   yield* inBankGen(w, 0x05, W.updateWindows(sh));
   yield* sh.advance();
-  drawMenuIcons(w);
+  yield* runMenuBody(sh, bc);
+}
+// 41:701E: the icons, the choice (05:4CD7), the window closed unless the row's bit is set in $C3FB, the handler
+// (handlers that stay in the menu come back here: jp 41:701E)
+function* runMenuBody(sh, bc) {
+  const w = sh.w;
+  yield* drawMenuIcons(sh);
   yield* sh.advance();
   yield* sh.advance();                           // (00:068A EnableOAMDMA before)
   const a = yield* inBankGen(w, 0x05, W.runMenu05(sh));
@@ -81,6 +103,53 @@ export function* runMenu(sh, hl, bc, de) {
   if (a === 0xFF) { clearMenuState(w); return; }
   const h = rw(0x41, (bc + 2 * a) & 0xFFFF);
   yield* menuHandler(sh, h);
+}
+
+// 00:2B98 ApplyMusicOption: hSoundFlags bit 0 = wOptionFlags bit 0 (music off); the driver gets command 0 (off) or
+// wCurrentBGM straight (7E:4016 SoundCmdDispatch, not through PlaySoundCmd)
+function applyMusicOption(sh) {
+  const w = sh.w;
+  const c = rd(w, 0xC818) & 1;
+  w.high[0x1CE] = (w.high[0x1CE] & 0xFE) | c;
+  sh.musicOption(rd(w, 0xC818));                 // (the driver: SoundCmdDispatch 0 or the current song)
+}
+// 41:7BBD LoadTextToWram7: 16 zeros at WRAM7 $DC00, then text hl's bytes up to (not with) its $00; hl = $DC00
+function loadTextToWram7(w, id) {
+  setW(w, 7);
+  for (let k = 0; k < 0x10; k++) wr(w, 0xDC00 + k, 0);
+  setW(w, 5);
+  T.loadText(w, id);
+  for (let hl = 0xC600, de = 0xDC00; ; hl++, de++) {
+    setW(w, 5);
+    const a = rd(w, hl);
+    if (!a) break;
+    setW(w, 7);
+    wr(w, de, a);
+  }
+  setW(w, 7);
+}
+// 41:78C6 MenuSettings: the option words (texts $1495 / $1496: drawn as glyphs to WRAM7 $DA00 / $DA30, queued to
+// $8DA0) for the icons, then the Settings menu ($1487, handlers 41:7775; Left / Right on both rows and the window
+// kept: $C3FA = $C3FB = $83; the icons: $C3FC = $C0) with flag #48 set meanwhile; then the menu state cleared but
+// $C3FC bit 7
+function* menuSettings(sh) {
+  const w = sh.w, old = w.high[0x196];
+  D.inBank(w, 3, () => T.resetGlyphBuffer(w));   // 03:4EB8
+  yield* sh.advance();
+  loadTextToWram7(w, 0x1495);
+  D.inBank(w, 3, () => T.drawStringToGlyphs(w, 0xDC00, 0xDA00));
+  loadTextToWram7(w, 0x1496);
+  D.inBank(w, 3, () => T.drawStringToGlyphs(w, 0xDC00, 0xDA30));
+  D.queueVRAMCopy(w, 0xDA00, 0x8DA0, 0x06);
+  yield* sh.advance();
+  setW(w, old);
+  clearMenuState(w);
+  wr(w, 0xC3FC, 0xC0); wr(w, 0xC3FA, 0x83); wr(w, 0xC3FB, 0x83);
+  setFlag(w, 48);
+  yield* runMenu(sh, 0x1487, 0x7775, 0x0205);
+  clearMenuState(w);
+  wr(w, 0xC3FC, rd(w, 0xC3FC) | 0x80);
+  clearFlag(w, 48);
 }
 
 // a question in the message box with Yes / No (41:746B and the others): ScriptSetText, ScriptShowTextKeepOpen with
@@ -151,6 +220,27 @@ function* quit(sh, match) {
 function* menuHandler(sh, h) {
   const w = sh.w;
   switch (h) {
+    case 0x745D: case 0x758D:                    // 41:745D / 41:758D Settings: 41:78C6 MenuSettings, the menu again on row 3
+      yield* menuSettings(sh);
+      yield* reopen(sh, false, 3);               // (match play's too: 41:7590 calls SetupGolfPauseMenuSave)
+      return;
+    case 0x7779: case 0x77B3: {                  // 41:7779 SettingsToggleMusic / 41:77B3 SettingsToggle3D
+      const lr = rd(w, 0xC3FC) & 0x0F;
+      if (lr && lr !== 3) {
+        sh.sound(0x8B);
+        wr(w, 0xC818, rd(w, 0xC818) ^ (h === 0x7779 ? 1 : 2));
+      }
+      if (h === 0x7779) applyMusicOption(sh);    // 00:2B98
+      wr(w, 0xC3FC, rd(w, 0xC3FC) | 0xC0);
+      wr(w, 0xC3F9, rd(w, 0xD830));
+      yield* runMenuBody(sh, 0x7775);            // (jp 41:701E)
+      return;
+    }
+    case 0x744B: case 0x757B:                    // Camera Mode: 41:7879 FreeLookMenuHandler (12:6D3D), wMenuResult $FF
+      yield* inBankGen(w, 0x12, freeLookCursor(sh));
+      wr(w, 0xC3FD, 0xFF);
+      clearMenuState(w);
+      return;
     case 0x746B: yield* giveUp(sh, false); return;
     case 0x759B: yield* giveUp(sh, true); return;
     case 0x74AE: yield* quit(sh, false); return;

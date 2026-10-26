@@ -305,8 +305,14 @@ mode select), ScriptEnd, MapRun's warp request, MapTakeWarp 0A:5146 and the next
 gameFromPowerOn; the play page now goes from round to round). Cases in golf_screens_vs_core.mjs: `boot_quit`
 (Quit, Yes: back to the mode select, 3,810 frames), `boot_quit_no`, `boot_giveup_first` (the message box), and with
 the saved character `boot_kid_savequit` (Save & Quit: SaveGame, then the link menu; the save RAM compared): all frame
-for frame. Not ported yet: Settings (41:78C6, the option arrows of MenuCursorTask with flags #48-#52), Camera Mode
-(12:6D3D FreeLookCursor), Course Map (17:437D), Give Up after a stroke has not been run against the game, and a
+for frame. Settings (MenuSettings 41:78C6: the option words drawn as glyphs (LoadTextToWram7 41:7BBD, 03:50CD), the
+menu kept open on its two Left / Right rows ($C3FA = $C3FB = $83; the handlers 41:7779 / 41:77B3 toggle wOptionFlags
+$C818 bits 0 / 1 and come back to 41:701E), the on / off icons of DrawMenuIcons 41:708A, the blinking arrows of
+MenuCursorTask with flag #48 (05:500A; PutMenuTile 41:7BB4), ApplyMusicOption 00:2B98; quirk: match play's Settings
+reopens the stroke-play menu 41:743F) and Camera Mode (FreeLookCursor 12:6D3D: the look cursor, the course / green
+view switch 12:6EB8, PlaceTargetMarkerClamped 10:5A3C; quirk: on leaving, $D4D4 and wCameraMode get the pressed
+buttons; A does nothing outside debug mode) also run frame for frame (`boot_settings`, `boot_camera`). Not ported
+yet: Course Map (17:437D), Give Up after a stroke has not been run against the game, and a
 round saved by Save & Quit (`$C96D` = 1) loads through the summary prompt (32:7D35: the EXP screen of bank 48) to
 GolfRound `$FF`.
 
