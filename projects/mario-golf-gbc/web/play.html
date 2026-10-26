@@ -10,6 +10,8 @@
   #note p { margin: 0 0 6px; }
   #note p:last-child { margin: 0; }
   #message { text-align: center; font-size: 14px; min-height: 1.45em; }
+  #modes { text-align: center; font-size: 13px; margin: 4px 0; }
+  #modes select { font: inherit; background: var(--btn); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
   #message button { margin-left: 8px; font: inherit; padding: 2px 10px; border-radius: 6px; border: 1px solid var(--line);
     background: var(--btn); color: var(--fg); cursor: pointer; }
 </style>
@@ -32,6 +34,13 @@
     <canvas id="screen" width="160" height="144" tabindex="0" aria-label="game screen"></canvas>
   </div>
   <div id="message" class="dim"></div>
+  <div id="modes" class="dim">
+    <label>Round <select id="mode">
+      <option value="stroke">Stroke: Mario, 18 holes</option>
+      <option value="match:9">Match play: Mario vs Luigi (computer)</option>
+      <option value="match:4">Match play: Mario vs Putts (computer)</option>
+    </select></label>
+  </div>
 
   <div id="pad" aria-hidden="true">
     <div class="dpad">
@@ -53,9 +62,10 @@
   <section id="note" class="panel dim">
     <p>This page runs the game's own rules rewritten in JavaScript (<code>web/js/golf</code>), with no Game Boy CPU:
       the shots, the ball, the computer's play, the course drawing, the HUD, the sprites and the sound driver.</p>
-    <p>The title screen and the menus are not ported yet, so it starts straight at a <b>Stroke</b> round as a new game
-      would: Mario, course 1, 18 holes. The pause menu is not ported either: <kbd>Start</kbd> pauses the page.
-      Some screens between shots (the scorecard, pictures, most captions) are skipped.</p>
+    <p>The title screen and the menus are not ported yet, so it starts straight at a round as a new game would:
+      Mario on course 1, a <b>Stroke</b> round of 18 holes, or <b>match play</b> against a computer golfer (the
+      selector below the screen), with the standings between holes, the scorecard and the result screen.
+      The pause menu is not ported: <kbd>Start</kbd> pauses the page.</p>
     <p>Aim with ◀ ▶, change club with ▲ ▼, <kbd>B</kbd> for the shot type, <kbd>Select</kbd> to look at the pin,
       <kbd>A</kbd> to address the ball, then <kbd>A</kbd> for power and <kbd>A</kbd> for impact.</p>
   </section>

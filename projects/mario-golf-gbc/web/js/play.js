@@ -2,12 +2,13 @@
 // its display model drawn by js/golf/render/raster.js, the native sound driver (js/sound) through Web Audio, with
 // keyboard / gamepad / touch input. The round is a generator (js/golf/game.js playRoundFrames): each next() runs
 // the game's code for one frame (up to its next AdvanceFrame 00:2E3B), at the hardware's 59.73 frames per second.
-// The menus are not ported: the round starts as a new game's Stroke round would (js/golf/start.js).
+// The menus are not ported: the round starts as a new game's Stroke round or match against the computer would
+// (js/golf/start.js; the page's mode selector).
 // window.__golf exposes the running state for tests (web/tests/play_page.mjs).
 import { useRom } from "./golf/rom.js";
 import { GolfMemory, playerField } from "./golf/memory.js";
 import { playRoundFrames } from "./golf/game.js";
-import { strokeRoundSetup } from "./golf/start.js";
+import { strokeRoundSetup, matchRoundSetup } from "./golf/start.js";
 import { initDisplay } from "./golf/render/display.js";
 import { rasterize } from "./golf/render/raster.js";
 import { SoundDriver } from "./sound/driver.js";
@@ -91,7 +92,9 @@ function initAudioSoon() { if (driver) initAudio(); }
 function newRound() {
   const w = new GolfMemory();
   const seed = crypto.getRandomValues(new Uint16Array(1))[0];   // (the menus' frames would have moved the seed)
-  const holes = strokeRoundSetup(w, { golfer: 8, course: 1, seed });
+  const mode = $("mode").value;                    // "stroke", or "match:N" against preset golfer N
+  const holes = mode.startsWith("match:") ? matchRoundSetup(w, { golfer: 8, opponent: +mode.slice(6), course: 1, seed })
+    : strokeRoundSetup(w, { golfer: 8, course: 1, seed });
   initDisplay(w);
   driver = new SoundDriver(rom);
   apu = new SynthAPU(RATE);
@@ -112,7 +115,9 @@ function step() {                                  // one frame of the game
   if (r.done) {
     game.done = r.value;
     const total = r.value.holes.reduce((s, h) => s + h.strokes, 0);
-    showMessage(`Round over: ${total} strokes over ${r.value.holes.length} holes.`);
+    const w0 = game.w.wram[0];
+    if (w0[0x834] === 2) showMessage(`Match over: ${["", "you won", "you lost", "halved"][w0[0x96C]] || "decided"} after ${r.value.holes.length} holes.`);
+    else showMessage(`Round over: ${total} strokes over ${r.value.holes.length} holes.`);
   }
 }
 function showMessage(text) {
@@ -122,6 +127,7 @@ function showMessage(text) {
   b.textContent = "New round"; b.onclick = () => { newRound(); canvas.focus(); };
   m.appendChild(b);
 }
+$("mode").addEventListener("change", () => { if (rom) { newRound(); canvas.focus(); } });
 function draw() {
   const w = game.w;
   rasterize({ vram: w.vram, oam: w.oam, bgPal: w.bgPal, objPal: w.objPal, ...w.lcd }, rgb5, rgba);

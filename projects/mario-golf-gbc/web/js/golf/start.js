@@ -152,6 +152,17 @@ export function setCourseHole(w, wind, course, hole) {   // 10:423B SetCourseHol
 // a new game's Stroke round: golfer = preset golfer (02:4B1D index: 8 Mario), course = CourseSelect's answer.
 // Returns the hole count GolfRound 10:4451 is called with.
 export function strokeRoundSetup(w, { golfer = 8, course = 1, seed = 0 } = {}) {
+  newGameMenus(w, golfer, seed);
+  // 32:51D5 GameModeSelect -> 3 (Stroke); 32:52A6 CourseSelect -> course
+  w.wram[0][0x834] = 3;
+  golfSessionInit(w);                            // 32:52B0
+  setCourseHole(w, course, course, 1);           // 32:52B7 (a, the wind direction, is still the course)
+  setupPlayerGolfer(w, 0xFF, 1);                 // 32:52BD
+  w.wram[0][0x834] = 3;                          // 32:52C1
+  return 0x12;
+}
+// the path to the game mode menu for a new game (32:50E4-32:51D2)
+function newGameMenus(w, golfer, seed) {
   w.high[0x1FC] = seed & 0xFF; w.high[0x1FD] = (seed >> 8) & 0xFF;
   w.wram[0][0x2A5] = 0x0F;                       // wSaveSlot: none (32:50E4)
   newGame(w);                                    // 32:50F0
@@ -163,12 +174,20 @@ export function strokeRoundSetup(w, { golfer = 8, course = 1, seed = 0 } = {}) {
   w.wram[0][0x96D] = 0;                          // wReplayActive
   mapSaveReturnPoint(w);                         // 32:51C3
   for (const n of [144, 145, 146, 147]) clearFlag(w, n);
-  // 32:51D2 SaveGame: no save slot (< 3 only); 32:51D5 GameModeSelect -> 3 (Stroke); 32:52A6 CourseSelect -> course
-  w.wram[0][0x834] = 3;
-  golfSessionInit(w);                            // 32:52B0
-  setCourseHole(w, course, course, 1);           // 32:52B7 (a, the wind direction, is still the course)
-  setupPlayerGolfer(w, 0xFF, 1);                 // 32:52BD
-  w.wram[0][0x834] = 3;                          // 32:52C1
+  // 32:51D2 SaveGame: no save slot (< 3 only)
+}
+// a new game's match play against a computer golfer (ModeSelectMain's VS path 32:5240-32:52A2): the game mode menu
+// gives 2; BuildGolferListByFlags 02:5985 and CharacterSelectScreen 06:6071 (not ported: their record writes are
+// undone by GolfSessionInit) pick the opponent, a preset golfer (a new game lists 9 Luigi and 4 Putts); CourseSelect
+// the course; GolfSessionInit, SetCourseHole, SetupPlayerGolfer(opponent, player 2), wGameMode 2, GolfRound for $12
+// holes (flags #73 / #74 give 3 holes or hole 18 only: not set in a new game)
+export function matchRoundSetup(w, { golfer = 8, opponent = 9, course = 1, seed = 0 } = {}) {
+  newGameMenus(w, golfer, seed);
+  w.wram[0][0x834] = 2;                          // 32:51DC
+  golfSessionInit(w);                            // 32:526D
+  setCourseHole(w, course, course, 1);           // 32:5274
+  setupPlayerGolfer(w, opponent & 0x0F, 1);      // 32:527B
+  w.wram[0][0x834] = 2;                          // 32:5280
   return 0x12;
 }
 // 0A:4D5B MapSaveReturnPoint with b = $FF: the current map, entrance $FF, the position $C2A0 (5 bytes) -> $C962

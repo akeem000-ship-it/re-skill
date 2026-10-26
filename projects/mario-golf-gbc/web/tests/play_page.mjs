@@ -3,7 +3,9 @@
 // at each aiming menu it turns the aim a little, presses A to address the ball, A at full power and A for the
 // impact, timed by the page's frame counter (window.__golf). Fails on page errors, a stopped round, or fewer
 // shots than asked. Screenshots go to out/ (aiming, address, mid-swing, flight, after each shot).
-// usage: node web/tests/play_page.mjs [shots=3] [outdir=out]
+// With --match the page's mode selector picks match play against Luigi (the computer plays its own turns; the test
+// plays the human's).
+// usage: node web/tests/play_page.mjs [shots=3] [outdir=out] [--match]
 import { createRequire } from "module";
 import http from "http";
 import fs from "fs";
@@ -11,7 +13,8 @@ import path from "path";
 const { chromium } = createRequire(import.meta.url)("playwright");
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
-const [shotsArg = "3", outDir = path.join(root, "out")] = process.argv.slice(2);
+const match = process.argv.includes("--match");
+const [shotsArg = "3", outDir = path.join(root, "out")] = process.argv.slice(2).filter(a => !a.startsWith("--"));
 const want = +shotsArg;
 fs.mkdirSync(outDir, { recursive: true });
 
@@ -31,6 +34,10 @@ page.on("pageerror", e => errors.push(e.message));
 page.on("console", m => { if (m.type() === "error") errors.push(m.text()); });
 await page.goto(`http://localhost:${port}/web/play.html`);
 await page.waitForFunction(() => window.__golf && window.__golf.frames > 0, null, { timeout: 30000 });
+if (match) {
+  await page.selectOption("#mode", "match:9");
+  await page.waitForFunction(() => window.__golf && window.__golf.w.wram[0][0x834] === 2 && window.__golf.frames > 0, null, { timeout: 30000 });
+}
 
 const state = () => page.evaluate(() => { const g = window.__golf;
   return { frames: g.frames, mark: g.mark, shots: g.shots.length, error: g.error, done: !!g.done, hole: g.w.wram[0][0x837] }; });
@@ -48,7 +55,7 @@ const shot = async name => page.locator("#screen").screenshot({ path: path.join(
 const log = [];
 try {
   for (let k = 0; k < want; k++) {
-    await until(() => window.__golf.mark === "aimmenu" || window.__golf.error);
+    await until(() => (window.__golf.mark === "aimmenu" && !window.__golf.w.wram[0][0x835]) || window.__golf.error, null, 600000);
     await untilFrames((await frames()) + 40);     // the menu's HUD frames
     await shot(`shot${k + 1}_aim`);
     await press(k % 2 ? "ArrowLeft" : "ArrowRight", 6);
