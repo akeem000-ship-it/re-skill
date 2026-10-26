@@ -249,7 +249,11 @@ export function* aimMenu(sh, a) {
       const a = yield* pauseMenu(sh);
       w.high[0x195] = old;
       if (!(a & 0x80)) { at = "5D16"; continue; }
-      if (a === 0x81) notPorted("the link play's give-up (~10:5DAA)");
+      if (a === 0x81) {                          // 10:5DAA Give Up: 02:4924 LinkSendShotResult (only when the other
+        if (w0[0x880 + (w0[0x835] ? 0 : 0x40) + 0x13] === 3) notPorted("the link play's give-up (~02:493E)");   // player is
+        r6[0x4D4] = 0;                           // a link partner: field $13 = 3); $D4D4 = 0; no 10:5EAF
+        return a;
+      }
       w.high[0x1C1] = 0x20; r6[0x4D4] = 0; return a;   // 10:5EAF
     }
     if (p & 2) { shotModeButton(w, id => sh.sound(id)); at = "5C87"; continue; }

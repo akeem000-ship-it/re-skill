@@ -351,7 +351,8 @@ export function* strokeLimit(sh, a) {             // 10:4134 StrokeLimit: 3 x pa
   const f = pf(w, 0x20);
   if (w0[f] < d) return a;
   w0[f] = d;
-  yield* sh.advance();                                  // 10:4786 HudRedrawCurPlayer
+  D.hud(w, w0[0x835] ? "hudDrawPlayer2" : "hudDrawPlayer1");   // 10:4786 HudRedrawCurPlayer (12:4B8A / 12:4C18)
+  yield* sh.advance();
   r6[0x485] &= 0xEF;
   r6[0x48E] |= 0x80;
   if (!r6[0x443]) yield* loadShotView(sh, 1);           // 3B:76D8 StrokeLimitPickUp

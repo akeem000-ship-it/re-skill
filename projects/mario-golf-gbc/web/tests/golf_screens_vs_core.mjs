@@ -258,6 +258,13 @@ const CASES = [
   { name: "boot_giveup_first", state: "boot_poweron", open: true, noRet: true,
     run: sh => gameCase(sh, 1, () => lastMark === "aimmenu" && frameNow > markAt + 800),
     policy: pausePolicy([[60, 8], [120, 0x40], [140, 0x40], [170, 1], [400, 1]]) },
+  // Give Up at the second stroke: "Give up on this hole?" (No first): B (the menu again on Give Up), Give Up again,
+  // Up (Yes), A: the strokes become 3 x par (10:488B), the ball is picked up, the scorecard, the next hole; stopped 300
+  // frames into its aiming
+  { name: "boot_giveup", state: "boot_poweron", open: true, noRet: true,
+    run: sh => gameCase(sh, 1, () => { const h = markLog.findIndex((m, k) => m.n === "hole" && k > 0); const a = h > 0 && markLog.slice(h).find(m => m.n === "aimmenu"); return !!a && frameNow > a.f + 300; }),
+    policy: scriptedPolicy({ "aimmenu:2": [[60, 8], [120, 0x40], [140, 0x40], [170, 1], [400, 2], [520, 1], [700, 0x40], [730, 1]] },
+      frontEndPolicy) },
   // Quit, then No on "OK to quit this round?": the menu again on Quit; B
   { name: "boot_quit_no", state: "boot_poweron", open: true, noRet: true,
     run: sh => gameCase(sh, 1, () => lastMark === "aimmenu" && frameNow > markAt + 800),
