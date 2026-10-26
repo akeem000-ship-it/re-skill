@@ -19,6 +19,7 @@ import {
 } from "./common.js";
 import { arrivalWalkUp, arrivalWalkDown } from "./twins.js";
 import { tableText } from "./shared2.js";
+import { TEXT_PLUS_STAMINA } from "../text/dialogue.js";
 import {
   outcomeText, readWallRecord, updateWallRecord, retryOrExit,
   setupWallPracticeLevelSigns, relaunchWallPracticeMasterLevel, saveWallRecordAndWalkBack, walkBackFromCourt,
@@ -26,6 +27,15 @@ import {
 } from "./wall_levels_12.js";
 
 const BANK = 0x12;
+// PLAY+ STAMINA (engine/plus.js): the roommate's two lines on it (port/text/dialogue.js), once she (he) has said
+// they are partners; Text_31_90 is set again after it, so the scene goes on as before
+function* staminaTalk(P, actor) {
+  if (!(P.plus && P.plus.stamina)) return;
+  faceToward(P, ACTOR_PLAYER, actor);
+  yield* setText(P, TEXT_PLUS_STAMINA);
+  yield* speak(P, actor);
+  yield* speak(P, actor);
+}
 const BANK_SAVE = 0x03, SaveStorySlotWithTimer = 0x4D10, EraseStorySlotSaveData = 0x4E13;
 const BANK_SAVE_RECORDS = 0x03, ReadMinigameRecord = 0x5015;
 const WRAM_SOUND = 0x07;
@@ -216,6 +226,7 @@ export function* dormEntranceEntry0fScene(P) {
   setAnim(P, KATE, ANIM_NOD);
   yield* waitIdle(P, KATE);
   yield* speak(P, KATE);
+  yield* staminaTalk(P, KATE);                           // (PLAY+)
   faceToward(P, KATE, EMILY);
   yield* wait(P, 30);
   faceToward(P, ACTOR_PLAYER, EMILY);

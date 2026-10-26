@@ -36,13 +36,14 @@ export function fetchDialogueText(P, textId, de) {
   farcall(P, TEXT_BANKS[(textId >> 10) & 0x0F], 0x00, { d: (textId >> 8) & 3, e: textId & 0xFF, b: textId >> 8 });   // FetchDialogueText_XX
 }
 // PLAY+: the port's own lines, as text ids of bank code 13 (DialogueTextFetchers_05 sends 13-15 to bank $30 too; the
-// game uses none of them): 0-1 the coach on STAMINA at the Academy's gate (story_scripts/student_11.js). The game's
-// encoding: $01 a new line, $02 the next page, $03 the end; into wTextBuffer through the 0 that ends it (159 at most).
+// game uses none of them): 0-1 the roommate on STAMINA on the first night at the dorm (story_scripts/wall_room_12.js).
+// The game's encoding: $01 a new line, $02 the next page, $03 the end; into wTextBuffer through the 0 that ends it (159
+// at most).
 const TEXT_CODE_PLUS = 13;
 export const TEXT_PLUS_STAMINA = TEXT_CODE_PLUS << 10;
 const PLUS_LINES = [
-  "One more thing:\x01every swing tires\x01you out.\x02Charged power shots\x01tire you the most.\x01That's STAMINA.\x02Tired players run\x01slower and hit\x01softer.\x03",
-  "Your breath comes\x01back after every\x01point.\x02Eat well and rest in\x01your dorm room to\x01keep your energy up.\x02When you level up,\x01train STAMINA to\x01last even longer.\x03",
+  "Here's a tip,\x01partner: every swing\x01tires you out.\x02Charged power shots\x01tire you the most.\x01That's STAMINA.\x02Tired players run\x01slower and hit\x01softer.\x03",
+  "Your breath comes\x01back after every\x01point.\x02Eat well, and rest\x01in our room to keep\x01your energy up.\x02When you level up,\x01train STAMINA to\x01last even longer.\x03",
 ];
 function fetchPlusText(P, text) {
   const n = Math.min(text.length, 159);
