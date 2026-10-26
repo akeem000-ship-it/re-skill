@@ -250,10 +250,18 @@ export function setWindowTile(w, a, d, e, c, b) {
   setW(w, old);
 }
 
-// 05:4C5C CloseWindow: a = slot marked for closing (pointer high nibble $C)
+// 05:4C5C CloseWindow: a = slot marked for closing (pointer high nibble $C); 16-bit index (a = $FF: $DBFD)
 export function closeWindow(w, a) {
-  const p = slotAddr(a) + 1;
+  const p = (0xD800 + a * 4 + 1) & 0xFFFF;
   wr(w, p, (rd(w, p) & 0x0F) | 0xC0);
+}
+// 05:5F46 CloseMessageWindow: CloseWindow wMessageWindow ($FF with none: the byte at $DBFD), wMessageWindow = $FF
+export function closeMessageWindow(w) {
+  const old = wbank(w);
+  setW(w, 5);
+  closeWindow(w, rd(w, 0xD824));
+  wr(w, 0xD824, 0xFF);
+  setW(w, old);
 }
 // 05:4C9A SetWindowFlags: slot a, mask b set (c bit 0) or cleared in the record's flags
 export function setWindowFlags(w, a, b, c) {

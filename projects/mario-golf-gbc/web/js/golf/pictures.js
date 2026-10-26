@@ -235,9 +235,15 @@ export function* showHalfwayPicture(sh) {
     yield* sh.advance();
     if (w.high[0x194]) { sh.sound(0x5C); break; }
   }
-  if (w.vram) D.inBank(w, 0x01, () => {          // 01:41E8 InitFontScreen
+  if (w.vram) initFontScreen(w);                 // 01:41E8
+}
+
+// 01:41E8 InitFontScreen: LCD off, the font (01:41CE LoadFontTiles: 01:42A0 -> $9000, 01:4AA0 -> $8800), the cursor
+// tiles 01:5120 -> $87C0, the default palettes (01:50A0 BG, 01:50E0 OBJ, master copies), LCD on
+export function initFontScreen(w) {
+  D.inBank(w, 0x01, () => {
     D.disableLCDSafely(w);
-    w.lcd.vbk = 0;                               // 01:41CE LoadFontTiles
+    w.lcd.vbk = 0;
     D.startVRAMDMAFromHL(w, 0x42A0, 0x9000, 0x80);
     D.startVRAMDMAFromHL(w, 0x4AA0, 0x8800, 0x60);
     w.lcd.vbk = 0;

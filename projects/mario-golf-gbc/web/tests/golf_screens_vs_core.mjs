@@ -12,6 +12,7 @@ import { pauseMenu } from "../js/golf/pause.js";
 import { Hole } from "../js/golf/ball.js";
 import { shotSetup } from "../js/golf/hole.js";
 import { showPlayerPicture } from "../js/golf/pictures.js";
+import { titleScreen } from "../js/golf/title.js";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const filter = process.argv.slice(2).find(a => !a.startsWith("--")) || "";
@@ -47,6 +48,13 @@ const CASES = [
   // one's picture with its full-screen cycling picture (4A:6205)
   { name: "picture_hole_in_one", state: "picture_r18", regs: { a: 0 },
     run: (sh, r) => onHole(sh, inBank(sh, 0x3B, showPlayerPicture(sh, r.a))), noRet: true },
+  // the front end from power-on (web/tests/golf/boottrace.mjs --save-at ... --state out/state_boot_X.json): the title
+  // with its attract loop (40:4032, a = 0), Start at its frame 2600
+  { name: "boot_title", state: "boot_title", run: (sh, r) => inBank(sh, 0x40, titleScreen(sh, r.a)),
+    policy: f => (f >= 2600 && f < 2606 ? 8 : 0) },
+  // A during the demo skips to the title; the title times out back to the attract loop; Start skips that; Start
+  { name: "boot_title_skip", state: "boot_title", run: (sh, r) => inBank(sh, 0x40, titleScreen(sh, r.a)),
+    policy: f => (f >= 400 && f < 404 ? 1 : f >= 1900 && f < 1904 ? 8 : f >= 2200 && f < 2204 ? 8 : 0) },
 ];
 
 let bad = 0;

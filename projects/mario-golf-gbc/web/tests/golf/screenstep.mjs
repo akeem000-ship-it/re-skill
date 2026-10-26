@@ -45,7 +45,10 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
   const orig = core.step.bind(core);
   let lastSound = null;
   let lastCall = "";
+  const divQ = [];                               // rDIV as the game's code read it (ldh a, [$FF04]): the native code
+  w.readDIV = () => (divQ.length ? divQ.shift() : 0);   // gets the same values (a hardware input, as the joypad)
   core.step = () => {
+    if (gb.mem.read(cpu.pc) === 0xF0 && gb.mem.read((cpu.pc + 1) & 0xFFFF) === 0x04) divQ.push(gb.mem.read(0xFF04));
     if (trace && cpu.pc === 0x2E3B) {             // (trace: the caller of each of the game's AdvanceFrames)
       const sp = cpu.sp, rd = a => gb.mem.read(a);
       lastCall = `${gb.mem.romBank.toString(16)}:${(rd(sp) | rd(sp + 1) << 8).toString(16)}<${(rd(sp + 2) | rd(sp + 3) << 8).toString(16)}<${(rd(sp + 4) | rd(sp + 5) << 8).toString(16)}`;
