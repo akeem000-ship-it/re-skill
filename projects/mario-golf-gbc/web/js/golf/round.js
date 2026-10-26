@@ -6,7 +6,8 @@ import { rb, rw } from "./rom.js";
 import * as g from "./math.js";
 import { Hole } from "./ball.js";
 import { ball, rd16, wr16, playerField as pf } from "./memory.js";
-import { pinDist } from "./cup.js";
+import { pinDist, shotLength } from "./cup.js";
+import { lieTerrain } from "./shot.js";
 import { loadShotView, shotViewUpdate } from "./view.js";
 import * as H from "./hole.js";
 import * as Cam from "./camera.js";
@@ -21,6 +22,7 @@ import * as M from "./match.js";
 import { roundResultScreen } from "./result.js";
 import * as Sv from "./save.js";
 import { awardExpPoints } from "./exp.js";
+import * as T from "./tournament.js";
 import { queueFontTiles, continueMulliganMenu, continueMulliganRestartMenu } from "./pause.js";
 function* inBankGen(w, bank, g) {                // a far call to a routine that runs frames
   const old = w.high[0x195];
@@ -73,10 +75,11 @@ export function* initWindowSystem(sh) {           // 05:407A InitWindowSystem: c
   w.wram[0].fill(0, 0x3F9, 0x3FD);               // 41:707C ClearMenuState
 }
 
-function roundHookRoundStart(w, sound) {         // 08:4722 RoundHookRoundStart (DispatchByGameMode 08:470D)
-  const w0 = w.wram[0];
+function roundHookRoundStart(w, sound) {         // 08:4722 RoundHookRoundStart (DispatchByGameMode 08:470D; WRAM6 meanwhile)
+  const w0 = w.wram[0], old = w.high[0x196];
+  Dp.setWramBank(w, 6);
   switch (mode(w)) {
-    case 1: notPorted("the tournament round start (~08:475F)"); break;
+    case 1: T.roundStartMode1(w, sound); break;   // 08:475F
     case 2:                                      // 08:478C RoundStartMode2Match
       sound(0x38);
       w0[0x83A] = w0[0x83B] = 0;
@@ -91,6 +94,7 @@ function roundHookRoundStart(w, sound) {         // 08:4722 RoundHookRoundStart 
       break;
     default: break;
   }
+  Dp.setWramBank(w, old);
 }
 
 // 08:5062 PlayRoundMusic: only in a round (wReplayActive $C96D); the round's song $C82C, else by mode (8: 5, 4: 7),
@@ -382,7 +386,9 @@ function* roundHookAfterShot(sh) {                // 08:4901 RoundHookAfterShot 
   const w = sh.w, old = w.high[0x196];
   Dp.setWramBank(w, 6);
   switch (mode(w)) {
-    case 1: notPorted("the tournament's shot statistics (~08:441A)"); break;
+    case 1:                                      // 08:441A UpdateTeeShotStats
+      yield* T.updateTeeShotStats(sh, () => lieTerrain(sh.hole, ball(w)), () => shotLength(ball(w), w.wram[6].subarray(0x5F8, 0x5FE)));
+      break;
     case 2: yield* M.afterShotMode2(sh, H.scorecard); break;   // 08:494B
     case 3: if (w.wram[0][0x8D0] !== 0xFF) yield* M.updateHoleContest(sh); break;   // 08:4942
     case 4: yield* afterShotMode4Training(sh); break;          // 08:4A39
@@ -486,10 +492,11 @@ export function* holeEnd(sh) {
   return w0[0x839] !== 0;
 }
 
-function* roundHookHoleEnd(sh) {                  // 08:4B02 RoundHookHoleEnd
-  const w = sh.w, w0 = w.wram[0];
+function* roundHookHoleEnd(sh) {                  // 08:4B02 RoundHookHoleEnd (WRAM6 meanwhile)
+  const w = sh.w, w0 = w.wram[0], old = w.high[0x196];
+  Dp.setWramBank(w, 6);
   switch (mode(w)) {
-    case 1: notPorted("the tournament's hole end (~08:4B3F)"); break;
+    case 1: yield* T.holeEndMode1(sh, showScorecard, P.showHalfwayPicture); break;   // 08:4B3F
     case 2: yield* M.holeEndMode2(sh, P.showHalfwayPicture, setDecisiveHoleOnLast); break;   // 08:4B64
     case 3:                                      // 08:4B93 HoleEndMode3Stroke
       if (w0[0x8D0] !== 0xFF) M.addContestWinsToPlayers(w);   // 08:432F
@@ -500,6 +507,7 @@ function* roundHookHoleEnd(sh) {                  // 08:4B02 RoundHookHoleEnd
       break;
     default: break;
   }
+  Dp.setWramBank(w, old);
 }
 
 function setDecisiveHoleOnLast(w) {              // 08:4BAA SetDecisiveHoleOnLast: from hole 17 with a player 2
@@ -513,7 +521,9 @@ export function* roundEnd(sh) {
   r6[0x328] = 1;                                 // wHudBusy
   w0[0x96D] = 0;                                 // wReplayActive
   if (w0[0x33F]) notPorted("link play (~10:4659)");
-  switch (mode(w)) {                             // 08:4BBC RoundHookRoundEnd
+  const old = w.high[0x196];
+  Dp.setWramBank(w, 6);
+  switch (mode(w)) {                             // 08:4BBC RoundHookRoundEnd (WRAM6 meanwhile)
     case 3:                                      // 08:4EBF RoundEndMode3Stroke
       if (w0[0x8D0] !== 0xFF) {
         const b = (w0[0x8BE] + 0x36) & 0xFF, c = (w0[0x8FE] + 0x36) & 0xFF;
@@ -529,10 +539,14 @@ export function* roundEnd(sh) {
       addPointsRaw(w, 0x0A);
       yield* roundEndFadeAndExp(sh);             // 08:4F03
       break;
+    case 1:                                      // 08:4BF9 RoundEndMode1Tournament
+      yield* T.roundEndMode1(sh, a => inBankGen(sh.w, 0x0B, roundResultScreen(sh, a)), addPointsRaw, roundEndFadeAndExp);
+      break;
     case 0: break;                               // (no entry: Quit from the pause menu sets mode 0)
     case 4: case 5: case 0x0A: case 0x0B: break;   // 08:4EF2 / 08:4EF3
     default: notPorted(`the round end of mode ${mode(w)} (~08:4BBC)`);
   }
+  Dp.setWramBank(w, old);
 }
 
 // 08:4EF4 SaveGameMidRound: SaveGame 02:4489 with wReplayActive $C96D = 2 meanwhile (so a save made in a round

@@ -1,16 +1,20 @@
 // The scorecard between holes (ShowScorecard 0E:43D6, from RoundHookHoleEnd): for a one-player Stroke round the
 // hole-by-hole card (ScorecardPageStrokes 0E:6C7A): front and back nine, par, strokes, putts and the score against
 // par, drawn into the 64 x 64 map buffers (WRAM2 attributes / WRAM3 tiles) and shown with MapDrawFullScreen; Up /
-// Down scroll it (ScorecardScrollTask), A / B / Start leave. The other modes' pages are not ported.
+// Down scroll it (ScorecardScrollTask), A / B / Start leave; match play and the tournament have a second page (the
+// match card, the standings: below). The two-player pages are not ported.
 // The frame task, the scroll state, the frames and the buttons run headless too; the tiles, maps, palettes and
-// sprites only with a display (render/display.js).
+// sprites only with a display (render/display.js). Tournament: the standings page (0E:5209) and the strokes page
+// with the course record's hole marks.
 import { rb, rw } from "./rom.js";
 import { clearFrameTasks, registerFrameTask } from "./tasks.js";
 import { mapScrollTask } from "./render/holeview.js";
 import { formatDecimalNumber } from "./render/text.js";
 import * as D from "./render/display.js";
 import { matchStandingsScreen } from "./standings.js";
-import { loadTextShort } from "./text.js";
+import { loadTextShort, copyTextShortToDE, drawStringToGlyphs } from "./text.js";
+import { decompressDataFromBank } from "./mapgfx.js";
+import { buildStandings, getPlayerRank } from "./tournament.js";
 
 const B = 0x0E;
 
@@ -46,6 +50,7 @@ const PAGES = {
   0x6C7A: sh => pageStrokes(sh),                 // 0E:6C7A ScorecardPageStrokes
   0x4432: sh => inBankGen(sh.w, 0x3E, matchStandingsScreen(sh)),   // 0E:4432 ScorecardPageMatchStandings -> 3E:403F
   0x762F: sh => pageMatchPlay(sh),               // 0E:762F ScorecardPageMatchPlay
+  0x5209: sh => pageStandings(sh),               // 0E:5209 ScorecardPageStandings
 };
 function* inBankGen(w, bank, g) {
   const old = w.high[0x195];
@@ -265,7 +270,7 @@ export function scorecardStrokesTask(w) {
     D.positionSpriteWorld(w, 0x0900, 0x0500, 0x40, 0x02);
     D.positionSpriteWorld(w, 0x0900, 0x1100, 0x40, 0x02);
   }
-  if (w0[0x834] !== 3) throw new Error("the scorecard's cleared-hole marks (~0E:6D69) are not ported");
+  if (w0[0x834] !== 3 && w.vram) strokesHoleMarks(w);   // 0E:6D69
 }
 
 // ---- the match-play card (0E:762F ScorecardPageMatchPlay, page 1 in match play): the pars, a mark per hole for
@@ -380,4 +385,151 @@ export function scorecardMatchPlayTask(w) {
     D.positionSpriteWorld(w, hl, 0x0500, c, b);  // 00:27B4
     D.positionSpriteWorld(w, hl, 0x1000, c, b);
   }
+}
+
+// ---- the tournament's standings (0E:5209 ScorecardPageStandings, page 0 in mode 1): rank, name (drawn as glyphs
+// into the row's own tiles), score to par and holes played for the 28 golfers, the player's row marked, an arrow
+// when the player's rank moved ----
+function* pageStandings(sh) {
+  const w = sh.w;
+  yield* resetView(sh);
+  standingsSetup(w);
+  registerFrameTask(w, 0x01, B, 0x5348);         // ScorecardStandingsTask
+  for (;;) {
+    if (w.high[0x194] & 0x0B) { sh.sound(0x5C); return 0; }   // A / B / Start
+    if (w.high[0x194] & 0x10) { sh.sound(0x5C); return 1; }   // Right: the other page
+    yield* sh.advance();
+  }
+}
+function standingsSetup(w) {                     // 0E:5230 ScorecardStandingsSetup
+  const w0 = w.wram[0];
+  if (w.vram) D.inBank(w, B, () => {
+    D.disableLCDSafely(w);
+    D.setWramBank(w, 1);
+    decompressDataFromBank(w, 0x0C10, 0xD200);   // 00:0234
+    w.lcd.vbk = 0;
+    D.startVRAMDMAFromHL(w, 0xD200, 0x9200, 0x20);
+    D.startVRAMDMAFromHL(w, 0xD800, 0x8800, 0x80);
+    D.setWramBank(w, 1);
+    D.lzTo(w, B, 0x4710, 0xD000);
+    w.lcd.vbk = 1;
+    D.startVRAMDMAFromHL(w, 0xD000, 0x9000, 0x80);
+    D.startVRAMDMAFromHL(w, 0xD800, 0x8800, 0x80);
+    D.setWramBank(w, 2);
+    D.lzTo(w, B, 0x5131, 0xD000);                // the list's attributes
+    D.setWramBank(w, 3);
+    D.lzTo(w, B, 0x4FEA, 0xD000);                // and tiles
+    initNameTiles(w);                            // 0E:5309
+    D.loadPalettesUnlessFaded(w, 0x4FAA, 0x00, 0x08);
+    loadCommonGfx(w);
+    D.setWramBank(w, 1);
+    for (let k = 0, de = 0xD400; k < 0xA8; k++, de += 16) D.copyMemoryFast(w, 0x46BD, de, 1);   // blank name tiles
+  });
+  buildStandingsRows(w);                         // 0E:5448
+  if (w.vram) D.inBank(w, B, () => {
+    D.setWramBank(w, 1);
+    w.lcd.vbk = 0;
+    D.startVRAMDMAFromHL(w, 0xD400, 0x9400, 0x40);
+    D.startVRAMDMAFromHL(w, 0xD800, 0x8800, 0x68);
+  });
+  if (((w0[0x482] + 1) & 0xFF) >= 0x0D) w0[0x323] = 0x10;
+  w0[0x32C] = 0x22;
+  mapDrawFullScreen(w);                          // 0B:4306 with a = 1
+  D.inBank(w, 0x04, () => mapScrollTask(w));     // 04:4072
+  if (w.vram) D.enableLCD(w);                    // 00:0371
+}
+// 0E:5309 ScorecardInitNameTiles: tiles $40, $41, ... six to a row (28 rows, $40 apart) from WRAM3 $D146, attribute 0
+function initNameTiles(w) {
+  D.setWramBank(w, 3);
+  for (let r = 0, a = 0x40; r < 0x1C; r++) for (let k = 0; k < 6; k++) D.wr(w, 0xD146 + 0x40 * r + k, (a++) & 0xFF);
+  D.setWramBank(w, 2);
+  for (let r = 0; r < 0x1C; r++) for (let k = 0; k < 6; k++) D.wr(w, 0xD146 + 0x40 * r + k, 0);
+}
+// 0E:5448 ScorecardBuildStandingsRows: the standings (0E:78B4), copied ($74 bytes) to $C600 and drawn (0E:53A6);
+// wStandingsPlayerIdx $C482 (0E:7871) and wStandingsPlayerRank $C483 (0E:7887)
+function buildStandingsRows(w) {
+  const w0 = w.wram[0];
+  buildStandings(w);
+  D.setWramBank(w, 6);
+  D.copyMemoryBC(w, 0xD800, 0xC600, 0x74);
+  if (w.vram) D.inBank(w, B, () => drawStandingsList(w, 0xC600));
+  let c = 0;
+  for (let hl = 0xC600; w0[hl - 0xC000] !== 0x96 && w0[hl + 2 - 0xC000]; hl += 4) c++;   // 0E:7871 FindPlayerInStandings
+  w0[0x482] = c;
+  w0[0x483] = getPlayerRank(w);
+}
+// 0E:53A6 DrawStandingsList: per entry (a row of $40 from $D141): its rank + 1 (and '/' when tied), the name (0E:45E8
+// GetGolferName to $C490, 03:50CD DrawStringToGlyphs into WRAM1 $D200, merged into the row's six tiles at
+// [$C485] with 0E:46CD BlitGlyphRows), the score to par and the holes played ('-' for none)
+function drawStandingsList(w, bc) {
+  const w0 = w.wram[0];
+  w0[0x485] = 0; w0[0x486] = 0xD4;
+  for (let row = 0xD141; D.rd(w, bc) !== 0x96; row += 0x40, bc += 4) {
+    let de = putDigitPair(w, row, ((D.rd(w, bc + 3) & 0x7F) + 1) & 0xFF);
+    if (D.rd(w, bc + 3) & 0x80) putTile(w, de, 0x2F);
+    D.setWramBank(w, 2);                         // (0E:447C ScorecardPutTile leaves WRAM2)
+    de += 2;
+    getGolferName(w, D.rd(w, bc + 2), 0xC490);
+    D.setWramBank(w, 1);
+    D.clearMemory16(w, 0xD200, 6);               // 00:03A7
+    D.inBank(w, 0x03, () => drawStringToGlyphs(w, 0xC490, 0xD200));
+    let hl = w0[0x485] | w0[0x486] << 8;
+    for (let k = 0, src = 0xD200; k < 6 * 8; k++, src += 2, hl += 2) {   // 0E:46EB BlitGlyphRowMasked
+      const c = D.rd(w, src), b = D.rd(w, src + 1), e = (~b) & 0xFF;
+      D.wr(w, hl, (D.rd(w, hl) & e) | (b & c));
+      D.wr(w, hl + 1, (D.rd(w, hl + 1) & e) | b);
+    }
+    w0[0x485] = hl & 0xFF; w0[0x486] = hl >> 8;
+    de = (de + 7) & 0xFFFF;
+    de = putScoreToPar(w, de, D.rd(w, bc)) + 1;
+    const n = D.rd(w, bc + 1);
+    if (n) putDigitPair(w, de, n);
+    else putTile(w, de + 1, 0x2D);
+    D.setWramBank(w, 2);
+  }
+}
+// 0E:45E8 GetGolferName: a = 0 or $FF: the player's name ($C800, 11 bytes); bit 7: the course's golfer list (0E:4633)
+// entry a & $7F; else text $53 + a; to de
+function getGolferName(w, a, de) {
+  if (!a || a === 0xFF) { D.copyMemoryBC(w, 0xC800, de, 0x0B); return; }
+  if (a & 0x80) {
+    const t = rw(B, (0x4633 + ((2 * w.wram[0][0x836]) & 0xFF)) & 0xFFFF);
+    copyTextShortToDE(w, (t + (a & 0x7F)) & 0xFFFF, de);
+  } else copyTextShortToDE(w, (0x53 + a) & 0xFFFF, de);
+}
+// 0E:5348 ScorecardStandingsTask: the scroll; the player's row's marker and the cursor; once a hole is done and the
+// rank moved ($C875 against $C483), a blinking arrow (up: rank improved, tile $22) beside the row
+export function scorecardStandingsTask(w) {
+  const w0 = w.wram[0];
+  scorecardScrollTask(w);
+  if (!w.vram) return;
+  D.positionSpriteWorld(w, 0x0500, (((w0[0x482] + 6) & 0xFF) << 8) | 0x60, 0x40, 0x02);
+  scorecardQueueSprite(w, 0x4008, 0x00, 0x0D, 0x00, 0x01);
+  if (!w0[0x4BE] || w0[0x875] === w0[0x483]) return;
+  const d = (w0[0x482] + 5) & 0xFF;
+  let e = ((((w.high[0x18C] & 0x0F) + 0x0A) & 0xFF) << 3) & 0xFF, c = 0x20;
+  if (w0[0x875] < w0[0x483]) { e = (~e) & 0xFF; c = 0x22; }
+  D.positionSpriteWorld2(w, 0x0080, d << 8 | e, c, 0x06);
+}
+// 0E:6D69 (ScorecardStrokesTask outside Stroke play): the cursor sprite, and a mark beside each hole of the course
+// whose bit is set in the course record (02:5C77 TestCourseHoleBit)
+function strokesHoleMarks(w) {
+  scorecardQueueSprite(w, 0x401D, 0x00, 0x01, 0x0A, 0x01);
+  let d = 0x05;
+  for (let l = 1; l <= 0x12; l++) {
+    if (testCourseHoleBit(w, w.wram[0][0x836], l)) D.positionSpriteWorld2(w, 0x0180, d << 8 | 0x80, 0x30, 0x07);
+    d = (d + 1 + (l === 9 ? 3 : 0)) & 0xFF;
+  }
+}
+// 02:5C77 TestCourseHoleBit: bit l (below $18) of the course's bitmap ($C996 + 25 x (course - 1)); courses 1-5
+export function testCourseHoleBit(w, h, l) {
+  if (!h || h >= 6 || l >= 0x18) return 0;
+  const p = 0xC996 + 25 * (h - 1) + (l >> 3);
+  return rb(0x02, 0x5D27 + (l & 7)) & D.rd(w, p);
+}
+// 02:5CA5 SetCourseHoleBit
+export function setCourseHoleBit(w, h, l) {
+  if (!h || h >= 6 || l >= 0x18) return;
+  const p = 0xC996 + 25 * (h - 1) + (l >> 3);
+  D.wr(w, p, D.rd(w, p) | rb(0x02, 0x5CEA + (l & 7)));
 }

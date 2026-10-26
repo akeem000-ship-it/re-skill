@@ -19,7 +19,7 @@ import { readJoypad } from "./joypad.js";
 import { taskFacade, runFrameTasks } from "./tasks.js";
 import { showCaption, captionMotionTask, captionAnimTask } from "./captions.js";
 import * as P from "./pictures.js";
-import { scorecardStrokesTask, scorecardMatchPlayTask } from "./scorecard.js";
+import { scorecardStrokesTask, scorecardMatchPlayTask, scorecardStandingsTask } from "./scorecard.js";
 import { matchStandingsTask } from "./standings.js";
 import { menuCursorTask } from "./windows.js";
 import { demoTasks } from "./title.js";
@@ -178,6 +178,7 @@ export class Shot {
       "48:5ee9": () => P.pictureAnimTiles(w),          // 48:5EE9
       "0e:6d47": () => scorecardStrokesTask(w),        // 0E:6D47
       "0e:76f5": () => scorecardMatchPlayTask(w),      // 0E:76F5
+      "0e:5348": () => scorecardStandingsTask(w),      // 0E:5348
       "3e:465a": () => matchStandingsTask(w),          // 3E:465A
       "05:4f20": () => menuCursorTask(w),              // 05:4F20 MenuCursorTask
       "05:53f9": () => moreArrowTask(w),               // 05:53F9 MoreArrowTask

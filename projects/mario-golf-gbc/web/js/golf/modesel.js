@@ -3,8 +3,8 @@
 // Stroke the course select (0F:4AB7), for match play the opponent's character select (list 02:5985) and the course,
 // for Training the course and hole select (0F:4AD6) hole after hole; then GolfRound 10:4451 and GolfSessionEnd
 // 10:4B94 through sh.playGolfRound (boot.js gameFromPowerOn; without it, it returns the holes where it would call
-// GolfRound). Ported paths: one player, a preset golfer or a saved character, Stroke, match play and Training; the
-// others throw.
+// GolfRound). Ported paths: one player, a preset golfer or a saved character, Stroke, match play, Tournament and
+// Training; the others throw.
 import { rb } from "./rom.js";
 import * as D from "./render/display.js";
 import { clearFrameTasks } from "./tasks.js";
@@ -206,6 +206,16 @@ export function* modeSelectMain(sh) {
         }
         at = "modes1";
         continue;
+      }
+      if (m === 1) {                             // 32:51FF Tournament
+        if (flag(w, 139) && !flag(w, 123)) notPorted("the links-unlocked warp (~32:530C)");
+        const course = yield* inBankGen(w, 0x0F, courseSelect(sh));
+        if (course === 0xFF) { at = "modes1"; continue; }
+        St.golfSessionInit(w);                   // 10:4B28
+        St.setCourseHole(w, course, course, 1);  // 10:423B
+        St.setupPlayerGolfer(w, 0xFF, 1);        // 02:4A28
+        wr(w, 0xC834, 1);
+        return yield* golfRound(sh, roundHoles(w));
       }
       if (m === 4) {                             // 32:52CD Training: one hole at a time
         let h = 1, l = 1;

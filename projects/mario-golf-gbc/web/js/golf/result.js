@@ -1,5 +1,5 @@
 // The result screen after a match or a two-player round (RoundResultScreen 0B:59DE, a = 0 match / 2 two-player
-// stroke; a = 1, the tournament placing, is not ported): the map graphics $0A with the map actors (bank 04), the two
+// stroke; a = 1 the tournament placing: DrawRankResult 0B:61CF): the map graphics $0A with the map actors (bank 04), the two
 // golfers' portraits (11:4EAB), WIN / LOSE plates, the holes-up figure, falling confetti actors and a palette cycle;
 // A / B / Start leave. The plates and numbers are copied within the 64 x 64 map buffers (MapBufCopyRect) and the
 // screen comes back through the BG shadow (bank 05). The tasks and RAM run headless too.
@@ -25,7 +25,7 @@ function* far(w, bank, g) {                      // a far call to a routine that
   try { return yield* g; } finally { w.high[0x195] = old; }
 }
 
-// 0B:59DE RoundResultScreen; returns a as it came (the routine pops it)
+// 0B:59DE RoundResultScreen (a = 1: the tournament placing, 0B:5B00); returns a as it came (the routine pops it)
 export function* roundResultScreen(sh, a) {
   const w = sh.w;
   yield* sh.advance();
@@ -55,18 +55,34 @@ export function* roundResultScreen(sh, a) {
   yield* far(w, B, M.mapStartGfx(sh, 0x0A));     // 0B:46DF
   D.inBank(w, 0x04, () => { A.spawnActorList(w, 0x0B, 0x5938); A.loadActorPalettes(w); });   // 04:5084 04:4D2B
   if (w.vram) D.loadPalettesMasterOnly(w, 0x6527, 0x0B, 0x01);
-  if (a === 1) throw new Error("the tournament placing (~0B:5B00, ~0B:61CF DrawRankResult) is not ported");
-  const r = rd(w, 0xC96C);
-  const [c, e] = r === 2 ? [1, 0] : r === 3 ? [1, 1] : [0, 1];
-  const b = rd(w, 0xC890) | (rd(w, 0xC899) & 0x10), d = rd(w, 0xC8D0) | (rd(w, 0xC8D9) & 0x10);
-  yield* drawVsResult(sh, a, b, c, d, e);
-  yield* far(w, 0x05, restoreShadowFromMap(sh));   // 05:4492
-  for (const [row, n] of [[0, 4], [4, 4], [8, 5], [0x0D, 5]]) yield* far(w, 0x05, copyShadowRowsFramed(sh, row, n));   // 05:42AD
-  clearResultActors(w);
-  wr(w, 0xC3F4, 0);
-  Scr.beginFadeIn(w, 0x04);
-  yield* Scr.waitFade(sh);
-  registerFrameTask(w, 0x01, B, 0x648F);         // ResultPaletteCycleTask
+  if (a === 1) {                                 // 0B:5B00 the tournament placing
+    yield* drawRankResult(sh, rd(w, 0xC890), rd(w, 0xC96C));
+    M.mapBufCopyRect(w, 0x14, 0x00, 0x00, 0x00, 0x14, 0x12);
+    yield* sh.advance();                         // WaitFramesCmd 1
+    yield* far(w, 0x05, restoreShadowFromMap(sh));   // 05:4492
+    for (const [row, n] of [[0, 4], [4, 4], [8, 5], [0x0D, 5]]) yield* far(w, 0x05, copyShadowRowsFramed(sh, row, n));   // 05:42AD
+    D.inBank(w, 0x0A, () => { for (let k = 8; k <= 0x0E; k++) A.actorSetPos(w, k, 0x3F00, 0x3F00); });   // 0A:43C6
+    clearResultActors(w);
+    wr(w, 0xC3F4, 0);
+    Scr.beginFadeIn(w, 0x04);
+    yield* Scr.waitFade(sh);
+    if (rd(w, 0xC96C) < 4) {
+      registerFrameTask(w, 0x01, B, 0x648F);     // ResultPaletteCycleTask
+      registerFrameTask(w, 0x01, B, 0x6694);     // ResultSpriteTask
+    }
+  } else {
+    const r = rd(w, 0xC96C);
+    const [c, e] = r === 2 ? [1, 0] : r === 3 ? [1, 1] : [0, 1];
+    const b = rd(w, 0xC890) | (rd(w, 0xC899) & 0x10), d = rd(w, 0xC8D0) | (rd(w, 0xC8D9) & 0x10);
+    yield* drawVsResult(sh, a, b, c, d, e);
+    yield* far(w, 0x05, restoreShadowFromMap(sh));   // 05:4492
+    for (const [row, n] of [[0, 4], [4, 4], [8, 5], [0x0D, 5]]) yield* far(w, 0x05, copyShadowRowsFramed(sh, row, n));   // 05:42AD
+    clearResultActors(w);
+    wr(w, 0xC3F4, 0);
+    Scr.beginFadeIn(w, 0x04);
+    yield* Scr.waitFade(sh);
+    registerFrameTask(w, 0x01, B, 0x648F);       // ResultPaletteCycleTask
+  }
   do yield* sh.advance(); while (!(w.high[0x191] & 0x0B));   // hJoyRepeat: A / B / Start
   unregisterFrameTask(w, B, 0x648F);
   unregisterFrameTask(w, B, 0x6694);
@@ -276,4 +292,66 @@ export function resultSpriteTask(w) {            // 0B:6694 ResultSpriteTask: a 
   D.queueSprite(w, 0x22, 0x64, 0x62, 0x02);
   D.queueSprite(w, 0x32, 0x5C, 0x64, 0x04);
   D.queueSprite(w, 0x32, 0x64, 0x66, 0x04);
+}
+
+// 0B:61CF DrawRankResult: b = the player's golfer, c = the rank (1 first): sound $20; the place's digits (0B:67D3);
+// for 2nd / 3rd a ribbon ($0A + 2 x (c - 2), row $24); the plate and the suffix by place ("1st" from the screen's
+// own map; 2nd, 3rd, the rest); the course's name (courses 2-6: row $28-$2C); the trophy (places 2-3) or the
+// other frame (4th on); the score to par (sign 0B:6646, number 0B:65FE); the portrait (0B:5ED6; picture 1 below a
+// frame after 4th); confetti for places 1-3 (actors 2-7, 0B:5DE1), else the confetti actors out of sight
+function* drawRankResult(sh, b, c) {
+  const w = sh.w;
+  sh.sound(0x20);
+  yield* drawRankDigits(sh, c);
+  if (c < 4 && c !== 1) M.mapBufCopyRect(w, (0x0A + 2 * (c - 2)) & 0xFF, 0x24, 0x17, 0x0E, 0x02, 0x02);
+  if (c === 2) { M.mapBufCopyRect(w, 0x22, 0x2B, 0x1F, 0x0C, 0x04, 0x05); M.mapBufCopyRect(w, 0x00, 0x2B, 0x21, 0x06, 0x02, 0x01); }
+  else if (c === 3) { M.mapBufCopyRect(w, 0x26, 0x2B, 0x1F, 0x0C, 0x04, 0x05); M.mapBufCopyRect(w, 0x00, 0x2C, 0x21, 0x06, 0x02, 0x01); }
+  else if (c !== 1) { M.mapBufCopyRect(w, 0x23, 0x0C, 0x1F, 0x0C, 0x04, 0x05); M.mapBufCopyRect(w, 0x00, 0x2D, 0x21, 0x06, 0x02, 0x01); }
+  const course = rd(w, 0xC836);
+  if (course >= 2 && course <= 6) M.mapBufCopyRect(w, 0x0A, (0x26 + course) & 0xFF, 0x14, 0x03, 0x14, 0x01);
+  if (c !== 1) {
+    if (c < 4) { M.mapBufCopyRect(w, 0x07, 0x1C, 0x1B, 0x0A, 0x0D, 0x02); M.mapBufCopyRect(w, 0x02, 0x13, 0x16, 0x01, 0x0D, 0x01); }
+    else {
+      M.mapBufCopyRect(w, 0x14, 0x00, 0x1B, 0x0A, 0x0D, 0x02);
+      M.mapBufCopyRect(w, 0x0E, 0x25, 0x1B, 0x0B, 0x0D, 0x02);
+      M.mapBufCopyRect(w, 0x16, 0x00, 0x16, 0x01, 0x10, 0x01);
+    }
+  }
+  let a = rd(w, 0xC8BE);
+  drawResultSign(w, a, 0x23, 0x08);
+  if (a >= 0xCA) a = (-a) & 0xFF;
+  drawResultNumber(w, a, 0x24, 0x08);
+  if (c < 4) yield* drawResultPortrait(sh, b, 0, 0, 0x16, 0x06);
+  else {
+    M.mapBufCopyRect(w, 0x08, 0x06, 0x16, 0x06, 0x04, 0x02);
+    yield* drawResultPortrait(sh, b, 1, 0, 0x16, 0x08);
+  }
+  if (c < 4) {
+    wr(w, 0xC3F5, 1);
+    initResultActors(w, 4);                      // 0B:5BE6
+    registerFrameTask(w, 0x01, B, 0x5DE1);       // ConfettiTask
+  } else D.inBank(w, 0x0A, () => { for (let k = 2; k <= 7; k++) A.actorSetPos(w, k, 0x3F00, 0x3F00); });
+}
+// 0B:6646 DrawResultSign: the score's mark at (d, e): even (3), minus ($CA and up: 1) or plus (0), row $2A
+function drawResultSign(w, a, d, e) {
+  M.mapBufCopyRect(w, !a ? 3 : a >= 0xCA ? 1 : 0, 0x2A, d, e, 0x01, 0x01);
+}
+// 0B:67D3 DrawRankDigits: c = the place: one digit uses a fixed plate (map copy) and its digit's tiles at VRAM1
+// $9300 / $9400 / $9500 (LZ list 0B:688A, three 2-tile rows); two digits also put the tens' at $9320 / ...; LCD off
+// meanwhile, then a frame
+function* drawRankDigits(sh, c) {
+  const w = sh.w;
+  if (w.vram) D.disableLCDSafely(w);
+  const h = Math.floor(c / 10), l = c % 10;
+  const load = (digit, base) => {
+    setW(w, 1);
+    if (w.vram) w.lcd.vbk = 1;
+    D.lzTo(w, B, rw(B, (0x688A + ((2 * digit) & 0xFF)) & 0xFFFF), 0xD000);
+    if (w.vram) for (let k = 0; k < 3; k++) D.startVRAMDMAFromHL(w, 0xD000 + 0x20 * k, base + 0x100 * k, 0x02);
+  };
+  if (!h) M.mapBufCopyRect(w, 0x1B, 0x04, 0x1D, 0x04, 0x02, 0x03);
+  else load(h, 0x9320);
+  load(l, 0x9300);
+  if (w.vram) D.enableLCD(w);
+  yield* sh.advance();
 }

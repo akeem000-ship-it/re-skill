@@ -89,6 +89,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the rest of the pause menu: Settings, Camera Mode (freelook.js), Course Map (coursemap.js, bank 17) | 96,695 | 39.84% |
 | + the level-up screen (levelup.js, bank 41; CheckLevelUp, CharLevelUpDiff, CharRefreshStats of bank 02) | 101,871 | 41.98% |
 | + Training (the course and hole select 0F:4AD6, the after-shot menus and RetryShotRestore, the training pause menu, the menu arrows of flags #49-#52) | 103,011 | 42.45% |
+| + Tournament (tournament.js: the rivals of bank 3C, the standings of bank 0E, the course statistics of bank 08; the standings page 0E:5209; the placing screen 0B:5B00) | 107,090 | 44.13% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -396,7 +397,33 @@ the round's mode 0 and ends it after the hole. With this the native game drives 
 holed menu, Mulligan after holing, Start Over, Settings and Hole Out from the pause menu, Back to Menu) play from
 power-on, all frame for frame. (screenstep.mjs replays a lag VBlank's fade step only when the native fade is not
 already further in the same fade, as lockstep.mjs does: in the view behind the golfer's load the native fade could
-end a frame early.) Not ported: Tournament (mode 1), the story (mode 9), the mini-games and practice modes.
+end a frame early.) Not ported: the story (mode 9), the mini-games and practice modes.
+
+#### Tournament (game mode 1: tournament.js, scorecard.js, result.js)
+
+With a saved character the mode select offers Tournament (32:51FF): the course select, then GolfRound (18 holes; with
+flag #74 hole 18 only, #73 three) against a field of 27 made-up rivals. SimulateRivalScores 3C:6686 draws each
+rival's round total from its skill byte (RivalTable 3C:65E4), the course's offset (3C:67DD) and two RivalRandomBelow 5
+(an LCG of its own at $D596, x 13 + low byte x $200 + $3039, seeded from wRoundSeed $C9FE, so the totals are the same
+every time the standings are built in a round), keeps rivals 0-25 behind rival 26 (the course's champion), folds
+totals under the offset, ranks them (3C:6921, a selection sort with an index array) and moves everyone a stroke back
+behind a tie for 1st / 2nd / 3rd; each rival's score after the holes played is total x holes / 18 plus a per-hole
+drift row (3C:6650). BuildStandings 0E:78B4 turns that and the player's SumScoreToPar into 28 four-byte entries
+(score, holes, id: 0 the player, course + 3 the champion, $80 + the course golfer list 0E:4633 index, skipping the
+player's own name; on the stack), an insertion sort into WRAM6 $D800 (an entry that makes way is carried on), ranks
+and tie marks; GetPlayerRank 0E:7887 gives wPlayerRank $C875. The bank 08 hooks keep course statistics in the save
+(the record at $C980 + 25 x (course - 1), a working copy at $C96E): fairways and drives after tee shots (08:441A,
+with the longest drive's caption $1D for $18FF and up), putts, greens in regulation, par or better and sand saves at
+each hole's end (08:44D8; counts stop at $FF and the totals become running averages), rounds and the best score at
+the end (08:459E). Between holes the scorecard's first page is the standings (0E:5209: each name drawn as glyphs
+into its row's own six tiles, BlitGlyphRows 0E:46CD; the player's row marked; an arrow when the rank moved), the
+second the strokes card with the course record's hole marks (0E:6D69). The round ends with the placing screen
+(RoundResultScreen a = 1, 0B:5B00 / DrawRankResult 0B:61CF: the place's digit tiles, ribbon, plate, course name,
+score, portrait, confetti for the top three), the course record's place bit and the EXP bonus for a first top-three
+place (08:4D18), the return map for the ceremonies (08:4C6E), the course flags, 10 points and the EXP.
+`golf_screens_vs_core.mjs boot_kid74_tournament` plays the one-hole tournament from power-on with the kid74 save,
+with the pause menu's Scorecard (both pages) on the second shot: 7,819 frames, all frame for frame, RAM and save RAM
+equal at the end. Not ported: the ceremonies a top-three place leads to (the map engine's warp to maps $18-$1D).
 
 #### Match play and the contests (web/js/golf/match.js)
 

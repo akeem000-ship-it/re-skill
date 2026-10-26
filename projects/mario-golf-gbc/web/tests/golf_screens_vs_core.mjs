@@ -216,6 +216,11 @@ const CASES = [
   // Match (Right twice), Luigi, course 1
   { name: "boot_poweron_kid_match", state: "boot_poweron_kid", open: true, noRet: true,
     run: sh => { menuW = sh.w; return powerOn(sh); }, policy: savedPolicy(2) },
+  // Tournament (Right once) with the kid74 save (game flag #74: one hole, hole 18): at the second shot the pause
+  // menu's Scorecard: the standings page (0E:5209), Right: the strokes page, A; the hole, the standings, the placing
+  // (0B:5B00), the EXP
+  { name: "boot_kid74_tournament", state: "boot_poweron_kid74", open: true, noRet: true, sram: true, run: sh => gameCase(sh),
+    policy: scriptedPolicy({ "aimmenu:2": [[60, 8], [100, 0x80], [120, 0x80], [150, 1], [300, 0x10], [450, 1]] }, savedPolicy(1)) },
   // a new game's Stroke round from power-on; in the first aiming menu Start, Up (to Quit), A, "OK to quit this round?":
   // Up (Yes), A: the round ends (wGameMode 0), GolfSessionEnd, the map engine runs map 0 again: the mode select
   { name: "boot_quit", state: "boot_poweron", open: true, noRet: true, run: sh => gameCase(sh),
