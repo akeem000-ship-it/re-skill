@@ -191,4 +191,4 @@ export function matchRoundSetup(w, { golfer = 8, opponent = 9, course = 1, seed 
   return 0x12;
 }
 // 0A:4D5B MapSaveReturnPoint with b = $FF: the current map, entrance $FF, the position $C2A0 (5 bytes) -> $C962
-function mapSaveReturnPoint(w) { const r = w.wram[0]; r[0x960] = r[0x450]; r[0x961] = 0xFF; r.copyWithin(0x962, 0x2A0, 0x2A5); }
+export function mapSaveReturnPoint(w) { const r = w.wram[0]; r[0x960] = r[0x450]; r[0x961] = 0xFF; r.copyWithin(0x962, 0x2A0, 0x2A5); }

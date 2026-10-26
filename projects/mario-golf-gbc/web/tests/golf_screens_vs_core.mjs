@@ -16,6 +16,7 @@ import { titleScreen } from "../js/golf/title.js";
 import { linkMenu } from "../js/golf/menu09.js";
 import { characterSelectScreen } from "../js/golf/charsel.js";
 import { gameModeSelect, courseSelect } from "../js/golf/select.js";
+import { modeSelectMain } from "../js/golf/modesel.js";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const filter = process.argv.slice(2).find(a => !a.startsWith("--")) || "";
@@ -25,6 +26,18 @@ const inBank = (sh, bank, g) => (function* () {
   const old = sh.w.high[0x195]; sh.w.high[0x195] = bank;
   try { return yield* g; } finally { sh.w.high[0x195] = old; }
 })();
+
+// the front end's buttons by the screen the native side is on (its frame tasks): Start at frame 2600 (the title),
+// then every 40 frames A, except Right in the character select until the cursor ($D214, WRAM6) is on Mario (4)
+let menuW = null;
+const hasTask = (w, bank, addr) => { const t = w.wram[0]; for (let p = 0x1C0; p < 0x200; p += 4) if (t[p] && t[p + 3] === bank && (t[p + 1] | t[p + 2] << 8) === addr) return true; return false; };
+function frontEndPolicy(f) {
+  if (f < 2600) return 0;
+  if (f === 2600) return 8;
+  if (f % 40) return 0;
+  if (menuW && hasTask(menuW, 0x06, 0x65D9) && menuW.wram[6][0x214] !== 4) return 0x10;
+  return 1;
+}
 
 // name, the state (round, routine), the native routine, buttons
 const CASES = [
@@ -75,6 +88,11 @@ const CASES = [
   { name: "boot_courseselect", state: "boot_courseselect", run: sh => inBank(sh, 0x0F, courseSelect(sh)), policy: f => (f === 280 ? 1 : 0) },
   { name: "boot_courseselect_moves", state: "boot_courseselect", run: sh => inBank(sh, 0x0F, courseSelect(sh)),
     policy: f => ({ 100: 0x10, 160: 0x10, 220: 0x20, 300: 1 })[f] || 0 },
+  // ModeSelectMain 32:5037 (map $00's enter script) from the title to the Stroke round's GolfRound call: Start, A
+  // (one player), Right x4 to Mario, A, A (Stroke), A (course 1); open: compared up to the native's return (the game
+  // is then into GolfRound's first frame: $C833 $C839 $C96D $D4F0 and hFF96 differ)
+  { name: "boot_modeselectmain", state: "boot_modeselectmain", open: true, noRet: true,
+    run: sh => { menuW = sh.w; return inBank(sh, 0x32, modeSelectMain(sh)); }, policy: frontEndPolicy },
 ];
 
 let bad = 0;
@@ -88,6 +106,7 @@ for (const c of CASES) {
   let r;
   try { r = runScreen({ stateFile, run: c.run, policy: c.policy, verbose, open: c.open, setRegs: c.regs, trace: process.argv.includes("--trace") }); }
   catch (e) { console.log(`FAIL ${c.name}: ${e.stack}`); bad++; continue; }
+  if (c.open) r.sounds.core = r.sounds.core.filter(x => +x.split(":")[0] < r.frames);   // (the game's next frame's)
   const sounds = r.sounds.core.join(" ") === r.sounds.native.join(" ");
   // (an open routine's end is compared with the core already into its next frame's code: listed, not failed)
   const ok = !r.bad.length && (c.open || !r.end.length) && sounds && (c.noRet || r.native === r.coreA);

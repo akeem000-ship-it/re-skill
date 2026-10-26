@@ -1,0 +1,188 @@
+// ModeSelectMain 32:5037, the front end's driver (map $00's enter script, 32:5033): the title (40:4032), LinkMenu
+// (09:4A12), the character select (06:6071) on the golfer list (02:5A2D), the game mode select (0D:4AA7), then for
+// Stroke the course select (0F:4AB7) and for match play the opponent's character select (list 02:5985) and the
+// course; it ends where it calls GolfRound 10:4451 (the caller runs the round: game.js). Ported paths: one player,
+// a preset golfer (no save file), Stroke and match play; the others throw.
+import { rb } from "./rom.js";
+import * as D from "./render/display.js";
+import { clearFrameTasks } from "./tasks.js";
+import { titleScreen } from "./title.js";
+import { linkMenu } from "./menu09.js";
+import { characterSelectScreen, resetCharSelectCursor } from "./charsel.js";
+import { gameModeSelect, courseSelect } from "./select.js";
+import * as St from "./start.js";
+
+const rd = D.rd, wr = D.wr;
+const setW = (w, n) => D.setWramBank(w, n);
+const flag = (w, n) => w.wram[0][0x840 + (n >> 3)] & (0x80 >> (n & 7));   // rst $30 (00:2D10 TestGameFlag)
+const clearFlag = (w, n) => { w.wram[0][0x840 + (n >> 3)] &= ~(0x80 >> (n & 7)); };
+function notPorted(what) { throw new Error(`${what} is not ported`); }
+function* inBankGen(w, bank, g) {
+  const old = w.high[0x195];
+  w.high[0x195] = bank;
+  try { return yield* g; } finally { w.high[0x195] = old; }
+}
+
+// 00:304D InitSerialLink: $70 sent, the link state $FFC0-$FFC9 reset (the serial registers are not modelled)
+export function initSerialLink(w) {
+  const h = w.high;
+  h[0x1C0] = 0; h[0x1C1] = 0x10; h[0x1C2] = 0; h[0x1C3] = 0; h[0x1C4] = 0; h[0x1C8] = 0; h[0x1C9] = 0x10;
+}
+// 00:2B54 ResumeBGM: hSoundFlags bit 0 set: cleared, wCurrentBGM played again
+function resumeBGM(sh) {
+  const w = sh.w;
+  if (w.high[0x1CE] & 1) { w.high[0x1CE] &= 0xFE; sh.sound(rd(w, 0xC33E)); }
+}
+
+// 02:4355 SaveBlockLoad: block b's directory entry ($A040 + 32 b) empty: $FE (a stored block is not ported)
+function saveBlockLoad(w, b) {
+  w.high[0x197] = 0;                             // hSRAMBank
+  if (!w.sram[0x40 + ((b << 5) & 0xFF)]) return 0xFE;
+  notPorted("loading a saved game (~02:4372 SaveBlockLoad)");
+}
+// 02:44F2 TestSaveFlag: SRAM $A038[d] & the mask 02:44EA by e (rlca x3)
+function testSaveFlag(w, d, e) {
+  w.high[0x197] = 0;
+  return w.sram[0x38 + d] & rb(0x02, (0x44EA + (((e << 3) | (e >> 5)) & 0xFF)) & 0xFFFF);
+}
+
+// 02:5AFB WriteGolferListEntry: entry c of the list de (32 bytes, cleared): +0 the golfer ($C890), +1 b, +2 player 1's
+// first 11 bytes (the name), +$0D [$C892], +$0E [$C89A] [$C89B], +$10 [$C891], +$11 [$C89D]
+function writeGolferListEntry(w, de, b, c) {
+  const e = (de + ((c << 5) & 0xFFFF)) & 0xFFFF;
+  D.clearMemory16(w, e, 2);
+  wr(w, e, rd(w, 0xC890)); wr(w, e + 1, b);
+  for (let k = 0; k < 11; k++) wr(w, e + 2 + k, rd(w, 0xC880 + k));
+  for (const [o, a] of [[13, 0xC892], [14, 0xC89A], [15, 0xC89B], [16, 0xC891], [17, 0xC89D]]) wr(w, e + o, rd(w, a));
+}
+// 02:5AA6 ListGolferAlways / 02:5A17 ListGolfer: SetupPlayerGolfer(b, c)
+const listGolfer = (w, b, c) => St.setupPlayerGolfer(w, b, c);
+
+// 02:5A2D BuildGolferListBySave: the list at de (WRAM6): the 3 save slots (02:5ACA ListSaveSlotGolfer: an empty one
+// $0F), Luigi (9), Mario (8), then golfers 4-7 and $0A when their save flags (02:5AA9) or hUnlockAll allow (else
+// $FF); wOptionFlags $C818 = 0
+function buildGolferListBySave(w, de) {
+  setW(w, 6);
+  for (let s = 0; s < 3; s++) {                  // 02:5ACA ListSaveSlotGolfer
+    if (saveBlockLoad(w, s)) wr(w, 0xC890, rd(w, 0xC33F) ? 0xFF : 0x0F);
+    writeGolferListEntry(w, de, s, s);
+  }
+  listGolfer(w, 0x09, 0x00); writeGolferListEntry(w, de, 0x0F, 3);
+  listGolfer(w, 0x08, 0x00); writeGolferListEntry(w, de, 0x0F, 4);
+  for (const [g, k] of [[4, 5], [5, 6], [6, 7], [7, 8], [0x0A, 9]]) {   // 02:5AA9 ListGolferIfSaveFlag
+    if (w.high[0x1CF] || testSaveFlag(w, g >> 3, (g << 5) & 0xFF)) listGolfer(w, g, 0x00);
+    else wr(w, 0xC890, 0xFF);
+    writeGolferListEntry(w, de, 0x0F, k);
+  }
+  wr(w, 0xC818, 0);
+}
+// 02:5985 BuildGolferListByFlags: the opponents: 3 empty entries (02:5A24), Luigi, then golfers 8, 4, 5, 6, 7, $0A
+// by the game flags #139, -, #80, #82, #84, #117 (02:5A07; or hUnlockAll)
+function buildGolferListByFlags(w, de) {
+  setW(w, 6);
+  for (let s = 0; s < 3; s++) { wr(w, 0xC890, 0xFF); writeGolferListEntry(w, de, 0x0F, s); }
+  const list = [[0x09, -1], [0x08, 139], [0x04, -1], [0x05, 80], [0x06, 82], [0x07, 84], [0x0A, 117]];
+  list.forEach(([g, f], k) => {
+    if (f < 0 || w.high[0x1CF] || flag(w, f)) listGolfer(w, g, 0x00);
+    else wr(w, 0xC890, 0xFF);
+    writeGolferListEntry(w, de, 0x0F, 3 + k);
+  });
+}
+
+// the number of holes (32:5220 / 32:5283): flag #74 hole 18 only (a = 1), #73 three holes, else $12
+function roundHoles(w) {
+  if (flag(w, 74)) { wr(w, 0xC837, 0x12); return 1; }
+  return flag(w, 73) ? 3 : 0x12;
+}
+
+// 32:5037 ModeSelectMain: returns the GolfRound argument (the holes) when a round starts
+export function* modeSelectMain(sh) {
+  const w = sh.w;
+  for (let k = 0; k < 6; k++) wr(w, 0xCAB8 + k, 0);
+  clearFrameTasks(w);
+  initSerialLink(w);
+  w.high[0x1B9] = w.high[0x1B8] = 0;
+  const ent = rd(w, 0xC46A);
+  let at = ent === 1 ? "link" : ent === 2 || ent === 0xFA ? "modes" : "title";
+  let titleArg = 0;
+  for (;;) {
+    if (at === "title") {                        // 32:5067
+      D.clearMemory16(w, 0xCB40, 4);
+      initSerialLink(w);
+      yield* inBankGen(w, 0x40, titleScreen(sh, titleArg));
+      if (rd(w, 0xCB40) === 0x10) notPorted("the link partner's start (~32:508B)");
+      at = "link";
+    }
+    if (at === "link") {                         // 32:5080
+      D.clearMemory16(w, 0xCB40, 4);
+      initSerialLink(w);
+      sh.sound(0x01);
+      resumeBGM(sh);
+      wr(w, 0xC33F, 0);
+      const r = yield* inBankGen(w, 0x09, linkMenu(sh));
+      if (r === 0xFF) { at = "title"; titleArg = 0xFF; continue; }
+      if (r !== 0) notPorted(`the link menu's item ${r} (~32:509F)`);
+      at = "player";
+    }
+    if (at === "player") {                       // 32:50B1
+      sh.sound(0x01);
+      resumeBGM(sh);
+      D.inBank(w, 0x02, () => buildGolferListBySave(w, 0xD658));
+      resetCharSelectCursor(w);
+      const r = yield* inBankGen(w, 0x06, characterSelectScreen(sh, 0xD658, 0));
+      if (r === 0xFF) { at = "link"; continue; }
+      const e = (0xD658 + ((r << 5) & 0xFFFF)) & 0xFFFF;
+      const c = rd(w, e), b = rd(w, e + 1), d = rd(w, e + 0x10);
+      wr(w, 0xC2A5, b & 0x0F);
+      if ((b & 0x0F) !== 0x0F) notPorted("playing a saved character (~32:5114)");
+      St.newGame(w);                             // 02:4E3D
+      St.setupPlayerGolfer(w, c & 0x0F, 0);      // 02:4A28
+      St.setPlayerControl(w, 0, 0);              // 02:4994
+      if (d & 1) St.setPlayerField11(w, 0, 1);   // 02:49A7
+      wr(w, 0xC834, 9);                          // 32:51A3
+      at = "modes1";
+    }
+    if (at === "modes" || at === "modes1") {
+      if (at === "modes") wr(w, 0xC834, 9);
+      sh.sound(0x01);                            // 32:51A8
+      wr(w, 0xC450, 0); wr(w, 0xC46A, 2);
+      St.setupPlayerGolfer(w, 0x80, 0);
+      wr(w, 0xC96D, 0);
+      St.mapSaveReturnPoint(w);                  // 0A:4D5B
+      for (const n of [144, 145, 146, 147]) clearFlag(w, n);
+      if (rd(w, 0xC2A5) < 3) notPorted("saving the game (~02:4489 SaveGame)");
+      const m = yield* inBankGen(w, 0x0D, gameModeSelect(sh));
+      if (m === 0xFF) { at = "player"; continue; }
+      wr(w, 0xC834, m);
+      if (m === 3) {                             // 32:52A3 Stroke
+        if (flag(w, 139) && !flag(w, 123)) notPorted("the links-unlocked warp (~32:530C)");
+        const course = yield* inBankGen(w, 0x0F, courseSelect(sh));
+        if (course === 0xFF) { at = "modes1"; continue; }
+        St.golfSessionInit(w);                   // 10:4B28
+        St.setCourseHole(w, course, course, 1);  // 10:423B
+        St.setupPlayerGolfer(w, 0xFF, 1);
+        wr(w, 0xC834, 3);
+        return 0x12;
+      }
+      if (m === 2) {                             // 32:5240 match play
+        for (;;) {
+          D.inBank(w, 0x02, () => buildGolferListByFlags(w, 0xD658));
+          resetCharSelectCursor(w);
+          const r = yield* inBankGen(w, 0x06, characterSelectScreen(sh, 0xD658, 0));
+          if (r === 0xFF) break;
+          const c = rd(w, (0xD658 + ((r << 5) & 0xFFFF)) & 0xFFFF);
+          const course = yield* inBankGen(w, 0x0F, courseSelect(sh));
+          if (course === 0xFF) continue;
+          St.golfSessionInit(w);
+          St.setCourseHole(w, course, course, 1);
+          St.setupPlayerGolfer(w, c, 1);
+          wr(w, 0xC834, 2);
+          return roundHoles(w);
+        }
+        at = "modes1";
+        continue;
+      }
+      notPorted(`the game mode ${m} (~32:51DF)`);
+    }
+  }
+}
