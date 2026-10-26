@@ -12,6 +12,7 @@ import { pinDist, shotLength } from "./cup.js";
 import { lieTerrain } from "./shot.js";
 import { formatDecimalNumber } from "./render/text.js";
 import * as D from "./render/display.js";
+import { showScorecard } from "./scorecard.js";
 
 const W0 = w => w.wram[0];
 const field = (w, p, f) => 0x880 + (p ? 0x40 : 0) + f;    // player p's record byte f
@@ -288,9 +289,8 @@ export function* holeEndMode2(sh, showHalfwayPicture, setDecisiveHoleOnLast) {  
   setDecisiveHoleOnLast(w);                      // 08:4BAA
 }
 
-function* showStandingsFar(sh) {                 // ~3E:675C ShowStandingsFar: the match standings screen
-  void sh;
-  if (sh.w.vram) throw new Error("the match standings screen (~3E:675C ShowStandingsFar) is not ported");
+function* showStandingsFar(sh) {                 // 3E:675C ShowStandingsFar: farcall 0E:43D6 ShowScorecard
+  yield* showScorecard(sh);
 }
 
 export function* roundResultScreen(sh, a) {       // ~0B:59DE RoundResultScreen: a = 0 match / 2 two-player stroke

@@ -15,7 +15,8 @@ import { readJoypad } from "./joypad.js";
 import { taskFacade, runFrameTasks } from "./tasks.js";
 import { showCaption, captionMotionTask, captionAnimTask } from "./captions.js";
 import * as P from "./pictures.js";
-import { scorecardStrokesTask } from "./scorecard.js";
+import { scorecardStrokesTask, scorecardMatchPlayTask } from "./scorecard.js";
+import { matchStandingsTask } from "./standings.js";
 import { contestLeaderSpriteTask } from "./match.js";
 import { vblankDisplay, clearUnusedSprites } from "./render/display.js";
 import * as D from "./render/hooks.js";
@@ -161,6 +162,8 @@ export class Shot {
       "4a:62a3": () => P.pictureCycleTask(w),          // 4A:62A3
       "48:5ee9": () => P.pictureAnimTiles(w),          // 48:5EE9
       "0e:6d47": () => scorecardStrokesTask(w),        // 0E:6D47
+      "0e:76f5": () => scorecardMatchPlayTask(w),      // 0E:76F5
+      "3e:465a": () => matchStandingsTask(w),          // 3E:465A
       "08:439e": () => contestLeaderSpriteTask(w, 0),  // 08:439E
       "08:43ab": () => contestLeaderSpriteTask(w, 1),  // 08:43AB
       ...D.displayTasks(this),                   // tasks that only draw (render/hooks.js)

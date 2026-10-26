@@ -11,6 +11,7 @@ import { registerFrameTask, unregisterFrameTask, clearFrameTasks } from "./tasks
 import * as Scr from "./screen.js";
 import { playerField as pf } from "./memory.js";
 import * as D from "./render/display.js";
+import { copyMapToScrollBuffers } from "./standings.js";
 
 const B = 0x77;
 const r77 = a => rw(B, a & 0xFFFF);
@@ -198,9 +199,6 @@ export function pictureCycleTask(w) {            // 4A:62A3 PictureCycleTask: pa
   });
 }
 
-function copyMapToScrollBuffers() {              // ~00:0804 CopyMapToScrollBuffers
-  throw new Error("the hole-in-one picture (~00:0804 CopyMapToScrollBuffers) is not ported");
-}
 
 // ---- after nine holes (08:4F75 ShowHalfwayPicture, when wHolesLeft is $0A): ShowPictureScreen 48:5E42, a full
 // screen picture with animated tiles for up to $0E10 frames or a button, then InitFontScreen 01:41E8 ----

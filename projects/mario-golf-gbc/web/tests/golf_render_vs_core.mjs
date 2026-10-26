@@ -165,6 +165,9 @@ for (const m of mismatches) {
     (stats.soundBad ? `first difference at #${i}: game ${coreSounds.slice(i, i + 4).join(" ")} / js ${nativeSounds.slice(i, i + 4).join(" ")}` : "the same"));
 }
 const slips = lctx ? lctx.slips : [];
+const lates = lctx ? lctx.lates : [];
+console.log(`  steps the native round reached later than the core (the core held; the game's code lagged past a fade's or timer's VBlank): ${lates.length}` +
+  lates.slice(0, 8).map(s => ` [frame ${s.frame} ${s.mark} shot ${s.shot + 1}: ${s.frames} frames]`).join(""));
 stats.slips = slips.length;
 console.log(`  steps the core reached later than the native round: ${slips.length}` + slips.slice(0, 8).map(s => ` [frame ${s.frame} ${s.mark} shot ${s.shot + 1}: ${s.frames} frames]`).join("") +
   ` (lag frames that changed the buttons the game's code saw: ${lctx ? lctx.lagInputs.length : 0})`);
@@ -175,6 +178,11 @@ console.log(`${stats.frames} frames compared (${holes} hole(s) of ${name}, ${((D
 console.log(`  differing: ${stats.lag} just after the game's lag frames, ${stats.unported} after the unported screens between shots, ${stats.bad} other`);
 console.log(`  rasterizer vs the core's PPU: ${stats.rasterChecked} frames checked, ${stats.rasterBad} differ` +
   ` (${stats.rasterBlank} blank frames after the LCD is switched on left out)${first.raster ? "; first " + first.raster : ""}`);
+{                                              // where the other differences are: frames by shot
+  const by = {};
+  for (const r of badRuns) if (r.kind === "bad") by[r.shot + 1] = (by[r.shot + 1] || 0) + r.to - r.from + 1;
+  if (Object.keys(by).length) console.log("  other differing frames by shot: " + Object.entries(by).map(([k, v]) => `${k}:${v}`).join(" "));
+}
 for (const r of badRuns.filter(r => verbose || r.kind === "bad").slice(0, verbose ? 200 : 12))
   console.log(`  ${r.kind} frames ${r.from}-${r.to} (${r.mark}, shot ${r.shot + 1}), up to ${r.px} pixels:\n      ${r.what.join("\n      ")}`);
 process.exit(stats.bad || stats.rasterBad || stats.soundBad || stats.slips || stats.error ? 1 : 0);

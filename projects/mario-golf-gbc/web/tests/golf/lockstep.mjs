@@ -37,7 +37,7 @@ export function runLockstep({ name = "r18", holes = 1, onFrame = () => {}, onMar
   for (let i = 0; i < 8; i++) w.wram[i].set(core.wram(i));
   w.high.set(core.hram().subarray(0, 0x7F), 0x180);
   const ctx = { core, w, frame: 0, shot: -1, n: 0, phase: "menus", synced: true, toggle: 0, mark: "round", slips: [],
-    passed: [], lagInputs: [] };
+    passed: [], lagInputs: [], recent: [], hold: 0, lates: [] };
   setup(w, core, ctx);
   const policy = () => {
     if (ctx.phase === "swing") return (streams[ctx.shot] || [])[ctx.n++] || 0;
@@ -62,7 +62,7 @@ export function runLockstep({ name = "r18", holes = 1, onFrame = () => {}, onMar
       const pc = gb.cpu.pc;
       if (pc === 0x2E3B) break;
       if (pc === 0x0340) lag = true;
-      else for (const [n, mk] of markList) if (core.at(...mk)) ctx.passed.push(n);
+      else for (const [n, mk] of markList) if (core.at(...mk)) { ctx.passed.push(n); ctx.recent.push({ n, frame: ctx.frame }); }
       core.step();
     }
     delete m.read;
@@ -74,7 +74,23 @@ export function runLockstep({ name = "r18", holes = 1, onFrame = () => {}, onMar
       if (MARKS[mname]) {
         ctx.resynced = !ctx.synced;              // the core caught up through frames the native round leaves out
         const i = ctx.passed.indexOf(mname);
+        ctx.recent = ctx.recent.filter(r => ctx.frame - r.frame <= 16);
+        const late = ctx.recent.findIndex(r => r.n === mname);
         if (i >= 0) ctx.passed.splice(0, i + 1); // the core passed it in this frame's code: in step
+        if (late >= 0) {
+          const k = ctx.frame - ctx.recent[late].frame;
+          ctx.recent.splice(0, late + 1);
+          if (i < 0 && k > 0 && !core.at(...MARKS[mname])) {
+            // the core passed it k frames ago (the game's code lagged past a VBlank that stepped a fade or a
+            // timer, so the game took fewer frames here): the native round runs k frames with the core held
+            ctx.lates.push({ frame: ctx.frame, mark: mname, shot: ctx.shot, frames: k });
+            ctx.hold = k; ctx.synced = false; ctx.mark = mname;
+            if (mname === "address") { ctx.shot++; ctx.n = 0; ctx.phase = "swing"; } else ctx.phase = "menus";
+            onMark(ctx, mname);
+            return;
+          }
+        }
+        if (i >= 0) { /* in step */ }
         else if (!core.at(...MARKS[mname])) {    // through the screens the native round leaves out: A
           let t = 0;
           let adv = 0;                           // the game's frames (AdvanceFrame 00:2E3B) on the way
@@ -93,6 +109,7 @@ export function runLockstep({ name = "r18", holes = 1, onFrame = () => {}, onMar
       return;
     }
     if (kind === "V") {                        // both past VBlank (the core at 00:2EBF): compare here
+      if (ctx.hold) { ctx.frame++; if (!--ctx.hold) ctx.synced = true; return; }
       if (ctx.synced) onFrame(ctx);
       ctx.frame++;
       const seen = runAhead();
@@ -102,6 +119,7 @@ export function runLockstep({ name = "r18", holes = 1, onFrame = () => {}, onMar
       return;
     }
     if (kind !== "F") return;
+    if (ctx.hold) return;                      // (the core held: the native round catches up)
     if (!core.at(0, 0x2E3B)) core.toAdvance(); // (before the first frame, or after a step mid-frame)
     core.setHeld(policy());
     core.runToNext([[0, 0x2EBF]]);             // past its wait: the joypad its VBlank read

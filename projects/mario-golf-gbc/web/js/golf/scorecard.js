@@ -9,6 +9,8 @@ import { clearFrameTasks, registerFrameTask } from "./tasks.js";
 import { mapScrollTask } from "./render/holeview.js";
 import { formatDecimalNumber } from "./render/text.js";
 import * as D from "./render/display.js";
+import { matchStandingsScreen } from "./standings.js";
+import { loadTextShort } from "./text.js";
 
 const B = 0x0E;
 
@@ -27,14 +29,28 @@ export function holeParAndYards(h, l) {
 export function* showScorecard(sh) {
   const w0 = sh.w.wram[0];
   const c = w0[0x834] === 1 ? 0 : w0[0x834] === 2 ? 1 : w0[0x8D0] === 0xFF ? 2 : 3;
+  const wb = sh.w.high[0x196];
   let b = 0;
   for (;;) {
     const page = rw(B, 0x4422 + (c * 2 + b) * 2);
-    if (page !== 0x6C7A) throw new Error(`the scorecard page 0E:${page.toString(16)} is not ported`);
-    const a = yield* pageStrokes(sh);
-    if (!a) return;
+    const run = PAGES[page];
+    if (!run) throw new Error(`the scorecard page ~0E:${page.toString(16)} is not ported`);
+    const a = yield* run(sh);
+    if (!a) break;
     b ^= 1;
   }
+  D.setWramBank(sh.w, wb);
+}
+
+const PAGES = {
+  0x6C7A: sh => pageStrokes(sh),                 // 0E:6C7A ScorecardPageStrokes
+  0x4432: sh => inBankGen(sh.w, 0x3E, matchStandingsScreen(sh)),   // 0E:4432 ScorecardPageMatchStandings -> 3E:403F
+  0x762F: sh => pageMatchPlay(sh),               // 0E:762F ScorecardPageMatchPlay
+};
+function* inBankGen(w, bank, g) {
+  const old = w.high[0x195];
+  w.high[0x195] = bank;
+  try { return yield* g; } finally { w.high[0x195] = old; }
 }
 
 function* resetView(sh) {                        // 0E:4373 ScorecardResetView
@@ -147,10 +163,30 @@ function putScoreToPar(w, de, a) {               // 0E:458A ScorecardPutScoreToP
   return putString(w, de, s);
 }
 
+const parOf = (w, l) => holeParAndYards(w.wram[0][0x836], l)[0];
+function drawParColumn(w, de, l) {               // 0E:6D9E DrawParColumn: 9 holes' pars from hole l, a row apart
+  for (let h = 9; h; h--, l++, de += 0x40) putDigitPair(w, de, parOf(w, l));
+}
+function drawParTotal(w, de, l, h) {             // 0E:6DEE DrawParTotal: the pars of h holes from hole l
+  let c = 0;
+  for (; h; h--, l++) c = (c + parOf(w, l)) & 0xFF;
+  putNumber(w, de, c, 2);
+}
+// 0E:44F8 ScorecardPutText: short text hl (05:40C2 CopyTextShortToDE: through WRAM5 $D880) at de
+function putText(w, de, id) {
+  const old = w.high[0x196];
+  D.setWramBank(w, 5);
+  loadTextShort(w, id);
+  const s = [];
+  for (let k = 0x880; w.wram[5][k]; k++) s.push(w.wram[5][k]);
+  D.setWramBank(w, old);
+  return putString(w, de, s);
+}
+
 function drawStrokesScorecard(w) {               // 0E:6E61 DrawStrokesScorecard
   const w0 = w.wram[0], course = w0[0x836];
   const par = l => holeParAndYards(course, l)[0];
-  const parColumn = (de, l) => { for (let h = 9; h; h--, l++, de += 0x40) putDigitPair(w, de, par(l)); };   // 0E:6D9E
+  const parColumn = (de, l) => drawParColumn(w, de, l);
   const scores = (h, bc, de, l) => {             // 0E:6DBA DrawHoleScoresColumn
     for (; h; h--, bc++, l++, de += 0x40) {
       const v = w0[bc - 0xC000];
@@ -159,7 +195,7 @@ function drawStrokesScorecard(w) {               // 0E:6E61 DrawStrokesScorecard
       putScoreToPar(w, e, ((v & 0x0F) - par(l)) & 0xFF);
     }
   };
-  const parTotal = (de, l, h) => { let c = 0; for (; h; h--, l++) c = (c + par(l)) & 0xFF; putNumber(w, de, c, 2); };   // 0E:6DEE
+  const parTotal = (de, l, h) => drawParTotal(w, de, l, h);
   const totals = (h, bc, de, l) => {             // 0E:6E0A DrawScoreTotals
     if (!h) return;
     let b = 0, c = 0;
@@ -212,16 +248,134 @@ export function mapDrawFullScreen(w) {
 
 // 0E:6D47 ScorecardStrokesTask: Up / Down scroll (0E:443A), the map scroll, two sprites (other modes also mark
 // the cleared holes: not ported)
-export function scorecardStrokesTask(w) {
+function scorecardScrollTask(w) {                // 0E:443A ScorecardScrollTask
   const w0 = w.wram[0], h = w.high;
-  let v = w0[0x322] | w0[0x323] << 8;            // 0E:443A ScorecardScrollTask
+  let v = w0[0x322] | w0[0x323] << 8;
   if (h[0x190] & 0x40) { const n = (v + 0xFF80) & 0xFFFF; if (!(n & 0x8000)) v = n; }
   if (h[0x190] & 0x80) { const n = (v + 0x80) & 0xFFFF; if ((n >> 8) < ((w0[0x32C] - 0x12) & 0xFF)) v = n; }
   w0[0x322] = v & 0xFF; w0[0x323] = v >> 8;
   D.inBank(w, 0x04, () => mapScrollTask(w));     // 04:4072
+}
+export function scorecardStrokesTask(w) {
+  const w0 = w.wram[0];
+  scorecardScrollTask(w);
   if (w.vram) {
     D.positionSpriteWorld(w, 0x0900, 0x0500, 0x40, 0x02);
     D.positionSpriteWorld(w, 0x0900, 0x1100, 0x40, 0x02);
   }
   if (w0[0x834] !== 3) throw new Error("the scorecard's cleared-hole marks (~0E:6D69) are not ported");
+}
+
+// ---- the match-play card (0E:762F ScorecardPageMatchPlay, page 1 in match play): the pars, a mark per hole for
+// each player (won $7E, lost $7F, halved $7D) and the holes up ----
+function* pageMatchPlay(sh) {
+  const w = sh.w;
+  yield* resetView(sh);
+  matchPlaySetup(w);
+  registerFrameTask(w, 0x01, B, 0x76F5);         // ScorecardMatchPlayTask
+  for (;;) {
+    if (w.high[0x194] & 0x0B) { sh.sound(0x5C); return 0; }   // A / B / Start
+    if (w.high[0x194] & 0x20) { sh.sound(0x5C); return 1; }   // Left: the other page
+    yield* sh.advance();
+  }
+}
+
+function matchPlaySetup(w) {                     // 0E:7656 ScorecardMatchPlaySetup
+  const w0 = w.wram[0];
+  if (w.vram) D.inBank(w, B, () => {
+    D.disableLCDSafely(w);
+    D.setWramBank(w, 1);
+    D.lzTo(w, B, 0x5480, 0xD200);
+    w.lcd.vbk = 0;
+    D.startVRAMDMAFromHL(w, 0xD200, 0x9200, 0x60);
+    D.startVRAMDMAFromHL(w, 0xD800, 0x8800, 0x80);
+    D.setWramBank(w, 1);
+    D.lzTo(w, B, 0x5E51, 0xD000);
+    w.lcd.vbk = 1;
+    D.startVRAMDMAFromHL(w, 0xD000, 0x9000, 0x80);
+    D.startVRAMDMAFromHL(w, 0xD800, 0x8800, 0x80);
+    D.setWramBank(w, 2);
+    D.lzTo(w, B, 0x7573, 0xD000);                // the card's attributes
+    D.setWramBank(w, 3);
+    D.lzTo(w, B, 0x73F0, 0xD000);                // and tiles
+    D.loadPalettesUnlessFaded(w, 0x68E1, 0x00, 0x08);
+    loadCommonGfx(w);
+    drawMatchPlayScorecard(w);
+  });
+  else drawMatchPlayHoleResults(w);              // (headless: the holes-up count $C484 only)
+  if (w0[0x837] >= 0x0A) w0[0x323] = 0x0A;
+  w0[0x32C] = 0x1C;
+  if (w.vram) mapDrawFullScreen(w);              // 0B:4306 with a = 1
+  D.inBank(w, 0x04, () => mapScrollTask(w));     // 04:4072
+  if (w.vram) D.enableLCD(w);                    // 00:0371
+}
+
+function drawMatchPlayScorecard(w) {             // 0E:7850 DrawMatchPlayScorecard
+  drawParColumn(w, 0xD145, 1);
+  drawParColumn(w, 0xD405, 0x0A);
+  drawParTotal(w, 0xD685, 1, 0x12);
+  drawMatchPlayHoleResults(w);
+  drawMatchPlayStatus(w);
+}
+
+// 0E:777A DrawMatchPlayHoleResults: per hole done, player 1's strokes ($C8AC) against player 2's ($C8EC); $C484 =
+// player 1's holes up
+function drawMatchPlayHoleResults(w) {
+  const w0 = w.wram[0], disp = !!w.vram;
+  w0[0x484] = 0;
+  let de = 0xD14A;
+  let h = w0[0x4BE];
+  if (!h) return;
+  for (let l = 1; h; l++, h = (h - 1) & 0xFF) {
+    const p1 = w0[(0x8AC + l - 1) & 0xFFF] & 0x0F, p2 = w0[(0x8EC + l - 1) & 0xFFF] & 0x0F;
+    const [a, b] = p2 < p1 ? [0x7F, 0x7E] : p2 > p1 ? [0x7E, 0x7F] : [0x7D, 0x7D];
+    if (p2 < p1) w0[0x484] = (w0[0x484] - 1) & 0xFF;
+    else if (p2 > p1) w0[0x484] = (w0[0x484] + 1) & 0xFF;
+    if (disp) putTile(w, putTile(w, de, a) + 5, b);
+    de += 0x40;
+    if (l === 9) de += 0x80;
+  }
+}
+
+function drawMatchPlayStatus(w) {                // 0E:7804 DrawMatchPlayStatus: "n Up" / "n Down", or "Even" twice
+  let de = 0xD687;
+  let a = w.wram[0][0x484];
+  if (!a) { de = putText(w, de + 2, 0x121); putText(w, de + 2, 0x121); return; }
+  if (!(a & 0x80)) {
+    de = putDigitPair(w, de + 2, a);
+    de = putText(w, de, 0x120);
+    de = putDigitPair(w, de, a);
+    putText(w, de, 0x122);
+  } else {
+    a = (-a) & 0xFF;
+    de = putDigitPair(w, de, a);
+    de = putText(w, de, 0x122);
+    de = putDigitPair(w, de + 2, a);
+    putText(w, de, 0x120);
+  }
+}
+
+// 0E:4643 ScorecardQueueSprite: template hl at row e (tiles; skipped off screen) and column d, with a bob offset
+// (ScorecardBobTable 0E:467D by hVBlankCount)
+function scorecardQueueSprite(w, hl, e, d, c, b) {
+  const w0 = w.wram[0];
+  const v = (((e << 8) - (w0[0x322] | w0[0x323] << 8)) & 0xFFFF);
+  if ((((v >> 8) + 2) & 0xFF) >= 0x14) return;
+  const ee = ((v << 3) >> 8) & 0xFF;
+  const dd = (((d << 3) & 0xFF) + rb(B, 0x467D + (w.high[0x18C] & 0x3F))) & 0xFF;
+  D.queueSpriteTemplate(w, hl, ee, dd, c, b);
+}
+
+// 0E:76F5 ScorecardMatchPlayTask: the scroll, the cursor sprite, the faces beside the rows
+export function scorecardMatchPlayTask(w) {
+  scorecardScrollTask(w);
+  if (!w.vram) return;
+  scorecardQueueSprite(w, 0x4036, 0x00, 0x01, 0x16, 0x01);
+  const pairs = w.wram[0][0x878] === 1
+    ? [[0x09C0, 0x40, 0x02], [0x0BC0, 0x44, 0x03], [0x0FC0, 0x48, 0x04], [0x11C0, 0x4C, 0x05]]
+    : [[0x0A80, 0x40, 0x02], [0x1080, 0x44, 0x03]];
+  for (const [hl, c, b] of pairs) {
+    D.positionSpriteWorld(w, hl, 0x0500, c, b);  // 00:27B4
+    D.positionSpriteWorld(w, hl, 0x1000, c, b);
+  }
 }
