@@ -91,6 +91,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + Training (the course and hole select 0F:4AD6, the after-shot menus and RetryShotRestore, the training pause menu, the menu arrows of flags #49-#52) | 103,011 | 42.45% |
 | + Tournament (tournament.js: the rivals of bank 3C, the standings of bank 0E, the course statistics of bank 08; the standings page 0E:5209; the placing screen 0B:5B00) | 107,090 | 44.13% |
 | + continuing a saved round (the card ExpScreen a = 0, LoadSummaryPrompt 32:7D35, TwoChoicePrompt) | 108,218 | 44.59% |
+| + Give Up after a stroke, the stroke limit's HUD redraw | 108,330 | 44.64% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -331,9 +332,11 @@ the Course Map (`boot_coursemap`; coursemap.js, all of bank 17's screen: the rec
 packed from the overhead maps' terrain through the colour tables 17:4490 / 17:44A0, the overlay sprites, the side
 panel from the HUD's routines, the markers, CourseMapInput's club / shot mode / aim; quirk: its task's
 UpdateWindIndicator 12:50A0 reads wHudBusy and the wind animation counters $D326-$D328 in WRAM1, the bank the screen's
-loop leaves mapped, not WRAM6). Give Up after a stroke has not been run against the game, and a
-round saved by Save & Quit (`$C96D` = 1) loads through the summary prompt (32:7D35: the EXP screen of bank 48) to
-GolfRound `$FF`.
+loop leaves mapped, not WRAM6). Give Up after a stroke (`boot_giveup`: B on "Give up on this hole?", then Yes) returns
+$81 from the aiming menu (10:5DAA: 02:4924 LinkSendShotResult does nothing without a link partner, $D4D4 = 0); the
+strokes become 3 x par and StrokeLimit picks the ball up, redrawing the player's HUD panel first (10:4786
+HudRedrawCurPlayer, which the native round had left out: a frame of one tile wrong). A round saved by Save & Quit
+(`$C96D` = 1) loads through the card and its prompts to GolfRound `$FF` (Saved games, above).
 
 #### The EXP screen (exp.js, bank 48; charsprite.js, bank 42)
 
