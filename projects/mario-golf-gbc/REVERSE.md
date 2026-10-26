@@ -85,6 +85,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the window and menu engine (windows.js, bank 05) and the golf pause menu (pause.js: 08:4666, bank 41) | 75,192 | 30.98% |
 | + the front end: power-on (boot.js: SoftReset, GameMain, the save RAM's set-up, map 0's run with its actors and tile animation), the title and its demo (title.js, bank 40), LinkMenu (menu09.js), the character select (charsel.js, bank 06), the mode and course selects (select.js, banks 0D / 0F), ModeSelectMain (modesel.js) | 86,427 | 35.61% |
 | + saved games (save.js: bank 02's save code, SaveGame, RecordShot, the mid-round saves; loading a slot in ModeSelectMain) | 87,023 | 35.86% |
+| + the message box (msgbox.js, bank 05 / 0A), the pause menu's Give Up and Quit, the flow after a round (GolfSessionEnd, the map engine's next run), the EXP screen and AwardExpPoints (exp.js, bank 48) with the menu character sprite (charsprite.js, bank 42) | 93,495 | 38.52% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -274,6 +275,57 @@ and `_match` (to GolfRound's call through the save-file mode select), `boot_kid_
 the mid-round saves): every frame and the save RAM at the end match the game. The play page keeps the save RAM in
 localStorage under the emulated page's key and format; `play_page.mjs --save out/kid.sav` loads a core-made save
 there, plays Stroke with it and checks the page stored the save the game wrote.
+
+#### The message box, the pause menu's items, after a round (msgbox.js, pause.js, boot.js)
+
+msgbox.js ports bank 05's message boxes: ShowMessage 05:5D49 / ShowMessageKeepOpen 05:5DE5 (the voice from
+SpeakerVoiceTable 05:66C0 by the speaker's actor byte +$30, the typing delay from wTextSpeed, each page: the glyph
+buffer cleared and uploaded, the text set on the window, the shadow redrawn and UpdateWindows printing it),
+OpenMessageBoxNearSpeaker 05:5F62 (a 20 x 7 box at row 11 or 0 by the speaker's screen row; the text measured; the
+window grown from 3 x 3 one step per UpdateWindows: the step count is the target width / 2, left by an `rr a` on
+the width, with the carry of `[$D826] + 2` rotated in), SizeMessageBox 05:5B3B with all its measure helpers
+(quirks: MeasureByteArg 05:5679 adds to a b it never updates, so it measures 0; MeasureNumberArg 05:56E2 keeps the
+difference after the first power of ten a number is not below, and counts as one digit a number of 42768 or more),
+RenderWindowText 05:5AA8 (UpdateWindows' message window), RefreshWindowText 05:6729, RemoveWindow 05:67BB,
+RestoreMapUnderWindow 05:44E3, SetWindowPriority 05:4C75. text.js now dispatches every text control code through
+the ROM's TextControlTable 05:592C: the new page $02 (TextCmdNewPage 05:538E: the arrow tile $01 at the box's
+bottom middle, MoreArrowTask 05:53F9 blinking it, TextCmdWaitButton 05:5433: up to 30 frames for the buttons to be
+let go, then the random seed advanced every frame until one is pressed; the rest pending in wTextResumePtr), $03,
+the pauses $05 / $06 / $0C, $0A, $0D, the tiles $10-$13 and the dakuten codes. Bank 0A's script calls on it:
+ScriptSetText 0A:4124, ScriptShowText 0A:4164, ScriptShowTextKeepOpen 0A:4199, ScriptCloseText 0A:41CE, ScriptAskYesNo
+0A:41D8 (the last page found again by ScriptTextResumeLastPage 0A:4281, OpenYesNoWindow 0A:4227: the menu of text $1A
+at y 1 or 10 by the speaker's row, priority 6), ScriptWaitFrames 0A:410D.
+The golf pause menu's Give Up (41:746B / 41:759B: "You can't give up on the 1st stroke." (41:7935) or "Give up?" with
+No first; Yes: ShotSetup returns 3 x par as the outcome, and StrokeLimit picks the ball up) and Quit / Save & Quit
+(41:74AE / 41:75DE: without a save slot "OK to quit this round?"; with one "Save current progress?" (SaveGame,
+`$C814` + 1, `$C2A6` = 1), No asks to quit) work: Quit (10:4877) sets wGameMode 0, one hole left and both players
+holed out, so the round ends after the hole with no round-end hook (mode 0 has none). After a round from the menus:
+GolfSessionEnd 10:4B94 (fade, font screen, wGameMode 9; to map 0 entrance `$C2A6`, else MapWarpToReturnPoint: the
+mode select), ScriptEnd, MapRun's warp request, MapTakeWarp 0A:5146 and the next MapRun: the menus again (boot.js
+gameFromPowerOn; the play page now goes from round to round). Cases in golf_screens_vs_core.mjs: `boot_quit`
+(Quit, Yes: back to the mode select, 3,810 frames), `boot_quit_no`, `boot_giveup_first` (the message box), and with
+the saved character `boot_kid_savequit` (Save & Quit: SaveGame, then the link menu; the save RAM compared): all frame
+for frame. Not ported yet: Settings (41:78C6, the option arrows of MenuCursorTask with flags #48-#52), Camera Mode
+(12:6D3D FreeLookCursor), Course Map (17:437D), Give Up after a stroke has not been run against the game, and a
+round saved by Save & Quit (`$C96D` = 1) loads through the summary prompt (32:7D35: the EXP screen of bank 48) to
+GolfRound `$FF`.
+
+#### The EXP screen (exp.js, bank 48; charsprite.js, bank 42)
+
+After a round with a saved character, RoundEndFadeAndExp 08:4F03 calls AwardExpPoints 48:4D70 with wPoints:
+ExpScreen 48:4053 (a = 1) draws its full screen into the WRAM1 maps (LoadExpScreenGfx 48:4362, the name and level
+48:4639, the message box 48:460E, the messages 48:4C7D: "Calculating EXP Pts." with the bonus line 48:4DFF, "Pts to
+next level:", and "Level up!" prepared in WRAM7 for later, its sound $63 played at once), the character's animated
+sprite (bank 42: InitCharSprite 42:400B, CharSpriteTask 42:4074; an animation's pointer is the word at [$D544] +
+2 x anim, one dereference fewer than the tile and metasprite lists; a frame's first byte picks both its tiles and
+its metasprite, the second is its time), then counts the points one per 4 frames (A or B: every frame, with 6 / 14
+more steps while 1,000 / 10,000 remain; ExpCountStep 48:4C02), the counters drawn as digit sprites by ExpDrawCounters
+48:4B05 (00:2326 FormatDecimalNumberUnsigned), the bonus ($CAAD / $CAAE) shown and added, then up to 240 frames or a
+button, and AddExp 02:5465 (Add24Capped: at most 99,999). A level reached ($D63B) would go on to LevelUpScreen
+41:402A (not ported yet). The test: `coreplay.mjs --recipe kid74` makes the save with game flag #74 (match play is
+then one hole, hole 18), and `golf_screens_vs_core.mjs boot_kid74_match_exp` plays from power-on: the save loaded,
+match play against Luigi, the hole, the standings, the result screen, the EXP screen, GolfSessionEnd and the mode
+select again: 8,300 frames, all frame for frame, RAM and save RAM equal at the end.
 
 #### Match play and the contests (web/js/golf/match.js)
 

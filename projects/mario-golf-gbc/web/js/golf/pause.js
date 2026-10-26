@@ -2,12 +2,16 @@
 // (GolfPauseMenuSave 41:6E96 in stroke play, GolfPauseMenuSave2 41:6EBB in match play): "Camera Mode / Course Map /
 // Scorecard / Settings / Give Up / Save & Quit" (text $1482; "Quit" $1483 without a save slot) in a menu window
 // (windows.js) run by RunMenu 41:6FF4. B or Start closes it (result 0: back to aiming); an item's handler sets
-// wMenuResult $C3FD ($FF after Camera Mode, Course Map and Scorecard: the shot view is redrawn).
+// wMenuResult $C3FD ($FF after Camera Mode, Course Map and Scorecard: the shot view is redrawn; $81 Give Up, $80
+// Quit). Ported items: Scorecard, Give Up, Quit / Save & Quit (with the message box: msgbox.js).
 import { rw } from "./rom.js";
 import * as D from "./render/display.js";
 import * as W from "./windows.js";
 import { restoreShadowFromMap } from "./shadow.js";
 import { showScorecard } from "./scorecard.js";
+import * as M from "./msgbox.js";
+import { saveGame } from "./save.js";
+import { playerField } from "./memory.js";
 
 const rd = D.rd, wr = D.wr;
 const wbank = w => w.high[0x196];
@@ -79,10 +83,78 @@ export function* runMenu(sh, hl, bc, de) {
   yield* menuHandler(sh, h);
 }
 
+// a question in the message box with Yes / No (41:746B and the others): ScriptSetText, ScriptShowTextKeepOpen with
+// no speaker ($80), the cursor's first row (when given), ScriptAskYesNo, ScriptCloseText, ScriptWaitFrames 5;
+// returns 0 Yes / 1 No / $FF B
+function* askYesNo(sh, id, cursor) {
+  const w = sh.w;
+  M.scriptSetText(w, id);                        // 0A:4124
+  yield* inBankGen(w, 0x0A, M.scriptShowTextKeepOpen(sh, 0x80));   // 0A:4199
+  if (cursor !== undefined) wr(w, 0xC3F9, cursor);
+  const a = yield* inBankGen(w, 0x0A, M.scriptAskYesNo(sh));       // 0A:41D8
+  yield* inBankGen(w, 0x0A, M.scriptCloseText(sh));                // 0A:41CE
+  yield* inBankGen(w, 0x0A, M.scriptWaitFrames(sh, 5));            // 0A:410D
+  return a;
+}
+// 41:7AEF SetupGolfPauseMenuSave / 41:7B1C SetupGolfPauseMenuSave2, then the menu again from row `cursor`
+// (jp 41:6FF4 RunMenu)
+function* reopen(sh, match, cursor) {
+  const w = sh.w;
+  clearMenuState(w);
+  wr(w, 0xC3FC, rd(w, 0xC3FC) | 0x80);
+  const id = match || (rd(w, 0xC2A5) & 0x0F) !== 0x0F ? 0x1482 : 0x1483;
+  wr(w, 0xC3F9, cursor);
+  yield* runMenu(sh, id, match ? 0x756F : 0x743F, 0x0402);
+}
+// 41:746B GolfPauseSaveGiveUp / 41:759B GolfPauseSave2GiveUp: on the first stroke 41:7935 MenuCantGiveUp (sound
+// $5D, text $1491); else "Give up?" ($1490, No first): Yes gives wMenuResult $81 (10:488B: the strokes become 3 x
+// par), No / B reopen the menu on Give Up
+function* giveUp(sh, match) {
+  const w = sh.w;
+  if (!rd(w, 0xC000 + playerField(w, 0x20))) {
+    sh.sound(0x5D);
+    M.scriptSetText(w, 0x1491);
+    yield* inBankGen(w, 0x0A, M.scriptShowText(sh, 0x80));        // 0A:4164
+    clearMenuState(w);
+    return;
+  }
+  if (!(yield* askYesNo(sh, 0x1490, 1))) { wr(w, 0xC3FD, 0x81); clearMenuState(w); return; }
+  yield* reopen(sh, match, 4);
+}
+// 41:74AE GolfPauseSaveQuit / 41:75DE GolfPauseSave2SaveQuit: without a save slot (stroke play) "OK to quit this
+// round?" ($148C, No first): Yes gives $80. Else (and always in match play) "Save current progress?" ($148B): Yes
+// counts $C814 (up to $FF), SaveGame 02:4489, $80, $C2A6 = 1 (GolfSessionEnd then goes to the link menu); B reopens
+// the menu on the last row; No asks to quit ($148C in stroke play, $148E in other modes, $148F in match play)
+function* quit(sh, match) {
+  const w = sh.w;
+  if (!match && (rd(w, 0xC2A5) & 0x0F) === 0x0F) {
+    if (!(yield* askYesNo(sh, 0x148C, 1))) { wr(w, 0xC3FD, 0x80); clearMenuState(w); return; }
+    yield* reopen(sh, match, 5);
+    return;
+  }
+  const a = yield* askYesNo(sh, 0x148B);
+  if (!a) {
+    if (rd(w, 0xC814) !== 0xFF) wr(w, 0xC814, rd(w, 0xC814) + 1);
+    saveGame(w);
+    wr(w, 0xC3FD, 0x80);
+    wr(w, 0xC2A6, 1);
+    clearMenuState(w);
+    return;
+  }
+  if (a === 0xFF) { yield* reopen(sh, match, 5); return; }
+  const id = match ? 0x148F : rd(w, 0xC834) === 3 ? 0x148C : 0x148E;
+  if (!(yield* askYesNo(sh, id, 1))) { wr(w, 0xC3FD, 0x80); clearMenuState(w); return; }
+  yield* reopen(sh, match, 5);
+}
+
 // the golf pause menus' handlers (41:743F stroke play, 41:756F match play)
 function* menuHandler(sh, h) {
   const w = sh.w;
   switch (h) {
+    case 0x746B: yield* giveUp(sh, false); return;
+    case 0x759B: yield* giveUp(sh, true); return;
+    case 0x74AE: yield* quit(sh, false); return;
+    case 0x75DE: yield* quit(sh, true); return;
     case 0x7457: case 0x7587:                    // 41:7457 / 41:7587 Scorecard: 41:788B MenuShowScorecard
       wr(w, 0xC4BD, 0);
       yield* inBankGen(w, 0x0E, showScorecard(sh));   // 0E:43D6

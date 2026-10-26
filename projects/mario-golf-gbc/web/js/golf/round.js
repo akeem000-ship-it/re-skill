@@ -20,6 +20,7 @@ import { showCaptionAndWait } from "./captions.js";
 import * as M from "./match.js";
 import { roundResultScreen } from "./result.js";
 import * as Sv from "./save.js";
+import { awardExpPoints } from "./exp.js";
 function* inBankGen(w, bank, g) {                // a far call to a routine that runs frames
   const old = w.high[0x195];
   w.high[0x195] = bank;
@@ -61,7 +62,7 @@ export function* golfRoundStart(sh, roundId) {    // 10:4451 GolfRound up to the
   w0[0x2A6] = 0;
 }
 
-function* initWindowSystem(sh) {                  // 05:407A InitWindowSystem: clears WRAM5 over 4 frames, frees the windows
+export function* initWindowSystem(sh) {           // 05:407A InitWindowSystem: clears WRAM5 over 4 frames, frees the windows
   const w = sh.w, r5 = w.wram[5];
   for (let k = 0; k < 4; k++) { r5.fill(0, 0x400 * k, 0x400 * k + 0x400); yield* sh.advance(); }
   for (let k = 0; k < 6; k++) r5[0x802 + 4 * k] = 3;   // wWindowSlots
@@ -445,6 +446,7 @@ export function* roundEnd(sh) {
       addPointsRaw(w, 0x0A);
       yield* roundEndFadeAndExp(sh);             // 08:4F03
       break;
+    case 0: break;                               // (no entry: Quit from the pause menu sets mode 0)
     case 4: case 5: case 0x0A: case 0x0B: break;   // 08:4EF2 / 08:4EF3
     default: notPorted(`the round end of mode ${mode(w)} (~08:4BBC)`);
   }
@@ -468,7 +470,7 @@ function* roundEndFadeAndExp(sh) {
   clearFrameTasks(w);
   Dp.resetSprites(w);
   w.high[0x18B] = w.high[0x18A] = 0;
-  if ((w0[0x2A5] & 0x0F) !== 0x0F) notPorted("the EXP award (~48:4D70 AwardExpPoints)");
+  if ((w0[0x2A5] & 0x0F) !== 0x0F) yield* inBankGen(w, 0x48, awardExpPoints(sh, rd16(w0, 0x83C), 0));   // 48:4D70
   saveGameMidRound(w);
 }
 

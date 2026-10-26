@@ -6,7 +6,9 @@
 //        [--press F:BITS ...] (bits as hJoyHeld: A 1 B 2 Sel 4 Start 8 R 10 L 20 U 40 D 80) [--repeat F0:F1:STEP:BITS ...]
 //        [--recipe kid] (the presses that make out/kid.sav: a new character "Kid" saved at the mode select) [--shot F,F,...]
 //        [--every N] [--shots-dir out] [--state-out out/state_Y.json] [--sram-out out/Y.sav]
-//        [--save-at BB:AAAA] (stop at its first entry) [--watch BB:AAAA ...] (log entries)
+//        [--save-at BB:AAAA] (stop at its first entry) [--watch BB:AAAA ...] (log entries) [--watch-write AAAA ...]
+//        (log writes to a RAM address with the writer's pc and the return addresses on the stack)
+//        [--or F:AAAA=VV ...] (at frame F, WRAM0 byte AAAA |= VV: a game flag set, e.g. #74 one hole only)
 import fs from "fs";
 import path from "path";
 import zlib from "zlib";
@@ -39,6 +41,8 @@ if (process.argv[1] && process.argv[1].endsWith("coreplay.mjs")) {
   const RECIPES = {                              // power-on (empty save RAM): Start, one player, slot 0 (empty): the map
     // engine's new character (A through the texts, the picks and the name "Kid" given, Start to END, A), the story's
     // first scene, then the mode select, where SaveGame 02:4489 stores slot 0 (frame ~9066); stop at 9100
+    // kid74: the same with game flag #74 ($C849 bit 2: a round is hole 18 only) set before the save
+    kid74: { frames: 9100, presses: ["3000:8", "3300:1", "3550:1", "5030:1", "5150:8", "5200:1"], repeat: ["4000:4900:60:1", "5620:9000:60:1"], or: ["9000:C849=20"] },
     kid: { frames: 9100, presses: ["3000:8", "3300:1", "3550:1", "5030:1", "5150:8", "5200:1"], repeat: ["4000:4900:60:1", "5620:9000:60:1"] },
   };
   const recipe = RECIPES[arg("--recipe")] || { presses: [], repeat: [] };
@@ -51,9 +55,22 @@ if (process.argv[1] && process.argv[1].endsWith("coreplay.mjs")) {
   const every = +arg("--every", 0), dir = arg("--shots-dir", "out"), mk = fs.mkdirSync(path.join(root, dir), { recursive: true }), frames = +arg("--frames", recipe.frames || 600);
   const watch = all("--watch").map(ba);
   const saveAt = arg("--save-at") ? ba(arg("--save-at")) : null;
+  const ors = {};
+  for (const p of [...(recipe.or || []), ...all("--or")]) { const [f, av] = p.split(":"); const [a, v] = av.split("="); (ors[+f] = ors[+f] || []).push([parseInt(a, 16), parseInt(v, 16)]); }
   const heldAt = f => { for (let k = 0; k < 6; k++) if (f - k in presses) return presses[f - k]; return 0; };
   const at = (b, a) => cpu.pc === a && (a < 0x4000 || m.romBank === b);
   let frame = 0, last = "";
+  const ww = all("--watch-write").map(a => parseInt(a, 16));
+  if (ww.length) {
+    const orig = m.write.bind(m);
+    m.write = (a, v) => {
+      if (ww.includes(a)) {
+        const st = []; for (let sp = cpu.sp, k = 0; k < 6; k++, sp += 2) st.push((m.read(sp) | m.read(sp + 1) << 8).toString(16));
+        console.log(`frame ${frame}: [${a.toString(16)}] = ${v.toString(16)} at ${m.romBank.toString(16)}:${cpu.pc.toString(16)} (stack ${st.join(" ")})`);
+      }
+      return orig(a, v);
+    };
+  }
   const shoot = () => { const f = path.join(root, dir, `cp_${String(frame).padStart(5, "0")}.png`); writePng(f, gb.ppu.rgb5); };
   outer: for (;;) {
     for (const w of watch) if (at(...w)) console.log(`frame ${frame}: ${w.map(v => v.toString(16)).join(":")} a=${cpu.a.toString(16)} b=${cpu.b.toString(16)} c=${cpu.c.toString(16)} de=${(cpu.d << 8 | cpu.e).toString(16)} hl=${(cpu.h << 8 | cpu.l).toString(16)}`);
@@ -65,6 +82,7 @@ if (process.argv[1] && process.argv[1].endsWith("coreplay.mjs")) {
       const cur = `map ${m.wram[0][0x450].toString(16)} entrance ${m.wram[0][0x46A].toString(16)} mode ${m.wram[0][0x834].toString(16)}`;
       if (cur !== last) { console.log(`frame ${frame}: ${cur}`); last = cur; }
       if (shots.has(frame) || (every && frame % every === 0)) shoot();
+      for (const [a, v] of ors[frame] || []) m.wram[0][a - 0xC000] |= v;
       const b = heldAt(frame), st = {};
       NAMES.forEach((n, i) => { if (b >> i & 1) st[n] = true; });
       gb.setInput(st);

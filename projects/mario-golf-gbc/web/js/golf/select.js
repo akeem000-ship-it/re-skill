@@ -10,8 +10,7 @@ import * as D from "./render/display.js";
 import * as Scr from "./screen.js";
 import * as T from "./text.js";
 import { clearFrameTasks, registerFrameTask, unregisterFrameTask } from "./tasks.js";
-import { buildTextWindowRecord } from "./windows.js";
-import { printHexByte } from "./match.js";
+import { sizeMessageBox } from "./msgbox.js";
 
 const rd = D.rd, wr = D.wr;
 const setW = (w, n) => D.setWramBank(w, n);
@@ -180,36 +179,6 @@ const currentId = w => {                         // [[$D207] + hFFB0] with WRAM6
   return id;
 };
 
-// 05:5B3B SizeMessageBox: measures wTextBuffer (or the resume pointer) to wTextBoxWidth $D854 (printed to the debug
-// text buffer) and rebuilds the record of wMessageWindow (slot 0 with none: a zero pointer writes the MBC's RAM
-// enable register, nothing kept) centred in its box ($D825-$D828); $D867 = the record's flags byte
-function sizeMessageBox(w) {
-  let hl = rd(w, 0xD84F) ? r16(w, 0xD84E) : 0xC600;
-  let b = 0, d = 0, e = 0;
-  for (;;) {
-    const a = rd(w, hl); hl = (hl + 1) & 0xFFFF;
-    if (a === 0 || a === 2) break;
-    if (a === 1) { e = (e + 1) & 0xFF; if (d < b) d = b; b = 0; continue; }
-    if ([8, 9, 7, 4, 0x0B, 0x0E, 0x0F].includes(a)) notPorted(`measuring text code $${a.toString(16)} (~05:5B3B)`);
-    if (a < 0x20 || a >= 0x7B) continue;
-    b = (b + T.getCharWidth(a)) & 0xFF;
-  }
-  e = (e + 1) & 0xFF;
-  if (d < b) d = b;
-  d = ((d >> 3) + (d & 7 ? 1 : 0)) & 0xFF;
-  wr(w, 0xD854, d);
-  printHexByte(w, d, 0x0A0C);
-  const bw = (d + 2) & 0xFF, ch = ((e << 1) + 1) & 0xFF;
-  let s = rd(w, 0xD824);
-  if (s === 0xFF) s = 0;
-  const rec = r16(w, (0xD800 + ((s << 2) & 0xFF)) & 0xFFFF);
-  const sra = v => ((v >> 1) | (v & 0x80)) & 0xFF;
-  const x = (sra((rd(w, 0xD827) - bw) & 0xFF) + rd(w, 0xD825)) & 0xFF;
-  const y = (sra((rd(w, 0xD828) - ch) & 0xFF) + rd(w, 0xD826)) & 0xFF;
-  const f = rd(w, rec);
-  buildTextWindowRecord(w, rec, x, y, bw, ch);   // 05:4773
-  wr(w, 0xD867, f);
-}
 // 05:615D GetTextBoxWidth: hl = text id -> its width in tiles (LoadText, SizeMessageBox)
 function getTextBoxWidth(w, hl) {
   const old = wbank(w);

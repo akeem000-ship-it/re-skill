@@ -9,6 +9,7 @@ import { registerFrameTask, unregisterFrameTask } from "./tasks.js";
 import * as D from "./render/display.js";
 import * as T from "./text.js";
 import { queueShadowRows } from "./shadow.js";
+import { renderMessageWindow } from "./msgbox.js";
 
 const rd = D.rd, wr = D.wr;
 const wbank = w => w.high[0x196];
@@ -277,7 +278,7 @@ export function setWindowText(w, b, hl) {
 }
 
 // 05:4949 UpdateWindows: priorities 1 to 8, each slot in turn: one marked for closing has its rows queued and is
-// freed; the message window is rendered by 05:5B03 (not ported); the others are drawn into the shadow, queued, and
+// freed; the message window is rendered by 05:5B03 (msgbox.js; drawn as the others when it has no text); the others are drawn into the shadow, queued, and
 // their text (unless the slot's text bits are 3) printed inside the frame (one tile further right in a menu) and
 // queued again; $D840 = the windows drawn
 export function* updateWindows(sh) {
@@ -299,8 +300,9 @@ export function* updateWindows(sh) {
         freeWindowSlot(w, rd(w, 0xD821));
         continue;
       }
-      if (rd(w, 0xD824) === rd(w, 0xD821)) {
-        notPorted("the message window (~05:5B03 RenderMessageWindow)");
+      if (rd(w, 0xD824) === rd(w, 0xD821)) {    // the message window: 05:5B03 RenderMessageWindow (with text)
+        yield* renderMessageWindow(sh);
+        if (!rd(w, 0xD85F)) { wr(w, 0xD83F, (rd(w, 0xD83F) + 1) & 0xFF); continue; }
       }
       const rec = r16(w, p);
       drawWindowToShadow(w, rec);

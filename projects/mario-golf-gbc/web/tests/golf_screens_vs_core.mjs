@@ -19,6 +19,7 @@ import { gameModeSelect, courseSelect } from "../js/golf/select.js";
 import { modeSelectMain } from "../js/golf/modesel.js";
 import { powerOn } from "../js/golf/boot.js";
 import { playRoundFrames } from "../js/golf/game.js";
+import { gameFromPowerOn } from "../js/golf/boot.js";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const filter = process.argv.slice(2).find(a => !a.startsWith("--")) || "";
@@ -44,6 +45,7 @@ function frontEndPolicy(f) {
 // with a saved character (a save RAM the game made: out/kid.sav, see REVERSE.md "Saved games"): Start on the title,
 // then every 40 frames A (LinkMenu's one player, the character select's slot 0), in the game mode select Right
 // `rights` times (from the story's item), then A on the mode, the course, ...
+const savedPolicy2 = (() => { let p = null; return f => { if (f < 2600 || !p) p = p || savedPolicy(2); return p(f); }; })();
 function savedPolicy(rights) {
   let n = 0, last = -100;
   return f => {
@@ -55,6 +57,34 @@ function savedPolicy(rights) {
     // (match play: the opponent's character select, Right to Luigi, the first listed: 3)
     if (menuW && menuW.wram[0][0x834] === 2 && hasTask(menuW, 0x06, 0x65D9) && menuW.wram[6][0x214] !== 3) return 0x10;
     return 1;
+  };
+}
+
+// the game from power-on through rounds (boot.js gameFromPowerOn, game.js playRoundFrames), the marks the native
+// engine passes noted; it stops when the mode select's input runs again after `rounds` rounds, or when stop() says
+let lastMark = "", markAt = 0, roundsDone = 0, frameNow = 0;
+function gameCase(sh, rounds = 1, stop = () => false) {
+  menuW = sh.w; lastMark = ""; roundsDone = 0;
+  const m = sh.mark.bind(sh);
+  sh.mark = n => { if (n !== lastMark) markAt = frameNow; lastMark = n; m(n); };
+  const g = gameFromPowerOn(sh, function* (holes) { yield* playRoundFrames(sh.w, holes, null, { sh }); roundsDone++; lastMark = "menus"; });
+  return (function* () {
+    for (;;) {
+      const r = g.next();
+      if (r.done) return r.value;
+      if (roundsDone >= rounds && hasTask(sh.w, 0x0D, 0x428E) || stop()) return roundsDone;
+      yield r.value;
+    }
+  })();
+}
+// the pause menu in the first aiming menu: buttons by frames from the mark (`script`: [frames after, bits])
+function pausePolicy(script, menus = frontEndPolicy) {
+  return f => {
+    frameNow = f;
+    if (lastMark === "" || lastMark === "menus") return menus(f);
+    if (lastMark !== "aimmenu") return 0;
+    for (const [d, b] of script) if (f === markAt + d) return b;
+    return 0;
   };
 }
 
@@ -123,6 +153,29 @@ const CASES = [
   // Match (Right twice), Luigi, course 1
   { name: "boot_poweron_kid_match", state: "boot_poweron_kid", open: true, noRet: true,
     run: sh => { menuW = sh.w; return powerOn(sh); }, policy: savedPolicy(2) },
+  // a new game's Stroke round from power-on; in the first aiming menu Start, Up (to Quit), A, "OK to quit this round?":
+  // Up (Yes), A: the round ends (wGameMode 0), GolfSessionEnd, the map engine runs map 0 again: the mode select
+  { name: "boot_quit", state: "boot_poweron", open: true, noRet: true, run: sh => gameCase(sh),
+    policy: pausePolicy([[60, 8], [120, 0x40], [150, 1], [420, 0x40], [450, 1]]) },
+  // Give Up on the first stroke (Up twice: row 4): "You can't give up on the 1st stroke." (A), back to aiming; then
+  // Start, Give Up, Down, A: Settings... no: B closes the menu; stopped 200 frames after the second aiming menu
+  { name: "boot_giveup_first", state: "boot_poweron", open: true, noRet: true,
+    run: sh => gameCase(sh, 1, () => lastMark === "aimmenu" && frameNow > markAt + 800),
+    policy: pausePolicy([[60, 8], [120, 0x40], [140, 0x40], [170, 1], [400, 1]]) },
+  // Quit, then No on "OK to quit this round?": the menu again on Quit; B
+  { name: "boot_quit_no", state: "boot_poweron", open: true, noRet: true,
+    run: sh => gameCase(sh, 1, () => lastMark === "aimmenu" && frameNow > markAt + 800),
+    policy: pausePolicy([[60, 8], [120, 0x40], [150, 1], [450, 1], [600, 2]]) },
+  // the saved character's Stroke round: Save & Quit (Up: row 5), "Save current progress?" A (Yes): SaveGame, $C2A6 = 1:
+  // GolfSessionEnd warps to map 0 entrance 1, the link menu (stopped 10 frames into it); the save RAM compared
+  { name: "boot_kid_savequit", state: "boot_poweron_kid", open: true, noRet: true,
+    run: sh => { let at = 0; return gameCase(sh, 1, () => roundsDone && hasTask(sh.w, 0x09, 0x4990) && (at = at || frameNow) && frameNow > at + 10); },
+    policy: pausePolicy([[60, 8], [120, 0x40], [150, 1], [420, 1]], savedPolicy(3)) },
+  // a saved character with game flag #74 (out/kid74.sav: coreplay.mjs --recipe kid74): match play against Luigi is
+  // one hole (hole 18); the result screen, the EXP screen (48:4D70 AwardExpPoints after 08:4F03), GolfSessionEnd and the
+  // mode select again; the save RAM compared at the end
+  { name: "boot_kid74_match_exp", state: "boot_poweron_kid74", open: true, noRet: true, run: sh => gameCase(sh),
+    policy: f => { frameNow = f; return savedPolicy2(f); } },
   // the same into the round, two holes (the saved character's round: SaveGameMidRound at each hole's start), A every
   // 40 frames for the swings
   { name: "boot_kid_round", state: "boot_poweron_kid", open: true, noRet: true,

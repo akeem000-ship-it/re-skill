@@ -12,7 +12,7 @@ import { clearFrameTasks, registerFrameTask, unregisterFrameTask } from "./tasks
 import * as A from "./actors.js";
 import { mapStartGfx } from "./mapgfx.js";
 import { initFontScreen } from "./pictures.js";
-import { newGame } from "./start.js";
+import { newGame, mapWarpToReturnPoint } from "./start.js";
 import { initSerialLink, modeSelectMain } from "./modesel.js";
 import { saveLoad, saveCheckAllBlocks } from "./save.js";
 
@@ -191,14 +191,64 @@ function* mapRunToEnterScript(sh) {
   if (w.vram) w.lcd.wy = 0x90;
   const hl = r16(w, 0xC462), bank = rd(w, 0xC464);
   if (!(hl & 0xE000)) notPorted("a map's enter message (~0A:4F0C)");
+  w.mapScriptBank = w.high[0x196];              // (MapRunEnterScript 0A:4F75 pushes it; restored after the script)
   scriptBegin(w);                                // 0A:4092
   setW(w, 4);
   const p = r16(w, 0xC290);
   wr(w, p + 0x33, 0); wr(w, p + 0x10, rd(w, 0xC28A));
   if (bank !== 0x32 || hl !== 0x5033) notPorted(`the enter script ~${bank.toString(16)}:${hl.toString(16)}`);
-  // 32:5033 Map00EnterModeSelect: ModeSelectMain returns here when it calls GolfRound (the round, 10:4B94
-  // GolfSessionEnd, then ScriptEnd 0A:40D6 and the rest of MapRun follow the round in the game: not ported)
+  // 32:5033 Map00EnterModeSelect: ModeSelectMain returns here when it calls GolfRound (the caller runs the round
+  // and mapRunAfterRound below)
   return yield* inBankGen(w, 0x32, modeSelectMain(sh));
+}
+
+// 10:4B94 GolfSessionEnd: fade out, the font screen (01:41E8), no countdown, WY $90, no sprites, wGameMode 9; then
+// to map 0 at entrance $C2A6 (warp $FA; Save & Quit's 1: the link menu) when set, else MapWarpToReturnPoint 0A:4D8A
+// (where GolfSessionInit saved the map: map 0, the saved position; the mode select)
+export function* golfSessionEnd(sh) {
+  const w = sh.w;
+  Scr.beginFadeOut(w, 0x08);
+  yield* Scr.waitFade(sh);
+  if (w.vram) initFontScreen(w);
+  wr(w, 0xC0F4, 0);
+  if (w.vram) w.lcd.wy = 0x90;
+  D.resetSprites(w);
+  wr(w, 0xC834, 9);
+  const e = rd(w, 0xC2A6);
+  if (e) { wr(w, 0xC46A, e); wr(w, 0xC450, 0); wr(w, 0xC441, 0xFA); return; }
+  mapWarpToReturnPoint(w);
+}
+// 0A:5146 MapTakeWarp: warp [$C46B] ($FA: the map and entrance already set) from the map header's warp list
+function mapTakeWarp(w) {
+  if (rd(w, 0xC46B) !== 0xFA) notPorted(`the map's warp ${rd(w, 0xC46B).toString(16)} (~0A:5151 MapListFindIfFlag)`);
+}
+
+// after a round started from map 0's enter script: GolfSessionEnd (32:523C, 32:52C6), the script's end (MapRunScript
+// 0A:4F38 ScriptEnd, WRAM bank back as at MapRunEnterScript), MapRun 0A:4A90 taking the warp request (a request is
+// always there after a round: none would go on to the map's event loop, not ported), then MapEngine 0A:49C1: the
+// warp, the frame tasks cleared and MapDebugCoordsTask again, ready for the next MapRun
+export function* mapRunAfterRound(sh, wbank) {
+  const w = sh.w;
+  yield* inBankGen(w, 0x10, golfSessionEnd(sh));
+  D.inBank(w, 0x0A, () => scriptEnd(w));
+  setW(w, wbank);
+  const a = rd(w, 0xC441);
+  if (!a) notPorted("the map's event loop after its enter script (~0A:4A9F)");
+  wr(w, 0xC441, 0); wr(w, 0xC46B, a);
+  mapTakeWarp(w);
+  clearFrameTasks(w);
+  D.inBank(w, 0x0A, () => registerFrameTask(w, 0x01, 0x0A, 0x4950));   // MapDebugCoordsTask
+}
+
+// the game from power-on, round after round: playRound(holes) runs each round GolfRound is called for
+export function* gameFromPowerOn(sh, playRound) {
+  let holes = yield* powerOn(sh);
+  for (;;) {
+    const wb = sh.w.mapScriptBank;
+    yield* playRound(holes);
+    yield* mapRunAfterRound(sh, wb);
+    holes = yield* inBankGen(sh.w, 0x0A, mapRunToEnterScript(sh));
+  }
 }
 
 // from power-on to the start of a golf round: returns the GolfRound argument

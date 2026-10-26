@@ -4,7 +4,7 @@
 import { Shot, runSync } from "./shot.js";
 import * as H from "./hole.js";
 import * as R from "./round.js";
-import { powerOn } from "./boot.js";
+import { gameFromPowerOn } from "./boot.js";
 
 // onShot(info) is told each shot's outcome; returns the outcomes and each hole's strokes and putts. A generator:
 // each next() runs one frame (shot.js Shot.advance); playRound() below runs it to the end.
@@ -14,8 +14,11 @@ export function* playRoundFrames(w, roundId, input, { ev = () => {}, maxHoles = 
   yield* R.golfRoundStart(sh, roundId);
   yield* R.holeStart(sh);
   for (;;) {
-    const a = yield* H.addressLoop(sh);                 // the swing, the flight: the outcome (10:4A25)
-    yield* H.postShot(sh, a);                    // 10:4A82
+    // the swing, the flight: the outcome (10:4A25); or what the pause menu's Quit / Give Up made ShotSetup return
+    const pre = sh.menuOutcome;
+    const a = pre !== undefined ? pre : yield* H.addressLoop(sh);
+    if (sh.menuOutcome === undefined) yield* H.postShot(sh, a);   // 10:4A82
+    sh.menuOutcome = undefined;
     result.shots.push(a);
     onShot({ outcome: a, hole: w.wram[0][0x837] });
     if (!(yield* R.afterShot(sh, a))) { yield* R.nextShot(sh); continue; }
@@ -31,10 +34,13 @@ export function* playRoundFrames(w, roundId, input, { ev = () => {}, maxHoles = 
 
 export function playRound(...args) { return runSync(playRoundFrames(...args)); }
 
-// the game from power-on: the title and the menus (boot.js, modesel.js), then the round they start
+// the game from power-on: the title and the menus (boot.js, modesel.js), the round they start, back to the menus
+// (GolfSessionEnd and the map engine), and so on; opts.onRoundStart(holes) / onRoundEnd(result) around each round
 export function* playFromPowerOn(w, input, opts = {}) {
   const sh = new Shot(w, null, opts.ev || (() => {}), input);
-  const holes = yield* powerOn(sh);
-  if (opts.onRoundStart) opts.onRoundStart(holes);
-  return yield* playRoundFrames(w, holes, input, opts);
+  yield* gameFromPowerOn(sh, function* (holes) {
+    if (opts.onRoundStart) opts.onRoundStart(holes);
+    const r = yield* playRoundFrames(w, holes, input, { ...opts, sh });
+    if (opts.onRoundEnd) opts.onRoundEnd(r);
+  });
 }

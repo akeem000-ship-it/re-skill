@@ -16,6 +16,9 @@ import { applyPendingPaletteUpdates } from "../../js/golf/render/display.js";
 import { fadeVBlank, updateGameTimer } from "../../js/golf/screen.js";
 import { runFrameTasks } from "../../js/golf/tasks.js";
 import { loadState } from "../../js/gb/state.js";
+import { writePng } from "./coreplay.mjs";
+// SCREEN_SHOTS=f,f,... writes the native screen at those frames to out/ss_<frame>.png (debugging a case)
+const shots = new Set((process.env.SCREEN_SHOTS || "").split(",").filter(Boolean).map(Number));
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../..");
 const h2 = v => v.toString(16).padStart(2, "0"), h4 = v => v.toString(16).padStart(4, "0");
@@ -128,6 +131,7 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
     if (lagNow) lagFrames.add(frame);
     res.frames++;
     if (hook) hook(frame, w, core);
+    if (shots.has(frame)) writePng(path.join(root, `out/ss_${frame}.png`), rasterize({ vram: w.vram, oam: w.oam, bgPal: w.bgPal, objPal: w.objPal, ...w.lcd }));
     if (trace) {
       const js = new Error().stack.split("\n").slice(2).map(l => (l.match(/at (?:Generator\.next \()?(\S+)/) || [])[1])
         .filter(n => n && !n.startsWith("file") && !/\.next$|ev$|advance|runScreen/.test(n)).slice(0, 4).join("<");

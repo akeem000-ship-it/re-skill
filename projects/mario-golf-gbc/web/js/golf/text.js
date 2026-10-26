@@ -13,6 +13,9 @@ import { rb, rw } from "./rom.js";
 import { mulHLByA } from "./math.js";
 import { formatDecimalNumber } from "./render/text.js";
 import * as D from "./render/display.js";
+import * as W from "./windows.js";
+import { registerFrameTask, unregisterFrameTask } from "./tasks.js";
+import { advanceRandomSeed } from "./round.js";
 
 const rd = D.rd, wr = D.wr;
 const wbank = w => w.high[0x196];                // hWRAMBank (raw, as pushed and popped by the ROM)
@@ -401,30 +404,55 @@ export function* printTextToBuffer(sh, id, de, c) {
   D.inBank(w, 3, () => { writeGlyphTileNumbers(w, de0); commitGlyphBlock(w); });
 }
 
-// 05:58E2 TextControlDispatch: a = code; the handler (TextControlTable 05:592C) gets de (the pen in the buffer or
-// the shadow) and gives it back moved
+// 05:58E2 TextControlDispatch: a = code; the handler (TextControlTable 05:592C, read from the ROM) gets de (the pen in
+// the buffer or the shadow) and gives it back moved
 export function* textControlDispatch(sh, a, de) {
   const w = sh.w;
-  switch (a) {
-    case 0x00:
-    case 0x01: {                                 // 05:52EF TextCmdNewLine: the pen 2 rows down, to [$D82A]
+  const h = rw(0x05, 0x592C + ((a << 1) & 0xFF));
+  switch (h) {
+    case 0x52EF: {                               // 05:52EF TextCmdNewLine ($00 $01 $14-$1D): the pen 2 rows down, to [$D82A]
       D.inBank(w, 3, () => drawNextChar(w));
       const e = (rd(w, 0xD82B) + 2) & 0x1F;
       wr(w, 0xD82B, e);
       return 0xD000 + (e << 5) + (rd(w, 0xD82A) & 0x1F);   // 05:414F ShadowTileAddr
     }
-    case 0x04: return yield* textCmdStringArg(sh, de);
-    case 0x07: return yield* printInlineString(sh, 0xC800, de);     // 05:55C0 TextCmdPlayerName
-    case 0x08: return yield* textCmdByteArg(sh, de);
-    case 0x09: return yield* textCmdNumberArg(sh, de);
-    case 0x0B:                                   // 05:5786 TextCmdCourseName: short text $3C + [$D85D]
+    case 0x5307: {                               // 05:5307 TextCmdRowDown ($0A): the pen one row down
+      const e = (rd(w, 0xD82B) + 1) & 0x1F;
+      wr(w, 0xD82B, e);
+      return 0xD000 + (e << 5) + (rd(w, 0xD82A) & 0x1F);
+    }
+    case 0x531B: {                               // 05:531B TextCmdStepBack ($0D): $D864 back by 2 x the stride $C362
+      const old = wbank(w);
+      setW(w, 5);
+      const v = (r16(w, 0xD864) + ((((-rd(w, 0xC362)) & 0xFF) << 1) & 0xFF)) & 0xFFFF;
+      wr(w, 0xD864, v & 0xFF); wr(w, 0xD865, v >> 8);
+      setW(w, old);
+      return v;
+    }
+    case 0x534C: case 0x5369: {                  // 05:534C TextCmdPause30 ($05) / 05:5369 TextCmdPauseShort ($06)
+      if (!rd(w, 0xD829)) {                      // the rows flushed with a delay of 1 meanwhile
+        wr(w, 0xD829, 1);
+        yield* W.flushMessageWindowRows(sh);
+        wr(w, 0xD829, 0);
+      }
+      if (h === 0x534C) { yield* sh.advance(0x1E); return de; }
+      for (let b = 0x0F; b; b--) { yield* sh.advance(); if (w.high[0x191] & 0xF3) break; }
+      return de;
+    }
+    case 0x538E: return yield* textCmdNewPage(sh, de);
+    case 0x5433: yield* textCmdWaitButton(sh); return de;
+    case 0x546A: return yield* textCmdStringArg(sh, de);
+    case 0x55C0: return yield* printInlineString(sh, 0xC800, de);    // 05:55C0 TextCmdPlayerName ($07)
+    case 0x564C: return yield* textCmdByteArg(sh, de);
+    case 0x56AB: return yield* textCmdNumberArg(sh, de);
+    case 0x5786:                                 // 05:5786 TextCmdCourseName ($0B): short text $3C + [$D85D]
       loadTextShort(w, (0x3C + rd(w, 0xD85D)) & 0xFFFF);
       return yield* printInlineString(sh, 0xD880, de);
-    case 0x0C: yield* sh.advance(0x3C); return de;   // 05:5465 TextCmdPause60: WaitFramesCmd 60
-    case 0x0E:                                   // 05:57DF TextCmdCharName: short text $43 + [wTextControlArg]
+    case 0x5465: yield* sh.advance(0x3C); return de;   // 05:5465 TextCmdPause60 ($0C): WaitFramesCmd 60
+    case 0x57DF:                                 // 05:57DF TextCmdCharName ($0E): short text $43 + [wTextControlArg]
       copyTextShortToDE(w, (0x43 + rd(w, 0xC361)) & 0xFFFF, 0xC780);
       return yield* printInlineString(sh, 0xC780, de);
-    case 0x0F: {                                 // 05:5828 TextCmdPlacing: short text $1CA3 + ([$DFCE] & 3)
+    case 0x5828: {                               // 05:5828 TextCmdPlacing ($0F): short text $1CA3 + ([$DFCE] & 3)
       const old = wbank(w);
       setW(w, 5);
       copyTextShortToDE(w, 0x1CA3 + (rd(w, 0xDFCE) & 3), 0xC780);
@@ -432,8 +460,80 @@ export function* textControlDispatch(sh, a, de) {
       setW(w, old);
       return de;
     }
+    case 0x5900: case 0x590B: case 0x5916: case 0x5921: {   // 05:5900-05:5921 TextCmdTile0A-0D ($10-$13): the tile at the pen
+      const t = 0x0A + (h - 0x5900) / 11;
+      wr(w, de, t);
+      de = (de + 1) & 0xFFFF;
+      yield* W.flushMessageWindowRows(sh);
+      yield* textCharDelay(sh, t);
+      return de;
+    }
+    case 0x5580: case 0x55A0: {                  // 05:5580 TextCmdDakuten ($DE) / 05:55A0 TextCmdHandakuten ($DF)
+      const p = penRowAbove(w, (de - 1 + 0xFFE0) & 0xFFFF);
+      const t = rd(w, p) === 3 ? (h === 0x5580 ? 0x0E : 0x0F) : (h === 0x5580 ? 0xDE : 0xDF);
+      wr(w, p, t);
+      yield* W.flushMessageWindowRows(sh);
+      yield* textCharDelay(sh, t);
+      return de;
+    }
     default:
-      throw new Error(`text control code $${a.toString(16)} (~05:58E2 TextControlDispatch: the window printer's) is not ported`);
+      throw new Error(`text control code $${a.toString(16)} (~05:${h.toString(16)}) is not ported`);
+  }
+}
+
+// 05:58B1 PenRowAbove: de one row up unless on row [$D82B] - 1; kept in $D000-$D3FF
+function penRowAbove(w, de) {
+  if (((de >> 5) & 0x1F) !== ((rd(w, 0xD82B) - 1) & 0x1F)) {
+    let e = de & 0xFF, d = de >> 8;
+    if (e < 0x20) { e = (e - 0x20) & 0x3F; d = (d - 1) & 0xFF; } else e -= 0x20;
+    de = d << 8 | e;
+  }
+  return (((de >> 8) & 3) | 0xD0) << 8 | (de & 0xFF);
+}
+
+// 05:538E TextCmdNewPage ($02): the next-page arrow (tile $01) at the message window's bottom middle (05:53D1
+// GetMoreArrowPos: x + w / 2, y + h - 1), blinking (MoreArrowTask 05:53F9) until a button (code $03), flag #25 set
+// for a frame; wTextPagePending $D850 = 1
+function* textCmdNewPage(sh, de) {
+  const w = sh.w;
+  const rec = r16(w, (0xD800 + ((rd(w, 0xD824) << 2) & 0xFF)) & 0xFFFF);
+  const sra = v => ((v >> 1) | (v & 0x80)) & 0xFF;
+  const x = (sra(rd(w, rec + 3)) + rd(w, rec + 1)) & 0xFF, y = (rd(w, rec + 4) - 1 + rd(w, rec + 2)) & 0xFF;
+  const p = 0xD000 + ((y & 0x1F) << 5) + (x & 0x1F);   // 05:414F
+  wr(w, p, 0x01);
+  yield* W.flushMessageWindowRows(sh);
+  wr(w, 0xD841, 0); wr(w, 0xD842, p & 0xFF); wr(w, 0xD843, p >> 8);
+  registerFrameTask(w, 0x01, 0x05, 0x53F9);
+  yield* textCmdWaitButton(sh);
+  unregisterFrameTask(w, 0x05, 0x53F9);
+  setFlag(w, 25);
+  yield* sh.advance();
+  clearFlag(w, 25);
+  wr(w, 0xD850, 1);
+  return de;
+}
+// 05:53F9 MoreArrowTask: the arrow tile ($01, or $08 while bit 4 of [$D841] is set) at [$D842] (VRAM: + $C800)
+export function moreArrowTask(w) {
+  setW(w, 5);
+  const t = rd(w, 0xD841) & 0x10 ? 0x08 : 0x01;
+  D.queueBGTileWrite(w, (r16(w, 0xD842) + 0x3000 + 0x9800) & 0xFFFF, t, 0x80);
+  wr(w, 0xD841, (rd(w, 0xD841) + 1) & 0xFF);
+}
+// 05:5433 TextCmdWaitButton ($03): unless flag #22 (skipping): the glyphs uploaded (03:4F7D), up to 30 frames for
+// the buttons (but Select / Start) to be let go, then a frame at a time (the random seed advanced each) until one
+// is pressed
+export function* textCmdWaitButton(sh) {
+  const w = sh.w;
+  if (testFlag(w, 22)) return;
+  yield* finishTextBlock(sh);
+  if (w.high[0x190] & 0xF3) {
+    for (let b = 0x1E; b; b--) { yield* sh.advance(); if (!(w.high[0x190] & 0xF3)) break; }
+  }
+  for (;;) {
+    if (testFlag(w, 22)) return;
+    advanceRandomSeed(w);                        // 00:0A61
+    yield* sh.advance();
+    if (w.high[0x191] & 0xF3) return;
   }
 }
 

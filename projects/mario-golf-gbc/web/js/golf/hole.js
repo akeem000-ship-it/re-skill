@@ -373,10 +373,24 @@ function* golfSceneStart(sh) {
   if (w.wram[0][0x870]) notPorted("golf event hooks (~10:4CC3)");
 }
 
-// 10:486B-10:48FB: what the aiming menu ended with, up to the address step (true there)
+// 10:486B-10:48FB: what the aiming menu ended with, up to the address step (true there). The pause menu's Quit
+// ($80; $82 the same) ends the round after this hole: wGameMode 0, one hole left, both players holed out, ShotSetup
+// returns $81; Give Up ($81) sets the strokes to 3 x par and returns that number (StrokeLimit then picks the ball
+// up). ShotSetup's result is the shot's outcome for GolfShotLoop 10:45E7: kept in sh.menuOutcome (false returned).
 function* toAddress(sh, a) {
   const w = sh.w, r6 = w.wram[6], w0 = w.wram[0];
-  if ([0x8F, 0x82, 0x80, 0x81].includes(a)) notPorted(`the menu's result $${a.toString(16)} (~10:486B)`);
+  if (a === 0x8F) notPorted("the menu's result $8f (~10:486B)");
+  if (a === 0x82 || a === 0x80) {
+    w0[0x834] = 0; w0[0x839] = 1; w0[0x8AA] = 1; w0[0x8EA] = 1;
+    sh.menuOutcome = 0x81;
+    return false;
+  }
+  if (a === 0x81) {
+    const v = (r6[0x325] * 3) & 0xFF;
+    w0[pf(w, 0x20)] = v;
+    sh.menuOutcome = v;
+    return false;
+  }
   if (r6[0x332] < 0x0B && r6[0x329] !== 0x0D && w0[pf(w, 0x13)] !== 3 && !(w0[0x818] & 2)) {
     yield* V.viewLeave(sh);                             // 3B:431F
     D.golferActorTaskStop(w);                    // 04:5801
@@ -413,6 +427,6 @@ export function* addressLoop(sh) {                // from the address step (afte
       V.hudDrawWind(sh.w);                       // 12:4A81
     }
     yield* sh.advance(5);                               // WaitFramesCmd 5
-    yield* toAddress(sh, yield* aimMenuLoop(sh, 1));
+    if (!(yield* toAddress(sh, yield* aimMenuLoop(sh, 1)))) return sh.menuOutcome;
   }
 }

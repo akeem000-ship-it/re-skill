@@ -141,7 +141,8 @@ function newRound() {
   game = { w, g: null, frames: 0, done: null, error: null, mark: mode === "title" ? "menus" : "", marks: [], shots: [], holes: 0 };
   const ev = (kind, name) => { if (kind === "M") { game.mark = name; game.marks.push([game.frames, name]); } };
   const opts = { ev, maxHoles: Infinity, onShot: s => game.shots.push(s.outcome), onHoleEnd: r => { game.holes = r.holes.length; },
-    onRoundStart: () => { game.mark = "round"; } };
+    onRoundStart: () => { game.mark = "round"; game.rounds = (game.rounds || 0) + 1; $("message").textContent = ""; },
+    onRoundEnd: r => { game.mark = "menus"; game.lastRound = r; roundMessage(r, false); } };
   game.g = mode === "title" ? playFromPowerOn(w, held, opts) : playRoundFrames(w, holes, held, opts);
   window.__golf = game;
   $("message").textContent = "";
@@ -151,13 +152,14 @@ function step() {                                  // one frame of the game
   game.frames++;
   soundFrame(game.w);
   checkSave(game.w);
-  if (r.done) {
-    game.done = r.value;
-    const total = r.value.holes.reduce((s, h) => s + h.strokes, 0);
-    const w0 = game.w.wram[0];
-    if (w0[0x834] === 2) showMessage(`Match over: ${["", "you won", "you lost", "halved"][w0[0x96C]] || "decided"} after ${r.value.holes.length} holes.`);
-    else showMessage(`Round over: ${total} strokes over ${r.value.holes.length} holes.`);
-  }
+  if (r.done) { game.done = r.value; roundMessage(r.value, true); }
+}
+function roundMessage(r, button) {               // (from power-on the game goes back to its menus after a round)
+  const total = r.holes.reduce((s, h) => s + h.strokes, 0);
+  const w0 = game.w.wram[0];
+  const text = w0[0x834] === 2 ? `Match over: ${["", "you won", "you lost", "halved"][w0[0x96C]] || "decided"} after ${r.holes.length} holes.`
+    : `Round over: ${total} strokes over ${r.holes.length} holes.`;
+  if (button) showMessage(text); else $("message").textContent = text;
 }
 function showMessage(text) {
   const m = $("message");
