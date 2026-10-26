@@ -23,7 +23,7 @@ const WRAM0_DISPLAY = [[0x000, 0x0A0], [0x100, 0x1C0], [0x1C0, 0x200], [0x200, 0
 
 // stateFile: out/...json from mkstate.mjs; run(sh, regs) -> the native routine (a generator); policy(frame) -> the
 // buttons held (default: A on alternate frames); returns { frames, pixelExact, modelExact, lag, bad: [...], end }
-export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFrames = 20000, verbose = false, trace = false, hook = null, lagVBlanks = true }) {
+export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFrames = 20000, verbose = false, trace = false, hook = null, lagVBlanks = true, open = false }) {
   useRom(new Uint8Array(fs.readFileSync(path.join(root, "rom/mario_golf.gbc"))));
   const saved = JSON.parse(fs.readFileSync(path.join(root, stateFile)));
   const core = new CoreRun();
@@ -150,7 +150,8 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
   let r;
   for (r = g.next(); !r.done; r = g.next()) {}
   res.native = r.value;
-  if (!coreDone) {                               // the core's code after its last AdvanceFrame, to its return
+  if (!coreDone && !open) {                      // the core's code after its last AdvanceFrame, to its return
+                                                 // (open: a routine that does not return; compared to here)
     if (core.at(0, 0x2E3B)) runAhead();
     while (!coreDone) core.step();
   }

@@ -60,19 +60,20 @@ function soundFrame(w) {                           // one VBlank's sound work (S
 }
 
 // ---- input: hJoyHeld bits (A 1, B 2, Select 4, Start 8, Right $10, Left $20, Up $40, Down $80) ----
-const MAP = { KeyZ: 1, KeyX: 2, ShiftLeft: 4, ShiftRight: 4, KeyQ: 4, ArrowRight: 0x10, ArrowLeft: 0x20, ArrowUp: 0x40, ArrowDown: 0x80 };
-let startWas = false;
+const MAP = { KeyZ: 1, KeyX: 2, ShiftLeft: 4, ShiftRight: 4, KeyQ: 4, Enter: 8, ArrowRight: 0x10, ArrowLeft: 0x20, ArrowUp: 0x40,
+  ArrowDown: 0x80 };
+let pauseWas = false;
 function held() {
   pollGamepad(keys);
   let b = 0;
   for (const [k, bit] of Object.entries(MAP)) if (keys[k]) b |= bit;
-  const start = !!keys.Enter;                      // Start: the page's pause (the pause menu 08:4666 is not ported)
-  if (start && !startWas) paused = !paused;
-  startWas = start;
+  const p = !!keys.KeyP;                           // P: the page's own pause (Start is the game's: its pause menu)
+  if (p && !pauseWas) paused = !paused;
+  pauseWas = p;
   return b;
 }
 addEventListener("keydown", e => {
-  if (e.code in MAP || e.code === "Space" || e.code === "Enter") e.preventDefault();
+  if (e.code in MAP || e.code === "Space") e.preventDefault();
   keys[e.code] = true; initAudioSoon();
   if (e.code === "Space") fast = true;
   if (e.code === "KeyM" && !e.repeat) muted = !muted;
@@ -140,8 +141,8 @@ function loop(now) {
   if (!game || game.done || game.error) { last = 0; return; }
   if (!last) last = now;
   acc += Math.min(now - last, 100); last = now;
-  held();                                          // (Start toggles the pause even while paused)
-  if (paused) { acc = 0; $("status").textContent = "paused (Start)"; return; }
+  held();                                          // (P toggles the pause even while paused)
+  if (paused) { acc = 0; $("status").textContent = "paused (P)"; return; }
   let ran = 0;
   const budget = fast ? 8 : 4;
   try {

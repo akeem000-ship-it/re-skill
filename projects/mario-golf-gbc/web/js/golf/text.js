@@ -406,6 +406,13 @@ export function* printTextToBuffer(sh, id, de, c) {
 export function* textControlDispatch(sh, a, de) {
   const w = sh.w;
   switch (a) {
+    case 0x00:
+    case 0x01: {                                 // 05:52EF TextCmdNewLine: the pen 2 rows down, to [$D82A]
+      D.inBank(w, 3, () => drawNextChar(w));
+      const e = (rd(w, 0xD82B) + 2) & 0x1F;
+      wr(w, 0xD82B, e);
+      return 0xD000 + (e << 5) + (rd(w, 0xD82A) & 0x1F);   // 05:414F ShadowTileAddr
+    }
     case 0x04: return yield* textCmdStringArg(sh, de);
     case 0x07: return yield* printInlineString(sh, 0xC800, de);     // 05:55C0 TextCmdPlayerName
     case 0x08: return yield* textCmdByteArg(sh, de);

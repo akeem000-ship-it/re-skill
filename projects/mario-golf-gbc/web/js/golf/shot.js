@@ -17,6 +17,7 @@ import { showCaption, captionMotionTask, captionAnimTask } from "./captions.js";
 import * as P from "./pictures.js";
 import { scorecardStrokesTask, scorecardMatchPlayTask } from "./scorecard.js";
 import { matchStandingsTask } from "./standings.js";
+import { menuCursorTask } from "./windows.js";
 import { actorsUpdateTask, actorsDrawTask } from "./actors.js";
 import { confettiTask, resultPaletteCycleTask, resultSpriteTask } from "./result.js";
 import { mapScrollTask } from "./render/holeview.js";
@@ -168,6 +169,7 @@ export class Shot {
       "0e:6d47": () => scorecardStrokesTask(w),        // 0E:6D47
       "0e:76f5": () => scorecardMatchPlayTask(w),      // 0E:76F5
       "3e:465a": () => matchStandingsTask(w),          // 3E:465A
+      "05:4f20": () => menuCursorTask(w),              // 05:4F20 MenuCursorTask
       "04:4234": () => actorsUpdateTask(w),            // 04:4234
       "04:4b69": () => actorsDrawTask(w, id => this.sound(id)),   // 04:4B69
       "0b:4784": () => mapScrollTask(w),               // 0B:4784 MapGfxScrollTask: farcall 04:4072

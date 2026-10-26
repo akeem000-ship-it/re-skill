@@ -8,10 +8,14 @@ import { runScreen } from "./golf/screenstep.mjs";
 import { matchStandingsScreen } from "../js/golf/standings.js";
 import { showScorecard } from "../js/golf/scorecard.js";
 import { roundResultScreen } from "../js/golf/result.js";
+import { pauseMenu } from "../js/golf/pause.js";
+import { Hole } from "../js/golf/ball.js";
+import { shotSetup } from "../js/golf/hole.js";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const filter = process.argv.slice(2).find(a => !a.startsWith("--")) || "";
 const verbose = process.argv.includes("--verbose");
+const onHole = (sh, g) => { sh.hole = new Hole(sh.w.wram[6][0x320]); return g; };   // the hole's frame tasks run
 const inBank = (sh, bank, g) => (function* () {
   const old = sh.w.high[0x195]; sh.w.high[0x195] = bank;
   try { return yield* g; } finally { sh.w.high[0x195] = old; }
@@ -26,6 +30,18 @@ const CASES = [
     policy: f => (f === 30 ? 0x10 : f === 70 ? 0x20 : f === 110 ? 0x10 : f > 150 && f & 1 ? 1 : 0) },
   { name: "result_match18", round: "match18", at: "0B:59DE", run: (sh, r) => inBank(sh, 0x0B, roundResultScreen(sh, r.a)),
     policy: f => (f > 120 && f & 1 ? 1 : 0) },
+  // the pause menu (08:4666, made with web/tests/golf/mkstate_core.mjs --via 10:5BA6 --wait 60 --press 08 --at
+  // 08:4666): B closes it; Down / Up move the cursor (wrapping), Start closes it; Scorecard (A on row 2), then A
+  { name: "pause_r18_b", state: "pause_r18", run: sh => onHole(sh, inBank(sh, 0x08, pauseMenu(sh))), policy: f => (f === 60 ? 2 : 0) },
+  { name: "pause_r18_move", state: "pause_r18", run: sh => onHole(sh, inBank(sh, 0x08, pauseMenu(sh))),
+    policy: f => (f === 40 || f === 50 ? 0x80 : f === 60 || f === 70 || f === 80 ? 0x40 : f === 120 ? 8 : 0) },
+  { name: "pause_r18_scorecard", state: "pause_r18", run: sh => onHole(sh, inBank(sh, 0x08, pauseMenu(sh))),
+    policy: f => (f === 40 || f === 50 ? 0x80 : f === 70 ? 1 : f > 150 && f & 1 ? 1 : 0) },
+  // ShotSetup 10:4798 at the first tee (mkstate_core.mjs --at 10:4798): Start in the aiming menu, Scorecard, A
+  // back: the scene starts again (10:489D) and aiming goes on; up to the address step (10:56B0; the game is then
+  // into the address step's first frame: its HRAM scratch $FFA7, $FFAC-$FFAE differ)
+  { name: "pause_scorecard_back", state: "shotsetup_r18", noRet: true, open: true, run: sh => onHole(sh, inBank(sh, 0x10, shotSetup(sh))),
+    policy: f => (f === 200 ? 8 : f === 260 || f === 270 ? 0x80 : f === 290 ? 1 : f === 400 ? 1 : f === 600 ? 1 : 0) },
 ];
 
 let bad = 0;
@@ -37,10 +53,11 @@ for (const c of CASES) {
     continue;
   }
   let r;
-  try { r = runScreen({ stateFile, run: c.run, policy: c.policy, verbose, trace: process.argv.includes("--trace") }); }
+  try { r = runScreen({ stateFile, run: c.run, policy: c.policy, verbose, open: c.open, trace: process.argv.includes("--trace") }); }
   catch (e) { console.log(`FAIL ${c.name}: ${e.stack}`); bad++; continue; }
   const sounds = r.sounds.core.join(" ") === r.sounds.native.join(" ");
-  const ok = !r.bad.length && !r.end.length && sounds && (c.noRet || r.native === r.coreA);
+  // (an open routine's end is compared with the core already into its next frame's code: listed, not failed)
+  const ok = !r.bad.length && (c.open || !r.end.length) && sounds && (c.noRet || r.native === r.coreA);
   if (!ok) bad++;
   console.log(`${ok ? "ok  " : "FAIL"} ${c.name}: ${r.frames} frames, ${r.pixelExact} pixel-exact, ${r.modelExact} with the display state equal, ` +
     `${r.lag} differing after lag frames, ${r.bad.length} other; returned ${r.native} (game ${r.coreA}); sounds ${sounds ? "the same" : `differ: game ${r.sounds.core.join(" ")} / js ${r.sounds.native.join(" ")}`}`);

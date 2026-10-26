@@ -18,7 +18,8 @@ import * as D from "./render/hooks.js";
 import { showCaptionAndWait, startCaptionAnim } from "./captions.js";
 import * as P from "./pictures.js";
 import * as M from "./match.js";
-import { playRoundMusic } from "./round.js";
+import { playRoundMusic, loadHoleInfo, golfViewInit } from "./round.js";
+import * as Scr from "./screen.js";
 
 // 08:4880 RoundHookPlayerUp: before each shot, by wGameMode (PlayerUpModeTable 08:489D)
 function* roundHookPlayerUp(sh) {
@@ -335,13 +336,38 @@ export function* shotSetup(sh) {
   }
   r6[0x485] = 0x3F;
   r6.copyWithin(0x514, 0x400, 0x406);            // 10:550B SaveAddressSpot
-  return yield* toAddress(sh, yield* A.aimMenu(sh, 0));
+  return yield* toAddress(sh, yield* aimMenuLoop(sh, 0));
+}
+
+// 10:4868 AimMenu and 10:489D: $FF (the pause menu's Camera Mode, Course Map or Scorecard) loads the hole's info
+// and starts the scene again (13:55F6 LoadHoleInfo, 10:4226 GolfSceneStart), then aims again (a = 1)
+function* aimMenuLoop(sh, a) {
+  const w = sh.w;
+  a = yield* A.aimMenu(sh, a);
+  while (a === 0xFF) {
+    loadHoleInfo(w);
+    yield* golfSceneStart(sh);
+    yield* sh.advance();
+    yield* V.shotViewUpdate(sh);                 // 10:5632
+    a = yield* A.aimMenu(sh, 1);
+  }
+  return a;
+}
+
+// 10:4226 GolfSceneStart: GolfViewInit, ShotViewUpdate, wHudBusy off, the fade in (00:258D, c = $7F), golf event 4
+function* golfSceneStart(sh) {
+  const w = sh.w;
+  golfViewInit(sh);                              // 10:420E
+  yield* V.shotViewUpdate(sh);                   // 10:5632
+  w.wram[6][0x328] = 0;
+  Scr.forceFadeIn(w, 0x7F);
+  if (w.wram[0][0x870]) notPorted("golf event hooks (~10:4CC3)");
 }
 
 // 10:486B-10:48FB: what the aiming menu ended with, up to the address step (true there)
 function* toAddress(sh, a) {
   const w = sh.w, r6 = w.wram[6], w0 = w.wram[0];
-  if ([0x8F, 0x82, 0x80, 0x81, 0xFF].includes(a)) notPorted(`the menu's result $${a.toString(16)} (~10:486B)`);
+  if ([0x8F, 0x82, 0x80, 0x81].includes(a)) notPorted(`the menu's result $${a.toString(16)} (~10:486B)`);
   if (r6[0x332] < 0x0B && r6[0x329] !== 0x0D && w0[pf(w, 0x13)] !== 3 && !(w0[0x818] & 2)) {
     yield* V.viewLeave(sh);                             // 3B:431F
     D.golferActorTaskStop(w);                    // 04:5801
@@ -378,6 +404,6 @@ export function* addressLoop(sh) {                // from the address step (afte
       V.hudDrawWind(sh.w);                       // 12:4A81
     }
     yield* sh.advance(5);                               // WaitFramesCmd 5
-    yield* toAddress(sh, yield* A.aimMenu(sh, 1));
+    yield* toAddress(sh, yield* aimMenuLoop(sh, 1));
   }
 }

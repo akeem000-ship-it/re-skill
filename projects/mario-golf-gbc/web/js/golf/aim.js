@@ -12,6 +12,7 @@ import { pinDist } from "./cup.js";
 import { ball, rd16, wr16, playerField as pf } from "./memory.js";
 import { loadShotView, aimMarker } from "./view.js";
 import { planShot } from "./ai.js";
+import { pauseMenu } from "./pause.js";
 import * as D from "./render/hooks.js";
 
 function notPorted(what) { throw new Error(`${what} is not ported`); }
@@ -188,7 +189,7 @@ function* slideOut(sh) {                          // the marker from $D42A/$D42C
 }
 
 // 10:5BA6 AimMenu: a = 0 sets the shot up (aim, shot mode, the putter's range), a = 1 comes back to it.
-// Returns the buttons newly pressed when it ends (A: the swing; Start's pause menu is not ported).
+// Returns the buttons newly pressed when it ends (A: the swing), or the pause menu's result (bit 7 set).
 export function* aimMenu(sh, a) {
   const w = sh.w, r6 = w.wram[6], w0 = w.wram[0], s = ball(w);
   sh.mark("aimmenu");
@@ -242,7 +243,15 @@ export function* aimMenu(sh, a) {
     const p = w.high[0x194];
     if (p & 1) { w.high[0x1C1] = 0x20; r6[0x4D4] = 0; return p; }   // A (10:5EAF; 02:4833 SerialIdleSet20)
     if (p & 4) { yield* lookAtPin(sh); at = "5D0D"; continue; }
-    if (p & 8) notPorted("the pause menu (~08:4666)");
+    if (p & 8) {                                 // 10:5D9D: the pause menu (08:4666)
+      const old = w.high[0x195];
+      w.high[0x195] = 0x08;
+      const a = yield* pauseMenu(sh);
+      w.high[0x195] = old;
+      if (!(a & 0x80)) { at = "5D16"; continue; }
+      if (a === 0x81) notPorted("the link play's give-up (~10:5DAA)");
+      w.high[0x1C1] = 0x20; r6[0x4D4] = 0; return a;   // 10:5EAF
+    }
     if (p & 2) { shotModeButton(w, id => sh.sound(id)); at = "5C87"; continue; }
     const rep = w.high[0x191];
     if (rep & 0x40) {                            // Up: a longer club (not on the green)

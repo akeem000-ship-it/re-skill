@@ -233,7 +233,7 @@ function* holeIntroFlyover(sh) {
   }
 }
 
-function golfViewInit(sh) {                      // 10:420E GolfViewInit
+export function golfViewInit(sh) {               // 10:420E GolfViewInit
   const w = sh.w, r6 = w.wram[6];
   clearFrameTasks(w);                            // 00:23B6 ClearFrameTasks
   D.resetSprites(w);                             // 00:2683 ResetSprites

@@ -5,7 +5,8 @@
 // shots than asked. Screenshots go to out/ (aiming, address, mid-swing, flight, after each shot).
 // With --match the page's mode selector picks match play against Luigi (the computer plays its own turns; the test
 // plays the human's).
-// usage: node web/tests/play_page.mjs [shots=3] [outdir=out] [--match]
+// With --pause the first aiming menu opens the pause menu (Start), picks Scorecard, leaves it and aims on.
+// usage: node web/tests/play_page.mjs [shots=3] [outdir=out] [--match] [--pause]
 import { createRequire } from "module";
 import http from "http";
 import fs from "fs";
@@ -14,6 +15,7 @@ const { chromium } = createRequire(import.meta.url)("playwright");
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const match = process.argv.includes("--match");
+const pause = process.argv.includes("--pause");
 const [shotsArg = "3", outDir = path.join(root, "out")] = process.argv.slice(2).filter(a => !a.startsWith("--"));
 const want = +shotsArg;
 fs.mkdirSync(outDir, { recursive: true });
@@ -58,6 +60,18 @@ try {
     await until(() => (window.__golf.mark === "aimmenu" && !window.__golf.w.wram[0][0x835]) || window.__golf.error, null, 600000);
     await untilFrames((await frames()) + 40);     // the menu's HUD frames
     await shot(`shot${k + 1}_aim`);
+    if (pause && !k) {                             // Start: the pause menu; Down twice to Scorecard, A, A to leave
+      await press("Enter");
+      await untilFrames((await frames()) + 60);
+      await shot("pause_menu");
+      for (const key of ["ArrowDown", "ArrowDown", "KeyZ"]) { await press(key); await untilFrames((await frames()) + 10); }
+      await untilFrames((await frames()) + 120);
+      await shot("pause_scorecard");
+      await press("KeyZ");
+      await until(() => window.__golf.mark === "aimmenu" || window.__golf.error);
+      await untilFrames((await frames()) + 60);
+      await shot("pause_back");
+    }
     await press(k % 2 ? "ArrowLeft" : "ArrowRight", 6);
     await press("KeyZ");                           // to the address step
     await until(() => window.__golf.mark === "address" || window.__golf.error);
