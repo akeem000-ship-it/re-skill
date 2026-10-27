@@ -11,10 +11,13 @@ import { mapBufCopyRectRedraw } from "../mapgfx.js";
 import { advanceRandomSeed } from "../round.js";
 import { addExp, expToNextLevel } from "../exp.js";
 import { levelUpScreen } from "../levelup.js";
+import { setTextCourseIndex } from "../text.js";
+import * as A from "../actors.js";
 
 const rd = D.rd, wr = D.wr;
 function notPorted(what) { throw new Error(`${what} is not ported`); }
 const setFlag = (w, n) => { w.wram[0][0x840 + (n >> 3)] |= 0x80 >> (n & 7); };
+const clearFlag = (w, n) => { w.wram[0][0x840 + (n >> 3)] &= ~(0x80 >> (n & 7)); };
 function* inBankGen(w, bank, g) {
   const old = w.high[0x195];
   w.high[0x195] = bank;
@@ -230,12 +233,28 @@ function* map03TriggerGoingOutside(sh) {
 }
 // 32:62F7 HasPartner: a partner flag #144-#147
 const hasPartner = w => [144, 145, 146, 147].some(n => flag(w, n));
+// 32:5BBE SetTextCourseByProgress: SetTextCourseIndex 05:57C3 = 5 (#139), 4 (#115 or #114), 3 (#113), else 2
+function setTextCourseByProgress(w) {
+  setTextCourseIndex(w, flag(w, 139) ? 5 : flag(w, 115) || flag(w, 114) ? 4 : flag(w, 113) ? 3 : 2);
+}
+// 32:5B5A SetTextByClubProgress: the text hl + n by the partner and its club: the Links champ (#147) 9 after the
+// Links win (#139) else 8; Dune (#146) 7 / 6 (#138); Palm (#145) 5 (#137), 4 (#114), 3 (#113), 2; Marion (#144) 1
+// (#136) / 0; none 0; then 32:5BBE
+function setTextByClubProgress(w, hl) {
+  let a = 0;
+  if (flag(w, 147)) a = flag(w, 139) ? 9 : 8;
+  else if (flag(w, 146)) a = flag(w, 138) ? 7 : 6;
+  else if (flag(w, 145)) a = flag(w, 137) ? 5 : flag(w, 114) ? 4 : flag(w, 113) ? 3 : 2;
+  else if (flag(w, 144)) a = flag(w, 136) ? 1 : 0;
+  T.scriptSetText(w, (hl + a) & 0xFFFF);
+  setTextCourseByProgress(w);
+}
 // 32:56EA Map03TalkMemberCounter / 32:5704 Map03TalkVisitorCounter (talks 2 / 3): text $16B / $16C by the speaker;
-// with a partner $1D1 / $1DB + its progress (~32:5B5A SetTextByClubProgress, not ported)
+// with a partner $1D1 / $1DB + its progress (32:5B5A)
 function* map03TalkCounter(sh, speaker) {
   const w = sh.w;
-  if (hasPartner(w)) notPorted("the counters' talk with a partner (~32:5B5A SetTextByClubProgress)");
-  T.scriptSetText(w, speaker === 2 ? 0x016B : 0x016C);
+  if (hasPartner(w)) setTextByClubProgress(w, speaker === 2 ? 0x01D1 : 0x01DB);
+  else T.scriptSetText(w, speaker === 2 ? 0x016B : 0x016C);
   yield* T.scriptShowText(sh, speaker);
 }
 // 32:5BEA Map03ObjectBookshelf (object 2): one of the texts $1E5-$1E8 at random (00:0A61's low byte & 3)
@@ -319,6 +338,110 @@ function* map04EnterLounge(sh) {
   else if (flag(w, 114)) M.scriptSetMapField(w, 0x6530, 0x000C);
   else if (flag(w, 113)) { M.scriptSetMapField(w, 0x64E7, 0x000C); S.actorSetScript(w, 0x04, 0x6A5C, 0x32); }
   else if (flag(w, 112)) M.scriptSetMapField(w, 0x649E, 0x000C);
+}
+// ---- the Lounge's club champions (talks 7-$0A) and a champion joining as the partner ----
+// the champ's text base wScriptTextBase $C4BA and slot wScriptArg $C4BC (7-$0A: Marion, Palm, Dune, Links)
+const champArg = w => rd(w, 0xC4BC);
+const champText = (w, de) => ((rd(w, 0xC4BA) | rd(w, 0xC4BB) << 8) + de) & 0xFFFF;
+const champFlag = (w, de) => flag(w, de + champArg(w) - 7);              // 32:6B2F ChampTestFlag
+const champFlag2 = (w, de) => flag(w, de + 2 * (champArg(w) - 7));       // 32:6B57 ChampTestFlag2
+const champSetFlag = (w, de) => setFlag(w, de + champArg(w) - 7);        // 32:6B43 ChampSetFlag
+// 32:6AFF ChampShowTextAt: the text base + de by the champ, 10 frames
+function* champSay(sh, de) {
+  T.scriptSetText(sh.w, champText(sh.w, de));
+  yield* T.scriptShowText(sh, champArg(sh.w));
+  yield* S.scriptWaitFrames(sh, 0x0A);
+}
+// 32:6B17 ChampShowTextKeepOpen (5 frames), then the question (Yes: true), closed, 10 frames
+function* champAsk(sh, de) {
+  T.scriptSetText(sh.w, champText(sh.w, de));
+  yield* T.scriptShowTextKeepOpen(sh, champArg(sh.w));
+  yield* S.scriptWaitFrames(sh, 0x05);
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* S.scriptWaitFrames(sh, 0x0A);
+  return !a;
+}
+// the champ joins: the text, 32:6DCF, the partner flag (#144 +) and the asked flag (#128 +); (#118 cleared: clear)
+function* champJoin(sh, de, clear) {
+  const w = sh.w;
+  yield* champSay(sh, de);
+  yield* champJoinAsPartner(sh);
+  champSetFlag(w, 0x90);
+  champSetFlag(w, 0x80);
+  if (clear) clearFlag(w, 118);
+}
+// 32:6B81 Map04TalkClubChamp (32:63A8 / 63BA / 63CC / 63DE: Marion $1FD, Palm $416, Dune $42F, Links $448 (the Links
+// champ sets #131 first)): by the flags of the champ's club (de + slot - 7: #128 asked, #132 played, #136 won; the
+// pairs #78 / #80 / #82 + 2 (slot - 7)) the texts +$11 / +$12 (not yet met: #78 pair clear but Marion), +$10 / +$0F /
+// +$18 (the #80 pair set), or the offer: after the Links win (#139; the Links champ too): +$13 (won) or +$14, then
+// +$15, the join with +$16 / +$09 (#118 cleared); else won: +$0A (unless asked) and +$0C, the join with +$0E; played
+// (#132 +): +$05 (not for Palm and Links) and +$07, the join with +$09; else +$00 (unless asked) and +$02, the join with
+// +$04; No answers +$0B / +$0D / +$17 / +$06 / +$08 / +$01 / +$03
+function* map04TalkClubChamp(sh) {
+  const w = sh.w, arg = champArg(w);
+  if (arg !== 0x07 && !champFlag2(w, 0x4E)) { yield* champSay(sh, champFlag(w, 0x88) ? 0x12 : 0x11); return; }
+  if (champFlag2(w, 0x50)) {
+    if (champFlag(w, 0x88)) yield* champSay(sh, 0x10);
+    else yield* champSay(sh, champFlag2(w, 0x52) ? 0x18 : 0x0F);
+    return;
+  }
+  if (arg === 0x0A || !flag(w, 139)) {
+    if (champFlag(w, 0x88)) {
+      if (!champFlag(w, 0x80) && !(yield* champAsk(sh, 0x0A))) { yield* champSay(sh, 0x0B); return; }
+      if (!(yield* champAsk(sh, 0x0C))) { yield* champSay(sh, 0x0D); return; }
+      yield* champJoin(sh, 0x0E, false);
+      return;
+    }
+    if (champFlag(w, 0x84)) {
+      if (arg !== 0x08 && arg !== 0x0A && !(yield* champAsk(sh, 0x05))) { yield* champSay(sh, 0x06); return; }
+      if (!(yield* champAsk(sh, 0x07))) { yield* champSay(sh, 0x08); return; }
+      yield* champJoin(sh, 0x09, false);
+      return;
+    }
+    if (!champFlag(w, 0x80) && !(yield* champAsk(sh, 0x00))) { yield* champSay(sh, 0x01); return; }
+    if (!(yield* champAsk(sh, 0x02))) { yield* champSay(sh, 0x03); return; }
+    yield* champJoin(sh, 0x04, false);
+    return;
+  }
+  if (champFlag(w, 0x88)) {
+    if (!(yield* champAsk(sh, 0x13))) { yield* champSay(sh, 0x0B); return; }
+    if (!(yield* champAsk(sh, 0x15))) { yield* champSay(sh, 0x0D); return; }
+    yield* champJoin(sh, 0x16, true);
+    return;
+  }
+  if (!(yield* champAsk(sh, 0x14))) { yield* champSay(sh, 0x17); return; }
+  if (!(yield* champAsk(sh, 0x15))) { yield* champSay(sh, 0x0D); return; }
+  yield* champJoin(sh, 0x09, true);
+}
+// 32:6DCF Map04ChampJoinAsPartner: with the player facing left ($C0) the Palm champ (8) walks round the sofa by ($0500,
+// $0700), ($0500, $0B00), ($0700, $0B00) and the Dune champ (9) by ($0F00, $0700), ($0F00, $0B00), ($0D00, $0B00) (their
+// +$1A flags cleared first); sound $94; the champ follows the player (04:4525) as the partner: wPartnerSlot $C298,
+// wPartnerActor $C294, wPartnerId $C299 = slot - 3
+function* champJoinAsPartner(sh) {
+  const w = sh.w, arg = champArg(w);
+  D.setWramBank(w, 4);
+  const pl = rd(w, 0xC290) | rd(w, 0xC291) << 8;
+  if (rd(w, (pl + 0x10) & 0xFFFF) === 0xC0 && (arg === 0x08 || arg === 0x09)) {
+    wr(w, (A.actorSlotAddr(arg) + 0x1A) & 0xFFFF, 0x00);
+    const path = arg === 0x08 ? [[0x0500, 0x0700], [0x0500, 0x0B00], [0x0700, 0x0B00]] : [[0x0F00, 0x0700], [0x0F00, 0x0B00], [0x0D00, 0x0B00]];
+    for (const [bc, de] of path) { S.actorMoveTo(w, arg, bc, de); yield* S.waitActorMoveDone(sh, arg); }
+  }
+  sh.sound(0x94);
+  const hl = A.actorSlotAddr(arg);
+  D.inBank(w, 0x04, () => A.actorStartFollow(w, hl, rd(w, 0xC290) | rd(w, 0xC291) << 8));
+  wr(w, 0xC298, arg);
+  const p = A.actorSlotAddr(rd(w, 0xC298));
+  wr(w, 0xC294, p & 0xFF); wr(w, 0xC295, p >> 8);
+  wr(w, 0xC299, (arg - 7 + 4) & 0xFF);
+}
+// 32:63A8 / 63BA / 63CC / 63DE: the champs' talks
+function* champTalk(sh, base, slot) {
+  const w = sh.w;
+  if (slot === 0x0A) setFlag(w, 131);
+  wr(w, 0xC4BA, base & 0xFF); wr(w, 0xC4BB, base >> 8);
+  wr(w, 0xC4BC, slot);
+  yield* map04TalkClubChamp(sh);
 }
 // 32:6AB6 Map04ChampArrowTask (32:6735): the pointing hand (tile $7C, the attribute of 32:6AA2's entry; bit 5: it
 // bobs the other way) over the champ $C4B3 names (entry 0 is off screen), sound $90 every 16 frames while one is named
@@ -420,6 +543,8 @@ function* map04TriggerChampIntro(sh) {
 
 export const SCRIPTS = {
   "32:69b5": map04EnterLounge, "32:6739": map04TriggerChampIntro,
+  "32:63a8": sh => champTalk(sh, 0x01FD, 0x07), "32:63ba": sh => champTalk(sh, 0x0416, 0x08),
+  "32:63cc": sh => champTalk(sh, 0x042F, 0x09), "32:63de": sh => champTalk(sh, 0x0448, 0x0A),
   "32:7156": sh => map05Bookshelf(sh, 0x0806), "32:716c": sh => map05Bookshelf(sh, 0x080A),
   "32:71b4": map05TriggerWindTip, "32:7e67": mapScriptNop, "32:7966": map05Object1UpMushroom,
   "32:5e07": map03EnterClubhouse,

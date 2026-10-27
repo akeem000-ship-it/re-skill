@@ -16,6 +16,7 @@ import { MAP_SCRIPTS } from "./maps/index.js";
 import * as P from "./player.js";
 import * as W from "./windows.js";
 import { showMessage, showMessageKeepOpen } from "./msgbox.js";
+import * as T from "./msgbox.js";
 import { restoreShadowFromMap } from "./shadow.js";
 import { vectorFromLengthAndAngle } from "./math.js";
 import { actorSetAnim } from "./render/actors.js";
@@ -129,16 +130,14 @@ export function mapTakeWarp(w) {
   wr(w, 0xC46A, rd(w, 0xC407));
 }
 // 0A:4F45 MapInitObjects: flag #21 off, the actors reset (04:410D), the player at the entrance (04:510A), the actors
-// of the list hl in bank a (04:5084), the partner by flags #144-#147 (04:51D0: none so far)
+// of the list hl in bank a (04:5084), the partner by flags #144-#147 (04:51D0)
 export function mapInitObjects(w, a, hl) {
   clearFlag(w, 21);
   D.inBank(w, 0x04, () => {
     A.actorsInit(w);
     A.spawnPlayerActor(w, r16(w, 0xC466), r16(w, 0xC468), rd(w, 0xC465));
     A.spawnActorList(w, a, hl);
-    setW(w, 4);                                  // 04:51D0 SpawnPartnerActor
-    wr(w, 0xC298, 0xFF); wr(w, 0xC299, 0xFF); wr(w, 0xC294, 0); wr(w, 0xC295, 0);
-    if ([144, 145, 146, 147].some(n => testFlag(w, n))) notPorted("the partner's actor (~04:5212)");
+    A.spawnPartnerActor(w);                      // 04:51D0 SpawnPartnerActor
   });
 }
 // 0A:4120 ScriptRespawnActors: MapInitObjects with the list hl in bank a
@@ -156,7 +155,8 @@ export function* mapRunScript(sh, a, hl, b, end = true) {
     setW(w, wbank);
     return;
   }
-  const fn = MAP_SCRIPTS[`${h2(a)}:${h4(hl)}`];
+  const key = `${h2(a)}:${h4(hl)}`;
+  const fn = MAP_SCRIPTS[key] || LOCAL_SCRIPTS[key];
   if (!fn) notPorted(`the map script ~${h2(a)}:${h4(hl)}`);
   D.inBank(w, 0x0A, () => S.scriptBegin(w));     // 0A:4092
   setW(w, 4);
@@ -168,6 +168,30 @@ export function* mapRunScript(sh, a, hl, b, end = true) {
   setW(w, wbank);
   return r;
 }
+
+// 0A:536E the partner's talk: the partner faces the player; "Shall we stop here?" ($0C46 + the partner, 0A:53F0 /
+// 53FC: ids 4-7 -> 0-3; speaker 0) asked: No: nothing; Yes: $0C4A + the partner, the partner flags #144-#147 cleared,
+// its script reset (0A:4342), #118 cleared, the map again at the saved position (warp $FA)
+function* partnerTalk(sh) {
+  const w = sh.w;
+  const idx = id => (id === 4 ? 0 : id === 5 ? 1 : id === 6 ? 2 : id === 7 ? 3 : id);
+  S.actorFaceActor(w, rd(w, 0xC298), 0x00);
+  T.scriptSetText(w, (0x0C46 + idx(rd(w, 0xC299))) & 0xFFFF);
+  yield* T.scriptShowTextKeepOpen(sh, 0x00);
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* S.scriptWaitFrames(sh, 0x05);
+  if (a) return;
+  T.scriptSetText(w, (0x0C4A + idx(rd(w, 0xC299))) & 0xFFFF);
+  yield* T.scriptShowText(sh, 0x00);
+  for (const n of [144, 145, 146, 147]) clearFlag(w, n);
+  S.actorResetScript(w, rd(w, 0xC298));
+  clearFlag(w, 118);
+  wr(w, 0xC441, 0xFA); wr(w, 0xC46A, 0xFA);
+  for (let k = 0; k < 4; k++) wr(w, 0xC466 + k, rd(w, 0xC2A0 + k));
+  wr(w, 0xC465, rd(w, 0xC2A4));
+}
+const LOCAL_SCRIPTS = { "0a:536e": partnerTalk };
 
 // 0A:4A21 MapRun, as far as the enter script (0A:4F71 MapRunEnterScript: WY $90; MapRunScript with b = the player's
 // slot; the WRAM bank restored after it): returns the script's value. The script's end is mapRunAfterScript.
@@ -268,10 +292,14 @@ function mapFindObject(w) {
 const copyRecord = (w, bank, hl) => { for (let k = 0; k < 8; k++) wr(w, 0xC400 + k, rb(bank, hl + k)); };
 // 0A:4F96 MapTalkTo: the talk record of actor a: +6 bits: 0 the actor turns to the player (1 turns back after),
 // 3 animation 1 while talking ($C29F keeps the old), 4 clear: its script frozen (+$1A = $FF); +$36 = 1 meanwhile
-// ($C29E keeps it); the script +4 runs with b = the actor (the partner's talk 0A:5365 is not ported)
+// ($C29E keeps it); the script +4 runs with b = the actor; the partner's talk: 0A:504A
 function* mapTalkTo(sh, a) {
   const w = sh.w;
-  if (a === rd(w, 0xC298)) notPorted("talking to the partner (~0A:504A, 0A:5365)");
+  if (a === rd(w, 0xC298)) {                     // 0A:504A: the record 0A:5365 to $C400, its script with b = a
+    for (let k = 0; k < 8; k++) wr(w, 0xC400 + k, rb(0x0A, 0x5365 + k));
+    yield* mapRunScript(sh, 0x0A, r16(w, 0xC404), a);
+    return;
+  }
   const bank = rd(w, 0xC464);
   const hl = mapListFind(w, bank, r16(w, 0xC45C), a, true);
   if (!hl) return;

@@ -371,6 +371,26 @@ const CASES = [
   { name: "boot_kid_story_lounge", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
     ...routeCase(savedPolicy(0), [{ to: [0x2D, 0x05], map: 0x04 },
       [400, 0], { to: [0x0B, 0x13] }, { press: 1, every: 30, times: 90 }], 300) },
+  // the same, then the Marion Club Champ (actor 7, talk 32:63A8 -> 32:6B81): "Want to be partners?" Yes twice: he
+  // joins (32:6DCF: sound $94, following the player with the follow script 04:454B, op $0A 04:484D); a walk round the
+  // Lounge with him following, out to the clubhouse (map $03: the partner spawned with the player, 04:51D0), the
+  // counter's talk with a partner (32:5B5A)
+  { name: "boot_kid_story_champ", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
+    ...routeCase(savedPolicy(0), [{ to: [0x2D, 0x05], map: 0x04 },
+      [400, 0], { to: [0x0B, 0x13] }, { press: 1, every: 30, times: 90 },
+      { to: [0x07, 0x0B], at: [0x0710, 0x0B30], noA: true }, [2, 0x40], [20, 0],
+      { press: 1, every: 40, until: () => menuW.wram[0][0x298] !== 0xFF }, [200, 0],
+      [60, 0x80], [60, 0x10], [60, 0x40], [80, 0], { to: [0x18, 0x20], map: 0x03, noA: true }, [300, 0],
+      { to: [0x22, 0x21], at: [0x22F0, 0x2100], noA: true }, [2, 0x40], [20, 0], { press: 1, every: 60, times: 3 },
+      [200, 0]], 300) },
+  // the same join, then A on the partner (talk 0A:5365 -> 0A:536E): "Stop being partners?" Yes: the flags cleared,
+  // the map reloaded (warp $FA) without him
+  { name: "boot_kid_story_champ_part", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
+    ...routeCase(savedPolicy(0), [{ to: [0x2D, 0x05], map: 0x04 },
+      [400, 0], { to: [0x0B, 0x13] }, { press: 1, every: 30, times: 90 },
+      { to: [0x07, 0x0B], at: [0x0710, 0x0B30], noA: true }, [2, 0x40], [20, 0],
+      { press: 1, every: 40, until: () => menuW.wram[0][0x298] !== 0xFF }, [200, 0],
+      [2, 0x40], [20, 0], { press: 1, every: 40, times: 10 }, [300, 0]], 300) },
   // the clubhouse's top door (trigger 2, 32:5C09) to the Caddie Master's office (map $08, 33:4722): his call
   // (trigger 1, 33:4BD3), the round menu (33:5166)
   { name: "boot_kid_story_office", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(72),

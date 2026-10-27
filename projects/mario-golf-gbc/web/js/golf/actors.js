@@ -350,6 +350,7 @@ const OPS = {
   0x07: (w, bc, d) => walkAngle(w, (bc + 1) & 0xFFFF, d, 0),   // 04:46FB ActorOpWalkAngle
   0x08: (w, bc, d) => walkAngle(w, (bc + 1) & 0xFFFF, d, rd(w, f(w, 0x10))),   // 04:4756 ActorOpWalkTurn
   0x09: (w, bc) => opWander(w, bc),              // 04:47A2 ActorOpWander
+  0x0A: (w, bc) => opFollow(w, bc),              // 04:484D ActorOpFollow
   0x0B: (w, bc) => {                             // 04:48FC ActorOpChase
     const ld = r16(w, f(w, 0x18));
     const x = r16(w, ld + 4), y = r16(w, ld + 6);
@@ -395,6 +396,57 @@ const OPS = {
     return { a: (w.high[0x1E0] + 0x1B) & 0xFF, bc: (bc + 1) & 0xFFFF };
   },
 };
+// 04:484D ActorOpFollow: the leader (+$18) as far as dx^2 + dy^2 of the tile bytes (unsigned, 8-bit MulHLByA)
+// goes: quirk: the test is (dy + the sum's low byte) & $FF under 8 (the A that MulHLByA keeps); near: nothing; else
+// the leader's speed, and 2 tiles behind it (its facing + $80) unless that point's terrain is blocked (04:551E): the
+// target, turn limit $40 and walking when it moved; yields at the next opcode
+function opFollow(w, bc) {
+  const p = cur(w);
+  const ld = r16(w, (p & 0xFF00) | ((p + 0x18) & 0xFF));
+  const lp = o => (ld & 0xFF00) | ((ld + o) & 0xFF);
+  const ly = r16(w, lp(6)), lx = r16(w, (lp(6) + 1 - 3) & 0xFFFF);
+  const facing = rd(w, (lp(6) + 1 - 3 + 1 + 0x0B) & 0xFFFF);
+  const dx = ((lx >> 8) - rd(w, p + 5)) & 0xFF, dy = ((ly >> 8) - rd(w, p + 7)) & 0xFF;
+  const sum = (mulHLByA(dx, dx) + mulHLByA(dy, dy)) & 0xFFFF;
+  const next = (bc + 1) & 0xFFFF;
+  if (((dy + (sum & 0xFF)) & 0xFF) < 8) return { a: 0, bc: next };
+  const spd = r16(w, lp(0x0E));
+  w16(w, (p & 0xFF00) | ((p + 0x0E) & 0xFF), spd);
+  const [vx, vy] = vectorFromLengthAndAngle(0x200, (facing + 0x80) & 0xFF);   // 00:0AF2
+  const x = (vx + lx) & 0xFFFF, y = (ly + vy) & 0xFFFF;
+  if (terrainBlockedAt(w, x, y)) return { a: 0, bc: next };
+  w16(w, p + 0x0A, x); w16(w, p + 0x0C, y);
+  if (actorHasTarget(w)) { wr(w, p + 0x11, 0x40); wr(w, p + 0x12, 1); }
+  return { a: 0, bc: next };
+}
+// 04:4525 ActorStartFollow: hl = the actor, de = the leader (either 0: nothing): the follow script 04:454B (in the
+// mapped ROM bank), the leader, +$17 = 0
+export function actorStartFollow(w, hl, de) {
+  if (!(hl >> 8) || !(de >> 8)) return;
+  setW(w, 4);
+  actorSetScript(w, hl, 0x454B, w.high[0x195]);
+  actorSetLeader(w, hl, de);
+  wr(w, (hl + 0x17) & 0xFFFF, 0);
+}
+// 04:51D0 SpawnPartnerActor: wPartnerSlot $C298 / wPartnerId $C299 = $FF, wPartnerActor $C294 = 0; the first of the
+// flags #144-#147 set: the partner (id 4-7, records 04:517C / 5191 / 51A6 / 51BB) spawned in bank 4, following the
+// player (04:4525) with its facing and at its position
+export function spawnPartnerActor(w) {
+  setW(w, 4);
+  wr(w, 0xC298, 0xFF); wr(w, 0xC299, 0xFF); wr(w, 0xC294, 0); wr(w, 0xC295, 0);
+  const k = [144, 145, 146, 147].findIndex(n => testFlag(w, n));
+  if (k < 0) return;
+  wr(w, 0xC299, 4 + k);
+  const rec = 0x517C + 0x15 * k;
+  const p = actorSpawn(w, 0x04, i => far(0x04, rec + i));
+  if (!(p >> 8)) return;
+  wr(w, 0xC298, actorSlotOf(p));
+  w16(w, 0xC294, p);
+  const de = r16(w, 0xC290);
+  actorStartFollow(w, p, de);
+  wr(w, p + 0x10, rd(w, de + 0x10));
+  actorSetPosHLDE(w, p, r16(w, de + 4), r16(w, de + 6));
+}
 function walkAngle(w, bc, d, add) {
   const ang = (far(d, bc) + add) & 0xFF;
   const len = farWord(d, bc + 1);

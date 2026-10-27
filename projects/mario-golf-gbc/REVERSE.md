@@ -101,6 +101,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the Links driving range and approach range with their lessons and contests (maps $15 / $16, 31:67C8, 30:597C), the Field's marker sprite (34:4FCC) | 149,812 | 61.73% |
 | + the letter at the tree (34:4847), its reading on map $25 (35:79D2) and the path's opening (34:5019), the Grand Champion's return to the Field (34:5218) | 150,992 | 62.22% |
 | + the start menu's Char. Data (41:6506 with the name and EXP header 41:5598 and the clock task 41:587C) and Stars (0A:6F56, the event list) | 152,559 | 62.86% |
+| + the Lounge's champions (32:6B81) and partners: joining (32:6DCF), following (04:484D), spawned on each map (04:51D0), the counter's partner lines (32:5B5A / 5BBE), sent away (0A:536E) | 153,898 | 63.41% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -238,6 +239,8 @@ given to the native code). All cases match frame for frame:
 | boot_kid_story_linksapproachcontest | the same with the Links won and the mound lesson passed (#172 poked): the contest (30:6414 sets #224; the offer 30:6159, game mode 5, ten approaches counted on the HUD by the hooks 30:6052 / 605C), the result (30:60DA) | 11,846 |
 | boot_kid_story_letter | the Links won (#114 #115 #139 poked): on the Field, A at the tree (trigger $0F, its cell set by 34:4719): the sparkle (34:52C0), the letter falls (34:512E), map $25 reads it (35:79D2: #123, the save flag $1E0), the Field's entrance $0F: the path opens (34:5019: the flying sprite 34:51B9, the burst 34:5396, #125, 34:46E6, the marker's frames and task) | 6,953 |
 | boot_kid_story_chardata | Start in the clubhouse: Char. Data (41:7943 -> 41:6506: the stats screen with the name, EXP and clock header), A back to the map; Start, Down, A: Stars (0A:6F56): Right twice through the pages (0A:6E47), Down to scroll, Left, B back | 4,860 |
+| boot_kid_story_champ | the Lounge's tour, then the Marion Club Champ (32:63A8 -> 32:6B81): Yes twice, he joins (32:6DCF) and follows (04:484D); a walk, out to the clubhouse (04:51D0 spawns him with the player), the counter's partner line (32:5B5A) | 10,056 |
+| boot_kid_story_champ_part | the same join, then A on the partner (0A:5365 -> 0A:536E): Yes, he leaves (the flags cleared, warp $FA), then his own talk again at his place | 8,918 |
 | boot_kid_story_green | the office's way to the putting green (map $0E, 30:69B9), "Practice here?" declined, the pro's putting challenge (30:6739, game mode 5, the hooks 30:6C2F / 6C58), the result (30:6CF2, not cleared) | 12,839 |
 | boot_kid_story_green_quit | the same, Start at the aim: the mini-game pause menu (41:6F9F), Quit Mini-Game | 7,647 |
 | boot_kid_story_green_cleared | the same with ten made (poked): cleared, 25 EXP (30:6EC8), the level-up screen, SaveGame, the map again at $FA | 12,839 |
@@ -546,7 +549,7 @@ Navigation (41:7413).
 `boot_kid_story_lounge`: through door 4 to the Lounge, its first visit's tour): map $03 (bank 32): the enter script
 32:5E07 (entrances 3-7 come out of a door: 32:5D94 opens it, walks the player out and closes it; a door moves in four
 frames of 3 frames each, copied from the map buffer's rows $3C / $3E), the door triggers 32:5CAF-5D2F (the door opens, the player
-walks in, the warp), the exits 32:5C09 / 5C25, the counter 32:56EA / 5704 (the partner's line not ported), the
+walks in, the warp), the exits 32:5C09 / 5C25, the counter 32:56EA / 5704 (with a partner: 32:5B5A by the clubs won, 32:5BBE by the course), the
 bookshelf 32:5BEA; the doors' tiles change through MapBufCopyRectRedraw 0B:4864 (a rectangle of the map buffer copied
 and the visible part redrawn). Map $05: the enter script 32:7461 (its cover-up scene ~32:7533 not ported), the
 bookshelves 32:7156 / 716C, the wind tip 32:71B4, the 1-Up Mushroom 32:7966 (FadeToLevelUpScreen 32:7EE7), and the
@@ -554,7 +557,14 @@ no-op script 32:7E67. Map $06, the Locker Room (bank 34, `maps/bank34.js`): the 
 grumpy golfer 34:407F (a random gripe; bumped into three times, the screen shakes), the lockers 34:41E8 (objects 1-10:
 open, a random find of 16, closed), the trigger 34:429B. Map $04, the Lounge: the enter script 32:69B5 and the
 first visit's tour 32:6739 (the arrow over each champion, a frame task 32:6735 -> 32:6AB6; LoadCursorSprite 01:4289);
-the champions' talks (32:6B81) and a partner joining (32:6DCF, SpawnPartnerActor 04:51D0) are not ported.
+the champions' talks (`boot_kid_story_champ`: the talks 32:63A8 / 63BA / 63CC / 63DE with their text bases and
+slots, Map04TalkClubChamp 32:6B81 with its whole branch tree, ChampSay 32:6AFF / ChampAsk 32:6B17 and the club flag
+helpers) and a partner joining (32:6DCF: sound $94, ActorStartFollow 04:4525, the follow op $0A 04:484D; quirk kept:
+its closeness test is (dy + the low byte of dx^2 + dy^2) & $FF < 8), spawned again with the player on every map
+(SpawnPartnerActor 04:51D0: the record 04:517C + $15 k, id 4 + k, the player's facing and position). Talking to the
+partner (`boot_kid_story_champ_part`; MapTalkTo's partner record 0A:5365 -> 0A:536E): "Shall we stop here?" ($0C46 +
+k), Yes: $0C4A + k, #144-#147 and #118 cleared, the script reset, warp $FA. Not ported: the office's talk with a
+partner ~33:4ABB, the question before leaving ~33:4FEF, the Match Game ~33:4F4B and its quitting ~34:553A.
 **The Caddie Master's office** (maps $08-$0B, one header 33:400A, the club = wMapId - 8; `maps/bank33.js`;
 `boot_kid_story_office`): the enter script 33:4722 (the temporary flags, Marion's talk list 33:4389, #227
 qualified / #226 the club won; maps $09-$0B's golfers and decorations ~33:4757 not ported), the call when the
