@@ -5,14 +5,16 @@
 import * as D from "../render/display.js";
 import * as Scr from "../screen.js";
 import * as S from "../script.js";
+import * as A from "../actors.js";
 import * as T from "../msgbox.js";
 import * as M from "../mapengine.js";
 import * as St from "../start.js";
 import { golfSessionEnd } from "../boot.js";
+import { saveGame } from "../save.js";
 import { advanceRandomSeed } from "../round.js";
 import { expToNextLevel } from "../exp.js";
 import { pushTextNumberArg, setTextCourseIndex } from "../text.js";
-import { mapBufCopyRectRedraw } from "../mapgfx.js";
+import { mapBufCopyRectRedraw, mapCopyTerrainRect, mapCopyEventRect } from "../mapgfx.js";
 
 const rd = D.rd, wr = D.wr;
 function notPorted(what) { throw new Error(`${what} is not ported`); }
@@ -469,10 +471,10 @@ function* startClubRound(sh, kind, mode) {
 function* clubRound(sh) {
   const w = sh.w;
   // 33:4F96 SetClubCourseAndReturn: MapSaveReturnPoint 0A:4D5B (this map, entrance 6), SetCourseHole 10:423B
-  // (course = club = wMapId - 7, hole 1; the wind byte h is 1)
+  // (course = club = wMapId - 7, hole 1; the wind byte is a, still 6 from 33:4F96's entrance: MapSaveReturnPoint keeps af)
   const m = mapId(w);
   wr(w, 0xC960, m); wr(w, 0xC961, 0x06);
-  St.setCourseHole(w, 0x01, m - 7, 0x01);
+  St.setCourseHole(w, 0x06, m - 7, 0x01);
   if (!sh.playGolfRound) notPorted("a club round outside the game loop");
   yield* sh.playGolfRound(flag(w, 72) ? 0x01 : 0x12);             // 33:66CB
   yield* inBankGen(w, 0x10, golfSessionEnd(sh));
@@ -646,6 +648,724 @@ function* map08TriggerStepBack(sh) {
   S.actorLockSpriteFacing(w, 0x00, 0x00);
 }
 
+// ---- map $1C, the Road to Peach's Castle (header 33:56BE) ----
+// 33:588F Map1CEnterRoadToCastle: #125, no name banner
+function* map1CEnter(sh) {
+  const w = sh.w;
+  setFlag(w, 125);
+  wr(w, 0xC4B4, 0); wr(w, 0xC4B5, 0);
+}
+// a launcher frame: the map buffer's 4 x l block at (b, c) to (9, e), redrawn (0B:4864)
+const launcherFrame = (sh, b, c, e, l) => inBankGen(sh.w, 0x0B, mapBufCopyRectRedraw(sh, b, c, 0x09, e, 0x04, l));
+// 33:5899 Map1CLauncherOpenAnim: the frames from columns $15 $1A $1F $24 $29 (row $0B) to (9, $0B), each with sound
+// $9A and 30 frames (the last 15)
+function* launcherOpenAnim(sh) {
+  for (const b of [0x15, 0x1A, 0x1F, 0x24, 0x29]) {
+    yield* launcherFrame(sh, b, 0x0B, 0x0B, 0x04);
+    sh.sound(0x9A);
+    yield* wait(sh, b === 0x29 ? 0x0F : 0x1E);
+  }
+}
+// 33:5912 Map1CLauncherShootAnim: frame $15 (row $10, 4 x 6 to (9, 9)), the player to ($0B00, $0A80), sound $9B, 20
+// frames; the player and the Bob-omb at speed $1A, the player flying (state 2) to ($0B00, $0100); frames $1A, $1F;
+// the Bob-omb's facing locked, sound $89, it hops and goes to ($0B00, $1200); the player at speed $10, animation $0A;
+// frame $24, 5 frames, frame $29, 10 frames
+function* launcherShootAnim(sh) {
+  const w = sh.w;
+  yield* launcherFrame(sh, 0x15, 0x10, 0x09, 0x06);
+  S.actorMoveTo(w, 0x00, 0x0B00, 0x0A80);
+  sh.sound(0x9B);
+  yield* wait(sh, 0x14);
+  S.actorSetSpeed(w, 0x00, 0x001A);
+  S.actorSetSpeed(w, 0x05, 0x001A);
+  S.actorSetState(w, 0x00, 0x02);
+  S.actorMoveTo(w, 0x00, 0x0B00, 0x0100);
+  yield* launcherFrame(sh, 0x1A, 0x10, 0x09, 0x06);
+  yield* launcherFrame(sh, 0x1F, 0x10, 0x09, 0x06);
+  S.actorLockSpriteFacing(w, 0x05, 0x01);
+  sh.sound(0x89);
+  S.actorJump(w, 0x05, 0xFF40);
+  S.actorMoveTo(w, 0x05, 0x0B00, 0x1200);
+  yield* S.waitActorMoveDone(sh, 0x05);
+  S.actorSetSpeed(w, 0x00, 0x0010);
+  S.actorPlayAnim(w, 0x00, 0x0A);
+  yield* launcherFrame(sh, 0x24, 0x10, 0x09, 0x06);
+  yield* wait(sh, 0x05);
+  yield* launcherFrame(sh, 0x29, 0x10, 0x09, 0x06);
+  yield* wait(sh, 0x0A);
+}
+// 33:57CE Map1CBobombLaunch: the player hidden (state 0), 15 frames, animation 2; the Bob-omb (actor 5) at speed $0C
+// to ($0900, $1040) and ($0B00, $1080), 15 frames, facing up; the player to ($0B00, $0700); the launcher opens
+// (33:5899); the Bob-omb to ($0B00, $0F00), 10 frames, its animation 7; the shot (33:5912), sound $9C, 45 frames,
+// the player hidden, 20 frames, fade out (2), warp 1 (Peach's Castle)
+function* bobombLaunch(sh) {
+  const w = sh.w;
+  S.actorSetState(w, 0x00, 0x00);
+  yield* wait(sh, 0x0F);
+  S.actorPlayAnim(w, 0x00, 0x02);
+  S.actorSetSpeed(w, 0x05, 0x000C);
+  S.actorMoveTo(w, 0x05, 0x0900, 0x1040);
+  yield* S.waitActorMoveDone(sh, 0x05);
+  S.actorMoveTo(w, 0x05, 0x0B00, 0x1080);
+  yield* S.waitActorMoveDone(sh, 0x05);
+  yield* wait(sh, 0x0F);
+  S.actorSetFacing(w, 0x05, 0xC0);
+  yield* S.scriptActorGoTo(sh, 0x00, 0x0B00, 0x0700);
+  yield* launcherOpenAnim(sh);
+  yield* S.waitScriptActorIdle(sh);
+  S.actorMoveTo(w, 0x05, 0x0B00, 0x0F00);
+  yield* S.waitActorMoveDone(sh, 0x05);
+  yield* wait(sh, 0x0A);
+  S.actorPlayAnim(w, 0x05, 0x07);
+  yield* S.waitActorAnimDone(sh, 0x05);
+  yield* launcherShootAnim(sh);
+  sh.sound(0x9C);
+  yield* wait(sh, 0x2D);
+  S.actorSetState(w, 0x00, 0x00);
+  yield* wait(sh, 0x14);
+  Scr.beginFadeOut(w, 0x02);
+  yield* Scr.waitFade(sh);
+  wr(w, 0xC441, 0x01);
+}
+// 33:57A6 Map1CWalkToBobomb (trigger 1): the player to ($0B00, $0DC0) (not awaited), facing up, 5 frames, animation
+// $0A, 20 frames, the launch (33:57CE)
+function* map1CWalkToBobomb(sh) {
+  const w = sh.w;
+  S.actorMoveTo(w, 0x00, 0x0B00, 0x0DC0);
+  S.actorSetFacing(w, 0x00, 0xC0);
+  yield* wait(sh, 0x05);
+  S.actorPlayAnim(w, 0x00, 0x0A);
+  yield* wait(sh, 0x14);
+  yield* bobombLaunch(sh);
+}
+// 33:5729 Map1CTalkBobombJump (talk 6, the second entry): sound $8A, the player hops, 33:57A6
+function* map1CTalkBobombJump(sh) {
+  sh.sound(0x8A);
+  S.actorJump(sh.w, 0x00, 0xFF40);
+  yield* map1CWalkToBobomb(sh);
+}
+// 33:5737 Map1CTalkBobomb (talk 6): sound $8A, the player hops, to ($0B00, $0DC0), facing up, animation $0A, 10
+// frames, the launch (33:57CE)
+function* map1CTalkBobomb(sh) {
+  const w = sh.w;
+  sh.sound(0x8A);
+  S.actorJump(w, 0x00, 0xFF40);
+  yield* moveAndWait(sh, 0x00, 0x0B00, 0x0DC0);
+  S.actorSetFacing(w, 0x00, 0xC0);
+  S.actorPlayAnim(w, 0x00, 0x0A);
+  yield* wait(sh, 0x0A);
+  yield* bobombLaunch(sh);
+}
+// 33:5876 Map1CTriggerExit (trigger 2): sound $99, warp 2
+function* map1CTriggerExit(sh) { sh.sound(0x99); wr(sh.w, 0xC441, 0x02); }
+
+// ---- map $1D, Peach's Castle (header 33:5AC6) ----
+// 33:5F5B Map1DResultTestEntrances: entrances $0A / $0B / $0C (a test's way in) fake the result 1 / 2 / 3, set #126
+// and become entrance 6
+function map1DResultTestEntrances(w) {
+  const r = { 0x0A: 1, 0x0B: 2, 0x0C: 3 }[rd(w, 0xC46A)];
+  if (!r) return;
+  wr(w, 0xC96C, r);
+  setFlag(w, 126);
+  wr(w, 0xC46A, 0x06);
+}
+// 33:5F8F Map1DSetResultFlags: entrance 6 with a result: #106 (else entrance 6 with none: nothing more); other
+// entrances but $FA clear #106; then #106 sets #240 and the result #241 (1) / #243 (4 or more) / #242
+function map1DSetResultFlags(w) {
+  const e = rd(w, 0xC46A);
+  if (e === 0x06) {
+    if (rd(w, 0xC96C) === 0) return;
+    setFlag(w, 106);
+  } else if (e !== 0xFA) clearFlag(w, 106);
+  if (flag(w, 106)) setFlag(w, 240);
+  const r = rd(w, 0xC96C);
+  setFlag(w, r === 1 ? 241 : r >= 4 ? 243 : 242);
+}
+// 33:63F9 Map1DOpenCastleDoor: #127: the open door's 8 x 5 block from ($2A, 6) to ($1A, 6): tiles redrawn, terrain
+// and events (0B:4864, 0B:4653, 0B:4699)
+function* map1DOpenCastleDoor(sh) {
+  const w = sh.w;
+  if (!flag(w, 127)) return;
+  yield* inBankGen(w, 0x0B, mapBufCopyRectRedraw(sh, 0x2A, 0x06, 0x1A, 0x06, 0x08, 0x05));
+  mapCopyTerrainRect(w, 0x2A, 0x06, 0x1A, 0x06, 0x08, 0x05);
+  mapCopyEventRect(w, 0x2A, 0x06, 0x1A, 0x06, 0x08, 0x05);
+}
+// 33:5FCE: entrance 1 (shot over from the road): sound $9C, the player pops up, 2 frames, fade in (4), its facing
+// locked, to ($1400, $1100) then ($1400, $0F00), 2 frames, two hops (sound $8A) with the facing unlocked between
+function* map1DArriveFromRoad(sh) {
+  const w = sh.w;
+  if (rd(w, 0xC46A) !== 0x01) return;
+  sh.sound(0x9C);
+  S.actorJump(w, 0x00, 0xFF00);
+  yield* wait(sh, 0x02);
+  Scr.beginFadeIn(w, 0x04);
+  S.actorLockSpriteFacing(w, 0x00, 0x01);
+  yield* S.scriptActorGoTo(sh, 0x00, 0x1400, 0x1100);
+  yield* moveAndWait(sh, 0x00, 0x1400, 0x0F00);
+  yield* wait(sh, 0x02);
+  sh.sound(0x8A);
+  S.actorJump(w, 0x00, 0xFF80);
+  yield* S.waitActorLanded(sh, 0x00);
+  S.actorLockSpriteFacing(w, 0x00, 0x00);
+  yield* wait(sh, 0x02);
+  sh.sound(0x8A);
+  S.actorJump(w, 0x00, 0xFF80);
+  yield* S.waitActorLanded(sh, 0x00);
+}
+// 33:6040 Map1DPlayerArrivesAnim: the player pops up (sound $9C), 2 frames, fade in (4), its facing locked, to
+// ($1400, $1300), 2 frames, to ($1400, $0F00), 2 frames, two hops (sound $8A) with the facing unlocked between
+function* map1DPlayerArrives(sh) {
+  const w = sh.w;
+  S.actorJump(w, 0x00, 0xFF00);
+  sh.sound(0x9C);
+  yield* wait(sh, 0x02);
+  Scr.beginFadeIn(w, 0x04);
+  S.actorLockSpriteFacing(w, 0x00, 0x01);
+  yield* S.scriptActorGoTo(sh, 0x00, 0x1400, 0x1300);
+  yield* wait(sh, 0x02);
+  yield* moveAndWait(sh, 0x00, 0x1400, 0x0F00);
+  yield* wait(sh, 0x02);
+  sh.sound(0x8A);
+  S.actorJump(w, 0x00, 0xFF80);
+  yield* S.waitActorLanded(sh, 0x00);
+  S.actorLockSpriteFacing(w, 0x00, 0x00);
+  yield* wait(sh, 0x02);
+  sh.sound(0x8A);
+  S.actorJump(w, 0x00, 0xFF80);
+  yield* S.waitActorLanded(sh, 0x00);
+}
+// 33:6E5D LoadEffectSpritesB: the tiles 33:6CB0 ($18 blocks) to VRAM0 $8500, OBJ palette 7 (d = $0F) from 33:6E3D
+function loadEffectSpritesB(w) {
+  if (w.vram) w.lcd.vbk = 0;
+  D.inBank(w, 0x33, () => {
+    D.queueVRAMCopy(w, 0x6CB0, 0x8500, 0x18);
+    D.loadPalettesImmediate(w, 0x6E3D, 0x0F, 0x01);
+  });
+}
+// 33:6E75 DrawEffectFrameAtPoint: the sprite 33:6E30 at the map's ($1600, $0C80) less the scroll (<< 3, the high
+// bytes) for 6 frames, tiles c, attributes b
+function* drawEffectFrame(sh, b, c) {
+  const w = sh.w;
+  for (let h = 0x06; h; h--) {
+    const x = (((0x1600 - (rd(w, 0xC320) | rd(w, 0xC321) << 8)) & 0xFFFF) << 3) >> 8 & 0xFF;
+    const y = (((0x0C80 - (rd(w, 0xC322) | rd(w, 0xC323) << 8)) & 0xFFFF) << 3) >> 8 & 0xFF;
+    D.inBank(w, 0x33, () => D.queueSpriteTemplate(w, 0x6E30, y, x, c, b));
+    yield* sh.advance();
+  }
+}
+// 33:6EAA PlayEffectAnim: the tiles $50, $56, $5C (attributes 7) four times
+function* playEffectAnim(sh) {
+  for (let k = 0; k < 4; k++) for (const c of [0x50, 0x56, 0x5C]) yield* drawEffectFrame(sh, 0x07, c);
+}
+// 33:60B2 Map1DFirstVisitScene: #116 (Peach's Castle placed) -> 33:5FCE; #127 sets #126; #126 -> 33:5FCE; else the
+// welcome: music $10, Peach (actor 2) and Toad (6) placed, the arrival (33:6040), 60 frames, #126, texts from $144A
+// through Toad (3), Peach (2), Bowser ($0C), Yoshi ($0A, with its effect sprites 33:6E5D / 33:6EAA and actor
+// scripts 33:6F39 / 6F40), Luigi (8), Mario (7), and "May we begin the tournament?" (33:66DC)
+function* map1DFirstVisitScene(sh) {
+  const w = sh.w;
+  if (flag(w, 116)) { yield* map1DArriveFromRoad(sh); return; }
+  if (flag(w, 127)) setFlag(w, 126);
+  if (flag(w, 126)) { yield* map1DArriveFromRoad(sh); return; }
+  sh.sound(0x10);
+  S.actorSetPos(w, 0x02, 0x1400, 0x0700);
+  S.actorSetPos(w, 0x06, 0x1F00, 0x0B00);
+  yield* map1DPlayerArrives(sh);
+  yield* wait(sh, 0x3C);
+  setFlag(w, 126);
+  T.scriptSetText(w, 0x144A);
+  sh.sound(0x8A);
+  S.actorJump(w, 0x03, 0xFF80);
+  yield* S.waitActorLanded(sh, 0x03);
+  yield* moveAndWait(sh, 0x03, 0x1280, 0x1100);
+  S.actorFaceActor(w, 0x03, 0x00);
+  yield* wait(sh, 0x1E);
+  S.actorPlayAnim(w, 0x03, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x03);
+  yield* T.scriptShowText(sh, 0x03);
+  S.actorFaceActor(w, 0x03, 0x02);
+  yield* T.scriptShowText(sh, 0x03);
+  S.actorLockSpriteFacing(w, 0x03, 0x01);
+  yield* S.scriptActorGoToActor(sh, 0x02, 0x00);
+  yield* moveAndWait(sh, 0x03, 0x1100, 0x1300);
+  S.actorLockSpriteFacing(w, 0x03, 0x00);
+  S.actorPlayAnim(w, 0x02, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x02);
+  yield* wait(sh, 0x1E);
+  S.actorFaceActor(w, 0x00, 0x02);
+  yield* T.scriptShowText(sh, 0x02);
+  S.actorPlayAnim(w, 0x02, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x02);
+  yield* T.scriptShowText(sh, 0x02);
+  S.actorPlayAnim(w, 0x00, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x00);
+  yield* wait(sh, 0x1E);
+  S.actorPlayAnim(w, 0x02, 0x07);
+  yield* S.waitActorAnimDone(sh, 0x02);
+  yield* moveAndWait(sh, 0x02, 0x1400, 0x0A00);
+  S.actorSetFacing(w, 0x02, 0x80);
+  yield* wait(sh, 0x1E);
+  S.actorSetFacing(w, 0x02, 0x40);
+  yield* wait(sh, 0x1E);
+  S.actorSetFacing(w, 0x02, 0x00);
+  yield* wait(sh, 0x1E);
+  S.actorSetFacing(w, 0x02, 0x40);
+  yield* S.scriptActorGoToActor(sh, 0x00, 0x00);
+  yield* S.waitScriptActorIdle(sh);
+  yield* T.scriptShowText(sh, 0x02);
+  S.actorPlayAnim(w, 0x02, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x02);
+  yield* T.scriptShowText(sh, 0x02);
+  S.actorPlayAnim(w, 0x0C, 0x07);
+  yield* S.waitActorAnimDone(sh, 0x0C);
+  yield* T.scriptShowText(sh, 0x0C);
+  S.actorSetFacing(w, 0x00, 0x80);
+  yield* moveAndWait(sh, 0x0C, 0x1000, 0x0F00);
+  yield* T.scriptShowText(sh, 0x0C);
+  S.actorPlayAnim(w, 0x0C, 0x06);
+  yield* S.waitActorAnimDone(sh, 0x0C);
+  yield* T.scriptShowText(sh, 0x0C);
+  loadEffectSpritesB(w);
+  sh.sound(0x9D);
+  S.actorJump(w, 0x0A, 0xFF80);
+  yield* moveAndWait(sh, 0x0A, 0x1800, 0x1000);
+  S.actorPlayAnim(w, 0x0A, 0x07);
+  yield* S.waitActorAnimDone(sh, 0x0A);
+  S.actorSetScript(w, 0x0A, 0x6F39, 0x33);
+  yield* playEffectAnim(sh);
+  sh.sound(0x9D);
+  S.actorPlayAnim(w, 0x0A, 0x06);
+  yield* S.waitActorAnimDone(sh, 0x0A);
+  S.actorPlayAnim(w, 0x0A, 0x06);
+  S.actorJump(w, 0x0A, 0xFF80);
+  yield* S.waitActorLanded(sh, 0x0A);
+  S.actorPlayAnim(w, 0x0A, 0x07);
+  yield* playEffectAnim(sh);
+  yield* wait(sh, 0x0A);
+  sh.sound(0x9D);
+  S.actorPlayAnim(w, 0x0A, 0x06);
+  yield* playEffectAnim(sh);
+  S.actorFaceActor(w, 0x08, 0x0A);
+  S.actorPlayAnim(w, 0x08, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x08);
+  S.actorFaceActor(w, 0x08, 0x0C);
+  yield* T.scriptShowText(sh, 0x08);
+  S.actorPlayAnim(w, 0x08, 0x06);
+  yield* S.waitActorAnimDone(sh, 0x08);
+  yield* moveAndWait(sh, 0x08, 0x1000, 0x0D00);
+  S.actorSetScript(w, 0x0A, 0x6F40, 0x33);
+  S.actorPlayAnim(w, 0x08, 0x07);
+  yield* S.waitActorAnimDone(sh, 0x08);
+  yield* T.scriptShowText(sh, 0x08);
+  S.actorsFaceEachOther(w, 0x0C, 0x08);
+  S.actorPlayAnim(w, 0x0C, 0x07);
+  yield* S.waitActorAnimDone(sh, 0x0C);
+  yield* T.scriptShowText(sh, 0x0C);
+  S.actorFaceActor(w, 0x02, 0x0C);
+  yield* S.scriptActorGoToActor(sh, 0x02, 0x00);
+  yield* S.waitScriptActorIdle(sh);
+  S.actorPlayAnim(w, 0x02, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x02);
+  yield* T.scriptShowText(sh, 0x02);
+  S.actorSetFacing(w, 0x0C, 0x00);
+  S.actorSetFacing(w, 0x08, 0x00);
+  S.actorLockSpriteFacing(w, 0x08, 0x01);
+  yield* moveAndWait(sh, 0x08, 0x1000, 0x0C00);
+  S.actorSetFacing(w, 0x00, 0xC0);
+  S.actorLockSpriteFacing(w, 0x08, 0x00);
+  S.actorSetFacing(w, 0x08, 0x00);
+  yield* wait(sh, 0x14);
+  S.actorsFaceEachOther(w, 0x02, 0x07);
+  yield* wait(sh, 0x28);
+  S.actorPlayAnim(w, 0x07, 0x05);
+  S.actorPlayAnim(w, 0x02, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x02);
+  yield* S.scriptActorGoToActor(sh, 0x00, 0x00);
+  yield* S.waitScriptActorIdle(sh);
+  S.actorFaceActor(w, 0x07, 0x00);
+  S.actorFaceActor(w, 0x02, 0x00);
+  yield* wait(sh, 0x1E);
+  yield* map1DAskStartTournament(sh);
+}
+// 33:6E45 LoadEffectSpritesA: the tiles 33:6C10 (8 blocks) to VRAM0 $8600, OBJ palette 7 (d = $0F) from 33:6CA1
+function loadEffectSpritesA(w) {
+  if (w.vram) w.lcd.vbk = 0;
+  D.inBank(w, 0x33, () => {
+    D.queueVRAMCopy(w, 0x6C10, 0x8600, 0x08);
+    D.loadPalettesImmediate(w, 0x6CA1, 0x0F, 0x01);
+  });
+}
+// 33:6BB3 DrawMapSpriteFrames: the sprite 33:6C90 for 5 frames (tiles c, attributes b) at the map point ($E8, $48 +
+// $C3E2) in 1/32 tiles less the scroll (<< 3, the high bytes; quirk kept: $C3E2 is added as an unsigned byte with its
+// carry, so the "rising" offsets $FE, $FC... put the point $100 / 32 tiles further down)
+function* drawMapSpriteFrames(sh, b, c) {
+  const w = sh.w;
+  for (let h = 0x05; h; h--) {
+    const x = ((((0xE8 << 5) - (rd(w, 0xC320) | rd(w, 0xC321) << 8)) & 0xFFFF) << 3 & 0xFFFF) >> 8;
+    const y = (((((0x48 + rd(w, 0xC3E2)) << 5) & 0xFFFF) - (rd(w, 0xC322) | rd(w, 0xC323) << 8) & 0xFFFF) << 3 & 0xFFFF) >> 8;
+    D.inBank(w, 0x33, () => D.queueSpriteTemplate(w, 0x6C90, y, x, c, b));
+    yield* sh.advance();
+  }
+}
+// 33:6B62 Map1DRisingSpriteEffect: five times the tiles $60, $62, $64, $66 (attributes 7), $C3E2 down by 2 before
+// each
+function* risingSpriteEffect(sh) {
+  const w = sh.w;
+  wr(w, 0xC3E2, 0); wr(w, 0xC3E0, 0);
+  while (rd(w, 0xC3E0) !== 0x05) {
+    for (const c of [0x60, 0x62, 0x64, 0x66]) {
+      wr(w, 0xC3E2, (rd(w, 0xC3E2) + 0xFE) & 0xFF);
+      yield* drawMapSpriteFrames(sh, 0x07, c);
+    }
+    wr(w, 0xC3E0, (rd(w, 0xC3E0) + 1) & 0xFF);
+  }
+}
+// 33:642C Map1DTournamentOpening (after "May we begin?" Yes): with #127 (the door already open) straight to the
+// round (33:668D); else $146E, Mario (7) and Peach (2) face each other then down and bow, Toad (6) leads the player
+// to ($1F00, $0B00), his effect sprites (33:6E45) and the rising effect (33:6B62) at the door, fade out (2), #127,
+// the actors' palettes (04:4D2B), the door opened (33:63F9), fade in (2); Toad steps aside, Peach comes over: two
+// texts; the residents' cheering (scripts 33:6EFA / 6F15 / 6F21, hops), 100 frames; Peach and the player walk
+// through the door and are put away ($1F00, $3000); then 33:668D: no result yet, sound $99, wStoryRoundKind $0A,
+// fade out (4), GolfSessionInit 10:4B28, the return point (map $1D, entrance 6), game mode 1 (a tournament), the
+// player and no second player (02:4A28), course 5 hole 1 (10:423B: the wind byte a is 0, left by ClearMemory16),
+// the round (33:66CB: 1 hole with #72, else 18), GolfSessionEnd 10:4B94
+function* map1DTournamentOpening(sh) {
+  const w = sh.w;
+  if (!flag(w, 127)) {
+    T.scriptSetText(w, 0x146E);
+    S.actorsFaceEachOther(w, 0x07, 0x02);
+    yield* wait(sh, 0x1E);
+    S.actorSetFacing(w, 0x07, 0x00);
+    S.actorSetFacing(w, 0x02, 0x00);
+    S.actorPlayAnim(w, 0x02, 0x05);
+    S.actorPlayAnim(w, 0x07, 0x05);
+    yield* S.waitActorAnimDone(sh, 0x07);
+    S.actorSetFacing(w, 0x06, 0x80);
+    yield* S.scriptActorGoTo(sh, 0x00, 0x1F00, 0x0B00);
+    yield* S.waitScriptActorIdle(sh);
+    S.actorSetFacing(w, 0x06, 0x80);
+    S.actorPlayAnim(w, 0x06, 0x05);
+    yield* S.waitActorAnimDone(sh, 0x06);
+    S.actorSetFacing(w, 0x06, 0xC0);
+    loadEffectSpritesA(w);
+    yield* wait(sh, 0x1E);
+    S.actorPlayAnim(w, 0x06, 0x06);
+    yield* S.waitActorAnimDone(sh, 0x06);
+    S.actorPlayAnim(w, 0x06, 0x06);
+    yield* S.waitActorAnimDone(sh, 0x06);
+    yield* risingSpriteEffect(sh);
+    Scr.beginFadeOut(w, 0x02);
+    S.actorPlayAnim(w, 0x06, 0x06);
+    yield* S.waitActorAnimDone(sh, 0x06);
+    setFlag(w, 127);
+    D.inBank(w, 0x04, () => A.loadActorPalettes(w));               // 04:4D2B
+    yield* map1DOpenCastleDoor(sh);
+    Scr.beginFadeIn(w, 0x02);
+    yield* Scr.waitFade(sh);
+    S.actorSetFacing(w, 0x06, 0x80);
+    yield* wait(sh, 0x14);
+    S.actorLockSpriteFacing(w, 0x06, 0x01);
+    S.actorMoveTo(w, 0x06, 0x2100, 0x0B00);
+    yield* S.waitActorMoveDone(sh, 0x06);
+    S.actorLockSpriteFacing(w, 0x06, 0x00);
+    S.actorSetFacing(w, 0x06, 0x80);
+    yield* S.scriptActorGoToActor(sh, 0x02, 0x00);
+    yield* S.waitScriptActorIdle(sh);
+    S.actorFaceActor(w, 0x02, 0x00);
+    yield* T.scriptShowText(sh, 0x02);
+    S.actorPlayAnim(w, 0x02, 0x05);
+    yield* S.waitActorAnimDone(sh, 0x02);
+    yield* T.scriptShowText(sh, 0x02);
+    sh.sound(0x89);
+    S.actorJump(w, 0x0B, 0xFF80);
+    S.actorSetScript(w, 0x0A, 0x6EFA, 0x33);
+    S.actorMoveDir(w, 0x07, 0x40, 0x0200);
+    sh.sound(0x8A);
+    S.actorJump(w, 0x09, 0xFF40);
+    yield* S.waitActorLanded(sh, 0x09);
+    sh.sound(0x89);
+    S.actorJump(w, 0x07, 0xFF40);
+    yield* S.waitActorLanded(sh, 0x07);
+    S.actorSetScript(w, 0x0A, 0x6F15, 0x33);
+    S.actorSetScript(w, 0x09, 0x6F15, 0x33);
+    S.actorSetScript(w, 0x0B, 0x6F15, 0x33);
+    S.actorSetScript(w, 0x07, 0x6F15, 0x33);
+    S.actorSetScript(w, 0x08, 0x6F15, 0x33);
+    S.actorSetScript(w, 0x0C, 0x6F21, 0x33);
+    yield* wait(sh, 0x64);
+    S.actorSetSpeed(w, 0x02, 0x0010);
+    S.actorSetSpeed(w, 0x00, 0x0010);
+    S.actorMoveTo(w, 0x02, 0x1400, 0x0C00);
+    yield* S.waitActorMoveDone(sh, 0x02);
+    S.actorPlayAnim(w, 0x02, 0x05);
+    yield* S.waitActorAnimDone(sh, 0x02);
+    S.actorMoveTo(w, 0x02, 0x1F00, 0x0B00);
+    S.scriptActorSetSpeed(w, 0x0010);
+    yield* S.scriptActorGoTo(sh, 0x00, 0x2100, 0x0B00);
+    yield* wait(sh, 0x1E);
+    S.actorMoveTo(w, 0x00, 0x1F00, 0x0D00);
+    yield* S.waitActorMoveDone(sh, 0x02);
+    S.actorSetFacing(w, 0x02, 0xC0);
+    yield* wait(sh, 0x03);
+    S.actorMoveTo(w, 0x02, 0x1F00, 0x0800);
+    yield* wait(sh, 0x0A);
+    S.actorPlayAnim(w, 0x02, 0x0A);
+    yield* wait(sh, 0x14);
+    S.actorMoveTo(w, 0x00, 0x1F00, 0x0800);
+    yield* S.waitActorMoveDone(sh, 0x02);
+    S.actorPlayAnim(w, 0x00, 0x0A);
+    S.actorSetPos(w, 0x02, 0x1F00, 0x3000);
+    yield* wait(sh, 0x14);
+    yield* S.waitActorMoveDone(sh, 0x00);
+    S.actorSetPos(w, 0x00, 0x1F00, 0x3000);
+  }
+  wr(w, 0xC96C, 0x00);                                            // 33:668D
+  sh.sound(0x99);
+  wr(w, 0xC967, 0x0A);
+  Scr.beginFadeOut(w, 0x04);
+  yield* Scr.waitFade(sh);
+  St.golfSessionInit(w);
+  wr(w, 0xC960, 0x1D); wr(w, 0xC961, 0x06);                     // 0A:4D5B MapSaveReturnPoint
+  wr(w, 0xC834, 0x01);
+  St.setupPlayerGolfer(w, 0x80, 0x00);
+  St.setupPlayerGolfer(w, 0xFF, 0x01);
+  St.setCourseHole(w, 0x00, 0x05, 0x01);
+  if (!sh.playGolfRound) notPorted("Peach's Tournament outside the game loop");
+  yield* sh.playGolfRound(flag(w, 72) ? 0x01 : 0x12);             // 33:66CB
+  yield* inBankGen(w, 0x10, golfSessionEnd(sh));
+}
+// 33:66DC Map1DAskStartTournament: "May we begin the tournament?" ($1477, Peach) asked: No: after a round (#240)
+// $1476, else the next text ($1478); Yes: the player to ($1400, $0F00) facing up, the opening (33:642C)
+function* map1DAskStartTournament(sh) {
+  const w = sh.w;
+  T.scriptSetText(w, 0x1477);
+  yield* T.scriptShowTextKeepOpen(sh, 0x02);
+  yield* wait(sh, 0x0A);
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* wait(sh, 0x05);
+  if (a) {
+    if (flag(w, 240)) T.scriptSetText(w, 0x1476);
+    yield* T.scriptShowText(sh, 0x02);
+    return;
+  }
+  yield* moveAndWait(sh, 0x00, 0x1400, 0x0F00);
+  S.actorSetFacing(w, 0x00, 0xC0);
+  yield* map1DTournamentOpening(sh);
+}
+// 33:672A Map1DAwardCeremony: unless back from Peach's Tournament (entrance 6) placed 1-3: music $10 (33:69F5).
+// Placed: a win sets #111, the return point (map 0, entrance $FA) and saves (02:4489) unless #111 was already set
+// (then straight to 33:696B); the stage (2 x 2 block $2A,$10 to $10,$11), the actors 33:6A00, the player led to Peach
+// (speed $40) and put at ($1400, $0E00); the trophy by the place (the 2 x 2 blocks $2A / $2D / $30,$0D to $13,$0E;
+// the other two trophy actors $0E-$10 hidden; text $1479 and #121 for a win, else $147A with the place as its
+// number and #121 cleared); sound $04 and $93, fade in (2), the trophy handed over ($147B), fade out (4); then
+// 33:696B: a win: ~40:6666 ShowPictureTimed and ~0A:56B1 EndingSequence (not ported); else after a round kind $32
+// warp 2, or the actors 33:6ABD, the stage blocks ($2D,$10 and $30,$10 to $13,$0E / $10,$11), music $10, the player
+// at ($1400, $0F00), 60 frames, fade in (4)
+function* map1DAwardCeremony(sh) {
+  const w = sh.w;
+  const r = rd(w, 0xC96C);
+  if (rd(w, 0xC46A) !== 0x06 || r === 0 || r >= 4) { sh.sound(0x10); return; }
+  if (!flag(w, 111)) {
+    if (r === 1) {
+      setFlag(w, 111);
+      wr(w, 0xC960, 0x00); wr(w, 0xC961, 0xFA);                   // 0A:4D5B MapSaveReturnPoint
+      saveGame(w);                                                // 02:4489
+    }
+    yield* inBankGen(w, 0x0B, mapBufCopyRectRedraw(sh, 0x2A, 0x10, 0x10, 0x11, 0x02, 0x02));   // 33:675C
+    M.scriptRespawnActors(w, 0x33, 0x6A00);
+    S.scriptActorSetSpeed(w, 0x0040);
+    yield* S.scriptActorGoToActor(sh, 0x02, 0x00);
+    S.actorSetPos(w, 0x00, 0x1400, 0x0E00);
+    const trophy = b => inBankGen(w, 0x0B, mapBufCopyRectRedraw(sh, b, 0x0D, 0x13, 0x0E, 0x02, 0x02));
+    if (r === 1) {
+      yield* trophy(0x2A);
+      S.actorSetState(w, 0x0F, 0x00); S.actorSetState(w, 0x10, 0x00);
+      T.scriptSetText(w, 0x1479);
+      setFlag(w, 121);
+    } else {
+      clearFlag(w, 121);
+      yield* trophy(r === 2 ? 0x2D : 0x30);
+      T.scriptSetText(w, 0x147A);
+      S.actorSetState(w, 0x0E, 0x00); S.actorSetState(w, r === 2 ? 0x10 : 0x0F, 0x00);
+      pushTextNumberArg(w, r);                                    // 05:551F
+    }
+  sh.sound(0x04);
+  sh.sound(0x93);
+  yield* S.waitScriptActorIdle(sh);
+  Scr.beginFadeIn(w, 0x02);
+  yield* Scr.waitFade(sh);
+  S.actorSetSpeed(w, 0x02, 0x0008);
+  S.actorSetSpeed(w, 0x0E, 0x0008);
+  S.actorSetSpeed(w, 0x0F, 0x0008);
+  S.actorSetSpeed(w, 0x10, 0x0008);
+  yield* wait(sh, 0x96);
+  S.actorPlayAnim(w, 0x02, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x02);
+  yield* T.scriptShowText(sh, 0x02);
+  S.actorMoveTo(w, 0x02, 0x1300, 0x1200);
+  yield* S.waitActorMoveDone(sh, 0x02);
+  S.actorMoveTo(w, 0x0E, 0x1380, 0x1180);
+  S.actorMoveTo(w, 0x0F, 0x1380, 0x1180);
+  S.actorMoveTo(w, 0x10, 0x1380, 0x1180);
+  yield* wait(sh, 0x1E);
+  S.actorSetFacing(w, 0x02, 0xC0);
+  S.actorSetPos(w, 0x0E, 0x13C0, 0x1100);
+  S.actorSetPos(w, 0x0F, 0x13C0, 0x1100);
+  S.actorSetPos(w, 0x10, 0x13C0, 0x1100);
+  S.actorMoveTo(w, 0x02, 0x1400, 0x1080);
+  yield* wait(sh, 0x0A);
+  S.actorMoveTo(w, 0x0E, 0x1400, 0x1000);
+  S.actorMoveTo(w, 0x0F, 0x1400, 0x1000);
+  S.actorMoveTo(w, 0x10, 0x1400, 0x1000);
+  yield* S.waitActorMoveDone(sh, 0x02);
+  S.actorFaceActor(w, 0x02, 0x00);
+  S.actorPlayAnim(w, 0x02, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x02);
+  S.actorPlayAnim(w, 0x00, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x00);
+  T.scriptSetText(w, 0x147B);
+  yield* T.scriptShowText(sh, 0x02);
+  sh.sound(0x93);
+  S.actorMoveTo(w, 0x0E, 0x1480, 0x0F40);
+  S.actorMoveTo(w, 0x0F, 0x1480, 0x0F40);
+  S.actorMoveTo(w, 0x10, 0x1480, 0x0F40);
+  yield* wait(sh, 0x1E);
+  S.actorPlayAnim(w, 0x00, 0x07);
+  yield* wait(sh, 0x96);
+  Scr.beginFadeOut(w, 0x04);
+  yield* Scr.waitFade(sh);
+  }
+  if (r === 1) notPorted("the ending after Peach's Tournament (~40:6666, ~0A:56B1)");   // 33:696B
+  if (rd(w, 0xC967) === 0x32) { wr(w, 0xC441, 0x02); return; }   // 33:69A5
+  M.scriptRespawnActors(w, 0x33, 0x6ABD);
+  yield* inBankGen(w, 0x0B, mapBufCopyRectRedraw(sh, 0x2D, 0x10, 0x13, 0x0E, 0x02, 0x02));
+  yield* inBankGen(w, 0x0B, mapBufCopyRectRedraw(sh, 0x30, 0x10, 0x10, 0x11, 0x02, 0x02));
+  sh.sound(0x10);
+  S.actorSetPos(w, 0x00, 0x1400, 0x0F00);
+  yield* wait(sh, 0x3C);
+  Scr.beginFadeIn(w, 0x04);
+  yield* Scr.waitFade(sh);
+}
+// 33:5F42 Map1DEnterPeachsCastle: no name banner, #125, 33:5F5B, 33:5F8F, the door (33:63F9), the first visit
+// (33:60B2), the ceremony (33:672A)
+function* map1DEnter(sh) {
+  const w = sh.w;
+  wr(w, 0xC4B4, 0); wr(w, 0xC4B5, 0);
+  setFlag(w, 125);
+  map1DResultTestEntrances(w);
+  map1DSetResultFlags(w);
+  yield* map1DOpenCastleDoor(sh);
+  yield* map1DFirstVisitScene(sh);
+  yield* map1DAwardCeremony(sh);
+}
+// 33:5F25 Map1DTriggerExit (trigger 1): sound $9C, fade out (8), 30 frames, warp 1
+function* map1DTriggerExit(sh) {
+  const w = sh.w;
+  sh.sound(0x9C);
+  Scr.beginFadeOut(w, 0x08);
+  yield* wait(sh, 0x1E);
+  wr(w, 0xC441, 0x01);
+}
+// 33:5BD1 Map1DTalkGoBackDown (talk $0E, object 1): sound $8A, the player hops ($FF40), 5 frames, to ($1500,
+// $1D00), put away, 33:5F25
+function* map1DGoBackDown(sh) {
+  const w = sh.w;
+  sh.sound(0x8A);
+  S.actorJump(w, 0x00, 0xFF40);
+  yield* wait(sh, 0x05);
+  yield* moveAndWait(sh, 0x00, 0x1500, 0x1D00);
+  S.actorSetPos(w, 0x00, 0x3F00, 0x3F00);
+  yield* map1DTriggerExit(sh);
+}
+// 33:5C4D Map1DTalkPeach (talk 2): beaten Mario (#117) or won (#241): $1474 shown, then the next text asked; placed
+// out of the three (#243): $1470 asked; placed (#240): $1472 asked; no round yet: 33:66DC; Yes -> 33:66DC, No -> the
+// next text shown
+function* map1DTalkPeach(sh) {
+  const w = sh.w;
+  if (!flag(w, 117)) {
+    if (!flag(w, 240)) { yield* map1DAskStartTournament(sh); return; }
+    if (flag(w, 241)) { T.scriptSetText(w, 0x1474); yield* T.scriptShowText(sh, 0x02); }
+    else T.scriptSetText(w, flag(w, 243) ? 0x1470 : 0x1472);
+  } else { T.scriptSetText(w, 0x1474); yield* T.scriptShowText(sh, 0x02); }
+  yield* T.scriptShowTextKeepOpen(sh, 0x02);                      // 33:5C89
+  yield* wait(sh, 0x0A);
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* wait(sh, 0x05);
+  if (!a) { yield* map1DAskStartTournament(sh); return; }
+  yield* T.scriptShowText(sh, 0x02);
+}
+// 33:5C01 Map1DTalkPeachWalk (talk 2, facing $60): Peach's animation 5, the player round her to ($1600, $0840),
+// ($1600, $0D00), she faces left, the player to ($1400, $0D00) facing her, then 33:5C4D
+function* map1DTalkPeachWalk(sh) {
+  const w = sh.w;
+  S.actorPlayAnim(w, 0x02, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x02);
+  yield* moveAndWait(sh, 0x00, 0x1600, 0x0840);
+  yield* moveAndWait(sh, 0x00, 0x1600, 0x0D00);
+  S.actorSetFacing(w, 0x02, 0x40);
+  yield* moveAndWait(sh, 0x00, 0x1400, 0x0D00);
+  S.actorFaceActor(w, 0x00, 0x02);
+  yield* map1DTalkPeach(sh);
+}
+// a text, the next one after #117 (ScriptSkipText 0A:4140), speaker b: 33:5CB0 Mario ($145A, 7), 33:5D51 / 5D65 /
+// 5D79 the residents ($1464 / $1466 / $1468; 5 / 4 / 5)
+function* map1DTalkAfter117(sh, id, b) {
+  const w = sh.w;
+  T.scriptSetText(w, id);
+  if (flag(w, 117)) T.scriptSkipText(w);
+  yield* T.scriptShowText(sh, b);
+}
+// 33:5CC4 Map1DTalkLuigi (talk 8): #117 $1460; else $145E, + 1 after a round (#240) placed (not #243), + 1 more
+// when not #242 (won); speaker 8
+function* map1DTalkLuigi(sh) {
+  const w = sh.w;
+  T.scriptSetText(w, 0x1460);
+  if (!flag(w, 117)) {
+    T.scriptSetText(w, 0x145E);
+    if (flag(w, 240) && !flag(w, 243)) {
+      T.scriptSkipText(w);
+      if (!flag(w, 242)) T.scriptSkipText(w);
+    }
+  }
+  yield* T.scriptShowText(sh, 0x08);
+}
+// 33:5D2A Map1DTalkBowser (talk $0C): #117 $1463; else $1461, + 1 after a round (#240), + 1 more when won (#241);
+// speaker $0C
+function* map1DTalkBowser(sh) {
+  const w = sh.w;
+  T.scriptSetText(w, 0x1463);
+  if (!flag(w, 117)) {
+    T.scriptSetText(w, 0x1461);
+    if (flag(w, 240)) {
+      T.scriptSkipText(w);
+      if (flag(w, 241)) T.scriptSkipText(w);
+    }
+  }
+  yield* T.scriptShowText(sh, 0x0C);
+}
+// 33:5CFC Map1DTalkDK (talk $0B): ScriptBegin, $145D (speaker $0B), ScriptEnd
+function* map1DTalkDK(sh) {
+  const w = sh.w;
+  D.inBank(w, 0x0A, () => S.scriptBegin(w));
+  T.scriptSetText(w, 0x145D);
+  yield* T.scriptShowText(sh, 0x0B);
+  D.inBank(w, 0x0A, () => S.scriptEnd(w));
+}
+// 33:5D0E / 5D1C Map1DTalkYoshiA / B (talk $0A): $1459 with sound $9D, speaker $83 / $81
+function* map1DTalkYoshi(sh, b) {
+  T.scriptSetText(sh.w, 0x1459);
+  sh.sound(0x9D);
+  yield* T.scriptShowText(sh, b);
+}
+// 33:5EE5 Map1DObjectCastleDoor (object 3): sound $9E; $147E ("shut tight"), or $147D with flag #23; speaker $80
+function* map1DObjectCastleDoor(sh) {
+  const w = sh.w;
+  sh.sound(0x9E);
+  T.scriptSetText(w, flag(w, 23) ? 0x147D : 0x147E);
+  yield* T.scriptShowText(sh, 0x80);
+}
+
 export const SCRIPTS = {
   "33:4722": map08Enter,
   "33:4bd3": map08TriggerCallOver,
@@ -663,5 +1383,26 @@ export const SCRIPTS = {
   "33:451b": sh => map08TriggerExit(sh, 0x3520, 0x03),
   "33:4545": map08TriggerExitDown,
   "33:45c7": map08TriggerStepBack,
+  "33:588f": map1CEnter,
+  "33:5737": map1CTalkBobomb,
+  "33:5729": map1CTalkBobombJump,
+  "33:57a6": map1CWalkToBobomb,
+  "33:5876": map1CTriggerExit,
+  "33:5f42": map1DEnter,
+  "33:5f25": map1DTriggerExit,
+  "33:5bd1": map1DGoBackDown,
+  "33:5c4d": map1DTalkPeach,
+  "33:5c01": map1DTalkPeachWalk,
+  "33:5cb0": sh => map1DTalkAfter117(sh, 0x145A, 0x07),
+  "33:5d51": sh => map1DTalkAfter117(sh, 0x1464, 0x05),
+  "33:5d65": sh => map1DTalkAfter117(sh, 0x1466, 0x04),
+  "33:5d79": sh => map1DTalkAfter117(sh, 0x1468, 0x05),
+  "33:5cc4": map1DTalkLuigi,
+  "33:5cf0": function* (sh) { T.scriptSetText(sh.w, 0x145C); yield* T.scriptShowText(sh, 0x09); },   // 33:5CF0 the baby
+  "33:5cfc": map1DTalkDK,
+  "33:5d0e": sh => map1DTalkYoshi(sh, 0x83),
+  "33:5d1c": sh => map1DTalkYoshi(sh, 0x81),
+  "33:5d2a": map1DTalkBowser,
+  "33:5ee5": map1DObjectCastleDoor,
 };
 export const TASKS = () => ({});

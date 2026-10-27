@@ -183,6 +183,57 @@ function setChallengerText(w, hl) {
   wr(w, 0xC4BC, k);
   T.scriptSetText(w, (hl + k) & 0xFFFF);
 }
+// 34:544D Map02ConfirmMarioChallenge: no challenger following -> 1 (go on); else "Taking on Mario?" ($0C4F + the
+// partner, speaker its slot) with the player facing it: No: the player steps back 2 tiles (direction $40) -> 0;
+// Yes: the player faces it, $0C53 + the partner, its script reset, 34:54FA (#144 + it and #118 cleared), the player's
+// animation 5, 30 frames, warp 5 -> 1
+function* map02ConfirmMarioChallenge(sh) {
+  const w = sh.w;
+  if (![144, 145, 146, 147].some(n => flag(w, n))) return 1;
+  setChallengerText(w, 0x0C4F);
+  yield* T.scriptShowTextKeepOpen(sh, rd(w, 0xC298));
+  S.actorFaceActor(w, 0x00, rd(w, 0xC298));
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* wait(sh, 0x05);
+  if (a) { S.actorMoveDir(w, 0x00, 0x40, 0x0200); return 0; }    // 34:54B7
+  S.actorFaceActor(w, 0x00, rd(w, 0xC298));
+  setChallengerText(w, 0x0C53);
+  yield* T.scriptShowText(sh, rd(w, 0xC298));
+  S.actorResetScript(w, rd(w, 0xC298));
+  clearFlag(w, (144 + rd(w, 0xC4BC)) & 0xFFFF);
+  clearFlag(w, 118);
+  S.actorPlayAnim(w, 0x00, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x00);
+  yield* wait(sh, 0x1E);
+  wr(w, 0xC441, 0x05);
+  return 1;
+}
+// 34:532E Map02FlashPaletteWarp: sound $99; BG palette 2 from 34:5290, 5 frames; three times: 34:5250, 5258, 5260,
+// 5268 (5 frames each), then 34:5290 again (5 frames)
+function* flashPaletteWarp(sh) {
+  const w = sh.w;
+  const pal = hl => D.inBank(w, 0x34, () => D.loadPalettesImmediate(w, hl, 0x02, 0x01));
+  sh.sound(0x99);
+  wr(w, 0xC3E0, 0x00);
+  for (;;) {
+    pal(0x5290);
+    yield* wait(sh, 0x05);
+    if (rd(w, 0xC3E0) === 0x03) return;
+    for (const hl of [0x5250, 0x5258, 0x5260, 0x5268]) { pal(hl); yield* wait(sh, 0x05); }
+    wr(w, 0xC3E0, (rd(w, 0xC3E0) + 1) & 0xFF);
+  }
+}
+// 34:450C Map02Trigger05RoadToPeachsCastle: 34:544D (0: stay); warp 5 (the Road to Peach's Castle), the player's
+// walk script 34:55A6, the palette flash (34:532E), fade out (8)
+function* map02Trigger05(sh) {
+  const w = sh.w;
+  if (!(yield* map02ConfirmMarioChallenge(sh))) return;
+  wr(w, 0xC441, 0x05);
+  S.actorSetScript(w, 0x00, 0x55A6, 0x34);
+  yield* flashPaletteWarp(sh);
+  Scr.beginFadeOut(w, 0x08);
+}
 // 34:5530 Map02ConfirmQuitMatchGame: no challenger following (34:5512: flags #144-#147) -> 0; else the partner faces
 // the player, "Quitting this Match Game?" ($0C46 + the partner, speaker wPartnerId $C299) with the player facing it:
 // No -> 1; Yes: $0C4A + the partner, the player faces up, 34:54FA Map02DropChallenger (#144 + $C4BC and #118
@@ -565,6 +616,7 @@ export const SCRIPTS = {
   "34:4497": sh => map02TriggerEnter(sh, 2, 0x0500, 0x1B00),
   "34:44c6": sh => map02TriggerEnter(sh, 3, 0x2100, 0x2F00),
   "34:44f5": sh => map02TriggerEnter(sh, 4),
+  "34:450c": map02Trigger05,
   ...Object.fromEntries([0x4618, 0x4627, 0x4636, 0x4645, 0x4654, 0x4663, 0x4672, 0x4681].map((a, k) => [`34:${a.toString(16)}`, sh => map02TriggerPlace(sh, 6 + k)])),
   "34:483b": map02Trigger0F,
   "34:77eb": map30Enter,

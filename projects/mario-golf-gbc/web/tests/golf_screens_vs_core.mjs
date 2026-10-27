@@ -596,6 +596,37 @@ const CASES = [
   { name: "boot_kid_story_letter", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(114, 115, 139),
     ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x1C, 0x18], at: [0x1CD0, 0x19F0], noA: true }, [2, 0x40], [20, 0], [2, 1], { to: [0x1C, 0x18], map: 0x25 },
       { press: 1, every: 40, until: () => menuW.wram[0][0x450] === 0x02 }, [1500, 0]], 300) },
+  // the path open (#114 #115 #139 #123 #125 poked; #149: the clubhouse member's "Going outside?" seen): the Field's
+  // trigger 5 (34:450C: the palette flash 34:532E, the walk script 34:55A6) to the Road to Peach's Castle (map $1C, 33:588F); A on the launcher (talk 6, 33:5737): the Bob-omb's launch
+  // (33:57CE, the launcher 33:5899 / 5912) to Peach's Castle (map $1D, 33:5F42): the first visit's welcome (33:60B2,
+  // the arrival 33:6040, Yoshi's effect 33:6E5D / 6EAA), "May we begin the tournament?" (33:66DC) No
+  { name: "boot_kid_story_castle", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(114, 115, 139, 123, 125, 149),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x14, 0x12], map: 0x1C, noA: true },
+      [300, 0], { to: [0x0D, 0x0D], noA: true }, [2, 0x20], [20, 0], [2, 1], { press: 0, every: 40, until: () => menuW.wram[0][0x450] === 0x1D }, ...ynNo, { press: 1, every: 40, times: 5 }, [200, 0]], 300) },
+  // the same, "May we begin the tournament?" Yes: the opening (33:642C: the door opened, #127, the cheering), Peach's
+  // Tournament (course 5, one hole: #72 poked; the result poked to 5, out of the places, once it is over), back at
+  // the castle's entrance 6 (33:5F8F: #106, #240, #243)
+  { name: "boot_kid_story_peachround", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 40000,
+    hook: (() => { const fp = flagPoke(114, 115, 139, 123, 125, 149, 72); let done = false; return (f, w, core) => {
+      fp(f, w, core);
+      if (!done && roundsDone >= 1) { done = true; w.wram[0][0x96C] = 5; core.wram(0)[0x96C] = 5; }
+    }; })(),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x14, 0x12], map: 0x1C, noA: true },
+      [300, 0], { to: [0x0D, 0x0D], noA: true }, [2, 0x20], [20, 0], [2, 1], { press: 0, every: 40, until: () => menuW.wram[0][0x450] === 0x1D },
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
+      { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x1D }, [400, 0]], 300) },
+  // the same with the result poked to 2: the award ceremony (33:672A: the stage, Peach and the trophy actors 33:6A00,
+  // the second place's trophy, $147A with the place, $147B), then the castle again (33:69B2)
+  { name: "boot_kid_story_peachsecond", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 40000,
+    hook: (() => { const fp = flagPoke(114, 115, 139, 123, 125, 149, 72); let done = false; return (f, w, core) => {
+      fp(f, w, core);
+      if (!done && roundsDone >= 1) { done = true; w.wram[0][0x96C] = 2; core.wram(0)[0x96C] = 2; }
+    }; })(),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x14, 0x12], map: 0x1C, noA: true },
+      [300, 0], { to: [0x0D, 0x0D], noA: true }, [2, 0x20], [20, 0], [2, 1], { press: 0, every: 40, until: () => menuW.wram[0][0x450] === 0x1D },
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
+      { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x1D }, { press: 1, every: 40, times: 30 },
+      [400, 0]], 300) },
   // the Field, A with nothing ahead: the Navigation menu (0A:7174): Down twice, Up, Down, A: the place's guide on the
   // Field again (0A:7878: its name, the arrow, the marker); a walk; Start: the start menu's Navigation (41:7413): B
   { name: "boot_kid_story_nav", state: "boot_poweron_kid", open: true, noRet: true, sram: true,

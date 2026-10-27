@@ -167,6 +167,7 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
       console.log(`frame ${frame}: game ${lastCall} / js ${js}`);
     }
     const { out, px, keys } = compare();
+    if (process.env.KEYS && frame === +process.env.KEYS) console.log(`frame ${frame} keys: ${out.join("; ")}`);   // (debugging: what differs)
     let lag = false;
     for (let f = frame - 3; f <= frame; f++) if (lagFrames.has(f)) lag = true;
     const now = new Set(keys);

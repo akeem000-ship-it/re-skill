@@ -104,6 +104,8 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the Lounge's champions (32:6B81) and partners: joining (32:6DCF), following (04:484D), spawned on each map (04:51D0), the counter's partner lines (32:5B5A / 5BBE), sent away (0A:536E) | 153,898 | 63.41% |
 | + partners in the offices (33:4ABB, the Match Game against the partner 33:4F4B, the question before leaving 33:4FEF) and on the Field (34:5530) | 154,202 | 63.54% |
 | + the Match Game Event after a won match (map $30, 34:77EB with the club rooms 34:7CED) | 155,254 | 63.97% |
+| + the Road to Peach's Castle (34:450C, map $1C) and Peach's Castle up to the tournament's question (map $1D, 33:5F42) | 159,490 | 65.72% |
+| + Peach's Tournament: its opening (33:642C), the round and the award ceremony for the places (33:672A) | 159,673 | 65.79% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -245,6 +247,9 @@ given to the native code). All cases match frame for frame:
 | boot_kid_story_champ_part | the same join, then A on the partner (0A:5365 -> 0A:536E): Yes, he leaves (the flags cleared, warp $FA), then his own talk again at his place | 8,918 |
 | boot_kid_story_partnermatch | the champion joins; the Caddie Master's call with a partner (33:4ABB): Yes, the walk out, the Match Game against him (33:4F4B, one hole: #72 poked), back to the office (33:4666: result 2, the partner leaves), his next call (a tournament) | 19,269 |
 | boot_kid_story_matchwon | the same Match Game won (the result poked to 1 after the round, #86 poked): warp 9 to the Match Game Event (map $30, 34:77EB: the club's room, the beaten champion's scene with the other three), back to the office (wStoryRoundKind $5A) | 23,309 |
+| boot_kid_story_castle | the path open (#114 #115 #139 #123 #125 #149 poked): the Field's trigger 5 (34:450C) to the Road to Peach's Castle (map $1C), A on the launcher: the Bob-omb's launch (33:57CE) to Peach's Castle (map $1D): the first visit's welcome (33:60B2), "May we begin the tournament?" (33:66DC) No | 9,141 |
+| boot_kid_story_peachround | the same, Yes: the tournament's opening (33:642C), Peach's Tournament (course 5, one hole: #72 poked; the result poked to 5), back at the castle (33:5F8F) | 15,349 |
+| boot_kid_story_peachsecond | the same with the result poked to 2: the award ceremony (33:672A) for the second place, then the castle (33:69B2) | 16,549 |
 | boot_kid_story_partnerleave | the same call answered No (33:4B91); out by the driving range's trigger: the partner's question (33:4FEF) No (a step back), again Yes (he leaves), the range | 11,626 |
 | boot_kid_story_partnerfield | the champion joins, out to the Field, up onto Windy Valley's trigger: "Quitting this Match Game?" (34:5530) No | 10,452 |
 | boot_kid_story_green | the office's way to the putting green (map $0E, 30:69B9), "Practice here?" declined, the pro's putting challenge (30:6739, game mode 5, the hooks 30:6C2F / 6C58), the result (30:6CF2, not cleared) | 12,839 |
@@ -612,8 +617,31 @@ paths 34:4769 (a block for each of #86 #84 #82 #80 still clear), #114's area 34:
 with MapCopyEventRect 0B:4699 / MapCopyTerrainRect 0B:4653 (`mapgfx.js`) and MapBufCopyRectRedraw 0B:4864); the
 triggers into the Marion clubhouse and the Palm, Dune and Links offices 34:4474-44F5 (the walk in 34:452A), the side
 places 34:4618-4681 (warps 6-$0D: a challenger following, 34:5530 asks first). The letter at the tree (34:4847),
-entrances $0E / $0F (34:5218 / 34:5019) and the marker sprite (34:4FCC) are described with the letter below. Not
-ported: the Road to Peach's Castle (34:450C).
+entrances $0E / $0F (34:5218 / 34:5019) and the marker sprite (34:4FCC) are described with the letter below; the
+Road to Peach's Castle's trigger 5 (34:450C) with Peach's Castle below.
+**The Road to Peach's Castle and Peach's Castle** (maps $1C / $1D, bank 33; `boot_kid_story_castle`): the Field's
+trigger 5 (34:450C: Map02ConfirmMarioChallenge 34:544D asks a following champion first, "Taking on Mario?" $0C4F +
+k; the player's walk script 34:55A6, Map02FlashPaletteWarp 34:532E, fade out). Map $1C: the enter script 33:588F
+(#125), the launcher (talk 6 33:5737 / 5729, trigger 1 33:57A6): Map1CBobombLaunch 33:57CE with the launcher's
+frames (33:5899 opening, 33:5912 shooting: 4 x 4 / 4 x 6 blocks of the map buffer redrawn by 0B:4864), warp 1;
+trigger 2 33:5876. Map $1D: the enter script 33:5F42 (33:5F5B the test entrances $0A-$0C, 33:5F8F the result flags:
+quirk kept, an entrance other than 6 with no result still sets #242; 33:63F9 the open door with #127), the first
+visit 33:60B2 (the arrival 33:6040, the welcome by Toad, Peach, Bowser, Yoshi with its effect sprites 33:6E5D /
+6E75 / 6EAA and actor scripts 33:6F39 / 6F40, Luigi and Mario), later visits from the road 33:5FCE, "May we begin
+the tournament?" 33:66DC (No: the next text, or $1476 after a round), the talks (Peach 33:5C4D / 5C01, Mario
+33:5CB0, Luigi 33:5CC4, the baby 33:5CF0, DK 33:5CFC, Yoshi 33:5D0E / 5D1C, Bowser 33:5D2A, the residents 33:5D51 /
+5D65 / 5D79), the door 33:5EE5, the way back down 33:5BD1 / 5F25. Yes to the question (`boot_kid_story_peachround`):
+the opening 33:642C (the door opened with #127 after Toad's effect sprites 33:6E45 and the rising effect 33:6B62 /
+6BB3, whose $C3E2 offsets are added as unsigned bytes with their carry, a quirk kept; the actors' palettes 04:4D2B;
+the residents' cheering scripts 33:6EFA / 6F15 / 6F21), then Peach's Tournament from 33:668D (wStoryRoundKind $0A,
+game mode 1, course 5 hole 1, return point map $1D entrance 6; the wind byte SetCourseHole gets is a, 0 from
+SetupPlayerGolfer's ClearMemory16; the club rounds' 33:4F96 leaves it 6, now passed as such). Back at entrance 6
+placed 1-3 (`boot_kid_story_peachsecond`) the award ceremony 33:672A (the stage and trophy blocks, the actors
+33:6A00, $1479 / $147A with the place, $147B; a first win sets #111, the return point map 0 / $FA and saves), then
+33:69B2 (the actors 33:6ABD). Not ported: the win's ShowPictureTimed ~40:6666 and EndingSequence ~0A:56B1,
+Toad's practice round ~33:5D8D, the 1-Up Mushroom ~33:6F47. After the one-hole round both cases keep a difference in
+the hidden BG row $9BE0 ($9BE3 / $9BEE), first seen during a lag frame of the round and so classed with the lag
+frames (as the Palm wind case's); nothing visible differs. `KEYS=frame` prints what differs at a frame.
 **The navigation** (`nav.js`; `boot_kid_story_nav`): NavigationMenu 0A:7174 (A on the Field with nothing ahead,
 or the start menu's Navigation 41:7413): the places whose flags (0A:6FA9, ListEntryFlag 0A:6CAF) are set
 (NavBuildEntries 0A:73D3), the frame (LZ 0A:6FE5 / 0A:7085), the title and seven names (0A:7387, PrintTextToBuffer),
