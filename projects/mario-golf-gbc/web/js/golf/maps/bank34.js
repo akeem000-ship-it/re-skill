@@ -175,16 +175,43 @@ function* map02TriggerEnter(sh, warp, x, y) {
   Scr.beginFadeOut(w, 0x08);
   yield* wait(sh, 0x1E);
 }
-// 34:5530 Map02ConfirmQuitMatchGame: no challenger following (34:5512: flags #144-#147) -> 0; the question
-// (~34:553A) is not ported
-function map02ConfirmQuitMatchGame(w) {
-  if ([144, 145, 146, 147].some(n => flag(w, n))) notPorted("quitting a Match Game (~34:553A)");
+// 34:54C3 Map02SetChallengerText: wScriptArg $C4BC = the challenger (0-3 by the first of #144-#147 set) and the text
+// hl + it; none: nothing set
+function setChallengerText(w, hl) {
+  const k = [144, 145, 146, 147].findIndex(n => flag(w, n));
+  if (k < 0) return;
+  wr(w, 0xC4BC, k);
+  T.scriptSetText(w, (hl + k) & 0xFFFF);
+}
+// 34:5530 Map02ConfirmQuitMatchGame: no challenger following (34:5512: flags #144-#147) -> 0; else the partner faces
+// the player, "Quitting this Match Game?" ($0C46 + the partner, speaker wPartnerId $C299) with the player facing it:
+// No -> 1; Yes: $0C4A + the partner, the player faces up, 34:54FA Map02DropChallenger (#144 + $C4BC and #118
+// cleared), fade out (8), the partner put away ($3F00, $3F00) -> 0
+function* map02ConfirmQuitMatchGame(sh) {
+  const w = sh.w;
+  if (![144, 145, 146, 147].some(n => flag(w, n))) return 0;
+  S.actorFaceActor(w, rd(w, 0xC298), 0x00);
+  setChallengerText(w, 0x0C46);
+  yield* T.scriptShowTextKeepOpen(sh, rd(w, 0xC299));
+  S.actorFaceActor(w, 0x00, rd(w, 0xC298));
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* S.scriptWaitFrames(sh, 0x05);
+  if (a) return 1;
+  setChallengerText(w, 0x0C4A);
+  yield* T.scriptShowText(sh, rd(w, 0xC299));
+  S.actorSetFacing(w, 0x00, 0xC0);
+  clearFlag(w, (144 + rd(w, 0xC4BC)) & 0xFFFF);
+  clearFlag(w, 118);
+  Scr.beginFadeOut(w, 0x08);
+  yield* Scr.waitFade(sh);
+  S.actorSetPos(w, rd(w, 0xC298), 0x3F00, 0x3F00);
   return 0;
 }
 // 34:4618 ... 34:4681 Map02Trigger06-0D: 34:5530, then warp 6-$0D (Windy Valley ... the Club Maker's Hut), sound $92
 function* map02TriggerPlace(sh, warp) {
   const w = sh.w;
-  if (map02ConfirmQuitMatchGame(w) === 1) return;
+  if ((yield* map02ConfirmQuitMatchGame(sh)) === 1) return;
   wr(w, 0xC441, warp);
   sh.sound(0x92);
 }

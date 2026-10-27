@@ -235,14 +235,14 @@ function* map08TriggerCallOver(sh) {
   D.inBank(w, 0x0A, () => S.scriptEnd(w));
 }
 // 33:48EC Map08TalkCaddieMasterB: flag #248, then 33:48EF Map08TalkCaddieMaster: #224 cleared; with a partner
-// (~33:4ABB: a match against the partner) not ported; #248 cleared, the player to the counter facing him; after a
+// the match against the partner (33:4ABB); #248 cleared, the player to the counter facing him; after a
 // round (#240) the result speech, else the round menu (33:5166)
 function* map08TalkCaddieMasterB(sh) { setFlag(sh.w, 248); yield* map08TalkCaddieMaster(sh); }
 function* map08TalkCaddieMaster(sh) {
   const w = sh.w;
   clearFlag(w, 224);
   setCaddieMasterTextBase(w);
-  if (hasPartner(w)) notPorted("the Caddie Master's talk with a partner (~33:4ABB)");
+  if (hasPartner(w)) { yield* talkWithPartner(sh); return; }
   clearFlag(w, 248);
   yield* moveAndWait(sh, 0x00, 0x0900, 0x0D00);
   S.actorsFaceEachOther(w, 0x00, 0x06);
@@ -331,8 +331,8 @@ function* championRoundMenu(sh) {
   yield* S.waitActorAnimDone(sh, 0x00);
 }
 // 33:50BB: the player goes to ($1900, $0B00) and to the door ($1A00, $0D80), the walk-out actor script 33:5105 for
-// the player and the partner, 200 frames; with #225 a match against the partner (~33:4F4B: not ported), else the
-// practice round (33:4F28), then a fade-out started
+// the player and the partner, 200 frames; with #225 a match against the partner (33:4F4B), else the practice
+// round (33:4F28) and a fade-out started
 function* walkOutToPractice(sh) {
   const w = sh.w;
   yield* S.scriptActorGoTo(sh, 0x00, 0x1900, 0x0B00);
@@ -340,7 +340,7 @@ function* walkOutToPractice(sh) {
   S.actorSetScript(w, 0x00, 0x5105, 0x33);
   S.actorSetScript(w, rd(w, 0xC298), 0x5105, 0x33);
   yield* wait(sh, 0xC8);
-  if (flag(w, 225)) notPorted("the match against the partner (~33:4F4B)");
+  if (flag(w, 225)) { yield* startPartnerMatch(sh); return; }   // quirk kept: no fade-out started after it
   yield* startClubRound(sh, 0x14, 0x03);
   Scr.beginFadeOut(w, 0x04);                                      // 33:50FF
 }
@@ -463,6 +463,11 @@ function* startClubRound(sh, kind, mode) {
   wr(w, 0xC834, mode);
   St.setupPlayerGolfer(w, 0x80, 0x00);
   St.setupPlayerGolfer(w, 0xFF, 0x01);
+  yield* clubRound(sh);
+}
+// 33:4F96 ... 10:4B94: the club's course, the round and its end
+function* clubRound(sh) {
+  const w = sh.w;
   // 33:4F96 SetClubCourseAndReturn: MapSaveReturnPoint 0A:4D5B (this map, entrance 6), SetCourseHole 10:423B
   // (course = club = wMapId - 7, hole 1; the wind byte h is 1)
   const m = mapId(w);
@@ -471,6 +476,61 @@ function* startClubRound(sh, kind, mode) {
   if (!sh.playGolfRound) notPorted("a club round outside the game loop");
   yield* sh.playGolfRound(flag(w, 72) ? 0x01 : 0x12);             // 33:66CB
   yield* inBankGen(w, 0x10, golfSessionEnd(sh));
+}
+
+// 33:4ABB the Caddie Master's talk with a partner: the player and the partner at speed $1A; base + $13 asked
+// (speaker 6, 10 frames before the question): No: #248 #227 #225 cleared, the text shown again (33:4B9A: nothing
+// new set) and he faces left; Yes: base + 3, he faces left; from the talk B (#248): the player to ($0D00, $0D00);
+// else the player's and the partner's sprites locked, the partner to ($0700, $0D00), the player to ($0900, $0D00),
+// unlocked; then the player to ($1900, $0B00) and the door ($1A00, $0D00), the walk-out scripts 33:5105 / 33:5123,
+// 250 frames, #248 cleared, the match against the partner (33:4F4B)
+function* talkWithPartner(sh) {
+  const w = sh.w;
+  S.actorSetSpeed(w, 0x00, 0x001A);
+  S.actorSetSpeed(w, rd(w, 0xC298), 0x001A);
+  setTextFromBase(w, 0x0013);
+  yield* T.scriptShowTextKeepOpen(sh, 0x06);
+  yield* wait(sh, 0x0A);
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* wait(sh, 0x05);
+  if (a) {                                                        // 33:4B91
+    for (const n of [248, 227, 225]) clearFlag(w, n);
+    yield* T.scriptShowText(sh, 0x06);
+    S.actorSetFacing(w, 0x06, 0x40);
+    return;
+  }
+  setTextFromBase(w, 0x0003);
+  yield* T.scriptShowText(sh, 0x06);
+  S.actorSetFacing(w, 0x06, 0x40);
+  if (flag(w, 248)) yield* moveAndWait(sh, 0x00, 0x0D00, 0x0D00);
+  else {
+    S.actorLockSpriteFacing(w, 0x00, 0x01);
+    S.actorLockSpriteFacing(w, rd(w, 0xC298), 0x01);
+    S.actorMoveTo(w, rd(w, 0xC298), 0x0700, 0x0D00);
+    yield* moveAndWait(sh, 0x00, 0x0900, 0x0D00);
+    S.actorLockSpriteFacing(w, 0x00, 0x00);
+    S.actorLockSpriteFacing(w, rd(w, 0xC298), 0x00);
+  }
+  yield* S.scriptActorGoTo(sh, 0x00, 0x1900, 0x0B00);
+  yield* moveAndWait(sh, 0x00, 0x1A00, 0x0D00);
+  S.actorSetScript(w, 0x00, 0x5105, 0x33);
+  S.actorSetScript(w, rd(w, 0xC298), 0x5123, 0x33);
+  yield* wait(sh, 0xFA);
+  clearFlag(w, 248);
+  yield* startPartnerMatch(sh);
+}
+// 33:4F4B StartPartnerMatchGame: wStoryRoundKind $1E, GolfSessionInit, wGameMode 2 (Match Play), the partner as
+// player 2 (33:4F6B SetupPartnerOpponent: golfer 4-7 by #144-#146, else 7), the player as player 1, the club's
+// course (33:4F96), the round (33:66CB), GolfSessionEnd
+function* startPartnerMatch(sh) {
+  const w = sh.w;
+  wr(w, 0xC967, 0x1E);
+  St.golfSessionInit(w);
+  wr(w, 0xC834, 0x02);
+  St.setupPlayerGolfer(w, flag(w, 144) ? 0x04 : flag(w, 145) ? 0x05 : flag(w, 146) ? 0x06 : 0x07, 0x01);
+  St.setupPlayerGolfer(w, 0x80, 0x00);
+  yield* clubRound(sh);
 }
 
 // 33:4317 ... 33:434D Map08TalkGolferA-D (talks 2-5): text base $08B7 / $08C9 / $08DB / $08ED, 33:4CAC, speaker 2-5
@@ -504,16 +564,51 @@ function* map08TalkLevelAdvisor(sh) {
 }
 // 33:443B / 4447 / 4453: the signs (talks 8-$0A): texts $08B3-$08B5, speaker $80
 function* map08Sign(sh, id) { T.scriptSetText(sh.w, id); yield* T.scriptShowText(sh, 0x80); }
-// 33:4FE5 CheckPartnerBeforeLeaving: no partner -> go; the partner's question (~33:4FEF) is not ported
-function checkPartnerBeforeLeaving(w) {
-  if (hasPartner(w)) notPorted("the partner's question before leaving (~33:4FEF)");
+// 33:506F SetPartnerText: wScriptArg $C4BC = the partner (0-3 by the first of #144-#147 set) and the text hl + it;
+// none: a = 5, nothing set
+function setPartnerText(w, hl) {
+  const k = [144, 145, 146, 147].findIndex(n => flag(w, n));
+  if (k < 0) return;
+  wr(w, 0xC4BC, k);
+  T.scriptSetText(w, (hl + k) & 0xFFFF);
+}
+// 33:50A6 ClearPartnerFlag: #144 + $C4BC cleared
+const clearPartnerFlag = w => clearFlag(w, (144 + rd(w, 0xC4BC)) & 0xFFFF);
+// 33:4FE5 CheckPartnerBeforeLeaving: no partner -> 0 (go); else 33:4FEF: the partner asks ($0C42 + the partner,
+// speaker the partner's slot) with the player facing it: Yes: $0C4A + the partner, its script reset, it walks
+// up 6 tiles, 30 frames, fade out (8), its flag cleared, its script reset again, it is put away ($3F00, $3F00): 0;
+// No: the player steps back a tile (facing + $80) -> 1
+function* checkPartnerBeforeLeaving(sh) {
+  const w = sh.w;
+  if (!hasPartner(w)) return 0;
+  setPartnerText(w, 0x0C42);
+  yield* T.scriptShowTextKeepOpen(sh, rd(w, 0xC298));
+  S.actorFaceActor(w, 0x00, rd(w, 0xC298));
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* wait(sh, 0x05);
+  if (a) {                                                        // 33:5058
+    S.actorMoveDir(w, 0x00, (rd(w, 0xC28A) + 0x80) & 0xFF, 0x0100);
+    yield* S.waitActorMoveDone(sh, 0x00);
+    return 1;
+  }
+  setPartnerText(w, 0x0C4A);
+  yield* T.scriptShowText(sh, rd(w, 0xC298));
+  S.actorResetScript(w, rd(w, 0xC298));
+  S.actorMoveDir(w, rd(w, 0xC298), 0x80, 0x0600);
+  yield* wait(sh, 0x1E);
+  Scr.beginFadeOut(w, 0x08);
+  yield* Scr.waitFade(sh);
+  clearPartnerFlag(w);
+  S.actorResetScript(w, rd(w, 0xC298));
+  S.actorSetPos(w, rd(w, 0xC298), 0x3F00, 0x3F00);
   return 0;
 }
 // 33:44F1 / 33:451B Map08TriggerExitHole1 / ExitRange (triggers 2 / 3): speed 8, to x ($2520 / $3520, $0B00), the
 // walk out (33:4566), warp 2 / 3, sound $92
 function* map08TriggerExit(sh, x, warp) {
   const w = sh.w;
-  if (checkPartnerBeforeLeaving(w) === 1) return;
+  if ((yield* checkPartnerBeforeLeaving(sh)) === 1) return;
   S.actorSetSpeed(w, 0x00, 0x0008);
   yield* moveAndWait(sh, 0x00, x, 0x0B00);
   yield* map08WalkOutAnim(sh);
@@ -523,7 +618,7 @@ function* map08TriggerExit(sh, x, warp) {
 // 33:4545 Map08TriggerExitDown (trigger 4): speed 8, two tiles down, warp 4, sound $92
 function* map08TriggerExitDown(sh) {
   const w = sh.w;
-  if (checkPartnerBeforeLeaving(w) === 1) return;
+  if ((yield* checkPartnerBeforeLeaving(sh)) === 1) return;
   S.actorSetSpeed(w, 0x00, 0x0008);
   S.actorMoveDir(w, 0x00, 0x00, 0x0200);
   wr(w, 0xC441, 0x04);

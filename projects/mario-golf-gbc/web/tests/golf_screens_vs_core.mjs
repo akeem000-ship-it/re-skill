@@ -292,6 +292,8 @@ function pausePolicy(script, menus = frontEndPolicy) {
 }
 
 // name, the state (round, routine), the native routine, buttons
+// a Yes / No question answered No: A until the menu's cursor task (05:4F20), Down, A
+const ynNo = [{ press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 0x80], [30, 0], [2, 1]];
 const CASES = [
   { name: "standings_match18", round: "match18", at: "3E:403F", run: sh => inBank(sh, 0x3E, matchStandingsScreen(sh)) },
   // the scorecard in match play (0E:43D6): Right on the standings page turns to the hole-by-hole card (0E:762F),
@@ -391,6 +393,39 @@ const CASES = [
       { to: [0x07, 0x0B], at: [0x0710, 0x0B30], noA: true }, [2, 0x40], [20, 0],
       { press: 1, every: 40, until: () => menuW.wram[0][0x298] !== 0xFF }, [200, 0],
       [2, 0x40], [20, 0], { press: 1, every: 40, times: 10 }, [300, 0]], 300) },
+  // the Marion Club Champ joins (as above), the walk to the Caddie Master's office: his call with a partner (33:4ABB)
+  // "A match?" Yes: the walk out (33:5105 / 33:5123), the Match Game against the partner (33:4F4B: wStoryRoundKind
+  // $1E, game mode 2, golfer 4; one hole: #72 poked), back to the office (33:4666)
+  { name: "boot_kid_story_partnermatch", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(72),
+    ...routeCase(savedPolicy(0), [{ to: [0x2D, 0x05], map: 0x04 },
+      [400, 0], { to: [0x0B, 0x13] }, { press: 1, every: 30, times: 90 },
+      { to: [0x07, 0x0B], at: [0x0710, 0x0B30], noA: true }, [2, 0x40], [20, 0],
+      { press: 1, every: 40, until: () => menuW.wram[0][0x298] !== 0xFF }, [200, 0],
+      { to: [0x18, 0x20], map: 0x03, noA: true }, [300, 0], { to: [0x1A, 0x02], map: 0x08, noA: true },
+      [200, 0], { to: [0x1A, 0x0A] }, { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x08 },
+      { press: 1, every: 40, times: 20 }], 300) },
+  // the same walk to the office with the partner, "A match?" No (33:4B91); out by the driving range's way (trigger
+  // 3, 33:451B): the partner's question (33:4FEF) No: a step back; again, Yes: the partner leaves (fade out, put
+  // away), the walk out to the range
+  { name: "boot_kid_story_partnerleave", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
+    ...routeCase(savedPolicy(0), [{ to: [0x2D, 0x05], map: 0x04 },
+      [400, 0], { to: [0x0B, 0x13] }, { press: 1, every: 30, times: 90 },
+      { to: [0x07, 0x0B], at: [0x0710, 0x0B30], noA: true }, [2, 0x40], [20, 0],
+      { press: 1, every: 40, until: () => menuW.wram[0][0x298] !== 0xFF }, [200, 0],
+      { to: [0x18, 0x20], map: 0x03, noA: true }, [300, 0], { to: [0x1A, 0x02], map: 0x08, noA: true },
+      [200, 0], { to: [0x1A, 0x0A], noA: true }, ...ynNo, { press: 1, every: 40, times: 3 }, [100, 0],
+      { to: [0x24, 0x0A], noA: true }, ...ynNo, [100, 0], { to: [0x24, 0x0A], noA: true },
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1], { press: 1, every: 40, times: 6 },
+      [300, 0]], 300) },
+  // the champion joins, out to the Field with him, up onto Windy Valley's trigger (6, 34:4618): "Quitting this Match
+  // Game?" (34:5530) No: he stays, nothing is warped, and the trigger asks again while the player stands on it
+  { name: "boot_kid_story_partnerfield", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
+    ...routeCase(savedPolicy(0), [{ to: [0x2D, 0x05], map: 0x04 },
+      [400, 0], { to: [0x0B, 0x13] }, { press: 1, every: 30, times: 90 },
+      { to: [0x07, 0x0B], at: [0x0710, 0x0B30], noA: true }, [2, 0x40], [20, 0],
+      { press: 1, every: 40, until: () => menuW.wram[0][0x298] !== 0xFF }, [200, 0],
+      { to: [0x18, 0x20], map: 0x03, noA: true }, [300, 0], { to: [0x1A, 0x2E], map: 0x02, noA: true }, [200, 0],
+      { to: [0x1C, 0x27], noA: true }, { to: [0x1C, 0x24], noA: true }, ...ynNo, { press: 1, every: 40, times: 2 }, [200, 0]], 300) },
   // the clubhouse's top door (trigger 2, 32:5C09) to the Caddie Master's office (map $08, 33:4722): his call
   // (trigger 1, 33:4BD3), the round menu (33:5166)
   { name: "boot_kid_story_office", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(72),

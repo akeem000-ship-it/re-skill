@@ -102,6 +102,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the letter at the tree (34:4847), its reading on map $25 (35:79D2) and the path's opening (34:5019), the Grand Champion's return to the Field (34:5218) | 150,992 | 62.22% |
 | + the start menu's Char. Data (41:6506 with the name and EXP header 41:5598 and the clock task 41:587C) and Stars (0A:6F56, the event list) | 152,559 | 62.86% |
 | + the Lounge's champions (32:6B81) and partners: joining (32:6DCF), following (04:484D), spawned on each map (04:51D0), the counter's partner lines (32:5B5A / 5BBE), sent away (0A:536E) | 153,898 | 63.41% |
+| + partners in the offices (33:4ABB, the Match Game against the partner 33:4F4B, the question before leaving 33:4FEF) and on the Field (34:5530) | 154,202 | 63.54% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -241,6 +242,9 @@ given to the native code). All cases match frame for frame:
 | boot_kid_story_chardata | Start in the clubhouse: Char. Data (41:7943 -> 41:6506: the stats screen with the name, EXP and clock header), A back to the map; Start, Down, A: Stars (0A:6F56): Right twice through the pages (0A:6E47), Down to scroll, Left, B back | 4,860 |
 | boot_kid_story_champ | the Lounge's tour, then the Marion Club Champ (32:63A8 -> 32:6B81): Yes twice, he joins (32:6DCF) and follows (04:484D); a walk, out to the clubhouse (04:51D0 spawns him with the player), the counter's partner line (32:5B5A) | 10,056 |
 | boot_kid_story_champ_part | the same join, then A on the partner (0A:5365 -> 0A:536E): Yes, he leaves (the flags cleared, warp $FA), then his own talk again at his place | 8,918 |
+| boot_kid_story_partnermatch | the champion joins; the Caddie Master's call with a partner (33:4ABB): Yes, the walk out, the Match Game against him (33:4F4B, one hole: #72 poked), back to the office (33:4666: result 2, the partner leaves), his next call (a tournament) | 19,269 |
+| boot_kid_story_partnerleave | the same call answered No (33:4B91); out by the driving range's trigger: the partner's question (33:4FEF) No (a step back), again Yes (he leaves), the range | 11,626 |
+| boot_kid_story_partnerfield | the champion joins, out to the Field, up onto Windy Valley's trigger: "Quitting this Match Game?" (34:5530) No | 10,452 |
 | boot_kid_story_green | the office's way to the putting green (map $0E, 30:69B9), "Practice here?" declined, the pro's putting challenge (30:6739, game mode 5, the hooks 30:6C2F / 6C58), the result (30:6CF2, not cleared) | 12,839 |
 | boot_kid_story_green_quit | the same, Start at the aim: the mini-game pause menu (41:6F9F), Quit Mini-Game | 7,647 |
 | boot_kid_story_green_cleared | the same with ten made (poked): cleared, 25 EXP (30:6EC8), the level-up screen, SaveGame, the map again at $FA | 12,839 |
@@ -563,13 +567,23 @@ helpers) and a partner joining (32:6DCF: sound $94, ActorStartFollow 04:4525, th
 its closeness test is (dy + the low byte of dx^2 + dy^2) & $FF < 8), spawned again with the player on every map
 (SpawnPartnerActor 04:51D0: the record 04:517C + $15 k, id 4 + k, the player's facing and position). Talking to the
 partner (`boot_kid_story_champ_part`; MapTalkTo's partner record 0A:5365 -> 0A:536E): "Shall we stop here?" ($0C46 +
-k), Yes: $0C4A + k, #144-#147 and #118 cleared, the script reset, warp $FA. Not ported: the office's talk with a
-partner ~33:4ABB, the question before leaving ~33:4FEF, the Match Game ~33:4F4B and its quitting ~34:553A.
+k), Yes: $0C4A + k, #144-#147 and #118 cleared, the script reset, warp $FA. In an office with a partner
+(`boot_kid_story_partnermatch`) the Caddie Master's talk is 33:4ABB: "A Match Game?" (base + $13); No (33:4B91):
+#248 #227 #225 cleared and the same text shown again (nothing new set); Yes: both walk out (the scripts 33:5105 /
+33:5123; the player's door point is ($1A00, $0D00) here, not 33:50BB's $0D80) and the Match Game against the
+partner (StartPartnerMatchGame 33:4F4B: wStoryRoundKind $1E, game mode 2, the champion as player 2 from
+SetupPartnerOpponent 33:4F6B), back through 33:4666 (a result other than 0 ends the partnership). Leaving an office
+with a partner (`boot_kid_story_partnerleave`): CheckPartnerBeforeLeaving 33:4FE5 / 4FEF ("Practicing?" $0C42 + k,
+SetPartnerText 33:506F; No: a step back, 1; Yes: $0C4A + k, the partner walks up 6 tiles, fade out (8),
+ClearPartnerFlag 33:50A6, put away at ($3F00, $3F00)). On the Field (`boot_kid_story_partnerfield`) the place
+triggers 6-$0D ask first (Map02ConfirmQuitMatchGame 34:5530, Map02SetChallengerText 34:54C3, Map02DropChallenger
+34:54FA; No: 1, and the trigger asks again while the player stays on it). Not ported: the Match Game Event map $30
+(warp 9 after a won match with #86 and not #188) and "Taking on Mario?" ~34:544D.
 **The Caddie Master's office** (maps $08-$0B, one header 33:400A, the club = wMapId - 8; `maps/bank33.js`;
 `boot_kid_story_office`): the enter script 33:4722 (the temporary flags, Marion's talk list 33:4389, #227
 qualified / #226 the club won; maps $09-$0B's golfers and decorations ~33:4757 not ported), the call when the
 player walks up (trigger 1, 33:4BD3: the Caddie Master's text base 33:4C94, $0C1B on Marion's map), his talk
-33:48EF (the result speech after a round; with a partner ~33:4ABB not ported) and the round menu 33:5166
+33:48EF (the result speech after a round; with a partner 33:4ABB) and the round menu 33:5166
 (ScriptRunMenu 0A:42BF with the options $0892: Club Tournament / Practice Round / Quit; not qualified: base + 7;
 the practice round asks base + 8 or + 9), the start scene 33:5257 (the waiting group, the send-off 33:5522, the
 starter; seen once per club: flags #176 / #184 + club), the walk out 33:50BB, StartClubTournamentRound 33:4F05 /
@@ -578,7 +592,7 @@ point entrance 6: 33:4F96; GolfRound for 18 holes, 1 with flag #72: 33:66CB), an
 a tournament's result 1-3 asks warp 5 + result, the ceremonies; else the result flags #240-#243 33:45FE, the
 walk in 33:4864 and the speech 33:4D97 / 4D25); the golfers 33:4317-434D (SetClubGolferText 33:4CAC: quirk, the
 test of #243 at 33:4CF3 is not used, + 2 either way), the level advisor 33:435F, the signs, the exits 33:44F1 /
-451B / 4545 (the partner's question ~33:4FEF not ported), the step back 33:45C7.
+451B / 4545 (the partner's question 33:4FEF), the step back 33:45C7.
 Fixed on the way: ActorFaceActor 0A:4662 wrote the angle through hFFE0 as it was before the angle's computation
 pointed it at actor a (the last actor the actors' update ran: here the Caddie Master turned instead of the player).
 **The Field** (map $02, `maps/bank34.js`; `boot_kid_story_field`): the enter script 34:4690 (flags #99 / #212 /
@@ -588,7 +602,7 @@ the name ~0A:78D6 / ~0A:79C7 are not ported), the map's changes by progress: the
 paths 34:4769 (a block for each of #86 #84 #82 #80 still clear), #114's area 34:4733, #125's open path 34:46E6, each
 with MapCopyEventRect 0B:4699 / MapCopyTerrainRect 0B:4653 (`mapgfx.js`) and MapBufCopyRectRedraw 0B:4864); the
 triggers into the Marion clubhouse and the Palm, Dune and Links offices 34:4474-44F5 (the walk in 34:452A), the side
-places 34:4618-4681 (warps 6-$0D: a challenger following, ~34:553A, not ported). Not ported: the Road to Peach's
+places 34:4618-4681 (warps 6-$0D: a challenger following, 34:5530 asks first). Not ported: the Road to Peach's
 Castle (34:450C), the letter at the tree (~34:4847), entrances $0E / $0F (~34:5218 / ~34:5019), the marker sprite
 (~34:4FCC).
 **The navigation** (`nav.js`; `boot_kid_story_nav`): NavigationMenu 0A:7174 (A on the Field with nothing ahead,
