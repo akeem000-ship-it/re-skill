@@ -106,6 +106,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the Match Game Event after a won match (map $30, 34:77EB with the club rooms 34:7CED) | 155,254 | 63.97% |
 | + the Road to Peach's Castle (34:450C, map $1C) and Peach's Castle up to the tournament's question (map $1D, 33:5F42) | 159,490 | 65.72% |
 | + Peach's Tournament: its opening (33:642C), the round and the award ceremony for the places (33:672A) | 159,673 | 65.79% |
+| + the ending: EndingSequence 0A:56B1 with the sepia fade, the credits (bank 0B), the final screen (bank 79) and the ending's maps $31-$3E (bank 35); ShowPictureTimed 40:6666 | 168,762 | 69.54% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -250,6 +251,7 @@ given to the native code). All cases match frame for frame:
 | boot_kid_story_castle | the path open (#114 #115 #139 #123 #125 #149 poked): the Field's trigger 5 (34:450C) to the Road to Peach's Castle (map $1C), A on the launcher: the Bob-omb's launch (33:57CE) to Peach's Castle (map $1D): the first visit's welcome (33:60B2), "May we begin the tournament?" (33:66DC) No | 9,141 |
 | boot_kid_story_peachround | the same, Yes: the tournament's opening (33:642C), Peach's Tournament (course 5, one hole: #72 poked; the result poked to 5), back at the castle (33:5F8F) | 15,349 |
 | boot_kid_story_peachsecond | the same with the result poked to 2: the award ceremony (33:672A) for the second place, then the castle (33:69B2) | 16,549 |
+| boot_kid_story_peachwin | the same with the result poked to 1: the winner's ceremony (#111, the save), the character's picture (40:6666), the ending (0A:56B1: maps $31-$3E in sepia under the credits, the copyright, the final screen for 3600 frames), map 0 by warp $FA | 40,569 |
 | boot_kid_story_partnerleave | the same call answered No (33:4B91); out by the driving range's trigger: the partner's question (33:4FEF) No (a step back), again Yes (he leaves), the range | 11,626 |
 | boot_kid_story_partnerfield | the champion joins, out to the Field, up onto Windy Valley's trigger: "Quitting this Match Game?" (34:5530) No | 10,452 |
 | boot_kid_story_green | the office's way to the putting green (map $0E, 30:69B9), "Practice here?" declined, the pro's putting challenge (30:6739, game mode 5, the hooks 30:6C2F / 6C58), the result (30:6CF2, not cleared) | 12,839 |
@@ -638,10 +640,33 @@ game mode 1, course 5 hole 1, return point map $1D entrance 6; the wind byte Set
 SetupPlayerGolfer's ClearMemory16; the club rounds' 33:4F96 leaves it 6, now passed as such). Back at entrance 6
 placed 1-3 (`boot_kid_story_peachsecond`) the award ceremony 33:672A (the stage and trophy blocks, the actors
 33:6A00, $1479 / $147A with the place, $147B; a first win sets #111, the return point map 0 / $FA and saves), then
-33:69B2 (the actors 33:6ABD). Not ported: the win's ShowPictureTimed ~40:6666 and EndingSequence ~0A:56B1,
-Toad's practice round ~33:5D8D, the 1-Up Mushroom ~33:6F47. After the one-hole round both cases keep a difference in
+33:69B2 (the actors 33:6ABD); a win (`boot_kid_story_peachwin`) goes on to 33:696B: the character's picture
+(ShowPictureTimed 40:6666, `title.js`), the ending, #111, the return point and the save, map 0 entrance 3 by warp $FA.
+Not ported: Toad's practice round ~33:5D8D, the 1-Up Mushroom ~33:6F47. After the one-hole round the cases keep a difference in
 the hidden BG row $9BE0 ($9BE3 / $9BEE), first seen during a lag frame of the round and so classed with the lag
 frames (as the Palm wind case's); nothing visible differs. `KEYS=frame` prints what differs at a frame.
+**The ending** (`ending.js`, `maps/bank35.js`; `boot_kid_story_peachwin`, 40,569 frames, the ending itself frame-exact
+throughout): EndingSequence 0A:56B1 (export $64): fade out, music $15, no player / script / partner actor,
+InitFontScreen; for each part of 0A:5682 (maps $31 $3D $32 $33 $34 $3E $35, the character's part from 0A:56A1 by
+wCharId: $35/2 $3B/1 $36/2 $33/2, then $36 $37 $33/3 $38 $39 $3A $3C) the map is run by MapRun 0A:4A21 with #24 clear
+(`mapengine.js` mapRunEnd: the rest of MapRun without MapEngine's MapTakeWarp), its actors frozen (0A:57A3), BG and OBJ
+palettes 2-7 faded to sepia over 30 steps (PalFadeInitSepia 0A:5422: red = sum / 2 capped at $1F, green = sum / 4,
+blue = sum / 8; PalFadeSetup 0A:54CF, PalFadeRun 0A:5561 with PalStepComponent 0A:561C, PalFadeFinish 0A:562E) and its
+page of the credits shown (CreditsRun 0B:5395: the window raised by CreditsWindowTask 0B:5640 while the scene scrolls
+by 0B:56C9's steps (quirk kept: the task leaves WRAM6 mapped when it ends); the page 0B:56EF / 0B:5795 from 0B:572C's
+records (texts $1900 + n, 20 characters each by CopyTextLine 0B:5884); the scrolling 0B:57E4 / 5822). Then
+CopyrightScreen 0B:58B0, EndingFinalScreen 0A:6747 (LZ tiles and maps to both VRAM banks) with its task 0A:6806 ->
+79:68B1 (six sprite parts 79:68F6 6AA5 6C59 6E0D 6FC1 7175, nine LZ frames each, one step every 4 frames up to $36),
+until a button is held or 3600 frames. The ending's maps (bank 35): 31 the Director's Room 35:4415; 32 the Lounge
+35:479A / 466A (its hand 35:4666 -> 47BF); 33 the office 35:48E6 (scenes 35:492C / 4AE5 / 4B7D, the rooms 35:4D9F
+/ 4DBB / 4DD7); 34 the ceremony 35:4F35 / 4F51 / 5011 / 5117; 35 Tiny-Tots 35:54B2 (the caretaker 35:5352, Sherry);
+36 Raven Woods 35:56BD (Joe 35:55F5, the crow 35:56FF with the hat 35:56F8 / 5939, whose on-screen tests are computed
+and not used, and 35:5921); 37 the Alternate Game 35:5A0B ("Which rules?" with its menu call removed: $180B always);
+38 the Match Game Event 35:5BAA / 5BB3 / 5DCC; 39 the letter 35:5E12 with copies of bank 34's letter routines
+(35:65D4-69DB; the flying sprite and the sparkle without their sounds, the path without its flag test); 3A the
+launcher 35:6A48 / 6B28 / 6B97; 3B Azalea 35:6CD2; 3C the castle 35:6E7E / 6E91 / 7045 (the effect 35:7122 / 713A /
+716F); 3D the clubhouse 35:73F7; 3E the Field 35:7525. Only the Kid's part has run in a test (map $3B, the Azalea
+part, has not).
 **The navigation** (`nav.js`; `boot_kid_story_nav`): NavigationMenu 0A:7174 (A on the Field with nothing ahead,
 or the start menu's Navigation 41:7413): the places whose flags (0A:6FA9, ListEntryFlag 0A:6CAF) are set
 (NavBuildEntries 0A:73D3), the frame (LZ 0A:6FE5 / 0A:7085), the title and seven names (0A:7387, PrintTextToBuffer),

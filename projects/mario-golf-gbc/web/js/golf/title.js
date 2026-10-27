@@ -111,6 +111,28 @@ function loadFullScreenPicture(w, hl) {
   D.enableLCD(w);
 }
 
+// 40:6666 ShowPictureTimed (bank 40 export 1; a = the picture, & 7: list 40:66A5, the words $7B00-$7B06 and four
+// times $4908): 40:664B, the picture (40:5BF9), ForceFadeIn (4), 60 frames, SCY 0 / $80 / 0 / $80 a frame each (a,
+// kept by AdvanceFrame, is 0 before each xor $80), 180 frames, ForceFadeOut (4)
+export function* showPictureTimed(sh, a) {
+  const w = sh.w;
+  pictureScreenInit(w);
+  const p = 0x66A5 + ((a & 0x07) << 1);
+  loadFullScreenPicture(w, rb(0x40, p) | rb(0x40, p + 1) << 8);
+  Scr.forceFadeIn(w, 0x04);
+  yield* Scr.waitFade(sh);
+  yield* sh.advance(0x3C);                                        // WaitFramesCmd $3C
+  for (let c = 0x02; c; c--) {
+    w.high[0x18A] = 0x00;
+    yield* sh.advance();
+    w.high[0x18A] = 0x80;
+    yield* sh.advance();
+  }
+  yield* sh.advance(0xB4);                                        // WaitFramesCmd $B4
+  Scr.forceFadeOut(w, 0x04);
+  yield* Scr.waitFade(sh);
+}
+
 // 40:61CB IntroPicture: the opening picture (40:4908) with sound $5E: 60 frames, SCY $80 for 60 more, fade out;
 // true when skipped (only the fade-out can be)
 function* introPicture(sh) {

@@ -627,6 +627,19 @@ const CASES = [
       { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
       { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x1D }, { press: 1, every: 40, times: 30 },
       [400, 0]], 300) },
+  // the same with the result poked to 1: the winner's ceremony (#111, the save), the character's picture (40:6666),
+  // the ending (0A:56B1: the maps $31-$3E in sepia under the credits 0B:5395, the copyright 0B:58B0, the final
+  // screen 0A:6747 for 3600 frames), then map 0 by warp $FA
+  { name: "boot_kid_story_peachwin", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 200000,
+    hook: (() => { const fp = flagPoke(114, 115, 139, 123, 125, 149, 72); let done = false; return (f, w, core) => {
+      fp(f, w, core);
+      if (!done && roundsDone >= 1) { done = true; w.wram[0][0x96C] = 1; core.wram(0)[0x96C] = 1; }
+    }; })(),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x14, 0x12], map: 0x1C, noA: true },
+      [300, 0], { to: [0x0D, 0x0D], noA: true }, [2, 0x20], [20, 0], [2, 1], { press: 0, every: 40, until: () => menuW.wram[0][0x450] === 0x1D },
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
+      { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x1D }, { press: 1, every: 40, times: 30 },
+      { press: 0, every: 60, until: () => menuW.wram[0][0x450] === 0x00 }, [600, 0]], 300) },
   // the Field, A with nothing ahead: the Navigation menu (0A:7174): Down twice, Up, Down, A: the place's guide on the
   // Field again (0A:7878: its name, the arrow, the marker); a walk; Start: the start menu's Navigation (41:7413): B
   { name: "boot_kid_story_nav", state: "boot_poweron_kid", open: true, noRet: true, sram: true,

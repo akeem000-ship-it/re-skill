@@ -11,6 +11,8 @@ import * as M from "../mapengine.js";
 import * as St from "../start.js";
 import { golfSessionEnd } from "../boot.js";
 import { saveGame } from "../save.js";
+import { showPictureTimed } from "../title.js";
+import { endingSequence } from "../ending.js";
 import { advanceRandomSeed } from "../round.js";
 import { expToNextLevel } from "../exp.js";
 import { pushTextNumberArg, setTextCourseIndex } from "../text.js";
@@ -1158,7 +1160,9 @@ function* map1DAskStartTournament(sh) {
 // (speed $40) and put at ($1400, $0E00); the trophy by the place (the 2 x 2 blocks $2A / $2D / $30,$0D to $13,$0E;
 // the other two trophy actors $0E-$10 hidden; text $1479 and #121 for a win, else $147A with the place as its
 // number and #121 cleared); sound $04 and $93, fade in (2), the trophy handed over ($147B), fade out (4); then
-// 33:696B: a win: ~40:6666 ShowPictureTimed and ~0A:56B1 EndingSequence (not ported); else after a round kind $32
+// 33:696B: a win: ShowPictureTimed 40:6666 (the character's picture), EndingSequence 0A:56B1, #111, map 0 entrance
+// 2, wReplayActive $C96D = 0, the return point (map 0 at the saved position), SaveGame, map 0 entrance 3 by warp
+// $FA (the title); else after a round kind $32
 // warp 2, or the actors 33:6ABD, the stage blocks ($2D,$10 and $30,$10 to $13,$0E / $10,$11), music $10, the player
 // at ($1400, $0F00), 60 frames, fade in (4)
 function* map1DAwardCeremony(sh) {
@@ -1235,7 +1239,18 @@ function* map1DAwardCeremony(sh) {
   Scr.beginFadeOut(w, 0x04);
   yield* Scr.waitFade(sh);
   }
-  if (r === 1) notPorted("the ending after Peach's Tournament (~40:6666, ~0A:56B1)");   // 33:696B
+  if (r === 1) {                                                  // 33:696B
+    yield* inBankGen(w, 0x40, showPictureTimed(sh, rd(w, 0xC810)));   // 40:6666 ShowPictureTimed (wCharId)
+    yield* inBankGen(w, 0x0A, endingSequence(sh));                // 0A:56B1 EndingSequence
+    setFlag(w, 111);
+    wr(w, 0xC450, 0x00); wr(w, 0xC46A, 0x02);
+    wr(w, 0xC96D, 0x00);
+    St.mapSaveReturnPoint(w);                                     // 0A:4D5B (bc = $FFFF: map 0 at the saved position)
+    saveGame(w);                                                  // 02:4489
+    wr(w, 0xC450, 0x00); wr(w, 0xC46A, 0x03);
+    wr(w, 0xC441, 0xFA);
+    return;
+  }
   if (rd(w, 0xC967) === 0x32) { wr(w, 0xC441, 0x02); return; }   // 33:69A5
   M.scriptRespawnActors(w, 0x33, 0x6ABD);
   yield* inBankGen(w, 0x0B, mapBufCopyRectRedraw(sh, 0x2D, 0x10, 0x13, 0x0E, 0x02, 0x02));

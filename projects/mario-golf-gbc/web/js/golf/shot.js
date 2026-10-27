@@ -28,6 +28,7 @@ import { charSelTasks } from "./charsel.js";
 import { selectTasks } from "./select.js";
 import { mapDebugCoordsTask } from "./boot.js";
 import { mapTasks } from "./maps/index.js";
+import { TASKS as endingTasks } from "./ending.js";
 import "./player.js";                         // (the player's native: NATIVES["04:538c"])
 import { nameEntryTasks } from "./nameentry.js";
 import { navGuideTask } from "./nav.js";
@@ -209,6 +210,7 @@ export class Shot {
       "0a:4950": () => mapDebugCoordsTask(w),         // 0A:4950 MapDebugCoordsTask
       ...mapTileAnimTasks(w),                    // the map tile animations (banks 28-2F, 72-74)
       ...mapTasks(w),                            // the map scripts' tasks (maps/)
+      ...endingTasks(w),                         // the ending's credits and final screen (ending.js)
       "0a:4927": () => screenShakeTask(w),             // 0A:4927 ScreenShakeTask
       "0a:4066": () => scriptDebugSkipTask(w),         // 0A:4066 ScriptDebugSkipTask
       "0a:78ce": () => navGuideTask(w),                // 0A:78CE NavGuideTask

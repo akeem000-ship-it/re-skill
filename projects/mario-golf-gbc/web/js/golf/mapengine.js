@@ -225,6 +225,13 @@ export function* mapRunToEnterScript(sh) {
 // 0A:49C1: MapTakeWarp,
 // the frame tasks cleared and MapDebugCoordsTask again, ready for the next MapRun
 export function* mapRunAfterScript(sh, wbank, restart) {
+  yield* mapRunEnd(sh, wbank);
+  mapTakeWarp(sh.w);
+  restart(sh.w);
+}
+// the rest of MapRun 0A:4A21 after the enter script (the ending's parts call MapRun itself, 0A:5720): ScriptEnd, the
+// WRAM bank back, a warp request taken to $C46B; none: fade in, the name banner, the event loop until a warp
+export function* mapRunEnd(sh, wbank) {
   const w = sh.w;
   D.inBank(w, 0x0A, () => S.scriptEnd(w));
   setW(w, wbank);
@@ -236,8 +243,6 @@ export function* mapRunAfterScript(sh, wbank, restart) {
     yield* mapShowNameBanner(sh);
     yield* mapEventLoop(sh);
   }
-  mapTakeWarp(w);
-  restart(w);
 }
 
 // ---- the map's event loop ----
