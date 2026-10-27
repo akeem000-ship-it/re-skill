@@ -215,12 +215,12 @@ function levelUpPolicy(script, base) {
 }
 // game flag n set on both sides when the mode select first shows (a test's poke: #72 makes the story's club rounds
 // one hole, 33:66CB)
-function flagPoke(n) {
+function flagPoke(...ns) {
   let done = false;
   return (f, w, core) => {
     if (done || !hasTask(w, 0x0D, 0x428E)) return;
     done = true;
-    for (const m of [w.wram[0], core.wram(0)]) m[0x840 + (n >> 3)] |= 0x80 >> (n & 7);
+    for (const n of ns) for (const m of [w.wram[0], core.wram(0)]) m[0x840 + (n >> 3)] |= 0x80 >> (n & 7);
   };
 }
 // the character's EXP ($C826-$C828) set to `v` on both sides when the mode select first shows (a test's poke)
@@ -466,6 +466,59 @@ const CASES = [
       { to: [0x34, 0x0C], noA: true }, { to: [0x34, 0x0A], map: 0x13 },
       [100, 0], { to: [0x1F, 0x21], at: [0x1F00, 0x2130], noA: true }, [2, 0x40], [30, 0],
       { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x13 && menuW.wram[0][0x46A] === 5 },
+      { press: 1, every: 40, times: 25 }], 300) },
+  // the Links Club's office (map $0B, the Field's trigger 4; #114 poked: qualified) to its driving range (map $15,
+  // 31:67C8): the first coach (actor 3, 31:65B8): the tree shot's demo (course 0 hole $0A; the hooks 31:6909 /
+  // 697D), the try (31:69BC / 6A02, the judgement 31:6B8B), the result (31:6A56), a retry
+  { name: "boot_kid_story_linksrange", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(114),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x1C, 0x12], map: 0x0B }, [200, 0],
+      { to: [0x24, 0x0C], noA: true }, { to: [0x24, 0x0A], map: 0x15 },
+      [100, 0], { to: [0x2F, 0x21], at: [0x2F30, 0x2130], noA: true }, [2, 0x20], [30, 0],
+      { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x15 && menuW.wram[0][0x46A] === 6 },
+      { press: 1, every: 40, times: 25 }], 300) },
+  // the same after the Links tournament won (#114 #115 #139, the path past the tree open #125 and the tree shot's lesson
+  // passed #174 poked): the contest
+  // (31:7051 sets #224): the coach's demo for his distance, the player's shot for hers (wind $6000), the result
+  // (31:6AE3)
+  { name: "boot_kid_story_linkscontest", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(114, 115, 125, 139, 174),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x1C, 0x12], map: 0x0B }, [200, 0],
+      { to: [0x24, 0x0C], noA: true }, { to: [0x24, 0x0A], map: 0x15 },
+      [100, 0], { to: [0x2F, 0x21], at: [0x2F30, 0x2130], noA: true }, [2, 0x20], [30, 0],
+      { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x15 && menuW.wram[0][0x46A] === 6 },
+      { press: 1, every: 40, times: 25 }], 300) },
+  // the same, the second coach (actor 4, 31:666F): the buried lie in a bunker (wP1OffTee written $21; the hooks
+  // 31:6CD6-6DB8, the judgement 31:6F45), the result (31:6DF8)
+  { name: "boot_kid_story_linksrange_buried", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(114),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x1C, 0x12], map: 0x0B }, [200, 0],
+      { to: [0x24, 0x0C], noA: true }, { to: [0x24, 0x0A], map: 0x15 },
+      [100, 0], { to: [0x12, 0x25], at: [0x11D0, 0x2530], noA: true }, [2, 0x10], [30, 0],
+      { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x15 && menuW.wram[0][0x46A] === 7 },
+      { press: 1, every: 40, times: 25 }], 300) },
+  // the Links Club's office (#114 poked) to its approach range (map $16, 30:597C): the first coach (actor 3, 30:5A94):
+  // the approach over a mound (the demo's music 7; the hooks 30:5BF2-5C80; the try without a forced shot), the result
+  // (30:5CC2), a retry
+  { name: "boot_kid_story_linksapproach", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(114),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x1C, 0x12], map: 0x0B }, [200, 0],
+      { to: [0x34, 0x0C], noA: true }, { to: [0x34, 0x0A], map: 0x16 },
+      [100, 0], { to: [0x20, 0x22], at: [0x2000, 0x2230], noA: true }, [2, 0x40], [30, 0],
+      { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x16 && menuW.wram[0][0x46A] === 4 },
+      { press: 1, every: 40, times: 25 }], 300) },
+  // the same after the Links won (#114 #115 #125 #139 and the mound lesson passed #172 poked): the contest (30:6414 sets
+  // #224; the offer 30:6159, game mode 5: ten approaches, the hooks 30:6052 / 605C counting them on the HUD), the result
+  // (30:60DA)
+  { name: "boot_kid_story_linksapproachcontest", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(114, 115, 125, 139, 172),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x1C, 0x12], map: 0x0B }, [200, 0],
+      { to: [0x34, 0x0C], noA: true }, { to: [0x34, 0x0A], map: 0x16 },
+      [100, 0], { to: [0x20, 0x22], at: [0x2000, 0x2230], noA: true }, [2, 0x40], [30, 0],
+      { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x16 && menuW.wram[0][0x46A] === 4 },
+      { press: 1, every: 40, times: 25 }], 300) },
+  // the same, the second coach (actor 4, 30:5B2B): across a steep slope (the hooks 30:5E3C-5ECA), the result (30:5EF8:
+  // no ScriptEnd)
+  { name: "boot_kid_story_linksapproach_slope", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(114),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x1C, 0x12], map: 0x0B }, [200, 0],
+      { to: [0x34, 0x0C], noA: true }, { to: [0x34, 0x0A], map: 0x16 },
+      [100, 0], { to: [0x1D, 0x25], at: [0x1D00, 0x2530], noA: true }, [2, 0x40], [30, 0],
+      { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x16 && menuW.wram[0][0x46A] === 5 },
       { press: 1, every: 40, times: 25 }], 300) },
   // the Field, A with nothing ahead: the Navigation menu (0A:7174): Down twice, Up, Down, A: the place's guide on the
   // Field again (0A:7878: its name, the arrow, the marker); a walk; Start: the start menu's Navigation (41:7413): B

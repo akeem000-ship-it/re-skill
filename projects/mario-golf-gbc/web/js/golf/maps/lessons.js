@@ -7,10 +7,11 @@
 //   after, no (texts), talkScript / walkBack / walkFacing (the coach's actor scripts), afterFade (the after-demo fade
 //   speed), music (the try's round music until the first success: 8, $0A on the Palm ranges), resultWalk ([script,
 //   facing] of the result's walk-back when not walkBack / walkFacing: quirks of 31:57EA, 30:4D57, 30:4F88),
-//   resultNoEnd (no ScriptEnd after the result: quirk of 30:4F23), demo { entrance, mode, strokes, golfer, hole, tee,
-//   wind, pre (more round set-up after the wind: the coach's golfer record $C89A-$C89D), hooks, offTee (true: after
-//   GolfSessionInit, "afterTee": after SetForcedTee, 31:5E2F) }, try { entrance, mode, hole, tee, shot [e, bc], wind,
-//   pre (after the wind: 31:616C's second forced shot), hooks, offTee }.
+//   resultNoEnd (no ScriptEnd after the result: quirk of 30:4F23), demo { entrance, mode, music (the demo's round
+//   music: map $16), strokes, golfer, hole, tee, wind, pre (more round set-up after the wind: the coach's golfer
+//   record $C89A-$C89D), hooks, offTee (true: after GolfSessionInit, "afterTee": after SetForcedTee, 31:5E2F) }, try {
+//   entrance, mode, hole, tee, shot [e, bc] (null: none, 30:5D80), wind, pre (after the wind: 31:616C's second forced
+//   shot), hooks, offTee }.
 import * as D from "../render/display.js";
 import * as Scr from "../screen.js";
 import * as S from "../script.js";
@@ -63,6 +64,7 @@ export function* lessonRound(sh) {
 }
 
 // 30:7E2E BallWithinPinDist / 31:7D53: 0 when PinDist 10:62AD <= hl, else 1
+export const ballPinDist = w => pinDist(ball(w));       // 10:62AD PinDist of the ball
 export const ballWithinPinDist = (w, hl) => (((hl - pinDist(ball(w))) & 0xFFFF) & 0x8000 ? 1 : 0);
 // 10:648B BallLieTerrain
 export const ballLie = sh => lieTerrain(sh.hole, ball(sh.w));
@@ -107,6 +109,7 @@ export function* lessonTalk(sh, L) {
   yield* T.scriptShowText(sh, L.coach);
   const d = L.demo;
   St.golfSessionInit(w);
+  if (d.music !== undefined) wr(w, 0xC82C, d.music);
   if (d.offTee === true) setP1OffTee(w);
   saveReturnPoint(w, L.map, d.entrance);
   wr(w, 0xC834, d.mode);
@@ -164,7 +167,7 @@ export function* lessonAskTry(sh, L) {
   setForcedWindDir(w, 0x00);
   setForcedTee(w, t.tee[0], t.tee[1]);
   if (t.offTee === "afterTee") setP1OffTee(w);
-  setForcedShot(w, t.shot[0], t.shot[1]);
+  if (t.shot) setForcedShot(w, t.shot[0], t.shot[1]);
   setForcedWind(w, t.wind);
   if (t.pre) t.pre(w);
   setGolfEventHook(w, L.bank, t.hooks);
@@ -316,8 +319,8 @@ export function* tipTalk(sh, id, s, pre = true) {
   yield* T.scriptShowText(sh, s);
 }
 // the chained tips (31:53A6, 31:5CC2, 30:515D): the text asked (speaker s; 5 frames before the question: pre): Yes
-// the next text; No: the one after asked again (the same way): Yes the next, No the one after
-export function* chainedTip(sh, id, s, pre = true) {
+// the next text; No: the one after asked again (the same way): Yes the next, No the one after (swap: the other way)
+export function* chainedTip(sh, id, s, pre = true, swap = false) {
   const w = sh.w;
   T.scriptSetText(w, id);
   for (let k = 0; k < 2; k++) {
@@ -327,7 +330,8 @@ export function* chainedTip(sh, id, s, pre = true) {
     const a = yield* T.scriptAskYesNo(sh);
     yield* T.scriptCloseText(sh);
     yield* S.scriptWaitFrames(sh, 0x05);
-    if (!a) { yield* T.scriptShowText(sh, s); return; }
+    if (!k && !a) { yield* T.scriptShowText(sh, s); return; }
+    if (k && !a === !swap) { yield* T.scriptShowText(sh, s); return; }   // (swap: 30:58D5, Yes the text after next)
     if (k) { T.scriptSkipText(w); yield* T.scriptShowText(sh, s); }
   }
 }

@@ -1,6 +1,7 @@
 // Bank 34's map scripts (REVERSE.md "Bank 34: map scripts of the Field and the side places"): map $06 (the Locker
 // Room), map $02 (the Field between the clubs), ...
 import * as D from "../render/display.js";
+import { registerFrameTask } from "../tasks.js";
 import * as S from "../script.js";
 import * as T from "../msgbox.js";
 import * as M from "../mapengine.js";
@@ -93,8 +94,8 @@ function* fieldRect(sh, order, b, c, d, e, h, l) {
 // (0A:7878), no name banner; #127 sets #125; #118 / #119 cleared; the map's changes by progress: 34:4719 (#139 and
 // not #125: the tree's event cell), 34:4769 (the paths still closed: a block for each of #86, #84, #82, #80 clear,
 // up to the first set one; then a frame), 34:4733 (#114: #124 and an area opened), 34:46E6 (#125: the tree
-// gone); entrance $0E (~34:5218, the Grand Champion) and $0F (~34:5019, the path opening) are not ported, nor the
-// marker sprite of #125 (~34:4FCC)
+// gone, then the marker sprite: 34:4FCC and the frame task 34:46DF); entrance $0E (~34:5218, the Grand Champion) and
+// $0F (~34:5019, the path opening) are not ported
 function* map02Enter(sh) {
   const w = sh.w;
   clearFlag(w, 99);
@@ -115,7 +116,28 @@ function* map02Enter(sh) {
   const e = rd(w, 0xC46A);
   if (e === 0x0E) notPorted("the Grand Champion's return to the Field (~34:5218)");
   if (e === 0x0F) notPorted("the path's opening scene (~34:5019)");
-  if (flag(w, 125)) notPorted("the Field's marker sprite (~34:4FCC)");
+  if (flag(w, 125)) {                                            // 34:46CE
+    loadMarkerSpriteGfx(w);
+    registerFrameTask(w, 0x01, 0x34, 0x46DF);                     // Map02MarkerSpriteTask
+  }
+}
+// 34:4FCC Map02LoadMarkerSpriteGfx: the tiles 34:4950 ($60) to VRAM $8100 (bank 0), palettes 34:4F9C (OBJ 2: d = $0A,
+// e = 2)
+function loadMarkerSpriteGfx(w) {
+  if (w.vram) w.lcd.vbk = 0;                                      // rVBK
+  D.inBank(w, 0x34, () => {
+    D.queueVRAMCopy(w, 0x4950, 0x8100, 0x60);
+    D.loadPalettesImmediate(w, 0x4F9C, 0x0A, 0x02);
+  });
+}
+// 34:50A2 Map02DrawMarkerSprite (the frame task 34:46DF, bc = $0230): the sprite 34:4F50 at the map's ($1300, $1080)
+// when on screen (x - scroll + 4 under $16, y + 2 under $14, in tiles), tiles + $30, attributes | 2
+function drawMarkerSprite(w, b, c) {
+  const x = (0x1300 - (rd(w, 0xC320) | rd(w, 0xC321) << 8)) & 0xFFFF;
+  if ((((x >> 8) + 4) & 0xFF) >= 0x16) return;
+  const y = (0x1080 - (rd(w, 0xC322) | rd(w, 0xC323) << 8)) & 0xFFFF;
+  if ((((y >> 8) + 2) & 0xFF) >= 0x14) return;
+  D.queueSpriteTemplate(w, 0x4F50, ((y << 3) >> 8) & 0xFF, ((x << 3) >> 8) & 0xFF, c, b);
 }
 // 34:452A Map02WalkInWithPartner: the player and the partner at speed $10; the player half a tile up, animation $0A,
 // a tile up, 20 frames, hidden (state 0); both $140 up, the partner's walk awaited, the partner $140 up again
@@ -187,4 +209,6 @@ export const SCRIPTS = {
   "34:429b": map06Trigger01MutterWindTip,
   ...Object.fromEntries(Object.entries(LOCKERS).map(([k, [d, e]]) => [k, sh => map06OpenLocker(sh, d, e)])),
 };
-export const TASKS = () => ({});
+export const TASKS = w => ({
+  "34:46df": () => drawMarkerSprite(w, 0x02, 0x30),   // 34:46DF Map02MarkerSpriteTask
+});

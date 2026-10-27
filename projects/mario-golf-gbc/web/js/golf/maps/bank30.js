@@ -11,6 +11,7 @@ import { golfViewExit } from "../round.js";
 import { pushTextNumberArg, setTextCourseIndex } from "../text.js";
 import { saveGame } from "../save.js";
 import * as Ls from "./lessons.js";
+import * as Rh from "../render/hooks.js";
 import { golfSessionEnd } from "../boot.js";
 
 const rd = D.rd, wr = D.wr;
@@ -172,6 +173,216 @@ function* map13Enter(sh) {
   else if (e === 5) { yield* uphillResult(sh); yield* Ls.lessonFirstSuccess(sh, LESSONS_13.uphill, 0x002D, 7, saveGame); }
   else if (e === 0xFA && testFlag(w, 100)) clearFlag(w, 100);
 }
+// ---- the Links approach range: map $16 (its lessons; after the Links tournament won, its contests) ----
+const LESSONS_16 = {
+  // 30:5A94 Map16Talk03MoundApproachLesson (coach 1, actor 3): over a mound to a downhill pin (quirk: the try has no
+  // forced shot)
+  mound: { bank: B, map: 0x16, coach: 0x03, flag: 101, seen: 172, ask: 0x0CF4, retry: 0x0D11, after: 0x0CFB,
+    no: 0x0D02, talkScript: 0x7D99, walkBack: 0x7DFF, walkFacing: 0x80, afterFade: 0x04, music: 0x0B,
+    resultWalk: [0x7E11, 0x80],
+    demo: { entrance: 2, mode: 0x0C, music: 0x07, strokes: 0x5BC2, golfer: 0x4F, hole: 0x11, tee: [0x1EC0, 0x2060],
+      wind: 0xC000, hooks: 0x5BD2, offTee: true },
+    try: { entrance: 4, mode: 0x0C, hole: 0x11, tee: [0x1EC0, 0x2060], shot: null, wind: 0xC000, hooks: 0x5C38,
+      offTee: true } },
+  // 30:5B2B Map16Talk04SlopeApproachLesson (coach 2, actor 4): across a steep slope (no forced shot either)
+  slope: { bank: B, map: 0x16, coach: 0x04, flag: 102, seen: 173, ask: 0x0D03, retry: 0x0D12, after: 0x0D0A,
+    no: 0x0D10, talkScript: 0x7D99, walkBack: 0x7E08, walkFacing: 0x40, afterFade: 0x04, music: 0x0B,
+    resultWalk: [0x7DFF, 0x40], resultNoEnd: true,
+    demo: { entrance: 3, mode: 0x0C, music: 0x07, strokes: 0x5E0C, golfer: 0x4E, hole: 0x11, tee: [0x1D60, 0x2380],
+      wind: 0xC000, hooks: 0x5E1C, offTee: true },
+    try: { entrance: 5, mode: 0x0C, hole: 0x11, tee: [0x1D60, 0x2380], shot: null, wind: 0xC000, hooks: 0x5E82,
+      offTee: true } },
+};
+// 30:6414 Map16UnlockContests: after the Links win (#139): #224 once the mound lesson is passed (#172), #225 once the
+// slope's (#173); quirk: the same contest flags as the driving range's (31:7051 sets them for #174 / #175)
+function unlockContests16(w) {
+  if (!testFlag(w, 139)) return;
+  if (testFlag(w, 172)) setFlag(w, 224);
+  if (testFlag(w, 173)) setFlag(w, 225);
+}
+// 30:5CC2 Map16MoundApproachLessonResult (entrance 4): 0 (within $60): the cheer, $0D01, passed; else (no wait first)
+// $0CFF when the stroke record's +$0C ($C969) has bit 7 set, else $0D00; the coach walks back with the contest coach's
+// script 30:7E11 facing $80
+function* moundResult(sh) {
+  const w = sh.w, L = LESSONS_16.mound;
+  yield* Ls.lessonResultBegin(sh, L);
+  if (!rd(w, 0xC968)) { yield* Ls.lessonCheer(sh, L); yield* Ls.coachSays(sh, L, 0x0D01); Ls.lessonPassed(w, L); }
+  else yield* Ls.coachSays(sh, L, rd(w, 0xC969) & 0x80 ? 0x0CFF : 0x0D00);
+  yield* Ls.lessonResultEnd(sh, L);
+}
+// 30:5EF8 Map16SlopeApproachLessonResult (entrance 5): 0: the cheer, $0D0F, passed; else $0D0E; coach 2 walks back with
+// coach 1's script facing $40 and the script is not ended (quirks, as on maps $10 / $13)
+function* slopeResult(sh) {
+  const w = sh.w, L = LESSONS_16.slope;
+  yield* Ls.lessonResultBegin(sh, L);
+  if (!rd(w, 0xC968)) { yield* Ls.lessonCheer(sh, L); yield* Ls.coachSays(sh, L, 0x0D0F); Ls.lessonPassed(w, L); }
+  else { yield* S.scriptWaitFrames(sh, 0x1E); yield* Ls.coachSays(sh, L, 0x0D0E); }
+  yield* Ls.lessonResultEnd(sh, L);
+}
+// the contests (30:6159 / 30:634A): ScriptBegin, the coach's talking script facing the player, fade in (4), the
+// challenge $0C82 / $0C8A asked (30:6185 / 30:6376): No: $0C96 / $0C8B, the coach walks back (coach 1's script 30:7DFF
+// facing $80 for both: a quirk for coach 2); Yes: #101 / #102, the next text, the counts ($C968 made, $C969 tries)
+// cleared, GolfSessionInit, music $0B until won (#220 / #221), player 1 off the tee, the return point (entrance 4 / 5),
+// game mode 5, the player's golfer, course 7 hole $11, the wind direction 0, the tee ($1E60, $20A0) / ($1D60, $22C0),
+// the wind $C000, the hooks 30:6032 / 30:6223, one hole; ScriptEnd
+const CONTESTS_16 = {
+  mound: { coach: 0x03, flag: 101, won: 220, offer: 0x0C82, no: 0x0C96, entrance: 4, tee: [0x1E60, 0x20A0], hooks: 0x6032 },
+  slope: { coach: 0x04, flag: 102, won: 221, offer: 0x0C8A, no: 0x0C8B, entrance: 5, tee: [0x1D60, 0x22C0], hooks: 0x6223 },
+};
+function* contestOffer16(sh, C) {
+  const w = sh.w;
+  D.inBank(w, 0x0A, () => S.scriptBegin(w));
+  S.actorSetScript(w, C.coach, 0x7D99, B);
+  S.actorFaceActor(w, C.coach, rd(w, 0xC296));
+  Scr.beginFadeIn(w, 0x04);
+  yield* Scr.waitFade(sh);
+  T.scriptSetText(w, C.offer);
+  yield* T.scriptShowTextKeepOpen(sh, C.coach);
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* S.scriptWaitFrames(sh, 0x05);
+  if (a) {
+    T.scriptSetText(w, C.no);
+    yield* T.scriptShowText(sh, C.coach);
+    S.actorSetScript(w, C.coach, 0x7DFF, B);
+    S.actorSetFacing(w, C.coach, 0x80);
+  } else {
+    setFlag(w, C.flag);
+    T.scriptSkipText(w);
+    yield* T.scriptShowText(sh, C.coach);
+    wr(w, 0xC968, 0); wr(w, 0xC969, 0);
+    St.golfSessionInit(w);
+    if (!testFlag(w, C.won)) wr(w, 0xC82C, 0x0B);
+    Ls.setP1OffTee(w);
+    Ls.saveReturnPoint(w, 0x16, C.entrance);
+    wr(w, 0xC834, 0x05);
+    St.setupPlayerGolfer(w, 0x80, 0x00);
+    St.setupPlayerGolfer(w, 0xFF, 0x01);
+    St.setCourseHole(w, 0x07, 0x07, 0x11);
+    Ls.setForcedWindDir(w, 0x00);
+    Ls.setForcedTee(w, C.tee[0], C.tee[1]);
+    Ls.setForcedWind(w, 0xC000);
+    Ls.setGolfEventHook(w, B, C.hooks);
+    yield* Ls.lessonRound(sh);
+  }
+  D.inBank(w, 0x0A, () => S.scriptEnd(w));
+}
+// 30:60DA / 30:62CB the contests' results (entrances 4 / 5 with #224 / #225): ScriptBegin, the coach's talking script
+// facing the player, fade in (8), 30 frames; 7 or more made: flag #99 for all ten, the cheer, $0C87 / $0C8F, #98, #101
+// cleared (quirk: #101 for the slope's contest too); else $0C89 / $0C91; the contest coach's script 30:7E11 facing
+// $80, ScriptEnd
+function* contestResult16(sh, coach, win, loss) {
+  const w = sh.w;
+  D.inBank(w, 0x0A, () => S.scriptBegin(w));
+  S.actorSetScript(w, coach, 0x7D99, B);
+  S.actorFaceActor(w, coach, rd(w, 0xC296));
+  Scr.beginFadeIn(w, 0x08);
+  yield* Scr.waitFade(sh);
+  yield* S.scriptWaitFrames(sh, 0x1E);
+  const made = rd(w, 0xC968);
+  if (made >= 0x07) {
+    clearFlag(w, 99);
+    if (made === 0x0A) setFlag(w, 99);
+    S.actorPlayAnim(w, coach, 0x07);
+    yield* S.waitActorAnimDone(sh, coach);
+    yield* S.scriptWaitFrames(sh, 0x1E);
+    T.scriptSetText(w, win);
+    yield* T.scriptShowText(sh, coach);
+    setFlag(w, 98); clearFlag(w, 101);
+  } else {
+    T.scriptSetText(w, loss);
+    yield* T.scriptShowText(sh, coach);
+  }
+  S.actorSetScript(w, coach, 0x7E11, B);
+  S.actorSetFacing(w, coach, 0x80);
+  D.inBank(w, 0x0A, () => S.scriptEnd(w));
+}
+// a first success or win: (30 frames: wait), the flag, 50 EXP (30:7E7F, a quarter more with #99), the return point
+// (map 0, $FA), SaveGame, the warp
+function* firstSuccess16(sh, seen, warp, wait) {
+  const w = sh.w;
+  if (!testFlag(w, 98)) return;
+  clearFlag(w, 98);
+  if (testFlag(w, seen)) return;
+  if (wait) yield* sh.advance(0x1E);
+  setFlag(w, seen);
+  yield* Ls.awardExpWithBonus(sh, 0x0032);
+  Ls.saveReturnPoint(w, 0x00, 0xFA);
+  saveGame(w);
+  wr(w, 0xC441, warp);
+}
+// 30:597C Map16Enter: Map16UnlockContests; the talk list 30:5941 once the Links is won (#139), else 30:5918 after the
+// Links tournament (#115); not entrance 1: no name banner; 2 / 3 after a demo; 4 / 5 the contest's (#224 / #225) or
+// the lesson's result and a first win or success (#220 / #172 with 30 frames first, #221 / #173 without; 50 EXP;
+// warps 6 / 7); $FA: #100 cleared
+function* map16Enter(sh) {
+  const w = sh.w;
+  unlockContests16(w);
+  if (testFlag(w, 139)) M.scriptSetMapField(w, 0x5941, 0x000C);
+  else if (testFlag(w, 115)) M.scriptSetMapField(w, 0x5918, 0x000C);
+  const e = rd(w, 0xC46A);
+  if (e !== 1) { wr(w, 0xC4B4, 0); wr(w, 0xC4B5, 0); }
+  if (e === 2) yield* Ls.lessonAfterDemo(sh, LESSONS_16.mound);
+  else if (e === 3) yield* Ls.lessonAfterDemo(sh, LESSONS_16.slope);
+  else if (e === 4) {
+    if (testFlag(w, 224)) { yield* contestResult16(sh, 0x03, 0x0C87, 0x0C89); yield* firstSuccess16(sh, 220, 0x06, true); }
+    else { yield* moundResult(sh); yield* firstSuccess16(sh, 172, 0x06, true); }
+  } else if (e === 5) {
+    if (testFlag(w, 225)) { yield* contestResult16(sh, 0x04, 0x0C8F, 0x0C91); yield* firstSuccess16(sh, 221, 0x07, false); }
+    else { yield* slopeResult(sh); yield* firstSuccess16(sh, 173, 0x07, false); }
+  } else if (e === 0xFA && testFlag(w, 100)) clearFlag(w, 100);
+}
+// 30:6052 / 30:6243 the contests' shot set-ups: the tries so far ($C969) as player 1's strokes, HudDrawPlayer1 12:4B8A
+function* contestShotSetup16(sh) {
+  const w = sh.w;
+  wr(w, 0xC8A0, rd(w, 0xC969));
+  Rh.hud(w, "hudDrawPlayer1");
+}
+// 30:605C / 30:624D the contests' after-shots: GolfViewExit; quit: the return entrance 6 / 7, the round over; within
+// $60 of the pin one more made ($0C85 / $0C8D), else $0C86 / $0C8E (the tries, then the made, as the numbers); a try
+// more; the tenth: 7 or more made sets #98, the round over; else the same spot again (1)
+function* contestAfterShot16(sh, quitEntrance, coach, madeText, missText) {
+  const w = sh.w;
+  yield* Ls.inBankGen(w, 0x10, golfViewExit(sh));
+  if (!rd(w, 0xC834)) {
+    wr(w, 0xC961, quitEntrance);
+    Ls.setGolfEventFlag(w, 0x82);
+    yield* Ls.golfAdvanceFrame(sh);
+    return;
+  }
+  const inside = !within60(sh);
+  if (inside) wr(w, 0xC968, (rd(w, 0xC968) + 1) & 0xFF);
+  const made = rd(w, 0xC968);
+  wr(w, 0xC969, (rd(w, 0xC969) + 1) & 0xFF);
+  const tries = rd(w, 0xC969);
+  pushTextNumberArg(w, tries);
+  pushTextNumberArg(w, made);
+  yield* Ls.inBankGen(w, 0x05, T.showMessageAt(sh, inside ? madeText : missText, coach, 0x0A, 0x03));
+  if (tries !== 0x0A) { Ls.setGolfEventFlag(w, 0x01); yield* Ls.golfAdvanceFrame(sh); return; }
+  if (rd(w, 0xC968) >= 0x07) setFlag(w, 98);
+  Ls.setGolfEventFlag(w, 0x82);
+  yield* Ls.golfAdvanceFrame(sh);
+}
+const HOOKS16 = {
+  "30:5bf2": sh => Ls.hookShotSetup(sh, 0x03, [0x0CF7, 0x0CF8, 0x0CF9, 0x0CFA], { push: false }),   // 30:5BF2
+  "30:5c2c": sh => Ls.hookDemoAfterShot(sh, { push: false }),                     // 30:5C2C
+  "30:5c58": sh => Ls.hookShotSetup(sh, 0x03, [0x0CFC, 0x0CFD, 0x0CFE], { push: false, wait: "none" }),   // 30:5C58
+  "30:5c80": sh => Ls.hookTryAfterShot(sh, 0x06, within60, { club: 0x68C }),      // 30:5C80 (+$0C of the record)
+  "30:5e3c": sh => Ls.hookShotSetup(sh, 0x04, [0x0D06, 0x0D07, 0x0D08, 0x0D09], { push: false }),   // 30:5E3C
+  "30:5e76": sh => Ls.hookDemoAfterShot(sh, { push: false }),                     // 30:5E76
+  "30:5ea2": sh => Ls.hookShotSetup(sh, 0x04, [0x0D0B, 0x0D0C, 0x0D0D], { push: false, wait: "none" }),   // 30:5EA2
+  "30:5eca": sh => Ls.hookTryAfterShot(sh, 0x07, within60),                       // 30:5ECA
+  "30:6052": contestShotSetup16,
+  "30:605c": sh => contestAfterShot16(sh, 0x06, 0x03, 0x0C85, 0x0C86),
+  "30:6243": contestShotSetup16,
+  "30:624d": sh => contestAfterShot16(sh, 0x07, 0x04, 0x0C8D, 0x0C8E),
+};
+const SCRIPTS16 = {
+  "30:597c": map16Enter,
+  "30:58d5": sh => Ls.chainedTip(sh, 0x0C79, 0x06, false, true),   // 30:58D5 Map16Talk05HillTip (the second answer swapped)
+  "30:5a94": sh => testFlag(sh.w, 224) ? contestOffer16(sh, CONTESTS_16.mound) : Ls.lessonTalk(sh, LESSONS_16.mound),
+  "30:5b2b": sh => testFlag(sh.w, 225) ? contestOffer16(sh, CONTESTS_16.slope) : Ls.lessonTalk(sh, LESSONS_16.slope),
+};
 // ---- the putting greens: maps $0E $11 $14 $17 ----
 // 30:6E49 PuttingGreenIndex: 0-3 for maps $0E $11 $14 $17 (anything else: the map id itself, a quirk of the fall-through)
 function greenIndex(w) {
@@ -432,6 +643,7 @@ function* puttingPracticeAfterShot(sh) {
 }
 
 export const HOOKS = {
+  ...HOOKS16,
   "30:6c2f": challengeShotSetup,
   "30:6c58": challengeAfterShot,
   "30:6bfb": function* () {},                     // 30:6BFB PuttingGreenPracticeShotSetup: ret
@@ -464,6 +676,7 @@ export const HOOKS = {
   "30:48dd": Ls.hookPracticeAfterShot,            // 30:48DD ApproachRangePracticeAfterShot
 };
 export const SCRIPTS = {
+  ...SCRIPTS16,
   "30:69b9": puttingGreenEnter,
   "30:6635": sh => Ls.tipTalk(sh, 0x10B1, 0x02),  // 30:6635 PuttingGreenTalk02PuttingTip
   "30:6666": map0ETalkChallenge,

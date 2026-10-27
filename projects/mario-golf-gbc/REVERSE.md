@@ -98,6 +98,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the Caddie Master's offices and the club rounds (maps $08-$0B, bank 33), the award ceremonies (31:7775), the Field (map $02, 34:4690) with the navigation (0A:7174, 0A:7878), the golf event hooks (10:4CC3), the Marion driving range and approach range with their practice and lessons (maps $0C / $0D, banks 31 / 30, maps/lessons.js), ShowMessageAt 05:5E70, the practice pause menus, the replayed strokes (02:4626) | 137,216 | 56.54% |
 | + the putting greens' challenge, putt demo and practice (maps $0E / $11 / $14 / $17, 30:69B9-30:6EC8), the mini-game pause menu (41:6F9F), the Palm driving range's and approach range's lessons (maps $0F / $10, 31:5543, 30:4B62) | 141,468 | 58.29% |
 | + the Dune driving range's and approach range's lessons (maps $12 / $13, 31:5E63, 30:52CB), the course view's tile animation of banks $51-$54 (13:7076) | 144,903 | 59.71% |
+| + the Links driving range and approach range with their lessons and contests (maps $15 / $16, 31:67C8, 30:597C), the Field's marker sprite (34:4FCC) | 149,812 | 61.73% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -227,6 +228,12 @@ given to the native code). All cases match frame for frame:
 | boot_kid_story_dunerange_tree | the same, the second coach's low shot out of the trees (31:5DBF, the hooks 31:61B5-6263, the judgement 31:6321, the result 31:628E), a retry | 9,111 |
 | boot_kid_story_duneapproach | the Dune approach range (map $13, 30:52CB): the first coach's backspin approach (30:51A7, the hooks 30:538F-541D, the result 30:545F), a retry | 8,764 |
 | boot_kid_story_duneapproach_uphill | the same, the second coach's approach up the climb (30:5230, the hooks 30:55E1-566F, the result 30:56AE without its ScriptEnd), a retry | 8,852 |
+| boot_kid_story_linksrange | the Links Club's office (map $0B, the Field's trigger 4; #114 poked) to its driving range (map $15, 31:67C8): the first coach's tree shot (31:65B8: course 0 hole $0A; the hooks 31:6909-6A02, the judgement 31:6B8B, the result 31:6A56), a retry | 9,285 |
+| boot_kid_story_linksrange_buried | the same, the second coach's buried lie (31:666F; wP1OffTee written $21; the hooks 31:6CD6-6DB8, the judgement 31:6F45, the result 31:6DF8), a retry | 9,341 |
+| boot_kid_story_linkscontest | the same with the Links won (#114 #115 #125 #139, the lesson passed #174 poked): the Field with the marker sprite (34:4FCC, the task 34:46DF), the tree shot's contest (31:7051 sets #224: the coach's demo for his distance, the player's shot, the result 31:6AE3), then the contest again | 9,074 |
+| boot_kid_story_linksapproach | the Links approach range (map $16, 30:597C): the first coach's approach over a mound (30:5A94: the demo's music 7, the hooks 30:5BF2-5C80, a try without a forced shot, the result 30:5CC2), a retry | 8,897 |
+| boot_kid_story_linksapproach_slope | the same, the second coach's approach across a slope (30:5B2B, the hooks 30:5E3C-5ECA, the result 30:5EF8 without its ScriptEnd), a retry | 8,449 |
+| boot_kid_story_linksapproachcontest | the same with the Links won and the mound lesson passed (#172 poked): the contest (30:6414 sets #224; the offer 30:6159, game mode 5, ten approaches counted on the HUD by the hooks 30:6052 / 605C), the result (30:60DA) | 11,846 |
 | boot_kid_story_green | the office's way to the putting green (map $0E, 30:69B9), "Practice here?" declined, the pro's putting challenge (30:6739, game mode 5, the hooks 30:6C2F / 6C58), the result (30:6CF2, not cleared) | 12,839 |
 | boot_kid_story_green_quit | the same, Start at the aim: the mini-game pause menu (41:6F9F), Quit Mini-Game | 7,647 |
 | boot_kid_story_green_cleared | the same with ten made (poked): cleared, 25 EXP (30:6EC8), the level-up screen, SaveGame, the map again at $FA | 12,839 |
@@ -672,6 +679,29 @@ calls ScriptEnd (as on map $10). The demo and try hooks of both keep no WRAM ban
 The course view's tile animation (13:7076 StartCourseAnimTask) now starts the copy in the bank of the hole's asset
 ref 4 ($50-$54; the five copies are the same code at other addresses, render/holeview.js); course 7's hole $0D is
 animated from bank $51 (before, only bank $50's courses were).
+**The Links driving range** (map $15, `maps/bank31.js`; its own code, apart from the lesson engine): Map15Enter 31:67C8
+(Map15UnlockContests 31:7051: once the Links is won, #139, the contests #224 / #225 for the passed lessons #174 / #175;
+the talk lists 31:678D after the win, 31:6764 after the tournament, #115), the tip 31:656F, the tree shot 31:65B8 and
+the buried lie 31:666F with their asks 31:6BF7 / 31:6F9A, after-demos (entrances 4 / 5), results 31:6A56 / 31:6DF8 and,
+once unlocked, the contests: the same demo gives the coach's distance to the pin (PinDist 10:62AD to wEventResult
+$C968, a word), the player's try hers ($C96A), the results 31:6AE3 / 31:6E9D (the nearer wins: #98; 50 EXP and warps
+$0A / $0B; then entrances $0A / $0B, 31:6B5A / 31:6F14). The tree shot is played on course 0 hole $0A with the wind
+$6000 in the contest (else $C000); the buried lie on course 7 hole $10 with $0004 / $C000. Quirks: the buried lie
+writes wP1OffTee $D4E3 = $21 directly; the demo set-up 31:6909 skips text $1093; the lessons' results leave the coach
+on his talking script (no walk back, only facing up when not passed); the first success of the tree shot's lesson and
+of the buried lie's contest skip the 30 frames the others wait; the buried-lie contest's No text is $1028 once the
+Links is won. Judgements: 31:6B8B (0 holed or within $A0 on the green, 1 on the green, 2 off it), 31:6F45 (on the
+green 0 within $A0 else 3; in a bunker 2; else 1).
+**The Links approach range** (map $16, `maps/bank30.js`): Map16Enter 30:597C (Map16UnlockContests 30:6414 sets the same
+#224 / #225 for its own lessons #172 / #173: a quirk, the two ranges share the contest flags), the chained tip 30:58D5
+(quirk: the second answer's texts the other way round: `chainedTip` swap), the lessons 30:5A94 / 30:5B2B (the demo's
+music 7; quirk: neither try sets a forced shot) and, once unlocked, the contests 30:6159 / 30:634A: game mode 5, one
+hole of ten approaches from the same spot (the hooks 30:6052 / 30:6243 put the tries in player 1's strokes and redraw
+the HUD, 12:4B8A; 30:605C / 30:624D count those within $60 of the pin, $0C85 / $0C86 with both numbers), 7 made wins
+(#98; all ten sets #99 for the quarter more EXP), the results 30:60DA / 30:62CB (quirk: the slope's clears #101, not
+#102), 50 EXP. The mini-game pause menu (41:6F9F) is theirs too. The tests poke the Links won and #125 (the path
+open) because the tree's letter event (~34:4847) and the path's opening (~34:5019) are not ported; with #125 the Field
+now draws the marker sprite (Map02LoadMarkerSpriteGfx 34:4FCC, the frame task 34:46DF / 34:50A2).
 **The award ceremonies** (maps $18-$1B = Marion, Palm, Dune, Links; one header 31:76B1; `maps/bank31.js`):
 CeremonyEnter 31:7775 (BeginFadeOut $7F; Palm / Dune / Links their palettes 31:7C00 / 7C40 / 7C80 and warp lists;
 seen flags #107-#109 skip to warp 2 and are set at entrance 2; Dune's flag #212 31:7CB0; entrance 2 the champion
