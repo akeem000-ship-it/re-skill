@@ -18,6 +18,7 @@ import { showMessage, showMessageKeepOpen } from "./msgbox.js";
 import { restoreShadowFromMap } from "./shadow.js";
 import { vectorFromLengthAndAngle } from "./math.js";
 import { actorSetAnim } from "./render/actors.js";
+import { mapStartMenu } from "./pause.js";
 
 const rd = D.rd, wr = D.wr;
 const setW = (w, n) => D.setWramBank(w, n);
@@ -355,7 +356,7 @@ export function* mapEventLoop(sh) {
         wr(w, 0xC444, 0);
         sh.sound(0x62);
         yield* S.waitScriptActorIdle(sh);
-        notPorted("the map's start menu (~41:6E6E MapStartMenu)");
+        yield* inBankGen(w, 0x41, mapStartMenu(sh));   // 41:6E6E
       }
       clearFlag(w, 23);
       if (rd(w, 0xC443)) {

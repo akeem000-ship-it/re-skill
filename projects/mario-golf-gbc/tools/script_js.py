@@ -5,7 +5,12 @@ screen.js has for it, with the ROM address in a comment. Anything else (branches
 bank) is written as a `// TODO` line with its disassembly, to be ported by hand. It does not decide control flow:
 it stops at an unconditional jp / jr / ret (or after N bytes).
 
-usage: script_js.py BB:AAAA [nbytes]   (prints the draft)
+With --all it goes on past unconditional jumps and returns (to the end of nbytes) and marks the branch targets
+as `// label AAAA` lines; conditional branches are written `if (<condition>) goto AAAA` from the last instruction
+that set the flag (cp, and / or a, bit, a flag rst $30), loads of a from RAM as `a = rd(w, ...)`, calls into the bank
+as `yield* <label>(sh)`.
+
+usage: script_js.py BB:AAAA [nbytes] [--all]   (prints the draft)
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -45,7 +50,7 @@ API = {
     0x3E: ("S.scriptShakeScreen(w, {a});", 0),
     0x40: ("S.actorJump(w, {a}, {de});", 0),
     0x42: ("yield* S.waitActorLanded(sh, {a});", 1),
-    0x44: ("a = yield* T.scriptRunMenu(sh, {hl}, {d}, {e});", 1),
+    0x44: ("a = yield* S.scriptRunMenu(sh, {hl}, {d}, {e});", 1),
     0x46: ("S.actorSetState(w, {a}, {b});", 0),
     0x4C: ("M.scriptSetMapField(w, {hl}, {de});", 0),
 }
@@ -66,7 +71,22 @@ def main():
     R = {k: None for k in "abcdehl"}
     pushed = []
     out = []
+    every = "--all" in sys.argv
+    start = pc
+    targets = set()
+    if every:                                     # first pass: the branch targets
+        q = pc
+        while q < end:
+            i2 = decode(rom, to_offset(bank, q), q)
+            if i2.kind in ("jp", "jr") and i2.target is not None and start <= i2.target < end:
+                targets.add(i2.target)
+            q += i2.length + inline_len(i2)
+    cond = None                                    # (z expression, c expression) of the last flag setter
+    sym = None                                     # a JS expression for a when it came from RAM
     while pc < end:
+        if pc in targets:
+            out.append("  // label %04X" % pc)
+            R = {k: None for k in "abcdehl"}; sym = None; cond = None
         off = to_offset(bank, pc)
         ins = decode(rom, off, pc)
         op = ins.raw[0]
@@ -118,6 +138,38 @@ def main():
         elif op == 0xEA:
             a16 = ins.raw[1] | ins.raw[2] << 8
             line = "wr(w, 0x%04X, %s);" % (a16, val["a"])
+        av = val["a"] if R["a"] is not None or sym is None else sym
+        if op == 0xFA:
+            a16 = ins.raw[1] | ins.raw[2] << 8
+            line = "a = rd(w, 0x%04X);" % a16
+            R["a"] = None; sym = "a"
+        elif op == 0xFE:
+            cond = ("%s === 0x%02X" % (av, ins.raw[1]), "%s < 0x%02X" % (av, ins.raw[1])); line = ""
+        elif op in (0xA7, 0xB7):
+            cond = ("!%s" % av, "false"); line = ""
+        elif op == 0xCB and (ins.raw[1] & 0xC7) == 0x47:
+            cond = ("!(%s & 0x%02X)" % (av, 1 << ((ins.raw[1] >> 3) & 7)), None); line = ""
+        elif op == 0xF7:
+            fl = (data[0] | data[1] << 8) >> 5
+            cond = ("!flag(w, %d)" % fl, None); line = ""
+        elif op in (0x20, 0x28, 0x30, 0x38, 0xC2, 0xCA, 0xD2, 0xDA, 0xC0, 0xC8, 0xD0, 0xD8):
+            z, c = cond or ("/*z?*/", "/*c?*/")
+            cc = {0x20: "!(%s)" % z, 0x28: z, 0x30: "!(%s)" % c, 0x38: c, 0xC2: "!(%s)" % z, 0xCA: z,
+                  0xD2: "!(%s)" % c, 0xDA: c, 0xC0: "!(%s)" % z, 0xC8: z, 0xD0: "!(%s)" % c, 0xD8: c}[op]
+            what = "return" if op in (0xC0, 0xC8, 0xD0, 0xD8) else "goto %04X" % ins.target
+            line = "if (%s) %s;" % (cc, what)
+        elif op == 0xCD and 0x4000 <= (ins.target or 0) < 0x8000:
+            nm = (labels.get(bank, ins.target) or ("fn%04X" % ins.target,))[0]
+            line = "yield* %s(sh);   // call %04X" % (nm[0].lower() + nm[1:], ins.target)
+            R = {k: None for k in "abcdehl"}; sym = None
+        elif op in (0xC3, 0x18):
+            line = "goto %04X;" % ins.target
+        elif op == 0xC9:
+            line = "return;"
+        if line == "":
+            line = None
+            pc = nxt
+            continue
         if line is None and not (op in (0x3E, 0x06, 0x0E, 0x16, 0x1E, 0x26, 0x2E, 0x01, 0x11, 0x21, 0xAF, 0x47, 0x4F,
                                         0x78, 0xF5, 0xF1) or op == 0xF0 and ins.raw[1] == 0x95):
             nm = labels.get(bank, ins.target)[0] if ins.target is not None and labels.get(bank, ins.target) else ""
@@ -132,7 +184,9 @@ def main():
         if line:
             out.append("  %s%s// %s" % (line, " " * max(1, 64 - len(line)), here) if not line.startswith("//")
                        else "  " + line)
-        if op in (0xC3, 0x18, 0xC9, 0xE9):
+        if op in (0x3E, 0xAF):
+            sym = None
+        if op in (0xC3, 0x18, 0xC9, 0xE9) and not every:
             break
         pc = nxt
     print("\n".join(out))

@@ -94,6 +94,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + Give Up after a stroke, the stroke limit's HUD redraw | 108,330 | 44.64% |
 | + the sound driver's copies in banks 7C / 7D (tools/sound_copies.py: identical to 7E) and the last small routines of 7E / 7F | 114,431 | 47.15% |
 | + the map engine and its script API (mapengine.js, script.js, maps/), a new character (StoryOpeningCreateCharacter 31:43B9, CharYesNoPrompt 41:6784, NameEntryScreen 06:51DC), the first day (32:71CF), walking and talking on the overworld (player.js, MapEventLoop 0A:4AAA) | 123,691 | 50.97% |
+| + the map's start menu (MapStartMenu 41:6E6E: text speed, Save & Quit), the clubhouse's doors and counter (map $03), the Locker Room (map $06, bank 34), the Lounge's first visit (map $04, 32:6739), map $05's scripts, MapBufCopyRectRedraw 0B:4864 | 126,615 | 52.17% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -203,6 +204,9 @@ given to the native code). All cases match frame for frame:
 | boot_poweron | power-on (00:0100, an empty save RAM) to the Stroke round's GolfRound call | 2,929 |
 | boot_newchar | power-on, the empty slot: a new character (map $1E 31:43B9, 41:6784, 06:51DC), the first day (map $05 32:71CF), to the mode select | 7,647 |
 | boot_kid_story_walk | a saved character's story: the clubhouse (map $03), walking, a talk, running (MapEventLoop 0A:4AAA, 04:538C) | 3,940 |
+| boot_kid_story_menu | the story's start menu: the text speed, Save & Quit (MapStartMenu 41:6E6E; the save RAM equal) | 4,040 |
+| boot_kid_story_door3 | through a clubhouse door to the Locker Room (32:5CAF, map $06), a locker opened (34:41E8) | 4,040 |
+| boot_kid_story_lounge | through door 4 to the Lounge (map $04), the first visit's tour (32:6739) | 7,199 |
 
 By situation (r18): at the address step 7,194 of 7,194 frames pixel-exact, on the green 4,279 of 4,279, the swing
 and the roll 17,881 of 17,884, the ball in the air 13,823 of 13,827, holed out and between holes 54 of 54 (the
@@ -496,8 +500,33 @@ on (MapStepTrigger 0A:50CB), a warp, the bump counter (flag #23, action 2), the 
 (MapTalkTargetAhead 0A:4CC5, BuildActiveActorList 04:56FD) -> MapTalkTo 0A:4F96, MapFindObject 0A:49E9
 (MapObjectAhead 0A:4C9B) -> MapUseObject 0A:5066, MapTriggerUnderPlayer 0A:4D1F -> MapCheckTrigger 0A:5109; a text
 script (below $2000) is ShowMessage 05:5D49 after WaitScriptActorIdle. The actor scripts' natives are a registry
-(`actors.js` NATIVES, "bb:aaaa"). Not ported yet: the map's start menu (41:6E6E, Start), the navigation menu (map 2),
-the partner's talk (0A:5365), the doors' tile animations.
+(`actors.js` NATIVES, "bb:aaaa"). Not ported yet: the navigation menu (map 2), the partner's talk (0A:5365).
+
+**The start menu** (`boot_kid_story_menu`: Start in the clubhouse, the text speed changed, Save & Quit; the save RAM
+equal at the end): MapStartMenu 41:6E6E (SetupMapStartMenu 41:7A65; the text speed's icons 41:71D6 / 7141 in
+DrawMenuIcons' bits 4 / 5), MenuTextSpeedAdjust 41:7969, MenuSaveAndQuit 41:79A7 (MapSaveReturnPoint, SaveGame, warp
+to the mode select). Not ported: Char Data (41:73E4 / 7419: the character screen 41:6506), Stars (41:73EA / 741F),
+Navigation (41:7413).
+**The clubhouse and the rooms off it** (`boot_kid_story_door3`: through door 3 to the Locker Room, a locker opened;
+`boot_kid_story_lounge`: through door 4 to the Lounge, its first visit's tour): map $03 (bank 32): the enter script
+32:5E07 (entrances 3-7 come out of a door: 32:5D94 opens it, walks the player out and closes it; a door moves in four
+frames of 3 frames each, copied from the map buffer's rows $3C / $3E), the door triggers 32:5CAF-5D2F (the door opens, the player
+walks in, the warp), the exits 32:5C09 / 5C25, the counter 32:56EA / 5704 (the partner's line not ported), the
+bookshelf 32:5BEA; the doors' tiles change through MapBufCopyRectRedraw 0B:4864 (a rectangle of the map buffer copied
+and the visible part redrawn). Map $05: the enter script 32:7461 (its cover-up scene ~32:7533 not ported), the
+bookshelves 32:7156 / 716C, the wind tip 32:71B4, the 1-Up Mushroom 32:7966 (FadeToLevelUpScreen 32:7EE7), and the
+no-op script 32:7E67. Map $06, the Locker Room (bank 34, `maps/bank34.js`): the talk list by progress 34:42B6, the
+grumpy golfer 34:407F (a random gripe; bumped into three times, the screen shakes), the lockers 34:41E8 (objects 1-10:
+open, a random find of 16, closed), the trigger 34:429B. Map $04, the Lounge: the enter script 32:69B5 and the
+first visit's tour 32:6739 (the arrow over each champion, a frame task 32:6735 -> 32:6AB6; LoadCursorSprite 01:4289);
+the champions' talks (32:6B81) and a partner joining (32:6DCF, SpawnPartnerActor 04:51D0) are not ported.
+The cases walk with `routeCase` (golf_screens_vs_core.mjs): a breadth-first path over the terrain cells, each next
+cell's centre aimed at after centring on the other axis, around an actor in the way, A when stuck (a bump's text).
+The harness's lag model gained one rule here (screenstep.mjs; no tolerance): when the frame's full VBlank came early,
+inside the game's code (its AdvanceFrame then waking at a VBlank that found the work done), and no fade ran at that
+VBlank but one runs after the frame, the native frame's VBlank stands for that early one and makes no fade step
+(`w.fadeSkip`, honoured once by fadeVBlank); the game's fade steps were the later VBlanks, which are replayed as
+before. Without it Save & Quit's fade-out after SaveGame's long lag was one step ahead on the native side.
 
 #### Match play and the contests (web/js/golf/match.js)
 

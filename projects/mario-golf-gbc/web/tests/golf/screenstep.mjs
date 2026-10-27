@@ -44,6 +44,7 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
   initDisplay(w); displayFromCore(w, gb);
   w.high[0x195] = gb.mem.romBank;
   const res = { frames: 0, pixelExact: 0, modelExact: 0, lag: 0, bad: [], sounds: { core: [], native: [] } };
+  let earlyFade = 0;                             // (the fade state the frame's full VBlank found when it came early)
   let frame = 0, vb = 0, partial = 0, partialSeen = 0, early = false, lagFrames = new Set(), coreDone = false;
   let partialFade = [];
   w.onSound = id => res.sounds.native.push(`${frame}:${h2(id)}`);
@@ -67,7 +68,7 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
       vb++;
       if (gb.mem.hram[0x0D]) { partial++; partialFade.push([gb.mem.hram[0x22], gb.mem.hram[0x24]]); }   // hVBlankDone still set: a VBlank of the every-frame work only (the fade state it found)
       const sp = cpu.sp, r = gb.mem.read(sp) | gb.mem.read(sp + 1) << 8;
-      if (!(r >= 0x2EAC && r < 0x2EBF) && !gb.mem.hram[0x0D]) early = true;
+      if (!(r >= 0x2EAC && r < 0x2EBF) && !gb.mem.hram[0x0D]) { early = true; earlyFade = gb.mem.hram[0x22]; }
     }
     orig();
     if (!coreDone && cpu.pc === ret && cpu.sp === ((sp0 + 2) & 0xFFFF) && gb.mem.romBank === retBank) { coreDone = true; res.coreA = cpu.a; res.coreFrame = frame; }
@@ -129,6 +130,9 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
       core.runToNext([[0, 0x2EBF]]);
       w.high.set(core.hram().subarray(0x10, 0x15), 0x190);
       lagWork(partial);                          // (AdvanceFrame's halt woke at a VBlank that found the work done)
+      // the frame's full VBlank came early, inside the game's code, before a fade it then began: the native frame's
+      // VBlank stands for that one, so it makes no fade step (the game's steps were the later VBlanks, replayed above)
+      if (early && !(earlyFade & 3) && (w.high[0x1A2] & 3)) w.fadeSkip = true;
       return;
     }
     if (kind !== "V") return;

@@ -42,6 +42,7 @@ function update(w, a, c) {
 }
 export function fadeVBlank(w) {                  // 00:25DF UpdateFadeOut, 00:25C9 UpdateFadeIn (in VBlank)
   const h = w.high;
+  if (w.fadeSkip) { w.fadeSkip = false; return; }   // (a test's lag model: web/tests/golf/screenstep.mjs)
   if (h[ST] & 1) {                               // out: the level runs from 0 up to $7C
     const b = Math.max(0, h[LEVEL] - h[SPEED]);
     update(w, b, (0x7C - b) & 0xFF);

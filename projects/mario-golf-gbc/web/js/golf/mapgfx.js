@@ -8,6 +8,12 @@ import { registerFrameTask } from "./tasks.js";
 import * as D from "./render/display.js";
 import { mapDrawFullScreen } from "./scorecard.js";
 import { initWindowSystem } from "./standings.js";
+import { restoreShadowFromMap, copyShadowRowsFramed } from "./shadow.js";
+function* inBankGen(w, bank, g) {
+  const old = w.high[0x195];
+  w.high[0x195] = bank;
+  try { return yield* g; } finally { w.high[0x195] = old; }
+}
 
 const B = 0x0B;
 const testFlag = (w, n) => w.wram[0][0x840 + (n >> 3)] & (0x80 >> (n & 7));
@@ -214,5 +220,27 @@ export function mapBufCopyRect(w, b, c, d, e, h, l) {
     } while (rows);
   }
   setW(w, 5);
+  setW(w, old);
+}
+
+// 0B:4864 MapBufCopyRectRedraw: as 0B:6DC7 MapBufCopyRect (the rectangle (b, c) -> (d, e), h wide, l tall, in WRAM2
+// and WRAM3), then the shadow from the map (05:4492), a frame, and the rows from e redrawn (05:42AD, l rows): the
+// map scripts' doors and other tile changes
+export function* mapBufCopyRectRedraw(sh, b, c, d, e, h, l) {
+  const w = sh.w, old = w.high[0x196];
+  const dst0 = mapBufAddr(d, e), src0 = mapBufAddr(b, c);
+  for (const bank of [2, 3]) {
+    setW(w, bank);
+    let dst = dst0, src = src0, rows = l;
+    do {
+      D.copyMemoryBC(w, src, dst, h);            // 00:03D3
+      dst = (dst + 0x40) & 0xFFFF; src = (src + 0x40) & 0xFFFF;
+      rows = (rows - 1) & 0xFF;
+    } while (rows);
+  }
+  setW(w, 5);
+  yield* inBankGen(w, 0x05, restoreShadowFromMap(sh));
+  yield* sh.advance();
+  yield* inBankGen(w, 0x05, copyShadowRowsFramed(sh, e, l));
   setW(w, old);
 }

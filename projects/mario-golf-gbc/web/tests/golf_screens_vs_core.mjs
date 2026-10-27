@@ -58,19 +58,110 @@ function newCharPolicy() {
   };
 }
 
-// on the overworld: `base` until the native side is first on map $03 (wMapId; walkAt = that frame), then the buttons
-// of `script` ([from, to, bits]: held from frame walkAt + from to walkAt + to); the case stops at walkAt + end
-let walkAt = -1, walkEnd = 0;
-function walkPolicy(base, script, end) {
-  walkAt = -1; walkEnd = end;
-  return f => {
+// on the overworld: `base` until the native side is first on map $03 in story mode (wMapId, wGameMode 9; walkAt =
+// that frame), then the buttons of `script` ([from, to, bits]: held from frame walkAt + from to walkAt + to); the
+// case stops at walkAt + end. Returns the case's { run, policy }.
+let walkAt = -1;
+function walkCase(base, script, end) {
+  const policy = f => {
     frameNow = f;
-    if (walkAt < 0 && menuW && menuW.wram[0][0x450] === 3 && menuW.wram[0][0x834] === 9) walkAt = f;
+    if (f === 0) walkAt = -1;
+    if (walkAt < 0 && menuW && menuW.wram[0][0x450] === 3 && menuW.wram[0][0x834] === 9) { walkAt = f; if (process.env.MARKS) console.error("WALK", f); }
     if (walkAt < 0) return base(f);
     const d = f - walkAt;
     for (const [a, b, bits] of script) if (d >= a && d < b) return bits;
     return 0;
   };
+  return { policy, run: sh => { walkAt = -1; return gameCase(sh, 1, () => walkAt >= 0 && frameNow > walkAt + end); } };
+}
+
+// a path of cells from (cx, cy) to (tx, ty) over the map's terrain (blocked: low nibble $F), or [] when none
+function cellPath(w, cx, cy, tx, ty, avoid = new Set()) {
+  const blocked = (x, y) => x < 0 || y < 0 || x > 31 || y > 31 || (w.wram[6][y * 32 + x] & 0x0F) === 0x0F || avoid.has(y * 32 + x);
+  const prev = new Map(), q = [[cx, cy]];
+  prev.set(cy * 32 + cx, null);
+  while (q.length) {
+    const [x, y] = q.shift();
+    if (x === tx && y === ty) break;
+    for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+      const nx = x + dx, ny = y + dy, key = ny * 32 + nx;
+      if (prev.has(key) || (blocked(nx, ny) && !(nx === tx && ny === ty))) continue;
+      prev.set(key, [x, y]);
+      q.push([nx, ny]);
+    }
+  }
+  const out = [];
+  for (let c = prev.has(ty * 32 + tx) ? [tx, ty] : null; c && !(c[0] === cx && c[1] === cy); c = prev.get(c[1] * 32 + c[0])) out.unshift(c);
+  return out;
+}
+
+// the same with steps run one after another from walkAt + 300: [n, bits] holds bits n frames (bits 0: waits), {to:
+// [x, y]} walks into that tile's cell (2 x 2 tiles; or, with map: m, until the map is m) (the player actor's x / y high bytes, read on the native side: the two sides are the
+// same while the case passes) along the longer axis first, switching axes for 24 frames when the position stops
+// changing; {press: bits, every: n, times: k} presses k times n frames apart. The case stops `end` frames after the
+// last step.
+function routeCase(base, steps, end) {
+  let k = 0, until = -1, last = null, stuck = 0, swap = 0, doneAt = -1, presses = 0, route = null, avoid = new Set();
+  const pos = () => {
+    const w = menuW, p = w.wram[0][0x290] | w.wram[0][0x291] << 8;
+    const r = w.wram[4], o = p - 0xD000;
+    return [r[o + 5], r[o + 7], r[o + 4] | r[o + 5] << 8, r[o + 6] | r[o + 7] << 8];
+  };
+  const policy0 = f => {
+    frameNow = f;
+    if (f === 0) { walkAt = -1; k = 0; until = -1; doneAt = -1; presses = 0; }
+    if (walkAt < 0 && menuW && menuW.wram[0][0x450] === 3 && menuW.wram[0][0x834] === 9) walkAt = f;
+    if (walkAt < 0) return base(f);
+    if (f < walkAt + 300) return 0;
+    for (;;) {
+      const s = steps[k];
+      if (!s) { if (doneAt < 0) doneAt = f; return 0; }
+      if (Array.isArray(s)) {
+        if (until < 0) until = f + s[0];
+        if (f < until) return s[1];
+        until = -1; k++; continue;
+      }
+      if (s.press !== undefined) {
+        if (until < 0) until = f;
+        if (f < until) return 0;
+        if (presses >= s.times) { presses = 0; until = -1; k++; continue; }
+        presses++; until = f + s.every;
+        return s.press;
+      }
+      const [x, y, xw, yw] = pos();
+      if (process.env.ROUTE && (!(f % 10) || process.env.ROUTE > 1)) console.error("ROUTE", f, k, x, y, xw.toString(16), yw.toString(16), JSON.stringify(route && route.slice(0, 3)));
+      if (s.map !== undefined ? menuW.wram[0][0x450] === s.map : x >> 1 === s.to[0] >> 1 && y >> 1 === s.to[1] >> 1) { k++; last = null; until = -1; route = null; continue; }
+      // the next waypoint: a breadth-first path over the terrain cells (WRAM6 $D000: 32 x 32 cells of 2 x 2 tiles,
+      // low nibble $F blocked), aimed at the next cell's tile on the target's parity
+      if (!route) { avoid = new Set(); route = cellPath(menuW, x >> 1, y >> 1, s.to[0] >> 1, s.to[1] >> 1, avoid); }
+      while (route.length && route[0][0] === x >> 1 && route[0][1] === y >> 1) route.shift();
+      if (route.length && Math.abs(route[0][0] - (x >> 1)) + Math.abs(route[0][1] - (y >> 1)) !== 1)
+        route = cellPath(menuW, x >> 1, y >> 1, s.to[0] >> 1, s.to[1] >> 1, avoid);   // (off the path: again)
+      // (aimed at the next cell's centre, or the target tile's, in 8.8 tiles: the larger error first, after
+      // centring on the other axis)
+      const [tx, ty] = route.length ? [route[0][0] * 2 + 1 << 8, route[0][1] * 2 + 1 << 8] : [s.to[0] << 8 | 0x80, s.to[1] << 8 | 0x80];
+      const key = `${xw},${yw}`;
+      if (key === last) stuck++; else { stuck = 0; last = key; }
+      if (stuck === 10 && route && route.length) {   // (an actor in the way: around it)
+        avoid.add(route[0][1] * 32 + route[0][0]);
+        route = cellPath(menuW, x >> 1, y >> 1, s.to[0] >> 1, s.to[1] >> 1, avoid);
+      }
+      if (stuck > 20 && stuck <= 30) return f & 1 ? 0 : 1;   // (a message box from bumping into someone: A)
+      if (stuck > 30) { stuck = 0; swap = 24; avoid = new Set(); route = null; }   // (else the other axis a while)
+      if (until < 0) until = f + 900;
+      if (f > until) throw new Error(`the route's step ${k} did not reach ${s.to} (at ${x},${y})`);
+      const dx = tx - xw, dy = ty - yw;
+      let horiz = Math.abs(dx) >= Math.abs(dy);
+      if (horiz && Math.abs(dy) > 0x40 && route && route.length) horiz = false;   // (centred on the other axis first)
+      else if (!horiz && Math.abs(dx) > 0x40 && route && route.length) horiz = true;
+      if (swap > 0) { swap--; horiz = !horiz; }
+      if (horiz && dx) return dx > 0 ? 0x10 : 0x20;
+      if (!horiz && dy) return dy > 0 ? 0x80 : 0x40;
+      return dx ? (dx > 0 ? 0x10 : 0x20) : dy > 0 ? 0x80 : 0x40;
+    }
+  };
+  const policy = f => { const v = policy0(f); if (process.env.ROUTE > 1) console.error("KEY", f, v, stuck, swap, JSON.stringify(route && route.slice(0, 2))); return v; };
+  return { policy, run: sh => { walkAt = -1; return gameCase(sh, 1, () => doneAt >= 0 && frameNow > doneAt + end); } };
 }
 
 // the same, with Right `rights` times in the game mode select first
@@ -247,11 +338,29 @@ const CASES = [
   { name: "boot_newchar", state: "boot_poweron", open: true, noRet: true, sram: true,
     run: sh => gameCase(sh, 0), policy: newCharPolicy() },
   // the saved character's story (the mode select's first item, Mario's story: warp 4, map $03 the clubhouse): walks
-  // and talks by walkPolicy's script from the frame the map is first on (wMapId $03)
+  // and talks by walkCase's script from the frame the map is first on (wMapId $03)
   { name: "boot_kid_story_walk", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
-    run: sh => gameCase(sh, 1, () => walkAt >= 0 && frameNow > walkAt + walkEnd), policy: walkPolicy(savedPolicy(0), [
+    ...walkCase(savedPolicy(0), [
       [300, 390, 0x40], [390, 430, 0x10], [430, 460, 0x40], [500, 501, 1], [560, 561, 1], [620, 621, 1], [680, 681, 1],
       [740, 741, 1], [800, 860, 0x20], [900, 1000, 0x80], [1000, 1040, 0x22], [1060, 1120, 0x10]], 1200) },
+  // the clubhouse's door 3 (up, left, up into it: trigger 5, 32:5CEF): the door opens, warp 5 to map $06 entrance 2
+  // (the Locker Room, 34:42B6); right, up to a locker, A: it opens (object 9, 34:4240), A
+  { name: "boot_kid_story_door3", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
+    ...walkCase(savedPolicy(0), [
+      [300, 470, 0x40], [470, 620, 0x20], [620, 650, 0x40], [800, 816, 0x10], [830, 880, 0x40], [900, 901, 1],
+      [980, 981, 1], [1040, 1041, 1], [1100, 1101, 1]], 1300) },
+  // the clubhouse's door 4 (trigger 6, 32:5D0F) to the Lounge (map $04, 32:69B5): its first-visit tour of the Club
+  // Champs (trigger 1, 32:6739; A every 40 frames: Yes at the end)
+  { name: "boot_kid_story_lounge", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
+    ...routeCase(savedPolicy(0), [{ to: [0x2D, 0x05], map: 0x04 },
+      [400, 0], { to: [0x0B, 0x13] }, { press: 1, every: 30, times: 90 }], 300) },
+  // the same, then the start menu (41:6E6E): Message (Down twice) Right, Left, Right (the text speed), B; again: Up
+  // (wraps to Save & Quit), A, "Save current progress?" Yes: SaveGame, map 0 entrance 1: the link menu (the save RAM
+  // compared at the end)
+  { name: "boot_kid_story_menu", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
+    ...walkCase(savedPolicy(0), [
+      [300, 360, 0x40], [420, 421, 8], [480, 481, 0x80], [500, 501, 0x80], [530, 531, 0x10], [560, 561, 0x20],
+      [590, 591, 0x10], [620, 621, 2], [700, 701, 8], [760, 761, 0x40], [800, 801, 1], [900, 901, 1]], 1300) },
   // power-on with a save RAM the game made (a new character "Kid" created, saved at the mode select; out/kid.sav from
   // web/tests/golf/coreplay.mjs, then boottrace.mjs --sram out/kid.sav --save-at 00:0100): slot 0 loaded
   // (SaveBlockLoad, MapWarpToReturnPoint), SaveGame, the mode select with a save file, Stroke, course 1

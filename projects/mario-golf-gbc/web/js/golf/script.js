@@ -11,6 +11,7 @@ import { advanceRandomSeed } from "./round.js";
 import { registerFrameTask, unregisterFrameTask } from "./tasks.js";
 import * as Scr from "./screen.js";
 import { restoreShadowFromMap } from "./shadow.js";
+import * as W from "./windows.js";
 
 export { actorSlotAddr, actorSetPos, actorSetFacing };
 const rd = D.rd, wr = D.wr;
@@ -311,4 +312,19 @@ export function screenShakeTask(w) {
   const hl = advanceRandomSeed(w);               // 00:0A61
   wr(w, 0xC368, (hl >> 8) & c);
   wr(w, 0xC369, hl & c);
+}
+
+// 0A:42BF ScriptRunMenu (export $44): hl = the options' text id, (d, e) = the window's position: OpenMenuWindow
+// 05:4BB0, the screen redrawn (05:4492, 05:4949), RunMenu 05:4CD7, CloseWindow 05:4C5C, redrawn again -> the row
+// ($FF: B)
+export function* scriptRunMenu(sh, hl, d, e) {
+  const w = sh.w;
+  const b = yield* inBankGen(w, 0x05, W.openMenuWindow(sh, hl, d, e));
+  yield* inBankGen(w, 0x05, restoreShadowFromMap(sh));
+  yield* inBankGen(w, 0x05, W.updateWindows(sh));
+  const c = yield* inBankGen(w, 0x05, W.runMenu05(sh));
+  D.inBank(w, 0x05, () => W.closeWindow(w, b));
+  yield* inBankGen(w, 0x05, restoreShadowFromMap(sh));
+  yield* inBankGen(w, 0x05, W.updateWindows(sh));
+  return c;
 }

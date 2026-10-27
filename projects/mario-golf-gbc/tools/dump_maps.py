@@ -10,7 +10,7 @@ Read from the map loader 0A:4BBC (MapLoadHeader) and 0A:4C0D (MapPlaceAtEntrance
     +2 warps: 8-byte records; bytes 6/7 = destination map id / entry id (0A:5146)
     +4 passed to 0A:4F45 at map start     +6 talk targets (0A:49C6)   +8 objects (0A:49E9)
     +10, +12 not yet known
-usage: dump_maps.py [--entrances]
+usage: dump_maps.py [--entrances] [--warps]
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -46,6 +46,13 @@ def main():
                 e = rom[o:o + 6]
                 print("      entry %02x  b1 %02x  x %d  y %d" % (e[0], e[1], e[2] | e[3] << 8, e[4] | e[5] << 8))
                 o += 6
+        if "--warps" in sys.argv:                # MapListFindIfFlag 0A:4EC5 records: [id, facing mask, flag word, ?, ?, map, entry]
+            o = to_offset(bank, f[1])
+            while rom[o] != 0xFF:
+                e = rom[o:o + 8]
+                print("      warp %02x  facing %02x  flag %04x  [%02x %02x]  -> map %02x entry %02x" % (
+                    e[0], e[1], e[2] | e[3] << 8, e[4], e[5], e[6], e[7]))
+                o += 8
 
 
 if __name__ == "__main__":

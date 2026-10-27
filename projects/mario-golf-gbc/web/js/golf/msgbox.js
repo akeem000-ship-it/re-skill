@@ -414,3 +414,11 @@ function setWindowPriority(w, a, b) {
   const p = slotAddr(a) + 2;
   wr(w, p, (rd(w, p) & 0x1F) | ((b << 5) & 0xFF));
 }
+// 0A:4140 ScriptSkipText: the script's text cursor wScriptTextId on by one, nothing shown
+export function scriptSkipText(w) {
+  const old = wbank(w);
+  setW(w, 5);
+  const n = (r16(w, 0xD852) + 1) & 0xFFFF;
+  wr(w, 0xD852, n & 0xFF); wr(w, 0xD853, n >> 8);
+  setW(w, old);
+}

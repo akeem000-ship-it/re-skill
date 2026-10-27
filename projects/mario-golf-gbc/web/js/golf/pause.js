@@ -15,6 +15,7 @@ import * as T from "./text.js";
 import { freeLookCursor } from "./freelook.js";
 import { courseMapScreen } from "./coursemap.js";
 import { saveGame } from "./save.js";
+import { mapSaveReturnPoint } from "./start.js";
 import { playerField } from "./memory.js";
 import { hudDrawWind } from "./view.js";
 
@@ -46,12 +47,16 @@ export function clearMenuState(w) { w.wram[0].fill(0, 0x3F9, 0x3FD); }
 
 // 41:708A DrawMenuIcons: by wMenuFlags $C3FC: bit 6 the Settings menu's on / off icons (Music: wOptionFlags $C818
 // bit 0, tiles $DD-$DF set / $DA-$DC clear, at x 10-12 of row 1; 3-D Screen: bit 1, row 3), a frame after each
-// tile; bits 4 and 5 (other menus' icons) are not ported
+// tile; bits 4 / 5 the text speed (the map's start menus)
 function* drawMenuIcons(sh) {
   const w = sh.w;
   const f = rd(w, 0xC3FC);
-  if (f & 0x10) notPorted("the menu's option icons (~41:71D6)");
-  if (f & 0x20) notPorted("the text speed icons (~41:7141)");
+  if (f & 0x30) {                                // 41:71D6 (bit 4: row 7) / 41:7141 (bit 5: row 5): the text speed's
+    const s = rd(w, 0xC82D) & 0x7F;              // five tiles (Slow $DB.., Normal $D6.., Fast $D1..) at x 9-13
+    const t = s === 0 ? 0xDB : s === 1 ? 0xD6 : 0xD1;
+    for (let k = 0; k < 5; k++) W.putMenuTile(w, t + k, 0x09 + k, f & 0x10 ? 7 : 5);
+    return;
+  }
   if (!(f & 0x40)) return;
   for (const [bit, y] of [[1, 1], [2, 3]]) {
     const t = rd(w, 0xC818) & bit ? 0xDD : 0xDA;
@@ -343,6 +348,10 @@ function* menuHandler(sh, h) {
       wr(w, 0xC3FD, 0xFF);
       clearMenuState(w);                         // (jp 41:7078)
       return;
+    case 0x73E4: case 0x73EA: case 0x73F0: case 0x7402: case 0x7413: case 0x7419: case 0x741F: case 0x7425: case 0x7437:
+      if (h === 0x7413) notPorted("the start menu's Navigation (~0A:7174 NavigationMenu)");
+      yield* mapStartMenuHandler(sh, h);
+      return;
     default: {
       const names = { 0x744B: "Camera Mode (41:744B)", 0x7451: "Course Map (41:7451)", 0x745D: "Settings (41:745D)",
         0x746B: "Give Up (41:746B)", 0x74AE: "Save & Quit (41:74AE)", 0x757B: "Camera Mode (41:757B)",
@@ -395,4 +404,107 @@ export function* pauseMenu(sh) {
   wr(w, 0xD438, cam);
   wr(w, 0xC0F4, clock);
   return b;
+}
+
+// ---- the map's start menu (Start on the overworld: 0A:4AEF -> 41:6E6E MapStartMenu) ----
+// 41:7A65 SetupMapStartMenu: the speed words Slow / Normal / Fast (texts $1492-$1494, as glyphs to WRAM7 $DA00 /
+// $DA50 / $DAA0, queued to $8D10), a frame; then Char. Data / Stars / Message / Save & Quit ($1480, handlers 41:73DC,
+// at 4, 2: Left / Right on Message, the text speed icons on row 5: flag #49) or on map 2 with Navigation first
+// ($1481, 41:7409, at 3, 2: the icons on row 7, flag #50); returns RunMenu's [hl, bc, de]
+function* setupMapStartMenu(sh) {
+  const w = sh.w, old = wbank(w);
+  D.inBank(w, 3, () => T.resetGlyphBuffer(w));   // 03:4EB8
+  setW(w, 1);
+  loadTextToWram7(w, 0x1492);
+  D.inBank(w, 3, () => T.drawStringToGlyphs(w, 0xDC00, 0xDA00));
+  loadTextToWram7(w, 0x1493);
+  D.inBank(w, 3, () => T.drawStringToGlyphs(w, 0xDC00, 0xDA50));
+  loadTextToWram7(w, 0x1494);
+  D.inBank(w, 3, () => T.drawStringToGlyphs(w, 0xDC00, 0xDAA0));
+  D.queueVRAMCopy(w, 0xDA00, 0x8D10, 0x0F);
+  yield* sh.advance();
+  setW(w, old);
+  clearMenuState(w);
+  if (rd(w, 0xC450) === 2) {
+    wr(w, 0xC3FC, 0x90); wr(w, 0xC3FA, 0x88); wr(w, 0xC3FB, 0x88);
+    setFlag(w, 50);
+    return [0x1481, 0x7409, 0x0203];
+  }
+  wr(w, 0xC3FC, 0xA0); wr(w, 0xC3FA, 0x84); wr(w, 0xC3FB, 0x84);
+  setFlag(w, 49);
+  return [0x1480, 0x73DC, 0x0204];
+}
+// 41:6E6E MapStartMenu: instant text meanwhile; flags #49 / #50 cleared after; returns wMenuResult
+export function* mapStartMenu(sh) {
+  const w = sh.w, old = wbank(w);
+  wr(w, 0xC82D, rd(w, 0xC82D) | 0x80);
+  const [hl, bc, de] = yield* setupMapStartMenu(sh);
+  yield* runMenu(sh, hl, bc, de);
+  wr(w, 0xC82D, rd(w, 0xC82D) & 0x7F);
+  setW(w, old);
+  clearFlag(w, 49); clearFlag(w, 50);
+  return rd(w, 0xC3FD);
+}
+// 41:7969 MenuTextSpeedAdjust: Right (wMenuFlags low bits 1) the next speed (from 2 back to 0), Left (2) the one
+// before (from 0 to 2), sound $8B; bit 7 of wTextSpeed stays set (instant while the menu is open)
+function menuTextSpeedAdjust(sh) {
+  const w = sh.w, lr = rd(w, 0xC3FC) & 0x0F;
+  if (lr === 1) {
+    sh.sound(0x8B);
+    const b = ((rd(w, 0xC82D) & 0x7F) + 1) & 0xFF;
+    wr(w, 0xC82D, b === 3 ? 0x80 : b | 0x80);
+  } else if (lr === 2) {
+    sh.sound(0x8B);
+    const a = ((rd(w, 0xC82D) & 0x7F) - 1) & 0xFF;
+    wr(w, 0xC82D, a & 0x80 ? 0x82 : a | 0x80);
+  }
+}
+// the start menu again on Save & Quit (row 3): 41:7A65, $C3F9 = 3, flag #49 (or #50 on map 2's menu: $C4B8)
+function* reopenMapStartMenu(sh) {
+  const w = sh.w;
+  const [hl, bc, de] = yield* setupMapStartMenu(sh);
+  wr(w, 0xC3F9, 3);
+  if (rd(w, 0xC4B8)) setFlag(w, 50); else setFlag(w, 49);
+  yield* runMenu(sh, hl, bc, de);
+}
+// 41:79A7 MenuSaveAndQuit: "Save current progress?" ($148B): Yes: MapSaveReturnPoint 0A:4D5B (here), SaveGame
+// 02:4489, map 0 entrance 1 (the link menu) by warp $FA; B: the menu again; No: "OK to return to Main Menu?"
+// ($148D, No first): Yes: map 0 entrance 2 (the mode select), No / B: the menu again
+function* menuSaveAndQuit(sh) {
+  const w = sh.w;
+  clearFlag(w, 49); clearFlag(w, 50);
+  const a = yield* askYesNo(sh, 0x148B);
+  if (a === 0) {
+    wr(w, 0xC82D, rd(w, 0xC82D) & 0x7F);
+    mapSaveReturnPoint(w);                       // 0A:4D5B (b = $FF)
+    saveGame(w);                                 // 02:4489
+    wr(w, 0xC450, 0); wr(w, 0xC46A, 1); wr(w, 0xC441, 0xFA);
+    clearMenuState(w);
+    return;
+  }
+  if (a === 0xFF) { yield* reopenMapStartMenu(sh); return; }
+  if (!(yield* askYesNo(sh, 0x148D, 1))) {
+    wr(w, 0xC450, 0); wr(w, 0xC46A, 2); wr(w, 0xC441, 0xFA);
+    clearMenuState(w);
+    return;
+  }
+  yield* reopenMapStartMenu(sh);
+}
+// the start menu's handlers (41:73DC; map 2's 41:7409)
+function* mapStartMenuHandler(sh, h) {
+  const w = sh.w;
+  switch (h) {
+    case 0x73F0: case 0x7425:                    // Message: 41:7969, the menu stays (jp 41:701E)
+      menuTextSpeedAdjust(sh);
+      wr(w, 0xC3F9, rd(w, 0xD830));
+      yield* runMenuBody(sh, h === 0x73F0 ? 0x73DC : 0x7409);
+      return;
+    case 0x7402: case 0x7437:                    // Save & Quit ($C4B8 = 0 / 1)
+      wr(w, 0xC4B8, h === 0x7402 ? 0 : 1);
+      yield* menuSaveAndQuit(sh);
+      return;
+    case 0x73E4: case 0x7419: notPorted("the start menu's Char. Data (~41:7943 MenuCharData, 41:6506)");
+    case 0x73EA: case 0x741F: notPorted("the start menu's Stars (~0A:6F56 EventListScreen)");
+    default: notPorted(`the start menu's item ~41:${h.toString(16)}`);
+  }
 }
