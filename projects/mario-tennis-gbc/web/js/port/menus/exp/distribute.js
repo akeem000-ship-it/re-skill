@@ -30,6 +30,7 @@ import { queueSpriteTemplate } from "../../home/fade.js";
 import { drawExpPoolReadout, drawExpScreenLevelNumber, drawExpScreenLevelBar } from "../char_data/exp.js";
 import { backupCharDataScreenRow, restoreCharDataScreenRow } from "../char_data/screen.js";
 import { loadIndexedPaletteThunk } from "../ranking/board.js";
+import { storyField } from "../char_select/defs.js";
 
 export const BANK = BANK_EXP_DISTRIBUTE;
 // ROM data (bank $1D)
@@ -60,6 +61,15 @@ const get16 = (P, off) => P.bus.u16(stat(P, off));
 const put16 = (P, off, v) => P.bus.w16(stat(P, off), v & 0xFFFF);
 const cursor = P => rd(P, "expCursorChar");
 const setCursor = (P, bits, on) => wr(P, "expCursorChar", on ? cursor(P) | bits : cursor(P) & ~bits);
+// the EXP panel (exppanel.js) reads this each frame of the input loops: the pool, the selection, the prompt, and per character its
+// name, the level shown, the EXP to the next level, the EXP given now and the EXP it had before; read only
+const noteExpSeen = P => {
+  P.expSeen = P.withWramBank(WRAM_SCENE, () => ({ at: P.frames, pool: rd16(P, "expPoolRemaining"), sel: P.V.storyCharacterSlot ? 1 : 0,
+    prompt: !!(cursor(P) & CURSOR_PROMPT), yes: !rd(P, "expPromptCursorRow"),
+    chars: [0, 1].map(slot => ({ name: Array.from({ length: 7 }, (_, i) => u8(P, storyField(slot, i))), shown: u8(P, stat(P, slot * S.PARTNER + S.LEVEL)),
+      toNext: P.bus.u16(stat(P, slot * S.PARTNER + S.TO_NEXT)), given: P.bus.u16(stat(P, slot * S.PARTNER + S.GIVEN)),
+      before: u8(P, stat(P, slot * S.PARTNER + 12)) | u8(P, stat(P, slot * S.PARTNER + 13)) << 8 | u8(P, stat(P, slot * S.PARTNER + 14)) << 16 })) }));
+};
 
 // ---- the loop ----
 // RunExpDistributionLoop (1D:6F3E): until the prompt is answered "yes" (returns a = 0)
@@ -79,6 +89,7 @@ export function* runExpDistributionLoop(P) {
     tickLevelUpJingle(P);
     uploadExpScreenTilemapRows(P);
     yield* advanceFrame(P);
+    noteExpSeen(P);
     const held = P.bus.u8(hPlayerInputFlags);
     if (held & PADF_B) { P.wramBank(WRAM_SCENE); wr(P, "expRedrawPending", 0); }   // B: no wait between points
     let prompt = false;
@@ -157,6 +168,7 @@ function* expLevelDownPrompt(P) {
     drawExpPromptCursor(P);
     tickLevelUpJingle(P);
     yield* advanceFrame(P);
+    noteExpSeen(P);
     const edge = P.bus.u8(hInputRisingEdge);
     if (edge & (PADF_UP | PADF_DOWN)) {                              // .playSfx: the other answer
       sound(P, SFX_MENU_MOVE);
