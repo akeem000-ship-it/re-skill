@@ -446,7 +446,7 @@ const CASES = [
   { name: "boot_kid_story_trophies", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(112, 136, 113),
     ...routeCase(savedPolicy(0), [{ to: [0x2C, 0x14], noA: true }, { to: [0x2C, 0x12], map: 0x07, noA: true }, [300, 0],
       { to: [0x04, 0x0C], noA: true }, [2, 0x40], [20, 0], [2, 1], { press: 1, every: 40, times: 4 },
-      { to: [0x04, 0x06], noA: true }, [2, 0x40], [20, 0], [2, 1], { press: 1, every: 40, times: 4 }, [200, 0]], 300) },
+      { to: [0x04, 0x06], at: [0x0500, 0x0700], noA: true }, [2, 0x40], [20, 0], [2, 1], { press: 1, every: 40, times: 4 }, [200, 0]], 300) },
   // the clubhouse's top door (trigger 2, 32:5C09) to the Caddie Master's office (map $08, 33:4722): his call
   // (trigger 1, 33:4BD3), the round menu (33:5166)
   { name: "boot_kid_story_office", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(72),
@@ -659,6 +659,24 @@ const CASES = [
       { to: [0x0C, 0x14], noA: true }, { to: [0x1E, 0x14], noA: true }, { to: [0x1E, 0x0C], noA: true }, { to: [0x1F, 0x0B], noA: true }, [2, 0x40], [20, 0], [2, 1],
       { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
       { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x1D }, [400, 0]], 300) },
+  // the Field's trigger $0D (34:4681) to the Club Maker's Hut (map $2E, 33:795C)
+  { name: "boot_kid_story_hut", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(86, 114),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x14, 0x22], noA: true }, { to: [0x14, 0x20], map: 0x2E, noA: true },
+      [300, 0], { to: [0x0B, 0x0C], noA: true }, [2, 0x40], [20, 0], [2, 1],
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
+      { press: 1, every: 40, times: 8 }, [200, 0], { to: [0x04, 0x06], at: [0x0500, 0x0700], noA: true }, [2, 0x40], [20, 0], [2, 1],
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x41, 0x5694) },
+      { press: 1, every: 60, until: () => !hasTask(menuW, 0x41, 0x5694) }, [500, 0],
+      { to: [0x0A, 0x12], noA: true }, { press: 1, every: 40, until: () => menuW.wram[0][0x450] === 0x02 }, [300, 0]], 300) },
+  // the same hut with the club already made (#215 #216 poked): the exchange (33:7A73: Yes, Yes: the club given back,
+  // #216 cleared, SetCharFlags12 0, the return point, SaveGame), the maker again ($181A)
+  { name: "boot_kid_story_hutswap", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(86, 114, 215, 216),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x14, 0x22], noA: true }, { to: [0x14, 0x20], map: 0x2E, noA: true },
+      [300, 0], { to: [0x0B, 0x0C], noA: true }, [2, 0x40], [20, 0], [2, 1],
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
+      { press: 1, every: 40, times: 8 }, [200, 0], [2, 1], { press: 1, every: 40, times: 4 }, [200, 0]], 300) },
   // the Field, A with nothing ahead: the Navigation menu (0A:7174): Down twice, Up, Down, A: the place's guide on the
   // Field again (0A:7878: its name, the arrow, the marker); a walk; Start: the start menu's Navigation (41:7413): B
   { name: "boot_kid_story_nav", state: "boot_poweron_kid", open: true, noRet: true, sram: true,

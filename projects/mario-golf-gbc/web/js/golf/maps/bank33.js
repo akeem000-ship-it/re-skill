@@ -1,7 +1,8 @@
 // Bank 33's map scripts (REVERSE.md "The map engine and the story"): maps $08-$0B, the Caddie Master's offices of
 // the four clubs (one header, 33:400A; the club is wMapId - 8): the enter script, the Caddie Master's call and his
 // round menu, the club rounds (StartClubTournamentRound 33:4F05, StartClubPracticeRound 33:4F28) and the walk back
-// in after them, the golfers, the signs, the exits.
+// in after them, the golfers, the signs, the exits; the Road to Peach's Castle and the castle (maps $1C / $1D); the Club
+// Maker's Hut (maps $2E / $2F).
 import * as D from "../render/display.js";
 import * as Scr from "../screen.js";
 import * as S from "../script.js";
@@ -1459,6 +1460,156 @@ function* map1DObjectCastleDoor(sh) {
   yield* T.scriptShowText(sh, 0x80);
 }
 
+// ---- maps $2E / $2F, the Club Maker's Hut and the Windy Valley hut (one header, 33:781E) ----
+// 02:539C SetCharFlags12: wCharFlags $C819 bits 1-2 = a
+const setCharFlags12 = (w, a) => wr(w, 0xC819, (rd(w, 0xC819) & 0xF9) | ((a << 1) & 0x06));
+// 33:795C Map2EEnterClubMakersHut: no name banner at entrance $FA; map $2E: the bounds $C329 = 1 / $C32B = $15, #124
+// (the hut seen); map $2F: $1B / $2F
+function* map2EEnter(sh) {
+  const w = sh.w;
+  if (rd(w, 0xC46A) === 0xFA) { wr(w, 0xC4B4, 0); wr(w, 0xC4B5, 0); }
+  const m = mapId(w);
+  if (m === 0x2E) { wr(w, 0xC329, 0x01); wr(w, 0xC32B, 0x15); setFlag(w, 124); }
+  else if (m === 0x2F) { wr(w, 0xC329, 0x1B); wr(w, 0xC32B, 0x2F); }
+}
+// a question of the club maker (speaker 2): shown, 10 and 5 frames, asked; 5 frames after: true for No
+function* clubMakerAsk(sh) {
+  yield* T.scriptShowTextKeepOpen(sh, 0x02);
+  yield* wait(sh, 0x0A);
+  yield* wait(sh, 0x05);
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* wait(sh, 0x05);
+  return a;
+}
+// the club handed over or back: the player faces left, animation $0A, (sound $94), the text (speaker $80), the player
+// faces the maker, animation 1, then (handed over) $1814 or (given back, 33:7B12) the text's next part (speaker 2)
+function* clubMakerHandOver(sh, id, handed) {
+  const w = sh.w;
+  T.scriptSetText(w, id);
+  S.actorSetFacing(w, 0x00, 0x40);
+  S.actorPlayAnim(w, 0x00, 0x0A);
+  if (handed) sh.sound(0x94);
+  yield* T.scriptShowText(sh, 0x80);
+  S.actorFaceActor(w, 0x00, 0x02);
+  S.actorPlayAnim(w, 0x00, 0x01);
+  if (handed) T.scriptSetText(w, 0x1814);
+  yield* T.scriptShowText(sh, 0x02);
+}
+// 33:7990 Map2EClubMakerOffer: $180C asked: No: the next text; Yes: the next asked: No: $180F; Yes: the next shown,
+// the menu $1811 at (1, 1) (0A:42BF): B ($FF) or None (2) -> $180F; Distance (0) / Control (1, #217): #215 #216 #225, the
+// character's special club (SetCharFlags12 02:539C = 1 / 2), $1812 + the choice handed over with sound $94
+function* clubMakerOffer(sh) {
+  const w = sh.w;
+  T.scriptSetText(w, 0x180C);
+  if (yield* clubMakerAsk(sh)) { yield* T.scriptShowText(sh, 0x02); return; }
+  T.scriptSkipText(w);
+  if (!(yield* clubMakerAsk(sh))) {
+    T.scriptSkipText(w);
+    yield* T.scriptShowText(sh, 0x02);
+    const m = yield* S.scriptRunMenu(sh, 0x1811, 0x01, 0x01);
+    if (m !== 0xFF && m !== 0x02) {
+      const a = m === 0x00 ? 0x00 : 0x01;                         // 33:7A06 (quirk kept: any other answer is 1)
+      wr(w, 0xC3E0, a);
+      if (a === 0x01) setFlag(w, 217);
+      setFlag(w, 215); setFlag(w, 216); setFlag(w, 225);
+      setCharFlags12(w, (a + 1) & 0xFF);
+      yield* clubMakerHandOver(sh, (0x1812 + a) & 0xFFFF, true);
+      return;
+    }
+  }
+  T.scriptSetText(w, 0x180F);                                     // 33:79E5
+  yield* T.scriptShowText(sh, 0x02);
+}
+// 33:7A73 Map2EClubMakerExchange: $1816 asked: No -> $1817; Yes: the next asked: No -> $1817; Yes: #225; with the
+// club (#216): it is given back (#216 cleared, SetCharFlags12 0), the return point (map 0, entrance $FA), SaveGame,
+// $1819; else it is taken again (#216, SetCharFlags12 1, or 2 with #217), the return point, SaveGame, $181B with sound
+// $94
+function* clubMakerExchange(sh) {
+  const w = sh.w;
+  T.scriptSetText(w, 0x1816);
+  if (!(yield* clubMakerAsk(sh))) {
+    T.scriptSkipText(w);
+    if (!(yield* clubMakerAsk(sh))) {
+      setFlag(w, 225);
+      const had = flag(w, 216);
+      if (had) { clearFlag(w, 216); setCharFlags12(w, 0x00); }
+      else { setFlag(w, 216); setCharFlags12(w, flag(w, 217) ? 0x02 : 0x01); }
+      wr(w, 0xC960, 0x00); wr(w, 0xC961, 0xFA);                   // 0A:4D5B MapSaveReturnPoint
+      saveGame(w);                                                // 02:4489
+      yield* clubMakerHandOver(sh, had ? 0x1819 : 0x181B, !had);
+      return;
+    }
+  }
+  T.scriptSetText(w, 0x1817);                                     // 33:7A9C
+  yield* T.scriptShowText(sh, 0x02);
+}
+// 33:7882 Map2ETalkClubMaker (talk 2): a fresh deal (#225): $1814 with the club (#216), else $181A; no club ever
+// (#215 clear): the offer (33:7990); #224 clear: the exchange (33:7A73); else as a fresh deal
+function* map2ETalkClubMaker(sh) {
+  const w = sh.w;
+  if (!flag(w, 225)) {
+    if (!flag(w, 215)) { yield* clubMakerOffer(sh); return; }
+    if (!flag(w, 224)) { yield* clubMakerExchange(sh); return; }
+  }
+  T.scriptSetText(w, flag(w, 216) ? 0x1814 : 0x181A);            // 33:7899
+  yield* T.scriptShowText(sh, 0x02);
+}
+// 33:78B6 Map2ETalkGuardian (talk 3, the Windy Valley guardian): after #212: $14D4, his animation 5, the maker's $0A,
+// #213, warp 3 (the second target); else $14D0 (the next text once #200 is set; #200 set the first time)
+function* map2ETalkGuardian(sh) {
+  const w = sh.w;
+  if (flag(w, 212)) {
+    T.scriptSetText(w, 0x14D4);
+    S.actorPlayAnim(w, 0x03, 0x05);
+    yield* S.waitActorAnimDone(sh, 0x03);
+    S.actorPlayAnim(w, 0x02, 0x0A);
+    yield* T.scriptShowText(sh, 0x03);
+    setFlag(w, 213);
+    wr(w, 0xC441, 0x03);
+    return;
+  }
+  T.scriptSetText(w, 0x14D0);
+  if (flag(w, 200)) T.scriptSkipText(w);
+  else setFlag(w, 200);
+  yield* T.scriptShowText(sh, 0x03);
+}
+// 33:791C Map2ETriggerLeave (trigger 1): a fresh club (#225 and #216): the maker faces left, $1815, 30 frames; warp 1
+function* map2ETriggerLeave(sh) {
+  const w = sh.w;
+  if (flag(w, 225) && flag(w, 216)) {
+    S.actorSetFacing(w, 0x02, 0x40);
+    T.scriptSetText(w, 0x1815);
+    yield* T.scriptShowText(sh, 0x02);
+    yield* wait(sh, 0x1E);
+  }
+  wr(w, 0xC441, 0x01);
+}
+// 33:7945 Map2ETriggerExit2 (trigger 2): warp 2
+function* map2ETriggerExit2(sh) { wr(sh.w, 0xC441, 0x02); }
+// 33:7B6B Map2EObject1UpMushroom (object 1): as 33:6F47 but #157 is set before the level-99 test (quirk kept: at
+// level 99 the flag is still set), the mushroom is actor 4 at ($0500, $0700), the text's speaker is $88
+function* map2EObject1UpMushroom(sh) {
+  const w = sh.w;
+  setFlag(w, 157);
+  if (rd(w, 0xC812) === 0x63) return;
+  addExp(w, expToNextLevel(w));
+  S.actorSetPos(w, 0x04, 0x0500, 0x0700);
+  sh.sound(0x63);
+  S.actorJump(w, 0x04, 0xFF00);
+  yield* S.waitActorLanded(sh, 0x04);
+  yield* wait(sh, 0x10);
+  S.actorSetPos(w, 0x04, 0x3F00, 0x3F00);
+  T.scriptSetText(w, 0x0C5F);
+  yield* T.scriptShowText(sh, 0x88);
+  Scr.beginFadeOut(w, 0x08);                                      // 33:7CB7 FadeToLevelUpScreenB
+  yield* Scr.waitFade(sh);
+  yield* inBankGen(w, 0x41, levelUpScreen(sh));                   // 41:402A
+  wr(w, 0xC441, 0xFA); wr(w, 0xC46A, 0xFA);
+  for (let k = 0; k < 4; k++) wr(w, 0xC466 + k, rd(w, 0xC2A0 + k));   // 00:03D3 CopyMemoryBC
+  wr(w, 0xC465, rd(w, 0xC2A4));
+}
+
 export const SCRIPTS = {
   "33:4722": map08Enter,
   "33:4bd3": map08TriggerCallOver,
@@ -1499,5 +1650,11 @@ export const SCRIPTS = {
   "33:5ee5": map1DObjectCastleDoor,
   "33:5d8d": map1DTalkToad,
   "33:6f47": map1DObject1UpMushroom,
+  "33:795c": map2EEnter,
+  "33:7882": map2ETalkClubMaker,
+  "33:78b6": map2ETalkGuardian,
+  "33:7b6b": map2EObject1UpMushroom,
+  "33:791c": map2ETriggerLeave,
+  "33:7945": map2ETriggerExit2,
 };
 export const TASKS = () => ({});

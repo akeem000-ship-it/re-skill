@@ -108,6 +108,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + Peach's Tournament: its opening (33:642C), the round and the award ceremony for the places (33:672A) | 159,673 | 65.79% |
 | + the ending: EndingSequence 0A:56B1 with the sepia fade, the credits (bank 0B), the final screen (bank 79) and the ending's maps $31-$3E (bank 35); ShowPictureTimed 40:6666 | 168,762 | 69.54% |
 | + the Trophy Room (map $07), Peach's Castle's 1-Up Mushroom and Toad's practice round; the scorecard's pars fixed for courses 3 and up | 169,385 | 69.80% |
+| + the Club Maker's Hut (maps $2E / $2F, 33:795C): the club maker's offer and exchange (33:7990 / 7A73), the guardian, the 1-Up Mushroom (33:7B6B), the exits | 170,216 | 70.14% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -254,6 +255,8 @@ given to the native code). All cases match frame for frame:
 | boot_kid_story_peachsecond | the same with the result poked to 2: the award ceremony (33:672A) for the second place, then the castle (33:69B2) | 16,549 |
 | boot_kid_story_peachwin | the same with the result poked to 1: the winner's ceremony (#111, the save), the character's picture (40:6666), the ending (0A:56B1: maps $31-$3E in sepia under the credits, the copyright, the final screen for 3600 frames), map 0 by warp $FA | 40,569 |
 | boot_kid_story_castletoad | the castle with the door open (#127 poked): the 1-Up Mushroom (33:6F47, the level-up screen), Toad's practice round (33:5D8D: course 5, one hole), back at entrance 2 | 12,587 |
+| boot_kid_story_hut | the paths open (#86 #114 poked): the Field's trigger $0D (34:4681, the door copied in by 34:4733) to the Club Maker's Hut (map $2E, 33:795C): the maker's offer (33:7882 -> 33:7990: Yes, Yes, the menu: Distance), the 1-Up Mushroom (33:7B6B, the level-up screen), out by trigger 1 (33:791C: the maker's word, $1815) | 6,809 |
+| boot_kid_story_hutswap | the same with the club already made (#215 #216 poked): the exchange (33:7A73: Yes, Yes: the club given back, SetCharFlags12 0, the return point map 0 / $FA, SaveGame), the maker again ($181A) | 5,347 |
 | boot_kid_story_trophies | the clubhouse's door 5 to the Trophy Room (map $07, 35:41B2; #112 #136 #113 poked): A at the Marion and Palm trophies (35:4115 / 4126) | 4,721 |
 | boot_kid_story_partnerleave | the same call answered No (33:4B91); out by the driving range's trigger: the partner's question (33:4FEF) No (a step back), again Yes (he leaves), the range | 11,626 |
 | boot_kid_story_partnerfield | the champion joins, out to the Field, up onto Windy Valley's trigger: "Quitting this Match Game?" (34:5530) No | 10,452 |
@@ -654,6 +657,19 @@ course's pars for courses 3 and up (Peach's course got course 4's). After the on
 the hidden BG row $9BE0 ($9BE3 / $9BEE), first seen during a lag frame of the round and so classed with the lag
 frames (as the Palm wind case's); nothing visible differs. `KEYS=frame` prints what differs at a frame,
 `GAME_SHOTS=frames` writes the game's screen as `SCREEN_SHOTS` the native one (out/gs_N.png).
+**The Club Maker's Hut** (maps $2E / $2F, one header 33:781E, `maps/bank33.js`; `boot_kid_story_hut`,
+`boot_kid_story_hutswap`): the Field's door (trigger $0D, facing up, 34:4681) exists once #114 has copied the area
+in (34:4733). The enter script 33:795C (no banner at $FA; map $2E: bounds 1 / $15 and #124; map $2F: $1B / $2F); the
+club maker (talk 2, 33:7882): with #225 clear, the offer 33:7990 while #215 is clear (two Yes / No questions, the menu
+$1811 by ScriptRunMenu 0A:42BF: B or None -> $180F; Distance 0 / Control 1 (#217); quirk kept: any other answer
+counts as 1; #215 #216 #225, SetCharFlags12 02:539C = the choice + 1, the club handed over with sound $94, $1814), or
+the exchange 33:7A73 while #224 is clear (two questions; #225; with the club: #216 cleared, SetCharFlags12 0, the
+return point map 0 / $FA, SaveGame, $1819 and its next part; without: #216, SetCharFlags12 1 or 2 by #217, the same
+save, $181B with sound $94, $1814); else $1814 or $181A by #216. The Windy Valley guardian (talk 3, 33:78B6: after
+#212 $14D4 with his animation 5 and the maker's $0A, #213, warp 3; else $14D0, its next part once #200 is set; not
+reached by a case), the 1-Up Mushroom (object 1, 33:7B6B: a copy of 33:6F47 with #157, actor 4 at ($0500, $0700),
+speaker $88; quirk kept: #157 is set before the level-99 test), trigger 1 33:791C (with #225 and #216 the maker
+faces left, $1815, 30 frames; warp 1) and trigger 2 33:7945 (warp 2).
 **The Trophy Room** (map $07, `maps/bank35.js`; `boot_kid_story_trophies`): the clubhouse's door 5 (warp 7); the enter
 script 35:41AE / 41B2 places the trophies (actors $02-$10) by the placed flags #112-#116 and won flags #136-#139 / #117,
 a place trophy's second or third by TestCourseHoleBit 02:5C77 (the club's bit $16; quirk kept: a won club still runs
