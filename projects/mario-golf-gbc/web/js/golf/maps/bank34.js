@@ -390,6 +390,175 @@ function* map02Trigger0F(sh) {
   yield* treeLetter(sh);
 }
 
+// 34:7C99 / 7CB5 / 7CD1 Map30DrawPalmRoom / DuneRoom / LinksRoom (by 34:7CED Map30DrawClubRoom: entrance 2-4):
+// WaitScriptActorIdle, the room's $14 x $14 tiles from the map buffer at (b, c) = ($1A, 0) / (0, $18) / ($1A, $18)
+// to (0, 0) (MapBufCopyRectRedraw 0B:4864), six palettes from 2 (34:7BE9 / 7C29 / 7C69, master only)
+function* map30DrawClubRoom(sh) {
+  const w = sh.w;
+  const room = { 2: [0x1A, 0x00, 0x7BE9], 3: [0x00, 0x18, 0x7C29], 4: [0x1A, 0x18, 0x7C69] }[rd(w, 0xC46A)];
+  if (!room) return;
+  yield* S.waitScriptActorIdle(sh);
+  yield* inBankGen(w, 0x0B, mapBufCopyRectRedraw(sh, room[0], room[1], 0x00, 0x00, 0x14, 0x14));
+  if (w.vram) D.inBank(w, 0x34, () => D.loadPalettesMasterOnly(w, room[2], 0x02, 0x06));
+}
+// 34:77EB Map30EnterMatchResult (map $30, the Match Game Event; entrance = the club, 1-4): entrance $0C or more (a
+// test's way in): #80 #82 #84 #86 set, #188 cleared, wStoryRoundKind $1E, a won result, warp entrance - $0A; else a
+// result other than 1 warps straight back (warp = entrance); won: #188, the club's room (34:7CED), fade in (8), the
+// champions (actors 2-5) and the player at speed 8, the beaten champion's scene (texts from $15C6, or $15D9 after
+// #139; #127: #189 and $15EC from 34:7A3C, and the champion looks down and left), the champions file out, the
+// player to ($0700, $0500), warp entrance (back to the office), 90 frames
+function* map30Enter(sh) {
+  const w = sh.w;
+  const e = rd(w, 0xC46A);
+  if (e >= 0x0C) {
+    for (const n of [80, 82, 84, 86]) setFlag(w, n);
+    clearFlag(w, 188);
+    wr(w, 0xC967, 0x1E);
+    wr(w, 0xC96C, 0x01);
+    wr(w, 0xC441, (e - 0x0A) & 0xFF);
+    return;
+  }
+  if (rd(w, 0xC96C) !== 0x01) { wr(w, 0xC441, e); return; }
+  setFlag(w, 188);
+  yield* map30DrawClubRoom(sh);
+  Scr.beginFadeIn(w, 0x08);
+  yield* Scr.waitFade(sh);
+  S.actorSetSpeed(w, 0x05, 0x0008);
+  S.actorSetSpeed(w, 0x03, 0x0008);
+  S.actorSetSpeed(w, 0x02, 0x0008);
+  S.actorSetSpeed(w, 0x04, 0x0008);
+  S.actorSetSpeed(w, 0x00, 0x0008);
+  T.scriptSetText(w, flag(w, 139) ? 0x15D9 : 0x15C6);
+  S.actorPlayAnim(w, 0x05, 0x07);
+  yield* S.waitActorAnimDone(sh, 0x05);
+  yield* T.scriptShowText(sh, 0x05);
+  S.actorPlayAnim(w, 0x00, 0x07);
+  yield* S.waitActorAnimDone(sh, 0x00);
+  yield* T.scriptShowText(sh, 0x00);
+  S.actorPlayAnim(w, 0x05, 0x06);
+  yield* S.waitActorAnimDone(sh, 0x05);
+  yield* T.scriptShowText(sh, 0x05);
+  yield* wait(sh, 0x1E);
+  yield* T.scriptShowText(sh, 0x02);
+  S.actorSetFacing(w, 0x05, 0x00);
+  S.actorMoveTo(w, 0x02, 0x0900, 0x0500);
+  yield* wait(sh, 0x14);
+  S.actorMoveTo(w, 0x03, 0x0B00, 0x0500);
+  yield* wait(sh, 0x14);
+  S.actorMoveTo(w, 0x04, 0x0D00, 0x0500);
+  yield* wait(sh, 0x14);
+  S.actorSetFacing(w, 0x05, 0xC0);
+  yield* S.waitActorMoveDone(sh, 0x04);
+  S.actorPlayAnim(w, 0x03, 0x06);
+  yield* S.waitActorAnimDone(sh, 0x03);
+  yield* T.scriptShowText(sh, 0x03);
+  S.actorPlayAnim(w, 0x05, 0x06);
+  yield* S.waitActorAnimDone(sh, 0x05);
+  yield* T.scriptShowText(sh, 0x05);
+  S.actorPlayAnim(w, 0x04, 0x07);
+  yield* S.waitActorAnimDone(sh, 0x04);
+  yield* T.scriptShowText(sh, 0x04);
+  S.actorPlayAnim(w, 0x05, 0x07);
+  yield* S.waitActorAnimDone(sh, 0x05);
+  yield* T.scriptShowText(sh, 0x05);
+  S.actorPlayAnim(w, 0x04, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x04);
+  S.actorFaceActor(w, 0x02, 0x05);
+  S.actorPlayAnim(w, 0x02, 0x07);
+  yield* S.waitActorAnimDone(sh, 0x02);
+  yield* T.scriptShowText(sh, 0x02);
+  S.actorPlayAnim(w, 0x05, 0x06);
+  yield* S.waitActorAnimDone(sh, 0x05);
+  yield* T.scriptShowText(sh, 0x05);
+  S.actorSetFacing(w, 0x05, 0x00);
+  yield* wait(sh, 0x0A);
+  S.actorFaceActor(w, 0x05, 0x00);
+  S.actorFaceActor(w, 0x03, 0x00);
+  S.actorFaceActor(w, 0x02, 0x00);
+  S.actorFaceActor(w, 0x04, 0x00);
+  S.actorPlayAnim(w, 0x03, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x03);
+  S.actorPlayAnim(w, 0x02, 0x05);
+  S.actorPlayAnim(w, 0x04, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x04);
+  yield* wait(sh, 0x3C);
+  S.actorMoveTo(w, 0x05, 0x0700, 0x0700);
+  yield* wait(sh, 0x3C);
+  S.actorFaceActor(w, 0x03, 0x05);
+  S.actorFaceActor(w, 0x02, 0x05);
+  S.actorFaceActor(w, 0x04, 0x05);
+  S.actorMoveTo(w, 0x03, 0x0B00, 0x0700);
+  yield* S.waitActorMoveDone(sh, 0x03);
+  S.actorFaceActor(w, 0x03, 0x05);
+  yield* T.scriptShowText(sh, 0x03);
+  S.actorFaceActor(w, 0x03, 0x05);
+  S.actorFaceActor(w, 0x05, 0x03);
+  S.actorFaceActor(w, 0x02, 0x05);
+  yield* T.scriptShowText(sh, 0x05);
+  if (flag(w, 127)) {                                             // 34:7A39
+    setFlag(w, 189);
+    T.scriptSetText(w, 0x15EC);
+  }
+  S.actorSetFacing(w, 0x05, 0xC0);
+  S.actorPlayAnim(w, 0x05, 0x06);
+  yield* S.waitActorAnimDone(sh, 0x05);
+  yield* T.scriptShowText(sh, 0x05);
+  S.actorSetFacing(w, 0x04, 0x80);
+  S.actorPlayAnim(w, 0x04, 0x07);
+  yield* S.waitActorAnimDone(sh, 0x04);
+  yield* T.scriptShowText(sh, 0x04);
+  S.actorPlayAnim(w, 0x05, 0x07);
+  yield* S.waitActorAnimDone(sh, 0x05);
+  S.actorPlayAnim(w, 0x05, 0x06);
+  yield* S.waitActorAnimDone(sh, 0x05);
+  yield* T.scriptShowText(sh, 0x05);
+  if (flag(w, 127)) {                                             // 34:7A98
+    S.actorSetFacing(w, 0x05, 0x00);
+    yield* wait(sh, 0x14);
+    S.actorSetFacing(w, 0x05, 0x40);
+    yield* wait(sh, 0x14);
+  }
+  S.actorPlayAnim(w, 0x05, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x05);
+  yield* T.scriptShowText(sh, 0x05);
+  S.actorMoveTo(w, 0x05, 0x0700, 0x0500);
+  yield* S.waitActorMoveDone(sh, 0x05);
+  S.actorSetFacing(w, 0x02, 0x80);
+  S.actorMoveTo(w, 0x05, 0x0700, 0x0100);
+  yield* S.waitActorMoveDone(sh, 0x05);
+  S.actorSetPos(w, 0x05, 0x3F00, 0x3F00);
+  S.actorFaceActor(w, 0x02, 0x03);
+  yield* T.scriptShowText(sh, 0x02);
+  S.actorFaceActor(w, 0x03, 0x02);
+  S.actorPlayAnim(w, 0x03, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x03);
+  yield* T.scriptShowText(sh, 0x03);
+  S.actorFaceActor(w, 0x03, 0x00);
+  S.actorFaceActor(w, 0x02, 0x00);
+  S.actorFaceActor(w, 0x04, 0x00);
+  S.actorMoveTo(w, 0x04, 0x0D00, 0x0700);
+  yield* S.waitActorMoveDone(sh, 0x04);
+  S.actorPlayAnim(w, 0x04, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x04);
+  yield* T.scriptShowText(sh, 0x04);
+  S.actorPlayAnim(w, 0x00, 0x07);
+  yield* S.waitActorAnimDone(sh, 0x00);
+  yield* wait(sh, 0x1E);
+  S.actorPlayAnim(w, 0x04, 0x05);
+  S.actorPlayAnim(w, 0x02, 0x05);
+  S.actorPlayAnim(w, 0x03, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x03);
+  S.actorMoveTo(w, 0x02, 0x0700, 0x0100);
+  yield* wait(sh, 0x1E);
+  S.actorMoveTo(w, 0x03, 0x0700, 0x0100);
+  yield* wait(sh, 0x1E);
+  S.actorMoveTo(w, 0x04, 0x0900, 0x0100);
+  yield* wait(sh, 0x3C);
+  S.actorMoveTo(w, 0x00, 0x0700, 0x0500);
+  wr(w, 0xC441, e);
+  yield* wait(sh, 0x5A);
+}
+
 export const SCRIPTS = {
   "34:4690": map02Enter,
   "34:4474": sh => map02TriggerEnter(sh, 1, 0x0500, 0x2F00),
@@ -398,6 +567,8 @@ export const SCRIPTS = {
   "34:44f5": sh => map02TriggerEnter(sh, 4),
   ...Object.fromEntries([0x4618, 0x4627, 0x4636, 0x4645, 0x4654, 0x4663, 0x4672, 0x4681].map((a, k) => [`34:${a.toString(16)}`, sh => map02TriggerPlace(sh, 6 + k)])),
   "34:483b": map02Trigger0F,
+  "34:77eb": map30Enter,
+  "34:7d58": () => {},                           // 34:7D58 Map30ObjectNop (object 1)
   "34:42b6": map06EnterSelectTalkList,
   "34:407f": map06TalkGrumpyGolfer,
   "34:429b": map06Trigger01MutterWindTip,

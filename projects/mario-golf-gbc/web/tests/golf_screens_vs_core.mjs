@@ -404,6 +404,21 @@ const CASES = [
       { to: [0x18, 0x20], map: 0x03, noA: true }, [300, 0], { to: [0x1A, 0x02], map: 0x08, noA: true },
       [200, 0], { to: [0x1A, 0x0A] }, { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x08 },
       { press: 1, every: 40, times: 20 }], 300) },
+  // the same Match Game won (the result poked to 1 on both sides once the round is over; #86 poked): the office
+  // (33:464C) warps 9 to the Match Game Event (map $30, 34:77EB: #188, the beaten champion's scene with the other
+  // champions), then back to the office (wStoryRoundKind $5A)
+  { name: "boot_kid_story_matchwon", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 30000,
+    hook: (() => { const fp = flagPoke(72, 86); let done = false; return (f, w, core) => {
+      fp(f, w, core);
+      if (!done && roundsDone >= 1) { done = true; w.wram[0][0x96C] = 1; core.wram(0)[0x96C] = 1; }
+    }; })(),
+    ...routeCase(savedPolicy(0), [{ to: [0x2D, 0x05], map: 0x04 },
+      [400, 0], { to: [0x0B, 0x13] }, { press: 1, every: 30, times: 90 },
+      { to: [0x07, 0x0B], at: [0x0710, 0x0B30], noA: true }, [2, 0x40], [20, 0],
+      { press: 1, every: 40, until: () => menuW.wram[0][0x298] !== 0xFF }, [200, 0],
+      { to: [0x18, 0x20], map: 0x03, noA: true }, [300, 0], { to: [0x1A, 0x02], map: 0x08, noA: true },
+      [200, 0], { to: [0x1A, 0x0A] }, { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x30 },
+      { press: 1, every: 40, until: () => menuW.wram[0][0x450] === 0x08 }, { press: 1, every: 40, times: 10 }], 300) },
   // the same walk to the office with the partner, "A match?" No (33:4B91); out by the driving range's way (trigger
   // 3, 33:451B): the partner's question (33:4FEF) No: a step back; again, Yes: the partner leaves (fade out, put
   // away), the walk out to the range
@@ -827,7 +842,7 @@ for (const c of CASES) {
     continue;
   }
   let r;
-  try { r = runScreen({ stateFile, run: c.run, policy: c.policy, hook: dumpHook(c.hook), verbose, open: c.open, setRegs: c.regs, trace: process.argv.includes("--trace") }); }
+  try { r = runScreen({ stateFile, run: c.run, policy: c.policy, maxFrames: c.maxFrames, hook: dumpHook(c.hook), verbose, open: c.open, setRegs: c.regs, trace: process.argv.includes("--trace") }); }
   catch (e) { console.log(`FAIL ${c.name}: ${e.stack}`); bad++; continue; }
   if (c.open) r.sounds.core = r.sounds.core.filter(x => +x.split(":")[0] < r.frames);   // (the game's next frame's)
   const sounds = r.sounds.core.join(" ") === r.sounds.native.join(" ");

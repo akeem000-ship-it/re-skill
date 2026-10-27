@@ -103,6 +103,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the start menu's Char. Data (41:6506 with the name and EXP header 41:5598 and the clock task 41:587C) and Stars (0A:6F56, the event list) | 152,559 | 62.86% |
 | + the Lounge's champions (32:6B81) and partners: joining (32:6DCF), following (04:484D), spawned on each map (04:51D0), the counter's partner lines (32:5B5A / 5BBE), sent away (0A:536E) | 153,898 | 63.41% |
 | + partners in the offices (33:4ABB, the Match Game against the partner 33:4F4B, the question before leaving 33:4FEF) and on the Field (34:5530) | 154,202 | 63.54% |
+| + the Match Game Event after a won match (map $30, 34:77EB with the club rooms 34:7CED) | 155,254 | 63.97% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -243,6 +244,7 @@ given to the native code). All cases match frame for frame:
 | boot_kid_story_champ | the Lounge's tour, then the Marion Club Champ (32:63A8 -> 32:6B81): Yes twice, he joins (32:6DCF) and follows (04:484D); a walk, out to the clubhouse (04:51D0 spawns him with the player), the counter's partner line (32:5B5A) | 10,056 |
 | boot_kid_story_champ_part | the same join, then A on the partner (0A:5365 -> 0A:536E): Yes, he leaves (the flags cleared, warp $FA), then his own talk again at his place | 8,918 |
 | boot_kid_story_partnermatch | the champion joins; the Caddie Master's call with a partner (33:4ABB): Yes, the walk out, the Match Game against him (33:4F4B, one hole: #72 poked), back to the office (33:4666: result 2, the partner leaves), his next call (a tournament) | 19,269 |
+| boot_kid_story_matchwon | the same Match Game won (the result poked to 1 after the round, #86 poked): warp 9 to the Match Game Event (map $30, 34:77EB: the club's room, the beaten champion's scene with the other three), back to the office (wStoryRoundKind $5A) | 23,309 |
 | boot_kid_story_partnerleave | the same call answered No (33:4B91); out by the driving range's trigger: the partner's question (33:4FEF) No (a step back), again Yes (he leaves), the range | 11,626 |
 | boot_kid_story_partnerfield | the champion joins, out to the Field, up onto Windy Valley's trigger: "Quitting this Match Game?" (34:5530) No | 10,452 |
 | boot_kid_story_green | the office's way to the putting green (map $0E, 30:69B9), "Practice here?" declined, the pro's putting challenge (30:6739, game mode 5, the hooks 30:6C2F / 6C58), the result (30:6CF2, not cleared) | 12,839 |
@@ -577,8 +579,15 @@ with a partner (`boot_kid_story_partnerleave`): CheckPartnerBeforeLeaving 33:4FE
 SetPartnerText 33:506F; No: a step back, 1; Yes: $0C4A + k, the partner walks up 6 tiles, fade out (8),
 ClearPartnerFlag 33:50A6, put away at ($3F00, $3F00)). On the Field (`boot_kid_story_partnerfield`) the place
 triggers 6-$0D ask first (Map02ConfirmQuitMatchGame 34:5530, Map02SetChallengerText 34:54C3, Map02DropChallenger
-34:54FA; No: 1, and the trigger asks again while the player stays on it). Not ported: the Match Game Event map $30
-(warp 9 after a won match with #86 and not #188) and "Taking on Mario?" ~34:544D.
+34:54FA; No: 1, and the trigger asks again while the player stays on it). A won Match Game with #86 set and #188
+clear (`boot_kid_story_matchwon`) warps 9 from the office (33:464C, wStoryRoundKind $5A) to the Match Game Event,
+map $30 (34:77EB Map30EnterMatchResult): #188, the club's room drawn by the entrance (34:7CED -> 7C99 / 7CB5 /
+7CD1: MapBufCopyRectRedraw of a $14 x $14 block and six palettes), fade in, the champions (actors 2-5) and the
+player at speed 8, the beaten champion's scene (texts from $15C6, $15D9 after #139; with #127 also #189, $15EC and
+a look down and left; ScriptShowText without ScriptSetText runs on through the texts), the champions file out,
+warp = the entrance back to the office, 90 frames; a result other than 1 warps straight back; entrances $0C and up
+(a test's way in) set #80 #82 #84 #86, clear #188 and warp entrance - $0A as a won match. Not ported: "Taking on
+Mario?" ~34:544D.
 **The Caddie Master's office** (maps $08-$0B, one header 33:400A, the club = wMapId - 8; `maps/bank33.js`;
 `boot_kid_story_office`): the enter script 33:4722 (the temporary flags, Marion's talk list 33:4389, #227
 qualified / #226 the club won; maps $09-$0B's golfers and decorations ~33:4757 not ported), the call when the
@@ -602,9 +611,9 @@ the name ~0A:78D6 / ~0A:79C7 are not ported), the map's changes by progress: the
 paths 34:4769 (a block for each of #86 #84 #82 #80 still clear), #114's area 34:4733, #125's open path 34:46E6, each
 with MapCopyEventRect 0B:4699 / MapCopyTerrainRect 0B:4653 (`mapgfx.js`) and MapBufCopyRectRedraw 0B:4864); the
 triggers into the Marion clubhouse and the Palm, Dune and Links offices 34:4474-44F5 (the walk in 34:452A), the side
-places 34:4618-4681 (warps 6-$0D: a challenger following, 34:5530 asks first). Not ported: the Road to Peach's
-Castle (34:450C), the letter at the tree (~34:4847), entrances $0E / $0F (~34:5218 / ~34:5019), the marker sprite
-(~34:4FCC).
+places 34:4618-4681 (warps 6-$0D: a challenger following, 34:5530 asks first). The letter at the tree (34:4847),
+entrances $0E / $0F (34:5218 / 34:5019) and the marker sprite (34:4FCC) are described with the letter below. Not
+ported: the Road to Peach's Castle (34:450C).
 **The navigation** (`nav.js`; `boot_kid_story_nav`): NavigationMenu 0A:7174 (A on the Field with nothing ahead,
 or the start menu's Navigation 41:7413): the places whose flags (0A:6FA9, ListEntryFlag 0A:6CAF) are set
 (NavBuildEntries 0A:73D3), the frame (LZ 0A:6FE5 / 0A:7085), the title and seven names (0A:7387, PrintTextToBuffer),
@@ -766,6 +775,9 @@ native side has none yet is owed to the native fade of the same state if the nat
 (`w.lagFadeOwed`, taken by screen.js's BeginFadeOut / ForceFadeOut / ForceFadeIn): ListChangePage 0A:6E47 begins
 its fade-out and then rebuilds the page (LZ and glyphs) through several VBlanks, so its WaitFade took 2 frames in
 the game against 7 natively.
+A case may set `maxFrames` (passed to runScreen, default 20,000 frames): `boot_kid_story_matchwon` runs 23,309
+frames (the Lounge, a one-hole Match Game and the event scene). It caps the run's length only; nothing compared
+changes.
 **Char. Data and Stars** (the start menu's first two items, `levelup.js`, `nav.js`): CharDataScreen 41:6506 builds
 the level-up screen read only (41:4366 / 43C0 / 446D, the values 41:49ED a = 1, the gauges, the character sprite,
 the level) with the name and EXP header DrawNameAndExpHeader 41:5598 (CopyNameToTilemap 41:5765 with the voicing
