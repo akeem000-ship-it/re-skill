@@ -499,6 +499,9 @@ export class Ground {
   // voxel.js drawFieldScene, after the floor and walls: the map's own detail (not a neighbouring map's), you pushing the grass aside
   // the map's size (wMapWidth, wMapHeight): a new map's floor can be built while they still hold the last map's, so a change of them
   // (or of the map) builds the ground again (else the grass keeps the last map's area: the road by the cafe was never mown)
+  // the neighbouring map drawn beyond this one's edge (voxel.js drawFieldScene, with v.gb its ROM copy of that map: its size, collision and
+  // id): its own ground, built and kept apart from this map's, so the mown lawn, kerbs and grit run on across the seam
+  drawPart(f, mvp, T) { const own = this.built; this.built = this.builtPart || null; this.inPart = true; try { this.draw(f, mvp, T); } finally { this.inPart = false; this.builtPart = this.built; this.built = own; } }
   mapSize() { const w0 = this.v.gb.mem.wram[0]; return w0[0x32B] << 8 | w0[0x32C]; }
   // the floor's colours were repainted (voxel.js recolourField: a fade, a palette change) and have been still for 0.4 s: what grows where
   // is read from those colours, so a ground first built during a fade-in (all dark: no lawn, no dirt) is built again in the real ones
@@ -515,7 +518,7 @@ export class Ground {
     if (!this.on || !f.floorData) return;      // (side-view maps too: the road by the cafe, mown and kerbed as the courtyard it joins)
     const v = this.v, gl = v.gl;
     try { if (!this.pB) this.init(); if (!this.built || this.built.floor !== f.floorData || this.built.fx !== f.fx || this.built.carpetOn !== this.carpet || this.built.round !== this.trees || this.built.size !== this.mapSize() || this.built.map !== v.mapId() || this.stale(f)) this.build(f); } catch (e) { console.warn("ground", e); this.on = false; return; }
-    const B = this.built, me = v.fi && v.fi.act && v.fi.act.get(0);
+    const B = this.built, me = !this.inPart && v.fi && v.fi.act && v.fi.act.get(0);   // (you part only your own map's grass)
     if (B.blades.n) {
       gl.useProgram(this.pB); gl.uniformMatrix4fv(this.uB.uMVP, false, mvp); gl.uniform1f(this.uB.uTime, T); gl.uniform3fv(this.uB.uPush, me ? [me.x, me.y + 4, 1] : [0, 0, 0]);
       gl.bindVertexArray(B.blades.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 3, B.blades.n);

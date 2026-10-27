@@ -1386,7 +1386,7 @@ export class Voxel3D {
       const core = this.romMapCore(id), real = this.gb, own = this.field;
       let nf = null;
       if (core) {
-        nf = { mapId: id, floorTex: null, walls: null, wallCount: 0, palHash: 0, cards: [], blocks: null, artTex: null };
+        nf = { mapId: id, floorTex: null, walls: null, wallCount: 0, palHash: 0, cards: [], blocks: null, artTex: null, core };   // (core: its ground's map)
         this.gb = core; this.field = nf; this.inNeighbour = true;      // (its own neighbours are not built: that would be this map again)
         try { this.buildField(); } catch (e) { console.warn("neighbour map", id, e); nf = null; }
         finally { this.gb = real; this.field = own; this.inNeighbour = false; }
@@ -2234,6 +2234,9 @@ export class Voxel3D {
       gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
     }
     if (this.groundFx && !part) this.groundFx.draw(f, mvp, T);            // GROUND: grass, leaves, path edging, pebbles
+    else if (this.groundFx && f.core) {                                    // (the neighbouring map beyond the edge too: one look across the seam)
+      const real = this.gb; this.gb = f.core; try { this.groundFx.drawPart(f, mvp, T); } finally { this.gb = real; }
+    }
     // buildings (roof + front wall, then the darker side walls) and the stand-up cut-outs
     if (f.blocks) {
       const SU = this.uS; gl.useProgram(this.progS); gl.bindTexture(gl.TEXTURE_2D, f.artTex); gl.uniformMatrix4fv(SU.uMVP, false, mvp); gl.uniform1f(SU.uAlphaTest, 0.5);   // SHIMMER: window glints on the facades
