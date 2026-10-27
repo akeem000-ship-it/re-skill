@@ -188,7 +188,6 @@ export class MenuWheel {
     Object.assign(root.style, { position: "fixed", zIndex: 1, pointerEvents: "none", overflow: "hidden", display: "none", backdropFilter: "blur(7px) brightness(0.62)", WebkitBackdropFilter: "blur(7px) brightness(0.62)", background: "rgba(8,10,32,0.35)" });
     this.bgcv = document.createElement("canvas"); Object.assign(this.bgcv.style, { position: "absolute", left: "0", top: "0", width: "100%", height: "100%", maxWidth: "none", aspectRatio: "auto", transform: "none", display: "none" }); root.appendChild(this.bgcv);   // BACKDROP
     this.cv = document.createElement("canvas"); Object.assign(this.cv.style, { position: "absolute", left: "0", top: "0", width: "100%", height: "100%", maxWidth: "none", aspectRatio: "auto", background: "transparent", transform: "none", display: "block" }); root.appendChild(this.cv);   // (not the page's own canvas look)
-    this.cell = document.createElement("canvas");
     // inside <main>: on a phone <main> is fixed (a stacking context of its own), and the menu must sit over the game view but under
     // the button bar (#hud, z 3) and the touch controls (#pad, z 2) there, not over all of <main>
     (document.querySelector("main") || document.body).appendChild(root);
@@ -201,7 +200,11 @@ export class MenuWheel {
   update() {
     this.sync();
     if (globalThis.__venueTourOn) { if (this.root) this.root.style.display = "none"; return; }   // (VENUE TOUR: its own view)
-    const P = this.getPort(), gb = this.getGb(), wheel = !!(this.on && P && P.menuWheel && P.menuWheel.active && gb);
+    const P = this.getPort(), gb = this.getGb(), MW = P && P.menuWheel;
+    // the main menu loading, sliding in or (after a choice) sliding out (port main_menu.js: entering, the frame it began): the wheel stays
+    // up, its panel from the pictures kept of the cells, so the game's own menu never shows (it used to, a few seconds, coming back to it)
+    const entering = !!(this.on && MW && !MW.active && gb && MW.entering >= 0 && P.frames - MW.entering < 600);
+    const wheel = !!(this.on && MW && (MW.active || entering) && gb);
     const onTitle = !!(this.on && P && gb && !wheel && this.isTitle()), T = performance.now() / 1000, F = gb ? gb.frames : 0;
     // the title, then (Start) the zoom until the wheel is up, then the wheel. The title also stays up while the game plays its own
     // attract loop (the ball toss, then the title again: no Start or A pressed when the title went), until the title or the menu is back
@@ -252,7 +255,7 @@ export class MenuWheel {
     const w0 = gb.mem.wram[0], sel = P.menuWheel.virtual ? NC - 1 : Math.min(8, w0[0xB05] * 3 + w0[0xB04]);          // wMenuCursorY / X (or OPTIONS)
     // the wheel turns smoothly towards the chosen cell (the shorter way round)
     let d = sel - this.pos; if (d > NC / 2) d -= NC; if (d < -NC / 2) d += NC; this.pos += d * 0.3; if (Math.abs(d) < 0.01) this.pos = sel;
-    this.draw(gb, sel, W, H); this.keep(true);
+    this.draw(gb, sel, W, H, !entering); this.keep(true);
   }
   // the picture just drawn, kept for the gap before the next screen (BACKDROP)
   keep(front) {
@@ -278,7 +281,7 @@ export class MenuWheel {
     for (let i = 6; i >= 0; i--) { const [bx, , gy, d] = ball(T - i * 0.025), r = w * 0.009 / d * 2 * (1 - i * 0.08); g.fillStyle = i ? `rgba(232,240,74,${0.12 * (7 - i) / 7})` : "#e8f04a"; g.beginPath(); g.arc(bx, gy, r, 0, 6.2832); g.fill(); }
     g.fillStyle = "rgba(6,8,24,0.28)"; g.fillRect(0, 0, w, h);
   }
-  draw(gb, sel, W, H) {
+  draw(gb, sel, W, H, live = true) {             // live: the menu waits on screen (its cells copied from it); else the copies kept
     const g = this.cv.getContext("2d"), k = Math.min(W / 1280, H / 720), cy = H / 2, br = 250 * k, bx = -60 * k;
     g.clearRect(0, 0, W, H);
     // the ball (the title's, turning as the wheel turns)
@@ -302,10 +305,14 @@ export class MenuWheel {
     g.fillStyle = "rgba(250,250,255,0.93)"; this.pill(g, px, py, pw, ph, 30 * k); g.fill(); g.lineWidth = 4 * k; g.strokeStyle = "#ffd65a"; g.stroke();
     if (c.options) this.gear(g, px + pw / 2, py + 120 * k, 86 * k);
     else {
-      const [cx0, cy0, cw, ch] = c.r, fr = gb.ppu.bgFrame || gb.ppu.frame, cc = this.cell; cc.width = cw; cc.height = ch;   // (the background only: the chosen cell's name banner and bobbing frame are sprites over it)
-      const cg = cc.getContext("2d"), im = cg.createImageData(cw, ch), u32 = new Uint32Array(im.data.buffer);
-      for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) u32[y * cw + x] = fr[(cy0 + y) * 160 + cx0 + x] | 0xFF000000;
-      cg.putImageData(im, 0, 0);
+      const [cx0, cy0, cw, ch] = c.r, fr = gb.ppu.bgFrame || gb.ppu.frame, kept = this.cellPics || (this.cellPics = new Map());
+      let cc = kept.get(sel);
+      if (live || !cc) { if (!cc) { cc = document.createElement("canvas"); kept.set(sel, cc); } cc.width = cw; cc.height = ch; }
+      if (live) {   // (the background only: the chosen cell's name banner and bobbing frame are sprites over it)
+        const cg = cc.getContext("2d"), im = cg.createImageData(cw, ch), u32 = new Uint32Array(im.data.buffer);
+        for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) u32[y * cw + x] = fr[(cy0 + y) * 160 + cx0 + x] | 0xFF000000;
+        cg.putImageData(im, 0, 0);
+      }
       const s = Math.min(300 * k / cw, 180 * k / ch); g.imageSmoothingEnabled = false; g.drawImage(cc, px + (pw - cw * s) / 2, py + 26 * k, cw * s, ch * s);
     }
     g.textAlign = "center"; g.textBaseline = "middle"; g.fillStyle = "#281e0a"; g.font = `${40 * k}px "${FONT}", ${BODY}`;

@@ -66,6 +66,7 @@ const LINK_RX_READY = 0xC1;                                 // hLinkRxByte: the 
 export function* runMainMenu(P) {
   const { V, bus } = P;
   for (;;) {                                                 // (jp RunMainMenu: after a failed link handshake)
+    if (P.menuWheel) P.menuWheel.entering = P.frames;        // MENU: Wheel: the menu loading and sliding in (menuwheel.js keeps the wheel up)
     callHome(P, HOME.InitSerialLink);
     sound(P, BGM_MENU);
     bus.w8(rIE, bus.u8(rIE) & ~IE_TIMER);
@@ -98,7 +99,7 @@ export function* runMainMenu(P) {
       if (wheel && P.menuWheel.virtual && (V.menuInputPressed & PADF_A)) { sound(P, SFX_MENU_SELECT); P.menuWheel.openOptions(); continue; }
       if (wheel ? stepWheelCursor(P) : moveMenuCursorGrid(P, GRID_COLS, GRID_ROWS).a) { sound(P, SFX_MENU_MOVE); drawMainMenuSelection(P); }
       const input = V.menuInputPressed;
-      if ((input & (PADF_A | PADF_B)) && P.menuWheel) P.menuWheel.active = false;
+      if ((input & (PADF_A | PADF_B)) && P.menuWheel) { P.menuWheel.active = false; P.menuWheel.entering = P.frames; }   // (and while it slides out)
       if (input & PADF_A) {
         V.cheatUnlockTriggered = 1;
         sound(P, SFX_MENU_SELECT);
@@ -106,11 +107,13 @@ export function* runMainMenu(P) {
         bus.w8(rIE, bus.u8(rIE) | IE_TIMER);
         yield* callGen(P, mainMenuSlideOut(P, 1));
         if (V.menuCursorX === LINK_CELL_X && V.menuCursorY === LINK_CELL_Y) {
+          if (P.menuWheel) P.menuWheel.entering = -1;           // (the link screens are the game's own)
           V.mainMenuCursor = getMenuCursorIndex(P, GRID_COLS).a;
           const r = yield* callGen(P, tryMainMenuLinkHandshake(P));
           if (r.f & FC) break;                               // no link: the main menu again
         }
         V.menuSlideDirection = MENUSLIDE_FORWARD;
+        if (P.menuWheel) P.menuWheel.entering = -1;
         const index = getMenuCursorIndex(P, GRID_COLS).a;
         V.mainMenuCursor = index;
         return mapMainMenuCursorToItemId(P, index);
@@ -122,6 +125,7 @@ export function* runMainMenu(P) {
         bus.w8(rIE, bus.u8(rIE) | IE_TIMER);
         yield* callGen(P, mainMenuSlideOut(P, 0));
         V.menuSlideDirection = MENUSLIDE_BACK;
+        if (P.menuWheel) P.menuWheel.entering = -1;
         return { a: 0xFF };
       }
     }

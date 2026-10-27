@@ -276,7 +276,7 @@ const STANDS = [
 //          courtyard paths' colour)
 // The ground behind cut-outs is keyed out (colours of the surrounding ground reachable from the edge) and the
 // floor under them is patched with the ground strip below.
-const WALL_SCALE = F3.WALL_SCALE, FIELD_TILT = 0.3, HUD_SCALE = 0.6, SEAM_GLIDE = 1100;   // SEAM_GLIDE: ms of the camera's glide into the next map
+const WALL_SCALE = F3.WALL_SCALE, FIELD_TILT = 0.3, HUD_SCALE = 0.6, SEAM_GLIDE = 1100, MT_OUT = 420, MT_IN = 520;   // SEAM_GLIDE: ms of the camera's glide into the next map; MT_OUT / MT_IN: ms of the MAP FADE
 // the island (map 21) is an aerial picture, not a top-down map: shown as parallax layers. The road between the courts
 // (map 19) is a side-view picture too, but it is a walkable map: a field whose sky band and cafe stand up (FIELD_OBJECTS)
 const SIDE_VIEW_MAPS = new Set([21]);
@@ -968,7 +968,7 @@ export class Voxel3D {
   }
   // alpha: how far the display is between the last two game frames (0..1); the 3D view renders at the
   // display's refresh rate and interpolates world positions, the game itself stays at 60 Hz
-  render(frame2d, alpha = 1) { this.renderFrame(frame2d, alpha); this.seamAfter(); }
+  render(frame2d, alpha = 1) { this.mtDrew = false; this.renderFrame(frame2d, alpha); this.seamAfter(); this.fadeAfter(); }
   // RES (full.js, the RES button): the 3D view drawn at k times the screen's pixels (its device pixels, at most 2 a CSS pixel; the
   // browser stretches the picture to fit): a fixed k (0.5-1.5), or "auto": k lowered by 0.1 (to 0.5) while the view draws under
   // 50 frames a second, raised by 0.1 (to 1) after 3 s above 58. The frame rate is an average of the time between draws.
@@ -2163,6 +2163,66 @@ export class Voxel3D {
     }
     if (S.phase === "in" && now - S.at > SEAM_GLIDE && !S.fading) this.seamEnd();
   }
+  // MAP FADE: the game fades the screen to black or white between two areas (and back in on the next), stepping the palettes. Drawn as is,
+  // the 3D view steps through the colours with its bodies flattened (they are rebuilt only once the colours settle) and the next area
+  // pops in once it is built. Instead: the last clean frame is kept (each other frame while the colours are settled); when a fade
+  // starts, that frame dissolves smoothly into the fade's colour (OUT ms, eased), the colour holds while the game fades and loads,
+  // and once the new area's colours have settled (and its bodies are back) the colour lifts off it (IN ms) while the camera eases in.
+  // A colour change that does not go all the way (a night palette) only lifts when it settles. Not on the road / courtyard crossing
+  // (SEAM: its own glide), only in the overworld.
+  fadeK(id) {                                     // how far the live palettes 2-7 have gone towards white or black from the map's own
+    const a = this.gb.ppu.bgPal, b = this.seamCanon && this.seamCanon.id === id ? this.seamCanon.pal : (this.seamCanon = { id, pal: this.canonPalette(id) }).pal;
+    let lw = 0, cw = 0, lb = 0, cb = 0, moved = 0;
+    for (let k = 8; k < 32; k++) {
+      const x = a[k * 2] | a[k * 2 + 1] << 8, y = b[k * 2] | b[k * 2 + 1] << 8; if (x !== y) moved++;
+      for (const sh of [0, 5, 10]) { const X = x >> sh & 31, Y = y >> sh & 31; lw += 31 - X; cw += 31 - Y; lb += X; cb += Y; }
+    }
+    const kw = 1 - lw / Math.max(1, cw), kb = 1 - lb / Math.max(1, cb);
+    return { k: Math.max(0, Math.min(1, Math.max(kw, kb))), white: kw > kb, moved };   // (moved: of the 24 colours; a text box changes a few)
+  }
+  fadeTrack(id) {
+    if (this.seam || this.freeCam) { this.mt = null; return; }
+    const { k, white, moved } = this.fadeK(id), fr = this.gb.ppu.frames, now = performance.now();
+    const st = this.mtK || (this.mtK = { k, at: fr }); if (Math.abs(k - st.k) > 0.01) { st.k = k; st.at = fr; }
+    const settled = fr - st.at >= 3 || fr < st.at;
+    if (settled && !this.mt) this.mtBase = k;                         // the level the colours rest at (0 by day)
+    let T = this.mt;
+    if (!T && this.mtKept && moved >= 16 && k - (this.mtBase ?? 0) > 0.08) T = this.mt = { phase: "out", at: now, white, peak: k };
+    if (!T) return;
+    T.peak = Math.max(T.peak, k);
+    if (T.phase === "out" && now - T.at > MT_OUT) T.phase = "hold";
+    if (T.phase !== "in" && ((settled && !this.field.fading && (T.peak < 0.85 || k < 0.7)) || now - T.at > 8000)) { T.phase = "in"; T.at = now; this.mtKept = false; }
+  }
+  fadeDolly() { const T = this.mt; if (!T || T.phase !== "in") return 1; const e = this.ease(Math.min(1, (performance.now() - T.at) / MT_IN)); return 1 + 0.1 * (1 - e); }
+  ease(t) { return t * t * (3 - 2 * t); }
+  fadeAfter() {                                   // after each display frame: keep it, or draw the fade over it
+    const gl = this.gl, T = this.mt, cv = this.cv;
+    if (!this.mtDrew) {                                                // (not the overworld this frame: the next area loading, a match, a menu)
+      if (!T) return;
+      // its colours settled on a picture (not a blank screen): the colour lifts off whatever it is
+      let h = 0; const bp = this.gb.ppu.bgPal; for (let i = 0; i < 64; i++) h = (Math.imul(h, 31) + bp[i]) | 0;
+      const fr = this.gb.ppu.frames, q = this.mtOther || (this.mtOther = { h, at: fr }); if (q.h !== h) { q.h = h; q.at = fr; }
+      if (T.phase !== "in" && ((fr - q.at >= 3 && !this.blankPalette()) || performance.now() - T.at > 8000)) { T.phase = "in"; T.at = performance.now(); this.mtKept = false; }
+    }
+    if (!T) {
+      if (!this.mtDrew) return;
+      const st = this.mtK, fr = this.gb.ppu.frames;
+      if (st && (fr - st.at >= 3 || fr < st.at) && !this.field.fading && (this.mtTick = !this.mtTick)) {   // (every other drawn frame)
+        if (!this.mtTex) this.mtTex = this.texture(1, 1, new Uint8Array(4), true);
+        gl.bindTexture(gl.TEXTURE_2D, this.mtTex); gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGB, 0, 0, cv.width, cv.height, 0); this.mtKept = true;
+      }
+      return;
+    }
+    const now = performance.now(), c = T.white ? 0.973 : 0;
+    let a = 1;
+    if (T.phase === "out") a = this.ease(Math.min(1, (now - T.at) / MT_OUT));
+    else if (T.phase === "in") { a = 1 - this.ease(Math.min(1, (now - T.at) / MT_IN)); if (a <= 0) { this.mt = null; return; } }
+    if (!this.whiteTex) this.whiteTex = this.texture(1, 1, new Uint8Array([255, 255, 255, 255]));
+    gl.disable(gl.DEPTH_TEST); gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
+    if (T.phase === "out" && this.mtTex) this.draw(this.mtTex, m4.trs(0, -1, 0, 2, 2), m4.identity(), [0, 1, 1, -1], [1, 1, 1, 1], 0);   // the last clean frame
+    this.draw(this.whiteTex, m4.trs(0, -1, 0, 2, 2), m4.identity(), [0, 0, 1, 1], [c, c, c, a], 0);
+    gl.enable(gl.DEPTH_TEST);
+  }
   seamEnd() { this.seam = null; this.seamKeep = false; this.seamFrozen = false; this.seamJumpAt = null; this.seamPos = null; this.field.palHash = 0; }   // (the live colours again on the next frame)
   // the camera of the crossing: from where the old map's camera was (in this map's coordinates: the old map is drawn here as a neighbour)
   // to the player, eased
@@ -2196,8 +2256,9 @@ export class Voxel3D {
     if (f.clear) { gl.clearColor(f.clear[0], f.clear[1], f.clear[2], 1); gl.clear(gl.COLOR_BUFFER_BIT); }
     const fi = this.fi = this.fieldInterp(), sc = { x: fi.sx, y: fi.sy }, aim = this.fieldAim || [0, 0], aspect = cv.width / cv.height;   // the camera between the last two game frames   // fieldAim: test views
     this.seamTrack(id, f, [sc.x + 80, sc.y + 72]);
+    this.fadeTrack(id); this.mtDrew = true;                              // (MAP FADE: the game's fades drawn smoothly, below)
     const [cx, cz] = this.seamCamera(sc.x + 80 + aim[0], sc.y + 72 + aim[1]);
-    const yaw = this.freeCam ? c.yaw : 0, pitch = this.freeCam ? c.pitch : FIELD_CAM.pitch, dist = this.freeCam ? c.dist : FIELD_CAM.dist * Math.max(1, (160 / 144) / aspect);
+    const yaw = this.freeCam ? c.yaw : 0, pitch = this.freeCam ? c.pitch : FIELD_CAM.pitch, dist = (this.freeCam ? c.dist : FIELD_CAM.dist * Math.max(1, (160 / 144) / aspect)) * this.fadeDolly();
     const eye = [cx + dist * Math.sin(yaw) * Math.cos(pitch), dist * Math.sin(pitch), cz + dist * Math.cos(yaw) * Math.cos(pitch)];
     const mvp = m4.mul(m4.perspective(FIELD_CAM.fov, aspect, FIELD_CAM.near, FIELD_CAM.far), m4.lookAt(eye, [cx, 0, cz], [0, 1, 0]));
     if (this.light) this.light.camera(mvp, FIELD_CAM.near, FIELD_CAM.far, 1, "field", [cx, 0, cz], id);   // LIGHT
