@@ -15,7 +15,8 @@ import { initFontScreen } from "./pictures.js";
 import { initWindowSystem } from "./round.js";
 import { initCharSprite, charSpriteTask } from "./charsprite.js";
 import { charLevelUp, charComputeStats } from "./start.js";
-import { checkLevelUp } from "./exp.js";
+import { checkLevelUp, formatDecimalUnsigned } from "./exp.js";
+import { printDecimalByte } from "./match.js";
 
 const rd = D.rd, wr = D.wr;
 const setW = (w, n) => D.setWramBank(w, n);
@@ -31,7 +32,7 @@ function* inBankGen(w, bank, g) {
 }
 // the tasks by address (RegisterFrameTask a = flags)
 const TASK = { sparkle: 0x4DFC, tick: 0x50B3, charSprite: 0x5088, level: 0x4D2F, stat3: 0x4CD1, points: 0x4D79,
-  skills: 0x53B8, banner: 0x5694, yesNo: 0x4328 };
+  skills: 0x53B8, banner: 0x5694, yesNo: 0x4328, clock: 0x587C };
 const reg = (w, f, a) => registerFrameTask(w, f, B, a);
 const unreg = (w, a) => unregisterFrameTask(w, B, a);
 
@@ -249,14 +250,16 @@ function loadLevelUpBgAndTilemap(w) {
   D.loadPalettesMasterOnly(w, 0x5CE5, 0x00, 0x01);
   D.loadPalettesMasterOnly(w, 0x5CE5, 0x08, 0x01);
 }
-// 41:4BAB DrawLevelUpLabels: a = 0: "Improve which skill?" (text $10DF), else the name and EXP header (~41:5598,
-// not ported); then the labels $10E0-$10EA into the WRAM3 tile buffer (PrintTextToBuffer 05:62AA, rows of $20)
+// 41:4BAB DrawLevelUpLabels: a = 0: "Improve which skill?" (text $10DF), else the name and EXP header (41:5598);
+// then the labels $10E0-$10EA into the WRAM3 tile buffer (PrintTextToBuffer 05:62AA, rows of $20)
 function* drawLevelUpLabels(sh, a) {
   const w = sh.w;
   D.inBank(w, 0x03, () => T.resetGlyphBuffer(w));   // 03:4EB8
-  if (a) notPorted("the level-up header with the name and EXP (~41:5598 DrawNameAndExpHeader)");
-  setW(w, 3);
-  yield* inBankGen(w, 0x05, T.printTextToBuffer(sh, 0x10DF, 0xD021, 0x20));
+  if (a) drawNameAndExpHeader(w);
+  else {
+    setW(w, 3);
+    yield* inBankGen(w, 0x05, T.printTextToBuffer(sh, 0x10DF, 0xD021, 0x20));
+  }
   setW(w, 3);
   for (const [de, id] of [[0xD061, 0x10E0], [0xD066, 0x10E1], [0xD0A6, 0x10E3], [0xD106, 0x10E2], [0xD166, 0x10E4],
     [0xD187, 0x10E5], [0xD261, 0x10E7], [0xD2A1, 0x10E8], [0xD2E1, 0x10E6], [0xD342, 0x10E9], [0xD382, 0x10EA]])
@@ -542,6 +545,7 @@ export function levelUpTasks(w) {
     [k(TASK.banner)]: () => levelUpBannerRevealTask(w),
     [k(TASK.yesNo)]: () => drawYesNoCursorTask(w),
     "41:6e3b": () => promptSpriteTask(w),        // 41:6E3B PromptSpriteTask
+    [k(TASK.clock)]: () => drawClockTask(w),     // 41:587C DrawClockTask
   };
 }
 
@@ -908,4 +912,191 @@ export function* charYesNoPrompt(sh, a, c) {
   yield* sh.advance();
   setW(w, old);
   return b;
+}
+// ---- the name and EXP header and the Char. Data screen ----
+// 41:5765 CopyNameToTilemap: the string at hl (read in WRAM6, 0-ended) to the WRAM3 tile buffer at de; $DE / $DF
+// (the voicing marks) put tile $0E / $0F on the row above (de - $21) instead
+function copyNameToTilemap(w, hl, de) {
+  for (;;) {
+    setW(w, 6);
+    const a = rd(w, hl);
+    if (!a) return de;
+    if (a === 0xDE || a === 0xDF) { setW(w, 3); wr(w, (de - 0x21) & 0xFFFF, a === 0xDE ? 0x0E : 0x0F); hl++; continue; }
+    setW(w, 3);
+    wr(w, de, a);
+    hl++; de++;
+  }
+}
+// 41:5867 SetNameAttrs: attribute 6 in the WRAM2 buffer at de for each character of the string at hl (WRAM6)
+function setNameAttrs(w, hl, de) {
+  for (;;) {
+    setW(w, 6);
+    if (!rd(w, hl++)) return;
+    setW(w, 2);
+    wr(w, de++, 0x06);
+  }
+}
+// 41:57A9 FormatExp24: the 24-bit EXP at hl (a word, then the high byte to $D64E) as 5 digits at $D64F
+// (FormatDecimalNumberUnsigned 00:2326 of the word, width 5), then for each unit of the high byte 65536 added digit by
+// digit (ones + 6, tens + 3, hundreds + 5, thousands + 5 with the carries in $D657; quirk: the ten-thousands get 5 and
+// the high byte itself rather than the carry, and stop at 9)
+function formatExp24(w, hl) {
+  setW(w, 6);
+  const word = rd(w, hl) | rd(w, hl + 1) << 8;
+  wr(w, 0xD64E, rd(w, hl + 2));
+  formatDecimalUnsigned(w, word, 0xD64F, 0x05);
+  let c = rd(w, 0xD64E);
+  if (!c) return;
+  const val = ch => { let a = (ch - 0x20) & 0xFF; if (a) a = (a - 0x10) & 0xFF; return a; };
+  do {
+    wr(w, 0xD657, 0);
+    for (const [de, add] of [[0xD653, 6], [0xD652, 3], [0xD651, 5], [0xD650, 5]]) {
+      let a = (val((rd(w, de) + (de === 0xD653 ? 0 : rd(w, 0xD657))) & 0xFF) + add) & 0xFF;
+      wr(w, 0xD657, 0);
+      if (a >= 0x0A) { a = (a - 0x0A) & 0xFF; wr(w, 0xD657, 1); }
+      wr(w, de, (a + 0x30) & 0xFF);
+    }
+    let a = (val((rd(w, 0xD64F) + rd(w, 0xD657)) & 0xFF) + 5 + rd(w, 0xD64E)) & 0xFF;
+    wr(w, 0xD657, 0);
+    if (a >= 0x0A) a = 0x09;
+    wr(w, 0xD64F, (a + 0x30) & 0xFF);
+  } while (--c);
+}
+// 41:5598 DrawNameAndExpHeader: the name ($C800) to the tile buffer at $D021 and (up to 10 characters, 0-ended) to
+// $C600 (WRAM5... as the game maps it); OBJ palette 7 from 41:5A08; the badge's LZ tiles 41:63CB / 41:6428 to VRAM1
+// $9710 / $9770; the boxes $D028 (6) / $D048 (4) with attribute $0F (WRAM2) and the tiles $71... / $77... (WRAM3); the
+// EXP ($C826) at $D02E with attribute 6; the clock's blink counter $D553 = 0 and its frame task 41:587C
+function drawNameAndExpHeader(w) {
+  setW(w, 6);
+  copyNameToTilemap(w, 0xC800, 0xD021);
+  let hl = 0xC800, de = 0xC600;
+  for (let c = 0x0A; ; c--) {
+    setW(w, 6);
+    if (!c) break;
+    const a = rd(w, hl++);
+    if (!a) break;
+    setW(w, 5);
+    wr(w, de++, a);
+  }
+  wr(w, de, 0);
+  D.loadPalettesMasterOnly(w, 0x5A08, 0x07, 0x01);
+  setW(w, 1);
+  D.lzTo(w, B, 0x63CB, 0xD000); D.queueAndRunVRAMCopy(w, 0xD000, 0xB710, 0x06);
+  D.lzTo(w, B, 0x6428, 0xD000); D.queueAndRunVRAMCopy(w, 0xD000, 0xB770, 0x04);
+  setW(w, 2);
+  fillBytes(w, 0xD028, 0x0006, 0x0F);
+  fillBytes(w, 0xD048, 0x0004, 0x0F);
+  setW(w, 3);
+  writeTileRun(w, 0xD028, 0x71, 0x06);
+  writeTileRun(w, 0xD048, 0x77, 0x04);
+  setW(w, 6);
+  formatExp24(w, 0xC826);
+  copyNameToTilemap(w, 0xD64F, 0xD02E);
+  setNameAttrs(w, 0xD64F, 0xD02E);
+  wr(w, 0xD553, 0);
+  reg(w, 0x01, TASK.clock);
+}
+// 41:587C DrawClockTask: the two numbers ($C0F3 / $C0F2, the play clock, while $D4D0 is 0; else $C831 / $C830) as
+// 2-digit decimals to the tile buffer at $D04E / $D051 (the second one's leading blank a 0), between them $D050 a space
+// or, for the second half of each 60 frames ($D553 from $1E), a colon; then the attributes: $D04E 6 unless the first
+// number's leading blank (quirk: then 0 is written, with the bank still WRAM6, to WRAM6 $D04F-$D052), $D04F-$D052 6;
+// the row $D040 (2 x 16 bytes) to $9840 in both VRAM banks
+function drawClockTask(w) {
+  setW(w, 6);
+  const own = rd(w, 0xD4D0);
+  formatTo(w, rd(w, own ? 0xC831 : 0xC0F3), 2, 0xD554);
+  copyNameToTilemap(w, 0xD554, 0xD04E);
+  setW(w, 6);
+  formatTo(w, rd(w, own ? 0xC830 : 0xC0F2), 2, 0xD554);
+  if (rd(w, 0xD554) === 0x20) wr(w, 0xD554, 0x30);
+  copyNameToTilemap(w, 0xD554, 0xD051);
+  setW(w, 3);
+  wr(w, 0xD050, 0x20);
+  setW(w, 6);
+  if (rd(w, 0xD553) >= 0x1E) { setW(w, 3); wr(w, 0xD050, 0x3A); }
+  setW(w, 6);
+  if (rd(w, 0xD553) === 0x3C) wr(w, 0xD553, 0xFF);
+  wr(w, 0xD553, (rd(w, 0xD553) + 1) & 0xFF);
+  let a = (rd(w, 0xD554) - 0x20) & 0xFF;
+  if (a) { setW(w, 2); a = 0x06; wr(w, 0xD04E, a); }
+  for (let k = 0; k < 4; k++) wr(w, 0xD04F + k, a);
+  setW(w, 3); D.queueVRAMCopy(w, 0xD040, 0x9840, 0x02);
+  setW(w, 2); D.queueVRAMCopy(w, 0xD040, 0xB840, 0x02);
+}
+// 41:665E LoadCharDataPalette: BG palette 6 from 41:677C
+const loadCharDataPalette = w => D.loadPalettesMasterOnly(w, 0x677C, 0x06, 0x01);
+// 41:65D1 DrawCharBadge: GetCharFlags12 02:5395 (($C819 & 6) >> 1) printed at (3, $0F) (PrintDecimalByte 00:22D2: the
+// debug text buffer); 1 or 2: BG palette 2 (41:66CC / 41:6668), the LZ tiles 41:66D4 / 41:6670 to VRAM1 $94E0, the
+// tiles $4E... / $51... at $D1E4 / $D204 (attribute $0A), $D54C = 5
+function drawCharBadge(w) {
+  const a = (rd(w, 0xC819) & 0x06) >> 1;
+  printDecimalByte(w, a, 0x030F);
+  if (!a) return;
+  D.loadPalettesMasterOnly(w, a === 1 ? 0x66CC : 0x6668, 0x02, 0x01);
+  setW(w, 1);
+  D.lzTo(w, B, a === 1 ? 0x66D4 : 0x6670, 0xD000);
+  D.queueAndRunVRAMCopy(w, 0xD000, 0xB4E0, 0x06);
+  setW(w, 2);
+  fillBytes(w, 0xD1E4, 0x0003, 0x0A);
+  fillBytes(w, 0xD204, 0x0003, 0x0A);
+  setW(w, 3);
+  writeTileRun(w, 0xD1E4, 0x4E, 0x03);
+  writeTileRun(w, 0xD204, 0x51, 0x03);
+  setW(w, 6);
+  wr(w, 0xD54C, 0x05);
+}
+// 41:6506 CharDataScreen (export $22; the start menu's Char. Data 41:7943 with a = b = 0): a = 0: ForceFadeOut ($10)
+// first; the level-up screen's set-up read only (b to $D4D0: 0 = the play clock in the header), the values (41:49ED
+// a = 1) and gauges, the character sprite, the header (41:4BAB a = 1), the level, the badge, the tilemap, the tasks
+// 41:5088 / 4D2F / 4CD1; ForceFadeIn ($10); A (sound $5C) or B (sound $5D) on hJoyRepeat leaves: fade out ($10), the
+// tasks and the clock's off, InitFontScreen, a frame
+export function* charDataScreen(sh, a, b) {
+  yield* inBankGen(sh.w, B, charDataBody(sh, a, b));
+}
+function* charDataBody(sh, a, b) {
+  const w = sh.w;
+  if (!a) { Scr.forceFadeOut(w, 0x10); yield* Scr.waitFade(sh); }
+  clearFrameTasks(w);
+  initFontScreen(w);                             // 01:41E8
+  yield* inBankGen(w, 0x05, initWindowSystem(sh));   // 05:407A
+  D.disableLCDSafely(w);
+  w.high[0x18B] = 0; w.high[0x18A] = 0;
+  w.wram[0].fill(0, 0x320, 0x324);
+  if (w.vram) w.lcd.wy = 0x90;
+  D.resetSprites(w);
+  clearLevelUpBuffers(w);
+  initLevelUpVars(w);
+  loadLevelUpSpriteGfx(w);
+  loadLevelUpBgAndTilemap(w);
+  loadCharDataPalette(w);
+  setW(w, 6);
+  wr(w, 0xD4D0, b);
+  loadStatDisplayValues(w, 1);
+  refreshStatGauges(w);
+  initCharSprite(w);                             // 42:400B
+  yield* drawLevelUpLabels(sh, 1);
+  formatLevelDigits(w);
+  drawCharBadge(w);
+  copyLevelUpTilemapToVRAM(w);
+  D.processVRAMCopyQueue(w);
+  D.enableLCD(w);
+  reg(w, 0x03, TASK.charSprite);
+  reg(w, 0x02, TASK.level);
+  reg(w, 0x01, TASK.stat3);
+  Scr.forceFadeIn(w, 0x10);
+  yield* Scr.waitFade(sh);
+  for (;;) {
+    yield* sh.advance();
+    const j = w.high[0x191];
+    if (j & 0x01) { sh.sound(0x5C); break; }
+    if (j & 0x02) { sh.sound(0x5D); break; }
+  }
+  Scr.beginFadeOut(w, 0x10);
+  yield* Scr.waitFade(sh);
+  unreg(w, TASK.charSprite);
+  unreg(w, TASK.level);
+  unreg(w, TASK.stat3);
+  initFontScreen(w);
+  unreg(w, TASK.clock);
+  yield* sh.advance();
 }

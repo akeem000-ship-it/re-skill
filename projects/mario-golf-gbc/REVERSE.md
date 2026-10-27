@@ -100,6 +100,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the Dune driving range's and approach range's lessons (maps $12 / $13, 31:5E63, 30:52CB), the course view's tile animation of banks $51-$54 (13:7076) | 144,903 | 59.71% |
 | + the Links driving range and approach range with their lessons and contests (maps $15 / $16, 31:67C8, 30:597C), the Field's marker sprite (34:4FCC) | 149,812 | 61.73% |
 | + the letter at the tree (34:4847), its reading on map $25 (35:79D2) and the path's opening (34:5019), the Grand Champion's return to the Field (34:5218) | 150,992 | 62.22% |
+| + the start menu's Char. Data (41:6506 with the name and EXP header 41:5598 and the clock task 41:587C) and Stars (0A:6F56, the event list) | 152,559 | 62.86% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -236,6 +237,7 @@ given to the native code). All cases match frame for frame:
 | boot_kid_story_linksapproach_slope | the same, the second coach's approach across a slope (30:5B2B, the hooks 30:5E3C-5ECA, the result 30:5EF8 without its ScriptEnd), a retry | 8,449 |
 | boot_kid_story_linksapproachcontest | the same with the Links won and the mound lesson passed (#172 poked): the contest (30:6414 sets #224; the offer 30:6159, game mode 5, ten approaches counted on the HUD by the hooks 30:6052 / 605C), the result (30:60DA) | 11,846 |
 | boot_kid_story_letter | the Links won (#114 #115 #139 poked): on the Field, A at the tree (trigger $0F, its cell set by 34:4719): the sparkle (34:52C0), the letter falls (34:512E), map $25 reads it (35:79D2: #123, the save flag $1E0), the Field's entrance $0F: the path opens (34:5019: the flying sprite 34:51B9, the burst 34:5396, #125, 34:46E6, the marker's frames and task) | 6,953 |
+| boot_kid_story_chardata | Start in the clubhouse: Char. Data (41:7943 -> 41:6506: the stats screen with the name, EXP and clock header), A back to the map; Start, Down, A: Stars (0A:6F56): Right twice through the pages (0A:6E47), Down to scroll, Left, B back | 4,860 |
 | boot_kid_story_green | the office's way to the putting green (map $0E, 30:69B9), "Practice here?" declined, the pro's putting challenge (30:6739, game mode 5, the hooks 30:6C2F / 6C58), the result (30:6CF2, not cleared) | 12,839 |
 | boot_kid_story_green_quit | the same, Start at the aim: the mini-game pause menu (41:6F9F), Quit Mini-Game | 7,647 |
 | boot_kid_story_green_cleared | the same with ten made (poked): cleared, 25 EXP (30:6EC8), the level-up screen, SaveGame, the map again at $FA | 12,839 |
@@ -735,6 +737,23 @@ inside the game's code (its AdvanceFrame then waking at a VBlank that found the 
 VBlank but one runs after the frame, the native frame's VBlank stands for that early one and makes no fade step
 (`w.fadeSkip`, honoured once by fadeVBlank); the game's fade steps were the later VBlanks, which are replayed as
 before. Without it Save & Quit's fade-out after SaveGame's long lag was one step ahead on the native side.
+A second rule came with the event list (no tolerance either): a lag VBlank that finds the game in a fade while the
+native side has none yet is owed to the native fade of the same state if the native code begins it in that frame
+(`w.lagFadeOwed`, taken by screen.js's BeginFadeOut / ForceFadeOut / ForceFadeIn): ListChangePage 0A:6E47 begins
+its fade-out and then rebuilds the page (LZ and glyphs) through several VBlanks, so its WaitFade took 2 frames in
+the game against 7 natively.
+**Char. Data and Stars** (the start menu's first two items, `levelup.js`, `nav.js`): CharDataScreen 41:6506 builds
+the level-up screen read only (41:4366 / 43C0 / 446D, the values 41:49ED a = 1, the gauges, the character sprite,
+the level) with the name and EXP header DrawNameAndExpHeader 41:5598 (CopyNameToTilemap 41:5765 with the voicing
+marks a row up, FormatExp24 41:57A9: 65536 added digit by digit per unit of the high byte, quirk: the top digit adds
+5 and the high byte instead of the carry and stops at 9; SetNameAttrs 41:5867; the badge's tiles; the clock task
+41:587C: the play clock while $D4D0 = 0, quirk: with a blank first hour digit it writes 0 to WRAM6 $D04F-$D052), the
+badge DrawCharBadge 41:65D1 (GetCharFlags12 printed to the debug text and the badge tiles for 1 / 2) and BG palette 6
+(41:665E); A or B leaves (MenuCharData 41:7943: the map again at the saved position). The event list EventListScreen
+0A:6F56: five pages (Marion, Palm, Dune, Links, the Field: titles $19E1-$19E5) of the lessons and contests unlocked
+(flags 0A:680A; page 3's entries from 5 also need #139), with a blinking mark on those cleared (0A:6852's flags),
+the page arrows 0A:6C7A, Left / Right changing the page (passing empty ones, 0A:6E47), Up / Down scrolling by 2 up to
+(2 entries + 4 - $12) x 8 (0A:6D15); B leaves.
 
 #### Match play and the contests (web/js/golf/match.js)
 

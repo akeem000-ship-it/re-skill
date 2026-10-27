@@ -5,7 +5,8 @@
 // wMenuResult $C3FD ($FF after Camera Mode, Course Map and Scorecard: the shot view is redrawn; $81 Give Up, $80
 // Quit). All the items are ported: Camera Mode (freelook.js), Course Map (coursemap.js), Scorecard, Settings, Give
 // Up, Quit / Save & Quit (with the message box: msgbox.js).
-import { navigationMenu } from "./nav.js";
+import { navigationMenu, eventListScreen } from "./nav.js";
+import { charDataScreen } from "./levelup.js";
 import { rw } from "./rom.js";
 import * as D from "./render/display.js";
 import * as W from "./windows.js";
@@ -548,8 +549,17 @@ function* mapStartMenuHandler(sh, h) {
       wr(w, 0xC4B8, h === 0x7402 ? 0 : 1);
       yield* menuSaveAndQuit(sh);
       return;
-    case 0x73E4: case 0x7419: notPorted("the start menu's Char. Data (~41:7943 MenuCharData, 41:6506)");
-    case 0x73EA: case 0x741F: notPorted("the start menu's Stars (~0A:6F56 EventListScreen)");
+    case 0x73E4: case 0x7419:                    // Char. Data: 41:7943 MenuCharData (41:6506), the map again ($FA at
+      yield* charDataScreen(sh, 0, 0);           // the saved position), then the menu closed (jp 41:7078)
+      wr(w, 0xC441, 0xFA); wr(w, 0xC46A, 0xFA);
+      for (let k = 0; k < 4; k++) wr(w, 0xC466 + k, rd(w, 0xC2A0 + k));
+      wr(w, 0xC465, rd(w, 0xC2A4));
+      clearMenuState(w);
+      return;
+    case 0x73EA: case 0x741F:                    // Stars: 41:7965 -> 0A:6F56 EventListScreen, then the menu closed
+      yield* inBankGen(w, 0x0A, eventListScreen(sh));
+      clearMenuState(w);
+      return;
     default: notPorted(`the start menu's item ~41:${h.toString(16)}`);
   }
 }

@@ -190,7 +190,7 @@ function loadExpScreenGfx(w, h) {
 
 // ---- the frame tasks ----
 // 00:2326 FormatDecimalNumberUnsigned: hl in decimal, right-aligned in a field of a (0: none), 0-ended, to de
-function formatDecimalUnsigned(w, hl, de, a) {
+export function formatDecimalUnsigned(w, hl, de, a) {
   const dig = [Math.floor(hl / 10000), Math.floor(hl / 1000) % 10, Math.floor(hl / 100) % 10, Math.floor(hl / 10) % 10, hl % 10];
   if (a) {
     let b = 5, i = 0;

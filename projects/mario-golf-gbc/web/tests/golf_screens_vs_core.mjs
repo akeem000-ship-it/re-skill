@@ -586,6 +586,14 @@ const CASES = [
       { to: [0x25, 0x1E], at: [0x2500, 0x1E00], noA: true }, [2, 0x40], [30, 0],
       { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x0E && menuW.wram[0][0x46A] === 0xFA },
       { press: 1, every: 40, times: 25 }], 300) },
+  // the clubhouse, Start: the start menu's Char. Data (41:7943): the character's stats screen (41:6506: the level-up
+  // screen's set-up read only, the name and EXP header 41:5598 with its clock task 41:587C, the badge 41:65D1); A
+  // leaves, the map again; Start, Down, A: Stars (0A:6F56, the event list): Right through the pages, Down to scroll,
+  // B leaves
+  { name: "boot_kid_story_chardata", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
+    ...routeCase(savedPolicy(0), [[60, 0], [2, 8], [60, 0], [2, 1], [240, 0], [2, 1], [200, 0],
+      [2, 8], [60, 0], [2, 0x80], [20, 0], [2, 1], [200, 0], [2, 0x10], [120, 0], [2, 0x10], [120, 0],
+      [40, 0x80], [60, 0], [2, 0x20], [120, 0], [2, 2], [200, 0]], 300) },
   // the same, then the start menu (41:6E6E): Message (Down twice) Right, Left, Right (the text speed), B; again: Up
   // (wraps to Save & Quit), A, "Save current progress?" Yes: SaveGame, map 0 entrance 1: the link menu (the save RAM
   // compared at the end)

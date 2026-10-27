@@ -107,12 +107,17 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
   };
   // (the fade step left out when the native fade is the same one but already further, $FFA2 / $FFA4 (cf.
   // lockstep.mjs): in the loads the game lags through, the native fade may be a step on already)
+  // (a lag VBlank that found the game in a fade the native code has not begun yet, while the native side has no fade:
+  // the game began it in this frame's code before the work it lagged through; its step is owed to the native fade of
+  // the same state if the native code begins it in this frame: screen.js begin(), w.lagFadeOwed)
   const lagWork = n => {
     const fades = partialFade.splice(0);
+    w.lagFadeOwed = [];
     if (lagVBlanks) for (let k = 0; k < n; k++) {
       applyPendingPaletteUpdates(w); drv.frame(); updateGameTimer(w);
       const f = fades[k];
-      if (!f || w.high[0x1A2] !== f[0] || w.high[0x1A4] >= f[1]) fadeVBlank(w);
+      if (f && (f[0] & 3) && !(w.high[0x1A2] & 3)) w.lagFadeOwed.push(f[0]);
+      else if (!f || w.high[0x1A2] !== f[0] || w.high[0x1A4] >= f[1]) fadeVBlank(w);
       if (w.sh) runFrameTasks(w, true, w.sh.dispatch);
       res.lagVBlanks = (res.lagVBlanks || 0) + 1;
     }

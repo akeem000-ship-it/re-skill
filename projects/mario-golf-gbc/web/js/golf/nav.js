@@ -273,3 +273,175 @@ export function* navigationMenu(sh) {
   wr(w, 0xC465, rd(w, 0xC2A4));
   setW(w, oldBank);
 }
+
+// ---- the event list (the start menu's Stars: 0A:6F56) ----
+// 0A:6C7A DrawPageArrows: the two arrows by 0A:6CA7 (hVBlankCount / 4), y $14 less the scroll: left at x bob + 6
+// (tile $10, attributes 9), right at x $9A - bob - 1 (attributes $29)
+function drawPageArrows(w) {
+  const e = (0x14 - w.high[0x18A]) & 0xFF;
+  const d = rb(0x0A, 0x6CA7 + ((w.high[0x18C] >> 2) & 7));
+  D.queueSprite16(w, e, (d + 6) & 0xFF, 0x10, 0x09);
+  D.queueSprite16(w, e, ((~d & 0xFF) + 0x9A) & 0xFF, 0x10, 0x29);
+}
+// 0A:6CFE ListCountUnlocked: the entries of the page whose flag (0A:680A) is set
+function listCountUnlocked(w) {
+  let d = 0;
+  for (let b = 0, c = rd(w, 0xC471); c; b++, c--) if (listEntryFlag(w, 0x680A, b)) d++;
+  return d;
+}
+// 0A:6D15 ListPageSetup: wListCount $C471 = the page's entries (0A:6852's list of words up to $FF..); the scroll's
+// most $C472 = (2 count + 4 - $12, at least 0) * 8
+function listPageSetup(w) {
+  let hl = rw0A((0x6852 + ((rd(w, 0xC470) << 1) & 0xFF)) & 0xFFFF);
+  let b = 0xFF;
+  do { b = (b + 1) & 0xFF; hl += 2; } while (rb(0x0A, hl - 1) !== 0xFF);
+  wr(w, 0xC471, b);
+  let a = (((b << 1) + 4) & 0xFF) - 0x12;
+  if (a < 0) a = 0;
+  wr(w, 0xC472, (a << 3) & 0xFF);
+}
+// 0A:6D42 ListDrawFrame: for each entry two rows of the frame (0A:69BA tiles to $D080..., 0A:6A1A attributes to
+// $D480...), then the closing row (0A:69FA / 0A:6A5A) one row up from the end; WRAM1
+function listDrawFrame(w) {
+  let de = 0xD080;
+  for (let b = rd(w, 0xC471); ;) {
+    D.inBank(w, 0x0A, () => {
+      D.copyMemoryFast(w, 0x6A1A, de + 0x400, 0x04);
+      D.copyMemoryFast(w, 0x69BA, de, 0x04);
+    });
+    de = (de + 0x40) & 0xFFFF;
+    b = (b - 1) & 0xFF;
+    if (!b) break;
+  }
+  de = (de - 0x20) & 0xFFFF;
+  D.inBank(w, 0x0A, () => {
+    D.copyMemoryFast(w, 0x6A5A, de + 0x400, 0x02);
+    D.copyMemoryFast(w, 0x69FA, de, 0x02);
+  });
+}
+// 0A:6D7F ListDrawText: the glyphs reset; the page's title ($19E1 + page) centred in row 1; the names of the unlocked
+// entries (texts 0A:6DE4 by page + the entry) two rows apart from $D081
+function* listDrawText(sh) {
+  const w = sh.w;
+  D.inBank(w, 0x03, () => T.resetGlyphBuffer(w));
+  const title = (0x19E1 + rd(w, 0xC470)) & 0xFFFF;
+  const a = ((((-getTextBoxWidth(w, title)) & 0xFF) + 0x14) & 0xFF) >> 1;
+  yield* inBankGen(w, 0x05, T.printTextToBuffer(sh, title, (0xD020 + a) & 0xFFFF, 0x20));
+  let de = 0xD081;
+  for (let b = 0, c = rd(w, 0xC471); c; b++, c--) {
+    if (listEntryFlag(w, 0x680A, b)) {
+      const id = (rw0A((0x6DE4 + ((rd(w, 0xC470) << 1) & 0xFF)) & 0xFFFF) + b) & 0xFFFF;
+      yield* inBankGen(w, 0x05, T.printTextToBuffer(sh, id, de, 0x20));
+    }
+    de = (de + 0x40) & 0xFFFF;
+  }
+}
+// the page's frame and text: the LZ frame 0A:68E4 / 0A:698A to WRAM1 $D000 / $D400, 0A:6D42, 0A:6D7F
+function* listBuildPage(sh) {
+  const w = sh.w;
+  setW(w, 1);
+  D.lzTo(w, 0x0A, 0x68E4, 0xD000);
+  D.lzTo(w, 0x0A, 0x698A, 0xD400);
+  listDrawFrame(w);
+  yield* listDrawText(sh);
+}
+// the page to the BG map: VRAM1 from $D400, VRAM0 from $D000 ($2C blocks each, StartVRAMDMAFromHL 00:2096)
+function listCopyPage(w) {
+  if (!w.vram) return;
+  w.lcd.vbk = 1; D.startVRAMDMAFromHL(w, 0xD400, 0x9800, 0x2C);
+  w.lcd.vbk = 0; D.startVRAMDMAFromHL(w, 0xD000, 0x9800, 0x2C);
+}
+// 0A:6E47 ListChangePage: fade out ($10), the page set up and built, LCD off, no scroll, copied, the glyphs
+// (03:5039), LCD on, fade in ($10)
+function* listChangePage(sh) {
+  const w = sh.w;
+  Scr.beginFadeOut(w, 0x10);
+  listPageSetup(w);
+  yield* listBuildPage(sh);
+  yield* Scr.waitFade(sh);
+  if (w.vram) D.disableLCDSafely(w);
+  w.high[0x18B] = 0; w.high[0x18A] = 0;
+  listCopyPage(w);
+  if (w.vram) { D.inBank(w, 0x03, () => T.uploadGlyphTilesDirect(w)); D.enableLCD(w); }
+  Scr.beginFadeIn(w, 0x10);
+}
+// 0A:6DEE ListHandleInput: Up / Down held scroll by 2 (0 to $C472); Left / Right (repeat) change the page (Right
+// first, 0-4 wrapping), passing the pages with nothing unlocked; then sound $5B and the new page (0A:6E47)
+function* listHandleInput(sh) {
+  const w = sh.w;
+  if (w.high[0x190] & 0x40) { const a = (w.high[0x18A] - 2) & 0xFF; if (!(a & 0x80)) w.high[0x18A] = a; }
+  if (w.high[0x190] & 0x80) { const a = (w.high[0x18A] + 2) & 0xFF; if (a < rd(w, 0xC472)) w.high[0x18A] = a; }
+  const b = w.high[0x191] & 0x30;
+  if (!b) return;
+  for (;;) {
+    let p = rd(w, 0xC470);
+    p = (b & 0x10) || !(b & 0x20) ? (p + 1) & 0xFF : (p - 1) & 0xFF;
+    if (p & 0x80) p = 0x04;
+    else if (p >= 0x05) p = 0;
+    wr(w, 0xC470, p);
+    if (listCountUnlocked(w)) break;
+  }
+  sh.sound(0x5B);
+  yield* listChangePage(sh);
+}
+// 0A:6EA2 ListScreenInit: flag #15, WY $90, no scroll, page 0 set up, LCD off, built and copied, the sprite tiles
+// (0A:6A80 / 0A:6B90 to VRAM1 $8000 / $8100) and palettes (0A:6C20 BG 1, 0A:6C10 OBJ 1, 0A:6B80 BG 10), the glyphs,
+// LCD on
+function* listScreenInit(sh) {
+  const w = sh.w;
+  setFlag(w, 15);
+  if (w.vram) w.lcd.wy = 0x90;
+  w.high[0x1B9] = 0; w.high[0x1B8] = 0;
+  w.high[0x18B] = 0; w.high[0x18A] = 0;
+  wr(w, 0xC470, 0);
+  listPageSetup(w);
+  if (w.vram) D.disableLCDSafely(w);
+  yield* listBuildPage(sh);
+  if (w.vram) {
+    listCopyPage(w);
+    w.lcd.vbk = 1;
+    D.inBank(w, 0x0A, () => {
+      D.startVRAMDMAFromHL(w, 0x6A80, 0x8000, 0x10);
+      D.startVRAMDMAFromHL(w, 0x6B90, 0x8100, 0x04);
+    });
+  }
+  D.inBank(w, 0x0A, () => {
+    D.loadPalettesUnlessFaded(w, 0x6C20, 0x01, 0x01);
+    D.loadPalettesUnlessFaded(w, 0x6C10, 0x09, 0x01);
+    D.loadPalettesUnlessFaded(w, 0x6B80, 0x0A, 0x01);
+  });
+  if (w.vram) { D.inBank(w, 0x03, () => T.uploadGlyphTilesDirect(w)); D.enableLCD(w); }
+}
+// 0A:6F35 ListFrame: the input, the animated tiles (0C:43AD), the page arrows, the marks of the cleared entries
+// (0A:6852's flags)
+function* listFrame(sh) {
+  const w = sh.w;
+  yield* listHandleInput(sh);
+  D.inBank(w, 0x0C, () => initRecordsTileAnim(w));
+  if (!w.vram) return;
+  drawPageArrows(w);
+  for (let b = 0, c = rd(w, 0xC471); c; b++, c--) if (listEntryFlag(w, 0x6852, b)) drawListMark(w, b);
+}
+// 0A:6F56 EventListScreen (export $58; the start menu's Stars 41:7965): the frame tasks cleared, a frame, the list
+// (0A:6EA2), fade in ($10); each frame until B (sound $5D); fade out ($10), warp $FA at the saved position
+export function* eventListScreen(sh) {
+  const w = sh.w;
+  const oldBank = wbank(w);
+  clearFrameTasks(w);
+  yield* sh.advance();
+  yield* listScreenInit(sh);
+  Scr.beginFadeIn(w, 0x10);
+  for (;;) {
+    if (w.high[0x194] & 0x02) break;
+    yield* listFrame(sh);
+    yield* sh.advance();
+  }
+  sh.sound(0x5D);
+  Scr.beginFadeOut(w, 0x10);
+  yield* Scr.waitFade(sh);
+  wr(w, 0xC441, 0xFA);
+  wr(w, 0xC46A, 0xFA);
+  for (let k = 0; k < 4; k++) wr(w, 0xC466 + k, rd(w, 0xC2A0 + k));
+  wr(w, 0xC465, rd(w, 0xC2A4));
+  setW(w, oldBank);
+}

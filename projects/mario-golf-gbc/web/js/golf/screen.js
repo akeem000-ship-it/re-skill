@@ -7,16 +7,26 @@ function begin(h, state, c) {                    // 00:25BC
   h[SPEED] = c || 1;
   h[LEVEL] = 0x7C;
 }
+// (a test's lag model, web/tests/golf/screenstep.mjs: the fade steps the game made in VBlanks it lagged through after
+// beginning this fade in the same frame; none in the game itself)
+function owedSteps(w) {
+  const o = w.lagFadeOwed;
+  if (!o || !o.length) return;
+  w.lagFadeOwed = [];
+  for (const st of o) if (st === w.high[ST]) fadeVBlank(w);
+}
 export function beginFadeOut(w, c) {             // 00:25A1 BeginFadeOut
   const h = w.high;
   if (h[OUT]) return;
   h[ST] = 1; h[OUT] = 1;
   begin(h, 1, c);
+  owedSteps(w);
 }
 export function forceFadeOut(w, c) {             // 00:258A ForceFadeOut
   const h = w.high;
   h[ST] = 1; h[OUT] = 1;
   begin(h, 1, c);
+  owedSteps(w);
 }
 export function beginWhiteFadeOut(w, c) {        // 00:2590 BeginWhiteFadeOut
   beginFadeOut(w, c);
@@ -26,6 +36,7 @@ export function forceFadeIn(w, c) {              // 00:258D ForceFadeIn
   const h = w.high;
   h[ST] = 2; h[OUT] = 0;
   begin(h, 2, c);
+  owedSteps(w);
 }
 export function beginFadeIn(w, c) {              // 00:25AF BeginFadeIn
   if (!w.high[OUT]) return;
