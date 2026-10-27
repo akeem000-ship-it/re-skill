@@ -1444,7 +1444,7 @@ export class Voxel3D {
     const gl = this.gl, f = this.field; if (!f.floorSrc) return;
     const art = this.composeField(), copy = (dst, src, n) => { for (let i = 0; i < n; i++) { const o = i * 4, s = src[i] * 4; dst[o] = art[s]; dst[o + 1] = art[s + 1]; dst[o + 2] = art[s + 2]; } };
     const up = (tex, w, h, data) => { gl.bindTexture(gl.TEXTURE_2D, tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, data); };
-    copy(f.floorData, f.floorSrc, 512 * 512); up(f.floorTex, 512, 512, f.floorData);
+    copy(f.floorData, f.floorSrc, 512 * 512); up(f.floorTex, 512, 512, f.floorData); f.floorVer = (f.floorVer || 0) + 1; f.floorAt = performance.now();   // (ground.js builds again once it settles)
     if (f.artData && f.artTex) { copy(f.artData, f.artSrc, 512 * 512); up(f.artTex, 512, 512, f.artData); }
     const done = new Set();
     for (const c of f.cards || []) {

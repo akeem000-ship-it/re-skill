@@ -38,7 +38,7 @@
 //  from: [x, y] on a card: its picture is taken from the same-sized rectangle there (a clean copy: a kerb row whose own picture has
 //          tree crowns painted over it)
 //  courtyardPaths: {rows, keep, min}: the dirt paths edged with the courtyard's light stone kerb, the dither inside their border made plain
-//          dirt (voxel.js); backdrop.hills: rolling hills and a little town over the sky of the band on the horizon (voxel.js bandHills)
+//          dirt (voxel.js); lawnAll: true: ground.js's carpet (mown on campus) over every lawn pixel, not only where you walk; backdrop.hills: rolling hills and a little town over the sky of the band on the horizon (voxel.js bandHills)
 //  lampBanners: true: a tour banner (the class colours in turn) hangs on every lamp and ripples in the wind; pathFlowers: true: small
 //          flowers line the paths on the lawn beside them (voxel.js, our own decorations in fixed colours)
 export const FIELD_OBJECTS = {
@@ -53,6 +53,7 @@ export const FIELD_OBJECTS = {
   "clear": "sky",
   "backdrop": {"y1": 64, "z": 24, "extend": 220, "side": 512, "tile": [96, 64], "hills": true},
   "courtyardPaths": {"rows": [60, 144], "keep": [[364, 116, 428, 144]], "min": 500},
+  "lawnAll": true,
   "blocks": [
    {"x0": 200, "y0": 32, "x1": 260, "y1": 72, "fold": 47, "back": 44, "key": true, "keyRect": [144, 32, 260, 80]},
    {"x0": 144, "y0": 32, "x1": 209, "y1": 80, "fold": 64, "back": 44, "key": true, "keyRect": [144, 32, 260, 80], "gable": {"ax": 176, "ay": 32, "ey": 64, "roof": [222, 34, 234, 46]}}

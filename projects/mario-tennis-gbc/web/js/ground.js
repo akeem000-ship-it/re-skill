@@ -241,6 +241,9 @@ export class Ground {
     const MX = MW * 16, MY = Math.min(H, MH * 16);                         // the map's own area (wMapWidth / Height)
     const px = (x, y) => (y * 512 + x) * 4, inMap = (x, y) => x >= 0 && y >= 0 && x < 512 && y < H, inArea = (x, y) => x >= 0 && y >= 0 && x < MX && y < MY;
     const indoor = INDOOR_MAPS.has(v.mapId());                             // (an office's green floor tiles are not a lawn)
+    // lawnAll (field_objects): grass, kerbs and grit wherever the picture has lawn or dirt, not only on walkable squares (the road by the
+    // cafe: a side-view picture whose collision grid does not line up with its lawns and paths; mown and kerbed as the courtyard)
+    const lawnAll = !!(v.fieldDef && (v.fieldDef(v.mapId()) || {}).lawnAll);
     const lawn = o => { const r = d[o], g = d[o + 1], b = d[o + 2]; return !indoor && g > 70 && g >= r && b < g * 0.45; };
     // where things may grow: a walkable 16 x 16 square not under an annotated object, or any square that is all lawn
     // (the lawns beyond the fences you cannot walk on, and lawn inside an object's box; a wall or a hedge has other colours)
@@ -250,13 +253,14 @@ export class Ground {
       for (let y = 1; y < 16; y += 2) for (let x = 1; x < 16; x += 2) if (lawn(((my * 16 + y) * 512 + mx * 16 + x) * 4)) n++;
       allLawn[my * 32 + mx] = n >= 58 ? 1 : 0;                                  // 58 of the 64 samples
     }
-    const open = (x, y) => { const mx = x >> 4, my = y >> 4, i = my * 32 + mx; return mx < MW && my < MH && (allLawn[i] || (coll[i] !== 0x0F && !(f.covered && f.covered[i]))); };
+    const open = (x, y) => { const mx = x >> 4, my = y >> 4, i = my * 32 + mx; return mx < MW && my < MH && (lawnAll || allLawn[i] || (coll[i] !== 0x0F && !(f.covered && f.covered[i]))); };
     // the dirt's surface and grit also run on under and round an annotated object (a bench, an umpire chair): only the map's own walls
     // are left bare, so no flat rectangle of the plain map colour shows round a prop on a path or a clay court
-    const openDirt = (x, y) => { const mx = x >> 4, my = y >> 4, i = my * 32 + mx; return mx < MW && my < MH && (coll[i] !== 0x0F || !!(f.covered && f.covered[i])); };
+    const openDirt = (x, y) => { const mx = x >> 4, my = y >> 4, i = my * 32 + mx; return mx < MW && my < MH && (lawnAll || coll[i] !== 0x0F || !!(f.covered && f.covered[i])); };
     const dirt = o => { const r = d[o], g = d[o + 1], b = d[o + 2]; return r > 120 && r > g * 1.25 && b < r * 0.45; };
     const kerb = o => { const r = d[o], g = d[o + 1], b = d[o + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b); return (mx - mn < 40 && mx > 90) || (r < 80 && g < 30 && b < 60); };
     const kept = this.carpet && KEPT.has(v.mapId());
+
     // ---- grass: tufts ----
     const blades = [], cols = [], leans = [];
     const tuft = (x, y, c, r, g, b) => {
@@ -283,7 +287,7 @@ export class Ground {
     const sf = f.skirt ? f : f.neighbour && f.neighbour.f.skirt ? f.neighbour.f : null, sd = sf && sf.floorData, sk = sf && sf.skirtSrc >= 0 ? sf.skirtSrc * 4 : -1;
     const sLawn = o => { const r = sd[o], g = sd[o + 1], b = sd[o + 2]; return g > 70 && g >= r && b < g * 0.45; };
     let band = null;
-    if (sd && (sf.grassSrc || (sk >= 0 && sLawn(sk)))) {
+    if (sd && !f.noGlass && (sf.grassSrc || (sk >= 0 && sLawn(sk)))) {    // (not round a side-view map: the road's foreground is its own picture)
       let r = 0, g = 0, b = 0, n = 0;
       for (let o = 0; o < 512 * H * 4; o += 4 * 7) if (lawn(o)) { r += d[o]; g += d[o + 1]; b += d[o + 2]; n++; }
       if (!n && sk >= 0) { r = sd[sk]; g = sd[sk + 1]; b = sd[sk + 2]; n = 1; }
@@ -399,7 +403,7 @@ export class Ground {
     }
     this.free();
     this.built = {
-      floor: d, fx: f.fx, carpetOn: this.carpet, round: this.trees, carpet, paths,
+      floor: d, fx: f.fx, carpetOn: this.carpet, round: this.trees, carpet, paths, size: this.mapSize(), map: v.mapId(), ver: f.floorVer || 0, growth: this.growth(d),
       blades: this.vao(this.tri, 2, [[blades, 4], [cols, 4], [leans, 2]]),
       boxes: this.vao(this.cube, 4, [[at, 4], [size, 4], [bcol, 3]]),
       leaves: this.vao(this.quad, 2, [[leaf, 4], [turn, 4], [lcol, 3]]),
@@ -493,10 +497,24 @@ export class Ground {
     }
   }
   // voxel.js drawFieldScene, after the floor and walls: the map's own detail (not a neighbouring map's), you pushing the grass aside
+  // the map's size (wMapWidth, wMapHeight): a new map's floor can be built while they still hold the last map's, so a change of them
+  // (or of the map) builds the ground again (else the grass keeps the last map's area: the road by the cafe was never mown)
+  mapSize() { const w0 = this.v.gb.mem.wram[0]; return w0[0x32B] << 8 | w0[0x32C]; }
+  // the floor's colours were repainted (voxel.js recolourField: a fade, a palette change) and have been still for 0.4 s: what grows where
+  // is read from those colours, so a ground first built during a fade-in (all dark: no lawn, no dirt) is built again in the real ones
+  // (only when the share of lawn and dirt in them changed: a palette that keeps cycling, water, builds nothing again)
+  stale(f) {
+    const B = this.built; if ((f.floorVer || 0) === B.ver || performance.now() - (f.floorAt || 0) <= 400) return false;
+    const g = this.growth(f.floorData); B.ver = f.floorVer || 0; return Math.abs(g - B.growth) > 0.2 * Math.max(B.growth, 50);
+  }
+  growth(d) {                                    // lawn and dirt among a sample of the floor's pixels
+    let n = 0; for (let o = 0; o < d.length; o += 4 * 61) { const r = d[o], g = d[o + 1], b = d[o + 2]; if ((g > 70 && g >= r && b < g * 0.45) || (r > 120 && r > g * 1.25 && b < r * 0.45)) n++; }
+    return n;
+  }
   draw(f, mvp, T) {
-    if (!this.on || !f.floorData || f.noGlass) return;
+    if (!this.on || !f.floorData) return;      // (side-view maps too: the road by the cafe, mown and kerbed as the courtyard it joins)
     const v = this.v, gl = v.gl;
-    try { if (!this.pB) this.init(); if (!this.built || this.built.floor !== f.floorData || this.built.fx !== f.fx || this.built.carpetOn !== this.carpet || this.built.round !== this.trees) this.build(f); } catch (e) { console.warn("ground", e); this.on = false; return; }
+    try { if (!this.pB) this.init(); if (!this.built || this.built.floor !== f.floorData || this.built.fx !== f.fx || this.built.carpetOn !== this.carpet || this.built.round !== this.trees || this.built.size !== this.mapSize() || this.built.map !== v.mapId() || this.stale(f)) this.build(f); } catch (e) { console.warn("ground", e); this.on = false; return; }
     const B = this.built, me = v.fi && v.fi.act && v.fi.act.get(0);
     if (B.blades.n) {
       gl.useProgram(this.pB); gl.uniformMatrix4fv(this.uB.uMVP, false, mvp); gl.uniform1f(this.uB.uTime, T); gl.uniform3fv(this.uB.uPush, me ? [me.x, me.y + 4, 1] : [0, 0, 0]);
