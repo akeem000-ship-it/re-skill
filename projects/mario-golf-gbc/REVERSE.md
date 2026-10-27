@@ -99,6 +99,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the putting greens' challenge, putt demo and practice (maps $0E / $11 / $14 / $17, 30:69B9-30:6EC8), the mini-game pause menu (41:6F9F), the Palm driving range's and approach range's lessons (maps $0F / $10, 31:5543, 30:4B62) | 141,468 | 58.29% |
 | + the Dune driving range's and approach range's lessons (maps $12 / $13, 31:5E63, 30:52CB), the course view's tile animation of banks $51-$54 (13:7076) | 144,903 | 59.71% |
 | + the Links driving range and approach range with their lessons and contests (maps $15 / $16, 31:67C8, 30:597C), the Field's marker sprite (34:4FCC) | 149,812 | 61.73% |
+| + the letter at the tree (34:4847), its reading on map $25 (35:79D2) and the path's opening (34:5019), the Grand Champion's return to the Field (34:5218) | 150,992 | 62.22% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -234,6 +235,7 @@ given to the native code). All cases match frame for frame:
 | boot_kid_story_linksapproach | the Links approach range (map $16, 30:597C): the first coach's approach over a mound (30:5A94: the demo's music 7, the hooks 30:5BF2-5C80, a try without a forced shot, the result 30:5CC2), a retry | 8,897 |
 | boot_kid_story_linksapproach_slope | the same, the second coach's approach across a slope (30:5B2B, the hooks 30:5E3C-5ECA, the result 30:5EF8 without its ScriptEnd), a retry | 8,449 |
 | boot_kid_story_linksapproachcontest | the same with the Links won and the mound lesson passed (#172 poked): the contest (30:6414 sets #224; the offer 30:6159, game mode 5, ten approaches counted on the HUD by the hooks 30:6052 / 605C), the result (30:60DA) | 11,846 |
+| boot_kid_story_letter | the Links won (#114 #115 #139 poked): on the Field, A at the tree (trigger $0F, its cell set by 34:4719): the sparkle (34:52C0), the letter falls (34:512E), map $25 reads it (35:79D2: #123, the save flag $1E0), the Field's entrance $0F: the path opens (34:5019: the flying sprite 34:51B9, the burst 34:5396, #125, 34:46E6, the marker's frames and task) | 6,953 |
 | boot_kid_story_green | the office's way to the putting green (map $0E, 30:69B9), "Practice here?" declined, the pro's putting challenge (30:6739, game mode 5, the hooks 30:6C2F / 6C58), the result (30:6CF2, not cleared) | 12,839 |
 | boot_kid_story_green_quit | the same, Start at the aim: the mini-game pause menu (41:6F9F), Quit Mini-Game | 7,647 |
 | boot_kid_story_green_cleared | the same with ten made (poked): cleared, 25 EXP (30:6EC8), the level-up screen, SaveGame, the map again at $FA | 12,839 |
@@ -702,6 +704,18 @@ the HUD, 12:4B8A; 30:605C / 30:624D count those within $60 of the pin, $0C85 / $
 #102), 50 EXP. The mini-game pause menu (41:6F9F) is theirs too. The tests poke the Links won and #125 (the path
 open) because the tree's letter event (~34:4847) and the path's opening (~34:5019) are not ported; with #125 the Field
 now draws the marker sprite (Map02LoadMarkerSpriteGfx 34:4FCC, the frame task 34:46DF / 34:50A2).
+**The letter and the path** (`maps/bank34.js`, `maps/bank35.js`): once the Links is won (#139) the Field's tree gets
+an event cell (34:4719, trigger $0F, taken with A). Its script 34:483B (not with the path open, #125) runs the letter
+34:4847: the player walks up (speed $40), BG palette 2 sparkles five times (34:52C0, sound $95), the letter's tiles
+(34:4FB4), a slower step, animation 7, the letter falls (34:512E: the sprite 34:4F61 every 12 frames down a diagonal),
+fade out (2) and warp $0F: map $25 (35:79D2, entrance 2) shows "A letter is falling from the sky" and Peach's
+invitation ($1442 / $1443, speaker $8A) between fades, sets #123 and the save flag $1E0 (02:4522) and warps back to
+the Field's entrance $0F: Map02PathOpenCutscene 34:5019 (the flying sprite 34:51B9 with sounds $96 / $97, the burst
+34:5396, #125, the path's terrain / events / tiles 34:46E6, an event cell 0B:4699, sounds $98 / $A4, the marker's
+frames 34:4FE4 and task 34:46DF). With #123 already set the tree goes straight to that scene. Entrance $0E
+(34:5218, back as Grand Champion) sets #139, clears #125 and runs the tree's script after a second. Map $25's entrance
+1 (the "Marion Club Director's Office" caption for 110 frames, warp 1) is ported with it. The sprites' positions
+are in 1/32 tiles less the map's scroll (34:50E9 ...); the marker's in 8.8 tiles.
 **The award ceremonies** (maps $18-$1B = Marion, Palm, Dune, Links; one header 31:76B1; `maps/bank31.js`):
 CeremonyEnter 31:7775 (BeginFadeOut $7F; Palm / Dune / Links their palettes 31:7C00 / 7C40 / 7C80 and warp lists;
 seen flags #107-#109 skip to warp 2 and are set at entrance 2; Dune's flag #212 31:7CB0; entrance 2 the champion

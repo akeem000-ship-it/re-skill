@@ -321,7 +321,7 @@ function awardFirstWinBonus(w, de, hl, c) {      // 08:4E97 AwardFirstWinBonus: 
   setFlag(w, n);
   if (!w0[0x814]) setFlag(w, ((de + 0x20) & 0xFFFF) >> 5);
 }
-function setSaveFlag(w, de) {                    // 02:4522 SetSaveFlag: d = byte, e = bit (00:2D08 masks)
+export function setSaveFlag(w, de) {                    // 02:4522 SetSaveFlag: d = byte, e = bit (00:2D08 masks)
   const e = de & 0xFF, d = de >> 8;
   w.sram[0x38 + d] |= 0x80 >> (((e << 3) | (e >> 5)) & 7);
 }

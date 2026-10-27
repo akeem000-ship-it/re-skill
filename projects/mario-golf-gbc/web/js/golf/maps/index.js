@@ -6,8 +6,9 @@ import * as B31 from "./bank31.js";
 import * as B32 from "./bank32.js";
 import * as B33 from "./bank33.js";
 import * as B34 from "./bank34.js";
+import * as B35 from "./bank35.js";
 
-const BANKS = [B30, B31, B32, B33, B34];
+const BANKS = [B30, B31, B32, B33, B34, B35];
 export const MAP_SCRIPTS = Object.assign({}, ...BANKS.map(b => b.SCRIPTS));
 export const mapTasks = w => Object.assign({}, ...BANKS.map(b => b.TASKS(w)));
 let hooks = null;                               // (built on first use: round.js reaches here through an import cycle)

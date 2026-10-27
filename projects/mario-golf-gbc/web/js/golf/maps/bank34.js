@@ -94,8 +94,8 @@ function* fieldRect(sh, order, b, c, d, e, h, l) {
 // (0A:7878), no name banner; #127 sets #125; #118 / #119 cleared; the map's changes by progress: 34:4719 (#139 and
 // not #125: the tree's event cell), 34:4769 (the paths still closed: a block for each of #86, #84, #82, #80 clear,
 // up to the first set one; then a frame), 34:4733 (#114: #124 and an area opened), 34:46E6 (#125: the tree
-// gone, then the marker sprite: 34:4FCC and the frame task 34:46DF); entrance $0E (~34:5218, the Grand Champion) and
-// $0F (~34:5019, the path opening) are not ported
+// gone); entrance $0E (34:5218, the Grand Champion) and $0F (34:5019, the path opening); else with #125 the marker
+// sprite (34:4FCC and the frame task 34:46DF)
 function* map02Enter(sh) {
   const w = sh.w;
   clearFlag(w, 99);
@@ -114,8 +114,8 @@ function* map02Enter(sh) {
   if (flag(w, 114)) { setFlag(w, 124); yield* fieldRect(sh, "etr", 0x2C, 0x16, 0x14, 0x20, 0x04, 0x05); }   // 34:4733
   if (flag(w, 125)) yield* fieldRect(sh, "ter", 0x2C, 0x07, 0x14, 0x11, 0x02, 0x0A);   // 34:46E6
   const e = rd(w, 0xC46A);
-  if (e === 0x0E) notPorted("the Grand Champion's return to the Field (~34:5218)");
-  if (e === 0x0F) notPorted("the path's opening scene (~34:5019)");
+  if (e === 0x0E) { yield* enterAsGrandChampion(sh); return; }   // 34:46C3
+  if (e === 0x0F) { yield* pathOpenCutscene(sh); return; }        // 34:46CB
   if (flag(w, 125)) {                                            // 34:46CE
     loadMarkerSpriteGfx(w);
     registerFrameTask(w, 0x01, 0x34, 0x46DF);                     // Map02MarkerSpriteTask
@@ -188,12 +188,179 @@ function* map02TriggerPlace(sh, warp) {
   wr(w, 0xC441, warp);
   sh.sound(0x92);
 }
+// ---- the letter at the tree and the path it opens (after the Links Club is won) ----
+// 34:4FB4 Map02LoadLetterSpriteGfx: the tiles 34:4890 ($0C) to VRAM $8100 (bank 0), palettes 34:4FAC (d = $0A, e = 2)
+function loadLetterSpriteGfx(w) {
+  if (w.vram) w.lcd.vbk = 0;                                      // rVBK
+  D.inBank(w, 0x34, () => {
+    D.queueVRAMCopy(w, 0x4890, 0x8100, 0x0C);
+    D.loadPalettesImmediate(w, 0x4FAC, 0x0A, 0x02);
+  });
+}
+// a sprite's screen position from a point given in 1/32 tiles ((base + t) << 5, 16-bit) less the map's scroll, << 3:
+// the high byte (34:50E9 and its copies)
+const spritePos = (w, base, t, scroll) => {
+  const hl = ((((base + t) & 0xFFFF) << 5) - (rd(w, scroll) | rd(w, scroll + 1) << 8)) & 0xFFFF;
+  return ((hl << 3) >> 8) & 0xFF;
+};
+// 34:4FE4 Map02DrawMarkerSpriteFrames: the marker sprite 34:4F50 at the map's ($1300, $1080) for 10 frames (tiles + c,
+// attributes | b)
+function* drawMarkerSpriteFrames(sh, b, c) {
+  const w = sh.w;
+  for (let h = 0x0A; h; h--) {
+    const x = (0x1300 - (rd(w, 0xC320) | rd(w, 0xC321) << 8)) & 0xFFFF;
+    const y = (0x1080 - (rd(w, 0xC322) | rd(w, 0xC323) << 8)) & 0xFFFF;
+    D.inBank(w, 0x34, () => D.queueSpriteTemplate(w, 0x4F50, ((y << 3) >> 8) & 0xFF, ((x << 3) >> 8) & 0xFF, c, b));
+    yield* sh.advance();
+  }
+}
+// 34:50DF Map02DrawLetterSprite: the letter 34:4F61 at ($B8 + t, $80 + t) (t = $C3E2) for 12 frames
+function* drawLetterSprite(sh, b, c) {
+  const w = sh.w;
+  for (let h = 0x0C; h; h--) {
+    const t = rd(w, 0xC3E2);
+    D.inBank(w, 0x34, () => D.queueSpriteTemplate(w, 0x4F61, spritePos(w, 0x80, t, 0xC322), spritePos(w, 0xB8, t, 0xC320), c, b));
+    yield* sh.advance();
+  }
+}
+// 34:512E Map02AnimLetterFall: from t = 0, the frames $10, $14 (t + 2), $18 (+ 1), $14 (+ 2) until t reaches $28
+function* animLetterFall(sh) {
+  const w = sh.w;
+  wr(w, 0xC3E2, 0x00);
+  for (;;) {
+    yield* drawLetterSprite(sh, 0x02, 0x10);
+    if (rd(w, 0xC3E2) >= 0x28) return;
+    wr(w, 0xC3E2, (rd(w, 0xC3E2) + 2) & 0xFF);
+    yield* drawLetterSprite(sh, 0x02, 0x14);
+    wr(w, 0xC3E2, (rd(w, 0xC3E2) + 1) & 0xFF);
+    yield* drawLetterSprite(sh, 0x02, 0x18);
+    wr(w, 0xC3E2, (rd(w, 0xC3E2) + 2) & 0xFF);
+    yield* drawLetterSprite(sh, 0x02, 0x14);
+  }
+}
+// 34:516A Map02DrawFlyingSprite: the sprite 34:4F6A at ($E0 + $C3E1, $24 + $C3E2) for 2 frames
+function* drawFlyingSprite(sh, b, c) {
+  const w = sh.w;
+  for (let h = 0x02; h; h--) {
+    D.inBank(w, 0x34, () => D.queueSpriteTemplate(w, 0x4F6A, spritePos(w, 0x24, rd(w, 0xC3E2), 0xC322), spritePos(w, 0xE0, rd(w, 0xC3E1), 0xC320), c, b));
+    yield* sh.advance();
+  }
+}
+// 34:51B9 Map02AnimFlyingSprite: sound $96; while $C3E2 is under $5A: three steps of ($C3E1 - 2, $C3E2 + 3) with the
+// frames $38, $48, $58 (the first step adds to $C3E2 first); sound $97, 10 frames
+function* animFlyingSprite(sh) {
+  const w = sh.w;
+  wr(w, 0xC3E2, 0x00); wr(w, 0xC3E1, 0x00);
+  sh.sound(0x96);
+  const step = () => { wr(w, 0xC3E2, (rd(w, 0xC3E2) + 3) & 0xFF); wr(w, 0xC3E1, (rd(w, 0xC3E1) + 0xFE) & 0xFF); };
+  while (rd(w, 0xC3E2) < 0x5A) {
+    step(); yield* drawFlyingSprite(sh, 0x02, 0x38);
+    step(); yield* drawFlyingSprite(sh, 0x02, 0x48);
+    step(); yield* drawFlyingSprite(sh, 0x02, 0x58);
+  }
+  sh.sound(0x97);
+  yield* S.scriptWaitFrames(sh, 0x0A);
+}
+// 34:5400 Map02DrawBurstSprite: the sprite 34:4F8B at ($A0, $90) for 5 frames
+function* drawBurstSprite(sh, b, c) {
+  const w = sh.w;
+  for (let h = 0x05; h; h--) {
+    D.inBank(w, 0x34, () => D.queueSpriteTemplate(w, 0x4F8B, spritePos(w, 0x90, 0, 0xC322), spritePos(w, 0xA0, 0, 0xC320), c, b));
+    yield* sh.advance();
+  }
+}
+// 34:5396 Map02AnimBurstSprite: while $C3E2 is under $10: four steps ($C3E2 + 3, $C3E1 - 2) with the frames $68, $6A,
+// $6C, $6E (attributes 3)
+function* animBurstSprite(sh) {
+  const w = sh.w;
+  wr(w, 0xC3E2, 0x00); wr(w, 0xC3E1, 0x00);
+  const step = () => { wr(w, 0xC3E2, (rd(w, 0xC3E2) + 3) & 0xFF); wr(w, 0xC3E1, (rd(w, 0xC3E1) + 0xFE) & 0xFF); };
+  while (rd(w, 0xC3E2) < 0x10) {
+    for (const c of [0x68, 0x6A, 0x6C, 0x6E]) { step(); yield* drawBurstSprite(sh, 0x03, c); }
+  }
+}
+// 34:52C0 Map02FlashPaletteSparkle: five times: BG palette 2 from 34:5290 with sound $95, 5 frames, then 34:5250
+// (sound $95), 5258, 5260 (sound $95), 5268 (sound $95), 5 frames each; then 34:5290 once more (sound $95, 5 frames)
+function* flashPaletteSparkle(sh) {
+  const w = sh.w;
+  const pal = (hl) => D.inBank(w, 0x34, () => D.loadPalettesImmediate(w, hl, 0x02, 0x01));
+  wr(w, 0xC3E0, 0x00);
+  for (;;) {
+    pal(0x5290); sh.sound(0x95);
+    yield* S.scriptWaitFrames(sh, 0x05);
+    if (rd(w, 0xC3E0) === 0x05) return;
+    pal(0x5250); sh.sound(0x95); yield* S.scriptWaitFrames(sh, 0x05);
+    pal(0x5258); yield* S.scriptWaitFrames(sh, 0x05);
+    pal(0x5260); sh.sound(0x95); yield* S.scriptWaitFrames(sh, 0x05);
+    pal(0x5268); sh.sound(0x95); yield* S.scriptWaitFrames(sh, 0x05);
+    wr(w, 0xC3E0, (rd(w, 0xC3E0) + 1) & 0xFF);
+  }
+}
+// 34:5019 Map02PathOpenCutscene (entrance $0F, after the letter; also the tree's trigger once #123 is set): no name
+// banner, the marker's tiles, the player walks to ($1900, $1100) at speed $40, fade in (4), the flying sprite, the
+// burst, fade out (8), #125, the path opened (34:46E6) and its event cells (0B:4699: $1C $1A $1C $18 2 x 2), fade in
+// (4), 10 frames, sound $98, the burst, 6 frames, sound $A4, the marker's frames $10 / $18 / $20 / $28, its frame task
+// (34:46DF), 60 frames
+function* pathOpenCutscene(sh) {
+  const w = sh.w;
+  wr(w, 0xC4B4, 0); wr(w, 0xC4B5, 0);
+  loadMarkerSpriteGfx(w);
+  S.scriptActorSetSpeed(w, 0x0040);
+  yield* S.scriptActorGoTo(sh, 0x00, 0x1900, 0x1100);
+  yield* S.waitScriptActorIdle(sh);
+  Scr.beginFadeIn(w, 0x04);
+  yield* Scr.waitFade(sh);
+  yield* animFlyingSprite(sh);
+  yield* animBurstSprite(sh);
+  Scr.beginFadeOut(w, 0x08);
+  yield* Scr.waitFade(sh);
+  setFlag(w, 125);
+  yield* fieldRect(sh, "ter", 0x2C, 0x07, 0x14, 0x11, 0x02, 0x0A);   // 34:46E6 Map02OpenCastlePath (#125 set)
+  mapCopyEventRect(w, 0x1C, 0x1A, 0x1C, 0x18, 0x02, 0x02);
+  Scr.beginFadeIn(w, 0x04);
+  yield* S.scriptWaitFrames(sh, 0x0A);
+  sh.sound(0x98);
+  yield* animBurstSprite(sh);
+  yield* S.scriptWaitFrames(sh, 0x06);
+  sh.sound(0xA4);
+  for (const c of [0x10, 0x18, 0x20, 0x28]) yield* drawMarkerSpriteFrames(sh, 0x02, c);
+  registerFrameTask(w, 0x01, 0x34, 0x46DF);
+  yield* S.scriptWaitFrames(sh, 0x3C);
+}
+// 34:4847 the tree's letter (#139, not #125): #123 already: the path's scene; else the player walks to ($1D00,
+// $1500) at speed $40, the sparkling palette (34:52C0), the letter's tiles, to ($1D00, $1900) at speed $20, animation 7,
+// the letter falls (34:512E), fade out (2), warp $0F (map $25: the letter read)
+function* treeLetter(sh) {
+  const w = sh.w;
+  if (flag(w, 123)) { yield* pathOpenCutscene(sh); return; }
+  S.scriptActorSetSpeed(w, 0x0040);
+  yield* S.scriptActorGoTo(sh, 0x00, 0x1D00, 0x1500);
+  yield* flashPaletteSparkle(sh);
+  loadLetterSpriteGfx(w);
+  S.scriptActorSetSpeed(w, 0x0020);
+  yield* S.scriptActorGoTo(sh, 0x00, 0x1D00, 0x1900);
+  S.actorPlayAnim(w, 0x00, 0x07);
+  yield* animLetterFall(sh);
+  Scr.beginFadeOut(w, 0x02);
+  yield* Scr.waitFade(sh);
+  wr(w, 0xC441, 0x0F);
+}
+// 34:5218 Map02EnterAsGrandChampion (entrance $0E): #139 set, #125 cleared, fade in (8), 60 frames, the tree's trigger
+// (34:483B)
+function* enterAsGrandChampion(sh) {
+  const w = sh.w;
+  setFlag(w, 139); clearFlag(w, 125);
+  Scr.beginFadeIn(w, 0x08);
+  yield* Scr.waitFade(sh);
+  yield* S.scriptWaitFrames(sh, 0x3C);
+  yield* map02Trigger0F(sh);
+}
 // 34:483B Map02Trigger0FLetterEvent (the tree): nothing before the Links Club is won (#139) or once the path is open
-// (#125); the letter (~34:484D) and #123's scene (~34:5019) are not ported
+// (#125); else the letter (34:4847)
 function* map02Trigger0F(sh) {
   const w = sh.w;
   if (!flag(w, 139) || flag(w, 125)) return;
-  notPorted("the letter at the tree (~34:4847)");
+  yield* treeLetter(sh);
 }
 
 export const SCRIPTS = {

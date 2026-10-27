@@ -520,6 +520,12 @@ const CASES = [
       [100, 0], { to: [0x1D, 0x25], at: [0x1D00, 0x2530], noA: true }, [2, 0x40], [30, 0],
       { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x16 && menuW.wram[0][0x46A] === 5 },
       { press: 1, every: 40, times: 25 }], 300) },
+  // after the Links Club is won (#114 #115 #139 poked): the Field's tree (trigger $0F, 34:483B, its cell set by 34:4719):
+  // the sparkle (34:52C0), the letter falls (34:512E), map $25 reads it (35:79D2: #123 and the save flag $1E0), the
+  // Field's entrance $0F: the path's opening (34:5019: the flying sprite, the burst, #125, the path, the marker)
+  { name: "boot_kid_story_letter", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(114, 115, 139),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x1C, 0x18], at: [0x1CD0, 0x19F0], noA: true }, [2, 0x40], [20, 0], [2, 1], { to: [0x1C, 0x18], map: 0x25 },
+      { press: 1, every: 40, until: () => menuW.wram[0][0x450] === 0x02 }, [1500, 0]], 300) },
   // the Field, A with nothing ahead: the Navigation menu (0A:7174): Down twice, Up, Down, A: the place's guide on the
   // Field again (0A:7878: its name, the arrow, the marker); a walk; Start: the start menu's Navigation (41:7413): B
   { name: "boot_kid_story_nav", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
