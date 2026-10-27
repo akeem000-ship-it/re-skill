@@ -441,6 +441,12 @@ const CASES = [
       { press: 1, every: 40, until: () => menuW.wram[0][0x298] !== 0xFF }, [200, 0],
       { to: [0x18, 0x20], map: 0x03, noA: true }, [300, 0], { to: [0x1A, 0x2E], map: 0x02, noA: true }, [200, 0],
       { to: [0x1C, 0x27], noA: true }, { to: [0x1C, 0x24], noA: true }, ...ynNo, { press: 1, every: 40, times: 2 }, [200, 0]], 300) },
+  // the clubhouse's door 5 (trigger 7, 32:5D2F) to the Trophy Room (map $07; #112 #136 #113 poked: the Marion
+  // victory trophy and a Palm place trophy, 35:41B2); A at each: 35:4115 / 4126 (35:4345, the place 35:4396)
+  { name: "boot_kid_story_trophies", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(112, 136, 113),
+    ...routeCase(savedPolicy(0), [{ to: [0x2C, 0x14], noA: true }, { to: [0x2C, 0x12], map: 0x07, noA: true }, [300, 0],
+      { to: [0x04, 0x0C], noA: true }, [2, 0x40], [20, 0], [2, 1], { press: 1, every: 40, times: 4 },
+      { to: [0x04, 0x06], noA: true }, [2, 0x40], [20, 0], [2, 1], { press: 1, every: 40, times: 4 }, [200, 0]], 300) },
   // the clubhouse's top door (trigger 2, 32:5C09) to the Caddie Master's office (map $08, 33:4722): his call
   // (trigger 1, 33:4BD3), the round menu (33:5166)
   { name: "boot_kid_story_office", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(72),
@@ -640,6 +646,19 @@ const CASES = [
       { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
       { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x1D }, { press: 1, every: 40, times: 30 },
       { press: 0, every: 60, until: () => menuW.wram[0][0x450] === 0x00 }, [600, 0]], 300) },
+  // the castle again with the door open (#127 poked: #126, the arrival 33:5FCE): the 1-Up Mushroom (object 4,
+  // 33:6F47: the EXP, the level-up screen, the map again), Toad's practice round (talk 6, 33:5D8D: Yes, course 5, one
+  // hole: #72 poked), back at entrance 2
+  { name: "boot_kid_story_castletoad", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 40000,
+    hook: flagPoke(114, 115, 139, 123, 125, 149, 127, 72),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x14, 0x12], map: 0x1C, noA: true },
+      [300, 0], { to: [0x0D, 0x0D], noA: true }, [2, 0x20], [20, 0], [2, 1], { press: 0, every: 40, until: () => menuW.wram[0][0x450] === 0x1D },
+      [400, 0], { to: [0x0C, 0x1A], noA: true }, [2, 0x20], [20, 0], [2, 1], 
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x41, 0x5694) },
+      { press: 1, every: 60, until: () => !hasTask(menuW, 0x41, 0x5694) }, [500, 0],
+      { to: [0x0C, 0x14], noA: true }, { to: [0x1E, 0x14], noA: true }, { to: [0x1E, 0x0C], noA: true }, { to: [0x1F, 0x0B], noA: true }, [2, 0x40], [20, 0], [2, 1],
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
+      { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x1D }, [400, 0]], 300) },
   // the Field, A with nothing ahead: the Navigation menu (0A:7174): Down twice, Up, Down, A: the place's guide on the
   // Field again (0A:7878: its name, the arrow, the marker); a walk; Start: the start menu's Navigation (41:7413): B
   { name: "boot_kid_story_nav", state: "boot_poweron_kid", open: true, noRet: true, sram: true,

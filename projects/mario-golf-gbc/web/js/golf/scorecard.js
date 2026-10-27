@@ -18,12 +18,14 @@ import { buildStandings, getPlayerRank } from "./tournament.js";
 
 const B = 0x0E;
 
-// 13:7044 GetHoleParAndYards: l = hole 1-18, h = course: [par, yards] from HoleInfoTable 13:5884
+// 13:7044 GetHoleParAndYards: l = hole 1-18, h = course: [par, yards] from HoleInfoTable 13:5884 entry l - 1 (course
+// 0), else $0A + l - 1 and $12 more for each course past 1 (d = h - 2, then the loop jumps back to its second dec d,
+// 13:7051: one step each time round)
 export function holeParAndYards(h, l) {
   let a = (l - 1) & 0xFF;
   if (h) {
     a = (a + 0x0A) & 0xFF;
-    for (let d = (h - 2) & 0xFF; !(d & 0x80); d = (d - 2) & 0xFF) a = (a + 0x12) & 0xFF;
+    for (let d = (h - 2) & 0xFF; !(d & 0x80); d = (d - 1) & 0xFF) a = (a + 0x12) & 0xFF;
   }
   const p = (0x5884 + ((0x20 * a) & 0xFFFF)) & 0xFFFF;
   return [rb(0x13, p), rw(0x13, p + 4)];

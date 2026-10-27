@@ -1,4 +1,5 @@
-// Bank 35's map scripts (REVERSE.md "Bank 35: Trophy Room, ending maps and the test rooms"): map $25, the caption
+// Bank 35's map scripts (REVERSE.md "Bank 35: Trophy Room, ending maps and the test rooms"): the Trophy Room (map
+// $07); map $25, the caption
 // screen of two story moments: the Marion Club Director's Office (entrance 1, from the clubhouse) and the letter read
 // after it fell from the tree (entrances 2 / 3); the ending's maps $31-$3E, wordless replays run one after another
 // by EndingSequence 0A:56B1 (ending.js).
@@ -12,7 +13,8 @@ import * as A from "../actors.js";
 import { registerFrameTask, unregisterFrameTask } from "../tasks.js";
 import { mapBufCopyRectRedraw, mapCopyTerrainRect, mapCopyEventRect } from "../mapgfx.js";
 import { loadCursorSprite } from "../nav.js";
-import { setTextCourseIndex } from "../text.js";
+import { setTextCourseIndex, pushTextNumberArg } from "../text.js";
+import { testCourseHoleBit } from "../scorecard.js";
 import { setSaveFlag } from "../match.js";
 
 const rd = D.rd, wr = D.wr;
@@ -72,6 +74,70 @@ function* map25Enter(sh) {
   setFlag(w, 123);
   setSaveFlag(w, 0x01E0);
   wr(w, 0xC441, e);
+}
+
+// ---- map $07, the Trophy Room (header 35:4024; the clubhouse's door 5, warp 7) ----
+// 35:41B2 Map07PlaceTrophies (from 35:41AE Map07Enter): for each club, Peach's first ([placed flag, won flag, the
+// winner's actor and place, the second's and third's actors, the club]): placed (#116 / #115 / #114 / #113 / #112):
+// won (#117 / #139-#136): the other two put away and the winner's trophy placed; then (won or not) the place's test
+// (TestCourseHoleBit 02:5C77, the club's bit $16): set -> the third's put away, clear -> the second's
+const TROPHIES = [
+  [116, 117, 0x0E, 0x0B00, 0x06A0, 0x0F, 0x10, 0x05],
+  [115, 139, 0x0B, 0x1100, 0x04A0, 0x0C, 0x0D, 0x04],
+  [114, 138, 0x08, 0x1100, 0x0AA0, 0x09, 0x0A, 0x03],
+  [113, 137, 0x05, 0x0500, 0x04A0, 0x06, 0x07, 0x02],
+  [112, 136, 0x02, 0x0500, 0x0AA0, 0x03, 0x04, 0x01],
+];
+function map07PlaceTrophies(w) {
+  for (const [placed, won, a, x, y, second, third, club] of TROPHIES) {
+    if (!flag(w, placed)) continue;
+    if (flag(w, won)) {
+      S.actorSetPos(w, second, 0x3F00, 0x3F00);
+      S.actorSetPos(w, third, 0x3F00, 0x3F00);
+      S.actorSetPos(w, a, x, y);
+    }
+    S.actorSetPos(w, testCourseHoleBit(w, club, 0x16) ? third : second, 0x3F00, 0x3F00);
+  }
+}
+function* map07Enter(sh) { map07PlaceTrophies(sh.w); }
+// 35:4396 Map07GetTrophyPlace: $C3E1 = 2 when the club's ($C3E0) bit $16 is set (02:5C77), else 3
+function map07GetTrophyPlace(w) { wr(w, 0xC3E1, testCourseHoleBit(w, rd(w, 0xC3E0), 0x16) ? 0x02 : 0x03); }
+// 35:43AE Map07PushTrophyTextArgs: SetTextCourseIndex 05:57C3 (the club), PushTextNumberArg 05:551F (the place)
+function map07PushTrophyTextArgs(w) {
+  D.inBank(w, 0x05, () => setTextCourseIndex(w, rd(w, 0xC3E0)));
+  pushTextNumberArg(w, rd(w, 0xC3E1));
+}
+// 35:4345 Map07DescribeTrophy (hl = the win flag): won: $083F with the club (SetTextCourseIndex); Peach's (club 5):
+// the next text ($0840) shown (speaker $80); else (quirk kept: a won club trophy goes on as a placed one) the place
+// (35:4396) and the text arguments (35:43AE), shown; not won: $0841 with flag #0, else $0843, Peach's one text on
+function* map07DescribeTrophy(sh, n) {
+  const w = sh.w, club = rd(w, 0xC3E0);
+  if (flag(w, n)) {
+    T.scriptSetText(w, 0x083F);
+    D.inBank(w, 0x05, () => setTextCourseIndex(w, club));
+    if (club === 0x05) { T.scriptSkipText(w); yield* T.scriptShowText(sh, 0x80); return; }
+  } else {
+    T.scriptSetText(w, flag(w, 0) ? 0x0841 : 0x0843);
+    if (club === 0x05) T.scriptSkipText(w);
+  }
+  map07GetTrophyPlace(w);                                         // 35:438A
+  map07PushTrophyTextArgs(w);
+  yield* T.scriptShowText(sh, 0x80);
+}
+// 35:4115 / 4126 / 4137 / 4148 / 4159 Map07Object*Trophy (objects 1-5): the placed flag (#112-#116) set: $C3E0 =
+// the club (1-5), 35:4345 with the win flag (#136-#139, #117)
+function* map07ObjectTrophy(sh, placed, club, won) {
+  if (!flag(sh.w, placed)) return;
+  wr(sh.w, 0xC3E0, club);
+  yield* map07DescribeTrophy(sh, won);
+}
+// 35:4193 Map07Trigger01MutterWindTip (trigger 1): ScriptBegin, $0172 (speaker 0), ScriptEnd
+function* map07Trigger01(sh) {
+  const w = sh.w;
+  D.inBank(w, 0x0A, () => S.scriptBegin(w));
+  T.scriptSetText(w, 0x0172);
+  yield* T.scriptShowText(sh, 0x00);
+  D.inBank(w, 0x0A, () => S.scriptEnd(w));
 }
 
 // ---- the ending's maps ($31-$3E) ----
@@ -1204,6 +1270,13 @@ function* map3CAnimSparkle(sh) {
 }
 
 export const SCRIPTS = {
+  "35:41ae": map07Enter,
+  "35:4115": sh => map07ObjectTrophy(sh, 112, 0x01, 136),
+  "35:4126": sh => map07ObjectTrophy(sh, 113, 0x02, 137),
+  "35:4137": sh => map07ObjectTrophy(sh, 114, 0x03, 138),
+  "35:4148": sh => map07ObjectTrophy(sh, 115, 0x04, 139),
+  "35:4159": sh => map07ObjectTrophy(sh, 116, 0x05, 117),
+  "35:4193": map07Trigger01,
   "35:79d2": map25Enter,
   "35:4415": map31Enter,
   "35:479a": map32Enter,

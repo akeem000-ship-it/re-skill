@@ -107,6 +107,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the Road to Peach's Castle (34:450C, map $1C) and Peach's Castle up to the tournament's question (map $1D, 33:5F42) | 159,490 | 65.72% |
 | + Peach's Tournament: its opening (33:642C), the round and the award ceremony for the places (33:672A) | 159,673 | 65.79% |
 | + the ending: EndingSequence 0A:56B1 with the sepia fade, the credits (bank 0B), the final screen (bank 79) and the ending's maps $31-$3E (bank 35); ShowPictureTimed 40:6666 | 168,762 | 69.54% |
+| + the Trophy Room (map $07), Peach's Castle's 1-Up Mushroom and Toad's practice round; the scorecard's pars fixed for courses 3 and up | 169,385 | 69.80% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -252,6 +253,8 @@ given to the native code). All cases match frame for frame:
 | boot_kid_story_peachround | the same, Yes: the tournament's opening (33:642C), Peach's Tournament (course 5, one hole: #72 poked; the result poked to 5), back at the castle (33:5F8F) | 15,349 |
 | boot_kid_story_peachsecond | the same with the result poked to 2: the award ceremony (33:672A) for the second place, then the castle (33:69B2) | 16,549 |
 | boot_kid_story_peachwin | the same with the result poked to 1: the winner's ceremony (#111, the save), the character's picture (40:6666), the ending (0A:56B1: maps $31-$3E in sepia under the credits, the copyright, the final screen for 3600 frames), map 0 by warp $FA | 40,569 |
+| boot_kid_story_castletoad | the castle with the door open (#127 poked): the 1-Up Mushroom (33:6F47, the level-up screen), Toad's practice round (33:5D8D: course 5, one hole), back at entrance 2 | 12,587 |
+| boot_kid_story_trophies | the clubhouse's door 5 to the Trophy Room (map $07, 35:41B2; #112 #136 #113 poked): A at the Marion and Palm trophies (35:4115 / 4126) | 4,721 |
 | boot_kid_story_partnerleave | the same call answered No (33:4B91); out by the driving range's trigger: the partner's question (33:4FEF) No (a step back), again Yes (he leaves), the range | 11,626 |
 | boot_kid_story_partnerfield | the champion joins, out to the Field, up onto Windy Valley's trigger: "Quitting this Match Game?" (34:5530) No | 10,452 |
 | boot_kid_story_green | the office's way to the putting green (map $0E, 30:69B9), "Practice here?" declined, the pro's putting challenge (30:6739, game mode 5, the hooks 30:6C2F / 6C58), the result (30:6CF2, not cleared) | 12,839 |
@@ -642,9 +645,21 @@ placed 1-3 (`boot_kid_story_peachsecond`) the award ceremony 33:672A (the stage 
 33:6A00, $1479 / $147A with the place, $147B; a first win sets #111, the return point map 0 / $FA and saves), then
 33:69B2 (the actors 33:6ABD); a win (`boot_kid_story_peachwin`) goes on to 33:696B: the character's picture
 (ShowPictureTimed 40:6666, `title.js`), the ending, #111, the return point and the save, map 0 entrance 3 by warp $FA.
-Not ported: Toad's practice round ~33:5D8D, the 1-Up Mushroom ~33:6F47. After the one-hole round the cases keep a difference in
+With the door open (`boot_kid_story_castletoad`): the 1-Up Mushroom 33:6F47 (object 4: unless level 99, #158, the
+EXP to the next level, the level-up screen through 33:7CB7, a copy of 32:7EE7) and Toad's practice round 33:5D8D (talk
+6: course 5 in game mode 3 with wStoryRoundKind $1E, a quirk kept, back at entrance 2). That case found a bug in the
+scorecard's pars (13:7044 GetHoleParAndYards, `scorecard.js`): its loop jumps back to the second `dec d` (13:7051),
+so after the first pass it counts the course down by one, not two; the port counted by two and drew another
+course's pars for courses 3 and up (Peach's course got course 4's). After the one-hole round the cases keep a difference in
 the hidden BG row $9BE0 ($9BE3 / $9BEE), first seen during a lag frame of the round and so classed with the lag
-frames (as the Palm wind case's); nothing visible differs. `KEYS=frame` prints what differs at a frame.
+frames (as the Palm wind case's); nothing visible differs. `KEYS=frame` prints what differs at a frame,
+`GAME_SHOTS=frames` writes the game's screen as `SCREEN_SHOTS` the native one (out/gs_N.png).
+**The Trophy Room** (map $07, `maps/bank35.js`; `boot_kid_story_trophies`): the clubhouse's door 5 (warp 7); the enter
+script 35:41AE / 41B2 places the trophies (actors $02-$10) by the placed flags #112-#116 and won flags #136-#139 / #117,
+a place trophy's second or third by TestCourseHoleBit 02:5C77 (the club's bit $16; quirk kept: a won club still runs
+the place test, hiding one of the two already hidden); the trophies (objects 1-5, 35:4115-4159) describe themselves
+(35:4345: the victory text $083F with the club, Peach's $0840; else $0841 / $0843 by flag #0, the place by 35:4396 and
+35:43AE; quirk kept: a won club trophy also pushes the place arguments); trigger 1 35:4193 ($0172).
 **The ending** (`ending.js`, `maps/bank35.js`; `boot_kid_story_peachwin`, 40,569 frames, the ending itself frame-exact
 throughout): EndingSequence 0A:56B1 (export $64): fade out, music $15, no player / script / partner actor,
 InitFontScreen; for each part of 0A:5682 (maps $31 $3D $32 $33 $34 $3E $35, the character's part from 0A:56A1 by

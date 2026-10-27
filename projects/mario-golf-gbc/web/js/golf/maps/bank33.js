@@ -14,7 +14,8 @@ import { saveGame } from "../save.js";
 import { showPictureTimed } from "../title.js";
 import { endingSequence } from "../ending.js";
 import { advanceRandomSeed } from "../round.js";
-import { expToNextLevel } from "../exp.js";
+import { addExp, expToNextLevel } from "../exp.js";
+import { levelUpScreen } from "../levelup.js";
 import { pushTextNumberArg, setTextCourseIndex } from "../text.js";
 import { mapBufCopyRectRedraw, mapCopyTerrainRect, mapCopyEventRect } from "../mapgfx.js";
 
@@ -1261,6 +1262,83 @@ function* map1DAwardCeremony(sh) {
   Scr.beginFadeIn(w, 0x04);
   yield* Scr.waitFade(sh);
 }
+// 33:5D8D Map1DTalkToadPracticeRound (talk 6): ScriptBegin; without #127 (the door shut) $146C; else "A practice
+// round?" ($146A, Toad) asked: No: the next text; Yes (33:5DCB): Toad hops (sound $89) to the door ($2100, $0B00),
+// faces left, the next text, the player through the door (speed 8, animation $0A, sound $99), fade out (4); the
+// round: wStoryRoundKind $1E (quirk kept: the match kind, not $14), GolfSessionInit, the return point map $1D
+// entrance 2, game mode 3 (practice), the player and no second player, course 5 hole 1 (the wind byte a is 0, from
+// ClearMemory16), the round (33:66CB), GolfSessionEnd; ScriptEnd
+function* map1DTalkToad(sh) {
+  const w = sh.w;
+  D.inBank(w, 0x0A, () => S.scriptBegin(w));
+  if (!flag(w, 127)) T.scriptSetText(w, 0x146C);
+  else {
+    T.scriptSetText(w, 0x146A);
+    yield* T.scriptShowTextKeepOpen(sh, 0x06);
+    yield* wait(sh, 0x05);
+    const a = yield* T.scriptAskYesNo(sh);
+    yield* T.scriptCloseText(sh);
+    yield* wait(sh, 0x05);
+    if (!a) { yield* toadPracticeRound(sh); return; }
+    T.scriptSkipText(w);
+  }
+  yield* T.scriptShowText(sh, 0x06);                              // 33:5DC2
+  D.inBank(w, 0x0A, () => S.scriptEnd(w));
+}
+function* toadPracticeRound(sh) {
+  const w = sh.w;
+  yield* wait(sh, 0x05);                                          // 33:5DCB
+  sh.sound(0x89);
+  S.actorJump(w, 0x06, 0xFF40);
+  yield* wait(sh, 0x0F);
+  yield* moveAndWait(sh, 0x06, 0x2100, 0x0B00);
+  S.actorSetFacing(w, 0x06, 0x80);
+  yield* T.scriptShowText(sh, 0x06);
+  S.actorSetSpeed(w, 0x00, 0x0008);
+  S.actorMoveTo(w, 0x00, 0x1F00, 0x0900);
+  yield* wait(sh, 0x19);
+  S.actorPlayAnim(w, 0x00, 0x0A);
+  yield* wait(sh, 0x0A);
+  sh.sound(0x99);
+  yield* wait(sh, 0x0A);
+  Scr.beginFadeOut(w, 0x04);
+  yield* Scr.waitFade(sh);
+  wr(w, 0xC967, 0x1E);
+  St.golfSessionInit(w);
+  wr(w, 0xC960, 0x1D); wr(w, 0xC961, 0x02);                     // 0A:4D5B MapSaveReturnPoint
+  wr(w, 0xC834, 0x03);
+  St.setupPlayerGolfer(w, 0x80, 0x00);
+  St.setupPlayerGolfer(w, 0xFF, 0x01);
+  St.setCourseHole(w, 0x00, 0x05, 0x01);
+  if (!sh.playGolfRound) notPorted("Peach's Castle's practice round outside the game loop");
+  yield* sh.playGolfRound(flag(w, 72) ? 0x01 : 0x12);             // 33:66CB
+  yield* inBankGen(w, 0x10, golfSessionEnd(sh));
+  D.inBank(w, 0x0A, () => S.scriptEnd(w));
+}
+// 33:6F47 Map1DObject1UpMushroom (object 4): at level 99 nothing; else #158, the EXP to the next level (02:5498,
+// 02:5465), the mushroom (actor $0F) pops up at ($0B00, $1B00) (sound $63, a jump), 16 frames, put away, "got a
+// 1-UP Mushroom!" ($0C5F, speaker $82), the level-up screen (33:7CB7, a copy of 32:7EE7), the map again at the
+// saved position (warp $FA)
+function* map1DObject1UpMushroom(sh) {
+  const w = sh.w;
+  if (rd(w, 0xC812) === 0x63) return;
+  setFlag(w, 158);
+  addExp(w, expToNextLevel(w));
+  S.actorSetPos(w, 0x0F, 0x0B00, 0x1B00);
+  sh.sound(0x63);
+  S.actorJump(w, 0x0F, 0xFF00);
+  yield* S.waitActorLanded(sh, 0x0F);
+  yield* wait(sh, 0x10);
+  S.actorSetPos(w, 0x0F, 0x3F00, 0x3F00);
+  T.scriptSetText(w, 0x0C5F);
+  yield* T.scriptShowText(sh, 0x82);
+  Scr.beginFadeOut(w, 0x08);                                      // 33:7CB7 FadeToLevelUpScreenB
+  yield* Scr.waitFade(sh);
+  yield* inBankGen(w, 0x41, levelUpScreen(sh));                   // 41:402A
+  wr(w, 0xC441, 0xFA); wr(w, 0xC46A, 0xFA);
+  for (let k = 0; k < 4; k++) wr(w, 0xC466 + k, rd(w, 0xC2A0 + k));   // 00:03D3 CopyMemoryBC
+  wr(w, 0xC465, rd(w, 0xC2A4));
+}
 // 33:5F42 Map1DEnterPeachsCastle: no name banner, #125, 33:5F5B, 33:5F8F, the door (33:63F9), the first visit
 // (33:60B2), the ceremony (33:672A)
 function* map1DEnter(sh) {
@@ -1419,5 +1497,7 @@ export const SCRIPTS = {
   "33:5d1c": sh => map1DTalkYoshi(sh, 0x81),
   "33:5d2a": map1DTalkBowser,
   "33:5ee5": map1DObjectCastleDoor,
+  "33:5d8d": map1DTalkToad,
+  "33:6f47": map1DObject1UpMushroom,
 };
 export const TASKS = () => ({});
