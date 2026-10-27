@@ -146,9 +146,11 @@ export function* modeSelectMain(sh) {
       if ((b & 0x0F) !== 0x0F) {                 // 32:5114 a save slot
         w.high[0x1CF] = 0;                       // hUnlockAll
         if (Sv.saveBlockLoad(w, b & 0x0F, 0xC800)) {
-          // an empty (or bad) slot: ResumeBGM, warp 5 (the map engine's new character: map $1E, then map $00
-          // entrance 2's scripts)
-          notPorted("creating a character (~32:5121, the map engine's warp 5)");
+          // 32:5121 an empty (or bad) slot: ResumeBGM, warp 5 (the map engine's new character: map $1E, then the
+          // first day on map $05, then map $00 entrance 2's mode select)
+          resumeBGM(sh);
+          wr(w, 0xC441, 5);
+          return null;
         }
         Sv.restoreGameTimer(w);                  // 00:2CDE
         wr(w, 0xC2A7, 0xFF);                     // wNavDestination
@@ -193,6 +195,10 @@ export function* modeSelectMain(sh) {
       const m = yield* inBankGen(w, 0x0D, gameModeSelect(sh));
       if (m === 0xFF) { at = "player"; continue; }
       wr(w, 0xC834, m);
+      if (m === 9) {                             // 32:51F9 Mario's story: warp 4 (map $03 entrance 1, the clubhouse)
+        wr(w, 0xC441, 4);
+        return null;
+      }
       if (m === 3) {                             // 32:52A3 Stroke
         if (flag(w, 139) && !flag(w, 123)) notPorted("the links-unlocked warp (~32:530C)");
         const course = yield* inBankGen(w, 0x0F, courseSelect(sh));

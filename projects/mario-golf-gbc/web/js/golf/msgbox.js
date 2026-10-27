@@ -8,6 +8,7 @@ import * as T from "./text.js";
 import * as W from "./windows.js";
 import { restoreShadowFromMap, copyMapRowToShadow } from "./shadow.js";
 import { printHexByte } from "./match.js";
+import { waitScriptActorIdle } from "./script.js";
 
 const rd = D.rd, wr = D.wr;
 const wbank = w => w.high[0x196];
@@ -336,7 +337,7 @@ export function scriptSetText(w, hl) {
 // text wScriptTextId shown (skipped while flag #22), the cursor moved on
 function* scriptShowBody(sh, a, keep) {
   const w = sh.w, old = wbank(w);
-  if (!rd(w, 0xC96D)) notPorted("WaitScriptActorIdle (~0A:48AC)");
+  if (!rd(w, 0xC96D)) yield* waitScriptActorIdle(sh);   // 0A:48AC
   setW(w, 5);
   const hl = r16(w, 0xD852);
   if (!testFlag(w, 22)) {

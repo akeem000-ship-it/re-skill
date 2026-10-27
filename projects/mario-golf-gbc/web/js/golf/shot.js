@@ -27,6 +27,10 @@ import { menuBobSpriteTask } from "./menu09.js";
 import { charSelTasks } from "./charsel.js";
 import { selectTasks } from "./select.js";
 import { mapDebugCoordsTask } from "./boot.js";
+import { mapTasks } from "./maps/index.js";
+import "./player.js";                         // (the player's native: NATIVES["04:538c"])
+import { nameEntryTasks } from "./nameentry.js";
+import { screenShakeTask, scriptDebugSkipTask } from "./script.js";
 import { mapTileAnimTasks } from "./mapgfx.js";
 import { actorsUpdateTask, actorsDrawTask } from "./actors.js";
 import { confettiTask, resultPaletteCycleTask, resultSpriteTask } from "./result.js";
@@ -187,7 +191,7 @@ export class Shot {
       "17:43ac": () => courseMapTask(this),            // 17:43AC CourseMapTask
       "48:4b05": () => expDrawCounters(w),             // 48:4B05 ExpDrawCounters
       "48:42f7": () => yesNoCursorTask(w),             // 48:42F7 YesNoCursorTask
-      "04:4234": () => actorsUpdateTask(w),            // 04:4234
+      "04:4234": () => actorsUpdateTask(w, undefined, id => this.sound(id)),   // 04:4234
       "04:4b69": () => actorsDrawTask(w, id => this.sound(id)),   // 04:4B69
       "0b:4784": () => mapScrollTask(w),               // 0B:4784 MapGfxScrollTask: farcall 04:4072
       "0b:5de1": () => confettiTask(w),                // 0B:5DE1
@@ -199,9 +203,13 @@ export class Shot {
       "09:4990": () => menuBobSpriteTask(w),          // 09:4990 MenuBobSpriteTask09
       ...levelUpTasks(w),                        // the level-up screen (bank 41)
       ...charSelTasks(w),                        // the character select (bank 06)
+      ...nameEntryTasks(w),                      // the name entry (bank 06)
       ...selectTasks(w),                         // the mode and course selects (banks 0D, 0F)
       "0a:4950": () => mapDebugCoordsTask(w),         // 0A:4950 MapDebugCoordsTask
       ...mapTileAnimTasks(w),                    // the map tile animations (banks 28-2F, 72-74)
+      ...mapTasks(w),                            // the map scripts' tasks (maps/)
+      "0a:4927": () => screenShakeTask(w),             // 0A:4927 ScreenShakeTask
+      "0a:4066": () => scriptDebugSkipTask(w),         // 0A:4066 ScriptDebugSkipTask
       ...D.displayTasks(this),                   // tasks that only draw (render/hooks.js)
     };
   }

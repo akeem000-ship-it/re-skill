@@ -13,7 +13,10 @@
 // the emulator core: web/tests/golf/coreplay.mjs) under the emulated page's key: the test picks save slot 0 in the
 // character select and Stroke in the mode select, and at the end checks that the page stored the save RAM again
 // (signature, checksum, slot 0's block holding the character).
-// usage: node web/tests/play_page.mjs [shots=3] [outdir=out] [--match] [--stroke] [--pause] [--save out/kid.sav]
+// With --newchar (an empty save RAM) the test makes a new character in the character select's empty slot 0 (A through
+// the opening's questions and texts; in the name entry Start, A: the default name, A: END), the first day at the club,
+// then Stroke with the new save file; at the end it checks the stored save RAM holds the character in slot 0.
+// usage: node web/tests/play_page.mjs [shots=3] [outdir=out] [--match] [--stroke] [--pause] [--save out/kid.sav] [--newchar]
 import { createRequire } from "module";
 import http from "http";
 import fs from "fs";
@@ -24,6 +27,7 @@ const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../.
 const match = process.argv.includes("--match");
 const pause = process.argv.includes("--pause");
 const direct = process.argv.includes("--stroke");
+const newChar = process.argv.includes("--newchar");
 const saveFile = process.argv.includes("--save") ? process.argv[process.argv.indexOf("--save") + 1] : null;
 const [shotsArg = "3", outDir = path.join(root, "out")] = process.argv.slice(2).filter((a, i, all) => !a.startsWith("--") && all[i - 1] !== "--save");
 const want = +shotsArg;
@@ -75,7 +79,7 @@ const screenNow = () => page.evaluate(() => {
   const w = window.__golf.w, t = w.wram[0];
   const has = (b, a) => { for (let p = 0x1C0; p < 0x200; p += 4) if (t[p] && t[p + 3] === b && (t[p + 1] | t[p + 2] << 8) === a) return true; return false; };
   return { mark: window.__golf.mark, error: window.__golf.error, title: has(0x40, 0x4D1D), chars: has(0x06, 0x65D9), cursor: w.wram[6][0x214],
-    modes: has(0x0D, 0x428E), mode: w.high[0x1B0] };
+    modes: has(0x0D, 0x428E), mode: w.high[0x1B0], names: has(0x06, 0x51CC), map: t[0x450] };
 });
 try {
   if (!match && !direct) {
@@ -84,8 +88,13 @@ try {
       const st = await screenNow();
       if (st.error || st.mark !== "menus") break;
       if (st.title) { if (!shots++) await shot("title"); await press("Enter"); }
-      else if (st.chars && st.cursor !== (saveFile ? 0 : 4)) await press("ArrowRight");
-      else if (saveFile && st.modes && st.mode !== 3) await press("ArrowRight");   // (the list 1 2 3 4 9 from 1: Stroke at 3)
+      else if (st.chars && st.cursor !== (saveFile || newChar ? 0 : 4)) await press("ArrowRight");
+      else if ((saveFile || newChar) && st.modes && st.mode !== 3) await press("ArrowRight");   // (the list 1 2 3 4 9 from 1: Stroke at 3)
+      else if (st.names) {                         // the name entry: Start (to END), A (the default name), A (END)
+        await shot("name_entry");
+        for (const key of ["Enter", "KeyZ", "KeyZ"]) { await press(key); await untilFrames((await frames()) + 30); }
+        log.push(`name entered at frame ${await frames()}`);
+      }
       else { if (st.chars) await shot("character_select"); await press("KeyZ"); }
       await untilFrames((await frames()) + 40);
     }
@@ -133,6 +142,14 @@ try {
 }
 const s = await state();
 let saveOk = true;
+if (newChar) {                                     // the new character in slot 0 of the stored save RAM
+  const b = Buffer.from(await page.evaluate(k => localStorage.getItem(k) || "", SAVE_KEY), "base64");
+  const sum = b.subarray(0x32, 0x1C0).reduce((a, v) => (a + v) & 0xFFFF, 0);
+  const name = b.subarray(0x200, 0x207).toString("latin1").split("\0")[0];
+  saveOk = b.length === 0x2000 && b.subarray(0x20, 0x2F).toString("latin1") === "CAMELOT GAMEBOY" && sum === b.readUInt16LE(0x30) &&
+    b[0x40] === 1 && name.length > 0;
+  log.push(`the stored save RAM: ${b.length} bytes, ${saveOk ? `valid, slot 0 holds ${name}` : "NOT as expected"}`);
+}
 if (saveFile) {                                    // the page stored the save RAM the game wrote (SaveGame 02:4489)
   const b = Buffer.from(await page.evaluate(k => localStorage.getItem(k) || "", SAVE_KEY), "base64");
   const sum = b.subarray(0x32, 0x1C0).reduce((a, v) => (a + v) & 0xFFFF, 0);

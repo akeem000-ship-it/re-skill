@@ -10,7 +10,7 @@
 // animation code is render/actors.js (04:4D42 ActorSetCharacter, 04:4E51 ActorSetAnim, 04:4ACD ActorAnimStep).
 // All access goes through the CPU view (render/display.js rd / wr) with WRAM4 mapped as the ROM maps it.
 import { rb } from "./rom.js";
-import { mulHLByA, divHLByDE, vectorFromLengthAndAngle, vectorFromLengthAndAngleRaw, angleFromVectorCoarse } from "./math.js";
+import { mulHLByA, mulHLByDE, divHLByDE, vectorFromLengthAndAngle, vectorFromLengthAndAngleRaw, angleFromVectorCoarse } from "./math.js";
 import { advanceRandomSeed } from "./round.js";
 import { registerFrameTask } from "./tasks.js";
 import * as D from "./render/display.js";
@@ -103,11 +103,12 @@ export function actorSetPosHLDE(w, bc, hl, de) { // 04:4F92 ActorSetPosHLDE: pos
   w16(w, bc + 6, de); w16(w, bc + 0x0C, de);
   w16(w, bc + 4, hl); w16(w, bc + 0x0A, hl);
 }
-// 04:4FBE TestSpawnFlag: de = flag (bit 15: must be clear); true = spawn
+// 04:4FBE TestSpawnFlag: de = flag number (00:2D10 TestGameFlag on de << 5); the ROM's z = spawn: a plain flag spawns the
+// actor while the flag is clear, one with bit 15 while it is set
 function testSpawnFlag(w, de) {
   const n = (de << 5 & 0xFFFF) >> 5;
   const set = !!testFlag(w, n);                  // 00:2D10 TestGameFlag
-  return de & 0x8000 ? !set : set;
+  return de & 0x8000 ? set : !set;
 }
 
 // 04:4FFB ActorSpawn: hl = a 12-byte record in bank a (read through the mapped bank): script, x, y, flag (0: always),
@@ -162,14 +163,16 @@ export function spawnPlayerActor(w, hl, de, c) {
 }
 
 // ---- 04:4234 ActorsUpdateTask ----
-export function actorsUpdateTask(w, natives = {}) {
+// the native code actor scripts call (op $12), by "bb:aaaa": fn(w, sound) -> a (player.js adds the player's)
+export const NATIVES = {};
+export function actorsUpdateTask(w, natives = NATIVES, sound = () => {}) {
   setW(w, 4);
   for (let p = 0xD000, c = 0x18; c; c--, p += 0x40) {
     if (!rd(w, p + 1)) continue;
     setCur(w, p);
     if (!(rd(w, p + 0x1A) & 1)) {
       if (rd(w, p + 0x15)) wr(w, p + 0x15, rd(w, p + 0x15) - 1);
-      else runScript(w, p, natives);
+      else runScript(w, p, natives, sound);
     }
     pushVelocity(w, p);
     if (rd(w, p + 0x1A) & 2) continue;
@@ -184,14 +187,14 @@ export function actorsUpdateTask(w, natives = {}) {
   }
 }
 
-function runScript(w, p, natives) {              // the opcode loop (return point 04:4288 ActorsUpdateOpReturn)
+function runScript(w, p, natives, sound) {           // the opcode loop (return point 04:4288 ActorsUpdateOpReturn)
   for (;;) {
     let bc = r16(w, p);
     const d = rd(w, p + 2);
     const op = far(d, bc);
     const h = OPS[op];
     if (!h) throw new Error(`actor script op $${op.toString(16)} (~04:420C ActorScriptOpcodeTable) is not ported (script ${d.toString(16)}:${bc.toString(16)})`);
-    const r = h(w, bc, d, natives);
+    const r = h(w, bc, d, natives, sound);
     w16(w, p, r.bc);
     if (!r.a) return;
   }
@@ -244,8 +247,62 @@ function walk(w, p) {                            // 04:42F2: turn toward the tar
   for (let k = 0; k < 4; k++) wr(w, p + 4 + k, rd(w, p + 0x0A + k));
 }
 
-function pointNearPlayer() {                     // ~04:554D PointNearPlayer
-  throw new Error("an actor's collision check (~04:554D PointNearPlayer) is not ported");
+// 04:554D PointNearPlayer: the point (x hl, y de) within sqrt($C0) / 8 of the player actor's target (+$0A / +$0C):
+// each distance (absolute, under $200) times 8, squared (00:0CB5 MulHLByDE: the high 16 bits), summed, below $C0
+function pointNearPlayer(w, hl, de) {
+  const p = r16(w, 0xC290);
+  const dist = (t, v) => { const d = sub16(t, v); return d & 0x8000 ? (-d) & 0xFFFF : d; };
+  const dy = dist(r16(w, p + 0x0C), de);
+  if (dy & 0xFE00) return 0;
+  const dx = dist(r16(w, p + 0x0A), hl);
+  if (dx & 0xFE00) return 0;
+  const sq = v => mulHLByDE((v << 3) & 0xFFFF, (v << 3) & 0xFFFF);
+  return ((sq(dx) + sq(dy)) & 0xFFFF) < 0xC0 ? 1 : 0;
+}
+// 0B:45C9 MapTerrainAt (0B:45AB MapTerrainCellAddr): the WRAM6 $D000 cell of tile (d, e): 32 x 32 cells of 2 x 2
+// tiles (d >> 1 taken arithmetically: a tile $80 and up reads before the row)
+export function mapTerrainAt(w, d, e) {
+  const hl = (0xD000 + ((e & 0xFE) << 4) + ((d & 0x80 ? d | 0xFF00 : d) >> 1 & 0xFF)) & 0xFFFF;
+  return w.wram[6][hl - 0xD000];
+}
+// 04:551E TerrainBlockedAt: the point's terrain cell is $0F (low nibble)
+function terrainBlockedAt(w, hl, de) {
+  const a = mapTerrainAt(w, hl >> 8, de >> 8) & 0x0F;
+  return a === 0x0F ? 0x0F : 0;
+}
+// 04:534E PointAddPolar: the point + VectorFromLengthAndAngle(bc, a)
+function pointAddPolar(hl, de, a, bc) {
+  const [x, y] = vectorFromLengthAndAngle(bc, a);   // 00:0AF2
+  return [(hl + x) & 0xFFFF, (de + y) & 0xFFFF];
+}
+// 04:552F TileInHomeArea: home (b x, c y), half size (h, l), tile (d, e): 0 inside, $FF outside
+function tileInHomeArea(b, c, h, l, d, e) {
+  if (((b - 1 - h) & 0xFF) >= d || ((b - 1 + h) & 0xFF) < d) return 0xFF;
+  if (((c - 1 - l) & 0xFF) >= e || ((c - 1 + l) & 0xFF) < e) return 0xFF;
+  return 0;
+}
+// 04:47A2 ActorOpWander: while the actor is on screen (+$2F), up to 4 tries: a random heading (the facing + $E0..$1F,
+// to $10 steps: $C28F), the point a tile ahead (04:5332 ActorPointAtAngle) inside the home box (+$18 / +$19, 2
+// tiles) and clear of blocked terrain $E0 further at the heading and at +-$20: the target (04:5289 ActorSetTarget),
+// walking, the next opcode; else the facing turns $41 and the next try; after 4 (or off screen) it yields
+function opWander(w, bc) {
+  const p = cur(w);
+  for (let e = 4; e; e--) {
+    if (!rd(w, p + 0x2F)) return { a: 0, bc };
+    const a = (((advanceRandomSeed(w) & 0x3F) - 0x20 + rd(w, p + 0x10)) & 0xF0);
+    wr(w, 0xC28F, a);
+    const [vx, vy] = vectorFromLengthAndAngle(0x100, a);   // 04:5332 ActorPointAtAngle
+    const x = (r16(w, p + 4) + vx) & 0xFFFF, y = (r16(w, p + 6) + vy) & 0xFFFF;
+    let ok = !tileInHomeArea(rd(w, p + 0x19), rd(w, p + 0x18), 2, 2, x >> 8, y >> 8);
+    for (const t of [0, 0x20, 0xE0]) if (ok && terrainBlockedAt(w, ...pointAddPolar(x, y, (a + t) & 0xFF, 0xE0))) ok = false;
+    if (ok) {
+      w16(w, p + 0x0C, y); w16(w, p + 0x0A, x);   // 04:5289 ActorSetTarget
+      wr(w, p + 0x12, 1);
+      return { a: 1, bc: (bc + 1) & 0xFFFF };
+    }
+    wr(w, p + 0x10, (rd(w, p + 0x10) + 0x41) & 0xFF);
+  }
+  return { a: 0, bc };
 }
 
 function followCamera(w, p) {                    // 04:4439: the camera on the actor with +$16 = 1 (unless $DA00)
@@ -292,6 +349,7 @@ const OPS = {
   },
   0x07: (w, bc, d) => walkAngle(w, (bc + 1) & 0xFFFF, d, 0),   // 04:46FB ActorOpWalkAngle
   0x08: (w, bc, d) => walkAngle(w, (bc + 1) & 0xFFFF, d, rd(w, f(w, 0x10))),   // 04:4756 ActorOpWalkTurn
+  0x09: (w, bc) => opWander(w, bc),              // 04:47A2 ActorOpWander
   0x0B: (w, bc) => {                             // 04:48FC ActorOpChase
     const ld = r16(w, f(w, 0x18));
     const x = r16(w, ld + 4), y = r16(w, ld + 6);
@@ -322,11 +380,11 @@ const OPS = {
     return { a: 1, bc: (bc + 2) & 0xFFFF };
   },
   0x11: (w, bc) => ({ a: 1, bc: (bc + 2) & 0xFFFF }),   // 04:4A71 ActorOpSkipByte
-  0x12: (w, bc, d, natives) => {                 // 04:4A7C ActorOpCallNative (00:015E CallHLInBankA)
+  0x12: (w, bc, d, natives, sound) => {               // 04:4A7C ActorOpCallNative (00:015E CallHLInBankA)
     const addr = farWord(d, bc + 1), key = `${d.toString(16).padStart(2, "0")}:${addr.toString(16).padStart(4, "0")}`;
     const fn = natives[key];
     if (!fn) throw new Error(`actor script native ${key} is not ported`);
-    const a = D.inBank(w, d, () => fn(w));
+    const a = D.inBank(w, d, () => fn(w, sound));
     return { a: a & 0xFF, bc: (bc + 3) & 0xFFFF };
   },
   0x13: (w, bc) => {                             // 04:476C ActorOpSetHome (returns a = the low byte of +$1B's address)

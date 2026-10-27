@@ -42,6 +42,37 @@ function frontEndPolicy(f) {
   return 1;
 }
 
+// a new character from power-on: Start at frame 2600, then A every 40 frames, but in the name entry (its task 06:51CC)
+// Start 60 frames in (the cursor to END), A 40 frames later (no letters: the default name) and A again (END)
+function newCharPolicy() {
+  let at = -1;
+  return f => {
+    frameNow = f;
+    if (f < 2600) return 0;
+    if (f === 2600) return 8;
+    if (menuW && hasTask(menuW, 0x06, 0x51CC)) {
+      if (at < 0) at = f;
+      return f === at + 60 ? 8 : f === at + 100 || f === at + 140 ? 1 : 0;
+    }
+    return f % 40 ? 0 : 1;
+  };
+}
+
+// on the overworld: `base` until the native side is first on map $03 (wMapId; walkAt = that frame), then the buttons
+// of `script` ([from, to, bits]: held from frame walkAt + from to walkAt + to); the case stops at walkAt + end
+let walkAt = -1, walkEnd = 0;
+function walkPolicy(base, script, end) {
+  walkAt = -1; walkEnd = end;
+  return f => {
+    frameNow = f;
+    if (walkAt < 0 && menuW && menuW.wram[0][0x450] === 3 && menuW.wram[0][0x834] === 9) walkAt = f;
+    if (walkAt < 0) return base(f);
+    const d = f - walkAt;
+    for (const [a, b, bits] of script) if (d >= a && d < b) return bits;
+    return 0;
+  };
+}
+
 // the same, with Right `rights` times in the game mode select first
 function frontEndRights(rights) {
   let n = 0, last = -100;
@@ -209,6 +240,18 @@ const CASES = [
   // power-on (00:0100, an empty save RAM) to the Stroke round's GolfRound call, the same buttons
   { name: "boot_poweron", state: "boot_poweron", open: true, noRet: true,
     run: sh => { menuW = sh.w; return powerOn(sh); }, policy: frontEndPolicy },
+  // power-on (an empty save RAM): Start, one player, A on the character select's slot 0 (empty: "Create a new
+  // character here."): ModeSelectMain asks the map engine for warp 5, map $1E's enter script (31:43B9: the picks with
+  // A, each the first; the name entry: Start to END, A: the default name; the confirm prompt: Yes), then map $05's
+  // first-day scene (32:71D7) and map $00 entrance 2: the mode select with a save file (stopped there)
+  { name: "boot_newchar", state: "boot_poweron", open: true, noRet: true, sram: true,
+    run: sh => gameCase(sh, 0), policy: newCharPolicy() },
+  // the saved character's story (the mode select's first item, Mario's story: warp 4, map $03 the clubhouse): walks
+  // and talks by walkPolicy's script from the frame the map is first on (wMapId $03)
+  { name: "boot_kid_story_walk", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
+    run: sh => gameCase(sh, 1, () => walkAt >= 0 && frameNow > walkAt + walkEnd), policy: walkPolicy(savedPolicy(0), [
+      [300, 390, 0x40], [390, 430, 0x10], [430, 460, 0x40], [500, 501, 1], [560, 561, 1], [620, 621, 1], [680, 681, 1],
+      [740, 741, 1], [800, 860, 0x20], [900, 1000, 0x80], [1000, 1040, 0x22], [1060, 1120, 0x10]], 1200) },
   // power-on with a save RAM the game made (a new character "Kid" created, saved at the mode select; out/kid.sav from
   // web/tests/golf/coreplay.mjs, then boottrace.mjs --sram out/kid.sav --save-at 00:0100): slot 0 loaded
   // (SaveBlockLoad, MapWarpToReturnPoint), SaveGame, the mode select with a save file, Stroke, course 1
@@ -342,6 +385,21 @@ const CASES = [
     })(), policy: savedPolicy(3) },
 ];
 
+// DUMP=frame:bank:addr:len[,...] prints both sides' bytes there at those frames (WRAM bank 0-7, addresses $C000-$DFFF;
+// bank h: HRAM $FF80-) (debugging a case)
+const dumps = (process.env.DUMP || "").split(",").filter(Boolean).map(s => { const [f, b, a, n] = s.split(":"); return { f: +f, b, a: parseInt(a, 16), n: parseInt(n, 16) }; });
+const dumpHook = h => (f, w, core) => {
+  if (h) h(f, w, core);
+  for (const d of dumps) if (d.f === f) {
+    const js = [], game = [];
+    for (let i = 0; i < d.n; i++) {
+      if (d.b === "h") { js.push(w.high[0x180 + d.a - 0xFF80 + i]); game.push(core.hram()[d.a - 0xFF80 + i]); }
+      else { const b = +d.b, o = (d.a & 0xFFF) + i; js.push(w.wram[b][o]); game.push(core.wram(b)[o]); }
+    }
+    const hx = a => a.map(v => v.toString(16).padStart(2, "0")).join(" ");
+    console.log(`frame ${f} ${d.b}:${d.a.toString(16)}\n  js   ${hx(js)}\n  game ${hx(game)}`);
+  }
+};
 let bad = 0;
 for (const c of CASES) {
   if (filter && !c.name.includes(filter)) continue;
@@ -351,7 +409,7 @@ for (const c of CASES) {
     continue;
   }
   let r;
-  try { r = runScreen({ stateFile, run: c.run, policy: c.policy, hook: c.hook, verbose, open: c.open, setRegs: c.regs, trace: process.argv.includes("--trace") }); }
+  try { r = runScreen({ stateFile, run: c.run, policy: c.policy, hook: dumpHook(c.hook), verbose, open: c.open, setRegs: c.regs, trace: process.argv.includes("--trace") }); }
   catch (e) { console.log(`FAIL ${c.name}: ${e.stack}`); bad++; continue; }
   if (c.open) r.sounds.core = r.sounds.core.filter(x => +x.split(":")[0] < r.frames);   // (the game's next frame's)
   const sounds = r.sounds.core.join(" ") === r.sounds.native.join(" ");

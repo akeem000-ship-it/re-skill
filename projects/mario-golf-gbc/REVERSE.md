@@ -93,6 +93,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + continuing a saved round (the card ExpScreen a = 0, LoadSummaryPrompt 32:7D35, TwoChoicePrompt) | 108,218 | 44.59% |
 | + Give Up after a stroke, the stroke limit's HUD redraw | 108,330 | 44.64% |
 | + the sound driver's copies in banks 7C / 7D (tools/sound_copies.py: identical to 7E) and the last small routines of 7E / 7F | 114,431 | 47.15% |
+| + the map engine and its script API (mapengine.js, script.js, maps/), a new character (StoryOpeningCreateCharacter 31:43B9, CharYesNoPrompt 41:6784, NameEntryScreen 06:51DC), the first day (32:71CF), walking and talking on the overworld (player.js, MapEventLoop 0A:4AAA) | 123,691 | 50.97% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -200,6 +201,8 @@ given to the native code). All cases match frame for frame:
 | boot_modeselect / _moves, boot_courseselect / _moves | 0D:4AA7 GameModeSelect, 0F:4AB7 CourseSelect | 257 / 317, 289 / 309 |
 | boot_modeselectmain | 32:5037 ModeSelectMain, the title to the Stroke round's GolfRound call | 2,929 |
 | boot_poweron | power-on (00:0100, an empty save RAM) to the Stroke round's GolfRound call | 2,929 |
+| boot_newchar | power-on, the empty slot: a new character (map $1E 31:43B9, 41:6784, 06:51DC), the first day (map $05 32:71CF), to the mode select | 7,647 |
+| boot_kid_story_walk | a saved character's story: the clubhouse (map $03), walking, a talk, running (MapEventLoop 0A:4AAA, 04:538C) | 3,940 |
 
 By situation (r18): at the address step 7,194 of 7,194 frames pixel-exact, on the green 4,279 of 4,279, the swing
 and the roll 17,881 of 17,884, the ball in the air 13,823 of 13,827, holed out and between holes 54 of 54 (the
@@ -252,8 +255,9 @@ for wGameMode 0; BuildCourseList leaves the count byte at $D658 0; GetTextBoxWid
 rebuilds the message window's record, slot 0's when there is none (with a zero pointer: writes to the MBC's RAM
 enable register); SaveBlockLoad / SaveBlockStore write a block's size low byte as the SRAM bank; SaveBlockStore
 rewrites the directory defaults each time. The film-strip select code is the same in banks 0D and 0F at shifted
-addresses. Not ported: the new character's creation and the story (the map engine), link play, Tournament,
-Training, the map engine after the enter script (ScriptEnd and the map's event loop after a round). Saved characters load
+addresses. Not ported: the story beyond the first day (the map engine's event loop: walking, talking), link play,
+the map's event loop after an enter script that asks no warp. A new character is made natively (see "The map engine
+and the story"). Saved characters load
 and save (see "Saved games").
 
 #### Saved games (web/js/golf/save.js; web/tests/golf/coreplay.mjs)
@@ -439,6 +443,61 @@ place (08:4D18), the return map for the ceremonies (08:4C6E), the course flags, 
 `golf_screens_vs_core.mjs boot_kid74_tournament` plays the one-hole tournament from power-on with the kid74 save,
 with the pause menu's Scorecard (both pages) on the second shot: 7,819 frames, all frame for frame, RAM and save RAM
 equal at the end. Not ported: the ceremonies a top-three place leads to (the map engine's warp to maps $18-$1D).
+
+#### The map engine and the story (mapengine.js, script.js, maps/, nameentry.js; tools/script_js.py, actor_scripts.py)
+
+`mapengine.js` is MapEngine 0A:498C's loop: MapRun 0A:4A21 (MapLoadHeader 0A:4BBC, MapPlaceAtEntrance 0A:4C0D, the
+music, MapInitObjects 0A:4F45, the map graphics 0B:46DF) to the enter script (MapRunEnterScript 0A:4F71 ->
+MapRunScript 0A:4EFF: ScriptBegin, the player's +$33 / +$10, the script, ScriptEnd), then the warp request
+(MapTakeWarp 0A:5146 with MapListFindIfFlag 0A:4EC5, MapCheckFacing 0A:4E70, TestFlagCondition 0A:4E2F). The map
+scripts are ported per bank (`maps/bank31.js`, `maps/bank32.js`, ...) and found by their ROM address
+(`maps/index.js` MAP_SCRIPTS, with the frame tasks they register). `script.js` is the script API of bank 0A
+(ScriptBegin / End, ScriptWaitFrames, ActorSetSpeed / Script / ResetScript, WaitActorScriptEnd / MoveDone,
+ActorMoveTo / MoveBy / MoveDir, ActorLockSpriteFacing, ActorFaceActor, ActorsFaceEachOther, ActorPlayAnim,
+WaitActorAnimDone (04:4E36), ActorJump, WaitActorLanded (04:4575), ActorSetState, ScriptActorSetSpeed / GoTo /
+GoToActor, WaitScriptActorIdle, ScriptShakeScreen and ScreenShakeTask); the text calls are msgbox.js.
+`tools/script_js.py BB:AAAA` drafts a script's JavaScript from its code (the API calls with the registers' constant
+values, flags, sounds, fades; anything else as a TODO line), which is then checked and completed by hand.
+`tools/actor_scripts.py` lists the actor scripts (spawn lists and ActorSetScript calls) and the opcodes they use:
+$00-$04, $07, $09, $0B-$0E, $10, $13 (55 scripts); $05, $06, $08, $0A, $11, $12 are not used by them.
+
+**A new character** (ported; `golf_screens_vs_core.mjs boot_newchar`: power-on, slot 0 "Create a new character
+here.", every pick, the name entry and the first day, to the mode select: 7,647 frames, all pixel-exact or in the
+harness's lag allowance (11 frames after lag frames), the RAM and the save RAM equal at the end): ModeSelectMain
+32:5121 asks for warp 5 (map $00's warp list: map $1E entrance 1). Map $1E's enter script 31:4052 ->
+StoryOpeningCreateCharacter 31:43B9: NewGame, the opening's tiles (31:4262), the golfer and the hand pointer
+(actors 3 and 2) walking, the three questions (boy / girl -> flag #0, the character from the pair 31:42E7 -> flag
+#1, the hand -> flag #2; OpeningPickLeftRight 31:42EF: B on the second or third goes back a question, with a head
+shake; OpeningSpriteTask 31:43B2 draws the pointer and the marks), CreateCharacter 02:4E82 (OpeningCharTable
+31:4791), a random $C83E (0-5), the confirm screen CharYesNoPrompt 41:6784 (the level-up screen's code with its own
+tile map 41:68AD and texts 41:6C30; the screen it covers saved and restored, 41:6D4E / 6DC7; No: the questions
+again), the name (NameEntryScreen 06:51DC: two pages of keys from the tile maps 06:4EA0, the cursor over the
+layout 06:505B; Start jumps to END; END with no letters takes the character's default name and stays; B with no
+letters goes back to the confirm screen; the five random bytes $C80B-$C80F at the end), the closing texts, flag
+#97, warp 1 (map $05 entrance 2). Map $05's enter script 32:71CF at entrance 2: the director pro, the Caddie
+Master and the coach introduce themselves (texts $487-$48F), warp 2: map $00 entrance 2, the mode select (a save
+file now: SaveGame stores the slot).
+Fixed on the way: TestSpawnFlag 04:4FBE spawns an actor while a plain flag is clear (bit 15: while set); the JS had
+it the other way round (no map before had a flagged actor). New in bank 04: ActorOpWander 04:47A2 with
+TileInHomeArea 04:552F, PointAddPolar 04:534E, TerrainBlockedAt 04:551E (0B:45C9 MapTerrainAt), PointNearPlayer
+04:554D. Quirks kept: WaitActorScriptEnd 0A:435E waits ScriptWaitFrames with a = the actor address's low byte,
+then the script byte it read (slot 0, 4, 8 ... would hit ScriptWaitFrames' a = 0 bug); TerrainBlockedAt answers
+only for terrain $0F; ScriptShakeScreen with a = 0 when no shake runs stores 0 in wShakeLevel.
+
+**Walking the overworld** (`golf_screens_vs_core.mjs boot_kid_story_walk`: a saved character's story, warp 4 to the
+clubhouse (map $03, enter script 32:5E07), then walking up, right, talking to a member (a text script), walking
+left, down, running with B: 3,940 frames from power-on, all pixel-exact or in the lag allowance): after an enter
+script that asks no warp MapRun fades in, shows the map's name banner (MapShowNameBanner 0A:4DDB) and runs
+MapEventLoop 0A:4AAA: the player's script 04:527A (op $12 -> PlayerWalkControl 04:538C, `player.js`: the d-pad
+facing 04:5500, the probes 04:52FA ahead and $20 to each side against blocked terrain and actors (04:5510, 04:551E,
+FindActorNear 04:55C4 over BuildNearbyActorList 04:5658), speed by terrain and flag #17 (B), CheckEventAtPoint
+04:5360 for trigger and warp cells, the idle snap to the $20 grid) until an event is pending; then the trigger stepped
+on (MapStepTrigger 0A:50CB), a warp, the bump counter (flag #23, action 2), the A button: MapFindTalk 0A:49C6
+(MapTalkTargetAhead 0A:4CC5, BuildActiveActorList 04:56FD) -> MapTalkTo 0A:4F96, MapFindObject 0A:49E9
+(MapObjectAhead 0A:4C9B) -> MapUseObject 0A:5066, MapTriggerUnderPlayer 0A:4D1F -> MapCheckTrigger 0A:5109; a text
+script (below $2000) is ShowMessage 05:5D49 after WaitScriptActorIdle. The actor scripts' natives are a registry
+(`actors.js` NATIVES, "bb:aaaa"). Not ported yet: the map's start menu (41:6E6E, Start), the navigation menu (map 2),
+the partner's talk (0A:5365), the doors' tile animations.
 
 #### Match play and the contests (web/js/golf/match.js)
 

@@ -541,6 +541,7 @@ export function levelUpTasks(w) {
     [k(TASK.skills)]: () => drawSkillValueSprites(w),
     [k(TASK.banner)]: () => levelUpBannerRevealTask(w),
     [k(TASK.yesNo)]: () => drawYesNoCursorTask(w),
+    "41:6e3b": () => promptSpriteTask(w),        // 41:6E3B PromptSpriteTask
   };
 }
 
@@ -722,4 +723,189 @@ function* levelUpBody(sh) {
       continue;
     }
   }
+}
+
+// ---- the character's Yes / No prompt (41:6784 CharYesNoPrompt) ----
+// 41:6D4E SaveScreenState: the BG master palettes $C200 ($40 bytes) -> $D554 (WRAM6); the WRAM2 and WRAM3 buffers
+// $D000-$D7FF -> $D800 of each; VRAM1 $9000-$97FF -> WRAM1 $D800; VRAM0 $8400-$87FF -> WRAM5 $DC00
+function saveScreenState(w) {
+  setW(w, 6);
+  for (let k = 0; k < 0x40; k++) wr(w, 0xD554 + k, rd(w, 0xC200 + k));
+  for (const b of [2, 3]) { setW(w, b); for (let k = 0; k < 0x800; k++) wr(w, 0xD800 + k, rd(w, 0xD000 + k)); }
+  setW(w, 1);
+  if (w.vram) for (let k = 0; k < 0x800; k++) wr(w, 0xD800 + k, w.vram[1][0x1000 + k]);
+  setW(w, 5);
+  if (w.vram) for (let k = 0; k < 0x400; k++) wr(w, 0xDC00 + k, w.vram[0][0x400 + k]);
+}
+// 41:6DC7 RestoreScreenState: BG palettes 0-6 (not 7) from $D554 (master only), then the four copies back
+function restoreScreenState(w) {
+  setW(w, 6);
+  D.loadPalettesMasterOnly(w, 0xD554, 0x00, 0x07);
+  for (const b of [2, 3]) { setW(w, b); for (let k = 0; k < 0x800; k++) wr(w, 0xD000 + k, rd(w, 0xD800 + k)); }
+  setW(w, 1);
+  if (w.vram) for (let k = 0; k < 0x800; k++) w.vram[1][0x1000 + k] = rd(w, 0xD800 + k);
+  setW(w, 5);
+  if (w.vram) for (let k = 0; k < 0x400; k++) w.vram[0][0x400 + k] = rd(w, 0xDC00 + k);
+}
+// 41:68AD LoadCharPromptBgAndTilemap: as 41:446D (the same LZ assets, less the $5EB0 set), its own boxes: one frame
+// with the Yes / No box and the stat rows, BG palettes $0C, 3-5, 1, $0A, 0, 8
+function loadCharPromptBgAndTilemap(w) {
+  setW(w, 1);
+  for (const [src, de] of [[0x5D80, 0xD000], [0x621A, 0xD1E0], [0x6190, 0xD2A0], [0x61D5, 0xD300], [0x625D, 0xD3C0],
+    [0x6339, 0xD420], [0x5D00, 0xD4C0], [0x5D15, 0xD590]]) D.lzTo(w, B, src, de);
+  D.queueAndRunVRAMCopy(w, 0xD000, 0xB000, 0x63);
+  D.lzTo(w, B, 0x62A0, 0xD000); D.lzTo(w, B, 0x62F8, 0xD080);
+  D.queueAndRunVRAMCopy(w, 0xD000, 0xB630, 0x0E);
+  D.lzTo(w, B, 0x637D, 0xD000); D.queueAndRunVRAMCopy(w, 0xD000, 0x8000, 0x06);
+  // the attributes (WRAM2)
+  setW(w, 2);
+  fillBytes(w, 0xD000, 0x240, 0x01);
+  for (const [hl, n] of [[0xD0D0, 3], [0xD0F0, 3], [0xD127, 3], [0xD147, 3], [0xD130, 3], [0xD150, 3], [0xD1A6, 4],
+    [0xD1C6, 4], [0xD1B0, 3], [0xD1D0, 3], [0xD1E7, 3], [0xD207, 3], [0xD1F0, 3], [0xD210, 3]]) fillBytes(w, hl, n, 0x09);
+  fillBytes(w, 0xD0CA, 6, 0x0B); fillBytes(w, 0xD0EA, 6, 0x0B);
+  fillBytes(w, 0xD12A, 6, 0x0C); fillBytes(w, 0xD14A, 6, 0x0C);
+  for (const hl of [0xD1AA, 0xD1CA, 0xD1EA, 0xD20A]) fillBytes(w, hl, 6, 0x0D);
+  for (const hl of [0xD000, 0xD013, 0xD220, 0xD233]) wr(w, hl, 9);
+  fillBytes(w, 0xD001, 0x12, 0x09); fillBytes(w, 0xD221, 0x12, 0x09);
+  for (let k = 0; k < 16; k++) wr(w, 0xD020 + 32 * k, 9);
+  for (let k = 0; k < 16; k++) wr(w, 0xD033 + 32 * k, 9);
+  fillBytes(w, 0xD000, 0x60, 0x00);
+  for (const hl of [0xD060, 0xD080, 0xD0A0, 0xD0C0, 0xD0E0]) fillBytes(w, hl, 6, 0x00);
+  // the tiles (WRAM3)
+  setW(w, 3);
+  fillBytes(w, 0xD000, 0x240, 0x20);
+  for (const [hl, v] of [[0xD000, 0x59], [0xD013, 0x5A], [0xD220, 0x5B], [0xD233, 0x5C]]) wr(w, hl, v);
+  fillBytes(w, 0xD001, 0x12, 0x5D); fillBytes(w, 0xD221, 0x12, 0x5E);
+  for (let k = 0; k < 16; k++) wr(w, 0xD020 + 32 * k, 0x5F);
+  for (let k = 0; k < 16; k++) wr(w, 0xD033 + 32 * k, 0x60);
+  for (const [hl, v] of [[0xD000, 0x02], [0xD013, 0x04], [0xD040, 0x07], [0xD053, 0x09]]) wr(w, hl, v);
+  fillBytes(w, 0xD001, 0x12, 0x03); fillBytes(w, 0xD041, 0x12, 0x08);
+  for (const [hl, v] of [[0xD020, 0x05], [0xD033, 0x06], [0xD060, 0x02], [0xD065, 0x04], [0xD0E0, 0x07], [0xD0E5, 0x09],
+    [0xD080, 0x05], [0xD0A0, 0x05], [0xD0C0, 0x05], [0xD085, 0x06], [0xD0A5, 0x06], [0xD0C5, 0x06]]) wr(w, hl, v);
+  fillBytes(w, 0xD061, 4, 0x03); fillBytes(w, 0xD0E1, 4, 0x08);
+  wr(w, 0xD090, 0x59);
+  let a = writeTileRun(w, 0xD0D0, 0x1E, 3); writeTileRun(w, 0xD0F0, a, 3);
+  a = writeTileRun(w, 0xD127, 0x2A, 3); writeTileRun(w, 0xD147, a, 3);
+  a = writeTileRun(w, 0xD130, 0x30, 3); writeTileRun(w, 0xD150, a, 3);
+  a = writeTileRun(w, 0xD1A6, 0x63, 4); writeTileRun(w, 0xD1C6, a, 4);
+  a = writeTileRun(w, 0xD1B0, 0x3C, 3); writeTileRun(w, 0xD1D0, a, 3);
+  a = writeTileRun(w, 0xD1E7, 0x42, 3); writeTileRun(w, 0xD207, a, 3);
+  a = writeTileRun(w, 0xD1F0, 0x6B, 3); writeTileRun(w, 0xD210, a, 3);
+  // the palettes
+  D.loadPalettesMasterOnly(w, 0x5AFA, 0x0C, 0x01);
+  D.loadPalettesMasterOnly(w, 0x5D71, 0x03, 0x01);
+  D.loadPalettesMasterOnly(w, 0x5D71, 0x04, 0x01);
+  D.loadPalettesMasterOnly(w, 0x5D71, 0x05, 0x01);
+  setW(w, 6);
+  wr(w, 0xD432, 0); wr(w, 0xD433, 0); wr(w, 0xD434, 0);
+  D.loadPalettesMasterOnly(w, 0x5CED, 0x01, 0x01);
+  D.loadPalettesMasterOnly(w, 0x5CED, 0x0A, 0x01);
+  D.loadPalettesMasterOnly(w, 0x5CE5, 0x00, 0x01);
+  D.loadPalettesMasterOnly(w, 0x5CE5, 0x08, 0x01);
+}
+// 41:6D25 CopyPlayerNameToTilemap: the name at $C800 (to its 0) -> the WRAM3 tile buffer at de; returns de after it
+// and one blank
+function copyPlayerNameToTilemap(w, de) {
+  for (let hl = 0xC800; ;) {
+    setW(w, 6);
+    const a = rd(w, hl++);
+    setW(w, 3);
+    if (!a) return (de + 1) & 0xFFFF;
+    wr(w, de, a); de = (de + 1) & 0xFFFF;
+  }
+}
+// 41:6C30 DrawCharPromptText: a = 0 "Is this OK?" ($10EB), 1 "Copy <name>?" ($10EC, the name, $10EE), 2 "Erase
+// <name>?" ($10ED ...) at $D021; Yes / No ($10E9 / $10EA), "LV." ($1CA8) and the level (1 for a = 0) at $D123,
+// the stat labels $10E1-$10E5; the glyphs uploaded (03:4F6C)
+function* drawCharPromptText(sh, a) {
+  const w = sh.w;
+  D.inBank(w, 0x03, () => T.resetGlyphBuffer(w));   // 03:4EB8
+  setW(w, 3);
+  const pr = function* (id, de) { yield* inBankGen(w, 0x05, T.printTextToBuffer(sh, id, de, 0x20)); };
+  if (a === 0) yield* pr(0x10EB, 0xD021);
+  else if (a === 1 || a === 2) {
+    yield* pr(a === 1 ? 0x10EC : 0x10ED, 0xD021);
+    const de = copyPlayerNameToTilemap(w, a === 1 ? 0xD025 : 0xD026);
+    yield* pr(0x10EE, de);
+  }
+  yield* pr(0x10E9, 0xD082);
+  yield* pr(0x10EA, 0xD0C2);
+  yield* pr(0x1CA8, 0xD121);
+  setW(w, 6);
+  formatTo(w, a ? rd(w, 0xD63C) : 1, 2, 0xD64E);   // 00:21F0 FormatDecimalNumber
+  let de = 0xD123;
+  setW(w, 3);
+  const c0 = w.wram[6][0x64E], c1 = w.wram[6][0x64F];
+  wr(w, de, c0);
+  if (c0 !== 0x20) de++;
+  wr(w, de, c1);
+  setW(w, 3);
+  for (const [id, d] of [[0x10E1, 0xD066], [0x10E3, 0xD0A6], [0x10E2, 0xD106], [0x10E4, 0xD166], [0x10E5, 0xD187]])
+    yield* pr(id, d);
+  yield* inBankGen(w, 0x03, T.uploadGlyphTiles(sh));   // 03:4F6C
+}
+// 41:6E3B PromptSpriteTask: the sprite template 41:63BE at (y $30, x $38), attribute 2
+function promptSpriteTask(w) {
+  if (w.vram) D.queueSpriteTemplate(w, 0x63BE, 0x30, 0x38, 0x00, 0x02, x => rb(B, x));
+}
+// 41:6784 CharYesNoPrompt: a = 0 "Is this OK?" / 1 "Copy <name>?" / 2 "Erase <name>?" on the character's stats
+// screen, c = the row first under the cursor (0 Yes); the screen it covers saved and restored; returns 1 for Yes
+// (A on Yes), 0 for No or B (wTextSpeed bit 7 is left set)
+export function* charYesNoPrompt(sh, a, c) {
+  const w = sh.w, old = w.high[0x196];
+  D.disableLCDSafely(w);
+  saveScreenState(w);
+  initLevelUpVars(w);
+  loadStatDisplayValues(w, 1);
+  loadLevelUpSpriteGfx(w);
+  loadCharPromptBgAndTilemap(w);
+  refreshStatGauges(w);
+  D.processVRAMCopyQueue(w);
+  initCharSprite(w);                             // 42:400B
+  D.processVRAMCopyQueue(w);
+  setW(w, 6);
+  wr(w, 0xD40A, c & 1);
+  yield* drawCharPromptText(sh, a);
+  w.wram[0][0x82D] |= 0x80;                      // wTextSpeed
+  copyLevelUpTilemapToVRAM(w);
+  D.processVRAMCopyQueue(w);
+  D.enableLCD(w);
+  reg(w, 0x05, TASK.charSprite);
+  reg(w, 0x01, TASK.stat3);
+  reg(w, 0x01, TASK.yesNo);
+  reg(w, 0x01, 0x6E3B);                          // PromptSpriteTask
+  setW(w, 6);
+  wr(w, 0xD632, 2);
+  Scr.forceFadeIn(w, 0x10);
+  yield* Scr.waitFade(sh);
+  for (;;) {
+    yield* sh.advance();
+    const p = w.high[0x194];
+    if (p & 1) {
+      setW(w, 6);
+      if (!rd(w, 0xD40A)) { sh.sound(0x5C); wr(w, 0xD4A0, 1); }
+      else { sh.sound(0x5D); wr(w, 0xD4A0, 0); }
+      break;
+    }
+    if (p & 2) { sh.sound(0x5D); wr(w, 0xD4A0, 0); break; }
+    if (p & 0xC0) {
+      sh.sound(0x5B);
+      setW(w, 6);
+      wr(w, 0xD40A, (rd(w, 0xD40A) + (p & 0x40 ? -1 : 1)) & 1);
+      wr(w, 0xD631, 0x1F);
+    }
+  }
+  Scr.beginFadeOut(w, 0x10);
+  yield* Scr.waitFade(sh);
+  for (const t of [TASK.charSprite, TASK.stat3, TASK.yesNo, 0x6E3B]) unreg(w, t);
+  yield* sh.advance();
+  D.disableLCDSafely(w);
+  restoreScreenState(w);
+  D.processVRAMCopyQueue(w);
+  D.enableLCD(w);
+  setW(w, 6);
+  const b = rd(w, 0xD4A0);
+  yield* sh.advance();
+  setW(w, old);
+  return b;
 }
