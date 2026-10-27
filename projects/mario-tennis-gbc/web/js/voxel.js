@@ -1305,6 +1305,33 @@ export class Voxel3D {
     try { const base = 0x59D9 + id * 16, src = this.rom.rawRef(this.rom.u8(0x0A, base + 2), this.rom.u8(0x0A, base + 3), 64); pal.set(src.subarray(16, 64), 16); } catch (e) { /* live colours */ }
     return pal;
   }
+  // backdrop hills (field_objects backdrop.hills): over the sky of a side-view map's band, rolling hills on the horizon, a far range
+  // hazy (its green dithered with the sky) and a nearer one with a lit ridge, and a little town of white houses with red roofs on it;
+  // every pixel taken from a pixel of the map's own picture of that colour (so the band fades and lights as the map does), only where
+  // the band shows its sky (the treeline and the roofs of the picture stay in front)
+  bandHills(art, MWp, MHp, W, H, put, src, top) {
+    const find = hex => { const c = parseInt(hex, 16); for (let i = 0; i < MWp * MHp && i < 512 * 512; i++) { const x = i % 512, y = (i / 512) | 0; if (x < MWp && y < MHp && F3.packAt(art, x, y) === c) return y * 512 + x; } return -1; };
+    const LG = find("80b000"), G = find("008800"), WH = find("f8f8f8"), RF = find("f84000"), DK = find("300020");
+    if (LG < 0 || G < 0) return;
+    const far = x => 15 + 7 * Math.sin(x * 0.019 + 1) + 5 * Math.sin(x * 0.051 + 2) + 2 * Math.sin(x * 0.13), near = x => 7 + 4 * Math.sin(x * 0.033 + 4) + 3 * Math.sin(x * 0.083 + 1);
+    const ours = new Uint8Array(W * H);                                            // (the houses stand on the hills: over our own pixels too)
+    const set = (x, r, i) => { if (i < 0 || x < 0 || x >= W || r < 0 || r >= H) return; const j = (H - 1 - r) * W + x; if (src[j] === top || ours[j]) { put(j, i); ours[j] = 1; } };
+    for (let x = 0; x < W; x++) {
+      const fh = Math.round(far(x)), nh = Math.round(near(x));
+      for (let r = 0; r < fh; r++) if (r >= nh) set(x, r, ((x + r) & 1) || r >= fh - 1 ? LG : -1);           // the far range: hazy
+      for (let r = 0; r < nh; r++) set(x, r, r >= nh - 1 ? LG : r >= nh - 3 && ((x + r) & 1) ? LG : G);      // the near one: a lit ridge
+    }
+    if (WH < 0 || RF < 0) return;
+    let seed = 0x7A11; const rnd = () => ((seed = (Math.imul(seed, 1103515245) + 12345) | 0) >>> 0) / 4294967296;
+    for (const cx of [0.16, 0.43, 0.62, 0.86].map(k => Math.round(k * W))) {           // little towns: a few houses close together
+      const n = 3 + Math.floor(rnd() * 3);
+      for (let h = 0; h < n; h++) {
+        const x0 = cx + h * 9 + Math.floor(rnd() * 4), w = 6 + Math.floor(rnd() * 3), wallH = 3 + Math.floor(rnd() * 2), base = Math.round(near(x0 + w / 2)) - 2;
+        for (let dx = 0; dx < w; dx++) for (let r = 0; r < wallH; r++) set(x0 + dx, base + r, (dx === 2 || dx === w - 3) && r === 1 && DK >= 0 ? DK : WH);
+        for (let k = 0; k < 3; k++) for (let dx = k; dx < w - k; dx++) set(x0 + dx, base + wallH + k, RF);    // the pitched roof
+      }
+    }
+  }
   romPal(id) {                                   // a map's 8 BG palettes as LoadMap finds them in the ROM (64 bytes)
     try { const base = 0x59D9 + id * 16; return this.rom.rawRef(this.rom.u8(0x0A, base + 2), this.rom.u8(0x0A, base + 3), 64); } catch (e) { return null; }
   }
@@ -1489,6 +1516,45 @@ export class Voxel3D {
         const c5 = (pal, [p, i]) => { const [r, g, b] = this.col5(pal, p, i); return r << 16 | g << 8 | b; };
         const from = c5(this.romPal(this.mapId()), sw.from), to = c5(this.romPal(sw.to[0]), sw.to.slice(1));
         for (let y = 0; y < MHp; y++) for (let x = 0; x < MWp; x++) { const i = y * 512 + x; if (pack(floor, i * 4) === from) paint(i, to); }
+      }
+      // courtyardPaths: {rows: [y0, y1], keep: [rects], min}: the dirt paths edged as the courtyard's are (the road's): the band of green
+      // dither inside their brick border becomes plain dirt and the border a kerb of light stone between dark outlines (ground.js stands
+      // it up as it does the courtyard's); only paths of min px or more (not the signposts), nothing inside keep (the courtyard's own path)
+      if (def.courtyardPaths) {
+        const cp = def.courtyardPaths, [ya, yb] = cp.rows, keep = cp.keep || [], hex = n => parseInt(n, 16);
+        const DIRT = hex("d08000"), MORT = [hex("c04000"), hex("f89000"), hex("808080")], LAWN = [hex("008800"), hex("80b000")], LIGHT = hex("f8f8f8"), GREY = hex("808080"), DARK = hex("300020");
+        const Y1 = Math.min(yb, MHp), col = (x, y) => pack(floor, (y * 512 + x) * 4), pathy = c => c === DIRT || MORT.includes(c);
+        const kept = (x, y) => keep.some(([x0, y0, x1, y1]) => x >= x0 && x < x1 && y >= y0 && y < y1), N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+        const inR = new Uint8Array(512 * 512);
+        for (let y = ya; y < Y1; y++) for (let x = 0; x < MWp; x++) {
+          if (kept(x, y)) continue;
+          const c = col(x, y); if (pathy(c)) { inR[y * 512 + x] = 1; continue; }
+          if (!LAWN.includes(c)) continue;
+          let n = 0; for (const [dx, dy] of N4) { const X = x + dx, Y = y + dy; if (X >= 0 && X < MWp && Y >= ya && Y < Y1 && pathy(col(X, Y))) n++; }
+          if (n >= 3) inR[y * 512 + x] = 1;                                         // a dot of the dither: dirt on three sides or more
+        }
+        const comp = new Int32Array(512 * 512).fill(-1), sizes = [];
+        for (let i0 = 0; i0 < 512 * 512; i0++) {
+          if (!inR[i0] || comp[i0] >= 0) continue;
+          const k = sizes.length, st = [i0]; comp[i0] = k; let n = 0;
+          while (st.length) { const i = st.pop(), x = i % 512, y = (i / 512) | 0; n++;
+            for (const [dx, dy] of N4) { const X = x + dx, Y = y + dy, j = Y * 512 + X; if (X >= 0 && X < MWp && Y >= ya && Y < Y1 && inR[j] && comp[j] < 0) { comp[j] = k; st.push(j); } } }
+          sizes.push(n);
+        }
+        // the distance in from the lawn (4-steps), and which way the lawn lies (for the joints across the kerb)
+        const dist = new Uint8Array(512 * 512), across = new Uint8Array(512 * 512), q = [];
+        for (let y = ya; y < Y1; y++) for (let x = 0; x < MWp; x++) {
+          const i = y * 512 + x; if (comp[i] < 0 || sizes[comp[i]] < (cp.min || 500)) continue;
+          for (const [dx, dy] of N4) { const X = x + dx, Y = y + dy; if (X < 0 || X >= MWp || Y < ya || Y >= Y1) continue; const j = Y * 512 + X;
+            if (!inR[j] && !pathy(col(X, Y)) && !kept(X, Y)) { dist[i] = 1; across[i] = dx ? 1 : 2; q.push(i); break; } }
+        }
+        for (let h = 0; h < q.length; h++) { const i = q[h], x = i % 512, y = (i / 512) | 0; if (dist[i] >= 6) continue;
+          for (const [dx, dy] of N4) { const X = x + dx, Y = y + dy, j = Y * 512 + X; if (X < 0 || X >= MWp || Y < ya || Y >= Y1 || comp[j] !== comp[i] || dist[j]) continue; dist[j] = dist[i] + 1; across[j] = across[i]; q.push(j); } }
+        for (let y = ya; y < Y1; y++) for (let x = 0; x < MWp; x++) {
+          const i = y * 512 + x; if (comp[i] < 0 || sizes[comp[i]] < (cp.min || 500)) continue;
+          const dd = dist[i] || 9, joint = across[i] === 1 ? (y & 7) === 0 : (x & 7) === 0;   // bricks 8 px long along the path
+          paint(i, dd === 1 || dd === 4 ? DARK : dd <= 3 ? (joint ? DARK : dd === 2 ? GREY : LIGHT) : DIRT);
+        }
       }
     }
     // blank: spare tiles the map keeps outside its rooms (never on the Game Boy screen, but in the 3D view's wider picture) painted over
@@ -1733,6 +1799,7 @@ export class Voxel3D {
         for (let x = 0; x < W; x++) { const X = x - side, i = y * 512 + X; put((y + ext) * W + x, X < 0 || X >= MWp || hole[i] || F3.packAt(art, X, y) === skyRow ? di : i); }
       }
       for (let y = 0; y < ext; y++) for (let x = 0; x < W; x++) put(y * W + x, top);
+      if (bd.hills) this.bandHills(art, MWp, MHp, W, H, put, src, top);         // hills and a little town on the horizon (the road)
       f.cards.unshift({ tex: this.texture(W, H, d), mesh: null, d, src, own: true, w: W, h: H, X: MWp / 2, Z: bd.z, tilt: 0, flat: true });
       // the night version of the band without its clouds: the shapes in the sky that do not reach down to the horizon (trees and roofs do)
       { const dn = d.slice(), seen = new Uint8Array(W * H), st = [];

@@ -340,23 +340,32 @@ export function bannerArt(c) {
   }
   return px;
 }
-// the banner's voxels (out: { pos, col, sway } for voxel.js VSW): pixel (dx, dy) at x = X + dx, dy rows below the top at up = Y,
-// on the plane of a card standing at Z and leaning back by `tilt` (as the lamp's post does). The sway weight grows from 0 at the
-// pole to 1 at the free edge and the wind's phase runs along the cloth, so the banner ripples out from its arm.
-// arm: an iron bar above it (still) from the post to the banner's end
+// the banner's cloth (out: { pos, col, sway } for voxel.js VSW): pixel (dx, dy) at x = X + dx, dy rows below the top at up = Y, on
+// the plane of a card standing at Z and leaning back by `tilt` (as the lamp's post does). One thin sheet, not a block per pixel: each
+// pixel is a front and a back face whose corners take their sway from where they are on the cloth (the weight grows from 0 at the
+// pole to 1 at the free edge, the wind's phase runs along it), so faces that meet share their corners' movement and the banner
+// ripples out from its arm in one piece. A soft shade across the width gives it the folds of fabric.
+// arm: an iron bar above it (still, a box) from the post to the banner's end
 export function bannerVoxels(out, px, w, X, Y, Z, tilt, phase, arm = null, k = 1) {   // k: the size of a banner pixel (map px)
   const c = Math.cos(tilt), sn = Math.sin(tilt), P = (x, u, d) => [x, u * c + d * sn, Z - u * sn + d * c];
-  const box = (x0, u0, x1, u1, col, wgt, ph) => {
-    const d0 = -0.35, d1 = 0.35;
-    const face = (a, b, cc, d, k) => { for (const v of [a, b, cc, a, cc, d]) { out.pos.push(...v); out.col.push(col[0] / 255 * k, col[1] / 255 * k, col[2] / 255 * k); out.sway.push(wgt, ph); } };
-    face(P(x0, u0, d1), P(x1, u0, d1), P(x1, u1, d1), P(x0, u1, d1), 1.0);   // front
-    face(P(x1, u0, d0), P(x0, u0, d0), P(x0, u1, d0), P(x1, u1, d0), 0.6);   // back
-    face(P(x0, u1, d1), P(x1, u1, d1), P(x1, u1, d0), P(x0, u1, d0), 0.9);   // top
-    face(P(x0, u0, d0), P(x0, u0, d1), P(x0, u1, d1), P(x0, u1, d0), 0.75);  // left
-    face(P(x1, u0, d1), P(x1, u0, d0), P(x1, u1, d0), P(x1, u1, d1), 0.75);  // right
-  };
-  for (const [dx, dy, r, g, b] of px) box(X + dx * k, Y - (dy + 1) * k, X + (dx + 1) * k, Y - dy * k, [r, g, b], (dx + 1) / w * (0.6 + 0.4 * dy / 15), phase + dx * 0.55 + dy * 0.12);
-  if (arm) box(X - 1, Y, X + w * k + 0.5, Y + 1, arm, 0, 0);
+  const H = px.reduce((m, q) => Math.max(m, q[1] + 1), 1);
+  const sway = (x, u) => { const fx = (x - X) / k, fy = (Y - u) / k; return [fx / w * (0.6 + 0.4 * fy / H), phase + fx * 0.55 + fy * 0.12]; };
+  const quad = (pts, col, sh) => { for (const i of [0, 1, 2, 0, 2, 3]) { const [x, u, d] = pts[i]; out.pos.push(...P(x, u, d)); out.col.push(col[0] / 255 * sh, col[1] / 255 * sh, col[2] / 255 * sh); out.sway.push(...sway(x, u)); } };
+  const T = 0.12;                                                              // half the cloth's thickness
+  for (const [dx, dy, r, g, b] of px) {
+    const x0 = X + dx * k, x1 = x0 + k, u1 = Y - dy * k, u0 = u1 - k, fold = 0.93 + 0.07 * Math.sin(dx * 1.7 + 0.6);
+    quad([[x0, u0, T], [x1, u0, T], [x1, u1, T], [x0, u1, T]], [r, g, b], fold);          // front
+    quad([[x1, u0, -T], [x0, u0, -T], [x0, u1, -T], [x1, u1, -T]], [r, g, b], 0.62 * fold); // back
+  }
+  if (arm) {
+    const box = (x0, u0, x1, u1, col) => {
+      const d0 = -0.35, d1 = 0.35, face = (a, bb, cc, d, sh) => { for (const v of [a, bb, cc, a, cc, d]) { out.pos.push(...v); out.col.push(col[0] / 255 * sh, col[1] / 255 * sh, col[2] / 255 * sh); out.sway.push(0, 0); } };
+      face(P(x0, u0, d1), P(x1, u0, d1), P(x1, u1, d1), P(x0, u1, d1), 1.0); face(P(x1, u0, d0), P(x0, u0, d0), P(x0, u1, d0), P(x1, u1, d0), 0.6);
+      face(P(x0, u1, d1), P(x1, u1, d1), P(x1, u1, d0), P(x0, u1, d0), 0.9); face(P(x0, u0, d0), P(x0, u0, d1), P(x0, u1, d1), P(x0, u1, d0), 0.75);
+      face(P(x1, u0, d1), P(x1, u0, d0), P(x1, u1, d0), P(x1, u1, d1), 0.75);
+    };
+    box(X - 1, Y, X + w * k + 0.5, Y + 1, arm);
+  }
 }
 
 // Fountain jet as droplets: one small box per droplet; each carries (phase, angle, speed, kind) for the shader,

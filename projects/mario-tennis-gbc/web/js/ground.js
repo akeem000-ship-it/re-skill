@@ -17,7 +17,7 @@
 import { INDOOR_MAPS } from "./lighting.js";
 const TREES = ["original", "round", "leaves"], TREE_LABEL = { original: "Original", round: "Round", leaves: "Leaves" };
 const KEY = "mt-ground";
-const KEPT = new Set([20, 22, 23, 24, 26, 27, 28, 29, 30, 31, 36]);   // maps whose lawns are mown (wCurMapID; 19, the road, stays rough)
+const KEPT = new Set([19, 20, 22, 23, 24, 26, 27, 28, 29, 30, 31, 36]);   // maps whose lawns are mown (wCurMapID; 19, the road, as the courtyard it joins)
 const WIND = `float wind(float t, float ph) { return sin(t * 1.9 + ph) * 0.75 + sin(t * 3.3 + ph * 1.7) * 0.25; }`;
 const VS_BLADE = `#version 300 es
 in vec2 aCorner; in vec4 aBlade; in vec4 aCol; in vec2 aLean;

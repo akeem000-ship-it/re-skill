@@ -26,6 +26,8 @@ export const LIGHT_MODES = ["off", "day", "auto"];
 //   fx: shadows, bloom, tilt-shift, vignette, night lights; quality: auto | low | medium | high (tier 0 / 1 / 2)
 const CFG_KEY = "mt-lightcfg";
 export const MATCH_HOURS = [8, 12, 18.4, 22], MATCH_NAMES = ["morning", "noon", "sunset", "night"];
+// tilt-shift per field map: [centre, half height, rise top, rise bottom] of the sharp band (the road: its nearest hedge and fence soft)
+const FIELD_FOCUS = { 19: [0.47, 0.13, 0.32, 0.17] };
 const defaultCfg = () => ({ world: null, customHour: 18.5, matches: "tour", tourV: 1, fx: { shadows: true, bloom: true, tilt: true, vignette: true, night: true, floors: true }, quality: "auto" });
 export const hourName = h => h < 5 ? "night" : h < 7 ? "dawn" : h < 10 ? "morning" : h < 15 ? "noon" : h < 17.5 ? "afternoon" : h < 19.5 ? "sunset" : h < 21 ? "dusk" : "night";
 const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
@@ -377,7 +379,7 @@ export class Lighting {
     return true;
   }
   // indoor: the RPG maps indoors, and the Training Center's drill courts (a hall without windows: its own lamps, whatever the hour)
-  camera(mvp, near, far, unit, kind, at, mapId = -1) { this.cam = { mvp, near, far, unit, kind, at, indoor: (kind === "field" && INDOOR_MAPS.has(mapId)) || (kind === "court" && !!(this.v.isDrill && this.v.isDrill())) }; }   // unit: world units per game pixel; at: a ground point in the middle of the view
+  camera(mvp, near, far, unit, kind, at, mapId = -1) { this.cam = { mvp, near, far, unit, kind, at, map: mapId, indoor: (kind === "field" && INDOOR_MAPS.has(mapId)) || (kind === "court" && !!(this.v.isDrill && this.v.isDrill())) }; }   // unit: world units per game pixel; at: a ground point in the middle of the view
   finish() { if (this.begun && !this.posted) this.post(); this.begun = false; }
   // everything the passes need to know about the scene, set by voxel.js through camera() and read from its state here
   lights(P, unit, kind) {
@@ -482,7 +484,7 @@ export class Lighting {
     this.pass(progC, null, {
       uInvVP: invVP, uVP: vp, uNF: NF, uRes: [W, H], uL: L, uSun: P.sun, uAmb: P.amb, uShade: shade, uWall: wallK,
       uExp: P.exp, uSat: P.sat, uCon: P.con, uBloom: P.bloom, uGlowK: 0.62 * (0.6 + 0.4 * P.bloom), uSpill: 0.5 + 0.18 * night, uLamps: cam.kind === "field" ? night : 0, uVig: fx.vignette ? P.vig : 0, uDof: dofK * 0.8, uTone: P.tone,
-      uDbg: this.dbg, uSkyLit: this.skyDrawn ? 1 : 0, uWarm: [1.15, 0.82, 0.42], uFocus: cam.kind === "court" ? [0.5, 0.36, 0.22, 0.26] : [0.5, 0.17, 0.30, 0.36],   // (a court: the players at both baselines stay sharp)
+      uDbg: this.dbg, uSkyLit: this.skyDrawn ? 1 : 0, uWarm: [1.15, 0.82, 0.42], uFocus: cam.kind === "court" ? [0.5, 0.36, 0.22, 0.26] : FIELD_FOCUS[cam.map] || [0.5, 0.17, 0.30, 0.36],   // (a court: the players at both baselines stay sharp)
     }, [S.t, S.depthTex, q.sh0.t, (needB ? q.b0 : q.q0).t, q.g0.t, q.e0.t]);
     this.timerEnd();
   }
