@@ -92,6 +92,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + Tournament (tournament.js: the rivals of bank 3C, the standings of bank 0E, the course statistics of bank 08; the standings page 0E:5209; the placing screen 0B:5B00) | 107,090 | 44.13% |
 | + continuing a saved round (the card ExpScreen a = 0, LoadSummaryPrompt 32:7D35, TwoChoicePrompt) | 108,218 | 44.59% |
 | + Give Up after a stroke, the stroke limit's HUD redraw | 108,330 | 44.64% |
+| + the sound driver's copies in banks 7C / 7D (tools/sound_copies.py: identical to 7E) and the last small routines of 7E / 7F | 114,431 | 47.15% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -751,8 +752,13 @@ NoteOff (46F8-4870), LoadWavePattern 4831, MusicCh4NoiseStep 487F, SoundUpdatePa
 MusicApplyVibrato 492E, SoundSilenceAll 499B, SoundCheckMusicEnd 49CC, the unused exports (SoundSetMuteMask,
 SoundTogglePause, SoundSetMasterVolume, SoundSaveState 49F7 / SoundRestoreState 4B1C and the two wrappers); bank 7F:
 SFXStart 400A, SFXUpdate 406C, SFXRunScript 40A4 with the commands of SFXCommandTable (40DE-429B), SFXApplySlide 419D,
-SFXApplyNoiseSlide 41DD, SFXClearState 42BE, SFXSilenceActive 42E2. (Not ported: SFXSilenceAllBroken 7F:42CB,
-unreferenced; the `$9x-$Dx` effect commands, which hang the ROM: the JS throws.)
+SFXApplyNoiseSlide 41DD, SFXClearState 42BE, SFXSilenceActive 42E2, SFXSilenceAllBroken 42CB (unreferenced: its writes are
+reads, so it only clears wSFXChannelMask), the unused exports SoundIsMusicPlaying 4047 / SoundIsSFXPlaying 4051 and the
+helpers MusicGetStackPtr 46E0, MusicSetStackPtr 46E9, MusicNextCommand 46F4, SoundCopyBytes 4C33. **Banks 7C and 7D**:
+`tools/sound_copies.py` decodes every traced routine of 7E and its copy in 7C and 7D (a 16-bit operand inside
+`$4000-$7FFF` may differ only by a bank-relative shift): all 66 routines are identical, at the same addresses (3,013
+bytes each), and no copy has a traced entry 7E lacks; driver.js cites them, since the music code runs from the copy in
+the song's bank. (Not ported: the `$9x-$Dx` effect commands, which hang the ROM: the JS throws.)
 
 The driver reads hardware registers back in three places: MusicApplyVibrato keeps NR11/NR21's duty bits, and the
 effect code's frequency writes (SFXCmdNote, SFXApplySlide, SFXCmdBallPitch) rewrite NRx1 of the effect's channel with

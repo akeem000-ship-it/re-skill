@@ -10,6 +10,33 @@
 //
 // The driver reads back a few registers (NR11/NR21 duty bits, and NRx1 of the wave and noise channels in the effect
 // code, which read as $FF); RegFile models those reads as the APU returns them.
+//
+// The copies in banks 7C and 7D: SongStart maps the song's bank and the music code runs on from that bank's copy.
+// tools/sound_copies.py checks every traced routine of 7E against them: all identical, at the same addresses, so the
+// methods below are these routines too (7E address, then its copies):
+//   7C:4016 7D:4016 SoundCmdDispatch;  7C:4022 7D:4022 SoundRequestSFX;  7C:4043 7D:4043 SoundSetMuteMask
+//   7C:4047 7D:4047 SoundIsMusicPlaying;  7C:4051 7D:4051 SoundIsSFXPlaying;  7C:405B 7D:405B SoundTogglePause
+//   7C:4064 7D:4064 SoundSetMasterVolume;  7C:4072 7D:4072 SoundInit;  7C:40EB 7D:40EB SoundUpdate
+//   7C:4119 7D:4119 SoundHandleRequests;  7C:4145 7D:4145 SoundSilenceMusicChannels;  7C:4186 7D:4186 SongStart
+//   7C:42B8 7D:42B8 SoundNop;  7C:42B9 7D:42B9 MusicUpdateCh1;  7C:4308 7D:4308 MusicUpdateCh2
+//   7C:4359 7D:4359 MusicUpdateCh3;  7C:43AE 7D:43AE MusicUpdateCh4;  7C:43EF 7D:43EF MusicRunScript
+//   7C:4467 7D:4467 MusicPlayNote;  7C:456F 7D:456F MusicCmdLengthUnit;  7C:457A 7D:457A MusicCmdOctave
+//   7C:4592 7D:4592 MusicCmdOctaveUp;  7C:459A 7D:459A MusicCmdOctaveDown;  7C:45A2 7D:45A2 MusicCmdTie
+//   7C:45AB 7D:45AB MusicCmdPanning;  7C:45C6 7D:45C6 MusicCmdSetLoopPoint;  7C:45D4 7D:45D4 MusicCmdGotoLoopPoint
+//   7C:45E0 7D:45E0 MusicCmdRepeatStart;  7C:45F5 7D:45F5 MusicCmdRepeatEnd;  7C:460F 7D:460F MusicCmdJump
+//   7C:4616 7D:4616 MusicCmdCall;  7C:462D 7D:462D MusicCmdReturn;  7C:463E 7D:463E MusicCmdDetune
+//   7C:464B 7D:464B MusicCmdDuty;  7C:465A 7D:465A MusicCmdEnvelope;  7C:4667 7D:4667 MusicCmdWave
+//   7C:4677 7D:4677 MusicCmdGate;  7C:4684 7D:4684 MusicCmdParamE9;  7C:4691 7D:4691 MusicCmdVibrato
+//   7C:46A3 7D:46A3 MusicCmdVibratoDelay;  7C:46B0 7D:46B0 MusicCmdTranspose;  7C:46BD 7D:46BD MusicCmdTransposeAdd
+//   7C:46CB 7D:46CB MusicCmdRelease;  7C:46D8 7D:46D8 MusicCmdEnd;  7C:46E0 7D:46E0 MusicGetStackPtr
+//   7C:46E9 7D:46E9 MusicSetStackPtr;  7C:46F4 7D:46F4 MusicNextCommand;  7C:46F8 7D:46F8 MusicCh1NoteOn
+//   7C:4737 7D:4737 MusicCh1NoteOff;  7C:476F 7D:476F MusicCh2NoteOn;  7C:47AB 7D:47AB MusicCh2NoteOff
+//   7C:47E3 7D:47E3 MusicCh3NoteOn;  7C:4831 7D:4831 LoadWavePattern;  7C:4851 7D:4851 MusicCh4NoteOn
+//   7C:487F 7D:487F MusicCh4NoiseStep;  7C:48A0 7D:48A0 SoundUpdatePanning;  7C:48D0 7D:48D0 MusicVibratoFreq
+//   7C:492E 7D:492E MusicApplyVibrato;  7C:4982 7D:4982 MusicAddDetune;  7C:499B 7D:499B SoundSilenceAll
+//   7C:49CC 7D:49CC SoundCheckMusicEnd;  7C:49DF 7D:49DF SoundSaveAndStop;  7C:49EB 7D:49EB SoundRestoreAndResume
+//   7C:49F7 7D:49F7 SoundSaveState;  7C:4B1C 7D:4B1C SoundRestoreState;  7C:4C33 7D:4C33 SoundCopyBytes
+
 
 // APU register read-back masks (FF10-FF26), as the hardware returns them
 const READ_MASK = [0x80, 0x3F, 0x00, 0xFF, 0xBF, 0xFF, 0x3F, 0x00, 0xFF, 0xBF, 0x7F, 0xFF, 0x9F, 0xFF, 0xBF, 0xFF,
@@ -374,6 +401,8 @@ export class SoundDriver {
     else { r[wNoiseActive] = 0; this.reg(0x21, 0x08); this.reg(0x23, 0x80); }
   }
   // 7E:43EF MusicRunScript and the commands of MusicCommandTable (7E:4407); stops at a note (MusicPlayNote) or an end
+  // (each command returns through 7E:46F4 MusicNextCommand; the stack commands get and set wChStackPtr with
+  // 7E:46E0 MusicGetStackPtr / 7E:46E9 MusicSetStackPtr)
   musicRunScript(hl, c) {
     const r = this.ram;
     const arg = () => { const v = this.rd(hl); hl = (hl + 1) & 0xFFFF; return v; };
@@ -628,6 +657,8 @@ export class SoundDriver {
   soundSetMuteMask(a) { this.ram[wSoundMuteMask] = a & 0xFF; }                           // 7E:4043
   soundTogglePause() { this.ram[wSoundPaused] ^= 1; }                                    // 7E:405B
   soundSetMasterVolume(a) { a &= 7; this.ram[wMasterVolume] = a | (a << 4); }            // 7E:4064
+  soundIsMusicPlaying() { return this.ram[wMusicRequest] === 0x80 ? 0 : 1; }                   // 7E:4047 (a)
+  soundIsSFXPlaying() { return this.ram[wSFXRequest] === 0x80 ? 0 : 1; }                     // 7E:4051 (a)
   // 7E:49F7 SoundSaveState / 7E:4B1C SoundRestoreState: the copy lists of the ROM, in order
   static SAVE_LIST = [[0xC4C0, 0xC59A, 1], [0xC4C1, 0xC59B, 1], [0xC4C4, 0xC59C, 1], [0xC4C6, 0xC59D, 4],
     [0xC4CA, 0xC5A1, 1], [0xC4CB, 0xC5A2, 1], [0xC4CD, 0xC5A3, 4], [0xC4D1, 0xC5A7, 4], [0xC4D5, 0xC5AB, 8],
@@ -636,6 +667,7 @@ export class SoundDriver {
     [0xC50F, 0xC5DD, 4], [0xC517, 0xC5E1, 4], [0xC51F, 0xC5E5, 4]];
   static SAVE_TAIL = [[0xC527, 0xC5E9, 3], [0xC52D, 0xC5EC, 3], [0xC530, 0xC5EF, 2]];
   soundSaveState() {
+    // cp: 7E:4C33 SoundCopyBytes
     const r = this.ram, cp = (s, d, n) => { for (let i = 0; i < n; i++) r[d + i] = r[s + i]; };
     for (const [s, d, n] of SoundDriver.SAVE_LIST) cp(s, d, n);
     r[0xC51B] = r[0xC51C] = r[0xC51D] = r[0xC51E] = 0;
@@ -644,6 +676,7 @@ export class SoundDriver {
     cp(0xC536, 0xC5F2, 8); cp(0xC53E, 0xC5FA, 0x30);
   }
   soundRestoreState() {
+    // cp: 7E:4C33 SoundCopyBytes
     const r = this.ram, cp = (s, d, n) => { for (let i = 0; i < n; i++) r[d + i] = r[s + i]; };
     for (const [s, d, n] of SoundDriver.SAVE_LIST) cp(d, s, n);
     r[wWaveReload] = 1;
@@ -791,6 +824,8 @@ export class SoundDriver {
   }
   // 7F:42BE SFXClearState
   sfxClearState() { const r = this.ram; r[wSFXActive] = 0; r[wSFXPriority] = 0; r[wSFXRequest] = 0x80; }
+  // 7F:42CB SFXSilenceAllBroken (unreferenced): its NRx2 / NRx4 "writes" are ldh a, [n] reads, so it only clears the mask
+  sfxSilenceAllBroken() { this.ram[wSFXChannelMask] = 0; }
   // 7F:42E2 SFXSilenceActive
   sfxSilenceActive() {
     const r = this.ram, m = r[wSFXChannelMask];
