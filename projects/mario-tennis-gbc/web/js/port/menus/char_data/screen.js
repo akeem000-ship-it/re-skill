@@ -514,7 +514,10 @@ export function* charDataScreenInputLoop(P) {
     if (rd(P, "charDataViewOnly")) finish = true;
     else {
       yield* advanceFrame(P);
-      P.charDataSeen = P.withWramBank(WRAM_SCENE, () => ({ at: P.frames, left: rd(P, "charDataPointsLeft"), page: rd(P, "charDataPage") }));   // TOUR+ (tour.js: the coach's pick), read only
+      P.charDataSeen = P.withWramBank(WRAM_SCENE, () => ({ at: P.frames, left: rd(P, "charDataPointsLeft"), page: rd(P, "charDataPage"),   // TOUR+ (tour.js: the coach's pick)
+        stats: Array.from({ length: NUM_STATS }, (_, i) => rd(P, "charDataStats", i)), deltas: Array.from({ length: NUM_STATS }, (_, i) => rd(P, "charDataStatDeltas", i) << 24 >> 24),
+        level: u8(P, slotField(P, F.LEVEL)), name: Array.from({ length: 7 }, (_, i) => u8(P, slotField(P, i))), stamina: staminaOn(P) ? u8(P, slotField(P, STAMINA_LEVEL)) : -1,
+        staminaSel: staminaSel(P) }));   // and the stat panel (statpanel.js: the stats, what the page under the cursor would change); read only
       const edge = P.V.inputRisingEdge;
       if (startExits() && edge & PADF_START) finish = true;
       else if (edge & PADF_B) {

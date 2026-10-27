@@ -19,7 +19,8 @@ import { attachMenuWheel } from "./menuwheel.js";
 import { addCourtButton } from "./courtconcepts.js";
 import { addFarEndButton } from "./farwalls.js";
 import { attachMatchFx } from "./matchfx.js";
-import { StaminaMeter } from "./staminameter.js";   // STAMINA METER: each player's stamina in a match (PLAY+)
+import { StaminaMeter } from "./staminameter.js";
+import { StatPanel } from "./statpanel.js";   // STAMINA METER: each player's stamina in a match (PLAY+)
 import { attachFieldLife } from "./fieldlife.js";
 import { attachCloseCall } from "./closecall.js";   // CALLS: the TV line-call review after a close bounce
 import { attachGround } from "./ground.js";     // GROUND: grass, leafy trees, brick path edging and pebbles on the overworld
@@ -125,6 +126,7 @@ const session = new Recorder(); let portRecFrom = -1, sessionLook = null;
 const creator = mountCreator({ hud: $("hud"), keys, pause: p => { const was = paused; paused = p; return was; },
   onChange: look => { rec.event(lookEvent(look)); session.event(lookEvent(look)); drawnFrame = -1; } });
 // TOUR+ (tour.js): rankings, rivals, training, equipment, the day schedule and sponsors, kept per tour file; read only
+const statPanel = new StatPanel();   // the level-up stat screen's HD panel (statpanel.js)
 const tour = new Tour({ getGb: () => gb, getPort: () => port, pause: p => { const was = paused; paused = p; return was; }, pad: () => { pollGamepad(keys); return input(); } });
 addTourButtons($("hud"), tour);
 // MODES (modes.js): exhibition rules, rematch, the machine's court, mini-games Hard, partner commands, fast text, the RECORDS panel
@@ -175,6 +177,7 @@ function draw(alpha = 1) {                 // alpha: fraction of the next game f
   if (hd) hd.setSpriteHide(true);            // sprites replaced by HD art: every view leaves them out (2D, 3D court / field / menu layers)
   if (hd && hd.update()) drawnFrame = -1;    // the text on screen (HD font) changed
   if (menuWheel) menuWheel.update();         // MENU: Wheel
+  statPanel.frame(port, view3d && voxel && voxel.mode === "3d" ? $("gl") : cv, gb, tour.on && tour.data ? tour.coach() : null);   // the level-up stat screen's HD panel
   tour.coachFrame();                         // TOUR+: the coach's pick on the stat screen
   tour.rewardFrame(view3d && voxel && voxel.mode === "3d" ? $("gl") : cv);   // TOUR+: the rewards card over the WIN! / LOSE screen
   modes.overlay();                           // MODES: the rematch question

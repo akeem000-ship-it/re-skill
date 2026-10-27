@@ -402,7 +402,7 @@ export class Tour extends HdPanel {
   // the stat screen after a level-up (port/menus/char_data/screen.js sets P.charDataSeen each frame of its input loop): the coach's pick
   coachFrame() {
     const P = this.getPort && this.getPort(); if (!this.coachEl) { if (!this.on) return; this.build(); this.coachEl = document.createElement("div"); this.coachEl.className = "hdchip"; document.body.appendChild(this.coachEl); }
-    const s = P && P.charDataSeen, live = this.on && s && P.frames - s.at <= 2 && s.left > 0 && this.data;
+    const s = P && P.charDataSeen, live = this.on && s && P.frames - s.at <= 2 && s.left > 0 && this.data && !globalThis.__statPanelOn;   // (the stat panel shows the pick itself)
     const C = live ? this.coach() : null, show = !!(C && C.pick >= 0);
     if (show) this.coachEl.innerHTML = `COACH: <b>${SKILLS[C.pick]}</b> · ${Math.round(C.shares[C.pick] * 100)}% of your practice` + (s.page === C.pick ? " ✔" : "");
     this.coachEl.style.display = show ? "block" : "none";

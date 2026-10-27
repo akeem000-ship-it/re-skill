@@ -766,10 +766,50 @@ export class Voxel3D {
     }
     const look = this.courtLook(); this.paintedLook = look ? look.name + ":" + look.title : "";
     if (look) paintConcept(d, src, idx, lut, lineColours(idx, lut), g.W, g.H, WORLD, look.name, { title: look.title });   // COURT concepts
+    this.liftCourtFlowers(bg, d, src);                                // PEACH COURT: the lawn's flowers stand up and sway
     if (this.groundTex) this.gl.deleteTexture(this.groundTex);
     this.groundTex = this.texture(g.W, g.H, d, true);
     this.buildCuts(bg, g.cuts);
     if (this.stadium) this.stadium.paint(bg, this.courtId);   // STADIUM
+  }
+  // PEACH COURT (map 13): the little flowers dotted over the lawn round its court (non-green specks in the green, a few pixels
+  // each) stand up as voxels on a stem, swaying in the wind like the campus flowers (progW), and are painted out of the flat
+  // ground (the lawn's own green in their place). Rebuilt with the ground's colours (the light of the day); drawn in renderCourt.
+  // Flower pixels: K world units each (about the court picture's scale there), placed where the picture puts the flower's foot
+  liftCourtFlowers(bg, d, src) {
+    const gl = this.gl, K = 9;
+    if (this.courtFlowers) { for (const b of this.courtFlowers.bufs) gl.deleteBuffer(b); gl.deleteVertexArray(this.courtFlowers.vao); this.courtFlowers = null; }
+    if (this.mapId() !== 13) return;
+    const N = 256, o4 = (x, y) => (y * N + x) * 4, green = (x, y) => { if (x < 0 || y < 0 || x >= N || y >= N) return false; const o = o4(x, y); return bg[o + 1] > bg[o] + 24 && bg[o + 1] > bg[o + 2] + 24; };
+    const lawn = new Map();
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (green(x, y)) { const o = o4(x, y), k = bg[o] << 16 | bg[o + 1] << 8 | bg[o + 2]; lawn.set(k, (lawn.get(k) || 0) + 1); }
+    if (!lawn.size) return;
+    const top = [...lawn].sort((a, b) => b[1] - a[1]), L = top[0][0], lawnC = [L >> 16 & 255, L >> 8 & 255, L & 255];
+    const stemC = top.length > 1 ? [top[1][0] >> 16 & 255, top[1][0] >> 8 & 255, top[1][0] & 255] : lawnC.map(v => v * 0.7);
+    const mask = new Uint8Array(N * N), seen = new Uint8Array(N * N), out = { pos: [], col: [], sway: [], src: [] };
+    for (let y = 1; y < N - 1; y++) for (let x = 1; x < N - 1; x++) {
+      if (seen[y * N + x] || green(x, y)) continue;
+      let n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && green(x + dx, y + dy)) n++;
+      if (n < 3) continue;
+      // the speck: its non-green pixels (4-connected), small, and ringed by lawn
+      const st = [y * N + x], comp = []; seen[y * N + x] = 1;
+      while (st.length && comp.length <= 12) { const j = st.pop(), cx = j % N, cy = (j / N) | 0; comp.push(j); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const X = cx + dx, Y = cy + dy, k = Y * N + X; if (X >= 0 && Y >= 0 && X < N && Y < N && !seen[k] && !green(X, Y)) { seen[k] = 1; st.push(k); } } }
+      if (comp.length > 12 || st.length) continue;
+      let x0 = N, y0 = N, x1 = -1, y1 = -1; for (const j of comp) { const cx = j % N, cy = (j / N) | 0; x0 = Math.min(x0, cx); y0 = Math.min(y0, cy); x1 = Math.max(x1, cx); y1 = Math.max(y1, cy); }
+      if (x1 - x0 > 3 || y1 - y0 > 3) continue;
+      let ring = 0, rg = 0; for (let yy = y0 - 1; yy <= y1 + 1; yy++) for (let xx = x0 - 1; xx <= x1 + 1; xx++) { if (xx >= x0 && xx <= x1 && yy >= y0 && yy <= y1) continue; ring++; if (green(xx, yy)) rg++; }
+      if (rg < ring * 0.75) continue;
+      for (const j of comp) mask[j] = 1;
+      const w = x1 - x0 + 1, h = y1 - y0 + 1, foot = this.unprojectBG((x0 + x1) / 2 + 0.5, y1 + 1);
+      const px = comp.map(j => { const cx = j % N, cy = (j / N) | 0, o = o4(cx, cy); return [cx - x0, cy - y0, bg[o], bg[o + 1], bg[o + 2], 0]; });
+      F3.swayVoxels(out, px, w, h, foot.X / K + w / 2 - 0.5, 0, foot.Y / K, 1, foot.X * 0.011 + foot.Y * 0.007, { h: 2, c: stemC, src: 0 });
+    }
+    for (let i = 0, n = src.length; i < n; i++) if (mask[src[i]]) { const o = i * 4; d[o] = lawnC[0]; d[o + 1] = lawnC[1]; d[o + 2] = lawnC[2]; }   // (the flat ground: lawn where they stood)
+    if (!out.pos.length) return;
+    const vao = gl.createVertexArray(); gl.bindVertexArray(vao); const bufs = [];
+    [[out.pos, 3], [out.col, 3], [out.sway, 2]].forEach(([a, n], i) => { const b = gl.createBuffer(); bufs.push(b); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(a), gl.STATIC_DRAW); gl.enableVertexAttribArray(i); gl.vertexAttribPointer(i, n, gl.FLOAT, false, 0, 0); });
+    gl.bindVertexArray(this.vao);
+    this.courtFlowers = { vao, bufs, count: out.pos.length / 3, K };
   }
   // each cut-out becomes an upright card (and a voxel mesh) standing on the ground line of its bottom edge;
   // with `key`, the colours of the floor around the rectangle are made transparent (the chair against the grass)
@@ -1007,6 +1047,11 @@ export class Voxel3D {
     // ground plane (lying flat: tilt -90deg around X so the quad's up axis becomes -Z, i.e. +Y world towards the camera)
     const gw = WORLD.x1 - WORLD.x0, gh = WORLD.y1 - WORLD.y0;
     this.draw(this.groundTex, m4.trs(0, -0.5, WORLD.y1, gw, gh, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
+    if (this.courtFlowers) {                                // PEACH COURT: the lawn's flowers, swaying (liftCourtFlowers)
+      const cf = this.courtFlowers; gl.useProgram(this.progW); gl.uniformMatrix4fv(this.uW.uMVP, false, mvp); gl.uniform1f(this.uW.uTime, performance.now() / 1000);
+      gl.uniformMatrix4fv(this.uW.uModel, false, m4.trs3(0, 0, 0, cf.K, cf.K, cf.K, 0)); gl.uniform1f(this.uW.uPhase, 0); gl.uniform1f(this.uW.uAmp, 1.1);
+      gl.bindVertexArray(cf.vao); gl.drawArrays(gl.TRIANGLES, 0, cf.count); gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
+    }
     if (this.stadium && this.stadium.active) this.stadium.draw(mvp); else if (!this.isDrill()) this.drawStands(mvp);   // STADIUM / bleachers with spectators beside and behind the court (none at the Training Center's drills)
     if (this.matchfx && this.stadium && this.stadium.active) this.matchfx.draw(mvp, m4);   // MATCH FX: confetti and fireworks (the end of the match, the intro)
     // upright cut-outs: net, chair, backdrop (cards, or voxels in voxel mode)
