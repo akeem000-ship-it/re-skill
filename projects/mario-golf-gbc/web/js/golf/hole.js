@@ -3,6 +3,7 @@
 // the player's record; the shot loop (10:45E7: stroke limit, holed bookkeeping and the scorecard, the next
 // player); then ShotSetup 10:4798 up to the address step (lie, the club the game picks, the aim at the cup,
 // the views and the camera). Captions, menus and other display work are left out.
+import { callGolfEventHook } from "./golfhooks.js";
 import { rb, rw } from "./rom.js";
 import * as g from "./math.js";
 import * as B from "./ball.js";
@@ -337,7 +338,7 @@ export function* shotSetup(sh) {
   r6[0x485] = 0x2D;
   r6.copyWithin(0x5F8, 0x400, 0x406);            // 02:4679 KeepShotStart
   r6[0x51C] = w0[pf(w, 0x28)];
-  if (w0[0x870]) notPorted("golf event hooks (~10:4CC3)");
+  yield* callGolfEventHook(sh, 0);               // 10:484C
   yield* roundHookPlayerUp(sh);                  // 08:4880
   for (let c = 0x1E; c; c--) {
     yield* sh.advance();
@@ -370,7 +371,7 @@ export function* golfSceneStart(sh) {
   yield* V.shotViewUpdate(sh);                   // 10:5632
   w.wram[6][0x328] = 0;
   Scr.forceFadeIn(w, 0x7F);
-  if (w.wram[0][0x870]) notPorted("golf event hooks (~10:4CC3)");
+  yield* callGolfEventHook(sh, 4);               // 10:4237
 }
 
 // 10:486B-10:48FB: what the aiming menu ended with, up to the address step (true there). The pause menu's Quit

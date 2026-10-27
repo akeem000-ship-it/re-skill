@@ -17,6 +17,7 @@ import { fadeVBlank, updateGameTimer } from "../../js/golf/screen.js";
 import { runFrameTasks } from "../../js/golf/tasks.js";
 import { loadState } from "../../js/gb/state.js";
 import { writePng } from "./coreplay.mjs";
+import { SoundDriver } from "../../js/sound/driver.js";
 // SCREEN_SHOTS=f,f,... writes the native screen at those frames to out/ss_<frame>.png (debugging a case)
 const shots = new Set((process.env.SCREEN_SHOTS || "").split(",").filter(Boolean).map(Number));
 
@@ -27,7 +28,8 @@ const WRAM0_DISPLAY = [[0x000, 0x0A0], [0x100, 0x1C0], [0x1C0, 0x200], [0x200, 0
 // stateFile: out/...json from mkstate.mjs; run(sh, regs) -> the native routine (a generator); policy(frame) -> the
 // buttons held (default: A on alternate frames); returns { frames, pixelExact, modelExact, lag, bad: [...], end }
 export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFrames = 20000, verbose = false, trace = false, hook = null, lagVBlanks = true, open = false, setRegs = null }) {
-  useRom(new Uint8Array(fs.readFileSync(path.join(root, "rom/mario_golf.gbc"))));
+  const romBytes = new Uint8Array(fs.readFileSync(path.join(root, "rom/mario_golf.gbc")));
+  useRom(romBytes);
   const saved = JSON.parse(fs.readFileSync(path.join(root, stateFile)));
   const core = new CoreRun();
   loadState(core.gb, saved.state);
@@ -47,7 +49,18 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
   let earlyFade = 0;                             // (the fade state the frame's full VBlank found when it came early)
   let frame = 0, vb = 0, partial = 0, partialSeen = 0, early = false, lagFrames = new Set(), coreDone = false;
   let partialFade = [];
-  w.onSound = id => res.sounds.native.push(`${frame}:${h2(id)}`);
+  // the native side's sound driver (web/js/sound), started from the core's sound RAM and APU registers, run at each
+  // native VBlank and replayed lag VBlank: the game's waits on it (WaitJingleEnd 00:2C1F) read its hActiveJingle
+  const drv = new SoundDriver(romBytes);
+  drv.ram.set(core.wram(0), 0xC000);
+  drv.ram.set(core.hram().subarray(0, 0x7F), 0xFF80);
+  drv.regs.write(0x26, gb.mem.read(0xFF26));
+  for (let r = 0x10; r < 0x40; r++) if (r !== 0x26) drv.regs.write(r, gb.mem.read(0xFF00 + r));
+  w.onSound = id => { res.sounds.native.push(`${frame}:${h2(id)}`); drv.playSound(id); };
+  w.onMusicOption = flags => drv.applyMusicOption(flags);
+  w.onVBlankSound = () => drv.frame();
+  w.jingleActive = () => drv.ram[0xFFCD];
+  w.onEndJingle = () => drv.endJingle();
   const orig = core.step.bind(core);
   let lastSound = null;
   let lastCall = "";
@@ -97,7 +110,7 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
   const lagWork = n => {
     const fades = partialFade.splice(0);
     if (lagVBlanks) for (let k = 0; k < n; k++) {
-      applyPendingPaletteUpdates(w); updateGameTimer(w);
+      applyPendingPaletteUpdates(w); drv.frame(); updateGameTimer(w);
       const f = fades[k];
       if (!f || w.high[0x1A2] !== f[0] || w.high[0x1A4] >= f[1]) fadeVBlank(w);
       if (w.sh) runFrameTasks(w, true, w.sh.dispatch);

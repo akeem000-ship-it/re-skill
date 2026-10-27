@@ -115,10 +115,13 @@ export function loadViewAfterDraw(w, view) {     // 13:4442-13:445F: the LCD on,
   setWramBank(w, 6);
 }
 
-// ---- the course view's tile animation (13:7076 StartCourseAnimTask -> 50:70F1; only courses in bank $50) ----
-export function startCourseAnimTask(w) {         // 13:7076 StartCourseAnimTask
-  if ((holeAsset(w, 4) >> 8) !== 0x50) return;
-  inBank(w, 0x50, () => holeTileAnimStart(w));
+// ---- the course view's tile animation (13:7076 StartCourseAnimTask -> 50:70F1 and its copies in banks $51-$54,
+// the same code at other addresses: 51:7151 52:7181 53:7E09 54:7D21, their tasks 51:7213 52:7243 53:7ECB 54:7DE3) ----
+const ANIM_TASKS = { 0x50: 0x71B3, 0x51: 0x7213, 0x52: 0x7243, 0x53: 0x7ECB, 0x54: 0x7DE3 };
+export function startCourseAnimTask(w) {         // 13:7076 StartCourseAnimTask: by the bank of HoleAsset ref 4 ($54 for
+  const k = ((holeAsset(w, 4) >> 8) - 0x50) & 0xFF; //   anything past $53)
+  const bank = k < 4 ? 0x50 + k : 0x54;
+  inBank(w, bank, () => holeTileAnimStart(w, bank));
 }
 export function stopCourseAnimTasks(w) {         // 13:70A2 StopCourseAnimTasks: 50:71A4 51:7204 52:7234 53:7EBC 54:7DD4
   for (const [b, a] of [[0x50, 0x71B3], [0x51, 0x7213], [0x52, 0x7243], [0x53, 0x7ECB], [0x54, 0x7DE3]]) unregisterFrameTask(w, b, a);
@@ -131,7 +134,7 @@ function animScript(w, entry) {                  // the list of HoleAsset ref 4 
   return rd(w, p) | rd(w, p + 1) << 8;
 }
 
-function holeTileAnimStart(w) {                  // 50:70F1 HoleTileAnimStart
+function holeTileAnimStart(w, bank) {            // 50:70F1 HoleTileAnimStart (and its copies)
   const w0 = w.wram[0];
   for (let k = 0; k < 4; k++) { w0[0x330 + 2 * k] = 0xFF; w0[0x331 + 2 * k] = 1; }
   w0.fill(0xFF, 0x338, 0x33C);
@@ -163,10 +166,10 @@ function holeTileAnimStart(w) {                  // 50:70F1 HoleTileAnimStart
     wr(w, hl - 1, 0xFF);
     wr(w, ptr - 2, 0xFF);
   }
-  registerFrameTask(w, 0x01, 0x50, 0x71B3);
+  registerFrameTask(w, 0x01, bank, ANIM_TASKS[bank]);
 }
 
-export function holeTileAnimTask(w) {            // 50:71B3 HoleTileAnimTask
+export function holeTileAnimTask(w) {            // 50:71B3 HoleTileAnimTask (51:7213 52:7243 53:7ECB 54:7DE3)
   if (!testGameFlag(w, 28) && testGameFlag(w, 24)) return;
   const keep = w.high[0x196];
   setWramBank(w, 6);

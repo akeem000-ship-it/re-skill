@@ -5,6 +5,7 @@
 // wMenuResult $C3FD ($FF after Camera Mode, Course Map and Scorecard: the shot view is redrawn; $81 Give Up, $80
 // Quit). All the items are ported: Camera Mode (freelook.js), Course Map (coursemap.js), Scorecard, Settings, Give
 // Up, Quit / Save & Quit (with the message box: msgbox.js).
+import { navigationMenu } from "./nav.js";
 import { rw } from "./rom.js";
 import * as D from "./render/display.js";
 import * as W from "./windows.js";
@@ -24,6 +25,7 @@ const wbank = w => w.high[0x196];
 const setW = (w, n) => D.setWramBank(w, n);
 const setFlag = (w, n) => { w.wram[0][0x840 + (n >> 3)] |= 0x80 >> (n & 7); };      // rst $20
 const clearFlag = (w, n) => { w.wram[0][0x840 + (n >> 3)] &= ~(0x80 >> (n & 7)); }; // rst $28
+const flag = (w, n) => w.wram[0][0x840 + (n >> 3)] & (0x80 >> (n & 7));                     // rst $30
 function notPorted(what) { throw new Error(`${what} is not ported`); }
 function* inBankGen(w, bank, g) {                // a far call to a routine that waits frames
   const old = w.high[0x195];
@@ -269,6 +271,18 @@ function* bank41Menu(sh, setup, id, bc, de, clear) {
   return rd(w, 0xC3FD);
 }
 const setupPlain = w => { clearMenuState(w); wr(w, 0xC3FC, rd(w, 0xC3FC) | 0x80); };   // 41:7B7E / 41:7B90
+// 41:7B4D SetupPracticeWindMenu: Left / Right on rows 1 and 2 ($86), flag #52
+function setupPracticeWindMenu(w) {
+  setupPlain(w);
+  wr(w, 0xC3FA, 0x86); wr(w, 0xC3FB, 0x86);
+  setFlag(w, 52);
+}
+// 41:6F08 PracticeWindMenu (flag #100: Quit Practice / Wind Direction / Wind Speed / Settings, $1485, 41:76FF; flag
+// #52 cleared after) / 41:6F30 PracticeMenu (Quit Practice / Settings, $1486, 41:7741; 41:7B6C)
+const practiceWindMenu = sh => bank41Menu(sh, setupPracticeWindMenu, 0x1485, 0x76FF, 0x0303, 52);
+const practiceMenu = sh => bank41Menu(sh, setupPlain, 0x1486, 0x7741, 0x0305, 0);
+// 41:6F9F MiniGamePauseMenu (game modes 5 / $0A / $0B, 08:46DE: Quit Mini-Game / Settings, $148A, 41:775B; 41:7BA2)
+const miniGamePauseMenu = sh => bank41Menu(sh, setupPlain, 0x148A, 0x775B, 0x0305, 0);
 export const continueMulliganMenu = sh => bank41Menu(sh, setupPlain, 0x1488, 0x76B9, 0x0504, 0);
 export const continueMulliganRestartMenu = sh => bank41Menu(sh, setupPlain, 0x1489, 0x76D7, 0x0204, 0);
 
@@ -336,6 +350,30 @@ function* menuHandler(sh, h) {
       wr(w, 0xC3F9, 5);
       yield* runMenu(sh, 0x1484, 0x7654, 0x0300);
       return;
+    // the practice menus (41:76FF, 41:7741): Quit Practice $82; Wind Direction / Wind Speed stay in the menu;
+    // Settings, then the menu again on row 3 / 1
+    case 0x7707: case 0x7745: case 0x775F:       // (41:775F MiniGameQuit)
+      wr(w, 0xC3FD, 0x82);
+      clearMenuState(w);
+      return;
+    case 0x770F: case 0x7721:
+      if (h === 0x770F) menuWindDirectionAdjust(sh);   // 41:72A1
+      else menuWindSpeedAdjust(sh);              // 41:72D8
+      wr(w, 0xC3F9, rd(w, 0xD830));
+      yield* runMenuBody(sh, 0x76FF);            // (jp 41:701E)
+      return;
+    case 0x7767:                                 // 41:7767 MiniGameSettings
+      yield* menuSettings(sh);
+      setupPlain(w);
+      wr(w, 0xC3F9, 1);
+      yield* runMenu(sh, 0x148A, 0x775B, 0x0305);
+      return;
+    case 0x7733: case 0x774D:
+      yield* menuSettings(sh);
+      if (h === 0x7733) setupPracticeWindMenu(w); else setupPlain(w);
+      wr(w, 0xC3F9, h === 0x7733 ? 3 : 1);
+      yield* runMenu(sh, h === 0x7733 ? 0x1485 : 0x1486, h === 0x7733 ? 0x76FF : 0x7741, h === 0x7733 ? 0x0303 : 0x0305);
+      return;
     // after a training shot (41:76B9 Continue / Mulligan / Hole Out; 41:76D7 Continue / Mulligan / Start Over / Back
     // to Main Menu): wMenuResult 0, 2, 5; 0, 2, 3, 4
     case 0x76BF: case 0x76C7: case 0x76CF: case 0x76DF: case 0x76E7: case 0x76EF: case 0x76F7:
@@ -349,7 +387,11 @@ function* menuHandler(sh, h) {
       clearMenuState(w);                         // (jp 41:7078)
       return;
     case 0x73E4: case 0x73EA: case 0x73F0: case 0x7402: case 0x7413: case 0x7419: case 0x741F: case 0x7425: case 0x7437:
-      if (h === 0x7413) notPorted("the start menu's Navigation (~0A:7174 NavigationMenu)");
+      if (h === 0x7413) {                        // 41:7413 MapStartNavigation: NavigationMenu 0A:7174, then 41:7078
+        yield* inBankGen(w, 0x0A, navigationMenu(sh));
+        clearMenuState(w);
+        return;
+      }
       yield* mapStartMenuHandler(sh, h);
       return;
     default: {
@@ -399,6 +441,9 @@ export function* pauseMenu(sh) {
   if (mode === 1 || mode === 3) b = yield* inBankGen(w, 0x41, golfPauseMenu(sh, false));
   else if (mode === 2) b = yield* inBankGen(w, 0x41, golfPauseMenu(sh, true));
   else if (mode === 4) b = yield* inBankGen(w, 0x41, bank41Menu(sh, setupTrainingPauseMenu, 0x1484, 0x7654, 0x0300, 51));   // 08:46D7
+  else if (mode === 6 || mode === 0x0C) b = yield* inBankGen(w, 0x41, flag(w, 100) ? practiceWindMenu(sh) : practiceMenu(sh));   // 08:46E2
+  else if (mode === 7) b = yield* inBankGen(w, 0x41, practiceMenu(sh));   // 08:46EF
+  else if (mode === 5 || mode === 0x0A || mode === 0x0B) b = yield* inBankGen(w, 0x41, miniGamePauseMenu(sh));   // 08:46DE
   else notPorted(`the pause menu of game mode ${mode} (~08:4695)`);
   setW(w, old);
   wr(w, 0xD438, cam);

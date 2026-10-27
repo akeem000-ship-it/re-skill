@@ -21,7 +21,9 @@ export function* playRoundFrames(w, roundId, input, { ev = () => {}, maxHoles = 
     sh.menuOutcome = undefined;
     result.shots.push(a);
     onShot({ outcome: a, hole: w.wram[0][0x837] });
-    if (!(yield* R.afterShot(sh, a))) { yield* R.nextShot(sh); continue; }
+    const done = yield* R.afterShot(sh, a);
+    if (!done) { yield* R.nextShot(sh); continue; }
+    if (done === "end") { yield* R.roundEnd(sh); break; }   // (wGolfEventFlag bit 7: 10:464A)
     const w0 = w.wram[0], p = 0x880 + (w0[0x835] ? 0x40 : 0);
     result.holes.push({ hole: w0[0x837], strokes: w0[p + 0x20], putts: w0[p + 0x21] });
     onHoleEnd(result);

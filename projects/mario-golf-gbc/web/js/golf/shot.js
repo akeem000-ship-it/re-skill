@@ -30,6 +30,7 @@ import { mapDebugCoordsTask } from "./boot.js";
 import { mapTasks } from "./maps/index.js";
 import "./player.js";                         // (the player's native: NATIVES["04:538c"])
 import { nameEntryTasks } from "./nameentry.js";
+import { navGuideTask } from "./nav.js";
 import { screenShakeTask, scriptDebugSkipTask } from "./script.js";
 import { mapTileAnimTasks } from "./mapgfx.js";
 import { actorsUpdateTask, actorsDrawTask } from "./actors.js";
@@ -210,6 +211,7 @@ export class Shot {
       ...mapTasks(w),                            // the map scripts' tasks (maps/)
       "0a:4927": () => screenShakeTask(w),             // 0A:4927 ScreenShakeTask
       "0a:4066": () => scriptDebugSkipTask(w),         // 0A:4066 ScriptDebugSkipTask
+      "0a:78ce": () => navGuideTask(w),                // 0A:78CE NavGuideTask
       ...D.displayTasks(this),                   // tasks that only draw (render/hooks.js)
     };
   }
@@ -248,6 +250,7 @@ export class Shot {
       if (w.vram) vblankDisplay(w);              // palettes, scroll, OAM DMA, the VRAM queues
       else if (!h[0x18D]) { h[0x18D] = 1; h[0x18C] = (h[0x18C] + 1) & 0xFF; }
       if (this.input) readJoypad(h, this.input());
+      if (w.onVBlankSound) w.onVBlankSound();    // 7E:40EB SoundUpdate, 00:2C4A (a sound driver, if any)
       updateGameTimer(w, id => this.sound(id));  // 00:2C6B
       fadeVBlank(w);                             // 00:25DF / 00:25C9
       runFrameTasks(w, true, this.dispatch);     // 00:247D with a = $80

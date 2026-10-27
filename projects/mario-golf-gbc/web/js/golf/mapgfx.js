@@ -223,6 +223,21 @@ export function mapBufCopyRect(w, b, c, d, e, h, l) {
   setW(w, old);
 }
 
+// 0B:4653 MapCopyTerrainRect / 0B:4699 MapCopyEventRect: the rectangle of the WRAM6 terrain grid $D000 (event grid
+// $D400) at tile (b, c) copied to tile (d, e) (0B:45AB MapTerrainCellAddr / 0B:45FF MapEventCellAddr: cell (x / 2,
+// y / 2), 32 a row), h / 2 cells wide, l / 2 rows (sra: halves); the WRAM bank kept
+function mapCopyGridRect(w, base, b, c, d, e, h, l) {
+  const cell = (x, y) => base + ((y >> 1) << 5) + (x >> 1);
+  let src = cell(b, c), dst = cell(d, e);
+  const wd = h >> 1, rows = l >> 1, g = w.wram[6];
+  for (let k = 0; k < (rows || 0x100); k++) {
+    for (let i = 0; i < (wd || 0x100); i++) g[(dst + i - 0xD000) & 0xFFF] = g[(src + i - 0xD000) & 0xFFF];   // 00:03D3 CopyMemoryBC
+    src += 0x20; dst += 0x20;
+  }
+}
+export const mapCopyTerrainRect = (w, b, c, d, e, h, l) => mapCopyGridRect(w, 0xD000, b, c, d, e, h, l);
+export const mapCopyEventRect = (w, b, c, d, e, h, l) => mapCopyGridRect(w, 0xD400, b, c, d, e, h, l);
+
 // 0B:4864 MapBufCopyRectRedraw: as 0B:6DC7 MapBufCopyRect (the rectangle (b, c) -> (d, e), h wide, l tall, in WRAM2
 // and WRAM3), then the shadow from the map (05:4492), a frame, and the rows from e redrawn (05:42AD, l rows): the
 // map scripts' doors and other tile changes

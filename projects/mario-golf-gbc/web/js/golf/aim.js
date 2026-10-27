@@ -125,13 +125,16 @@ export function smartAim(w, hole) {              // 10:6406 SmartAim: at the cup
 // 10:5978: the computer golfer's turn of the menu: CpuPlanShotMain 3C:426A picks the club, shot mode, aim and
 // the swing it will make (wSwingTargetPower $D4D8, wSwingTargetImpact $D4D9, the d-pad wSwingTargetPad $D4DA);
 // the marker slides out, then a second's pause. Returns 0 (as A's swing).
-function* cpuAim(sh) {
+function* cpuAim(sh, replay = false) {
   const w = sh.w, r6 = w.wram[6];
-  const p = planShot(w, sh.hole);
-  r6[0x329] = p.club;
-  r6[0x32A] = r6[0x32B] = p.mode;
-  wr16(r6, 0x418, p.aim);
-  r6[0x4D9] = p.impact; r6[0x4D8] = p.power; r6[0x4DA] = p.pad;
+  if (replay) loadStrokeRecord(w);               // 10:5973 (then 10:5999)
+  else {
+    const p = planShot(w, sh.hole);
+    r6[0x329] = p.club;
+    r6[0x32A] = r6[0x32B] = p.mode;
+    wr16(r6, 0x418, p.aim);
+    r6[0x4D9] = p.impact; r6[0x4D8] = p.power; r6[0x4DA] = p.pad;
+  }
   r6[0x44D] = 0xF0;
   r6[0x438] = 2;                                 // wCameraMode
   yield* sh.advance();
@@ -143,6 +146,21 @@ function* cpuAim(sh) {
   placeTargetMarker(w);                          // 40:640E (10:5A2E stores its hl, the y it left, again)
   yield* sh.advance(0x3C);                              // WaitFramesCmd 60
   return 0;
+}
+
+// 02:4626 LoadStrokeRecord: before the 5th stroke, the record of this stroke (02:4602 ShotRecordSlot: $D680, + $40 for
+// player 2, + 16 x the stroke) loaded (02:463E LoadShotRecord): the ball's position (its height 0), the aim, the club,
+// the shot mode, the swing's power / impact / pad
+function loadStrokeRecord(w) {
+  const r6 = w.wram[6], n = w.wram[0][pf(w, 0x20)];
+  if (n >= 4) return;
+  let p = 0x680 + (w.wram[0][0x835] ? 0x40 : 0) + ((n & 3) << 4);
+  for (let k = 0; k < 6; k++) r6[0x400 + k] = r6[p++];
+  r6[0x406] = r6[0x407] = r6[0x408] = 0;
+  r6[0x418] = r6[p++]; r6[0x419] = r6[p++];
+  r6[0x329] = r6[p++];
+  r6[0x32A] = r6[0x32B] = r6[p++];
+  r6[0x4D8] = r6[p++]; r6[0x4D9] = r6[p++]; r6[0x4DA] = r6[p++];
 }
 
 export function aimStep(w) {                     // 08:60E6 AimStepForDistance and 10:5EB9 AimStepAccel
@@ -222,7 +240,7 @@ export function* aimMenu(sh, a) {
   yield* sh.advance();
   r6[0x513] = 0;
   if (r6[0x4D7] === 1) return yield* cpuAim(sh);
-  if (r6[0x4D7] === 2) notPorted("the replayed stroke (~10:5973)");
+  if (r6[0x4D7] === 2) return yield* cpuAim(sh, true);
   if (r6[0x4D7] === 3) notPorted("link play (~10:5943)");
   w.high[0x1C1] = 0x21;                          // 02:482C SerialIdleSet21
   r6[0x44D] = 0xF0;

@@ -74,9 +74,13 @@ function measureNumberArg(w) {
   }
   return b;
 }
-function measureShort(w, id) {                   // 05:579E MeasureCourseName / 05:57FD MeasureCharName / 05:5857 MeasurePlacing
+function measureShort(w, id) {                   // 05:57FD MeasureCharName / 05:5857 MeasurePlacing
   T.copyTextShortToDE(w, id, 0xC780);
   return widthOf(w, 0xC780);
+}
+function measureCourseName(w) {                  // 05:579E MeasureCourseName: in $D880 (LoadTextShort), not $C780
+  T.loadTextShort(w, (0x3C + rd(w, 0xD85D)) & 0xFFFF);
+  return widthOf(w, 0xD880);
 }
 
 // 05:5B3B SizeMessageBox: measures wTextBuffer (or from the resume pointer $D84E) to its page end ($00 or $02):
@@ -95,7 +99,7 @@ export function sizeMessageBox(w) {
     else if (a === 9) add = measureNumberArg(w);
     else if (a === 7) add = widthOf(w, 0xC800);  // 05:5634 MeasurePlayerName
     else if (a === 4) add = measureStringArg(w);
-    else if (a === 0x0B) add = measureShort(w, (0x3C + rd(w, 0xD85D)) & 0xFFFF);
+    else if (a === 0x0B) add = measureCourseName(w);
     else if (a === 0x0E) { wr(w, 0xC361, rd(w, hl)); hl = (hl + 1) & 0xFFFF; add = measureShort(w, (0x43 + rd(w, 0xC361)) & 0xFFFF); }
     else if (a === 0x0F) add = measureShort(w, 0x1CA3 + (rd(w, 0xDFCE) & 3));
     else if (a >= 0x20 && a < 0x7B) add = T.getCharWidth(a);
@@ -264,6 +268,49 @@ function* showMessageBody(sh, hl, a, keep) {
   setW(w, old);
 }
 export function* showMessage(sh, hl, a) { yield* showMessageBody(sh, hl, a, false); }
+// 05:5E70 ShowMessageAt: text hl, a = the speaker for the voice only (bit 7: none; $D851 is not set), the box centred
+// on screen tile (d, e) (05:605F OpenMessageBoxAt, then a frame), every page, the box closed
+export function* showMessageAt(sh, hl, a, d, e) {
+  const w = sh.w, old = wbank(w);
+  setW(w, 5);
+  clearArgCounters(w);
+  hl = T.normalizeTextId(hl, 0);
+  wr(w, 0xD862, a & 0x80 ? 8 : getSpeakerVoice(w, a));
+  setTextDelayFromOption(w);
+  if (rd(w, 0xD824) === 0xFF) {
+    yield* openMessageBoxAt(sh, hl, d, e);
+    yield* sh.advance();
+  }
+  do {
+    const o = wbank(w);
+    setW(w, 7);
+    D.inBank(w, 3, () => T.clearGlyphBuffer(w));
+    yield* inBankGen(w, 3, T.uploadGlyphBuffer(sh));
+    setW(w, o);
+    setMessageText(w, hl);
+    yield* restoreShadowFromMap(sh);
+    yield* W.updateWindows(sh);
+  } while (rd(w, 0xD850));
+  W.closeWindow(w, rd(w, 0xD824));
+  wr(w, 0xD824, 0xFF);
+  yield* restoreShadowFromMap(sh);
+  yield* W.updateWindows(sh);
+  clearArgCounters(w);
+  setW(w, old);
+}
+// 05:605F OpenMessageBoxAt: the 20 x 7 message window at (0, 0) (05:4B20), the text loaded and measured (05:6179,
+// 05:5B3B), the record moved to centre its size on (d, e) and rebuilt (05:4773)
+function* openMessageBoxAt(sh, hl, d, e) {
+  const w = sh.w;
+  yield* openMessageWindow(sh, 0, 0, 0x14, 0x07);
+  T.loadText(w, hl);
+  sizeMessageBox(w);
+  const rec = T.getWindowRecord(w, rd(w, 0xD824));
+  const sra = v => (v >> 1) | (v & 0x80);
+  const x = (d - sra(rd(w, rec + 3))) & 0xFF, y = (e - sra(rd(w, rec + 4))) & 0xFF;
+  wr(w, rec + 2, y); wr(w, rec + 1, x);
+  W.buildTextWindowRecord(w, rec, rd(w, rec + 1), rd(w, rec + 2), rd(w, rec + 3), rd(w, rec + 4));
+}
 export function* showMessageKeepOpen(sh, hl, a) { yield* showMessageBody(sh, hl, a, true); }
 
 // 05:44E3 RestoreMapUnderWindow: slot a: the map rows under it copied back into the shadow (rows from y, + 32 when

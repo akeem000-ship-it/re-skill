@@ -180,7 +180,7 @@ const currentId = w => {                         // [[$D207] + hFFB0] with WRAM6
 };
 
 // 05:615D GetTextBoxWidth: hl = text id -> its width in tiles (LoadText, SizeMessageBox)
-function getTextBoxWidth(w, hl) {
+export function getTextBoxWidth(w, hl) {
   const old = wbank(w);
   setW(w, 5);
   T.loadText(w, hl);

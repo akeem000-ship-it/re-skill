@@ -2,6 +2,7 @@
 // from the ROM (HoleIdFromCourse, LoadHoleInfo), the players at the tee, the intro fly-over's state changes,
 // the first player picked and ShotSetup up to the address step (hole.js). Display work (HUD, sprites, VRAM,
 // palettes, sound, the camera's position) is left out; the course and green maps come from Hole (ball.js).
+import { callGolfEventHook } from "./golfhooks.js";
 import { rb, rw } from "./rom.js";
 import * as g from "./math.js";
 import { Hole } from "./ball.js";
@@ -329,7 +330,7 @@ export function* holeStart(sh) {
   r6[0x445] = 1;                                 // wTeeShot
   r6[0x321] = rb(0x10, 0x6907);                  // (a code byte: the first of MissTable 10:6907)
   if ([1, 2, 3].includes(mode(w))) saveGameMidRound(w);   // 08:47B4 RoundHookSaveAtHole (WRAM bank 6 kept)
-  if (w0[0x870]) notPorted("golf event hooks (~10:4CC3)");
+  yield* callGolfEventHook(sh, 3);               // 10:45CD
   sh.hole = new Hole(r6[0x320]);
   sh.mark("flyover");
   yield* holeIntroFlyover(sh);
@@ -375,10 +376,13 @@ export function* afterShot(sh, a) {
     H.scorecard(w);                              // 10:4101
   }
   yield* roundHookAfterShot(sh);                 // 08:4901
-  if (w0[0x870]) notPorted("golf event hooks (~10:4CC3)");
+  yield* callGolfEventHook(sh, 1);               // 10:4611
   P.pictureCycleStop(w);                         // 4A:629C
   yield* sh.advance();
-  if (r6[0x4DD]) notPorted("the golf event flag $D4DD (~08:4AA3 RetryShotRestore, ~10:464A)");
+  if (r6[0x4DD]) {                               // wGolfEventFlag: bit 7 ends the round (10:464A), else the shot again
+    if (r6[0x4DD] & 0x80) return "end";
+    retryShotRestore(w);                         // 08:4AA3
+  }
   D.shotLengthTaskStop(w);                       // 12:4F1D
   return !!(w0[0x8AA] && w0[0x8EA]);
 }
@@ -405,7 +409,7 @@ function* waitCameraAtGoal(sh) {
 // 10:4C6E GolfViewExit: from the cup view back to the green view (13:4528, a frame, 13:446D LoadCoursePalettes); from
 // a picture ($FF) the course view again (4A:629C, 13:432B LoadShotView 1); $D4DD = 0; the font tiles (01:422C); the
 // camera at its goal; InitWindowSystem 05:407A; the text speed's bit 7 cleared
-function* golfViewExit(sh) {
+export function* golfViewExit(sh) {
   const w = sh.w, r6 = w.wram[6];
   Dp.setWramBank(w, 6);
   if (r6[0x443] === 2) {
@@ -543,7 +547,7 @@ export function* roundEnd(sh) {
     case 1:                                      // 08:4BF9 RoundEndMode1Tournament
       yield* T.roundEndMode1(sh, a => inBankGen(sh.w, 0x0B, roundResultScreen(sh, a)), addPointsRaw, roundEndFadeAndExp);
       break;
-    case 0: break;                               // (no entry: Quit from the pause menu sets mode 0)
+    case 0: case 6: case 7: case 8: case 9: case 0x0C: case 0x0D: case 0x0E: case 0x0F: break;   // (no entry; Quit from the pause menu sets mode 0)
     case 4: case 5: case 0x0A: case 0x0B: break;   // 08:4EF2 / 08:4EF3
     default: notPorted(`the round end of mode ${mode(w)} (~08:4BBC)`);
   }

@@ -169,7 +169,8 @@ function angleBetween(w, a, b) {
 // 0A:4662 ActorFaceActor: actor a turns toward actor b
 export function actorFaceActor(w, a, b) {
   if (a === 0xFF || b === 0xFF) return;
-  wr(w, fld(w, 0x10), angleBetween(w, a, b));
+  const ang = angleBetween(w, a, b);             // (it points hFFE0 at actor a)
+  wr(w, fld(w, 0x10), ang);
 }
 // 0A:46D4 ActorsFaceEachOther: a toward b, b the opposite way
 export function actorsFaceEachOther(w, a, b) {

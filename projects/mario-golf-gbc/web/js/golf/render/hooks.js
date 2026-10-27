@@ -49,6 +49,10 @@ export function displayTasks(sh) {
     "04:4072": draw("", () => V.mapScrollTask(w)),
     "04:573f": draw("", () => A.golferActorTask(w, id => sh.sound(id))),
     "50:71b3": draw("", () => V.holeTileAnimTask(w)),
+    "51:7213": draw("", () => V.holeTileAnimTask(w)),
+    "52:7243": draw("", () => V.holeTileAnimTask(w)),
+    "53:7ecb": draw("", () => V.holeTileAnimTask(w)),
+    "54:7de3": draw("", () => V.holeTileAnimTask(w)),
     "15:47ad": draw("", () => Bh.drawFlagSprite(w)),
     "15:47b8": () => { w.wram[0][0x3B6] = (w.wram[0][0x3B6] + 1) & 0xFF; },   // 15:47B8 CountLoadFramesTask_15
     "12:4f07": draw("", () => H.shotLengthTask(w)),

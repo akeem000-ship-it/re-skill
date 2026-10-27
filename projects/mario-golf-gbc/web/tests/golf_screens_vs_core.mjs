@@ -75,9 +75,11 @@ function walkCase(base, script, end) {
   return { policy, run: sh => { walkAt = -1; return gameCase(sh, 1, () => walkAt >= 0 && frameNow > walkAt + end); } };
 }
 
-// a path of cells from (cx, cy) to (tx, ty) over the map's terrain (blocked: low nibble $F), or [] when none
-function cellPath(w, cx, cy, tx, ty, avoid = new Set()) {
-  const blocked = (x, y) => x < 0 || y < 0 || x > 31 || y > 31 || (w.wram[6][y * 32 + x] & 0x0F) === 0x0F || avoid.has(y * 32 + x);
+// a path of cells from (cx, cy) to (tx, ty) over the map's terrain (blocked: low nibble $F; trigger cells avoided),
+// or [] when none
+function cellPath(w, cx, cy, tx, ty, avoid = new Set(), triggers = false) {
+  const blocked = (x, y) => x < 0 || y < 0 || x > 31 || y > 31 || (w.wram[6][y * 32 + x] & 0x0F) === 0x0F || avoid.has(y * 32 + x) ||
+    (!triggers && (w.wram[6][0x400 + y * 32 + x] & 0x0F) === 1);   // (around trigger cells but the target's)
   const prev = new Map(), q = [[cx, cy]];
   prev.set(cy * 32 + cx, null);
   while (q.length) {
@@ -90,15 +92,17 @@ function cellPath(w, cx, cy, tx, ty, avoid = new Set()) {
       q.push([nx, ny]);
     }
   }
+  if (!prev.has(ty * 32 + tx) && !triggers) return cellPath(w, cx, cy, tx, ty, avoid, true);   // (else through them)
   const out = [];
   for (let c = prev.has(ty * 32 + tx) ? [tx, ty] : null; c && !(c[0] === cx && c[1] === cy); c = prev.get(c[1] * 32 + c[0])) out.unshift(c);
   return out;
 }
 
 // the same with steps run one after another from walkAt + 300: [n, bits] holds bits n frames (bits 0: waits), {to:
-// [x, y]} walks into that tile's cell (2 x 2 tiles; or, with map: m, until the map is m) (the player actor's x / y high bytes, read on the native side: the two sides are the
+// [x, y]} walks into that tile's cell (2 x 2 tiles; or, with map: m, until the map is m; with at: [x, y] (8.8), to
+// that point) (the player actor's x / y high bytes, read on the native side: the two sides are the
 // same while the case passes) along the longer axis first, switching axes for 24 frames when the position stops
-// changing; {press: bits, every: n, times: k} presses k times n frames apart. The case stops `end` frames after the
+// changing; {press: bits, every: n, times: k} presses k times n frames apart (or, with until: f, until f()). The case stops `end` frames after the
 // last step.
 function routeCase(base, steps, end) {
   let k = 0, until = -1, last = null, stuck = 0, swap = 0, doneAt = -1, presses = 0, route = null, avoid = new Set();
@@ -109,6 +113,8 @@ function routeCase(base, steps, end) {
   };
   const policy0 = f => {
     frameNow = f;
+    if (process.env.ACTORS && f === +process.env.ACTORS) for (let k = 0; k < 24; k++) { const r = menuW.wram[4], o = k * 64; if (r[o + 0x17]) console.error("ACTOR", k, (r[o + 4] | r[o + 5] << 8).toString(16), (r[o + 6] | r[o + 7] << 8).toString(16)); }
+    if (process.env.GRID && f === +process.env.GRID) for (let r = 0; r < 32; r++) console.error("GRID", r.toString().padStart(2), [...menuW.wram[6].subarray(r * 32, r * 32 + 32)].map(v => (v & 15).toString(16)).join(""), [...menuW.wram[6].subarray(0x400 + r * 32, 0x400 + r * 32 + 32)].map(v => v.toString(16).padStart(2, "0")).join(""));
     if (f === 0) { walkAt = -1; k = 0; until = -1; doneAt = -1; presses = 0; }
     if (walkAt < 0 && menuW && menuW.wram[0][0x450] === 3 && menuW.wram[0][0x834] === 9) walkAt = f;
     if (walkAt < 0) return base(f);
@@ -124,13 +130,13 @@ function routeCase(base, steps, end) {
       if (s.press !== undefined) {
         if (until < 0) until = f;
         if (f < until) return 0;
-        if (presses >= s.times) { presses = 0; until = -1; k++; continue; }
+        if (s.until ? s.until() : presses >= s.times) { presses = 0; until = -1; k++; continue; }
         presses++; until = f + s.every;
         return s.press;
       }
       const [x, y, xw, yw] = pos();
       if (process.env.ROUTE && (!(f % 10) || process.env.ROUTE > 1)) console.error("ROUTE", f, k, x, y, xw.toString(16), yw.toString(16), JSON.stringify(route && route.slice(0, 3)));
-      if (s.map !== undefined ? menuW.wram[0][0x450] === s.map : x >> 1 === s.to[0] >> 1 && y >> 1 === s.to[1] >> 1) { k++; last = null; until = -1; route = null; continue; }
+      if (s.map !== undefined ? menuW.wram[0][0x450] === s.map : s.at ? Math.abs(xw - s.at[0]) <= 0x20 && Math.abs(yw - s.at[1]) <= 0x20 : x >> 1 === s.to[0] >> 1 && y >> 1 === s.to[1] >> 1) { k++; last = null; until = -1; route = null; continue; }
       // the next waypoint: a breadth-first path over the terrain cells (WRAM6 $D000: 32 x 32 cells of 2 x 2 tiles,
       // low nibble $F blocked), aimed at the next cell's tile on the target's parity
       if (!route) { avoid = new Set(); route = cellPath(menuW, x >> 1, y >> 1, s.to[0] >> 1, s.to[1] >> 1, avoid); }
@@ -139,14 +145,14 @@ function routeCase(base, steps, end) {
         route = cellPath(menuW, x >> 1, y >> 1, s.to[0] >> 1, s.to[1] >> 1, avoid);   // (off the path: again)
       // (aimed at the next cell's centre, or the target tile's, in 8.8 tiles: the larger error first, after
       // centring on the other axis)
-      const [tx, ty] = route.length ? [route[0][0] * 2 + 1 << 8, route[0][1] * 2 + 1 << 8] : [s.to[0] << 8 | 0x80, s.to[1] << 8 | 0x80];
+      const [tx, ty] = route.length ? [route[0][0] * 2 + 1 << 8, route[0][1] * 2 + 1 << 8] : s.at || [s.to[0] << 8 | 0x80, s.to[1] << 8 | 0x80];
       const key = `${xw},${yw}`;
       if (key === last) stuck++; else { stuck = 0; last = key; }
       if (stuck === 10 && route && route.length) {   // (an actor in the way: around it)
         avoid.add(route[0][1] * 32 + route[0][0]);
         route = cellPath(menuW, x >> 1, y >> 1, s.to[0] >> 1, s.to[1] >> 1, avoid);
       }
-      if (stuck > 20 && stuck <= 30) return f & 1 ? 0 : 1;   // (a message box from bumping into someone: A)
+      if (stuck > 20 && stuck <= 30 && !s.noA) return f & 1 ? 0 : 1;   // (a message box from bumping into someone: A)
       if (stuck > 30) { stuck = 0; swap = 24; avoid = new Set(); route = null; }   // (else the other axis a while)
       if (until < 0) until = f + 900;
       if (f > until) throw new Error(`the route's step ${k} did not reach ${s.to} (at ${x},${y})`);
@@ -207,6 +213,16 @@ function levelUpPolicy(script, base) {
     return 0;
   };
 }
+// game flag n set on both sides when the mode select first shows (a test's poke: #72 makes the story's club rounds
+// one hole, 33:66CB)
+function flagPoke(n) {
+  let done = false;
+  return (f, w, core) => {
+    if (done || !hasTask(w, 0x0D, 0x428E)) return;
+    done = true;
+    for (const m of [w.wram[0], core.wram(0)]) m[0x840 + (n >> 3)] |= 0x80 >> (n & 7);
+  };
+}
 // the character's EXP ($C826-$C828) set to `v` on both sides when the mode select first shows (a test's poke)
 function expPoke(v) {
   let done = false;
@@ -243,6 +259,7 @@ function scriptedPolicy(scripts, menus) {
   };
 }
 let markLog = [];
+let sawMap18 = false;
 let cards = 0;
 
 // the game from power-on through rounds (boot.js gameFromPowerOn, game.js playRoundFrames), the marks the native
@@ -354,6 +371,162 @@ const CASES = [
   { name: "boot_kid_story_lounge", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
     ...routeCase(savedPolicy(0), [{ to: [0x2D, 0x05], map: 0x04 },
       [400, 0], { to: [0x0B, 0x13] }, { press: 1, every: 30, times: 90 }], 300) },
+  // the clubhouse's top door (trigger 2, 32:5C09) to the Caddie Master's office (map $08, 33:4722): his call
+  // (trigger 1, 33:4BD3), the round menu (33:5166)
+  { name: "boot_kid_story_office", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(72),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 },
+      [200, 0], { to: [0x1A, 0x0A] }, { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x08 },
+      { press: 1, every: 40, times: 20 }], 300) },
+  // the same, Practice Round in the menu (Down, A; the question: A): the walk out (33:50BB), the practice round (one
+  // hole), back to the office
+  { name: "boot_kid_story_practice", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(72),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 },
+      [200, 0], { to: [0x1A, 0x0A] }, { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 0x80],
+      [30, 0], [2, 1], { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x08 },
+      { press: 1, every: 40, times: 20 }], 300) },
+  // the same with the round's result poked to 1 (won) on both sides once the round is over: the office asks warp 6,
+  // the Marion Club's award ceremony (map $18 entrance 2, 31:7775: the champion 31:78E1), warp 1 back to the office
+  // (entrance 6): the walk in and the winner's speech (33:4D97)
+  { name: "boot_kid_story_ceremony", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
+    hook: (() => { const fp = flagPoke(72); let done = false; return (f, w, core) => {
+      fp(f, w, core);
+      if (!done && roundsDone >= 1) { done = true; w.wram[0][0x96C] = 1; core.wram(0)[0x96C] = 1; }
+    }; })(),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 },
+      [200, 0], { to: [0x1A, 0x0A] }, { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x18 },
+      { press: 1, every: 40, until: () => menuW.wram[0][0x450] === 0x08 }, { press: 1, every: 40, times: 20 }], 300) },
+  // the clubhouse's way out (trigger 1, 32:5C25) to the Field (map $02, 34:4690), to the Palm Club (trigger 2,
+  // 34:4497): its office (map $09, 33:4722 with 33:55A3), the Caddie Master's call and menu: Club Tournament without
+  // the Marion Club's place (#112): base + 7
+  { name: "boot_kid_story_field", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x04, 0x16], map: 0x09 }, [200, 0],
+      { to: [0x1A, 0x0A] }, { press: 1, every: 40, times: 14 }], 300) },
+  // the Palm Club's office (map $09; qualified: #112 poked, the Caddie Master out of the way) to its driving range
+  // (map $0F, 31:5543): the first coach (actor 3, 31:540E): the intentional shot's demo (the coach's 210 drive and
+  // $C89D, the hooks 31:5630 / 566D), the try (31:56A1 / 56DE, the judgement 31:5800), the result (31:5711), a retry
+  { name: "boot_kid_story_palmrange", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(112),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x04, 0x16], map: 0x09 }, [200, 0],
+      { to: [0x24, 0x0C], noA: true }, { to: [0x24, 0x0A], map: 0x0F },
+      [100, 0], { to: [0x20, 0x3B], at: [0x2000, 0x3BC0], noA: true }, [2, 0x40], [30, 0],
+      { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x0F && menuW.wram[0][0x46A] === 6 },
+      { press: 1, every: 40, times: 25 }], 300) },
+  // the same, the second coach (actor 4, 31:54A2): the shot into the wind (the hooks 31:5943 / 598B / 59BF / 59FC),
+  // the result (31:5A27)
+  { name: "boot_kid_story_palmrange_wind", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(112),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x04, 0x16], map: 0x09 }, [200, 0],
+      { to: [0x24, 0x0C], noA: true }, { to: [0x24, 0x0A], map: 0x0F },
+      [100, 0], { to: [0x18, 0x3B], at: [0x1800, 0x3BC0], noA: true }, [2, 0x40], [30, 0],
+      { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x0F && menuW.wram[0][0x46A] === 7 },
+      { press: 1, every: 40, times: 25 }], 300) },
+  // the Palm Club's office (#112 poked) to its approach range (map $10, 30:4B62): the first coach (actor 3, 30:4A26):
+  // the bunker shot's demo (the hooks 30:4C27 / 4C6F), the try (30:4CA3 / 4CCB), the result (30:4CF9), a retry
+  { name: "boot_kid_story_palmapproach", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(112),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x04, 0x16], map: 0x09 }, [200, 0],
+      { to: [0x34, 0x0C], noA: true }, { to: [0x34, 0x0A], map: 0x10 },
+      [100, 0], { to: [0x20, 0x23], at: [0x2000, 0x2330], noA: true }, [2, 0x40], [30, 0],
+      { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x10 && menuW.wram[0][0x46A] === 4 },
+      { press: 1, every: 40, times: 25 }], 300) },
+  // the same, the second coach (actor 4, 30:4AAF): the running approach on a sloped green (the hooks 30:4E67-4EF5),
+  // the result (30:4F23: no ScriptEnd)
+  { name: "boot_kid_story_palmapproach_sloped", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(112),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x04, 0x16], map: 0x09 }, [200, 0],
+      { to: [0x34, 0x0C], noA: true }, { to: [0x34, 0x0A], map: 0x10 },
+      [100, 0], { to: [0x1C, 0x26], noA: true }, { to: [0x1C, 0x21], at: [0x1C00, 0x2130], noA: true }, [2, 0x40], [30, 0],
+      { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x10 && menuW.wram[0][0x46A] === 5 },
+      { press: 1, every: 40, times: 25 }], 300) },
+  // the Dune Club's office (map $0A, the Field's trigger 3; #113 poked: qualified) to its driving range (map $12,
+  // 31:5E63): the first coach (actor 3, 31:5D2A): the high shot's demo (the hooks 31:5F27 / 5F52), the try (31:5F78 /
+  // 5FB5 with the judgement 31:607B; the forced shot set twice), the result (31:5FE8), a retry
+  { name: "boot_kid_story_dunerange", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(113),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x20, 0x2A], map: 0x0A }, [200, 0],
+      { to: [0x24, 0x0C], noA: true }, { to: [0x24, 0x0A], map: 0x12 },
+      [100, 0], { to: [0x24, 0x3B], at: [0x2400, 0x3BC0], noA: true }, [2, 0x40], [30, 0],
+      { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x12 && menuW.wram[0][0x46A] === 6 },
+      { press: 1, every: 40, times: 25 }], 300) },
+  // the same, the second coach (actor 4, 31:5DBF): the low shot out of the trees (player 1 off the tee after the tee:
+  // 31:5E2F; the hooks 31:61B5-6263, the judgement 31:6321), the result (31:628E)
+  { name: "boot_kid_story_dunerange_tree", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(113),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x20, 0x2A], map: 0x0A }, [200, 0],
+      { to: [0x24, 0x0C], noA: true }, { to: [0x24, 0x0A], map: 0x12 },
+      [100, 0], { to: [0x0D, 0x2D], at: [0x0CD0, 0x2D30], noA: true }, [2, 0x10], [30, 0],
+      { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x12 && menuW.wram[0][0x46A] === 7 },
+      { press: 1, every: 40, times: 25 }], 300) },
+  // the Dune Club's office (#113 poked) to its approach range (map $13, 30:52CB): the first coach (actor 3, 30:51A7):
+  // the backspin approach's demo (the hooks 30:538F / 53C9), the try (30:53F5 / 541D), the result (30:545F), a retry
+  { name: "boot_kid_story_duneapproach", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(113),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x20, 0x2A], map: 0x0A }, [200, 0],
+      { to: [0x34, 0x0C], noA: true }, { to: [0x34, 0x0A], map: 0x13 },
+      [100, 0], { to: [0x23, 0x21], at: [0x2300, 0x2130], noA: true }, [2, 0x40], [30, 0],
+      { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x13 && menuW.wram[0][0x46A] === 4 },
+      { press: 1, every: 40, times: 25 }], 300) },
+  // the same, the second coach (actor 4, 30:5230): the approach up the climb (the hooks 30:55E1-566F), the result
+  // (30:56AE: no ScriptEnd)
+  { name: "boot_kid_story_duneapproach_uphill", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(113),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x20, 0x2A], map: 0x0A }, [200, 0],
+      { to: [0x34, 0x0C], noA: true }, { to: [0x34, 0x0A], map: 0x13 },
+      [100, 0], { to: [0x1F, 0x21], at: [0x1F00, 0x2130], noA: true }, [2, 0x40], [30, 0],
+      { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x13 && menuW.wram[0][0x46A] === 5 },
+      { press: 1, every: 40, times: 25 }], 300) },
+  // the Field, A with nothing ahead: the Navigation menu (0A:7174): Down twice, Up, Down, A: the place's guide on the
+  // Field again (0A:7878: its name, the arrow, the marker); a walk; Start: the start menu's Navigation (41:7413): B
+  { name: "boot_kid_story_nav", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], [2, 1], [120, 0], [2, 0x80], [20, 0],
+      [2, 0x80], [20, 0], [2, 0x40], [20, 0], [2, 0x80], [40, 0], [2, 1], [200, 0], [40, 0x80], [30, 0x10], [100, 0],
+      [2, 8], [60, 0], [2, 1], [150, 0], [2, 2], [100, 0]], 300) },
+  // the office's way to Hole 1 (trigger 2, 33:44F1): the Marion Club's driving range (map $0C, 31:4BEC); its
+  // practice (trigger $0F, 31:51F4: "Practice here?" Yes): the same shot again and again (the hooks 31:5296) until the
+  // pause menu's Quit Practice (41:6F08): back on the range
+  { name: "boot_kid_story_range", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(72),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 }, [200, 0], { to: [0x24, 0x0C] }, { to: [0x24, 0x0A], map: 0x0C },
+      [100, 0], { to: [0x1A, 0x38] }, { press: 1, every: 40, until: () => markLog.filter(m => m.n === "aimmenu").length >= 3 },
+      [60, 0], [2, 8], [60, 0], [2, 1], { press: 0, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x0C }, [400, 0]], 300) },
+  // the same range, the first coach (actor 3, talk 3: 31:4A8B): his demo (golfer $4F replaying 31:4C88, the hooks
+  // 31:4C98: the texts 05:5E70), back on the range (entrance 4: 31:4EA9), the player's try (the hooks 31:4D14, the
+  // judgement 31:4E5A), the result (entrance 6: 31:4D9C)
+  { name: "boot_kid_story_lesson", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(72),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 }, [200, 0], { to: [0x24, 0x0C] }, { to: [0x24, 0x0A], map: 0x0C },
+      [100, 0], { to: [0x14, 0x3B], at: [0x1400, 0x3B00] }, [2, 0x40], [30, 0],
+      { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x0C && menuW.wram[0][0x46A] === 6 },
+      { press: 1, every: 40, times: 25 }], 300) },
+  // the office's way to the approach range (trigger 3, 33:451B): map $0D (30:429A), its first coach (actor 3, talk 3:
+  // 30:4119): the running approach's demo and try (the hooks 30:433E / 30:43AF), the result (30:4448)
+  { name: "boot_kid_story_approach", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(72),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 }, [200, 0], { to: [0x34, 0x0C] }, { to: [0x34, 0x0A], map: 0x0D },
+      [100, 0], { to: [0x1F, 0x22], at: [0x1F00, 0x2250], noA: true }, [2, 0x40], [30, 0],
+      { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x0D && menuW.wram[0][0x46A] === 4 },
+      { press: 1, every: 40, times: 25 }], 300) },
+  // the office's way to the putting green (trigger 4, 33:4545): map $0E (30:69B9), "Practice here?" (30:6AEC) declined
+  // on the way onto the green, the pro (actor 8, talk 30:6666): the putting challenge (30:6739: game mode 5, ten
+  // putts on five holes, the hooks 30:6C2F / 6C58), the result (30:6CF2: not cleared)
+  { name: "boot_kid_story_green", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(72),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 }, [200, 0], { to: [0x3A, 0x0C] }, { to: [0x3C, 0x0C], map: 0x0E },
+      [100, 0], { to: [0x25, 0x26], at: [0x2500, 0x2600], noA: true }, [16, 0x40], [80, 0], [2, 2], [60, 0],
+      { to: [0x25, 0x1E], at: [0x2500, 0x1E00], noA: true }, [2, 0x40], [30, 0],
+      { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x0E },
+      { press: 1, every: 40, times: 25 }], 300) },
+  // the same, at the aim after the second putt: Start, the mini-game pause menu (41:6F9F: Down, Up, A on Quit
+  // Mini-Game): the challenge over (wGameMode 0: wStoryRoundKind 0, no result)
+  { name: "boot_kid_story_green_quit", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(72),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 }, [200, 0], { to: [0x3A, 0x0C] }, { to: [0x3C, 0x0C], map: 0x0E },
+      [100, 0], { to: [0x25, 0x26], at: [0x2500, 0x2600], noA: true }, [16, 0x40], [80, 0], [2, 2], [60, 0],
+      { to: [0x25, 0x1E], at: [0x2500, 0x1E00], noA: true }, [2, 0x40], [30, 0],
+      { press: 1, every: 40, until: () => menuW.wram[0][0x3E0] === 1 && lastMark === "aimmenu" }, [60, 0], [2, 8], [60, 0], [2, 0x80], [30, 0],
+      [2, 0x40], [30, 0], [2, 1], [60, 0],
+      { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x0E },
+      { press: 1, every: 40, times: 25 }], 300) },
+  // the same, the made putts ($C3E1) set to 10 on both sides after the tenth putt: cleared (#194), the EXP (30:6EC8,
+  // a quarter more for 10), the level-up screen, SaveGame and the map again (entrance $FA)
+  { name: "boot_kid_story_green_cleared", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: (() => { const fp = flagPoke(72); let done = false; return (f, w, core) => {
+      fp(f, w, core);
+      if (done || w.wram[0][0x3E0] !== 0x0A) return;
+      done = true;
+      for (const m of [w.wram[0], core.wram(0)]) m[0x3E1] = 0x0A;
+    }; })(),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 }, [200, 0], { to: [0x3A, 0x0C] }, { to: [0x3C, 0x0C], map: 0x0E },
+      [100, 0], { to: [0x25, 0x26], at: [0x2500, 0x2600], noA: true }, [16, 0x40], [80, 0], [2, 2], [60, 0],
+      { to: [0x25, 0x1E], at: [0x2500, 0x1E00], noA: true }, [2, 0x40], [30, 0],
+      { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x0E && menuW.wram[0][0x46A] === 0xFA },
+      { press: 1, every: 40, times: 25 }], 300) },
   // the same, then the start menu (41:6E6E): Message (Down twice) Right, Left, Right (the text speed), B; again: Up
   // (wraps to Save & Quit), A, "Save current progress?" Yes: SaveGame, map 0 entrance 1: the link menu (the save RAM
   // compared at the end)
@@ -401,6 +574,20 @@ const CASES = [
   // (0B:5B00), the EXP
   { name: "boot_kid74_tournament", state: "boot_poweron_kid74", open: true, noRet: true, sram: true, run: sh => gameCase(sh),
     policy: scriptedPolicy({ "aimmenu:2": [[60, 8], [100, 0x80], [120, 0x80], [150, 1], [300, 0x10], [450, 1]] }, savedPolicy(1)) },
+  // the same without the pause, the return point poked when the round's place is known (wRoundResult set; on both
+  // sides: map $18 entrance 2, wStoryRoundKind $32, as 08:4C6E sets them for a win): GolfSessionEnd warps to the Marion Club's award ceremony
+  // (31:7775, the champion), then warp 2: the mode select
+  { name: "boot_kid74_ceremony", state: "boot_poweron_kid74", open: true, noRet: true, sram: true,
+    run: sh => { sawMap18 = false; return gameCase(sh, 99, () => sawMap18 && sh.w.wram[0][0x450] === 0 && hasTask(sh.w, 0x0D, 0x428E)); },
+    hook: (() => { let done = false; return (f, w, core) => {
+      if (w.wram[0][0x450] === 0x18) sawMap18 = true;
+      if (process.env.MAPS && (w.wram[0][0x960] | w.wram[0][0x961] << 8) !== (w.lastRet ?? -1)) { w.lastRet = w.wram[0][0x960] | w.wram[0][0x961] << 8; console.error("RET", f, w.lastRet.toString(16), roundsDone, core.wram(0)[0x960], core.wram(0)[0x961]); }
+      if (process.env.MAPS && w.wram[0][0x450] !== (w.lastMapLog ?? -1)) { w.lastMapLog = w.wram[0][0x450]; console.error("MAP", f, w.lastMapLog, w.wram[0][0x46A], roundsDone); }
+      if (done || f < 3000 || !w.wram[0][0x96C]) return;
+      done = true;
+      for (const m of [w.wram[0], core.wram(0)]) { m[0x960] = 0x18; m[0x961] = 0x02; m[0x967] = 0x32; }
+    }; })(),
+    policy: scriptedPolicy({}, savedPolicy(1)) },
   // a new game's Stroke round from power-on; in the first aiming menu Start, Up (to Quit), A, "OK to quit this round?":
   // Up (Yes), A: the round ends (wGameMode 0), GolfSessionEnd, the map engine runs map 0 again: the mode select
   { name: "boot_quit", state: "boot_poweron", open: true, noRet: true, run: sh => gameCase(sh),

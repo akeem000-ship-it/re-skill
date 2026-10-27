@@ -1,5 +1,6 @@
 // The shot views (wOnGreen $D443: 0 course, 1 green, 2 cup close-up, 4 behind the golfer; $FF none yet) and the
 // frames it takes to change them. The maps a view uses come from Hole (ball.js); its graphics are display.
+import { callGolfEventHook } from "./golfhooks.js";
 import * as Cam from "./camera.js";
 import * as Scr from "./screen.js";
 import * as S from "./swing.js";
@@ -41,7 +42,7 @@ export function* loadShotView(sh, view) {
   if (view) w0.fill(0, 0x320, 0x324);
   D.holeLoadTilesAndMaps(w);                     // 13:40CA HoleLoadTiles, 13:4014 HoleLoadMaps
   r6[0x443] = view;
-  if (w0[0x870]) notPorted("golf event hooks (~10:4CC3)");
+  yield* callGolfEventHook(sh, 2);               // 13:43F6
   D.loadViewGraphics(w, view);                   // 13:43F9-13:442E: tiles, palettes
   Cam.drawHoleViewAtCamera(w, view);             // 13:411D
   if (r6[0x443]) stopCourseAnimTasks(w);         // 13:70A2

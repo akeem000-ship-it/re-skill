@@ -95,6 +95,9 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the sound driver's copies in banks 7C / 7D (tools/sound_copies.py: identical to 7E) and the last small routines of 7E / 7F | 114,431 | 47.15% |
 | + the map engine and its script API (mapengine.js, script.js, maps/), a new character (StoryOpeningCreateCharacter 31:43B9, CharYesNoPrompt 41:6784, NameEntryScreen 06:51DC), the first day (32:71CF), walking and talking on the overworld (player.js, MapEventLoop 0A:4AAA) | 123,691 | 50.97% |
 | + the map's start menu (MapStartMenu 41:6E6E: text speed, Save & Quit), the clubhouse's doors and counter (map $03), the Locker Room (map $06, bank 34), the Lounge's first visit (map $04, 32:6739), map $05's scripts, MapBufCopyRectRedraw 0B:4864 | 126,615 | 52.17% |
+| + the Caddie Master's offices and the club rounds (maps $08-$0B, bank 33), the award ceremonies (31:7775), the Field (map $02, 34:4690) with the navigation (0A:7174, 0A:7878), the golf event hooks (10:4CC3), the Marion driving range and approach range with their practice and lessons (maps $0C / $0D, banks 31 / 30, maps/lessons.js), ShowMessageAt 05:5E70, the practice pause menus, the replayed strokes (02:4626) | 137,216 | 56.54% |
+| + the putting greens' challenge, putt demo and practice (maps $0E / $11 / $14 / $17, 30:69B9-30:6EC8), the mini-game pause menu (41:6F9F), the Palm driving range's and approach range's lessons (maps $0F / $10, 31:5543, 30:4B62) | 141,468 | 58.29% |
+| + the Dune driving range's and approach range's lessons (maps $12 / $13, 31:5E63, 30:52CB), the course view's tile animation of banks $51-$54 (13:7076) | 144,903 | 59.71% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -207,6 +210,26 @@ given to the native code). All cases match frame for frame:
 | boot_kid_story_menu | the story's start menu: the text speed, Save & Quit (MapStartMenu 41:6E6E; the save RAM equal) | 4,040 |
 | boot_kid_story_door3 | through a clubhouse door to the Locker Room (32:5CAF, map $06), a locker opened (34:41E8) | 4,040 |
 | boot_kid_story_lounge | through door 4 to the Lounge (map $04), the first visit's tour (32:6739) | 7,199 |
+| boot_kid_story_office | the top door to the Caddie Master's office (map $08, 33:4722), his call and round menu, the club tournament (one hole: flag #72 poked), back to the office: the result speech | 12,930 |
+| boot_kid_story_ceremony | the same with the result poked to 1 after the round: warp 6 to the Marion Club's award ceremony (map $18 entrance 2, 31:7775 / 31:78E1), back to the office: the winner's speech | 14,490 |
+| boot_kid74_ceremony | the mode select's one-hole Tournament with the return point poked as a win sets it (map $18 entrance 2, kind $32): the ceremony, then warp 2: the mode select | 8,907 |
+| boot_kid_story_practice | the office's Practice Round (one hole), back to the office, the menu again | 13,434 |
+| boot_kid_story_field | out of the clubhouse to the Field (map $02, 34:4690), to the Palm Club's office (map $09, its decoration 33:55A3), the call and the menu (not qualified) | 4,885 |
+| boot_kid_story_nav | on the Field: A, the Navigation menu (0A:7174), a place picked: the guide's name window; Start, the start menu's Navigation (41:7413), B | 4,466 |
+| boot_kid_story_range | the office's way to Hole 1: the Marion driving range (map $0C, 31:4BEC), "Practice here?" (31:51F4): the practice round with its hooks (31:5296), the pause menu's Quit Practice, back on the range | 6,057 |
+| boot_kid_story_lesson | the range's first coach (31:4A8B): his replayed demo (golfer $4F, the hooks 31:4C98 with ShowMessageAt 05:5E70), the player's try (31:4ED5, the hooks 31:4D14, the judgement 31:4E5A), the result (31:4D9C), "Try again?" and another try | 8,568 |
+| boot_kid_story_approach | the office's way to the approach range (map $0D, 30:429A): the first coach's running approach (30:4119: demo with the hooks 30:433E, the try 30:43AF with the club kept in wEventShotClub, the result 30:4448), a retry | 8,317 |
+| boot_kid_story_palmrange | the Palm Club's office (#112 poked: qualified, the Caddie Master out of the corridor) to its driving range (map $0F, 31:5543): the first coach's intentional shot (31:540E: the demo with the coach's 210 drive, the try, the judgement 31:5800, the result 31:5711), a retry | 8,885 |
+| boot_kid_story_palmrange_wind | the same, the second coach's shot into the wind (31:54A2, the hooks 31:5943-59FC, the result 31:5A27); 646 frames counted after lag frames: a lag VBlank in the demo's ball flight (frame 6091) streams the BG map's hidden row $9BE0 for another camera step on each side, and it stays different (off screen, the pixels the same) until the next hole's set-up at frame 6700 | 8,865 |
+| boot_kid_story_palmapproach | the Palm Club's office (#112 poked) to its approach range (map $10, 30:4B62): the first coach's bunker shot (30:4A26: the demo's hooks 30:4C27 / 4C6F, the try's 30:4CA3 / 4CCB, the result 30:4CF9), a retry | 8,374 |
+| boot_kid_story_palmapproach_sloped | the same, the second coach's running approach on a sloped green (30:4AAF, the hooks 30:4E67-4EF5, the result 30:4F23 without its ScriptEnd), a retry | 8,687 |
+| boot_kid_story_dunerange | the Dune Club's office (map $0A, the Field's trigger 3; #113 poked) to its driving range (map $12, 31:5E63): the first coach's high shot (31:5D2A: the demo's hooks 31:5F27 / 5F52, the try's 31:5F78 / 5FB5, the judgement 31:607B, the result 31:5FE8; course 7 hole $0D animates its tiles from bank $51), a retry | 8,586 |
+| boot_kid_story_dunerange_tree | the same, the second coach's low shot out of the trees (31:5DBF, the hooks 31:61B5-6263, the judgement 31:6321, the result 31:628E), a retry | 9,111 |
+| boot_kid_story_duneapproach | the Dune approach range (map $13, 30:52CB): the first coach's backspin approach (30:51A7, the hooks 30:538F-541D, the result 30:545F), a retry | 8,764 |
+| boot_kid_story_duneapproach_uphill | the same, the second coach's approach up the climb (30:5230, the hooks 30:55E1-566F, the result 30:56AE without its ScriptEnd), a retry | 8,852 |
+| boot_kid_story_green | the office's way to the putting green (map $0E, 30:69B9), "Practice here?" declined, the pro's putting challenge (30:6739, game mode 5, the hooks 30:6C2F / 6C58), the result (30:6CF2, not cleared) | 12,839 |
+| boot_kid_story_green_quit | the same, Start at the aim: the mini-game pause menu (41:6F9F), Quit Mini-Game | 7,647 |
+| boot_kid_story_green_cleared | the same with ten made (poked): cleared, 25 EXP (30:6EC8), the level-up screen, SaveGame, the map again at $FA | 12,839 |
 
 By situation (r18): at the address step 7,194 of 7,194 frames pixel-exact, on the green 4,279 of 4,279, the swing
 and the roll 17,881 of 17,884, the ball in the air 13,823 of 13,827, holed out and between holes 54 of 54 (the
@@ -446,7 +469,8 @@ score, portrait, confetti for the top three), the course record's place bit and 
 place (08:4D18), the return map for the ceremonies (08:4C6E), the course flags, 10 points and the EXP.
 `golf_screens_vs_core.mjs boot_kid74_tournament` plays the one-hole tournament from power-on with the kid74 save,
 with the pause menu's Scorecard (both pages) on the second shot: 7,819 frames, all frame for frame, RAM and save RAM
-equal at the end. Not ported: the ceremonies a top-three place leads to (the map engine's warp to maps $18-$1D).
+equal at the end. The award ceremonies a top-three place leads to (maps $18-$1B) are ported (below:
+`boot_kid74_ceremony`).
 
 #### The map engine and the story (mapengine.js, script.js, maps/, nameentry.js; tools/script_js.py, actor_scripts.py)
 
@@ -520,6 +544,146 @@ grumpy golfer 34:407F (a random gripe; bumped into three times, the screen shake
 open, a random find of 16, closed), the trigger 34:429B. Map $04, the Lounge: the enter script 32:69B5 and the
 first visit's tour 32:6739 (the arrow over each champion, a frame task 32:6735 -> 32:6AB6; LoadCursorSprite 01:4289);
 the champions' talks (32:6B81) and a partner joining (32:6DCF, SpawnPartnerActor 04:51D0) are not ported.
+**The Caddie Master's office** (maps $08-$0B, one header 33:400A, the club = wMapId - 8; `maps/bank33.js`;
+`boot_kid_story_office`): the enter script 33:4722 (the temporary flags, Marion's talk list 33:4389, #227
+qualified / #226 the club won; maps $09-$0B's golfers and decorations ~33:4757 not ported), the call when the
+player walks up (trigger 1, 33:4BD3: the Caddie Master's text base 33:4C94, $0C1B on Marion's map), his talk
+33:48EF (the result speech after a round; with a partner ~33:4ABB not ported) and the round menu 33:5166
+(ScriptRunMenu 0A:42BF with the options $0892: Club Tournament / Practice Round / Quit; not qualified: base + 7;
+the practice round asks base + 8 or + 9), the start scene 33:5257 (the waiting group, the send-off 33:5522, the
+starter; seen once per club: flags #176 / #184 + club), the walk out 33:50BB, StartClubTournamentRound 33:4F05 /
+StartClubPracticeRound 33:4F28 (wStoryRoundKind $C967 $0A / $14, game mode 1 / 3, the club's course and the return
+point entrance 6: 33:4F96; GolfRound for 18 holes, 1 with flag #72: 33:66CB), and the way back (entrance 6, 33:4666:
+a tournament's result 1-3 asks warp 5 + result, the ceremonies; else the result flags #240-#243 33:45FE, the
+walk in 33:4864 and the speech 33:4D97 / 4D25); the golfers 33:4317-434D (SetClubGolferText 33:4CAC: quirk, the
+test of #243 at 33:4CF3 is not used, + 2 either way), the level advisor 33:435F, the signs, the exits 33:44F1 /
+451B / 4545 (the partner's question ~33:4FEF not ported), the step back 33:45C7.
+Fixed on the way: ActorFaceActor 0A:4662 wrote the angle through hFFE0 as it was before the angle's computation
+pointed it at actor a (the last actor the actors' update ran: here the Caddie Master turned instead of the player).
+**The Field** (map $02, `maps/bank34.js`; `boot_kid_story_field`): the enter script 34:4690 (flags #99 / #212 /
+#125 / #118 / #119, the navigation guide NavGuideStart 0A:7878 (`nav.js`: the hand's tiles LoadCursorSprite 01:4289,
+the frame task NavGuideTask 0A:78CE; with a destination, set by the not-ported Navigation menu 0A:7174, the arrow and
+the name ~0A:78D6 / ~0A:79C7 are not ported), the map's changes by progress: the tree's trigger 34:4719, the closed
+paths 34:4769 (a block for each of #86 #84 #82 #80 still clear), #114's area 34:4733, #125's open path 34:46E6, each
+with MapCopyEventRect 0B:4699 / MapCopyTerrainRect 0B:4653 (`mapgfx.js`) and MapBufCopyRectRedraw 0B:4864); the
+triggers into the Marion clubhouse and the Palm, Dune and Links offices 34:4474-44F5 (the walk in 34:452A), the side
+places 34:4618-4681 (warps 6-$0D: a challenger following, ~34:553A, not ported). Not ported: the Road to Peach's
+Castle (34:450C), the letter at the tree (~34:4847), entrances $0E / $0F (~34:5218 / ~34:5019), the marker sprite
+(~34:4FCC).
+**The navigation** (`nav.js`; `boot_kid_story_nav`): NavigationMenu 0A:7174 (A on the Field with nothing ahead,
+or the start menu's Navigation 41:7413): the places whose flags (0A:6FA9, ListEntryFlag 0A:6CAF) are set
+(NavBuildEntries 0A:73D3), the frame (LZ 0A:6FE5 / 0A:7085), the title and seven names (0A:7387, PrintTextToBuffer),
+the cursor, Up / Down scrolling (0A:73FC: redrawn and queued over two frames), the marks of the places visited
+(flags 0A:6FC7, DrawListMark 0A:6C58), the scroll arrows (0A:7344), the animated tiles (InitRecordsTileAnim 0C:43AD,
+AnimateRecordsTiles 0C:436A); A picks wNavDestination $C2A7 (Quit: $FF), B leaves; the map is reloaded where the
+player stood (warp $FA). On the Field the guide (NavGuideStart 0A:7878) draws the place's name in a window at WY $78
+(0A:79BF; quirk: the centring it computes from GetTextBoxWidth is overwritten before use) and its frame task
+(0A:78CE) the arrow (16 directions by AngleFromVector16 from the saved position, tiles 0A:7470) and the bobbing
+marker over the place (0A:7967, NavDestPosTable 0A:789A). The other clubs' offices (maps $09-$0B: 33:4757-4839,
+the decorations 33:55A3 / 55BF / 55DB, the waiting group's walk up 33:52C1, the champion's menu 33:54CA) use the
+same scripts.
+**Golf event hooks, the driving range and its lessons** (`golfhooks.js`, `maps/bank31.js`): a map script that starts
+a round of its own sets a hook table (SetGolfEventHook 10:4BC7: bank $C870, table $C871) and the round's set-up
+overrides (SetForcedTee 10:4C04, SetForcedWind 10:4C26, SetForcedWindDir 10:4BE5, SetForcedShot 10:4C36, SetP1OffTee
+10:4C1A); CallGolfEventHook 10:4CC3 calls entry a of the table at the round's events: 0 a shot's set-up (10:484C),
+1 after a shot (10:4611), 2 a view loaded (13:43F6), 3 a hole's start (10:45CD), 4 the course view's start (10:4237);
+the handlers are ported with the map scripts (`HOOKS` by ROM address). After a shot wGolfEventFlag $D4DD (10:4CAD
+SetGolfEventFlag, cleared by GolfViewExit 10:4C6E) makes GolfShotLoop repeat the shot (RetryShotRestore 08:4AA3) or,
+with bit 7, end the round (10:464A). Map $0C, the Marion Club's driving range: the enter script 31:4BEC (entrances
+4 / 5 after a coach's demo, 6 / 7 a lesson's result; a first success: 20 EXP with AwardExpWithBonus 31:7DA4,
+SaveGame and warp 8 / 9), the tip 31:4A1D, the sign 31:4BC9, the two coaches' lessons 31:4A8B / 31:4B11: the demo
+(game mode 6, golfer $4F / $4E whose bit 6 replays the strokes copied from 31:4C88 / 4F66, LoadStrokeRecord 02:4626
+in the aiming step 10:5973), the try (31:4ED5 / 5163) with a forced shot, the judgements 31:4E5A / 510D (the lie,
+the shot's power and impact; the distance to the pin, 31:7D53) and the results 31:4D9C / 507A; the practice of the
+four ranges 31:51F4 / 521B (the same shot again until Quit Practice). Map $0D, the Marion approach range
+(`maps/bank30.js`): the enter script 30:429A (no fade of its own; entrances 2 / 3 after a demo, 4 / 5 a result; a
+first success #160 / #161, 20 EXP, warp 6 / 7), the tips 30:40EE / 422B, the running approach 30:4119 and the chip
+shot 30:41A2 (game mode $0C, player 1 off the tee, the judgement BallWithinPinDist 30:7E2E within $60; the running
+approach's try keeps the first stroke's club in wEventShotClub $C969: the putter gets its own line $0CAC; quirk: the
+chip demo's after-shot hook 30:4607 sets #99 when the coach holes out), the practice 30:47E6 / 480D (holes 8 / $0B /
+$0E / $11 by map). The ranges' lessons are one engine with each lesson's constants (`maps/lessons.js`: the talk, the
+demo and the try's set-up, the after-demo question, the result's frame, the hooks' set-up texts, after-shots, the
+practice); the copies differ in small ways the descriptors and options keep (the after-demo fade speed, SetP1OffTee,
+the coach's walk-back script and facing, a hook's WRAM push and its wait: ScriptWaitFrames $3C or WaitFramesCmd $28).
+Ported with it: ShowMessageAt 05:5E70
+(OpenMessageBoxAt 05:605F: the box centred on a screen tile; the voice of a but no speaker $D851), the practice
+pause menus (PracticeWindMenu 41:6F08 with Wind Direction / Wind Speed, PracticeMenu 41:6F30; 08:46E2 / 08:46EF), the
+round end of modes 6-9 and $0C-$0F (no hook, 08:4BD9), WaitJingleEnd 00:2C1F (screen.js: hActiveJingle comes from the
+sound driver, `w.jingleActive`; without one there is no wait). The screens harness now runs a native-side sound
+driver (web/js/sound, started from the core's sound RAM and APU registers) at each native VBlank and each replayed
+lag VBlank, so that the native code's waits on the music see the game's state (no tolerance: the frames compared are
+unchanged).
+**The putting greens** (maps $0E / $11 / $14 / $17, one header 30:642A; `maps/bank30.js`): PuttingGreenEnter 30:69B9
+(the per-map actors and warp / talk lists; entrance $FA: the challenge's result 30:6CF2), the pros' talks 30:6666
+(Marion's, quirk: it asks the question 30:6739 straight away on $10CE / $10DB where the other greens' pros 30:668B /
+66B3 / 66DA make the offer 30:6701 with the text 30:6DF6 first), the challenge 30:6739 (wStoryRoundKind $0A, game
+mode 5, ten putts over five holes, the forced wind direction 0 and wind $C000, the hooks 30:6C0F: the rules 30:6C2F
+once, after each putt 30:6C58: within $34 of the pin one more made ($10D6) else $10D7; an odd putt the same spot again,
+an even one the next hole with SetP1StartStrokes 10:4C62; the tenth or a quit ends it), the result 30:6CF2 (7 made or
+more: cleared #194 + the green, AwardPuttingChallengeExp 30:6EC8: 20 / 25 / 45 / 50 EXP, a quarter more for all ten
+(not flag #99 as the ranges' AwardExpWithBonus), the level-up screen, SaveGame, the map again at entrance $FA; else
+tried #190 + the green), the putt demo 30:6A8C, "Practice here?" 30:6AEC with the practice 30:6B13 (wStoryRoundKind
+$14, mode 7, course 7 holes 9 / $0C / $0F / $12 with music 8-$0B, the tee pulled toward the player 30:6D40 with the
+bases 30:6D89; after-shot 30:6BFC). The mini-game pause menu MiniGamePauseMenu 41:6F9F (modes 5 / $0A / $0B,
+08:46DE: Quit Mini-Game 41:775F, Settings 41:7767). Not ported here: Azalea (object $0F, ~30:6942, unless the player
+is Azalea) and HiddenFriendsBonus ~30:7EAD, the Dune green's golfers and the Alternate Game (~30:681A, ~30:6F42). The
+test `boot_kid_story_green_cleared` sets the putts made ($C3E1) to 10 on both sides after the tenth putt (scripted A
+presses make two).
+**The Palm driving range** (map $0F, `maps/bank31.js`, the lesson engine of `maps/lessons.js` with two more
+options): Map0FEnter 31:5543 (unlike 31:4BEC no fade of its own; entrances 4 / 5 after a demo, 6 / 7 a result, a first
+success #166 / #167 25 EXP and warp 8 / 9), the tip 31:53A6 (two chained questions), the intentional hook / slice
+31:540E and the shot into the wind 31:54A2: the demos give the coach's golfer record a 210 drive ($C89A-$C89B = $00D2;
+the intentional shot also $C89D = 3), the tries' music is $0A; the hooks 31:5630 (quirk: text $1053 is never shown:
+$1051, $1052, the wait, $1054) / 566D / 56A1 / 56DE and 31:5943 / 598B / 59BF / 59FC; the judgements 31:5800 (2 off
+the fairway, 3 no curve: the stroke record's +$0C bits 4-5, 5 the ball's y $2480 or more, 4 wBallFlags bit 4 (the
+tree), else 0; quirk: its x test 31:582D is never reached) and 31:5ABA (the same as 31:510D); the results 31:5711 (0 and
+4 pass) and 31:5A27. Quirk: the first coach's result walks him back with the second coach's script 31:7D2D (his No
+answer uses his own 31:7D24). The office's Caddie Master blocks the way to the ranges until the club is qualified
+(33:47EF), so the tests poke #112.
+**The Palm approach range** (map $10, `maps/bank30.js`): Map10Enter 30:4B62 (as 30:429A; a first success #164 / #165,
+25 EXP, warp 6 / 7), the tips 30:49D0 / 49FB (speaker 6 for talk 5), the bunker shot 30:4A26 and the running approach
+on a sloped green 30:4AAF (game mode $0C, player 1 off the tee, course 7 hole $0B, music $0A; the judgements
+BallWithinPinDist $60). The copies differ again in small ways the descriptors keep: the tries' set-up hooks 30:4CA3 /
+4ECD keep no WRAM bank and wait nowhere (the bunker's reuses the Marion texts $0CA6-$0CA8), the sloped green's demo
+hooks 30:4E67 / 4EA1 keep no WRAM bank (4EA1 leaves 6 mapped), the bunker shot's result 30:4CF9 says its failure
+text without the 30 frames first and walks the coach back facing up ($00; his No answer $C0). Quirk: the sloped
+green's result 30:4F23 walks coach 2 back with coach 1's script 30:7DFF facing $40 and never calls ScriptEnd.
+Unreferenced: 30:4B38 (fade out, InitFontScreen, rWY $90, ResetSprites, warp 1).
+**The Dune driving range** (map $12, `maps/bank31.js`): Map12Enter 31:5E63 (as 31:5543; a first success #170 /
+#171, 45 EXP, warp 8 / 9), the tip 31:5CC2 (chained, as 31:53A6: `chainedTip` in maps/lessons.js), the high shot
+31:5D2A and the low shot out of the trees 31:5DBF (course 7 hole $0D; the demos give the coach a 220 drive, $C89A-$C89B
+= $00DC, the high shot also $C89C = 4; the tries' music 9). Quirks: the high shot's try sets the forced shot twice
+(club 4 at 31:615E, then club $0A at 31:616C after the wind; the second wins); its demo's after-shot 31:5F52 only sets
+the round's end ($82: no GolfViewExit, no frame) and its set-up 31:5F27 shows two texts without a wait; its try's
+after-shot 31:5FB5 sets flag #99 before the judgement 31:607B, which reads it (0 holed out; 2 off the green or when the
+stroke record's +$0C has bit 7 clear; else 0 within $A0 of the pin, 1); the high-shot coach's result walks him back
+with the second coach's script 31:7D2D (as on map $0F); the tree shot's demo set-up skips text $1085; the tree shot's
+set-ups make player 1 play off the tee after SetForcedTee (31:5E2F / 31:6411; the lesson engine's offTee
+"afterTee"). The tree judgement 31:6321: 1 off the fairway; above y $2100 2 when x is $2100 or more, else 2 when x is
+$1980 or more; otherwise 0.
+**The Dune approach range** (map $13, `maps/bank30.js`): Map13Enter 30:52CB (a first success #168 / #169, 45 EXP, warp
+6 / 7), the chained tip 30:515D (speaker 6, no wait before the questions), the backspin approach 30:51A7 and the
+approach up a steep climb 30:5230 (game mode $0C, player 1 off the tee, course 7 hole $0E, music 9, BallWithinPinDist
+$60). The backspin try's after-shot 30:541D keeps the stroke record's +$0C ($D68C, its spin) in wEventShotClub $C969
+and the result 30:545F picks its failure text by its bit 7 (no wait first); the climb's after-shot 30:566F keeps the
+club ($D688) and its result 30:56AE says $0CF3 for a holed putt with the putter. Quirks: the backspin coach walks back
+with the contest coach's script 30:7E11; the climb's result walks coach 2 back with coach 1's script 30:7DFF and never
+calls ScriptEnd (as on map $10). The demo and try hooks of both keep no WRAM bank; the tries' set-ups wait nowhere.
+The course view's tile animation (13:7076 StartCourseAnimTask) now starts the copy in the bank of the hole's asset
+ref 4 ($50-$54; the five copies are the same code at other addresses, render/holeview.js); course 7's hole $0D is
+animated from bank $51 (before, only bank $50's courses were).
+**The award ceremonies** (maps $18-$1B = Marion, Palm, Dune, Links; one header 31:76B1; `maps/bank31.js`):
+CeremonyEnter 31:7775 (BeginFadeOut $7F; Palm / Dune / Links their palettes 31:7C00 / 7C40 / 7C80 and warp lists;
+seen flags #107-#109 skip to warp 2 and are set at entrance 2; Dune's flag #212 31:7CB0; entrance 2 the champion
+31:78E1, 3 / 4 the second / third place 31:7B1C with the podium's tiles 31:7B86 / 7B96 (0B:4864); both end in
+CeremonyCongratsAndLeave 31:7A00; result 1-3 in wRoundResult; warp 2 (map 0, the mode select) for a mode-select
+tournament (wStoryRoundKind $32, set by 08:4C6E), else warp 1 (the office's entrance 6). Not ported: the ending
+(flag #110: ~31:782F, ShowPictureTimed 40:6666, StaffCredits 41:7E07) and the Links Champion's (~31:7827). The tests
+poke the result (no scripted round places in the top three): `boot_kid_story_ceremony` sets wRoundResult $C96C to
+1 on both sides after the round; `boot_kid74_ceremony` sets the return point ($C960 = $18, $C961 = 2, $C967 = $32)
+when the round's place is first known.
+Fixed on the way: MeasureCourseName 05:579E (text code $0B in SizeMessageBox) loads the course name into $D880
+(LoadTextShort) and measures it there; the JS had copied it to wTextArgBuffer $C780 as MeasureCharName does.
 The cases walk with `routeCase` (golf_screens_vs_core.mjs): a breadth-first path over the terrain cells, each next
 cell's centre aimed at after centring on the other axis, around an actor in the way, A when stuck (a bump's text).
 The harness's lag model gained one rule here (screenstep.mjs; no tolerance): when the frame's full VBlank came early,

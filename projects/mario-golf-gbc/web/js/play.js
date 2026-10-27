@@ -138,6 +138,8 @@ function newRound() {
   apu.writeAll(driver.init());                     // SoundInit 7E:4072 at power-on
   w.onSound = id => apu.writeAll(driver.playSound(id));   // rst $08 PlaySoundCmd 00:2BBB
   w.onMusicOption = flags => apu.writeAll(driver.applyMusicOption(flags));   // 00:2B98 (the Settings menu's Music)
+  w.jingleActive = () => driver.ram[0xFFCD];        // hActiveJingle, for WaitJingleEnd 00:2C1F
+  w.onEndJingle = () => apu.writeAll(driver.endJingle());
   if (mode !== "title") w.onSound(0x01);           // ModeSelectMain plays song 1 in the menus (32:508B); the round's own songs follow
   game = { w, g: null, frames: 0, done: null, error: null, mark: mode === "title" ? "menus" : "", marks: [], shots: [], holes: 0 };
   const ev = (kind, name) => { if (kind === "M") { game.mark = name; game.marks.push([game.frames, name]); } };

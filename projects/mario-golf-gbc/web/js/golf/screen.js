@@ -117,3 +117,14 @@ export function updateGameTimer(w, sound = () => {}) {
   if (w0[p] < 0x64) return;
   w0[p]--; w0[p - 1] = 0x3B;
 }
+
+// 00:2C1F WaitJingleEnd: while a jingle plays (hActiveJingle $FFCD, kept by the sound driver: w.jingleActive) a frame
+// at a time until a button is held; then the jingle's end (00:2C35: the BGM again unless the music is off). Without
+// a sound driver there is no jingle to wait for.
+export function* waitJingleEnd(sh) {
+  const w = sh.w;
+  const active = () => (w.jingleActive ? w.jingleActive() : 0);
+  if (!active()) return;
+  do yield* sh.advance(); while (!w.high[0x190] && active());
+  if (w.onEndJingle) w.onEndJingle();
+}

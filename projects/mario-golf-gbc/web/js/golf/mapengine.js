@@ -5,6 +5,7 @@
 // script (MapRunEnterScript 0A:4F71, MapRunScript 0A:4EFF); a script that asks for a warp (wMapWarpRequest $C441)
 // ends the run there, else the map fades in, shows its name banner and runs its event loop.
 // The enter scripts are ported per bank (maps/*.js) and found here by their ROM address.
+import { navigationMenu } from "./nav.js";
 import { rb, rw } from "./rom.js";
 import * as D from "./render/display.js";
 import * as Scr from "./screen.js";
@@ -376,7 +377,7 @@ export function* mapEventLoop(sh) {
         if (rd(w, 0xC450) === 2) {
           sh.sound(0x5C);
           yield* S.waitScriptActorIdle(sh);
-          notPorted("the navigation menu (~0A:7174 NavigationMenu)");
+          yield* inBankGen(w, 0x0A, navigationMenu(sh));   // 0A:7174
         }
       }
       continue;
