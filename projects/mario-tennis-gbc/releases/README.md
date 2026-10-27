@@ -1,6 +1,6 @@
 # MTenn3D releases
 
-`MTenn3D-0.35.88-shareable.apk`: the Android app (version 0.35.88) with **no game data inside**. It holds only this
+`MTenn3D-0.35.89-shareable.apk`: the Android app (version 0.35.89) with **no game data inside**. It holds only this
 project's own code and fonts: no ROM, nothing generated from one (no `web/gen/`), no private character mods.
 
 On first start, tap the file box and pick your own legal dump of *Mario Tennis* (USA) for Game Boy Color (`.gbc`, SHA-1
