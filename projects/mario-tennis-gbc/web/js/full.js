@@ -51,6 +51,9 @@ const stored = k => { try { return localStorage.getItem(k); } catch (e) { return
 // once (0.35.18): characters back to the game's own sprites as blocky voxels (SPRITES: Game, 3D view VOX, VOX: Blocky); the buttons still
 // change them afterwards
 try { if (!localStorage.getItem("mt-reset-0.35.18")) { localStorage.setItem("mt-sprites", "game"); localStorage.setItem("mt-3d", "vox"); localStorage.setItem("mt-voxstyle2", "blocky"); localStorage.setItem("mt-reset-0.35.18", "1"); } } catch (e) { /* private mode */ }
+// (0.35.92: the main menu back to the ball wheel once: a stray tap on MENU had left a phone on the Game Boy menu, which also hid the
+// new screens that go with it)
+try { if (!localStorage.getItem("mt-reset-0.35.92")) { localStorage.setItem("mt-menu", "wheel"); localStorage.setItem("mt-reset-0.35.92", "1"); } } catch (e) { /* private mode */ }
 
 // ---- audio: the worklet plays whatever sample chunks the main thread posts ----
 let actx = null, anode = null, audioReady = false;
@@ -516,6 +519,7 @@ let uiMode = q.get("ui") || stored("mt-ui") || "hd"; if (uiMode !== "game" && ui
 function applyUI() {
   $("uibtn").textContent = "UI: " + (uiMode === "hd" ? "HD" : "Game");
   if (hd) hd.setUI(uiMode === "hd"); drawnFrame = -1;
+  statPanel.on = expPanel.on = uiMode === "hd";   // (the HD stat and EXP panels too)
   try { localStorage.setItem("mt-ui", uiMode); } catch (e) { /* private mode */ }
 }
 $("uibtn").addEventListener("pointerdown", () => { uiMode = uiMode === "hd" ? "game" : "hd"; applyUI(); });

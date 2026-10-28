@@ -28,7 +28,24 @@ export class TitleShow {
     this.k = k;
     v.venueTour = { map: s.map, pal: venuePalette(v.rom, s.map), attract: true,
       camera: (aspect, m4, clip) => { if (v.light) v.light.fixedHour = hour + 0.01; return tourCamera(cam, performance.now() / 1000 - s0, aspect, m4, clip); } };
-    v.stadium.forceVenue = s.venue; v.ground = null; v.groundHash = -1; v.courtId = s.map; v.stadium.reset();
+    // (the first shot's venue may have been built ahead, in the game's opening: warmStep; then it is kept)
+    const warm = this.warmed && k === 0 && v.ground && v.ground.court === s.map && v.stadium.built; this.warmed = false;
+    v.stadium.forceVenue = s.venue; v.courtId = s.map; if (!warm) { v.ground = null; v.groundHash = -1; v.stadium.reset(); }
+  }
+  // WARM-UP (menuwheel.js, on frames where the game's opening shows a blank screen between its scenes): the first shot's venue built
+  // ahead, a part per blank frame (its ground, then its paint, then its stadium), so the title does not stall as it comes in. Only
+  // builds (nothing is drawn); the view's own state is put back after each part.
+  warmStep() {
+    if (this.v || this.warmed || this.warmN >= 3) return;
+    const v = this.getVoxel(); if (!v || !v.stadium || !v.rom || v.venueTour || v.mode === "3d") return;
+    const s = STOPS[ORDER[0]], keep = { tour: v.venueTour, venue: v.stadium.forceVenue, court: v.courtId };
+    v.venueTour = { map: s.map, pal: venuePalette(v.rom, s.map), attract: true, camera: () => null }; v.stadium.forceVenue = s.venue; v.courtId = s.map;
+    try {
+      const n = this.warmN = (this.warmN || 0) + 1;
+      if (n === 1) { v.stadium.reset(); v.ground = null; v.buildGround(); }
+      else if (n === 2) { v.groundHash = v.palHash(); v.paintGround(); }
+      else { if (v.stadium.pend) { v.stadium.buildAt = v.gb.ppu.frames; v.stadium.build(); } this.warmed = !!v.stadium.built; }
+    } catch (e) { this.warmN = 3; } finally { v.venueTour = keep.tour; v.stadium.forceVenue = keep.venue; v.courtId = keep.court; }
   }
   // the title gone: the game's own view back (as the VENUE TOUR's close)
   end() {

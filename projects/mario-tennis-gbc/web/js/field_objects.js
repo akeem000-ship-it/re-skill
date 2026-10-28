@@ -39,6 +39,8 @@
 //          tree crowns painted over it)
 //  courtyardPaths: {rows, keep, min}: the dirt paths edged with the courtyard's light stone kerb, the dither inside their border made plain
 //          dirt (voxel.js); lawnAll: true: ground.js's carpet (mown on campus) over every lawn pixel, not only where you walk; backdrop.hills: rolling hills and a little town over the sky of the band on the horizon (voxel.js bandHills)
+//  lawnApron: [[x0, y0, x1, y1], ...]: plain ground beside the map (map px, may be negative) mown as its lawns; terrace: {rect, tables:
+//          [[x, z, colour]], planters: [[x, z]]}: a cafe patio there (ground.js, our own boxes in fixed colours)
 //  lampBanners: true: a tour banner (the class colours in turn) hangs on every lamp and ripples in the wind; pathFlowers: true: small
 //          flowers line the paths on the lawn beside them (voxel.js, our own decorations in fixed colours)
 export const FIELD_OBJECTS = {
@@ -54,6 +56,8 @@ export const FIELD_OBJECTS = {
   "backdrop": {"y1": 64, "z": 24, "extend": 220, "side": 512, "tile": [96, 64], "hills": true},
   "courtyardPaths": {"rows": [60, 144], "keep": [[364, 116, 428, 144]], "min": 500},
   "lawnAll": true,
+  "lawnApron": [[-240, 24, 0, 380], [0, 144, 124, 380]],
+  "terrace": {"rect": [-120, 84, 0, 132], "tables": [[-98, 98, 0], [-58, 100, 1], [-80, 122, 1], [-30, 122, 0]], "planters": [[-108, 78], [-72, 78], [-36, 78]]},
   "blocks": [
    {"x0": 200, "y0": 32, "x1": 260, "y1": 72, "fold": 47, "back": 44, "key": true, "keyRect": [144, 32, 260, 80]},
    {"x0": 144, "y0": 32, "x1": 209, "y1": 80, "fold": 64, "back": 44, "key": true, "keyRect": [144, 32, 260, 80], "gable": {"ax": 176, "ay": 32, "ey": 64, "roof": [222, 34, 234, 46]}}

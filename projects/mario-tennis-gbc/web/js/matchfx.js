@@ -212,9 +212,15 @@ export class MatchFX {
       if (on && !r) this.react.set(k, { f0: v.gb.ppu.frames, win: !(res & 0x80) }); else if (!on && r) this.react.delete(k);
     }
   }
-  // voxel.js interp: the winner's two hops (the drawn height only)
+  // voxel.js interp: the winner's two hops (the drawn height only); BIG MOMENTS: the tour winners' victory dance (bigmoments.js dance)
   adjust(r) {
-    if (!this.on || !this.react.size || !r.players) return r;
+    if (!r.players) return r;
+    const mom = this.v.stadium && this.v.stadium.mom, c = mom && mom.cer, T = performance.now() / 1000;
+    if (c && mom.dance(T, 0)) {
+      const players = r.players.map(p => { if ((p.slot & 1) !== c.side) return p; const d = mom.dance(T, p.slot >> 1 & 1); return d ? { ...p, X: p.X + d[0], Z: p.Z - d[1] } : p; });
+      return { ...r, players };
+    }
+    if (!this.on || !this.react.size) return r;
     const players = r.players.map(p => { const q = this.react.get(p.slot), t = q && q.win ? this.reactAge(q) : 9; return t < 0.9 ? { ...p, Z: p.Z - 64 * Math.abs(Math.sin(Math.PI * t / 0.45)) } : p; });
     return { ...r, players };
   }
@@ -261,7 +267,7 @@ export class MatchFX {
   celebrate(side, st) {
     const now = performance.now() / 1000, snd = st.sound;
     if (st.mom) st.mom.matchWon(side, st.built && st.built.venue);                     // BIG MOMENTS: the venue's event, the cards, the trophy
-    this.cine = { kind: "win", t0: now, side, a0: Math.random() * Math.PI * 2, dur: st.mom && st.mom.cer ? 6.6 : CELEB };
+    this.cine = { kind: "win", t0: now, side, a0: Math.random() * Math.PI * 2, dur: st.mom && st.mom.cer ? 8 : CELEB };
     if (snd) { snd.cheer(1); setTimeout(() => snd.cheer(1), 1200); }
     // round the winner (where the camera looks) and over the stands
     const h = ((this.v.interp().players || []).filter(q => (q.slot & 1) === side)[0]) || { X: 0, Y: side ? -1200 : 1200 };

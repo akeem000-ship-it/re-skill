@@ -7,6 +7,9 @@
 //             their picture, two or three deep, lit from above (light yellow-green on top, dark below and inside)
 //   edging    the light bricks and their dark outline lining the dirt paths stand up as a low kerb, a brick per 2 x 2 px
 //   paths     the dirt is strewn with fine grit (its own colour, some grey) and the odd small stone
+//   apron     field_objects lawnApron: the plain ground beside a side-view map (the cafe road's west end) mown as its lawns, with
+//             field_objects terrace: a paved patio there with tables under parasols, chairs and flower planters (our own, in fixed
+//             colours: boxes as the kerb bricks)
 // The grass is a carpet (0.35.81: the only choice; the tufts above, Pixel and Gemini are kept in the code): a dense, short, flat turf of
 // fine strands over every lawn (shells: the lawn drawn in thin layers one above another, each keeping only the strands
 // that reach it, thinning to their tips), with a few taller tufts standing out of it. On the school grounds (KEPT: the
@@ -243,7 +246,8 @@ export class Ground {
     const indoor = INDOOR_MAPS.has(v.mapId());                             // (an office's green floor tiles are not a lawn)
     // lawnAll (field_objects): grass, kerbs and grit wherever the picture has lawn or dirt, not only on walkable squares (the road by the
     // cafe: a side-view picture whose collision grid does not line up with its lawns and paths; mown and kerbed as the courtyard)
-    const lawnAll = !!(v.fieldDef && (v.fieldDef(v.mapId()) || {}).lawnAll);
+    const def = (v.fieldDef && v.fieldDef(v.mapId())) || {}, lawnAll = !!def.lawnAll;
+    const apron = def.lawnApron || [], inApron = (x, y) => apron.some(r => x >= r[0] && y >= r[1] && x < r[2] && y < r[3]);
     const lawn = o => { const r = d[o], g = d[o + 1], b = d[o + 2]; return !indoor && g > 70 && g >= r && b < g * 0.45; };
     // where things may grow: a walkable 16 x 16 square not under an annotated object, or any square that is all lawn
     // (the lawns beyond the fences you cannot walk on, and lawn inside an object's box; a wall or a hedge has other colours)
@@ -313,22 +317,27 @@ export class Ground {
       }
       return a;
     };
+    // the map's lawn colour (its mean), for the apron
+    let lawnC = null;
+    const lawnMean = () => { if (lawnC) return lawnC; let r = 0, g = 0, b = 0, n = 0; for (let o = 0; o < 512 * MY * 4; o += 4 * 7) if (lawn(o)) { r += d[o]; g += d[o + 1]; b += d[o + 2]; n++; } return (lawnC = n ? [r / n, g / n, b / n] : [60, 150, 40]); };
     // ---- the carpet's mask: the lawn's colour without the dither (dry patches yellower), alpha its height (taller patches) ----
     let carpet = null;
     if (this.carpet) {
-      const B = band ? 240 : 0, W = MX + 2 * B, Hc = MY + 2 * B, t = new Uint8Array(W * Hc * 4), sh = shadeMap(W, Hc, -B, -B);
+      const B = band || apron.length ? 240 : 0, W = MX + 2 * B, Hc = MY + 2 * B, t = new Uint8Array(W * Hc * 4), sh = shadeMap(W, Hc, -B, -B);
       for (let j = 0; j < Hc; j++) for (let i = 0; i < W; i++) {
         const x = i - B, y = j - B; let c = null;
         if (inArea(x, y)) { if (open(x, y) && lawn(px(x, y))) c = mean(x, y, 3, lawn); }
         else if (band && !(y < 0 && f.neighbour)) c = band;
+        else if (inApron(x, y)) c = lawnMean();
         if (!c) continue;
-        const mown = kept && inArea(x, y), tall = mown ? 0.8 : noise(x / 38, y / 38), dr = mown ? 0 : Math.max(0, noise(x / 55 + 17, y / 55 + 5) - 0.5) * 1.8, o = (j * W + i) * 4;
+        const mown = kept && (inArea(x, y) || inApron(x, y)), tall = mown ? 0.8 : noise(x / 38, y / 38), dr = mown ? 0 : Math.max(0, noise(x / 55 + 17, y / 55 + 5) - 0.5) * 1.8, o = (j * W + i) * 4;
         let edge = Math.min(1, Math.min(i, j, W - 1 - i, Hc - 1 - j) / 120 + (B ? 0 : 1));     // the band thins out over its outer 120 px
         if (!inArea(x, y) && f.neighbour) edge = Math.min(edge, Math.max(0, y) / 60);          // and towards the neighbouring map's edge
         const k = sh ? sh[j * W + i] : 1;
         t[o] = Math.min(255, c[0] + dr * 70 + 4) * k; t[o + 1] = Math.min(255, c[1] * (1 + dr * 0.06)) * k; t[o + 2] = c[2] * k; t[o + 3] = Math.round(255 * (0.45 + 0.55 * tall) * edge);
       }
-      carpet = { tex: v.texture(W, Hc, t, true), rect: [-B, -B, W, Hc], kept: kept ? [0, 0, MX, MY] : [0, 0, 0, 0] };
+      const kr = apron.reduce((k, r) => [Math.min(k[0], r[0]), Math.min(k[1], r[1]), Math.max(k[2], r[2]), Math.max(k[3], r[3])], [0, 0, MX, MY]);
+      carpet = { tex: v.texture(W, Hc, t, true), rect: [-B, -B, W, Hc], kept: kept ? kr : [0, 0, 0, 0] };
     }
     // ---- the paths' surface: the dirt's colour without the dither, alpha how far into the path (its worn, lighter middle) ----
     let paths = null;
@@ -361,6 +370,33 @@ export class Ground {
           at.push(x - 1 + rnd(x, y, 100 + i) * 4, 0.04, y - 1 + rnd(x, y, 110 + i) * 4, rnd(x, y, 120 + i) * 3.14);
           size.push(s, s * (0.25 + rnd(x, y, 130 + i) * 0.3), s * (0.7 + rnd(x, y, 140 + i) * 0.5), 0); bcol.push(...c);
         }
+      }
+    }
+    // ---- TERRACE (field_objects terrace: {rect, tables: [[x, z, colour 0/1]...], planters: [[x, z]...]}): a patio of light stone
+    // slabs (8 x 8 px, two shades), round tables (a white top on a leg) each under a parasol in stripes of its colour and white (a
+    // domed canopy on a pole), two to four chairs round it, flower planters along its edge ----
+    if (def.terrace) {
+      const T = def.terrace, [x0, z0, x1, z1] = T.rect, box = (x, y, z, w, h, dd, c, a = 0) => { at.push(x, y, z, a); size.push(w, h, dd, 0); bcol.push(c[0] / 255, c[1] / 255, c[2] / 255); };
+      for (let z = z0; z < z1; z += 8) for (let x = x0; x < x1; x += 8) { const k = ((x - x0) / 8 + (z - z0) / 8) & 1, j = 0.96 + rnd(x, z, 9) * 0.06; box(x + 4, 0, z + 4, 7.6, 0.7, 7.6, [222 * j - k * 14, 214 * j - k * 14, 196 * j - k * 12]); }
+      const CANOPY = [[216, 58, 44], [40, 110, 200]], WHITE = [246, 244, 236], WOOD = [150, 96, 52], GREY = [120, 120, 128];
+      for (const [x, z, ci] of T.tables || []) {
+        const col = CANOPY[ci || 0], a = rnd(x, z, 1) * 0.8;
+        box(x, 0.7, z, 1.6, 6, 1.6, GREY); box(x, 6.7, z, 10, 0.9, 10, WHITE, a);                  // the leg, the top
+        box(x, 7.6, z, 0.8, 15, 0.8, GREY);                                                           // the parasol's pole
+        box(x, 19, z, 17.5, 0.8, 17.5, WHITE, a); box(x, 19, z, 17.5, 0.8, 17.5, WHITE, a + 0.785);   // its canopy: a white rim, then
+        [17, 14, 10.5, 6.5, 3].forEach((w, i) => { const k = 0.9 + i * 0.05, c = col.map(u => Math.min(255, u * k));   // a dome of
+          box(x, 19.8 + i * 1.1, z, w, 1.1, w, c, a); box(x, 19.8 + i * 1.1, z, w, 1.1, w, c, a + 0.785); });             // octagons
+        box(x, 25.3, z, 1.4, 1.6, 1.4, WHITE);
+        const n = 2 + Math.floor(rnd(x, z, 2) * 3);
+        for (let i = 0; i < n; i++) {                                                                  // the chairs round it, facing in
+          const t = a + i * 6.2832 / n + 0.4, cx = x + Math.cos(t) * 9, cz = z + Math.sin(t) * 9, back = [x + Math.cos(t) * 11, z + Math.sin(t) * 11];
+          box(cx, 0.7, cz, 4, 3.6, 4, WOOD, -t); box(back[0], 0.7, back[1], 0.9, 8, 4, WOOD, -t);
+        }
+      }
+      const FL = [[230, 60, 80], [250, 210, 60], [255, 255, 255], [190, 90, 220]];
+      for (const [x, z] of T.planters || []) {
+        box(x, 0, z, 12, 3.5, 6, [170, 110, 70]); box(x, 3.5, z, 11, 1.2, 5, [70, 140, 50]);
+        for (let i = 0; i < 6; i++) box(x - 4.5 + i * 1.8 + rnd(x, z, 30 + i), 4.7, z - 1.5 + rnd(x, z, 40 + i) * 3, 1.4, 1.4 + rnd(x, z, 50 + i), 1.4, FL[(i + (Math.floor(x) & 3)) % FL.length]);
       }
     }
     // ---- the trees, bushes and palms: rounded puffs of foliage over the green of the plant's picture (a puff centre every

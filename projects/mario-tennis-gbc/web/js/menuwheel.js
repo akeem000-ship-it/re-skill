@@ -16,7 +16,7 @@ import { crestLogo } from "./crestlogo.js";
 const TITLE_LOGO = [[20, 20, "3a2df153"], [60, 24, "847037c7"], [100, 40, "2ee97ec9"], [130, 30, "b3a7e81d"], [40, 56, "bf70c43a"], [80, 64, "10cddfdc"], [120, 60, "d82c442b"]];
 const ZOOM = 1.0, HOLD = 90;                          // seconds of the title -> menu move; game frames a screen's picture is held between two (BACKDROP)
 // ---- the ball (drawn once, 512 px): felt (seam and fibres, turned with the ball), light (fixed shading over it), rim (the fuzzy edge) ----
-function makeBall(N = 512) {
+function* makeBallSteps(N = 512) {             // (in steps: it is built a slice at a time while the game's opening plays, BALL WARM-UP below)
   const mk = () => { const c = document.createElement("canvas"); c.width = c.height = N; return c; };
   const R = N * 0.46, C = N / 2, rnd = (() => { let a = 0x1234567; return () => { a = (a * 1103515245 + 12345) >>> 0; return a / 4294967296; }; })();
   const felt = mk(), f = felt.getContext("2d");
@@ -32,11 +32,12 @@ function makeBall(N = 512) {
   seam(R * 0.008, "rgba(150,150,130,0.55)");         // the moulding line
   // fuzz: short fibres everywhere (on the seam's edges white-tipped), then a fine grain
   for (let i = 0; i < 26000; i++) {
+    if (i % 1500 === 0) yield;
     const x = rnd() * N, y = rnd() * N, a = rnd() * 6.2832, l = 1.5 + rnd() * 4.5, t = rnd();
     f.strokeStyle = t < 0.45 ? `rgba(245,255,150,${0.18 + rnd() * 0.25})` : t < 0.85 ? `rgba(160,180,25,${0.16 + rnd() * 0.22})` : `rgba(255,255,235,${0.12 + rnd() * 0.15})`;
     f.lineWidth = 0.6 + rnd() * 0.8; f.beginPath(); f.moveTo(x, y); f.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); f.stroke();
   }
-  const im = f.getImageData(0, 0, N, N), d = im.data; for (let i = 0; i < d.length; i += 4) { const n = (rnd() - 0.5) * 22; d[i] += n; d[i + 1] += n; d[i + 2] += n * 0.6; } f.putImageData(im, 0, 0);
+  yield; const im = f.getImageData(0, 0, N, N), d = im.data; for (let i = 0; i < d.length; i += 4) { if (i % (N * 4 * 64) === 0) yield; const n = (rnd() - 0.5) * 22; d[i] += n; d[i + 1] += n; d[i + 2] += n * 0.6; } f.putImageData(im, 0, 0);
   f.restore();
   // the light: lit from the upper left, darker towards the lower right and the limb, a soft sheen on the fuzz
   const light = mk(), L = light.getContext("2d");
@@ -46,11 +47,24 @@ function makeBall(N = 512) {
   // the rim: fibres standing off the edge, the fuzzy silhouette
   const rim = mk(), Q = rim.getContext("2d");
   for (let i = 0; i < 9000; i++) {
+    if (i % 1500 === 0) yield;
     const a = rnd() * 6.2832, r0 = R * (0.97 + rnd() * 0.02), r1 = r0 + 2 + rnd() * 9, lit = Math.max(0, Math.cos(a + 2.3)), b = 120 + lit * 110;
     Q.strokeStyle = `rgba(${b + 30},${b + 50},${30 + lit * 60},${0.25 + rnd() * 0.35})`; Q.lineWidth = 0.7 + rnd() * 0.7;
     const wob = (rnd() - 0.5) * 0.08; Q.beginPath(); Q.moveTo(C + Math.cos(a) * r0, C + Math.sin(a) * r0); Q.lineTo(C + Math.cos(a + wob) * r1, C + Math.sin(a + wob) * r1); Q.stroke();
   }
   return { felt, light, rim, N, R };
+}
+// BALL WARM-UP: the ball takes long to draw (tens of thousands of fibres): built in slices of 5 ms every 30 ms from the page's start
+// (the game's opening plays meanwhile), so the title does not stall as it comes in; taken whole at once if it is wanted sooner
+const warm = { gen: null, ball: null };
+function warmBall() {
+  if (warm.ball || warm.gen) return; warm.gen = makeBallSteps();
+  const step = () => { if (!warm.gen) return; const end = performance.now() + 5; for (;;) { const r = warm.gen.next(); if (r.done) { warm.ball = r.value; warm.gen = null; return; } if (performance.now() > end) break; } setTimeout(step, 30); };
+  setTimeout(step, 30);
+}
+function takeBall() {
+  if (!warm.ball) { const g = warm.gen || makeBallSteps(); let r; while (!(r = g.next()).done); warm.ball = r.value; warm.gen = null; }
+  return warm.ball;
 }
 // draws the ball centred at (x, y) with radius r, turned by `turn` radians (the seam turns, the light stays)
 function drawBall(g, B, x, y, r, turn = 0) {
@@ -95,6 +109,7 @@ export class MenuWheel {
   constructor(getGb, getPort) {
     this.getGb = getGb; this.getPort = getPort; this.shown = 0; this.pos = 0; this.root = null;
     this.getHd = null; this.ball = null; this.phase = "none"; this.zoomAt = 0;   // TITLE: the ball, the move to the menu
+    if (typeof document !== "undefined") warmBall();
     const q = new URLSearchParams(typeof location !== "undefined" ? location.search : "");
     let m = q.get("menu"); if (m === null) { try { m = localStorage.getItem(KEY); } catch (e) { m = null; } }
     this.style = m === "game" ? "game" : "wheel";
@@ -205,6 +220,13 @@ export class MenuWheel {
     // up, its panel from the pictures kept of the cells, so the game's own menu never shows (it used to, a few seconds, coming back to it)
     const entering = !!(this.on && MW && !MW.active && gb && MW.entering >= 0 && P.frames - MW.entering < 600);
     const wheel = !!(this.on && MW && (MW.active || entering) && gb);
+    // TITLE SHOW WARM-UP (titleshow.js warmStep): its first venue built on blank frames of the game's opening (between its scenes)
+    if (this.on && this.show && gb && gb.frames > 120 && this.phase === "none" && !wheel) { const v = this.show.getVoxel(); if (v && v.blankPalette && v.blankPalette()) this.show.warmStep(); }
+    // LIGHT WARM-UP: the lighting's buffers made once the game runs (its opening), not on the title's first 3D frame
+    if (!this.lightWarm && this.on && gb && gb.frames > 240) {
+      this.lightWarm = true;
+      setTimeout(() => { try { const v = this.show && this.show.getVoxel(); if (v && v.light && v.light.ensure && v.cv && v.cv.width) v.light.ensure(v.cv.width, v.cv.height); } catch (e) { /* (made when first drawn) */ } }, 0);
+    }
     const onTitle = !!(this.on && P && gb && !wheel && this.isTitle()), T = performance.now() / 1000, F = gb ? gb.frames : 0;
     // the title, then (Start) the zoom until the wheel is up, then the wheel. The title also stays up while the game plays its own
     // attract loop (the ball toss, then the title again: no Start or A pressed when the title went), until the title or the menu is back
@@ -235,7 +257,7 @@ export class MenuWheel {
     const r = view.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
     Object.assign(this.root.style, { display: "block", left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" });
     const W = Math.round(r.width * dpr), H = Math.round(r.height * dpr); if (this.cv.width !== W || this.cv.height !== H) { this.cv.width = W; this.cv.height = H; }
-    if (!this.ball) this.ball = makeBall();
+    if (!this.ball) this.ball = takeBall();
     const zooming = this.phase === "zoom", opaque = title || (zooming && T - this.zoomAt < ZOOM);
     this.root.style.background = live ? (front || hold ? "rgba(8,10,32,0.3)" : "transparent") : opaque || front || hold ? "#0b1024" : "rgba(8,10,32,0.35)";
     // the match's pause (menuskins.js pauseBar): the match stays in view; in 3D the pause camera moves round it (matchfx.js), unblurred
@@ -395,7 +417,7 @@ export function attachMenuWheel(getGb, getPort, hud, getHd) {
   const mw = new MenuWheel(getGb, getPort); mw.getHd = getHd || null;
   if (typeof window !== "undefined") window.__menuWheel = mw;   // (tests)
   const b = document.createElement("span"); b.className = "k"; b.id = "menubtn"; b.title = "the main menu: a ball wheel, or the game's own grid (needs the JS port)";
-  const show = () => { b.textContent = "MENU: " + (mw.on ? "Wheel" : "Game"); b.classList.toggle("on", mw.on); }; show();
+  const show = () => { b.textContent = "MAIN MENU: " + (mw.on ? "Ball wheel" : "Game Boy"); b.classList.toggle("on", mw.on); }; show();
   b.addEventListener("pointerdown", () => { mw.setStyle(mw.on ? "game" : "wheel"); show(); });
   hud.appendChild(document.createTextNode(" ")); hud.appendChild(b);
   return mw;

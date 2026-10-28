@@ -13,6 +13,9 @@
 //              sides alike: an average character keeps the 14 / 16 shots of before); 2 a STAMINA level for the tour's player and
 //              partner (record +$3F, given at a level-up: port/menus/char_data/screen.js); for the tour's opponents a curve by
 //              the match's place in the tour (as `tour`: 0 at the first junior matches up to 14 at the finals; 2 otherwise)
+//              After each set a little of it stays (plusSetWon, flow.js awardSet): every point of the next sets starts with
+//              2% of the effort the player spent in the set (the points' sums) as effort already, eased by the slope, at most
+//              2.5 a set, so a long hard set leaves a player tiring sooner (the meters start lower) and an easy one hardly at all
 //   serve      the serve hit at the top of the toss (the ball nearly still) is up to 7% faster (shot.js shotPlacement, the serve rows)
 //   courts     PHYSICS: Enhanced only: the courts' own bounce and grip bytes pushed apart: clay grips more and sits up, grass skids
 //              low (enhanced.js bounce)
@@ -69,6 +72,7 @@ export function plusStamina(E, r8) {
   if (story && !(C.index & 1)) s = base + 2 * Math.min(50, m.u8(STORY_RECORDS[C.index >> 1] + STAMINA_LEVEL));
   else if (story) { const k = tourStage(m); if (k >= 0) s = base + Math.round(14 * k); }
   (E.stamina || (E.stamina = [6, 6, 6, 6]))[C.index] = s;
+  (E.carry || (E.carry = [0, 0, 0, 0]))[C.index] = 0; (E.setUsed || (E.setUsed = [0, 0, 0, 0]))[C.index] = 0;   // (a new match)
 }
 const staminaOf = (E, i = E.C.index & 3) => (E.stamina ? E.stamina[i] : 6);
 // character i's endurance in effort, less up to 6 for a tired tour player's side (TOUR+)
@@ -80,7 +84,10 @@ const slope = (E, i = E.C.index & 3) => 30 / (30 + staminaOf(E, i));
 // a point's effort so far, by character (E.effort), cleared when the rally count starts again (a new point or serve)
 function effort(E) {
   const r = E.S.rallyLength;
-  if (!E.effort || r < E.effortRally) E.effort = [0, 0, 0, 0];
+  if (!E.effort || r < E.effortRally) {
+    if (E.effort && E.setUsed) for (let i = 0; i < 4; i++) E.setUsed[i] += E.effort[i];   // (the point just played, to the set's sum)
+    E.effort = [0, 0, 0, 0];
+  }
   E.effortRally = r;
   return E.effort;
 }
@@ -97,12 +104,20 @@ export function plusMove(E) {
   const C = E.C, v = Math.hypot(C.velX << 16 >> 16, C.velDepth << 16 >> 16) / 256;
   if (v < 64) effort(E)[C.index & 3] += v / 650;
 }
-const effortOf = E => effort(E)[E.C.index & 3];
+// STAMINA (flow.js awardSet): what the set took stays a little into the next sets, by how much was spent
+export function plusSetWon(E) {
+  const P = E.plus; if (!P || !P.stamina || !E.setUsed) return;
+  if (E.effort) for (let i = 0; i < 4; i++) { E.setUsed[i] += E.effort[i]; E.effort[i] = 0; }   // (the set's last point)
+  const c = E.carry || (E.carry = [0, 0, 0, 0]);
+  for (let i = 0; i < 4; i++) { c[i] += Math.min(2.5, E.setUsed[i] * 0.02 * slope(E, i)); E.setUsed[i] = 0; }
+}
+const carried = (E, i) => (E.carry ? E.carry[i] : 0);
+const effortOf = E => effort(E)[E.C.index & 3] + carried(E, E.C.index & 3);
 // STAMINA for the HUD: character i's stamina left, 1 (fresh) .. 0 (as slow as it gets), and whether they are tiring (past
 // the running threshold); null while PLAY+ stamina is off or no match has run
 export function plusStaminaGauge(E, i) {
   const P = E.plus; if (!P || !P.stamina || !E.effort) return null;
-  const t = 10 + endurance(E, i), empty = t + 20 / slope(E, i), r = effort(E)[i];
+  const t = 10 + endurance(E, i), empty = t + 20 / slope(E, i), r = effort(E)[i] + carried(E, i);
   return { left: Math.max(0, 1 - r / empty), tiring: r > t, mark: 1 - t / empty };
 }
 // the court's friction and bounce bytes (enhanced.js): [friction, bounce]

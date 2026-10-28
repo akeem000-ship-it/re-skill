@@ -4,7 +4,8 @@
 //                  trailing smoke; a whale breaches off the island; coins burst out of the pipes; a flock of birds bursts out of the
 //                  jungle; balloons go up from the park's benches
 //   trophy         you win a tour match (ranking, Island Open, dream match): the game waits a few seconds (as for the walk-out intro)
-//                  while a podium rises under you and the trophy comes down into your hands and is lifted, to flashes and confetti
+//                  while you (and your partner) dance on the spot in your victory pose, hopping to the beat and shuffling side to side
+//                  (matchfx.js adjust: the drawn positions only), to camera flashes and confetti
 //   VIP box        a glass box in the left stand where the players you have beaten on the tour (TOUR+'s record) sit and watch: they
 //                  jump up and clap when you win a point and sink back when you lose one
 //   card display   when you win a set or the match, a block of the stand holds up cards that make a picture: the crest and your name
@@ -51,9 +52,16 @@ export class BigMoments {
   matchWon(side, venue) {
     this.event(venue, true); if (side !== 0) return;
     this.showCards("match");
-    const w = this.v.gb.mem.wram[0], mode = w[0x8A6]; if (mode === 1 || mode === 2 || mode === 10) this.cer = { t0: performance.now() / 1000, side };   // a tour win: the trophy
+    const w = this.v.gb.mem.wram[0], mode = w[0x8A6]; if (mode === 1 || mode === 2 || mode === 10) this.cer = { t0: null, at: performance.now() / 1000, side };   // a tour win: the dance (from the victory pose on)
   }
-  get holding() { return !!this.cer && performance.now() / 1000 - this.cer.t0 < 6.2; }
+  // the winners' dance step at time T (matchfx.js adjust): [side-step, hop] in court units, or null when none is on; the partner
+  // (k 1) half a beat behind
+  dance(T, k) {
+    const c = this.cer; if (!c || c.t0 === null) return null; const u = T - c.t0; if (u > 6.4) return null;
+    const amp = ease(u / 0.5) * ease((6.4 - u) / 0.5), b = (u - 0.25 * k) / 0.42;          // a beat every 0.42 s
+    return [64 * amp * Math.sin(Math.PI * b / 2), 72 * amp * Math.abs(Math.sin(Math.PI * b))];
+  }
+  get holding() { return !!this.cer && this.cer.t0 !== null && performance.now() / 1000 - this.cer.t0 < 6.2; }
   event(venue, big) {
     const now = performance.now() / 1000, kind = EVENT[venue] || "fireworks", snd = this.st.sound, mf = this.v.matchfx;
     if (kind === "fireworks") { if (mf && mf.fireworks) mf.fireworks(big ? 7 : 4, FW[venue], snd); return; }
@@ -117,16 +125,15 @@ export class BigMoments {
       }
     }
     this.ev = this.ev.filter(e => T - e.t0 < 10);
-    // the trophy ceremony: a podium rising under the winner, the trophy coming down to them and lifted
-    const c = this.cer; if (c) {
+    // the victory dance (matchfx.js adjust moves the winners): the stands' camera flashes and a cheer once it is going
+    const c = this.cer; if (c && c.t0 === null) {   // waiting for the game's own victory pose (the winner's point reaction), at most 3 s
+      const m = this.v.gb.mem; let pose = T - c.at > 3;
+      for (let k = 4 + c.side; k < 8 && !pose; k += 2) { const b = m.wram[k]; pose = b[0xF18] === 7 && b[0xF19] >= 2; }
+      if (pose) c.t0 = T;
+    }
+    if (c && c.t0 !== null) {
       const u = T - c.t0; if (u > 7) { this.cer = null; return; }
-      const pl = (this.v.interp().players || []).filter(q => (q.slot & 1) === c.side)[0] || { X: 0, Y: 1200 }, x = pl.X, z = pl.Y;
-      const rise = ease(u / 0.8) * 60, gold = [250, 200, 50], dk = [200, 150, 30];
-      add(x, 0, z, 300, rise, 220, [240, 240, 244]); add(x, rise - 6, z + 111, 300, 8, 4, [200, 30, 40]); add(x, rise - 30, z + 111, 60, 20, 4, gold);   // the podium, its stripe, a "1"
-      const ty = u < 1 ? 900 - ease(u) * 600 : u < 2.2 ? 300 : 300 + ease((u - 2.2) / 0.6) * 160 + Math.sin(T * 5) * 10;   // down into the hands, then lifted
-      add(x, ty, z, 50, 16, 50, dk); add(x, ty + 16, z, 16, 40, 16, gold); add(x, ty + 56, z, 70, 50, 70, gold); add(x, ty + 106, z, 80, 8, 80, [255, 230, 120]);
-      add(x - 50, ty + 66, z, 16, 34, 10, gold); add(x + 50, ty + 66, z, 16, 34, 10, gold);
-      if (u > 2.2 && !c.flashed) { c.flashed = true; if (this.st.side) for (let i = 0; i < 5; i++) for (let k = 0; k < 4; k++) this.st.side.flashes.push({ i, at: T + Math.random() * 3 }); if (this.st.sound) this.st.sound.cheer(1); }
+      if (u > 1.2 && !c.flashed) { c.flashed = true; if (this.st.side) for (let i = 0; i < 5; i++) for (let k = 0; k < 4; k++) this.st.side.flashes.push({ i, at: T + Math.random() * 3 }); if (this.st.sound) this.st.sound.cheer(1); }
     }
   }
   // ---- every frame: the pictures (the VIP box's rivals, the card display) ----

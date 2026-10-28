@@ -1,4 +1,4 @@
-// The EXP screen's HD panel (MENU: Wheel): over the game's EXP sharing screen after a match while its input loops run
+// The EXP screen's HD panel (UI: HD): over the game's EXP sharing screen after a match while its input loops run
 // (port/menus/exp/distribute.js sets P.expSeen each frame, read only), "what the levels bring": for each of the two players the next
 // levels as steps, each with the EXP still needed to reach it, lit gold (+1 skill point) once the EXP given reaches it; how far into
 // the current level they are; the pool left as balls; TOUR+'s coach pick under your card; the game's "OK?" as a YES / NO bar.
@@ -11,7 +11,7 @@ const FACES = [[64, 40], [64, 112]];                    // the portraits on the 
 const COLS = ["#e84834", "#3c82eb"], SKILLS = ["SPIN", "POWER", "CONTROL", "SPEED"], STEPS = 5;
 
 export class ExpPanel {
-  constructor() { this.el = null; this.key = ""; this.faces = [null, null]; this.faceKey = ["", ""]; this.faceSel = [-9, -9]; this.T = null; this.reached = null; }
+  constructor() { this.on = true; this.el = null; this.key = ""; this.faces = [null, null]; this.faceKey = ["", ""]; this.faceSel = [-9, -9]; this.T = null; this.reached = null; }
   table(rom) {
     if (!this.T) { const o = romOff(2, 0x4E7A); this.T = Array.from({ length: 100 }, (_, i) => rom[o + 3 * i] | rom[o + 3 * i + 1] << 8 | rom[o + 3 * i + 2] << 16); }
     return this.T;
@@ -29,9 +29,10 @@ export class ExpPanel {
     const [x0, y0] = FACES[slot]; for (let y = 0; y < 24; y++) for (let x = 0; x < 24; x++) px[y * 24 + x] = f[(y0 + y) * 160 + x0 + x] | 0xFF000000;
     g.putImageData(im, 0, 0); return c.toDataURL();
   }
-  // per frame (full.js): canvas = the game's view on the page; coach = TOUR+'s pick (tour.js coach()) or null
+  // per frame (full.js): canvas = the game's view on the page; coach = TOUR+'s pick (tour.js coach()) or null; shown with UI: HD
+  // (on, full.js), whichever main menu is chosen
   frame(port, canvas, gb, coach) {
-    const s = port && port.expSeen, live = !!(s && s.chars && port.frames - s.at <= 2 && port.menuWheel && port.menuWheel.on);
+    const s = port && port.expSeen, live = !!(s && s.chars && port.frames - s.at <= 2 && this.on);
     globalThis.__expPanelOn = live;
     if (!live) { if (this.el && this.el.style.display !== "none") this.el.style.display = "none"; this.key = ""; this.reached = null; return; }
     if (!this.el) this.build();

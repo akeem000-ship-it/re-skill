@@ -4,7 +4,7 @@ import * as ball from "./ball.js";
 import { POINTOUTCOME } from "./ball.js";
 import * as chars from "./chars.js";
 import { setBallTrailColor } from "./shot.js";
-import { plusPoint } from "./plus.js";
+import { plusPoint, plusSetWon } from "./plus.js";
 
 export const SHOTTYPE_SMASH = 0x09, SHOTTYPE_LOB = 0x0A, SHOTTYPE_DROP = 0x0B;
 export const POINTWINNER = { SERVICE_ACE: 1, RETURN_ACE: 2, SMASH_ACE: 3, LOB: 4, DROP_SHOT: 5 };
@@ -67,6 +67,7 @@ export function awardSet(E) {
   const S = E.S, w = side(S.setWinLoseFlag & 0xFF); if (!w) return;
   if (w === 1) S.player1SetsWon++; else S.player2SetsWon++;
   S.player1GamesWon = 0; S.player2GamesWon = 0; S.tiebreakerIndicator = 0;
+  if (E.plus) plusSetWon(E);                                              // PLAY+: a little of the set's effort stays
 }
 export function awardGame(E) {
   const S = E.S, w = side(S.gameWinLoseFlag & 0xFF); if (!w) return;

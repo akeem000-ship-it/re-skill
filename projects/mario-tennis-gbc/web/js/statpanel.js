@@ -1,4 +1,4 @@
-// The level-up stat screen's HD panel (MENU: Wheel): over the game's "Change which skill?" screen while its input loop runs
+// The level-up stat screen's HD panel (UI: HD): over the game's "Change which skill?" screen while its input loop runs
 // (port/menus/char_data/screen.js sets P.charDataSeen each frame, read only), every stat with its dots and, for the skill page under
 // the cursor, what a point there would change: the game's own deltas (ComputeLevelUpStatDeltas, the stats the rebuild would give),
 // each turned into what it means in a match, in real units from the ROM's own tables:
@@ -19,7 +19,7 @@ const STAMINA_COL = "#9a5ae0";
 const RUN_KMH = 60 * 23.77 / 2496 * 3.6;                  // km/h per world unit per frame (a player's run: the real court's scale)
 
 export class StatPanel {
-  constructor() { this.el = null; this.key = ""; }
+  constructor() { this.on = true; this.el = null; this.key = ""; }
   // stat i's level v (0-9: the record's byte, the screen shows v + 1) as [what it is, its value as text, a number to compare]
   effect(rom, i, v, s) {
     v = Math.max(0, Math.min(9, v));
@@ -51,9 +51,10 @@ export class StatPanel {
     if (!document.getElementById("hdstat-css")) { const st = document.createElement("style"); st.id = "hdstat-css"; st.textContent = CSS; document.head.appendChild(st); }
     this.el = document.createElement("div"); this.el.className = "hdstat"; this.el.style.display = "none"; document.body.appendChild(this.el);
   }
-  // per frame (full.js): canvas = the game's view on the page; coach = TOUR+'s pick (tour.js coach()) or null
+  // per frame (full.js): canvas = the game's view on the page; coach = TOUR+'s pick (tour.js coach()) or null; shown with UI: HD
+  // (on, full.js), whichever main menu is chosen
   frame(port, canvas, gb, coach) {
-    const s = port && port.charDataSeen, live = !!(s && s.stats && port.frames - s.at <= 2 && port.menuWheel && port.menuWheel.on);
+    const s = port && port.charDataSeen, live = !!(s && s.stats && port.frames - s.at <= 2 && this.on);
     globalThis.__statPanelOn = live;
     if (!live) { if (this.el && this.el.style.display !== "none") this.el.style.display = "none"; this.key = ""; return; }
     if (!this.el) this.build();

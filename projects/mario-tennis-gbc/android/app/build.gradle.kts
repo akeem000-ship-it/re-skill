@@ -12,7 +12,7 @@ val syncWebAssets by tasks.registering(Sync::class) {
 android {
     namespace = "com.example.mariotennis"
     compileSdk = 34
-    defaultConfig { applicationId = "com.example.mariotennis"; minSdk = 24; targetSdk = 34; versionCode = 145; versionName = "0.35.91" }
+    defaultConfig { applicationId = "com.example.mariotennis"; minSdk = 24; targetSdk = 34; versionCode = 146; versionName = "0.35.92" }
     setProperty("archivesBaseName", "MTenn3D")
     // -Pedition=port: "MTenn3D Port", a separate app beside MTenn3D (its own saves and settings) that always starts
     // the game on the JS port (CODE: PORT); the CODE button still switches for that run
