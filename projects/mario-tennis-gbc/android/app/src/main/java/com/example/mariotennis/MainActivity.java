@@ -35,7 +35,7 @@ public class MainActivity extends Activity {
             @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
                 return loader.shouldInterceptRequest(r.getUrl());
             }
-            @Override public void onPageFinished(WebView v, String url) { pushCut(); pushGameMode(); }
+            @Override public void onPageFinished(WebView v, String url) { pushCut(); pushGameMode(); pushDevice(); }
         });
         // the page's <input type=file> (load your own ROM): open the system file picker. Any type, since .gbc has no MIME type.
         web.setWebChromeClient(new android.webkit.WebChromeClient() {
@@ -157,6 +157,8 @@ public class MainActivity extends Activity {
             case KeyEvent.KEYCODE_DPAD_LEFT: return 32;
             case KeyEvent.KEYCODE_DPAD_UP: return 64;
             case KeyEvent.KEYCODE_DPAD_DOWN: return 128;
+            case KeyEvent.KEYCODE_BUTTON_L2: return 256;        // (the page: the next court camera)
+            case KeyEvent.KEYCODE_BUTTON_R2: return 512;        // (the page: turbo while held)
         }
         return 0;
     }
@@ -175,7 +177,9 @@ public class MainActivity extends Activity {
         if ((e.getSource() & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK && e.getAction() == MotionEvent.ACTION_MOVE) {
             float hx = e.getAxisValue(MotionEvent.AXIS_HAT_X), hy = e.getAxisValue(MotionEvent.AXIS_HAT_Y);
             float sx = e.getAxisValue(MotionEvent.AXIS_X), sy = e.getAxisValue(MotionEvent.AXIS_Y);
-            hatMask = (hx > 0.5f ? 16 : 0) | (hx < -0.5f ? 32 : 0) | (hy < -0.5f ? 64 : 0) | (hy > 0.5f ? 128 : 0);
+            float lt = Math.max(e.getAxisValue(MotionEvent.AXIS_LTRIGGER), e.getAxisValue(MotionEvent.AXIS_BRAKE));   // L2 / R2 as
+            float rt = Math.max(e.getAxisValue(MotionEvent.AXIS_RTRIGGER), e.getAxisValue(MotionEvent.AXIS_GAS));     // analog triggers
+            hatMask = (hx > 0.5f ? 16 : 0) | (hx < -0.5f ? 32 : 0) | (hy < -0.5f ? 64 : 0) | (hy > 0.5f ? 128 : 0) | (lt > 0.5f ? 256 : 0) | (rt > 0.5f ? 512 : 0);
             pushMask(); pushStick(sx, sy); return true;           // the stick goes to the page as it is: web/js/stick.js reads it (STICK FEEL)
         }
         return super.dispatchGenericMotionEvent(e);
@@ -200,7 +204,19 @@ public class MainActivity extends Activity {
         web.evaluateJavascript("window.__flushSave && window.__flushSave(); window.__stopRec && window.__stopRec();", null);
         super.onPause(); web.onPause();
     }
-    @Override protected void onResume() { super.onResume(); web.onResume(); pushGameMode(); }
+    @Override protected void onResume() { super.onResume(); web.onResume(); pushGameMode(); pushDevice(); }
+    // HANDHELD (web/js/handheld.js): the device's model and whether a game controller is built in (a games handheld such as the
+    // Retroid Pocket Classic: its own d-pad and buttons, not a Bluetooth / USB one), so the page keeps its touch controls hidden
+    private void pushDevice() {
+        boolean builtin = false;
+        for (int id : InputDevice.getDeviceIds()) {
+            InputDevice d = InputDevice.getDevice(id);
+            if (d == null || (d.getSources() & InputDevice.SOURCE_GAMEPAD) != InputDevice.SOURCE_GAMEPAD) continue;
+            if (android.os.Build.VERSION.SDK_INT >= 29 && !d.isExternal()) builtin = true;
+        }
+        final String js = "window.__device={model:" + org.json.JSONObject.quote(android.os.Build.MODEL) + ",builtinPad:" + builtin + "};";
+        web.post(() -> web.evaluateJavascript(js, null));
+    }
     // Android's Game Mode (Samsung Game Booster's Performance / Battery profiles, Android 12+): passed to the page, which turns
     // its battery saver on in Battery mode (window.__gameMode: 1 standard, 2 performance, 3 battery, 4 custom)
     private void pushGameMode() {

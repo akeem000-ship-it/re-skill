@@ -159,8 +159,13 @@ function resultsGate(inp) {
   if (resultsAt < 0) resultsAt = gb.frames;
   return { ...inp, b: false, a: inp.a && gb.frames - resultsAt >= 60 };
 }
+let padL2 = false, padR2 = false;            // HANDHELD (handheld.js): a controller's L2 / R2 last frame
 function frame() {
-  pollGamepad(keys); const inp = modes.filterInput(resultsGate(frameInput())), mask = maskOf(inp); gb.setInput(inp); lastInp = inp;   // (MODES: the partner's commands kept from the game)
+  pollGamepad(keys);
+  if (!!keys.PadR2 !== padR2) { padR2 = !!keys.PadR2; turbo = padR2; $("turbo").classList.toggle("on", turbo); }   // R2 held: turbo
+  if (keys.PadL2 && !padL2 && view3d && voxel && voxel.mode === "3d") setPreset(PRESET_ORDER[(PRESET_ORDER.indexOf(preset) + 1) % PRESET_ORDER.length]);   // L2: the next court camera
+  padL2 = !!keys.PadL2;
+  const inp = modes.filterInput(resultsGate(frameInput())), mask = maskOf(inp); gb.setInput(inp); lastInp = inp;   // (MODES: the partner's commands kept from the game)
   if (port) { setAnalog(); portFrame(); } else gb.runFrame();
   if (view3d && voxel && voxel.mode === "3d") voxel.tick();
   if (phone) phone.frame(gb);                // VIBRATE: hits and points
