@@ -163,7 +163,8 @@ function* doorFrames(sh, door, frames) {
   }
 }
 // 32:5EF5 / 5FBE / 6087 / 6150 / 6219 Map03DoorOpenAnim1-5; 32:5F4E / 6017 / 60E0 / 61A9 / 6272 Map03DoorSetOpen1-5;
-// 32:5F65 / 602E / 60F7 / 61C0 / 6289 Map03DoorCloseAnim1-5
+// 32:5F65 / 602E / 60F7 / 61C0 / 6289 Map03DoorCloseAnim1-5 (the same code with each door's rectangle; the screen cases
+// open doors 3-5 too: 32:6087 (boot_kid_story_door3), 32:6150 (the Lounge's), 32:6219 (boot_kid_story_trophies))
 const map03DoorOpenAnim = (sh, n) => doorFrames(sh, n, [1, 2, 3, 4]);
 const map03DoorSetOpen = (sh, n) => doorFrames(sh, n, [4]);
 const map03DoorCloseAnim = (sh, n) => doorFrames(sh, n, [3, 2, 1, 0]);
