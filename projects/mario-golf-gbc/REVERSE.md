@@ -117,6 +117,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + Options (32:79D8): the golf dictionary (bank 3F), data management (32:7A0A: copy, erase, erase all), bank 09's option menus | 191,890 | 79.07% |
 | + Status (0B:4D9D) with bank 07's menus, the records queries of bank 0B, the records screens of bank 0C (stars, stats, VS results, shot records, ranking, winners, best scores), the match card's holes-up line (48:4724) | 205,082 | 84.50% |
 | + map $08's tutors (the dictionary by category), the film select's bank-0D copies, the fuzzed copies and helpers (the map tile animation of banks 29-74, the launch speed classes of banks 38-3A, bank 40's math copies, home-bank helpers; web/tests/golf_fuzz_routines.mjs) | 211,301 | 87.07% |
+| + more fuzz-checked helpers and dead routines (banks 02 0A 0B 0C 10 3E 48) | 212,510 | 87.56% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -399,6 +400,16 @@ Code that no screen case reaches is checked routine by routine against the ROM o
   00:23E1, AdjustColorRed / Green / Blue 00:252E / 253A / 254A (the colour's bit 15 comes back clear), PrintHexWord
   00:22BC, PrintDecimalByteSigned 00:22E9 (rows below $18: a print at row $1F of the debug text reaches the stack
   page), MatchCompare16 3E:6637; FormatSignedDecimalPadded 00:211D [unreferenced: the two `ld bc, $211D` are data].
+- more helpers done inline where called (unreached.js) [reached]: GetCharRecord 02:4E39, TestBitN 02:5D11,
+  AddPointsSigned 02:544E (the debug points editor), SignOfDiff 48:497E, HoleStrokesPlusPutts 0B:65DE (the high nibble
+  shifted arithmetically), MatchScoreToWord 3E:6342, PowerScaleLookup 10:6DAE (launch.js, the putter's speed),
+  SetForcedShotD 10:4C4C, PalOffset 0A:5675; [debug only] TargetCupDist 10:621E (with PinDist's tail 10:62DA; its HRAM:
+  the second square's product), MapCount 0A:531F, MapIdAt 0A:5336; [unreferenced] SumPlayerHoleCounts 0B:656F,
+  CountHolesWon 0B:6585 (reads hole index 18, one past the card), DivATen 3E:630C, ModATen 3E:631E,
+  CopyTextToWram1D800 48:4D4C (texts that end in the buffer), and bank 0C's dead RedrawStatsFrame 0C:55B7,
+  ClearStatsColumn 0C:5725, CopyTextIdToBuffer 0C:5772 (export $12; WRAM bank c while it copies), TestProfileHoleBit
+  0C:57E7, FillBytes2 0C:6794 (records0c.js).
+  JoyPressedIndex 02:47BE has no `ret`: it runs on into PlayLinkCallSound 02:47ED (link play), so it is left with it.
 The film select's bank-0D copies (0D:4243-0D:4A01, select.js) are the same code as bank 0F's (compare_routines) and run
 by the mode select's screen cases; 0D:499A (a copy of 0F:49AA) is never called and stays uncited.
 Not checked and left: VectorLengthTail 40:5941 (pops registers it never pushed: cannot be called), the course view's
