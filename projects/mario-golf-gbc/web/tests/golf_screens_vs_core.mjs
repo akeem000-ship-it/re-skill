@@ -356,6 +356,28 @@ function recordsPoke(seed, fix = () => {}, then = null) {
   };
 }
 
+// the character's profile records ($C980-$C9FC: 5 courses x 25 bytes, the hole bits at +$16) poked with pseudo-random
+// bytes from `seed` (the best scores near par: +2 = 54 +- 20) and game flags `flags` set, on both sides when the
+// Status four-item menu (07:63EC) first shows
+function profilePoke(seed, flags = []) {
+  let done = false;
+  return (f, w, core) => {
+    if (f === 0) done = false;
+    if (done || !(hasTask(w, 0x07, 0x7DB0) && w.wram[6][0x202] === 4)) return;
+    done = true;
+    let s = seed >>> 0;
+    const rnd = () => { s = (Math.imul(s, 1103515245) + 12345) >>> 0; return s >>> 24; };
+    for (const m of [w.wram[0], core.wram(0)]) {
+      let t = s;
+      s = seed >>> 0;
+      for (let i = 0x980; i < 0x9FD; i++) m[i] = rnd();
+      for (let c = 0; c < 5; c++) m[0x980 + 25 * c + 2] = 0x36 - 20 + (rnd() % 41);
+      for (const n of flags) m[0x840 + (n >> 3)] |= 0x80 >> (n & 7);
+      s = t;
+    }
+  };
+}
+
 // name, the state (round, routine), the native routine, buttons
 // a Yes / No question answered No: A until the menu's cursor task (05:4F20), Down, A
 const ynNo = [{ press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 0x80], [30, 0], [2, 1]];
@@ -1158,6 +1180,26 @@ const CASES = [
     policy: stepPolicy([...TO_STATUS, [menu07Items(3), 0x80], [null, 0x80], [null, 1],
       [menu07Items(5), 0x40], [null, 1], [inTask(0x0C, 0x4821), 0x10, 60], [null, 0x10], [null, 0x20], [null, 0x10], [null, 2],
       [menu07Items(5), 2], [menu07Items(3), 2], [menu09Items(4), 0]]) },
+  // Status, a character (Kid): Char. Data, the VS results (0C:65B2), Stars (the event list); B back through the
+  // character select and the menu (no records block: the two-item menu)
+  { name: "boot_status_char", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 30000,
+    run: sh => { stepsDone = -1; return gameCase(sh, 1, () => stepsDone >= 0 && frameNow > stepsDone + 200); },
+    policy: stepPolicy([...TO_STATUS, [menu07Items(2), 1], [inCharSel, 1, 60],
+      [menu07Items(4), 1], [null, 1, 150],
+      [menu07Items(4), 0x80], [null, 0x80], [null, 1], [inTask(0x0C, 0x4821), 2, 80],
+      [menu07Items(4), 0x80], [null, 1], [null, 2, 150],
+      [menu07Items(4), 2], [inCharSel, 2, 60], [menu07Items(2), 2], [menu09Items(4), 0]]) },
+  // Status, a character, its stats (0C:4A15 with $D23B = 1): the profile's course records ($C980, 25 bytes x 5) and
+  // the hole bits poked with pseudo-random values and #112 #113 set when the four-item menu first shows; the total
+  // page, scrolled, the pages both ways
+  { name: "boot_status_stats", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 30000,
+    hook: profilePoke(7, [112, 113]),
+    run: sh => { stepsDone = -1; return gameCase(sh, 1, () => stepsDone >= 0 && frameNow > stepsDone + 200); },
+    policy: stepPolicy([...TO_STATUS, [menu07Items(2), 1], [inCharSel, 1, 60],
+      [menu07Items(4), 0x80], [null, 1], [inTask(0x0C, 0x4C63), 0x80, 60], ...Array(30).fill([null, 0x80, 1]),
+      ...Array(20).fill([null, 0x40, 1]), [null, 0x10, 60], [null, 0x10, 80], [null, 0x10, 80], [null, 0x10, 80],
+      [null, 0x20, 80], [null, 0x20, 80], [null, 2, 80],
+      [menu07Items(4), 2], [inCharSel, 2, 60], [menu07Items(2), 2], [menu09Items(4), 0]]) },
   { name: "boot_kid_round", state: "boot_poweron_kid", open: true, noRet: true,
     run: sh => (function* () {
       menuW = sh.w;
