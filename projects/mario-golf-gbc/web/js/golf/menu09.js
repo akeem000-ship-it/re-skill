@@ -11,6 +11,11 @@ import { clearFrameTasks, registerFrameTask } from "./tasks.js";
 import { reloadFontTiles, copyMapToScrollBuffers, initWindowSystem } from "./standings.js";
 
 const B = 0x09;
+// the two copies of the engine: bank 09's (09:400A-09:49A8) and bank 07's (07:741E-07:7DC8, the same code at other
+// addresses with its own graphics): the screen's tiles, palettes, attribute and tile maps, the item rows' attribute
+// template, the bobbing sprite's table and template, its frame task
+export const MENU09 = { bank: 0x09, gfx: 0x40CE, pal1: 0x4325, pal2: 0x4355, attrMap: 0x4360, bgMap: 0x45A0, row: 0x4400, bobY: 0x49A9, bobTpl: 0x49E9, task: 0x4990 };
+export const MENU07 = { bank: 0x07, gfx: 0x74E2, pal1: 0x7739, pal2: 0x7769, attrMap: 0x7780, bgMap: 0x79C0, row: 0x7820, bobY: 0x7DC9, bobTpl: 0x7E09, task: 0x7DB0 };
 const rd = D.rd, wr = D.wr;
 const setW = (w, n) => D.setWramBank(w, n);
 function notPorted(what) { throw new Error(`${what} is not ported`); }
@@ -22,12 +27,12 @@ function* inBankGen(w, bank, g) {
 
 // 09:4916 MenuItemGfx09: slot l's picture for state h (LZ to $D000, $D100 for an odd slot, in the mapped WRAM bank)
 // queued to VRAM1 at ($A6 + l) << 8, $10 more when that has bit 3 clear
-function menuItemGfx(w, h, l) {
+function menuItemGfx(w, h, l, m = MENU09) {
   const b = l;
   const e = ((((l << 1) & 0xFF) + h) << 1) & 0xFF;
-  const src = rw(B, (r16(w, 0xD200) + e) & 0xFFFF);
+  const src = rw(m.bank, (r16(w, 0xD200) + e) & 0xFFFF);
   const de = 0xD000 + (b & 1 ? 0x100 : 0);
-  D.lzTo(w, B, src, de);
+  D.lzTo(w, m.bank, src, de);
   let a = (b + 0xA6) & 0xFF;
   if (!(a & 8)) a |= 0x10;
   D.queueVRAMCopy(w, de, a << 8, 0x10);
@@ -36,27 +41,27 @@ const r16 = (w, a) => rd(w, a) | rd(w, a + 1) << 8;
 
 // 09:4949 MenuItemAttrs09: slot l's BG attribute row: 09:4400 + l x 32 to $D000 (or $D100) with bytes 2-17 = c,
 // queued to VRAM1 $98A0 + l x 32
-function menuItemAttrs(w, c, l) {
+function menuItemAttrs(w, c, l, m = MENU09) {
   const off = (l << 5) & 0xFFFF;
   const buf = 0xD000 + (l & 1 ? 0x100 : 0);
-  D.copyMemoryFast(w, (0x4400 + off) & 0xFFFF, buf, 2);
+  D.inBank(w, m.bank, () => D.copyMemoryFast(w, (m.row + off) & 0xFFFF, buf, 2));
   for (let k = 0; k < 16; k++) wr(w, buf + 2 + k, c);
   D.queueVRAMCopy(w, buf, (off + 0xB8A0) & 0xFFFF, 2);
 }
 
 // 09:48DE MenuDrawItem09 / 09:48F9 MenuItemPalette09: item l's two slots ([$D203] + 2l and the next), one frame
-function* menuDrawItem(sh, h, l) {
+function* menuDrawItem(sh, h, l, m = MENU09) {
   const w = sh.w;
   const s = (rd(w, 0xD203) + 2 * l) & 0xFF;
-  menuItemGfx(w, h, s);
-  menuItemGfx(w, h, (s + 1) & 0xFF);
+  menuItemGfx(w, h, s, m);
+  menuItemGfx(w, h, (s + 1) & 0xFF, m);
   yield* sh.advance();
 }
-function* menuItemPalette(sh, c, l) {
+function* menuItemPalette(sh, c, l, m = MENU09) {
   const w = sh.w;
   const s = (rd(w, 0xD203) + 2 * l) & 0xFF;
-  menuItemAttrs(w, c, s);
-  menuItemAttrs(w, c, (s + 1) & 0xFF);
+  menuItemAttrs(w, c, s, m);
+  menuItemAttrs(w, c, (s + 1) & 0xFF, m);
   yield* sh.advance();
 }
 
@@ -64,7 +69,7 @@ function* menuItemPalette(sh, c, l) {
 // scroll 0, the extra tiles (desc + $28 -> $8E00), the screen (09:40CE tiles -> VRAM1 $9000 / $8800, palettes
 // 09:4325 and 09:4355, attributes 09:4360 and map 09:45A0), the 10 slots' pictures (state 1) and rows (palette $0B),
 // MenuBobSpriteTask, LCD on
-export function menuScreenInit(w, hl, d, e, b) {
+export function menuScreenInit(w, hl, d, e, b, m = MENU09) {
   setW(w, 6);
   wr(w, 0xD205, b);
   wr(w, 0xD200, hl & 0xFF); wr(w, 0xD201, hl >> 8);
@@ -73,60 +78,62 @@ export function menuScreenInit(w, hl, d, e, b) {
   reloadFontTiles(w);                            // 01:421A
   D.disableLCDSafely(w);
   w.high[0x18B] = w.high[0x18A] = 0;
-  const extra = rw(B, (r16(w, 0xD200) + 0x28) & 0xFFFF);
+  const extra = rw(m.bank, (r16(w, 0xD200) + 0x28) & 0xFFFF);
   setW(w, 1);
-  D.lzTo(w, B, extra, 0xD000);
+  D.lzTo(w, m.bank, extra, 0xD000);
   D.queueAndRunVRAMCopy(w, 0xD000, 0x8E00, 0x14);
-  D.lzTo(w, B, 0x40CE, 0xD000);
+  D.lzTo(w, m.bank, m.gfx, 0xD000);
   D.queueVRAMCopy(w, 0xD000, 0xB000, 0x80);
   D.queueAndRunVRAMCopy(w, 0xD800, 0xA800, 0x80);
-  D.loadPalettesMasterOnly(w, 0x4325, 0x02, 0x06);
-  D.loadPalettesMasterOnly(w, 0x4355, 0x0C, 0x01);
-  D.queueVRAMCopy(w, 0x4360, 0xB800, 0x24);
-  D.queueAndRunVRAMCopy(w, 0x45A0, 0x9800, 0x24);
+  D.inBank(w, m.bank, () => {
+    D.loadPalettesMasterOnly(w, m.pal1, 0x02, 0x06);
+    D.loadPalettesMasterOnly(w, m.pal2, 0x0C, 0x01);
+    D.queueVRAMCopy(w, m.attrMap, 0xB800, 0x24);
+    D.queueAndRunVRAMCopy(w, m.bgMap, 0x9800, 0x24);
+  });
   setW(w, 6);
   for (let l = 0; l < 10; l++) {
-    menuItemGfx(w, 1, l);
+    menuItemGfx(w, 1, l, m);
     D.processVRAMCopyQueue(w);                   // 00:04DE
-    menuItemAttrs(w, 0x0B, l);
+    menuItemAttrs(w, 0x0B, l, m);
     D.processVRAMCopyQueue(w);
   }
-  registerFrameTask(w, 0x01, B, 0x4990);         // MenuBobSpriteTask09
+  registerFrameTask(w, 0x01, m.bank, m.task);    // MenuBobSpriteTask09 / 07:7DB0 MenuBobSpriteTask
   D.enableLCD(w);
 }
 
 // 09:4990 MenuBobSpriteTask09: the template 09:49E9 at x 0, y from the table 09:49A9 by the frame
-export function menuBobSpriteTask(w) {
-  const e = rb(B, 0x49A9 + (w.high[0x18C] & 0x3F));
-  D.queueSpriteTemplate(w, 0x49E9, e, 0x00, 0xE0, 0x04);
+export function menuBobSpriteTask(w, m = MENU09) {
+  const e = rb(m.bank, m.bobY + (w.high[0x18C] & 0x3F));
+  D.queueSpriteTemplate(w, m.bobTpl, e, 0x00, 0xE0, 0x04, a => rb(m.bank, a));
 }
 
 // 09:47E0 MenuSelect09: a = the cursor: the item highlighted (palette $0C) and blinking; Up / Down move it (sound
 // $5B, wrapping), A picks it (sound $5C; a = the item), B leaves (sound $5D; $FF). (With the link handshake on
 // ($D205) the partner's Start and A on item 1, the link game, are not ported.)
-export function* menuSelect(sh, a) {
+export function* menuSelect(sh, a, m = MENU09) {
   const w = sh.w;
   let b = a;
   for (;;) {
     wr(w, 0xD204, 0xFF);                         // 09:47E1
-    yield* menuItemPalette(sh, 0x0C, b);
+    yield* menuItemPalette(sh, 0x0C, b, m);
     for (;;) {
       const old = rd(w, 0xD204), now = (old + 1) & 0xFF;   // 09:47EC
       wr(w, 0xD204, now);
-      if ((old ^ now) & 0x10) yield* menuDrawItem(sh, (now >> 4) & 1, b);
+      if ((old ^ now) & 0x10) yield* menuDrawItem(sh, (now >> 4) & 1, b, m);
       yield* sh.advance();
       if (rd(w, 0xD205) && rd(w, 0xCB40) === 0x10) notPorted("the link partner's menu choice (~09:4810)");
       const rep = w.high[0x191];
       if (rep & 2) {                             // B
         sh.sound(0x5D);
-        yield* menuDrawItem(sh, 1, b);
-        yield* menuItemPalette(sh, 0x0B, b);
+        yield* menuDrawItem(sh, 1, b, m);
+        yield* menuItemPalette(sh, 0x0B, b, m);
         return 0xFF;
       }
       if (rep & 1) {                             // A
         if (rd(w, 0xD205) && b === 1) notPorted("the link game's handshake (~09:488D SerialSendLinkRequest)");
         sh.sound(0x5C);
-        yield* menuDrawItem(sh, 0, b & 0x0F);
+        yield* menuDrawItem(sh, 0, b & 0x0F, m);
         return b;
       }
       let d;
@@ -136,8 +143,8 @@ export function* menuSelect(sh, a) {
         d = last === b ? (-last) & 0xFF : 1;
       } else continue;
       sh.sound(0x5B);
-      yield* menuDrawItem(sh, 1, b);
-      yield* menuItemPalette(sh, 0x0B, b);
+      yield* menuDrawItem(sh, 1, b, m);
+      yield* menuItemPalette(sh, 0x0B, b, m);
       b = (b + d) & 0xFF;
       break;
     }

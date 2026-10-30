@@ -184,6 +184,9 @@ function initRecordsTileAnim(w) {
   setW(w, 6);
   wr(w, 0xD23E, 0xC0); wr(w, 0xD23F, 0x8F); wr(w, 0xD240, 0xE0); wr(w, 0xD241, 0x8F);
   setW(w, 1);
+  animateRecordsTiles(w);
+}
+export function animateRecordsTiles(w) {
   const hl = 0x43E0 + (((rd(w, 0xC4B2) >> 3) & 0x0F) << 5);
   setW(w, 6);
   if (!w.vram) return;

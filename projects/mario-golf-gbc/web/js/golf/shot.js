@@ -25,6 +25,8 @@ import { menuCursorTask } from "./windows.js";
 import { demoTasks } from "./title.js";
 import { menuBobSpriteTask } from "./menu09.js";
 import { dictFrameTask } from "./dict.js";
+import { records0cTasks } from "./records0c.js";
+import { MENU07 } from "./menu09.js";
 import { charSelTasks } from "./charsel.js";
 import { selectTasks } from "./select.js";
 import { mapDebugCoordsTask } from "./boot.js";
@@ -205,6 +207,8 @@ export class Shot {
       ...demoTasks(w),                           // the title and its demo (bank 40)
       "09:4990": () => menuBobSpriteTask(w),          // 09:4990 MenuBobSpriteTask09
       "3f:58dd": () => dictFrameTask(w, id => this.sound(id)),   // 3F:58DD DictFrameTask
+      "07:7db0": () => menuBobSpriteTask(w, MENU07),  // 07:7DB0 MenuBobSpriteTask
+      ...records0cTasks(w),                      // the records screens (bank 0C)
       ...levelUpTasks(w),                        // the level-up screen (bank 41)
       ...charSelTasks(w),                        // the character select (bank 06)
       ...nameEntryTasks(w),                      // the name entry (bank 06)

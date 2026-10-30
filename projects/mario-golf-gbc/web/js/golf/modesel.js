@@ -20,6 +20,7 @@ import { golfSessionEnd, scriptEnd } from "./boot.js";
 import * as St from "./start.js";
 import * as Sv from "./save.js";
 import { modeSelectOptionsMenu } from "./options.js";
+import { modeSelectMenuLoop } from "./records.js";
 
 const rd = D.rd, wr = D.wr;
 const setW = (w, n) => D.setWramBank(w, n);
@@ -147,6 +148,7 @@ export function* modeSelectMain(sh) {
       const r = yield* inBankGen(w, 0x09, linkMenu(sh));
       if (r === 0xFF) { at = "title"; titleArg = 0xFF; continue; }
       if (r === 3) { yield* modeSelectOptionsMenu(sh); continue; }   // 32:54F2 (32:79D8), then 32:5080 again
+      if (r === 2) { yield* inBankGen(w, 0x0B, modeSelectMenuLoop(sh)); continue; }   // 32:54EC (0B:4D9D)
       if (r !== 0) notPorted(`the link menu's item ${r} (~32:509F)`);
       at = "player";
     }

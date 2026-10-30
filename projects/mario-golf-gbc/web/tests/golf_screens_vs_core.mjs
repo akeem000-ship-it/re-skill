@@ -20,6 +20,8 @@ import { modeSelectMain } from "../js/golf/modesel.js";
 import { powerOn } from "../js/golf/boot.js";
 import { playRoundFrames } from "../js/golf/game.js";
 import { gameFromPowerOn } from "../js/golf/boot.js";
+import { GolfMemory } from "../js/golf/memory.js";
+import { saveBlockStore } from "../js/golf/save.js";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const filter = process.argv.slice(2).find(a => !a.startsWith("--")) || "";
@@ -328,6 +330,31 @@ const inCharPrompt = () => menuW && hasTask(menuW, 0x41, 0x6E3B);
 const inMenuCursor = () => menuW && hasTask(menuW, 0x05, 0x4F20);
 // the link menu: Up (to Options, the last item), A
 const TO_OPTIONS = [[menu09Items(4), 0x40], [null, 1]];
+// the link menu: Down twice (to Status), A
+const TO_STATUS = [[menu09Items(4), 0x80], [null, 0x80], [null, 1]];
+const menu07Items = n => () => menuW && hasTask(menuW, 0x07, 0x7DB0) && menuW.wram[6][0x202] === n && !menuW.high[0x1A2] && !menuW.high[0x1BC];
+const inTask = (b, a) => () => menuW && hasTask(menuW, b, a);
+
+// a records block (save block 3: only the debug character editor 02:6176 ever stores one, so the records menu and its
+// screens are not reached in play) poked into the save RAM of both sides at frame 1: $400 pseudo-random bytes from
+// `seed`, with `fix(data)` applied first (a case's own values), stored as the game stores a block (02:429B)
+function recordsPoke(seed, fix = () => {}, then = null) {
+  return (f, w, core) => {
+    if (then) then(f, w, core);
+    if (f !== 1) return;
+    let s = seed >>> 0;
+    const data = new Uint8Array(0x400);
+    for (let i = 0; i < data.length; i++) { s = (Math.imul(s, 1103515245) + 12345) >>> 0; data[i] = s >>> 24; }
+    fix(data);
+    const t = new GolfMemory();
+    t.sram.set(w.sram);
+    t.wram[6].set(data, 0);
+    t.high[0x196] = 6;
+    saveBlockStore(t, 3, 0xD000, 0);
+    w.sram.set(t.sram);
+    core.gb.mem.sram.set(t.sram, 0);
+  };
+}
 
 // name, the state (round, routine), the native routine, buttons
 // a Yes / No question answered No: A until the menu's cursor task (05:4F20), Down, A
@@ -1125,6 +1152,12 @@ const CASES = [
       [menuReady(3), 0x80], [null, 1], [inMenuCursor, 1, 60],
       [menuReady(3), 1], [inMenuCursor, 0x40, 60], [null, 1, 30], [msgOpen, 1, 120],
       [menuReady(2), 2]]) },
+  // Status (0B:4D9D): the records (Down twice, A), the stars (Up, A): courses changed both ways, back out
+  { name: "boot_status_stars", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 30000, hook: recordsPoke(1),
+    run: sh => { stepsDone = -1; return gameCase(sh, 1, () => stepsDone >= 0 && frameNow > stepsDone + 200); },
+    policy: stepPolicy([...TO_STATUS, [menu07Items(3), 0x80], [null, 0x80], [null, 1],
+      [menu07Items(5), 0x40], [null, 1], [inTask(0x0C, 0x4821), 0x10, 60], [null, 0x10], [null, 0x20], [null, 0x10], [null, 2],
+      [menu07Items(5), 2], [menu07Items(3), 2], [menu09Items(4), 0]]) },
   { name: "boot_kid_round", state: "boot_poweron_kid", open: true, noRet: true,
     run: sh => (function* () {
       menuW = sh.w;
