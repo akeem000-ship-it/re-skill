@@ -1237,6 +1237,15 @@ const CASES = [
       [null, 0x80], [null, 0x80], [null, 0x10], [null, 0x10], [null, 0x10], [null, 0x40], [null, 0x40], [null, 0x40],
       [null, 0x20], [null, 0x20], [null, 0x80], [null, 0x20], [null, 2],
       [menu07Items(2), 2], [menu09Items(4), 0]]) },
+  // the records (a records block poked) item `item` of the five-item menu, then `keys` there, B out
+  ...[["ranking", 3, 0x4821, 11], ["winners", 2, 0x61A8, 12], ["bestscore", 1, 0x705D, 13], ["recstats", 0, 0x4C63, 14]].map(([n, item, task, seed]) => ({
+    name: `boot_status_${n}`, state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 30000, hook: recordsPoke(seed),
+    run: sh => { stepsDone = -1; return gameCase(sh, 1, () => stepsDone >= 0 && frameNow > stepsDone + 200); },
+    policy: stepPolicy([...TO_STATUS, [menu07Items(3), 0x80], [null, 0x80], [null, 1],
+      ...(item ? [[menu07Items(5), 0x80], ...Array(item - 1).fill([null, 0x80]), [null, 1]] : [[menu07Items(5), 1]]),
+      [inTask(0x0C, task), 0x10, 80], [null, 0x10, 80], [null, 0x20, 80], [null, 0x20, 80], [null, 0x80, 30], [null, 0x80, 2], [null, 0x40, 30],
+      [null, 2, 80], [menu07Items(5), 2], [menu07Items(3), 2], [menu09Items(4), 0]]),
+  })),
   { name: "boot_kid_round", state: "boot_poweron_kid", open: true, noRet: true,
     run: sh => (function* () {
       menuW = sh.w;

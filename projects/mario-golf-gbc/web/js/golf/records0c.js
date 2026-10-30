@@ -1032,10 +1032,534 @@ export function* shotRecordsScreen(sh) {
   return a === 0xFE ? [a, ...splitShotCursor(w)] : [a];
 }
 
+// ---- the ranking (0C:5AEC; the records block): per course the three best rounds (0B:522D: 5 bytes each, hours,
+// minutes, seconds, the character, the score) with their time, score, face and name ----
+// 0C:4894 PageArrowsTaskLow: the page arrows as two 8 x 16 pairs (00:26A4) at y $14
+export function pageArrowsTaskLow(w) {
+  const b = R(0x4950 + ((w.wram[0][0x4B2] >> 2) & 7));
+  D.queueSprite16(w, 0x14, (0x0A - b) & 0xFF, 0xE0, 0x00);
+  D.queueSprite16(w, 0x14, (0x96 + b) & 0xFF, 0xE0, 0x20);
+}
+// 0C:5FB0 IsRankEntryUsed: any of the three bytes at hl nonzero
+const isRankEntryUsed = (w, hl) => (rd(w, hl) || rd(w, hl + 1) || rd(w, hl + 2) ? 1 : 0);
+// 0C:5DB8 DrawRankingTimeAndScore: row c ($D0E6 + $80 c, WRAM1): the attributes cleared, the time h:m:s (two digits
+// each, a 0 before one digit; $3A between, $12 after) and the score's sign ($2B / $2D / $60 even; $2B and 99 from
+// 100) and difference (2 wide, $11 after) from the entry hl (WRAM6)
+function drawRankingTimeAndScore(w, c, hl) {
+  const old = wbank(w);
+  setW(w, 1);
+  const row = (0xD0E6 + c * 0x80) & 0xFFFF;
+  for (let k = 0; k < 8; k++) wr(w, row + k, 0);
+  for (let k = 9; k < 12; k++) wr(w, row + k, 0);
+  let de = (row + 0x400) & 0xFFFF;
+  const two = (v, sep) => {
+    setW(w, 6); const b = rd(w, hl++); setW(w, 1);
+    let p = de;
+    if (b < 10) { formatTo(w, 0, 1, p); p++; formatTo(w, b, 1, p); } else formatTo(w, b, 2, p);
+    wr(w, de + 2, sep);
+    de += 3;
+  };
+  two(0, 0x3A); two(0, 0x3A);
+  setW(w, 6); const b3 = rd(w, hl); setW(w, 1);
+  if (b3 < 10) { formatTo(w, 0, 1, de); formatTo(w, b3, 1, de + 1); } else formatTo(w, b3, 2, de);
+  wr(w, de + 2, 0x12);
+  setW(w, 6);
+  de += 3;
+  const s = rd(w, hl + 2), d = (s - 0x36) & 0xFF;
+  let b, t;
+  if (!d) { b = 0; t = 0x60; } else if (d & 0x80) { b = (0x36 - s) & 0xFF; t = 0x2D; } else { b = d; t = 0x2B; }
+  setW(w, 1);
+  wr(w, de, t);
+  if (b >= 0x64) { b = 0x63; wr(w, de, 0x2B); }
+  formatTo(w, b, 2, de + 1);
+  wr(w, de + 3, 0x11);
+  setW(w, old);
+}
+// 0C:5CAA DrawCourseRankingPage: the panel ($4B:14 / $4B:16, copied: 0C:5EF6), the course's banner; for ranks 0-2
+// in use: the time and score, the face (0B:51E7's index of the character, at $A6 + $80 r), the name's row ($11
+// tiles at $D4A8 / $D4C8, attributes 0, tiles $20) and the name ($1410 + face, below $0E; 05:62AA at $D4C9 + $80 r, a
+// frame); the glyphs, copied again
+function* drawCourseRankingPage(sh) {
+  const w = sh.w, old = wbank(w);
+  setW(w, 1);
+  decompressDataFromBank(w, 0x4B14, 0xD000);
+  decompressDataFromBank(w, 0x4B16, 0xD400);
+  yield* copyPanelTilemapToVRAM(sh);
+  setW(w, 6);
+  const course = rd(w, 0xD214);
+  yield* loadCourseBanner(sh, course, 0xAD60);
+  setW(w, 6);
+  D.inBank(w, 0x03, () => T.resetGlyphBuffer(w));
+  for (let c = 0; c < 3; c++) {
+    const hl = Q.recordsEntryAddr(course, c);
+    if (!isRankEntryUsed(w, hl)) continue;
+    drawRankingTimeAndScore(w, c, hl);
+    const face = Q.recordsFieldIndex(rd(w, hl + 3));
+    drawRecordsFaceIcon(w, face, (0xA6 + c * 0x80) & 0xFFFF);
+    setW(w, 1);
+    const p = (c * 0x80 + 0xD0A9) & 0xFFFF;
+    wr(w, p - 1 + 0x400, 0x11);
+    wr(w, p - 1 + 0x420, 0x11);
+    for (let k = 0; k < 8; k++) { wr(w, p + k, 0); wr(w, p + 0x20 + k, 0); wr(w, p + 0x400 + k, 0x20); wr(w, p + 0x420 + k, 0x20); }
+    if (face < 0x0E) {
+      yield* inBankGen(w, 0x05, T.printTextToBuffer(sh, add8(0x1410, face), (c * 0x80 + 0xD4C9) & 0xFFFF, 0x20));
+      yield* sh.advance();
+    }
+    setW(w, 6);
+  }
+  yield* inBankGen(w, 0x03, T.uploadGlyphTiles(sh));
+  yield* copyPanelTilemapToVRAM(sh);
+  setW(w, old);
+}
+// 0C:5B5A RankingScreenInit: LCD off, no frame tasks; the cursor tiles ($4B:20), palettes 0C:419B / 0C:5C00, the
+// tiles ($4B:1E), the panel maps ($4B:14 / $4B:16) to the BG map, the face sheet ($4C:18 / $4C:16 -> WRAM2); LCD on
+function rankingScreenInit(w) {
+  setW(w, 6);
+  w.high[0x18A] = w.high[0x18B] = 0;
+  D.disableLCDSafely(w);
+  clearFrameTasks(w);
+  setW(w, 1);
+  decompressDataFromBank(w, 0x4B20, 0xD000);
+  D.queueAndRunVRAMCopy(w, 0xD000, 0x8E00, 0x04);
+  D.loadPalettesMasterOnly(w, 0x419B, 0x08, 0x01);
+  decompressDataFromBank(w, 0x4B1E, 0xD000);
+  D.queueAndRunVRAMCopy(w, 0xD000, 0xB000, 0x80);
+  D.queueAndRunVRAMCopy(w, 0xD800, 0xA800, 0x80);
+  D.loadPalettesMasterOnly(w, 0x5C00, 0x00, 0x08);
+  decompressDataFromBank(w, 0x4B14, 0xD000);
+  D.queueAndRunVRAMCopy(w, 0xD000, 0xB800, 0x24);
+  decompressDataFromBank(w, 0x4B16, 0xD000);
+  D.queueAndRunVRAMCopy(w, 0xD000, 0x9800, 0x24);
+  setW(w, 2);
+  decompressDataFromBank(w, 0x4C18, 0xD000);
+  decompressDataFromBank(w, 0x4C16, 0xD100);
+  D.enableLCD(w);
+  setW(w, 6);
+}
+// 0C:5C40 RankingScreenInput: Left / Right the course among 0-[$D226] - 1 (wrapping; drawn, then sound $5B); B $FF
+function* rankingScreenInput(sh) {
+  const w = sh.w, old = wbank(w);
+  setW(w, 6);
+  let r = 0;
+  const n = rd(w, 0xD226), cur = rd(w, 0xD214), p = w.high[0x191];
+  let b = null;
+  if (p & 0x20) { b = (cur - 1) & 0xFF; if (b & 0x80) b = (n - 1) & 0xFF; }
+  else if (p & 0x10) { b = (cur + 1) & 0xFF; if (b >= n) b = 0; }
+  else if (!(p & 1) && (p & 2)) { sh.sound(0x5D); r = 0xFF; }
+  if (b !== null && b !== cur) {
+    wr(w, 0xD214, b);
+    yield* drawCourseRankingPage(sh);
+    sh.sound(0x5B);
+  }
+  setW(w, old);
+  return r;
+}
+// 0C:5AEC RankingScreen (export $02): the courses up to the first course record bit (0B:506E), B leaves
+export function* rankingScreen(sh) {
+  const w = sh.w;
+  setW(w, 6);
+  rankingScreenInit(w);
+  wr(w, 0xD214, 0);
+  Q.loadRecordsBlock(w);
+  resumeBGM(sh);
+  Q.recordsSelect(w, 0);
+  Q.recordsFirstBit(w);
+  yield* drawCourseRankingPage(sh);
+  registerFrameTask(w, 0x0F, B, 0x4821);         // StarsAnimTask
+  const arrows = () => { const n = rd(w, 0xD226); return n !== 0 && n !== 1; };
+  if (arrows()) registerFrameTask(w, 0x1D, B, 0x4894);   // PageArrowsTaskLow
+  yield* sh.advance();
+  Scr.beginFadeIn(w, 0x10);
+  yield* Scr.waitFade(sh);
+  let a;
+  do { yield* sh.advance(); a = yield* rankingScreenInput(sh); } while (a !== 0xFF);
+  unregisterFrameTask(w, B, 0x4821);
+  if (arrows()) unregisterFrameTask(w, B, 0x4894);
+  Scr.beginFadeOut(w, 0x10);
+  yield* Scr.waitFade(sh);
+  return a;
+}
+
+// ---- the winners (0C:5FC5; the records block): who beat whom, 18 rows x 14 columns (0B:5133), a 7 x 6 view of the
+// grid (WRAM2 maps, scrolled by $D214 / $D215) with the characters' headers ----
+// 0C:6217 Copy2x2Tiles: hl -> de, two rows 32 apart (in the mapped WRAM bank)
+function copy2x2(w, hl, de) {
+  for (const o of [0, 1, 0x20, 0x21]) wr(w, (de + o) & 0xFFFF, rd(w, (hl + o) & 0xFFFF));
+}
+// 0C:61B2 DrawWinnersMarks: each grid cell's result (1, or 2 beaten) as its mark ($D51E / $D55E, 0C:61F5
+// DrawWinnersMark: WRAM2 left mapped) at $D502 + $40 row + 2 col
+function drawWinnersMarks(w) {
+  const old = wbank(w);
+  for (let b = 0; b < 0x12; b++)
+    for (let c = 0; c < 0x0E; c++) {
+      const r = Q.recordsTestBits(w, b, c)[2];
+      if (r) { setW(w, 2); copy2x2(w, r === 2 ? 0xD55E : 0xD51E, (0xD502 + b * 0x40 + c * 2) & 0xFFFF); }
+    }
+  setW(w, old);
+}
+// 0C:62F3 HideWinnersHeader: c's column header ($D500 + $40 c, and $4C0 lower: $D01E's blank) and, below $0E, its row
+// header ($D4C2 + 2c) covered with the blank 2 x 2 ($D4DE, $D01E); WRAM2 left mapped
+function hideWinnersHeader(w, c) {
+  setW(w, 2);
+  let de = (0xD500 + c * 0x40) & 0xFFFF;
+  copy2x2(w, 0xD4DE, de);
+  copy2x2(w, 0xD01E, (de - 0x4C0) & 0xFFFF);
+  if (c < 0x0E) {
+    de = (0xD4C2 + c * 2) & 0xFFFF;
+    copy2x2(w, 0xD4DE, de);
+    copy2x2(w, 0xD01E, (de - 0x4C0) & 0xFFFF);
+  }
+}
+// 0C:6240 HideLockedWinners: the headers of characters not met yet: columns 4-9 and $0C with no result in any row,
+// $0A under 50 badges (0B:5303 over the six course records), $0D under 108, $0B under 30 stars (0B:5009), rows
+// $0E-$11 with no result
+function hideLockedWinners(w) {
+  const old = wbank(w);
+  setW(w, 6);
+  const none = (rows, col) => { for (const b of rows) if (Q.recordsTestBits(w, b, col)[2]) return false; return true; };
+  const all = [...Array(0x12).keys()];
+  for (let c = 4; c < 0x0A; c++) if (none(all, c)) hideWinnersHeader(w, c);
+  if (none(all, 0x0C)) hideWinnersHeader(w, 0x0C);
+  let b = 0;
+  for (let c = 0; c < 6; c++) { Q.recordsSelect(w, c); b = (b + Q.recordsHoleBit(w, c)[0]) & 0xFF; }
+  if (b < 0x32) hideWinnersHeader(w, 0x0A);
+  if (b < 0x6C) hideWinnersHeader(w, 0x0D);
+  let h = 0;
+  for (let l = 0; l < 6; l++) h = (h + Q.recordsGridBit(w, l, 0)[0]) & 0xFF;
+  if (h < 0x1E) hideWinnersHeader(w, 0x0B);
+  for (let r = 0x0E; r < 0x12; r++) {
+    let any = false;
+    for (let c = 0; c < 0x0E; c++) if (Q.recordsTestBits(w, r, c)[2]) { any = true; break; }
+    if (!any) hideWinnersHeader(w, r);
+  }
+  setW(w, old);
+}
+// WRAM2 -> WRAM1 copies of the view: 0C:6352 CopyWinnersColumnHeaders (2 rows x 14 from hl + 2 $D214 + 2),
+// 0C:63A9 CopyWinnersRowHeaders (c rows x 2 from hl + $40 $D215), 0C:6410 CopyWinnersGridCells (12 x 14 from hl +
+// $40 ($D215 + 1) + 2 $D214 + 2)
+function winnersCopy(w, hl, de, rows, cols) {
+  for (let r = 0; r < rows; r++)
+    for (let k = 0; k < cols; k++) {
+      setW(w, 2); const a = rd(w, (hl + r * 0x20 + k) & 0xFFFF);
+      setW(w, 1); wr(w, (de + r * 0x20 + k) & 0xFFFF, a);
+    }
+}
+function copyWinnersColumnHeaders(w, hl, de) {
+  const old = wbank(w);
+  setW(w, 6);
+  winnersCopy(w, add8(hl, rd(w, 0xD214) * 2 + 2), de, 2, 0x0E);
+  setW(w, old);
+}
+function copyWinnersRowHeaders(w, hl, de, c) {
+  const old = wbank(w);
+  setW(w, 6);
+  winnersCopy(w, (hl + rd(w, 0xD215) * 0x40) & 0xFFFF, de, c || 256, 2);
+  setW(w, old);
+}
+function copyWinnersGridCells(w, hl, de) {
+  const old = wbank(w);
+  setW(w, 6);
+  const a = (rd(w, 0xD214) * 2 + 2) & 0xFF;
+  const off = add8((rd(w, 0xD215) * 0x40 + 0x40) & 0xFFFF, a);
+  winnersCopy(w, (hl + off) & 0xFFFF, de, 0x0C, 0x0E);
+  setW(w, old);
+}
+// 0C:6563 CopyWinnersTilemapToVRAM: WRAM1 $D000 / $D400 / $D120 / $D520 to the BG map, a frame after each
+function* copyWinnersTilemapToVRAM(sh) {
+  const w = sh.w, old = wbank(w);
+  setW(w, 1);
+  for (const [hl, de] of [[0xD000, 0xB800], [0xD400, 0x9800], [0xD120, 0xB920], [0xD520, 0x9920]]) {
+    D.queueVRAMCopy(w, hl, de, 0x12);
+    yield* sh.advance();
+  }
+  setW(w, old);
+}
+// 0C:6481 RedrawWinnersView: the headers and cells of both planes (tiles from WRAM2 $D4C0 / $D500, attributes from
+// $D000 / $D040) into WRAM1, then copied
+function* redrawWinnersView(sh) {
+  const w = sh.w, old = wbank(w);
+  copyWinnersColumnHeaders(w, 0xD4C0, 0xD464);
+  copyWinnersRowHeaders(w, 0xD500, 0xD4A2, 0x0C);
+  copyWinnersGridCells(w, 0xD4C0, 0xD4A4);
+  copyWinnersColumnHeaders(w, 0xD000, 0xD064);
+  copyWinnersRowHeaders(w, 0xD040, 0xD0A2, 0x0C);
+  copyWinnersGridCells(w, 0xD000, 0xD0A4);
+  yield* copyWinnersTilemapToVRAM(sh);
+  setW(w, old);
+}
+// 0C:61A8 WinnersAnimTask / 0C:6179 AnimateWinnersTiles: frame (wFrameCounter / 8) & 7 of 0C:43E0: 2 tiles to VRAM1
+// $91C0, 2 from $100 further to $91E0 (WRAM1 left mapped)
+export function winnersAnimTask(w) {
+  setW(w, 1);
+  const hl = 0x43E0 + (((w.wram[0][0x4B2] >> 3) & 7) << 5);
+  D.queueVRAMCopy(w, hl, 0xB1C0, 0x02);
+  D.queueVRAMCopy(w, hl + 0x100, 0xB1E0, 0x02);
+}
+// 0C:64CD WinnersCursorTask: at the bob's ends (0C:4950: 4 / 0) the cursor tiles from WRAM3 $D000 / $D080 to
+// $8E00; the scroll arrows that are not at an edge (left / right of 0-7, up / down of 0-$0C)
+export function winnersCursorTask(w) {
+  const old = wbank(w);
+  setW(w, 3);
+  const bob = R(0x4950 + ((w.wram[0][0x4B2] >> 2) & 7));
+  if (bob === 4) D.queueVRAMCopy(w, 0xD000, 0x8E00, 0x08);
+  else if (!bob) D.queueVRAMCopy(w, 0xD080, 0x8E00, 0x08);
+  setW(w, 6);
+  const tpl = (e, d, c, b) => D.queueSpriteTemplate(w, 0x4947, e, d, c, b, R);
+  if (rd(w, 0xD214)) tpl(0x1F, 0x1C, 0xE0, 0x01);
+  if (rd(w, 0xD214) !== 7) tpl(0x1F, 0x96, 0xE0, 0x21);
+  if (rd(w, 0xD215)) tpl(0x2A, 0x10, 0xE4, 0x01);
+  if (rd(w, 0xD215) !== 0x0C) tpl(0x8A, 0x10, 0xE4, 0x41);
+  setW(w, old);
+}
+// 0C:600A WinnersScreenInit: the view 0, LCD off, no frame tasks; the cursor tiles ($4B:22 / $4B:24 and the second
+// frame $4D:24 / $4D:26 to WRAM3; to $8E00), palettes 0C:419B (OBJ 2) and 0C:5C00, the tiles ($4B:1E), the frame maps
+// ($4C:04 / $4C:02) to the BG map, the grid's maps ($4C:08 / $4C:06 -> WRAM2), the marks, the hidden headers; LCD on,
+// two frames, the view drawn; WRAM6
+function* winnersScreenInit(sh) {
+  const w = sh.w;
+  setW(w, 6);
+  w.high[0x18A] = w.high[0x18B] = 0;
+  wr(w, 0xD214, 0); wr(w, 0xD215, 0);
+  D.disableLCDSafely(w);
+  clearFrameTasks(w);
+  setW(w, 3);
+  decompressDataFromBank(w, 0x4B22, 0xD000);
+  decompressDataFromBank(w, 0x4B24, 0xD040);
+  decompressDataFromBank(w, 0x4D24, 0xD080);
+  decompressDataFromBank(w, 0x4D26, 0xD0C0);
+  setW(w, 1);
+  decompressDataFromBank(w, 0x4B22, 0xD000);
+  decompressDataFromBank(w, 0x4B24, 0xD040);
+  D.queueAndRunVRAMCopy(w, 0xD000, 0x8E00, 0x08);
+  D.loadPalettesMasterOnly(w, 0x419B, 0x08, 0x02);
+  decompressDataFromBank(w, 0x4B1E, 0xD000);
+  D.queueAndRunVRAMCopy(w, 0xD000, 0xB000, 0x80);
+  D.queueAndRunVRAMCopy(w, 0xD800, 0xA800, 0x80);
+  D.loadPalettesMasterOnly(w, 0x5C00, 0x00, 0x08);
+  decompressDataFromBank(w, 0x4C04, 0xD000);
+  D.queueAndRunVRAMCopy(w, 0xD000, 0xB800, 0x24);
+  decompressDataFromBank(w, 0x4C02, 0xD400);
+  D.queueAndRunVRAMCopy(w, 0xD400, 0x9800, 0x24);
+  setW(w, 2);
+  decompressDataFromBank(w, 0x4C08, 0xD000);
+  decompressDataFromBank(w, 0x4C06, 0xD4C0);
+  drawWinnersMarks(w);
+  hideLockedWinners(w);
+  D.enableLCD(w);
+  yield* sh.advance(2);
+  yield* redrawWinnersView(sh);
+  setW(w, 6);
+}
+// 0C:60F8 WinnersScreenInput: Up / Down the row scroll $D215 (0-$0C), Left / Right the column scroll $D214 (0-7)
+// (sound $5B, the view drawn even at an edge); B $FF (sound $5D). Quirk: its pops are crossed: hWRAMBank gets the
+// result slot (0), and without B the WRAM bank it found is returned
+function* winnersScreenInput(sh) {
+  const w = sh.w, old = wbank(w);
+  setW(w, 6);
+  const r = w.high[0x191];
+  let res = null;
+  const move = function* (a, lo, hi) {
+    sh.sound(0x5B);
+    const v = (rd(w, a) + lo) & 0xFF;
+    if (lo < 0 ? !(v & 0x80) : v < hi) wr(w, a, v);
+    yield* redrawWinnersView(sh);
+  };
+  if (r & 0x40) yield* move(0xD215, -1);
+  else if (r & 0x80) yield* move(0xD215, 1, 0x0D);
+  else if (r & 0x20) yield* move(0xD214, -1);
+  else if (r & 0x10) yield* move(0xD214, 1, 0x08);
+  else if (!(r & 1) && (r & 2)) { sh.sound(0x5D); res = 0xFF; }
+  setW(w, 0);
+  return res === null ? old : res;
+}
+// 0C:5FC5 WinnersScreen (export $04)
+export function* winnersScreen(sh) {
+  const w = sh.w;
+  Q.loadRecordsBlock(w);
+  resumeBGM(sh);
+  yield* winnersScreenInit(sh);
+  registerFrameTask(w, 0x0F, B, 0x61A8);         // WinnersAnimTask
+  registerFrameTask(w, 0x1D, B, 0x64CD);         // WinnersCursorTask
+  yield* sh.advance();
+  Scr.beginFadeIn(w, 0x10);
+  yield* Scr.waitFade(sh);
+  let a;
+  do { yield* sh.advance(); a = yield* winnersScreenInput(sh); } while (a !== 0xFF);
+  unregisterFrameTask(w, B, 0x61A8);
+  unregisterFrameTask(w, B, 0x64CD);
+  Scr.beginFadeOut(w, 0x10);
+  yield* Scr.waitFade(sh);
+  return a;
+}
+
+// ---- the best scores (0C:6EE0; the records block): per course the characters with a best score (0B:51B9 field
+// = the character), sorted, with their faces and scores ----
+// 0C:70FC SortBestScoreList: wRecordsList $D227 ($FF ends) sorted by score, each place swapped with any lower later
+function sortBestScoreList(w) {
+  const b = rd(w, 0xD214);
+  const score = c => Q.recordsReadField(w, b, c);
+  for (let hl = 0xD227; ; hl++) {
+    let d = rd(w, hl);
+    if (d === 0xFF) break;
+    let c = score(d);
+    for (let p = hl + 1; ; p++) {
+      const e = rd(w, p);
+      if (e === 0xFF) break;
+      const a = score(e);
+      if (a < c) { c = a; wr(w, p, d); d = e; }
+    }
+    wr(w, hl, d);
+  }
+}
+// 0C:726F BestScoreSlotTable: [column, row] of list place c
+const bestScoreSlot = c => (R(0x726F + 2 * c) + R(0x7270 + 2 * c) * 32) & 0xFFFF;
+// 0C:7136 DrawBestScoreFaces: each listed character's 2 x 2 face (the sheet in WRAM2: 4 bytes a character at
+// $D000, the second plane at $D400) to WRAM1 $D000 + its slot (both planes)
+function drawBestScoreFaces(w) {
+  const old = wbank(w);
+  for (let c = 0, hl = 0xD227; ; c++) {
+    setW(w, 6);
+    const a = rd(w, hl++);
+    if (a === 0xFF) break;
+    const src = (0xD000 + a * 4) & 0xFFFF, dst = (0xD000 + bestScoreSlot(c)) & 0xFFFF;
+    [[0, 0], [1, 1], [2, 0x20], [3, 0x21]].forEach(([s, d]) => {
+      for (const pl of [0, 0x400]) { setW(w, 2); const v = rd(w, src + s + pl); setW(w, 1); wr(w, dst + d + pl, v); }
+    });
+  }
+  setW(w, old);
+}
+// 0C:7326 DrawNumberTiles: a (1-2 digits, one place further right below 10; 100 or more: three tiles b + $0B from
+// hl - 1) in tiles b + digit at hl
+function drawNumberTiles(w, a, b, hl) {
+  if (a >= 0x64) { for (let k = -1; k < 2; k++) wr(w, hl + k, (b + 0x0B) & 0xFF); return; }
+  setW(w, 1);
+  if (a < 10) hl++;
+  const t = Math.floor(a / 10), u = a - t * 10;
+  if (t) wr(w, hl++, (t + b) & 0xFF);
+  wr(w, hl, (u + b) & 0xFF);
+}
+// 0C:7297 DrawBestScoreValues: each listed character's score (nonzero, below $80) at its slot + $423: the sign
+// ($3D over, $3E under, $3F even) and the difference (0C:7326, digit tiles from $33)
+function drawBestScoreValues(w) {
+  const old = wbank(w);
+  setW(w, 6);
+  const b = rd(w, 0xD214);
+  for (let c = 0, hl = 0xD227; ; c++) {
+    setW(w, 6);
+    const ch = rd(w, hl++);
+    if (ch === 0xFF) break;
+    const s = Q.recordsReadField(w, b, ch);
+    if (!s || s & 0x80) continue;
+    let p = (bestScoreSlot(c) + 0xD423) & 0xFFFF;
+    setW(w, 1);
+    const d = (s - 0x36) & 0xFF;
+    let v;
+    if (!d) { wr(w, p++, 0x3F); v = 0; } else if (!(d & 0x80)) { wr(w, p++, 0x3D); v = d; } else { wr(w, p++, 0x3E); v = (0x36 - s) & 0xFF; }
+    drawNumberTiles(w, v, 0x33, p);
+  }
+  setW(w, old);
+}
+// 0C:70C2 BuildBestScoreList: the characters 0-$11 with a score on the course to $D227 ($FF after), sorted, drawn
+// (WRAM6 left mapped)
+function buildBestScoreList(w) {
+  setW(w, 6);
+  for (let k = 0; k < 0x14; k++) wr(w, 0xD227 + k, 0xFF);
+  const b = rd(w, 0xD214);
+  let hl = 0xD227;
+  for (let c = 0; c < 0x12; c++) if (Q.recordsReadField(w, b, c)) wr(w, hl++, c);
+  sortBestScoreList(w);
+  drawBestScoreFaces(w);
+  drawBestScoreValues(w);
+}
+// 0C:7083 DrawBestScorePage: the panel maps ($4D:1C / $4D:1E), the course's banner (to VRAM1 $8860), the list, copied
+function* drawBestScorePage(sh) {
+  const w = sh.w, old = wbank(w);
+  setW(w, 1);
+  decompressDataFromBank(w, 0x4D1C, 0xD000);
+  decompressDataFromBank(w, 0x4D1E, 0xD400);
+  setW(w, 6);
+  yield* loadCourseBanner(sh, rd(w, 0xD214), 0xA860);
+  buildBestScoreList(w);
+  yield* copyPanelTilemapToVRAM(sh);
+  setW(w, old);
+}
+// 0C:705D BestScoreAnimTask: the records' animated tiles (0C:436A) to VRAM1 $9220 / $9240
+export function bestScoreAnimTask(w) {
+  setW(w, 6);
+  wr(w, 0xD23E, 0x20); wr(w, 0xD23F, 0xB2); wr(w, 0xD240, 0x40); wr(w, 0xD241, 0xB2);
+  setW(w, 1);
+  animateRecordsTiles(w);
+}
+// 0C:6F4B BestScoreScreenInit: LCD off, no frame tasks; the cursor tiles ($4B:20), palettes 0C:419B / 0C:5C00, the
+// tiles ($4D:1A), the panel maps ($4D:1C / $4D:1E) to the BG map, the face sheet ($4D:20 / $4D:22 -> WRAM2); LCD on
+function bestScoreScreenInit(w) {
+  setW(w, 6);
+  w.high[0x18A] = w.high[0x18B] = 0;
+  D.disableLCDSafely(w);
+  clearFrameTasks(w);
+  setW(w, 1);
+  decompressDataFromBank(w, 0x4B20, 0xD000);
+  D.queueAndRunVRAMCopy(w, 0xD000, 0x8E00, 0x04);
+  D.loadPalettesMasterOnly(w, 0x419B, 0x08, 0x01);
+  decompressDataFromBank(w, 0x4D1A, 0xD000);
+  D.queueAndRunVRAMCopy(w, 0xD000, 0xB000, 0x80);
+  D.queueAndRunVRAMCopy(w, 0xD800, 0xA800, 0x80);
+  D.loadPalettesMasterOnly(w, 0x5C00, 0x00, 0x08);
+  decompressDataFromBank(w, 0x4D1C, 0xD000);
+  D.queueAndRunVRAMCopy(w, 0xD000, 0xB800, 0x24);
+  decompressDataFromBank(w, 0x4D1E, 0xD400);
+  D.queueAndRunVRAMCopy(w, 0xD400, 0x9800, 0x24);
+  setW(w, 2);
+  decompressDataFromBank(w, 0x4D20, 0xD000);
+  decompressDataFromBank(w, 0x4D22, 0xD400);
+  D.enableLCD(w);
+  setW(w, 6);
+}
+// 0C:6FF1 BestScoreScreenInput: Left / Right the course among 0-[$D226] - 1 (wrapping; drawn, then sound $5B); B
+// $FF ($5D); otherwise it returns what was in a (the course, or the buttons), never $FF
+function* bestScoreScreenInput(sh) {
+  const w = sh.w, old = wbank(w);
+  setW(w, 6);
+  const n = rd(w, 0xD226), cur = rd(w, 0xD214), p = w.high[0x191];
+  let a = p, b = null;
+  if (p & 0x20) { b = (cur - 1) & 0xFF; if (b & 0x80) b = (n - 1) & 0xFF; a = cur; }
+  else if (p & 0x10) { b = (cur + 1) & 0xFF; if (b >= n) b = 0; a = cur; }
+  else if (!(p & 1) && (p & 2)) { sh.sound(0x5D); a = 0xFF; }
+  if (b !== null && b !== cur) {
+    wr(w, 0xD214, b);
+    yield* drawBestScorePage(sh);
+    sh.sound(0x5B);
+    a = b;
+  }
+  setW(w, old);
+  return a;
+}
+// 0C:6EE0 BestScoreScreen (export $0A)
+export function* bestScoreScreen(sh) {
+  const w = sh.w;
+  bestScoreScreenInit(w);
+  wr(w, 0xD214, 0);
+  Q.loadRecordsBlock(w);
+  resumeBGM(sh);
+  Q.recordsSelect(w, 0);
+  Q.recordsFirstBit(w);
+  yield* drawBestScorePage(sh);
+  registerFrameTask(w, 0x0F, B, 0x705D);         // BestScoreAnimTask
+  const arrows = () => { const n = rd(w, 0xD226); return n !== 0 && n !== 1; };
+  if (arrows()) registerFrameTask(w, 0x1D, B, 0x4894);   // PageArrowsTaskLow
+  yield* sh.advance();
+  Scr.beginFadeIn(w, 0x10);
+  yield* Scr.waitFade(sh);
+  let a;
+  do { yield* sh.advance(); a = yield* bestScoreScreenInput(sh); } while (a !== 0xFF);
+  unregisterFrameTask(w, B, 0x705D);
+  if (arrows()) unregisterFrameTask(w, B, 0x4894);
+  Scr.beginFadeOut(w, 0x10);
+  yield* Scr.waitFade(sh);
+  return a;
+}
+
 // ---- not ported yet ----
-export function* bestScoreScreen() { notPorted("the best scores (~0C:6EE0 BestScoreScreen)"); }
-export function* winnersScreen() { notPorted("the winners (~0C:5FC5 WinnersScreen)"); }
-export function* rankingScreen() { notPorted("the ranking (~0C:5AEC RankingScreen)"); }
 
 // the frame tasks by ROM address
 export const records0cTasks = w => ({
@@ -1044,5 +1568,9 @@ export const records0cTasks = w => ({
   "0c:4c63": () => statsAnimTask(w),
   "0c:48d6": () => pageArrowsScrolledTask(w),
   "0c:698f": () => shotCursorTask(w),
+  "0c:4894": () => pageArrowsTaskLow(w),
+  "0c:705d": () => bestScoreAnimTask(w),
+  "0c:61a8": () => winnersAnimTask(w),
+  "0c:64cd": () => winnersCursorTask(w),
   "0c:6b55": () => cycleCursorPaletteTask(w),
 });
