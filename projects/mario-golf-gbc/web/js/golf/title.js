@@ -439,3 +439,22 @@ export function* titleScreen(sh, a) {
   w.high[0x19E] = debug;
   return debug;                                  // (a: the restored hDebugMode)
 }
+
+// 40:66B5 ShowPictureUntilButton (bank 40 export 2; a = the picture, & 3: list 40:66EE): 40:664B, the picture
+// (40:5BF9), ForceFadeIn (4), up to $0E10 frames or A / B / Select / Start, ForceFadeOut (4), a frame
+export function* showPictureUntilButton(sh, a) {
+  const w = sh.w;
+  pictureScreenInit(w);
+  const p = 0x66EE + ((a & 0x03) << 1);
+  loadFullScreenPicture(w, rb(0x40, p) | rb(0x40, p + 1) << 8);
+  Scr.forceFadeIn(w, 0x04);
+  yield* Scr.waitFade(sh);
+  for (let bc = 0x0E10; ;) {
+    yield* sh.advance();
+    if (w.high[0x194] & 0x0F) break;
+    if (!--bc) break;
+  }
+  Scr.forceFadeOut(w, 0x04);
+  yield* Scr.waitFade(sh);
+  yield* sh.advance();
+}

@@ -294,6 +294,12 @@ function pausePolicy(script, menus = frontEndPolicy) {
 // name, the state (round, routine), the native routine, buttons
 // a Yes / No question answered No: A until the menu's cursor task (05:4F20), Down, A
 const ynNo = [{ press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 0x80], [30, 0], [2, 1]];
+// the way into the Mini-Mini Lake Course (#86 poked), trigger 1 (the golfer's shot), the partner's debate answered No,
+// the player's try (A every 40 frames), back on map $28
+const MINILAKE = [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x0A, 0x26], noA: true }, { to: [0x0A, 0x24], map: 0x28, noA: true },
+  [300, 0], { to: [0x0E, 0x38], noA: true }, { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x28 }, [300, 0],
+  { to: [0x19, 0x21], at: [0x1900, 0x2130], noA: true }, [2, 0x20], [20, 0], [2, 1], ...ynNo,
+  { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x28 }];
 const CASES = [
   { name: "standings_match18", round: "match18", at: "3E:403F", run: sh => inBank(sh, 0x3E, matchStandingsScreen(sh)) },
   // the scorecard in match play (0E:43D6): Right on the standings page turns to the hole-by-hole card (0E:762F),
@@ -711,6 +717,133 @@ const CASES = [
       { press: 1, every: 40, until: () => hasTask(menuW, 0x41, 0x5694) },
       { press: 1, every: 60, until: () => !hasTask(menuW, 0x41, 0x5694) },
       { press: 1, every: 40, times: 16 }, [300, 0]], 300) },
+  // the Field's trigger 7 (34:4627) to the Tiny-Tots Golf Grounds (map $27, 34:5820): trigger 1 (34:576F, the
+  // caretaker grumbles, #203); the caretaker (talk 2, 34:56C6 -> 34:584B: Yes): his demo (golfer $4E, hooks 34:58E6),
+  // the clean-up (entrance 5, 34:590D: game mode $0B, ten balls on the shot clock, the hooks 34:5C61: 34:5C82 after
+  // each shot, 34:5D40 the piles removed, 34:5D9E the clock), the result (entrance 6, 34:597D: one ball, $14F4)
+  { name: "boot_kid_story_tinytots", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 60000, hook: flagPoke(86),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x0E, 0x2E], noA: true }, { to: [0x0E, 0x2C], map: 0x27, noA: true },
+      [300, 0], { to: [0x1A, 0x34], noA: true }, { press: 1, every: 40, times: 6 }, [200, 0], { to: [0x1F, 0x2B], noA: true }, [2, 0x40], [20, 0], [2, 1],
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
+      { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x27 }, { press: 1, every: 40, times: 10 }, [300, 0]], 300) },
+  // the same with all ten balls in (the count $C3E1 poked to 10 on both sides after the clean-up): the result's "You
+  // could manage this place!" (34:59F9: Yes), 50 EXP and a quarter (34:5A99: #202, the level-up screen, the save),
+  // warp 1: the Field
+  { name: "boot_kid_story_tinytots10", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 60000,
+    hook: (() => { const fp = flagPoke(86); let done = false; return (f, w, core) => {
+      fp(f, w, core);
+      if (!done && roundsDone >= 2) { done = true; w.wram[0][0x3E1] = 10; core.wram(0)[0x3E1] = 10; }
+    }; })(),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x0E, 0x2E], noA: true }, { to: [0x0E, 0x2C], map: 0x27, noA: true },
+      [300, 0], { to: [0x1A, 0x34], noA: true }, { press: 1, every: 40, times: 6 }, [200, 0], { to: [0x1F, 0x2B], noA: true }, [2, 0x40], [20, 0], [2, 1],
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
+      { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x27 },
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x41, 0x5694) },
+      { press: 1, every: 60, until: () => !hasTask(menuW, 0x41, 0x5694) },
+      { press: 1, every: 40, until: () => menuW.wram[0][0x450] === 0x02 }, [300, 0]], 300) },
+  // the Field's trigger 8 (34:4636) to the Mini-Mini Lake Course (map $28, 34:5E53): trigger 1 (34:5EE1: #211, the
+  // golfer's shot from the rough, game mode 5, golfer $4F replaying 34:5F83, the hooks 34:5F93), entrance 5 (34:5FBE);
+  // his partner (talk 3, 34:6064: the debate, No): the player's try (34:64B1, the hooks 34:6507), entrance 6 (34:6568:
+  // as played, missed: 34:6114, #218)
+  { name: "boot_kid_story_minilake", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 40000, hook: flagPoke(86),
+    ...routeCase(savedPolicy(0), MINILAKE.concat([[300, 0]]), 300) },
+  // the same with the try poked to a ball skipped over the water onto the green ($C3E0 = $C3E1 = 1 on both sides): "NICE
+  // ON!" (34:61BB), the golfer's try (34:6299), entrance $0D (34:62C0: 175 EXP, the level-up screen, the save), entrance
+  // $0F (34:6362: #210, they walk off), the Field
+  { name: "boot_kid_story_minilake2", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 60000,
+    hook: (() => { const fp = flagPoke(86); let done = false; return (f, w, core) => {
+      fp(f, w, core);
+      if (!done && roundsDone >= 2) { done = true; for (const m of [w.wram[0], core.wram(0)]) { m[0x3E0] = 1; m[0x3E1] = 1; } }
+    }; })(),
+    ...routeCase(savedPolicy(0), MINILAKE.concat([{ press: 1, every: 40, until: () => hasTask(menuW, 0x41, 0x5694) },
+      { press: 1, every: 60, until: () => !hasTask(menuW, 0x41, 0x5694) },
+      { press: 1, every: 40, until: () => menuW.wram[0][0x450] === 0x02 }, [300, 0]]), 300) },
+  // the Field's trigger $0B (34:4663) to the Golf Guru's Pitch and Putt (map $2C, 34:74B5): the guru (talk 2, 34:7407:
+  // Yes): course 9's nine holes in game mode $0A (34:7547, the hooks 34:75C8), entrance 6 (34:75F6: the card, $1554)
+  { name: "boot_kid_story_pitchputt", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 80000, hook: flagPoke(86),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x22, 0x1C], noA: true }, { to: [0x22, 0x1A], map: 0x2C, noA: true },
+      [300, 0], { to: [0x1D, 0x21], at: [0x1D00, 0x2100], noA: true }, [2, 0x40], [20, 0], [2, 1],
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
+      { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x2C }, { press: 1, every: 40, times: 8 }, [300, 0]], 300) },
+  // the same with a perfect card poked after the round (each hole on in one and one putt, $C8AC = $12, 9 under par,
+  // $C8BE = $F7, on both sides): $155A (34:76B5), 300 EXP, #208 #159, the save flag $0200, the level-up screen, the
+  // save, warp $0F: entrance 7 (34:770F)
+  { name: "boot_kid_story_pitchputt9", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 80000,
+    hook: (() => { const fp = flagPoke(86); let done = false; return (f, w, core) => {
+      fp(f, w, core);
+      if (!done && roundsDone >= 1) { done = true; for (const m of [w.wram[0], core.wram(0)]) { m.fill(0x12, 0x8AC, 0x8B5); m[0x8BE] = 0xF7; } }
+    }; })(),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x22, 0x1C], noA: true }, { to: [0x22, 0x1A], map: 0x2C, noA: true },
+      [300, 0], { to: [0x1D, 0x21], at: [0x1D00, 0x2100], noA: true }, [2, 0x40], [20, 0], [2, 1],
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
+      { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x2C },
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x41, 0x5694) },
+      { press: 1, every: 60, until: () => !hasTask(menuW, 0x41, 0x5694) },
+      { press: 1, every: 40, until: () => menuW.wram[0][0x46A] === 0x07 }, { press: 1, every: 40, times: 4 }, [300, 0]], 300) },
+  // the Field's trigger 9 (34:4645) to Raven Woods (map $29, 34:6B37): trigger 3 (34:6BFE: the hat stolen, #204),
+  // trigger 1 (34:69A4: the crow flies off, the first time's scene with the hat's sprite near the player 34:7070,
+  // #205 #206), trigger 2 with A held (34:6ABE: the crow back, #206 cleared; "Play from here?" 34:7144 Yes): the pin
+  // shot (34:716B: game mode 5, the hooks 34:71CC, the crow on the pin in the green view 34:66A0), missed
+  { name: "boot_kid_story_ravenwoods", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 40000, hook: flagPoke(86),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x0E, 0x18], noA: true }, { to: [0x0E, 0x16], map: 0x29, noA: true },
+      [300, 0], { to: [0x14, 0x2C], noA: true }, { press: 1, every: 40, times: 10 }, [100, 0],
+      { to: [0x1A, 0x1A], noA: true }, { press: 1, every: 40, times: 14 }, [200, 0],
+      { to: [0x14, 0x16], noA: true },
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
+      { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x29 }, [300, 0]], 300) },
+  // the same with the pin hit (the shot's $C3E1 poked to 1 on both sides after the round): entrance $FA warps 2,
+  // entrance 6 (34:6D46: the crow drops the hat, 200 EXP, the level-up screen, warp 3), entrance 7 (34:6E5F: #207,
+  // the save, the hat returned, the golfer leaves, warp 1): the Field
+  { name: "boot_kid_story_ravenwoods2", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 40000,
+    hook: (() => { const fp = flagPoke(86); let done = false; return (f, w, core) => {
+      fp(f, w, core);
+      if (!done && roundsDone >= 1) { done = true; w.wram[0][0x3E1] = 1; core.wram(0)[0x3E1] = 1; }
+    }; })(),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x0E, 0x18], noA: true }, { to: [0x0E, 0x16], map: 0x29, noA: true },
+      [300, 0], { to: [0x14, 0x2C], noA: true }, { press: 1, every: 40, times: 10 }, [100, 0],
+      { to: [0x1A, 0x1A], noA: true }, { press: 1, every: 40, times: 14 }, [200, 0],
+      { to: [0x14, 0x16], noA: true },
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
+      { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x29 },
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x41, 0x5694) },
+      { press: 1, every: 60, until: () => !hasTask(menuW, 0x41, 0x5694) },
+      { press: 1, every: 40, until: () => menuW.wram[0][0x450] === 0x02 }, [300, 0]], 300) },
+  // the Field's trigger $0C (34:4672) to the Golf Clinic (map $2D, 31:72A3): the first coach (talk 5, 31:7199 Yes):
+  // the judged shot (31:7252, game mode 6, the hooks 31:75C0: 31:760C's class), entrance 2: both coaches' comments
+  // (31:72CF / 31:7444)
+  { name: "boot_kid_story_clinic", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 40000, hook: flagPoke(86),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x0A, 0x1A], noA: true }, { to: [0x0A, 0x18], map: 0x2D, noA: true },
+      [300, 0], { to: [0x1E, 0x3B], at: [0x1E00, 0x3B00], noA: true }, [2, 0x40], [20, 0], [2, 1], { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
+      { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x2D }, { press: 1, every: 40, times: 8 }, [300, 0]], 300) },
+  // Raven Woods with Sherry and Azalea already found (#86 #141 #142 poked; #204: the hat already stolen): hidden Joe
+  // (object $0F, 34:692C: #143), all the hidden friends found (34:7E12: 300 EXP, the level-up screen, the save, the
+  // map again where the player stood)
+  { name: "boot_kid_story_joe", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(86, 141, 142, 204),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x0E, 0x18], noA: true }, { to: [0x0E, 0x16], map: 0x29, noA: true },
+      [300, 0], { to: [0x0E, 0x20], noA: true }, [2, 0x20], [20, 0], [2, 1],
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x41, 0x5694) },
+      { press: 1, every: 60, until: () => !hasTask(menuW, 0x41, 0x5694) }, [400, 0]], 300) },
+  // the Dune Club's putting green (map $14; #113 #114 poked): its golfers' invitation to the Alternate Game
+  { name: "boot_kid_story_altgame", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 150000, hook: flagPoke(113, 114),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x20, 0x2A], map: 0x0A }, [200, 0],
+      { to: [0x3A, 0x0C] }, { to: [0x3C, 0x0C], map: 0x14 }, [300, 0], { to: [0x1F, 0x17], at: [0x1F00, 0x1700], noA: true }, [2, 0x40], [20, 0], [2, 1],
+      { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x2B }, { press: 1, every: 40, times: 20 }, [300, 0]], 300) },
+  // Mario beaten (#117 poked): the story begins in the Director's Room (map $05 entrance 1, 32:7461):
+  // the staff's cover-up scene (32:7533: #120), warp 1: the clubhouse
+  { name: "boot_kid_story_coverup", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(117),
+    ...routeCase(savedPolicy(0), [{ press: 0, every: 40, until: () => menuW.wram[0][0x450] === 0x05 },
+      { press: 1, every: 40, until: () => menuW.wram[0][0x450] === 0x03 }, [300, 0]], 300) },
+  // the Links Club's tournament (#114 qualified, #72 one hole poked; the result poked to 1, won): the Links Champion's
+  // ceremony (map $1B entrance 2: 31:78E1), then 31:7827: the character's picture (40:6666), the staff roll (41:7E07),
+  // #110, the picture until a button (40:66B5), the save, warp 3: the mode select
+  { name: "boot_kid_story_linkschamp", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 60000,
+    hook: (() => { const fp = flagPoke(72, 114); let done = false; return (f, w, core) => {
+      fp(f, w, core);
+      if (!done && roundsDone >= 1) { done = true; w.wram[0][0x96C] = 1; core.wram(0)[0x96C] = 1; }
+    }; })(),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x1C, 0x12], map: 0x0B }, [200, 0],
+      { to: [0x1A, 0x0A] }, { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x1B },
+      { press: 1, every: 40, until: () => menuW.wram[0][0x450] === 0x00 }, [300, 0]], 300) },
   // the Field, A with nothing ahead: the Navigation menu (0A:7174): Down twice, Up, Down, A: the place's guide on the
   // Field again (0A:7878: its name, the arrow, the marker); a walk; Start: the start menu's Navigation (41:7413): B
   { name: "boot_kid_story_nav", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
@@ -791,6 +924,15 @@ const CASES = [
   // (SaveBlockLoad, MapWarpToReturnPoint), SaveGame, the mode select with a save file, Stroke, course 1
   { name: "boot_poweron_kid_stroke", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
     run: sh => { menuW = sh.w; return powerOn(sh); }, policy: savedPolicy(3) },
+  // the same with the Links won (#139 poked at the mode select, #123 clear): Stroke drops ModeSelectMain (32:5304 /
+  // 32:530C), warp 6: map $25 entrance 3 (35:79D2: Peach's invitation, #123, the save), map 0's mode select again
+  { name: "boot_poweron_kid_stroke_links", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(139),
+    policy: (() => { const p = savedPolicy(3); return f => { frameNow = f; return p(f); }; })(),
+    run: sh => { let seen = false, back = -1; return gameCase(sh, 1, () => {
+      if (sh.w.wram[0][0x450] === 0x25) seen = true;
+      if (seen && back < 0 && hasTask(sh.w, 0x0D, 0x428E)) back = frameNow;
+      return back >= 0 && frameNow > back + 20;
+    }); } },
   // Match (Right twice), Luigi, course 1
   { name: "boot_poweron_kid_match", state: "boot_poweron_kid", open: true, noRet: true,
     run: sh => { menuW = sh.w; return powerOn(sh); }, policy: savedPolicy(2) },

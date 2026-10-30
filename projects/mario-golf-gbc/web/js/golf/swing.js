@@ -118,7 +118,7 @@ export function previewTree(w, hole) {           // 08:5109: does the ghost ball
   const r6 = w.wram[6];
   if (r6[0x443] === 1) return 0;
   if (r6[0x519] === r6[0x378] && r6[0x516] === r6[0x375]) return 0;
-  hole.use(r6[0x443] >= 1 && r6[0x443] <= 3);
+  hole.use(r6[0x443] >= 1 && r6[0x443] <= 3, w);
   if (!(hole.slope[hole.tmap[(r6[0x378] & 0x3F) << 6 | (r6[0x375] & 0x3F)]] & 0x80)) return 0;
   const a = (((r6[0x37A] | r6[0x37B] << 8) << 3) & 0xFFFF) >> 8;
   if (a >= 0x18) return 0;

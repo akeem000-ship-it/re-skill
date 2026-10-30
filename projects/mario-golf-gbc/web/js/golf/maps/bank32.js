@@ -265,8 +265,174 @@ function* map03ObjectBookshelf(sh) {
   yield* T.scriptShowText(sh, 0xFF);
 }
 
+// 32:7533 Map05BeatMarioCoverUpScene (once, after beating Mario: #117 and not #120): the banner's text cleared; the
+// staff talk it over (texts from $04BF: the win kept quiet), #120, fade out (4), 30 frames; ScriptEnd
+function* map05CoverUpScene(sh) {
+  const w = sh.w;
+  wr(w, 0xC4B4, 0); wr(w, 0xC4B5, 0);
+  if (!flag(w, 117)) return;
+  D.inBank(w, 0x0A, () => S.scriptBegin(w));                     // 32:753F
+  S.actorSetPos(w, 0x02, 0x0B00, 0x0500);                         // 32:754A
+  S.actorSetPos(w, 0x03, 0x0900, 0x0600);                         // 32:7555
+  S.actorSetPos(w, 0x05, 0x0D00, 0x0500);                         // 32:7560
+  S.actorSetPos(w, 0x04, 0x0F00, 0x0600);                         // 32:756B
+  S.actorSetPos(w, 0x00, 0x0B00, 0x0B00);                         // 32:7576
+  yield* S.scriptWaitFrames(sh, 0x0A);                            // 32:757C
+  S.actorSetFacing(w, 0x02, 0x40);                                // 32:7584
+  S.actorSetFacing(w, 0x03, 0x40);                                // 32:758B
+  S.actorSetFacing(w, 0x05, 0x40);                                // 32:7592
+  S.actorSetFacing(w, 0x04, 0x40);                                // 32:7599
+  Scr.beginFadeIn(w, 0x04);                                       // 32:759E
+  yield* Scr.waitFade(sh);                                        // 32:75A1
+  T.scriptSetText(w, 0x04BF);                                     // 32:75A7
+  yield* T.scriptShowText(sh, 0x02);                              // 32:75AC
+  S.actorPlayAnim(w, 0x05, 0x07);                                 // 32:75B4
+  yield* S.waitActorAnimDone(sh, 0x05);                           // 32:75B9
+  S.actorFaceActor(w, 0x05, 0x02);                                // 32:75C1
+  yield* T.scriptShowText(sh, 0x05);                              // 32:75C6
+  S.actorPlayAnim(w, 0x04, 0x05);                                 // 32:75CE
+  yield* S.waitActorAnimDone(sh, 0x04);                           // 32:75D3
+  S.actorFaceActor(w, 0x04, 0x02);                                // 32:75DB
+  yield* T.scriptShowText(sh, 0x04);                              // 32:75E0
+  S.actorPlayAnim(w, 0x02, 0x05);                                 // 32:75E8
+  yield* S.waitActorAnimDone(sh, 0x02);                           // 32:75ED
+  S.actorPlayAnim(w, 0x03, 0x07);                                 // 32:75F5
+  yield* S.waitActorAnimDone(sh, 0x03);                           // 32:75FA
+  yield* S.scriptWaitFrames(sh, 0x14);                            // 32:7600
+  S.actorFaceActor(w, 0x02, 0x03);                                // 32:7609
+  S.actorFaceActor(w, 0x05, 0x03);                                // 32:7611
+  yield* S.scriptWaitFrames(sh, 0x14);                            // 32:7617
+  S.actorPlayAnim(w, 0x02, 0x05);                                 // 32:7620
+  yield* S.waitActorAnimDone(sh, 0x02);                           // 32:7625
+  S.actorPlayAnim(w, 0x03, 0x06);                                 // 32:762D
+  yield* S.waitActorAnimDone(sh, 0x03);                           // 32:7632
+  S.actorPlayAnim(w, 0x02, 0x07);                                 // 32:763A
+  yield* S.waitActorAnimDone(sh, 0x02);                           // 32:763F
+  yield* T.scriptShowText(sh, 0x02);                              // 32:7644
+  S.actorPlayAnim(w, 0x03, 0x06);                                 // 32:764C
+  yield* S.waitActorAnimDone(sh, 0x03);                           // 32:7651
+  yield* T.scriptShowText(sh, 0x03);                              // 32:7656
+  S.actorPlayAnim(w, 0x04, 0x07);                                 // 32:765E
+  yield* S.waitActorAnimDone(sh, 0x04);                           // 32:7663
+  yield* T.scriptShowText(sh, 0x04);                              // 32:7668
+  S.actorFaceActor(w, 0x03, 0x04);                                // 32:7670
+  yield* T.scriptShowText(sh, 0x03);                              // 32:7675
+  S.actorPlayAnim(w, 0x02, 0x05);                                 // 32:767D
+  S.actorPlayAnim(w, 0x05, 0x05);                                 // 32:7685
+  S.actorPlayAnim(w, 0x04, 0x05);                                 // 32:768D
+  yield* S.waitActorAnimDone(sh, 0x04);                           // 32:7692
+  S.actorPlayAnim(w, 0x03, 0x06);                                 // 32:769A
+  yield* S.waitActorAnimDone(sh, 0x03);                           // 32:769F
+  yield* T.scriptShowText(sh, 0x03);                              // 32:76A4
+  S.actorsFaceEachOther(w, 0x05, 0x04);                           // 32:76AC
+  yield* S.scriptWaitFrames(sh, 0x1E);                            // 32:76B2
+  S.actorsFaceEachOther(w, 0x05, 0x02);                           // 32:76BB
+  yield* S.scriptWaitFrames(sh, 0x1E);                            // 32:76C1
+  S.actorFaceActor(w, 0x02, 0x03);                                // 32:76CA
+  S.actorFaceActor(w, 0x04, 0x03);                                // 32:76D2
+  S.actorFaceActor(w, 0x05, 0x03);                                // 32:76DA
+  yield* S.scriptWaitFrames(sh, 0x1E);                            // 32:76E0
+  yield* T.scriptShowText(sh, 0x03);                              // 32:76E6
+  yield* S.scriptWaitFrames(sh, 0x3C);                            // 32:76EC
+  S.actorPlayAnim(w, 0x05, 0x05);                                 // 32:76F5
+  yield* S.waitActorAnimDone(sh, 0x05);                           // 32:76FA
+  yield* T.scriptShowText(sh, 0x05);                              // 32:76FF
+  S.actorPlayAnim(w, 0x04, 0x07);                                 // 32:7707
+  yield* S.waitActorAnimDone(sh, 0x04);                           // 32:770C
+  S.actorFaceActor(w, 0x04, 0x05);                                // 32:7714
+  yield* T.scriptShowText(sh, 0x04);                              // 32:7719
+  S.actorMoveTo(w, 0x04, 0x0D00, 0x0700);                         // 32:7724
+  yield* S.waitActorMoveDone(sh, 0x04);                           // 32:7729
+  S.actorFaceActor(w, 0x04, 0x03);                                // 32:7731
+  yield* T.scriptShowText(sh, 0x04);                              // 32:7736
+  S.actorPlayAnim(w, 0x03, 0x07);                                 // 32:773E
+  yield* S.waitActorAnimDone(sh, 0x03);                           // 32:7743
+  yield* S.scriptWaitFrames(sh, 0x1E);                            // 32:7749
+  S.actorSetFacing(w, 0x02, 0x40);                                // 32:7751
+  S.actorPlayAnim(w, 0x02, 0x06);                                 // 32:7759
+  yield* S.waitActorAnimDone(sh, 0x02);                           // 32:775E
+  yield* T.scriptShowText(sh, 0x02);                              // 32:7763
+  S.actorFaceActor(w, 0x04, 0x02);                                // 32:776B
+  S.actorFaceActor(w, 0x03, 0x02);                                // 32:7773
+  S.actorFaceActor(w, 0x05, 0x02);                                // 32:777B
+  yield* S.scriptWaitFrames(sh, 0x14);                            // 32:7781
+  yield* T.scriptShowText(sh, 0x02);                              // 32:7787
+  S.actorPlayAnim(w, 0x05, 0x07);                                 // 32:778F
+  S.actorPlayAnim(w, 0x03, 0x07);                                 // 32:7797
+  S.actorPlayAnim(w, 0x04, 0x07);                                 // 32:779F
+  yield* S.waitActorAnimDone(sh, 0x04);                           // 32:77A4
+  yield* S.scriptWaitFrames(sh, 0x3C);                            // 32:77AA
+  S.actorPlayAnim(w, 0x02, 0x05);                                 // 32:77B3
+  yield* S.waitActorAnimDone(sh, 0x02);                           // 32:77B8
+  yield* T.scriptShowText(sh, 0x02);                              // 32:77BD
+  S.actorsFaceEachOther(w, 0x00, 0x03);                           // 32:77C5
+  S.actorsFaceEachOther(w, 0x05, 0x02);                           // 32:77CD
+  yield* S.scriptWaitFrames(sh, 0x28);                            // 32:77D3
+  S.actorFaceActor(w, 0x00, 0x02);                                // 32:77DC
+  S.actorFaceActor(w, 0x04, 0x02);                                // 32:77E4
+  S.actorFaceActor(w, 0x03, 0x02);                                // 32:77EC
+  S.actorFaceActor(w, 0x05, 0x02);                                // 32:77F4
+  S.actorPlayAnim(w, 0x02, 0x07);                                 // 32:77FC
+  yield* S.waitActorAnimDone(sh, 0x02);                           // 32:7801
+  yield* T.scriptShowText(sh, 0x02);                              // 32:7806
+  S.actorPlayAnim(w, 0x05, 0x07);                                 // 32:780E
+  yield* S.waitActorAnimDone(sh, 0x05);                           // 32:7813
+  yield* T.scriptShowText(sh, 0x05);                              // 32:7818
+  S.actorPlayAnim(w, 0x03, 0x05);                                 // 32:7820
+  yield* S.waitActorAnimDone(sh, 0x03);                           // 32:7825
+  yield* T.scriptShowText(sh, 0x03);                              // 32:782A
+  S.actorPlayAnim(w, 0x04, 0x05);                                 // 32:7832
+  yield* S.waitActorAnimDone(sh, 0x04);                           // 32:7837
+  yield* T.scriptShowText(sh, 0x04);                              // 32:783C
+  S.actorMoveTo(w, 0x04, 0x0F00, 0x0600);                         // 32:7847
+  yield* S.waitActorMoveDone(sh, 0x04);                           // 32:784C
+  S.actorFaceActor(w, 0x04, 0x00);                                // 32:7854
+  S.actorFaceActor(w, 0x02, 0x00);                                // 32:785C
+  yield* S.scriptWaitFrames(sh, 0x14);                            // 32:7862
+  S.actorPlayAnim(w, 0x02, 0x05);                                 // 32:786B
+  yield* S.waitActorAnimDone(sh, 0x02);                           // 32:7870
+  yield* T.scriptShowText(sh, 0x02);                              // 32:7875
+  S.actorPlayAnim(w, 0x02, 0x07);                                 // 32:787D
+  yield* S.waitActorAnimDone(sh, 0x02);                           // 32:7882
+  yield* T.scriptShowText(sh, 0x02);                              // 32:7887
+  S.actorPlayAnim(w, 0x00, 0x05);                                 // 32:788F
+  yield* S.waitActorAnimDone(sh, 0x00);                           // 32:7894
+  S.actorPlayAnim(w, 0x02, 0x06);                                 // 32:789C
+  yield* S.waitActorAnimDone(sh, 0x02);                           // 32:78A1
+  yield* T.scriptShowText(sh, 0x02);                              // 32:78A6
+  S.actorPlayAnim(w, 0x00, 0x07);                                 // 32:78AE
+  yield* S.waitActorAnimDone(sh, 0x00);                           // 32:78B3
+  S.actorPlayAnim(w, 0x02, 0x05);                                 // 32:78BB
+  yield* S.waitActorAnimDone(sh, 0x02);                           // 32:78C0
+  yield* T.scriptShowText(sh, 0x02);                              // 32:78C5
+  S.actorFaceActor(w, 0x00, 0x05);                                // 32:78CD
+  S.actorPlayAnim(w, 0x05, 0x05);                                 // 32:78D5
+  yield* S.waitActorAnimDone(sh, 0x05);                           // 32:78DA
+  yield* S.scriptWaitFrames(sh, 0x28);                            // 32:78E0
+  S.actorSetFacing(w, 0x03, 0x40);                                // 32:78E8
+  S.actorPlayAnim(w, 0x03, 0x05);                                 // 32:78F0
+  yield* S.waitActorAnimDone(sh, 0x03);                           // 32:78F5
+  yield* S.scriptWaitFrames(sh, 0x28);                            // 32:78FB
+  S.actorFaceActor(w, 0x00, 0x04);                                // 32:7904
+  S.actorPlayAnim(w, 0x04, 0x05);                                 // 32:790C
+  yield* S.waitActorAnimDone(sh, 0x04);                           // 32:7911
+  yield* S.scriptWaitFrames(sh, 0x28);                            // 32:7917
+  S.actorFaceActor(w, 0x00, 0x02);                                // 32:7920
+  yield* S.scriptWaitFrames(sh, 0x28);                            // 32:7926
+  S.actorPlayAnim(w, 0x00, 0x05);                                 // 32:792F
+  yield* S.waitActorAnimDone(sh, 0x00);                           // 32:7934
+  yield* S.scriptWaitFrames(sh, 0x28);                            // 32:793A
+  S.actorPlayAnim(w, 0x02, 0x05);                                 // 32:7943
+  yield* S.waitActorAnimDone(sh, 0x02);
+  yield* T.scriptShowText(sh, 0x02);
+  setFlag(w, 120);
+  Scr.beginFadeOut(w, 0x04);
+  yield* Scr.waitFade(sh);
+  yield* S.scriptWaitFrames(sh, 0x1E);
+  D.inBank(w, 0x0A, () => S.scriptEnd(w));
+}
 // 32:7461 (Map05EnterDirectorsRoom, entrances other than 2): no name banner but for entrance 1; after beating Mario
-// (#117) the staff (32:6F35) and the talk list 32:712F, and once (not #120) the cover-up scene (~32:7533, not ported)
+// (#117) the staff (32:6F35) and the talk list 32:712F, and once (not #120) the cover-up scene (32:7533)
 // and warp 1; else the talk list by progress (#127 #139 #115 #138 #114 #137 #113 #136 #112: 32:710E ... 32:7006; the
 // first two with the staff respawned)
 function* map05EnterRegular(sh) {
@@ -276,7 +442,9 @@ function* map05EnterRegular(sh) {
     M.scriptRespawnActors(w, 0x32, 0x6F35);
     M.scriptSetMapField(w, 0x712F, 0x000C);
     if (flag(w, 120)) return;
-    notPorted("the Director's cover-up scene (~32:7533 Map05BeatMarioCoverUpScene)");
+    yield* map05CoverUpScene(sh);                                 // 32:748A
+    wr(w, 0xC441, 0x01);
+    return;
   }
   if (flag(w, 127)) { M.scriptRespawnActors(w, 0x32, 0x6F35); M.scriptSetMapField(w, 0x710E, 0x000C); return; }
   if (flag(w, 139)) { M.scriptRespawnActors(w, 0x32, 0x6F35); M.scriptSetMapField(w, 0x70ED, 0x000C); return; }

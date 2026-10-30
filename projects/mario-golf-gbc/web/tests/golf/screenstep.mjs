@@ -116,7 +116,7 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
     const fades = partialFade.splice(0);
     w.lagFadeOwed = [];
     if (lagVBlanks) for (let k = 0; k < n; k++) {
-      applyPendingPaletteUpdates(w); drv.frame(); updateGameTimer(w);
+      applyPendingPaletteUpdates(w); drv.frame(); updateGameTimer(w, id => w.onSound(id));   // (the countdown's ticks: sounds $9F / $A0)
       const f = fades[k];
       if (f && (f[0] & 3) && !(w.high[0x1A2] & 3)) w.lagFadeOwed.push(f[0]);
       else if (!f || w.high[0x1A2] !== f[0] || w.high[0x1A4] >= f[1]) fadeVBlank(w);
@@ -189,7 +189,7 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
     if (trace && lagNow) console.log(`frame ${frame}: a lag frame`);
     if (!px) res.pixelExact++;
     if (!out.length) res.modelExact++;
-    else if (lag) res.lag++;
+    else if (lag) { res.lag++; if (process.env.LAGKEYS && res.lag % +process.env.LAGKEYS === 1) console.log(`frame ${frame} (lag-classed): ${out.join("; ")}`); }   // (debugging)
     else { res.bad.push({ frame, px, out }); if (verbose) console.log(`frame ${frame}: ${px} px; ${out.join("; ")}`); }
     frame++;
     if (frame > maxFrames) throw new Error("too many frames");

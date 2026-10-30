@@ -112,7 +112,7 @@ export function smartAim(w, hole) {              // 10:6406 SmartAim: at the cup
       const [hl, de] = g.mulSinCos(L.baseDistance(w), bc);
       const x = (rd16(r6, 0x401) + hl) & 0xFFFF, y = (rd16(r6, 0x404) + de) & 0xFFFF;
       if (!((x >> 8) & 0xC0) && !((y >> 8) & 0xC0)) {
-        hole.use(r6[0x443] >= 1 && r6[0x443] <= 3);
+        hole.use(r6[0x443] >= 1 && r6[0x443] <= 3, w);
         if ([0, 6, 0x0A, 0x0E].includes(hole.terrainAt(x, y))) return bc;
       }
       bc = (bc + rw(0x10, 0x63BE + 2 * d)) & 0xFFFF;   // 10:63AA
@@ -256,7 +256,10 @@ export function* aimMenu(sh, a) {
     }
     at = "5D16";
     yield* sh.advance();
-    if (w0[0x0F4]) notPorted("the shot clock (~10:5D1C)");
+    if (w0[0x0F4] && !(w0[0x0F6] | w0[0x0F7])) {   // 10:5D1C: the shot clock ran out: 60 frames, $8F (10:5EAF)
+      yield* sh.advance(0x3C);                   // WaitFramesCmd $3C
+      w.high[0x1C1] = 0x20; r6[0x4D4] = 0; return 0x8F;
+    }
     if (r6[0x438] === 1 && !(w.high[0x190] & 4)) { r6[0x438] = 2; sh.sound(0x60); }   // 10:5D44
     const p = w.high[0x194];
     if (p & 1) { w.high[0x1C1] = 0x20; r6[0x4D4] = 0; return p; }   // A (10:5EAF; 02:4833 SerialIdleSet20)

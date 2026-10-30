@@ -31,14 +31,37 @@ export class Hole {
     this.course = [this.attrs, this.tmap, this.slope, this.terrain];
     this.green = [asset(r[3], 1), asset(r[3], 2), asset(r[3], 3), asset(r[2], 2)];
   }
-  use(green) { [this.attrs, this.tmap, this.slope, this.terrain] = green ? this.green : this.course; }
+  use(green, w) { [this.attrs, this.tmap, this.slope, this.terrain] = green ? this.green : this.course; if (w) this.w = w; }
+  // the map byte the ROM reads for cell (row, col): $D000 + row * 64 + col in WRAM2 (attributes) or WRAM3 (tilemap),
+  // 16-bit and not masked (TerrainAt 10:6536, GreenSlopeAt 10:64D1, SlopeCellAt 10:674E). Off the map (a ball outside
+  // the green while the green view's maps are in use: a frame as it rolls off) that is the echo RAM, the OAM / HRAM,
+  // or ROM bank 0 past the $FFFF wrap
+  mapByte(map, bank, row, col) {
+    const a = (row * 64 + col + 0xD000) & 0xFFFF;
+    if (a >= 0xD000 && a < 0xE000) return map[a - 0xD000];
+    const w = this.w;
+    if (!w) return map[(a - 0xD000) & 0xFFF];
+    if (a < 0x4000) return rb(0, a);
+    if (a < 0xF000) return w.wram[0][a - 0xE000];
+    if (a < 0xFE00) return w.wram[bank][a - 0xF000];
+    if (a < 0xFEA0) return w.oam[a - 0xFE00];
+    if (a >= 0xFF80) return w.high[a - 0xFE00];
+    throw new Error(`~10:6536: a hole map read at $${a.toString(16)}`);
+  }
+  // a byte of a per-tile table: the asset as loaded, then (a garbage tile number past its end) what follows it in
+  // WRAM: the slope bytes WRAM6 $D700, the terrain nibbles WRAM6 $D800, the slope nibbles WRAM1 $D800
+  tableByte(table, i) {
+    if (i < table.length || !this.w) return table[i];
+    const [bank, base] = table === this.slopes ? [1, 0x800] : table === this.slope ? [6, 0x700] : [6, 0x800];
+    return this.w.wram[bank][base + i];
+  }
   cell(table, hl, de) {
-    const i = ((de >> 8) * 64 + (hl >> 8)) & 0xFFF;
+    const row = de >> 8, col = hl >> 8;
     let c = (hl & 0xFF) >> 6, e = (de & 0xFF) >> 6;
-    const a = this.attrs[i];
+    const a = this.mapByte(this.attrs, 2, row, col);
     if (a & 0x20) c = 3 - c;
     if (a & 0x40) e = 3 - e;
-    const b = table[this.tmap[i] * 8 + e * 2 + (c >> 1)];
+    const b = this.tableByte(table, this.mapByte(this.tmap, 3, row, col) * 8 + e * 2 + (c >> 1));
     return [c & 1 ? b & 0x0F : b >> 4, a];
   }
   slopeCell(hl, de) {                 // 10:674E SlopeCellAt (off the green): [nonzero, direction byte]
@@ -49,9 +72,9 @@ export class Hole {
   }
   terrainAt(hl, de) { return this.cell(this.terrain, hl, de)[0]; }   // 10:6536 TerrainAt: x, y integer parts
   slopeAt(hl, de) {                   // 10:64D1 GreenSlopeAt: [slope byte, direction byte]
-    const i = ((de >> 8) * 64 + (hl >> 8)) & 0xFFF;
-    const flip = (((this.attrs[i] >> 2) | (this.attrs[i] << 6)) & 0xFF) & 0x18;
-    const v = this.slope[this.tmap[i]];
+    const row = de >> 8, col = hl >> 8, at = this.mapByte(this.attrs, 2, row, col);
+    const flip = (((at >> 2) | (at << 6)) & 0xFF) & 0x18;
+    const v = this.tableByte(this.slope, this.mapByte(this.tmap, 3, row, col));
     return [v, slopeDir((v & 7) + flip)];
   }
 }

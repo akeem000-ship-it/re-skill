@@ -8,11 +8,14 @@ import * as T from "../msgbox.js";
 import * as M from "../mapengine.js";
 import * as St from "../start.js";
 import { golfViewExit } from "../round.js";
-import { pushTextNumberArg, setTextCourseIndex } from "../text.js";
+import { pushTextNumberArg, setTextCourseIndex, copyTextShortToDE } from "../text.js";
+import { mapBufCopyRectRedraw } from "../mapgfx.js";
+import { rb } from "../rom.js";
 import { saveGame } from "../save.js";
 import * as Ls from "./lessons.js";
 import * as Rh from "../render/hooks.js";
 import { golfSessionEnd } from "../boot.js";
+import { awardFoundAllRivalsExp } from "./bank34.js";
 
 const rd = D.rd, wr = D.wr;
 const B = 0x30;
@@ -642,7 +645,567 @@ function* puttingPracticeAfterShot(sh) {
   Ls.setGolfEventFlag(sh.w, rd(sh.w, 0xC834) === 0x07 ? 0x01 : 0x80);
 }
 
+// 30:6942 PuttingGreenObject0FMeetAzalea (object $0F; actor 8 is on the Palm green): not when the player is Azalea
+// (wCharId 2); #142, $0C59 (speaker $80), Azalea at ($3300, $1C00), the player hops $0200 down with the facing locked
+// (sound $8A), Azalea steps $0200 down, $0C5D (speaker 8), 30:7EAD HiddenFriendsBonus_30 (the code of 34:7E12)
+function* meetAzalea(sh) {
+  const w = sh.w;
+  if (rd(w, 0xC810) === 0x02) return;
+  setFlag(w, 142);
+  T.scriptSetText(w, 0x0C59);
+  yield* T.scriptShowText(sh, 0x80);
+  S.actorSetPos(w, 0x08, 0x3300, 0x1C00);
+  S.actorLockSpriteFacing(w, 0x00, 0x01);
+  sh.sound(0x8A);
+  S.actorJump(w, 0x00, 0xFF80);
+  S.actorMoveDir(w, 0x00, 0x80, 0x0200);
+  yield* S.waitActorMoveDone(sh, 0x00);
+  S.actorLockSpriteFacing(w, 0x00, 0x00);
+  S.actorMoveDir(w, 0x08, 0x80, 0x0200);
+  yield* S.waitActorMoveDone(sh, 0x08);
+  T.scriptSetText(w, 0x0C5D);
+  yield* T.scriptShowText(sh, 0x08);
+  yield* awardFoundAllRivalsExp(sh);                              // 30:7EAD
+}
+
+// ---- the Alternate Game: the Dune green's golfers (map $14 talks 8-$0A), map $2A (the rules) and map $2B (the event) ----
+const wait = (sh, n) => S.scriptWaitFrames(sh, n);
+const inBankGen = Ls.inBankGen;
+function* animWait(sh, b, a) { S.actorPlayAnim(sh.w, b, a); yield* S.waitActorAnimDone(sh, b); }
+// a question (speaker s) 10 frames after the player turned to s: true for No
+function* altAsk(sh, s) {
+  yield* T.scriptShowTextKeepOpen(sh, s);
+  S.actorFaceActor(sh.w, 0x00, s);
+  yield* wait(sh, 0x0A);
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* wait(sh, 0x05);
+  return a;
+}
+// the rules menu (30:6FF8 / 30:711C): "Which rules?" ($1808, speaker 8), 20 frames, the menu $1809 at (1, 1) (0A:42BF;
+// B asks again); Stroke (1): #155 and $180B, else $180A; the golfers' animations 5; warp e (first: show the question)
+function* altRules(sh, e, first) {
+  const w = sh.w;
+  let m;
+  for (let show = first; ; show = true) {
+    if (show) { T.scriptSetText(w, 0x1808); yield* T.scriptShowText(sh, 0x08); }
+    yield* wait(sh, 0x14);
+    m = yield* S.scriptRunMenu(sh, 0x1809, 0x01, 0x01);
+    if (m !== 0xFF) break;
+  }
+  if (m === 0x01) { setFlag(w, 155); T.scriptSetText(w, 0x180B); }
+  else T.scriptSetText(w, 0x180A);
+  yield* T.scriptShowText(sh, 0x08);
+  yield* animWait(sh, 0x0A, 0x05);
+  S.actorSetFacing(w, 0x08, 0xC0);
+  S.actorPlayAnim(w, 0x08, 0x05);
+  yield* animWait(sh, 0x09, 0x05);
+  wr(w, 0xC441, e);
+}
+// the three golfers face the player, the first's animation 7
+function* altGolfersTurn(sh) {
+  const w = sh.w;
+  S.actorFaceActor(w, 0x08, 0x00);
+  yield* animWait(sh, 0x08, 0x07);
+  S.actorFaceActor(w, 0x09, 0x00);
+  S.actorFaceActor(w, 0x0A, 0x00);
+}
+// 30:6F42 AltGameInvite: $152C asked (No: 30:7060 the next text, back to their places, his animation 6); the next
+// asked (No: 30:7088); the next, a hop (sound $8A), the others' lines ($0A animation 7, 9 animation 5), #155 cleared,
+// the rules (30:6FF8), warp 2
+function* altGameInvite(sh) {
+  const w = sh.w;
+  yield* altGolfersTurn(sh);
+  T.scriptSetText(w, 0x152C);
+  if (yield* altAsk(sh, 0x08)) {
+    yield* T.scriptShowText(sh, 0x08);                           // 30:7060
+    S.actorSetFacing(w, 0x08, 0xC0); S.actorSetFacing(w, 0x09, 0x00); S.actorSetFacing(w, 0x0A, 0x80);
+    yield* animWait(sh, 0x08, 0x06);
+    return;
+  }
+  T.scriptSkipText(w);
+  yield* T.scriptShowTextKeepOpen(sh, 0x08);
+  yield* wait(sh, 0x0A);
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* wait(sh, 0x05);
+  if (a) {
+    yield* T.scriptShowText(sh, 0x08);                           // 30:7088
+    S.actorSetFacing(w, 0x08, 0xC0);
+    yield* animWait(sh, 0x08, 0x05);
+    S.actorSetFacing(w, 0x09, 0x00); S.actorSetFacing(w, 0x0A, 0x80);
+    return;
+  }
+  T.scriptSkipText(w);
+  yield* T.scriptShowText(sh, 0x08);
+  sh.sound(0x8A);
+  S.actorJump(w, 0x08, 0xFF80);
+  yield* S.waitActorLanded(sh, 0x08);
+  S.actorsFaceEachOther(w, 0x0A, 0x09);
+  yield* animWait(sh, 0x0A, 0x07);
+  yield* T.scriptShowText(sh, 0x0A);
+  yield* animWait(sh, 0x09, 0x05);
+  yield* T.scriptShowText(sh, 0x08);
+  clearFlag(w, 155);
+  yield* altRules(sh, 0x02, true);
+}
+// 30:70B0 AltGameInviteAgain: $154B asked: No (30:7184): #249, the next text, back to their places; Yes: a hop (sound
+// $8A), the next text, #155 cleared, the rules without "Which rules?" the first time (30:7127), warp 3
+function* altGameInviteAgain(sh) {
+  const w = sh.w;
+  yield* altGolfersTurn(sh);
+  T.scriptSetText(w, 0x154B);
+  if (yield* altAsk(sh, 0x08)) {
+    setFlag(w, 249);
+    yield* T.scriptShowText(sh, 0x08);
+    S.actorSetFacing(w, 0x08, 0xC0);
+    yield* animWait(sh, 0x08, 0x05);
+    S.actorSetFacing(w, 0x09, 0x00); S.actorSetFacing(w, 0x0A, 0x80);
+    return;
+  }
+  T.scriptSkipText(w);
+  sh.sound(0x8A);
+  S.actorJump(w, 0x08, 0xFF80);
+  yield* S.waitActorLanded(sh, 0x08);
+  yield* T.scriptShowText(sh, 0x08);
+  clearFlag(w, 155);
+  yield* altRules(sh, 0x03, false);
+}
+// 30:681A / 683E / 6862 Map14Talk08-0A (the Dune green's golfers 8, 9, $0A): declined before (#249) $154E (30:71AF,
+// speaker 8); played (#151) or won (#154): 30:70B0; the Links qualified (#114): 30:6F42; else their own line
+function* altGolferTalk(sh, a, id) {
+  const w = sh.w;
+  if (testFlag(w, 249)) { T.scriptSetText(w, 0x154E); yield* T.scriptShowText(sh, 0x08); return; }
+  if (testFlag(w, 151) || testFlag(w, 154)) { yield* altGameInviteAgain(sh); return; }
+  if (testFlag(w, 114)) { yield* altGameInvite(sh); return; }
+  T.scriptSetText(w, id);
+  yield* T.scriptShowText(sh, a);
+}
+// 02:4A0B GolferProfileCopy: bytes +$00-$13 and +$19-$1F of the record hl to de
+function golferProfileCopy(w, hl, de, read) {
+  for (let k = 0; k < 0x14; k++) wr(w, de + k, read(hl + k));
+  for (let k = 0x19; k < 0x20; k++) wr(w, de + k, read(hl + k));
+}
+// 02:49BA RefreshGolferProfile: golfer b for player c ($FF / $82 / $81 nothing; $80 the character, unless no save
+// slot; else the preset 02:4B1D[b & $F] and its name, text $43 + its character, by 05:40C2; the WRAM bank kept)
+function refreshGolferProfile(w, b, c) {
+  const de = c & 1 ? 0xC8C0 : 0xC880;
+  if (b === 0xFF || b === 0x82 || b === 0x81) return;
+  if (b === 0x80) { if (rd(w, 0xC2A5) !== 0x0F) golferProfileCopy(w, 0xC800, de, a => rd(w, a)); return; }
+  const hl = rb(0x02, 0x4B1D + 2 * (b & 0x0F)) | rb(0x02, 0x4B1D + 2 * (b & 0x0F) + 1) << 8;
+  golferProfileCopy(w, hl, de, a => rb(0x02, a));
+  const old = w.high[0x196];
+  copyTextShortToDE(w, (0x43 + rd(w, de + 0x10)) & 0xFFFF, de);
+  D.setWramBank(w, old);
+}
+// 30:72A8 AltShotNextGolfer: WRAM6; the team of wCurPlayer swaps its golfer (wAltShotTurns $C873 bit 0 / 1): team 1
+// the character ($80) / $0B, team 2 $0C / $0D (02:49BA)
+function altShotNextGolfer(w) {
+  D.setWramBank(w, 6);
+  const t = rd(w, 0xC873);
+  if (!rd(w, 0xC835)) {
+    if (t & 1) { wr(w, 0xC873, t & 0xFE); refreshGolferProfile(w, 0x80, 0x00); }
+    else { wr(w, 0xC873, t | 1); refreshGolferProfile(w, 0x0B, 0x00); }
+  } else if (t & 2) { wr(w, 0xC873, t & 0xFD); refreshGolferProfile(w, 0x0C, 0x01); }
+  else { wr(w, 0xC873, t | 2); refreshGolferProfile(w, 0x0D, 0x01); }
+}
+// 30:72F0 AltShotStartRound: fade out (4), GolfSessionInit, game mode 3 with #155 (stroke) else 2 (30:72DF), the
+// character and golfer $0C, the return point (map $2B, entrance 6), course 3 hole 1 (the wind byte is the 6 left in
+// a), no forced wind direction, the hooks 30:7361, wAltShotTurns 0, the teams $C878 = 1, $C879-$C87C = the character,
+// $0B, $0C, $0D; the partner first (#152): player 1's golfer swapped (30:72A8) and $C879 / $C87A swapped; 18 holes
+function* altShotStartRound(sh) {
+  const w = sh.w;
+  Scr.beginFadeOut(w, 0x04);
+  yield* Scr.waitFade(sh);
+  St.golfSessionInit(w);
+  wr(w, 0xC834, testFlag(w, 155) ? 0x03 : 0x02);
+  St.setupPlayerGolfer(w, 0x80, 0x00);
+  St.setupPlayerGolfer(w, 0x0C, 0x01);
+  Ls.saveReturnPoint(w, 0x2B, 0x06);
+  St.setCourseHole(w, 0x06, 0x03, 0x01);
+  Ls.setForcedWindDir(w, 0x80);
+  Ls.setGolfEventHook(w, 0x30, 0x7361);
+  wr(w, 0xC873, 0x00);
+  wr(w, 0xC878, 0x01); wr(w, 0xC879, rd(w, 0xC810)); wr(w, 0xC87A, 0x0B); wr(w, 0xC87B, 0x0C); wr(w, 0xC87C, 0x0D);
+  if (testFlag(w, 152)) {
+    D.setWramBank(w, 6);
+    wr(w, 0xC835, 0x00);
+    altShotNextGolfer(w);
+    wr(w, 0xC879, 0x0B); wr(w, 0xC87A, rd(w, 0xC810));
+  }
+  if (!sh.playGolfRound) notPorted("the Alternate Game's match outside the game loop");
+  yield* sh.playGolfRound(0x12);
+  yield* inBankGen(w, 0x10, golfSessionEnd(sh));
+}
+// 30:7212 Map2AEnter: fade out ($7F, not waited for); entrance $0F: ScriptBegin (no ScriptEnd: the round follows),
+// $1539, fade in (4), 30 frames, the caddie faces the player; the first time (neither #151 nor #154): #151, his
+// animation 5, the rules, animation 7; "Who tees off first?" ($153A): Yes #152 cleared; No: the next part asked: Yes
+// #152 (the partner first), No: the first question again; 30:72F0
+function* map2AEnter(sh) {
+  const w = sh.w;
+  Scr.beginFadeOut(w, 0x7F);
+  if (rd(w, 0xC46A) !== 0x0F) return;
+  D.inBank(w, 0x0A, () => S.scriptBegin(w));
+  T.scriptSetText(w, 0x1539);
+  Scr.beginFadeIn(w, 0x04);
+  yield* Scr.waitFade(sh);
+  yield* wait(sh, 0x1E);
+  S.actorFaceActor(w, 0x02, 0x00);
+  if (!testFlag(w, 151) && !testFlag(w, 154)) {
+    setFlag(w, 151);
+    yield* animWait(sh, 0x02, 0x05);
+    yield* T.scriptShowText(sh, 0x02);
+    yield* animWait(sh, 0x02, 0x07);
+  }
+  for (;;) {
+    T.scriptSetText(w, 0x153A);
+    yield* T.scriptShowTextKeepOpen(sh, 0x02);
+    let a = yield* T.scriptAskYesNo(sh);
+    yield* T.scriptCloseText(sh);
+    yield* wait(sh, 0x05);
+    if (!a) { clearFlag(w, 152); break; }
+    yield* T.scriptShowTextKeepOpen(sh, 0x02);
+    a = yield* T.scriptAskYesNo(sh);
+    yield* T.scriptCloseText(sh);
+    yield* wait(sh, 0x05);
+    if (!a) { setFlag(w, 152); break; }
+  }
+  yield* altShotStartRound(sh);
+}
+// 30:7381 AltShotHoleStartGolfers (hook 3, a hole's start): WRAM6; each team's golfer due by wAltShotTurns $C873 (bit
+// 0: $0B, else the character; bit 1: $0D, else $0C) set again (30:73AF -> 02:49BA)
+function altShotHoleStartGolfers(w) {
+  D.setWramBank(w, 6);
+  const t = rd(w, 0xC873);
+  refreshGolferProfile(w, t & 1 ? 0x0B : 0x80, 0x00);
+  refreshGolferProfile(w, rd(w, 0xC873) & 2 ? 0x0D : 0x0C, 0x01);
+}
+// 30:73B5 AltShotShotSetup (hook 0): the current player's HUD line (12:4B8A / 12:4C18), a frame
+function* altShotShotSetup(sh) {
+  Rh.hud(sh.w, rd(sh.w, 0xC835) ? "hudDrawPlayer2" : "hudDrawPlayer1");
+  yield* sh.advance();
+}
+// 30:74FE Map2BIntroScene (entrance 1): ScriptBegin; $1533 on, fade in (4); the caddie and the four golfers talk
+// (after the Dune Club is won, #138, one line is skipped the other way round: 30:76EE); they file out (speed $10;
+// the cheering script 30:7D7B), 90 frames, warp $0F (map $2A, the rules); ScriptEnd
+function* map2BIntro(sh) {
+  const w = sh.w;
+  D.inBank(w, 0x0A, () => S.scriptBegin(w));                     // 30:74FE
+  T.scriptSetText(w, 0x1533);                                     // 30:7504
+  Scr.beginFadeIn(w, 0x04);                                       // 30:7509
+  yield* Scr.waitFade(sh);                                        // 30:750C
+  S.actorPlayAnim(w, 0x05, 0x06);                                 // 30:7514
+  yield* S.waitActorAnimDone(sh, 0x05);                           // 30:7519
+  yield* T.scriptShowText(sh, 0x05);                              // 30:751E
+  S.actorsFaceEachOther(w, 0x00, 0x02);                           // 30:7526
+  yield* S.scriptWaitFrames(sh, 0x1E);                            // 30:752C
+  S.actorPlayAnim(w, 0x05, 0x07);                                 // 30:7535
+  yield* S.waitActorAnimDone(sh, 0x05);                           // 30:753A
+  yield* S.scriptWaitFrames(sh, 0x1E);                            // 30:7540
+  S.actorPlayAnim(w, 0x05, 0x05);                                 // 30:7549
+  yield* S.waitActorAnimDone(sh, 0x05);                           // 30:754E
+  if (testFlag(w, 138)) { T.scriptSkipText(w); yield* T.scriptShowText(sh, 0x05); }   // 30:76EE
+  else { yield* T.scriptShowText(sh, 0x05); T.scriptSkipText(w); }                    // 30:7559
+  S.actorSetFacing(w, 0x00, 0xC0);                                // 30:7563
+  S.actorSetFacing(w, 0x02, 0xC0);                                // 30:756A
+  yield* S.scriptWaitFrames(sh, 0x1E);                            // 30:7570
+  S.actorPlayAnim(w, 0x05, 0x05);                                 // 30:7579
+  yield* S.waitActorAnimDone(sh, 0x05);                           // 30:757E
+  yield* T.scriptShowText(sh, 0x05);                              // 30:7583
+  S.actorsFaceEachOther(w, 0x03, 0x04);                           // 30:758B
+  yield* S.scriptWaitFrames(sh, 0x1E);                            // 30:7591
+  S.actorPlayAnim(w, 0x04, 0x05);                                 // 30:759A
+  S.actorPlayAnim(w, 0x03, 0x05);                                 // 30:75A2
+  yield* S.waitActorAnimDone(sh, 0x03);                           // 30:75A7
+  S.actorSetFacing(w, 0x04, 0xC0);                                // 30:75AE
+  S.actorSetFacing(w, 0x03, 0xC0);                                // 30:75B5
+  S.actorPlayAnim(w, 0x04, 0x05);                                 // 30:75BD
+  S.actorPlayAnim(w, 0x00, 0x05);                                 // 30:75C5
+  S.actorPlayAnim(w, 0x02, 0x05);                                 // 30:75CD
+  S.actorPlayAnim(w, 0x03, 0x05);                                 // 30:75D5
+  yield* S.waitActorAnimDone(sh, 0x03);                           // 30:75DA
+  S.actorSetSpeed(w, 0x00, 0x0010);                               // 30:75E2
+  S.actorSetSpeed(w, 0x02, 0x0010);                               // 30:75EA
+  S.actorSetSpeed(w, 0x03, 0x0010);                               // 30:75F2
+  S.actorSetSpeed(w, 0x04, 0x0010);                               // 30:75FA
+  yield* S.scriptWaitFrames(sh, 0x01);                            // 30:7600
+  yield* S.scriptActorGoTo(sh, 0x00, 0x1D80, 0x0D80);             // 30:760B
+  S.actorMoveTo(w, 0x00, 0x1D80, 0x0D80);                         // 30:7616
+  S.actorMoveDir(w, 0x02, 0x00, 0x0200);                          // 30:7620
+  yield* S.waitActorMoveDone(sh, 0x02);                           // 30:7625
+  S.actorMoveTo(w, 0x02, 0x1B00, 0x0D80);                         // 30:7630
+  S.actorMoveDir(w, 0x04, 0xC0, 0x0200);                          // 30:763A
+  yield* S.scriptWaitFrames(sh, 0x05);                            // 30:7640
+  S.actorMoveDir(w, 0x03, 0xC0, 0x0200);                          // 30:764B
+  yield* S.waitActorMoveDone(sh, 0x03);                           // 30:7650
+  S.actorMoveTo(w, 0x03, 0x1900, 0x0D80);                         // 30:765B
+  S.actorMoveTo(w, 0x04, 0x1700, 0x0D80);                         // 30:7666
+  yield* S.waitActorMoveDone(sh, 0x04);                           // 30:766B
+  yield* S.waitScriptActorIdle(sh);                               // 30:766E
+  yield* T.scriptShowText(sh, 0x02);                              // 30:7673
+  S.actorFaceActor(w, 0x00, 0x02);                                // 30:767B
+  S.actorPlayAnim(w, 0x02, 0x05);                                 // 30:7683
+  yield* S.waitActorAnimDone(sh, 0x02);                           // 30:7688
+  yield* T.scriptShowText(sh, 0x02);                              // 30:768D
+  S.actorPlayAnim(w, 0x00, 0x07);                                 // 30:7695
+  yield* S.waitActorAnimDone(sh, 0x00);                           // 30:769A
+  S.actorSetScript(w, 0x02, 0x7D7B, 0x30);                        // 30:76A5
+  yield* S.scriptWaitFrames(sh, 0x15);                            // 30:76AB
+  S.actorSetScript(w, 0x03, 0x7D7B, 0x30);                        // 30:76B7
+  yield* S.scriptWaitFrames(sh, 0x01);                            // 30:76BD
+  S.actorSetScript(w, 0x04, 0x7D7B, 0x30);                        // 30:76C9
+  yield* S.scriptWaitFrames(sh, 0x64);                            // 30:76CF
+  S.actorSetScript(w, 0x00, 0x7D7B, 0x30);                        // 30:76DB
+  yield* S.scriptWaitFrames(sh, 0x5A);                            // 30:76E1
+  wr(w, 0xC441, 0x0F);                                            // 30:76E7
+  D.inBank(w, 0x0A, () => S.scriptEnd(w));                       // 30:76EA
+}
+// 30:7713 (the match result's scene after its text: 30:7705 a tie $1541, 30:770D lost $153C; entrances $0C / $0D
+// show them directly): the teams walk in (30:7D02), fade in (4), the partner's lines, the rivals' answers, both walk
+// off to the left and are put away, the player and the caddie, warp 1
+function* map2BResultScene(sh, id) {
+  const w = sh.w;
+  T.scriptSetText(w, id);
+  map2BTeamsWalkIn(w);                                            // 30:7713
+  Scr.beginFadeIn(w, 0x04);                                       // 30:7718
+  yield* Scr.waitFade(sh);                                        // 30:771B
+  yield* S.waitActorMoveDone(sh, 0x00);                           // 30:7720
+  S.actorPlayAnim(w, 0x02, 0x07);                                 // 30:7728
+  yield* S.waitActorAnimDone(sh, 0x02);                           // 30:772D
+  S.actorFaceActor(w, 0x02, 0x03);                                // 30:7735
+  S.actorPlayAnim(w, 0x02, 0x07);                                 // 30:773D
+  yield* S.waitActorAnimDone(sh, 0x02);                           // 30:7742
+  yield* T.scriptShowText(sh, 0x02);                              // 30:7747
+  S.actorFaceActor(w, 0x00, 0x02);                                // 30:774F
+  S.actorPlayAnim(w, 0x00, 0x07);                                 // 30:7757
+  yield* S.waitActorAnimDone(sh, 0x00);                           // 30:775C
+  S.actorFaceActor(w, 0x02, 0x00);                                // 30:7764
+  yield* T.scriptShowText(sh, 0x02);                              // 30:7769
+  S.actorPlayAnim(w, 0x02, 0x05);                                 // 30:7771
+  yield* S.waitActorAnimDone(sh, 0x02);                           // 30:7776
+  yield* T.scriptShowText(sh, 0x02);                              // 30:777B
+  S.actorsFaceEachOther(w, 0x03, 0x04);                           // 30:7783
+  yield* S.scriptWaitFrames(sh, 0x28);                            // 30:7789
+  S.actorFaceActor(w, 0x03, 0x00);                                // 30:7792
+  S.actorFaceActor(w, 0x04, 0x00);                                // 30:779A
+  yield* S.scriptWaitFrames(sh, 0x0A);                            // 30:77A0
+  S.actorPlayAnim(w, 0x03, 0x05);                                 // 30:77A9
+  S.actorPlayAnim(w, 0x04, 0x05);                                 // 30:77B1
+  yield* S.waitActorAnimDone(sh, 0x04);                           // 30:77B6
+  S.actorMoveDir(w, 0x02, 0x40, 0x0200);                          // 30:77C0
+  S.actorMoveDir(w, 0x03, 0x00, 0x0200);                          // 30:77CA
+  S.actorMoveDir(w, 0x04, 0x00, 0x0200);                          // 30:77D4
+  yield* S.waitActorMoveDone(sh, 0x02);                           // 30:77D9
+  S.actorMoveDir(w, 0x02, 0x00, 0x0200);                          // 30:77E3
+  S.actorMoveDir(w, 0x03, 0x40, 0x0200);                          // 30:77ED
+  S.actorMoveDir(w, 0x04, 0x00, 0x0200);                          // 30:77F7
+  yield* S.waitActorMoveDone(sh, 0x04);                           // 30:77FC
+  yield* S.waitActorMoveDone(sh, 0x02);                           // 30:7801
+  S.actorFaceActor(w, 0x02, 0x00);                                // 30:7809
+  S.actorFaceActor(w, 0x03, 0x00);                                // 30:7811
+  yield* T.scriptShowText(sh, 0x02);                              // 30:7816
+  S.actorPlayAnim(w, 0x02, 0x05);                                 // 30:781E
+  S.actorPlayAnim(w, 0x03, 0x05);                                 // 30:7826
+  yield* S.waitActorAnimDone(sh, 0x03);                           // 30:782B
+  S.actorFaceActor(w, 0x02, 0x04);                                // 30:7833
+  yield* T.scriptShowText(sh, 0x02);                              // 30:7838
+  S.actorFaceActor(w, 0x04, 0x02);                                // 30:7840
+  S.actorPlayAnim(w, 0x04, 0x05);                                 // 30:7848
+  yield* S.waitActorAnimDone(sh, 0x04);                           // 30:784D
+  S.actorMoveTo(w, 0x02, 0x0700, 0x1400);                         // 30:7858
+  S.actorMoveTo(w, 0x03, 0x0500, 0x1400);                         // 30:7863
+  S.actorMoveTo(w, 0x04, 0x0500, 0x1400);                         // 30:786E
+  S.actorFaceActor(w, 0x00, 0x02);                                // 30:7876
+  yield* S.scriptWaitFrames(sh, 0x32);                            // 30:787C
+  S.actorFaceActor(w, 0x00, 0x05);                                // 30:7885
+  yield* S.waitActorMoveDone(sh, 0x02);                           // 30:788A
+  S.actorSetPos(w, 0x02, 0x3F00, 0x3F00);                         // 30:7895
+  S.actorSetPos(w, 0x03, 0x3F00, 0x3F00);                         // 30:78A0
+  yield* S.waitActorMoveDone(sh, 0x04);                           // 30:78A5
+  S.actorFaceActor(w, 0x00, 0x05);                                // 30:78AD
+  S.actorSetPos(w, 0x04, 0x3F00, 0x3F00);                         // 30:78B8
+  yield* S.scriptWaitFrames(sh, 0x14);                            // 30:78BE
+  S.actorPlayAnim(w, 0x00, 0x07);                                 // 30:78C7
+  yield* S.waitActorAnimDone(sh, 0x00);                           // 30:78CC
+  yield* S.scriptWaitFrames(sh, 0x14);                            // 30:78D2
+  S.actorPlayAnim(w, 0x05, 0x05);                                 // 30:78DB
+  yield* S.waitActorAnimDone(sh, 0x05);                           // 30:78E0
+  yield* S.scriptWaitFrames(sh, 0x14);                            // 30:78E6
+  S.actorPlayAnim(w, 0x00, 0x05);                                 // 30:78EF
+  yield* S.waitActorAnimDone(sh, 0x00);                           // 30:78F4
+  S.actorMoveTo(w, 0x00, 0x0700, 0x1300);                         // 30:78FF
+  yield* S.scriptWaitFrames(sh, 0x5A);                            // 30:7905
+  wr(w, 0xC441, 0x01);                                            // 30:790B
+}
+// 30:7A97 (the rest of 30:7A67, also 30:790F's way once won before): speeds 8, the rivals' "We'll practice" ($154A,
+// speaker 3), they leave, the player's and the caddie's animations, warp 1
+function* map2BRivalsRest(sh) {
+  const w = sh.w;
+  S.actorSetSpeed(w, 0x00, 0x0008);                               // 30:7A9C
+  S.actorSetSpeed(w, 0x02, 0x0008);                               // 30:7AA4
+  S.actorSetSpeed(w, 0x03, 0x0008);                               // 30:7AAC
+  S.actorSetSpeed(w, 0x04, 0x0008);                               // 30:7AB4
+  T.scriptSetText(w, 0x154A);                                     // 30:7ABA
+  S.actorFaceActor(w, 0x02, 0x04);                                // 30:7AC2
+  yield* T.scriptShowText(sh, 0x03);                              // 30:7AC7
+  S.actorPlayAnim(w, 0x04, 0x05);                                 // 30:7ACF
+  yield* S.waitActorAnimDone(sh, 0x04);                           // 30:7AD4
+  S.actorMoveTo(w, 0x02, 0x0700, 0x1400);                         // 30:7ADF
+  S.actorMoveTo(w, 0x03, 0x0500, 0x1400);                         // 30:7AEA
+  S.actorMoveTo(w, 0x04, 0x0500, 0x1400);                         // 30:7AF5
+  S.actorFaceActor(w, 0x00, 0x02);                                // 30:7AFD
+  yield* S.scriptWaitFrames(sh, 0x32);                            // 30:7B03
+  S.actorFaceActor(w, 0x00, 0x05);                                // 30:7B0C
+  yield* S.waitActorMoveDone(sh, 0x02);                           // 30:7B11
+  S.actorSetPos(w, 0x02, 0x3F00, 0x3F00);                         // 30:7B1C
+  S.actorSetPos(w, 0x03, 0x3F00, 0x3F00);                         // 30:7B27
+  yield* S.waitActorMoveDone(sh, 0x04);                           // 30:7B2C
+  S.actorFaceActor(w, 0x00, 0x05);                                // 30:7B34
+  S.actorSetPos(w, 0x04, 0x3F00, 0x3F00);                         // 30:7B3F
+  S.actorPlayAnim(w, 0x00, 0x07);                                 // 30:7B47
+  yield* S.waitActorAnimDone(sh, 0x00);                           // 30:7B4C
+  yield* S.scriptWaitFrames(sh, 0x14);                            // 30:7B52
+  S.actorPlayAnim(w, 0x05, 0x05);                                 // 30:7B5B
+  yield* S.waitActorAnimDone(sh, 0x05);                           // 30:7B60
+  yield* S.scriptWaitFrames(sh, 0x14);                            // 30:7B66
+  S.actorPlayAnim(w, 0x00, 0x05);                                 // 30:7B6F
+  yield* S.waitActorAnimDone(sh, 0x00);                           // 30:7B74
+  S.actorMoveTo(w, 0x00, 0x0700, 0x1300);                         // 30:7B7F
+  yield* S.scriptWaitFrames(sh, 0x5A);                            // 30:7B85
+  wr(w, 0xC441, 0x01);                                            // 30:7B8B
+}
+// 30:7A67 Map2BRivalsLeave (entrance $0A, after the first win): the rivals placed, fade in (4), 30:7A97
+function* map2BRivalsLeave(sh) {
+  const w = sh.w;
+  S.actorSetPos(w, 0x02, 0x0900, 0x0F00);                         // 30:7A6F
+  S.actorSetPos(w, 0x03, 0x0700, 0x0F00);                         // 30:7A7A
+  S.actorSetPos(w, 0x04, 0x0700, 0x0D00);                         // 30:7A85
+  S.actorSetFacing(w, 0x04, 0x40);                                // 30:7A8C
+  Scr.beginFadeIn(w, 0x04);                                       // 30:7A91
+  yield* Scr.waitFade(sh);                                        // 30:7A94
+  yield* map2BRivalsRest(sh);
+}
+// 30:790F Map2BMatchWon (a result of 1, or entrance $0B): the teams walk in, fade in (4), "We won!" ($1546) with two hops
+// (sound $8A), the lines, the rivals' answer ($1549); won before (#154): 30:7A97; else #154, 200 EXP (sound $38,
+// WaitJingleEnd, 30:7E73 the level-up screen), the return point (map 0, $FA), SaveGame, warp $0E
+function* map2BMatchWon(sh) {
+  const w = sh.w;
+  map2BTeamsWalkIn(w);                                            // 30:790F
+  Scr.beginFadeIn(w, 0x04);                                       // 30:7914
+  yield* Scr.waitFade(sh);                                        // 30:7917
+  yield* S.waitActorMoveDone(sh, 0x00);                           // 30:791C
+  T.scriptSetText(w, 0x1546);                                     // 30:7922
+  sh.sound(0x8A);                                                 // 30:7925
+  S.actorJump(w, 0x02, 0xFF80);                                   // 30:792C
+  yield* S.waitActorLanded(sh, 0x02);                             // 30:7931
+  sh.sound(0x8A);                                                 // 30:7934
+  S.actorJump(w, 0x02, 0xFF40);                                   // 30:793B
+  yield* S.waitActorLanded(sh, 0x02);                             // 30:7940
+  yield* S.scriptWaitFrames(sh, 0x1E);                            // 30:7946
+  yield* T.scriptShowText(sh, 0x02);                              // 30:794C
+  S.actorFaceActor(w, 0x00, 0x02);                                // 30:7954
+  S.actorPlayAnim(w, 0x00, 0x07);                                 // 30:795C
+  yield* S.waitActorAnimDone(sh, 0x00);                           // 30:7961
+  yield* T.scriptShowText(sh, 0x02);                              // 30:7966
+  S.actorPlayAnim(w, 0x02, 0x05);                                 // 30:796E
+  yield* S.waitActorAnimDone(sh, 0x02);                           // 30:7973
+  yield* T.scriptShowText(sh, 0x02);                              // 30:7978
+  T.scriptSetText(w, 0x1549);                                     // 30:797E
+  S.actorsFaceEachOther(w, 0x03, 0x04);                           // 30:7986
+  yield* S.scriptWaitFrames(sh, 0x28);                            // 30:798C
+  S.actorFaceActor(w, 0x03, 0x00);                                // 30:7995
+  S.actorFaceActor(w, 0x04, 0x00);                                // 30:799D
+  yield* S.scriptWaitFrames(sh, 0x0A);                            // 30:79A3
+  S.actorPlayAnim(w, 0x03, 0x05);                                 // 30:79AC
+  S.actorPlayAnim(w, 0x04, 0x05);                                 // 30:79B4
+  yield* S.waitActorAnimDone(sh, 0x04);                           // 30:79B9
+  S.actorMoveDir(w, 0x02, 0x40, 0x0200);                          // 30:79C3
+  S.actorMoveDir(w, 0x03, 0x00, 0x0200);                          // 30:79CD
+  S.actorMoveDir(w, 0x04, 0x00, 0x0200);                          // 30:79D7
+  yield* S.waitActorMoveDone(sh, 0x02);                           // 30:79DC
+  S.actorMoveDir(w, 0x02, 0x00, 0x0200);                          // 30:79E6
+  S.actorMoveDir(w, 0x03, 0x40, 0x0200);                          // 30:79F0
+  S.actorMoveDir(w, 0x04, 0x00, 0x0200);                          // 30:79FA
+  yield* S.waitActorMoveDone(sh, 0x04);                           // 30:79FF
+  yield* S.waitActorMoveDone(sh, 0x02);                           // 30:7A04
+  S.actorFaceActor(w, 0x02, 0x00);                                // 30:7A0C
+  S.actorFaceActor(w, 0x03, 0x00);                                // 30:7A14
+  yield* T.scriptShowText(sh, 0x04);                              // 30:7A19
+  S.actorPlayAnim(w, 0x02, 0x05);                                 // 30:7A21
+  S.actorPlayAnim(w, 0x03, 0x05);                                 // 30:7A29
+  yield* S.waitActorAnimDone(sh, 0x03);                           // 30:7A2E
+  if (testFlag(w, 154)) { yield* map2BRivalsRest(sh); return; }   // 30:7A34
+  setFlag(w, 154);
+  yield* Ls.awardExpPlain(sh, 0x00C8);                            // 30:7A39-7A54
+  Ls.saveReturnPoint(w, 0x00, 0xFA);                              // 0A:4D5B
+  saveGame(w);                                                    // 02:4489
+  wr(w, 0xC441, 0x0E);
+}
+// 30:7D02 Map2BTeamsWalkIn: the player and actors 2-4 on row $0D (x 7, 5, 3, 1), speed $0A, two tiles right
+function map2BTeamsWalkIn(w) {
+  const xs = [[0x00, 0x0700], [0x02, 0x0500], [0x03, 0x0300], [0x04, 0x0100]];
+  for (const [a, x] of xs) S.actorSetPos(w, a, x, 0x0D00);
+  for (const [a] of xs) S.actorSetSpeed(w, a, 0x000A);
+  for (const [a, x] of xs) S.actorMoveTo(w, a, x + 0x0200, 0x0D00);
+}
+// 30:74E5 Map2BPatchTiles: MapBufCopyRectRedraw (1, $1A) -> (1, 6), $3A x 4, and BG palettes 2-7 from 30:74B5
+// (master copy only)
+function* map2BPatchTiles(sh) {
+  const w = sh.w;
+  yield* inBankGen(w, 0x0B, mapBufCopyRectRedraw(sh, 0x01, 0x1A, 0x01, 0x06, 0x3A, 0x04));
+  D.inBank(w, 0x30, () => D.loadPalettesMasterOnly(w, 0x74B5, 0x02, 0x06));
+}
+// 30:7C61 Map2BLoadSpriteGfx: VRAM bank 0, the tiles 30:7B90 to $8500 ($18 blocks), OBJ palette 7 from 30:7C59
+function map2BLoadSpriteGfx(w) {
+  if (w.vram) w.lcd.vbk = 0;
+  D.inBank(w, 0x30, () => { D.queueVRAMCopy(w, 0x7B90, 0x8500, 0x18); D.loadPalettesImmediate(w, 0x7C59, 0x0F, 0x01); });
+}
+// 30:7C79 Map2BDrawSpriteFrames: six frames of the template 30:7C50 at ($0800, $0700) less the scroll, tile + c,
+// attributes | b
+function* map2BDrawSpriteFrames(sh, b, c) {
+  const w = sh.w;
+  for (let n = 6; n; n--) {
+    const x = (0x0800 - (rd(w, 0xC320) | rd(w, 0xC321) << 8)) & 0xFFFF, y = (0x0700 - (rd(w, 0xC322) | rd(w, 0xC323) << 8)) & 0xFFFF;
+    D.inBank(w, 0x30, () => D.queueSpriteTemplate(w, 0x7C50, ((y << 3) >> 8) & 0xFF, ((x << 3) >> 8) & 0xFF, c, b));
+    yield* sh.advance();
+  }
+}
+// 30:7453 / 745A Map2BTalk05 (the flag on the wall, by the facing): 30:7C61, then 30:7CAE ($C3E0 = 0, $C3E1 = $C3E2 =
+// 5; five times $50 $54 $58 $54) or 30:7CE3 (eight times $54 $58)
+function* map2BTalk05(sh, five) {
+  const w = sh.w;
+  map2BLoadSpriteGfx(w);
+  wr(w, 0xC3E0, 0x00);
+  if (five) {
+    wr(w, 0xC3E1, 0x05); wr(w, 0xC3E2, 0x05);
+    while (rd(w, 0xC3E0) !== 0x05) {
+      wr(w, 0xC3E0, rd(w, 0xC3E0) + 1);
+      for (const c of [0x50, 0x54, 0x58, 0x54]) yield* map2BDrawSpriteFrames(sh, 0x07, c);
+    }
+  } else {
+    while (rd(w, 0xC3E0) !== 0x08) {
+      wr(w, 0xC3E0, rd(w, 0xC3E0) + 1);
+      for (const c of [0x54, 0x58]) yield* map2BDrawSpriteFrames(sh, 0x07, c);
+    }
+  }
+}
+// 30:747D Map2BEnter: 30:74E5, then by the entrance: 1 30:74FE; 6 the result (30:76F9: 1 won 30:790F, 2 lost
+// 30:770D, else a tie 30:7705); $0A 30:7A67; $0B 30:790F; $0C 30:7705; $0D 30:770D
+function* map2BEnter(sh) {
+  const w = sh.w;
+  yield* map2BPatchTiles(sh);
+  let e = rd(w, 0xC46A);
+  if (e === 0x06) { const r = rd(w, 0xC96C); e = r === 0x01 ? 0x0B : r === 0x02 ? 0x0D : 0x0C; }
+  if (e === 0x01) yield* map2BIntro(sh);
+  else if (e === 0x0A) yield* map2BRivalsLeave(sh);
+  else if (e === 0x0B) yield* map2BMatchWon(sh);
+  else if (e === 0x0C) yield* map2BResultScene(sh, 0x1541);
+  else if (e === 0x0D) yield* map2BResultScene(sh, 0x153C);
+}
 export const HOOKS = {
+  "30:73b5": altShotShotSetup,
+  "30:73c7": function* (sh) { altShotNextGolfer(sh.w); },   // 30:73C7 AltShotAfterShot
+  "30:7381": function* (sh) { altShotHoleStartGolfers(sh.w); },   // 30:7381 (hook 3)
   ...HOOKS16,
   "30:6c2f": challengeShotSetup,
   "30:6c58": challengeAfterShot,
@@ -686,7 +1249,15 @@ export const SCRIPTS = {
   "30:6a8c": map0ETalk09PuttDemo,
   "30:6ae0": function* (sh) { T.scriptSetText(sh.w, 0x10B8); yield* T.scriptShowText(sh, 0x09); },   // 30:6AE0
   "30:6aec": sh => Ls.triggerPractice(sh, puttingGreenStartPractice),   // 30:6AEC PuttingGreenTriggerPractice
-  "30:6942": function* (sh) { if (rd(sh.w, 0xC810) !== 0x02) notPorted("meeting Azalea (~30:6949)"); },   // 30:6942
+  "30:6942": meetAzalea,
+  "30:681a": sh => altGolferTalk(sh, 0x08, 0x1529),   // 30:681A Map14Talk08AltGameGolfer1
+  "30:683e": sh => altGolferTalk(sh, 0x09, 0x152A),   // 30:683E Map14Talk09AltGameGolfer2
+  "30:6862": sh => altGolferTalk(sh, 0x0A, 0x152B),   // 30:6862 Map14Talk0AAltGameGolfer3
+  "30:7212": map2AEnter,
+  "30:747d": map2BEnter,
+  "30:7453": sh => map2BTalk05(sh, true),     // 30:7453 Map2BTalk05SpriteAnimA
+  "30:745a": sh => map2BTalk05(sh, false),    // 30:745A Map2BTalk05SpriteAnimB
+  "30:7473": function* () {},                 // 30:7473 Map2BTriggerNop
   "30:429a": map0DEnter,
   "30:40ee": sh => Ls.tipTalk(sh, 0x0C63, 0x02, false),   // 30:40EE Map0DTalk02ApproachTip
   "30:4119": sh => Ls.lessonTalk(sh, LESSONS.running),

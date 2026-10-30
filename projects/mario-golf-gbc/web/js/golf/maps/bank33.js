@@ -19,6 +19,7 @@ import { addExp, expToNextLevel } from "../exp.js";
 import { levelUpScreen, charRefreshStats } from "../levelup.js";
 import * as Ls from "./lessons.js";
 import { golfViewExit } from "../round.js";
+import { awardFoundAllRivalsExp } from "./bank34.js";
 import { pushTextNumberArg, setTextCourseIndex } from "../text.js";
 import { mapBufCopyRectRedraw, mapCopyTerrainRect, mapCopyEventRect } from "../mapgfx.js";
 
@@ -1612,6 +1613,25 @@ function* map2EObject1UpMushroom(sh) {
   wr(w, 0xC465, rd(w, 0xC2A4));
 }
 
+// 33:445F Map08ObjectHiddenFriend (object $0F of the offices): on map $0B only, once (#140), not when the player is
+// Mario (wCharId 0): $0C57 (speaker $0B), Mario (actor $0B) at ($2B00, $0700) steps $0100 right, hops ($FF40), walks
+// to ($2700, $0B00), faces right, $0C5B; 33:7CF1 HiddenFriendsBonus (the code of 34:7E12)
+function* map08ObjectHiddenFriend(sh) {
+  const w = sh.w;
+  if (mapId(w) !== 0x0B || flag(w, 140) || rd(w, 0xC810) === 0x00) return;
+  setFlag(w, 140);
+  T.scriptSetText(w, 0x0C57);
+  yield* T.scriptShowText(sh, 0x0B);
+  S.actorSetPos(w, 0x0B, 0x2B00, 0x0700);
+  S.actorMoveDir(w, 0x0B, 0x40, 0x0100);
+  yield* S.waitActorMoveDone(sh, 0x0B);
+  S.actorJump(w, 0x0B, 0xFF40);
+  yield* moveAndWait(sh, 0x0B, 0x2700, 0x0B00);
+  S.actorSetFacing(w, 0x0B, 0x40);
+  T.scriptSetText(w, 0x0C5B);
+  yield* T.scriptShowText(sh, 0x0B);
+  yield* awardFoundAllRivalsExp(sh);                              // 33:7CF1
+}
 // ---- map $26, the Windy Valley Special Hole (header 33:6FB9) ----
 // 33:7813 SetTempFlagFromHand: #224 when GetCharHand 02:53AC (wCharFlags bit 0) is 1
 function setTempFlagFromHand(w) { if ((rd(w, 0xC819) & 0x01) === 0x01) setFlag(w, 224); }
@@ -2009,6 +2029,7 @@ export const SCRIPTS = {
   "33:443b": sh => map08Sign(sh, 0x08B3),
   "33:4447": sh => map08Sign(sh, 0x08B4),
   "33:4453": sh => map08Sign(sh, 0x08B5),
+  "33:445f": map08ObjectHiddenFriend,
   "33:44f1": sh => map08TriggerExit(sh, 0x2520, 0x02),
   "33:451b": sh => map08TriggerExit(sh, 0x3520, 0x03),
   "33:4545": map08TriggerExitDown,

@@ -11,7 +11,7 @@ import { clearFrameTasks, unregisterFrameTask } from "./tasks.js";
 import * as Scr from "./screen.js";
 import { initFontScreen } from "./pictures.js";
 import { initWindowSystem } from "./round.js";
-import { expScreen, drawGfxPrompt } from "./exp.js";
+import { expScreen, drawGfxPrompt, awardExpPoints } from "./exp.js";
 import { titleScreen } from "./title.js";
 import { linkMenu } from "./menu09.js";
 import { characterSelectScreen, resetCharSelectCursor } from "./charsel.js";
@@ -154,7 +154,13 @@ export function* modeSelectMain(sh) {
         }
         Sv.restoreGameTimer(w);                  // 00:2CDE
         wr(w, 0xC2A7, 0xFF);                     // wNavDestination
-        if (rd(w, 0xC95E) === 0x64) notPorted("the pending EXP (~32:5139, ~48:4D70 AwardExpPoints)");
+        if (rd(w, 0xC95E) === 0x64) {            // 32:5139 the pending EXP $C95C-$C95D (with $C95E = $64)
+          const de = scaleExpByLevel(w, rd(w, 0xC95C) | rd(w, 0xC95D) << 8);   // 32:54B5
+          yield* inBankGen(w, 0x48, awardExpPoints(sh, de, 0x01));            // 48:4D70
+          wr(w, 0xC95C, 0); wr(w, 0xC95D, 0); wr(w, 0xC95E, 0);
+          Sv.saveGame(w);                        // 02:4489
+          sh.sound(0x01);
+        }
         St.mapWarpToReturnPoint(w);              // 0A:4D8A
         const rp = rd(w, 0xC96D);
         if (rp !== 2 && (rp === 1 || rd(w, 0xC450) !== 0)) {
@@ -200,7 +206,10 @@ export function* modeSelectMain(sh) {
         return null;
       }
       if (m === 3) {                             // 32:52A3 Stroke
-        if (flag(w, 139) && !flag(w, 123)) notPorted("the links-unlocked warp (~32:530C)");
+        if (flag(w, 139) && !flag(w, 123)) {     // 32:5304 ModeSelectCheckLinksUnlocked: the Links won (#139), #123
+          wr(w, 0xC441, 6);                      // clear: 32:530C drops its caller's return, warp 6
+          return null;
+        }
         const course = yield* inBankGen(w, 0x0F, courseSelect(sh));
         if (course === 0xFF) { at = "modes1"; continue; }
         St.golfSessionInit(w);                   // 10:4B28
@@ -311,4 +320,15 @@ function* loadSummaryPrompt(sh) {
   unregisterFrameTask(w, 0x41, 0x7E03);
   initFontScreen(w);                             // 01:41E8
   return r;
+}
+
+// 32:54B5 ScaleExpByLevel: de by wCharLevel: under 10 as is, under 20 x 1.5, under 30 x 2, under 40 x 2.5, else x 3
+// (16-bit, the halves rounded down)
+function scaleExpByLevel(w, de) {
+  const l = rd(w, 0xC812);
+  if (l < 0x0A) return de;
+  if (l < 0x14) return (de + (de >> 1)) & 0xFFFF;
+  if (l < 0x1E) return (de * 2) & 0xFFFF;
+  if (l < 0x28) return (de * 2 + (de >> 1)) & 0xFFFF;
+  return (de * 3) & 0xFFFF;
 }

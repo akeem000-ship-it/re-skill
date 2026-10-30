@@ -380,7 +380,7 @@ export function* golfSceneStart(sh) {
 // up). ShotSetup's result is the shot's outcome for GolfShotLoop 10:45E7: kept in sh.menuOutcome (false returned).
 function* toAddress(sh, a) {
   const w = sh.w, r6 = w.wram[6], w0 = w.wram[0];
-  if (a === 0x8F) notPorted("the menu's result $8f (~10:486B)");
+  if (a === 0x8F) { sh.menuOutcome = 0x8F; return false; }   // 10:486D: the shot clock ran out: ShotSetup returns $8F
   if (a === 0x82 || a === 0x80) {
     w0[0x834] = 0; w0[0x839] = 1; w0[0x8AA] = 1; w0[0x8EA] = 1;
     sh.menuOutcome = 0x81;

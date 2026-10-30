@@ -104,7 +104,7 @@ export function restWatch(s) {                   // 10:7077 RestWatch: $D4D3 cou
 
 export function ballTask(w, hole, out) {         // 10:4D45 BallTask (out collects its sounds and effects)
   const s = ball(w), fx = [];
-  hole.use(s[0x43] >= 1 && s[0x43] <= 3);
+  hole.use(s[0x43] >= 1 && s[0x43] <= 3, w);
   if (s[0x15]) {
     if (B.flightStep(s, w.wram[0][0x815], w.wram[0][0x816])) {
       B.bounce(s, hole, fx);
@@ -315,13 +315,17 @@ export class Shot {
       }
       if (label !== "5713") yield* this.advance();
       label = "5710";
+      const w0 = w.wram[0];
+      // 10:58AE (the shot clock run out at 10:5713, or B): $D44D = $F0, wSwingPerfect 0, SwingPadTask off, $FF
+      const back = () => { r6[0x44D] = 0xF0; s[0x51] = 0; this.t.meterOn = false; return 0xFF; };
+      if (w0[0x0F4] && !(w0[0x0F6] | w0[0x0F7])) return back();
       const joy = w.high[0x194];
       if (joy & 1) {
         const r = yield* this.swing();
         if (r === "again") { label = "56B6"; continue; }
         return r;
       }
-      if (joy & 2) return 0xFF;                  // back to the aiming menu
+      if (joy & 2) return back();                // back to the aiming menu
       if (s[0x43] !== 4) continue;
       const rep = w.high[0x191], club = r6[0x329];
       if (rep & 0x40 || rep & 0x80) {
@@ -461,6 +465,7 @@ export class Shot {
       D.hud(w, w0[0x835] ? "hudDrawPlayer2" : "hudDrawPlayer1");   // 10:4786 HudRedrawCurPlayer
       yield* this.advance();
     }
+    if (w0[0x0F4]) w0[0x0F4] = 2;                // 10:497E: the shot clock paused
     r6[0x35F] = r6[0x360] = 0;
     r6[0x519] = s[0x05]; r6[0x516] = s[0x02];
     s[0x85] |= 4;

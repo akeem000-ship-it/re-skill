@@ -14,8 +14,11 @@ import { charYesNoPrompt } from "../levelup.js";
 import { rb } from "../rom.js";
 import * as M from "../mapengine.js";
 import { mapBufCopyRectRedraw } from "../mapgfx.js";
-import { pushTextNumberArg, setTextCourseIndex } from "../text.js";
+import { pushTextNumberArg, setTextCourseIndex, copyTextShortToDE, pushTextStringArg } from "../text.js";
+import { clubDistance, driverShape } from "../launch.js";
 import { saveGame } from "../save.js";
+import { showPictureTimed, showPictureUntilButton } from "../title.js";
+import { staffCredits } from "../ending.js";
 import * as Ls from "./lessons.js";
 
 const rd = D.rd, wr = D.wr;
@@ -327,6 +330,20 @@ function notPorted(what) { throw new Error(`${what} is not ported`); }
 function* wait(sh, n) { yield* S.scriptWaitFrames(sh, n); }
 function* moveAndWait(sh, a, bc, de) { S.actorMoveTo(sh.w, a, bc, de); yield* S.waitActorMoveDone(sh, a); }
 function* animAndWait(sh, a, anim) { S.actorPlayAnim(sh.w, a, anim); yield* S.waitActorAnimDone(sh, a); }
+// 31:782F (a ceremony after the ending, #110, or the Links Champion's after 31:7827's fade out): the character's
+// picture (40:6666), the staff roll (41:7E07), #110, the picture until a button (40:66B5), map 0 entrance 2,
+// wReplayActive 0, the return point (b = $FF: map 0 at the saved position), SaveGame, warp 3
+function* ceremonyStaffRoll(sh) {
+  const w = sh.w;
+  yield* inBankGen(w, 0x40, showPictureTimed(sh, rd(w, 0xC810)));
+  yield* inBankGen(w, 0x41, staffCredits(sh));
+  setFlag(w, 110);
+  yield* inBankGen(w, 0x40, showPictureUntilButton(sh, rd(w, 0xC810)));
+  wr(w, 0xC450, 0x00); wr(w, 0xC46A, 0x02); wr(w, 0xC96D, 0x00);
+  St.mapSaveReturnPoint(w);                                       // 0A:4D5B (bc = $FFFF)
+  saveGame(w);                                                    // 02:4489
+  wr(w, 0xC441, 0x03);
+}
 // 31:7775 CeremonyEnter: BeginFadeOut ($7F); per map: Links ($1B) its warp list (31:774A) and palettes 31:7C80;
 // Dune ($1A), Palm ($19), Marion ($18): seen before (flags #109 / #108 / #107) -> warp 2 (31:776F), else the flag
 // set at entrance 2, Dune / Palm their palettes (31:7C40 / 31:7C00, 6 from 2: master only) and warp lists (31:7739
@@ -357,14 +374,19 @@ function* ceremonyEnter(sh) {
   }
   const e = rd(w, 0xC46A);                                        // 31:77F5
   if (e < 0x02) return;
-  if (testFlag(w, 110)) notPorted("the ceremony after the ending (~31:782F)");
+  if (testFlag(w, 110)) { yield* ceremonyStaffRoll(sh); return; }   // 31:77FD
   let result;
   if (e === 0x02) {
     S.actorSetState(w, 0x04, 0x00);
     S.actorSetState(w, 0x05, 0x00);
     yield* ceremonyChampion(sh);
     wr(w, 0xC96C, 0x01);
-    if (rd(w, 0xC450) === 0x1B) notPorted("the Links Champion's ending (~31:7827)");
+    if (rd(w, 0xC450) === 0x1B) {                                 // 31:7827 the Links Champion
+      Scr.beginFadeOut(w, 0x04);
+      yield* Scr.waitFade(sh);
+      yield* ceremonyStaffRoll(sh);
+      return;
+    }
   } else if (testFlag(w, 110)) { wr(w, 0xC441, 0x02); return; }   // 31:786B (unreachable: tested above)
   else if (e === 0x03 || e === 0x04) {
     yield* inBankGen(w, 0x0B, mapBufCopyRectRedraw(sh, e === 0x03 ? 0x16 : 0x19, 0x0A, 0x0A, 0x0A, 0x02, 0x02));
@@ -1095,7 +1117,174 @@ function* drivingRangeStartPractice(sh) {
   const m = rd(sh.w, 0xC450);
   yield* Ls.startPractice(sh, B, m === 0x0C ? 0x07 : m === 0x0F ? 0x0A : m === 0x12 ? 0x0D : 0x10, 0x06, 0x5296);
 }
+
+// ---- map $2D, the Golf Clinic (header 31:7067) ----
+// 31:7127 / 715F Map2DTalk03Student / Map2DTalk04Student: ScriptBegin; the student (actor a) gets the talking script
+// 31:7CBE and faces the player, the text (speaker a), the script de, facing up; ScriptEnd
+function* clinicStudent(sh, a, id, de) {
+  const w = sh.w;
+  D.inBank(w, 0x0A, () => S.scriptBegin(w));
+  S.actorSetScript(w, a, 0x7CBE, B);
+  S.actorFaceActor(w, a, rd(w, 0xC296));
+  T.scriptSetText(w, id);
+  yield* T.scriptShowText(sh, a);
+  S.actorSetScript(w, a, de, B);
+  S.actorSetFacing(w, a, 0x00);
+  D.inBank(w, 0x0A, () => S.scriptEnd(w));
+}
+// "You want your shot judged?" ($1564, speaker 5; no wait before the question): true for No
+function* clinicAsk(sh) {
+  T.scriptSetText(sh.w, 0x1564);
+  yield* T.scriptShowTextKeepOpen(sh, 0x05);
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* S.scriptWaitFrames(sh, 0x05);
+  return a;
+}
+// 31:7199 / 71D3 Map2DTalk05CoachJudge / 06: ScriptBegin; the coach faces the player; the question (speaker a); Yes: 31:7252; then the text (speaker a),
+// facing down; ScriptEnd
+function* clinicCoachTalk(sh, a) {
+  const w = sh.w;
+  D.inBank(w, 0x0A, () => S.scriptBegin(w));
+  S.actorFaceActor(w, a, rd(w, 0xC296));
+  T.scriptSetText(w, 0x1564);
+  yield* T.scriptShowTextKeepOpen(sh, a);
+  const no = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* S.scriptWaitFrames(sh, 0x05);
+  if (!no) yield* clinicStartJudgedShot(sh);
+  yield* T.scriptShowText(sh, a);
+  S.actorSetFacing(w, a, 0xC0);
+  D.inBank(w, 0x0A, () => S.scriptEnd(w));
+}
+// 31:720D Map2DTriggerCoachJudge (trigger 1): ScriptBegin; the question (speaker 5): Yes: 31:7252; No: the next text,
+// the coach faces down, the player walks back to ($2000, $3900); ScriptEnd
+function* map2DTrigger01(sh) {
+  const w = sh.w;
+  D.inBank(w, 0x0A, () => S.scriptBegin(w));
+  if (!(yield* clinicAsk(sh))) yield* clinicStartJudgedShot(sh);
+  else {
+    yield* T.scriptShowText(sh, 0x05);
+    S.actorSetFacing(w, 0x05, 0xC0);
+    S.actorMoveTo(w, 0x00, 0x2000, 0x3900);
+    yield* S.waitActorMoveDone(sh, 0x00);
+  }
+  D.inBank(w, 0x0A, () => S.scriptEnd(w));
+}
+// 31:7252 ClinicStartJudgedShot: GolfSessionInit, the return point (map $2D, entrance 2), game mode 6, the player,
+// course 0 hole 6 (the wind byte a is 0, from ClearMemory16), the wind direction 0, the tee ($2000, $3800), the wind
+// $C000, the hooks 31:75C0, one hole
+function* clinicStartJudgedShot(sh) {
+  const w = sh.w;
+  St.golfSessionInit(w);
+  Ls.saveReturnPoint(w, 0x2D, 0x02);
+  wr(w, 0xC834, 0x06);
+  St.setupPlayerGolfer(w, 0x80, 0x00);
+  St.setupPlayerGolfer(w, 0xFF, 0x01);
+  St.setCourseHole(w, 0x00, 0x00, 0x06);
+  Ls.setForcedWindDir(w, 0x00);
+  Ls.setForcedTee(w, 0x2000, 0x3800);
+  Ls.setForcedWind(w, 0xC000);
+  Ls.setGolfEventHook(w, B, 0x75C0);
+  yield* Ls.lessonRound(sh);
+}
+// 31:760C ClinicClassifyShot: the first stroke record (WRAM6 $D680): power +$0A ($3C full: 0, $34 and up: 1, else 2),
+// impact +$0B (|v|: 0: 0, under 4: 1, else 2); both 0: the curve bits of +$0C (bit 4 hook 5, 5 slice 6, 6 topspin 7,
+// 7 backspin 8, none 0); else 4 when either is 2, 3 when both are 1, 2 for the power, 1 for the impact
+function clinicClassifyShot(w) {
+  setW(w, 6);
+  const p = rd(w, 0xD68A);
+  const c = p === 0x3C ? 0 : p >= 0x34 ? 1 : 2;
+  let i = rd(w, 0xD68B);
+  if (i & 0x80) i = (-i) & 0xFF;
+  const d = !i ? 0 : i < 4 ? 1 : 2;
+  if (!(c | d)) {
+    const f = rd(w, 0xD68C);
+    return f & 0x10 ? 5 : f & 0x20 ? 6 : f & 0x40 ? 7 : f & 0x80 ? 8 : 0;
+  }
+  if (c === 2 || d === 2) return 4;
+  if (c & d) return 3;
+  return c ? 2 : 1;
+}
+// 31:75E1 ClinicAfterShot (hook 1): flag #99 = not quit; wEventResult $C968 = 31:760C; wEventShotClub $C969 = the
+// record's club (+8); the round over ($82)
+function* clinicAfterShot(sh) {
+  const w = sh.w;
+  if (rd(w, 0xC834)) setFlag(w, 99); else clearFlag(w, 99);
+  wr(w, 0xC968, clinicClassifyShot(w));
+  setW(w, 6);
+  wr(w, 0xC969, rd(w, 0xD688));
+  Ls.setGolfEventFlag(w, 0x82);
+}
+// 31:756A ClinicGradeDistance: 5 / 4 / 3 / 2 / 1 for a distance at least $12D / $119 / $105 / $F1 / $DD, else 0
+const clinicGrade = de => { for (const [t, a] of [[0x12D, 5], [0x119, 4], [0x105, 3], [0xF1, 2], [0xDD, 1]]) if (!(((de - t) & 0xFFFF) & 0x8000)) return a; return 0; };
+// a word argument from the short text base + a (8-bit), copied to de (05:40C2) and pushed (05:54CF)
+function clinicArg(w, base, a, de) {
+  copyTextShortToDE(w, (base + (a & 0xFF)) & 0xFFFF, de);
+  pushTextStringArg(w, de);
+}
+// 31:7392 / 74B8 ClinicCoach1JudgeShot / ClinicCoach2JudgeShot (shot class 0): WRAM5; the distance's grade
+// (31:7691 ClubDistance 02:511A of wEventShotClub for wCharDriverDist / wCharFlags; 31:756A), the shape (31:76A2
+// DriverShape 02:534B of $C81D) + 4, and 4 - each of the stats $C81C / $C81E / $C81F (8-bit) as texts from the bases
+// (coach 1: $1566 $1572 $1584 $1596 $15A8; coach 2: $156C $157B $158D $159F $15B1) to $DD74 / $DD94 / $DDB4 / $DDD4 /
+// $DDF4; the comment $15BA / $15BB (speaker a)
+function* clinicJudge(sh, a, bases, id) {
+  const w = sh.w;
+  setW(w, 5);
+  const dist = clubDistance(rd(w, 0xC969), rd(w, 0xC81A) | rd(w, 0xC81B) << 8, rd(w, 0xC819));
+  clinicArg(w, bases[0], clinicGrade(dist), 0xDD74);
+  clinicArg(w, bases[1], (driverShape(rd(w, 0xC81D), rd(w, 0xC969), rd(w, 0xC819)) + 4) & 0xFF, 0xDD94);
+  clinicArg(w, bases[2], (4 - rd(w, 0xC81C)) & 0xFF, 0xDDB4);
+  clinicArg(w, bases[3], (4 - rd(w, 0xC81E)) & 0xFF, 0xDDD4);
+  clinicArg(w, bases[4], (4 - rd(w, 0xC81F)) & 0xFF, 0xDDF4);
+  T.scriptSetText(w, id);
+  yield* T.scriptShowText(sh, a);
+}
+// 31:72CF / 7444 ClinicCoach1Comment / ClinicCoach2Comment: ScriptBegin; no shot judged (#99 clear): the coach faces
+// actor 3 / 4, $1562 / $1563; else he faces the player and comments by the shot class (31:72F6: 0 the judgement, 1-8
+// $15BC $15BD $15BE $15BF $15C1 $15C2 $15C3 $15C4; 31:746A: 0 the judgement, 1-4 $15C0, 5-8 $15C5); facing down;
+// ScriptEnd
+function* clinicCoachComment(sh, a) {
+  const w = sh.w;
+  D.inBank(w, 0x0A, () => S.scriptBegin(w));
+  if (!testFlag(w, 99)) {
+    S.actorFaceActor(w, a, a === 0x05 ? 0x03 : 0x04);
+    T.scriptSetText(w, a === 0x05 ? 0x1562 : 0x1563);
+    yield* T.scriptShowText(sh, a);
+  } else {
+    S.actorFaceActor(w, a, rd(w, 0xC296));
+    const k = rd(w, 0xC968);
+    if (!k) {
+      if (a === 0x05) yield* clinicJudge(sh, a, [0x1566, 0x1572, 0x1584, 0x1596, 0x15A8], 0x15BA);
+      else yield* clinicJudge(sh, a, [0x156C, 0x157B, 0x158D, 0x159F, 0x15B1], 0x15BB);
+    } else {
+      const id = a === 0x05 ? [0x15BC, 0x15BD, 0x15BE, 0x15BF, 0x15C1, 0x15C2, 0x15C3, 0x15C4][k - 1] : k <= 4 ? 0x15C0 : 0x15C5;
+      if (id === undefined) notPorted(`the clinic comment for class ${k}`);
+      T.scriptSetText(w, id);
+      yield* T.scriptShowText(sh, a);
+    }
+  }
+  S.actorSetFacing(w, a, 0xC0);
+  D.inBank(w, 0x0A, () => S.scriptEnd(w));
+}
+// 31:72A3 Map2DEnter: entrance 2 (back from the judged shot) with #99: fade in (4), both coaches' comments; then (and
+// at $FA) the banner's text cleared
+function* map2DEnter(sh) {
+  const w = sh.w;
+  const e = rd(w, 0xC46A);
+  if (e === 0x02) {
+    if (testFlag(w, 99)) {
+      Scr.beginFadeIn(w, 0x04);
+      yield* Scr.waitFade(sh);
+      yield* clinicCoachComment(sh, 0x05);
+      yield* clinicCoachComment(sh, 0x06);
+    }
+    wr(w, 0xC4B4, 0); wr(w, 0xC4B5, 0);
+  } else if (e === 0xFA) { wr(w, 0xC4B4, 0); wr(w, 0xC4B5, 0); }
+}
 export const HOOKS = {
+  "31:75e0": function* () {},                     // 31:75E0 ClinicShotSetup: ret
+  "31:75e1": clinicAfterShot,
   ...HOOKS15,
   "31:4cb8": sh => Ls.hookShotSetup(sh, 0x03, [0x1032, 0x1033, 0x1034, 0x1035]),   // 31:4CB8 Map0CDriverDemoShotSetup
   "31:4d00": sh => Ls.hookDemoAfterShot(sh),                                      // 31:4D00
@@ -1126,6 +1315,12 @@ export const HOOKS = {
 };
 
 export const SCRIPTS = {
+  "31:72a3": map2DEnter,
+  "31:7127": sh => clinicStudent(sh, 0x03, 0x1560, 0x7D19),   // 31:7127 Map2DTalk03Student
+  "31:715f": sh => clinicStudent(sh, 0x04, 0x1561, 0x7D24),   // 31:715F Map2DTalk04Student
+  "31:7199": sh => clinicCoachTalk(sh, 0x05),
+  "31:71d3": sh => clinicCoachTalk(sh, 0x06),
+  "31:720d": map2DTrigger01,
   "31:4bec": map0CEnter,
   "31:4a1d": sh => Ls.tipTalk(sh, 0x0D17, 0x02),  // 31:4A1D Map0CTalk02GoodShotTip
   "31:4a8b": sh => Ls.lessonTalk(sh, LESSONS.driver),

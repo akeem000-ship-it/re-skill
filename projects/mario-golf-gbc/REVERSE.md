@@ -110,6 +110,10 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the Trophy Room (map $07), Peach's Castle's 1-Up Mushroom and Toad's practice round; the scorecard's pars fixed for courses 3 and up | 169,385 | 69.80% |
 | + the Club Maker's Hut (maps $2E / $2F, 33:795C): the club maker's offer and exchange (33:7990 / 7A73), the guardian, the 1-Up Mushroom (33:7B6B), the exits | 170,216 | 70.14% |
 | + Windy Valley (map $26, 33:7184): the guardian, the target shots (33:72BE, the hooks 33:736F) and their results, the guru's fade / draw swap (33:7660, 33:779F) | 172,204 | 70.96% |
+| + the Tiny-Tots Golf Grounds (map $27: the clean-up on the shot clock, 34:5C61, ApplyFlaggedHoleMapEdits 34:55B6) and the Mini-Mini Lake Course (map $28: the golfers' shots and the player's try); the shot clock of bank 10 (10:5D1C, 10:5713, 10:486D, 10:497E) | 175,734 | 72.41% |
+| + the Golf Guru's Pitch and Putt (map $2C) and Raven Woods (map $29: the crow, the hat, the pin shot with its frame tasks) | 178,554 | 73.57% |
+| + the Golf Clinic (map $2D: the judged shot and the coaches' comments) and the hidden friends (33:445F, 30:6942, the bonus) | 179,874 | 74.12% |
+| + the Alternate Game (the Dune green's golfers, maps $2A / $2B, 30:6F42-30:7D02), the staff roll after the Links or the game cleared (31:782F, 41:7E07, 40:66B5), the cover-up scene (32:7533), a save's pending EXP (32:5139), the ball's unmasked map reads, the Links-unlocked warp at the mode select (32:5304) | 187,241 | 77.15% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -260,6 +264,19 @@ given to the native code). All cases match frame for frame:
 | boot_kid_story_hutswap | the same with the club already made (#215 #216 poked): the exchange (33:7A73: Yes, Yes: the club given back, SetCharFlags12 0, the return point map 0 / $FA, SaveGame), the maker again ($181A) | 5,347 |
 | boot_kid_story_windy | #86 poked: the Field's trigger 6 to Windy Valley (map $26, 33:7184): trigger 1 (the guardian's talk 33:701F, "Shoot from here?" 33:72BE Yes), the target shot (game mode 5, the hooks 33:736F; the hit poked, $C3E0 = 1), the result (33:73BB: 40 EXP, the level-up screen, the save), entrance $0F (33:71FA: #198, the guardian walks off), the Field | 6,813 |
 | boot_kid_story_windy2 | #86 #114 #198 #199 #200 #212 poked: the door (33:7116) to map $2F, the guardian (33:78B6: #213, warp 3), entrance 3 (33:71D5), the second target (course 8 hole $0B, the hit poked), the result (33:755B: 180 EXP, #201), the guru (33:7660: Yes three times, SwapShotCurve 33:779F) | 8,298 |
+| boot_kid_story_tinytots | #86 poked: the Field's trigger 7 to the Tiny-Tots Golf Grounds (map $27, 34:5820): the caretaker's grumble (34:576F), his request (34:584B Yes), his demo, the clean-up (34:590D: game mode $0B, ten balls on the shot clock, the hooks 34:5C61), the result (34:597D: one ball in, $14F4), the Field | 18,445 |
+| boot_kid_story_tinytots10 | the same with ten balls in (poked): $14F6 Yes, 62 EXP (34:5A99), the level-up screen, the save | 19,725 |
+| boot_kid_story_minilake | #86 poked: the Field's trigger 8 to the Mini-Mini Lake Course (map $28, 34:5E53): trigger 1 (the golfer's shot, 34:5EE1), the debate (34:6064 No), the player's try (34:64B1), missed (34:6114) | 7,984 |
+| boot_kid_story_minilake2 | the same with the try poked to a skip onto the green: "NICE ON!" (34:61BB), the golfer's try, entrance $0D (34:62C0: 175 EXP), entrance $0F (34:6362), the Field | 10,864 |
+| boot_kid_story_pitchputt | #86 poked: the Field's trigger $0B to the Pitch and Putt (map $2C, 34:74B5): the guru (34:7407 Yes), course 9's nine holes in game mode $0A (34:7547), the result (34:75F6: $1554) | 38,968 |
+| boot_kid_story_pitchputt9 | the same with a perfect card poked: $155A, 300 EXP, #208, the save flag $0200, the save, entrance 7 (34:770F) | 40,248 |
+| boot_kid_story_ravenwoods | #86 poked: the Field's trigger 9 to Raven Woods (map $29, 34:6B37): trigger 3 (the hat stolen), trigger 1 (the crow flies off, the first time's scene), trigger 2 with A held (the crow back, "Play from here?" Yes), the pin shot (34:716B, game mode 5), missed | 7,196 |
+| boot_kid_story_ravenwoods2 | the same with the pin hit (poked): warp 2, entrance 6 (34:6D46: 200 EXP, the level-up screen), entrance 7 (34:6E5F: #207, the save), the Field | 9,516 |
+| boot_kid_story_clinic | #86 poked: the Field's trigger $0C to the Golf Clinic (map $2D, 31:72A3): the first coach (31:7199 Yes), the judged shot (31:7252), both coaches' comments (31:72CF / 31:7444) | 5,450 |
+| boot_kid_story_joe | #86 #141 #142 #204 poked: Raven Woods' hidden Joe (34:692C), all the hidden friends found (34:7E12: 300 EXP, the level-up screen, the save) | 6,059 |
+| boot_kid_story_altgame | #113 #114 poked: the Dune green's golfers (30:681A), the invitation (30:6F42), the rules and the first-tee question (map $2A, 30:7212), the 18-hole Alternate Game in match play (30:72F0, the hooks 30:7361: the golfers alternating, the HUD line), the result on map $2B (30:747D) | 74,861 |
+| boot_kid_story_linkschamp | #72 #114 poked, the result poked to 1: the Links Champion's ceremony (31:78E1), 31:7827: the picture (40:6666), the staff roll (41:7E07), #110, the picture until a button (40:66B5), the save, the mode select | 22,452 |
+| boot_kid_story_coverup | #117 poked: the story starts in the Director's Room (map $05 entrance 1, 32:7461): the staff's cover-up scene (32:7533, #120), warp 1 to the clubhouse | 9,000 |
 | boot_kid_story_trophies | the clubhouse's door 5 to the Trophy Room (map $07, 35:41B2; #112 #136 #113 poked): A at the Marion and Palm trophies (35:4115 / 4126) | 4,721 |
 | boot_kid_story_partnerleave | the same call answered No (33:4B91); out by the driving range's trigger: the partner's question (33:4FEF) No (a step back), again Yes (he leaves), the range | 11,626 |
 | boot_kid_story_partnerfield | the champion joins, out to the Field, up onto Windy Valley's trigger: "Quitting this Match Game?" (34:5530) No | 10,452 |
@@ -338,15 +355,17 @@ Where a save comes from: an empty slot in the character select warps (5) into th
 entrance 2's scripts (pick male / female, the character, the hand, the name; "Start by creating a new character"),
 the story's first scene in the Director's Room (map 5), and back to the mode select, where ModeSelectMain stores the
 new character (32:51D1). Loading (32:5114): SaveBlockLoad of the slot to `$C800` (a bad or empty one: warp 5),
-RestoreGameTimer 00:2CDE, pending EXP (`$C95E` = `$64`: ScaleExpByLevel 32:54B5 and AwardExpPoints 48:4D70, not
-ported), MapWarpToReturnPoint 0A:4D8A; a save made at the mode select or in a round (`$C96D` 2, or map 0) goes to the
+RestoreGameTimer 00:2CDE, pending EXP (`$C95E` = `$64`: ScaleExpByLevel 32:54B5 and AwardExpPoints 48:4D70, then
+`$C95C`-`$C95E` cleared), MapWarpToReturnPoint 0A:4D8A; a save made at the mode select or in a round (`$C96D` 2, or map 0) goes to the
 mode select (with a save file: the story, Tournament, Match, Stroke, Training), one made in the story to the summary
 prompt (32:7D35) and the map engine (not ported). The character select lists a stored slot's character
 (ListSaveSlotGolfer 02:5ACA: wSaveSlot is set to 0 whatever the slot).
 `web/tests/golf/coreplay.mjs --recipe kid --sram-out out/kid.sav` makes such a save on the emulator core (a new
 character "Kid", saved at the mode select); `golf_screens_vs_core.mjs` loads it from power-on: `boot_poweron_kid_stroke`
 and `_match` (to GolfRound's call through the save-file mode select), `boot_kid_round` (two holes of the round:
-the mid-round saves): every frame and the save RAM at the end match the game. The play page keeps the save RAM in
+the mid-round saves): every frame and the save RAM at the end match the game. `boot_poweron_kid_stroke_links`
+(#139 poked at the mode select, 3,469 frames): Stroke with the Links won and #123 clear goes to Peach's invitation
+(ModeSelectCheckLinksUnlocked 32:5304 drops ModeSelectMain's return, warp 6: map $25 entrance 3) and back. The play page keeps the save RAM in
 localStorage under the emulated page's key and format; `play_page.mjs --save out/kid.sav` loads a core-made save
 there, plays Stroke with it and checks the page stored the save the game wrote.
 A save made by Save & Quit in a round (wReplayActive 1) loads to the card (32:5474 clears the maps; LoadSummaryPrompt
@@ -357,8 +376,8 @@ then "Continue previous game?" (48:4A81) and "Saved data will be erased, OK?" (4
 Yes continues the round (ScriptEnd, GolfRound $FF, GolfSessionEnd), Yes on the second goes to the mode select, B on
 the first back to the character select. `boot_kidsq_continue` and `boot_kidsq_prompts` load the save
 `boot_kid_savequit` leaves (SRAM_OUT=out/kidsq.sav keeps the game's save RAM after a case) and take both ways, frame
-for frame. Not ported: the match card's holes-up line (48:4724), the story's card (48:480D) and its map engine, the
-pending EXP of a save (32:5139).
+for frame. Not ported: the match card's holes-up line (48:4724), the story's card (48:480D) and its map engine. The
+pending EXP of a save (32:5139) is ported (not reached by a case: nothing scripted leaves `$C95E` = `$64`).
 
 #### The message box, the pause menu's items, after a round (msgbox.js, pause.js, boot.js)
 
@@ -573,7 +592,7 @@ Navigation (41:7413).
 frames of 3 frames each, copied from the map buffer's rows $3C / $3E), the door triggers 32:5CAF-5D2F (the door opens, the player
 walks in, the warp), the exits 32:5C09 / 5C25, the counter 32:56EA / 5704 (with a partner: 32:5B5A by the clubs won, 32:5BBE by the course), the
 bookshelf 32:5BEA; the doors' tiles change through MapBufCopyRectRedraw 0B:4864 (a rectangle of the map buffer copied
-and the visible part redrawn). Map $05: the enter script 32:7461 (its cover-up scene ~32:7533 not ported), the
+and the visible part redrawn). Map $05: the enter script 32:7461 (after beating Mario, #117, the story starts here: the staff's cover-up scene 32:7533 once, #120, then warp 1; `boot_kid_story_coverup`), the
 bookshelves 32:7156 / 716C, the wind tip 32:71B4, the 1-Up Mushroom 32:7966 (FadeToLevelUpScreen 32:7EE7), and the
 no-op script 32:7E67. Map $06, the Locker Room (bank 34, `maps/bank34.js`): the talk list by progress 34:42B6, the
 grumpy golfer 34:407F (a random gripe; bumped into three times, the screen shakes), the lockers 34:41E8 (objects 1-10:
@@ -693,6 +712,101 @@ warp $0E; misses $14CC / $14D8; targets 2 / 3 never pass (33:7473 / 33:7612: the
 kept: the second's $14D7 is set but its first part never shown alone). SwapShotCurve 33:779F: #214, SetCharHand 02:53B2
 (bit 0 of wCharFlags flipped, CharRefreshStats 02:4EF6), six flashes at fade speed $20. The cases poke the shot's
 result ($C3E0 = 1) on both sides once the round is over (no scripted swing hits the target).
+**The Tiny-Tots Golf Grounds** (map $27, header 34:5661, `maps/bank34.js`; `boot_kid_story_tinytots`,
+`boot_kid_story_tinytots10`): the Field's trigger 7. The enter script 34:5820 (Sherry, actor 3, put away until found:
+#141; entrance 5 34:590D, 6 34:597D); trigger 1 34:576F (while #203 is clear: the caretaker grumbles, looks round, #203);
+the caretaker (talk 2, 34:56C6: after #202 $14FC; else 34:584B "help me?": Yes: his demo, game mode 6 with golfer $4E
+replaying the 64 bytes at 34:58D6 (which run on into the hook table: the ROM copies them as they are), course 8 hole 1,
+the hooks 34:58E6 (34:5907: over, $82), back at entrance 5). The clean-up 34:590D: #224, game mode $0B, $C82C = $28,
+ten holes of course 8 (a ball each), the hooks 34:5C61: 0 ret; 1 34:5C82 (flag #224 + the hole set: the piles of the
+course view; quit: $C3E1 = $63; within $3C of the pin: holed out, $C3E0 / $C3E1 + 1; in the water or out of bounds
+(wShotEndLie 3 / 7) or the time up: GolfViewExit, $C3E0 + 1, ShowMessageAt $14F2 or $14F0, $14F1 (or $14F3 at the
+tenth) at (10, 3), holed out; the time left: the same ball again); 2 34:5D40 ApplyFlaggedHoleMapEdits 34:55B6 with the
+list 34:5D46 (CopyHoleMapRect 34:55FE / CopyRect64 34:563B: 1 x 1 tiles of the 64 x 64 hole maps in WRAM3 and WRAM2,
+by flag); 3 34:5D9E the shot clock (CountdownStart 12:4F52 with 10 seconds, CountdownPause 12:4F73). The result
+34:597D: the piles drawn (34:5AE9: one MapBufCopyRectRedraw per ball cleared, 10 after #202), by the balls in: $63
+nothing, under 8 $14F4 and warp 1, 8-9 $14F5, 10 $14F6 with a question (Yes: the caretaker's walk, two more texts);
+34:5A99: the first time 50 EXP (a quarter more for ten), #202, the save, warp 1. Hidden Sherry (object $0F, 34:56F7)
+and AwardFoundAllRivalsExp 34:7E12 (300 EXP once #140-#143 are all found, the player's own character's not needed)
+are ported with it (not reached by a case).
+**The shot clock** (bank 10, `aim.js`, `shot.js`, `hole.js`): with wCountdownState $C0F4 set, ShotSetup lets it run
+(1), the aiming menu (10:5D1C) at 0 seconds waits 60 frames and returns $8F, which ShotSetup returns (10:486D) as the
+shot's outcome (bit 7: the hole's bookkeeping of a holed ball); AddressBall at 0 seconds (10:5713) goes back as B does
+(10:58AE: $D44D = $F0, wSwingPerfect 0, SwingPadTask off; B now does the same natively); after CountStroke (10:497E) the
+clock pauses (2). UpdateGameTimer 00:2C6B ticks it at each VBlank (sound $9F a second, $A0 at 0). The screens harness
+now gives the replayed lag VBlanks' UpdateGameTimer its sounds (screenstep.mjs; before, the countdown's ticks in lag
+VBlanks were left out of the native sound list).
+**The Mini-Mini Lake Course** (map $28, header 34:5DA8; `boot_kid_story_minilake`, `boot_kid_story_minilake2`): the
+Field's trigger 8. The enter script 34:5E53 (#82; entrances 5 34:5FBE, 6 34:6568, $0D 34:62C0, $0E 34:6412, $0F
+34:6362); trigger $0F 34:5E86 ("Want to play?": course $0A hole 1 in game mode 6, no hooks; the wind byte is the 6
+SetForcedWind leaves); trigger 1 34:5EE1 (while #211 is clear: #211, the golfer's shot from the rough, game mode 5,
+golfer $4F replaying 34:5F83, course 8 hole $0D from ($18C0, $1EC0), the hooks 34:5F93: 34:5FB4 waits 30 frames,
+over $82; back at entrance 5 34:5FBE); his partner (talk 3: 34:6064 the debate while #218 is clear, then 34:6018
+"Keep trying?"; talk 2 34:6059 shows $1502 first) whose No / Yes starts the player's try 34:64B1 (game mode 5, the same
+spot, the hooks 34:6507: 34:6528 $C3E0 = 1 holed out or on the green, $C3E1 = 1 skipped on the water (wBallFlags bit
+0); quit: #224). The result 34:6568: missed 34:6114 (#218), on the green 34:6159 (140 EXP 34:6586, warp $0E: 34:6412,
+#210, the save, they walk off), skipped onto it 34:61BB ("NICE ON!": the golfer tries it, golfer $4F replaying 34:6289,
+the hooks 34:6299; entrance $0D 34:62C0 "You did it!", 175 EXP, warp $0F 34:6362). Quirk kept: 34:6217 turns the
+player to "actor $C0" (ActorSlotAddr maps slots $18 and up to the player's own: no turn).
+`boot_kid_story_minilake2` keeps a hidden BG row ($98B6-$98BF, columns 22-31, off screen) different for about 300
+frames from a lag frame in the golfer's retry (the view loaded at 13:4465 during lag VBlanks); the harness classes it
+with the lag frames, and nothing visible differs.
+**Raven Woods** (map $29, header 34:689C; `boot_kid_story_ravenwoods`, `boot_kid_story_ravenwoods2`): the Field's
+trigger 9. The enter script 34:6B37 (the hat, actor 4: ActorSetFrame 04:4CD6 ($40, 2) and +$37 = 1; the crow's tiles
+34:72E1; the crow and hat on the pin (scripts 34:711B / 7109) unless #206; Joe, actor 6, put away until found, #143;
+entrance 6 34:6D46; entrance 7 34:6E5F; $FA after a pin shot ($14) that hit: warp 2; else the crow's task 34:7347
+(PositionSpriteWorld of actors 3 and 4) unless #207 and the hat's task 34:6BF7 (34:72F9: the template 34:72D0 at
+the pin less the scroll; the on-screen sums are computed and not used) at priority 4, or 7 with #206). Trigger 3
+34:6B08 (the first time the hat stolen, 34:6BFE, #204), trigger 1 34:69A4 (the crow flies off, scripts 34:7114 /
+70FC; the first time (#205) the golfer's scene with the hat's sprite near the player, 34:7011 / 34:7029 / 34:7070;
+#206), trigger 2 34:6ABE (the crow back: #206 cleared), and 34:732C on them all: with A held "Play from here?" (34:7144,
+also trigger $F by A): the pin shot 34:716B (game mode 5 with the crow on the pin, else 7; course 0 hole 8; the tee
+from the player's spot 34:7254 (a quarter of the way from ($1F80, $1D40)); a random wind 34:7215; the hooks 34:71CC:
+1 34:71ED the pin hit (wBallFlags bit 1 or 2): $C3E1 = 1, #99 = holed out; 4 34:65C3 the crow on the pin (tiles
+34:65E0, the task 34:66A0: in the green view, the template by hVBlankCount's frame 34:6704 / 34:6804 at the cup)).
+Quirks kept: the scripts' `ld [hl], a` after ActorSlotAddr write the slot number to actor 3's +$15 in whatever WRAM
+bank is mapped; 34:6BA3 compares the a that 34:6D46 leaves with 7 (never 7: entrance 7 is reached by its warp 3).
+The hatless golfer's talk 34:6CF5 and hidden Joe 34:692C are ported with it (not reached by a case).
+**The Golf Guru's Pitch and Putt** (map $2C, header 34:73C0; `boot_kid_story_pitchputt`, `boot_kid_story_pitchputt9`):
+the Field's trigger $0B. The guru (talk 2, 34:7407: #209, "Will you test your skills?"; once beaten (#208) $155D the
+first time (#252) and 34:74E6 "So will you play?"), the round 34:7547 (the player walks to the tee; wStoryRoundKind
+$14, the hooks 34:75C8: after a shot, quit: wStoryRoundKind 0; 34:7516: course 9's nine holes in game mode $0A (the
+wind byte is the mode's $0A), after the guru is beaten course 6's 18 in game mode 3), the result 34:75F6 (entrance 6,
+before #208: per hole of $C8AC #241 unless on the green in 0 or 1, #240 unless the strokes less those are 1; the
+score $C8BE + 27: 19 or more $1554, #241 $1556, #240 $1558; a perfect card $155A, 300 EXP, #208 #159, the save flag
+$0200, the save, warp $0F: entrance 7 34:770F).
+**The Golf Clinic** (map $2D, header 31:7067, `maps/bank31.js`; `boot_kid_story_clinic`): the Field's trigger $0C.
+The students (talks 3 / 4, 31:7127 / 715F: the talking script 31:7CBE, the text, then 31:7D19 / 7D24), the coaches
+(talks 5 / 6, 31:7199 / 71D3, and trigger 1 31:720D: "You want your shot judged?" Yes: 31:7252, one tee shot on course
+0 hole 6 from ($2000, $3800) in game mode 6, the hooks 31:75C0: 1 31:75E1 #99 = not quit, wEventResult $C968 = the
+class 31:760C (0 a clean full shot; 5-8 its curve bits hook / slice / topspin / backspin; 1-4 the impact and power
+misses), wEventShotClub = the record's club; back at entrance 2 (31:72A3) both comment (31:72CF / 31:7444: class 0
+the judgement of 31:7392 / 31:74B8 with five text arguments: the distance's grade 31:756A of ClubDistance 02:511A,
+DriverShape 02:534B + 4, and 4 less each of the stats $C81C / $C81E / $C81F, 8-bit, copied by 05:40C2 to $DD74-$DDF4
+and pushed by 05:54CF; the others' texts by class from the tables 31:72F6 / 31:746A).
+**The hidden friends** (#140-#143): Mario in the Links office (map $0B object $0F, 33:445F, not for character 0),
+Sherry at Tiny-Tots (34:56F7), Azalea on the Palm green (30:6942), Joe in Raven Woods (34:692C; `boot_kid_story_joe`);
+each runs the same bonus (33:7CF1 / 34:7E12 / 30:7EAD: 300 EXP once all the others are found, the level-up screen,
+the save, the map again where the player stood). Sherry's notch (cell (18, 11)) cannot be walked into from below: both
+diagonal probes of PlayerWalkControl hit the trees, so the player stops a cell short.
+**The Alternate Game** (maps $14 / $2A / $2B, `maps/bank30.js`; `boot_kid_story_altgame`, see below): the Dune
+green's golfers (talks 8-$0A, 30:681A / 683E / 6862; declined before, #249: 30:70B0 AltGameInviteAgain) with
+AltGameInvite 30:6F42 (#155 cleared, the rules 30:6FF8, warp 2); Map2AEnter 30:7212 ("Who tees off first?", #152) and
+AltShotStartRound 30:72F0 (game mode 3 with #155 else 2, course 3 hole 1, 18 holes, the teams $C878 = 1 and $C879-$C87C,
+the return point map $2B entrance 6, the hooks 30:7361: 0 30:73B5 the current player's HUD line, 1 30:73C7
+AltShotNextGolfer 30:72A8 (wAltShotTurns $C873 swaps a team's golfer, RefreshGolferProfile 02:49BA), 3 30:7381 each
+team's golfer at a hole's start); map $2B (Map2BEnter 30:747D with its patch 30:74E5 and sprites 30:7C61 / 7C79): the
+intro 30:74FE, the result (won 30:790F, lost 30:770D, a tie 30:7705, the rivals 30:7A67), the flag on the wall 30:7453.
+`boot_kid_story_altgame` (74,861 frames, 0 other differences, the sounds the same) found a quirk of the ball's map
+reads: TerrainAt 10:6536, GreenSlopeAt 10:64D1 and SlopeCellAt 10:674E address the cell as `$D000 + row * 64 + col`
+in 16 bits with no mask. In the green view the coordinates are taken from the green's corner ($D441 / $D442), so in
+the frame a ball rolls off the green's top edge (before ShotMainLoop's BallInGreenArea switches the view) the row is
+$FF and the reads wrap past `$FFFF` into ROM bank 0 (`$0FC8` here): a tile number past the end of the green's
+tables, whose terrain then comes from whatever WRAM6 holds after them (terrain 7 here: friction $80, the speed
+halved for that step). `ball.js` Hole now reads as the ROM does (mapByte: the map, the echo RAM, the OAM / HRAM or
+ROM bank 0; tableByte: past an asset's end, the WRAM it was loaded to); before, it masked the index to the 64 x 64
+map, and that ball rolled two pixels further.
+
 **The Trophy Room** (map $07, `maps/bank35.js`; `boot_kid_story_trophies`): the clubhouse's door 5 (warp 7); the enter
 script 35:41AE / 41B2 places the trophies (actors $02-$10) by the placed flags #112-#116 and won flags #136-#139 / #117,
 a place trophy's second or third by TestCourseHoleBit 02:5C77 (the club's bit $16; quirk kept: a won club still runs
@@ -776,8 +890,9 @@ more: cleared #194 + the green, AwardPuttingChallengeExp 30:6EC8: 20 / 25 / 45 /
 tried #190 + the green), the putt demo 30:6A8C, "Practice here?" 30:6AEC with the practice 30:6B13 (wStoryRoundKind
 $14, mode 7, course 7 holes 9 / $0C / $0F / $12 with music 8-$0B, the tee pulled toward the player 30:6D40 with the
 bases 30:6D89; after-shot 30:6BFC). The mini-game pause menu MiniGamePauseMenu 41:6F9F (modes 5 / $0A / $0B,
-08:46DE: Quit Mini-Game 41:775F, Settings 41:7767). Not ported here: Azalea (object $0F, ~30:6942, unless the player
-is Azalea) and HiddenFriendsBonus ~30:7EAD, the Dune green's golfers and the Alternate Game (~30:681A, ~30:6F42). The
+08:46DE: Quit Mini-Game 41:775F, Settings 41:7767). Azalea (object $0F, 30:6942, unless the player
+is Azalea) and HiddenFriendsBonus 30:7EAD, the Dune green's golfers and the Alternate Game (30:681A, 30:6F42) are
+ported (see "The Alternate Game" below). The
 test `boot_kid_story_green_cleared` sets the putts made ($C3E1) to 10 on both sides after the tenth putt (scripted A
 presses make two).
 **The Palm driving range** (map $0F, `maps/bank31.js`, the lesson engine of `maps/lessons.js` with two more
@@ -863,8 +978,10 @@ CeremonyEnter 31:7775 (BeginFadeOut $7F; Palm / Dune / Links their palettes 31:7
 seen flags #107-#109 skip to warp 2 and are set at entrance 2; Dune's flag #212 31:7CB0; entrance 2 the champion
 31:78E1, 3 / 4 the second / third place 31:7B1C with the podium's tiles 31:7B86 / 7B96 (0B:4864); both end in
 CeremonyCongratsAndLeave 31:7A00; result 1-3 in wRoundResult; warp 2 (map 0, the mode select) for a mode-select
-tournament (wStoryRoundKind $32, set by 08:4C6E), else warp 1 (the office's entrance 6). Not ported: the ending
-(flag #110: ~31:782F, ShowPictureTimed 40:6666, StaffCredits 41:7E07) and the Links Champion's (~31:7827). The tests
+tournament (wStoryRoundKind $32, set by 08:4C6E), else warp 1 (the office's entrance 6). The Links Champion's branch
+31:7827 and the game-cleared branch (flag #110) both run 31:782F: ShowPictureTimed 40:6666, StaffCredits 41:7E07
+(InitCreditsScroll 41:7EF1, CopyCreditsLine 41:7F60), #110, ShowPictureUntilButton 40:66B5, the save, warp 3
+(`boot_kid_story_linkschamp`). The tests
 poke the result (no scripted round places in the top three): `boot_kid_story_ceremony` sets wRoundResult $C96C to
 1 on both sides after the round; `boot_kid74_ceremony` sets the return point ($C960 = $18, $C961 = 2, $C967 = $32)
 when the round's place is first known.

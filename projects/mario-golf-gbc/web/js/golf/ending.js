@@ -262,7 +262,8 @@ function* copyrightScreen(sh) {
 }
 
 // ---- the final screen (0A:6747, bank 79) ----
-// the six parts of 79:68B1 (79:68F6, 6AA5, 6C59, 6E0D, 6FC1, 7175): from its first step (part 1: any), each of its
+// the six parts of 79:68B1 (79:68F6, 79:6AA5, 79:6C59, 79:6E0D, 79:6FC1, 79:7175: the same code with their own
+// constants): from its first step (part 1: any), each of its
 // nine steps decompresses its frame (WRAM1) and queues it to VRAM, then draws its template; past them the last
 // template is drawn again. [first step, the LZ frames, buffer, VRAM, blocks, the first template and its stride,
 // x, y, attributes / tiles bc]
@@ -400,3 +401,88 @@ export const TASKS = w => ({
   "0b:5640": () => creditsWindowTask(w),                          // 0B:5640 CreditsWindowTask
   "0a:6806": () => endingFinalScreenTask(w),                      // 0A:6806 EndingFinalScreenTask
 });
+
+// ---- the staff roll after a win (41:7E07 StaffCredits, from 31:7835) ----
+// 41:7EF1 InitCreditsScroll: WRAM6 $D630 / $D631 = 2, the text $D632 = $181C, done $D634 = 0; WRAM2 $D000-$D3FF = 0
+// to the attribute map ($B800 queued and run), WRAM3 = $20 to the tile map $9800
+function initCreditsScroll(w) {
+  setW(w, 6);
+  wr(w, 0xD630, 0x02); wr(w, 0xD631, 0x02); wr(w, 0xD632, 0x1C); wr(w, 0xD633, 0x18); wr(w, 0xD634, 0x00);
+  setW(w, 2);
+  fillBytes(w, 0xD000, 0x00, 0x0400);                             // 41:48E5 FillBytes_41
+  D.queueAndRunVRAMCopy(w, 0xD000, 0xB800, 0x40);                 // 00:04DB
+  setW(w, 3);
+  fillBytes(w, 0xD000, 0x20, 0x0400);
+  D.queueAndRunVRAMCopy(w, 0xD000, 0x9800, 0x40);
+}
+// 41:7F60 CopyCreditsLine: LoadText hl (05:6179, WRAM5) and its characters (from $60 less $20) to WRAM3 de; WRAM3 left
+function copyCreditsLine(w, hl, de) {
+  setW(w, 5);
+  D.inBank(w, 0x05, () => loadText(w, hl));
+  for (let s = 0xC600; ;) {
+    setW(w, 5);
+    let b = rd(w, s++);
+    if (!b) break;
+    if (b >= 0x60) b = (b - 0x20) & 0xFF;
+    setW(w, 3);
+    wr(w, de++, b);
+  }
+  setW(w, 3);
+}
+// 41:7E07 StaffCredits: ClearFrameTasks, InitFontScreen, LCD off, the scroll and WY $90 reset, no sprites, BG palette 0
+// from 41:7F91 (master copy), 41:7EF1, LCD on, sound 0, song 3, ForceFadeIn (8); each frame (41:7E43): every second
+// frame SCY one down, and every 16 lines the next line of the roll (41:7F60) and an empty row above it queued at the
+// row $90 lines below the top (41:7F41); a line starting '#' (41:7F5A) ends the roll ($D634); then A / B / Select held
+// fades out (1) and loads the default palettes (01:41B3); else a frame and WRAM3 $D000-$D0BF cleared
+export function* staffCredits(sh) {
+  const w = sh.w;
+  clearFrameTasks(w);
+  initFontScreen(w);                                              // 01:41E8
+  if (w.vram) D.disableLCDSafely(w);
+  w.high[0x18B] = 0; w.high[0x18A] = 0;
+  wr(w, 0xC320, 0); wr(w, 0xC321, 0); wr(w, 0xC322, 0); wr(w, 0xC323, 0);
+  if (w.vram) w.lcd.wy = 0x90;
+  D.resetSprites(w);
+  D.inBank(w, 0x41, () => D.loadPalettesMasterOnly(w, 0x7F91, 0x00, 0x01));
+  initCreditsScroll(w);
+  if (w.vram) D.enableLCD(w);
+  sh.sound(0x00);
+  sh.sound(0x03);
+  Scr.forceFadeIn(w, 0x08);
+  yield* Scr.waitFade(sh);
+  for (;;) {
+    setW(w, 6);
+    wr(w, 0xD630, (rd(w, 0xD630) - 1) & 0xFF);
+    if (!rd(w, 0xD630)) {
+      wr(w, 0xD630, 0x02);
+      if (!rd(w, 0xD634)) {
+        w.high[0x18A] = (w.high[0x18A] + 1) & 0xFF;
+        if (!(w.high[0x18A] & 0x0F)) {
+          const hl = rd(w, 0xD632) | rd(w, 0xD633) << 8;
+          setW(w, 3);
+          copyCreditsLine(w, hl, 0xD020);
+          if (rd(w, 0xD020) === 0x23) { setW(w, 6); wr(w, 0xD634, 0x01); }
+          else {
+            const de = 0x9800 + ((((w.high[0x18A] + 0x90) << 2) & 0x3FF));   // 41:7F41 CreditsRowAddr
+            setW(w, 3);
+            D.queueVRAMCopy(w, 0xD000, de, 0x02);
+            D.queueVRAMCopy(w, 0xD020, (de + 0x20) & 0xFFFF, 0x02);
+            setW(w, 6);
+            const v = ((rd(w, 0xD632) | rd(w, 0xD633) << 8) + 1) & 0xFFFF;
+            wr(w, 0xD632, v & 0xFF); wr(w, 0xD633, v >> 8);
+          }
+        }
+      }
+    }
+    if (rd(w, 0xD634) && (w.high[0x190] & 0x0B)) break;
+    yield* sh.advance();
+    setW(w, 3);
+    fillBytes(w, 0xD000, 0x00, 0xC0);
+  }
+  Scr.beginFadeOut(w, 0x01);
+  yield* Scr.waitFade(sh);
+  D.inBank(w, 0x01, () => {                                       // 01:41B3 LoadDefaultPalettes
+    D.loadPalettesMasterOnly(w, 0x50A0, 0x00, 0x08);
+    D.loadPalettesMasterOnly(w, 0x50E0, 0x08, 0x08);
+  });
+}
