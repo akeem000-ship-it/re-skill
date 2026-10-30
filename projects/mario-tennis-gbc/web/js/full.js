@@ -274,7 +274,9 @@ function applyAspect() {
   deck.resize(); insetAt = 0;
 }
 addEventListener("resize", () => applyAspect());
-let preset = q.get("cam") || stored("mt-cam") || "low"; if (!PRESETS[preset]) preset = "low";
+// (0.35.95: the default camera became Behind; a remembered Low, the old default, moves to it once)
+try { if (!localStorage.getItem("mt-reset-0.35.95")) { if (localStorage.getItem("mt-cam") === "low") localStorage.setItem("mt-cam", "behind"); localStorage.setItem("mt-reset-0.35.95", "1"); } } catch (e) { /* private mode */ }
+let preset = q.get("cam") || stored("mt-cam") || "behind"; if (!PRESETS[preset]) preset = "behind";
 function setView3d(on, vox = false) {
   view3d = on; $("view3d").classList.toggle("on", on); $("view3d").textContent = on ? (vox ? "VOX" : "3D") : "3D";
   if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.res = res; voxel.hdText = hd; voxel.freeCam = q.has("freecam"); attachLighting(voxel, $("hud")); attachLightPanel(voxel); if (phone) phone.applyBattery(); attachStadium(voxel, $("hud")); addCourtButton(voxel, $("hud")); addFarEndButton(voxel, $("hud")); attachCrowdSound(voxel.stadium, $("hud"), () => actx); attachBallFX(voxel, $("hud")); voxel.tour = tour; voxel.learnNote = () => (port && port.plus && port.plus.learn ? learnNote(port.learnProfile) : ""); voxel.ballMidSrc = () => (port && port.physics && port.physics.mid) || null; attachIntro(voxel, $("hud")); attachMatchFx(voxel, $("hud")); attachFieldLife(voxel, $("hud")); attachCloseCall(voxel, $("hud")); attachGround(voxel, $("hud")); attachVoxStyle(voxel, $("hud")); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }

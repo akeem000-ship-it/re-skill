@@ -109,13 +109,17 @@ void main() {
 // centre) with the game's scroll applied as an image shift: the court looks exactly like the 2D game
 // while players, ball, net and chair have real depth.
 export const PRESETS = {
+  // Behind (the default): low behind your baseline, a TV angle (your end of the court big, the far end foreshortened), fitted to the
+  // court's lines and the run-off behind your baseline where you stand deep (near: points up to that depth, a player's height up),
+  // not the chair or the far run-off, so the court fills more of the picture
+  behind:   { label: "Behind",   yaw: 0,    pitch: 0.38,  lean: 0.8, aim: -100, fit: 0.97, near: 1560 },
   tv:       { label: "TV",       yaw: 0,    pitch: 0.80,  lean: 0.8, aim: -150 },
   low:      { label: "Low",      yaw: 0,    pitch: 0.55,  lean: 0.8, aim: -250 },
   overhead: { label: "Overhead", yaw: 0,    pitch: 1.20,  lean: 0.8, aim: 0 },
   diorama:  { label: "Diorama",  yaw: 0.55, pitch: 0.85,  lean: 0.8, aim: -100 },
   original: { label: "Original", yaw: 0,    pitch: Math.PI / 2 - 0.4147, lean: 1.0, aim: 0, game: true },
 };
-export const PRESET_ORDER = ["low", "tv", "overhead", "diorama", "original"];   // "low" is the default
+export const PRESET_ORDER = ["behind", "low", "tv", "overhead", "diorama", "original"];   // "behind" is the default
 const FIELD_CAM = { dist: 300, pitch: 0.95, fov: 0.8, near: 4, far: 3000 };
 const COURT_CLIP = { near: 40, far: 40000 };
 // a street lamp, 10 x 44 px (RGBA): a dark post on a foot, a lantern with warm glass under a cap
@@ -318,7 +322,7 @@ export class Voxel3D {
     try { const c = new URLSearchParams(location.search).get("court"); this.courtConcept = COURT_CONCEPTS.includes(c) ? c : null; } catch (e) { this.courtConcept = null; }   // COURT concepts
     this.rounded = false;                                    // VOXSTYLE: voxround.js (attachVoxStyle) sets this: rounded solid bodies instead of cubes
     this.ballfx = null;                                      // BALLFX: ballfx.js (attachBallFX) sets this; null = off
-    this.preset = "low"; this.cam = { yaw: 0, pitch: 0.9, dist: 3100, fitKey: "" };
+    this.preset = "behind"; this.cam = { yaw: 0, pitch: 0.9, dist: 3100, fitKey: "" };
     this.freeCam = false; this.mode = "none"; this.t0 = performance.now(); this.cur = null; this.prev = null; this.lastFrame = -1; this.alpha = 1;
     this.parallax = { px: 0, py: 0, gx: 0, gy: 0, gbase: null };
     this.bindControls();
@@ -1020,8 +1024,9 @@ export class Voxel3D {
       return { mvp: m4.mul(m4.mul(m4.translate(shiftX, shiftY, 0), proj), view), tilt };
     }
     const key = `${this.preset}:${aspect.toFixed(3)}:${yaw.toFixed(3)}:${pitch.toFixed(3)}`, fov = 0.7;
-    if (c.fitKey !== key) {                                 // fit the court corners, net and chair into 92% of the viewport
-      const pts = [[-760, 0, -1500], [760, 0, -1500], [-760, 0, 1500], [760, 0, 1500], [NET.x0, NET.height, 0], [NET.x1, NET.height, 0], [900, 300, 0]];
+    if (c.fitKey !== key) {                                 // fit the court corners, net and chair into 92% of the viewport (times the preset's fit)
+      const pts = pr.near ? [[-760, 0, -1500], [760, 0, -1500], [-760, 0, 1500], [760, 0, 1500], [-560, 0, pr.near], [560, 0, pr.near], [-560, 200, pr.near], [560, 200, pr.near], [NET.x0, NET.height, 0], [NET.x1, NET.height, 0]]
+        : [[-760, 0, -1500], [760, 0, -1500], [-760, 0, 1500], [760, 0, 1500], [NET.x0, NET.height, 0], [NET.x1, NET.height, 0], [900, 300, 0]];
       let lo = 400, hi = 30000;
       for (let k = 0; k < 20; k++) {
         const d = (lo + hi) / 2, mvp = m4.mul(m4.perspective(fov, aspect, COURT_CLIP.near, COURT_CLIP.far), m4.lookAt([dir[0] * d, dir[1] * d, dir[2] * d + pr.aim], [0, 0, pr.aim], [0, 1, 0]));
@@ -1029,7 +1034,7 @@ export class Voxel3D {
         for (const q of pts) { const v = m4.apply(mvp, [q[0], q[1], q[2], 1]); if (v[3] <= 0 || Math.abs(v[0] / v[3]) > 0.92 || Math.abs(v[1] / v[3]) > 0.92) { fits = false; break; } }
         if (fits) hi = d; else lo = d;
       }
-      c.fitKey = key; c.dist = hi;
+      c.fitKey = key; c.dist = hi * (pr.fit || 1);
     }
     const d = c.dist * (this.matchfx && this.stadium && this.stadium.active ? this.matchfx.zoom() : 1);   // MATCH FX: leaning in with the momentum
     const view = m4.lookAt([dir[0] * d, dir[1] * d, dir[2] * d + pr.aim], [0, 0, pr.aim], [0, 1, 0]);
