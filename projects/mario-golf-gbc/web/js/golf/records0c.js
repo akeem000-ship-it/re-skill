@@ -1574,3 +1574,55 @@ export const records0cTasks = w => ({
   "0c:64cd": () => winnersCursorTask(w),
   "0c:6b55": () => cycleCursorPaletteTask(w),
 });
+
+// ---- unreferenced (dead) routines of the bank, checked against the ROM by web/tests/golf_fuzz_routines.mjs ----
+// 0C:5725 ClearStatsColumn: 22 rows of 12 tiles from $D101 + the column: attributes 0 (WRAM2), tiles $20 (WRAM3)
+export function clearStatsColumn(w) {
+  const old = wbank(w);
+  setW(w, 6);
+  let hl = add8(0xD101, w.wram[6][0x215]);
+  for (let b = 0; b < 0x16; b++, hl = (hl + 0x40) & 0xFFFF) {
+    setW(w, 2); for (let k = 0; k < 0x0C; k++) wr(w, hl + k, 0);
+    setW(w, 3); for (let k = 0; k < 0x0C; k++) wr(w, hl + k, 0x20);
+  }
+  setW(w, old);
+}
+// 0C:5772 CopyTextIdToBuffer (export $12, no callers): text hl loaded (05:6179), then with WRAM bank c mapped up to 20
+// of its characters (to its $00) copied to de
+export function copyTextIdToBuffer(w, hl, c, de) {
+  const old = wbank(w);
+  T.loadText(w, hl);
+  setW(w, c);
+  for (let k = 0, p = 0xC600; k < 0x14; k++) { const a = rd(w, p++); if (!a) break; wr(w, de++, a); }
+  setW(w, old);
+}
+// 0C:57E7 TestProfileHoleBit: bit c of the 24 hole bits at the profile's course record b + $16
+export function testProfileHoleBit(w, b, c) {
+  let hl = add8((0xC980 + 25 * b) & 0xFFFF, 0x16);
+  if (c >= 0x10) { hl += 2; c -= 0x10; } else if (c >= 8) { hl++; c -= 8; }
+  return (rd(w, hl & 0xFFFF) >> c) & 1;
+}
+// 0C:6794 FillBytes2: c bytes of a at hl (0: 256); returns hl after them
+export function fillBytes2(w, hl, c, a) {
+  for (let n = c || 256; n; n--) wr(w, hl++, a);
+  return hl & 0xFFFF;
+}
+// 0C:55B7 RedrawStatsFrame: the frame maps again ($4B:12 / $4B:10) with the panel pieces at $D002 + the column (stride
+// $40), and the page's title ($1105 + the course or 6 for the records, $140A + it or 5 for the profile) printed at $D043
+// + the column (05:62AA, WRAM3)
+export function* redrawStatsFrame(sh) {
+  const w = sh.w, old = wbank(w);
+  setW(w, 2); decompressDataFromBank(w, 0x4B12, 0xD000);
+  setW(w, 3); decompressDataFromBank(w, 0x4B10, 0xD000);
+  setW(w, 6);
+  const de = add8(0xD002, sub(w));
+  setW(w, 2); for (let k = 0; k < 3; k++) decompressDataFromBank(w, 0x4B08 + 2 * k, (de + k * 0x40) & 0xFFFF);
+  setW(w, 3); for (let k = 0; k < 3; k++) decompressDataFromBank(w, 0x4B02 + 2 * k, (de + k * 0x40) & 0xFFFF);
+  setW(w, 6);
+  const prof = rd(w, 0xD23B);
+  const b = sub(w) ? (prof ? 5 : 6) : rd(w, 0xD214);
+  const id = add8(prof ? 0x140A : 0x1105, b);
+  setW(w, 3);
+  yield* inBankGen(w, 0x05, T.printTextToBuffer(sh, id, add8(0xD043, sub(w)), 0x40));
+  setW(w, old);
+}

@@ -11,6 +11,7 @@ import { speedTable } from "../js/golf/launch.js";
 import * as M from "../js/golf/math.js";
 import * as U from "../js/golf/unreached.js";
 import * as H from "../js/golf/home.js";
+import * as R0C from "../js/golf/records0c.js";
 
 useRom(romBytes());
 const filter = process.argv.slice(2).find(a => !/^\d+$/.test(a)) || "";
@@ -100,6 +101,30 @@ const HOME = [
   ["MatchCompare16", 0x3E, 0x6637, () => ({ b: rnd(256), c: rnd(256), d: rnd(256), e: rnd(256) }), (w, r) => ({ a: H.matchCompare16(r.b << 8 | r.c, r.d << 8 | r.e) }), ["a"]],
 ];
 for (const [name, bank, addr, regs, js, out] of HOME) CASES.push({ name, bank, addr, regs, js, out });
+// bank 02 / 0B / 10 / 3E / 48 helpers (unreached.js)
+const MORE = [
+  ["GetCharRecord", 0x02, 0x4E39, () => ({}), () => ({ b: 0xC8, c: 0x00 }), ["b", "c"]],
+  ["TestBitN", 0x02, 0x5D11, () => { const hl = 0xC400 + rnd(0x100); return { a: rnd(24), h: hl >> 8, l: hl & 0xFF }; }, (w, r) => ({ a: U.testBitN(w, r.h << 8 | r.l, r.a) }), ["a"]],
+  ["AddPointsSigned", 0x02, 0x544E, () => ({ d: rnd(256), e: rnd(256) }), (w, r) => { const hl = U.addPointsSigned(w, r.d << 8 | r.e); return { h: hl >> 8, l: hl & 0xFF }; }, ["h", "l"]],
+  ["TargetCupDist", 0x10, 0x621E, w => { for (const a of [0x426, 0x428, 0x43D, 0x43F]) w.wram[6][a + 1] = rnd(0x40); return {}; }, w => { const hl = U.targetCupDist(w); return { h: hl >> 8, l: hl & 0xFF }; }, ["h", "l"]],
+  ["SignOfDiff", 0x48, 0x497E, () => ({ b: rnd(256), c: rnd(256), d: rnd(256), e: rnd(256) }), (w, r) => ({ a: U.signOfDiff(r.b << 8 | r.c, r.d << 8 | r.e) }), ["a"]],
+  ["HoleStrokesPlusPutts", 0x0B, 0x65DE, () => ({ a: rnd(3), b: rnd(256), c: rnd(0x13) }), (w, r) => ({ a: U.holeStrokesPlusPutts(w, r.a, r.c) }), ["a"]],
+  ["SumPlayerHoleCounts", 0x0B, 0x656F, () => ({ a: rnd(2) }), (w, r) => ({ a: r.a, d: U.sumPlayerHoleCounts(w, r.a) }), ["a", "d"]],
+  ["CountHolesWon", 0x0B, 0x6585, () => ({}), w => { const [a, d, e] = U.countHolesWon(w); return { a, d, e }; }, ["a", "d", "e"]],
+  ["DivATen", 0x3E, 0x630C, () => ({ a: rnd(256) }), (w, r) => ({ a: U.divATen(r.a) }), ["a"]],
+  ["ModATen", 0x3E, 0x631E, () => ({ a: rnd(256) }), (w, r) => ({ a: U.modATen(r.a) }), ["a"]],
+  ["MatchScoreToWord", 0x3E, 0x6342, () => ({ a: rnd(256) }), (w, r) => { const hl = U.matchScoreToWord(r.a); return { h: hl >> 8, l: hl & 0xFF }; }, ["h", "l"]],
+];
+for (const [name, bank, addr, regs, js, out] of MORE) CASES.push({ name, bank, addr, regs, js, out });
+// bank 0C's dead routines (records0c.js)
+const sync = g => { for (let r = g.next(); !r.done; r = g.next()) throw new Error("it runs frames"); };
+const statsState = w => { w.wram[6][0x214] = rnd(7); w.wram[6][0x215] = rnd(2) ? 0x14 : 0; w.wram[6][0x23B] = rnd(2); };
+CASES.push({ name: "ClearStatsColumn", bank: 0x0C, addr: 0x5725, init: statsState, js: w => R0C.clearStatsColumn(w) });
+CASES.push({ name: "CopyTextIdToBuffer", bank: 0x0C, addr: 0x5772, regs: () => { const id = 0x1105 + rnd(0x20), de = 0xC400 + rnd(0x100); return { h: id >> 8, l: id & 0xFF, c: 1 + rnd(7), d: de >> 8, e: de & 0xFF }; }, js: (w, r) => R0C.copyTextIdToBuffer(w, r.h << 8 | r.l, r.c, r.d << 8 | r.e) });
+CASES.push({ name: "TestProfileHoleBit", bank: 0x0C, addr: 0x57E7, regs: () => ({ b: rnd(5), c: rnd(0x18) }), out: ["a", "b", "c"], js: (w, r) => ({ a: R0C.testProfileHoleBit(w, r.b, r.c), b: r.b, c: r.c }) });
+CASES.push({ name: "FillBytes2", bank: 0x0C, addr: 0x6794, regs: () => { const hl = 0xC400 + rnd(0x100); return { a: rnd(256), c: rnd(256), h: hl >> 8, l: hl & 0xFF }; }, out: ["h", "l", "c"], js: (w, r) => { const hl = R0C.fillBytes2(w, r.h << 8 | r.l, r.c, r.a); return { h: hl >> 8, l: hl & 0xFF, c: 0 }; } });
+CASES.push({ name: "RedrawStatsFrame", bank: 0x0C, addr: 0x55B7, init: w => { statsState(w); w.wram[0].fill(0, 0x36A, 0x372); },   // (a fresh glyph pen)
+   js: w => sync(R0C.redrawStatsFrame({ w, advance: function* () { yield; }, sound: () => {} })) });
 for (const c of U.FUZZ || []) CASES.push(c(rnd));
 
 const hx = v => v.toString(16).padStart(2, "0");
