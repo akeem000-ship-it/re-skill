@@ -118,6 +118,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + Status (0B:4D9D) with bank 07's menus, the records queries of bank 0B, the records screens of bank 0C (stars, stats, VS results, shot records, ranking, winners, best scores), the match card's holes-up line (48:4724) | 205,082 | 84.50% |
 | + map $08's tutors (the dictionary by category), the film select's bank-0D copies, the fuzzed copies and helpers (the map tile animation of banks 29-74, the launch speed classes of banks 38-3A, bank 40's math copies, home-bank helpers; web/tests/golf_fuzz_routines.mjs) | 211,301 | 87.07% |
 | + more fuzz-checked helpers and dead routines (banks 02 0A 0B 0C 10 3E 48) | 212,510 | 87.56% |
+| + the clubhouse door animations the screen cases open (32:6087 / 6150 / 6219) | 212,777 | 87.67% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
