@@ -81,6 +81,7 @@ export function engine(P) {
   E.rules = P.rules || null;                                              // EXHIBITION RULES (modes.js); null = the game's
   E.partnerCmd = P.partnerCmd || null;                                    // PARTNER (modes.js): the doubles partner's command, or null
   E.analog = P.analog || null;                                            // ANALOG (chars.js): the stick's angle and tilt, or null
+  E.learnProfile = P.learnProfile || null;                               // PLAY+ SCOUTING (learn.js): your habits, kept by full.js
   E.plus = P.plus || null;                                                // PLAY+ (engine/plus.js); null = the game's rules                                          // PHYSICS: Enhanced (engine/enhanced.js); null = the game's own ball
   return E;
 }

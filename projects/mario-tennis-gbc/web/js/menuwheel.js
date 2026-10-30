@@ -96,7 +96,7 @@ const OPTION_CATS = [
   ["STADIUM", "the court, the crowd, the effects", ["stadiumbtn", "stadiumqbtn", "seasonbtn", "venuetourbtn", "courtbtn", "farendbtn", "crowdsndbtn", "ballfxbtn", "matchfxbtn", "kitbtn", "introbtn", "vsbtn", "callsbtn", "aimbtn"]],
   ["MENUS & TEXT", "how menus and words are drawn", ["uibtn", "fontbtn", "sprbtn"]],
   ["MODES", "exhibition rules, rematch, practice, partner, text", ["mode-sets", "mode-games", "mode-tiebreak", "mode-noAd", "mode-rematch", "mode-machine", "mode-mgHard", "mode-partner", "mode-fastText", "recordsbtn"]],
-  ["PLAY", "the rules, the feel, the controls", ["physbtn", "netbtn", "plusbtn", "tourlenbtn", "runaheadbtn", "padmode", "stickfeelbtn", "vibratebtn", "batterybtn", "tourplusbtn", "tourbtn"]],
+  ["PLAY", "the rules, the feel, the controls", ["physbtn", "netbtn", "plusbtn", "learnbtn", "forgetbtn", "tourlenbtn", "runaheadbtn", "padmode", "stickfeelbtn", "vibratebtn", "batterybtn", "tourplusbtn", "tourbtn"]],
 ];
 const OPTION_NAMES = { resbtn: "RESOLUTION", view3d: "3D VIEW", aspect: "SCREEN", cam: "CAMERA", padmode: "TOUCH PAD", lightbtn: "LIGHT", uibtn: "MENUS", sprbtn: "SPRITES" };
 // the BACKDROP's court in perspective, seen from behind the near baseline (a camera 6 m back, its eye about 3.7 m up): u across

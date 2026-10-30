@@ -38,6 +38,7 @@ import { Recorder, maskOf, packRecording, bytesToBase64, stateOf } from "./recor
 import { HDText, FONTS, FONT_ORDER, HD } from "./hdtext.js";
 import { mountCreator } from "./look/creator.js";
 import { lookEvent } from "./look/index.js";
+import { freshProfile, learnNote } from "./engine/learn.js";   // PLAY+ SCOUTING: the CPU learns how you play
 
 const $ = id => document.getElementById(id);
 const cv = $("screen"), g = cv.getContext("2d");
@@ -98,7 +99,7 @@ function flushSave() {
 }
 addEventListener("visibilitychange", () => { if (document.hidden) flushSave(); });
 addEventListener("pagehide", flushSave);
-window.__flushSave = flushSave;            // also called by the Android wrapper from onPause
+window.__flushSave = () => { flushSave(); saveLearn(); };   // also called by the Android wrapper from onPause (SCOUTING: the profile too)
 
 // ---- main loop ----
 const STEP = 1000 / 60; let acc = 0, last = 0, fps = { n: 0, r: 0, t: 0 };
@@ -276,7 +277,7 @@ addEventListener("resize", () => applyAspect());
 let preset = q.get("cam") || stored("mt-cam") || "low"; if (!PRESETS[preset]) preset = "low";
 function setView3d(on, vox = false) {
   view3d = on; $("view3d").classList.toggle("on", on); $("view3d").textContent = on ? (vox ? "VOX" : "3D") : "3D";
-  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.res = res; voxel.hdText = hd; voxel.freeCam = q.has("freecam"); attachLighting(voxel, $("hud")); attachLightPanel(voxel); if (phone) phone.applyBattery(); attachStadium(voxel, $("hud")); addCourtButton(voxel, $("hud")); addFarEndButton(voxel, $("hud")); attachCrowdSound(voxel.stadium, $("hud"), () => actx); attachBallFX(voxel, $("hud")); voxel.tour = tour; voxel.ballMidSrc = () => (port && port.physics && port.physics.mid) || null; attachIntro(voxel, $("hud")); attachMatchFx(voxel, $("hud")); attachFieldLife(voxel, $("hud")); attachCloseCall(voxel, $("hud")); attachGround(voxel, $("hud")); attachVoxStyle(voxel, $("hud")); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
+  if (on && !voxel) { try { voxel = new Voxel3D($("gl"), gb, new Rom(gb.mem.rom)); voxel.res = res; voxel.hdText = hd; voxel.freeCam = q.has("freecam"); attachLighting(voxel, $("hud")); attachLightPanel(voxel); if (phone) phone.applyBattery(); attachStadium(voxel, $("hud")); addCourtButton(voxel, $("hud")); addFarEndButton(voxel, $("hud")); attachCrowdSound(voxel.stadium, $("hud"), () => actx); attachBallFX(voxel, $("hud")); voxel.tour = tour; voxel.learnNote = () => (port && port.plus && port.plus.learn ? learnNote(port.learnProfile) : ""); voxel.ballMidSrc = () => (port && port.physics && port.physics.mid) || null; attachIntro(voxel, $("hud")); attachMatchFx(voxel, $("hud")); attachFieldLife(voxel, $("hud")); attachCloseCall(voxel, $("hud")); attachGround(voxel, $("hud")); attachVoxStyle(voxel, $("hud")); setPreset(preset); } catch (e) { console.warn("3d", e); view3d = false; $("view3d").classList.remove("on"); return; } }
   if (voxel) voxel.voxelSprites = on && vox;
   $("gl").hidden = !view3d; cv.hidden = view3d; $("cam").hidden = !view3d; $("smoothbtn").hidden = !view3d; if ($("resbtn")) $("resbtn").hidden = !view3d; if ($("ballfxbtn")) $("ballfxbtn").hidden = !view3d; if ($("voxstylebtn")) $("voxstylebtn").hidden = !(view3d && vox); if ($("lightbtn")) $("lightbtn").hidden = !view3d; if ($("stadiumbtn")) $("stadiumbtn").hidden = !view3d; if ($("crowdsndbtn")) $("crowdsndbtn").hidden = !view3d;
   try { localStorage.setItem("mt-3d", on ? (vox ? "vox" : "3d") : "off"); } catch (e) { /* private mode */ }
@@ -338,7 +339,14 @@ const netChoice = () => q.get("net") || stored("mt-net");
 // PLAY+ (engine/plus.js): momentum, stamina, serve timing, courts that play apart, net cords, the tour's difficulty curve; ?plus=on|off,
 // else the remembered choice (on by default). Through the port only.
 const plusOn = () => { const v = q.get("plus") || stored("mt-plus"); return v !== "off"; };
-const plusRules = () => (plusOn() ? { momentum: 1, stamina: 1, serve: 1, courts: 1, netcord: 1, tour: 1, wet: false } : null);
+const plusRules = () => (plusOn() ? { momentum: 1, stamina: 1, serve: 1, courts: 1, netcord: 1, tour: 1, wet: false, learn: learnOn() ? 1 : 0 } : null);
+// SCOUTING (engine/learn.js, part of PLAY+): CPU LEARNS: On / Off (?learn=on|off, else remembered; on by default); the profile of your
+// habits is kept in mt-learn-profile (saved every few seconds while it changes), learn0 is the one the session began with (meta.learn)
+const learnOn = () => { const v = q.get("learn") || stored("mt-learn"); return v !== "off"; };
+const loadLearn = () => { try { const p = JSON.parse(stored("mt-learn-profile") || "null"); return p && p.v === 1 ? { ...freshProfile(), ...p } : freshProfile(); } catch (e) { return freshProfile(); } };
+let learn0 = null, learnSaved = "";
+const saveLearn = () => { const L = port && port.learnProfile; if (!L) return; const s = JSON.stringify(L); if (s === learnSaved) return; learnSaved = s; try { localStorage.setItem("mt-learn-profile", s); } catch (e) { /* full or private */ } };
+setInterval(saveLearn, 5000);
 const tourLen = () => { const v = q.get("tourlen") || stored("mt-tourlen"); return v === "game" ? "game" : "3x3"; };
 const netMode = () => { const v = netChoice(); return v === "even" || v === "original" ? v : portMode() !== "rom" ? "even" : "original"; };
 // The JS port is the only way to play (0.35.67): the original code (CODE: ROM) is kept for the automated tests only
@@ -368,6 +376,7 @@ async function makePort(bytes) {
   P.evenNet = netMode() === "even";
   P.tourLength = tourLen();
   P.plus = plusRules();
+  P.learnProfile = loadLearn(); learn0 = { ...P.learnProfile, on: P.plus && P.plus.learn ? 1 : 0 }; learnSaved = JSON.stringify(P.learnProfile);   // SCOUTING
   return P;
 }
 function portFrame() {
@@ -447,7 +456,7 @@ $("forgetrom").addEventListener("click", () => romStore("readwrite", s => s.dele
 $("reset").addEventListener("click", () => { if (port) { location.reload(); return; } if (gb) { settle(); gb.reset(); rec.event("reset"); } });
 // ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
 // a .mtrec file (Android: Downloads/MTenn3D and the share sheet; browser: a download). Hiding the app stops and saves.
-const recMeta = () => ({ view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? (port.physics.hz === 120 ? "120" : "enhanced") : undefined, net: port ? (port.evenNet ? "even" : "original") : undefined, tourlen: port ? port.tourLength : undefined, menu: port && port.menuWheel && port.menuWheel.on ? "wheel" : "game", plus: port ? (port.plus ? "on" : "off") : undefined, rules: port && port.rules ? port.rules : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
+const recMeta = () => ({ learn: port && learn0 ? learn0 : undefined, view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? (port.physics.hz === 120 ? "120" : "enhanced") : undefined, net: port ? (port.evenNet ? "even" : "original") : undefined, tourlen: port ? port.tourLength : undefined, menu: port && port.menuWheel && port.menuWheel.on ? "wheel" : "game", plus: port ? (port.plus ? "on" : "off") : undefined, rules: port && port.rules ? port.rules : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
   port: port ? q.get("port") || "all" : undefined });
 async function saveRecording(now = false) {     // now: the app is being hidden; skip compression so it finishes at once
   if (!recording()) return; settle();
@@ -570,6 +579,20 @@ $("engbtn").textContent = ENGINE_LABEL[portMode()] || "CODE: ROM";
     if (port) port.plus = plusRules(); show();
   });
   $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b);
+}
+// SCOUTING: CPU LEARNS: On / Off (remembered; at once; a session event, so a recording replays it), FORGET ME: the profile from scratch
+{
+  const b = document.createElement("span"); b.className = "k"; b.id = "learnbtn"; b.title = "PLAY+: the CPU learns how you play (where you aim, whether you rush the net, the side it beats you on, your drops and lobs) and leans on it more the more it has seen; kept from match to match";
+  const show = () => { b.textContent = "CPU LEARNS: " + (learnOn() ? "On" : "Off"); b.classList.toggle("on", learnOn()); }; show();
+  b.addEventListener("pointerdown", () => {
+    try { localStorage.setItem("mt-learn", learnOn() ? "off" : "on"); } catch (e) { /* private mode */ }
+    const u = new URL(location.href); u.searchParams.delete("learn"); history.replaceState(null, "", u.pathname + u.search + u.hash);
+    if (port) { port.plus = plusRules(); session.event(learnOn() ? "learn:on" : "learn:off"); } show();
+  });
+  const f = document.createElement("span"); f.className = "k"; f.id = "forgetbtn"; f.title = "SCOUTING: the CPU forgets how you play and starts learning again";
+  f.textContent = "FORGET ME";
+  f.addEventListener("pointerdown", () => { if (!port || !port.learnProfile) return; Object.assign(port.learnProfile, freshProfile()); session.event("learn:reset"); saveLearn(); f.textContent = "FORGOTTEN"; setTimeout(() => { f.textContent = "FORGET ME"; }, 1500); });
+  $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b); $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(f);
 }
 // MENU: Wheel / Game (menuwheel.js): the main menu as a ball wheel over the game's own (through the port)
 menuWheel = attachMenuWheel(() => gb, () => port, $("hud"), () => hd);

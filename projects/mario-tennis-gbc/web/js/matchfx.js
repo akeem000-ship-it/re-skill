@@ -197,6 +197,8 @@ export class MatchFX {
       r.append(a, l, b); e.appendChild(r);
     }
     const lr = document.createElement("div"); lr.style.cssText = "text-align:center;margin-top:.3em;font-size:.85em;color:#ffdc5a"; lr.textContent = "LONGEST RALLY  " + T.longest + (T.longest === 1 ? " SHOT" : " SHOTS"); e.appendChild(lr);
+    const note = this.v.learnNote ? this.v.learnNote() : "";          // SCOUTING (engine/learn.js): what the CPU has noticed about you
+    if (note) { const sc = document.createElement("div"); sc.style.cssText = "text-align:center;margin-top:.25em;font-size:.78em;color:#7fd7ff;letter-spacing:.04em"; sc.textContent = note; e.appendChild(sc); }
     const r = this.v.cv.getBoundingClientRect(); e.style.left = Math.round(r.left + r.width / 2) + "px"; e.style.top = Math.round(r.top + r.height * 0.5) + "px";
     // up for 4.5 s at most (the serve or any press hides it sooner)
     e.hidden = false; e.style.opacity = "1"; clearTimeout(this.panelT); this.panelT = setTimeout(() => this.hidePanel(), 4500);

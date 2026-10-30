@@ -11,6 +11,7 @@
 // Randomness is AdvanceMatchRng (ball.js), a pure function of the ball state.
 import { advanceMatchRng, offsetFromBallLanding, SHOTTYPE_LOB } from "./ball.js";
 import { setCharTarget, checkCharNearTarget } from "./chars.js";
+import { learnHome, learnLobRoll, learnAim } from "./learn.js";   // PLAY+ SCOUTING: the CPU leans on how you play
 
 export const SHOTTYPE_DROP = 0x0B;
 export const CHARANIM_SERVE_READY = 0x10;
@@ -198,6 +199,7 @@ export function aiAimAwayFromChar(E, index) {
   E.setBank(saved);
   let h = pos >> 8;
   const r = advanceMatchRng(E) & 3;
+  const weak = E.plus ? learnAim(E, r) : 0; if (weak) { applyAim(E, weak); return; }   // PLAY+ SCOUTING: your weak side
   if (r === 1) h = ~h & 0xFF;
   else if (r !== 0 && vel) h = vel >> 8;
   applyAim(E, h & 0x80 ? 0x10 : 0x20);                               // right / left on the d-pad
@@ -220,7 +222,7 @@ function doesCharGroupRowContain(E, style, b) {
 function aiPickShotButtons(E) {
   const C = E.C, S = E.S;
   if (S.landingMarkerActive && doesCharGroupRowContain(E, C.aiServeStyle, AISHOT.NEUTRAL)) { C.aiShotButtons = AISHOT.NEUTRAL; return; }
-  if (!(advanceMatchRng(E) & 1) && !(U16(ABS16(S.ballRelCharDepth) + 0xFEC0) & 0x8000) && doesCharGroupRowContain(E, C.aiServeStyle, AISHOT.LOB)) {
+  if ((E.plus ? learnLobRoll(E, advanceMatchRng(E)) : !(advanceMatchRng(E) & 1)) && !(U16(ABS16(S.ballRelCharDepth) + 0xFEC0) & 0x8000) && doesCharGroupRowContain(E, C.aiServeStyle, AISHOT.LOB)) {
     let lob;
     if (S.matchIsDoubles) lob = !(advanceMatchRng(E) & 3);
     else {
@@ -249,7 +251,8 @@ function aiChooseHomePosition(E) {
   const C = E.C;
   const baseline = () => 0x0460, mid = () => 0x0180, net = () => ABS16(C.posDepthInt);
   const depth = dispatch(E, [baseline, net, mid, mid, mid, baseline, mid, mid], C.aiPositionStrategy, "wAiPositionStrategy");
-  aiSetMirroredTarget(E, U16(E.S.ballTargetX >> 2), depth);
+  const [x, d] = E.plus ? learnHome(E, U16(E.S.ballTargetX >> 2), depth) : [U16(E.S.ballTargetX >> 2), depth];   // PLAY+ SCOUTING
+  aiSetMirroredTarget(E, x, d);
 }
 // 08:7CED AiReturnToPositionPhase
 function aiReturnToPositionPhase(E) {
