@@ -170,7 +170,7 @@ function getSpeakerVoice(w, a) {
 
 // 05:4B20 OpenMessageWindow: d e = screen tile, b c = size: BeginWindowText, the box ($D825-$D828, the position
 // relative to the scroll), a buffered window (priority 2) made wMessageWindow
-function* openMessageWindow(sh, d, e, b, c) {
+export function* openMessageWindow(sh, d, e, b, c) {
   const w = sh.w;
   setW(w, 5);
   yield* W.beginWindowText(sh);
@@ -315,7 +315,7 @@ export function* showMessageKeepOpen(sh, hl, a) { yield* showMessageBody(sh, hl,
 
 // 05:44E3 RestoreMapUnderWindow: slot a: the map rows under it copied back into the shadow (rows from y, + 32 when
 // the scroll's row is not below it)
-function restoreMapUnderWindow(w, a) {
+export function restoreMapUnderWindow(w, a) {
   const rec = T.getWindowRecord(w, a);
   let b = rd(w, rec + 2);
   const c = rd(w, rec + 4);

@@ -8,12 +8,17 @@ import { rb, rw } from "./rom.js";
 import * as D from "./render/display.js";
 import * as Scr from "./screen.js";
 import { clearFrameTasks, registerFrameTask } from "./tasks.js";
-import { reloadFontTiles } from "./standings.js";
+import { reloadFontTiles, copyMapToScrollBuffers, initWindowSystem } from "./standings.js";
 
 const B = 0x09;
 const rd = D.rd, wr = D.wr;
 const setW = (w, n) => D.setWramBank(w, n);
 function notPorted(what) { throw new Error(`${what} is not ported`); }
+function* inBankGen(w, bank, g) {
+  const old = w.high[0x195];
+  w.high[0x195] = bank;
+  try { return yield* g; } finally { w.high[0x195] = old; }
+}
 
 // 09:4916 MenuItemGfx09: slot l's picture for state h (LZ to $D000, $D100 for an odd slot, in the mapped WRAM bank)
 // queued to VRAM1 at ($A6 + l) << 8, $10 more when that has bit 3 clear
@@ -153,4 +158,98 @@ export function* linkMenu(sh) {
   Scr.beginFadeOut(w, 0x10);
   yield* Scr.waitFade(sh);
   return a;
+}
+
+// ---- the options menus (ModeSelectOptionsMenu 32:79D8, DataManageMenu 32:7A0A) ----
+// 09:7E3B MenuCopyBGToScroll: the screen's maps 09:4360 (attributes) / 09:45A0 (tiles), $400 bytes each, to WRAM1
+// $D000 / $D400 and into the scroll buffers (00:0804)
+function menuCopyBGToScroll(w) {
+  const old = w.high[0x196];
+  setW(w, 1);
+  D.copyMemoryFast(w, 0x4360, 0xD000, 0x40);
+  D.copyMemoryFast(w, 0x45A0, 0xD400, 0x40);
+  copyMapToScrollBuffers(w);
+  setW(w, old);
+}
+
+// 09:7AD5 MenuScreenInitAlt: as MenuScreenInit09 (the font not reloaded; LCD off before the frame tasks are cleared),
+// with the screen's tiles 09:7BAC and palettes 09:7E03 / 09:7E33; then InitWindowSystem (05:407A, the WRAM bank
+// kept) and MenuCopyBGToScroll
+export function* menuScreenInitAlt(sh, hl, d, e, b) {
+  const w = sh.w;
+  setW(w, 6);
+  wr(w, 0xD205, b);
+  wr(w, 0xD200, hl & 0xFF); wr(w, 0xD201, hl >> 8);
+  wr(w, 0xD202, d); wr(w, 0xD203, e);
+  D.disableLCDSafely(w);
+  w.high[0x18A] = w.high[0x18B] = 0;
+  clearFrameTasks(w);
+  const extra = rw(B, (r16(w, 0xD200) + 0x28) & 0xFFFF);
+  setW(w, 1);
+  D.lzTo(w, B, extra, 0xD000);
+  D.queueAndRunVRAMCopy(w, 0xD000, 0x8E00, 0x14);
+  D.lzTo(w, B, 0x7BAC, 0xD000);
+  D.queueVRAMCopy(w, 0xD000, 0xB000, 0x80);
+  D.queueAndRunVRAMCopy(w, 0xD800, 0xA800, 0x80);
+  D.loadPalettesMasterOnly(w, 0x7E03, 0x02, 0x06);
+  D.loadPalettesMasterOnly(w, 0x7E33, 0x0C, 0x01);
+  D.queueVRAMCopy(w, 0x4360, 0xB800, 0x24);
+  D.queueAndRunVRAMCopy(w, 0x45A0, 0x9800, 0x24);
+  setW(w, 6);
+  for (let l = 0; l < 10; l++) {
+    menuItemGfx(w, 1, l);
+    D.processVRAMCopyQueue(w);                   // 00:04DE
+    menuItemAttrs(w, 0x0B, l);
+    D.processVRAMCopyQueue(w);
+  }
+  registerFrameTask(w, 0x01, B, 0x4990);         // MenuBobSpriteTask09
+  D.enableLCD(w);
+  const old = w.high[0x196];
+  yield* inBankGen(w, 0x05, initWindowSystem(sh));   // 05:407A
+  setW(w, old);
+  menuCopyBGToScroll(w);
+}
+
+// 09:5AC5 MenuTwoItems (export 2): the menu 09:5AF6 (2 items from slot 1; the dictionary, data management) from the
+// cursor $CAB9 (kept unless B); fades in and out; returns the item or $FF
+export function* menuTwoItems(sh) {
+  const w = sh.w;
+  yield* menuScreenInitAlt(sh, 0x5AF6, 0x02, 0x01, 0x00);
+  Scr.beginFadeIn(w, 0x10);
+  yield* Scr.waitFade(sh);
+  setW(w, 6);
+  const a = yield* menuSelect(sh, rd(w, 0xCAB9));
+  if (!(a & 0x80)) wr(w, 0xCAB9, a);
+  Scr.beginFadeOut(w, 0x10);
+  yield* Scr.waitFade(sh);
+  return a;
+}
+
+// 09:6A74 MenuThreeItems (export 6): the menu 09:6AC0 (3 items: copy, erase, erase all) from the cursor $CABA (kept
+// unless B); fades in, not out; returns the item or $FF
+export function* menuThreeItems(sh) {
+  const w = sh.w;
+  yield* menuScreenInitAlt(sh, 0x6AC0, 0x03, 0x01, 0x00);
+  Scr.beginFadeIn(w, 0x10);
+  yield* Scr.waitFade(sh);
+  setW(w, 6);
+  const a = yield* menuSelect(sh, rd(w, 0xCABA));
+  if (!(a & 0x80)) wr(w, 0xCABA, a);
+  return a;
+}
+
+// 09:6A9B RedrawMenuThreeItems (export 8): fade out, the default palettes (01:41B3), the menu 09:6AC0 drawn again, fade in
+export function* redrawMenuThreeItems(sh) {
+  const w = sh.w;
+  Scr.beginFadeOut(w, 0x10);
+  yield* Scr.waitFade(sh);
+  D.disableLCDSafely(w);
+  D.inBank(w, 0x01, () => {                      // 01:41B3 LoadDefaultPalettes
+    D.loadPalettesMasterOnly(w, 0x50A0, 0x00, 0x08);
+    D.loadPalettesMasterOnly(w, 0x50E0, 0x08, 0x08);
+  });
+  D.enableLCD(w);
+  yield* menuScreenInitAlt(sh, 0x6AC0, 0x03, 0x01, 0x00);
+  Scr.beginFadeIn(w, 0x10);
+  yield* Scr.waitFade(sh);
 }

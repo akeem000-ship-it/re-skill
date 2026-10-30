@@ -164,6 +164,17 @@ export function openWindowBuffered(w, a, d, e, b, c) {
   return openWindowRecord(w, a, (0xD900 + n * 0x11D) & 0xFFFF, d, e, b, c);
 }
 
+// 05:4AF2 OpenWindow: d e = screen tile, b c = size: BeginWindowText, a buffered window (priority 2) at that tile
+// from the scroll; returns wLastOpenedWindow (WRAM5 left mapped)
+export function* openWindow(sh, d, e, b, c) {
+  const w = sh.w;
+  setW(w, 5);
+  yield* beginWindowText(sh);
+  const [sd, se] = getScrollTilePos(w);
+  openWindowBuffered(w, 2, (d + sd) & 0x1F, (e + se) & 0x1F, b, c);
+  return rd(w, 0xD820);
+}
+
 // 05:48CE FreeWindowSlot: a = slot: its buffer freed (FreeWindowBuffer is given the slot number: a slot whose
 // number is not a used buffer stays as it is), the slot cleared, the count down; a menu window pops the menu stack
 // (the cursor back from the entry below, the rows and window from the new top)

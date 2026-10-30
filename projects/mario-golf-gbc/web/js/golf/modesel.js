@@ -19,6 +19,7 @@ import { gameModeSelect, courseSelect, courseHoleSelect } from "./select.js";
 import { golfSessionEnd, scriptEnd } from "./boot.js";
 import * as St from "./start.js";
 import * as Sv from "./save.js";
+import { modeSelectOptionsMenu } from "./options.js";
 
 const rd = D.rd, wr = D.wr;
 const setW = (w, n) => D.setWramBank(w, n);
@@ -74,6 +75,21 @@ function buildGolferListBySave(w, de) {
   }
   wr(w, 0xC818, 0);
 }
+// 02:5B5B BuildSaveSlotList (export $50): the list at de (WRAM6): the 3 save slots (02:5B38 LoadSaveSlotGolfer: the
+// slot's character into $C800 and SetupPlayerGolfer $80, entry b = c = the slot; an empty or bad one 02:5A24
+// ListEmptyEntry: $C890 = $FF, b = $0F), then 7 empty entries; wOptionFlags $C818 = 0; returns the slots used
+export function buildSaveSlotList(w, de) {
+  setW(w, 6);
+  let n = 0;
+  for (let s = 0; s < 3; s++) {
+    if (Sv.saveBlockLoad(w, s, 0xC800)) { wr(w, 0xC890, 0xFF); writeGolferListEntry(w, de, 0x0F, s); }
+    else { St.setupPlayerGolfer(w, 0x80, 0x00); writeGolferListEntry(w, de, s, s); n++; }
+  }
+  for (let k = 3; k < 10; k++) { wr(w, 0xC890, 0xFF); writeGolferListEntry(w, de, 0x0F, k); }
+  wr(w, 0xC818, 0);
+  return n;
+}
+
 // 02:5985 BuildGolferListByFlags: the opponents: 3 empty entries (02:5A24), Luigi, then golfers 8, 4, 5, 6, 7, $0A
 // by the game flags #139, -, #80, #82, #84, #117 (02:5A07; or hUnlockAll)
 function buildGolferListByFlags(w, de) {
@@ -130,6 +146,7 @@ export function* modeSelectMain(sh) {
       wr(w, 0xC33F, 0);
       const r = yield* inBankGen(w, 0x09, linkMenu(sh));
       if (r === 0xFF) { at = "title"; titleArg = 0xFF; continue; }
+      if (r === 3) { yield* modeSelectOptionsMenu(sh); continue; }   // 32:54F2 (32:79D8), then 32:5080 again
       if (r !== 0) notPorted(`the link menu's item ${r} (~32:509F)`);
       at = "player";
     }

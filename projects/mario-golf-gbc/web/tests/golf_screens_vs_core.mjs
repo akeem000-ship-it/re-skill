@@ -291,6 +291,44 @@ function pausePolicy(script, menus = frontEndPolicy) {
   };
 }
 
+// steps run one after another: [cond, bits, delay] waits until cond() (null: at once), then `delay` frames (default
+// 40), then presses bits for one frame; after the last step stepsDone is set (the frame). Start on the title first.
+let stepsDone = -1;
+function stepPolicy(steps) {
+  let k = 0, at = -1;
+  return f => {
+    frameNow = f;
+    if (f === 0) { k = 0; at = -1; stepsDone = -1; }
+    if (f < 2600) return 0;
+    if (f === 2600) return 8;
+    const s = steps[k];
+    if (!s) { if (stepsDone < 0) stepsDone = f; return 0; }
+    if (!Array.isArray(s)) {                     // {press, every, until}: presses until until()
+      if (s.until()) { k++; at = -1; return 0; }
+      if (at < 0) at = f;
+      if ((f - at) % s.every) return 0;
+      return s.press;
+    }
+    const [cond, bits, delay = 40] = s;
+    if (cond && !cond()) { at = -1; return 0; }   // (cond must hold for the whole delay)
+    if (at < 0) at = f;
+    if (f < at + delay) return 0;
+    k++; at = -1;
+    if (process.env.STEPS) console.error("STEP", k, f, bits);
+    return bits;
+  };
+}
+const menu09Items = n => () => menuW && hasTask(menuW, 0x09, 0x4990) && menuW.wram[6][0x202] === n;
+const menuReady = n => () => menu09Items(n)() && !menuW.wram[5][0x822] && !menuW.high[0x1A2] && !menuW.high[0x1BC];
+const msgOpen = () => menuW && hasTask(menuW, 0x09, 0x4990) && menuW.wram[5][0x822] > 0 && !hasTask(menuW, 0x05, 0x4F20);
+const inDict = () => menuW && hasTask(menuW, 0x3F, 0x58DD);
+const dictPage = p => () => inDict() && !!(menuW.wram[6][0x613] & 2) === (p === "list") && !(menuW.wram[6][0x613] & 1);
+const inCharSel = () => menuW && hasTask(menuW, 0x06, 0x65D9);
+const inCharPrompt = () => menuW && hasTask(menuW, 0x41, 0x6E3B);
+const inMenuCursor = () => menuW && hasTask(menuW, 0x05, 0x4F20);
+// the link menu: Up (to Options, the last item), A
+const TO_OPTIONS = [[menu09Items(4), 0x40], [null, 1]];
+
 // name, the state (round, routine), the native routine, buttons
 // a Yes / No question answered No: A until the menu's cursor task (05:4F20), Down, A
 const ynNo = [{ press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 0x80], [30, 0], [2, 1]];
@@ -1067,6 +1105,26 @@ const CASES = [
       "hole:3": [[160, 8], [200, 0x40], [230, 1]] }, frontEndRights(1)) },
   // the same into the round, two holes (the saved character's round: SaveGameMidRound at each hole's start), A every
   // 40 frames for the swings
+  // Options (32:79D8): the golf dictionary from the index (3F:4002 mode 6): the greeting read, letters moved, a
+  // letter's list, rows and letters moved, an explanation read, back to the index, out; B out of Options
+  { name: "boot_options_dict", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 30000,
+    run: sh => { stepsDone = -1; return gameCase(sh, 1, () => stepsDone >= 0 && frameNow > stepsDone + 200); },
+    policy: stepPolicy([...TO_OPTIONS, [menu09Items(2), 1],
+      [inDict, 0, 100], {press: 1, every: 40, until: dictPage("index")}, [dictPage("index"), 0x10], [null, 0x80], [null, 0x10],
+      [null, 0x20], [null, 0x40], [null, 1],
+      [dictPage("list"), 0x80], [null, 0x80], [null, 0x80], [null, 0x80], [null, 0x80], [null, 0x80],
+      [null, 0x80], [null, 0x40], [null, 0x10], [null, 0x10], [null, 0x20], [null, 0x40],
+      [null, 0x40], [null, 1], {press: 1, every: 40, until: dictPage("list")},
+      [dictPage("list"), 2], [dictPage("index"), 0x80], [null, 2], [menu09Items(2), 2]]) },
+  // Options, data management (32:7A0A): copy Kid (to slot 1), erase the copy, erase all answered No, then Yes
+  { name: "boot_options_data", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 30000,
+    run: sh => { stepsDone = -1; return gameCase(sh, 1, () => stepsDone >= 0 && frameNow > stepsDone + 200); },
+    policy: stepPolicy([...TO_OPTIONS, [menuReady(2), 0x80], [null, 1],
+      [menuReady(3), 1], [inCharSel, 1, 60], [inCharPrompt, 1, 60], [msgOpen, 1, 60],
+      [menuReady(3), 0x80], [null, 1], [inCharSel, 0x10, 60], [null, 1], [inCharPrompt, 0x40, 60], [null, 1, 30], [msgOpen, 1, 60],
+      [menuReady(3), 0x80], [null, 1], [inMenuCursor, 1, 60],
+      [menuReady(3), 1], [inMenuCursor, 0x40, 60], [null, 1, 30], [msgOpen, 1, 120],
+      [menuReady(2), 2]]) },
   { name: "boot_kid_round", state: "boot_poweron_kid", open: true, noRet: true,
     run: sh => (function* () {
       menuW = sh.w;

@@ -114,6 +114,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the Golf Guru's Pitch and Putt (map $2C) and Raven Woods (map $29: the crow, the hat, the pin shot with its frame tasks) | 178,554 | 73.57% |
 | + the Golf Clinic (map $2D: the judged shot and the coaches' comments) and the hidden friends (33:445F, 30:6942, the bonus) | 179,874 | 74.12% |
 | + the Alternate Game (the Dune green's golfers, maps $2A / $2B, 30:6F42-30:7D02), the staff roll after the Links or the game cleared (31:782F, 41:7E07, 40:66B5), the cover-up scene (32:7533), a save's pending EXP (32:5139), the ball's unmasked map reads, the Links-unlocked warp at the mode select (32:5304) | 187,241 | 77.15% |
+| + Options (32:79D8): the golf dictionary (bank 3F), data management (32:7A0A: copy, erase, erase all), bank 09's option menus | 191,890 | 79.07% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -339,6 +340,38 @@ addresses. Not ported: the story beyond the first day (the map engine's event lo
 the map's event loop after an enter script that asks no warp. A new character is made natively (see "The map engine
 and the story"). Saved characters load
 and save (see "Saved games").
+
+#### Options: the golf dictionary and data management (options.js, dict.js, menu09.js)
+
+LinkMenu's item 3 (32:54F2) runs ModeSelectOptionsMenu 32:79D8: MenuTwoItems 09:5AC5 (menu 09:5AF6, cursor $CAB9)
+with MenuScreenInitAlt 09:7AD5 (the screen 09:7BAC / palettes 09:7E03, InitWindowSystem, MenuCopyBGToScroll
+09:7E3B: the BG maps into the scroll buffers so that windows can be drawn over it). Item 0 is the golf dictionary
+(GolfDictionary 3F:4002, mode 6), item 1 DataManageMenu 32:7A0A: MenuThreeItems 09:6A74 (menu 09:6AC0, cursor $CABA,
+no fade-out); Copy and Erase list the save slots (BuildSaveSlotList 02:5B5B: three slots by SaveBlockLoad, seven
+empty entries; "No data" $14A6 when none, "no free slot" $14A7 for Copy with three) in the character select (b = 1),
+ask CharYesNoPrompt 41:6784 (a = 1 / 2), and Copy loads the character again into the first free block
+(FindFreeSaveBlock 32:7D10: SaveBlockLoad of each, leaving the last one tried in $C800), sets wSaveSlot, restores
+its play clock, writes five random bytes (the seed's high byte) as its ID at $C80B and saves (SaveGame); Erase
+clears the block (SaveBlockClear). Erase All asks with the Yes / No menu (OpenMenuWindow text $1A, cursor on No) and
+then SaveReset 02:424D, SaveLoad, SaveCheckAllBlocks and wMainMenuCursor $CABB = 0, and returns to the options
+menu. The messages are OpenWindow 05:4AF2 windows (2, 1 or $0B, 16 x 5) closed by CloseWindow in whatever WRAM bank
+is mapped. Quirk: Erase All runs RefreshWindowText / CopyWindowToVRAM on slot 1 (the a left from `ld a, 1` for
+wMenuInitCursor), which is the menu's slot only because the text window took slot 0.
+The dictionary (dict.js; also map $08's tutors with modes 0-5, see bank 33): DictEntryTable 3F:5DFC (one byte per
+entry: its category bit, $00 between first letters, $40 at the end, and a $40 at 3F:5DFB that stops the backward
+scans), names $1A2B + n, explanations $1AE7 + n, category hints $1A1E + c, the greeting $1A23. The A-Z index (view
+column $21) and the list of six names (column $0D, printed with PrintTextToBuffer at WRAM3 $D150 + $80 k and copied
+a row a frame by DictCopyNameRow 3F:6142) share one 64-wide map (3F:4565); a page change fades out, redraws with
+MapDrawFullScreen and fades in. The list's A shows the explanation in a message window opened by
+OpenMessageWindowVRAM1 05:4B63 (glyphs in the other VRAM bank, flag #27 around RefreshWindowText) after
+ResetWindowsAndMap 05:6701; the host's face and the cursors are DictFrameTask 3F:58DD's sprites. Quirks kept:
+DictFindLetterStart 3F:5ED2 tests the separator after masking, so in a one-category mode an entry of another
+category counts as a letter break; in mode 5 the list's A shows the category hint instead of the explanation
+(wDictHintMode); DictScrollStepUnused 3F:41DC is never called.
+Checked by `golf_screens_vs_core.mjs boot_options_dict` (the greeting, the index moved in all four directions, a
+letter's list scrolled both ways past its ends, Left / Right letters, an explanation read through, back to the index
+and out) and `boot_options_data` (Copy Kid, Erase the copy, Erase All answered No, then Yes): all frames match but
+the ones after lag frames, all RAM and the save RAM at the end.
 
 #### Saved games (web/js/golf/save.js; web/tests/golf/coreplay.mjs)
 

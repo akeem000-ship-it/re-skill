@@ -48,6 +48,8 @@ export function saveCommit(w) {                  // 02:41C1 SaveCommit: the sum 
   w.sram.copyWithin(S(0xB620), S(0xA020), S(0xA020) + 0x1A0);
 }
 const saveVerify = w => saveChecksum(w) !== (w.sram[0x30] | w.sram[0x31] << 8);   // 02:41E1 SaveVerify
+// 02:424D SaveReset: SaveErase, SaveWriteDefaults, SaveCommit (RAM bank 0)
+export function saveReset(w) { bankReg(w, 0); saveErase(w); saveWriteDefaults(w); saveCommit(w); }
 // 02:41F6 SaveLoad: the signature and sum, else the backup's, else erased and reset
 export function saveLoad(w) {
   bankReg(w, 0);
