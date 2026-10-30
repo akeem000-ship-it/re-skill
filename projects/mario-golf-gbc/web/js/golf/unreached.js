@@ -6,6 +6,7 @@ import * as M from "./math.js";
 import { rb } from "./rom.js";
 import { rd, wr } from "./render/display.js";
 import { dist24 } from "./cup.js";
+import { loadText } from "./text.js";
 
 // 40:5AA9 MulHLByDE_40 (unreferenced; the same code as 00:0CB5 MulHLByDE, its jumps relative): the high 16 bits of hl x de;
 // the whole 32-bit product left in HRAM $FFA8-$FFAB (low byte first)
@@ -90,3 +91,26 @@ export const divATen = a => M.divHLByDE(a, 10) & 0xFF;
 export const modATen = a => (((a - 10) & 0x80) ? a : (a - ((M.divHLByDE(a, 10) * 10) & 0xFF)) & 0xFF);
 // 3E:6342 MatchScoreToWord: a score byte to a word, $91 and up negative
 export const matchScoreToWord = a => (a >= 0x91 ? 0xFF00 | a : a);
+// 10:4C4C SetForcedShotD (export $28): as SetForcedShot 10:4C36 (the club e, the aim bc) with $D4EB / $D4EC = d
+// (WRAM6 left mapped)
+export function setForcedShotD(w, bc, d, e) {
+  w.high[0x196] = 6;
+  const r6 = w.wram[6];
+  r6[0x4E7] = 1; r6[0x4E8] = e; r6[0x4E9] = bc & 0xFF; r6[0x4EA] = bc >> 8; r6[0x4EB] = d; r6[0x4EC] = d;
+}
+// 0A:531F MapCount / 0A:5336 MapIdAt (the debug warp menu 05:6C25): MapTable 0A:5188's records (6 bytes, $FF ends)
+export function mapCount() { let b = 0xFF; for (let hl = 0x5188; ; hl += 6) { const a = rb(0x0A, hl); b = (b + 1) & 0xFF; if (a === 0xFF) return b; } }
+export const mapIdAt = a => rb(0x0A, (0x5188 + a * 6) & 0xFFFF);
+// 0A:5675 PalOffset: hl + b x 8 (8-bit steps with their carries; PalFadeSetup's palette address)
+export function palOffset(hl, b) { for (; b; b = (b - 1) & 0xFF) hl = ((hl & 0xFF00) + ((hl & 0xFF) + 8)) & 0xFFFF; return hl; }
+// 48:4D4C CopyTextToWram1D800 (unreferenced): text hl loaded (05:6179, WRAM5 mapped) and copied from $C600 to WRAM1
+// $D800 with its $00 (WRAM1 left mapped)
+export function copyTextToWram1D800(w, hl) {
+  w.high[0x196] = 5;
+  loadText(w, hl);
+  for (let s = 0xC600, d = 0xD800; ; s++, d++) {
+    w.high[0x196] = 5; const b = rd(w, s);
+    w.high[0x196] = 1; wr(w, d, b);
+    if (!b) break;
+  }
+}

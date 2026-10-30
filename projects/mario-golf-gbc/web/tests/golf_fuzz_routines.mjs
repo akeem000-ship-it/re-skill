@@ -7,11 +7,12 @@ import { GolfMemory } from "../js/golf/memory.js";
 import { newCore, romCall, romBytes, loadCore } from "./golf/romcall.mjs";
 import { mapTileAnimStart, mapTileAnimTask, mapTileAnimStep, mapTileAnimStop } from "../js/golf/mapgfx.js";
 import { holeTileAnimStep } from "../js/golf/render/holeview.js";
-import { speedTable } from "../js/golf/launch.js";
+import { speedTable, powerScaleLookup } from "../js/golf/launch.js";
 import * as M from "../js/golf/math.js";
 import * as U from "../js/golf/unreached.js";
 import * as H from "../js/golf/home.js";
 import * as R0C from "../js/golf/records0c.js";
+import { loadText } from "../js/golf/text.js";
 
 useRom(romBytes());
 const filter = process.argv.slice(2).find(a => !/^\d+$/.test(a)) || "";
@@ -125,6 +126,14 @@ CASES.push({ name: "TestProfileHoleBit", bank: 0x0C, addr: 0x57E7, regs: () => (
 CASES.push({ name: "FillBytes2", bank: 0x0C, addr: 0x6794, regs: () => { const hl = 0xC400 + rnd(0x100); return { a: rnd(256), c: rnd(256), h: hl >> 8, l: hl & 0xFF }; }, out: ["h", "l", "c"], js: (w, r) => { const hl = R0C.fillBytes2(w, r.h << 8 | r.l, r.c, r.a); return { h: hl >> 8, l: hl & 0xFF, c: 0 }; } });
 CASES.push({ name: "RedrawStatsFrame", bank: 0x0C, addr: 0x55B7, init: w => { statsState(w); w.wram[0].fill(0, 0x36A, 0x372); },   // (a fresh glyph pen)
    js: w => sync(R0C.redrawStatsFrame({ w, advance: function* () { yield; }, sound: () => {} })) });
+// more helpers (unreached.js, launch.js)
+CASES.push({ name: "PowerScaleLookup", bank: 0x10, addr: 0x6DAE, out: ["h", "l"], js: w => { const hl = powerScaleLookup(w); return { h: hl >> 8, l: hl & 0xFF }; } });
+CASES.push({ name: "SetForcedShotD", bank: 0x10, addr: 0x4C4C, regs: () => ({ b: rnd(256), c: rnd(256), d: rnd(256), e: rnd(256) }), js: (w, r) => U.setForcedShotD(w, r.b << 8 | r.c, r.d, r.e) });
+CASES.push({ name: "MapCount", bank: 0x0A, addr: 0x531F, out: ["a"], js: () => ({ a: U.mapCount() }) });
+CASES.push({ name: "MapIdAt", bank: 0x0A, addr: 0x5336, regs: () => ({ a: rnd(0x40) }), out: ["a"], js: (w, r) => ({ a: U.mapIdAt(r.a) }) });
+CASES.push({ name: "PalOffset", bank: 0x0A, addr: 0x5675, regs: () => ({ b: rnd(16), h: rnd(256), l: rnd(256) }), out: ["h", "l"], js: (w, r) => { const hl = U.palOffset(r.h << 8 | r.l, r.b); return { h: hl >> 8, l: hl & 0xFF }; } });
+CASES.push({ name: "CopyTextToWram1D800", bank: 0x48, addr: 0x4D4C, regs: w => { let id; for (;;) { id = 0x1105 + rnd(0x40); const t = new GolfMemory(); t.wram[0].fill(1); try { loadText(t, id); } catch (e) { continue; } if (t.wram[0].subarray(0x600, 0x800).includes(0)) break; } return { h: id >> 8, l: id & 0xFF }; },   // (a text that ends in the buffer)
+  js: (w, r) => U.copyTextToWram1D800(w, r.h << 8 | r.l) });
 for (const c of U.FUZZ || []) CASES.push(c(rnd));
 
 const hx = v => v.toString(16).padStart(2, "0");

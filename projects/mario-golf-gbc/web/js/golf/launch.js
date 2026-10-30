@@ -153,13 +153,16 @@ function shapeSpeed(hl, a) {                     // 08:60BC ShapeSpeed
   return f ? (hl + g.mulHLByAFrac(hl, f)) & 0xFFFF : hl;
 }
 
+// 10:6DAE PowerScaleLookup: the word at [wSwingPower] & $FE of the table PowerScaleTable 10:6DCD picks by $D32B & 3
+export function powerScaleLookup(w) {
+  const r6 = w.wram[6];
+  const t = rw(0x10, ptr(0x6DCD, (r6[0x32B] & 3) * 2));
+  return rw(0x10, (t + (r6[0x450] & 0xFE)) & 0xFFFF);
+}
 export function shotSpeed(w) {                   // 10:6CDB ShotSpeed
   const r6 = w.wram[6];
   const club = r6[0x329];
-  if (club === 0x0D) {                           // the putter: by range $D32B and power (10:6DCD)
-    const t = rw(0x10, ptr(0x6DCD, (r6[0x32B] & 3) * 2));
-    return rw(0x10, (t + (r6[0x450] & 0xFE)) & 0xFFFF);
-  }
+  if (club === 0x0D) return powerScaleLookup(w);   // the putter: by range $D32B and power
   let hl = baseDistance(w);
   const [d, e] = lieFactor(w);
   const total = (d + e) & 0xFF;
