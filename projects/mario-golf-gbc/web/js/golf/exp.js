@@ -437,7 +437,23 @@ function* drawCardRoundInfo(sh) {
   T.pushTextNumberArg(w, rd(w, 0xC837));         // 05:551F
   setW(w, 1);
   yield* inBankGen(w, 5, T.printTextToBuffer(sh, 0x14A0, 0xD601, 0x20));
-  if (rd(w, 0xC834) === 2) notPorted("the match card's holes-up line (~48:4724)");
+  if (rd(w, 0xC834) === 2) {
+    // 48:4724 (match play): the holes up so far: b counts wMatchHoles $C96E for the holes played (1: +1, 2: -1)
+    // from the caller's b, which is 0 (left by RegisterFrameTask's SortFrameTasks 00:24BD just before; 05:62AA and
+    // 05:551F keep bc); a playoff ($C83A) or level: $14BD; ahead: $14BB with b; behind: $14BC with -b
+    let b = 0;
+    for (let a = rd(w, 0xC837), hl = 0xC96E; a; a = (a - 1) & 0xFF, hl++) {
+      const v = rd(w, hl);
+      if (v === 1) b = (b + 1) & 0xFF; else if (v === 2) b = (b - 1) & 0xFF;
+    }
+    let id = 0x14BD;
+    if (!rd(w, 0xC83A) && b) {
+      if (b & 0x80) { T.pushTextNumberArg(w, (-b) & 0xFF); id = 0x14BC; }
+      else { T.pushTextNumberArg(w, b); id = 0x14BB; }
+    }
+    yield* inBankGen(w, 5, T.printTextToBuffer(sh, id, 0xD608, 0x20));
+    return;
+  }
   yield* inBankGen(w, 5, T.printTextToBuffer(sh, 0x14A1, 0xD608, 0x20));
   drawSignedScore(w, rd(w, 0xC8BE), 0x0C, 0x10);
 }

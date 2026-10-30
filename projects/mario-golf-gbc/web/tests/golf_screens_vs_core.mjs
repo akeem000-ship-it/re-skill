@@ -21,7 +21,7 @@ import { powerOn } from "../js/golf/boot.js";
 import { playRoundFrames } from "../js/golf/game.js";
 import { gameFromPowerOn } from "../js/golf/boot.js";
 import { GolfMemory } from "../js/golf/memory.js";
-import { saveBlockStore } from "../js/golf/save.js";
+import { saveBlockStore, saveBlockLoad } from "../js/golf/save.js";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const filter = process.argv.slice(2).find(a => !a.startsWith("--")) || "";
@@ -1054,6 +1054,27 @@ const CASES = [
   { name: "boot_kidsq_continue", state: "boot_poweron_kidsq", open: true, noRet: true, sram: true,
     run: sh => gameCase(sh, 1, () => markLog.filter(m => m.n === "aimmenu").length >= 2 && frameNow > markLog.filter(m => m.n === "aimmenu")[1].f + 300),
     policy: scriptedPolicy({}, savedPolicy(0)) },
+  // the saved round made a match (save slot 0's block poked at frame 1: game mode 2, hole `hole`, wMatchHoles
+  // $C96E from `holes`, playoff `po`): the card's holes-up line (48:4724), then B (back to the character select)
+  ...[["ahead", 9, [1, 1, 0, 2, 1, 1, 1, 2, 1], 0], ["behind", 5, [2, 2, 1, 2, 0], 0], ["level", 4, [1, 2, 2, 1], 0], ["playoff", 3, [1, 0, 0], 1]].map(([n, hole, holes, po]) => ({
+    name: `boot_kidsq_matchcard_${n}`, state: "boot_poweron_kidsq", open: true, noRet: true, sram: true,
+    hook: (f, w, core) => {
+      if (f !== 1) return;
+      const t = new GolfMemory();
+      t.sram.set(w.sram);
+      t.high[0x196] = 1;
+      if (saveBlockLoad(t, 0, 0xD000)) throw new Error("no saved block 0");
+      const m = t.wram[1];
+      m[0x034] = 2; m[0x037] = hole; m[0x03A] = po;
+      holes.forEach((v, k) => { m[0x16E + k] = v; });
+      for (let k = 0; k < 0x18; k++) m[0xE00 + k] = t.sram[0x48 + k];   // (the block's header kept)
+      saveBlockStore(t, 0, 0xD000, 0xDE00);
+      w.sram.set(t.sram);
+      core.gb.mem.sram.set(t.sram, 0);
+    },
+    run: sh => { stepsDone = -1; return gameCase(sh, 1, () => stepsDone >= 0 && frameNow > stepsDone + 200); },
+    policy: stepPolicy([[menu09Items(4), 1], [inCharSel, 1, 60], [inTask(0x48, 0x42F7), 2, 80], [inCharSel, 0, 60]]),
+  })),
   // the same, the prompts: No ("Saved data will be erased, OK?"), B (back), No, No (the first prompt again), B: the
   // character select;
   // the card again: No, Yes on the second prompt: the mode select

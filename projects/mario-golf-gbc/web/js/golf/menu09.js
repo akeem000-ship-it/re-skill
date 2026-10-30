@@ -25,7 +25,7 @@ function* inBankGen(w, bank, g) {
   try { return yield* g; } finally { w.high[0x195] = old; }
 }
 
-// 09:4916 MenuItemGfx09: slot l's picture for state h (LZ to $D000, $D100 for an odd slot, in the mapped WRAM bank)
+// 09:4916 MenuItemGfx09 (07:7D36 MenuItemGfx with MENU07): slot l's picture for state h (LZ to $D000, $D100 for an odd slot, in the mapped WRAM bank)
 // queued to VRAM1 at ($A6 + l) << 8, $10 more when that has bit 3 clear
 function menuItemGfx(w, h, l, m = MENU09) {
   const b = l;
@@ -39,7 +39,7 @@ function menuItemGfx(w, h, l, m = MENU09) {
 }
 const r16 = (w, a) => rd(w, a) | rd(w, a + 1) << 8;
 
-// 09:4949 MenuItemAttrs09: slot l's BG attribute row: 09:4400 + l x 32 to $D000 (or $D100) with bytes 2-17 = c,
+// 09:4949 MenuItemAttrs09 (07:7D69 MenuItemAttrs): slot l's BG attribute row: 09:4400 + l x 32 to $D000 (or $D100) with bytes 2-17 = c,
 // queued to VRAM1 $98A0 + l x 32
 function menuItemAttrs(w, c, l, m = MENU09) {
   const off = (l << 5) & 0xFFFF;
@@ -49,7 +49,7 @@ function menuItemAttrs(w, c, l, m = MENU09) {
   D.queueVRAMCopy(w, buf, (off + 0xB8A0) & 0xFFFF, 2);
 }
 
-// 09:48DE MenuDrawItem09 / 09:48F9 MenuItemPalette09: item l's two slots ([$D203] + 2l and the next), one frame
+// 09:48DE MenuDrawItem09 / 09:48F9 MenuItemPalette09 (07:7CFE MenuDrawItem / 07:7D19 MenuItemPalette): item l's two slots ([$D203] + 2l and the next), one frame
 function* menuDrawItem(sh, h, l, m = MENU09) {
   const w = sh.w;
   const s = (rd(w, 0xD203) + 2 * l) & 0xFF;
