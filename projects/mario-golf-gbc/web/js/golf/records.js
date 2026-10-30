@@ -310,7 +310,7 @@ export function* modeSelectMenuLoop(sh) {
       wr(w, 0xCA7F, 0);                          // wLastShotRecord
       for (;;) {
         yield* sh.advance();
-        const r = yield* inBankGen(w, 0x0C, R0C.shotRecordsScreen(sh));
+        const [r] = yield* inBankGen(w, 0x0C, R0C.shotRecordsScreen(sh));
         if (r !== 0xFE) break;
         notPorted("replaying a saved hole (~10:435E ReplaySavedHole)");
       }

@@ -378,6 +378,30 @@ function profilePoke(seed, flags = []) {
   };
 }
 
+// saved holes (save blocks 4-7, five $80-byte slots: +$10 the character, +$20 nonzero when used) poked into the save
+// RAM of both sides at frame 1: pseudo-random bytes from `seed`, slot k of block b used when `used[b - 4]` has bit k
+function shotsPoke(seed, used) {
+  return (f, w, core) => {
+    if (f !== 1) return;
+    let s = seed >>> 0;
+    const t = new GolfMemory();
+    t.sram.set(w.sram);
+    t.high[0x196] = 6;
+    for (let b = 4; b < 8; b++) {
+      const data = new Uint8Array(0x280);
+      for (let i = 0; i < data.length; i++) { s = (Math.imul(s, 1103515245) + 12345) >>> 0; data[i] = s >>> 24; }
+      for (let k = 0; k < 5; k++) {
+        data[k * 0x80 + 0x10] %= 0x0B;
+        if (!(used[b - 4] >> k & 1)) data[k * 0x80 + 0x20] = 0; else data[k * 0x80 + 0x20] |= 1;
+      }
+      t.wram[6].set(data, 0);
+      saveBlockStore(t, b, 0xD000, 0);
+    }
+    w.sram.set(t.sram);
+    core.gb.mem.sram.set(t.sram, 0);
+  };
+}
+
 // name, the state (round, routine), the native routine, buttons
 // a Yes / No question answered No: A until the menu's cursor task (05:4F20), Down, A
 const ynNo = [{ press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 0x80], [30, 0], [2, 1]];
@@ -1200,6 +1224,19 @@ const CASES = [
       ...Array(20).fill([null, 0x40, 1]), [null, 0x10, 60], [null, 0x10, 80], [null, 0x10, 80], [null, 0x10, 80],
       [null, 0x20, 80], [null, 0x20, 80], [null, 2, 80],
       [menu07Items(4), 2], [inCharSel, 2, 60], [menu07Items(2), 2], [menu09Items(4), 0]]) },
+  // Status, the shot records (0C:67F8) with no saved holes (B only), then with some (save blocks 4-7 poked): the
+  // cursor moved every way past the empty slots, B
+  { name: "boot_status_shots_empty", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 30000,
+    run: sh => { stepsDone = -1; return gameCase(sh, 1, () => stepsDone >= 0 && frameNow > stepsDone + 200); },
+    policy: stepPolicy([...TO_STATUS, [menu07Items(2), 0x80], [null, 1], [inTask(0x0C, 0x4821), 0x80, 60], [null, 2],
+      [menu07Items(2), 2], [menu09Items(4), 0]]) },
+  { name: "boot_status_shots", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 30000,
+    hook: shotsPoke(5, [0x13, 0x04, 0x1A, 0x01]),
+    run: sh => { stepsDone = -1; return gameCase(sh, 1, () => stepsDone >= 0 && frameNow > stepsDone + 200); },
+    policy: stepPolicy([...TO_STATUS, [menu07Items(2), 0x80], [null, 1], [inTask(0x0C, 0x698F), 0x80, 60],
+      [null, 0x80], [null, 0x80], [null, 0x10], [null, 0x10], [null, 0x10], [null, 0x40], [null, 0x40], [null, 0x40],
+      [null, 0x20], [null, 0x20], [null, 0x80], [null, 0x20], [null, 2],
+      [menu07Items(2), 2], [menu09Items(4), 0]]) },
   { name: "boot_kid_round", state: "boot_poweron_kid", open: true, noRet: true,
     run: sh => (function* () {
       menuW = sh.w;

@@ -11,6 +11,7 @@ import { formatDecimalNumber } from "./render/text.js";
 import { animateRecordsTiles } from "./nav.js";
 import { printHexByte } from "./match.js";
 import * as Q from "./records.js";
+import * as T from "./text.js";
 import { divAHLByDE, divHLByDE, mulHLByA } from "./math.js";
 import { mapDrawFullScreen, testCourseHoleBit } from "./scorecard.js";
 import { mapScrollTask } from "./render/holeview.js";
@@ -20,6 +21,11 @@ const rd = D.rd, wr = D.wr;
 const setW = (w, n) => D.setWramBank(w, n);
 const wbank = w => w.high[0x196];
 const R = a => rb(B, a & 0xFFFF);
+function* inBankGen(w, bank, g) {
+  const old = w.high[0x195];
+  w.high[0x195] = bank;
+  try { return yield* g; } finally { w.high[0x195] = old; }
+}
 function notPorted(what) { throw new Error(`${what} is not ported`); }
 // 00:2B54 ResumeBGM
 function resumeBGM(sh) {
@@ -801,11 +807,235 @@ export function* statsScreen(sh) {
   return a;
 }
 
+// ---- the shot records (0C:67F8): Birdie / Eagle / Albatross / Hole-in-One (the saved holes, save blocks 4-7, five
+// slots of $80 bytes each: +$10 the character, +$20 a word, 0 when empty) as a 5 x 4 grid of faces; A picks one ($FE:
+// the caller replays it, ~10:435E), B leaves ----
+// 0C:6DA3 SplitShotCursor: [$D214 / 5 (the category), $D214 mod 5 (the slot)]
+function splitShotCursor(w) {
+  let b = 0, c = w.wram[6][0x214];
+  for (let a = c; !((a = (a - 5) & 0xFF) & 0x80); b++) c = a;
+  return [b, c];
+}
+// 0C:6DC8 DrawShotInfoLine: b = the category, c = the slot: the info rows cleared (WRAM1 maps $4C:10 / $4C:0E again),
+// the category's name ($1424 + b - 1), the slot's number (2 wide at $D610) and $1423 printed (05:62AA), the glyphs
+// uploaded, the rows queued to $99E0
+function* drawShotInfoLine(sh, b, c) {
+  const w = sh.w;
+  setW(w, 1);
+  decompressDataFromBank(w, 0x4C10, 0xD000);
+  decompressDataFromBank(w, 0x4C0E, 0xD400);
+  const fill = (hl, n, a) => { for (let k = 0; k < n; k++) wr(w, hl + k, a); };   // 0C:6E7B FillBytes3
+  fill(0xD1E1, 0x0A, 0); fill(0xD1EC, 7, 0); fill(0xD201, 0x0B, 0); fill(0xD20C, 7, 0);
+  fill(0xD5E1, 0x0A, 3); fill(0xD5EC, 7, 3);
+  fill(0xD601, 0x0B, 0x20); fill(0xD60C, 7, 0x20);
+  D.inBank(w, 0x03, () => T.resetGlyphBuffer(w));   // 03:4EB8
+  yield* inBankGen(w, 0x05, T.printTextToBuffer(sh, add8(0x1424, b - 1), 0xD602, 0x20));
+  formatTo(w, c, 2, 0xD610);
+  wr(w, 0xD612, 0x20);
+  yield* inBankGen(w, 0x05, T.printTextToBuffer(sh, 0x1423, 0xD60D, 0x20));
+  yield* inBankGen(w, 0x03, T.uploadGlyphTiles(sh));   // 03:4F6C
+  D.queueVRAMCopy(w, 0xD1E0, 0xB9E0, 0x06);
+  D.queueVRAMCopy(w, 0xD5E0, 0x99E0, 0x06);
+}
+// 0C:6D76 DrawSelectedShotInfo: with a slot in use ($D215): the category's block (0B:5260) and the slot's word
+// (0B:52D2) -> DrawShotInfoLine
+function* drawSelectedShotInfo(sh) {
+  const w = sh.w, old = wbank(w);
+  setW(w, 6);
+  if (rd(w, 0xD215)) {
+    const [b, c] = splitShotCursor(w);
+    Q.loadSaveBlockByte0B(w, b);
+    resumeBGM(sh);
+    const [b2, c2] = Q.recordsSlotWord(w, c);
+    yield* drawShotInfoLine(sh, b2, c2);
+  }
+  setW(w, old);
+}
+// 0C:6C29 LoadShotRecordList: the 20 slots wRecordsList $D227: a category whose block does not load (0B:5260) all
+// $FF (0C:6C91), else (0C:6C54) $FF for an empty slot (0B:52D2) or its character (0B:5296)
+function loadShotRecordList(sh) {
+  const w = sh.w, old = wbank(w);
+  for (let c = 0; c < 4; c++) {
+    const a = Q.loadSaveBlockByte0B(w, c);
+    resumeBGM(sh);
+    const o = wbank(w);
+    setW(w, 6);
+    for (let k = 0; k < 5; k++)
+      wr(w, 0xD227 + 5 * c + k, a === 0xFF ? 0xFF : !Q.recordsSlotWord(w, k)[0] ? 0xFF : Q.recordsSlotId(w, k));
+    setW(w, o);
+  }
+  setW(w, old);
+}
+// 0C:5EF6 CopyPanelTilemapToVRAM: WRAM1 $D000 / $D400 (attributes / tiles) to the BG map in two halves, a frame
+// before each and after
+function* copyPanelTilemapToVRAM(sh) {
+  const w = sh.w;
+  setW(w, 1);
+  yield* sh.advance();
+  D.queueVRAMCopy(w, 0xD000, 0xB800, 0x12);
+  D.queueVRAMCopy(w, 0xD400, 0x9800, 0x12);
+  yield* sh.advance();
+  D.queueVRAMCopy(w, 0xD120, 0xB920, 0x12);
+  D.queueVRAMCopy(w, 0xD520, 0x9920, 0x12);
+  yield* sh.advance();
+}
+// 0C:6CBC DrawShotRecordFaces: the maps ($4C:10 / $4C:0E to WRAM1), the face of each used slot (0C:5F32) at $44 +
+// 3 x slot + $60 x category, then copied
+function* drawShotRecordFaces(sh) {
+  const w = sh.w, old = wbank(w);
+  setW(w, 1);
+  decompressDataFromBank(w, 0x4C10, 0xD000);
+  decompressDataFromBank(w, 0x4C0E, 0xD400);
+  setW(w, 6);
+  for (let c = 0; c < 4; c++) {
+    let de = 0x44;
+    for (let k = 0; k < 5; k++, de += 3) {
+      const a = rd(w, 0xD227 + 5 * c + k);
+      if (a !== 0xFF) drawRecordsFaceIcon(w, a, (((c * 3) & 0xFF) * 32 + de) & 0xFFFF);
+    }
+  }
+  yield* copyPanelTilemapToVRAM(sh);
+  setW(w, old);
+}
+// 0C:6D2D InitShotCursor: the last pick wLastShotRecord $CA7F if used, else the first used slot (20: none);
+// $D215 = 1 with a slot in use
+function initShotCursor(w) {
+  const old = wbank(w);
+  setW(w, 6);
+  let c = rd(w, 0xCA7F);
+  if (rd(w, add8(0xD227, c)) === 0xFF) {
+    for (c = 0; c < 0x14; c++) if (rd(w, 0xD227 + c) !== 0xFF) break;
+  }
+  wr(w, 0xD214, c);
+  wr(w, 0xD215, c < 0x14 ? 1 : 0);
+  setW(w, old);
+}
+// 0C:6A48 MoveShotCursor: e = Up / Left / Down / Right: the cursor to the next used slot that way in the 5 x 4 grid
+// (wrapping; sound $5B); quirk: the tries' count is always 5 (its compare's jumps are unconditional), and Up's is
+// reset to 2 each try (it goes on until a used slot); the last slot tried is taken even when empty; kept in $CA7F
+function* moveShotCursor(sh, e) {
+  const w = sh.w;
+  sh.sound(0x5B);
+  let c = 5, d = rd(w, 0xD214), a;
+  for (let guard = 0; ; guard++) {
+    if (guard > 0x10000) throw new Error("MoveShotCursor does not end (the game hangs)");
+    if (e === 1) { a = (d - 1) & 0xFF; if (a === 0xFF || a === 4 || a === 9 || a === 0x0E) a = (d + 4) & 0xFF; }
+    else if (e === 2) { a = (d + 5) & 0xFF; if (a >= 0x14) a = (d + 0xF1) & 0xFF; }
+    else if (e === 3) { a = (d + 1) & 0xFF; if (a === 5 || a === 0x0A || a === 0x0F || a === 0x14) a = (d + 0xFC) & 0xFF; }
+    else { c = 2; a = (d + 0xFB) & 0xFF; if (a & 0x80) a = (d + 0x0F) & 0xFF; }
+    d = a;
+    if (rd(w, add8(0xD227, a)) !== 0xFF) break;
+    c = (c - 1) & 0xFF;
+    if (!c) break;
+  }
+  wr(w, 0xD214, d);
+  wr(w, 0xCA7F, d);
+  yield* drawSelectedShotInfo(sh);
+}
+// 0C:69D5 ShotRecordsInput: with a slot in use, Up / Left / Down / Right move the cursor (the first of them); then A
+// $FE (sound $5C), B $FF ($5D), else 0
+function* shotRecordsInput(sh) {
+  const w = sh.w, old = wbank(w);
+  setW(w, 6);
+  let a = 0;
+  if (rd(w, 0xD215)) {
+    const r = w.high[0x191];
+    const e = r & 0x40 ? 0 : r & 0x20 ? 1 : r & 0x80 ? 2 : r & 0x10 ? 3 : -1;
+    if (e >= 0) yield* moveShotCursor(sh, e);
+    if (w.high[0x191] & 1) { sh.sound(0x5C); a = 0xFE; }
+    else if (w.high[0x191] & 2) { sh.sound(0x5D); a = 0xFF; }
+  } else if (w.high[0x191] & 2) { sh.sound(0x5D); a = 0xFF; }
+  setW(w, old);
+  return a;
+}
+// 0C:687C ShotRecordsScreenInit: $D214 0, the slot list cleared; LCD off, no frame tasks; the cursor's tiles ($4C:12
+// / $4C:14 -> VRAM1 $8200 / $8280) and palette 0C:6987 (OBJ 2; its three colours also to $D218 for the cycle), the
+// tiles (ref $40:08 -> VRAM1 $9000 / $8800), palettes 0C:5C00, the maps ($4C:10 / $4C:0E), the face sheet
+// ($4C:1C / $4C:1A -> WRAM2); LCD on; WRAM6
+function shotRecordsScreenInit(w) {
+  setW(w, 6);
+  wr(w, 0xD214, 0);
+  for (let k = 0; k < 0x14; k++) wr(w, 0xD227 + k, 0);
+  w.high[0x18A] = w.high[0x18B] = 0;
+  D.disableLCDSafely(w);
+  clearFrameTasks(w);
+  setW(w, 1);
+  decompressDataFromBank(w, 0x4C12, 0xD000);
+  D.queueAndRunVRAMCopy(w, 0xD000, 0xA200, 0x08);
+  decompressDataFromBank(w, 0x4C14, 0xD000);
+  D.queueAndRunVRAMCopy(w, 0xD000, 0xA280, 0x08);
+  D.loadPalettesMasterOnly(w, 0x6987, 0x0A, 0x01);
+  setW(w, 6);
+  for (let k = 0; k < 8; k++) wr(w, 0xD218 + k, 0);
+  for (let k = 0; k < 6; k++) wr(w, 0xD218 + k, R(0x6987 + k));
+  setW(w, 1);
+  decompressDataFromBank(w, 0x4008, 0xD000);
+  D.queueAndRunVRAMCopy(w, 0xD000, 0xB000, 0x80);
+  D.queueAndRunVRAMCopy(w, 0xD800, 0xA800, 0x80);
+  D.loadPalettesMasterOnly(w, 0x5C00, 0x00, 0x08);
+  decompressDataFromBank(w, 0x4C10, 0xD000);
+  D.queueAndRunVRAMCopy(w, 0xD000, 0xB800, 0x24);
+  decompressDataFromBank(w, 0x4C0E, 0xD000);
+  D.queueAndRunVRAMCopy(w, 0xD000, 0x9800, 0x24);
+  setW(w, 2);
+  decompressDataFromBank(w, 0x4C1C, 0xD000);
+  decompressDataFromBank(w, 0x4C1A, 0xD100);
+  D.enableLCD(w);
+  setW(w, 6);
+}
+// 0C:698F ShotCursorTask: the cursor (0C:69B4, tiles $20, attribute $0A) at the slot's place (0C:6AE5
+// GetShotCursorPos: 0C:6B05, x and y words)
+export function shotCursorTask(w) {
+  const old = wbank(w);
+  setW(w, 6);
+  const p = add8(0x6B05, (rd(w, 0xD214) << 2) & 0xFF);
+  D.queueSpriteTemplate(w, 0x69B4, R(p + 2), R(p), 0x20, 0x0A, R);
+  setW(w, old);
+}
+// 0C:6B55 CycleCursorPaletteTask: the three colour phases $D220-$D222 step through 0C:6BF6 (32 levels; red, green
+// at +1, blue at +2): the cursor palette's second colour ($D21A) made of them and loaded (OBJ 2, 00:056C)
+export function cycleCursorPaletteTask(w) {
+  const old = wbank(w);
+  setW(w, 6);
+  const step = (a, o) => { const x = (rd(w, a) + 1) & 0x1F; wr(w, a, x); return R(add8(0x6BF6, x) + o) & 0x1F; };
+  const r = step(0xD220, 0), g = step(0xD221, 1), b = step(0xD222, 2);
+  wr(w, 0xD21A, (r + ((g << 5) & 0xFF)) & 0xFF);
+  wr(w, 0xD21B, ((b << 2) + ((g >> 3) & 3)) & 0xFF);
+  D.loadPalettesImmediate(w, 0xD218, 0x0A, 0x01);
+  setW(w, old);
+}
+// 0C:67F8 ShotRecordsScreen (export $08): returns $FF (B) or $FE (A, with [category, slot] for the replay)
+export function* shotRecordsScreen(sh) {
+  const w = sh.w;
+  setW(w, 6);
+  shotRecordsScreenInit(w);
+  loadShotRecordList(sh);
+  yield* drawShotRecordFaces(sh);
+  initShotCursor(w);
+  yield* drawSelectedShotInfo(sh);
+  registerFrameTask(w, 0x0F, B, 0x4821);         // StarsAnimTask
+  yield* sh.advance();
+  Scr.beginFadeIn(w, 0x10);
+  yield* Scr.waitFade(sh);
+  setW(w, 6);
+  if (rd(w, 0xD215)) {
+    registerFrameTask(w, 0x1D, B, 0x698F);       // ShotCursorTask
+    registerFrameTask(w, 0x1C, B, 0x6B55);       // CycleCursorPaletteTask
+  }
+  let a;
+  do { yield* sh.advance(); a = yield* shotRecordsInput(sh); } while (a !== 0xFE && a !== 0xFF);
+  setW(w, 6);
+  if (rd(w, 0xD215)) { unregisterFrameTask(w, B, 0x698F); unregisterFrameTask(w, B, 0x6B55); }
+  unregisterFrameTask(w, B, 0x4821);
+  Scr.beginFadeOut(w, 0x10);
+  yield* Scr.waitFade(sh);
+  return a === 0xFE ? [a, ...splitShotCursor(w)] : [a];
+}
+
 // ---- not ported yet ----
 export function* bestScoreScreen() { notPorted("the best scores (~0C:6EE0 BestScoreScreen)"); }
 export function* winnersScreen() { notPorted("the winners (~0C:5FC5 WinnersScreen)"); }
 export function* rankingScreen() { notPorted("the ranking (~0C:5AEC RankingScreen)"); }
-export function* shotRecordsScreen() { notPorted("the shot records (~0C:67F8 ShotRecordsScreen)"); }
 
 // the frame tasks by ROM address
 export const records0cTasks = w => ({
@@ -813,4 +1043,6 @@ export const records0cTasks = w => ({
   "0c:4852": () => pageArrowsTask(w),
   "0c:4c63": () => statsAnimTask(w),
   "0c:48d6": () => pageArrowsScrolledTask(w),
+  "0c:698f": () => shotCursorTask(w),
+  "0c:6b55": () => cycleCursorPaletteTask(w),
 });
