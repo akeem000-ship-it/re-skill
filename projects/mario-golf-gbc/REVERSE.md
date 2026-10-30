@@ -115,6 +115,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the Golf Clinic (map $2D: the judged shot and the coaches' comments) and the hidden friends (33:445F, 30:6942, the bonus) | 179,874 | 74.12% |
 | + the Alternate Game (the Dune green's golfers, maps $2A / $2B, 30:6F42-30:7D02), the staff roll after the Links or the game cleared (31:782F, 41:7E07, 40:66B5), the cover-up scene (32:7533), a save's pending EXP (32:5139), the ball's unmasked map reads, the Links-unlocked warp at the mode select (32:5304) | 187,241 | 77.15% |
 | + Options (32:79D8): the golf dictionary (bank 3F), data management (32:7A0A: copy, erase, erase all), bank 09's option menus | 191,890 | 79.07% |
+| + Status (0B:4D9D) with bank 07's menus, the records queries of bank 0B, the records screens of bank 0C (stars, stats, VS results, shot records, ranking, winners, best scores), the match card's holes-up line (48:4724) | 205,082 | 84.50% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -372,6 +373,52 @@ Checked by `golf_screens_vs_core.mjs boot_options_dict` (the greeting, the index
 letter's list scrolled both ways past its ends, Left / Right letters, an explanation read through, back to the index
 and out) and `boot_options_data` (Copy Kid, Erase the copy, Erase All answered No, then Yes): all frames match but
 the ones after lag frames, all RAM and the save RAM at the end.
+
+#### Status and the records screens (records.js, records0c.js; bank 07's menus in menu09.js)
+
+LinkMenu's item 2 (32:54EC) runs ModeSelectMenuLoop 0B:4D9D: MainMenu 07:4006 (bank 07's copy of bank 09's menu
+engine: tools/compare_routines.py shows 07:741E-07:7DC8 and 09:400A-09:49A8 instruction for instruction the same with
+the switchable-bank addresses masked; menu09.js runs both with a descriptor of each bank's graphics, MENU09 /
+MENU07). MainMenu offers three items (a character, the shot records, the records) only when LoadRecordsBlock 0B:4FB7
+loads save block 3; **only the debug character editor (02:6176, its SaveBlockStore at 02:636D) ever stores block 3**,
+so in play the menu has two items and the records submenu (ModeSubmenuB 0B:4E5D: 07:51A6's five items: the records'
+stats, best scores 0C:6EE0, winners 0C:5FC5, ranking 0C:5AEC, stars 0C:4014) is not reached (the debug room's map
+$01, bank 35, also calls some of them). Reached in play: a character (0B:4F51 the slot list, the character select
+with b = 1, its block and play clock loaded, SetupPlayerGolfer $80; ModeSubmenuA 0B:4ECA: 07:63EC's four items:
+Char. Data 41:6506 a = b = 1, the stats 0C:4A15 with wStatsSource $D23B = 1, the VS results 0C:65B2, Stars 0A:6F56;
+B: the character select again) and the shot records 0C:67F8 (A on a saved hole returns $FE and the loop replays it:
+ReplaySavedHole 10:435E, not ported).
+The records queries of bank 0B (records.js, exports $28-$42) read the block at WRAM6 $DC00 ($32 bytes a course record;
+RecordsSelect 0B:4FE5 sets wRecordPtr $D224): RecordsGridBit 0B:5009 (the stars: the word at $DD5F + b, its six
+bits), RecordsFirstBit 0B:506E (the pages: the lowest set bit of $DD5E), CountFlags112To114 0B:50B6 (the clubs won),
+RecordsGridLevel 0B:50EB, RecordsTestBits 0B:5133 (the winners grid: the 4-byte entries at $DD66 indexed by the
+table 0B:5209; returns the WRAM bank it restored in a), RecordsReadField 0B:51B9 (reads wRecordPtr in the mapped
+WRAM bank), RecordsFieldIndex 0B:51E7, RecordsEntryAddr 0B:522D (the ranking: 5-byte entries at +$20),
+LoadSaveBlockByte0B 0B:5260 (the saved holes, blocks 4-7), RecordsSlotId / RecordsSlotWord 0B:5296 / 0B:52D2,
+RecordsHoleBit 0B:5303 (the badges: 18 bits at +$2F).
+Screens (records0c.js; all draw into WRAM1 or the 64-wide WRAM2 / WRAM3 maps and copy to the BG map): the stars
+(DrawStarsPage 0C:4248 with the course banner LoadCourseBanner 0C:49C1, refs $40:24-30), the stats (0C:4A15: the
+total page first, at view column $14; DrawRecordStatsPage 0C:4D08 from the block, DrawProfileStatsPage 0C:52A2 from
+the character's $C980 course records with GetProfileRounds / BestScore / Average / BestDrive / Percent /
+AverageX10 0C:5820-0C:5A31: on the total page sums over the courses played, 24-bit ones divided by DivAHLByDE
+00:0DDB (its HRAM $FFAC / $FFAE kept); the putts with one decimal drawn as the tens x 10 in a 1-wide field whose
+second digit the '.' then covers; Up / Down scroll by half a tile), the VS results (DrawVsResultMarks 0C:665A: a
+mark per rival by flag pairs #80-#93, #117), the shot records (a 5 x 4 grid of faces, the cursor's palette cycled by
+0C:6B55), the ranking, the winners (18 x 14 grid, HideLockedWinners 0C:6240 hides the headers of characters not
+met: these are the unlock conditions) and the best scores (sorted by 0C:70FC).
+Quirks kept: StarsScreenInput 0C:408B and WinnersScreenInput 0C:60F8 pop their result into hWRAMBank and return the
+WRAM bank they found (the stars screen then leaves a frame after B, and both leave WRAM bank 0 or $FF mapped);
+MoveShotCursor 0C:6A48's direction compare jumps unconditionally (5 tries always; Up resets its count to 2 each try
+and so loops until a used slot); BestScoreScreenInput returns whatever is in a without B; StatsScreenInit's `jr z`
+after DrawRecordStatsPage relies on the flags its `pop af` restores (z from the caller's `or a`).
+The match card's holes-up line 48:4724 (a saved match round's card): b counts the holes won ($C96E: 1 P1, 2 P2) up
+to the hole, starting from the caller's b, which is 0: RegisterFrameTask's SortFrameTasks 00:24BD leaves b = 0 just
+before the call, and 05:62AA / 05:551F keep bc. Text $14BB "n Up", $14BC "n Down", $14BD level or a playoff.
+Checked by `golf_screens_vs_core.mjs`: boot_status_char (Char. Data, VS results, Stars), boot_status_stats (the
+profile's records and hole bits poked with pseudo-random values, #112 #113: four pages, scrolled), boot_status_shots
+/ _shots_empty (saved holes poked into blocks 4-7), boot_status_stars / _ranking / _winners / _bestscore / _recstats
+(a pseudo-random records block poked into block 3), boot_kidsq_matchcard_* (the saved round's block poked to a match:
+ahead, behind, level, playoff). All frames match but those after lag frames, all RAM and the save RAM at the end.
 
 #### Saved games (web/js/golf/save.js; web/tests/golf/coreplay.mjs)
 
