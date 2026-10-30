@@ -570,6 +570,15 @@ const CASES = [
     ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 },
       [200, 0], { to: [0x1A, 0x0A] }, { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x08 },
       { press: 1, every: 40, times: 20 }], 300) },
+  // the same office, a tutor (talk $0C, 33:42AB: the lingo; $11, 33:4305: all with the category hints): Yes, the
+  // dictionary's list (3F:4002 mode 0 / 5): rows moved, an entry read, Right, B; the office again (warp $FA)
+  ...[["lingo", [0x0D, 0x0D], 0x40], ["hints", [0x05, 0x0D], 0x20]].map(([n, at, face]) => ({
+    name: `boot_kid_story_tutor_${n}`, state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(72), maxFrames: 30000,
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 }, [200, 0], { to: at }, [4, face], [20, 0],
+      { press: 1, every: 40, until: inDict }, [150, 0], [2, 0x80], [30, 0], [2, 0x80], [30, 0], [2, 1],
+      { press: 1, every: 40, until: dictPage("list") }, [30, 0], [2, 0x10], [60, 0], [2, 2],
+      { press: 0, every: 40, until: () => !inDict() && menuW.wram[0][0x450] === 0x08 }, [300, 0]], 100),
+  })),
   // the same, Practice Round in the menu (Down, A; the question: A): the walk out (33:50BB), the practice round (one
   // hole), back to the office
   { name: "boot_kid_story_practice", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(72),

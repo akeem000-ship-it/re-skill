@@ -116,6 +116,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the Alternate Game (the Dune green's golfers, maps $2A / $2B, 30:6F42-30:7D02), the staff roll after the Links or the game cleared (31:782F, 41:7E07, 40:66B5), the cover-up scene (32:7533), a save's pending EXP (32:5139), the ball's unmasked map reads, the Links-unlocked warp at the mode select (32:5304) | 187,241 | 77.15% |
 | + Options (32:79D8): the golf dictionary (bank 3F), data management (32:7A0A: copy, erase, erase all), bank 09's option menus | 191,890 | 79.07% |
 | + Status (0B:4D9D) with bank 07's menus, the records queries of bank 0B, the records screens of bank 0C (stars, stats, VS results, shot records, ranking, winners, best scores), the match card's holes-up line (48:4724) | 205,082 | 84.50% |
+| + map $08's tutors (the dictionary by category), the film select's bank-0D copies, the fuzzed copies and helpers (the map tile animation of banks 29-74, the launch speed classes of banks 38-3A, bank 40's math copies, home-bank helpers; web/tests/golf_fuzz_routines.mjs) | 211,301 | 87.07% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -358,7 +359,7 @@ then SaveReset 02:424D, SaveLoad, SaveCheckAllBlocks and wMainMenuCursor $CABB =
 menu. The messages are OpenWindow 05:4AF2 windows (2, 1 or $0B, 16 x 5) closed by CloseWindow in whatever WRAM bank
 is mapped. Quirk: Erase All runs RefreshWindowText / CopyWindowToVRAM on slot 1 (the a left from `ld a, 1` for
 wMenuInitCursor), which is the menu's slot only because the text window took slot 0.
-The dictionary (dict.js; also map $08's tutors with modes 0-5, see bank 33): DictEntryTable 3F:5DFC (one byte per
+The dictionary (dict.js; also map $08's tutors, 33:42AB-33:4305 -> Map08TutorAskDictionary 33:4DFF: the question, Yes: the dictionary in mode talk - $0C, then the office again by warp $FA; checked by boot_kid_story_tutor_lingo / _hints): DictEntryTable 3F:5DFC (one byte per
 entry: its category bit, $00 between first letters, $40 at the end, and a $40 at 3F:5DFB that stops the backward
 scans), names $1A2B + n, explanations $1AE7 + n, category hints $1A1E + c, the greeting $1A23. The A-Z index (view
 column $21) and the list of six names (column $0D, printed with PrintTextToBuffer at WRAM3 $D150 + $80 k and copied
@@ -373,6 +374,36 @@ Checked by `golf_screens_vs_core.mjs boot_options_dict` (the greeting, the index
 letter's list scrolled both ways past its ends, Left / Right letters, an explanation read through, back to the index
 and out) and `boot_options_data` (Copy Kid, Erase the copy, Erase All answered No, then Yes): all frames match but
 the ones after lag frames, all RAM and the save RAM at the end.
+
+#### Unreached code, copies and home helpers (unreached.js, home.js; web/tests/golf_fuzz_routines.mjs)
+
+Code that no screen case reaches is checked routine by routine against the ROM on the emulator core's interpreter
+(web/tests/golf/romcall.mjs): the same pseudo-random WRAM 0-7, HRAM and registers in; the named registers, all WRAM
+(but the stack page $CF00-$CFFF) and HRAM compared after; 200-300 states each. Checked so (reachability in brackets):
+- the map tile animation's copies in banks 29-2F and 72-74 (MapTileAnimStart / Stop / Task / Step; mapgfx.js): the
+  same code as bank 28's (tools/compare_routines.py), fuzzed from track states MapTileAnimStart makes for the
+  animations MapGfxAnimTable 0B:42C0 really names [reached in play by the maps of those banks; Stop only from
+  0B:497D]. Banks 2A, 2B and 72 have no animation: their Task is fuzzed with no tracks only and their Task / Step
+  are left uncited (~). Calls that reach QueueVRAMCopy's error sounds (more than $80 blocks: 00:04A8 plays sounds
+  $00 and $1F, which writes wCurrentBGM $C33E and runs the sound driver) are counted apart and not compared: the
+  display model's QueueVRAMCopy does not model them (no real script asks for that many);
+- the distance -> launch speed stubs 10:6D8A-10:6DAA and DistToLaunchSpeedClass in banks 38-3A (launch.js
+  speedTable) [reached in play: the shot's trajectory class], for distance indexes below $80 (past the bank the ROM
+  reads VRAM, not modelled);
+- bank 40's unreferenced copies MulHLByDE_40 40:5AA9 and DivAHLByDE_40 40:599C (unreached.js) [never called]:
+  MulHLByDE leaves the 32-bit product at HRAM $FFA8-$FFAB, DivAHLByDE a at $FFAC and the first two quotient bytes at
+  $FFAE / $FFAD (records0c.js's divAHL keeps them too);
+- home-bank helpers the rewrite otherwise does inline (home.js) [reached]: NegDE 00:0C67, NegateHL 00:21E0,
+  NegateBC 00:21E8, SubHLBC 00:1B52, MulHLByDESigned 00:0C6E, VectorFromSignedLengthAndAngle 00:0B23,
+  DecimalDigitBySubtract 00:21CF, ExtractDecimalDigitUnsigned 00:23AF, Compare3Bytes 00:23C6, Check3BytesZero
+  00:23E1, AdjustColorRed / Green / Blue 00:252E / 253A / 254A (the colour's bit 15 comes back clear), PrintHexWord
+  00:22BC, PrintDecimalByteSigned 00:22E9 (rows below $18: a print at row $1F of the debug text reaches the stack
+  page), MatchCompare16 3E:6637; FormatSignedDecimalPadded 00:211D [unreferenced: the two `ld bc, $211D` are data].
+The film select's bank-0D copies (0D:4243-0D:4A01, select.js) are the same code as bank 0F's (compare_routines) and run
+by the mode select's screen cases; 0D:499A (a copy of 0F:49AA) is never called and stays uncited.
+Not checked and left: VectorLengthTail 40:5941 (pops registers it never pushed: cannot be called), the course view's
+HoleTileAnimStep copies ~51:7261-~54:7E31 (their fuzz needs a real hole's asset state), map $08's unreferenced
+Map08TutorAskKeepChecking 33:4E49.
 
 #### Status and the records screens (records.js, records0c.js; bank 07's menus in menu09.js)
 

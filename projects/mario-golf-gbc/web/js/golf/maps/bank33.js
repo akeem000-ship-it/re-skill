@@ -19,6 +19,7 @@ import { addExp, expToNextLevel } from "../exp.js";
 import { levelUpScreen, charRefreshStats } from "../levelup.js";
 import * as Ls from "./lessons.js";
 import { golfViewExit } from "../round.js";
+import { golfDictionary } from "../dict.js";
 import { awardFoundAllRivalsExp } from "./bank34.js";
 import { pushTextNumberArg, setTextCourseIndex } from "../text.js";
 import { mapBufCopyRectRedraw, mapCopyTerrainRect, mapCopyEventRect } from "../mapgfx.js";
@@ -2011,6 +2012,41 @@ function* map26Enter(sh) {
   }
 }
 
+// ---- map $08's tutors (talks $0C-$11, the list 33:4389): the golf dictionary (3F:4002) by category ----
+// 33:4E74 TutorShowTextFromBase / 33:4E8C TutorShowTextFromBaseKeepOpen: text wScriptTextBase $C4BA + de by the
+// speaker wScriptArg $C4BC, then 10 / 5 frames
+function* tutorText(sh, de, keep) {
+  const w = sh.w;
+  T.scriptSetText(w, ((rd(w, 0xC4BA) | rd(w, 0xC4BB) << 8) + de) & 0xFFFF);
+  if (keep) yield* T.scriptShowTextKeepOpen(sh, rd(w, 0xC4BC));
+  else yield* T.scriptShowText(sh, rd(w, 0xC4BC));
+  yield* wait(sh, keep ? 0x05 : 0x0A);
+}
+// 33:4DFF Map08TutorAskDictionary: the question (base + 0) and Yes / No; No: base + 1; Yes: fade out, the dictionary
+// in mode wScriptArg - $0C (33:4E1C), then the map again where the player stood (warp $FA, wPlayerPosSave $C2A0)
+function* map08TutorAskDictionary(sh) {
+  const w = sh.w;
+  yield* tutorText(sh, 0, true);
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* wait(sh, 0x05);
+  if (a) { yield* tutorText(sh, 1, false); return; }
+  Scr.beginFadeOut(w, 0x08);
+  yield* Scr.waitFade(sh);
+  yield* inBankGen(w, 0x3F, golfDictionary(sh, (rd(w, 0xC4BC) - 0x0C) & 0xFF));
+  wr(w, 0xC441, 0xFA);                           // wMapWarpRequest
+  wr(w, 0xC46A, 0xFA);                           // wMapEntrance
+  for (let k = 0; k < 4; k++) wr(w, 0xC466 + k, rd(w, 0xC2A0 + k));
+  wr(w, 0xC465, rd(w, 0xC2A4));
+}
+// 33:42AB / 42BD / 42CF / 42E1 / 42F3 / 4305 Map08Talk*Tutor: the text base and the speaker (= the talk $0C-$11)
+function* map08TalkTutor(sh, base, arg) {
+  const w = sh.w;
+  wr(w, 0xC4BA, base & 0xFF); wr(w, 0xC4BB, base >> 8);
+  wr(w, 0xC4BC, arg);
+  yield* map08TutorAskDictionary(sh);
+}
+
 export const HOOKS = {
   "33:738f": function* () {},                     // 33:738F Map26TargetShotShotSetup: ret
   "33:7390": map26TargetAfterShot,
@@ -2026,6 +2062,12 @@ export const SCRIPTS = {
   "33:433b": sh => map08TalkGolfer(sh, 0x08DB, 0x04),
   "33:434d": sh => map08TalkGolfer(sh, 0x08ED, 0x05),
   "33:435f": map08TalkLevelAdvisor,
+  "33:42ab": sh => map08TalkTutor(sh, 0x0857, 0x0C),   // the lingo (dictionary mode 0)
+  "33:42bd": sh => map08TalkTutor(sh, 0x085E, 0x0D),   // the rules (1)
+  "33:42cf": sh => map08TalkTutor(sh, 0x0865, 0x0E),   // the equipment (2)
+  "33:42e1": sh => map08TalkTutor(sh, 0x086C, 0x0F),   // the techniques (3)
+  "33:42f3": sh => map08TalkTutor(sh, 0x0873, 0x10),   // the facilities (4)
+  "33:4305": sh => map08TalkTutor(sh, 0x087A, 0x11),   // how to look words up (5: all, the category hints)
   "33:443b": sh => map08Sign(sh, 0x08B3),
   "33:4447": sh => map08Sign(sh, 0x08B4),
   "33:4453": sh => map08Sign(sh, 0x08B5),

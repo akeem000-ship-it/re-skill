@@ -188,11 +188,12 @@ export function holeTileAnimTask(w) {            // 50:71B3 HoleTileAnimTask (51
   w.high[0x196] = keep;
 }
 
-function holeTileAnimStep(w, track) {            // 50:7201 HoleTileAnimStep
+export function holeTileAnimStep(w, track) {     // 50:7201 HoleTileAnimStep (the copies ~51:7261 ~52:7291 ~53:7F19 ~54:7E31)
   const w0 = w.wram[0];
   w0[0x33C] = w0[0x330 + 2 * track];
   let p;
-  for (;;) {
+  for (let guard = 0; ; guard++) {
+    if (guard > 2) throw new Error("HoleTileAnimStep: the track's start is $FF (the game loops for ever)");
     p = (animScript(w, 1) + w0[0x33C]) & 0xFFFF;
     if (rd(w, p) !== 0xFF) break;
     w0[0x33C] = w0[0x338 + track];               // back to the track's start

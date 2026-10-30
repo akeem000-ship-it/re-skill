@@ -316,11 +316,11 @@ export function* vsResultScreen(sh) {
 // wRecordsSubPage $D215 = $14), from the records block (wStatsSource $D23B = 0) or the character's profile ($C980,
 // 25 bytes a course: $D23B = 1). The pages are drawn into the 64-wide WRAM2 / WRAM3 maps and scroll up and down ----
 const sub = w => w.wram[6][0x215];
-// 00:0DDB DivAHLByDE with its HRAM: $FFAC = a, $FFAE = the first phase's quotient byte
+// 00:0DDB DivAHLByDE with its HRAM: $FFAC = a, $FFAE / $FFAD = the first / second phase's quotient bytes
 function divAHL(w, a, hl, de) {
   w.high[0x1AC] = a;
   const [qa, q] = divAHLByDE(a, hl, de);
-  if (de) w.high[0x1AE] = qa;
+  if (de) { w.high[0x1AE] = qa; w.high[0x1AD] = q >> 8; }
   return q;
 }
 // 0C:51B1 SplitScoreSign: a = a score (54 is even): [the sign tile ($2B over, $2D under, $60 even), the difference]

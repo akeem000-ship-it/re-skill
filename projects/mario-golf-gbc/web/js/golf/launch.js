@@ -131,11 +131,14 @@ export function baseDistance(w, club = w.wram[6][0x329]) {   // 10:68B1 ClubBase
 }
 
 // 10:6D6A: the distance -> launch speed routine by trajectory class $D4C8 (banks 38-3A: the same code, each
-// with its own two tables, whose addresses are the operands at +$11 and +$36)
+// with its own two tables, whose addresses are the operands at +$11 and +$36): the far-call stubs 10:6D8A 10:6D8E
+// 10:6D92 10:6D96 10:6D9A 10:6D9E 10:6DA2 10:6DA6 10:6DAA and DistToLaunchSpeedClass0 38:4006 with its copies 38:550B
+// 38:6A02 39:4006 39:5525 39:6A48 3A:4006 3A:54EB 3A:69BC (each class fuzzed against the ROM through its stub,
+// web/tests/golf_fuzz_routines.mjs; a distance index reaching past the bank, $8000 up, reads VRAM there: not modelled)
 const TABLE_ROUTINES = [...Array(5).fill([0x39, 0x6A48]), [0x39, 0x5525], [0x39, 0x4006], [0x38, 0x6A02], [0x38, 0x4006],
   [0x38, 0x550B], [0x3A, 0x4006], [0x3A, 0x54EB], ...Array(4).fill([0x3A, 0x69BC])];
 
-function speedTable(w, club, de) {
+export function speedTable(w, club, de) {
   const [bank, addr] = TABLE_ROUTINES[(w.wram[6][0x4C8] + 8) & 0x0F];
   const t1 = rw(bank, addr + 0x11), t2 = rw(bank, addr + 0x36);
   if (club >= 0x0D) return 0x40;

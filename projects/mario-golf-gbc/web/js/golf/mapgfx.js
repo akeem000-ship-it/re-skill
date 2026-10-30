@@ -4,7 +4,7 @@
 // the map's frame tasks; MapDrawFullScreen draws the view from the 64 x 64 buffers.
 import { rb, rw } from "./rom.js";
 import { divHLByDE } from "./math.js";
-import { registerFrameTask } from "./tasks.js";
+import { registerFrameTask, unregisterFrameTask } from "./tasks.js";
 import * as D from "./render/display.js";
 import { mapDrawFullScreen } from "./scorecard.js";
 import { initWindowSystem } from "./standings.js";
@@ -102,11 +102,12 @@ export function mapGfxStartTileAnim(w, a) {
   const bank = ANIM_BANKS[slot] ?? 0x74;
   D.inBank(w, bank, () => mapTileAnimStart(w, bank, sub));
 }
-// MapTileAnimStart (28:7D0B and copies): $C32F = a; the four tracks' (frame offset, timer) $C330-$C337 = ($FF, 1) and
+// MapTileAnimStart (28:7D0B and the copies 29:7927 2A:76BF 2B:73ED 2C:7AD1 2D:739D 2E:79D5 2F:7D20 72:76BD 73:76C7 74:79AE,
+// the same code: tools/compare_routines.py; each fuzzed against the ROM by web/tests/golf_fuzz_routines.mjs): $C32F = a; the four tracks' (frame offset, timer) $C330-$C337 = ($FF, 1) and
 // their starts $C338-$C33B = $FF; the script (table[a]; $FE first: no animation) is split at its $FF bytes: track 0
 // from offset 0 (timer 1), each next one from the byte after its first ($C338 + n and its offset = that + 1, its
 // timer = the first byte + 1); the last track before $FE is left unused; then the bank's MapTileAnimTask
-function mapTileAnimStart(w, bank, a) {
+export function mapTileAnimStart(w, bank, a) {
   const [, table] = ANIM[bank];
   wr(w, 0xC32F, a);
   for (let k = 0; k < 4; k++) { wr(w, 0xC330 + 2 * k, 0xFF); wr(w, 0xC331 + 2 * k, 1); }
@@ -138,9 +139,10 @@ function mapTileAnimStart(w, bank, a) {
   wr(w, sv - 2, 0xFF);
   registerFrameTask(w, 0x01, bank, ANIM[bank][0] + 0xB6);   // MapTileAnimTask
 }
-// MapTileAnimTask (28:7DC1 and copies): unless flag #24 is set (and #28 clear), WRAM6: each track's timer down from
+// MapTileAnimTask (28:7DC1 and the copies 29:79DD 2C:7B87 2D:7453 2E:7A8B 2F:7DD6 73:777D 74:7A64; those of the banks
+// without an animation, ~2A:7775 ~2B:74A3 ~72:7773, never step: fuzzed with no tracks only): unless flag #24 is set (and #28 clear), WRAM6: each track's timer down from
 // its start ($C338 + n, $FF ends the list: the loop reads on past track 3 while the timers run), a step at 0
-function mapTileAnimTask(w, bank) {
+export function mapTileAnimTask(w, bank) {
   if (!testFlag(w, 28) && testFlag(w, 24)) return;
   const old = w.high[0x196];
   setW(w, 6);
@@ -159,14 +161,16 @@ function mapTileAnimTask(w, bank) {
   }
   setW(w, old);
 }
-// MapTileAnimStep (28:7E08 and copies): track a's frame at its offset (src tile, count, dest tile, frames; $FF: back
+// MapTileAnimStep (28:7E08 and the copies 29:7A24 2C:7BCE 2D:749A 2E:7AD2 2F:7E1D 73:77C4 74:7AAB; ~2A:77BC ~2B:74EA
+// ~72:77BA never run): track a's frame at its offset (src tile, count, dest tile, frames; $FF: back
 // to the track's start): count tiles from WRAM6 $D800 + 16 src queued to VRAM1 $9000 + 16 dest; the offset moves 4
 // (scratch $C33C), the timer = frames
-function mapTileAnimStep(w, bank, a) {
+export function mapTileAnimStep(w, bank, a) {
   const [, table] = ANIM[bank];
   wr(w, 0xC33C, rd(w, 0xC330 + 2 * a));
   let hl;
-  for (;;) {
+  for (let guard = 0; ; guard++) {
+    if (guard > 2) throw new Error("MapTileAnimStep: the track's start is $FF (the game loops for ever)");
     hl = (rw(bank, (table + ((rd(w, 0xC32F) << 1) & 0x1FE)) & 0xFFFF) + rd(w, 0xC33C)) & 0xFFFF;
     if (rb(bank, hl) !== 0xFF) break;
     wr(w, 0xC33C, rd(w, 0xC338 + a));
@@ -259,3 +263,6 @@ export function* mapBufCopyRectRedraw(sh, b, c, d, e, h, l) {
   yield* inBankGen(w, 0x05, copyShadowRowsFramed(sh, e, l));
   setW(w, old);
 }
+// MapTileAnimStop (28:7DB2 and its copies 29:79CE 2A:7766 2B:7494 2C:7B78 2D:7444 2E:7A7C 2F:7DC7 72:7764 73:776E
+// 74:7A55): the bank's MapTileAnimTask unregistered (0B:497D, its only caller, never sends a bank-72-74 graphics id)
+export function mapTileAnimStop(w, bank) { unregisterFrameTask(w, bank, ANIM[bank][0] + 0xB6); }

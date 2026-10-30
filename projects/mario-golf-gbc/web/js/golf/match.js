@@ -18,7 +18,7 @@ const W0 = w => w.wram[0];
 const field = (w, p, f) => 0x880 + (p ? 0x40 : 0) + f;    // player p's record byte f
 
 // ---- the debug text buffer: 00:209C GetDebugTextBufferAddr ($CC00 + d + e x 32), 00:20B1 PrintString ----
-function printString(w, s, d, e) {
+export function printString(w, s, d, e) {
   const w0 = W0(w);
   let p = (0xCC00 + d + e * 32) & 0xFFFF;
   for (const ch of s) {

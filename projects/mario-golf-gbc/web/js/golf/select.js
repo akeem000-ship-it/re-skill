@@ -50,14 +50,14 @@ function getField(w, c, rel, l) {
 }
 const lz = (w, c, src, de) => D.lzTo(w, c.bank, src, de);
 
-function copyFilmRows(w) {                       // 0F:4247 CopyFilmRowsToVRAM
+function copyFilmRows(w) {                       // 0F:4247 CopyFilmRowsToVRAM (0D:4243)
   D.queueVRAMCopy(w, 0xC600, 0xB880, 0x10);
   D.queueVRAMCopy(w, 0xC700, 0x9880, 0x10);
 }
-function nextSlot(w) { let a = (H(w, 0xB4) + 8) & 0xFF; if (a === 0xB0) a = 0x10; setH(w, 0xB4, a); }   // 0F:425E
-function prevSlot(w) { let a = (H(w, 0xB4) + 0xF8) & 0xFF; if (a === 0x08) a = 0xA8; setH(w, 0xB4, a); }  // 0F:4278
-function shiftLeft(w) { D.copyMemoryBC(w, 0xC601, 0xC600, 0x1FF); }                // 0F:426B
-function shiftRight(w) {                         // 0F:4285 (00:03E2 CopyMemoryReverseBC)
+function nextSlot(w) { let a = (H(w, 0xB4) + 8) & 0xFF; if (a === 0xB0) a = 0x10; setH(w, 0xB4, a); }   // 0F:425E (0D:425A)
+function prevSlot(w) { let a = (H(w, 0xB4) + 0xF8) & 0xFF; if (a === 0x08) a = 0xA8; setH(w, 0xB4, a); }  // 0F:4278 (0D:4274)
+function shiftLeft(w) { D.copyMemoryBC(w, 0xC601, 0xC600, 0x1FF); }                // 0F:426B (0D:4267)
+function shiftRight(w) {                         // 0F:4285 (00:03E2 CopyMemoryReverseBC) (0D:4281)
   for (let hl = 0xC7FE, de = 0xC7FF, n = 0x1FF; n; n--, hl--, de--) wr(w, de, rd(w, hl));
 }
 const slotVram = a => {                          // the tile slot's VRAM1 address ($9000 + a x 16, or $8800 + ...)
@@ -66,7 +66,7 @@ const slotVram = a => {                          // the tile slot's VRAM1 addres
   return (hl + 0xA000) & 0xFFFF;
 };
 
-// 0F:459B InitFilmMaps: the strip's attributes ($0B, $09 sprockets at columns 4 and 15) and tile ids from hFFB4
+// 0F:459B InitFilmMaps (0D:4597): the strip's attributes ($0B, $09 sprockets at columns 4 and 15) and tile ids from hFFB4
 function initFilmMaps(w) {
   let hl = 0xC600;
   for (let r = 0; r < 8; r++) {
@@ -76,7 +76,7 @@ function initFilmMaps(w) {
   let a0 = H(w, 0xB4);
   for (let r = 0; r < 8; r++) {
     let a = a0;
-    for (let k = 0; k < 20; k++) {               // 0F:4592 StoreFilmTileId
+    for (let k = 0; k < 20; k++) {               // 0F:4592 StoreFilmTileId (0D:458E)
       wr(w, hl++, a);
       a = (a + 8) & 0xFF;
       if (a >= 0xB0) a = (a - 0xA0) & 0xFF;
@@ -87,7 +87,7 @@ function initFilmMaps(w) {
   copyFilmRows(w);
 }
 
-// 0F:44FD LoadCoursePicture (LCD off) / 0F:44BA ReloadCoursePicture: the palette (field $0A), the picture's tiles
+// 0F:44FD LoadCoursePicture (LCD off) / 0F:44BA ReloadCoursePicture (0D:44F9 / 0D:44B6): the palette (field $0A), the picture's tiles
 // (field 4 -> VRAM1 $8B00-$8FFF), then 0F:4538: the 10 x 8 picture map rows (field 8) and tile ids $B0-$FF
 function* loadPicture(sh, c, reload) {
   const w = sh.w;
@@ -113,7 +113,7 @@ function* loadPicture(sh, c, reload) {
   copyFilmRows(w);
 }
 
-// 0F:42CD FilmScrollLeftStep / 0F:43AC FilmScrollRightStep: the strip one column over, the next picture column (8
+// 0F:42CD FilmScrollLeftStep / 0F:43AC FilmScrollRightStep (0D:42C9 / 0D:43A8): the strip one column over, the next picture column (8
 // tiles from hFFB6, which moves $80) into the tile slot hFFB4, the new column's attributes and ids; one frame
 function* scrollLeftStep(sh) {
   const w = sh.w;
@@ -143,7 +143,7 @@ function* scrollRightStep(sh) {
   copyFilmRows(w);
   yield* sh.advance();
 }
-// 0F:4481 DrawFilmGapColumn: hl = the column: sprockets ($09) and the slot's ids; the blank tile into the slot
+// 0F:4481 DrawFilmGapColumn (0D:447D): hl = the column: sprockets ($09) and the slot's ids; the blank tile into the slot
 function* drawGapColumn(sh, c, hl) {
   const w = sh.w;
   for (let k = 0; k < 8; k++) wr(w, hl + 32 * k, 0x09);
@@ -154,7 +154,7 @@ function* drawGapColumn(sh, c, hl) {
   yield* sh.advance();
 }
 
-// the name box: 0F:4AA0 CopyNameBoxToVRAM, 0F:4995 LoadNameBoxMaps, 0F:4A11 OpenNameBoxAnim
+// the name box: 0F:4AA0 CopyNameBoxToVRAM, 0F:4995 LoadNameBoxMaps, 0F:4A11 OpenNameBoxAnim (0D:4985, 0D:4A01)
 function copyNameBox(w) {
   D.queueVRAMCopy(w, 0xD1A0, 0xB9A0, 0x0A);
   D.queueVRAMCopy(w, 0xD4A0, 0x99A0, 0x0A);
@@ -233,7 +233,7 @@ const HOOKS = {
   0x4D33: function* (sh, c) { loadNameBoxMaps(sh.w, c); copyNameBox(sh.w); yield* sh.advance(); },   // 0F:4D33
   0x7070: function* (sh, c) { loadNameBoxMaps(sh.w, c); copyNameBox(sh.w); yield* sh.advance(); },   // 0D:7070
 };
-function* callHook(sh, c, n) {                   // 0F:4963 CallSelectHook0 / 0F:497B CallSelectHook1
+function* callHook(sh, c, n) {                   // 0F:4963 CallSelectHook0 / 0F:497B CallSelectHook1 (0D:4953 / 0D:496B)
   const w = sh.w, old = wbank(w);
   setW(w, 6);
   const h = rw(c.bank, (r16(w, 0xD200) + 2 * n) & 0xFFFF);
@@ -285,7 +285,7 @@ function* selectInit(sh, c, hl, e, d, bc) {
   yield* openNameBoxAnim(sh, c);
 }
 
-// 0F:4328 CourseSelectNext / 0F:4401 CourseSelectPrev: sound $5B; the name box cleared; the next / previous item
+// 0F:4328 CourseSelectNext / 0F:4401 CourseSelectPrev (0D:4324 / 0D:43FD): sound $5B; the name box cleared; the next / previous item
 // (wrapping) scrolled in over 12 steps with a gap column between the pictures; the name box drawn
 function* selectNext(sh, c) {
   const w = sh.w;
@@ -367,7 +367,7 @@ export const selectTasks = w => {
     o[k(c.wave)] = () => {                       // 0F:4160 / 0D:415C: the title sprite row bobbing
       D.queueSpriteTemplate(w, c.waveTpl, rb(c.bank, c.waveTbl + (w.high[0x18C] & 0x3F)), 0x00, 0xE0, 0x04);
     };
-    o[k(c.arrows)] = () => {                     // 0F:4292 / 0D:428E: the animated tile (0F:42B4), the arrows
+    o[k(c.arrows)] = () => {                     // 0F:4292 / 0D:428E: the animated tile (0F:42B4 (0D:42B0)), the arrows
       const n = (H(w, 0xB1) + 1) & 0xFF;
       setH(w, 0xB1, n);
       D.queueVRAMCopy(w, (c.arrowFrames + ((n & 0x1C) << 2)) & 0xFFFF, 0xB060, 0x01);
