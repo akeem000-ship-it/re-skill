@@ -16,7 +16,9 @@ import { showPictureTimed } from "../title.js";
 import { endingSequence } from "../ending.js";
 import { advanceRandomSeed } from "../round.js";
 import { addExp, expToNextLevel } from "../exp.js";
-import { levelUpScreen } from "../levelup.js";
+import { levelUpScreen, charRefreshStats } from "../levelup.js";
+import * as Ls from "./lessons.js";
+import { golfViewExit } from "../round.js";
 import { pushTextNumberArg, setTextCourseIndex } from "../text.js";
 import { mapBufCopyRectRedraw, mapCopyTerrainRect, mapCopyEventRect } from "../mapgfx.js";
 
@@ -1610,6 +1612,390 @@ function* map2EObject1UpMushroom(sh) {
   wr(w, 0xC465, rd(w, 0xC2A4));
 }
 
+// ---- map $26, the Windy Valley Special Hole (header 33:6FB9) ----
+// 33:7813 SetTempFlagFromHand: #224 when GetCharHand 02:53AC (wCharFlags bit 0) is 1
+function setTempFlagFromHand(w) { if ((rd(w, 0xC819) & 0x01) === 0x01) setFlag(w, 224); }
+// 33:701F Map26TalkGuardianA (talk 2): $14C8 with his animation 6 (speaker 2); the first time (#199) he steps aside:
+// his facing locked, $0300 to the left ($C0), unlocked
+function* map26TalkGuardianA(sh) {
+  const w = sh.w;
+  T.scriptSetText(w, 0x14C8);
+  S.actorPlayAnim(w, 0x02, 0x06);
+  yield* S.waitActorAnimDone(sh, 0x02);
+  yield* T.scriptShowText(sh, 0x02);
+  if (flag(w, 199)) return;
+  setFlag(w, 199);
+  S.actorLockSpriteFacing(w, 0x02, 0x01);
+  S.actorMoveDir(w, 0x02, 0xC0, 0x0300);
+  yield* S.waitActorMoveDone(sh, 0x02);
+  S.actorLockSpriteFacing(w, 0x02, 0x00);
+}
+// 33:705D Map26TalkGuardianB (talk 2, the other entry): the same text; the first time (#199) he walks round: $0200
+// up ($00), $0400 left ($C0), $0200 down ($80), then faces right ($40)
+function* map26TalkGuardianB(sh) {
+  const w = sh.w;
+  T.scriptSetText(w, 0x14C8);
+  S.actorPlayAnim(w, 0x02, 0x06);
+  yield* S.waitActorAnimDone(sh, 0x02);
+  yield* T.scriptShowText(sh, 0x02);
+  if (flag(w, 199)) return;
+  setFlag(w, 199);
+  for (const [b, de] of [[0x00, 0x0200], [0xC0, 0x0400], [0x80, 0x0200]]) {
+    S.actorMoveDir(w, 0x02, b, de);
+    yield* S.waitActorMoveDone(sh, 0x02);
+  }
+  S.actorSetFacing(w, 0x02, 0x40);
+}
+// 33:70E1 Map26ObjectLockedDoor (object 1) / the locked branch of 33:7116: (sound $9E,) "The door is locked." ($14D2,
+// speaker $83)
+function* map26LockedText(sh) { T.scriptSetText(sh.w, 0x14D2); yield* T.scriptShowText(sh, 0x83); }
+// 33:7116 Map26TriggerDoor (trigger 4): without #198 locked; else a step up ($0100, $C0), warp 2, sound $92
+function* map26TriggerDoor(sh) {
+  const w = sh.w;
+  if (!flag(w, 198)) { yield* map26LockedText(sh); return; }
+  S.actorMoveDir(w, 0x00, 0xC0, 0x0100);
+  yield* S.waitActorMoveDone(sh, 0x00);
+  wr(w, 0xC441, 0x02);
+  sh.sound(0x92);
+}
+// 33:713E Map26TriggerLeave (trigger 5): challenged (#199) and not passed (#198): "Hmph!" ($14C9, speaker 2); warp 1,
+// sound $92
+function* map26TriggerLeave(sh) {
+  const w = sh.w;
+  if (flag(w, 199) && !flag(w, 198)) { T.scriptSetText(w, 0x14C9); yield* T.scriptShowText(sh, 0x02); }
+  wr(w, 0xC441, 0x01);
+  sh.sound(0x92);
+}
+// 33:70F8 / 7109 / 710D Map26TriggerTarget1-3: (target 1 without #199: the guardian's talk 33:701F first) wScriptArg
+// $C4BC = the target, 33:72BE
+function* map26TriggerTarget(sh, n) {
+  const w = sh.w;
+  if (n === 1 && !flag(w, 199)) yield* map26TalkGuardianA(sh);
+  wr(w, 0xC4BC, n);
+  yield* map26AskTargetShot(sh);
+}
+// 33:72BE Map26AskTargetShot: "Shoot from here?" ($14D3, speaker $80; 5 frames, the question, 5 frames): Yes:
+// wStoryRoundKind $0A, GolfSessionInit, the player and no second player, the tee and mode (33:730C), the wind and hole
+// (33:751B), the hooks 33:736F in this bank, GolfRound for one hole, GolfSessionEnd
+function* map26AskTargetShot(sh) {
+  const w = sh.w;
+  T.scriptSetText(w, 0x14D3);
+  yield* T.scriptShowTextKeepOpen(sh, 0x80);
+  yield* wait(sh, 0x05);
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* wait(sh, 0x05);
+  if (a) return;
+  wr(w, 0xC967, 0x0A);
+  St.golfSessionInit(w);                                          // 10:4B28
+  St.setupPlayerGolfer(w, 0x80, 0x00);                            // 02:4A28
+  St.setupPlayerGolfer(w, 0xFF, 0x01);
+  map26SetTargetTee(w);
+  map26SetTargetWindHole(w);
+  Ls.setGolfEventHook(w, 0x33, 0x736F);                           // 10:4BC7
+  if (!sh.playGolfRound) notPorted("Windy Valley's target shot outside the game loop");
+  yield* sh.playGolfRound(0x01);                                  // 10:4451
+  yield* inBankGen(w, 0x10, golfSessionEnd(sh));                  // 10:4B94
+}
+// 33:730C Map26SetTargetTee: SetForcedTee 10:4C04 by the target (1: ($2320, $1DA0); 2: ($1CA0, $2980); else ($11E0,
+// $2CE0)); game mode 6 with $C82C = 7, except target 1 before the first success (#198 clear) or for the second
+// target (#213 set), both while #201 is clear: game mode 5 with $C82C = $28
+function map26SetTargetTee(w) {
+  const n = rd(w, 0xC4BC);
+  let mini = false;
+  if (n === 0x01) {
+    Ls.setForcedTee(w, 0x2320, 0x1DA0);
+    mini = !flag(w, 201) && (!flag(w, 198) || flag(w, 213));
+  } else if (n === 0x02) Ls.setForcedTee(w, 0x1CA0, 0x2980);
+  else Ls.setForcedTee(w, 0x11E0, 0x2CE0);
+  wr(w, 0xC834, mini ? 0x05 : 0x06);
+  wr(w, 0xC82C, mini ? 0x28 : 0x07);
+}
+// 33:751B Map26SetTargetWindHole: a = the random low byte & 3 (0 -> 3); before #213: SetForcedWind $C006 + a, course
+// 0 hole 7; after: $E006 + a (0 with flag #72), course 8 hole $0B. SetCourseHole's wind byte is the a SetForcedWind
+// leaves (6: its WRAM bank)
+function map26SetTargetWindHole(w) {
+  let a = advanceRandomSeed(w) & 0x03;                            // 00:0A61
+  if (!a) a = 0x03;
+  if (!flag(w, 213)) {
+    Ls.setForcedWind(w, 0xC006 + a);
+    St.setCourseHole(w, 0x06, 0x00, 0x07);                        // 10:423B
+  } else {
+    Ls.setForcedWind(w, flag(w, 72) ? 0x0000 : 0xE006 + a);
+    St.setCourseHole(w, 0x06, 0x08, 0x0B);
+  }
+}
+// 33:7390 Map26TargetShotAfterShot (hook 1): $C3E0 = 0; GolfViewExit; within $3C of the pin (33:7C72
+// BallWithinPinDist_33): $C3E0 = 1 and flag #99 = player 1 holed out; the round over ($80); GolfAdvanceFrame
+function* map26TargetAfterShot(sh) {
+  const w = sh.w;
+  wr(w, 0xC3E0, 0x00);
+  yield* Ls.inBankGen(w, 0x10, golfViewExit(sh));               // 10:4C6E
+  if (!Ls.ballWithinPinDist(w, 0x003C)) {
+    wr(w, 0xC3E0, 0x01);
+    clearFlag(w, 99);
+    if (rd(w, 0xC8AA)) setFlag(w, 99);
+  }
+  Ls.setGolfEventFlag(w, 0x80);                                   // 10:4CAD
+  yield* Ls.golfAdvanceFrame(sh);                                 // 10:4CB9
+}
+// the guardian at the player's (33:7473 / 7612 halves): text set, ScriptActorSetSpeed $48, the script actor walks to
+// the guardian's spot (a = 2, b = 0), his animation 6
+function* guardianComesOver(sh) {
+  S.scriptActorSetSpeed(sh.w, 0x0048);
+  yield* S.scriptActorGoToActor(sh, 0x02, 0x00);
+  yield* S.waitScriptActorIdle(sh);
+  S.actorPlayAnim(sh.w, 0x02, 0x06);
+  yield* S.waitActorAnimDone(sh, 0x02);
+}
+// the rest of 33:74C8 / 33:7612: 30 frames, the guardian hops ($FF80), the text (speaker 2), the script actor walks to
+// the player's own spot, 30 frames
+function* guardianHopAndBack(sh) {
+  yield* wait(sh, 0x1E);
+  S.actorJump(sh.w, 0x02, 0xFF80);
+  yield* S.waitActorLanded(sh, 0x02);
+  yield* T.scriptShowText(sh, 0x02);
+  yield* S.scriptActorGoToActor(sh, 0x00, 0x00);
+  yield* S.waitScriptActorIdle(sh);
+  yield* wait(sh, 0x1E);
+}
+// a failure (33:7452 / 75F1): the text, animation 6, shown (speaker 2), animation 6 again
+function* guardianFailText(sh, id) {
+  const w = sh.w;
+  T.scriptSetText(w, id);
+  S.actorPlayAnim(w, 0x02, 0x06);
+  yield* S.waitActorAnimDone(sh, 0x02);
+  yield* T.scriptShowText(sh, 0x02);
+  S.actorPlayAnim(w, 0x02, 0x06);
+}
+// a success's start (33:73E8 / 758E): the text, the guardian hops ($FF80), shown (speaker 2), his animation 5
+function* guardianCheers(sh, id) {
+  const w = sh.w;
+  T.scriptSetText(w, id);
+  S.actorJump(w, 0x02, 0xFF80);
+  yield* S.waitActorLanded(sh, 0x02);
+  yield* T.scriptShowText(sh, 0x02);
+  S.actorPlayAnim(w, 0x02, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x02);
+}
+// the EXP de, a quarter more with flag #99 (sra h / rr l twice)
+const withBonus = (w, de) => (flag(w, 99) ? (de + ((de << 16 >> 16) >> 2)) & 0xFFFF : de);
+// 33:73BB Map26FirstTargetResult (back at entrance $FA): unless #198 or wStoryRoundKind is not $0A: the player faces
+// the guardian, fade in (4); target 1: passed ($C3E0 = 1): $14CD and its next part, 40 EXP (AwardExpWithBonus: AddExp,
+// $011B with sound $38, WaitJingleEnd, 33:7CB7 the level-up screen), the return point (map 0, $FA), SaveGame, warp
+// $0F; else $14CC (33:7452). Targets 2 / 3 (33:7473): before #199 "$14C7" (speaker $80), the guardian comes over and
+// talks, #199, steps aside as in 33:701F; after: $14CA (speaker $80), comes over, 33:74F0
+function* map26FirstTargetResult(sh) {
+  const w = sh.w;
+  if (flag(w, 198) || rd(w, 0xC967) !== 0x0A) return;
+  S.actorFaceActor(w, 0x00, 0x02);
+  Scr.beginFadeIn(w, 0x04);
+  yield* Scr.waitFade(sh);
+  if (rd(w, 0xC4BC) === 0x01) {
+    if (rd(w, 0xC3E0) !== 0x01) { yield* guardianFailText(sh, 0x14CC); return; }
+    yield* guardianCheers(sh, 0x14CD);
+    yield* T.scriptShowText(sh, 0x02);
+    yield* Ls.awardExpPlain(sh, withBonus(w, 0x0028));            // 33:7427 ... 33:7CB7
+    Ls.saveReturnPoint(w, 0x00, 0xFA);                            // 0A:4D5B
+    saveGame(w);                                                  // 02:4489
+    wr(w, 0xC441, 0x0F);
+    return;
+  }
+  if (!flag(w, 199)) {
+    T.scriptSetText(w, 0x14C7);
+    yield* T.scriptShowText(sh, 0x80);
+    yield* guardianComesOver(sh);
+    yield* T.scriptShowText(sh, 0x02);
+    setFlag(w, 199);
+    S.actorLockSpriteFacing(w, 0x02, 0x01);
+    S.actorMoveDir(w, 0x02, 0xC0, 0x0300);
+    yield* S.waitActorMoveDone(sh, 0x02);
+    S.actorLockSpriteFacing(w, 0x02, 0x00);
+    return;
+  }
+  T.scriptSetText(w, 0x14CA);                                     // 33:74C8
+  yield* T.scriptShowText(sh, 0x80);
+  yield* guardianComesOver(sh);
+  yield* wait(sh, 0x3C);
+  S.actorJump(w, 0x02, 0xFF80);
+  yield* S.waitActorLanded(sh, 0x02);
+  yield* T.scriptShowText(sh, 0x02);
+  yield* S.scriptActorGoToActor(sh, 0x00, 0x00);
+  yield* S.waitScriptActorIdle(sh);
+  yield* wait(sh, 0x1E);
+}
+// 33:755B Map26SecondTargetResult: with #213, without #201, wStoryRoundKind $0A: the player faces the guardian, fade
+// in (4); target 1 passed: $14D9 (33:758E), 180 EXP (a quarter more with #99), #201, AddExp, $011B (speaker $80; no
+// sound or jingle wait here), 33:7CB7, the return point (map 0, $FA), SaveGame, warp $0E; failed: $14D8 (33:75F1);
+// targets 2 / 3 (33:7612): $14D7 set but not shown, the guardian comes over, 30 frames, hops, the text, back
+function* map26SecondTargetResult(sh) {
+  const w = sh.w;
+  if (!flag(w, 213) || flag(w, 201) || rd(w, 0xC967) !== 0x0A) return;
+  S.actorFaceActor(w, 0x00, 0x02);
+  Scr.beginFadeIn(w, 0x04);
+  yield* Scr.waitFade(sh);
+  if (rd(w, 0xC4BC) === 0x01) {
+    if (rd(w, 0xC3E0) !== 0x01) { yield* guardianFailText(sh, 0x14D8); return; }
+    yield* guardianCheers(sh, 0x14D9);
+    const de = withBonus(w, 0x00B4);
+    setFlag(w, 201);
+    addExp(w, de);                                                // 02:5465
+    pushTextNumberArg(w, de);                                     // 05:551F
+    T.scriptSetText(w, 0x011B);
+    yield* T.scriptShowText(sh, 0x80);
+    Scr.beginFadeOut(w, 0x08);                                    // 33:7CB7 FadeToLevelUpScreenB
+    yield* Scr.waitFade(sh);
+    yield* inBankGen(w, 0x41, levelUpScreen(sh));                 // 41:402A
+    Ls.saveReturnPoint(w, 0x00, 0xFA);
+    saveGame(w);
+    wr(w, 0xC441, 0x0E);
+    return;
+  }
+  T.scriptSetText(w, 0x14D7);
+  yield* guardianComesOver(sh);
+  yield* guardianHopAndBack(sh);
+}
+// a question of the guru (speaker 2): shown, 10 and 5 frames, asked, closed, 5 frames: true for No
+function* guruAsk(sh) {
+  yield* T.scriptShowTextKeepOpen(sh, 0x02);
+  yield* wait(sh, 0x0A);
+  yield* wait(sh, 0x05);
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* wait(sh, 0x05);
+  return a;
+}
+// 33:779F SwapShotCurve: #214, SetCharHand 02:53B2 (wCharFlags bit 0 flipped, CharRefreshStats 02:4EF6), the guru's
+// animation 6, six flashes (fade out and in at speed $20)
+function* swapShotCurve(sh) {
+  const w = sh.w;
+  setFlag(w, 214);
+  wr(w, 0xC819, (rd(w, 0xC819) & 0xFE) | ((rd(w, 0xC819) & 0x01) ^ 0x01));
+  charRefreshStats(w);
+  S.actorPlayAnim(w, 0x02, 0x06);
+  for (let k = 0; k < 6; k++) {
+    Scr.beginFadeOut(w, 0x20);
+    yield* Scr.waitFade(sh);
+    Scr.beginFadeIn(w, 0x20);
+    yield* Scr.waitFade(sh);
+  }
+}
+// 33:7660 Map26GuruOfferSwap (entrance $0E): the banner's text cleared; $14DA with #224 (the hand), else $14DE, asked:
+// No: its next part shown, then the next question; Yes: the next part skipped, the next question; that one No: $14E7;
+// Yes: $14DD asked: No: $14E7; Yes: 33:779F, then $14E4 (#224) or $14E6
+function* map26GuruOfferSwap(sh) {
+  const w = sh.w;
+  wr(w, 0xC4B4, 0); wr(w, 0xC4B5, 0);
+  T.scriptSetText(w, flag(w, 224) ? 0x14DA : 0x14DE);
+  if (yield* guruAsk(sh)) yield* T.scriptShowText(sh, 0x02);      // 33:76CE
+  else T.scriptSkipText(w);
+  if (!(yield* guruAsk(sh))) {
+    T.scriptSetText(w, 0x14DD);                                   // 33:76D5
+    if (!(yield* guruAsk(sh))) {
+      yield* swapShotCurve(sh);
+      T.scriptSetText(w, flag(w, 224) ? 0x14E4 : 0x14E6);
+      yield* T.scriptShowText(sh, 0x02);
+      return;
+    }
+  }
+  T.scriptSetText(w, 0x14E7);                                     // 33:76C2
+  yield* T.scriptShowText(sh, 0x02);
+}
+// 33:771A Map26GuruRevisit: switched before (#214): $14E8; else $14E2 asked: No $14E7; Yes: $14E3 (#224) / $14E5
+// asked: No $14E7; Yes: 33:779F and the text's next part
+function* map26GuruRevisit(sh) {
+  const w = sh.w;
+  if (flag(w, 214)) { T.scriptSetText(w, 0x14E8); yield* T.scriptShowText(sh, 0x02); return; }
+  T.scriptSetText(w, 0x14E2);
+  if (!(yield* guruAsk(sh))) {
+    T.scriptSetText(w, flag(w, 224) ? 0x14E3 : 0x14E5);
+    if (!(yield* guruAsk(sh))) {
+      yield* swapShotCurve(sh);
+      yield* T.scriptShowText(sh, 0x02);
+      return;
+    }
+  }
+  T.scriptSetText(w, 0x14E7);                                     // 33:7754
+  yield* T.scriptShowText(sh, 0x02);
+}
+// 33:70B2 Map26TalkGuru (talk 2, the third entry): after #201 33:771A, else $14D5
+function* map26TalkGuru(sh) {
+  if (flag(sh.w, 201)) { yield* map26GuruRevisit(sh); return; }
+  T.scriptSetText(sh.w, 0x14D5);
+  yield* T.scriptShowText(sh, 0x02);
+}
+// 33:7184 Map26EnterWindyValley: #224 by the hand (33:7813); the guardian (actor 2) at ($2300, $1E00) before #199,
+// put away while #198 is set and #213 clear; entrance $FA (back from a target shot): the banner's text cleared, the
+// results 33:73BB and 33:755B; wStoryRoundKind 0; entrance $0F (33:71FA, the first target passed): without #114 #198,
+// the return point and SaveGame, fade in, $14CF, the guardian (speed $0A, animation 5) walks off up to ($2300, $1900)
+// (animation 6) and on to ($2300, $1500) while the screen fades out (4), warp 1; with #114 (33:7270) #198 #200 #212
+// #213, the save, fade in, $14E9, animation 6, $14D5; entrance 3 (33:71D5, from the hut's guardian): #213, the
+// guardian's animation $0A, fade in, $14D5; entrance $0E (33:72B2): fade in, the guru's offer 33:7660
+function* map26Enter(sh) {
+  const w = sh.w;
+  setTempFlagFromHand(w);
+  if (!flag(w, 199)) S.actorSetPos(w, 0x02, 0x2300, 0x1E00);
+  if (!flag(w, 213) && flag(w, 198)) S.actorSetPos(w, 0x02, 0x3F00, 0x3F00);
+  if (rd(w, 0xC46A) === 0xFA) {
+    wr(w, 0xC4B4, 0); wr(w, 0xC4B5, 0);
+    yield* map26FirstTargetResult(sh);
+    yield* map26SecondTargetResult(sh);
+  }
+  wr(w, 0xC967, 0x00);
+  const e = rd(w, 0xC46A);
+  if (e === 0x0F) {
+    wr(w, 0xC4B4, 0); wr(w, 0xC4B5, 0);
+    if (flag(w, 114)) {
+      for (const n of [198, 200, 212, 213]) setFlag(w, n);
+      Ls.saveReturnPoint(w, 0x00, 0xFA);
+      saveGame(w);
+      Scr.beginFadeIn(w, 0x04);
+      yield* Scr.waitFade(sh);
+      T.scriptSetText(w, 0x14E9);
+      yield* T.scriptShowText(sh, 0x02);
+      S.actorPlayAnim(w, 0x02, 0x06);
+      yield* S.waitActorAnimDone(sh, 0x02);
+      T.scriptSetText(w, 0x14D5);
+      yield* T.scriptShowText(sh, 0x02);
+      return;
+    }
+    setFlag(w, 198);
+    Ls.saveReturnPoint(w, 0x00, 0xFA);
+    saveGame(w);
+    Scr.beginFadeIn(w, 0x04);
+    yield* Scr.waitFade(sh);
+    T.scriptSetText(w, 0x14CF);
+    yield* T.scriptShowText(sh, 0x02);
+    S.actorSetSpeed(w, 0x02, 0x000A);
+    S.actorPlayAnim(w, 0x02, 0x05);
+    yield* S.waitActorAnimDone(sh, 0x02);
+    yield* moveAndWait(sh, 0x02, 0x2300, 0x1900);
+    S.actorPlayAnim(w, 0x02, 0x06);
+    yield* S.waitActorAnimDone(sh, 0x02);
+    S.actorMoveTo(w, 0x02, 0x2300, 0x1500);
+    Scr.beginFadeOut(w, 0x04);
+    yield* Scr.waitFade(sh);
+    wr(w, 0xC441, 0x01);
+  } else if (e === 0x03) {
+    wr(w, 0xC4B4, 0); wr(w, 0xC4B5, 0);
+    setFlag(w, 213);
+    S.actorPlayAnim(w, 0x02, 0x0A);
+    Scr.beginFadeIn(w, 0x04);
+    yield* Scr.waitFade(sh);
+    T.scriptSetText(w, 0x14D5);
+    yield* T.scriptShowText(sh, 0x02);
+  } else if (e === 0x0E) {
+    Scr.beginFadeIn(w, 0x04);
+    yield* Scr.waitFade(sh);
+    yield* map26GuruOfferSwap(sh);
+  }
+}
+
+export const HOOKS = {
+  "33:738f": function* () {},                     // 33:738F Map26TargetShotShotSetup: ret
+  "33:7390": map26TargetAfterShot,
+};
+
 export const SCRIPTS = {
   "33:4722": map08Enter,
   "33:4bd3": map08TriggerCallOver,
@@ -1656,5 +2042,15 @@ export const SCRIPTS = {
   "33:7b6b": map2EObject1UpMushroom,
   "33:791c": map2ETriggerLeave,
   "33:7945": map2ETriggerExit2,
+  "33:7184": map26Enter,
+  "33:701f": map26TalkGuardianA,
+  "33:705d": map26TalkGuardianB,
+  "33:70b2": map26TalkGuru,
+  "33:70e1": function* (sh) { sh.sound(0x9E); yield* map26LockedText(sh); },   // 33:70E1 Map26ObjectLockedDoor
+  "33:70f8": sh => map26TriggerTarget(sh, 0x01),
+  "33:7109": sh => map26TriggerTarget(sh, 0x02),
+  "33:710d": sh => map26TriggerTarget(sh, 0x03),
+  "33:7116": map26TriggerDoor,
+  "33:713e": map26TriggerLeave,
 };
 export const TASKS = () => ({});

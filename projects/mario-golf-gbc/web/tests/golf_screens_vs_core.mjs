@@ -677,6 +677,40 @@ const CASES = [
       { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
       { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
       { press: 1, every: 40, times: 8 }, [200, 0], [2, 1], { press: 1, every: 40, times: 4 }, [200, 0]], 300) },
+  // the Field's trigger 6 (34:4618) to Windy Valley (map $26, 33:7184): trigger 1 (33:70F8: the guardian's talk
+  // 33:701F, he steps aside; "Shoot from here?" 33:72BE Yes): the target shot (game mode 5, course 0 hole 7, the hooks
+  // 33:736F; the result poked to a hit, $C3E0 = 1, on both sides once the round is over), back at entrance $FA
+  // (33:73BB: 40 EXP, the level-up screen, the save, warp $0F), entrance $0F (33:71FA: #198, the save, the guardian
+  // walks off, warp 1): the Field
+  { name: "boot_kid_story_windy", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
+    hook: (() => { const fp = flagPoke(86); let done = false; return (f, w, core) => {
+      fp(f, w, core);
+      if (!done && roundsDone >= 1) { done = true; w.wram[0][0x3E0] = 1; core.wram(0)[0x3E0] = 1; }
+    }; })(),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x1C, 0x26], noA: true }, { to: [0x1C, 0x24], map: 0x26, noA: true },
+      [300, 0], { to: [0x20, 0x1E], noA: true }, { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
+      { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x26 },
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x41, 0x5694) },
+      { press: 1, every: 60, until: () => !hasTask(menuW, 0x41, 0x5694) },
+      { press: 1, every: 40, until: () => menuW.wram[0][0x450] === 0x02 }, [300, 0]], 300) },
+  // Windy Valley after its first target (#114 #198 #199 #200 #212 poked): the door (trigger 4, 33:7116) to the hut's
+  // other half (map $2F): the guardian (talk 3, 33:78B6: #213, warp 3), Windy Valley's entrance 3 (33:71D5); trigger 1
+  // (33:70F8, Yes): the second target (game mode 5, course 8 hole $0B; a hit poked as above), entrance $FA (33:755B:
+  // 180 EXP, #201, the level-up screen, the save, warp $0E), the guru (33:7660: Yes, Yes, Yes: SwapShotCurve 33:779F)
+  { name: "boot_kid_story_windy2", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
+    hook: (() => { const fp = flagPoke(86, 114, 198, 199, 200, 212); let done = false; return (f, w, core) => {
+      fp(f, w, core);
+      if (!done && roundsDone >= 1) { done = true; w.wram[0][0x3E0] = 1; core.wram(0)[0x3E0] = 1; }
+    }; })(),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x1C, 0x26], noA: true }, { to: [0x1C, 0x24], map: 0x26, noA: true },
+      [300, 0], { to: [0x22, 0x18], noA: true }, { to: [0x22, 0x16], map: 0x2F, noA: true }, [300, 0],
+      { to: [0x25, 0x0D], at: [0x2500, 0x0D00], noA: true }, [2, 0x40], [20, 0], [2, 1],
+      { press: 1, every: 40, until: () => menuW.wram[0][0x450] === 0x26 }, [300, 0],
+      { to: [0x23, 0x23], noA: true }, { to: [0x23, 0x1F], noA: true }, { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
+      { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x26 },
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x41, 0x5694) },
+      { press: 1, every: 60, until: () => !hasTask(menuW, 0x41, 0x5694) },
+      { press: 1, every: 40, times: 16 }, [300, 0]], 300) },
   // the Field, A with nothing ahead: the Navigation menu (0A:7174): Down twice, Up, Down, A: the place's guide on the
   // Field again (0A:7878: its name, the arrow, the marker); a walk; Start: the start menu's Navigation (41:7413): B
   { name: "boot_kid_story_nav", state: "boot_poweron_kid", open: true, noRet: true, sram: true,

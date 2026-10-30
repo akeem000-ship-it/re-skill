@@ -76,7 +76,7 @@ function drawDigitSpritesAt(w, a, hl, bc, d, e) {
 
 // ---- bank 02: the character record $C800 ----
 // 02:4EF6 CharRefreshStats: the stats computed again at level - 1
-function charRefreshStats(w) {
+export function charRefreshStats(w) {
   const r = w.wram[0];
   r[0x812] = (r[0x812] - 1) & 0xFF;
   charComputeStats(w);

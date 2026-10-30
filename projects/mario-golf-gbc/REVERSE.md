@@ -109,6 +109,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the ending: EndingSequence 0A:56B1 with the sepia fade, the credits (bank 0B), the final screen (bank 79) and the ending's maps $31-$3E (bank 35); ShowPictureTimed 40:6666 | 168,762 | 69.54% |
 | + the Trophy Room (map $07), Peach's Castle's 1-Up Mushroom and Toad's practice round; the scorecard's pars fixed for courses 3 and up | 169,385 | 69.80% |
 | + the Club Maker's Hut (maps $2E / $2F, 33:795C): the club maker's offer and exchange (33:7990 / 7A73), the guardian, the 1-Up Mushroom (33:7B6B), the exits | 170,216 | 70.14% |
+| + Windy Valley (map $26, 33:7184): the guardian, the target shots (33:72BE, the hooks 33:736F) and their results, the guru's fade / draw swap (33:7660, 33:779F) | 172,204 | 70.96% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -257,6 +258,8 @@ given to the native code). All cases match frame for frame:
 | boot_kid_story_castletoad | the castle with the door open (#127 poked): the 1-Up Mushroom (33:6F47, the level-up screen), Toad's practice round (33:5D8D: course 5, one hole), back at entrance 2 | 12,587 |
 | boot_kid_story_hut | the paths open (#86 #114 poked): the Field's trigger $0D (34:4681, the door copied in by 34:4733) to the Club Maker's Hut (map $2E, 33:795C): the maker's offer (33:7882 -> 33:7990: Yes, Yes, the menu: Distance), the 1-Up Mushroom (33:7B6B, the level-up screen), out by trigger 1 (33:791C: the maker's word, $1815) | 6,809 |
 | boot_kid_story_hutswap | the same with the club already made (#215 #216 poked): the exchange (33:7A73: Yes, Yes: the club given back, SetCharFlags12 0, the return point map 0 / $FA, SaveGame), the maker again ($181A) | 5,347 |
+| boot_kid_story_windy | #86 poked: the Field's trigger 6 to Windy Valley (map $26, 33:7184): trigger 1 (the guardian's talk 33:701F, "Shoot from here?" 33:72BE Yes), the target shot (game mode 5, the hooks 33:736F; the hit poked, $C3E0 = 1), the result (33:73BB: 40 EXP, the level-up screen, the save), entrance $0F (33:71FA: #198, the guardian walks off), the Field | 6,813 |
+| boot_kid_story_windy2 | #86 #114 #198 #199 #200 #212 poked: the door (33:7116) to map $2F, the guardian (33:78B6: #213, warp 3), entrance 3 (33:71D5), the second target (course 8 hole $0B, the hit poked), the result (33:755B: 180 EXP, #201), the guru (33:7660: Yes three times, SwapShotCurve 33:779F) | 8,298 |
 | boot_kid_story_trophies | the clubhouse's door 5 to the Trophy Room (map $07, 35:41B2; #112 #136 #113 poked): A at the Marion and Palm trophies (35:4115 / 4126) | 4,721 |
 | boot_kid_story_partnerleave | the same call answered No (33:4B91); out by the driving range's trigger: the partner's question (33:4FEF) No (a step back), again Yes (he leaves), the range | 11,626 |
 | boot_kid_story_partnerfield | the champion joins, out to the Field, up onto Windy Valley's trigger: "Quitting this Match Game?" (34:5530) No | 10,452 |
@@ -666,10 +669,30 @@ counts as 1; #215 #216 #225, SetCharFlags12 02:539C = the choice + 1, the club h
 the exchange 33:7A73 while #224 is clear (two questions; #225; with the club: #216 cleared, SetCharFlags12 0, the
 return point map 0 / $FA, SaveGame, $1819 and its next part; without: #216, SetCharFlags12 1 or 2 by #217, the same
 save, $181B with sound $94, $1814); else $1814 or $181A by #216. The Windy Valley guardian (talk 3, 33:78B6: after
-#212 $14D4 with his animation 5 and the maker's $0A, #213, warp 3; else $14D0, its next part once #200 is set; not
-reached by a case), the 1-Up Mushroom (object 1, 33:7B6B: a copy of 33:6F47 with #157, actor 4 at ($0500, $0700),
+#212 $14D4 with his animation 5 and the maker's $0A, #213, warp 3; else $14D0, its next part once #200 is set; on map
+$2F at ($2500, $0B00), reached by `boot_kid_story_windy2`), the 1-Up Mushroom (object 1, 33:7B6B: a copy of 33:6F47 with #157, actor 4 at ($0500, $0700),
 speaker $88; quirk kept: #157 is set before the level-99 test), trigger 1 33:791C (with #225 and #216 the maker
 faces left, $1815, 30 frames; warp 1) and trigger 2 33:7945 (warp 2).
+**Windy Valley** (map $26, header 33:6FB9, `maps/bank33.js`; `boot_kid_story_windy`, `boot_kid_story_windy2`): the
+Field's trigger 6 (facing up, warp 6). The enter script 33:7184 (#224 from the hand, SetTempFlagFromHand 33:7813; the
+guardian, actor 2, at ($2300, $1E00) before #199, put away while #198 is set and #213 clear; entrance $FA: both results
+33:73BB / 33:755B run one after the other; entrance $0F 33:71FA: without #114 #198, the save, $14CF, the guardian walks
+off as the screen fades, warp 1 (the Field); with #114 33:7270: #198 #200 #212 #213, the save, $14E9, $14D5; entrance 3
+33:71D5 (from the hut's guardian): #213, $14D5; entrance $0E 33:72B2: the guru's offer 33:7660). The talks: the
+guardian 33:701F (the first time he steps aside, #199) / 33:705D (walks round), the guru 33:70B2 (after #201
+33:771A); the locked door (object 1 33:70E1, trigger 4 33:7116 until #198: a step up, warp 2 to the hut's other half,
+map $2F); trigger 5 33:713E ("Hmph!" while challenged and not passed; warp 1). Triggers 1-3 (33:70F8 / 7109 / 710D:
+the target in wScriptArg $C4BC) ask "Shoot from here?" (33:72BE): wStoryRoundKind $0A, the tee by the target
+(33:730C: game mode 5 with $C82C = $28 for target 1 before the first success or once #213 is set, both while #201 is
+clear; else game mode 6 with $C82C = 7), the wind and hole (33:751B: a = the random low byte & 3, 0 -> 3; before #213
+SetForcedWind $C006 + a on course 0 hole 7, after it $E006 + a (0 with #72) on course 8 hole $0B; SetCourseHole's wind
+byte is the 6 SetForcedWind leaves in a), the hooks 33:736F (0: ret; 1 33:7390: $C3E0 = 1 within $3C of the pin, #99 =
+holed out, the round over $80), one hole. Results: target 1 hit: $14CD, 40 EXP (sound $38, WaitJingleEnd), the
+level-up screen, the save, warp $0F; the second target hit: $14D9, #201, 180 EXP without the sound or the jingle wait,
+warp $0E; misses $14CC / $14D8; targets 2 / 3 never pass (33:7473 / 33:7612: the guardian comes over and hops; quirk
+kept: the second's $14D7 is set but its first part never shown alone). SwapShotCurve 33:779F: #214, SetCharHand 02:53B2
+(bit 0 of wCharFlags flipped, CharRefreshStats 02:4EF6), six flashes at fade speed $20. The cases poke the shot's
+result ($C3E0 = 1) on both sides once the round is over (no scripted swing hits the target).
 **The Trophy Room** (map $07, `maps/bank35.js`; `boot_kid_story_trophies`): the clubhouse's door 5 (warp 7); the enter
 script 35:41AE / 41B2 places the trophies (actors $02-$10) by the placed flags #112-#116 and won flags #136-#139 / #117,
 a place trophy's second or third by TestCourseHoleBit 02:5C77 (the club's bit $16; quirk kept: a won club still runs
