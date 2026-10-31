@@ -146,6 +146,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + CpuPlanShot 11:4046 and ReflectScaleUnused 10:77CC (fuzzed), copies found by tools/find_copies.py and checked with compare_routines.py (40:5941 03:4028 0D:499A 05:682D 35:45D2 33:4C59 4A:6CA2 40:61AA 41:76DF 41:7745 08:4F82 33:7CC3 34:7DE4 31:7D98 30:7E1A) | 236,440 | 97.43% |
 | + the clubhouse doors 2, 3, 5 in and out, the clinic's judgement and every comment class (the class poked), the map graphics browser and the bank-41 summary card (patched cases) | 237,800 | 97.99% |
 | + ReplaySavedHole 10:435E (the shot records' replay of a saved hole; SetupPlayerGolfer $81; `boot_status_replay`: a saved hole made from the hole's tee and cup, poked) | 237,983 | 98.07% |
+| + the loaded card's place in the story (48:480D), small unreferenced helpers fuzzed (02:4550 30:7E46 06:69E7 08:43B8 02:461F 34:5BC7) | 238,344 | 98.22% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
