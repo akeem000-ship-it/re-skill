@@ -455,6 +455,12 @@ $("file").addEventListener("change", async e => {
 romStore("readonly", s => s.get("rom")).then(b => { if (b && !gb) $("remembered").hidden = false; }).catch(() => {});
 $("startsaved").addEventListener("click", () => romStore("readonly", s => s.get("rom")).then(b => b && loadRom(b.buffer.slice(0))).catch(e => { $("romstatus").textContent = "could not read the saved ROM: " + e; }));
 $("forgetrom").addEventListener("click", () => romStore("readwrite", s => s.delete("rom")).then(() => { $("remembered").hidden = true; }).catch(() => {}));
+// GAMES: back to the game picker (picker.html: the app's first screen), the cartridge save written first
+{
+  const b = document.createElement("span"); b.className = "k"; b.id = "gamesbtn"; b.textContent = "GAMES"; b.title = "back to the screen where you pick a game";
+  b.addEventListener("pointerdown", () => { flushSave(); location.href = "picker.html" + location.search + location.hash; });
+  $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b);
+}
 $("reset").addEventListener("click", () => { if (port) { location.reload(); return; } if (gb) { settle(); gb.reset(); rec.event("reset"); } });
 // ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
 // a .mtrec file (Android: Downloads/MTenn3D and the share sheet; browser: a download). Hiding the app stops and saves.

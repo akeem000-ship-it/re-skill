@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+<link rel="icon" href="icons/icon-32.png" sizes="32x32"><link rel="icon" href="icons/icon-192.png" sizes="192x192">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pick a Game</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0e1c; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+  /* the tennis half's live 3D rally (js/picker.js), under the picture of both halves (#ov) */
+  #gl { position: fixed; left: 0; top: 0; width: 72vw; height: 100dvh; display: block; }
+  #ov { position: fixed; inset: 0; width: 100vw; height: 100dvh; display: block; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="ov"></canvas>
+<script type="module" src="js/picker.js"></script>
+</body>
+</html>

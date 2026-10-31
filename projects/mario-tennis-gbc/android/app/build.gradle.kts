@@ -12,13 +12,13 @@ val syncWebAssets by tasks.registering(Sync::class) {
 android {
     namespace = "com.example.mariotennis"
     compileSdk = 34
-    defaultConfig { applicationId = "com.example.mariotennis"; minSdk = 24; targetSdk = 34; versionCode = 149; versionName = "0.35.95" }
+    defaultConfig { applicationId = "com.example.mariotennis"; minSdk = 24; targetSdk = 34; versionCode = 150; versionName = "0.35.96" }
     setProperty("archivesBaseName", "MTenn3D")
     // -Pedition=port: "MTenn3D Port", a separate app beside MTenn3D (its own saves and settings) that always starts
     // the game on the JS port (CODE: PORT); the CODE button still switches for that run
     val portEdition = findProperty("edition") == "port"
     defaultConfig.manifestPlaceholders["appLabel"] = if (portEdition) "MTenn3D Port" else "MTenn3D"
-    defaultConfig.resValue("string", "start_page", if (portEdition) "full.html#port" else "full.html")
+    defaultConfig.resValue("string", "start_page", if (portEdition) "picker.html#port" else "picker.html")   // (the game picker: web/js/picker.js)
     if (portEdition) { defaultConfig.applicationId = "com.example.mariotennis.port"; setProperty("archivesBaseName", "MTenn3D-Port") }
     sourceSets["main"].assets.srcDir(webAssets)
     buildTypes { release { isMinifyEnabled = false } }
