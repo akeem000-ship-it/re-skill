@@ -51,12 +51,15 @@ export function composeWide(w, frame, out, W, place = mapPlace(w)) {
     const o = y * W;
     out.set(frame.subarray(y * 160, y * 160 + 160), o + pad);
     const inWin = y >= place.winTop;
+    let ground = 0;
+    if (inWin) {                                                                 // the window's rows (the HUD bar): its commonest colour carried on
+      const n = new Map(); for (let x = 0; x < 160; x++) { const c = frame[y * 160 + x]; n.set(c, (n.get(c) || 0) + 1); }
+      let best = 0; for (const [c, k] of n) if (k > best) { best = k; ground = c; }
+    }
     for (let x = 0; x < W; x++) {
       if (x === pad) x += 160;
       if (x >= W) break;
-      if (inWin) {                                                               // the window's rows (the HUD bar): its edge colour carried on
-        out[o + x] = frame[y * 160 + (x < pad ? 0 : 159)]; continue;
-      }
+      if (inWin) { out[o + x] = ground; continue; }
       const mx = place.x0 + x - pad, my = place.y0 + y, tx = mx >> 3, ty = my >> 3;
       if (tx < bx0 || tx >= bx1 || ty < by0 || ty >= by1) { out[o + x] = dark; continue; }   // past the map's edge
       const mi = ((ty & 63) << 6) | (tx & 63), tile = t3[mi], attr = t2[mi], bank = attr & 8 ? v1 : v0;

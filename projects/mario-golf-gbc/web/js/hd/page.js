@@ -4,6 +4,7 @@
 //   (stick.js). A test can script the buttons per frame with window.__golfInput = game => mask (web/tests/play_hd.mjs).
 // Everything here draws or reads; the game's memory is never written.
 import { HDView } from "./view.js";
+import "./hudtext.js";                               // (the HUD glyph tracker from the start, as the text one)
 
 export function attachHD({ canvas, keys, getRom, getGame }) {
   const link = document.createElement("link"); link.rel = "stylesheet"; link.href = new URL("../../hd.css", import.meta.url).href;

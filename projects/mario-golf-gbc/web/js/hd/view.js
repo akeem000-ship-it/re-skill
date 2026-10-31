@@ -8,6 +8,7 @@
 import { GbView } from "./gbview.js";
 import { HDText, FONTS, FONT_ORDER, HD } from "./hdtext.js";
 import { composeWide, mapPlace, WIDE_H } from "./wide.js";
+import { scale2x } from "./hdui_cursors.js";
 
 const stored = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const keep = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } };
@@ -75,28 +76,34 @@ export class HDView {
     // the picture W x 144: the game's frame (or the map-widened one)
     const W = this.view === "wide" ? WIDE_W : 160, pad = (W - 160) >> 1;
     if (W !== this.width) this.layout(W);
-    const hid = !!(hd && hd.ui && hd.hiddenOam.size);         // sprites replaced by HD art (cursors): the base is the picture without them
-    let base = rgba;
-    if (hid) { this.bg32.set(this.gbv.ppu.bgFrame); base = this.bg32; }
-    let src = hid ? this.bgImg : image;
+    const ui = !!(hd && hd.ui);                                // HD menus: the base is the picture without sprites, smoothed; the
+    let base = rgba;                                           // sprites go on top of the art, smoothed too (drawSprites)
+    if (ui) { this.bg32.set(this.gbv.ppu.bgFrame); base = this.bg32; }
+    let src = ui ? this.bgImg : image, s32 = ui ? this.bg32 : rgba;
     this.wideOn = false;
     if (W !== 160) {
       if (!this.wideImg || this.wideImg.width !== W) { this.wideImg = new ImageData(W, WIDE_H); this.wide32 = new Uint32Array(this.wideImg.data.buffer); }
       this.wideOn = composeWide(w, base, this.wide32, W, mapPlace(w));
       if (!this.wideOn) { this.wide32.fill(0xFF000000); for (let y = 0; y < 144; y++) this.wide32.set(base.subarray(y * 160, y * 160 + 160), y * W + pad); }
-      src = this.wideImg;
+      src = this.wideImg; s32 = this.wide32;
     }
-    if (this.small.width !== W) { this.small.width = W; this.small.height = 144; }
-    this.sg.putImageData(src, 0, 0);
     const S = hd ? HD : (W === 160 ? 1 : 4);                  // (wide alone: drawn 4x so the sides stay sharp next to the pixels)
     if (cv.width !== W * S || cv.height !== 144 * S) { cv.width = W * S; cv.height = 144 * S; }
-    g.imageSmoothingEnabled = false; g.drawImage(this.small, 0, 0, W * S, 144 * S);
+    if (ui) {                                                  // Scale2x twice: the pixel art's stairs smoothed, its colours kept
+      if (!this.baseImg || this.baseImg.width !== W * 4) { this.baseCv = document.createElement("canvas"); this.baseCv.width = W * 4; this.baseCv.height = 576; this.baseG = this.baseCv.getContext("2d"); this.baseImg = this.baseG.createImageData(W * 4, 576); }
+      new Uint32Array(this.baseImg.data.buffer).set(scale2x(scale2x(s32, W, 144), W * 2, 288));
+      this.baseG.putImageData(this.baseImg, 0, 0); g.drawImage(this.baseCv, 0, 0);
+    } else {
+      if (this.small.width !== W) { this.small.width = W; this.small.height = 144; }
+      this.sg.putImageData(src, 0, 0);
+      g.imageSmoothingEnabled = false; g.drawImage(this.small, 0, 0, W * S, 144 * S);
+    }
     if (!hd) return true;
     g.imageSmoothingEnabled = true;
     if (hd.has.under) g.drawImage(hd.canvas.under, pad * HD, 0);
     if (hd.has.bg) g.drawImage(hd.canvas.bg, pad * HD, 0);
     if (hd.has.win) g.drawImage(hd.canvas.win, pad * HD, 0);
-    if (hd.ui && hd.painted) { this.drawSprites(rgba, pad); if (hd.has.spr) { g.imageSmoothingEnabled = true; g.drawImage(hd.canvas.spr, pad * HD, 0); } }
+    if (ui) { this.drawSprites(rgba, pad); if (hd.has.spr) { g.imageSmoothingEnabled = true; g.drawImage(hd.canvas.spr, pad * HD, 0); } }
     return true;
   }
   // the HD UI art covers the screen's tiles; the sprites' own pixels (where the frame differs from the BG-only picture) go back on
@@ -109,7 +116,10 @@ export class HDView {
       const th = hd.through; for (let k = 0; k < th.length; k += 2) s[th[k]] = th[k + 1]; any = true;
     }
     if (!any) return;
-    this.sprG.putImageData(this.sprImg, 0, 0); this.g.imageSmoothingEnabled = false; this.g.drawImage(this.sprCv, pad * HD, 0, 160 * HD, 144 * HD);
+    // smoothed to 4x as the picture under them (golf_common.js): Scale2x twice
+    if (!this.bigImg) { this.bigCv = document.createElement("canvas"); this.bigCv.width = 640; this.bigCv.height = 576; this.bigG = this.bigCv.getContext("2d"); this.bigImg = this.bigG.createImageData(640, 576); }
+    new Uint32Array(this.bigImg.data.buffer).set(scale2x(scale2x(s, 160, 144), 320, 288));
+    this.bigG.putImageData(this.bigImg, 0, 0); this.g.imageSmoothingEnabled = false; this.g.drawImage(this.bigCv, pad * HD, 0, 160 * HD, 144 * HD);
   }
   // the canvas's CSS shape for a picture W px wide
   layout(W) {

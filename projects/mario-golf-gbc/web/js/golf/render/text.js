@@ -35,6 +35,15 @@ export function formatDecimalNumber(hl, width) {
 // 00:2962 RenderGlyphToTiles: hl = glyph (width, rows, then 2-bit pixels packed MSB first), into the tile buffer de
 // from pixel column b, row c (each pixel set or cleared in both planes); temps wGlyphBlit $C280-$C283
 export function renderGlyphToTiles(w, hl, de, b, c, read = a => rd(w, a)) {
+  if (hudGlyphHook) hudGlyphHook.pre(w, hl, de, b, c, read);   // (HD UI: web/js/hd/hudtext.js; reads only)
+  renderGlyphToTilesCore(w, hl, de, b, c, read);
+  if (hudGlyphHook) hudGlyphHook.post(w, hl, de, b, c, read);
+}
+// ---- HD UI (the play page's option, web/js/hd/hudtext.js): told of every HUD glyph drawn, so it knows which labels and
+// digits each HUD tile holds; it only reads the game's memory. null: nothing is told ----
+let hudGlyphHook = null;
+export function setHudGlyphHook(h) { hudGlyphHook = h; }
+function renderGlyphToTilesCore(w, hl, de, b, c, read) {
   const w0 = w.wram[0];
   let mask = 0x80 >> (b & 7);
   w0[0x283] = mask;

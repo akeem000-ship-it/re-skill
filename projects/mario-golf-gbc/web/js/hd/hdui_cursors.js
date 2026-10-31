@@ -17,7 +17,7 @@ const BYTEKEYS = new Set(); for (const v of VARIANTS) for (const m of [v.key]) {
 const maskKey = ci => { let s = ""; for (let i = 0; i < 64; i++) s += ci[i] ? "1" : "0"; return s; };
 
 // Scale2x on a grid of colour values (0 = transparent); returns the 2x grid
-function scale2x(a, w, h) {
+export function scale2x(a, w, h) {
   const o = new Uint32Array(w * 2 * h * 2), W = w * 2, at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h) ? 0 : a[y * w + x];
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const E = a[y * w + x], B = at(x, y - 1), D = at(x - 1, y), F = at(x + 1, y), H = at(x, y + 1);
@@ -29,7 +29,7 @@ function scale2x(a, w, h) {
 }
 // the smoothed picture of a grid of packed colours (0xAABBGGRR, 0 = none) drawn with its top-left at (x, y) screen pixels
 const tmp = typeof document !== "undefined" ? document.createElement("canvas") : null;
-function drawSmooth(g, grid, w, h, x, y) {
+export function drawSmooth(g, grid, w, h, x, y) {
   const big = scale2x(scale2x(grid, w, h), w * 2, h * 2), W = w * 4, H = h * 4;
   if (tmp.width !== W || tmp.height !== H) { tmp.width = W; tmp.height = H; }
   const tg = tmp.getContext("2d"), im = tg.createImageData(W, H); new Uint32Array(im.data.buffer).set(big); tg.putImageData(im, 0, 0);

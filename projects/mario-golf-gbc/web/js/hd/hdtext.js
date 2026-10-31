@@ -18,6 +18,7 @@ export const FONT_ORDER = ["game", "itim", "kode"];
 import { HD, Screen, runPainters, runUnder, watchKey, onPainterChange, loadMenuModules, fillTextTight, tightWidth } from "./hdui.js";
 import "./hdui_frames.js"; import "./hdui_cursors.js";                        // the built-in art (boxes, cursors)
 import { setGlyphHook } from "../golf/text.js";
+import { rb as romByte } from "../golf/rom.js";
 export { HD };                                       // canvas pixels per screen pixel
 
 const FONT = 0x50F0, WIDTHS = 0x5750, GLYPHS = 0x66; // bank 03: glyphs $20-$85
@@ -37,9 +38,15 @@ function bufAt(w, de) {                              // the glyph tile under pen
   const b = w.wram[(w.high[0x196] & 7) || 1];
   return [b, off, off + 16];
 }
+function initFont(byte) {                           // the blank glyph tile (the buffer cleared) and the widths, from the ROM
+  let k = ""; for (let i = 0; i < 16; i++) k += String.fromCharCode(byte(3, FONT + i));
+  blankKey = k; content.set(blankKey, []);
+  widths = [...Array(GLYPHS).keys()].map(g => byte(3, WIDTHS + g));
+}
 const glyphHook = {
   pre(w, a, de) {
     const at = bufAt(w, de); pending = [];
+    if (!blankKey) initFont(romByte);
     if (!at) return;
     const [b, o0, o1] = at, k0 = keyOf(b, o0), k1 = keyOf(b, o1);
     pending = [content.has(k0) ? content.get(k0) : null, content.has(k1) ? content.get(k1) : null, k0, k1];
@@ -58,6 +65,8 @@ const glyphHook = {
   },
 };
 
+setGlyphHook(glyphHook);                             // (from the start: the text on screen is known when the option is switched on)
+
 // the glyphs the tracker knows for 16 tile bytes at b[o] (undefined: not a glyph tile it followed), for tests
 export const glyphsOfTile = (b, o) => content.get(keyOf(b, o));
 
@@ -65,10 +74,7 @@ export class HDText {
   constructor(gb) {
     this.gb = gb; this.font = "game"; this.loaded = {};
     const rom = gb.mem.rom;
-    if (!blankKey) {
-      blankKey = keyOf(rom, 3 * 0x4000 + FONT - 0x4000); content.set(blankKey, []);
-      widths = [...Array(GLYPHS).keys()].map(g => rb(rom, 3, WIDTHS + g));
-    }
+    if (!blankKey) initFont((b, a) => rb(rom, b, a));
     this.width = widths;
     this.bold = new Map();
     for (let g = BOLD_FROM; g < BOLD_TO; g++) {           // (glyphs without ink, the space aside, are fillers: no letters)
@@ -80,7 +86,7 @@ export class HDText {
     this.ui = false; this.hideSprites = true; this.hiddenOam = new Set(); this.hiddenPx = new Uint8Array(160 * 144); this.through = []; this.okey = ""; this.screen = new Screen(gb); this.painted = false;     // HD UI (hdui.js): frames, cursors, icons
     this.offPainters = onPainterChange(() => { this.key = ""; this.dirty = true; });
     loadMenuModules();
-    setGlyphHook(glyphHook);
+
   }
   setSpriteHide(on) { if (this.hideSprites !== !!on) { this.hideSprites = !!on; this.key = ""; this.dirty = true; } }
   setView3d(on) { if (this.in3d !== !!on) { this.in3d = !!on; this.key = ""; this.dirty = true; } }
