@@ -124,12 +124,15 @@ if (same) {
   const STOPS = [
     ["title", g => g.mark === "menus" && (t => { for (let p = 0x1C0; p < 0x200; p += 4) if (t[p] && t[p + 3] === 0x40 && (t[p + 1] | t[p + 2] << 8) === 0x4D1D) return true; return false; })(g.w.wram[0])],
     ["charselect", g => g.mark === "menus" && (t => { for (let p = 0x1C0; p < 0x200; p += 4) if (t[p] && t[p + 3] === 0x06 && (t[p + 1] | t[p + 2] << 8) === 0x65D9) return true; return false; })(g.w.wram[0]) && g.w.wram[6][0x214] === 4],
+    ["modeselect", g => g.mark === "menus" && (t => { for (let p = 0x1C0; p < 0x200; p += 4) if (t[p] && t[p + 3] === 0x0D && (t[p + 1] | t[p + 2] << 8) === 0x415C) return true; return false; })(g.w.wram[0])],
+    ["courseselect", g => g.mark === "menus" && (t => { for (let p = 0x1C0; p < 0x200; p += 4) if (t[p] && t[p + 3] === 0x0F && (t[p + 1] | t[p + 2] << 8) === 0x4160) return true; return false; })(g.w.wram[0])],
     ["aim", g => g.mark === "aimmenu" && g.__aimAt !== undefined && g.frames - g.__aimAt > 45],
     ["pause", g => g.mark === "aimmenu" && g.frames - g.__aimAt > 125 && g.frames - g.__aimAt < 135],
     ["scorecard", g => g.mark === "aimmenu" && g.frames - g.__aimAt > 380 && g.frames - g.__aimAt < 390],
     ["address", g => g.mark === "address" && g.frames - g.__addrAt > 10],
     ["swing", g => g.mark === "address" && g.frames - g.__addrAt > 100],
     ["flight", g => g.mark !== "address" && g.mark !== "aimmenu" && g.__addrAt && g.frames - g.__addrAt > 260],
+    ["caption", g => (t => { for (let p = 0x1C0; p < 0x200; p += 4) if (t[p] && t[p + 3] === 0x3B && (t[p + 1] | t[p + 2] << 8) === 0x4433) return true; return false; })(g.w.wram[0])],
     ["aim2", g => g.mark === "aimmenu" && g.__aims >= 2 && g.frames - g.__aimAt > 45],
   ];
   const STORY_STOPS = [["story_map", g => g.w.wram[0][0x450] && g.frames > 1700], ["story_walk", g => g.w.wram[0][0x450] && g.frames > 2150], ["story_talk", g => g.w.wram[0][0x450] && g.frames > 2400], ["story_talk2", g => g.w.wram[0][0x450] && g.frames > 2700], ["story_more", g => g.w.wram[0][0x450] && g.frames > 3300]];
