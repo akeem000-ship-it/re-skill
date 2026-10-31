@@ -135,9 +135,21 @@ export function* runStoryLocation(P) {
   yield* runLocation(P);
   dropWords(P, 4);
 }
+// INSTANT CROSSING (P.quickCross, full.js: CROSSING Instant, the default; off it is the game's own): walking between areas the 3D
+// view draws as one (the restaurant plaza, map 19, and the varsity courtyard, map 20, by these exits: [old map, new location, its
+// entry]) has no fade out or in, no name popup or wait, and no walk-in (the arrival script, or the courtyard's init walk): the new
+// area is there the next frame and the player walks on from its entry point. Nothing else changes (the actors, scripts and music of
+// the area are loaded as ever).
+const QUICK_CROSSINGS = [[19, 7, 2], [20, 8, 4]];
+function quickCrossing(P) {
+  if (!P.quickCross) return false;
+  const old = P.bus.u8(0xC32E), V = P.V;                  // (wCurMapID: still the area being left)
+  return QUICK_CROSSINGS.some(([m, loc, e]) => m === old && loc === V.storyModeCurrentLocation && e === V.storyModeEntryPoint);
+}
 function* runLocation(P) {
   const { bus, V } = P;
-  beginFadeOut(P, FADE_OUT_SPEED);
+  const quick = quickCrossing(P); P.quickArrive = quick;
+  if (!quick) beginFadeOut(P, FADE_OUT_SPEED);
   clearTemporaryStoryFlags(P);
   clearStoryEventRequests(P);
   loadStoryLocationHeader(P);
@@ -160,14 +172,17 @@ function* runLocation(P) {
   if (!testFlag(P, FLAG_ENDING_CREDITS_RUNNING)) yield* farcallRom(P, 0x4FAC, BANK_GAME, LoadMenuFontGfx);
   P.callRom(0, EnableLCD);
   const arrival = V.storyArrivalScript;
-  if (arrival) yield* callHLInBankA(P, V.storyLocationBank, arrival);
+  if (arrival && !quick) yield* callHLInBankA(P, V.storyLocationBank, arrival);
   yield* call(P, 0x4FC7, runLocationInitScript(P, cpuRegs(P)));
+  P.quickArrive = false;
   const exit = V.storyModeExitTriggerRequest;
   if (exit) { V.storyModeExitTriggerRequest = 0; yield* call(P, 0x4FD3, runLocationExit(P, exit)); return; }
-  beginFadeIn(P, FADE_IN_SPEED);
-  yield* call(P, 0x4FDE, waitFadeEnd(P, cpuRegs(P)));
-  if (V.storyModeShowLocationName) yield* call(P, 0x4FEF, showLocationNamePopup(P, { ...cpuRegs(P), hl: V.storyModeLocationNameTextId }));
-  else yield* waitFramesCmd(P, 0x4FF1, ENTER_WAIT_FRAMES);
+  if (!quick) {
+    beginFadeIn(P, FADE_IN_SPEED);
+    yield* call(P, 0x4FDE, waitFadeEnd(P, cpuRegs(P)));
+    if (V.storyModeShowLocationName) yield* call(P, 0x4FEF, showLocationNamePopup(P, { ...cpuRegs(P), hl: V.storyModeLocationNameTextId }));
+    else yield* waitFramesCmd(P, 0x4FF1, ENTER_WAIT_FRAMES);
+  }
   for (;;) {                                         // .frameLoop
     P.wramBank(WRAM_ACTORS);
     if (!checkStoryEventRequests(P).a) {             // nothing asked: the player walks until something is

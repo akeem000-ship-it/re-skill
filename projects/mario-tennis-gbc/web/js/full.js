@@ -380,6 +380,7 @@ async function makePort(bytes) {
   if (physicsMode() === "enhanced") { const { EnhancedPhysics } = await import("./engine/enhanced.js"); P.physics = new EnhancedPhysics(); }
   else if (physicsMode() === "120") { const { Physics120 } = await import("./engine/physics120.js"); P.physics = new Physics120(); }   // PHYSICS: 120 Hz
   P.evenNet = netMode() === "even";
+  P.quickCross = crossMode() === "instant";                               // CROSSING (port story_loop.js: INSTANT CROSSING)
   P.tourLength = tourLen();
   P.plus = plusRules();
   P.learnProfile = loadLearn(); learn0 = { ...P.learnProfile, on: P.plus && P.plus.learn ? 1 : 0 }; learnSaved = JSON.stringify(P.learnProfile);   // SCOUTING
@@ -470,7 +471,7 @@ const perf = new PerfHud($("hud"), () => voxel);   // PERF (menu bar, OPTIONS > 
 $("reset").addEventListener("click", () => { if (port) { location.reload(); return; } if (gb) { settle(); gb.reset(); rec.event("reset"); } });
 // ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
 // a .mtrec file (Android: Downloads/MTenn3D and the share sheet; browser: a download). Hiding the app stops and saves.
-const recMeta = () => ({ learn: port && learn0 ? learn0 : undefined, view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? (port.physics.hz === 120 ? "120" : "enhanced") : undefined, net: port ? (port.evenNet ? "even" : "original") : undefined, tourlen: port ? port.tourLength : undefined, menu: port && port.menuWheel && port.menuWheel.on ? "wheel" : "game", plus: port ? (port.plus ? "on" : "off") : undefined, rules: port && port.rules ? port.rules : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
+const recMeta = () => ({ learn: port && learn0 ? learn0 : undefined, view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? (port.physics.hz === 120 ? "120" : "enhanced") : undefined, net: port ? (port.evenNet ? "even" : "original") : undefined, cross: port ? (port.quickCross ? "instant" : "game") : undefined, tourlen: port ? port.tourLength : undefined, menu: port && port.menuWheel && port.menuWheel.on ? "wheel" : "game", plus: port ? (port.plus ? "on" : "off") : undefined, rules: port && port.rules ? port.rules : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
   port: port ? q.get("port") || "all" : undefined });
 async function saveRecording(now = false) {     // now: the app is being hidden; skip compression so it finishes at once
   if (!recording()) return; settle();
@@ -567,6 +568,19 @@ $("engbtn").textContent = ENGINE_LABEL[portMode()] || "CODE: ROM";
     if ($("engine") && next !== "classic" && $("engine").value === "rom") $("engine").value = "port";
     const u = new URL(location.href); u.searchParams.delete("physics"); history.replaceState(null, "", u.pathname + u.search + u.hash);
     location.reload();
+  });
+  $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b);
+}
+// CROSSING: Instant / Game: walking between the restaurant plaza and the varsity courtyard with no fade or walk-in (they play as one
+// area), or the game's own crossing; remembered (?cross=instant|game), applied at once (the port reads it at each crossing)
+function crossMode() { const v = q.get("cross") || stored("mt-cross"); return v === "game" ? "game" : "instant"; }
+{
+  const b = document.createElement("span"); b.className = "k"; b.id = "crossbtn"; b.title = "walking between the restaurant plaza and the courtyard: Instant (one area: no fade, no pause, you keep walking) or Game (the game's own fade and walk-in)";
+  const show = () => { b.textContent = "CROSSING: " + (crossMode() === "instant" ? "Instant" : "Game"); b.classList.toggle("on", crossMode() === "instant"); }; show();
+  b.addEventListener("pointerdown", () => {
+    try { localStorage.setItem("mt-cross", crossMode() === "instant" ? "game" : "instant"); } catch (e) { /* private mode */ }
+    const u = new URL(location.href); u.searchParams.delete("cross"); history.replaceState(null, "", u.pathname + u.search + u.hash);
+    if (port) { port.quickCross = crossMode() === "instant"; session.event("cross:" + crossMode()); } show();
   });
   $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b);
 }

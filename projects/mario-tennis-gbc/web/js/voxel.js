@@ -2168,6 +2168,12 @@ export class Voxel3D {
     const bm = this.fieldDef(id) && this.fieldDef(id).backdropMap, S = this.seam, fade = this.fadeLevel(id);
     if (S) { S.fading = fade > 0.02; return; }
     if (!bm || !bm.seam || this.freeCam) { this.seamKeep = false; return; }
+    // INSTANT CROSSING (port story_loop.js: no fade): the map is simply the neighbour's next frame; the crossing starts here, from the
+    // last frame and camera kept on the old one (held until this map is built, then the camera glides on from where it was)
+    if (this.seamCam && this.seamCam.id !== id && bm.map === this.seamCam.id && this.seamKeep && this.seamTex) {
+      this.seam = { from: this.seamCam.id, to: id, cam: this.seamCam.cam, obj: this.seamCam.obj, phase: "hold", at: performance.now(), fading: false, quick: true };
+      this.seamKeep = false; this.seamFrozen = false; this.seamPos = null; this.seamJumpAt = null; return;
+    }
     const pl = this.fieldActors()[0];
     if (fade < 0.02) {
       // the game hides the player, then puts them at the next map's entrance, a frame or two before its fade starts: the last
@@ -2184,10 +2190,10 @@ export class Voxel3D {
   seamAfter() {                                   // after each display frame: keep it, or put the kept frame over it
     const gl = this.gl, S = this.seam, cv = this.cv;
     if (!S) {
-      if (this.seamKeep && !this.seamFrozen && this.mode === "field") {
+      if (this.seamKeep && !this.seamFrozen && this.mode === "field" && this.field.mapId === this.mapId()) {   // (a frame of this map, built)
         if (!this.seamTex) this.seamTex = this.texture(1, 1, new Uint8Array(4), true);
         gl.bindTexture(gl.TEXTURE_2D, this.seamTex); gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGB, 0, 0, cv.width, cv.height, 0);   // (the canvas has no alpha)
-      } else if (this.seamKeep && this.seamFrozen && this.seamTex) {   // (the player hidden at the exit, the view not a field for a frame:
+      } else if (this.seamKeep && this.seamTex && (this.seamFrozen || this.field.mapId !== this.mapId())) {   // (the player hidden at the exit, or the next map not built yet:
         gl.disable(gl.DEPTH_TEST); gl.useProgram(this.prog); gl.bindVertexArray(this.vao);   // the kept frame over it, not the flat picture)
         this.draw(this.seamTex, m4.trs(0, -1, 0, 2, 2), m4.identity(), [0, 1, 1, -1], [1, 1, 1, 1], 0); gl.enable(gl.DEPTH_TEST);
       }
@@ -2199,7 +2205,7 @@ export class Voxel3D {
       else if (now - S.at > 4000 || (this.mapId() !== S.from && this.mapId() !== S.to) || (this.mapId() === S.from && !S.fading)) { this.seamEnd(); return; }   // (a fade that came back: not a crossing)
     }
     if (S.phase === "in" && this.mapId() !== S.to) { this.seamEnd(); return; }
-    const k = S.phase === "hold" ? 1 : Math.max(0, 1 - (now - S.at) / 350);
+    const k = S.phase === "hold" ? 1 : Math.max(0, 1 - (now - S.at) / (S.quick ? 150 : 350));   // (INSTANT CROSSING: the same view either side: a short dissolve)
     if (k > 0) {
       gl.disable(gl.DEPTH_TEST); gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
       this.draw(this.seamTex, m4.trs(0, -1, 0, 2, 2), m4.identity(), [0, 1, 1, -1], [1, 1, 1, k], 0); gl.enable(gl.DEPTH_TEST);

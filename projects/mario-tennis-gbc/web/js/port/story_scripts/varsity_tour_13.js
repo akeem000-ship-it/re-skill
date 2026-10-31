@@ -63,7 +63,7 @@ export function applyPartnerCharacterVariant(P) {
 // turns (the entry's facing); the player walks 2 tiles on the entry's facing (not waited for)
 export function* courtyardEntryWalkIn(P) {
   const entry = P.V.storyModeEntryPoint;
-  if (entry === STORYENTRY_NONE) return;
+  if (entry === STORYENTRY_NONE || P.quickArrive) return;   // (INSTANT CROSSING, story_loop.js: no walk-in)
   const facing = k => P.rom.u8(BANK, (CourtyardEntryWalkInFacings_13 + k + ((entry - 1) & 0xFF)) & 0xFFFF);
   if (testFlag(P, FLAG_DOUBLES)) {
     setSpeed(P, ACTOR_PARTNER, 7.96875);

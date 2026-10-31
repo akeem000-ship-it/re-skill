@@ -34,7 +34,8 @@ else {
   else for (const m of rec.meta.port.split(",")) hooks.push(...(await import(`../js/port/${m}.js`)).HOOKS);
   port = new GamePort(romBytes, { ...entry, hooks }, { audio: false }); gb = port.gb;
   if (rec.meta.physics === "enhanced") { const { EnhancedPhysics } = await import("../js/engine/enhanced.js"); port.physics = new EnhancedPhysics(); }   // PHYSICS: Enhanced (a recording without meta.physics is classic)
-  port.evenNet = rec.meta.net === "even";                                // NET: Even
+  port.evenNet = rec.meta.net === "even";
+  port.quickCross = rec.meta.cross === "instant";                         // CROSSING: Instant (recordings before it: the game's)                                // NET: Even
   port.tourLength = rec.meta.tourlen || "game";
   port.plus = rec.meta.plus === "on" ? { momentum: 1, stamina: 1, serve: 1, courts: 1, netcord: 1, tour: 1, wet: false, learn: rec.meta.learn && rec.meta.learn.on ? 1 : 0 } : null;
   if (rec.meta.learn) { const { on, ...L } = rec.meta.learn; port.learnProfile = L; }   // SCOUTING (engine/learn.js): the profile the session began with   // PLAY+                           // TOUR MATCH (a recording without it: the game's own lengths)
@@ -60,6 +61,7 @@ for (let f = 0; f < to; f++) {
     else if (port && parseAnalogEvent(e) !== undefined) port.analog = parseAnalogEvent(e);
     else if (port && e === "learn:reset" && port.learnProfile) Object.assign(port.learnProfile, (await import("../js/engine/learn.js")).freshProfile());
     else if (port && (e === "learn:on" || e === "learn:off") && port.plus) port.plus.learn = e === "learn:on" ? 1 : 0;
+    else if (port && (e === "cross:instant" || e === "cross:game")) port.quickCross = e === "cross:instant";
   }
   gb.setInput(stateOf(inputs[f])); if (port) port.frame(); else gb.runFrame();
   const n = f + 1, h = hashes.get(n);
