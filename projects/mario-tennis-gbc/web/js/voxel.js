@@ -288,6 +288,10 @@ const CAFE_BLOCKS = [
   { x0: 200, y0: 32, x1: 260, y1: 80, fold: 47, back: -10, key: true, keyRect: [144, 32, 260, 80], pitch: { rise: 16, eave: 3, trim: [230, 66] } },
   { x0: 144, y0: 32, x1: 209, y1: 80, fold: 64, back: -10, key: true, keyRect: [144, 32, 260, 80], gable: { ax: 176, ay: 32, ey: 64, roof: [222, 34, 234, 46] } }];
 const CAFE_BEHIND = [[23, -96, -360], [27, -470, -300], [24, -40, -720]];
+// and the paths from the road's gates up to each area's entrance (road map px): the dorm front's street (x 56), the senior courts' (x 296),
+// the practice courts' (x 440: up the gap between the senior and the junior courts, round behind the senior courts)
+const CAFE_PATHS = [[[56, 64], [56, -12], [-294, -12], [-294, -46]], [[296, 64], [296, -12], [248, -12], [248, -42]],
+  [[440, 64], [440, 16], [416, 16], [416, -412], [112, -412], [112, -466]]];
 const WALL_SCALE = F3.WALL_SCALE, FIELD_TILT = 0.3, HUD_SCALE = 0.6, SEAM_GLIDE = 1100, MT_OUT = 420, MT_IN = 520;   // SEAM_GLIDE: ms of the camera's glide into the next map; MT_OUT / MT_IN: ms of the MAP FADE
 // the island (map 21) is an aerial picture, not a top-down map: shown as parallax layers. The road between the courts
 // (map 19) is a side-view picture too, but it is a walkable map: a field whose sky band and cafe stand up (FIELD_OBJECTS)
@@ -2361,6 +2365,7 @@ export class Voxel3D {
       if (this.nbInView(nb, mvp)) this.drawFieldScene(nb.f, M, T, true); else if (nb.f.skirt) { gl.useProgram(this.prog); gl.bindVertexArray(this.vao); this.drawSkirt(nb.f, M); }
     }
     this.drawFieldScene(f, mvp, T);
+    if (f.mapId === 19 && this.cafeConcept && this.cafeConcept()) this.drawCafePaths(f, mvp);   // (CAFE CONCEPT)
     if (this.life) this.life.draw(mvp, m4, T, cx, cz);                     // FIELD LIFE: birds, cloud shadows, fountain glints
     this.fieldRects = this.fieldOverlayRects();                         // once per frame: the actors and the overlays both need them
     this.drawFieldActors(mvp);
@@ -2389,6 +2394,17 @@ export class Voxel3D {
       const qx = q[0] / q[3], qy = q[1] / q[3]; a = Math.min(a, qx); b = Math.max(b, qx); c = Math.min(c, qy); d = Math.max(d, qy);
     }
     return px > a - 0.06 && px < b + 0.06 && py > c - 0.06 && py < d + 0.06;
+  }
+  // CAFE CONCEPT: the paths up to the areas behind the road, flat on the lawn: a light stone kerb, the dirt of the road's own path
+  drawCafePaths(f, mvp) {
+    const gl = this.gl, d = f.floorData; if (!d) return;
+    if (!this.cafeTex) { const at = (x, y) => { const o = (y * 512 + x) * 4; return [d[o], d[o + 1], d[o + 2], 255]; }; this.cafeTex = { dirt: this.solidTexture(at(300, 100)), kerb: this.solidTexture([232, 228, 214, 255]) }; }
+    gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
+    const W = 26, K = 4;
+    for (const [tex, w, y] of [[this.cafeTex.kerb, W + 2 * K, -0.12], [this.cafeTex.dirt, W, -0.06]]) for (const P of CAFE_PATHS) for (let i = 1; i < P.length; i++) {
+      const [ax, az] = P[i - 1], [bx, bz] = P[i], x0 = Math.min(ax, bx) - w / 2, x1 = Math.max(ax, bx) + w / 2, z0 = Math.min(az, bz) - w / 2, z1 = Math.max(az, bz) + w / 2;
+      this.draw(tex, m4.trs((x0 + x1) / 2, y, z1, x1 - x0, z1 - z0, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
+    }
   }
   // a neighbouring map in view: its ground (and 120 px up, its trees and walls) not wholly beyond one side of the view
   nbInView(nb, mvp) {
