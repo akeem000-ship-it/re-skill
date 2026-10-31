@@ -21,6 +21,8 @@ import * as R0C from "../records0c.js";
 import { palFadeInitSepia, palFadeSetup, palFadeRun } from "../ending.js";
 import { clearFrameTasks } from "../tasks.js";
 import { debugSaveViewer } from "../debug.js";
+import { countCharacterHeaders } from "../unreached.js";
+import { actorSetCharacter } from "../render/actors.js";
 
 const rd = D.rd, wr = D.wr;
 const flag = (w, n) => w.wram[0][0x840 + (n >> 3)] & (0x80 >> (n & 7));
@@ -1304,6 +1306,39 @@ function* map01SepiaFadeTest(sh) {
 }
 // 35:783D Map01Trigger01Nop / 35:7847 Map01EnterNop: ret (the enter script's farcall 79:68B1 after it is never run)
 function* map01Nop() {}
+// ---- map $24, a sprite test (by the debug warp; maps/testmaps.js has the other test maps) ----
+// 35:793F Map24ApplySprite: $C289 = 0; the player's actor ($C290) takes character a (04:4D3D: not for a null actor),
+// the palettes restored (00:05DD), its animation 1 (0A:475B)
+function map24ApplySprite(w, a) {
+  wr(w, 0xC289, 0);
+  const hl = rd(w, 0xC290) | rd(w, 0xC291) << 8;
+  if (hl >> 8) D.inBank(w, 0x04, () => actorSetCharacter(w, hl, a));
+  D.restorePalettesFromMaster(w);
+  D.inBank(w, 0x0A, () => S.actorPlayAnim(w, rd(w, 0xC296), 0x01));
+}
+// 35:789B Map24TalkPrevSprite / 35:78B7 Map24TalkNextSprite (talks 2 / 3): wTestSprite $C3F0 - 1 / + 1, wrapping
+// within wTestSpriteCount $C3F1 (below 0 the last, from the count 0), then 35:793F
+function* map24StepSprite(sh, d) {
+  const w = sh.w;
+  let a = (rd(w, 0xC3F0) + d) & 0xFF;
+  if (a & 0x80) a = (rd(w, 0xC3F1) - 1) & 0xFF;
+  else if (a >= rd(w, 0xC3F1)) a = 0;
+  wr(w, 0xC3F0, a);
+  map24ApplySprite(w, a);
+}
+// 35:78D3 Map24TalkAnim3 / 35:78DD Map24TalkAnim4 (talks 4 / 5): the player's animation 3 / 4 (0A:475B)
+function* map24TalkAnim(sh, a) { D.inBank(sh.w, 0x0A, () => S.actorPlayAnim(sh.w, rd(sh.w, 0xC296), a)); }
+// 35:791C Map24EnterSpriteTest: wTestSprite 0, the count of character headers (04:4F0A), the task 35:792F
+function* map24EnterSpriteTest(sh) {
+  const w = sh.w;
+  wr(w, 0xC3F0, 0);
+  wr(w, 0xC3F1, countCharacterHeaders());
+  registerFrameTask(w, 0x01, 0x35, 0x792F);
+}
+// 35:792F Map24WalkAnimTask: a d-pad press (hJoyPressed) plays the player's animation 1 (0A:475B)
+function map24WalkAnimTask(w) {
+  if (w.high[0x194] & 0xF0) D.inBank(w, 0x0A, () => S.actorPlayAnim(w, rd(w, 0xC296), 0x01));
+}
 export const SCRIPTS = {
   "35:41ae": map07Enter,
   "35:4115": sh => map07ObjectTrophy(sh, 112, 0x01, 136),
@@ -1337,9 +1372,13 @@ export const SCRIPTS = {
   "35:7774": sh => map01Screen(sh, R0C.starsScreen, 0x0A), "35:7780": sh => map01Screen(sh, R0C.statsScreen, 0x0B),
   "35:778c": sh => map01Screen(sh, R0C.rankingScreen, 0x0C),
   "35:7798": map01SepiaFadeTest, "35:783d": map01Nop, "35:7847": map01Nop,
+  "35:789b": sh => map24StepSprite(sh, -1), "35:78b7": sh => map24StepSprite(sh, 1),
+  "35:78d3": sh => map24TalkAnim(sh, 0x03), "35:78dd": sh => map24TalkAnim(sh, 0x04),
+  "35:791c": map24EnterSpriteTest, "35:7912": map01Nop,   // (35:7912 Map24Trigger01Nop: ret)
 };
 export const TASKS = w => ({
   "35:4666": () => map32PointerSpriteTask(w),     // 35:4666 -> 35:47BF Map32PointerSpriteTask
   "35:56f8": () => map36DrawHatSprite(w, 0x07, 0x40),   // 35:56F8 Map36HatSpriteTask (bc = $0740)
   "35:69db": () => map39DrawMarkerSprite(w, 0x02, 0x30),   // 35:69DB Map39MarkerSpriteTask (bc = $0230)
+  "35:792f": () => map24WalkAnimTask(w),          // 35:792F Map24WalkAnimTask
 });

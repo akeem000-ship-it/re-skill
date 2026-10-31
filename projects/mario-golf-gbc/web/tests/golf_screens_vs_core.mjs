@@ -309,6 +309,11 @@ const DEBUG_WARP_CASES = [
     [80, 0], [2, 0x80], [80, 0], [2, 1], [1500, 0]]],
   // map $22: nothing on entering; talk 8 (32:47B1 the palette editor) on map $20? (map $22's talks are texts)
   ["22", 0x22, 0, [[300, 0]]],
+  // map $24 (35:791C, the sprite test): talks 3 (next sprite) twice, 2 (previous) three times (wrapping), 4 and 5
+  // (animations 3 / 4); a d-pad press plays animation 1 (35:792F)
+  ["24_sprites", 0x24, 0, [[100, 0], [2, 0x10], [20, 0], [2, 1], [120, 0], [2, 1], [120, 0], [2, 0x20], [20, 0], [2, 1], [120, 0], [2, 1],
+    [120, 0], [2, 1], [120, 0], { to: [0x0B, 0x07], at: [0x0B00, 0x0700], noA: true }, [2, 0x20], [20, 0], [2, 1], [200, 0], [2, 0x10],
+    [20, 0], [2, 1], [200, 0]]],
   // map $23 (31:47D7): the angle tests, the menu (31:483E): Down n times, A: the row's handler
   ...[["23_tournament", 0, [[1500, 0]]], ["23_match", 1, [[1500, 0]]], ["23_practice", 2, [[1500, 0]]],
     ["23_clubhouse", 3, [[300, 0], [2, 0x80], [30, 0], [2, 2], [600, 0]]], ["23_vs_scorecard", 4, [[600, 0], [2, 1], [600, 0]]],
