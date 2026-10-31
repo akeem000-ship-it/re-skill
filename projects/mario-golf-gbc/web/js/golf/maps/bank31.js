@@ -1229,7 +1229,7 @@ function clinicArg(w, base, a, de) {
   copyTextShortToDE(w, (base + (a & 0xFF)) & 0xFFFF, de);
   pushTextStringArg(w, de);
 }
-// 31:7392 / 74B8 ClinicCoach1JudgeShot / ClinicCoach2JudgeShot (shot class 0): WRAM5; the distance's grade
+// 31:7392 / 31:74B8 ClinicCoach1JudgeShot / ClinicCoach2JudgeShot (shot class 0: boot_kid_story_clinic_judged): WRAM5; the distance's grade
 // (31:7691 ClubDistance 02:511A of wEventShotClub for wCharDriverDist / wCharFlags; 31:756A), the shape (31:76A2
 // DriverShape 02:534B of $C81D) + 4, and 4 - each of the stats $C81C / $C81E / $C81F (8-bit) as texts from the bases
 // (coach 1: $1566 $1572 $1584 $1596 $15A8; coach 2: $156C $157B $158D $159F $15B1) to $DD74 / $DD94 / $DDB4 / $DDD4 /
@@ -1248,8 +1248,8 @@ function* clinicJudge(sh, a, bases, id) {
 }
 // 31:72CF / 31:7444 ClinicCoach1Comment / ClinicCoach2Comment (the class entries the screen cases reach: 31:7348
 // ClinicCoach1CommentNotSerious, 31:737C ClinicCoach1CommentBackspin with the common end, 31:7495
-// ClinicCoach2CommentMisHit; the others the same code with their texts: ~31:7321 ~31:732E ~31:733B ~31:7355 ~31:7362
-// ~31:736F ~31:74A2; after their tables 31:7308 / 31:747C): ScriptBegin; no shot judged (#99 clear): the coach faces
+// ClinicCoach2CommentMisHit; the others the same code with their texts, reached by boot_kid_story_clinic_class1-7 (the
+// class poked): 31:7321 31:732E 31:733B 31:7355 31:7362 31:736F 31:74A2; after their tables 31:7308 / 31:747C): ScriptBegin; no shot judged (#99 clear): the coach faces
 // actor 3 / 4, $1562 / $1563; else he faces the player and comments by the shot class (31:72F6: 0 the judgement, 1-8
 // $15BC $15BD $15BE $15BF $15C1 $15C2 $15C3 $15C4; 31:746A: 0 the judgement, 1-4 $15C0, 5-8 $15C5); facing down;
 // ScriptEnd

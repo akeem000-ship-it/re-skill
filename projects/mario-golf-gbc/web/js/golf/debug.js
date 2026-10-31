@@ -13,6 +13,7 @@ import { adjustColor } from "./home.js";
 import { addPointsSigned } from "./unreached.js";
 import { awardExpPoints } from "./exp.js";
 import { mapLoadGfxScreen, mapGfxStartTileAnim, mapGfxStopTileAnim } from "./mapgfx.js";
+import { initWindowSystem as initWindowSystemW } from "./round.js";
 import { printString, printHexByte, printDecimalByte } from "./match.js";
 import { printHexWord, printDecimalByteSigned } from "./home.js";
 import { printDecimalWord } from "./render/behind.js";
@@ -45,7 +46,10 @@ export function* debugMenu(sh) {
     yield* inBankGen(w, 0x05, W.updateWindows(sh));
     if (a === 0xFF) return;
     if (a === 0) yield* debugWarpMenu(sh);       // 05:6B76 -> 05:6C25
-    else if (a === 1) { yield* inBankGen(w, 0x0B, debugMapGfxViewer(sh)); D.restorePalettesFromMaster(w); }   // 05:6B7B
+    else if (a === 1) {                          // 05:6B7B (w.gfxBrowser: a test's patch of 0B:4579 into 0B:4776)
+      yield* inBankGen(w, 0x0B, w.gfxBrowser ? mapGfxBrowser(sh) : debugMapGfxViewer(sh));
+      D.restorePalettesFromMaster(w);
+    }
     else if (a === 2) yield* inBankGen(w, 0x44, debugPaletteEditor(sh));   // 05:6B83 -> 44:42FB
     else yield* debugFlagEditor(sh);             // 05:6B88 -> 05:6A57
   }
@@ -460,5 +464,66 @@ export function* debugSaveViewer(sh) {
       if (a & 0x20) { b = (b - 1) & 0xFF; if (b & 0x80) b = 9; break; }
       if (a & 0x10) { b++; if (b >= 10) b = 0; break; }
     }
+  }
+}
+
+// ---- the map graphics browser of bank 0B (unreferenced: the cases reach it by a patch of DebugMapGfxViewer 0B:4579
+// into 0B:4776) ----
+// 0B:4739 MapGfxBrowserInit: no scroll; wMapGfxCount $C32D = ($FF00 + the words of MapGfxTable 0B:4048 before its 0
+// word) / 9 (a quirk: b is never cleared, 00:09AE), the low byte; graphics 0 loaded (0B:44C4, b = 0), InitWindowSystem
+// 05:407A, 05:4492, its tile animation (0B:4900)
+function* mapGfxBrowserInit(sh) {
+  const w = sh.w;
+  w.high[0x18A] = 0; w.high[0x18B] = 0;
+  let c = 0;
+  for (let p = 0x4048; rb(0x0B, p) | rb(0x0B, p + 1); p += 2) c = (c + 1) & 0xFF;
+  wr(w, 0xC32D, Math.floor((0xFF00 + c) / 9) & 0xFF);
+  wr(w, 0xC32E, 0);
+  yield* mapLoadGfxScreen(sh, 0, 0);
+  yield* inBankGen(w, 0x05, initWindowSystemW(sh));
+  yield* inBankGen(w, 0x05, restoreShadowFromMap(sh));
+  mapGfxStartTileAnim(w, rd(w, 0xC32E));
+}
+// 0B:4826 MapBrowserDPadMove: the (dx, dy) words of DPadScrollVectorTable 0B:47E6 at (hJoyHeld >> 2) & $3C added to
+// wMapScrollX $C320 / wMapScrollY $C322
+function mapBrowserDPadMove(w) {
+  const p = 0x47E6 + ((w.high[0x190] >> 2) & 0x3C);
+  const r16 = a => rd(w, a) | rd(w, a + 1) << 8, w16 = (a, v) => { wr(w, a, v & 0xFF); wr(w, a + 1, (v >> 8) & 0xFF); };
+  w16(0xC320, (r16(0xC320) + (rb(0x0B, p) | rb(0x0B, p + 1) << 8)) & 0xFFFF);
+  w16(0xC322, (r16(0xC322) + (rb(0x0B, p + 2) | rb(0x0B, p + 3) << 8)) & 0xFFFF);
+}
+// 0B:4788 MapBrowserScroll: 0B:4826; a new map row in view: the row below ($FB, $13) or above ($FB, 0) blitted
+// (00:2A8A); a new column: right ($15, $FA) or left (0, $FA) (00:2AF7); SCY / SCX from the scroll (8.8 x 8)
+function mapBrowserScroll(w) {
+  const y0 = rd(w, 0xC323), x0 = rd(w, 0xC321);
+  mapBrowserDPadMove(w);
+  const y = rd(w, 0xC323), x = rd(w, 0xC321);
+  if (y !== y0) D.blitBGRowFrom64(w, 0xFB, y < y0 ? 0x00 : 0x13);
+  if (x !== x0) D.blitBGColumnFrom64(w, x < x0 ? 0x00 : 0x15, 0xFA);
+  w.high[0x18A] = ((y << 3) | (rd(w, 0xC322) >> 5)) & 0xFF;
+  w.high[0x18B] = ((x << 3) | (rd(w, 0xC320) >> 5)) & 0xFF;
+}
+// 0B:4501 MapGfxBrowserPick: on B (hJoyPressed) as the debug viewer 0B:4579: the loaded id kept in $C33D, its tile
+// animation stopped (0B:497D), the paged menu of ids (05:5197, (count - 1) / 4 + 1 pages; sra: signed), a choice
+// loaded (0B:44C4, b = 1) and animated (0B:4900)
+function* mapGfxBrowserPick(sh) {
+  const w = sh.w;
+  if (!(w.high[0x194] & 0x02)) return;
+  const pages = ((((rd(w, 0xC32D) - 1) & 0xFF) << 24 >> 24 >> 2) + 1) & 0xFF;
+  wr(w, 0xC33D, rd(w, 0xC32E));
+  mapGfxStopTileAnim(w, rd(w, 0xC32E));
+  const a = yield* inBankGen(w, 0x05, runPagedMenu(sh, 0x0123, pages));
+  wr(w, 0xC32E, a);
+  if (a === 0xFF) return;
+  yield* mapLoadGfxScreen(sh, a, 1);
+  mapGfxStartTileAnim(w, rd(w, 0xC32E));
+}
+// 0B:4776 MapGfxBrowser: 0B:4739, then every frame 0B:4788, 0B:4501. It never returns
+function* mapGfxBrowser(sh) {
+  yield* mapGfxBrowserInit(sh);
+  for (;;) {
+    mapBrowserScroll(sh.w);
+    yield* mapGfxBrowserPick(sh);
+    yield* sh.advance();
   }
 }

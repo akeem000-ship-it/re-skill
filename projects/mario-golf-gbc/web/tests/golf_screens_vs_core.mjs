@@ -266,6 +266,7 @@ const dwarp = (rec, ent) => [[30, 0x40], [60, 0], [2, 1], [90, 0], [2, 1], [90, 
 const talkSteps = (at, dir, n = null, no = false) => [typeof at === "number" ? { actor: at, off: dir === 0x40 ? [0, 0x200] : dir === 0x80 ? [0, -0x200] : dir === 0x10 ? [-0x200, 0] : [0x200, 0] } : { to: [at[0] >> 8, at[1] >> 8], at, noA: true }, [2, dir], [20, 0], [2, 1], [60, 0],
   ...(no ? [{ press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 0x80], [30, 0], [2, 1], [60, 0]] : []),
   n === null ? { talkWait: true } : { press: 1, every: 40, times: n }, [120, 0]];
+const debugPokeHook = debugPoke(1);
 const DEBUG_BOOT_CASES = [
   // no button: the menu's 180 frames run out, the game goes on (hDebugMode 1)
   ["timeout", [], [], 1500],
@@ -1095,6 +1096,19 @@ const CASES = [
     ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x0A, 0x1A], noA: true }, { to: [0x0A, 0x18], map: 0x2D, noA: true },
       [300, 0], { to: [0x1E, 0x3B], at: [0x1E00, 0x3B00], noA: true }, [2, 0x40], [20, 0], [2, 1], { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
       { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x2D }, { press: 1, every: 40, times: 8 }, [300, 0]], 300) },
+  // the same with the shot's class poked ($C968, both sides, once back on map $2D after the shot): 0 both coaches judge
+  // it (31:7392 / 31:74B8: the grade, shape and stats texts); 1-3, 5-7 the comments the plain case does not reach
+  // (31:7321 732E 733B 7355 7362 736F; 5-7 also coach 2's 31:74A2)
+  ...[["judged", 0], ...[1, 2, 3, 5, 6, 7].map(k => [`class${k}`, k])].map(([n, cls]) => ({ name: `boot_kid_story_clinic_${n}`, state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 40000,
+    hook: (() => { const fp = flagPoke(86); let done = false; return (f, w, core) => {
+      fp(f, w, core);
+      if (f === 0) done = false;
+      if (done || roundsDone < 1 || w.wram[0][0x450] !== 0x2D) return;
+      done = true; w.wram[0][0x968] = cls; core.wram(0)[0x968] = cls;
+    }; })(),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x0A, 0x1A], noA: true }, { to: [0x0A, 0x18], map: 0x2D, noA: true },
+      [300, 0], { to: [0x1E, 0x3B], at: [0x1E00, 0x3B00], noA: true }, [2, 0x40], [20, 0], [2, 1], { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
+      { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x2D }, { press: 1, every: 40, times: 12 }, [300, 0]], 300) })),
   // Raven Woods with Sherry and Azalea already found (#86 #141 #142 poked; #204: the hat already stolen): hidden Joe
   // (object $0F, 34:692C: #143), all the hidden friends found (34:7E12: 300 EXP, the level-up screen, the save, the
   // map again where the player stood)
@@ -1173,6 +1187,13 @@ const CASES = [
   { name: "boot_kid_debug_mapgfx", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: debugPoke(1), maxFrames: 30000,
     ...routeCase(savedPolicy(0), [[30, 0x40], [60, 0], [2, 1], [90, 0], [2, 0x80], [30, 0], [2, 1], [120, 0],
       [2, 0x10], [90, 0], [2, 0x20], [90, 0], [2, 0x10], [90, 0], [2, 0x80], [30, 0], [2, 1], [300, 0], [2, 2], [300, 0]], 100) },
+  // the same with the viewer patched into the unreferenced map graphics browser (0B:4579 -> 0B:4776; w.gfxBrowser):
+  // the d-pad held scrolls the map (0B:4788); B: the paged menu (05:5197), Right, Down, A: that id loaded; more scrolling
+  { name: "boot_kid_debug_gfxbrowser", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 30000,
+    jumps: { "0b:4579": 0x4776 }, hook: (f, w, core) => { w.gfxBrowser = 1; debugPokeHook(f, w, core); },
+    ...routeCase(savedPolicy(0), [[30, 0x40], [60, 0], [2, 1], [90, 0], [2, 0x80], [30, 0], [2, 1], [200, 0],
+      [60, 0x10], [40, 0x80], [30, 0x60], [30, 0], [2, 2], [90, 0], [2, 0x10], [60, 0], [2, 0x80], [30, 0], [2, 1], [200, 0],
+      [50, 0x90], [50, 0x20], [100, 0]], 100) },
   // the debug menu's Palette (Down twice, A: 44:42FB): the cursor Right, Down twice; A: the colour dialog (44:4156):
   // Up held a while (red + 1 each frame), Right, Down held (green - 1), A closes; Left; B leaves; B closes the menu
   { name: "boot_kid_debug_palette", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: debugPoke(1), maxFrames: 30000,

@@ -246,6 +246,7 @@ let bad = 0;
 for (const c of CASES) {
   if (filter && !c.name.includes(filter)) continue;
   let ok = 0, first = null, skipped = 0, hangs = 0;
+  if (process.env.FUZZ_SEED) seed = +process.env.FUZZ_SEED;   // (debugging: a case's run from a logged seed)
   for (let i = 0; i < N; i++) {
     if (process.env.FUZZ_LOG && c.name === process.env.FUZZ_LOG) console.error("ITER", i, seed);
     const w = new GolfMemory();
@@ -283,6 +284,7 @@ for (const c of CASES) {
         w.high[0x1C0] = script[Math.min(kj++, script.length - 1)]; } };
     }
     try { got = romCall(gb, c.bank, c.addr, regs, 300000); } catch (e) { got = null; }
+    if (process.env.FUZZ_LOG && c.name === process.env.FUZZ_LOG) console.error("ROM", got ? "returned" : "no return");
     gb.cpu.step = step;
     if (sound) { skipped++; continue; }
     if (!got) { let thrown = false; try { c.js(w, regs); } catch (e) { thrown = true; } if (thrown) { hangs++; ok++; } else if (!first) first = `rom does not return, js does (${JSON.stringify(regs)})`; continue; }
