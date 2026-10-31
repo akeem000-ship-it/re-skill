@@ -445,7 +445,7 @@ const TO_STATUS = [[menu09Items(4), 0x80], [null, 0x80], [null, 1]];
 const menu07Items = n => () => menuW && hasTask(menuW, 0x07, 0x7DB0) && menuW.wram[6][0x202] === n && !menuW.high[0x1A2] && !menuW.high[0x1BC];
 const inTask = (b, a) => () => menuW && hasTask(menuW, b, a);
 
-// a records block (save block 3: only the debug character editor 02:6176 ever stores one, so the records menu and its
+// a records block (save block 3: nothing stores one, not even the debug character editor 02:6176, so the records menu and its
 // screens are not reached in play) poked into the save RAM of both sides at frame 1: $400 pseudo-random bytes from
 // `seed`, with `fix(data)` applied first (a case's own values), stored as the game stores a block (02:429B)
 function recordsPoke(seed, fix = () => {}, then = null) {

@@ -524,8 +524,7 @@ over: the retail game never has it. The screen cases poke it to 1 on both sides 
   `boot_kid_debugboot_*` let the core fall through, a patch given as the screen harness's `jumps`, and set
   w.debugBoot natively): the build stamp (00:0153, "9908202118") for 180 frames, then the game with hDebugMode 1;
   Up: a number 0-3 as $C810 and the staff roll, then a hang (jr $); Down: DebugCharacterEditor 02:6176 (stats by
-  the d-pad, types, the name entry, Start stores the record as save block 0-2: the only writer of the records
-  block 3 the status screens read; never returns, so the picture loop 01:412F-01:4157 after it is not reached); A:
+  the d-pad, types, the name entry, Start stores the record as character save block 0-2; it never returns, so the picture loop 01:412F-01:4157 after it is not reached); A:
   GolfDebugEntry 10:4415 with DebugHoleSelect 10:7BAC before each 18-hole round; Right / B: the map engine at map
   $01 (the debug room) / $23; Select: the sound test 01:516E (music / effect numbers, A plays).
 
@@ -535,7 +534,8 @@ LinkMenu's item 2 (32:54EC) runs ModeSelectMenuLoop 0B:4D9D: MainMenu 07:4006 (b
 engine: tools/compare_routines.py shows 07:741E-07:7DC8 and 09:400A-09:49A8 instruction for instruction the same with
 the switchable-bank addresses masked; menu09.js runs both with a descriptor of each bank's graphics, MENU09 /
 MENU07). MainMenu offers three items (a character, the shot records, the records) only when LoadRecordsBlock 0B:4FB7
-loads save block 3; **only the debug character editor (02:6176, its SaveBlockStore at 02:636D) ever stores block 3**,
+loads save block 3; **nothing stores block 3** (the debug character editor 02:6176, whose SaveBlockStore at 02:636D
+once seemed the writer, stores its record as block $CA80 = 0-2 only: debugboot.js),
 so in play the menu has two items and the records submenu (ModeSubmenuB 0B:4E5D: 07:51A6's five items: the records'
 stats, best scores 0C:6EE0, winners 0C:5FC5, ranking 0C:5AEC, stars 0C:4014) is not reached (the debug room's map
 $01, bank 35, also calls some of them). Reached in play: a character (0B:4F51 the slot list, the character select
