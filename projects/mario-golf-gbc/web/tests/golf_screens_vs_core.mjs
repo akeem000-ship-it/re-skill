@@ -639,6 +639,12 @@ const CASES = [
     ...walkCase(savedPolicy(0), [
       [300, 470, 0x40], [470, 620, 0x20], [620, 650, 0x40], [800, 816, 0x10], [830, 880, 0x40], [900, 901, 1],
       [980, 981, 1], [1040, 1041, 1], [1100, 1101, 1]], 1300) },
+  // the clubhouse's doors 2, 3 and 5 (triggers 4, 5, 7: 32:5CCF / 5CEF / 5D2F, opening 32:5FBE / 6087 / 6219) into their
+  // rooms, and back out (entrances 4, 5, 7: 32:5D94 with the door's open frame 32:6017 / 60E0 / 6272 and its closing
+  // 32:602E / 60F7 / 6289)
+  ...[["door2", 0x04], ["door3_out", 0x08], ["door5", 0x2C]].map(([n, x]) => ({ name: `boot_kid_story_${n}`, state: "boot_poweron_kid",
+    open: true, noRet: true, sram: true, maxFrames: 30000,
+    ...routeCase(savedPolicy(0), [{ to: [x, 0x15], at: [x << 8, 0x1500], noA: true }, [60, 0x40], [500, 0], [80, 0x80], [700, 0]], 100) })),
   // the clubhouse's door 4 (trigger 6, 32:5D0F) to the Lounge (map $04, 32:69B5): its first-visit tour of the Club
   // Champs (trigger 1, 32:6739; A every 40 frames: Yes at the end)
   { name: "boot_kid_story_lounge", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
