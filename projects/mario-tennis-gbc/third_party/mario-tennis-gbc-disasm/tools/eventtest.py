@@ -1,0 +1,1085 @@
+#!/usr/bin/env python3
+"""Play two builds through the story under the same inputs and report where
+the game's own events stop agreeing.
+
+The dynamic half of `make shift-test`: build a padded ROM with
+`tools/shifttest.py --out padded.gbc` (which writes padded.sym beside it),
+then
+
+    python3 tools/eventtest.py padded.gbc --save maxed-unlocked.sav
+
+boots it and mariotennis.gbc headless in PyBoy (`pip install pyboy`) to the
+story overworld, then for each of 36 story states (wGameFlags rewritten to
+each step of the singles and doubles ladders) enters every location at each
+of its entry points and plays seeded random input. `--free N` adds N long
+random sessions from the main menu, each opening one of its nine items
+first (exhibition, minigames, the match-select and story-slot screens, the
+dictionary, link play), for the modes the story never enters; `--states
+none` runs only those. `--targets N` plays N sessions from each targeted
+start (the intro, the debug menu, each Test-map NPC, the drills, damaged
+saves, the two unlock-everything button codes, the N64 Transfer Pak record
+screens with forged records), and `--handlers N` N from each story NPC, facing and tile-trigger
+handler: the
+target warps to the handler's location and, once it has settled, hands the
+interaction loop that handler's table, facing, flag condition and id, so
+handlers random walking would not find are called. `--coverage FILE` accumulates which routines the
+base build entered, for tools/coverage.py. Each build is hooked by
+label through its own .sym, and records in order: every code label entered
+(its first --cap entries), the actor list InitLocationActors installs, each
+NpcScripts talk and each character record loaded.
+
+A shifted build is not cycle-identical (a lookup table moved across a page
+takes a different branch, a heavy frame can lag), so inputs are fed by
+*logic* frame -- one per AdvanceFrame/WaitVBlank -- by writing the joypad
+bytes inside ReadJoypad, and a VBlank that arrives before the logic frame
+has finished (hVBlankOccurred still set) is made to leave WRAM and HRAM as it
+found them, so the game timer, fades, sound and random seed it would step
+cannot move a lagging build a frame ahead. Events the interrupt handlers
+run are not recorded. Both builds then see the same game, and any
+difference in the event sequence is a real fault of the shifted build.
+Timing-only differences are counted, not failed. A run where the game
+itself crashes -- the stack leaves RAM, or it runs RAM or an opcode the CPU
+does not have, caught after a frame or by a watchdog when PyBoy stops
+returning -- is counted when both builds crash and listed when only one
+does, and its events are kept out of the coverage. An entry point the game
+only uses in singles or in doubles (FORCED) is still entered from every
+state, but what it does in the other mode is reported apart.
+"""
+import argparse
+import atexit
+import bisect
+import collections
+import concurrent.futures
+import io
+import json
+import os
+import random
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+from banksrc import bank_lines, build_addresses, holders, placed_original
+from runtime_audit import MNEMONICS, targets
+
+ROOT = Path(__file__).resolve().parent.parent
+SINGLES = [80, 81, 82, 83, 84, 85, 86, 87, 88, 174, 63, 62, 61, 60, 185, 176, 183, 178, 59]
+DOUBLES = [64, 65, 66, 68, 69, 70, 72, 175, 55, 54, 53, 177, 184, 179, 52]
+ALWAYS_CLEAR = [189, 190, 191, 186, 187, 188, 131, 132, 118, 119, 120, 121, 130, 116,
+                123, 128, 126, 127, 109, 110]
+FLAG_DOUBLES = 47
+# copied to HRAM before it runs, so a breakpoint in it would be copied too
+NOT_HOOKED = {"OAMDMARoutine"}
+# a breakpoint on an interrupt vector hangs PyBoy; the handlers are hooked
+NOT_HOOKED |= {"VBlankInterrupt", "LCDStatInterrupt", "TimerInterrupt", "SerialInterrupt",
+               "JoypadInterrupt"}
+CODE_MACROS = {"farcall", "lb", "ld_slot", "ld_hl_indexed", "ld_de_indexed", "ld_bc_indexed"}
+BUTTONS = {"a": 0x01, "b": 0x02, "select": 0x04, "start": 0x08, "right": 0x10, "left": 0x20, "up": 0x40, "down": 0x80}
+# (label, offset) of the points the sync hooks, taken from the base build:
+# after ReadJoypad stores the pad, where AdvanceFrame, WaitVBlank and
+# EnableLCD clear hVBlankOccurred, and after the VBlank handler's
+# AdvanceRandomSeed call.
+# Original-game paths whose outcome depends on where code sits (docs/bugs.md):
+# a run that takes one logs a taint and is compared only up to it.
+# (location, entry) -> (doubles, why): entry points the game only uses in
+# singles (False) or doubles (True). The sweep still enters them from every
+# state, but what happens there in the other mode is reported apart, as a
+# combination the game never makes.
+FORCED = {(0x1a, 0x0a): (False, "IslandSkyInitScript_14 sends singles here"),
+          (0x1a, 0x0b): (True, "IslandSkyInitScript_14 sends doubles here")}
+TAINTS = [("GetSpeakerVoice", 0x60b1, lambda g: g.rf.A & 0x80, "GetSpeakerVoice stack slip"),
+          ("CourtyardEntryWalkIn_13", 0x62ff,
+           lambda g: g.mem[g.sym["wStoryModeEntryPoint"][1]] > 6, "Courtyard walk-in over-read"),
+          ("GetCollisionMapCellAddr", 0x5edd, lambda g: g.rf.D > 0x1f or g.rf.E > 0x3f,
+           "map read off the edge"),
+          ("GetBehaviorMapCellAddr", 0x5f31, lambda g: g.rf.D > 0x1f or g.rf.E > 0x3f,
+           "map read off the edge")]
+SYNC = {"pad": ("ReadJoypad", 0x0317), "frame": [("AdvanceFrame", 0x2644), ("WaitVBlank", 0x2815),
+                                               ("EnableLCD", 0x0380)],
+        "seeded": ("VBlankHandler", 0x27c3)}
+
+
+def symbols(path):
+    out = {}
+    for line in Path(path).read_text().splitlines():
+        m = re.match(r"([0-9a-f]{2}):([0-9a-f]{4}) (\S+)", line)
+        if m:
+            out.setdefault(m.group(3), (int(m.group(1), 16), int(m.group(2), 16)))
+    return out
+
+
+def code_labels():
+    # The sound engine runs from the timer interrupt, which the comparison
+    # skips anyway, and PyBoy hangs with its routines hooked for long.
+    audio = {m.group(1) for f in (ROOT / "src" / "audio").glob("*.asm")
+             for m in re.finditer(r"^([A-Za-z_]\w*):", f.read_text(), re.M)}
+    out = []
+    for h in holders():
+        lines = bank_lines(h)[0]
+        for i, line in enumerate(lines):
+            m = re.match(r"^([A-Za-z_]\w*):", line)
+            if not m:
+                continue
+            nxt = next((x for x in lines[i + 1:i + 6] if x.strip() and not x.strip().startswith(";")), "")
+            op = re.match(r"^\t(\w+)", nxt)
+            # PyBoy can wedge when the single step past one breakpoint lands
+            # on another, so a routine that opens by jumping is not hooked.
+            if op and op.group(1) in ("call", "jp", "jr", "rst", "farcall"):
+                continue
+            if op and (op.group(1) in MNEMONICS or op.group(1) in CODE_MACROS) \
+                    and m.group(1) not in NOT_HOOKED and m.group(1) not in audio:
+                out.append(m.group(1))
+    return out
+
+
+def states():
+    out = []
+    for dbl, chain in ((0, SINGLES), (1, DOUBLES)):
+        for k in range(len(chain) + 1):
+            out.append((dbl, chain[:k]))
+    return out
+
+
+def plan(seed, frames):
+    r = random.Random(seed)
+    held, f = [], 0
+    while f < frames:
+        x = r.random()
+        if x < 0.45:
+            b, h = r.choice(["up", "down", "left", "right"]), r.choice([8, 16, 32, 48])
+        else:
+            b, h = ("a" if x < 0.85 else "b" if x < 0.95 else "start"), 6
+        held += [BUTTONS[b]] * h + [0] * r.choice([4, 10, 20])
+        f = len(held)
+    return held
+
+
+WINLOSE_LOSE = 0xff
+PLUGINS = []
+# labels hooked for an event of their own (a list, talk or char record, an
+# interrupt), never logged as entered
+EVENT_LABELS = {"VBlankHandler", "LCDStatHandler", "TimerHandler", "SerialHandler",
+                "InitLocationActors", "RunNpcInteraction", "InitCa00RecordFromCharId"}
+
+
+class Game:
+    def __init__(self, rom, sym, save, cap, skip=(), learn_irq=False, extra=None):
+        from pyboy import PyBoy
+        self.sym = symbols(sym)
+        base = symbols(ROOT / "build" / "mariotennis.sym")
+        # under the sweep's run directory when there is one, so a worker
+        # killed on a timeout does not leave its copy behind in /tmp
+        self.tmp = Path(tempfile.mkdtemp(prefix="eventtest-", dir=os.environ.get("EVENTTEST_TMP")))
+        copy = self.tmp / "rom.gbc"
+        shutil.copy(rom, copy)
+        shutil.copy(save, str(copy) + ".ram")
+        self.pb = pb = PyBoy(str(copy), window="null", sound_emulated=False, log_level="ERROR")
+        pb.set_emulation_speed(0)
+        self.rf, self.mem = pb.register_file, pb.memory
+        self.events, self.lf, self.inputs = [], 0, []
+        self.prev, self.edge, self.lag, self.before = 0, 0, None, None
+        self.irq, self.armed, self.last, self.learn_irq = 0, True, None, learn_irq
+
+        def at_build(label, base_addr):
+            b, a = self.sym[label]
+            return b, a + base_addr - base[label][1]
+
+        bank_src = {}
+
+        def at(label, orig):
+            # a label and an original-ROM address (its address comment)
+            b = base[label][0]
+            if b not in bank_src:
+                bank_src[b] = bank_lines(holders()[b])[0]
+            placed = placed_original(b, bank_src[b], base, orig)
+            if placed is None:
+                sys.exit(f"eventtest: ${b:02x}:{orig:04x} in {label} was edited; update its hook point")
+            return at_build(label, placed)
+
+        hooks = {}
+
+        def add(point, fn):
+            hooks.setdefault(point, []).append(fn)
+
+        add(self.sym["VBlankHandler"], self.on_vblank)
+        for label in ("VBlankHandler", "LCDStatHandler", "TimerHandler", "SerialHandler"):
+            add(self.sym[label], self.on_irq)
+        home = sorted((a, n) for n, (b, a) in base.items() if b == 0 and a < 0x4000 and "." not in n)
+        lines = bank_lines(holders()[0])[0]
+        placed = build_addresses(0, lines, base)
+        for i, line in enumerate(lines):
+            if line.split(";")[0].strip() == "reti" and i in placed:
+                addr = placed[i]
+                label = home[bisect.bisect_right(home, (addr, "\uffff")) - 1][1]
+                if label == "VBlankHandler":
+                    add(at_build(label, addr), self.on_vblank_reti)
+                add(at_build(label, addr), self.on_reti)
+        for label, addr in SYNC["frame"]:
+            add(at(label, addr), self.on_frame)
+        add(at(*SYNC["pad"]), self.on_pad)
+        add(at(*SYNC["seeded"]), self.on_seeded)
+        for label, addr, cond, reason in TAINTS:
+            add(at(label, addr), lambda c=cond, r=reason: c(self) and self.log("taint", r))
+
+        self.locs = targets(self.sym)[5]
+        by_bank = {}
+        for n, (b, a) in self.sym.items():
+            if a < 0x8000 and "." not in n:
+                by_bank.setdefault(b, []).append((a, n))
+        for v in by_bank.values():
+            v.sort()
+
+        def label_at(bank, addr):
+            labels = by_bank.get(bank if addr >= 0x4000 else 0, [])
+            i = bisect.bisect_right(labels, (addr, "\uffff")) - 1
+            return f"{labels[i][1]}+{addr - labels[i][0]}" if i >= 0 else f"{addr:04x}"
+        w = {n: self.sym[n][1] for n in ("wStoryModeCurrentLocation", "wMapNpcScriptsPtr", "wStoryLocationBank",
+                                        "hPlayerInputFlags", "hInputRisingEdge", "hVBlankOccurred",
+                                        "hRandomSeed", "hVBlankCounter")}
+        self.w = w
+        mem, rf = self.mem, self.rf
+        add(self.sym["InitLocationActors"],
+            lambda: self.log("list", label_at(rf.A, rf.HL)))
+        add(self.sym["RunNpcInteraction"],
+            lambda: self.log("talk", f"{label_at(mem[w['wStoryLocationBank']], mem[w['wMapNpcScriptsPtr']] | mem[w['wMapNpcScriptsPtr'] + 1] << 8)}"
+                                     f"/{rf.A:02x}"))
+        add(self.sym["InitCa00RecordFromCharId"], lambda: self.log("char", f"{rf.B:02x}"))
+        self.sync_points = set(hooks)
+        self.names = {}
+        for name in code_labels():
+            if name in self.sym and self.sym[name] not in hooks and name not in skip:
+                add(self.sym[name], lambda n=name: self.log("run", n))
+                self.names[self.sym[name]] = name
+        # a target's own actions at a label, after the label's event is logged
+        for label, fn in (extra or {}).items():
+            point = self.sym[label] if isinstance(label, str) else label
+            add(point, fn)
+            if point not in self.names:
+                # a target's own hook runs every time, never capped
+                self.sync_points.add(point)
+        # a tool's own hooks (tools/steer.py): each plugin maps points to
+        # actions, which run every time
+        for plugin in PLUGINS:
+            for point, fn in plugin(self).items():
+                add(point, fn)
+                self.sync_points.add(point)
+        self.hits, self.cap, self.spent, self.removed = {}, cap, [], []
+        self.refire, self.pc_fix = (None, 0), None
+        self.progress, self.crash = 0, None
+        PROGRESS["game"] = self
+        self.irq_hits = {}
+        self.hooks = hooks
+        for point, fns in hooks.items():
+            pb.hook_register(point[0], point[1], self.dispatch, (point, fns))
+
+    def reset_caps(self):
+        for point in self.removed:
+            self.pb.hook_register(point[0], point[1], self.dispatch, (point, self.hooks[point]))
+        self.hits, self.irq_hits, self.removed, self.spent = {}, {}, [], []
+
+    def dispatch(self, ctx):
+        point, fns = ctx
+        # A breakpoint hit on the cycle a frame ends is hit again and again
+        # without its instruction running: PyBoy's frame loop returns at once
+        # but still reports a single step, and puts the breakpoint back under
+        # PC each time round. Moved off it, PC ends the frame; run() puts it
+        # back and the instruction runs next frame. The divider and LY say no
+        # cycles have passed since the last call, which a loop calling the
+        # same routine with the same registers cannot match.
+        r, m = self.rf, self.mem
+        state = (point, r.SP, r.A, r.F, r.B, r.C, r.D, r.E, r.HL, m[0xff04], m[0xff05], m[0xff44], m[0xff41])
+        n = self.refire[1] + 1 if state == self.refire[0] else 1
+        self.refire = (state, n)
+        if n >= 3:
+            self.pc_fix, r.PC = r.PC, (r.PC + 1) & 0xffff
+            return
+        if point in self.sync_points:
+            for fn in fns:
+                fn()
+            return
+        if not self.armed:
+            return
+        # Interrupt handlers (sound, timers) run whenever the cycle count
+        # says, which a shifted build does not keep. The boot names every
+        # routine they call and both builds then leave those unhooked; the
+        # gate itself is only trusted for that, since PyBoy can miss a reti
+        # and would then swallow main-thread events up to the frame's end.
+        if self.irq and self.learn_irq:
+            self.irq_hits[point] = self.irq_hits.get(point, 0) + 1
+            return
+        # An interrupt taken on a breakpoint runs before its instruction, and
+        # the hook fires again on return: same place, same registers.
+        r = self.rf
+        state = (point, r.SP, r.A, r.B, r.C, r.D, r.E, r.HL, r.F)
+        if state == self.last:
+            return
+        self.last = state
+        # PyBoy lifts a breakpoint while its callback runs, so a hook cannot
+        # remove itself; it is removed between frames and ignored until then.
+        n = self.hits[point] = self.hits.get(point, 0) + 1
+        if n <= self.cap:
+            for fn in fns:
+                fn()
+            if n == self.cap:
+                self.spent.append(point)
+
+    def log(self, kind, value):
+        self.events.append((self.lf, kind, value))
+
+    def on_irq(self):
+        self.irq += 1
+
+    def on_reti(self):
+        self.irq = max(0, self.irq - 1)
+
+    def on_frame(self):
+        # A savestate is taken at a frame edge, maybe inside the VBlank
+        # handler; main-thread code running means any such handler is done.
+        self.armed, self.irq, self.lag, self.last = True, 0, None, None
+        self.lf += 1
+        # The pad changes here, on the main thread, and the VBlank only
+        # re-asserts it: a VBlank can land in the middle of a heavy frame's
+        # tasks, and a new pad there would reach only the tasks after it.
+        want = self.inputs[self.lf] if self.lf < len(self.inputs) else 0
+        self.edge, self.prev = want & ~self.prev, want
+        self.on_pad()
+        # The same for the two things every VBlank steps that frame tasks read.
+        m, seed = self.mem, self.w["hRandomSeed"]
+        value = (m[seed] | m[seed + 1] << 8) * 5 + 0x3573
+        m[seed], m[seed + 1] = value & 0xff, value >> 8 & 0xff
+        m[self.w["hVBlankCounter"]] = (m[self.w["hVBlankCounter"]] + 1) & 0xff
+
+    def on_pad(self):
+        self.mem[self.w["hPlayerInputFlags"]] = self.prev
+        self.mem[self.w["hInputRisingEdge"]] = self.edge
+
+    def on_seeded(self):
+        if self.before is not None:
+            m, seed = self.mem, self.w["hRandomSeed"]
+            m[seed], m[seed + 1], m[self.w["hVBlankCounter"]] = self.before
+            self.before = None
+
+    def on_vblank(self):
+        m = self.mem
+        seed = self.w["hRandomSeed"]
+        self.before = (m[seed], m[seed + 1], m[self.w["hVBlankCounter"]])
+        # By bank number: an interrupt between a wram_bank's two writes makes
+        # the handler return with a different bank mapped than it found.
+        m = self.mem
+        if m[self.w["hVBlankOccurred"]]:
+            self.lag = (m[0xc000:0xd000], [m[b, 0xd000:0xdfff] + [m[b, 0xdfff]] for b in range(1, 8)],
+                        m[0xff80:0xffff])
+
+    def on_vblank_reti(self):
+        if self.lag:
+            m = self.mem
+            low, banks, high = self.lag
+            m[0xc000:0xd000], m[0xff80:0xffff] = low, high
+            for b, data in enumerate(banks, 1):
+                m[b, 0xd000:0xdfff] = data[:-1]
+                m[b, 0xdfff] = data[-1]
+            self.lag = None
+
+    def run(self, inputs, frames, limit, actions=None, armed=False):
+        """Play `inputs` for `frames` logic frames; `actions` maps a logic
+        frame to a function run (once) at the first frame edge past it.
+        `armed` records from the first instruction -- for a run from
+        power-on, whose boot code runs before the first frame edge."""
+        self.inputs, self.lf, self.prev, self.edge = inputs, 0, 0, 0
+        self.armed = armed
+        pending = sorted((actions or {}).items())
+        ticks, self.crash = 0, None
+        while self.lf < frames and ticks < limit:
+            self.pb.tick(1, False)
+            ticks += 1
+            self.progress += 1
+            # before the crash check: PC parked past a breakpoint can sit on
+            # an operand byte that reads as an illegal opcode
+            if self.pc_fix is not None:
+                self.rf.PC, self.pc_fix, self.refire = self.pc_fix, None, (None, 0)
+            crash = crashed(self)
+            if crash:
+                self.crash = crash
+                break
+            while pending and self.lf >= pending[0][0]:
+                pending.pop(0)[1]()
+            for point in self.spent:
+                self.pb.hook_deregister(*point)
+            self.removed += self.spent
+            self.spent = []
+        return ticks
+
+    def close(self):
+        self.pb.stop(save=False)
+        shutil.rmtree(self.tmp)
+
+
+def boot(rom, sym, save, out, menu=False):
+    g = Game(rom, sym, save, 10 ** 9, learn_irq=True)
+    presses = [(950, "start"), (90, "a")]
+    if not menu:
+        presses += [(90, "down")] + [(150, "a")] * 6
+    inputs = []
+    for wait, b in presses:
+        inputs += [0] * wait + [BUTTONS[b]] * 6
+    inputs += [0] * 300
+    g.run(inputs, len(inputs), 20 * len(inputs))
+    loc = g.mem[g.w["wStoryModeCurrentLocation"]]
+    buf = io.BytesIO()
+    g.pb.save_state(buf)
+    Path(out).write_bytes(buf.getvalue())
+    Path(out + ".irq").write_text(json.dumps(sorted(g.names[p] for p in g.irq_hits)))
+    g.close()
+    return loc
+
+
+# The worker in progress, for the watchdog: the game, the chunk's finished
+# entries, and the entry being played.
+PROGRESS = {"game": None, "done": [], "entry": None, "frames": None}
+# opcodes the CPU does not have ($db is left out: PyBoy's breakpoints use it)
+ILLEGAL = {0xd3, 0xdd, 0xe3, 0xe4, 0xeb, 0xec, 0xed, 0xf4, 0xfc, 0xfd}
+
+
+def crashed(g):
+    """Where the game has crashed, or None: the stack outside WRAM and HRAM
+    (the rst $38 loop that pushes $0039 forever), or execution in RAM
+    below HRAM, or on an opcode the CPU does not have."""
+    r = g.rf
+    pc, sp = r.PC, r.SP
+    if not (0xc000 <= sp <= 0xe000 or 0xff80 <= sp <= 0xfffe):
+        why = "stack left RAM"
+    elif 0x8000 <= pc < 0xff80:
+        why = "running RAM"
+    elif g.mem[pc] in ILLEGAL:
+        why = "illegal opcode"
+    else:
+        return None
+    return {"why": why, "pc": pc, "sp": sp, "frame": g.lf}
+
+
+def watchdog(out):
+    """In a worker: when PyBoy stops returning from tick() -- a crash that
+    stops frames, or a wedge -- write what the run has so far, with the
+    crash, and end the process; a wedge that is not a crash just ends it."""
+    import threading
+    import time
+
+    def watch():
+        last = None
+        while True:
+            time.sleep(10)
+            g = PROGRESS["game"]
+            if g is None:
+                continue
+            now = (id(g), g.progress)
+            if now == last:
+                crash = crashed(g)
+                if crash:
+                    part = {"entry": PROGRESS["entry"], "logic": g.lf, "ticks": g.progress,
+                            "events": [e for e in g.events if e[0] < (PROGRESS["frames"] or g.lf + 1)],
+                            "crash": dict(crash, hung=True)}
+                    Path(out).write_text(json.dumps(PROGRESS["done"] + [part]))
+                os._exit(0)
+            last = now
+    threading.Thread(target=watch, daemon=True).start()
+
+
+def match_lost(g):
+    """The last match lost and nothing pending: the one result every story
+    state allows. An entry point that returns from a match reads these, and
+    the saved state's leftovers (a win at a stage the flags say is not won)
+    send some of them through a jump table past its end."""
+    for name, value in (("wMatchWinLoseFlag", WINLOSE_LOSE), ("wPointWinLoseFlag", WINLOSE_LOSE),
+                        ("wMatchExitRequest", 0), ("wPointOutcome", 0), ("wKeepMatchStatsFlag", 0)):
+        g.mem[g.sym[name][1]] = value
+
+
+def chunk(rom, sym, save, state_file, si, li, frames, cap, skip):
+    g = Game(rom, sym, save, cap, set(json.loads(Path(skip).read_text())))
+    story = Path(state_file).read_bytes()
+    dbl, on = states()[si]
+    loc, entries = g.locs[li]
+    flags = g.sym["wGameFlags"][1]
+    result = []
+    for entry in entries:
+        g.pb.load_state(io.BytesIO(story))
+        g.reset_caps()
+        g.events = []
+        for n in SINGLES + DOUBLES + ALWAYS_CLEAR + [FLAG_DOUBLES]:
+            on_ = n in on or (n == FLAG_DOUBLES and dbl)
+            a, bit = flags + n // 8, 0x80 >> (n % 8)
+            g.mem[a] = (g.mem[a] | bit) if on_ else (g.mem[a] & ~bit & 0xff)
+        g.mem[g.sym["wStoryModeCurrentLocation"][1]] = loc
+        g.mem[g.sym["wStoryModeEntryPoint"][1]] = entry
+        g.mem[g.sym["wStoryModeExitTriggerRequest"][1]] = 0xff
+        match_lost(g)
+        PROGRESS.update(entry=entry, frames=frames)
+        ticks = g.run(plan(si * 10000 + li * 100 + entry, frames), frames, 4 * frames)
+        # the last frame is cut wherever the run stops
+        events = [e for e in g.events if e[0] < frames]
+        result.append({"entry": entry, "events": events, "logic": g.lf, "ticks": ticks, "crash": g.crash})
+        PROGRESS["done"] = list(result)
+    g.close()
+    return result
+
+
+def session(rom, sym, save, state_file, seed, frames, cap, skip):
+    """Random play from one of the main menu's nine items: the menus,
+    exhibition matches, practice modes and minigames it wanders into."""
+    g = Game(rom, sym, save, cap, set(json.loads(Path(skip).read_text())))
+    g.pb.load_state(io.BytesIO(Path(state_file).read_bytes()))
+    g.reset_caps()
+    g.events = []
+    # the main menu is a 3x3 grid: open item seed % 9, then play at random
+    item = seed % 9
+    moves = ["right"] * (item % 3) + ["down"] * (item // 3) + ["a"]
+    inputs = [0] * 30
+    for button in moves:
+        inputs += [BUTTONS[button]] * 6 + [0] * 24
+    inputs += [0] * 60
+    inputs += plan(1000000 + seed, frames - len(inputs))
+    PROGRESS.update(entry=seed, frames=frames)
+    ticks = g.run(inputs, frames, 4 * frames)
+    events = [e for e in g.events if e[0] < frames]
+    g.close()
+    return [{"entry": seed, "events": events, "logic": g.lf, "ticks": ticks, "crash": g.crash}]
+
+
+# The Test map's nine NPCs (docs: STORYLOC_TEST) as (x, y) from
+# MatchSelectActors_10, and which side the player walks into each from.
+TEST_MAP_NPCS = [(0x0700, 0x1100), (0x0700, 0x0700), (0x0d00, 0x0700), (0x0700, 0x0b00),
+                 (0x0d00, 0x0b00), (0x0d00, 0x1100), (0x0500, 0x0e00), (0x1100, 0x0e00),
+                 (0x1100, 0x0c00)]
+# Damaged battery saves the game repairs at power-on (docs/save_format.md):
+# the header signature (the bank-1 mirror intact, then both), story slot 0's
+# block (its backup good, then both), block $36 (backup $37 good), and N64
+# records present in block $0b.
+SAVE_DAMAGE = ["header", "header-mirror", "slot", "slot-backup", "block36", "n64"]
+# The drill list offers MINIGAME_* ids $00-$08; the story's lessons and
+# minigame rooms pass the rest to the same launcher.
+DRILL_IDS = range(0x09, 0x24)
+# From the main menu: the two button codes that unlock everything (29
+# presses then A on the main menu; Right 12 times, Left 34 times, then A
+# with Select on a story slot's trophies screen), and the Saved Data screens' three N64
+# Transfer Pak record screens, with random records forged into block $0b;
+# and each of the nine Mario minigames, opened from the main menu.
+CHEAT_CODE = ["down", "down", "right", "right", "up", "up", "left", "select", "select", "select",
+              "right", "down", "down", "left", "left", "up", "up", "right", "select", "left",
+              "down", "down", "right", "right", "up", "up", "left", "select", "select"]
+MENU_TARGETS = ["menu-cheat", "trophies-cheat", "n64-tnmt", "n64-exhib", "n64-ring"] + \
+    [f"minigame{k}" for k in range(9)]
+TARGETS = (["attract", "debug"] + [f"npc{k}" for k in range(len(TEST_MAP_NPCS))]
+           + [f"drill{k}" for k in range(9)] + [f"save-{d}" for d in SAVE_DAMAGE]
+           + [f"drillid{i:02x}" for i in DRILL_IDS] + MENU_TARGETS)
+
+
+def handler_rows():
+    """Every map_script row of a story location's NpcScripts,
+    FacingScripts and TileTriggers tables whose handler is code, then of the
+    NpcScripts tables its scripts install (tools/actorslots.py): (location
+    index, entry, kind, table, id, facing mask, flag condition, handler)."""
+    import actorslots
+    from runtime_audit import targets
+    scene = "\n".join(bank_lines(holders()[0x0a])[0])
+    trees = re.findall(r"story_location [^,]+, \w+, DataPtr_(\w+)", scene)
+    text = "\n".join("\n".join(bank_lines(h)[0]) for h in holders())
+    locs = dict(targets(symbols(ROOT / "build" / "mariotennis.sym"))[5])
+    rows, installed = [], []
+    flow = actorslots.Flow(actorslots.Source())
+    flow.analyse()
+    for i, tree in enumerate(trees):
+        m = re.search(rf"^{tree}:\n(?:\t;[^\n]*\n)?((?:\tdw \w+ ; slot \d \w+\n)+)", text, re.M)
+        slots = {role: t for t, role in re.findall(r"\tdw (\w+) ; slot \d (\w+)", m.group(1))} if m else {}
+        entry = (locs.get(i) or [1])[0]
+        # an init script that stays only for one entry point (and otherwise
+        # sends the player straight out) is entered by that one
+        init = slots.get("InitScript")
+        m = init and re.search(rf"^{init}:\n\tld a, \[wStoryModeEntryPoint\][^\n]*\n\tcp (\$[0-9a-f]+)[^\n]*\n"
+                               rf"\tret z", text, re.M)
+        if m:
+            entry = int(m.group(1)[1:], 16)
+        tables = [(kind, slots.get(role)) for kind, role in
+                  (("npc", "NpcScripts"), ("facing", "FacingScripts"), ("tile", "TileTriggers"))]
+        extra = sorted({t for (_, t, _) in flow.visits.get(tree, ())
+                        if t in flow.s.funcs and t != slots.get("NpcScripts")})
+        for kind, table in tables + [("npc", t) for t in extra]:
+            m = table and re.search(rf"^{table}:\n((?:\t[^\n]*\n)+?)(?=^\S)", text, re.M)
+            if not m:
+                continue
+            for line in m.group(1).split("\n"):
+                r = re.match(r"\tmap_script ([^,]+), ([^,]+), ([^,]+), ([^,]+),", line)
+                if not r or not re.match(r"[A-Z]\w*$", r.group(4)) or r.group(4).startswith("Text_"):
+                    continue
+                (installed if table in extra else rows).append(
+                    (i, entry, kind, table, r.group(1), r.group(2), r.group(3), r.group(4)))
+    return rows + installed
+
+
+_HANDLERS = []
+
+
+def handlers():
+    """handler_rows(), one row per handler; worked out on first use."""
+    if not _HANDLERS:
+        seen = set()
+        for row in handler_rows():
+            if row[7] not in seen:
+                seen.add(row[7])
+                _HANDLERS.append(row)
+    return _HANDLERS
+
+
+def after_call(sym_path, routine, callee):
+    """The build address of the instruction after `call callee` in routine
+    (bank $0a), where a target can hand the loop a different answer."""
+    lines = bank_lines(holders()[0x0a])[0]
+    placed = build_addresses(0x0a, lines, symbols(sym_path))
+    inside = False
+    for i, line in enumerate(lines):
+        if line.startswith(routine + ":"):
+            inside = True
+        elif inside and line.split(";")[0].strip() == f"call {callee}":
+            j = next(k for k in range(i + 1, len(lines)) if lines[k].split(";")[0].strip()
+                     and not lines[k].startswith("."))
+            return (0x0a, placed[j])
+    raise KeyError(f"{routine}: no call {callee}")
+
+
+def handler_setup(g, sym_path, row, extra, actions):
+    """Warp to the row's location and, once its scripts have run, raise the
+    interact request with the row's table in place, its facing and flag
+    condition met, and the row's id handed to the NPC, facing or tile
+    lookup (the ones before it find nothing)."""
+    import actorslots
+    loc, entry, kind, table, ident, mask, cond, handler = row
+    slot = actorslots.Source().slot_of
+    value = slot[ident][1] if ident in slot else int(ident.lstrip("$"), 16)
+    masks = {"FACEMASK_ANY": 0xff, "FACEMASK_RIGHT": 0x10, "FACEMASK_LEFT": 0x20,
+             "FACEMASK_UP": 0x40, "FACEMASK_DOWN": 0x80}
+    mvalue = masks.get(mask, None)
+    if mvalue is None:
+        mvalue = eval(re.sub(r"FACEMASK_\w+", lambda m: str(masks[m.group(0)]), mask).replace("$", "0x"))
+    armed = []
+    order = ["npc", "facing", "tile"]
+
+    def answer(step):
+        def fn():
+            if armed and armed[0] == step:
+                g.rf.A = value if kind == step else 0
+                armed[0] = "done" if kind == step else order[order.index(step) + 1]
+        return fn
+    for step, callee in zip(order, ("FindActorFacingPlayer", "GetFacingTileInteractionId",
+                                    "GetTileTriggerAtPlayer")):
+        extra[after_call(sym_path, "RunStoryLocation", callee)] = answer(step)
+
+    def request():
+        if armed and armed[0] == "npc" and not armed[1:]:
+            g.mem[g.sym["wStoryModeInteractRequest"][1]] = 1
+            armed.append("requested")
+    # at the head of the loop that waits for any request to be pending, so
+    # the interact request is there when it next looks
+    extra[symbols(sym_path)["RunStoryLocation.eventWaitLoop"]] = request
+
+    def fire():
+        m = g.mem
+        ptr = {"npc": "wMapNpcScriptsPtr", "facing": "wMapFacingScriptsPtr",
+               "tile": "wMapTileTriggersPtr"}[kind]
+        a = g.sym[table][1]
+        m[g.sym[ptr][1]], m[g.sym[ptr][1] + 1] = a & 0xff, a >> 8
+        facing = next(i for i, bit in enumerate((0x10, 0x80, 0x20, 0x40)) if mvalue & bit)
+        m[4, g.sym["wPlayerMoveAngle"][1]] = facing << 6
+        c = int(cond.lstrip("$"), 16) if cond.startswith("$") else 0
+        if c:
+            n = ((c >> 8) & 0x7f) * 8 + ((c >> 5) & 7)
+            addr, bit = g.sym["wGameFlags"][1] + n // 8, 0x80 >> (n % 8)
+            m[addr] = (m[addr] | bit) if c & 0x8000 else (m[addr] & ~bit & 0xff)
+        armed.append("npc")
+    actions[240] = fire
+
+    def warp():
+        m = g.mem
+        m[g.sym["wStoryModeCurrentLocation"][1]] = loc
+        m[g.sym["wStoryModeEntryPoint"][1]] = entry
+        m[g.sym["wStoryModeExitTriggerRequest"][1]] = 0xff
+        match_lost(g)
+    return warp
+
+
+def damaged_save(save, kind, out):
+    """A copy of `save` with one fault for the boot code to meet. The slot and
+    block faults are repaired from their backups; a header fault wipes the save
+    (docs/bugs.md, the save mirror re-check)."""
+    import savetool as T
+    sav = bytearray(Path(save).read_bytes())
+
+    def spoil(block):
+        ent = T.entry(sav, block)
+        sav[ent["data"]] ^= 0xff
+    if kind == "header":
+        sav[T.SIG_OFF] ^= 0xff
+    elif kind == "header-mirror":
+        sav[T.SIG_OFF] ^= 0xff
+        sav[0x2000 + T.SIG_OFF] ^= 0xff
+    elif kind == "slot":
+        spoil(0)
+    elif kind == "slot-backup":
+        spoil(0)
+        spoil(T.BACKUP_DELTA)
+    elif kind == "block36":
+        spoil(0x36)
+    elif kind == "n64":
+        ent = T.entry(sav, 0x0b)
+        sav[ent["data"]] = 1
+        T.fix(sav)
+    Path(out).write_bytes(sav)
+    return out
+
+
+def forge_n64_records(g, rng):
+    """Fill save block $0b in the running game's cartridge RAM with random N64
+    records, present (first two bytes not both zero), checksums fixed."""
+    import savetool as T
+    mem = g.pb.memory
+    sav = bytearray(mem[b, 0xa000 + i] for b in range(4) for i in range(0x2000))
+    old = bytes(sav)
+    ent = T.entry(sav, 0x0b)
+    sav[ent["data"]:ent["data"] + ent["len"]] = bytes(rng.randrange(256) for _ in range(ent["len"]))
+    sav[ent["data"]] = rng.randrange(1, 256)
+    T.fix(sav)
+    for i, (a, b) in enumerate(zip(old, sav)):
+        if a != b:
+            mem[i // 0x2000, 0xa000 + i % 0x2000] = b
+
+
+def target(rom, sym, save, state_file, name, seed, frames, cap, skip):
+    """Random play from a start the main menu and the story locations do not
+    give: the intro and attract loop from power-on, the debug menu (armed
+    through hDebugStepMode in the dorm), each Test-map NPC's flow (match
+    and drill lists, minigame select, epilogue, credits), each of the
+    nine drills picked from its list, damaged saves, every drill id, the
+    two unlock codes and the N64 record screens."""
+    extra, armed = {}, False
+    if name.startswith("save-"):
+        save = damaged_save(save, name[5:], Path(tempfile.mkdtemp(dir=os.environ.get("EVENTTEST_TMP"))) / "damaged.sav")
+    if name.startswith("drillid"):
+        want, done = int(name[7:], 16), []
+
+        def pick():
+            if not done:
+                g.rf.A = want
+                done.append(1)
+        extra["RunTrainingDrillByID"] = pick
+    actions, warp = {}, None
+    if name.startswith("handler"):
+        # the Game object is filled in below; the setup's closures read it late
+        holder = []
+
+        class Late:
+            def __getattr__(self, attr):
+                return getattr(holder[0], attr)
+        warp = handler_setup(Late(), sym, handlers()[int(name[7:])], extra, actions)
+    g = Game(rom, sym, save, cap, set(json.loads(Path(skip).read_text())), extra=extra)
+    if warp:
+        holder.append(g)
+    m = g.mem
+    if name == "attract" or name.startswith("save-"):
+        # from power-on, so the boot code (the save check among it) runs
+        armed = True
+        inputs = [0] * min(frames, 6000)
+    elif name in MENU_TARGETS:
+        # state_file is the main-menu state
+        g.pb.load_state(io.BytesIO(Path(state_file).read_bytes()))
+        if name.startswith("n64-"):
+            forge_n64_records(g, random.Random(seed))
+        if name == "menu-cheat":
+            moves = CHEAT_CODE + ["a"]
+        elif name.startswith("minigame"):
+            # Minigames (main-menu cell 1), then cell k of its 3x3 grid
+            k = int(name[8:])
+            moves = ["right", "a", None, None] + ["right"] * (k % 3) + ["down"] * (k // 3) + ["a"]
+        elif name == "trophies-cheat":
+            # Saved Data (main-menu cell 6), story slot 0, its transfer
+            # items' third (a 2x2 grid), the trophies
+            moves = ["down", "down", "a", None, "a", None, "down", "a", None, None] + \
+                ["right"] * 0x0c + ["left"] * 0x22 + ["a+select"]
+        else:
+            # Saved Data, the N64 records (picker cell 4), one of its three
+            moves = ["down", "down", "a", None, "down", "right", "a", None] + \
+                {"n64-tnmt": [], "n64-exhib": ["right"], "n64-ring": ["right", "right"]}[name] + ["a"]
+        inputs = [0] * 30
+        for button in moves:
+            pad = 0 if button is None else sum(BUTTONS[b] for b in button.split("+"))
+            inputs += [0] * 60 if button is None else [pad] * 6 + [0] * 24
+        inputs += [0] * 120
+    else:
+        g.pb.load_state(io.BytesIO(Path(state_file).read_bytes()))
+        inputs = [0] * 90
+        if warp:
+            warp()
+            inputs += [0] * 240        # stand still until the handler has been called
+        elif name == "debug":
+            actions[60] = lambda: m.__setitem__(g.sym["hDebugStepMode"][1], 1)
+            inputs += [BUTTONS["a"]] * 6 + [0] * 60
+        else:
+            m[g.sym["wStoryModeCurrentLocation"][1]] = 3
+            m[g.sym["wStoryModeEntryPoint"][1]] = 1
+            m[g.sym["wStoryModeExitTriggerRequest"][1]] = 0xff
+            x, y = TEST_MAP_NPCS[3 if name.startswith("drill") else int(name[3:])]
+            side = 0x100 if x <= 0x0700 else -0x100
+            actor = g.sym["wActors"][1]
+
+            def place():
+                for field, value in ((0x0c, x + side), (0x0e, y)):
+                    m[4, actor + field], m[4, actor + field + 1] = value & 0xff, value >> 8
+            actions[80] = place
+            inputs += [BUTTONS["left" if side > 0 else "right"]] * 30 + [0] * 60
+            if name.startswith("drill"):
+                # the drill list: nine rows, four to a page, Right pages;
+                # a drillid target takes row 0 and swaps the id at the launcher
+                k = 0 if name.startswith("drillid") else int(name[5:])
+                for button in ["right"] * (k // 4) + ["down"] * (k % 4) + ["a"]:
+                    inputs += [BUTTONS[button]] * 6 + [0] * 24
+                inputs += [0] * 60
+    g.reset_caps()
+    g.events = []
+    index = TARGETS.index(name) if name in TARGETS else 1000 + int(name[7:])
+    inputs += plan(2000000 + seed * 16 + index, frames - len(inputs))
+    PROGRESS.update(entry=seed, frames=frames)
+    ticks = g.run(inputs, frames, 4 * frames, actions, armed)
+    events = [e for e in g.events if e[0] < frames]
+    g.close()
+    return [{"entry": seed, "events": events, "logic": g.lf, "ticks": ticks, "crash": g.crash}]
+
+
+def compare(a, b, skip=6, run=12):
+    """Walk the two (kind, value) sequences together and return the index in
+    `a` where they part for good (or None), how many events matched at a
+    different logic frame, and how many dropouts were stepped over. PyBoy
+    now and then misses a breakpoint that an interrupt lands on, so a gap of
+    up to `skip` events in either sequence, after which `run` events agree,
+    is a dropout and not a divergence. Both are cut at their first taint."""
+    for seq in (a, b):
+        cut = next((i for i, e in enumerate(seq) if e[1] == "taint"), None)
+        if cut is not None:
+            del seq[cut + 1:]
+    key = lambda e: tuple(e[1:])
+    # A dropout leaves that label one hit short of its cap, so it logs one
+    # more hit later than the other build does: keep only as many of each
+    # event as both logged.
+    counts = [collections.Counter(map(key, seq)) for seq in (a, b)]
+    for seq in (a, b):
+        seen = collections.Counter()
+        keep = []
+        for e in seq:
+            seen[key(e)] += 1
+            if seen[key(e)] <= min(counts[0][key(e)], counts[1][key(e)]):
+                keep.append(e)
+        seq[:] = keep
+    i = j = shifted = dropouts = 0
+    while i < len(a) and j < len(b):
+        if key(a[i]) == key(b[j]):
+            shifted += a[i][0] != b[j][0]
+            i, j = i + 1, j + 1
+            continue
+        for di, dj in sorted(((x, y) for x in range(skip + 1) for y in range(skip + 1) if x or y),
+                             key=sum):
+            ahead = min(run, len(a) - i - di, len(b) - j - dj)
+            if ahead > 0 and all(key(a[i + di + k]) == key(b[j + dj + k]) for k in range(ahead)):
+                i, j, dropouts = i + di, j + dj, dropouts + 1
+                break
+        else:
+            return i, shifted, dropouts
+    return (None if i == len(a) and j == len(b) else i), shifted, dropouts
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("rom", nargs="?")
+    ap.add_argument("--base", default=str(ROOT / "mariotennis.gbc"))
+    ap.add_argument("--save", required=True)
+    ap.add_argument("--frames", type=int, default=2000, help="logic frames per entry point")
+    ap.add_argument("--cap", type=int, default=20, help="entries recorded per code label")
+    ap.add_argument("--jobs", type=int, default=8)
+    ap.add_argument("--timeout", type=int, default=120)
+    ap.add_argument("--states", help="only these state indices, e.g. 0,5,20; 'none' for no story runs")
+    ap.add_argument("--free", type=int, default=0,
+                    help="also play this many seeded random sessions from the main menu")
+    ap.add_argument("--free-frames", type=int, default=20000, help="logic frames per session")
+    ap.add_argument("--targets", type=int, default=0,
+                    help="also play this many seeded sessions from each targeted start "
+                         "(intro, debug menu, each Test-map NPC)")
+    ap.add_argument("--handlers", type=int, default=0,
+                    help="also play this many seeded sessions from each story NPC, facing and "
+                         "tile-trigger handler, called in its own location")
+    ap.add_argument("--coverage", help="merge the routines the base build entered into this JSON "
+                                       "file (read by tools/coverage.py)")
+    ap.add_argument("--units", help="write which routines the base build entered in each "
+                                    "session to this JSON file (read by tools/steer.py)")
+    ap.add_argument("--worker", nargs="+", help=argparse.SUPPRESS)
+    args = ap.parse_args()
+
+    if args.worker:
+        kind, rom, sym, *rest = args.worker
+        if kind != "boot":
+            watchdog(rest[-1])
+        if kind == "boot":
+            print(boot(rom, sym, args.save, rest[0], menu=rest[1:] == ["menu"]))
+        elif kind == "target":
+            state_file, name, seed, skip, out = rest
+            res = target(rom, sym, args.save, state_file, name, int(seed), args.free_frames, args.cap, skip)
+            Path(out).write_text(json.dumps(res))
+        elif kind == "free":
+            state_file, seed, skip, out = rest
+            res = session(rom, sym, args.save, state_file, int(seed), args.free_frames, args.cap, skip)
+            Path(out).write_text(json.dumps(res))
+        else:
+            state_file, si, li, skip, out = rest
+            res = chunk(rom, sym, args.save, state_file, int(si), int(li), args.frames, args.cap, skip)
+            Path(out).write_text(json.dumps(res))
+        return 0
+    try:
+        import pyboy  # noqa: F401
+    except ImportError:
+        sys.exit("needs PyBoy: pip install pyboy")
+
+    builds = {"base": (args.base, ROOT / "build" / "mariotennis.sym"),
+              "rom": (args.rom, Path(args.rom).with_suffix(".sym"))}
+    tmp = Path(tempfile.mkdtemp(prefix="eventtest-"))
+    os.environ["EVENTTEST_TMP"] = str(tmp)
+    atexit.register(shutil.rmtree, tmp, True)
+    me = [sys.executable, __file__, "--save", args.save, "--frames", str(args.frames),
+          "--free-frames", str(args.free_frames), "--cap", str(args.cap), "--worker"]
+    picked = ([] if args.states == "none" else
+              [int(x) for x in args.states.split(",")] if args.states else range(len(states())))
+    boots = [("story", [])] * bool(picked or args.targets or args.handlers) + \
+            [("menu", ["menu"])] * bool(args.free or args.targets)
+    for key, (rom, sym) in builds.items():
+        for kind, extra in boots:
+            r = subprocess.run(me + ["boot", str(rom), str(sym), str(tmp / f"{key}.{kind}")] + extra,
+                               capture_output=True, text=True, timeout=args.timeout)
+            if r.returncode:
+                sys.exit(f"{key} failed to boot:\n{r.stderr[-2000:]}")
+        print(f"{key} booted")
+    skip = tmp / "irq.json"
+    skip.write_text(json.dumps(sorted({n for key in builds for kind, _ in boots
+                                       for n in json.loads((tmp / f"{key}.{kind}.irq").read_text())})))
+
+    locs = targets(symbols(builds["base"][1]))[5]
+    units = [("story", si, li) for si in picked for li in range(len(locs))]
+    units += [("free", seed, None) for seed in range(args.free)]
+    units += [("target", name, seed) for seed in range(args.targets) for name in TARGETS]
+    units += [("target", f"handler{k}", seed) for seed in range(args.handlers) for k in range(len(handlers()))]
+
+    def work(job):
+        key, (kind, a, b) = job
+        rom, sym = builds[key]
+        out = tmp / f"{key}_{kind}_{a}_{b}.json"
+        if kind == "story":
+            cmd, limit = ["chunk", str(rom), str(sym), str(tmp / f"{key}.story"),
+                          str(a), str(b), str(skip), str(out)], args.timeout
+        else:
+            menu = kind == "free" or a in MENU_TARGETS
+            state = tmp / f"{key}.{'menu' if menu else 'story'}"
+            cmd = [kind, str(rom), str(sym), str(state)] + ([a] if kind == "target" else []) + \
+                  [str(a if kind == "free" else b), str(skip), str(out)]
+            limit = args.timeout * max(1, args.free_frames // args.frames)
+        try:
+            subprocess.run(me + cmd, capture_output=True, timeout=limit)
+        except subprocess.TimeoutExpired:
+            return job, "timeout"
+        return job, json.loads(out.read_text()) if out.exists() else "failed"
+
+    results = {}
+    with concurrent.futures.ThreadPoolExecutor(args.jobs) as ex:
+        for job, res in ex.map(work, [(key, u) for u in units for key in builds]):
+            results[job] = res
+    if args.units:
+        Path(args.units).write_text(json.dumps(
+            [[list(unit), sorted({e[2] for x in res if not x.get("crash") for e in x["events"] if e[1] == "run"})]
+             for (key, unit), res in results.items() if key == "base" and not isinstance(res, str)]))
+    if args.coverage:
+        path = Path(args.coverage)
+        old = json.loads(path.read_text()) if path.exists() else {"entered": [], "hooked": []}
+        entered = set(old["entered"]) | {e[2] for (key, _), res in results.items()
+                                         if key == "base" and not isinstance(res, str)
+                                         for x in res if not x.get("crash") for e in x["events"] if e[1] == "run"}
+        hooked = set(old["hooked"]) | (set(code_labels()) - set(json.loads(skip.read_text())) - EVENT_LABELS)
+        path.write_text(json.dumps({"entered": sorted(entered), "hooked": sorted(hooked)}, indent=0))
+    shutil.rmtree(tmp, True)
+
+    def where(unit, entry):
+        kind, a, b = unit
+        if kind == "free":
+            return f"main-menu session {a}"
+        if kind == "target":
+            return f"{a} session {b}"
+        dbl, on = states()[a]
+        return (f"state {a} ({'doubles' if dbl else 'singles'} step {len(on)}), "
+                f"location {locs[b][0]:#04x} entry {entry}")
+
+    bad, unsure, crashes, events, shifted, tainted, dropouts, both = [], [], [], 0, 0, 0, 0, 0
+    shared, forced, forced_ran = {}, [], 0
+
+    def crash_text(c):
+        return "ran" if not c else (f"crashed ({c['why']}, PC ${c['pc']:04x}, SP ${c['sp']:04x}) "
+                                    f"at logic frame {c['frame']}")
+    for unit in units:
+            a, b = results[("base", unit)], results[("rom", unit)]
+            if isinstance(a, str) or isinstance(b, str):
+                unsure.append((unit, None, f"base {a if isinstance(a, str) else 'ran'}, "
+                                           f"rom {b if isinstance(b, str) else 'ran'}"))
+                continue
+            for x, y in zip(a, b):
+                rule = FORCED.get((locs[unit[2]][0], x["entry"])) if unit[0] == "story" else None
+                if rule and rule[0] != bool(states()[unit[1]][0]):
+                    if x.get("crash") or y.get("crash"):
+                        forced.append((unit, x["entry"], f"base {crash_text(x.get('crash'))}, "
+                                                         f"rom {crash_text(y.get('crash'))} ({rule[1]})"))
+                    else:
+                        forced_ran += 1
+                    continue
+                if x.get("crash") or y.get("crash"):
+                    # the game itself went wrong: expected of both builds, a
+                    # finding (not a layout fault) when only one does
+                    if x.get("crash") and y.get("crash"):
+                        both += 1
+                        where_ = (unit[2], x["entry"]) if unit[0] == "story" else (unit[1], None)
+                        shared.setdefault(where_, []).append((unit, x["entry"], x["crash"]))
+                    else:
+                        crashes.append((unit, x["entry"], f"base {crash_text(x.get('crash'))}, "
+                                                          f"rom {crash_text(y.get('crash'))}"))
+                    continue
+                i, s, d = compare(x["events"], y["events"])
+                events += len(x["events"])
+                shifted += s
+                dropouts += d
+                tainted += any(e[1] == "taint" for e in x["events"])
+                if i is not None:
+                    ev = lambda e: f"{e[i][1]} {e[i][2]} at logic frame {e[i][0]}" if i < len(e) else "nothing"
+                    bad.append((unit, x["entry"], f"event {i}: base {ev(x['events'])}, rom {ev(y['events'])}"))
+    print(f"{len(picked)} states x {len(locs)} locations, {args.free} main-menu sessions and "
+          f"{args.targets * len(TARGETS) + args.handlers * len(handlers())} targeted sessions: "
+          f"{events} events compared, "
+          f"{shifted} at a different logic frame, {dropouts} hook dropouts stepped over, "
+          f"{tainted} entries cut at a known "
+          f"layout-dependent path, {both} entries where the game crashed in both builds, "
+          f"{len(crashes)} where it crashed in one, {len(unsure)} chunks inconclusive (PyBoy wedged); "
+          f"{forced_ran + len(forced)} entries in a combination the game never makes (FORCED), "
+          f"{len(forced)} of them crashing, set apart")
+    for label, rows in (("differs", bad), ("crashed", crashes), ("inconclusive", unsure)):
+        for unit, entry, what in rows:
+            print(f"    {label}: {where(unit, entry)}: {what}")
+    if forced:
+        print(f"    forced, crashed: {len(forced)}x, e.g. {where(forced[0][0], forced[0][1])}: {forced[0][2]}")
+    for key, rows in sorted(shared.items(), key=lambda kv: -len(kv[1])):
+        whys = sorted({f"{c['why']} at ${c['pc']:04x}" for _, _, c in rows})
+        print(f"    crashed in both, {len(rows)}x at {where(rows[0][0], rows[0][1]).split(', ', 1)[-1]}: "
+              f"{'; '.join(whys)}")
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

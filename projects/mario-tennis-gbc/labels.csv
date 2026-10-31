@@ -1,0 +1,791 @@
+bank,addr,name,comment
+0,0000,RST00_JumpTable,rst $00 with A=index ; dw table follows inline -> 06C4
+0,0008,RST08_SoundCmd,rst $08 ; db id  -> 2FB3
+0,0010,RST10_FarCall,rst $10 ; db idx bank -> 01B6
+0,0018,RST18_FarCall,rst $18 ; db idx bank -> 01B6 (same as rst $10)
+0,0020,RST20_SetFlag,rst $20 ; dw flag<<5
+0,0028,RST28_ClearFlag,rst $28 ; dw flag<<5
+0,0030,RST30_TestFlag,rst $30 ; dw flag<<5 -> NZ if set
+0,0040,INT_VBlank,
+0,0048,INT_STAT,
+0,0050,INT_Timer,
+0,0058,INT_Serial,
+0,0100,Entry,
+0,0150,Start,jp Init
+0,0153,BuildString,"ASCII ""10011171737"""
+0,015E,FarCallHL,A=bank HL=addr; restores bank on return
+0,0175,FarCallHL_Return,
+0,0184,FarJumpTable,A=bank HL=table B=index; ret if entry null
+0,01A7,FarJumpTable_Return,
+0,01B6,FarCallInline,handler for rst $10/$18: reads db idx bank after rst; jumps to [bank:$4000+idx]
+0,01E6,JumpBankTable_A,jp [$4000+A]
+0,01F6,FarCallInline2,call $01F6 ; db idx bank
+0,0213,JumpBankTable_E,jp [$4000+E]
+0,2497,BitMaskTable,8 bytes
+0,249F,TestFlag_DE,de: e=(flag&7)<<5 d=flag>>3 ; flags at wEventFlags
+0,24BA,SetFlag_DE,
+0,24D4,ClearFlag_DE,
+0,24EF,TestFlagIdx,DE=flag number
+0,2509,SetFlagIdx,DE=flag number
+0,2523,ClearFlagIdx,DE=flag number
+0,253D,ReadInlineWord,
+0,2551,RST30_impl,
+0,255E,RST20_impl,
+0,256B,RST28_impl,
+0,2578,Init,A=$11 on CGB -> hIsCGB
+0,2FB3,SoundCmdInline,rst $08 handler
+0,06C4,JumpTableInline,rst $00 impl: jp [retaddr + 2*A]
+*,C9C0,wEventFlags,bit array used by rst $20/$28/$30
+*,FF95,hROMBank,current ROM bank shadow
+*,FF96,hWRAMBank,current SVBK shadow
+*,FFFE,hIsCGB,1 if booted on CGB (A=$11)
+1,4018,MainLoop,called from Init via rst $18 00 01
+1,6030,InitDMG,farcall when not CGB (shows 'CGB only' screen?)
+0,0234,DecompressBankTable,H=bank L=idx: decompress [bank:$4000+idx] -> DE
+0,0692,DecompressFar,A=bank HL=src DE=dest
+0,06CF,DecompressBankTable2,H=bank L=idx A=sub: decompress [[bank:$4000+L]+2A] -> DE
+0,1797,Decompress,LZ: HL=src DE=dest; returns HL=size. see tools/decompress.py
+0,03AF,MemClear256,HL=dest C=count of 16-byte blocks
+0,03C4,MemClearBC,HL=dest BC=count of 16-byte blocks
+0,03DB,MemCopy,HL=src DE=dst BC=len
+0,03EA,MemCopyBackward,
+0,03F3,MemCopy16,HL=src DE=dst C=count of 16-byte blocks
+0,06AC,InstallOAMDMA,copies DMA routine to HRAM $FF80
+*,FF80,hOAMDMA,OAM DMA routine (copied from 06BA)
+*,FF97,hSRAMBank,
+0,02EB,ReadJoypad,-> hJoyHeld $FF90 / hJoyPressed $FF94 / hJoyRepeat $FF91; A+B+Sel+Start = soft reset
+0,1906,PrintStringDebug,HL=ASCII string DE=packed coords -> BG map (debug font)
+0,1925,HexDigits,0123456789ABCDEF
+0,1935,PrintHex16,
+0,1B38,ClearTasks,clears task list $C1C0 (16 x 4)
+0,1B6A,AddTask,A=param HL=func (current bank) -> task list
+0,1BCB,RemoveTask,HL=func
+0,1BFF,RunTasks,
+0,2631,WaitFrame,runs tasks, flips OAM buffer, waits VBlank
+0,2749,VBlankHandler,scroll shadows, OAM DMA, joypad, sound
+0,27D7,TimerHandler,calls SoundUpdate while LCD off
+0,27F5,STATHandler,
+0,2861,SerialHandler,
+0,2F1A,SoundUpdate,called each VBlank (and Timer ISR when LCD off)
+*,C1C0,wTaskList,16 x [param, addr lo, addr hi, bank]
+*,C3A7,wOAMBufferHi,$C0/$C5 double buffer (xor 5) -> patched into hOAMDMA+1
+*,C600,wTextBuffer,current message (max 160 B) copied from text bank
+*,D880,wNameBuffer,short string (max 16 B)
+*,FF8A,hSCY,
+*,FF8B,hSCX,
+*,FF8C,hFrameCounter,
+*,FF8D,hVBlankDone,
+*,FF8F,hTasksEnabled,
+*,FF90,hJoyHeld,bit0 A 1 B 2 Sel 3 Start 4 R 5 L 6 U 7 D
+*,FF91,hJoyRepeat,
+*,FF94,hJoyPressed,
+*,FFA6,hJoyRepeatRate,
+0A,4F2C,GameTop,top-level infinite loop: AddTask(0A:4EFC) + call 0A:4F40
+0A,4F40,FieldScene,RPG field: setup map wC281 + scripts then FieldLoop; returns on map exit (wC2A1)
+08,4070,InitGameVars,
+1F,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+1F,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+1F,4004,TextBank_Offsets,u16 offsets
+25,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+25,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+25,4004,TextBank_Offsets,u16 offsets
+26,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+26,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+26,4004,TextBank_Offsets,u16 offsets
+30,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+30,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+30,4004,TextBank_Offsets,u16 offsets
+31,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+31,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+31,4004,TextBank_Offsets,u16 offsets
+32,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+32,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+32,4004,TextBank_Offsets,u16 offsets
+33,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+33,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+33,4004,TextBank_Offsets,u16 offsets
+34,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+34,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+34,4004,TextBank_Offsets,u16 offsets
+35,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+35,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+35,4004,TextBank_Offsets,u16 offsets
+36,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+36,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+36,4004,TextBank_Offsets,u16 offsets
+37,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+37,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+37,4004,TextBank_Offsets,u16 offsets
+5E,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+5E,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+5E,4004,TextBank_Offsets,u16 offsets
+6E,4000,TextBank_GetMsg,DE=msg index -> wTextBuffer
+6E,4002,TextBank_GetName,DE=msg index -> wNameBuffer
+6E,4004,TextBank_Offsets,u16 offsets
+0,0480,CopyToVRAM,HL=src DE=dst C=16B blocks; DE $A000-$BFFF = VRAM bank 1 (bit5 of D cleared); uses HDMA queue if LCD on
+0,05B0,LoadBGPalettes,HL=src D=first pal E=count -> wPalBuffer $C1xx and $C2xx
+0,021A,CopyBankTable,H=bank L=idx DE=dst BC=len: raw copy of [bank:$4000+idx]
+0A,585D,LoadMap,A=map id (0-36): descriptor table 0A:59D9 (16 B each)
+0A,59D9,MapDescriptors,37 x 8 bank refs (idx,bank); see tools/render_map.py
+0A,5930,InitMapScroll,
+*,C329,wMapScrollMinX,map header +2 (tiles)
+*,C32B,wMapWidth,map header +4 (tiles)
+*,C32C,wMapHeight,map header +5 (tiles)
+*,C32E,wCurMapID,current map id (exhibition hard court = map 5)
+0,3024,PlaySound,A=id (register form of rst $08)
+0,3297,SoundStart,A=id; switches WRAM bank
+0,3373,SoundDriverTick,
+*,C33E,wSoundQueued,
+*,FFCD,hSoundPending,
+*,FFD2,hSeqFlags,hw channel (bits 0-1) | vibrato depth << 4 (per-channel HRAM copy)
+40,4002,SpriteBankHeader,u16 ?, u16 ?, ptr frames[], ptr anim scripts, u16 0, ptr per-frame 4B table (same layout in banks 40-5D)
+40,400E,SpriteFramePtrs,ptr per frame; frames 240 B (15 tiles) uncompressed 2bpp
+40,7CE0,SpriteFrameInfo,4 B per frame (fc f1 00 0c ...) TBD
+40,7F24,SpriteAnimScripts,ptr list -> (frame, duration) pairs, $FF/$FB/$FD control
+0,1332,MulSinCos,signed multiply by sin/cos; angle in BC (+$40 = cos); table in bank 2D
+0,2C2B,DrawMeta24x32,6 x 8x16 OBJ column-major (E=y D=x C=tile B=attr; bit5 = X flip)
+0,2CED,DrawMeta32x32,8 x 8x16 OBJ column-major
+0,2D79,PutOAM8x16,
+0,2D8C,ProjectPoint,uses math tables in banks 2E/2F
+0,2E6B,UploadSpriteFrame,DE=frame*2: bank [DF22], frames [DF24], info [DF38] -> CopyToVRAM to [DF26]
+04,4B68,LoadCharacterSprites,D=char id -> table 04:4F75 -> header copied to $DAD0
+04,4F75,CharSpriteTable,46 x (idx, bank): ids 0-29 banks 40-5D, 30-45 banks 6F-71
+*,DF22,wSprBank,
+*,DF24,wSprFramePtrs,
+*,DF26,wSprVRAMDest,
+*,DF28,wSprAnimPtrs,
+*,DF38,wSprFrameInfo,
+*,DAD0,wSprHeader,16-byte copy of sprite bank header
+2D,4000,TrigTable,sin table used by MulSinCos
+03,47F9,SRAM_ClearAll,zero 4 SRAM banks x $2000
+03,47E9,SaveSignature,CAMELOTGBTENNIS\0
+03,4825,SRAM_ClearFlags,zero $A040-$A05F
+03,4844,SRAM_Checksum,HL = 16-bit byte sum of $A038..$A76F ($738 bytes)
+03,4866,SRAM_UpdateChecksumHeader,writes $A030 and mirrors $A000-$A03F to bank 1
+03,48A1,SRAM_Commit,checksum -> $A030 then mirror bank0 $A000-$A7FF -> bank1
+03,495D,SRAM_Validate,sig@A020 + checksum; on failure restore from bank 1 backup and recheck; else init
+03,4A56,StrCmp,DE vs HL null-terminated; NZ if different
+03,4A69,StrCpy,
+03,4D86,TestSaveFlag,DE = byte<<8 | bit<<5 ; flags at $A040
+03,4DB6,SetSaveFlag,
+03,4DE4,ClearSaveFlag,
+38,58CD,PrintCharNameType,C=roster idx: name = text 30#(27+C), type = text 30#(153+CharTypeTable[C])
+38,58FB,CharTypeTable,32 x u8: 0 Power 1 Technique 2 All-Around 3 Tricky 4 Speed 5 ???
+39,4530,PrintNumber?,HL=src DE=dst B=width C=?
+39,4558,PrintTextLine?,
+*,A020,sSignature,
+*,A030,sChecksum,
+*,A038,sSaveA038,default $71
+*,A040,sSaveFlags,256 persistent flags
+*,A6C1,sRecords,11 x 16 B records (default [n,0,0,0,$1E]) - TBD
+0A,4FF5,FieldLoop,per frame: 0A:5104 input/move; 04:40AC actors (table 0A:4766); trigger flags wC2A0-wC2A5
+0A,5104,FieldPlayerStep,returns 0 when the field is paused (menu path 0A:50CA -> 04:415B)
+0A,560B,FieldOnExit,map transition; FieldScene returns
+0A,5337,FieldSetupObjects?,
+0A,5C29,FieldInitCamera?,A=0
+04,40AC,RunActors,BC=$D000 actor table HL=script table
+04,415B,FieldPauseMenu?,
+*,C281,wFieldMapID,passed to LoadMap
+*,C284,wFieldMusic,$FF = none
+*,C28A,wSceneActors,descriptor +4: actor spawn list
+*,C29B,wFieldScriptBank,
+*,C29C,wFieldInitHook,far ptr called on field entry (bank wC29B)
+*,C2A0,wTrigA0,
+*,C2A1,wTrigExit,
+*,C2A2,wTrigStep,step-count check ($DAEC-$DAEE, threshold $1E)
+*,C2A5,wTrigA5,
+02,52CE,CharRecords,32 x 29 B per roster char -> copied to wCA0E (P1) / wCA8E (P2); +18..+28 = 11 stats 0-9
+07,5A44,RosterToSprite,A&$3F -> [07:5A50] sprite id (verified in PyBoy)
+07,5A50,RosterToSpriteTable,32 B
+18,4300,CharColorSchemes,5 OBJ palettes; sprite header +0 (3..7) selects scheme (verified Luigi/Baby Mario)
+18,4328,LoadCharColorSchemes,-> OBJ palettes 3-7
+39,407E,LoadScreen,C=screen id: table 39:40F5 (8 B: tiles, map, attrs, palette)
+39,40F5,ScreenTable,48 entries x 4 bank refs; tools/render_screens.py
+*,CA00,wP1Name,P1 64-byte player record (name, roster +$0B, char record +$0E, stats +$20)
+*,CA0B,wP1Roster,
+*,CA0E,wP1Record,29 B copy of CharRecords
+*,CA20,wP1Stats,11 stats: Top Slice Serve Stroke Volley Angle Placement Speed Dash Reaction Stop
+*,CA80,wP2Name,
+*,CA8B,wP2Roster,
+*,CA8E,wP2Record,
+*,CAA0,wP2Stats,
+*,C140,wObjPalBuf,8 OBJ palettes (BG at C100); mirrored at C240
+1C,430E,DrawStatScreen,11 stats from WRAM6 D00E + modifiers D019 (verified order via PyBoy)
+1A,7AF8,CalcStatDeltas,
+08,576B,BallStep,per-frame ball physics (see REVERSE.md Ball physics)
+08,5A87,AddVel24ToPos32,HL=pos (16.16) DE=vel (8.16)
+08,5949,BallFences,|X|>=$3A0, Y>=$6E0, Y<-$700: reflect + re-step + damp twice
+08,5814,BallNetCheck,sign change of Y (C407 vs C417)
+08,55B4,BallDrag,k=(speed>>4)+1 ; v -= v*k/512
+08,5613,BallCurve,rotate (vX,vY) by spin rate wC41E
+08,4677,BallGroundCheck,
+08,46B0,BallDamp,v *= wC4AC/256 (X,Y) wC4AD/256 (Z)
+08,468B,MulVel24,
+*,C400,wBallX,16.16 signed (lateral)
+*,C404,wBallY,16.16 signed (depth; + = near/P1 side, net = 0)
+*,C408,wBallZ,16.16 signed height (negative = up; ground = 0)
+*,C410,wBallPrev,copy of C400-C40B before the step
+*,C41E,wBallSidespin,16-bit; curves (vX vY); decays 3/256 per frame
+*,C420,wBallVX,8.16 signed (3 bytes)
+*,C423,wBallVY,8.16 signed
+*,C426,wBallVZ,8.16 signed (positive = down)
+*,C42A,wBallSpeedXY,8.8 |vxy|
+*,C42C,wBallSpeed,8.8 |v| (3D)
+*,C4AC,wBounceDampXY,$CD = 0.80
+*,C4AD,wBounceDampZ,$CD = 0.80
+*,C4B0,wBallQuadrant,sign bits of X/Y
+*,C4B3,wBallEvent,1 = ground bounce, 2 = fence hit
+*,C40E,wBallHeading,atan2(vY vX) 16-bit angle, $40 steps
+*,C41C,wBallTopspin,16-bit; dips ball and pushes along heading; decays 3/256 per frame
+07,52A0,SetShotSpinSpeed,HL=shot table D=spin row E=speed row -> wC41C/wC41E, BC=speed
+07,4F11,ShotTables,9 tables of 8-byte rows (see tools/dump_shot_tables.py)
+*,C4A7,wShotMirror,non-zero = negate sidespin (left/right)
+08,45A9,LaunchBall,HL=speed BC=elevation angle DE=heading: vZ=s*sin(e) vXY=s*cos(e)*(cos h sin h)
+08,463A,InOutCheck,wC4B1 bit0 = |X| >= -wC484 (wide), bit1 = |Y| >= -wC486 (long)
+08,5BC6,DeuceCompress,B=cap: if both points == B -> both = B-1
+08,5B7F,FaultHandler,first fault -> wC8EE=1 wC4D8=1, second -> wC4D8=2
+20,401F,TrajTableSearch6,6-byte records (speed, elevation, heading offset) by distance threshold
+20,405D,LaunchFromTraj,record -> LaunchBall with heading wC43A + offset (mirrored by wC4A7)
+*,C43A,wAimHeading,base heading toward target
+*,C43E,wCourtHalfWidthCfg,$220 singles / $320 doubles
+*,C484,wSidelineLimit,-432 singles (-$1B0) / -576 doubles (-$240)
+*,C486,wLengthLimit,-672 during serve (service line) / -1248 rally (baseline)
+*,C488,wNetHeight,96
+*,C4B1,wInOutFlags,
+*,C4B6,wHitCount,hits in the point capped 100 (1 = serve in flight; earlier read as serve bounce state)
+*,C4D8,wPointResult,1 fault 2 double fault ...
+*,C8E4,wP1Points,
+*,C8E5,wP2Points,
+*,C8EE,wSecondServe,
+*,C8F0,wNumSets,sets in the match (1/3/5); MatchCheck needs (n+1)/2
+*,C8F2,wDoubles,
+*,DF00,wPlayerX,(WRAM4 = P1, WRAM5 = P2) 16.8 signed
+*,DF03,wPlayerY,16.8 signed
+*,DF06,wPlayerZ,16.8
+*,DF60,wPlRunSpeed,8.8 = 10 + Speed/2 (verified 6 chars)
+*,DF62,wPlRunSpeed2,copy
+*,DF64,wPlDash,48 + 12*Dash
+*,DF66,wPlStop,64 + 32*Stop
+*,DF68,wPlReaction,6 + Reaction
+*,DF69,wPlAngle,117 + floor(15.25*Angle)
+*,DF6A,wPlAimError,12 - Placement
+*,DF6B,wPlStroke,stroke speed row
+*,DF6C,wPlServe,serve speed row (E in serve tables)
+*,DF6D,wPlVolley,
+*,DF6E,wPlTop,topspin row (D in topspin tables)
+*,DF6F,wPlSlice,slice row
+*,DF78,wPlRoster,
+08,6B64,LaunchBallCaller,
+00,3151,MusicIndex,50 x (bank|chans<<4, idx) for ids $01-$32
+00,31B5,SfxIndex,96 x entries for ids $50-$AF
+00,3129,SoundStop,
+00,3314,SoundChannelInit,DE=4-byte row [slot flags ptr16] -> driver channel state WRAM7:D100+slot
+00,3566,SeqNextByte,sequence interpreter loop
+00,3864,SeqNote,note byte < $A0 then duration; $1F = rest; noise channel uses table 3836
+00,3B1D,NoteFreqTable,12 x u16 GB periods per octave
+00,3D6F,SeqLoopSlot,per-channel loop stack entry at WRAM7:D1C0
+0A,65C3,MatchTickFar,
+08,41F7,MatchTick,per frame: clear OAM lists, 61DC camera, 692C players, 427A, 43D3 point end, 5153 ball, 4242, 4352, 66F1 HUD
+08,61DC,CameraFollow,scroll toward ball/player (wC440-C447)
+08,692C,PlayersUpdate,calls PlayerStep 6958 for WRAM banks 4-7
+08,6958,PlayerStep,6E64 ball-relative, 780C state, 6A62, 6EC5, 73CA, 72DE, 72A6, 75C0 facing, 7791 anim, 75E8/7621 frame, 7672 OAM, 764B, 7745 shadow
+08,6E64,PlayerBallDelta,wC448.. = ball - player (X Y Z); DF50 bit4 = |ball Y| >= 672
+08,780C,PlayerStateDispatch,DF1E: 0 human joypad -> DF1F, 1 CPU think, 4-6 other
+08,7855,PlayerHumanInput,DF1F = dpad held (hi nibble) | buttons pressed (lo nibble)
+08,7863,PlayerCpuThink,countdown DF12 then decide (doubles branch 787A)
+08,7968,PlayerSubStateNext,DF1A++
+08,7A64,CpuServeDelay,DF12 = 35 (quick, per profile table 7A9D) or 50 frames
+08,7A9D,CpuQuickServeTables,4 profiles x 8 flags
+08,7AEB,CpuAimRandom,DF1F dpad = random left/right (table 7B0B) unless forced by wC7B5
+08,7B13,CpuAimSmart,if RNG < DF7C: aim away from opponent X (DF1F dpad); else none
+08,7B62,CpuShotRandom,DF58 = table 7B73[RNG&7] ($10 A / $20 B / $30 A+B)
+08,7B7B,CpuShotChoose,lob/drop if allowed by profile (02:5EE2) when flagged or opponent at net (Y<320); else 02:5EB3 profile pick
+08,7C10,CpuPressButtons,DF1F lo nibble = DF58 >> 4 (button mask)
+08,7C33,NegateIfFarSide,DE = -DE when DF0A bit1 (far-side player)
+08,7C57,BallCrossingAt,HL = depth: where the ball's heading line crosses that depth (uses wC43B, C450/C452)
+08,7C70,CpuSetTarget,DF46/48 = target X/Y; DF55 = 0
+08,7C86,CpuInterceptAtDepth,DE = depth (0x180 net, 0x200, 0x460 baseline): X from wAimHeading via 5A51
+08,7D0A,CpuReactionTimer,DF12 = (deep ? DF79 : DF7A) + RNG&3
+08,7E84,CpuReactionDeep,DF12 = DF79 + RNG&3 ; DF59 = DF7B positioning error
+02,5E23,CpuShotProfiles,4 x 16 shot codes picked by RNG&15 (02:5EB3); 02:5EE2 tests membership
+38,5FFB,DifficultyTable,6-byte rows [deep short err place profile level]: Easy 5FFB Normal 6001 Hard 6007 Intense 600D (5FF5 = extra Intense row; pointer list precedes)
+38,5F95,ApplyDifficulty,copies the 6 bytes into wCA9B..wCA9F / wCA98
+*,CA98,wP2CpuLevel,record +10: 1 Easy 3 Normal 5 Hard 7 Intense (students 1-5 by tier)
+*,CA9B,wP2CpuDeepDelay,record +13: reaction frames for deep balls
+*,CA9C,wP2CpuShortDelay,record +14
+*,CA9D,wP2CpuPosError,record +15
+*,CA9E,wP2CpuPlaceProb,record +16: smart-placement probability /256
+*,CA9F,wP2CpuProfile,record +17: 0-3 shot/serve profile
+*,DF0A,wPlPosCode,court position: bit1 end (0 near), bit0^bit1 = ad court
+*,DF12,wPlThinkTimer,CPU think countdown
+*,DF1E,wPlState,0 human 1 CPU
+*,DF1F,wPlVirtualPad,hi nibble dpad, lo nibble buttons (human and CPU)
+*,DF46,wPlTargetX,
+*,DF48,wPlTargetY,
+*,DF50,wPlBallFlags,bit4 = ball deep (|Y| >= 672)
+*,DF58,wPlShotCode,hi nibble = button mask (1 A 2 B 3 A+B) lo nibble = variant
+*,DF59,wPlSwingDelay,frames to wait before pressing (copy of wDF7B)
+*,DF79,wPlCpuDeepDelay,
+*,DF7A,wPlCpuShortDelay,
+*,DF7B,wPlCpuPosError,
+*,DF7C,wPlCpuPlaceProb,
+*,DF7D,wPlCpuProfile,
+*,DF95,wPlCpuLevel,
+04,447D,ScriptOpTable,RPG actor bytecode opcode table (22 words); REVERSE.md RPG engine
+04,460A,ScriptOp_Yield,ops 00/05/0F
+04,460C,ScriptOp_Wait,op 01 n: +3 = n-1
+04,45F8,ScriptOp_WaitArrive,op 02: retry while +5 bit7
+04,4556,ScriptOp_Warp,op 03 X Y -> +C/+E
+04,457B,ScriptOp_MoveTo,op 04 X Y -> +8/+A target; set moving
+04,45A0,ScriptOp_MoveRel,op 06 dx dy
+04,44DF,ScriptOp_MoveDir,op 07 heading dist (polar via 0AC5)
+04,44EB,ScriptOp_MoveTurn,op 08 heading+facing dist
+04,4886,ScriptOp_Wander,op 09 radius: random step near home
+04,46B0,ScriptOp_TrailLeader,op 0A: follow $200 behind leader
+04,4623,ScriptOp_ApproachLeader,op 0B: target = leader; speed by distance
+04,44D0,ScriptOp_JumpRel,op 0C s16 relative to operand address
+04,477F,ScriptOp_SetField,op 0D off word; width table 04:47FD
+04,47BA,ScriptOp_AddField,op 0E off word
+04,47FD,ActorFieldWidths,byte per actor field offset: 1 or 2
+04,4824,ScriptOp_SetAnim,op 10 n -> 04:4BBB
+04,483D,ScriptOp_PlaySound,op 11 id -> PlaySound
+04,44A9,ScriptOp_CallNative,op 12 addr in script bank (BC = actor)
+04,484E,ScriptOp_SetHome,op 13: home tile +16/+17; wander mode
+04,4949,ScriptOp_WaitSettle,op 14: wait 40 when stopped / 10 when blocked
+04,49DE,ScriptOp_BitOp,op 15 mode off bit; mask table 04:4A1F
+04,475A,ActorTargetDiffers,NZ if target (+8..+B) != position (+C..+F)
+04,4BBB,ActorSetAnim,D = animation index
+04,534B,ActorCollisionProbe,check map collision (w4) at HL,DE
+04,535C,ActorWithinHome,check position within radius of home tile
+04,41D1,Script_Player,yield; call_native 516B; loop
+04,440A,CameraClamp,clamp field scroll to map size
+05,5C18,DialogueDispatch,event id -> text bank GetMsg farcall (table 05:5C3B)
+05,5C3B,DialogueTable,event id -> (text bank export, message)
+0,0628,ReadFarByte,A = [A:HL]
+0,063D,ReadFarWord,BC = word at A:HL
+0,0AC5,PolarOffset,A = heading, HL = distance -> HL = dx, DE = dy
+*,DAF7,wScriptBank,bank of the running actor script
+*,FFEA,hCurActor,pointer to the current actor slot (WRAM4 D000 + n*$40)
+08,5AD7,ScoreUpdate,after each point: winner -> point -> game/tiebreak -> set -> match checks
+08,5D9A,PointWinner,A = +1 P1 / -1 P2 / 0 none (from wC4D8 result)
+08,5C2B,MatchStats,per-player match statistics counters wC8C0+8*player
+08,5C14,AwardPoint,points[wC8EB]++
+08,5BF4,AwardGame,games[wC8EA]++; reset points
+08,5BDB,AwardSet,sets[wC8E9]++; reset games
+08,5D37,GameCheck,WinCheck(points, B=3, C=4); tie at 3 sets deuce flag wC8E6
+08,5D54,TiebreakCheck,WinCheck(points, B=6, C=7)
+08,5CE9,SetCheck,WinCheck(games, 6/6 or 2/2 by wC8F1); 7 (or 3) counts as 8 (4)
+08,5CC3,MatchCheck,sets >= (wC8F0+1)/2 with a lead
+08,5D71,WinCheck,D=p1 E=p2 B=tie trigger C=minimum: $01/$FF winner, $80 tie at B, else 0
+08,5B2E,ScorePointDiff,simulate leader winning next point -> game/set/match point flags wC4D7/D6/D5
+08,47CD,InitTiebreakCounter,wC8ED = [0,18,12,6][wC8EC&3]
+08,49D9,RotationTableSingles,24 rows x 8: position codes (wDF0A per player) + server/receiver
+08,4A99,RotationTableMode2,24 rows x 8 (doubles)
+08,4B59,RotationTableMode3,24 rows x 8
+*,C8E0,wP1Sets,
+*,C8E1,wP2Sets,
+*,C8E2,wP1Games,
+*,C8E3,wP2Games,
+*,C8E6,wDeuceFlag,
+*,C8E7,wTiebreakFlag,
+*,C8E8,wMatchWinner,$01 P1 / $FF P2
+*,C8E9,wSetWinner,
+*,C8EA,wGameWinner,
+*,C8EB,wPointWinner,
+*,C8EC,wGamesPlayed,starts at 1; selects the rotation row
+*,C8ED,wPointsPlayed,points in the current game (tiebreak rotation row)
+*,C8F1,wSetLength,2 = 2-game set, else 6
+08,73CA,PlayerMove,per-axis accelerate / clamp / brake of wDF40/42
+08,745B,PlayerAccelX,vX += 4*round(Dash*cos(heading)/128)
+08,7441,PlayerAccelY,vY += 4*round(Dash*sin(heading)/128)
+08,750C,PlayerClampX,|vX| <= 2*((Run*cos)>>8)+128
+08,74D7,PlayerClampY,|vY| <= 2*((Run2*sin)>>8)+128
+08,74A1,PlayerBrakeX,vX -> 0 by Stop ($40 while DF0F bit1)
+08,7475,PlayerBrakeY,vY -> 0 by Stop
+0,0B01,CosMul,HL = round(HL*cos(A)/128) signed
+0,0B03,SinMul,HL = round(HL*sin(A)/128) signed
+0,0B30,CosMulFine,HL = 2*((HL*cos(A))>>8)+128
+0,0B32,SinMulFine,HL = 2*((HL*sin(A))>>8)+128
+0,0B5C,SineTable,65 bytes: quarter-wave 0..128
+0,0926,Mul8x16,HL = A*HL (unsigned, 16-bit)
+0,0DFA,MulSigned8x16,signed HL*A
+*,DF40,wPlVelX,1/256 px per frame
+*,DF42,wPlVelY,
+*,DF0C,wPlPadHeading,heading from the joypad
+*,DF0D,wPlHeading,movement heading (256 = full turn)
+*,DF0F,wPlMoveFlags,bit0/1 swing/serve (input ignored) bit4 moving bit6 boundary
+*,DF56,wPlFrozen,nonzero: no movement
+0A,564F,LocationTable,42 x [area map idx bank music 0]; descriptor = bank:[$4000+idx]
+0A,574E,LocationRecord,HL = 0A:564F + 6*A
+0A,5114,LoadLocation,copy location record to wC280 and descriptor to wC286
+0A,516F,SelectEntryPoint,entry record with id wC295 (else first) -> wC296-wC29D
+0A,53E4,FindEventRecord,D = id: first 8-byte record with matching id, facing and flag condition
+0A,53BD,CheckFacingMask,B = mask ($FF any) vs player quadrant (wDAEA)
+0A,541D,RunEventHandler,HL < $4000: dialogue message id; else code in the scene bank
+0A,54B5,FieldOnTalk,A = actor id: talk event list (descriptor +6)
+0A,5574,FieldOnEvent4,descriptor +8 list
+0A,55A5,FieldOnStep,descriptor +A list (skips records with p6 = 1)
+0A,5495,FieldRunInit,descriptor +C handler
+0A,40D0,RunSceneCode,call HL in the scene bank
+04,4CF7,SpawnActorList,14-byte actor records until byte 9 = $FF
+04,4C60,SpawnActor,one actor record -> actor slot
+04,4C49,TestEventCond,DE = 0 always / flag n (active while clear) / $8000|n (active while set)
+01,40EC,DebugMenu,unreachable: Start game / A match test / B exhibition / Up doubles test / Select
+6B,402A,IntroSequence,title/intro scenes (LoadScreen)
+*,C280,wArea,current location (0A:564F index)
+*,C295,wEntryId,entry point id in the next area
+*,C286,wSceneEntries,descriptor +0
+*,C288,wSceneExits,descriptor +2
+*,C28C,wSceneTalk,descriptor +6
+*,C28E,wSceneEvents4,descriptor +8
+*,C290,wSceneStep,descriptor +A
+*,C292,wSceneInit,descriptor +C
+05,5654,MeasureText,width/lines of wTextBuffer (or wD84E) -> window size wD854/wD86F
+05,51FE,TextSubNumber,$04: word from wD8B0 list
+05,5267,TextSubPlayerName,$07: string at wC900
+05,527F,TextSubName2,$0B: string at wC940
+05,5298,TextSubNameById,$08: byte from wD8F0 list -> name
+05,5305,TextSubNumber5,$09: word from wD8D0 list, 5 digits
+05,53E8,TextSubEntity,$0E nn: name nn+$1B
+05,581F,ShowDialogue,A/HL message: open window and print
+05,7322,DrawGlyph,A = char, DE = pixel x: VWF into WRAM7 D300 buffer
+05,7366,CharWidth,C = width of char A
+05,737A,BlitGlyphRow,shift and OR one glyph byte into the buffer
+05,7480,UploadTextTiles,copy D300-D7FF to VRAM 16 tiles at a time
+05,74DE,PrintPage,print until $02/$03; $01 newline
+05,7920,FontTiles,91 x 16 bytes 2bpp ($20-$7A)
+05,7F80,FontWidths,91 bytes
+*,C900,wPlayerName,
+*,C940,wName2,
+*,D300,wTextTileBuf,WRAM7 text box tiles (VWF)
+03,404A,SRAM_NewSave,signature + default block directory
+03,4A79,BlockRecord,BC = $A060 + 16*A
+03,4A89,SaveBlock,B = block HL = source DE = tag: copy, checksum, mark valid, commit
+03,4B9B,LoadBlock,B = block HL = destination
+03,4C14,VerifyBlock,compare block B with HL
+03,4D10,SaveGame,slot wC36C: block 2*slot from C800 + backup 2*slot+27
+03,4D64,LoadGame,slot wC36C -> C800
+*,A060,sBlockDirectory,113 x 16 bytes
+*,C36C,wSaveSlot,0-2 (>= 3: no save)
+*,C800,wSaveImage,$300 bytes saved per Mario Tour slot
+0B,4705,RunMiniGame,A = mini-game id: 0-$11 table 0B:47B4, >= $12 -> 0D:407F; $24 special
+0B,47B4,MiniGameTable,18 handler pointers
+0D,407F,RunMiniGameHi,mini-games >= $12
+06,49F4,DrawPointDigits,score panel digits from wC8E4/5
+08,69EA,SetAnimation,D = animation id: wDF2A/wDF2C = [wDF28 + 2*id]
+08,7791,AnimTick,step the animation script (frame/duration, $FF loop, $FE chain, $FB flip)
+08,7621,UploadAnimFrame,frame = wDF33*5 + view[wDF32] -> UploadSpriteFrame
+08,7643,ViewByOctant,[2,3,4,3,2,1,0,1]
+*,DF2A,wAnimStart,
+*,DF2C,wAnimPtr,
+*,DF2E,wAnimId,
+*,DF2F,wAnimTimer,
+*,DF32,wFacingOctant,
+*,DF33,wAnimFrameGroup,
+*,DF37,wOAMAttr,
+0D,4090,MiniGameTableHi,18 descriptors for ids $12-$23
+0B,4002,MiniGameRun,BC = descriptor
+0D,4006,MiniGameRunHi,BC = descriptor
+02,44E9,RebuildStats,BC = player record: 11 stats from style template + training + level
+02,44B7,TrainingToB,B = clamp(5*[HL] - (level-1))
+02,4494,CountThresholds,E = number of leading thresholds < B in a 9-byte row
+02,47C6,RebuildTourStats,rebuild wC900 if wC93C set
+02,47F2,StyleTemplatePtrs,4 x 113-byte style templates
+*,C93C,wTourStatsDirty,
+02,49BE,LevelUp,D = category 0-3 ($FF none): T[D]++, level++ (cap 99), RebuildStats
+02,4D99,CanLevelUp,EXP (+$2C, 24-bit) >= table[level]
+02,4DC8,ExpToNext,HL = table[level] - EXP
+02,4E7A,ExpTable,3-byte total EXP per level (99 = $FFFFFF)
+02,4B99,BuildPresetChar,A = preset: level-ups per category from 02:4C18
+02,4C18,PresetLevelUps,4 bytes per preset (T0-T3 counts)
+02,4206,TourRecordPtr,A = 0 -> BC = wC900 player, else wC940 partner
+02,4D30,AddExp,[HL] (24-bit) += DE, capped at 02:4D50
+02,4D8F,AddTourExp,A = 0 player / 1 partner, DE = amount
+02,4D61,ClearExp,
+10,4EB9,Area00Init,boot area: front end
+10,4F0D,FrontEnd,logos/intro/title loop, then main menu dispatch
+10,4FC6,MainMenuTable,9 handlers: tour 1-3, exhibition, mini-games, linked play, status, dictionary, saved data (verified)
+6B,75AF,TitleScreen,returns $FF/1 to replay the intro
+*,C32A,wMapScrollMinY,map header +3 (tiles)
+*,DF15,wPlShotAnim,shot animation base: 5/6 wind-up, 9/10/11 swings, 7 serve
+*,DF19,wPlSwingPhase,0 recover 1 move 2 wind-up 3 swing 4 serve
+07,5AB3,CopyRecordToPlayer,record +0..+17 -> wDF70/72/74/76/90/94/95
+*,DF70,wPlHeightReach,record +2 - 16
+*,DF72,wPlSideReach,record +4
+*,DF74,wPlLunge,record +6 + $200 (negated into wDF44)
+*,DF76,wPlRecord8,record +8
+*,DF90,wPlSideBias,record +11/+12
+*,DF94,wPlSpriteFlip,$20 if record +0 nonzero
+*,C3B1,wOpponentRoster,mini-game opponent (descriptor +0)
+*,C8F4,wCourtId,
+*,C8F3,wPlayerCount,2 singles / 4 doubles
+*,C8F7,wMiniGameId,
+*,C8F8,wMatchMusic,
+*,C880,wFileId,random 4-byte id, unique per slot
+*,C88E,wPlayTime,frames, seconds, minutes, hours (<= 99)
+*,C0F0,wClock,frames/sec/min/hours ticked by 00:23DD
+*,C9B0,wPendingExpPlayer,
+*,C9B2,wPendingExpPartner,
+0,23DD,ClockTick,60/60/60/99 counter at wC0F0
+1A,44D8,ShowExpAward,EXP screen: DE = amount, L = player/partner
+3B,56D0,LoadMainMenuIcon,icon i: ref 3B:57E0 -> D000 -> VRAM1 A800+$100*i
+39,468B,LoadIconTiles,B = icon id: ref table 39:46B7 -> D000 -> VRAM DE, C tiles
+39,46B7,IconRefTable,
+3B,55D1,MainMenu,3x3 grid; returns selection 0-8 or $FF
+3B,5CF3,PlayMenu,singles/doubles, games, sets (wCB0E/0F/10)
+3B,412A,GridCursor,B = cols C = rows: wCB04 col wCB05 row from hJoyRepeat (wCB0D)
+3B,43B9,GridIndex,A = wCB05*C + wCB04
+3B,56BA,MainMenuCellToItem,[3 4 5 0 1 2 6 7 8]
+3B,57E0,MainMenuIconRefs,6 x (idx bank): 3C:12..1C
+3B,591B,MainMenuBadgePos,9 x (x y) of the badge sprites per cell
+3B,592D,MainMenuBadgeTiles,tile base per cell (badge ids $1D-$22 at VRAM1 $8000+)
+3B,5A6A,MainMenuSelPalettes,9 pointers to 8-byte BG palette 4 per cell
+3B,5EBD,PlayMenuIconRefs,7 x (idx bank): 3C:62..6E
+3B,5DD4,PlayMenuRowPalettes,3 x 8 bytes (BG pal 4/6/7)
+39,4C38,LoadStadiumMenuBg,refs 3C:08 tiles 0A map 0C attrs 0E palette (map+attrs copied twice)
+39,4DEB,MenuSlideStep,blend the pristine map copy into the working one (slide-in/out)
+39,4619,ObjPalMenuBadges,8 bytes
+39,4B65,ObjPalMarquee,8 bytes
+01,4410,UIFont8x8,raw 2bpp glyphs $20-$7F (fixed width; tile = $100 + ASCII in VRAM0)
+18,5AF0,PortraitSheet,32 x 64 bytes: 16x16 face per roster id (tiles L-top L-bottom R-top R-bottom)
+38,7408,CharacterSelect,P1 then opponent (carousel order from availability bits D840+)
+38,50A7,CharSelectArrows,8 tiles: left/right/up/down arrows
+3E,5D11,CourtSelectLoad,court icon refs 3E:5DF1 -> VRAM1 $8800+, badges $65-$68
+3E,65C9,CourtSelect,returns court id; 2x2 / 3x3 grid
+3E,5DF1,CourtIconRefs,9 x (idx bank) in bank 3F
+3E,5F41,CourtBadgePos,4 x (y x)
+3E,5FF1,CourtSelPalettes,pointers to BG palette 4 per court
+3E,608A,CourtSpeedText,text #169 + value per court
+3E,60C1,CourtBounceText,text #169 + value per court
+3E,6102,CourtMusic,music id per court slot
+*,CB04,wMenuCol,
+*,CB05,wMenuRow,
+*,CB0D,wMenuJoy,hJoyRepeat copy for the menus
+*,CB0E,wPlayDoubles,
+*,CB0F,wPlayGames,0 = 2 games 1 = 6 games
+*,CB10,wPlaySets,0/1/2 = 1/3/5 sets
+39,44F6,CursorBracketLZ,LZ stream (no table ref): 8x8 cursor corner + blank, -> VRAM1 $8000
+07,5445,ShotDispatchTable,16 handlers by wDF14 shot type (58BE 58D3 58EC 5901 59A8 597C 5952 5967 593D 5991 591A 592D 59C5 59D2 59DF 6BCD)
+07,53B0,ShotSnapshot,copies type wDF14->wC4A0 aim dir wDF4A->wC4A4 and sets wC4B7
+07,5410,ShotSetCharge,wC4A7 mirror; wC4A2 = min(wDF4B 63); wC4A3 = wDF4C; wC454/56 = ball velocity
+07,557E,ShotTypeParams,row of 559E by type: hit SFX wC4A1 param for 08:5189 and BC = aim depth
+07,559E,ShotTypeTable,5 bytes per type: sfx flag param depth(2)
+07,54DE,AimDepthMinusCharge,BC -= 4*wC4A2
+07,54ED,AimDepthPlusCharge,BC += 12*wC4A2
+07,54FE,AimDepthPlusVelY,BC += wPlVelY/16 towards the net
+07,5525,VolleyHeightTest,Z flag: ball low -> type 5 handler instead of 2C volleys
+07,5876,ContactHeightLift,wC40A: balls lower than 96 lifted half-way to -96
+07,5899,ContactHeightClamp,wC40A: >=128 high -> +32 else -160
+07,571E,AimSetDepth,wC432 = +-BC by wDF0A bit1; wC436 = targetY - ballY; falls into 5740
+07,5740,AimCompute,wC430/34 target X and dX; wC43A heading; wC48A/8E min dist+index (+$140); wC48C/8F max (+$480 clamped to sideline); wC450/52 target
+07,5646,AimTargetX,DE = target X: serve (wC4B6) via 56B7 + jump table by wDF4A; rally via 55E9
+07,55E9,RallyTargetX,word table 562E by wDF0A bit0 and wDF4A (-1..1) minus playerX/16; wC7B9 -> 563E
+07,562E,RallyAimTable,deuce [-416 -224 -36] ad [36 224 416] symmetric [-224 0 224]
+07,56B7,ServeTargetBase,(wC43E + |playerY|/8) * wPlAngle/256
+07,570D,AimRandomError,rand(08:43F6) * wPlAimError * 16
+07,5161,ShotSpeedThreshold,jump table by wC4A0: BC = S = table speed + incoming term + charge term + movement term
+07,52D7,SpeedMoveTerm,537F (+-wPlVelY/2 -> wC45C) + 53A2 (-$C00 while wDF0F bit1); clamp >= $100 -> wC458
+07,52F1,SpeedInTermQuarter,BC -= |ballVy|/4 (wC45A)
+07,5301,SpeedInTerm3of16,BC -= 3*|ballVy|/16 (wC45A)
+07,531D,SpeedInTermEighth,BC -= |ballVy|/8 (wC45A)
+07,5345,SpeedChargeTerm128,BC += (wC4A2-32)*128 (x64 when negative) -> wC45E
+07,535C,SpeedChargeTerm64,BC += (wC4A2-32)*64 (x32 when negative) -> wC45E
+07,4D31,ShotTableTop,type 0 topspin stroke rows (spin D=Top speed E=Stroke)
+07,4D81,ShotTablePowerTop,type 1
+07,4DD1,ShotTableSlice,type 2 (D=Slice)
+07,4E21,ShotTablePowerSlice,type 3
+07,4E71,ShotTableFlat,type 4 (no spin)
+07,4EC1,ShotTableSmash,type 9 (speed row = wDF6C)
+07,4F61,ShotTableVolleyTop,type 6
+07,4FB1,ShotTableVolleySlice,type 7
+07,5001,ShotTableLowVolley,type 5
+07,5051,ShotTableLobSpin,type 10 (row = wDF92)
+07,5061,ShotTableDropSpin,type 11 (row = wDF93)
+07,5071,ShotTableServeTop,type 12
+07,50C1,ShotTableServeSlice,type 13
+07,5111,ShotTableServeFlat,type 14
+08,706B,ShotTypeFromButtons,wDF14 = 70B4[4*wDF17+wDF16] (ground) or 709B (volley zone wDF50 bit4)
+08,7151,AimDirFromPad,wDF4A = +1 right / -1 left / 0
+08,7167,ServeAimDirFromPad,wDF4A = -2..2 (pure left/right = 2)
+20,4002,TrajIndex6,HL = table + 6*(DE>>6)
+20,4012,TrajIndex4,HL = table + 4*(DE>>6)
+20,403E,TrajTableSearch4,4-byte records
+20,4084,LaunchFromTraj4,[speed elev] heading = wC43A
+20,4098,LaunchServeRecord,[base elev hoff]: speed = base + 4*((2|dX|*(base>>8))>>8); wC476 = base; CPU intercept at -+$2C0
+20,4102,TrajSelect6Fallback,negate S; search from wC48E; first record >= S -> fallback 41F1 (24:57FD)
+20,4135,TrajSelect6,search without fallback
+20,415D,TrajSelectExact6,index = min(dist along heading, wC48C)>>6
+20,4196,TrajSelect4Fallback,4-byte records with fallback
+20,41C9,TrajSelect4,4-byte records no fallback
+20,41F5,TrajLandingPoint,wC450/52 = ball + HL*(cos sin heading)
+20,424C,TrajHeightBand,HL += word[BC + 2*((-wC40A>>4)&$1F)]
+20,426E,TrajStatOffset,HL += word[BC + 2*A]
+20,427D,TrajTableSlice,4 height bands x 10 Slice rows x 64 records of 6 (also 21; 22/23 by Top; 29-2B serves)
+20,7E98,TrajHeightBands,word offsets 0/$F00/$1E00/$2D00
+20,7ED8,TrajStatOffsets,$180 per stat row
+24,57FD,TrajFallbackWeak,weak hit: category (deficit>>9) -> depth $280/$140/$E0 and table 51FD+583C[cat]; 24:4169 exact
+24,4589,ShotLob,type 10: table 4289 + 459C[wDF92]; exact distance
+24,51A0,ShotDrop,type 11: table 45A0 + 51B9[angle] + 51F9[wDF93]; exact distance
+24,7707,ShotLowVolley,type 5: table 6707 + 7719[height]; 4-byte search with fallback
+24,6644,ShotLowAB,type 4: table 5844 + 6656[height]
+24,6696,ShotSmash,type 9: own arc heading atan2(...) speed 66F2[wDF6C] -> LaunchBall 66E1
+2C,7281,ShotVolleyTop,type 6: table 4281 + 7293[height] 4-byte
+2C,72D3,ShotVolleySlice,type 7: table 4E81 + 72E5[height] 6-byte
+2C,7325,ShotVolleyFlat,type 8: table 6081 + 7337[height] 6-byte
+29,5E9D,ShotServeTop,type 12: 427D + 5EBF[Top] + 5ED3[Serve] + 5EE7[height]; 4098
+2A,5E9D,ShotServeSlice,type 13: same with Slice
+2B,5E9D,ShotServeFlat,type 14: spin row 0; tables 5EBD/5ED1/5EE5
+2D,5000,HalfCosecTable,min(32767 16384/sin) (00:13CE: distance along heading to a depth line)
+00,1416,Atan2,HL=y DE=x -> BC angle (65536 = turn)
+00,1340,MulCosSin,HL*cos(BC) -> HL and HL*sin(BC) -> DE
+00,13CE,DivCos,HL / cos(BC) via 2D:5000
+00,0BD4,MulHLbyA256,HL = HL*A/256
+*,C4A0,wShotType,0 top 1 power top 2 slice 3 power slice 4 A+B low 5 low volley 6/7/8 volleys 9 smash 10 lob 11 drop 12/13/14 serves
+*,C4A2,wShotCharge,min(wDF4B 63): frames from button press to contact
+*,C4A6,wShotPowerFlag,1 for types 1/3/9
+*,C430,wAimTargetX,
+*,C432,wAimTargetY,aim depth signed by end
+*,C434,wAimDX,target X - ball X
+*,C436,wAimDY,target Y - ball Y
+*,C450,wLandingX,predicted landing point (also CPU intercept)
+*,C452,wLandingY,
+*,C458,wShotSpeedThreshold,S
+*,C45A,wShotSpeedInTerm,
+*,C45C,wShotSpeedMoveTerm,
+*,C45E,wShotSpeedChargeTerm,
+*,C476,wServeBaseSpeed,
+*,C48A,wTrajDistMin,distance along heading to depth |ballY|+$140
+*,C48C,wTrajDistMax,to |ballY|+$480 (sideline clamped)
+*,C48E,wTrajIndexMin,wC48A>>6
+*,C48F,wTrajIndexMax,wC48C>>6
+*,DF14,wPlShotType,see 08:706B
+*,DF16,wPlShotButtons,1 A 2 B 3 A+B
+*,DF17,wPlShotVariant,0 single 1/2 second press
+*,DF4A,wPlAimDir,-1/0/1 rally -2..2 serve
+*,DF4B,wPlSwingCharge,frames since the swing button
+*,DF92,wPlLobRow,lob spin/table row
+*,DF93,wPlDropRow,drop spin/table row
+*,C7B9,wSymmetricAim,non-zero: rally aim table 563E
+08,702A,SwingContactTest,wDF50 bit0 when |dY| < 96 and |dX| < 1.5*wDF72
+08,6FA7,SwingZoneTest,wDF50 bit1 when |dY| < 96 |dX| < wDF72 (x1.25 lunging) |dZ| < 2*wDF70
+08,6EC5,BodyHitTest,ball within 16/SideReach/2/HeightReach with no swing -> wC4AE=1
+08,6C10,SwingStart,wind-up anim 5/6 charge=0 phase++
+08,6C2F,SwingWait,charge++; 719A pad; 7112 second button; 7267 cancel; contact -> 6D5A anim + SFX $59
+08,6E44,WindupSide,anim 5/6 by crossing X (70F5) XOR sprite flip
+08,70F5,BallCrossX,X where the ball heading line crosses the player's Y (wC448 + dY*cot)
+08,7112,SwingSecondButton,A+B within 5 frames (wDF11) else variant wDF17
+08,719A,SwingPadTurn,heading may turn within $30; sets wDF50 bits 6/7
+08,7267,SwingCancel,pad bit2 cancels (returns 1)
+08,6D5A,SwingAnimPick,lunge / high / normal swing animation from crossing X and ball height
+*,DF11,wPlDoublePressTimer,5-frame window for A+B
+*,DF4F,wPlLastButton,
+*,C448,wBallRelX,ball - player X
+*,C44A,wBallRelY,
+*,C44C,wBallRelZ,
+*,C4AE,wBodyHitFlag,
+08,6281,CameraScroll,hSCX = (clamp(camX/2+$620 0 $C00)&~$1F)>>5 wC478 = $1010-that; hSCY from camY*3/8+$720 wC47A
+08,6199,CameraStartPos,HL=0 DE=-384 / -1920 (wC4D4 bit1)
+08,61AA,CameraSet,camera = target = HL/DE; clears wC4C9
+08,61C9,CameraSetTarget,target = HL/DE; clears wC4C9
+08,5253,BallGroundProject,wC46C/6E = ProjectPoint(ballX ballY 0)
+08,59BB,ProjectToScreen,D = (wC478+X')>>5 E = (wC47A+P')>>5
+00,2DE9,ProjF1Signed,sign(x)*f1(|x|) (2F:4000 x*26368>>16)
+00,2E11,ProjF1Neg,-sign(x)*f1(|x|)
+00,2E39,ProjF2Signed,sign(x)*f2(|x|) (2F:6000 x*59904>>16)
+00,2E61,ProjScale,D = 2E:4000[Q+$2000] = floor(128*16384/(16384-Q))
+2F,4000,ProjSinTable,x*26368>>16 (sin 23.76 deg) 4096 words
+2F,6000,ProjCosTable,x*59904>>16 (cos 23.76 deg)
+2E,4000,ProjScaleTable,floor(128*16384/(16384-Q)) bytes indexed by Q+$2000
+*,C440,wCamX,camera X (1/32 px)
+*,C442,wCamY,
+*,C444,wCamTargetX,
+*,C446,wCamTargetY,
+*,C46C,wBallGroundX,projected ball ground point
+*,C46E,wBallGroundY,
+*,C478,wScreenOffX,$1010 - scroll32
+*,C47A,wScreenOffY,
+*,C4C9,wCamFollowBall,1 while the serve is in flight
+*,DD1E,wBallProjX,ball X' (1/32 px)
+*,DD20,wBallProjY,ball P'
+08,7D23,CpuPlanByMode,wDF7F: 0 landing+192 along heading; 1 net: lob->796D else depth 512 / baseline: lob->796D else landing+192; 2 lob->796D else own Y
+08,7992,CpuTargetAfterBounce,target = landing + 192 along the ball heading
+08,796D,CpuTargetBeforeBounce,target = landing - 352 along heading; |X|<256 -> depth 256
+08,799E,CpuInterceptDepth512,
+08,79C2,CpuInterceptOwnY,
+08,79D9,CpuLobIncoming,1 when shot type 10/11 or weak hit wC4C6
+08,7D73,CpuMoveState,move while wDF5A; arrived/contact -> wDF59 = wDF7B
+08,7DAD,CpuSwingDelay,wait wDF59 frames unless ball in reach then choose+press
+08,7DCB,CpuAfterPress,variant press after 5 frames; steer; aim when ball in zone
+08,7CAE,CpuRecoverTarget,X = landingX/4; depth 1120 / own Y / 384 by mode
+08,7908,CpuSteerToTarget,d-pad from angle (0A54) via table 7296
+08,78BE,CpuArrived,1 when within 24 on both axes
+08,7A02,CpuServeStance,X from wC7B6 or random 7A3D entry
+08,7A3D,CpuServeXTable,32 32 128 224 320 384 384 384
+08,7296,AngleToDpad,16 entries by angle high nibble
+*,DF7F,wPlCpuMode,record byte +1: 0 Yoshi/Bowser 1 default 2 Waluigi (net rush)
+*,DF1A,wPlSubState,
+*,DF18,wPlMainState,0 idle 1 receiving 2 recovering 3 serving
+*,DF5A,wPlSwingReady,1 while in swing phase 1 (ball incoming)
+*,DF13,wPlPressTimer,5-frame double-press timer for the CPU
+0,3314,SoundChannelInit,DE = 4-byte row [slot hw ptr16] -> channel state WRAM7:D100+slot
+0,3566,SeqNextByte,sequence interpreter: FFD0/1 command index (2-byte units)
+0,3558,SeqResume,HL = base(FFD3/4) + 2*FFD0
+0,3864,SeqNote,note byte in A duration at [HL]
+0,39DF,SeqWriteVolume,NR12 from FFD8 (quieter when the gate FFEF expired) then retrigger
+0,39A7,SeqVibratoTick,FFE3 + 3C4D[depth row][tick&15] -> NR13
+0,3A40,SeqEnvelopeTick,hardware envelope from the set table 3ED6 row FFDD phase 16*FFDF/FFDE
+0,3968,SeqFadeTick,FFE0 steps every FFE1 ticks
+0,3D3D,SeqLoadWave,copy 16 bytes of wave set 3DD4[FFE9>>4] + id*16 to FF30
+0,3D6F,SeqLoopSlot,HL = D1C0 + channel*48 + slot*3
+0,3B1D,NotePeriodTable,12 words (+12 alternate) period; NR13/14 = $800 - (period >> octave)
+0,3836,NoiseNoteTable,16 NR43 values for noise notes < $10
+0,3C4D,VibratoTable,16 rows x 16 signed steps
+0,3B4D,VolumeProductTable,16x16 (envelope level x channel volume) -> NR12 high nibble
+0,3DD4,WaveSetTable,pointers to 16-byte waveform sets
+0,3ED6,EnvelopeSetTable,pointers to envelope sets (16 bytes per shape)
+*,D100,wSndChannels,6 x 32-byte channel states (slots 00 20 SFX 40-A0 music)
+*,D1C0,wSndLoopSlots,loop points [count idx16] 3 bytes x 4 per channel (12 per channel; SeqLoopSlot 00:3D6F)
+*,D208,wSndClaimed,hw channels claimed this tick (SFX priority)
+*,D209,wSndNR51,
+*,D20A,wSndHwChannel,current hw channel 0-3
+*,D20D,wSndRegBase,hw channel * 5
+*,D20E,wSndTick,tick counter (vibrato phase)
+*,D20F,wSndChannelIdx,
+*,D218,wSndCounter2,
+*,FFD0,hSeqIndex,command index (2-byte units)
+*,FFD3,hSeqBase,channel data pointer
+*,FFD8,hSeqVolume,volume << 4
+*,FFD9,hSeqTicksLeft,
+*,FFDB,hSeqGate,
+*,FFE6,hSeqPan,
+*,FFE9,hSeqInstrument,wave set << 4 | envelope set
+*,C4DA,wLandingMarkerActive,nonzero while the lob landing marker is shown: set with SFX $6D by StartLandingMarker (08:533C); CpuShotChoose -> A+B against the incoming lob (corrected from wBallNetCord; name from the gerbiljames disassembly)
+02,4044,PendingExpValid,wC9B4 == $64 and checksum over wC9B0-C9B7 (block written by the N64 game via Transfer Pak)
+1A,4561,MiniGameExpResult,DE = EXP earned -> WRAM6 D230 + display record; D254 = player/partner; 472E adds it via AddTourExp
+1A,43AA,DebugExpEditor,Select +1 / +10 EXP, Start toggles player-partner (AddTourExp); reached from 43A1 pad bit 2
+1D,7280,TourExpPointMove,moves one point between D165/D167/D169 (player) or D174/D176/D178 (partner); 72DD = reverse
+00,3846,SeqRest,rest: FFEF (gate counter) = 0 only; the channel keeps ringing until the next volume write
+00,39D0,SeqNoteVolume,note-on volume: wave NR32 = FFD8; envelope shape set -> SeqEnvelopeTick entry 3A55; else SeqWriteVolume FFD8
+00,3A2F,SeqWaveVolumeStep,wave decay: a = ((phase>>1)+2)<<4; if a >= FFD8 then NR32 = a & $60 (100/50/25%/off)
+00,3A14,SeqWriteReg,[wSndRegBase + C] = A
+00,3A23,SeqClearLength,NRx1 &= $C0 after a volume write
+*,C4B4,wBallNetCross,1 on the frame the ball's Y changed sign (BallNetCheck 08:5814)
+*,C4BF,wBallNetHit,1 after the ball hit the net this point
+08,5383,StartBounceEffect,ball-bounce dust (ground bounce and net clip): wC460/62 = projected ball point, wC4A8 = 20-frame timer; drawn by 08:53AC with tiles $60/$62
+08,53AC,DrawBounceEffect,tiles $60 then $62 for the last 10 frames at wC460/62 through the camera
+08,53D0,StartHitEffect,swing-hit effect: wC464/66 = projected ball point; wC4A9 = 16 (normal spark) or wC4AA = 16 + SFX (special shot / full charge)
+08,540E,DrawHitSpark,tiles $68-$6E by wC4A9
+08,5436,DrawSpecialHitEffect,16-high tile $74 at wC464/66 + animation by wC4AA
+08,52DA,StartLandingMarker,lob landing marker (lob shot or fallback trajectory; target far enough from the ball): wC480/82 = projected wBallTarget (depth clamped), wC4DA = 1, SFX $6D
+08,5342,DrawLandingMarker,16-high tile $7C at wC480/82 while wC4DA
+*,C460,wBounceEffectX,projected X of the bounce dust (08:5383)
+*,C462,wBounceEffectY,
+*,C464,wHitEffectX,projected X of the swing-hit effect (08:53D0)
+*,C466,wHitEffectY,
+*,C480,wLandingMarkerX,projected X of the lob landing marker (08:52DA)
+*,C482,wLandingMarkerY,
+*,C4A8,wBounceEffectTimer,frames left of the bounce dust (from $14)
+*,C4A9,wHitSparkTimer,frames left of the hit spark (from $10)
+*,C4AA,wSpecialHitTimer,frames left of the special-shot flash (from $10)
+*,DF44,wPlVelZ,vertical speed 8.8 (jump smash: -wDF74)
+*,DF4C,wPlQuickSwing,1 when the swing was contacted with charge < 5 (animation +4)

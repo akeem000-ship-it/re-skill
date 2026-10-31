@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mario Golf Native</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  #note { font-size: 13px; }
+  #note p { margin: 0 0 6px; }
+  #note p:last-child { margin: 0; }
+  #message { text-align: center; font-size: 14px; min-height: 1.45em; }
+  #modes { text-align: center; font-size: 13px; margin: 4px 0; }
+  #modes select { font: inherit; background: var(--btn); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
+  #stage { display: flex; gap: 8px; justify-content: center; }
+  #stage canvas.active { outline: 2px solid var(--fg); }
+  #screen2 { width: 100%; max-width: 640px; aspect-ratio: 160 / 144; image-rendering: pixelated; background: #000; }
+  #stage canvas { min-width: 0; }
+  #message button { margin-left: 8px; font: inherit; padding: 2px 10px; border-radius: 6px; border: 1px solid var(--line);
+    background: var(--btn); color: var(--fg); cursor: pointer; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Mario Golf <span class="dim">(native JS, no emulated CPU)</span></h1>
+    <div id="status" class="dim">loading…</div>
+  </header>
+
+  <section id="loader" class="panel" hidden>
+    <p>Load your own <code>Mario Golf (USA).gbc</code> (SHA-1 <code>7f2062e5…</code>).
+      Nothing from the game ships with this page: the code, graphics, courses and music are read from your ROM
+      as it runs. Served from the project folder with the ROM at <code>rom/mario_golf.gbc</code>, it loads by itself.</p>
+    <label class="file">Choose ROM <input type="file" id="file" accept=".gbc,.gb"></label>
+  </section>
+
+  <div id="stage">
+    <canvas id="screen" width="160" height="144" tabindex="0" aria-label="game screen"></canvas>
+    <canvas id="screen2" width="160" height="144" aria-label="the second Game Boy's screen (link mode)" hidden></canvas>
+  </div>
+  <div id="message" class="dim"></div>
+  <div id="modes" class="dim">
+    <label>Start <select id="mode">
+      <option value="title">Power on: the title and the menus</option>
+      <option value="stroke">Stroke: Mario, 18 holes</option>
+      <option value="match:9">Match play: Mario vs Luigi (computer)</option>
+      <option value="match:4">Match play: Mario vs Putts (computer)</option>
+      <option value="link">Link: two Game Boys joined by a cable (Tab switches the keys)</option>
+    </select></label>
+  </div>
+
+  <div id="pad" aria-hidden="true">
+    <div class="dpad">
+      <button data-key="ArrowUp" class="up">▲</button>
+      <button data-key="ArrowLeft" class="left">◀</button>
+      <button data-key="ArrowRight" class="right">▶</button>
+      <button data-key="ArrowDown" class="down">▼</button>
+    </div>
+    <div class="mid">
+      <button data-key="ShiftLeft" class="small">SELECT</button>
+      <button data-key="Enter" class="small">START</button>
+    </div>
+    <div class="ab">
+      <button data-key="KeyX" class="b">B</button>
+      <button data-key="KeyZ" class="a">A</button>
+    </div>
+  </div>
+
+  <section id="note" class="panel dim">
+    <p>This page runs the game's own rules rewritten in JavaScript (<code>web/js/golf</code>), with no Game Boy CPU:
+      the shots, the ball, the computer's play, the course drawing, the HUD, the sprites and the sound driver.</p>
+    <p>It starts at power-on: the opening picture, the demo, the title, then the menus: one player, a preset golfer
+      or a <b>saved character</b>, <b>Stroke</b>, <b>Match</b>, <b>Tournament</b> (with a saved character: the standings
+      between holes and the placing) or <b>Training</b> (any hole, with Mulligan, Start Over
+      and the wind settings), the course. The battery save is kept in this
+      browser in the same place and format as the <a href="index.html">emulated version</a>'s, so a character made
+      there plays here, and a <b>new character</b> can be made here too (the character select's empty slot: the questions, the
+      name, the first day at the club), and its saves go back (a round left with Save &amp; Quit continues from the saved card). The selector below the screen can also start
+      straight at a round as a new game would: Mario on course 1, a Stroke round of 18 holes, or <b>match play</b>
+      against a computer golfer, with the standings between holes, the scorecard and the result screen.
+      <kbd>Start</kbd> while aiming opens the pause menu: all its items work (Camera Mode, Course Map, Scorecard, Settings,
+      Give Up, Quit or Save &amp; Quit). After a round a saved character gets its EXP points and, on a new level, the
+      level-up screen to give its skill points; then the game goes back to its menus.
+      <b>Story</b> mode with a saved character runs as far as the rewrite goes: the clubhouse, walking (B runs) and
+      talking, its doors, the Locker Room and its lockers, the Trophy Room, the Lounge's first visit and its champions (one joins as a partner, follows, plays a Match Game from the Caddie Master's office (a win brings the champions' scene) and can be sent away), the <kbd>Start</kbd> menu's text
+      speed, Char. Data, Stars and Save &amp; Quit, the Caddie Master's offices with their club tournaments and practice rounds, the
+      award ceremony after a top-three place (also after a Tournament from the menus), and the Field between the
+      clubs with the Navigation menu and its guide, the Marion Club's driving range, approach range and
+      putting green with their practice, the coaches' lessons and the putting challenge, the Palm, Dune and Links
+      Clubs' driving ranges and approach ranges (with the Links contests), the letter at the tree after the Links is won with the path it opens, the Road to Peach's Castle, the castle's welcome and Peach's Tournament with its award ceremony and, after a win, the ending; the Club Maker's Hut, Windy Valley's targets with the guru, the Tiny-Tots clean-up on the shot clock, the Mini-Mini Lake shot, Raven Woods' crow, the Golf Guru's Pitch and Putt, the Golf Clinic, the hidden friends, the Dune green's golfers with the Alternate
+      Game, and the staff roll after the Links Champion's ceremony. The main menu's <b>Status</b> shows a character's data,
+      stats, VS results and stars and the saved birdies, eagles and holes in one, and <b>Options</b> has the golf dictionary
+      and data management (copy, erase, erase all). The shot records replay a saved hole. <b>Link</b> (the selector) runs two Game Boys side by side joined by
+      a cable in JS: the main menu's VS game on one finds the other (the handshakes, both character selects, the mode
+      and course on the asking side), and the link round plays with each side's shots sent to the other; <kbd>Tab</kbd>
+      switches which one the keys play. In the other modes the link game finds no cable partner, as the game does with
+      none. All of the traced code is rewritten (REVERSE.md, "Rewrite progress"), the unreferenced and debug-only
+      routines too; the page stops with a message where it reaches a path the rewrite does not have.</p>
+    <p>Aim with ◀ ▶, change club with ▲ ▼, <kbd>B</kbd> for the shot type, <kbd>Select</kbd> to look at the pin,
+      <kbd>A</kbd> to address the ball, then <kbd>A</kbd> for power and <kbd>A</kbd> for impact.</p>
+  </section>
+
+  <footer class="dim">
+    <span>Keys: arrows, <kbd>Z</kbd> A, <kbd>X</kbd> B, <kbd>Shift</kbd> Select, <kbd>Enter</kbd> Start, <kbd>P</kbd> pause the page,
+      <kbd>Space</kbd> fast, <kbd>M</kbd> mute, <kbd>Tab</kbd> the other Game Boy (link). Gamepads work too. <a href="index.html">Emulated version</a></span>
+    <span><span id="save"></span> <span id="score"></span></span>
+  </footer>
+</main>
+<script type="module" src="js/play.js"></script>
+</body>
+</html>

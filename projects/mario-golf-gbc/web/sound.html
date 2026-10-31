@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mario Golf Sound</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; }
+  button.s { background: var(--btn); color: var(--fg); border: 1px solid var(--line); border-radius: 6px;
+    padding: 6px 4px; font: 13px ui-monospace, monospace; cursor: pointer; min-height: 34px; }
+  button.s:hover { background: var(--btn-on); }
+  button.s.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.s small { display: block; font: 10px system-ui; color: inherit; opacity: .75; }
+  h2 { font-size: 15px; margin: 0 0 8px; }
+  .meters { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .meter { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: 12px ui-monospace, monospace; }
+  .meter .bar { height: 6px; background: var(--line); border-radius: 3px; margin-top: 4px; overflow: hidden; }
+  .meter .bar i { display: block; height: 100%; width: 0; background: var(--accent); }
+  .meter label { display: flex; gap: 4px; align-items: center; justify-content: space-between; }
+  #regs { font: 12px ui-monospace, monospace; white-space: pre-wrap; word-break: break-all; color: var(--dim);
+    max-height: 4.5em; overflow: hidden; margin: 6px 0 0; }
+  @media (max-width: 520px) { .meters { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Mario Golf <span class="dim">sound</span></h1>
+    <div id="status" class="dim">loading…</div>
+  </header>
+
+  <section id="loader" class="panel" hidden>
+    <p>Load your own <code>Mario Golf (USA).gbc</code> (SHA-1 <code>7f2062e5…</code>). The game's sound driver is
+      rewritten in JavaScript (<code>js/sound/driver.js</code>) and reads the songs and effects from your ROM; a small
+      sound-chip model (<code>js/sound/apu.js</code>) plays them. No emulated CPU runs here.</p>
+    <label class="file">Choose ROM <input type="file" id="file" accept=".gbc,.gb"></label>
+  </section>
+
+  <section class="panel" id="player" hidden>
+    <div class="row">
+      <button class="s" id="stop">Stop music</button>
+      <span class="dim" id="now">—</span>
+    </div>
+    <div class="meters" style="margin-top:10px">
+      <div class="meter"><label>1 pulse <input type="checkbox" data-ch="0" checked></label><div class="bar"><i id="m0"></i></div></div>
+      <div class="meter"><label>2 pulse <input type="checkbox" data-ch="1" checked></label><div class="bar"><i id="m1"></i></div></div>
+      <div class="meter"><label>3 wave <input type="checkbox" data-ch="2" checked></label><div class="bar"><i id="m2"></i></div></div>
+      <div class="meter"><label>4 noise <input type="checkbox" data-ch="3" checked></label><div class="bar"><i id="m3"></i></div></div>
+    </div>
+    <pre id="regs"></pre>
+  </section>
+
+  <section class="panel" id="songsPanel" hidden>
+    <h2>Songs <span class="dim">(sound command = song id; jingles return to the song)</span></h2>
+    <div class="grid" id="songs"></div>
+    <h2 style="margin-top:12px">Jingles</h2>
+    <div class="grid" id="jingles"></div>
+  </section>
+
+  <section class="panel" id="sfxPanel" hidden>
+    <h2>Sound effects <span class="dim">(command = $40 + effect; they play over the music)</span></h2>
+    <div class="grid" id="sfx"></div>
+  </section>
+
+  <footer class="dim"><span>Frame-exact register writes of the game's driver (checked by
+    <code>web/tests/sound_vs_core.mjs</code>). <a href="index.html">The game</a></span></footer>
+</main>
+<script type="module" src="js/sound/demo.js"></script>
+</body>
+</html>

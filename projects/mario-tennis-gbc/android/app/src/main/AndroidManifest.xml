@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <!-- a game (Samsung Game Launcher / Game Booster and the system list it as one: appCategory, and isGame for older ones) -->
+    <application android:label="${appLabel}" android:icon="@mipmap/ic_launcher" android:allowBackup="false" android:theme="@android:style/Theme.Black.NoTitleBar" android:appCategory="game" android:isGame="true">
+        <meta-data android:name="android.game_mode_config" android:resource="@xml/game_mode_config" />
+        <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="fullUser" android:resizeableActivity="true" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|keyboard|keyboardHidden|navigation|uiMode">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity>
+    </application>
+</manifest>

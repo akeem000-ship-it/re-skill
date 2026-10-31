@@ -1,0 +1,14 @@
+baserom.gbc
+/data/
+build/
+tools/rgbds/
+*.o
+*.gbc
+*.sav
+!*.sym
+__pycache__/
+.venv/
+build-fixes/
+build-eur/
+build-fixes-eur/
+.claude/
