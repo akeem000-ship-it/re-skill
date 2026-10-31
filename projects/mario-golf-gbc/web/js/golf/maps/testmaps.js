@@ -1,7 +1,8 @@
 // The test maps of bank 32 ($1F-$22): not reached in the retail game (no warp leads there); the debug menu's Scene
 // warp (05:6C25, with hDebugMode poked: debug.js) reaches them. Map $1F shows the two-player VS result scene with
 // falling confetti (an older copy of bank 0B's result screen), map $20 runs RoundResultScreen 0B:59DE with test
-// results or the story pictures of bank 77, map $21 a golfer grid that starts a test round, map $22 is empty.
+// results or the story pictures of bank 77, map $21 a golfer grid that starts a test round, map $22 is empty; map $23
+// (bank 31) prints angle tests and offers a menu of test rounds and screens.
 import * as D from "../render/display.js";
 import * as Scr from "../screen.js";
 import * as S from "../script.js";
@@ -21,7 +22,11 @@ import { restoreShadowFromMap } from "../shadow.js";
 import * as W from "../windows.js";
 import { printHexByte } from "../match.js";
 import { printHexWord } from "../home.js";
-import { setForcedWindDir } from "./lessons.js";
+import { setForcedWindDir, saveReturnPoint } from "./lessons.js";
+import { angleFromVector16 } from "../math.js";
+import { golfSessionEnd } from "../boot.js";
+import { eventListScreen } from "../nav.js";
+import { showScorecard } from "../scorecard.js";
 
 const rd = D.rd, wr = D.wr;
 const setW = (w, n) => D.setWramBank(w, n);
@@ -310,9 +315,8 @@ function* golferTestStartRound(sh, b) {
   const id = rw(0x32, (0x4E90 + ((b << 1) & 0xFF)) & 0xFFFF);
   printHexWord(w, id, 0x0D08);                   // 00:22BC
   const bc = ((id << 8) + 1) & 0xFFFF;
-  St.setupPlayerGolfer(w, bc >> 8, bc & 0xFF);
-  if ((bc >> 8) >= 0x80) notPorted("the golfer test's a after SetupPlayerGolfer $80 and up");
-  St.setCourseHole(w, bc >> 8, 0x01, 0x01);
+  const a = St.setupPlayerGolferA(w, bc >> 8, bc & 0xFF);
+  St.setCourseHole(w, a, 0x01, 0x01);
   setForcedWindDir(w, 0x00);
   if (!sh.playGolfRound) notPorted("the golfer test's round outside the game loop");
   yield* sh.playGolfRound(0x12);
@@ -348,7 +352,69 @@ function* map21EnterGolferTest(sh) {
   }
 }
 
+// ---- map $23 (bank 31; the debug warp's record $23) ----
+// 31:483E Map23ModeMenu: the player's actor state 0 (0A:4794), a fade in (8); the menu $0085 (Tournament / Match
+// Game / Practice / Clubhouse / VS / Start Over) at (1, 1) (0A:42BF) until a row, then its handler (31:4867):
+// 31:4873 / 31:48A3 / 31:48D3: GolfSessionInit 10:4B28, this map and entrance as the return point (0A:4D5B), the
+// mode (1 / 2 / 6), the own character as player 0 and none ($FF) / the own character again as player 1 (02:4A28),
+// course 1 hole 1 / 3 / 2 (10:423B; the wind byte is the a the last SetupPlayerGolfer leaves), GolfRound 10:4451 of
+// one hole, GolfSessionEnd 10:4B94; 31:4902: GolfSessionInit, EventListScreen 0A:6F56, GolfSessionEnd, warp 4;
+// 31:4912: GolfSessionInit, course 2, hole $0B, mode 1, $C4BD / $C83A / $C890 = 0, P2 4, ShowScorecard 0E:43D6,
+// GolfSessionEnd; 31:4940: warp 5
+function* map23ModeMenu(sh) {
+  const w = sh.w;
+  S.actorSetState(w, 0x00, 0x00);
+  Scr.beginFadeIn(w, 0x08);
+  yield* Scr.waitFade(sh);
+  let a;
+  do a = yield* S.scriptRunMenu(sh, 0x0085, 0x01, 0x01); while (a === 0xFF);
+  const end = function* () { yield* inBankGen(w, 0x10, golfSessionEnd(sh)); };
+  if (a <= 2) {
+    const [mode, p1, hole] = [[0x01, 0xFF, 0x01], [0x02, 0x80, 0x03], [0x06, 0xFF, 0x02]][a];
+    St.golfSessionInit(w);
+    saveReturnPoint(w, rd(w, 0xC450), rd(w, 0xC46A));
+    wr(w, 0xC834, mode);
+    St.setupPlayerGolfer(w, 0x80, 0x00);
+    const wind = St.setupPlayerGolferA(w, p1, 0x01);
+    St.setCourseHole(w, wind, 0x01, hole);
+    if (!sh.playGolfRound) notPorted("map $23's round outside the game loop");
+    yield* sh.playGolfRound(0x01);
+    yield* end();
+  } else if (a === 3) {
+    St.golfSessionInit(w);
+    yield* inBankGen(w, 0x0A, eventListScreen(sh));
+    yield* end();
+    wr(w, 0xC441, 0x04);
+  } else if (a === 4) {
+    St.golfSessionInit(w);
+    wr(w, 0xC836, 0x02); wr(w, 0xC837, 0x0B); wr(w, 0xC834, 0x01);
+    wr(w, 0xC4BD, 0x00); wr(w, 0xC83A, 0x00); wr(w, 0xC890, 0x00); wr(w, 0xC8D0, 0x04);
+    yield* inBankGen(w, 0x0E, showScorecard(sh));
+    yield* end();
+  } else if (a === 5) wr(w, 0xC441, 0x05);
+  else notPorted(`map $23's menu row ${a} (past the table 31:4867)`);
+}
+// 31:47D7 Map23EnterAngleTest: frames between AngleFromVector16 00:1A03 of ($11C0, $0480), ($115C, $0480), ($11F8,
+// $044C), ($11F8, $0480), ($11F8, $04E4); the last three printed (PrintHexWord 00:22BC at (9, $0C-$0E)); a frame;
+// 31:483E
+function* map23EnterAngleTest(sh) {
+  const w = sh.w;
+  yield* sh.advance();
+  angleFromVector16(0x11C0, 0x0480);
+  yield* sh.advance();
+  angleFromVector16(0x115C, 0x0480);
+  yield* sh.advance();
+  printHexWord(w, angleFromVector16(0x11F8, 0x044C), 0x090C);
+  yield* sh.advance();
+  printHexWord(w, angleFromVector16(0x11F8, 0x0480), 0x090D);
+  yield* sh.advance();
+  printHexWord(w, angleFromVector16(0x11F8, 0x04E4), 0x090E);
+  yield* sh.advance();
+  yield* map23ModeMenu(sh);
+}
+
 export const SCRIPTS = {
+  "31:47d7": map23EnterAngleTest,
   "32:40eb": talkPaletteEditor, "32:47b1": talkPaletteEditor,
   "32:417e": triggerWindTip, "32:4844": triggerWindTip, "32:4f92": triggerWindTip,
   "32:4199": map1FEnterVsResults,

@@ -139,6 +139,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + (from here of 242,666 traced bytes: two junk exports out) the later-story talks of the clubhouse, the Lounge and the Director's Room, the lessons' other copies, the practice menu items, the link-play pause menu, the two-player Stroke screens (3E:6361, 0E:7199, 0B:6143), code the screen cases run but no comment cited (tools/cover_report.py: the RST vectors and far-call stubs, the per-mode hook stubs, the routines' parts after inline tables), the copies of the scenery (4A-4F) and tile animation (2A 2B 72, 51-54), fuzzed helpers of banks 3E 0E 12 04 42 3F 3C, the debug menu, warp menu, flag editor, palette editor and points editor, the debug room | 228,977 | 94.36% |
 | + the debug menu's Map viewer (0B:4579, 05:5197), the save viewer (02:5D2F), MapSetTerrainAt / MapSetEventAt (fuzzed), 0B:497D | 230,162 | 94.85% |
 | + the test maps $1F-$22 of bank 32 (the VS scene, the result tests, the golfer grid) | 232,698 | 95.89% |
+| + map $23's test menu (31:47D7-31:4945) | 233,053 | 96.04% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -514,6 +515,10 @@ over: the retail game never has it. The screen cases poke it to 1 on both sides 
   the golfer id SetupPlayerGolfer leaves in a). Map $22 has an empty enter script; the wind tips 32:417E / 4844 /
   4F92 are the same code as 34:429B. Not reached: ScoreNameMenuWindowTest 32:4ABD (no caller) and 32:49D9-32:4A00
   after the endless loop.
+- Map $23 (bank 31, also a test map: maps/testmaps.js): 31:47D7 prints three AngleFromVector16 results as hex, then
+  the menu 31:483E: a one-hole Tournament / Match Game / Practice round (31:4873 / 48A3 / 48D3; the wind byte
+  SetCourseHole gets is the a SetupPlayerGolfer 02:4A28 leaves: start.js setupPlayerGolferA), the event list
+  (31:4902), the scorecard with fixed test values (31:4912), or warp 5 (31:4940).
 
 #### Status and the records screens (records.js, records0c.js; bank 07's menus in menu09.js)
 

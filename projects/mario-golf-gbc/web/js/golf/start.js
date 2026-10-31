@@ -124,6 +124,15 @@ export function setupPlayerGolfer(w, b, c) {
     w.wram[6].set(r.subarray(0x600, 0x640), 0x680);
   }
 }
+// 02:4A28 SetupPlayerGolfer as above, returning the a it leaves (callers that pass it on, as SetCourseHole's wind
+// byte): $FF: 0 (00:03A7 ClearMemory16); $80: the last byte copied, $C81F (00:03EB), or with no save slot the
+// player record's low address byte + $28; a preset: b, or with bit 6 the WRAM bank it restores
+export function setupPlayerGolferA(w, b, c) {
+  setupPlayerGolfer(w, b, c);
+  if (b === 0xFF) return 0;
+  if (b === 0x80) return w.wram[0][0x2A5] === 0x0F ? ((c & 1 ? 0xC0 : 0x80) + 0x28) & 0xFF : w.wram[0][0x81F];
+  return b & 0x40 ? w.high[0x196] : b;
+}
 export function setPlayerControl(w, c, b) { w.wram[0][player(c) + 0x13] = b; }   // 02:4994 SetPlayerControl
 export function setPlayerField11(w, c, b) { w.wram[0][player(c) + 0x11] = b; }   // 02:49A7 SetPlayerField11
 

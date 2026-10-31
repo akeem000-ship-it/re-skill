@@ -286,6 +286,11 @@ const DEBUG_WARP_CASES = [
     [80, 0], [2, 0x80], [80, 0], [2, 1], [1500, 0]]],
   // map $22: nothing on entering; talk 8 (32:47B1 the palette editor) on map $20? (map $22's talks are texts)
   ["22", 0x22, 0, [[300, 0]]],
+  // map $23 (31:47D7): the angle tests, the menu (31:483E): Down n times, A: the row's handler
+  ...[["23_tournament", 0, [[1500, 0]]], ["23_match", 1, [[1500, 0]]], ["23_practice", 2, [[1500, 0]]],
+    ["23_clubhouse", 3, [[300, 0], [2, 0x80], [30, 0], [2, 2], [600, 0]]], ["23_vs_scorecard", 4, [[600, 0], [2, 1], [600, 0]]],
+    ["23_start_over", 5, [[600, 0]]]].map(([n, k, after]) => [n, 0x23, 0, [[300, 0], { press: 0x80, every: 30, times: k }, [30, 0], [2, 1],
+    ...after]]),
 ];
 const DEBUG_ROOM_CASES = [
   // the sepia fade test (talk $0E, 35:7798: the room again by warp $0D), the Ranking screen (talk $0D, 35:778C; B
