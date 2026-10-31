@@ -4,7 +4,8 @@
 //   long rally          from the 10th shot on, an "ooh" every few shots, rising the longer it lasts
 //   game / set won      WINNER! (TV broadcast): while the game plays its own celebration, the camera turns a full circle round whoever
 //                       won it (a wide telephoto shot, letterboxed; the players turned to face it: voxel.js cardYaw) and a broadcast
-//                       caption slides in with WINNER!, the name and the score; a button or the next serve ends it
+//                       caption slides in with WINNER!, the name and the score; a button or the next serve ends it. The winner only
+//                       does the game's own celebration then (no hops of ours, no victory dance steps)
 //   end of the match    the same, slower, round the match's winner, two cheers, and confetti falls over the stands; an opponent from a switched-on mod
 //                       with lines (mods.js lines.win / lose) has their say about the result in a speech box
 //   claps               before a big point (or now and then) the crowd claps in rhythm, faster and faster, until the serve
@@ -222,6 +223,7 @@ export class MatchFX {
   // voxel.js interp: the winner's two hops (the drawn height only); BIG MOMENTS: the tour winners' victory dance (bigmoments.js dance)
   adjust(r) {
     if (!r.players) return r;
+    if (this.on && this.cine && this.cine.kind === "win") return r;   // (WINNER!: only the game's own celebration, no hops or dance moves)
     const mom = this.v.stadium && this.v.stadium.mom, c = mom && mom.cer, T = performance.now() / 1000;
     if (c && mom.dance(T, 0)) {
       const players = r.players.map(p => { if ((p.slot & 1) !== c.side) return p; const d = mom.dance(T, p.slot >> 1 & 1); return d ? { ...p, X: p.X + d[0], Z: p.Z - d[1] } : p; });
