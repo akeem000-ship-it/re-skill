@@ -135,14 +135,18 @@ export function* runStoryLocation(P) {
   yield* runLocation(P);
   dropWords(P, 4);
 }
-// INSTANT CROSSING (P.quickCross, full.js: CROSSING Instant, the default; off it is the game's own): walking between areas the 3D
-// view draws as one (the restaurant plaza, map 19, and the varsity courtyard, map 20, by these exits: [old map, new location, its
-// entry]) has no fade out or in, no name popup or wait, and no walk-in (the arrival script, or the courtyard's init walk): the new
-// area is there the next frame and the player walks on from its entry point. Nothing else changes (the actors, scripts and music of
+// INSTANT CROSSING (P.quickCross, full.js: CROSSING Instant, the default; off it is the game's own): walking between the campus areas
+// round the restaurant plaza (map 19), by these exits: [old map, new location, its entry, offset]) has no fade out or in, no name
+// popup or wait, and no walk-in (the arrival script, or the courtyard's init walk): the new area is there the next frame and the player walks on from its entry point. Nothing else changes (the actors, scripts and music of
 // the area are loaded as ever).
-// Each with where the new area lies from the old one (map pixels, as voxel.js draws them side by side: field_objects backdropMap):
-// the player arrives where they were, moved by that, instead of at the entry point, so in 3D they walk on without a jump.
-const QUICK_CROSSINGS = [[19, 7, 2, -118, -40], [20, 8, 4, 118, 40]];
+// Where the new area lies against the old one (map pixels, as voxel.js draws them side by side: field_objects campus), the player
+// arrives where they were, moved by that, instead of at the entry point, so in 3D they walk on without a jump: the road and the
+// courtyard, the road's east end and the junior courts (whose walk off to the right is then no walk: restaurant_13.js). The gates up
+// the road's streets (the dorm front, the senior and the practice courts: those areas would lie over each other if laid out round
+// the road) cross without the fades too, the player walking in from the entry point as ever (its arrival script: its fade in is no
+// fade, the screen was never faded out).
+const QUICK_CROSSINGS = [[19, 7, 2, -118, -40], [20, 8, 4, 118, 40], [19, 15, 1, -408, 336], [30, 8, 6, 408, -336],
+  [19, 9, 1], [19, 16, 1], [19, 11, 1], [19, 12, 1], [27, 8, 1], [23, 8, 3], [24, 8, 5]];
 function quickCrossing(P) {
   if (!P.quickCross) return null;
   const old = P.bus.u8(0xC32E), V = P.V;                  // (wCurMapID: still the area being left)
@@ -156,13 +160,13 @@ function quickSpawn(P, q) {
 }
 function* runLocation(P) {
   const { bus, V } = P;
-  const q = quickCrossing(P), quick = !!q; P.quickArrive = quick;
+  const q = quickCrossing(P), quick = !!q, walkOn = quick && q.length > 3; P.quickArrive = walkOn;   // (walkOn: the player walks on)
   if (!quick) beginFadeOut(P, FADE_OUT_SPEED);
   clearTemporaryStoryFlags(P);
   clearStoryEventRequests(P);
   loadStoryLocationHeader(P);
   loadStoryEntryPointRecord(P);
-  if (quick) quickSpawn(P, q);
+  if (walkOn) quickSpawn(P, q);
   V.gameMode = GAMEMODE_NONE;
   yield* advanceFrame(P);
   if (!testFlag(P, FLAG_ENDING_CREDITS_RUNNING) && V.storyLocationBGM !== BGM_UNCHANGED) playSoundManaged(P, V.storyLocationBGM);
@@ -181,7 +185,7 @@ function* runLocation(P) {
   if (!testFlag(P, FLAG_ENDING_CREDITS_RUNNING)) yield* farcallRom(P, 0x4FAC, BANK_GAME, LoadMenuFontGfx);
   P.callRom(0, EnableLCD);
   const arrival = V.storyArrivalScript;
-  if (arrival && !quick) yield* callHLInBankA(P, V.storyLocationBank, arrival);
+  if (arrival && !walkOn) yield* callHLInBankA(P, V.storyLocationBank, arrival);   // (the gates' walks in: their fade in does nothing, nothing faded)
   yield* call(P, 0x4FC7, runLocationInitScript(P, cpuRegs(P)));
   P.quickArrive = false;
   const exit = V.storyModeExitTriggerRequest;

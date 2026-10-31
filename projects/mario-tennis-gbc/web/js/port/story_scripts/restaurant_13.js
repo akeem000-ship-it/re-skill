@@ -103,6 +103,10 @@ export function* unused_13_PlayerSpeaksText35_48(P) {
   yield* speak(P, ACTOR_PLAYER);
 }
 
+// INSTANT CROSSING (P.quickCross, story_loop.js): the walks off up the streets (exits 1, 3, 5) end without their fades and waits; the
+// walk off to the right (exit 6, into the junior courts) is no walk at all: the exit at once, the player walking on into the courts
+function* crossOut(P, n, after) { if (P.quickCross) return; fadeOut(P, n); yield* wait(P, after); }
+
 // RestaurantPlazaTile01_13 (13:42DE): the walk off up the left street; exit 1
 export function* restaurantPlazaTile01(P) {
   moveTarget(P, ACTOR_PARTNER, 7.0, 13.0);
@@ -136,8 +140,7 @@ export function* restaurantPlazaTile03(P) {
   moveAngle(P, ACTOR_PLAYER, FACE_UP, 1.0);
   yield* waitMove(P, ACTOR_PLAYER);
   yield* storyActorsWalkOffAndFadeOut(P);
-  fadeOut(P, 16);
-  yield* wait(P, 30);
+  yield* crossOut(P, 16, 30);
   requestExit(P, 0x03);
 }
 
@@ -155,6 +158,7 @@ export function* restaurantPlazaTile05(P) {
 
 // RestaurantPlazaTile06_13 (13:43DF): off to the right; exit 6 (doubles the same)
 export function* restaurantPlazaTile06(P) {
+  if (P.quickCross) { requestExit(P, 0x06); return; }
   setSpeed(P, ACTOR_PLAYER, 1.0);
   moveTarget(P, ACTOR_PARTNER, 59.0, 13.0);
   moveAngle(P, ACTOR_PLAYER, FACE_RIGHT, 6.0);
@@ -175,7 +179,7 @@ export function* storyActorsWalkOffAndFadeOut(P) {
   setSpeed(P, ACTOR_PLAYER, 0.5);
   yield* wait(P, 40);
   setAnim(P, ACTOR_PLAYER, ANIM_DISTANT);
-  fadeOut(P, 8);
+  if (!P.quickCross) fadeOut(P, 8);
   yield* waitMove(P, ACTOR_PLAYER);
   setActive(P, ACTOR_PLAYER, 0x00);
   yield* wait(P, 10);
@@ -197,8 +201,7 @@ export function* storyActorsWalkOffAndFadeOutDoubles(P) {
   moveAngle(P, ACTOR_PARTNER, 0xCA, 2.0);
   yield* waitMove(P, ACTOR_PLAYER);
   setActive(P, ACTOR_PLAYER, 0x00);
-  fadeOut(P, 16);
-  yield* wait(P, 10);
+  yield* crossOut(P, 16, 10);
 }
 
 // RestaurantPlazaInitScript_13 (13:44DF): entry $0F the courts' tour, entry $0E the coach's introduction

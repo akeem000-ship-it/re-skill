@@ -41,10 +41,17 @@
 //          dirt (voxel.js); lawnAll: true: ground.js's carpet (mown on campus) over every lawn pixel, not only where you walk; backdrop.hills: rolling hills and a little town over the sky of the band on the horizon (voxel.js bandHills)
 //  lawnApron: [[x0, y0, x1, y1], ...]: plain ground beside the map (map px, may be negative) mown as its lawns; terrace: {rect, tables:
 //          [[x, z, colour]], planters: [[x, z]]}: a cafe patio there (ground.js, our own boxes in fixed colours)
+//  campus: {at: [x, y], cut: [x0, x1]}: one of the areas round the road laid out as one place (voxel.js draws every other campus area
+//          where it lies: at, its top left in the road's map px; cut, the columns that are its own: beyond, a neighbour's lie); the port's
+//          instant crossings move the player by the same offsets (story_loop.js QUICK_CROSSINGS)
+//  crossZones: [[x0, y0, x1, y1], ...]: where an exit is near (a gate, a map edge): the last 3D frame is kept there, so a crossing
+//          without the fade holds it while the next area is built and dissolves into it
 //  lampBanners: true: a tour banner (the class colours in turn) hangs on every lamp and ripples in the wind; pathFlowers: true: small
 //          flowers line the paths on the lawn beside them (voxel.js, our own decorations in fixed colours)
 export const FIELD_OBJECTS = {
  "19": {
+  "campus": {"at": [0, 0], "cut": [0, 432]},
+  "crossZones": [[24, 40, 88, 120], [264, 40, 328, 120], [408, 40, 512, 128]],
   "grassFrom": {"map": 20, "block": [208, 128]},
   "patchFrom": [{"from": [240, 64, 304, 96], "to": [364, 116, 428, 144]}],
   "floorSwap": [{"from": [2, 1], "to": [20, 5, 2]}],
@@ -1136,6 +1143,7 @@ export const FIELD_OBJECTS = {
   ]
  },
  "20": {
+  "campus": {"at": [118, 40]},
   "backdropMap": {"map": 19, "dx": -118, "strip": [0, 104], "seam": [232, 40, 312, 120]},
   "lamps": [[250, 112], [296, 112], [250, 196], [250, 300], [296, 300], [250, 384], [296, 384], [348, 218]],
   "lampBanners": true,
@@ -1370,6 +1378,7 @@ export const FIELD_OBJECTS = {
   "flowers": [{"on": 0, "region": [49, 80, 77, 91]}, {"on": 1, "region": [147, 80, 175, 91]}]
  },
  "23": {
+  "crossZones": [[296, 232, 392, 320]],
   "lampLight": {"r": 160, "k": 0.8},
   "lamps": [[120, 56], [120, 205], [26, 120], [204, 140], [240, 112], [352, 112], [472, 104], [245, 252], [352, 252], [470, 252]],
   "blocks": [],
@@ -1565,6 +1574,7 @@ export const FIELD_OBJECTS = {
   "flowers": [{"on": 0, "region": [15, 48, 44, 58]}, {"on": 1, "region": [196, 48, 225, 58]}, {"on": 2, "region": [228, 96, 252, 106]}, {"on": 3, "region": [324, 96, 345, 107]}, {"on": 4, "region": [359, 96, 380, 107]}, {"on": 5, "region": [452, 96, 481, 106]}, {"on": 6, "region": [213, 164, 235, 185]}, {"on": 7, "region": [213, 239, 225, 265]}, {"on": 8, "region": [140, 240, 172, 250]}, {"on": 9, "region": [20, 288, 76, 298]}, {"on": 10, "region": [84, 288, 140, 298]}, {"on": 11, "region": [148, 288, 204, 298]}, {"on": 12, "region": [212, 288, 268, 298]}, {"on": 13, "region": [276, 288, 332, 298]}, {"on": 14, "region": [356, 288, 412, 298]}, {"on": 15, "region": [420, 288, 476, 298]}]
  },
  "24": {
+  "crossZones": [[104, 192, 200, 256]],
   "glass": false,
   "noWater": true,
   "lampLight": {"r": 160, "k": 0.8},
@@ -2129,6 +2139,7 @@ export const FIELD_OBJECTS = {
   ]
  },
  "27": {
+  "crossZones": [[128, 176, 224, 256]],
   "lamps": [[148, 130], [204, 130], [148, 200], [204, 200]],
   "blocks": [
    {
@@ -2742,6 +2753,8 @@ export const FIELD_OBJECTS = {
   ]
  },
  "30": {
+  "campus": {"at": [408, -336], "cut": [24, 512]},
+  "crossZones": [[0, 400, 112, 480]],
   "lampLight": {"r": 160, "k": 0.8},
   "lamps": [[24, 180], [240, 60], [240, 180], [24, 380], [240, 380], [470, 380], [380, 240]],
   "blocks": [],

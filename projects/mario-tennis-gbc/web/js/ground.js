@@ -242,7 +242,8 @@ export class Ground {
     const v = this.v, d = f.floorData, w0 = v.gb.mem.wram[0], coll = v.gb.mem.wram[6];
     const MW = Math.min(32, (w0[0x32B] || 64) >> 1), MH = Math.min(32, (w0[0x32C] || 64) >> 1), H = f.mapH || 512;
     const MX = MW * 16, MY = Math.min(H, MH * 16);                         // the map's own area (wMapWidth / Height)
-    const px = (x, y) => (y * 512 + x) * 4, inMap = (x, y) => x >= 0 && y >= 0 && x < 512 && y < H, inArea = (x, y) => x >= 0 && y >= 0 && x < MX && y < MY;
+    const [CX0, CX1] = f.floorX || [0, 512];                               // (CAMPUS: only the map's own columns: a neighbour lies beyond)
+    const px = (x, y) => (y * 512 + x) * 4, inMap = (x, y) => x >= CX0 && y >= 0 && x < CX1 && y < H, inArea = (x, y) => x >= CX0 && y >= 0 && x < Math.min(MX, CX1) && y < MY;
     const indoor = INDOOR_MAPS.has(v.mapId());                             // (an office's green floor tiles are not a lawn)
     // lawnAll (field_objects): grass, kerbs and grit wherever the picture has lawn or dirt, not only on walkable squares (the road by the
     // cafe: a side-view picture whose collision grid does not line up with its lawns and paths; mown and kerbed as the courtyard)
@@ -257,7 +258,7 @@ export class Ground {
       for (let y = 1; y < 16; y += 2) for (let x = 1; x < 16; x += 2) if (lawn(((my * 16 + y) * 512 + mx * 16 + x) * 4)) n++;
       allLawn[my * 32 + mx] = n >= 58 ? 1 : 0;                                  // 58 of the 64 samples
     }
-    const open = (x, y) => { const mx = x >> 4, my = y >> 4, i = my * 32 + mx; return mx < MW && my < MH && (lawnAll || allLawn[i] || (coll[i] !== 0x0F && !(f.covered && f.covered[i]))); };
+    const open = (x, y) => { const mx = x >> 4, my = y >> 4, i = my * 32 + mx; return mx < MW && my < MH && x >= CX0 && x < CX1 && (lawnAll || allLawn[i] || (coll[i] !== 0x0F && !(f.covered && f.covered[i]))); };
     // the dirt's surface and grit also run on under and round an annotated object (a bench, an umpire chair): only the map's own walls
     // are left bare, so no flat rectangle of the plain map colour shows round a prop on a path or a clay court
     const openDirt = (x, y) => { const mx = x >> 4, my = y >> 4, i = my * 32 + mx; return mx < MW && my < MH && (lawnAll || coll[i] !== 0x0F || !!(f.covered && f.covered[i])); };
@@ -288,7 +289,10 @@ export class Ground {
       const c = mean(x, y, 3, lawn); if (c) tuft(x, y, 4, ...c);
     }
     // the plain ground round the map's area (its own, or the neighbouring map's reaching past it), when it is lawn: a band 160 px wide
-    const sf = f.skirt ? f : f.neighbour && f.neighbour.f.skirt ? f.neighbour.f : null, sd = sf && sf.floorData, sk = sf && sf.skirtSrc >= 0 ? sf.skirtSrc * 4 : -1;
+    // where a neighbouring map's floor lies (CAMPUS: all round): no lawn band of this map's over it
+    const nbs = f.neighbours || (f.neighbour ? [f.neighbour] : []), underNb = (x, y) => (y < 0 && nbs.length > 0) || nbs.some(n => {
+      const X = x - n.dx, Y = y - n.dz, [a, b] = n.f.floorX || [0, 512]; return X >= a && X < b && Y >= (n.f.floorY0 || 0) && Y < n.f.mapH; });
+    const sf = f.skirt ? f : nbs.find(n => n.f.skirt) ? nbs.find(n => n.f.skirt).f : null, sd = sf && sf.floorData, sk = sf && sf.skirtSrc >= 0 ? sf.skirtSrc * 4 : -1;
     const sLawn = o => { const r = sd[o], g = sd[o + 1], b = sd[o + 2]; return g > 70 && g >= r && b < g * 0.45; };
     let band = null;
     if (sd && !f.noGlass && (sf.grassSrc || (sk >= 0 && sLawn(sk)))) {    // (not round a side-view map: the road's foreground is its own picture)
@@ -297,7 +301,7 @@ export class Ground {
       if (!n && sk >= 0) { r = sd[sk]; g = sd[sk + 1]; b = sd[sk + 2]; n = 1; }
       const B = 160; band = [r / n, g / n, b / n];
       for (let y = 3 - B; y < MY + B; y += 6) for (let x = 3 - B; x < MX + B; x += 6) {
-        if (inArea(x, y) || (y < 0 && f.neighbour) || rnd(x, y, 0) > (this.carpet ? 0.08 : 0.8) * this.density) continue;
+        if (inArea(x, y) || underNb(x, y) || rnd(x, y, 0) > (this.carpet ? 0.08 : 0.8) * this.density) continue;
         tuft(x, y, 6, r / n, g / n, b / n);
       }
     }
@@ -331,7 +335,7 @@ export class Ground {
       for (let j = 0; j < Hc; j++) for (let i = 0; i < W; i++) {
         const x = i - B, y = j - B; let c = null;
         if (inArea(x, y)) { if (open(x, y) && lawnish(x, y)) c = mean(x, y, 3, lawn); }
-        else if (band && !(y < 0 && f.neighbour)) c = band;
+        else if (band && !underNb(x, y)) c = band;
         else if (inApron(x, y)) c = lawnMean();
         if (!c) continue;
         const mown = kept && (inArea(x, y) || inApron(x, y)), tall = mown ? 0.8 : noise(x / 38, y / 38), dr = mown ? 0 : Math.max(0, noise(x / 55 + 17, y / 55 + 5) - 0.5) * 1.8, o = (j * W + i) * 4;
