@@ -2,6 +2,7 @@
 // events that end points (bank $08; ball_effects_08 / match_frames_08 / match_08 in the disassembly).
 // Positions are 16.16 (ballXFull...), velocities 24-bit aligned with the position's low three bytes
 // (ballVelocityXFull...), so a raw velocity v moves v / 65536 units per frame.
+import { aiReadWeight } from "./ai.js";
 import { setCharState, forEachCharBank } from "./chars.js";
 import { plusNetCordBand } from "./plus.js";   // PLAY+
 
@@ -223,9 +224,15 @@ export function startHitEffect(E) {
 export function startBallTouchCharEffect(E) { E.S.ballTouchCharTimer = 0x28; }   // 08:547C
 // 08:7C57 OffsetFromBallLanding: the landing point moved hl along the aim angle -> { x, depth }
 export function offsetFromBallLanding(E, hl) {
-  if (E.physics && E.physics.aiAware && hl > 0 && hl < 0x8000) { const p = E.physics.beyondLanding(E, hl); if (p) return p; }   // Enhanced: where the ball really goes after the bounce
   const S = E.S, v = E.M.vectorFromLengthAndAngle(hl, S.shotAimAngle >> 8);
-  return { x: (S.ballTargetX + v.hl) & 0xFFFF, depth: (S.ballTargetDepth + v.de) & 0xFFFF };
+  const line = { x: (S.ballTargetX + v.hl) & 0xFFFF, depth: (S.ballTargetDepth + v.de) & 0xFFFF };
+  if (E.physics && E.physics.aiAware && hl > 0 && hl < 0x8000) {          // Enhanced: where the ball really goes after the bounce, read as
+    const p = E.physics.beyondLanding(E, hl); if (!p) return line;        // well as the CPU is good (ai.js aiReadWeight: a slow CPU mostly
+    const g = aiReadWeight(E); if (!g) return p;                           // goes by the game's line, as on Classic)
+    const mix = (a, b) => (a + Math.trunc((((b - a) << 16) >> 16) * g / 32)) & 0xFFFF;
+    return { x: mix(p.x, line.x), depth: mix(p.depth, line.depth) };
+  }
+  return line;
 }
 // 08:52DA StartLandingMarker: for a lob or a fallback trajectory, 320 short of the predicted landing point,
 // unless that is within 128 of the net; within 256 it is pushed out to depth +-256

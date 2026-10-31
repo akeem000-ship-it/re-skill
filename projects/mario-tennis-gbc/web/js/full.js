@@ -36,6 +36,7 @@ import { mountStick, stickDir, stickFrame, stickAnalog, analogEvent, addStickFee
 import { portraitArea, attachPortrait } from "./portrait.js";   // touch screens held upright: the game on top, a control deck below
 import { Recorder, maskOf, packRecording, bytesToBase64, stateOf } from "./recorder.js";
 import { HDText, FONTS, FONT_ORDER, HD } from "./hdtext.js";
+import { setToastHold } from "./hdpanel.js";
 import { mountCreator } from "./look/creator.js";
 import { lookEvent } from "./look/index.js";
 import { freshProfile, learnNote } from "./engine/learn.js";   // PLAY+ SCOUTING: the CPU learns how you play
@@ -49,6 +50,7 @@ const deck = attachPortrait(() => gb);
 const SAVE_KEY = () => "mt-sram-" + romHash.slice(0, 12);
 const q = new URLSearchParams(location.search);
 const stored = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+if (q.has("hold")) paused = true;          // (tests: no frame runs until __gb.step, so a power-on recording plays into the page from frame 0)
 // once (0.35.18): characters back to the game's own sprites as blocky voxels (SPRITES: Game, 3D view VOX, VOX: Blocky); the buttons still
 // change them afterwards
 try { if (!localStorage.getItem("mt-reset-0.35.18")) { localStorage.setItem("mt-sprites", "game"); localStorage.setItem("mt-3d", "vox"); localStorage.setItem("mt-voxstyle2", "blocky"); localStorage.setItem("mt-reset-0.35.18", "1"); } } catch (e) { /* private mode */ }
@@ -397,6 +399,7 @@ async function loadRom(buf) {
   else gb = new GBC(bytes, { sampleRate: 44100, audio: true });
   creator.attach(gb);
   drawnFrame = -1;
+  setToastHold(() => hd && hd.textOn && hd.lines.some(l => l.text && l.text.trim().length > 8));                    // (tour notes wait for a message window to close)
   hd = new HDText(gb); hd.onload = () => { drawnFrame = -1; }; hd.setFont(font); hd.setUI(uiMode === "hd");
   if (voxel) { voxel.attach(gb, new Rom(gb.mem.rom)); voxel.hdText = hd; }      // a ROM loaded after the 3D view was created
   // the statically translated game (tools/recomp.py -> gen/game.js) runs the traced code as native

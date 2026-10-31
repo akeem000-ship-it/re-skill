@@ -112,6 +112,8 @@ function patterns(font) {
   }
   return font.pat = list;
 }
+// the artists' hand-drawn variants of glyphs on the screens' pictures, known by the hash of their ink columns (as NARROW_WORDS)
+const VARIANT_GLYPHS = { "dc00cd4c": "t" };              // (CHAR STATUS "to the next level": the t of "the", its bar longer)
 const FUZZY = false;                                       // nearest-glyph reading of the artists' variants: off (too loose)
 function pop(v) { let n = 0; for (; v; v &= v - 1) n++; return n; }
 // how many ink pixels of the glyph pattern are missing from the columns [a, a + n) (-1: it does not fit). Wide glyphs
@@ -126,6 +128,7 @@ function fits(g, cols, a, n) {
 function bestGlyph(P, cols, a, b, fuzzy) {
   let best = null, bm = 99;
   for (const g of P) { const m = fits(g, cols, a, b - a) + (g.cond ? 0.5 : 0); if (m >= 0.5 || fits(g, cols, a, b - a) >= 0) { if (fits(g, cols, a, b - a) < 0) continue; if (m < bm || (m === bm && g.ink > best.ink)) { best = g; bm = m; } } }
+  if (!best) { const v = VARIANT_GLYPHS[fnvCols(cols, a, b)]; if (v) return { ch: v, ink: 8, exact: true }; }
   if (best || !fuzzy) return best && { ch: best.ch, ink: best.ink, exact: true };
   // the artists' variants of the font: the nearest glyph of the same width by ink pixels differing
   const n = b - a; let bd = 99, bg = null, ink = 0;
@@ -185,7 +188,7 @@ export function readShadowText(scr, layer) {
         for (const g of gl) {
           const prev = items.length ? items[items.length - 1] : null;
           const gap = prev ? g.a - prev.b : 0;
-          if (prev && prev.ch !== " " && prev.ch !== "'" && (gap >= 4 || (gap === 3 && /[a-z]/.test(prev.ch + g.ch)) || (gap === 2 && prev.ch === "t" && g.ch === "l"))) items.push({ ch: " ", a: prev.b, b: g.a });
+          if (prev && prev.ch !== " " && prev.ch !== "'" && (gap >= 4 || (gap === 3 && /[a-z]/.test(prev.ch + g.ch)) || (gap === 2 && /[ot]/.test(prev.ch) && /[tl]/.test(g.ch)))) items.push({ ch: " ", a: prev.b, b: g.a });
           items.push(g); if (g.exact) exact = true;
         }
       }
@@ -390,6 +393,34 @@ registerHDPainter("d_gauges", (g, scr, layer) => {
     }
   }
 }, { order: 55 });
+
+// ---- small sprite digits ------------------------------------------------------------------------------------------------
+// A few screens print a number with small outlined digits made of sprites (CHAR STATUS: the "15" of "15 to the next level"):
+// 5x8 each, colour 3 ink in a colour 2 outline. A sprite whose top-left 5x8 is such a digit (known by the hash of its colour
+// indices, as NARROW_WORDS: no pixels stored here) and that is blank elsewhere is read as one; digits of one row standing at
+// most 7 px apart make a number, drawn again in the HD font (the sprites hidden; 2D only).
+const SPRITE_DIGITS = { "723429b": "0", "44072836": "1", "f905a7c2": "2", "fc3b793a": "3", "44bdba8c": "4", "3c96b76": "5", "3fed0ced": "6", "99564e2": "7", "851fa748": "8", "1ca30789": "9" };
+function spriteDigit(s) {
+  const ci = s.ci; if (!ci || s.flipX || s.flipY) return null;
+  let h = 2166136261, k = "";
+  for (let y = 0; y < s.h; y++) for (let x = 0; x < 8; x++) {
+    const v = ci[y * 8 + x];
+    if (y < 8 && x < 5) h = Math.imul(h ^ (48 + v), 16777619); else if (v) return null;
+  }
+  return SPRITE_DIGITS[(h >>> 0).toString(16)] || null;
+}
+registerHDPainter("d_sprite_digits", (g, scr, layer) => {
+  if (layer !== "spr" || !scr.canHide || !scr.font || onCourt(scr)) return;
+  const ds = []; for (const s of scr.oam) { if (s.attr & 0x80 || scr.hidden.has(s.i)) continue; const d = spriteDigit(s); if (d) ds.push({ s, d }); }
+  if (!ds.length) return;
+  ds.sort((a, b) => a.s.y - b.s.y || a.s.x - b.s.x);
+  for (let i = 0; i < ds.length;) {
+    let j = i + 1; while (j < ds.length && ds[j].s.y === ds[i].s.y && ds[j].s.x - ds[j - 1].s.x <= 7 && ds[j].s.x > ds[j - 1].s.x) j++;
+    const run = ds.slice(i, j), s0 = run[0].s, x1 = run[run.length - 1].s.x + 5, c = s0.colors;
+    if (scr.hide(run.map(r => r.s))) drawText(g, scr, run.map(r => r.d).join(""), (s0.x + x1) / 2, s0.y + scr.font.base, { size: scr.font.em, color: c[3].css, shadow: c[2].css, align: "center" });
+    i = j;
+  }
+}, { order: 45, sprites: true });
 
 // ---- sprites on menus ---------------------------------------------------------------------------------------------------
 // Menu sprites (name tags, arrows, cursors, digits, icons) are drawn smoothed like the rest: all of them are composed into

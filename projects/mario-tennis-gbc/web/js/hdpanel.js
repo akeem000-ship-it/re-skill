@@ -30,8 +30,15 @@ const STYLE = `
 .hdchip b { font: 19px "MT Luckiest Guy", Impact, sans-serif; color: #ffcf3a; letter-spacing: .5px; }
 .hdtoast { position: fixed; z-index: 35; left: 50%; top: 12%; transform: translateX(-50%); background: rgba(246,244,238,.96); color: #1d2b7a; border: 3px solid #ffcf3a; border-radius: 14px; padding: 8px 18px; font: 18px Itim, system-ui, sans-serif; pointer-events: none; transition: opacity .6s; box-shadow: 0 6px 20px rgba(0,0,0,.4); }`;
 export function hdStyle() { if (css || typeof document === "undefined") return; css = true; const st = document.createElement("style"); st.textContent = STYLE; document.head.appendChild(st); }
-export function toast(msg) {
-  if (typeof document === "undefined") return; hdStyle();
+// while the game shows a message window (full.js: the HD text reader has a sentence on screen), a toast waits for it to close (at
+// most 12 s): it would cover the game's own words
+let holdFn = null, holdT = 0;
+export function setToastHold(f) { holdFn = f; }
+export function toast(msg, waited = 0) {
+  if (typeof document === "undefined") return;
+  if (holdFn && waited < 12000) { let busy = false; try { busy = !!holdFn(); } catch (e) { /* no reader yet */ }
+    if (busy) { clearTimeout(holdT); holdT = setTimeout(() => toast(msg, waited + 300), 300); return; } }
+  hdStyle();
   if (!toastEl) { toastEl = document.createElement("div"); toastEl.className = "hdtoast"; document.body.appendChild(toastEl); }
   toastEl.textContent = msg; toastEl.style.opacity = "1"; toastEl.style.display = "block";
   clearTimeout(toastT); toastT = setTimeout(() => { toastEl.style.opacity = "0"; }, 3200);

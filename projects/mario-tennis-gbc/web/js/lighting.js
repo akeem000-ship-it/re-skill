@@ -378,6 +378,13 @@ export class Lighting {
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.msaa ? this.q.ms.f : this.q.scene.f);
     return true;
   }
+  // the tilt-shift blur's strength 0..1: off (eased over ~0.4 s) while a camera of its own frames the scene (the walk-out, the replays,
+  // the changeover sweep, the winner): its close shots put the players outside the sharp band (the blur at the match's start)
+  dofEase(cam) {
+    const goal = cam && cam.cine ? 0 : 1, now = performance.now(), dt = Math.min(0.1, (now - (this.dofT || now)) / 1000);
+    this.dofT = now; this.dofK = this.dofK === undefined ? goal : this.dofK + Math.sign(goal - this.dofK) * Math.min(Math.abs(goal - this.dofK), dt * 2.5);
+    return this.dofK;
+  }
   // indoor: the RPG maps indoors, and the Training Center's drill courts (a hall without windows: its own lamps, whatever the hour)
   camera(mvp, near, far, unit, kind, at, mapId = -1) { this.cam = { mvp, near, far, unit, kind, at, map: mapId, indoor: (kind === "field" && INDOOR_MAPS.has(mapId)) || (kind === "court" && !!(this.v.isDrill && this.v.isDrill())) }; }   // unit: world units per game pixel; at: a ground point in the middle of the view
   finish() { if (this.begun && !this.posted) this.post(); this.begun = false; }
@@ -443,7 +450,7 @@ export class Lighting {
     gl.bindVertexArray(this.empty); gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.depthMask(false);
     // the sun (or moon): direction towards it in world space (x right, y up, -z away from the viewer)
     const az = P.az * Math.PI / 180, el = Math.max(P.el, 11) * Math.PI / 180, L = [Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el)];
-    const fx = this.cfg.fx, night = P.lamps * (fx.night ? 1 : 0), shade = T >= 1 && fx.shadows ? (P.shade ?? 1) : 0, dofK = T >= 1 && fx.tilt ? 1 : 0;
+    const fx = this.cfg.fx, night = P.lamps * (fx.night ? 1 : 0), shade = T >= 1 && fx.shadows ? (P.shade ?? 1) : 0, dofK = (T >= 1 && fx.tilt ? 1 : 0) * this.dofEase(cam);
     const progS = this.prog("shadow", FS_SHADOW), progB = this.prog("blur", FS_BLUR), progD = this.prog("down", FS_DOWN), progE = this.prog("extract", FS_EXTRACT), progC = this.prog("comp", FS_COMP);
     const NF = [cam.near, cam.far], vp = cam.mvp, invVP = invert(vp);
     // 1. shadows

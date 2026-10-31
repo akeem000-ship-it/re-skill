@@ -119,6 +119,7 @@ function drawOverlay() {
 const save = (() => { try { for (let i = 0; i < localStorage.length; i++) if (localStorage.key(i).startsWith("mt-sram-")) return true; } catch (e) { /* private mode */ } return false; })();
 
 // ---------------- the live rally ----------------
+const REC = [0xA00, 0xA80, 0xA40, 0xAC0];                 // the players' records by index (07:5C42 CharAttrStructPtrs: $CA00, $CA80, $CA40, $CAC0)
 const demo = { live: false, gb: null, v: null, list: [], i: -1, at: 0, games: -1, names: "" };
 const romStore = (mode, fn) => new Promise((ok, fail) => {
   try { const open = indexedDB.open("mt-rom", 1); open.onupgradeneeded = () => open.result.createObjectStore("rom");
@@ -152,7 +153,7 @@ function next() {
   const d = demo, m = d.list[d.i = (d.i + 1) % d.list.length];
   loadState(d.gb, m.state); d.at = performance.now(); d.games = -1; d.v.lastFrame = -1; d.v.cur = d.v.prev = null; shot.t0 = clock(); shot.k = Math.floor(Math.random() * DEMO_SHOTS.length);
   const w = d.gb.mem.wram[0], name = a => { let o = ""; for (let i = 0; i < 16; i++) { const c = w[a + i]; if (c < 0x20 || c > 0x7E) break; o += String.fromCharCode(c); } return o.trim(); };
-  const n = m.chars.length, names = Array.from({ length: n }, (_, k) => name(0xA00 + 0x80 * k)).filter(Boolean);
+  const n = m.chars.length, names = Array.from({ length: n }, (_, k) => name(REC[k])).filter(Boolean);
   d.names = names.length === 2 ? `${names[0]} vs ${names[1]}` : names.length === 4 ? `${names[0]} & ${names[2]} vs ${names[1]} & ${names[3]}` : "";
   d.live = true; dirty = true;
 }
@@ -160,6 +161,7 @@ function step() {
   const d = demo, w = d.gb.mem.wram;
   for (let k = 4; k < 8; k++) if (w[k][0xF1E] !== 1 && w[k][0xF1E] !== 0xFF && (k < 6 || d.list[d.i].doubles)) w[k][0xF1E] = 1;   // every player the CPU
   d.gb.setInput(stateOf(0)); d.gb.runFrame(); d.v.tick();
+  const h = w[0][0x4B6]; if (h && h !== d.hit && performance.now() - d.at > 300) sfx.hit(); d.hit = h;   // (a stroke: the rally's hit flag set)
   const games = w[0][0x8E2] + w[0][0x8E3] + 4 * (w[0][0x8E0] + w[0][0x8E1]);
   if (d.games < 0) d.games = games;
   if (w[0][0x32E] > 15 || games !== d.games || performance.now() - d.at > 50000) next();   // (the court left, a game won, or 50 s)
@@ -184,11 +186,29 @@ function camera(aspect, m4, clip, st) {
   const sh = DEMO_SHOTS[(shot.k + k) % DEMO_SHOTS.length](u, { p1, p2 }, shot.track); if (!sh) return null;
   return { mvp: m4.mul(m4.perspective(sh[2], aspect, clip.near, clip.far), m4.lookAt(sh[0], sh[1], [0, 1, 0])), tilt: 0 };
 }
+// ---------------- sound ----------------
+// small sounds of its own (Web Audio, made here: none of the game's): a tick to move, a rising pair to play, a dull "no" for a game
+// not ready, and a soft racket thock at each hit of the rally behind. They start with the first touch or key (the browser's rule).
+let actx = null, mute = false;
+try { mute = localStorage.getItem("mt-picker-sound") === "off"; } catch (e) { /* private mode */ }
+function audio() { if (mute) return null; if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { mute = true; return null; } } if (actx.state === "suspended") actx.resume(); return actx; }
+function tone(f0, f1, dur, vol, type = "sine", at = 0) {
+  const a = audio(); if (!a) return; const t = a.currentTime + at, o = a.createOscillator(), v = a.createGain();
+  o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  v.gain.setValueAtTime(0.0001, t); v.gain.exponentialRampToValueAtTime(vol, t + 0.008); v.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(v).connect(a.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+const sfx = {
+  move: () => tone(880, 660, 0.07, 0.08, "triangle"),
+  play: () => { tone(523, 523, 0.12, 0.1, "triangle"); tone(784, 1046, 0.22, 0.1, "triangle", 0.1); },
+  no: () => tone(220, 150, 0.18, 0.1, "square"),
+  hit: () => { if (actx && actx.state === "running") tone(320, 120, 0.09, 0.05, "sine"); },   // (only once sound is on: never starts it)
+};
 // ---------------- choosing ----------------
-function choose(i) { if (i === sel) return; sel = i; note = ""; dirty = true; }
+function choose(i) { if (i === sel) return; sel = i; note = ""; dirty = true; sfx.move(); }
 function play() {
-  if (!GAMES[sel].ready) { note = "Mario Golf is still being decompiled: soon"; shake = performance.now(); dirty = true; return; }
-  location.href = "full.html" + location.search + location.hash;
+  if (!GAMES[sel].ready) { note = "Mario Golf is still being decompiled: soon"; shake = performance.now(); dirty = true; sfx.no(); return; }
+  sfx.play(); setTimeout(() => { location.href = "full.html" + location.search + location.hash; }, 260);
 }
 const keys = {};
 addEventListener("keydown", e => { keys[e.code] = true; if (e.code === "ArrowLeft") choose(0); if (e.code === "ArrowRight") choose(1); if (e.code === "Enter" || e.code === "KeyZ" || e.code === "Space") play(); });

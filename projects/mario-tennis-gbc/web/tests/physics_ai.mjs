@@ -18,11 +18,11 @@ import { Physics120 } from "../js/engine/physics120.js";
 const a = process.argv.slice(2), FR = a.includes("--frames") ? +a[a.indexOf("--frames") + 1] : 30000;
 const rom = romObject(), MATCHUPS = [[0, 23, 25], [1, 1, 2], [2, 5, 9]], SEEDS = [11, 97];   // (each model plays the same matches: paired, repeatable)
 const sx = v => (v << 16) >> 16;
-function run(model) {
+function run(model, level = -1) {
   const enhanced = !!model;
   let points = 0, hits = 0, winners = 0; const rows = [], xq = [];
   for (const seed of SEEDS) for (const [court, p1, p2] of MATCHUPS) {
-    const m = new EngineMatch(rom, { p1, p2, court, games: 6, sets: 3, difficulty: 2, seed }); setup.applyCpuDifficulty(m.E, 0, 3);
+    const m = new EngineMatch(rom, { p1, p2, court, games: 6, sets: 3, difficulty: 2, seed }); setup.applyCpuDifficulty(m.E, 0, level < 0 ? 3 : level); if (level >= 0) setup.applyCpuDifficulty(m.E, 1, level);
     const E = m.E, S = E.S; const ph = enhanced ? (E.physics = model === 120 ? new Physics120() : new EnhancedPhysics()) : null; let prevRl = 0, prevOut = 0, pend = null;
     let track = [], asks = [], trackRl = -1;                             // the real ball's path this shot, and the AI's questions about it
     const settle = () => {                                               // a shot over: each question against where the ball really crossed
@@ -57,7 +57,7 @@ function run(model) {
         }
       }
       if (enhanced && rl > prevRl && S.ballSpeed3D / 256 > 8) {
-        ph.aiAware = false; const c = ball.offsetFromBallLanding(E, 0xC0); ph.aiAware = true; const q = ball.offsetFromBallLanding(E, 0xC0);
+        ph.aiAware = false; const c = ball.offsetFromBallLanding(E, 0xC0); ph.aiAware = true; const q = ph.beyondLanding(E, 0xC0) || c;   // (the model's own path: the CPU mixes it with the line by its skill, ai.js aiReadWeight)
         pend = { f, rl, c: [sx(c.x), sx(c.depth)], a: [sx(q.x), sx(q.depth)] };
       }
       prevRl = rl;
@@ -76,4 +76,17 @@ for (const [name, M] of [["Enhanced", "enhanced"], ["120 Hz", 120]]) {
   const xm = E.xq.map(r => r[0]), xl = E.xq.map(r => r[1]);
   check(`${name}: where the CPU walks to: the model's X at its depth is where the ball crosses (median < 4 units; the questions about a depth the ball reaches before it is hit)`, E.xq.length > 20 && med(xm) < 4, `${E.xq.length} questions: model median ${med(xm).toFixed(1)} mean ${mean(xm).toFixed(1)}, game's straight line median ${med(xl).toFixed(1)} mean ${mean(xl).toFixed(1)}`);
 }
+// each level's rallies: a slow CPU (far reaction delay 30, near 26: the tour's first opponents) and a middling one (20 / 16) on both
+// sides, hits per point on 120 Hz against Classic's (ai.js slowRead / aiReadWeight: the modelled ball gave a slow CPU time it never had)
+function rallies(model, delay) {
+  let pts = 0, hits = 0;
+  for (const seed of SEEDS) for (const [court, p1, p2] of MATCHUPS) {
+    const m = new EngineMatch(rom, { p1, p2, court, games: 6, sets: 3, difficulty: 2, seed }), S = m.E.S; if (model) m.E.physics = new Physics120();
+    for (const c of S.chars) { c.aiReactionDelayFar = delay; c.aiReactionDelayNear = delay - 4; }
+    let prl = 0, po = 0;
+    for (let f = 0; f < 12000 && !m.over; f++) { S.chars[0].inputSource = 1; S.chars[1].inputSource = 1; m.update(0); if (S.rallyLength > prl) hits++; prl = S.rallyLength; if (S.pointOutcome && !po) pts++; po = S.pointOutcome; }
+  }
+  return hits / pts;
+}
+for (const d of [30, 20]) { const c = rallies(null, d), h = rallies(120, d); check(`120 Hz: a CPU of reaction delay ${d} keeps Classic's rally length (within 25%)`, Math.abs(h / c - 1) < 0.25, `hits per point: Classic ${c.toFixed(2)}, 120 Hz ${h.toFixed(2)}`); }
 process.exit(bad ? 1 : 0);

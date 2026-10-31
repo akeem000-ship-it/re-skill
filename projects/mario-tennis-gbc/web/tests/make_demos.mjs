@@ -16,7 +16,7 @@ const MATCH_MODES = new Set([1, 2, 3, 4, 10]);                          // wGame
 const files = [];
 for (const dir of DIRS) for (const f of fs.existsSync(dir) ? fs.readdirSync(dir) : []) if (f.endsWith(".mtrec")) files.push(path.join(dir, f));
 const gb = await newCore({ recomp: true }), w = gb.mem.wram;
-const chars = () => { const n = w[0][0x8F3] >= 4 ? 4 : 2; return Array.from({ length: n }, (_, k) => w[0][0xA0B + 0x80 * k] & 0x3F); };   // (the players' records at $CA00, $80 apart)
+const chars = () => { const n = w[0][0x8F3] >= 4 ? 4 : 2; return Array.from({ length: n }, (_, k) => w[0][[0xA0B, 0xA8B, 0xA4B, 0xACB][k]] & 0x3F); };   // (the players' records by index: $CA00, $CA80, $CA40, $CAC0)
 const seen = new Set(), out = [];
 for (const f of files) {
   if (out.length >= MAX) break;

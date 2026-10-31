@@ -1046,8 +1046,9 @@ export class Voxel3D {
     if (!this.ground || this.ground.court !== this.courtId) { this.buildGround(); this.groundHash = -1; }
     const h = this.palHash(), lk = this.courtLook(); if (h !== this.groundHash || (lk ? lk.name + ":" + lk.title : "") !== this.paintedLook) { this.groundHash = h; this.paintGround(); }   // (a final starts / ends: its court)
     if (this.intro && !this.venueTour) this.intro.update();      // INTRO: the walk-out before a match (its own camera while it runs)
-    const { mvp, tilt } = (this.venueTour && this.venueTour.camera(cv.width / cv.height, m4, COURT_CLIP)) || (this.replayCam && this.replayCam(cv.width / cv.height, m4, COURT_CLIP, this.interp())) || (this.intro && this.intro.camera(cv.width / cv.height, m4, COURT_CLIP, this.interp().players)) || (this.matchfx && this.matchfx.camera(cv.width / cv.height, m4, COURT_CLIP, this.interp().players)) || this.courtCamera(cv.width / cv.height);   // MATCH FX: changeover sweep, the winner
-    if (this.light) this.light.camera(mvp, COURT_CLIP.near, COURT_CLIP.far, 7.5, "court", [0, 0, 0]);   // LIGHT
+    const cineCam = (this.venueTour && this.venueTour.camera(cv.width / cv.height, m4, COURT_CLIP)) || (this.replayCam && this.replayCam(cv.width / cv.height, m4, COURT_CLIP, this.interp())) || (this.intro && this.intro.camera(cv.width / cv.height, m4, COURT_CLIP, this.interp().players)) || (this.matchfx && this.matchfx.camera(cv.width / cv.height, m4, COURT_CLIP, this.interp().players));   // MATCH FX: changeover sweep, the winner
+    const { mvp, tilt } = cineCam || this.courtCamera(cv.width / cv.height);   // (a camera of its own: the tilt-shift blur eases off, see LIGHT)
+    if (this.light) { this.light.camera(mvp, COURT_CLIP.near, COURT_CLIP.far, 7.5, "court", [0, 0, 0]); this.light.cam.cine = !!cineCam; }   // LIGHT
     if (this.skybox && !this.isDrill() && this.skybox.draw(gl, mvp)) { gl.useProgram(this.prog); gl.bindVertexArray(this.vao); }   // SKY: behind everything
     // ground plane (lying flat: tilt -90deg around X so the quad's up axis becomes -Z, i.e. +Y world towards the camera)
     const gw = WORLD.x1 - WORLD.x0, gh = WORLD.y1 - WORLD.y0;
@@ -2123,7 +2124,31 @@ export class Voxel3D {
   // that frame stays on screen while the game fades and loads the next map, which then comes in with its own colours (the fade is not
   // drawn), its camera starting where the old one was (the old map is part of the new one's scenery) and gliding to the player while the
   // kept frame dissolves into it
-  objPal() { const S = this.seam; return S && S.obj && S.fading ? S.obj : this.gb.ppu.objPal; }
+  objPal() { const S = this.seam; return S && S.obj && S.fading ? S.obj : this.chargeSoft(this.gb.ppu.objPal); }
+  // the charge flash (08:764B UpdateChargeFlash: a swing held 20+ frames swaps the player's OBJ palette to its flash variant every 4
+  // frames): on a card in the scene that strobe reads as the player fading out, so here the flash is a mix, 35% towards the flash
+  // colours, over the player's own palette (the last seen while the flag was clear). The 2D picture keeps the game's own.
+  chargeSoft(op) {
+    const w = this.gb.mem.wram; if (!w || w[0][0x32E] > 15) return op;
+    const fr = this.gb.ppu.frames; if (this.chargeAt === fr && this.chargeSrc === op) return this.chargeOut;   // (once a frame: it is asked for every sprite)
+    this.chargeAt = fr; this.chargeSrc = op; return (this.chargeOut = this.chargeMix(op, w));
+  }
+  chargeMix(op, w) {
+    const keep = this.chargeKeep || (this.chargeKeep = new Map()); let out = null;
+    for (let k = 0; k < 4; k++) {
+      const b = w[4 + k]; if (!b) continue;
+      const slot = b[0xF37] & 7, o = slot * 8;
+      if (!b[0xF52]) { keep.set(slot, op.slice(o, o + 8)); continue; }
+      const n = keep.get(slot); if (!n) continue;
+      out = out || Uint8Array.from(op);
+      for (let i = 0; i < 8; i += 2) {
+        const a = n[i] | n[i + 1] << 8, f = op[o + i] | op[o + i + 1] << 8; let c = 0;
+        for (const sh of [0, 5, 10]) { const x = (a >> sh) & 31, y = (f >> sh) & 31; c |= Math.round(x + (y - x) * 0.35) << sh; }
+        out[o + i] = c & 0xFF; out[o + i + 1] = c >> 8;
+      }
+    }
+    return out || op;
+  }
   fadeLevel(id) {                                 // how far the live palettes 2-7 are from the map's own (0: settled)
     const a = this.gb.ppu.bgPal, b = this.seamCanon && this.seamCanon.id === id ? this.seamCanon.pal : (this.seamCanon = { id, pal: this.canonPalette(id) }).pal;
     let t = 0; for (let k = 8; k < 32; k++) { const x = a[k * 2] | a[k * 2 + 1] << 8, y = b[k * 2] | b[k * 2 + 1] << 8; for (const sh of [0, 5, 10]) t += Math.abs((x >> sh & 31) - (y >> sh & 31)); }

@@ -63,9 +63,23 @@ export function predictBallXAtDepth(E, depth) {
 }
 
 // the AI's prediction of the ball's X at a depth: the game's straight line along the aim, or (Enhanced physics) the model's forward simulation of the live ball
+// read as well as the CPU is good: the model's X is mixed with the game's straight guess by the CPU's far reaction delay (its skill:
+// 2 the exhibition's best, about 30 the tour's first opponents): a quick CPU reads the curve, a slow one mostly guesses along the
+// aim as on Classic, so the easy levels' rallies stay as short as Classic's (the model alone made every CPU read a swerving ball
+// perfectly). Integer weights in 1/32, deterministic.
+// the weight of the game's straight guess, in 1/32 (0..26): by the far reaction delay (the character the caller has in E.C)
+export const aiReadWeight = E => Math.max(0, Math.min(26, E.C.aiReactionDelayFar - 4));
+// a reaction delay d under Enhanced / 120 Hz: the modelled ball flies slower and sits up longer than Classic's, which gave a slow CPU
+// time it never had; it reacts later by a share of how slow it already is (none for the quick ones), so each level's rallies keep
+// Classic's length (web/tests/physics_ai.mjs: hits per point by level)
+export const slowRead = (E, d) => (E.physics && E.physics.aiAware && d > 6 ? d + ((d - 6) * 5 >> 4) : d);   // (+5/16 of the delay over 6)
 function aiPredictX(E, depth) {
-  if (E.physics && E.physics.aiAware) { const x = E.physics.xAtDepth(E, depth); if (x !== null) return x; }
-  return predictBallXAtDepth(E, depth);
+  const line = predictBallXAtDepth(E, depth);
+  if (!(E.physics && E.physics.aiAware)) return line;
+  const x = E.physics.xAtDepth(E, depth); if (x === null) return line;
+  const g = aiReadWeight(E); if (!g) return x;
+  const d = ((line - x) << 16) >> 16;                                        // (the shorter way round the 16-bit world)
+  return (x + Math.trunc(d * g / 32)) & 0xFFFF;
 }
 
 // ---- the controller ----
@@ -267,7 +281,7 @@ function aiRallyStateSingles(E) {
 // 08:7D0A AiSetReactionDelay: near (at the net) or far delay + 0-3
 function aiSetReactionDelay(E) {
   const C = E.C, delay = C.ballReachFlags & REACH_NEAR_NET ? C.aiReactionDelayNear : C.aiReactionDelayFar;
-  C.aiActionTimer = (advanceMatchRng(E) & 3) + delay;
+  C.aiActionTimer = (advanceMatchRng(E) & 3) + slowRead(E, delay);
   aiAdvancePhase(E);
 }
 // 08:7D23 AiChoosePositionByStrategy: where to meet the incoming ball, by wAiPositionStrategy
@@ -354,7 +368,7 @@ function aiRallyStateBaseliner(E) {
 function aiNetPlayerCheckRally(E) {
   const C = E.C;
   if (E.S.rallyLength < 2) return;
-  C.aiActionTimer = (advanceMatchRng(E) & 3) + C.aiReactionDelayNear;
+  C.aiActionTimer = (advanceMatchRng(E) & 3) + slowRead(E, C.aiReactionDelayNear);
   C.aiTrackingCountdown = C.aiTrackingParam;
   aiAdvancePhase(E);
 }
@@ -367,7 +381,7 @@ function aiNetPlayerPredictLanding(E) {
 // 08:7EB1 AiBaselinerSetTarget: the far reaction delay
 function aiBaselinerSetTarget(E) {
   const C = E.C;
-  C.aiActionTimer = (advanceMatchRng(E) & 3) + C.aiReactionDelayFar;
+  C.aiActionTimer = (advanceMatchRng(E) & 3) + slowRead(E, C.aiReactionDelayFar);
   aiAdvancePhase(E);
 }
 // 08:7EC0 AiBaselinerDone: the ball's line at depth $460
