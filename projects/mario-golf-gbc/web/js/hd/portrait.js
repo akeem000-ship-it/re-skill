@@ -5,7 +5,8 @@
 // and darkened towards the bottom; elsewhere a mown fairway (stripes drawn here). A and B are golf balls, Start and Select tees,
 // and a label names the hole (hole, par and yards, read from RAM). Nothing from the game is stored; nothing is written to it.
 import { mapPlace } from "./wide.js";
-const PORTRAIT = 1.15;                                 // height / width above which the screen counts as upright
+const PORTRAIT = 1.0;                                  // height / width above which the screen counts as upright (a foldable's
+                                                       // near-square inner screen held upright too: the game on top, the deck below)
 
 export function portraitArea() {                       // the game's box in CSS px when the portrait layout is on, else null
   const b = document.body, on = b.classList.contains("touch") && innerHeight > innerWidth * PORTRAIT;

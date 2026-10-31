@@ -8,7 +8,7 @@
 //              (the screen is sharp enough to show them), the 10:9 view (the screen's own shape)
 const PROFILES = [
   { id: "rpclassic", name: "Retroid Pocket Classic", match: /Retroid.*Classic|\bRP ?Classic\b/i,
-    defaults: { "mg-font": "itim", "mg-ui": "hd", "mg-view": "normal" } },
+    defaults: { "mg-font": "itim", "mg-ui": "hd", "mg-view": "normal", "mg3d": JSON.stringify({ quality: "lite" }) } },   // (the 3D view: Lite, for its GPU)
   // any other handheld: one the app has reported a built-in controller on before (mg-builtinpad, noted below)
   { id: "handheld", name: "a games handheld", match: null, defaults: { "mg-font": "itim", "mg-ui": "hd" } },
 ];

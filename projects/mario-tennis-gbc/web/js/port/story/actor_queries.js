@@ -11,6 +11,7 @@
 // by the actor's animation speed (ACTORF_ANIM_SPEED, or ACTORF_ANIM_SPEED_MOVING while it walks). Its frame's
 // tiles (4, by its drawn facing) go to its VRAM slot when the frame or the facing changes.
 // Tests: web/tests/port/routines_story.mjs; lockstep on out/engine/rec2.mtrec and out/port/story1.mtrec.
+import { pathCollision } from "./campus_paths.js";
 import {
   FZ, FN, FH, FC, WRAM_ACTORS, BANK_ACTORS, BANK_STORY, wActors, ACTOR_SIZE, NUM_ACTORS, ACTORF_FLAGS,
   ACTORF_TARGET_X, ACTORF_TARGET_Y, ACTORF_X, ACTORF_Y, ACTORF_HEIGHT, ACTORF_JUMP_VEL, ACTORF_HEADING,
@@ -51,6 +52,9 @@ export function isPointBlocked(P, x, y) {
 // IsTerrainBlockedAtPoint (04:534B): a = $0F when the collision cell under (hl, de) is solid ($F), else 0 (a
 // kind of 0 is walkable; the ROM treats every kind but $F as walkable). Keeps de.
 export function isTerrainBlockedAtPoint(P, x, y) {
+  const onPath = pathCollision(P, x, y);                // (THE CAMPUS's paths, campus_paths.js: null with them off)
+  if (onPath === false) return { a: 0, f: FZ | FH };
+  if (onPath === true) return { a: 0x0F, f: FZ | FN };
   const kind = farcall(P, BANK_STORY, () => readCollisionMapCell(P, x >> 8, y >> 8)) & 0x0F;
   if (!kind) return { a: 0, f: FZ | FH };
   if (kind === 0x0F) return { a: kind, f: FZ | FN };

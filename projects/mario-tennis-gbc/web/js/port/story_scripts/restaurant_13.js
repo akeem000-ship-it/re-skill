@@ -109,6 +109,7 @@ function* crossOut(P, n, after) { if (P.quickCross) return; fadeOut(P, n); yield
 
 // RestaurantPlazaTile01_13 (13:42DE): the walk off up the left street; exit 1
 export function* restaurantPlazaTile01(P) {
+  if (P.quickCross && P.campusPaths) { requestExit(P, 0x01); return; }   // (THE CAMPUS's paths: on up the path, port/story/campus_paths.js)
   moveTarget(P, ACTOR_PARTNER, 7.0, 13.0);
   setSpeed(P, ACTOR_PLAYER, 0.5);
   moveAngle(P, ACTOR_PLAYER, FACE_UP, 1.0);
@@ -133,6 +134,7 @@ export function* restaurantPlazaTile02(P) {
 
 // RestaurantPlazaTile03_13 (13:4357): the walk off up the middle street; exit 3
 export function* restaurantPlazaTile03(P) {
+  if (P.quickCross && P.campusPaths) { requestExit(P, 0x03); return; }   // (THE CAMPUS's paths: on up the path, port/story/campus_paths.js)
   setSpeed(P, ACTOR_PARTNER, 2.0);
   moveTarget(P, ACTOR_PARTNER, 37.0, 13.0);
   setSpeed(P, ACTOR_PLAYER, 0.5);
@@ -146,6 +148,7 @@ export function* restaurantPlazaTile03(P) {
 
 // RestaurantPlazaTile05_13 (13:43A1): the walk off up the right street; exit 5 (doubles $0D)
 export function* restaurantPlazaTile05(P) {
+  if (P.quickCross && P.campusPaths) { requestExit(P, 0x05); if (testFlag(P, FLAG_DOUBLES)) requestExit(P, 0x0D); return; }   // (THE CAMPUS's paths)
   moveTarget(P, ACTOR_PARTNER, 55.0, 13.0);
   setSpeed(P, ACTOR_PLAYER, 0.5);
   setSpeed(P, ACTOR_PARTNER, 0.5);

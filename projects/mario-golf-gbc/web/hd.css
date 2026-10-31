@@ -28,7 +28,10 @@ body.touch.stick #stickzone { display: block; position: fixed; left: 0; bottom: 
 body.touch #hdgear { display: block; position: fixed; top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); z-index: 6;
   width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.3); background: rgba(20,28,20,0.55); color: #fff; font-size: 20px; line-height: 1; padding: 0; }
 /* the options as a panel over the game, opened by the gear (or the app's Back) */
-body.touch #modes, body.touch #hdopts { display: none; }
+body.touch #modes, body.touch #hdopts, body.touch #layers3d, body.touch #note { display: none; }   /* (the page's notes: not on a touch screen) */
+/* the 3D layers' options too only with the options open (a large touch screen, a foldable's inner one, left them under the game) */
+body.touch.showopts #layers3d { display: block; position: fixed; left: 50%; transform: translateX(-50%); z-index: 7; width: min(94vw, 560px);
+  top: calc(max(8px, env(safe-area-inset-top)) + 150px); max-height: calc(100vh - 170px); overflow: auto; }
 body.touch.showopts #modes, body.touch.showopts #hdopts { display: flex; position: fixed; left: 50%; transform: translateX(-50%); z-index: 7; width: min(94vw, 560px);
   flex-wrap: wrap; gap: 8px; justify-content: center; padding: 10px 12px; border-radius: 12px; background: rgba(16,22,16,0.92); color: #eef3ea; font-size: 14px; margin: 0; }
 body.touch.showopts #modes { top: calc(max(8px, env(safe-area-inset-top)) + 44px); }

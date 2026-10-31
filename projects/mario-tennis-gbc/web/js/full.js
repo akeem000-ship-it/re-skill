@@ -163,6 +163,12 @@ function resultsGate(inp) {
   if (resultsAt < 0) resultsAt = gb.frames;
   return { ...inp, b: false, a: inp.a && gb.frames - resultsAt >= 60 };
 }
+// THE CAMPUS's walkable paths (port/story/campus_paths.js): with the 3D view on (the campus laid out: voxel.js CAFE_*) and CROSSING
+// Instant; a change is a recorded event, so a replay walks the same
+function campusPaths() {
+  const want = !!(port.quickCross && view3d && voxel && voxel.cafeConcept && voxel.cafeConcept());
+  if (!!port.campusPaths !== want) { port.campusPaths = want; session.event("paths:" + (want ? "on" : "off")); }
+}
 let padL2 = false, padR2 = false;            // HANDHELD (handheld.js): a controller's L2 / R2 last frame
 function frame() {
   pollGamepad(keys);
@@ -170,7 +176,7 @@ function frame() {
   if (keys.PadL2 && !padL2 && view3d && voxel && voxel.mode === "3d") setPreset(PRESET_ORDER[(PRESET_ORDER.indexOf(preset) + 1) % PRESET_ORDER.length]);   // L2: the next court camera
   padL2 = !!keys.PadL2;
   const inp = modes.filterInput(resultsGate(frameInput())), mask = maskOf(inp); gb.setInput(inp); lastInp = inp;   // (MODES: the partner's commands kept from the game)
-  if (port) { setAnalog(); portFrame(); } else gb.runFrame();
+  if (port) { campusPaths(); setAnalog(); portFrame(); } else gb.runFrame();
   if (view3d && voxel && voxel.mode === "3d") voxel.tick();
   if (phone) phone.frame(gb);                // VIBRATE: hits and points
   if (replay) replay.afterFrame(gb, inp);   // INSTANT REPLAY: the buttons of the point (the port: the point's tape)
@@ -471,7 +477,7 @@ const perf = new PerfHud($("hud"), () => voxel);   // PERF (menu bar, OPTIONS > 
 $("reset").addEventListener("click", () => { if (port) { location.reload(); return; } if (gb) { settle(); gb.reset(); rec.event("reset"); } });
 // ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
 // a .mtrec file (Android: Downloads/MTenn3D and the share sheet; browser: a download). Hiding the app stops and saves.
-const recMeta = () => ({ learn: port && learn0 ? learn0 : undefined, view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? (port.physics.hz === 120 ? "120" : "enhanced") : undefined, net: port ? (port.evenNet ? "even" : "original") : undefined, cross: port ? (port.quickCross ? "instant" : "game") : undefined, tourlen: port ? port.tourLength : undefined, menu: port && port.menuWheel && port.menuWheel.on ? "wheel" : "game", plus: port ? (port.plus ? "on" : "off") : undefined, rules: port && port.rules ? port.rules : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
+const recMeta = () => ({ learn: port && learn0 ? learn0 : undefined, view: view3d ? (voxel && voxel.voxelSprites ? "vox" : "3d") : "2d", engine: portMode(), physics: port && port.physics ? (port.physics.hz === 120 ? "120" : "enhanced") : undefined, net: port ? (port.evenNet ? "even" : "original") : undefined, cross: port ? (port.quickCross ? "instant" : "game") : undefined, paths: port ? (port.campusPaths ? "on" : "off") : undefined, tourlen: port ? port.tourLength : undefined, menu: port && port.menuWheel && port.menuWheel.on ? "wheel" : "game", plus: port ? (port.plus ? "on" : "off") : undefined, rules: port && port.rules ? port.rules : undefined, font, ua: navigator.userAgent, look: creator.look || undefined,
   port: port ? q.get("port") || "all" : undefined });
 async function saveRecording(now = false) {     // now: the app is being hidden; skip compression so it finishes at once
   if (!recording()) return; settle();

@@ -9,6 +9,7 @@
 // (dialogue) or a script in the location's bank. An exit's arg6/arg7 are the destination location and entry
 // point; a tile trigger with arg6 = 1 acts only on an A press, not when walked onto.
 // Tests: web/tests/port/routines_story.mjs; lockstep on out/engine/rec2.mtrec and out/port/story1.mtrec.
+import { pathCrossing } from "./campus_paths.js";
 import {
   FZ, FN, FH, FC, WRAM_STAGING, WRAM_COURT_PLANES, WRAM_SCREEN, WRAM_SCENE, BANK_STORY, hook, hookGen,
   BlitBGRowFrom64, BlitBGColumnFrom64, addFlags, subFlags, call, pushWord, dropWords,
@@ -73,7 +74,9 @@ export function* runLocationExit(P, id) {
   pushAll(P, id);
   V.unusedStoryScriptId = id;
   if (findRecord(P, "mapExitTriggersPtr", id)) {
-    yield* call(P, 0x5637, runStoryScriptOrDialogue(P, 0, recordHandler(P), afterCopy(P)));
+    const loc = P.bus.u8(P.A.storyMapRecord + 6), entry = P.bus.u8(P.A.storyMapRecord + 7);   // (THE CAMPUS's paths: a path crossing has no
+    if (!pathCrossing(P, loc, entry))                                                          // walk-off: the next area at once)
+      yield* call(P, 0x5637, runStoryScriptOrDialogue(P, 0, recordHandler(P), afterCopy(P)));
     V.storyModeCurrentLocation = P.bus.u8(P.A.storyMapRecord + 6);
     V.storyModeEntryPoint = P.bus.u8(P.A.storyMapRecord + 7);
   }

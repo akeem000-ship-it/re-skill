@@ -13,6 +13,7 @@
 // While nothing is asked (wStoryModeTriggerScript..wStoryModeMenuRequest all 0, set by the player's controller)
 // the player walks; a request stops the player (its script set to ActorScript_0a) until it has been handled.
 // Tests: web/tests/port/routines_story.mjs; lockstep on out/engine/rec2.mtrec and out/port/story1.mtrec.
+import { PATH_CROSSINGS } from "./campus_paths.js";
 import {
   FZ, FN, FH, FC, WRAM_ACTORS, BANK_ACTORS, BANK_STORY, wActors, ACTORF_ANIM_SPEED, FLAG_ENDING_CREDITS_RUNNING,
   FLAG_HIDE_OVERWORLD_ACTORS, FLAG_DEBUG_SHOW_PLAYER_POS, FLAG_STORY_MENU_LOCKED, hook, hookGen, farcall,
@@ -147,10 +148,13 @@ export function* runStoryLocation(P) {
 // fade, the screen was never faded out).
 const QUICK_CROSSINGS = [[19, 7, 2, -118, -40], [20, 8, 4, 118, 40], [19, 15, 1, -408, 336], [30, 8, 6, 408, -336],
   [19, 9, 1], [19, 16, 1], [19, 11, 1], [19, 12, 1], [27, 8, 1], [23, 8, 3], [24, 8, 5]];
+// THE CAMPUS's walkable paths (P.campusPaths, campus_paths.js): the streets' gates too are where you are, the area's path's road end
+// (the areas' places: web/js/campus.js CAMPUS_AT)
 function quickCrossing(P) {
   if (!P.quickCross) return null;
   const old = P.bus.u8(0xC32E), V = P.V;                  // (wCurMapID: still the area being left)
-  return QUICK_CROSSINGS.find(([m, loc, e]) => m === old && loc === V.storyModeCurrentLocation && e === V.storyModeEntryPoint) || null;
+  const is = ([m, loc, e]) => m === old && loc === V.storyModeCurrentLocation && e === V.storyModeEntryPoint;
+  return (P.campusPaths && PATH_CROSSINGS.find(is)) || QUICK_CROSSINGS.find(is) || null;
 }
 // the player's position (actor 0, 1/256 tile) moved by the crossing's offset into the spawn position (1/256 tile = 1/32 px)
 function quickSpawn(P, q) {

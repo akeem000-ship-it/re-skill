@@ -15,6 +15,7 @@
 import { project } from "./camera.js";
 import { courtTilemaps, courtImage, courtIndexMap, COURTS } from "./assets.js";
 import { FIELD_OBJECTS } from "./field_objects.js";
+import { CAMPUS_PATHS } from "./campus.js";
 import { INDOOR_MAPS } from "./lighting.js";   // (water: outdoor maps only)
 import * as F3 from "./field3d.js";
 import { FS_SHIM, VS_GLASS, FS_GLASS, WindowShimmer } from "./shimmer.js";   // SHIMMER: window shimmer + glass walls
@@ -288,11 +289,10 @@ const CAFE_BLOCKS = [
   { x0: 200, y0: 32, x1: 260, y1: 80, fold: 47, back: -10, key: true, keyRect: [144, 32, 260, 80], pitch: { rise: 16, eave: 3, trim: [246, 62], tile: [222, 34, 234, 46] },
     plainSide: { wall: [246, 62], trim: [230, 40], line: [244, 46], leaf: [232, 84], leaf2: [250, 74] } },
   { x0: 144, y0: 32, x1: 209, y1: 80, fold: 64, back: -10, key: true, keyRect: [144, 32, 260, 80], gable: { ax: 176, ay: 32, ey: 64, roof: [222, 34, 234, 46] } }];
-const CAFE_BEHIND = [[23, -96, -360], [27, -470, -300], [24, -40, -720]];
+const CAFE_BEHIND = [];   // (the three areas are campus members now: field_objects campus.at, drawn as every campus map is)
 // and the paths from the road's gates up to each area's entrance (road map px): the dorm front's street (x 56), the senior courts' (x 296),
 // the practice courts' (x 440: up the gap between the senior and the junior courts, round behind the senior courts)
-const CAFE_PATHS = [[[56, 92], [56, -12], [-294, -12], [-294, -46]], [[296, 92], [296, -12], [248, -12], [248, -42]],
-  [[440, 92], [440, -412], [112, -412], [112, -466]], [[-150, 112], [-330, 112], [-330, -12], [-294, -12]]];
+const CAFE_PATHS = CAMPUS_PATHS.map(p => p.pts);   // (web/js/campus.js: the paths the game walks on: port/story/campus_paths.js)
 const CAFE_GATES = [56, 296, 440];                 // (the road's trees in the way of a path cleared: within 26 px of these, above row 100)
 // the empty ground filled: [kind, x0, z0, x1, z1] (road map px): the lake (the junior courts' pond grown north into a lake, a footbridge
 // over it), a grove left of the dorm front, a running track on the lawn west of the courtyard; trees: [x, z] copies of the road's tree

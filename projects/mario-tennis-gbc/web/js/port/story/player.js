@@ -10,6 +10,7 @@
 // the speed $20 ($40); a tile can end the walk on a step-on trigger or exit (CheckTileTriggerAtPoint). With the
 // pad released it stands, snapped to the pixel grid.
 // Tests: web/tests/port/routines_story.mjs; lockstep on out/engine/rec2.mtrec and out/port/story1.mtrec.
+import { campusArea, pathTrigger } from "./campus_paths.js";
 import {
   indexedHL,
   FZ, FN, FH, FC, WRAM_ACTORS, BANK_ACTORS, BANK_STORY, ACTORF_FLAGS, ACTORF_SPEED, ACTORF_TARGET_X, ACTORF_TARGET_Y,
@@ -76,6 +77,9 @@ export function offsetPointByPolarVector(P, x, y, angle, length) {
 export function checkTileTriggerAtPoint(P, xTile, yTile) {
   const cell = farcall(P, BANK_STORY, () => readBehaviorMapCell(P, xTile, yTile));
   const kind = cell & 0x0F, id = cell >> 4;
+  const path = pathTrigger(P, xTile, yTile, kind, id, BEHAVIOR_EXIT);   // (THE CAMPUS's paths: the road end, the area's own exit passed by)
+  if (path === "road") { P.V.storyModeExitTriggerRequest = campusArea(P).exit; return; }
+  if (path === "skip") return;
   if (kind === BEHAVIOR_TRIGGER) P.V.storyModeTriggerScript = id;
   else if (kind === BEHAVIOR_EXIT) P.V.storyModeExitTriggerRequest = id;
 }

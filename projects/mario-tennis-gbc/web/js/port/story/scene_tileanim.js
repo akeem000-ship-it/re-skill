@@ -9,6 +9,7 @@
 // ($FF: no animation). The UpdateSceneTileAnimations frame task counts the animations down and, when one runs
 // out, copies its next frame's tiles (through wSceneTileAnimBuffer) to VRAM.
 // Tests: web/tests/port/routines_story.mjs; lockstep on out/engine/rec2.mtrec and out/port/story1.mtrec.
+import { campusArea, CAMERA_REACH } from "./campus_paths.js";
 import {
   FZ, FN, FH, FC, WRAM_STAGING, WRAM_COURT_PLANES, WRAM_ACTORS, WRAM_TEXT, BANK_STORY, wActors, ACTORF_X,
   FLAG_VRAM_UPDATE_BUSY, FLAG_DEBUG_FREEZE_TILE_ANIM, hook, testFlag, withWramBank, decFlags, bitFlags,
@@ -38,8 +39,9 @@ const wSceneTileAnimBuffer = 0xD900, wSceneTileAnimBufferPtr = 0xDB10, wSceneTil
 export function updateCameraFromPlayer(P) {
   const { bus, V } = P;
   P.wramBank(WRAM_ACTORS);
-  const x = clamp((bus.u16(wActors + ACTORF_X) + PLAYER_CAMERA_X) & 0xFFFF, V.mapScrollMinX, V.mapWidthTiles - SCREEN_WIDTH_TILES);
-  const cy = clampF((bus.u16(wActors + ACTORF_X + 2) + PLAYER_CAMERA_Y) & 0xFFFF, V.mapScrollMinY, V.mapHeightTiles - SCREEN_HEIGHT_TILES);
+  const reach = campusArea(P) ? CAMERA_REACH : 0;     // (THE CAMPUS's paths: the camera follows you out along the path)
+  const x = clamp((bus.u16(wActors + ACTORF_X) + PLAYER_CAMERA_X) & 0xFFFF, V.mapScrollMinX, V.mapWidthTiles - SCREEN_WIDTH_TILES + reach);
+  const cy = clampF((bus.u16(wActors + ACTORF_X + 2) + PLAYER_CAMERA_Y) & 0xFFFF, V.mapScrollMinY, V.mapHeightTiles - SCREEN_HEIGHT_TILES + reach);
   const y = cy.v;
   V.cameraX = x; V.cameraY = y;
   return { a: y >> 8, f: cy.f, bc: x, de: y, hl: P.A.cameraY + 1 };

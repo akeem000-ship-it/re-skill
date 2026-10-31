@@ -9,6 +9,7 @@
 // frame, or a != 0 to run the next opcode now. Several handlers address the actor's fields by adding the field
 // offset to hActorPtr's low byte alone (the records are $40-aligned, so it never carries).
 // Tests: web/tests/port/routines_story.mjs; lockstep on out/engine/rec2.mtrec and out/port/story1.mtrec.
+import { campusArea, CAMERA_REACH } from "./campus_paths.js";
 import {
   FZ, FN, FH, FC, WRAM_ACTORS, BANK_ACTORS, ACTORF_FLAGS, ACTORF_WAIT, ACTORF_SPEED, ACTORF_TARGET_X, ACTORF_TARGET_Y,
   ACTORF_X, ACTORF_Y, ACTORF_HEADING, ACTORF_LEADER, ACTORF_MODE, ACTORF_STATUS, ACTORFLAG_PATH, ACTORFLAG_MOVING,
@@ -46,8 +47,9 @@ export function updateCameraIfActorIsCameraTarget(P, actor) {
 export function updateCameraToActor(P, actor) {
   const { V } = P;
   P.wramBank(WRAM_ACTORS);
-  V.cameraX = clampCamera(a16(P, actor, ACTORF_X) + CAMERA_X_OFFSET, V.mapScrollMinX, V.mapWidthTiles - SCREEN_WIDTH_TILES);
-  V.cameraY = clampCamera(a16(P, actor, ACTORF_Y) + CAMERA_Y_OFFSET, V.mapScrollMinY, V.mapHeightTiles - SCREEN_HEIGHT_TILES);
+  const reach = campusArea(P) ? CAMERA_REACH : 0;     // (THE CAMPUS's paths, campus_paths.js)
+  V.cameraX = clampCamera(a16(P, actor, ACTORF_X) + CAMERA_X_OFFSET, V.mapScrollMinX, V.mapWidthTiles - SCREEN_WIDTH_TILES + reach);
+  V.cameraY = clampCamera(a16(P, actor, ACTORF_Y) + CAMERA_Y_OFFSET, V.mapScrollMinY, V.mapHeightTiles - SCREEN_HEIGHT_TILES + reach);
 }
 // below min (by the sign of tile - min): min; at or past max: max; then the fraction cut to pixels
 function clampCamera(pos, min, max) {
