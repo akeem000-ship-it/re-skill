@@ -386,6 +386,10 @@ Wide 16:9); `?font=itim&ui=hd&view=wide` in the URL. They only read the game's m
   the camera's scroll ($C320-$C323), the columns beside the screen are drawn from the map (within $C329-$C32C),
   the game's frame untouched between them.
 - Touch: an upright phone gets the game on top and a deck below (the hole's map as its art, golf-ball A / B); a
+  games handheld's built-in controller hides the touch pad (`window.__device` from the Android app).
+`web/tests/play_hd.mjs` takes the screenshots (out/hd) and, with `--same`, runs a scripted session (menus, pause
+menu, scorecard, shots) with the options off and on (also on a phone held upright and sideways) and compares a hash
+of the whole game state (RAM, VRAM, OAM, palettes, LCD registers, save RAM) at every frame: equal.
 
 #### The front end (web/js/golf: boot.js, title.js, menu09.js, charsel.js, select.js, modesel.js)
 
