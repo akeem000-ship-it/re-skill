@@ -145,6 +145,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the link round's shot exchange of bank 02 (fuzzed with stubbed frames) | 235,167 | 96.91% |
 | + CpuPlanShot 11:4046 and ReflectScaleUnused 10:77CC (fuzzed), copies found by tools/find_copies.py and checked with compare_routines.py (40:5941 03:4028 0D:499A 05:682D 35:45D2 33:4C59 4A:6CA2 40:61AA 41:76DF 41:7745 08:4F82 33:7CC3 34:7DE4 31:7D98 30:7E1A) | 236,440 | 97.43% |
 | + the clubhouse doors 2, 3, 5 in and out, the clinic's judgement and every comment class (the class poked), the map graphics browser and the bank-41 summary card (patched cases) | 237,800 | 97.99% |
+| + ReplaySavedHole 10:435E (the shot records' replay of a saved hole; SetupPlayerGolfer $81; `boot_status_replay`: a saved hole made from the hole's tee and cup, poked) | 237,983 | 98.07% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -557,7 +558,8 @@ $01, bank 35, also calls some of them). Reached in play: a character (0B:4F51 th
 with b = 1, its block and play clock loaded, SetupPlayerGolfer $80; ModeSubmenuA 0B:4ECA: 07:63EC's four items:
 Char. Data 41:6506 a = b = 1, the stats 0C:4A15 with wStatsSource $D23B = 1, the VS results 0C:65B2, Stars 0A:6F56;
 B: the character select again) and the shot records 0C:67F8 (A on a saved hole returns $FE and the loop replays it:
-ReplaySavedHole 10:435E, not ported).
+ReplaySavedHole 10:435E, round.js: the record's golfer as player 0 with control 2, its stroke records driving the
+aim menu (10:5973), each stroke ShotSetup to PostShot; then 0B:4E0C's fade out and the shot records again).
 The records queries of bank 0B (records.js, exports $28-$42) read the block at WRAM6 $DC00 ($32 bytes a course record;
 RecordsSelect 0B:4FE5 sets wRecordPtr $D224): RecordsGridBit 0B:5009 (the stars: the word at $DD5F + b, its six
 bits), RecordsFirstBit 0B:506E (the pages: the lowest set bit of $DD5E), CountFlags112To114 0B:50B6 (the clubs won),

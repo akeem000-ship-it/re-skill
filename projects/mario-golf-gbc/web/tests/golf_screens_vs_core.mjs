@@ -21,6 +21,8 @@ import { powerOn } from "../js/golf/boot.js";
 import { playRoundFrames } from "../js/golf/game.js";
 import { gameFromPowerOn } from "../js/golf/boot.js";
 import { GolfMemory } from "../js/golf/memory.js";
+import { holeIdFromCourse, loadHoleInfo } from "../js/golf/round.js";
+import { angleFromVector16 } from "../js/golf/math.js";
 import { saveBlockStore, saveBlockLoad } from "../js/golf/save.js";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
@@ -513,6 +515,40 @@ function shotsPoke(seed, used) {
       for (let k = 0; k < 5; k++) {
         data[k * 0x80 + 0x10] %= 0x0B;
         if (!(used[b - 4] >> k & 1)) data[k * 0x80 + 0x20] = 0; else data[k * 0x80 + 0x20] |= 1;
+      }
+      t.wram[6].set(data, 0);
+      saveBlockStore(t, b, 0xD000, 0);
+    }
+    w.sram.set(t.sram);
+    core.gb.mem.sram.set(t.sram, 0);
+  };
+}
+
+// a saved hole to replay (the shot records' A: 10:435E): save block 4's record 0 (the rest of blocks 4-7 empty):
+// the player's record (the saved character's name and golfer), course 1 hole 1, no wind, `strokes` stroke records
+// made from the hole (13:55F6's tee and cup): a driver at the cup from the tee, then putts at it from a little
+// below the cup
+function replayPoke(strokes) {
+  return (f, w, core) => {
+    if (f !== 1) return;
+    const t = new GolfMemory();
+    t.sram.set(w.sram);
+    t.wram[0][0x836] = 1; t.wram[0][0x837] = 1;
+    holeIdFromCourse(t); loadHoleInfo(t);
+    const r6 = t.wram[6], w16 = (a, o) => r6[o] | r6[o + 1] << 8;
+    const tee = [w16(0, 0x439), w16(0, 0x43B)], cup = [w16(0, 0x43D), w16(0, 0x43F)];
+    t.high[0x196] = 6;
+    for (let b = 4; b < 8; b++) {
+      const data = new Uint8Array(0x280);
+      if (b === 4) {
+        data.set([...w.wram[0].subarray(0x800, 0x820)], 0);
+        data[0x10] = 8;                          // (Mario)
+        data[0x20] = 1; data[0x21] = 1; data[0x25] = strokes;
+        for (let k = 0; k < strokes; k++) {
+          const [x, y] = k ? [cup[0], (cup[1] + 0x0300) & 0xFFFF] : tee;
+          const aim = angleFromVector16((cup[1] - y) & 0xFFFF, (cup[0] - x) & 0xFFFF);
+          data.set([0, x & 0xFF, x >> 8, 0, y & 0xFF, y >> 8, aim & 0xFF, aim >> 8, k ? 0x0D : 0x00, 0, k ? 0x20 : 0x3C, 0, 0], 0x40 + k * 16);
+        }
       }
       t.wram[6].set(data, 0);
       saveBlockStore(t, b, 0xD000, 0);
@@ -1574,6 +1610,13 @@ const CASES = [
       [null, 0x80], [null, 0x80], [null, 0x10], [null, 0x10], [null, 0x10], [null, 0x40], [null, 0x40], [null, 0x40],
       [null, 0x20], [null, 0x20], [null, 0x80], [null, 0x20], [null, 2],
       [menu07Items(2), 2], [menu09Items(4), 0]]) },
+  // a saved hole (replayPoke) replayed: Status, the shot records, A on it: ReplaySavedHole 10:435E (two strokes),
+  // then the shot records again, B
+  { name: "boot_status_replay", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 30000,
+    hook: replayPoke(2),
+    run: sh => { stepsDone = -1; return gameCase(sh, 1, () => stepsDone >= 0 && frameNow > stepsDone + 200); },
+    policy: stepPolicy([...TO_STATUS, [menu07Items(2), 0x80], [null, 1], [inTask(0x0C, 0x698F), 1, 60],
+      [inTask(0x0C, 0x698F), 2, 60], [menu07Items(2), 2], [menu09Items(4), 0]]) },
   // the records (a records block poked) item `item` of the five-item menu, then `keys` there, B out
   ...[["ranking", 3, 0x4821, 11], ["winners", 2, 0x61A8, 12], ["bestscore", 1, 0x705D, 13], ["recstats", 0, 0x4C63, 14]].map(([n, item, task, seed]) => ({
     name: `boot_status_${n}`, state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 30000, hook: recordsPoke(seed),

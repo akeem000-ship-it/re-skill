@@ -16,6 +16,9 @@ import { printHexByte } from "./match.js";
 import * as St from "./start.js";
 import * as R0C from "./records0c.js";
 import { decompressDataFromBank } from "./mapgfx.js";
+import { replaySavedHole } from "./round.js";
+import { clearFrameTasks } from "./tasks.js";
+import { initFontScreen } from "./pictures.js";
 
 const rd = D.rd, wr = D.wr;
 const setW = (w, n) => D.setWramBank(w, n);
@@ -310,9 +313,16 @@ export function* modeSelectMenuLoop(sh) {
       wr(w, 0xCA7F, 0);                          // wLastShotRecord
       for (;;) {
         yield* sh.advance();
-        const [r] = yield* inBankGen(w, 0x0C, R0C.shotRecordsScreen(sh));
+        const [r, b, c] = yield* inBankGen(w, 0x0C, R0C.shotRecordsScreen(sh));
         if (r !== 0xFE) break;
-        notPorted("replaying a saved hole (~10:435E ReplaySavedHole)");
+        yield* inBankGen(w, 0x10, replaySavedHole(sh, b, c));   // 0B:4E09 -> 10:435E
+        Scr.forceFadeOut(w, 0x10);               // 0B:4E0C: the fade out, sound 1, no tasks or sprites, WY $90, the
+        yield* Scr.waitFade(sh);                 // font screen (01:41E8); the shot records again
+        sh.sound(0x01);
+        clearFrameTasks(w);
+        D.resetSprites(w);
+        if (w.vram) w.lcd.wy = 0x90;
+        initFontScreen(w);
       }
     } else if (a === 2) {
       const e = yield* loadRecordsOrError(sh);

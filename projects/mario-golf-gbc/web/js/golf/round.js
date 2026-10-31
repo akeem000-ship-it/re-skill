@@ -21,6 +21,7 @@ import { showScorecard } from "./scorecard.js";
 import { showCaptionAndWait } from "./captions.js";
 import * as M from "./match.js";
 import { roundResultScreen } from "./result.js";
+import * as St from "./start.js";
 import * as Sv from "./save.js";
 import { awardExpPoints } from "./exp.js";
 import * as T from "./tournament.js";
@@ -581,4 +582,51 @@ function addPointsRaw(w, de) {                   // 02:5415 AddPointsRaw: $C83C 
   const w0 = w.wram[0];
   const f = rb(0x02, 0x543E + (w0[0x836] & 0x0F));
   wr16(w0, 0x83C, (rd16(w0, 0x83C) + (g.mulHLByA(de, f) >> 1)) & 0xFFFF);
+}
+
+// 10:435E ReplaySavedHole (0B:4E09, the shot records' A): GolfSessionInit 10:4B28, wGameMode 8; WRAM1: save block b +
+// 4 to $D000 (02:4355; not loaded: back at once); its record c ($80 bytes at $D000 + c x $80) to $C600; WRAM6; player
+// 0 the record's golfer ($81: replayed), no player 2; the course, hole, wind speed / angle / direction from $C620; the
+// stroke count $C625; its stroke records $C640 -> $D680; mode 8, wReplayActive 1; the round's music (08:5062),
+// 10:405C, the camera mode 1, 10:4246, 13:55F6, 10:405C, the balls at the tee (10:40AC), the scene (10:4226); then for
+// each stroke player 1 (10:46D9), the view (10:5632), the shot (ShotSetup 10:4798 to its outcome and PostShot), the
+// length task stopped (12:4F1D); 4A:629C, a frame, wReplayActive 0
+export function* replaySavedHole(sh, b, c) {
+  const w = sh.w, w0 = w.wram[0], r6 = w.wram[6];
+  St.golfSessionInit(w);
+  w0[0x834] = 8;
+  Dp.setWramBank(w, 1);
+  if (Sv.saveBlockLoad(w, (b + 4) & 0xFF, 0xD000)) return;
+  for (let k = 0; k < 0x80; k++) w0[0x600 + k] = w.wram[1][(c * 0x80 + k) & 0xFFF];
+  Dp.setWramBank(w, 6);
+  St.setupPlayerGolfer(w, 0x81, 0x00);
+  St.setupPlayerGolfer(w, 0xFF, 0x01);
+  w0[0x836] = w0[0x620]; w0[0x837] = w0[0x621];
+  w0[0x815] = w0[0x622]; w0[0x816] = w0[0x623]; w0[0x838] = w0[0x624];
+  let n = w0[0x625];
+  r6.set(w0.subarray(0x640, 0x680), 0x680);
+  w0[0x834] = 8;
+  w0[0x96D] = 1;
+  playRoundMusic(sh);
+  resetPlayersForHole(w);
+  Dp.setWramBank(w, 6);
+  r6[0x438] = 1;
+  holeIdFromCourse(w);
+  loadHoleInfo(w);
+  resetPlayersForHole(w);
+  placeBallsAtTee(w);
+  sh.hole = new Hole(r6[0x320]);
+  yield* H.golfSceneStart(sh);
+  do {
+    selectPlayer(w, 0);
+    yield* shotViewUpdate(sh);
+    yield* H.shotSetup(sh);
+    if (sh.menuOutcome === undefined) yield* H.postShot(sh, yield* H.addressLoop(sh));
+    sh.menuOutcome = undefined;
+    D.shotLengthTaskStop(w);
+    n = (n - 1) & 0xFF;
+  } while (n);
+  P.pictureCycleStop(w);
+  yield* sh.advance();
+  w0[0x96D] = 0;
 }

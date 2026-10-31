@@ -102,11 +102,19 @@ export function newGame(w) {                     // 02:4E3D NewGame
 }
 
 // 02:4A28 SetupPlayerGolfer: b = golfer for player c ($FF none / $80 own character / else preset 02:4B1D[b & $F]);
-// the link partner ($82) and $C600 ($81) golfers are not ported
+// the link partner ($82) is not ported; $81: the golfer of a saved hole's record at $C600 (+$13 = 2: its strokes
+// replayed)
 export function setupPlayerGolfer(w, b, c) {
   const r = w.wram[0], p = player(c);
   if (b === 0xFF) { r.fill(0, p, p + 0x40); r[p + 0x10] = 0xFF; return; }
-  if (b === 0x81 || b === 0x82) throw new Error("SetupPlayerGolfer $81 / $82 is not ported");
+  if (b === 0x82) throw new Error("SetupPlayerGolfer $82 (the link partner) is not ported");
+  if (b === 0x81) {                              // 02:4A8C: the record at $C600 (a saved hole's), field $13 = 2
+    r.fill(0, p, p + 0x40);
+    r[p + 0x28] = r[0x825];
+    r.copyWithin(p, 0x600, 0x620);
+    r[p + 0x13] = 2;
+    return;
+  }
   if (b === 0x80) {
     if (r[0x2A5] === 0x0F) { r[p + 0x28] = 6; return; }   // no save slot: the record stays
     r.fill(0, p, p + 0x40);
