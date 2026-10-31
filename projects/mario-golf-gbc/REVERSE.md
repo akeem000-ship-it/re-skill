@@ -368,6 +368,25 @@ them on, the state hash after every frame equals the run with them off. The repl
 on a copy of the memory taken in its launch frame (`$D438` = `$11`, `$D4D3` = 0, the ball not moved) and matches the game's path
 and outcome frame for frame. Details: docs/g3d.md.
 
+The page's picture options (`web/js/hd`, adapted from the Mario Tennis project's HD code; all off = the picture as
+before): **Text** (the game's font, or Itim / Kode Mono drawn at 4x), **Menus** (Game / HD) and **View** (10:9 /
+Wide 16:9); `?font=itim&ui=hd&view=wide` in the URL. They only read the game's memory:
+- HD text follows the native printer: DrawGlyph 03:4B45 tells a tracker each glyph it draws into the glyph buffer
+  (`setGlyphHook` in text.js, before and after); a glyph tile's 16 bytes are remembered with the glyphs and columns
+  they hold, so a visible cell whose tile shows exactly those bytes holds that text, wherever the game copied it (a
+  closed window, a scrolled row or a tile not yet uploaded shows other bytes and no text). The fixed font
+  (FontTiles 01:42A0, tile = ASCII) is read by content. The HUD's labels and digits come the same way from
+  RenderGlyphToTiles 00:2962 (`setHudGlyphHook` in render/text.js; bank 12's label glyphs named in hudtext.js).
+- HD menus: the panel and cursor art of Tennis (found by tile shape), the HUD as outlined text, the scorecard's
+  own font (tile number = character while the bank 0E card tasks run), and the picture and sprites smoothed
+  (Scale2x twice) under the art.
+- Wide: the course / green views and the overworld keep the whole 64 x 64 map in WRAM3 (tiles) / WRAM2
+  (attributes) and copy 22 x 20 tiles round the camera to the BG map; while MapScrollTask 04:4072 (or the
+  overworld's 0B:4784) runs and the visible BG cells (all of the edge columns, most of the rest) equal the map at
+  the camera's scroll ($C320-$C323), the columns beside the screen are drawn from the map (within $C329-$C32C),
+  the game's frame untouched between them.
+- Touch: an upright phone gets the game on top and a deck below (the hole's map as its art, golf-ball A / B); a
+
 #### The front end (web/js/golf: boot.js, title.js, menu09.js, charsel.js, select.js, modesel.js)
 
 Power-on: Start 00:2DA0 sets hIsCGB; SoftReset 00:2DAA clears WRAM0 ($C000-$CFEF) and HRAM $FF80-$FFEF, copies

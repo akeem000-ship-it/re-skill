@@ -3,9 +3,9 @@
 // the 22 x 20 tiles round the camera into the BG map; the tiles' pictures are all in VRAM. So the columns left and right of the screen
 // are drawn here from the map in WRAM at the camera's scroll (wMapScrollX / Y $C320-$C323, as MapScrollTask 04:4072 turns them into
 // SCX / SCY), within the map's bounds ($C329-$C32C, as the aim marker uses them), with the tiles in VRAM and the frame's palettes.
-// The picture between them is the game's own frame, untouched. It is only done when the screen shows that map: every visible BG
-// cell of the screen must hold the map's tile and attribute at that place (a menu, a picture, a caption over the BG, a view being
-// redrawn: no wide sides, the plain picture). The game changes no LCD register in mid-frame, so one scroll holds for every line.
+// The picture between them is the game's own frame, untouched. It is only done when the screen shows that map: the visible BG cells
+// of the screen's left and right tile columns must hold the map's tile and attribute at that place, and most of the others (a menu over
+// the middle of the map is fine; a picture or a view being redrawn: no wide sides). The game changes no LCD register in mid-frame.
 // Sprites stay inside the 160 columns, as on the console (the game hides sprites by moving them off screen). Reads only.
 export const WIDE_H = 144;
 const col = (pal, p, i) => { const o = p * 8 + i * 2, c = pal[o] | (pal[o + 1] << 8); return 0xFF000000 | ((c >> 10 & 31) << 19) | ((c >> 5 & 31) << 11) | ((c & 31) << 3); };
@@ -32,12 +32,16 @@ export function mapPlace(w) {
   const winTop = (l.lcdc & 0x20) && l.wx <= 7 ? Math.max(0, l.wy) : 144;      // (a window from the left edge: the rows below it are the window's)
   if (winTop < 16) return null;
   const map = l.lcdc & 0x08 ? 0x1C00 : 0x1800;
+  // the screen's left and right tile columns (the ones the sides continue) must be the map's, and most of the rest (a menu or a
+  // message box drawn over the middle of the map leaves the sides as they are)
   let n = 0, ok = 0;
-  for (let ty = y0 >> 3; ty <= (y0 + winTop - 1) >> 3; ty++) for (let tx = x0 >> 3; tx <= (x0 + 159) >> 3; tx++) {
-    const mi = ((ty & 63) << 6) | (tx & 63), bi = map + ((ty & 31) << 5) + (tx & 31);
-    n++; if (v0[bi] === t3[mi] && v1[bi] === t2[mi]) ok++;
+  const tx0 = x0 >> 3, tx1 = (x0 + 159) >> 3;
+  for (let ty = y0 >> 3; ty <= (y0 + winTop - 1) >> 3; ty++) for (let tx = tx0; tx <= tx1; tx++) {
+    const mi = ((ty & 63) << 6) | (tx & 63), bi = map + ((ty & 31) << 5) + (tx & 31), same = v0[bi] === t3[mi] && v1[bi] === t2[mi];
+    if (!same && (tx === tx0 || tx === tx1)) return null;
+    n++; if (same) ok++;
   }
-  if (ok < n) return null;                                                      // the screen is not (all) the map
+  if (ok < n * 0.6) return null;                                                // the screen is not the map
   return { x0, y0, bounds, winTop };
 }
 

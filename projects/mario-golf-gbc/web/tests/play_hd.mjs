@@ -137,7 +137,7 @@ if (same) {
   ];
   const STORY_STOPS = [["story_map", g => g.w.wram[0][0x450] && g.frames > 1700], ["story_walk", g => g.w.wram[0][0x450] && g.frames > 2150], ["story_talk", g => g.w.wram[0][0x450] && g.frames > 2400], ["story_talk2", g => g.w.wram[0][0x450] && g.frames > 2700], ["story_more", g => g.w.wram[0][0x450] && g.frames > 3300]];
   for (const [name, q] of Object.entries(OPTS).filter(([n]) => !only || only.includes(n))) {
-    const { page, errors } = await openPage(q, ...(PHONE[name] || []));
+    const { page, errors } = await openPage(q, ...(PHONE[name] || [])), seen = {};
     await page.evaluate(() => {                    // (mark times for the stops)
       const g = window.__golf; let m = "";
       const prev = g.onFrame; g.onFrame = () => { if (prev) prev(); if (g.mark !== m) { m = g.mark; if (m === "aimmenu") { g.__aimAt = g.frames; g.__aims = (g.__aims || 0) + 1; } if (m === "address") g.__addrAt = g.frames; } };
@@ -148,7 +148,15 @@ if (same) {
       } catch (e) { errors.push(`${stop}: not reached`); continue; }
       if (PHONE[name]) await page.screenshot({ path: path.join(outDir, `${stop}_${name}.png`) });
       else await page.locator("#screen").screenshot({ path: path.join(outDir, `${stop}_${name}.png`) });
+      // the HD text on screen at the stop: what the overlay draws must be what the screen shows (a closed window leaves no text)
+      const lines = await page.evaluate(() => window.__hd.view.hd && window.__hd.view.hd.textOn ? window.__hd.view.hd.lines.map(l => l.text) : null);
+      if (lines) {
+        seen[stop] = lines;
+        if (stop === "pause" && !(lines.includes("Camera Mode") && lines.includes("Scorecard"))) errors.push(`pause: the menu not read: ${JSON.stringify(lines)}`);
+        if ((stop === "scorecard" || stop === "aim2" || stop === "address") && lines.some(l => /Camera Mode|Course Map|Give Up/.test(l))) errors.push(`${stop}: the closed pause menu still read: ${JSON.stringify(lines)}`);
+      }
     }
+    if (Object.keys(seen).length) fs.writeFileSync(path.join(outDir, `lines_${name}.json`), JSON.stringify(seen, null, 1));
     const r = await page.evaluate(() => ({ frames: window.__golf.frames, error: window.__golf.error, lines: window.__hd.view.hd ? window.__hd.view.hd.lines.map(l => l.text) : [] }));
     console.log(`${name}: ${r.frames} frames, error ${r.error}, last text lines ${JSON.stringify(r.lines.slice(0, 6))}, errors ${JSON.stringify(errors.slice(0, 4))}`);
     if (errors.length || r.error) ok = false;
