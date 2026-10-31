@@ -214,6 +214,27 @@ CASES.push({ name: "SerialStoreNibble", bank: 0, addr: 0x30C9, init: serialState
   js: (w, r) => { SER.serialStoreNibble(w, r.a); return {}; } });
 CASES.push({ name: "SerialWaitSendDone", bank: 0, addr: 0x30EB, init: w => { serialState(w); w.high[0x1C4] = 0; }, io: true,
   js: w => { const x = SER.serialWaitSendDone({ w, advance: function* () { yield; } }).next(); if (!x.done) throw new Error("it runs frames"); return {}; } });
+// the link round's shot exchange (02:47BE-02:4993) with its frames stubbed and a script of received bytes
+const runGen = g => { let r; while (!(r = g.next()).done); return r.value; };
+// (random bytes, then a $1x, $20 or $21 and more, then $2F for good: the waits end; a $2E early gives up)
+const recvScript = () => {
+  const out = [], any = () => [0x10 + rnd(16), 0x20, 0x21, 0x2E, rnd(256)][rnd(rnd(8) ? 5 : 4) === 3 && rnd(3) ? 4 : rnd(5)];
+  for (let n = rnd(5); n; n--) out.push(any());
+  out.push([0x10 + rnd(16), 0x20, 0x21][rnd(3)], 0x10 + rnd(16), 0x21);
+  for (let n = rnd(5); n; n--) out.push(any());
+  out.push(0x2F);
+  return out;
+};
+CASES.push({ name: "JoyPressedIndex", bank: 0x02, addr: 0x47BE, init: w => { w.high[0x194] = rnd(4) ? 1 << rnd(8) | (rnd(2) ? rnd(256) : 0) : 0; }, script: () => [0],
+  out: ["a"], js: w => ({ a: SER.joyPressedIndex(w.sh) }) });
+CASES.push({ name: "LinkPartnerCallTick", bank: 0x02, addr: 0x4812, init: w => { w.wram[0][0x33F] = rnd(3) ? rnd(3) : 0; w.high[0x1C0] = rnd(2) ? 0x10 + rnd(16) : rnd(256); },
+  script: () => [0], js: w => { SER.linkPartnerCallTick(w.sh); return {}; } });
+CASES.push({ name: "LinkReceiveShot", bank: 0x02, addr: 0x483A, init: w => { w.high[0x194] = rnd(2) ? 1 << rnd(8) : 0; },
+  script: recvScript, js: w => { runGen(SER.linkReceiveShot(w.sh)); return {}; } });
+for (const [name, addr, b] of [["LinkSendShot", 0x48B8, false], ["LinkSendShotResult", 0x4924, true]]) {
+  CASES.push({ name, bank: 0x02, addr, init: w => { serialState(w); w.high[0x1C4] = 0; if (rnd(4)) w.high[0x1C2] = 0; w.wram[0][0x835] = rnd(2); if (rnd(4)) w.wram[0][0x880 + (w.wram[0][0x835] ? 0 : 0x40) + 0x13] = 3; },
+    io: true, regs: () => ({ a: rnd(256) }), script: recvScript, js: (w, r) => { runGen(SER.linkSendShot(w.sh, b ? r.a : null)); return {}; } });
+}
 CASES.push({ name: "SerialSendBlock", bank: 0, addr: 0x3081, init: w => { serialState(w); w.high[0x1C4] = 0; }, io: true,
   regs: () => ({ a: rnd(0x40) }), out: ["a"], js: (w, r) => { const g = SER.serialSendBlock({ w, advance: function* () { yield; } }, r.a); const x = g.next(); if (!x.done) throw new Error("it runs frames"); return { a: x.value }; } });
 for (const c of U.FUZZ || []) CASES.push(c(rnd));
@@ -224,6 +245,7 @@ for (const c of CASES) {
   if (filter && !c.name.includes(filter)) continue;
   let ok = 0, first = null, skipped = 0, hangs = 0;
   for (let i = 0; i < N; i++) {
+    if (process.env.FUZZ_LOG && c.name === process.env.FUZZ_LOG) console.error("ITER", i, seed);
     const w = new GolfMemory();
     for (let b = 0; b < 8; b++) for (let k = 0; k < 0x1000; k++) w.wram[b][k] = rnd(256);
     for (let k = 0x180; k < 0x1FF; k++) w.high[k] = rnd(256);
@@ -239,7 +261,25 @@ for (const c of CASES) {
     // compared: the sound driver's RAM is not modelled there; counted apart)
     let sound = false;
     const step = gb.cpu.step.bind(gb.cpu);
-    gb.cpu.step = () => { if (gb.cpu.pc === 0x2BBB) sound = true; return step(); };
+    // (c.script: the routine's frames stubbed: AdvanceFrame 00:2E3B returns at once with hSerialRecv set to the
+    // script's next byte (its last one after the end), on both sides; PlaySoundManaged 00:2C19 returns at once with
+    // its sound id recorded, compared as "sounds")
+    const script = c.script ? c.script(w) : null, coreSounds = [];
+    let kc = 0;
+    const ret = () => { const cpu = gb.cpu, m = gb.mem; cpu.pc = m.read(cpu.sp) | m.read((cpu.sp + 1) & 0xFFFF) << 8; cpu.sp = (cpu.sp + 2) & 0xFFFF; return 16; };
+    gb.cpu.step = () => {
+      if (script && gb.cpu.pc === 0x2E3B) { gb.mem.hram[0x40] = script[Math.min(kc++, script.length - 1)]; return ret(); }
+      if (script && gb.cpu.pc === 0x2C19) { coreSounds.push(gb.cpu.a); return ret(); }
+      if (gb.cpu.pc === 0x2BBB) sound = true;
+      return step();
+    };
+    if (script) {
+      let kj = 0;
+      w.jsSounds = [];
+      w.sh = { w, sound: id => w.jsSounds.push(id), advance: function* () {
+        if (kj > 2000) throw new Error("frames run out");
+        w.high[0x1C0] = script[Math.min(kj++, script.length - 1)]; } };
+    }
     try { got = romCall(gb, c.bank, c.addr, regs, 300000); } catch (e) { got = null; }
     gb.cpu.step = step;
     if (sound) { skipped++; continue; }
@@ -248,6 +288,7 @@ for (const c of CASES) {
     try { want = c.js(w, regs) || {}; } catch (e) { if (!first) first = `js: ${e.message} (${JSON.stringify(regs)})`; continue; }
     const diffs = [];
     for (const k of c.out || []) if (want[k] !== got[k]) diffs.push(`${k} rom ${hx(got[k])} js ${hx(want[k])}`);
+    if (script && coreSounds.join() !== w.jsSounds.join()) diffs.push(`sounds rom ${coreSounds.join()} js ${w.jsSounds.join()}`);
     for (let b = 0; b < 8 && diffs.length < 4; b++) {
       const m = gb.mem.wram[b];
       for (let k = 0; k < 0x1000; k++) {

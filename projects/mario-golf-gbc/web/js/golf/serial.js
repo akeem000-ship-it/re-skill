@@ -185,3 +185,76 @@ function* inBank08(w, g) {
   w.high[0x195] = 0x08;
   try { return yield* g; } finally { w.high[0x195] = old; }
 }
+
+// ---- the link round's shot exchange (bank 02; the native engine is one machine: these run with no partner only in
+// the routine tests) ----
+// 02:47BE JoyPressedIndex: 1-8 for the first newly pressed of A, B, Start, Select, Up, Down, Left, Right (hJoyPressed),
+// else 0; it has no ret and runs on into 02:47ED (the sound of that index); returns the index
+export function joyPressedIndex(sh) {
+  const p = sh.w.high[0x194];
+  let a = 0;
+  const k = [0, 1, 3, 2, 6, 7, 5, 4].findIndex(b => p & (1 << b));
+  if (k >= 0) a = k + 1;
+  playLinkCallSound(sh, a);
+  return a;
+}
+// 02:47ED PlayLinkCallSound: a = 1-15: the sound of the table 02:4802 at a & $0F (00:2C19); 0 none
+export function playLinkCallSound(sh, a) {
+  if (!a) return;
+  sh.sound(rb(0x02, 0x4802 + (a & 0x0F)));
+}
+// 02:4812 LinkPartnerCallTick (the aim loop, 10:5D19): in a link game ($C33F) a received $1x (x not 0), the partner's
+// button: its sound (02:47ED)
+export function linkPartnerCallTick(sh) {
+  const w = sh.w;
+  if (!rd(w, 0xC33F)) return;
+  const r = w.high[0x1C0];
+  if ((r & 0xF0) === 0x10 && (r & 0x0F)) playLinkCallSound(sh, r & 0x0F);
+}
+// 02:483A LinkReceiveShot (10:594B, the partner's shot): a frame, then a frame at a time (back to 02:483D, the
+// second) until $20 / $21 come in ($2E: $D4DB =
+// $80, given up); then a frame, and a frame at a time (the loop goes back to 02:4850, the second): $2E gives up; while $21 (the partner aiming) our pressed button goes out
+// as the idle byte $1x (02:47BE, its sound too), else $10; until $2F: the block (wSerialRecvBuf): the ball $D400-$D405,
+// wLaunchDir $D418-$D419, the club, the shot mode (twice), the swing's power / impact / pad targets $D4D8-$D4DA,
+// $D4DB; the idle byte $20
+export function* linkReceiveShot(sh) {
+  const w = sh.w, h = w.high;
+  yield* sh.advance();
+  do {
+    yield* sh.advance();
+    if (h[0x1C0] === 0x2E) { wr(w, 0xD4DB, 0x80); return; }
+  } while ((h[0x1C0] & 0xFE) !== 0x20);
+  yield* sh.advance();
+  do {
+    yield* sh.advance();
+    if (h[0x1C0] === 0x2E) { wr(w, 0xD4DB, 0x80); return; }
+    h[0x1C1] = h[0x1C0] === 0x21 ? (joyPressedIndex(sh) & 0x0F) | 0x10 : 0x10;
+  } while (h[0x1C0] !== 0x2F);
+  let p = 0xCB40;
+  for (let k = 0; k < 6; k++) wr(w, 0xD400 + k, rd(w, p++));
+  wr(w, 0xD418, rd(w, p++)); wr(w, 0xD419, rd(w, p++));
+  wr(w, 0xD329, rd(w, p++));
+  const m = rd(w, p++);
+  wr(w, 0xD32A, m); wr(w, 0xD32B, m);
+  for (const a of [0xD4D8, 0xD4D9, 0xD4DA, 0xD4DB]) wr(w, a, rd(w, p++));
+  h[0x1C1] = 0x20;
+}
+// 02:48B8 LinkSendShot (10:4929) / 02:4924 LinkSendShotResult (10:5DAA, with b): only when the other player is the
+// link partner (its +$13 = 3): frames until a $1x comes in, a frame; $CB4F = 0; the block: the ball, wLaunchDir,
+// the club, the shot mode, wSwingPower $D450, wSwingCursor $D44F, $D44D, then 0 (02:48B8) or b (02:4924); $2F to
+// follow it (hSerialNextIdleByte); sent ($10 bytes, 00:3081); 02:4924 waits for it to go out (00:30EB)
+export function* linkSendShot(sh, b = null) {
+  const w = sh.w, h = w.high;
+  if (rd(w, 0xC880 + (rd(w, 0xC835) ? 0 : 0x40) + 0x13) !== 3) return;
+  while ((h[0x1C0] & 0xF0) !== 0x10) yield* sh.advance();
+  yield* sh.advance();
+  wr(w, 0xCB4F, 0);
+  let p = 0xCB00;
+  for (let k = 0; k < 6; k++) wr(w, p++, rd(w, 0xD400 + k));
+  wr(w, p++, rd(w, 0xD418)); wr(w, p++, rd(w, 0xD419));
+  for (const a of [0xD329, 0xD32A, 0xD450, 0xD44F, 0xD44D]) wr(w, p++, rd(w, a));
+  wr(w, p++, b === null ? 0 : b);
+  h[0x1C9] = 0x2F;
+  yield* serialSendBlock(sh, 0x10);
+  if (b !== null) yield* serialWaitSendDone(sh);
+}
