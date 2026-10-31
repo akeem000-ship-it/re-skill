@@ -285,17 +285,18 @@ const STANDS = [
 // through the road's gates (the senior courts, the dorm front, the practice courts) laid out on the ground behind it: [map, x, y] of
 // each one's top left in the road's map px (they cross with a dissolve, so they need not meet their gates)
 const CAFE_BLOCKS = [
-  { x0: 200, y0: 32, x1: 260, y1: 80, fold: 47, back: -10, key: true, keyRect: [144, 32, 260, 80], pitch: { rise: 16, eave: 3, trim: [230, 66] } },
+  { x0: 200, y0: 32, x1: 260, y1: 80, fold: 47, back: -10, key: true, keyRect: [144, 32, 260, 80], pitch: { rise: 16, eave: 3, trim: [246, 62], tile: [222, 34, 234, 46] },
+    plainSide: { wall: [246, 62], trim: [230, 40], line: [244, 46], leaf: [232, 84], leaf2: [250, 74] } },
   { x0: 144, y0: 32, x1: 209, y1: 80, fold: 64, back: -10, key: true, keyRect: [144, 32, 260, 80], gable: { ax: 176, ay: 32, ey: 64, roof: [222, 34, 234, 46] } }];
 const CAFE_BEHIND = [[23, -96, -360], [27, -470, -300], [24, -40, -720]];
 // and the paths from the road's gates up to each area's entrance (road map px): the dorm front's street (x 56), the senior courts' (x 296),
 // the practice courts' (x 440: up the gap between the senior and the junior courts, round behind the senior courts)
 const CAFE_PATHS = [[[56, 92], [56, -12], [-294, -12], [-294, -46]], [[296, 92], [296, -12], [248, -12], [248, -42]],
-  [[416, 92], [416, -412], [112, -412], [112, -466]], [[-150, 112], [-330, 112], [-330, -12], [-294, -12]]];
-const CAFE_GATES = [56, 296, 416];                 // (the road's trees in the way of a path cleared: within 26 px of these, above row 100)
+  [[440, 92], [440, -412], [112, -412], [112, -466]], [[-150, 112], [-330, 112], [-330, -12], [-294, -12]]];
+const CAFE_GATES = [56, 296, 440];                 // (the road's trees in the way of a path cleared: within 26 px of these, above row 100)
 // the empty ground filled: [kind, x0, z0, x1, z1] (road map px): the lake (the junior courts' pond grown north into a lake, a footbridge
 // over it), a grove left of the dorm front, a running track on the lawn west of the courtyard; trees: [x, z] copies of the road's tree
-const CAFE_FILL = [["lake", 540, -700, 1060, -290], ["track", -250, 150, -20, 520]];
+const CAFE_FILL = [["lake", 540, -720, 1060, -345], ["track", -250, 150, -20, 520]];
 const CAFE_TREES = [[-560, -300], [-620, -230], [-560, -160], [-620, -90], [-680, -300], [-740, -230], [-680, -160], [-740, -90], [-800, -300], [-860, -230], [-800, -160], [-860, -90],
   [570, -330], [600, -720], [700, -740], [820, -730], [960, -720], [1060, -620], [1070, -480], [1060, -360], [540, -520], [530, -420], [-280, 160], [-290, 300], [-280, 440], [-200, 560], [-60, 560]];
 const WALL_SCALE = F3.WALL_SCALE, FIELD_TILT = 0.3, HUD_SCALE = 0.6, SEAM_GLIDE = 1100, MT_OUT = 420, MT_IN = 520;   // SEAM_GLIDE: ms of the camera's glide into the next map; MT_OUT / MT_IN: ms of the MAP FADE
@@ -1790,8 +1791,17 @@ export class Voxel3D {
       }
       if (b.pitch) {                    // a pitched roof: the roof picture folded along a ridge across the middle, eaves overhanging the walls,
         const R = b.pitch.rise * WALL_SCALE, e = b.pitch.eave || 0, zm = (zb + y1) / 2, vm = (y0 + fold) / 2, dr = e * R / (zm - zb);   // gable ends in the trim colour
+        if (b.pitch.tile) {             // (tile: the roof tiles of that art rectangle repeated over both slopes instead: a deep roof, not a stretched picture)
+          const [rx0, ry0, rx1, ry1] = b.pitch.tile, rw = rx1 - rx0, rh = ry1 - ry0, U = (x1 - x0 + 2 * e) / rw;
+          const Lf = Math.hypot(R + dr, zm - y1 - e) / rh, Lb = Math.hypot(R + dr, zm - zb + e) / rh;
+          const A = [x0 - e, H - dr, y1 + e], B = [x1 + e, H - dr, y1 + e], C = [x1 + e, H + R, zm], D = [x0 - e, H + R, zm], E = [x0 - e, H - dr, zb - e], F = [x1 + e, H - dr, zb - e];
+          for (const [v, t] of [[A, [0, Lf]], [B, [U, Lf]], [C, [U, 0]], [A, [0, Lf]], [C, [U, 0]], [D, [0, 0]]]) { roofs[0].pos.push(...v); roofs[0].uv.push(...t); }
+          for (const [v, t] of [[D, [0, 0]], [C, [U, 0]], [F, [U, Lb]], [D, [0, 0]], [F, [U, Lb]], [E, [0, Lb]]]) { roofs[1].pos.push(...v); roofs[1].uv.push(...t); }
+          roofArt = [rx0, ry0, rw, rh];
+        } else {
         quad(front, [x0 - e, H + R, zm], [x1 + e, H + R, zm], [x1 + e, H - dr, y1 + e], [x0 - e, H - dr, y1 + e], [x0, vm], [x1, vm], [x1, fold], [x0, fold]);
         quad(front, [x0 - e, H - dr, zb - e], [x1 + e, H - dr, zb - e], [x1 + e, H + R, zm], [x0 - e, H + R, zm], [x0, y0], [x1, y0], [x1, vm], [x0, vm]);
+        }
         const [tx, ty] = b.pitch.trim || [x0 + 2, fold];
         for (const [x, a, c] of [[x0, zb, y1], [x1, y1, zb]]) quad(side, [x, H, a], [x, H, c], [x, H + R, zm], [x, H + R, zm], [tx, ty], [tx + 1, ty], [tx + 1, ty + 1], [tx, ty + 1]);
       } else quad(front, [x0, H, zb], [x1, H, zb], [x1, H, y1], [x0, H, y1], [x0, y0], [x1, y0], [x1, fold], [x0, fold]);   // roof
@@ -1814,7 +1824,8 @@ export class Voxel3D {
       }
       f.neighbour = f.neighbours[0] || null;
     } else if (f.neighbour) f.neighbours = [f.neighbour];
-    if (cafe && this.rom && !this.inNeighbour) for (const [m, x, y] of CAFE_BEHIND) { const n = this.neighbourField(m, 0, 0); if (n) f.neighbours.push({ f: n.f, dx: x, dz: y }); }
+    // (the campus's areas behind the road, from any campus map: where they lie from it)
+    if (def.campus && this.cafeConcept && this.cafeConcept() && this.rom && !this.inNeighbour) for (const [m, x, y] of CAFE_BEHIND) { const n = this.neighbourField(m, 0, 0); if (n) f.neighbours.push({ f: n.f, dx: x - def.campus.at[0], dz: y - def.campus.at[1] }); }
     // solids: low prisms with the exact outline of their picture (planters, fountain basins), stacked with "on"
     const solids = []; f.seats = [];
     for (const so of [...(def.solids || []), ...stampSolids]) {
@@ -2046,7 +2057,7 @@ export class Voxel3D {
     const gl = this.gl, f = this.field, coll = this.gb.mem.wram[6];
     if (f.floorTex) gl.deleteTexture(f.floorTex);
     const id = this.mapId(), canon = this.canonPalette(id), art = this.composeField(canon), floor = new Uint8Array(art);
-    const tw = Math.min(64, this.gb.mem.wram[0][0x32B] || 64), th = Math.min(64, this.gb.mem.wram[0][0x32C] || 64); f.mapH = th * 8;
+    const tw = Math.min(64, this.gb.mem.wram[0][0x32B] || 64), th = Math.min(64, this.gb.mem.wram[0][0x32C] || 64); f.mapH = th * 8; f.mapW = tw * 8;
     f.lowPal = Uint8Array.from(this.gb.ppu.bgPal.subarray(0, 16)); f.usesLowPals = false;   // palettes 0-1 come live: a fade changes them
     for (let y = 0; y < th && !f.usesLowPals; y++) for (let x = 0; x < tw; x++) if ((this.gb.mem.wram[2][y * 64 + x] & 7) < 2) { f.usesLowPals = true; break; }
     this.buildFieldObjects(art, floor);
@@ -2105,7 +2116,7 @@ export class Voxel3D {
         for (const k of ["flowerGroups", "decor", "hedges"]) if (fx[k]) fx[k] = fx[k].filter(g => mine(g.centre[0]));
       }
     }
-    if (f.mapId === 19 && this.cafeConcept && this.cafeConcept() && !this.inNeighbour && f.fx && f.fx.plants) {   // (CAFE CONCEPT: the paths' way cleared, trees planted)
+    if (f.mapId === 19 && this.cafeConcept && this.cafeConcept() && f.fx && f.fx.plants) {   // (CAFE CONCEPT: the paths' way cleared, trees planted; the road as a neighbour too)
       const px = p => p.centre ? p.centre[0] : p.model[12], pz = p => p.centre ? p.centre[2] : p.model[14], clear = (x, z) => z < 100 && CAFE_GATES.some(g => Math.abs(x - g) < 26);
       f.fx.plants = f.fx.plants.filter(p => !clear(px(p), pz(p))); f.cards = f.cards.filter(c => c.band || !clear(c.X, c.Z));
       const tree = f.fx.plants.filter(p => !p.centre).sort((a, b) => b.shape.r - a.shape.r)[0];
@@ -2377,7 +2388,8 @@ export class Voxel3D {
       if (this.nbInView(nb, mvp)) this.drawFieldScene(nb.f, M, T, true); else if (nb.f.skirt) { gl.useProgram(this.prog); gl.bindVertexArray(this.vao); this.drawSkirt(nb.f, M); }
     }
     this.drawFieldScene(f, mvp, T);
-    if (f.mapId === 19 && this.cafeConcept && this.cafeConcept()) { this.drawCafeFill(f, mvp); this.drawCafePaths(f, mvp); }   // (CAFE CONCEPT)
+    { const cd = this.fieldDef(f.mapId); if (cd && cd.campus && this.cafeConcept && this.cafeConcept()) {   // (CAFE CONCEPT: in the road's map px, from any campus map)
+      const M = m4.mul(mvp, m4.translate(-cd.campus.at[0], 0, -cd.campus.at[1])); this.drawCafeFill(f, M); this.drawCafePaths(f, M); } }
     if (this.life) this.life.draw(mvp, m4, T, cx, cz);                     // FIELD LIFE: birds, cloud shadows, fountain glints
     this.fieldRects = this.fieldOverlayRects();                         // once per frame: the actors and the overlays both need them
     this.drawFieldActors(mvp);
@@ -2409,8 +2421,9 @@ export class Voxel3D {
   }
   // CAFE CONCEPT: the paths up to the areas behind the road, flat on the lawn: a light stone kerb, the dirt of the road's own path
   drawCafePaths(f, mvp) {
-    const gl = this.gl, d = f.floorData; if (!d) return;
-    if (!this.cafeTex) { const at = (x, y) => { const o = (y * 512 + x) * 4; return [d[o], d[o + 1], d[o + 2], 255]; }; this.cafeTex = { dirt: this.solidTexture(at(300, 100)), kerb: this.solidTexture([232, 228, 214, 255]) }; }
+    const gl = this.gl, road = f.mapId === 19 ? f : ((f.neighbours || []).find(n => n.f.mapId === 19) || {}).f, d = road && road.floorData;
+    if (!this.cafeTex && d) { const o = (100 * 512 + 300) * 4; this.cafeTex = { dirt: this.solidTexture([d[o], d[o + 1], d[o + 2], 255]), kerb: this.solidTexture([232, 228, 214, 255]) }; }   // (the road's own path colour)
+    if (!this.cafeTex) return;
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
     const W = 26, K = 4;
     for (const [tex, w, y] of [[this.cafeTex.kerb, W + 2 * K, 1.4], [this.cafeTex.dirt, W, 1.6]]) for (const P of CAFE_PATHS) for (let i = 1; i < P.length; i++) {
@@ -2484,7 +2497,7 @@ export class Voxel3D {
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
     this.drawSkirt(f, mvp);
     const FH = part || f.neighbour ? f.mapH : 512, F0 = f.floorY0 || 0;   // (with a neighbour: only the map's own rows, not the leftovers below them)
-    const [X0, X1] = f.floorX || [0, 512];                                // (CAMPUS: only its own columns)
+    const [X0, X1c] = f.floorX || [0, 512], X1 = part || (f.neighbours && f.neighbours.length) ? Math.min(X1c, f.mapW || 512) : X1c;   // (CAMPUS: only its own columns; a neighbour's: no ground beyond its width)
     this.draw(f.floorTex, m4.trs((X0 + X1) / 2, -0.2, FH, X1 - X0, FH - F0, -Math.PI / 2), mvp, [X0 / 512, F0 / 512, (X1 - X0) / 512, (FH - F0) / 512], [1, 1, 1, 1], 0);
     // walls
     if (f.walls && f.walls.count) {

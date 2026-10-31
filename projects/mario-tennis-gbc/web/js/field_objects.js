@@ -50,7 +50,7 @@
 //          flowers line the paths on the lawn beside them (voxel.js, our own decorations in fixed colours)
 export const FIELD_OBJECTS = {
  "19": {
-  "campus": {"at": [0, 0], "cut": [0, 432]},
+  "campus": {"at": [0, 0], "cut": [0, 456]},
   "crossZones": [[24, 40, 88, 120], [264, 40, 328, 120], [408, 40, 512, 128]],
   "grassFrom": {"map": 20, "block": [208, 128]},
   "patchFrom": [{"from": [240, 64, 304, 96], "to": [364, 116, 428, 144]}],
@@ -2753,7 +2753,8 @@ export const FIELD_OBJECTS = {
   ]
  },
  "30": {
-  "campus": {"at": [408, -336], "cut": [24, 512]},
+  "campus": {"at": [408, -336], "cut": [48, 512]},
+  "noLawnBand": true,
   "crossZones": [[0, 400, 112, 480]],
   "lampLight": {"r": 160, "k": 0.8},
   "lamps": [[24, 180], [240, 60], [240, 180], [24, 380], [240, 380], [470, 380], [380, 240]],

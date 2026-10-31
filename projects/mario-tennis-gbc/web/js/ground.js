@@ -295,7 +295,7 @@ export class Ground {
     const sf = f.skirt ? f : nbs.find(n => n.f.skirt) ? nbs.find(n => n.f.skirt).f : null, sd = sf && sf.floorData, sk = sf && sf.skirtSrc >= 0 ? sf.skirtSrc * 4 : -1;
     const sLawn = o => { const r = sd[o], g = sd[o + 1], b = sd[o + 2]; return g > 70 && g >= r && b < g * 0.45; };
     let band = null;
-    if (sd && !f.noGlass && (sf.grassSrc || (sk >= 0 && sLawn(sk)))) {    // (not round a side-view map: the road's foreground is its own picture)
+    if (sd && !f.noGlass && !def.noLawnBand && (sf.grassSrc || (sk >= 0 && sLawn(sk)))) {   // (noLawnBand: field_objects, a map whose surroundings are other maps)    // (not round a side-view map: the road's foreground is its own picture)
       let r = 0, g = 0, b = 0, n = 0;
       for (let o = 0; o < 512 * H * 4; o += 4 * 7) if (lawn(o)) { r += d[o]; g += d[o + 1]; b += d[o + 2]; n++; }
       if (!n && sk >= 0) { r = sd[sk]; g = sd[sk + 1]; b = sd[sk + 2]; n = 1; }
