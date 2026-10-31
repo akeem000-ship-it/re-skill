@@ -147,9 +147,15 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the clubhouse doors 2, 3, 5 in and out, the clinic's judgement and every comment class (the class poked), the map graphics browser and the bank-41 summary card (patched cases) | 237,800 | 97.99% |
 | + ReplaySavedHole 10:435E (the shot records' replay of a saved hole; SetupPlayerGolfer $81; `boot_status_replay`: a saved hole made from the hole's tee and cup, poked) | 237,983 | 98.07% |
 | + the loaded card's place in the story (48:480D), small unreferenced helpers fuzzed (02:4550 30:7E46 06:69E7 08:43B8 02:461F 34:5BC7) | 238,344 | 98.22% |
+| + link play with two machines (32:5313 32:53B8 32:5428 4A:6C1F 09:4810, the title's replies, 10:44EA 10:4567 10:4659 10:5943, the banner 3B:776D-3B:7858, 02:4A6C; "Serial link"), the two-player Stroke round's end (08:4EBF) | 238,609 | 98.33% |
+| + bank 05's shadow, window and message-box helpers, the home vectors and speed switch, the debug sweep's helpers, the actor move-near ops, the last menu items and outcomes, and the dead or unreferenced routines of the "Unreached code" list (fuzz, text-routine and patched screen cases) | 241,949 | 99.70% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
+
+What is left of the traced code (717 bytes, 0.30%): bank 3C's debug wind sweep 3C:6A23 / 3C:6A55 / 3C:6B59 / 3C:6BCA,
+the test screen 32:4ABD and three unreferenced map scripts (35:50DE, 30:4888, 33:4E49); the reasons are in "Unreached
+code" below.
 
 **What the tests run of the ROM** (web/tests/golf/cover.mjs, tools/cover_report.py): with `COVER=out/scratch/x.bin`
 every test that runs the emulator core (the screen cases, the lockstep rounds, the routine fuzzers) records the ROM
@@ -451,8 +457,7 @@ Code that no screen case reaches is checked routine by routine against the ROM o
 The film select's bank-0D copies (0D:4243-0D:4A01, select.js) are the same code as bank 0F's (compare_routines) and run
 by the mode select's screen cases; 0D:499A (a copy of 0F:49AA) is never called and stays uncited.
 Not checked and left: VectorLengthTail 40:5941 (pops registers it never pushed: cannot be called), the course view's
-HoleTileAnimStep copies ~51:7261-~54:7E31 (their fuzz needs a real hole's asset state), map $08's unreferenced
-Map08TutorAskKeepChecking 33:4E49.
+HoleTileAnimStep copies ~51:7261-~54:7E31 (their fuzz needs a real hole's asset state).
 Added in this pass (golf_fuzz_routines.mjs unless said): bank 3E's unreferenced cell writers PutTileStringAttr0
 3E:60C3 (its loop 3E:617C), PutTileStringNoAttr 3E:618D, DrawTileStringAttr0At 3E:626D, DrawTileStringNoAttrAt 3E:6280,
 DrawScoreLabelB / C 3E:65E3 / 660D, and the two-player screen's PutTileAttr0 3E:61E3, ScoreTensDigit / ScoreOnesDigit
@@ -472,11 +477,53 @@ CpuFindSteepSlopeOnLine 3C:4B1A and CpuSteepSlopeMidTile 3C:4DE2. The map tile a
 banks 2A, 2B and 72 (no animations) are cited as the same instructions as bank 28's (compare_routines), as are the
 course view's HoleTileAnimStep copies 53:7F19 / 54:7E31 (51:7261 and 52:7291 run in the screen cases) and the
 scenery copies of banks 4A-4E (behind.js; bank 4B / 4C / 4D / 4E / 4F's run in the rounds).
-Left: ActorOpWalkNear 04:4612 (actor script op $05, which no script uses: it reads its second and third arguments
-from the bank the code runs in and subtracts the caller's leftover de: the result depends on registers the op
-dispatcher does not set) and ActorMoveToNear 0A:4466 / 0A:44A2 (export $24, no caller: it subtracts a stack address),
-ScorecardPutStringAccentA / B 0E:44AE / 44C8 (fragments after ScorecardPutString's `ret` that pop what they did not
-push).
+The last pass (unreached.js, golf_fuzz_routines.mjs unless said; the harness got `patch` (the core's ROM patched for
+the call), `coreInit` / `check` (hardware state), sound ids recorded at 00:2BCA in its script cases, and `joy` (the
+buttons per stubbed frame); golf_text_routines.mjs got stubbed frames with a button script, the sounds compared,
+ROM patches, and the stack excluded from the lowest sp the call reached instead of a fixed $CF80):
+- ActorOpWalkNear 04:4612 (as a routine: bc, d and e given; x is read from bank d, y and the distance from the bank
+  mapped, since 00:0626 leaves a = the bank it restores), ActorMoveToNear 0A:4466 with ActorMoveToNearCalc 0A:44A2 (the
+  stack modelled: its argument bytes at the caller's sp - 13, whose distance byte's address is the "y" it subtracts;
+  x - the caller's de; the target x = vector + y, target y = x + vector); the native actor interpreter keeps no e,
+  so op $05 is not in its table (no script uses it);
+- bank 05's ClearBGShadow 05:40E6, DebugHDMAShadowToVRAM 05:4102, ReadShadowTile 05:413E (returns its argument: the
+  read is dropped by `pop af`), CopyVisibleShadowRows 05:416F, CopyShadowTilesToVRAM / AttrsToVRAM 05:41EF / 4208,
+  CopyShadowRowToVRAM 05:4221, CopyMapEdgeRows 05:44B7, BuildPlainWindowRecord 05:4717, EraseWindowFromShadow 05:486F
+  (the bank as mapped), GetWindowText 05:5A75, SetWindowPriorityAlt 05:5B0F, CloseMessageBoxAnimated 05:60FF (the
+  current bank's [$D855]) and its jumped-over CloseMessageBoxShrinkLoop 05:6108 (the `jr` patched out);
+  golf_text_routines.mjs: TextCmdTile0A-0D 05:5900-05:5921, PrintHex/DecByteInline 05:59D1 / 59E6 / 59FC,
+  PrintTextToShadow(Now) 05:648E / 64B8, CopyShadowToVRAMFramed 05:64D1, DrawWindowBuffer 05:6510, Print{Text, Number,
+  String}InWindowBuffer(Now) 05:652F-05:65F1, DrawTextToWindow 05:6646 (the string read as it is drawn: a record over
+  the text buffer changes it), DrawNumberToWindow 05:6658, ContinueMessageAt 05:5F02 (the voice of actor 8 for any e -
+  9 below $80), ResizeMessageBox 05:60C3, OpenWindowWithText 05:6708, ShowMessageInPlace 05:67C5, OpenPromptWindow
+  05:45DC, RunYesNoMenu 05:45F6 (the window system as play leaves it between messages; QueueVRAMCopy's error sounds
+  counted apart), ShowNextScriptText 41:42D9, CharStartMenu 41:6FC4 (cancelled), the lesson placeholders 31:53F6 /
+  5D12 / 65A0, Map0CUnusedShotTermsTip 31:4A4E (its third text, $0D1D, is past bank $1B's end: ShowMessage's
+  NormalizeTextId moves it to $1000, and ScriptShowText's cursor goes on from the normalized id: msgbox.js
+  scriptShowBody now does so), DebugMapGfxQuickMenu 0B:4534 (B: nothing loaded), CGBRequiredScreen 01:5278 (its endless
+  AdvanceFrame loop patched to return);
+- the scorecard's accent fragments 0E:44AE / 44C8 (from a stub that pushes af and hl and jumps in, as
+  ScorecardPutString has them pushed), AngleFromUp 3C:6B3F, DebugShotAngle 3C:6BFE (with DivAHLByDE's HRAM), the home
+  vectors RST00_JumpTable 00:0000 / JumpTableDispatch 00:0690 (from a stub with a table), IntLCDStat 00:0048 /
+  LCDStatHandler 00:2F81 / IntJoypad 00:0060, SwitchCPUSpeedSingle 00:02C7 (the CPU speed, KEY1, P1, IF and IE
+  compared), PlayGreenMusic 08:50E6, LoadSelectedCharPaletteUnused 06:6471, LoadBannerGfxUnused 0C:6E80,
+  YesNoCursorInput 48:4A27, DemoTaskDiagonalDown 40:5EFC, BallDisplayStop 11:410C, WaitCaptionAnimEnd 4F:618B;
+- screen cases: boot_kid_story_navmenu (the Field's start menu: 41:741F / 7425 / 7437), boot_kid_story_green_practice
+  (the putting practice's menu: 41:774D), boot_holed_training_menu (41:76F7), boot_kid74_ceremony3 (31:7B96),
+  outcome_terrain5 / 4 (3B:7590 / 75CA, from a state at 3B:7260 given those terrains), pause_link_scorecard_match
+  (41:78B9, whose bytes 41:7898 MenuShowStandings repeats); and with ROM patches (the native side told by a `w` flag):
+  pause_r18_coursemap_timed (17:4232), shotsetup_reloadviewmaps (13:42A8), boot_poweron_noportrait (06:6D3E),
+  boot_kid_story_trigger0a (34:4654, the Field's trigger list pointing trigger $0B at it and its warp number $0B),
+  boot_kid_story_placegolfers (33:4BA7), boot_kid_story_office_old / _no / _np (33:4929 by the jump at 33:491B: both
+  first questions and the qualified path to the round menu; the code after the round menu, 33:499B-33:4ABA, is not
+  run by them: the menu starts the round).
+Left (not ported): DebugWindCarryTest 3C:6A23 with DebugWindCarrySweep 3C:6A55, DebugLogShot 3C:6B59 and
+DebugTestShot 3C:6BCA (unreferenced: 13 clubs x 16 wind angles x 9 speeds of full simulated shots, ShotLaunch and
+the BallTask / RestWatch loop as routines, logged to the save RAM through its $A000 window, which the native memory
+map does not have: rd answers $FF there); ScoreNameMenuWindowTest 32:4ABD (a test screen that never returns: its
+menu loops for ever); Map34PresentTrophyUnused 35:50DE, ApproachRangeKeepPracticingUnused 30:4888 and
+Map08TutorAskKeepChecking 33:4E49 (unreferenced map scripts that begin with a fade, which runs in VBlank: the
+stubbed-frame tests cannot run them, and no screen case was patched into them yet).
 
 #### Debug code (debug.js; the screen cases `boot_kid_debug_*`)
 

@@ -12,6 +12,7 @@ import { queueVRAMCopy } from "./render/display.js";
 import { mapScrollTask } from "./render/holeview.js";
 import { dist as distHL } from "./ball.js";
 import { mulHLByDEFull, negDE } from "./home.js";
+import { actorSetPos as actorSetPosA } from "./actors.js";
 import { saveCommit } from "./save.js";
 
 // 40:5AA9 MulHLByDE_40 (unreferenced; the same code as 00:0CB5 MulHLByDE, its jumps relative): the high 16 bits of hl x de;
@@ -505,3 +506,49 @@ FUZZ.push(rnd => ({ name: "BallDisplayStop", bank: 0x11, addr: 0x410C,
 FUZZ.push(rnd => ({ name: "WaitCaptionAnimEnd", bank: 0x4F, addr: 0x618B, script: () => [0],
   init: w => { w.wram[0][0xAA0] = 0; w.wram[0][0xAA1] = 0; if (rnd(2)) { const p = 0x1C0 + 4 * rnd(16); w.wram[0].set([1 + rnd(255), 0xA7, 0x62, 0x4F], p); } },
   js: w => { const g = waitCaptionAnimEnd(w.sh); while (!g.next().done); } }));
+
+// 0A:4466 ActorMoveToNear (export $24; nothing calls it): a = slot ($FF: nothing), the point (x bc, y de), l = a
+// distance: with flag #22 the actor is put at the point first (0A:43C6); the 5 argument bytes go on the stack (at
+// sp - 13 from the caller's sp: the call's 4 pushes and 5 bytes); hFFE0 = the actor (0A:42E0), WRAM4 left mapped;
+// then 0A:44A2 ActorMoveToNearCalc. Its quirks kept: x - de (the caller's de, the y argument) and y - the address of
+// the distance byte make the vector (00:0A7B), the distance along it (00:0B31) is added to y for the target x and to
+// x for the target y (+$0A / +$0C); walking (+$12 = 1). sp: the caller's stack pointer at the call
+export function actorMoveToNear(w, a, x, y, l, sp) {
+  if (a === 0xFF) return;
+  if (w.wram[0][0x840 + (22 >> 3)] & (0x80 >> (22 & 7))) actorSetPosA(w, a, x, y);
+  const p = a >= 0x18 ? 0xD000 : 0xD000 + ((a << 6) & 0xFFFF);
+  w.high[0x1E0] = p & 0xFF; w.high[0x1E1] = p >> 8;
+  setWB(w, 4);
+  actorMoveToNearCalc(w, x, y, l, (sp - 9) & 0xFFFF, y);
+}
+export function actorMoveToNearCalc(w, x, y, dist, ptr, de) {
+  const p = w.high[0x1E0] | w.high[0x1E1] << 8;
+  const r16 = q => rd(w, q & 0xFFFF) | rd(w, (q + 1) & 0xFFFF) << 8;
+  const dx = (r16(p + 4) - de) & 0xFFFF, dy = (r16(p + 6) - ptr) & 0xFFFF;
+  const ang = M.angleFromVectorCoarse(dy, dx, q => rb(0, q));
+  const [vx, vy] = M.vectorFromLengthAndAngleRaw(dist, ang);
+  const tx = (vx + y) & 0xFFFF, ty = (x + vy) & 0xFFFF;
+  const q = (p & 0xFF00) | ((p + 0x0A) & 0xFF);
+  wr(w, q, tx & 0xFF); wr(w, q + 1, tx >> 8); wr(w, q + 2, ty & 0xFF); wr(w, q + 3, ty >> 8);
+  wr(w, (p & 0xFF00) | ((p + 0x12) & 0xFF), 1);
+}
+FUZZ.push(rnd => ({ name: "ActorMoveToNear", bank: 0x0A, addr: 0x4466,
+  regs: () => ({ a: rnd(8) ? rnd(0x18) : [0xFF, 0x18 + rnd(0xE7)][rnd(2)], b: rnd(256), c: rnd(256), d: rnd(256), e: rnd(256), h: rnd(256), l: rnd(256) }),
+  out: ["a", "b", "c", "d", "e", "h", "l"],
+  js: (w, r) => { actorMoveToNear(w, r.a, r.b << 8 | r.c, r.d << 8 | r.e, r.l, 0xCFEE); return r; } }));   // (romCall's sp at the call: $CFEE)
+// 04:4612 ActorOpWalkNear (actor script op $05; no script uses it): x, y (words) and a distance (byte) after the op:
+// x read from bank d (00:0626), y and the distance from the bank mapped (hROMBank: 00:0626 leaves a = the bank it
+// restores, and the next reads take that); the same calculation as 0A:44A2 on the actor hFFE0, its de the op loop's (d the
+// script's bank, e whatever the previous handler left: the native interpreter, which does not keep e, has no op $05)
+// and its "pointer" the distance byte's address; returns a = 1 (go on), bc past the op (+6)
+export function actorOpWalkNear(w, bc, d, e) {
+  const far = q => rb(d, q & 0xFFFF), cur = q => rb(w.high[0x195], q & 0xFFFF);
+  const args = (bc + 1) & 0xFFFF;
+  const x = far(args) | far(args + 1) << 8, y = cur(args + 2) | cur(args + 3) << 8, dist = cur(args + 4);
+  actorMoveToNearCalc(w, x, y, dist, (args + 4) & 0xFFFF, d << 8 | e);
+  return { a: 1, bc: (args + 5) & 0xFFFF };
+}
+FUZZ.push(rnd => ({ name: "ActorOpWalkNear", bank: 0x04, addr: 0x4612,
+  init: w => { const p = 0xD000 + 0x40 * rnd(0x18); w.high[0x1E0] = p & 0xFF; w.high[0x1E1] = p >> 8; },
+  regs: () => { const bc = 0x4000 + rnd(0x3FF0); return { b: bc >> 8, c: bc & 0xFF, d: [0x30, 0x31, 0x33, 0x34, 0x35][rnd(5)], e: rnd(256) }; },
+  out: ["a", "b", "c"], js: (w, r) => { const o = actorOpWalkNear(w, r.b << 8 | r.c, r.d, r.e); return { a: o.a, b: o.bc >> 8, c: o.bc & 0xFF }; } }));

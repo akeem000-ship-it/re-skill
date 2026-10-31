@@ -10,7 +10,7 @@ import { showScorecard } from "../js/golf/scorecard.js";
 import { roundResultScreen } from "../js/golf/result.js";
 import { pauseMenu } from "../js/golf/pause.js";
 import { Hole } from "../js/golf/ball.js";
-import { shotSetup } from "../js/golf/hole.js";
+import { shotSetup, outcomeRules } from "../js/golf/hole.js";
 import { showPlayerPicture } from "../js/golf/pictures.js";
 import { titleScreen } from "../js/golf/title.js";
 import { linkMenu } from "../js/golf/menu09.js";
@@ -622,6 +622,16 @@ const CASES = [
     ["quit", f => (f === 40 ? 0x40 : f === 60 ? 1 : f === 160 ? 0x40 : f === 200 ? 1 : 0)],
   ].map(([n, policy, stroke]) => ({ name: `pause_link_${n}`, state: "pause_r18", open: n === "coursemap", run: sh => onHole(sh, inBank(sh, 0x08, pauseMenu(sh))), policy,
     hook: (f, w, core) => { if (f) return; for (const m of [w.wram[0], core.wram(0)]) { m[0x33F] = 1; if (stroke) m[0x8A0] = 1; } } })),
+  // the link-play pause menu's Scorecard with wGameMode 2 poked too (a match: 41:78A5's 41:78B9, the bytes of the
+  // unreferenced 41:7898 MenuShowStandings: 3E:675C, the match standings page), A back
+  { name: "pause_link_scorecard_match", state: "pause_r18", run: sh => onHole(sh, inBank(sh, 0x08, pauseMenu(sh))),
+    policy: f => (f === 40 || f === 50 ? 0x80 : f === 70 ? 1 : f === 300 ? 1 : 0),
+    hook: (f, w, core) => { if (f) return; for (const m of [w.wram[0], core.wram(0)]) { m[0x33F] = 1; m[0x834] = 2; } } },
+  // OutcomeRules 3B:7260 after r18's first shot (mkstate.mjs --name r18 --at 3B:7260 --out out/state_outcome_r18.json)
+  // given a terrain no hole's ball stops on: 5 (3B:7590 OutcomeTerrain5: caption animation $0A, caption $11) and 4
+  // (3B:75CA OutcomeNoCaption)
+  ...[["5", 5], ["4", 4]].map(([n, a]) => ({ name: `outcome_terrain${n}`, state: "outcome_r18", regs: { a },
+    run: (sh, r) => onHole(sh, inBank(sh, 0x3B, outcomeRules(sh, r.a))), policy: f => (f > 60 && f & 1 ? 1 : 0) })),
   // ShotSetup 10:4798 at the first tee (mkstate_core.mjs --at 10:4798): Start in the aiming menu, Scorecard, A
   // back: the scene starts again (10:489D) and aiming goes on; up to the address step (10:56B0; the game is then
   // into the address step's first frame: its HRAM scratch $FFA7, $FFAC-$FFAE differ)

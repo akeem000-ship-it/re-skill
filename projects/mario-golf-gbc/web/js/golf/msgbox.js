@@ -382,15 +382,17 @@ export function scriptSetText(w, hl) {
   setW(w, old);
 }
 // 0A:4164 ScriptShowText / 0A:4199 ScriptShowTextKeepOpen: a = speaker: (out of a round: 0A:48AC WaitScriptActorIdle)
-// text wScriptTextId shown (skipped while flag #22), the cursor moved on
+// text wScriptTextId shown (skipped while flag #22), the cursor moved on: from the id as ShowMessage leaves hl, i.e.
+// normalized (05:622F: an index past its bank's last text goes on into the next bank), when shown
 function* scriptShowBody(sh, a, keep) {
   const w = sh.w, old = wbank(w);
   if (!rd(w, 0xC96D)) yield* waitScriptActorIdle(sh);   // 0A:48AC
   setW(w, 5);
-  const hl = r16(w, 0xD852);
+  let hl = r16(w, 0xD852);
   if (!testFlag(w, 22)) {
     if (keep) yield* inBankGen(w, 5, showMessageKeepOpen(sh, hl, a));
     else yield* inBankGen(w, 5, showMessage(sh, hl, a));
+    hl = T.normalizeTextId(hl, 0);
   }
   const n = (hl + 1) & 0xFFFF;
   wr(w, 0xD852, n & 0xFF); wr(w, 0xD853, n >> 8);
@@ -585,13 +587,13 @@ export function* runYesNoMenu(sh, d, e) {
   return h;
 }
 // 41:42D9 ShowNextScriptText (unreferenced): WRAM5 (left mapped); text wScriptTextId $D852 shown and kept open
-// (05:5DE5, speaker a), the id + 1
+// (05:5DE5, speaker a), the id + 1 (as ShowMessageKeepOpen leaves hl: normalized, 05:622F)
 export function* showNextScriptText(sh, a) {
   const w = sh.w;
   setW(w, 5);
   const hl = r16(w, 0xD852);
   yield* showMessageKeepOpen(sh, hl, a);
   setW(w, 5);
-  const n = (hl + 1) & 0xFFFF;
+  const n = (T.normalizeTextId(hl, 0) + 1) & 0xFFFF;
   wr(w, 0xD852, n & 0xFF); wr(w, 0xD853, n >> 8);
 }

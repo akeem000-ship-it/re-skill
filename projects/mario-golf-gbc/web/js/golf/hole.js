@@ -219,13 +219,13 @@ function* byTerrain(sh, addr) {
     case 0x7555: r6[0x485] &= 0xF7; yield* anim(5, 0x0F); return 0;     // OutcomeTerrainA
     case 0x756B: yield* anim((r6[0x446] + 8) & 0xFF, 0x10); return 0;   // 3B:756B OutcomeRough
     case 0x757F: yield* anim(6, 0x12); return 0;                        // 3B:757F OutcomeSemiRough
-    case 0x7590: yield* anim(0x0A, 0x11); return 0;                     // OutcomeTerrain5
+    case 0x7590: yield* anim(0x0A, 0x11); return 0;                     // 3B:7590 OutcomeTerrain5 (no hole has it: outcome_terrain5)
     case 0x75A1: yield* anim(0x0A, 0x2B); return 0;                     // 3B:75A1 OutcomeTerrainC
     case 0x75B2:                                                        // 3B:75B2 OutcomeTerrainD
       yield* sh.advance(0x1E);
       yield* anim((r6[0x446] + 0x0B) & 0xFF, 0x25);
       return 0;
-    case 0x75CA: return 0;                       // OutcomeNoCaption
+    case 0x75CA: return 0;                       // 3B:75CA OutcomeNoCaption (terrains 4, 8, $0B: outcome_terrain4)
     default: notPorted(`the outcome 3B:${addr.toString(16)}`);
   }
 }

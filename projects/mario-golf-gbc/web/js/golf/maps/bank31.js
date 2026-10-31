@@ -1363,3 +1363,17 @@ export function* unusedLessonPlaceholder(sh) {
   yield* T.scriptShowText(sh, 0x03);
 }
 
+
+// 31:4A4E Map0CUnusedShotTermsTip (an unreferenced talk script of map $0C): text $0D1B (the hook / slice terms) on
+// actor 6 kept open, 5 frames, Yes / No, closed, 5 frames: Yes: the next text; No: that one skipped, the one after
+export function* map0CUnusedShotTermsTip(sh) {
+  const w = sh.w;
+  T.scriptSetText(w, 0x0D1B);
+  yield* T.scriptShowTextKeepOpen(sh, 0x06);
+  yield* T.scriptWaitFrames(sh, 0x05);
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* T.scriptWaitFrames(sh, 0x05);
+  if (a) T.scriptSkipText(w);
+  yield* T.scriptShowText(sh, 0x06);
+}

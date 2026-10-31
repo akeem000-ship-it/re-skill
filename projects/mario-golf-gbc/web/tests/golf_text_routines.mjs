@@ -194,6 +194,11 @@ CASES.push(["CGBRequiredScreen", 0x01, 0x5278, () => ({}), w => { run(BOOT.cgbRe
 // 0B:4534 DebugMapGfxQuickMenu (debug.js): moves and B: nothing loaded (a pick loads the map graphics, 0B:44C4: the
 // debug viewer's, checked in boot_kid_debug_mapgfx)
 CASES.push(["DebugMapGfxQuickMenu", 0x0B, 0x4534, w => { noMsg(w); return {}; }, w => { run(DBG.debugMapGfxQuickMenu(sh(w))); return {}; }, { frames: true, joy: () => [[0, 0, 0], [0x80, 0x80, 0x80], [0, 0, 0], [2, 2, 2]] }]);
+// 31:4A4E Map0CUnusedShotTermsTip (maps/bank31.js): the pages by A, Yes (A) or No (B, after its pages by A); flag #22
+// (the scripts' text skipping) clear, as in play
+CASES.push(["Map0CUnusedShotTermsTip", 0x31, 0x4A4E, w => { noMsg(w); w.wram[0][0x96D] = 1; w.wram[0][0x840 + (22 >> 3)] &= ~(0x80 >> (22 & 7)); return {}; },
+  w => { run(B31.map0CUnusedShotTermsTip(sh(w))); return {}; },
+  { frames: true, joy: () => (rnd(2) ? pageJoy() : [[0, 0, 0], [0, 0, 0], [1, 1, 1], [0, 0, 0], [2, 2, 2]]) }]);
 CASES.push(["DrawTextToWindow", 5, 0x6646, w => ({ a: slotRegs(w), hl: pick(ids), d: rnd(6), e: rnd(6) }), (w, r) => { W.drawTextToWindow(w, r.a, r.hl, r.d, r.e); return {}; }]);
 CASES.push(["DrawNumberToWindow", 5, 0x6658, w => ({ a: slotRegs(w), hl: rnd(0x10000), d: rnd(6), e: rnd(6) }), (w, r) => { W.drawNumberToWindow(w, r.a, r.hl, r.d, r.e); return {}; }]);
 
@@ -241,7 +246,9 @@ for (const [name, bank, addr, regsOf, js, opts = {}] of CASES) {
       const [pb, pa] = k.split(":").map(x => parseInt(x, 16)), o = (pa < 0x4000 ? 0 : pb * 0x4000) + (pa & 0x3FFF);
       bytes.forEach((v, i) => { saved.push([o + i, gb.mem.rom[o + i]]); gb.mem.rom[o + i] = v; });
     }
+    if (process.env.WATCHW) { const wa = parseInt(process.env.WATCHW, 16), mw = gb.mem.write.bind(gb.mem); gb.mem.write = (a, v) => { if (a === wa && gb.mem.svbk === 5) console.log("W", a.toString(16), v.toString(16), gb.mem.romBank.toString(16) + ":" + gb.cpu.pc.toString(16)); return mw(a, v); }; }
     try { out = romCall(gb, bank, addr, regs, opts.frames ? 20_000_000 : 5_000_000); } catch (e) { err = e; }
+    if (process.env.WATCHW) delete gb.mem.write;
     for (const [o, v] of saved) gb.mem.rom[o] = v;
     if (err) { hung++; continue; }
     if (errorSound) { skipped++; continue; }
@@ -264,7 +271,7 @@ for (const [name, bank, addr, regsOf, js, opts = {}] of CASES) {
       if (gb.mem.vbk !== w.lcd.vbk) diffs.push("vbk");
       if (opts.frames && coreSounds.join() !== w.jsSounds.join()) diffs.push(`sounds rom ${coreSounds.join()} js ${w.jsSounds.join()}`);
     }
-    if (diffs.length && opts.frames) diffs.push(`frames rom ${kj} js ${w.framesRun}`);
+    if (diffs.length && opts.frames) diffs.push(`frames rom ${kj} js ${w.framesRun}`, `$D852 rom ${(gb.mem.wram[5][0x853] << 8 | gb.mem.wram[5][0x852]).toString(16)} js ${(w.wram[5][0x853] << 8 | w.wram[5][0x852]).toString(16)}`);
     if (diffs.length) { fails++; if (!first) first = `${JSON.stringify(r)}: ${diffs.join(", ")}`; }
   }
   bad += fails > 0;

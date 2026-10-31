@@ -444,6 +444,7 @@ function* menuHandler(sh, h) {
       return;
     case 0x732F:
       wr(w, 0xC4BD, 0);
+      // (mode 2: 41:78B9; the unreferenced 41:7898 MenuShowStandings is the same bytes: tools/compare_routines.py)
       if (rd(w, 0xC834) === 2) yield* inBankGen(w, 0x3E, inBankGen(w, 0x0E, showScorecard(sh)));
       else yield* inBankGen(w, 0x0E, showScorecard(sh));
       wr(w, 0xC3FD, 0xFF);
