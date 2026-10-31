@@ -157,6 +157,7 @@ function getSpeakerVoice(w, a) {
   if (!hl) return 8;
   const old = wbank(w);
   setW(w, 4);
+  w.high[0x1E0] = hl & 0xFF; w.high[0x1E1] = hl >> 8;   // (hFFE0 / hFFE1: the actor pointer kept there)
   const c = rd(w, (hl & 0xFF00) | ((hl + 0x30) & 0xFF));
   let b = 8;
   for (let p = 0x66C0; ; p += 2) {
@@ -468,4 +469,129 @@ export function scriptSkipText(w) {
   const n = (r16(w, 0xD852) + 1) & 0xFFFF;
   wr(w, 0xD852, n & 0xFF); wr(w, 0xD853, n >> 8);
   setW(w, old);
+}
+
+// 05:60FF CloseMessageBoxAnimated (unreferenced): its shrink loop jumped over (05:6106 jr to 05:614D): CloseWindow
+// [$D855] in the WRAM bank as mapped (the loop's WRAM5 not set), the bank restored. With shrink (a test's patch of
+// that jr out): 05:6108 CloseMessageBoxShrinkLoop: WRAM5; window record [$D856]'s x, y, w, h; 8 times at most: the
+// shadow restored from the map (05:4492), the record rebuilt at that size (05:4773), the windows drawn (05:4949); x
+// + 1, w - 2 (below 3: out; the code's "w = 3, x - 1" after it is never reached), y + 1, h - 2 (below 3: 3, y - 1)
+export function* closeMessageBoxAnimated(sh, shrink = false) {
+  const w = sh.w, old = wbank(w);
+  if (shrink) {
+    setW(w, 5);
+    let rec = r16(w, 0xD856);
+    let d = rd(w, rec + 1), e = rd(w, rec + 2), b = rd(w, rec + 3), c = rd(w, rec + 4);
+    for (let a = 8; ; ) {
+      yield* restoreShadowFromMap(sh);
+      W.buildTextWindowRecord(w, r16(w, 0xD856), d, e, b, c);
+      yield* W.updateWindows(sh);
+      d = (d + 1) & 0xFF; b = (b - 2) & 0xFF;
+      if (b < 3) break;
+      e = (e + 1) & 0xFF; c = (c - 2) & 0xFF;
+      if (c < 3) { c = 3; e = (e - 1) & 0xFF; }
+      a = (a - 1) & 0xFF;
+      if (!a) break;
+    }
+  }
+  W.closeWindow(w, rd(w, 0xD855));
+  setW(w, old);
+}
+
+// 05:5F02 ContinueMessageAt (unreferenced): text hl in the message window centred on (d - 10, e - 9) (opened with
+// 05:605F when there is none), every page (05:4492, 05:4949), the window left open. The voice: 8 (none) when e - 9
+// has bit 7, else GetSpeakerVoice of actor 8 (a quirk: a is loaded with 8 before the call either way)
+export function* continueMessageAt(sh, hl, d, e) {
+  const w = sh.w;
+  d = (d - 0x0A) & 0xFF; e = (e - 0x09) & 0xFF;
+  const old = wbank(w);
+  setW(w, 5);
+  wr(w, 0xD862, e & 0x80 ? 8 : getSpeakerVoice(w, 8));
+  if (rd(w, 0xD824) === 0xFF) yield* openMessageBoxAt(sh, hl, d, e);
+  do {
+    setMessageText(w, hl);
+    yield* restoreShadowFromMap(sh);
+    yield* W.updateWindows(sh);
+  } while (rd(w, 0xD850));
+  setW(w, old);
+}
+// 05:60C3 ResizeMessageBox (unreferenced): WRAM5; with a page pending, text hl loaded (05:6179) and measured (05:5B3B),
+// the record [$D856] rebuilt (05:4773) at the position and size of the record [$D858]; the bank restored
+export function resizeMessageBox(w, hl) {
+  const old = wbank(w);
+  setW(w, 5);
+  if (rd(w, 0xD850)) {
+    T.loadText(w, hl);
+    sizeMessageBox(w);
+    const src = r16(w, 0xD858);
+    W.buildTextWindowRecord(w, r16(w, 0xD856), rd(w, src + 1), rd(w, src + 2), rd(w, src + 3), rd(w, src + 4));
+  }
+  setW(w, old);
+}
+// 05:6708 OpenWindowWithText: WRAM5; OpenWindow (05:4AF2) at (d, e) of size (b, c); unless hl's bit 15, its text id
+// hl (05:5A51) on the slot opened; returns wLastOpenedWindow; the bank restored
+export function* openWindowWithText(sh, hl, d, e, b, c) {
+  const w = sh.w, old = wbank(w);
+  setW(w, 5);
+  const a = yield* W.openWindow(sh, d, e, b, c);
+  if (!(hl & 0x8000)) W.setWindowText(w, a, hl);
+  const r = rd(w, 0xD820);
+  setW(w, old);
+  return r;
+}
+// 05:67C5 ShowMessageInPlace: WRAM5; the argument counters cleared; text hl (05:622F with a 0); the delay from the
+// option; the message box centred on (d, e) when none (05:682D); every page drawn in place (05:6729 RefreshWindowText,
+// 05:4384 CopyWindowRowsFramed); the box removed (05:67BB); the counters cleared; the bank restored
+export function* showMessageInPlace(sh, hl, d, e) {
+  const w = sh.w, old = wbank(w);
+  setW(w, 5);
+  clearArgCounters(w);
+  hl = T.normalizeTextId(hl, 0);
+  setTextDelayFromOption(w);
+  if (rd(w, 0xD824) === 0xFF) yield* openMessageBoxAt(sh, hl, d, e);
+  do {
+    setMessageText(w, hl);
+    yield* refreshWindowText(sh, rd(w, 0xD824));
+    yield* W.copyWindowRowsFramed(sh, rd(w, 0xD824));
+  } while (rd(w, 0xD850));
+  yield* removeWindow(sh, rd(w, 0xD824));
+  wr(w, 0xD824, 0xFF);
+  clearArgCounters(w);
+  setW(w, old);
+}
+// 05:45DC OpenPromptWindow: OpenWindow (05:4AF2) at (d, e) of size (b, c), text id hl on it (05:5A51); the bank
+// restored; the slot in wPromptWindow $D863 (in the bank restored)
+export function* openPromptWindow(sh, hl, d, e, b, c) {
+  const w = sh.w, old = wbank(w);
+  const a = yield* W.openWindow(sh, d, e, b, c);
+  W.setWindowText(w, a, hl);
+  setW(w, old);
+  wr(w, 0xD863, a);
+}
+// 05:45F6 RunYesNoMenu: the Yes / No menu (text $001A) at (d, e) (05:4BB0), the shadow restored (05:4492), the windows
+// drawn (05:4949), RunMenu (05:4CD7); the menu's window [$D82F] and the prompt [$D863] closed (05:4C5C), the shadow and
+// windows again; returns the row ($FF: B)
+export function* runYesNoMenu(sh, d, e) {
+  const w = sh.w, old = wbank(w);
+  yield* W.openMenuWindow(sh, 0x001A, d, e);
+  yield* restoreShadowFromMap(sh);
+  yield* W.updateWindows(sh);
+  const h = yield* W.runMenu05(sh);
+  W.closeWindow(w, rd(w, 0xD82F));
+  W.closeWindow(w, rd(w, 0xD863));
+  yield* restoreShadowFromMap(sh);
+  yield* W.updateWindows(sh);
+  setW(w, old);
+  return h;
+}
+// 41:42D9 ShowNextScriptText (unreferenced): WRAM5 (left mapped); text wScriptTextId $D852 shown and kept open
+// (05:5DE5, speaker a), the id + 1
+export function* showNextScriptText(sh, a) {
+  const w = sh.w;
+  setW(w, 5);
+  const hl = r16(w, 0xD852);
+  yield* showMessageKeepOpen(sh, hl, a);
+  setW(w, 5);
+  const n = (hl + 1) & 0xFFFF;
+  wr(w, 0xD852, n & 0xFF); wr(w, 0xD853, n >> 8);
 }

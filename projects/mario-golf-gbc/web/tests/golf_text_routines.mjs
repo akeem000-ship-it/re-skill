@@ -1,11 +1,17 @@
 // The text routines (web/js/golf/text.js: the glyph renderer of bank 03, the text printer of bank 05) against the
 // ROM's on the emulator core's interpreter: the same random RAM, VRAM and registers in; all WRAM banks (but the
-// call's stack), HRAM, VRAM and the returned registers compared after each call.
+// call's stack: from the lowest sp it reached), HRAM, VRAM and the returned registers compared after each call.
 // usage: node web/tests/golf_text_routines.mjs [N per routine] [name filter]
 import { useRom, rw } from "../js/golf/rom.js";
 import { GolfMemory } from "../js/golf/memory.js";
 import { initDisplay } from "../js/golf/render/display.js";
 import * as T from "../js/golf/text.js";
+import * as W from "../js/golf/windows.js";
+import * as MB from "../js/golf/msgbox.js";
+import * as PA from "../js/golf/pause.js";
+import * as B31 from "../js/golf/maps/bank31.js";
+import * as BOOT from "../js/golf/boot.js";
+import * as DBG from "../js/golf/debug.js";
 import { newCore, romCall, romBytes } from "./golf/romcall.mjs";
 
 useRom(romBytes());
@@ -85,7 +91,15 @@ function loadCoreFull(gb, w) {
   gb.mem.vbk = w.lcd.vbk; gb.ppu.lcdc = w.lcd.lcdc;
 }
 
-const sh = w => ({ w, sound() {}, *advance() { throw new Error("a frame"); } });
+// (frames stubbed: each frame sets the joypad from the case's script on both sides, [held, repeat, pressed], the script
+// repeated; the sounds are recorded, compared as lists)
+const sh = w => ({ w, sound(id) { if (w.jsSounds) w.jsSounds.push(id); }, *advance(n = 1) {
+  for (let k = 0; k < n; k++) {
+    if (!w.framesStubbed) throw new Error("a frame");
+    if (++w.framesRun > 20000) throw new Error("frames run out");
+    if (w.joy) { const j = w.joy[(w.framesRun - 1) % w.joy.length]; w.high[0x190] = j[0]; w.high[0x191] = j[1]; w.high[0x194] = j[2]; }
+  }
+} });
 const run = g => { for (let r = g.next(); ; r = g.next()) if (r.done) return r.value; };
 const buf = () => pick([0xC200 + rnd(0xA00), 0xD000 + rnd(0xD00)]);
 
@@ -114,6 +128,9 @@ const CASES = [
   ["NormalizeTextId", 5, 0x622F, () => ({ hl: rnd(0x10000), a: rnd(256) }), (w, r) => ({ hl: T.normalizeTextId(r.hl, r.a) })],
   ["PrintTextToBuffer", 5, 0x62AA, () => ({ hl: rnd(2) ? pick(codeIds) : pick(ids), de: buf(), c: 1 + rnd(0x40) }), (w, r) => { run(T.printTextToBuffer(sh(w), r.hl, r.de, r.c)); return {}; }],
   ["PrintDecWordInline", 5, 0x5A13, () => ({ hl: rnd(2) ? rnd(0x10000) : rnd(1000), de: buf() }), (w, r) => ({ de: run(T.printDecWordInline(sh(w), r.hl, r.de)) })],
+  ["PrintHexByteInline", 5, 0x59D1, () => ({ a: rnd(256), de: buf() }), (w, r) => ({ de: run(T.printHexByteInline(sh(w), r.a, r.de)) })],
+  ["PrintHexWordInline", 5, 0x59E6, () => ({ hl: rnd(0x10000), de: buf() }), (w, r) => ({ de: run(T.printHexWordInline(sh(w), r.hl, r.de)) })],
+  ["PrintDecByteInline", 5, 0x59FC, () => ({ a: rnd(256), de: buf() }), (w, r) => ({ de: run(T.printDecByteInline(sh(w), r.a, r.de)) })],
   ["PushTextStringArg", 5, 0x54CF, () => ({ hl: rnd(0x10000) }), (w, r) => { T.pushTextStringArg(w, r.hl); return {}; }],
   ["PushTextNumberArg", 5, 0x551F, () => ({ hl: rnd(0x10000) }), (w, r) => { T.pushTextNumberArg(w, r.hl); return {}; }],
   ["PushTextByteArg", 5, 0x5552, () => ({ a: rnd(256) }), (w, r) => { T.pushTextByteArg(w, r.a); return {}; }],
@@ -124,12 +141,91 @@ for (const [code, name] of [[4, "TextCmdStringArg"], [7, "TextCmdPlayerName"], [
     (w, r) => ({ de: run(T.textControlDispatch(sh(w), r.a, r.de)) })]);
 }
 
+// the window buffers' text helpers (windows.js, 05:648E-05:6672), their frames stubbed (opts.frames: AdvanceFrame
+// 00:2E3B returns at once on both sides): [$D860] a buffer 0-6
+const wb = w => { w.wram[5][0x860] = rnd(7); };
+const cellRegs = () => ({ d: rnd(32), e: 1 + rnd(30) });
+const slotRegs = w => {                          // (a slot's record in $D900-$DAFF of a sane size, in every bank: the
+  const a = rnd(6), p = 0x800 + 4 * a, hi = 0xD9 + rnd(2), x = 3 + rnd(18), y = 3 + rnd(16);   // routine reads the
+  for (let b = 1; b < 8; b++) { const r = w.wram[b]; r[p] = 0x00; r[p + 1] = hi; r[(hi << 8) - 0xD000 + 3] = x; r[(hi << 8) - 0xD000 + 4] = y; }
+  return a;                                      // slots in the bank mapped)
+};
+CASES.push(["PrintTextToShadow", 5, 0x648E, () => ({ hl: rnd(2) ? pick(codeIds) : pick(ids), ...cellRegs() }), (w, r) => { run(W.printTextToShadow(sh(w), r.hl, r.d, r.e)); return {}; }, { frames: true }]);
+CASES.push(["PrintTextToShadowNow", 5, 0x64B8, () => ({ hl: pick(ids), ...cellRegs() }), (w, r) => { run(W.printTextToShadowNow(sh(w), r.hl, r.d, r.e)); return {}; }, { frames: true }]);
+CASES.push(["CopyShadowToVRAMFramed", 5, 0x64D1, () => ({}), w => { run(W.copyShadowToVRAMFramed(sh(w))); return {}; }, { frames: true }]);
+CASES.push(["DrawWindowBuffer", 5, 0x6510, w => { wb(w); return {}; }, w => { run(W.drawWindowBuffer(sh(w))); return {}; }, { frames: true }]);
+CASES.push(["PrintTextInWindowBuffer", 5, 0x652F, w => { wb(w); return { hl: pick(ids), d: rnd(8), e: rnd(8) }; }, (w, r) => { run(W.printTextInWindowBuffer(sh(w), r.hl, r.d, r.e)); return {}; }, { frames: true }]);
+CASES.push(["PrintTextInWindowBufferNow", 5, 0x6597, w => { wb(w); return { hl: pick(ids), d: rnd(8), e: rnd(8) }; }, (w, r) => { run(W.printTextInWindowBuffer(sh(w), r.hl, r.d, r.e, true)); return {}; }, { frames: true }]);
+CASES.push(["PrintNumberInWindowBuffer", 5, 0x6564, w => { wb(w); return { hl: rnd(0x10000), d: rnd(8), e: rnd(8) }; }, (w, r) => { run(W.printNumberInWindowBuffer(sh(w), r.hl, r.d, r.e)); return {}; }, { frames: true }]);
+CASES.push(["PrintNumberInWindowBufferNow", 5, 0x65CC, w => { wb(w); return { hl: rnd(0x10000), d: rnd(8), e: rnd(8) }; }, (w, r) => { run(W.printNumberInWindowBuffer(sh(w), r.hl, r.d, r.e, true)); return {}; }, { frames: true }]);
+CASES.push(["PrintStringInWindowBuffer", 5, 0x6589, w => { wb(w); return { hl: buf(), d: rnd(8), e: rnd(8) }; }, (w, r) => { run(W.printStringInWindowBuffer(sh(w), r.hl, r.d, r.e)); return {}; }, { frames: true }]);
+CASES.push(["PrintStringInWindowBufferNow", 5, 0x65F1, w => { wb(w); return { hl: buf(), d: rnd(8), e: rnd(8) }; }, (w, r) => { run(W.printStringInWindowBuffer(sh(w), r.hl, r.d, r.e, true)); return {}; }, { frames: true }]);
+// the message box's other entries (msgbox.js), the frames stubbed; no message window open ($D824 $FF) or one
+const pageJoy = () => [[0, 0, 0], [0, 0, 0], [1, 1, 1]];   // (A every third frame: the pages go on)
+// (the window system as the game keeps it between messages: no window open, no page pending, no menu)
+const noMsg = w => {
+  const r = w.wram[5];
+  for (let k = 0; k < 6; k++) { r[0x800 + 4 * k] = 0; r[0x801 + 4 * k] = 0; r[0x802 + 4 * k] = 0; r[0x803 + 4 * k] = 0; }
+  r[0x822] = 0; r[0x823] = 0; r[0x824] = 0xFF; r[0x82F] = 0xFF; r[0x83E] = 0xFF; r[0x850] = 0; r[0x84F] = 0;
+};
+CASES.push(["ContinueMessageAt", 5, 0x5F02, w => { noMsg(w); return { hl: pick(ids), d: 10 + rnd(10), e: 9 + rnd(12) }; }, (w, r) => { run(MB.continueMessageAt(sh(w), r.hl, r.d, r.e)); return {}; }, { frames: true, joy: pageJoy }]);
+CASES.push(["ResizeMessageBox", 5, 0x60C3, w => { const r = w.wram[5]; r[0x84F] = 0;   // (no resume pointer: the text buffer measured)
+ for (const a of [0x856, 0x858]) { const p = 0xD900 + 0x11D * rnd(7); r[a] = p & 0xFF; r[a + 1] = p >> 8; } r[0x850] = rnd(2); return { hl: pick(ids) }; },
+  (w, r) => { MB.resizeMessageBox(w, r.hl); return {}; }]);
+CASES.push(["OpenWindowWithText", 5, 0x6708, () => ({ hl: rnd(0x10000), d: rnd(12), e: rnd(10), b: 3 + rnd(10), c: 3 + rnd(8) }), (w, r) => ({ a: run(MB.openWindowWithText(sh(w), r.hl, r.d, r.e, r.b, r.c)) }), { frames: true }]);
+CASES.push(["ShowMessageInPlace", 5, 0x67C5, w => { noMsg(w); return { hl: pick(ids), d: 10 + rnd(10), e: 9 + rnd(12) }; }, (w, r) => { run(MB.showMessageInPlace(sh(w), r.hl, r.d, r.e)); return {}; }, { frames: true, joy: pageJoy }]);
+CASES.push(["OpenPromptWindow", 5, 0x45DC, () => ({ hl: pick(ids), d: rnd(12), e: rnd(10), b: 3 + rnd(10), c: 3 + rnd(8) }), (w, r) => { run(MB.openPromptWindow(sh(w), r.hl, r.d, r.e, r.b, r.c)); return {}; }, { frames: true }]);
+// (a few moves, then A or B, each after a frame with nothing held, over and over: the menu's wait for the buttons to be
+// let go ends wherever it starts in the script)
+const menuJoy = () => { const j = []; for (let n = rnd(4); n; n--) { const b = [0x40, 0x80][rnd(2)]; j.push([0, 0, 0], [b, b, b]); } const b = [1, 2][rnd(2)]; j.push([0, 0, 0], [b, b, b]); return j; };
+CASES.push(["RunYesNoMenu", 5, 0x45F6, w => { noMsg(w); return { d: rnd(12), e: rnd(10) }; }, (w, r) => ({ a: run(MB.runYesNoMenu(sh(w), r.d, r.e)) }), { frames: true, joy: menuJoy }]);
+CASES.push(["ShowNextScriptText", 0x41, 0x42D9, w => { noMsg(w); const id = pick(ids); w.wram[5][0x852] = id & 0xFF; w.wram[5][0x853] = id >> 8; return { a: rnd(2) ? 0x80 | rnd(0x80) : rnd(0x18) }; },
+  (w, r) => { run(MB.showNextScriptText(sh(w), r.a)); return {}; }, { frames: true, joy: pageJoy }]);
+// 41:6FC4 CharStartMenu: the menu opened and B (or Start) after a few moves: wMenuResult $FF (the items' screens are the
+// start menu's, checked there)
+const cancelJoy = () => { const j = []; for (let n = rnd(4); n; n--) { const b = [0x40, 0x80][rnd(2)]; j.push([0, 0, 0], [b, b, b]); } const b = [2, 8][rnd(2)]; j.push([0, 0, 0], [b, b, b]); return j; };
+CASES.push(["CharStartMenu", 0x41, 0x6FC4, w => { noMsg(w); return {}; }, w => ({ a: run(PA.charStartMenu(sh(w))) }), { frames: true, joy: cancelJoy }]);
+// the three unreferenced lesson placeholders of bank 31 (maps/bank31.js), the same bytes at 31:53F6 / 31:5D12 / 31:65A0
+for (const [name, addr] of [["Map0FUnusedLessonPlaceholder", 0x53F6], ["Map12UnusedLessonPlaceholder", 0x5D12], ["Map15UnusedLessonPlaceholder", 0x65A0]])
+  CASES.push([name, 0x31, addr, w => { noMsg(w); w.wram[0][0x96D] = 1; return {}; }, w => { run(B31.unusedLessonPlaceholder(sh(w))); return {}; }, { frames: true, joy: pageJoy }]);   // ($C96D set: the actor wait 0A:48AC, checked in the screen cases, skipped)
+// 01:5278 CGBRequiredScreen (boot.js) with its endless AdvanceFrame loop patched to return after one (01:52B7 jr ->
+// ret: opts.patch on the core's ROM), the frames stubbed: VRAM, WRAM (the LZ buffer) compared
+CASES.push(["CGBRequiredScreen", 0x01, 0x5278, () => ({}), w => { run(BOOT.cgbRequiredScreen(sh(w), 1)); return {}; }, { frames: true, patch: { "01:52b7": [0xC9, 0x00] } }]);
+// 0B:4534 DebugMapGfxQuickMenu (debug.js): moves and B: nothing loaded (a pick loads the map graphics, 0B:44C4: the
+// debug viewer's, checked in boot_kid_debug_mapgfx)
+CASES.push(["DebugMapGfxQuickMenu", 0x0B, 0x4534, w => { noMsg(w); return {}; }, w => { run(DBG.debugMapGfxQuickMenu(sh(w))); return {}; }, { frames: true, joy: () => [[0, 0, 0], [0x80, 0x80, 0x80], [0, 0, 0], [2, 2, 2]] }]);
+CASES.push(["DrawTextToWindow", 5, 0x6646, w => ({ a: slotRegs(w), hl: pick(ids), d: rnd(6), e: rnd(6) }), (w, r) => { W.drawTextToWindow(w, r.a, r.hl, r.d, r.e); return {}; }]);
+CASES.push(["DrawNumberToWindow", 5, 0x6658, w => ({ a: slotRegs(w), hl: rnd(0x10000), d: rnd(6), e: rnd(6) }), (w, r) => { W.drawNumberToWindow(w, r.a, r.hl, r.d, r.e); return {}; }]);
+
+// the codes $10-$13 (05:5900 05:590B 05:5916 05:5921 TextCmdTile0A-0D: the tile at the pen, the rows flushed, the delay)
+// with the current window not the message window (no flush: its frame is not run here)
+for (const [code, name] of [[0x10, "TextCmdTile0A"], [0x11, "TextCmdTile0B"], [0x12, "TextCmdTile0C"], [0x13, "TextCmdTile0D"]]) {
+  CASES.push([name, 5, 0x58E2, w => { for (const b of [1, 2, 3, 4, 5, 6, 7]) w.wram[b][0x824] = (w.wram[b][0x821] + 1) % 6; return { a: code, de: buf() }; },
+    (w, r) => ({ de: run(T.textControlDispatch(sh(w), r.a, r.de)) })]);
+}
+
 const gb = newCore();
 const h4 = v => "$" + v.toString(16).padStart(4, "0");
 let bad = 0;
-for (const [name, bank, addr, regsOf, js] of CASES) {
+const coreStep = gb.cpu.step.bind(gb.cpu);
+let minSp = 0xCFF0, joy = null, kj = 0, coreSounds = [], errorSound = false;
+for (const [name, bank, addr, regsOf, js, opts = {}] of CASES) {
+  // (the lowest sp the call reached: WRAM0 from there to $CFFF is its stack, not compared)
+  gb.cpu.step = () => {
+    const cpu = gb.cpu, m = gb.mem;
+    if (cpu.sp < minSp) minSp = cpu.sp;
+    if (opts.frames && cpu.pc === 0x2E3B) {
+      if (joy) { const j = joy[kj % joy.length]; m.hram[0x10] = j[0]; m.hram[0x11] = j[1]; m.hram[0x14] = j[2]; }
+      kj++;
+      cpu.pc = m.read(cpu.sp) | m.read((cpu.sp + 1) & 0xFFFF) << 8; cpu.sp = (cpu.sp + 2) & 0xFFFF; return 16;
+    }
+    // (QueueVRAMCopy's error sounds, rst $08 at 00:04A8 / 00:04AA for more than $80 blocks: the call is not compared, as
+    // in golf_fuzz_routines.mjs: the JS queue has no sound)
+    if (opts.frames && cpu.pc === 0x2BCA) { const r = m.read(cpu.sp + 8) | m.read(cpu.sp + 9) << 8; if (r === 0x04AA || r === 0x04AC) errorSound = true; coreSounds.push(cpu.a); cpu.pc = 0x2C14; return 4; }   // (PlaySoundCmd: the id recorded, the driver not run)
+    return coreStep();
+  };
   if (filter && !name.includes(filter)) continue;
-  let fails = 0, first = "", hung = 0;
+  let fails = 0, first = "", hung = 0, skipped = 0;
   for (let n = 0; n < N; n++) {
     const w = randomState();
     const r = regsOf(w);
@@ -138,14 +234,26 @@ for (const [name, bank, addr, regsOf, js] of CASES) {
     loadCoreFull(gb, w);
     w.high[0x195] = bank;
     let out, err = null;
-    try { out = romCall(gb, bank, addr, regs, 5_000_000); } catch (e) { err = e; }
+    minSp = 0xCFF0;
+    joy = opts.joy ? opts.joy() : null; kj = 0; coreSounds = []; errorSound = false;
+    const saved = [];                            // (opts.patch: {"BB:AAAA": [bytes]}: the core's ROM patched for the call)
+    for (const [k, bytes] of Object.entries(opts.patch || {})) {
+      const [pb, pa] = k.split(":").map(x => parseInt(x, 16)), o = (pa < 0x4000 ? 0 : pb * 0x4000) + (pa & 0x3FFF);
+      bytes.forEach((v, i) => { saved.push([o + i, gb.mem.rom[o + i]]); gb.mem.rom[o + i] = v; });
+    }
+    try { out = romCall(gb, bank, addr, regs, opts.frames ? 20_000_000 : 5_000_000); } catch (e) { err = e; }
+    for (const [o, v] of saved) gb.mem.rom[o] = v;
     if (err) { hung++; continue; }
-    const want = js(w, { ...regs, bc: (regs.b ?? 0) << 8 | (regs.c ?? 0), de: (regs.d ?? 0) << 8 | (regs.e ?? 0), hl: (regs.h ?? 0) << 8 | (regs.l ?? 0) });
+    if (errorSound) { skipped++; continue; }
+    w.framesStubbed = !!opts.frames; w.framesRun = 0; w.joy = joy; w.jsSounds = opts.frames ? [] : null;
+    let want;
+    try { want = js(w, { ...regs, bc: (regs.b ?? 0) << 8 | (regs.c ?? 0), de: (regs.d ?? 0) << 8 | (regs.e ?? 0), hl: (regs.h ?? 0) << 8 | (regs.l ?? 0) }); }
+    catch (e) { fails++; if (!first) first = `${JSON.stringify(r)}: js ${e.message} (rom returned after ${kj} frames)`; continue; }
     const diffs = [];
     {
       for (const [k, v] of Object.entries(want)) if (out[k] !== v) diffs.push(`${k} js ${h4(v)} rom ${h4(out[k])}`);
       for (let b = 0; b < 8 && diffs.length < 4; b++) for (let i = 0; i < 0x1000; i++) {
-        if (b === 0 && i >= 0xF80) break;        // the call's stack
+        if (b === 0 && i >= minSp - 0xC000) break;   // the call's stack (from the lowest sp it reached)
         if (b === 0 && w.wram[0] && gb.mem.wram[0][i] !== w.wram[0][i] || b && gb.mem.wram[b][i] !== w.wram[b][i]) {
           diffs.push(`wram${b} $${((b ? 0xD000 : 0xC000) + i).toString(16)} js ${w.wram[b][i]} rom ${gb.mem.wram[b][i]}`); break;
         }
@@ -154,10 +262,12 @@ for (const [name, bank, addr, regsOf, js] of CASES) {
       if (gb.mem.svbk !== ((w.high[0x196] & 7) || 1)) diffs.push(`svbk js ${w.high[0x196]} rom ${gb.mem.svbk}`);
       for (let b = 0; b < 2; b++) for (let i = 0; i < 0x2000; i++) if (gb.mem.vram[b][i] !== w.vram[b][i]) { diffs.push(`vram${b} $${(0x8000 + i).toString(16)}`); break; }
       if (gb.mem.vbk !== w.lcd.vbk) diffs.push("vbk");
+      if (opts.frames && coreSounds.join() !== w.jsSounds.join()) diffs.push(`sounds rom ${coreSounds.join()} js ${w.jsSounds.join()}`);
     }
+    if (diffs.length && opts.frames) diffs.push(`frames rom ${kj} js ${w.framesRun}`);
     if (diffs.length) { fails++; if (!first) first = `${JSON.stringify(r)}: ${diffs.join(", ")}`; }
   }
   bad += fails > 0;
-  console.log(`${fails ? "FAIL" : "ok  "} ${name}: ${N - hung - fails}/${N - hung}${hung ? ` (${hung} states where the ROM ran off: a string without its end over the stack)` : ""}${first ? "  first: " + first : ""}`);
+  console.log(`${fails ? "FAIL" : "ok  "} ${name}: ${N - hung - fails - skipped}/${N - hung - skipped}${hung ? ` (${hung} states where the ROM ran off: a string without its end over the stack, or a wait that never ends)` : ""}${skipped ? ` (${skipped} with the queue's error sound, not compared)` : ""}${first ? "  first: " + first.slice(0, 300) : ""}`);
 }
 process.exit(bad ? 1 : 0);

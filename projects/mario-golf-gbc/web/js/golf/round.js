@@ -14,6 +14,7 @@ import * as H from "./hole.js";
 import * as Cam from "./camera.js";
 import * as Scr from "./screen.js";
 import { clearFrameTasks } from "./tasks.js";
+import { serialSendBlock, serialWaitSendDone, clearLinkActive } from "./serial.js";
 import * as D from "./render/hooks.js";
 import * as Dp from "./render/display.js";
 import * as P from "./pictures.js";
@@ -99,6 +100,18 @@ function roundHookRoundStart(w, sound) {         // 08:4722 RoundHookRoundStart 
   Dp.setWramBank(w, old);
 }
 
+// 08:50E6 PlayGreenMusic (export $12; nothing calls it): on the green (wLieTerrain $D4CD 6) with the music on
+// (wOptionFlags $C818 bit 0 clear): song $0E when the current player's strokes are below par, else $0D; otherwise
+// PlayRoundMusic; returns the a it leaves (the lie, the option flags, or the strokes less par) and hl (the strokes' field
+// address on the green's path, else null: kept)
+export function playGreenMusic(sh) {
+  const w = sh.w, lie = w.wram[6][0x4CD], opt = w.wram[0][0x818];
+  if (lie !== 6) { playRoundMusic(sh); return [lie, null]; }
+  if (opt & 1) { playRoundMusic(sh); return [opt, null]; }
+  const f = pf(w, 0x20), d = w.wram[0][f] - w.wram[6][0x325];
+  sh.sound(d < 0 ? 0x0E : 0x0D);
+  return [d & 0xFF, 0xC000 + f];
+}
 // 08:5062 PlayRoundMusic: only in a round (wReplayActive $C96D); the round's song $C82C, else by mode (8: 5, 4: 7),
 // the decisive hole ($2A), the opponent's song (08:50D6 by $C8D0, not in link play) or the course's (08:50C6)
 export function playRoundMusic(sh) {
@@ -318,9 +331,26 @@ export function* holeStart(sh) {
   w0[0x874] = w0[0x873];
   w0[0x876] = w0[0x8BE];
   w0[0x877] = w0[0x8FE];
-  if (w0[0x893] === 3) notPorted("link play (~10:44EA)");
-  holeWind(w);
-  if (w0[0x8D3] === 3) notPorted("link play (~10:4567)");
+  if (w0[0x893] === 3) {                         // 10:44EA link play, player 1 the partner (the side that answered):
+    const h = w.high;                            // a frame, idle byte $24 (ready), frames until $23; the hole from
+    yield* sh.advance();                         // the partner's block: course, hole, wind direction, speed, angle
+    h[0x1C1] = 0x24;
+    while (h[0x1C0] !== 0x23) yield* sh.advance();
+    for (const a of [0x836, 0x837, 0x838, 0x815, 0x816]) w0[a] = w0[0xB40 + [0x836, 0x837, 0x838, 0x815, 0x816].indexOf(a)];
+  } else {
+    holeWind(w);
+    if (w0[0x8D3] === 3) {                       // 10:4567 player 2 the partner (the side that asked): frames until
+      const h = w.high;                          // its $24; $CB47 = 0; the block: course, hole, wind direction,
+      while (h[0x1C0] !== 0x24) yield* sh.advance();   // speed, angle, $CB07 = $10; $23 to follow; 8 bytes sent
+      w0[0xB47] = 0;                             // (00:3081), out (00:30EB); 2 frames (00:2ED5)
+      [0x836, 0x837, 0x838, 0x815, 0x816].forEach((a, k) => { w0[0xB00 + k] = w0[a]; });
+      w0[0xB07] = 0x10;
+      h[0x1C9] = 0x23;
+      yield* serialSendBlock(sh, 0x08);
+      yield* serialWaitSendDone(sh);
+      yield* sh.advance(2);
+    }
+  }
   playRoundMusic(sh);                            // 08:5062
   holeIdFromCourse(w);                           // 10:4246
   loadHoleInfo(w);                               // 13:55F6
@@ -527,16 +557,21 @@ export function* roundEnd(sh) {
   const w = sh.w, w0 = w.wram[0], r6 = w.wram[6];
   r6[0x328] = 1;                                 // wHudBusy
   w0[0x96D] = 0;                                 // wReplayActive
-  if (w0[0x33F]) notPorted("link play (~10:4659)");
+  if (w0[0x33F]) {                               // 10:4659 link play: idle byte $2E (done), frames until the partner's
+    w.high[0x1C1] = 0x2E;                        // $2E, 2 frames (00:2ED5), ClearLinkActive 00:30FD
+    do yield* sh.advance(); while (w.high[0x1C0] !== 0x2E);
+    yield* sh.advance(2);
+    clearLinkActive(w);
+  }
   const old = w.high[0x196];
   Dp.setWramBank(w, 6);
   switch (mode(w)) {                             // 08:4BBC RoundHookRoundEnd (WRAM6 meanwhile)
     case 3:                                      // 08:4EBF RoundEndMode3Stroke
       if (w0[0x8D0] !== 0xFF) {
         const b = (w0[0x8BE] + 0x36) & 0xFF, c = (w0[0x8FE] + 0x36) & 0xFF;
-        w0[0x96C] = c === b ? 3 : c < b ? 2 : 1;   // wRoundResult (~0B:59DE RoundResultScreen: display)
+        w0[0x96C] = c === b ? 3 : c < b ? 2 : 1;   // wRoundResult
+        yield* inBankGen(sh.w, 0x0B, roundResultScreen(sh, 2));   // 0B:59DE RoundResultScreen (two players)
       }
-      if (w0[0x8D0] !== 0xFF) notPorted("the two-player result screen (~0B:59DE RoundResultScreen)");
       addPointsRaw(w, 0x0A);
       yield* roundEndFadeAndExp(sh);             // 08:4F03
       break;

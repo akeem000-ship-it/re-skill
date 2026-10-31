@@ -5,8 +5,14 @@
 // The page starts at power-on: the title, the menus (one player, a preset golfer; Stroke), then the round
 // (js/golf/boot.js, modesel.js). The mode selector can also start a round directly as a new game's Stroke round or
 // match against the computer would (js/golf/start.js).
+// The "link" mode runs two machines from power-on in the page, side by side, joined by the link cable in JS
+// (js/golf/serial.js NativeCable): the left one with this browser's save, the right one with an empty save RAM (its
+// preset golfers); the keys go to the machine picked with Tab (the other's buttons are let go), the sound is the
+// left one's. Each frame runs the left machine's frame, then the right one's (the transfer the clock side starts
+// at its VBlank reaches the other machine at once).
 // window.__golf exposes the running state for tests (web/tests/play_page.mjs).
 import { useRom } from "./golf/rom.js";
+import { NativeCable } from "./golf/serial.js";
 import { GolfMemory, playerField } from "./golf/memory.js";
 import { playRoundFrames, playFromPowerOn } from "./golf/game.js";
 import { strokeRoundSetup, matchRoundSetup } from "./golf/start.js";
@@ -20,6 +26,8 @@ const EXPECTED_SHA1 = "7f2062e51b4fc87378c1d5e6b9578c9277b94e0b";
 const FRAME_MS = 1000 * DOTS_PER_FRAME / CLOCK;   // 16.74 ms
 const $ = id => document.getElementById(id);
 const canvas = $("screen"), ctx = canvas.getContext("2d"), image = ctx.createImageData(160, 144);
+const canvas2 = $("screen2"), ctx2 = canvas2.getContext("2d"), image2 = ctx2.createImageData(160, 144);
+const rgba2 = new Uint32Array(image2.data.buffer);
 const rgb5 = new Uint8Array(160 * 144 * 3), rgba = new Uint32Array(image.data.buffer);
 const keys = {};
 let rom = null, sha = "", game = null, paused = false, fast = false, muted = false, last = 0, acc = 0;
@@ -90,6 +98,7 @@ function soundFrame(w) {                           // one VBlank's sound work (S
 const MAP = { KeyZ: 1, KeyX: 2, ShiftLeft: 4, ShiftRight: 4, KeyQ: 4, Enter: 8, ArrowRight: 0x10, ArrowLeft: 0x20, ArrowUp: 0x40,
   ArrowDown: 0x80 };
 let pauseWas = false;
+let active = 0;                                    // (link mode: the machine the keys go to)
 function held() {
   pollGamepad(keys);
   let b = 0;
@@ -104,6 +113,7 @@ addEventListener("keydown", e => {
   keys[e.code] = true; initAudioSoon();
   if (e.code === "Space") fast = true;
   if (e.code === "KeyM" && !e.repeat) muted = !muted;
+  if (e.code === "Tab" && game && game.link) { e.preventDefault(); if (!e.repeat) { active ^= 1; showActive(); } }
 });
 addEventListener("keyup", e => { keys[e.code] = false; if (e.code === "Space") fast = false; });
 addEventListener("blur", () => { for (const k in keys) keys[k] = false; fast = false; });
@@ -119,15 +129,16 @@ function initAudioSoon() { if (driver) initAudio(); }
 // ---- the round ----
 function newRound() {
   const w = new GolfMemory();
-  const mode = $("mode").value;                    // "title" (power-on), "stroke", or "match:N" against preset golfer N
+  const mode = $("mode").value;                    // "title" (power-on), "stroke", "match:N" against preset golfer N, "link"
+  const fromPowerOn = mode === "title" || mode === "link";
   let holes = 0;
-  if (mode !== "title") {
+  if (!fromPowerOn) {
     const seed = crypto.getRandomValues(new Uint16Array(1))[0];   // (the menus' frames would have moved the seed)
     holes = mode.startsWith("match:") ? matchRoundSetup(w, { golfer: 8, opponent: +mode.slice(6), course: 1, seed })
       : strokeRoundSetup(w, { golfer: 8, course: 1, seed });
   }
   savedCopy = null;
-  if (mode === "title") {                          // power-on reads the save RAM (GameMain's SaveLoad 02:41F6)
+  if (fromPowerOn) {                               // power-on reads the save RAM (GameMain's SaveLoad 02:41F6)
     $("save").textContent = loadSave(w) ? "save loaded" : "";
     savedCopy = w.sram.slice();
     saveCheckAt = 0;
@@ -140,18 +151,46 @@ function newRound() {
   w.onMusicOption = flags => apu.writeAll(driver.applyMusicOption(flags));   // 00:2B98 (the Settings menu's Music)
   w.jingleActive = () => driver.ram[0xFFCD];        // hActiveJingle, for WaitJingleEnd 00:2C1F
   w.onEndJingle = () => apu.writeAll(driver.endJingle());
-  if (mode !== "title") w.onSound(0x01);           // ModeSelectMain plays song 1 in the menus (32:508B); the round's own songs follow
-  game = { w, g: null, frames: 0, done: null, error: null, mark: mode === "title" ? "menus" : "", marks: [], shots: [], holes: 0 };
+  if (!fromPowerOn) w.onSound(0x01);           // ModeSelectMain plays song 1 in the menus (32:508B); the round's own songs follow
+  game = { w, g: null, frames: 0, done: null, error: null, mark: fromPowerOn ? "menus" : "", marks: [], shots: [], holes: 0 };
   const ev = (kind, name) => { if (kind === "M") { game.mark = name; game.marks.push([game.frames, name]); } };
   const opts = { ev, maxHoles: Infinity, onShot: s => game.shots.push(s.outcome), onHoleEnd: r => { game.holes = r.holes.length; },
     onRoundStart: () => { game.mark = "round"; game.rounds = (game.rounds || 0) + 1; $("message").textContent = ""; },
     onRoundEnd: r => { game.mark = "menus"; game.lastRound = r; roundMessage(r, false); } };
-  game.g = mode === "title" ? playFromPowerOn(w, held, opts) : playRoundFrames(w, holes, held, opts);
+  if (mode === "link") {                           // two machines from power-on joined by the JS cable
+    const w2 = new GolfMemory();
+    initDisplay(w2);
+    const cable = new NativeCable(w, w2);
+    const input = k => () => { const b = held(); return game.testInput ? game.testInput[k] : active === k ? b : 0; };
+    game.link = { w2, cable, frames2: 0 };
+    game.g = playFromPowerOn(w, input(0), opts);
+    game.link.g2 = playFromPowerOn(w2, input(1), {});
+    canvas2.hidden = false;
+    showActive();
+  } else {
+    canvas2.hidden = true;
+    game.g = mode === "title" ? playFromPowerOn(w, held, opts) : playRoundFrames(w, holes, held, opts);
+  }
   window.__golf = game;
   $("message").textContent = "";
 }
+function showActive() {
+  canvas.classList.toggle("active", game && !!game.link && active === 0);
+  canvas2.classList.toggle("active", game && !!game.link && active === 1);
+  if (game && game.link) $("message").textContent = `Link: the keys play the ${active ? "right" : "left"} Game Boy (Tab switches)`;
+}
+// one frame of a machine: its generator to its next frame (a cable's "code" / "sync" yields are parts of a frame)
+function nextFrame(g) {
+  for (;;) { const r = g.next(); if (r.done || (r.value !== "code" && r.value !== "sync")) return r; }
+}
 function step() {                                  // one frame of the game
-  const r = game.g.next();
+  if (game.onFrame) game.onFrame();               // (a test's buttons for the frame)
+  const r = game.link ? nextFrame(game.g) : game.g.next();
+  if (game.link && !game.link.done) {              // (the right machine's frame after the left one's)
+    const r2 = nextFrame(game.link.g2);
+    game.link.frames2++;
+    if (r2.done) game.link.done = true;
+  }
   game.frames++;
   soundFrame(game.w);
   checkSave(game.w);
@@ -168,7 +207,7 @@ function showMessage(text) {
   const m = $("message");
   m.textContent = text;
   const b = document.createElement("button");
-  b.textContent = $("mode").value === "title" ? "Power on again" : "New round"; b.onclick = () => { newRound(); canvas.focus(); };
+  b.textContent = $("mode").value === "title" || $("mode").value === "link" ? "Power on again" : "New round"; b.onclick = () => { newRound(); canvas.focus(); };
   m.appendChild(b);
 }
 $("mode").addEventListener("change", () => { if (rom) { newRound(); canvas.focus(); } });
@@ -176,6 +215,11 @@ function draw() {
   const w = game.w;
   rasterize({ vram: w.vram, oam: w.oam, bgPal: w.bgPal, objPal: w.objPal, ...w.lcd }, rgb5, rgba);
   ctx.putImageData(image, 0, 0);
+  if (game.link) {
+    const v = game.link.w2;
+    rasterize({ vram: v.vram, oam: v.oam, bgPal: v.bgPal, objPal: v.objPal, ...v.lcd }, rgb5, rgba2);
+    ctx2.putImageData(image2, 0, 0);
+  }
   const w0 = w.wram[0];
   if (w0[0x837]) $("score").textContent = `hole ${w0[0x837]} · stroke ${w0[playerField(w, 0x20)]}`;
 }

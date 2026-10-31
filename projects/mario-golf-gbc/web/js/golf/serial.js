@@ -7,8 +7,9 @@
 // HRAM: $FFC0 hSerialRecv, $FFC1 hSerialIdleByte, $FFC2 hLinkRole, $FFC3 hLinkIdleCount, $FFC4 hSerialSendMode,
 // $FFC5 hSerialSendCount, $FFC6 hSerialRecvIndex, $FFC7 hSerialSendIndex, $FFC8 hLinkActive, $FFC9
 // hSerialNextIdleByte. The serial registers rSB / rSC are w.high[$101] / [$102] (w.high is $FE00-$FFFF).
-// No partner is modelled: a transfer on the internal clock completes at once with $FF in (an open cable), and its
-// interrupt runs SerialHandler (IE $0D has the serial interrupt).
+// With no partner a transfer on the internal clock completes at once with $FF in (an open cable), and its interrupt
+// runs SerialHandler (IE $0D has the serial interrupt). Two native machines linked (NativeCable, w.cable) exchange
+// the byte at once instead, both handlers run (see NativeCable).
 import { rb } from "./rom.js";
 import * as D from "./render/display.js";
 import { clearFrameTasks as clearFrameTasksLL } from "./tasks.js";
@@ -23,8 +24,44 @@ export function writeSC(w, v) {
   const h = w.high;
   h[SC] = v & 0x83;
   if ((v & 0x81) !== 0x81 || w.noSerialHW) return;
+  if (w.cable) { w.cable.transfer(w); return; }
   h[SB] = 0xFF; h[SC] &= 0x7F;
   serialHandler(w);
+}
+
+// The cable between two native machines (two GolfMemory w): a transfer on one side's clock exchanges the two serial
+// registers at once when the other waits on the external clock (its SC bits 7 set, 0 clear): both get the byte and
+// both handlers run (the partner's in its own machine, wherever its code is: the caller decides the order in which
+// the two machines' frames run, e.g. by turns); when the other does not wait, the clock side reads $FF. The hardware
+// takes 8 bit times (on the fast clock SC $83 a few hundred CPU cycles): by default the native transfer ends at once
+// (the transfers the game starts at VBlank, SerialVBlankTick 00:3038, then end inside the VBlank, before the frame's
+// code); with defer set, a transfer started waits (SC bit 7 still set) in pending until the driver calls complete()
+// (a test that ends each transfer where the cores' clocks put it: web/tests/golf_link_vs_cores.mjs). A machine's
+// frames are split in two with a cable: its generator yields "code" after the VBlank work (Shot.advance), so a
+// driver can run the other machine's VBlank between them. started[side] counts the transfers each side started.
+export class NativeCable {
+  constructor(...ends) { this.ends = []; this.log = null; this.defer = false; this.pending = []; this.started = []; for (const w of ends) this.attach(w); }
+  attach(w) { this.ends.push(w); this.started.push(0); w.cable = this; }
+  peer(w) { return this.ends[0] === w ? this.ends[1] : this.ends[0]; }
+  transfer(w) {
+    this.started[this.ends.indexOf(w)]++;
+    if (this.defer) { this.pending.push(w); return; }
+    this.exchange(w);
+  }
+  complete() { this.exchange(this.pending.shift()); }
+  exchange(w) {
+    const p = this.peer(w), h = w.high, ph = p ? p.high : null;
+    let peerGets = null;
+    if (ph && (ph[SC] & 0x81) === 0x80) {
+      peerGets = h[SB];
+      const v = ph[SB]; ph[SB] = h[SB]; h[SB] = v;
+      ph[SC] &= 0x7F;
+    } else h[SB] = 0xFF;
+    h[SC] &= 0x7F;
+    if (this.log) this.log(w, h[SB], peerGets);
+    serialHandler(w);
+    if (peerGets !== null) serialHandler(p);
+  }
 }
 
 // 00:304D InitSerialLink: $70 sent on the external clock, the link state reset
@@ -121,7 +158,8 @@ export function serialVBlankTick(w) {
 export function* serialSendBlock(sh, a) {
   const h = sh.w.high;
   while (h[0x1C4]) yield* sh.advance();
-  h[0x1C7] = 0;
+  if (sh.w.cable) yield "sync";                  // (linked: a point a driver can order against the other machine's
+  h[0x1C7] = 0;                                  // transfers, NativeCable)
   if (!h[0x1C2]) return 0xFF;
   h[0x1C5] = (a << 1) & 0xFF;
   h[0x1C4] = 2;

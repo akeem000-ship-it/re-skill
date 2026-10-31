@@ -16,7 +16,12 @@
 // With --newchar (an empty save RAM) the test makes a new character in the character select's empty slot 0 (A through
 // the opening's questions and texts; in the name entry Start, A: the default name, A: END), the first day at the club,
 // then Stroke with the new save file; at the end it checks the stored save RAM holds the character in slot 0.
-// usage: node web/tests/play_page.mjs [shots=3] [outdir=out] [--match] [--stroke] [--pause] [--save out/kid.sav] [--newchar]
+// With --link the page's link mode (two machines joined by the JS cable): a policy in the page gives both machines
+// their buttons (as web/tests/golf/linkcores.mjs sessionPolicy: Start at frame 2600, the left one Down and A on the
+// link menu's VS game, the right one waits; Right to slot 4 / 3 in the character selects, A every 40 frames, the
+// swings by the meter) until the left machine has seen `shots` shots of the link round (both players' shots: the
+// partner's come in by the cable) and both machines hold the partner as the other player (its field $13 = 3).
+// usage: node web/tests/play_page.mjs [shots=3] [outdir=out] [--match] [--stroke] [--pause] [--save out/kid.sav] [--newchar] [--link]
 import { createRequire } from "module";
 import http from "http";
 import fs from "fs";
@@ -28,6 +33,7 @@ const match = process.argv.includes("--match");
 const pause = process.argv.includes("--pause");
 const direct = process.argv.includes("--stroke");
 const newChar = process.argv.includes("--newchar");
+const link = process.argv.includes("--link");
 const saveFile = process.argv.includes("--save") ? process.argv[process.argv.indexOf("--save") + 1] : null;
 const [shotsArg = "3", outDir = path.join(root, "out")] = process.argv.slice(2).filter((a, i, all) => !a.startsWith("--") && all[i - 1] !== "--save");
 const want = +shotsArg;
@@ -82,7 +88,36 @@ const screenNow = () => page.evaluate(() => {
     modes: has(0x0D, 0x428E), mode: w.high[0x1B0], names: has(0x06, 0x51CC), map: t[0x450] };
 });
 try {
-  if (!match && !direct) {
+  if (link) {
+    await page.selectOption("#mode", "link");
+    await page.waitForFunction(() => window.__golf && window.__golf.link && window.__golf.frames > 0, null, { timeout: 30000 });
+    await page.evaluate(() => {
+      const g = window.__golf, ws = [g.w, g.link.w2], st = [{ menuAt: -1 }, {}];
+      const has = (w, b, a) => { const t = w.wram[0]; for (let p = 0x1C0; p < 0x200; p += 4) if (t[p] && t[p + 3] === b && (t[p + 1] | t[p + 2] << 8) === a) return true; return false; };
+      g.testInput = [0, 0];
+      g.onFrame = () => {
+        const k = g.frames;
+        g.testInput = ws.map((w, id) => {
+          if (k < 2600) return 0;
+          if (k === 2600) return 8;
+          if (has(w, 0x09, 0x4990) && w.wram[6][0x205] === 1 && w.wram[6][0x202] === 4) {
+            if (id) return 0;
+            if (st[0].menuAt < 0) st[0].menuAt = k;
+            return k === st[0].menuAt + 60 ? 0x80 : k === st[0].menuAt + 100 ? 1 : 0;
+          }
+          const m = w.wram[6][0x44E];
+          if (m) return w.wram[6][0x329] === 0x0D ? (m === 0x14 || m === 0x15 ? 1 : 0) : (m === 0x38 || m === 0x39 || m === 0x76 || m === 0x77 ? 1 : 0);
+          if (k % 40) return 0;
+          if (has(w, 0x06, 0x65D9) && w.wram[6][0x214] !== (id ? 3 : 4)) return 0x10;
+          return 1;
+        });
+      };
+    });
+    await until(n => (window.__golf.shots.length >= n && window.__golf.link.w2.wram[0][0x893] === 3 && window.__golf.w.wram[0][0x8D3] === 3) || window.__golf.error, want, 900000);
+    await page.locator("#stage").screenshot({ path: path.join(outDir, "play_link.png") });
+    log.push(`link: ${await page.evaluate(() => `left ${window.__golf.frames} frames, right ${window.__golf.link.frames2}, link roles ${window.__golf.w.wram[0][0x33F]} / ${window.__golf.link.w2.wram[0][0x33F]}, hole ${window.__golf.w.wram[0][0x837]}`)}`);
+  }
+  if (!match && !direct && !link) {
     let shots = 0;
     for (;;) {
       const st = await screenNow();
@@ -100,7 +135,7 @@ try {
     }
     log.push(`menus done at frame ${await frames()}`);
   }
-  for (let k = 0; k < want; k++) {
+  for (let k = 0; k < (link ? 0 : want); k++) {
     await until(() => (window.__golf.mark === "aimmenu" && !window.__golf.w.wram[0][0x835]) || window.__golf.error, null, 600000);
     await untilFrames((await frames()) + 40);     // the menu's HUD frames
     await shot(`shot${k + 1}_aim`);

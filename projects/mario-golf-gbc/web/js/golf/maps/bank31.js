@@ -389,7 +389,7 @@ function* ceremonyEnter(sh) {
     }
   } else if (testFlag(w, 110)) { wr(w, 0xC441, 0x02); return; }   // 31:786B (unreachable: tested above)
   else if (e === 0x03 || e === 0x04) {
-    yield* inBankGen(w, 0x0B, mapBufCopyRectRedraw(sh, e === 0x03 ? 0x16 : 0x19, 0x0A, 0x0A, 0x0A, 0x02, 0x02));
+    yield* inBankGen(w, 0x0B, mapBufCopyRectRedraw(sh, e === 0x03 ? 0x16 : 0x19, 0x0A, 0x0A, 0x0A, 0x02, 0x02));   // 31:7B86 / 31:7B96 CeremonyPatchTiles2nd / 3rd
     S.actorSetState(w, 0x03, 0x00);
     S.actorSetState(w, e === 0x03 ? 0x05 : 0x04, 0x00);
     yield* ceremonyPlaceTrophy(sh);
@@ -1355,3 +1355,11 @@ export const SCRIPTS = {
 export const TASKS = w => ({
   "31:43b2": () => openingSpriteTask(w),         // 31:43B2 OpeningSpriteTask
 });
+
+// 31:53F6 Map0FUnusedLessonPlaceholder / 31:5D12 Map12UnusedLessonPlaceholder / 31:65A0 Map15UnusedLessonPlaceholder
+// (unreferenced, the same bytes): the placeholder text $0D16 ("Lesson character.", 0A:4124) shown on actor 3 (0A:4164)
+export function* unusedLessonPlaceholder(sh) {
+  T.scriptSetText(sh.w, 0x0D16);
+  yield* T.scriptShowText(sh, 0x03);
+}
+

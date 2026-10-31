@@ -562,3 +562,21 @@ export function* openCharSummaryScreen(sh) {
   setW(w, old);
 }
 export const charSummaryTask = w => charSpriteTask(w);   // 41:7E03 CharSummaryTask: 42:4074
+
+// 48:4A27 YesNoCursorInput (nothing calls it): WRAM6, the cursor $D251 = 0; frames until a button (hJoyPressed):
+// sound $5B for any; A: $5C, the cursor returned after a frame (WRAM6 mapped again); B: $5C, $FF after a frame; Up or
+// Down: the cursor toggled; others: on waiting
+export function* yesNoCursorInput(sh) {
+  const w = sh.w;
+  D.setWramBank(w, 6);
+  D.wr(w, 0xD251, 0);
+  for (;;) {
+    yield* sh.advance();
+    const a = w.high[0x194];
+    if (!a) continue;
+    sh.sound(0x5B);
+    if (a & 1) { sh.sound(0x5C); D.setWramBank(w, 6); const r = D.rd(w, 0xD251); yield* sh.advance(); return r; }
+    if (a & 2) { sh.sound(0x5C); yield* sh.advance(); return 0xFF; }
+    if (a & 0xC0) { D.setWramBank(w, 6); D.wr(w, 0xD251, (D.rd(w, 0xD251) + 1) & 1); }
+  }
+}

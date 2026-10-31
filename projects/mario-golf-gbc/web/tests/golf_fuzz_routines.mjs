@@ -18,6 +18,10 @@ import { loadText } from "../js/golf/text.js";
 import * as SER from "../js/golf/serial.js";
 import * as B34 from "../js/golf/maps/bank34.js";
 import * as AIM from "../js/golf/aim.js";
+import * as MB from "../js/golf/msgbox.js";
+import * as RD from "../js/golf/round.js";
+import * as CS from "../js/golf/charsel.js";
+import * as EXP from "../js/golf/exp.js";
 
 useRom(romBytes());
 const filter = process.argv.slice(2).find(a => !/^\d+$/.test(a)) || "";
@@ -252,6 +256,62 @@ for (const [name, addr, b] of [["LinkSendShot", 0x48B8, false], ["LinkSendShotRe
 CASES.push({ name: "SerialSendBlock", bank: 0, addr: 0x3081, init: w => { serialState(w); w.high[0x1C4] = 0; }, io: true,
   regs: () => ({ a: rnd(0x40) }), out: ["a"], js: (w, r) => { const g = SER.serialSendBlock({ w, advance: function* () { yield; } }, r.a); const x = g.next(); if (!x.done) throw new Error("it runs frames"); return { a: x.value }; } });
 for (const c of U.FUZZ || []) CASES.push(c(rnd));
+// the card's accent fragments (0E:44AE / 0E:44C8), entered from a stub at $C800 that pushes af and hl (as ScorecardPutString
+// 0E:4492 has them on the stack at its loop) and jumps in, bank 0E mapped; a string at hl in WRAM0, de in WRAM 1-7
+for (const [name, addr, base] of [["ScorecardPutStringAccentA", 0x44AE, 0x30], ["ScorecardPutStringAccentB", 0x44C8, 0x2B]]) {
+  CASES.push({ name, bank: 0x0E, addr: 0xC800,   // (romCall maps the case's bank for an address past $4000)
+    init: w => { const m = w.wram[0]; m.set([0xF5, 0xE5, 0xC3, addr & 0xFF, addr >> 8], 0x800); const n = rnd(10); for (let k = 0; k < n; k++) m[0x402 + k] = 1 + rnd(255); m[0x402 + n] = 0; },
+    regs: () => { const de = 0xD001 + rnd(0xE00); return { h: 0xC4, l: 0x02, d: de >> 8, e: de & 0xFF, a: rnd(256) }; }, out: ["a", "h", "l", "d", "e"],
+    js: (w, r) => { const de = SC.scorecardPutStringAccent(w, 0xC402, r.d << 8 | r.e, base); return { a: r.a, h: 0xC4, l: 0x02, d: de >> 8, e: de & 0xFF }; } });
+}
+// 08:50E6 PlayGreenMusic (round.js), its sounds recorded (a script case): on the green or not, music on or off, strokes
+// and par
+CASES.push({ name: "PlayGreenMusic", bank: 0x08, addr: 0x50E6, script: () => [0],
+  init: w => { w.wram[6][0x4CD] = rnd(2) ? 6 : rnd(16); w.wram[0][0x818] = rnd(256); w.wram[0][0x96D] = rnd(3) ? 1 : 0; w.wram[0][0x82C] = rnd(2) ? 0 : rnd(0x30); w.wram[0][0x835] = rnd(2); w.wram[6][0x325] = 3 + rnd(3); w.wram[0][0x8A0] = rnd(8); w.wram[0][0x8E0] = rnd(8); },
+  regs: () => ({ a: rnd(256), h: rnd(256), l: rnd(256) }), out: ["a", "h", "l"],
+  js: (w, r) => { const [a, hl] = RD.playGreenMusic(w.sh); return hl === null ? { ...r, a } : { a, h: hl >> 8, l: hl & 0xFF }; } });
+// 06:6471 LoadSelectedCharPaletteUnused (charsel.js): the roster list in WRAM0, the cursor's record's character 0-$0B or $FF
+CASES.push({ name: "LoadSelectedCharPaletteUnused", bank: 0x06, addr: 0x6471,
+  init: w => { const r6 = w.wram[6]; r6[0x214] = rnd(8); r6[0x216] = 0x00; r6[0x217] = 0xC4; w.wram[0][0x400 + 32 * r6[0x214]] = [rnd(12), 0xFF, rnd(256)][rnd(3)]; },
+  regs: () => ({ a: rnd(256), b: rnd(256), c: rnd(256), d: rnd(256), e: rnd(256), h: rnd(256), l: rnd(256) }), out: ["a", "b", "c", "d", "e", "h", "l"],
+  js: (w, r) => { CS.loadSelectedCharPaletteUnused(w); return r; } });
+// 48:4A27 YesNoCursorInput (exp.js): frames stubbed, buttons by a list (nothing, Up / Down / Select, then A or B)
+CASES.push({ name: "YesNoCursorInput", bank: 0x48, addr: 0x4A27, script: () => [0],
+  joy: () => { const j = []; for (let n = rnd(5); n; n--) j.push(0, [0x40, 0x80, 4, 0x10][rnd(4)]); j.push(0, [1, 2][rnd(2)]); return j; },
+  regs: () => ({ b: rnd(256), c: rnd(256), d: rnd(256), e: rnd(256), h: rnd(256), l: rnd(256) }), out: ["a", "b", "c", "d", "e", "h", "l"],
+  js: (w, r) => ({ ...r, a: runGen(EXP.yesNoCursorInput(w.sh)) }) });
+// 0C:6E80 LoadBannerGfxUnused (records0c.js), its frame stubbed: a within its 6-entry table
+CASES.push({ name: "LoadBannerGfxUnused", bank: 0x0C, addr: 0x6E80, script: () => [0],
+  init: w => { if (rnd(2)) for (let k = 0; k < rnd(9); k++) w.wram[0][0x0A0 + 8 * rnd(10)] = 1; },
+  regs: () => ({ a: rnd(6), b: rnd(256), c: rnd(256), d: 0x80 + rnd(0x18), e: rnd(256), h: rnd(256), l: rnd(256) }), out: ["a", "b", "c", "d", "e", "h", "l"],
+  js: (w, r) => { runGen(R0C.loadBannerGfxUnused(w.sh, r.a, r.d << 8 | r.e)); return r; } });
+// 00:02C7 SwitchCPUSpeedSingle: the core's CPU speed and KEY1, P1's select bits, IF and IE against the native model's
+CASES.push({ name: "SwitchCPUSpeedSingle", bank: 0, addr: 0x02C7,
+  coreInit: (gb, w) => { w.doubleSpeed = !!rnd(2); w.key1 = rnd(2); w.high[0x1FF] = rnd(256) & 0x1F; gb.mem.doubleSpeed = w.doubleSpeed; gb.mem.key1 = w.key1; gb.mem.ie = w.high[0x1FF];
+    w.high[0x10F] = gb.mem.iflag = rnd(32); w.high[0x100] = rnd(4) << 4; gb.mem.joypad.write(w.high[0x100]); },
+  out: ["a"], js: w => ({ a: U.switchCPUSpeedSingle(w) }),
+  check: (gb, w) => {
+    const d = [];
+    if (gb.mem.doubleSpeed !== w.doubleSpeed) d.push(`speed rom ${gb.mem.doubleSpeed} js ${w.doubleSpeed}`);
+    if (gb.mem.ie !== w.high[0x1FF]) d.push(`IE rom ${hx(gb.mem.ie)} js ${hx(w.high[0x1FF])}`);
+    if (w.doubleSpeed === false && (gb.mem.iflag & 0x1F) !== (w.high[0x10F] & 0x1F)) d.push(`IF rom ${hx(gb.mem.iflag)} js ${hx(w.high[0x10F])}`);
+    if ((gb.mem.joypad.select & 0x30) !== (w.high[0x100] & 0x30)) d.push(`P1 rom ${hx(gb.mem.joypad.select)} js ${hx(w.high[0x100])}`);
+    return d;
+  } });
+// the message box's unreferenced close (05:60FF) and its shrink loop (05:6108, the jr over it patched out), the frames
+// stubbed: the window slots' priorities 0 (UpdateWindows draws none), the record [$D856] in WRAM5 with a sane size
+const msgClose = w => {
+  const r = w.wram[5];
+  for (let s = 0; s < 6; s++) r[0x802 + 4 * s] &= 0x1F;
+  const rec = 0xD900 + rnd(0x200); r[0x856] = rec & 0xFF; r[0x857] = rec >> 8;
+  r[rec - 0xD000 + 3] = 3 + rnd(18); r[rec - 0xD000 + 4] = 3 + rnd(16);
+  r[0x86C] = rnd(2);
+};
+CASES.push({ name: "CloseMessageBoxAnimated", bank: 0x05, addr: 0x60FF, init: msgClose, script: () => [0], regs: () => ({ a: rnd(256), b: rnd(256), c: rnd(256), d: rnd(256), e: rnd(256), h: rnd(256), l: rnd(256) }),
+  out: ["a", "b", "c", "d", "e", "h", "l"], js: (w, r) => { runGen(MB.closeMessageBoxAnimated(w.sh)); return r; } });
+CASES.push({ name: "CloseMessageBoxShrinkLoop", bank: 0x05, addr: 0x60FF, patch: { "05:6106": [0, 0] }, init: msgClose, script: () => [0], steps: 5000000,
+  regs: () => ({ a: rnd(256), b: rnd(256), c: rnd(256), d: rnd(256), e: rnd(256), h: rnd(256), l: rnd(256) }),
+  out: ["a", "b", "c", "d", "e", "h", "l"], js: (w, r) => { runGen(MB.closeMessageBoxAnimated(w.sh, true)); return r; } });
 
 const hx = v => (v === undefined ? "undefined" : v.toString(16).padStart(2, "0"));
 let bad = 0;
@@ -271,6 +331,7 @@ for (const c of CASES) {
     w.high[0x196] = 6; w.high[0x195] = c.bank;
     loadCore(gb, w);
     if (c.io) { gb.mem.io[1] = w.high[0x101]; gb.mem.io[2] = w.high[0x102]; }   // (rSB / rSC)
+    if (c.coreInit) c.coreInit(gb, w);           // (a case's hardware state on both sides, e.g. the CPU speed)
     if (c.sram) { for (let k = 0; k < 0x2000; k++) w.sram[k] = rnd(256); gb.mem.sram.set(w.sram, 0); gb.mem.ramBank = 0; }   // (the save RAM's bank 0 compared too)
     let got;
     // (a call that reaches PlaySoundCmd 00:2BBB, QueueVRAMCopy's error sounds for more than $80 blocks, is not
@@ -281,12 +342,15 @@ for (const c of CASES) {
     // script's next byte (its last one after the end), on both sides; PlaySoundManaged 00:2C19 returns at once with
     // its sound id recorded, compared as "sounds")
     const script = c.script ? c.script(w) : null, coreSounds = [];
+    const joy = c.joy ? c.joy() : null;          // (c.joy: hJoyPressed per stubbed frame, the list repeated, on both sides)
     let kc = 0;
     const ret = () => { const cpu = gb.cpu, m = gb.mem; cpu.pc = m.read(cpu.sp) | m.read((cpu.sp + 1) & 0xFFFF) << 8; cpu.sp = (cpu.sp + 2) & 0xFFFF; return 16; };
     gb.cpu.step = () => {
-      if (script && gb.cpu.pc === 0x2E3B) { gb.mem.hram[0x40] = script[Math.min(kc++, script.length - 1)]; return ret(); }
+      if (script && gb.cpu.pc === 0x2E3B) { if (joy) gb.mem.hram[0x14] = joy[kc % joy.length]; gb.mem.hram[0x40] = script[Math.min(kc++, script.length - 1)]; return ret(); }
       if (script && gb.cpu.pc === 0x2C19) { coreSounds.push(gb.cpu.a); return ret(); }
-      if (gb.cpu.pc === 0x2BBB) sound = true;
+      // (rst $08 PlaySoundCmd 00:2BBB in a script case: its id recorded at 00:2BCA, the driver not run: 00:2C14's tail)
+      if (script && gb.cpu.pc === 0x2BCA) { coreSounds.push(gb.cpu.a); gb.cpu.pc = 0x2C14; return 4; }
+      if (gb.cpu.pc === 0x2BBB && !script) sound = true;
       return step();
     };
     if (script) {
@@ -294,9 +358,17 @@ for (const c of CASES) {
       w.jsSounds = [];
       w.sh = { w, sound: id => w.jsSounds.push(id), advance: function* () {
         if (kj > 2000) throw new Error("frames run out");
+        if (joy) w.high[0x194] = joy[kj % joy.length];
         w.high[0x1C0] = script[Math.min(kj++, script.length - 1)]; } };
     }
-    try { got = romCall(gb, c.bank, c.addr, regs, 300000); } catch (e) { got = null; }
+    // (c.patch: {"BB:AAAA": [bytes]}: the core's ROM patched for the call, e.g. a jump over dead code taken out; restored)
+    const saved = [];
+    for (const [k, bytes] of Object.entries(c.patch || {})) {
+      const [pb, pa] = k.split(":").map(x => parseInt(x, 16)), o = (pa < 0x4000 ? 0 : pb * 0x4000) + (pa & 0x3FFF);
+      bytes.forEach((v, i) => { saved.push([o + i, gb.mem.rom[o + i]]); gb.mem.rom[o + i] = v; });
+    }
+    try { got = romCall(gb, c.bank, c.addr, regs, c.steps || 300000); } catch (e) { got = null; }
+    for (const [o, v] of saved) gb.mem.rom[o] = v;
     if (process.env.FUZZ_LOG && c.name === process.env.FUZZ_LOG) console.error("ROM", got ? "returned" : "no return");
     gb.cpu.step = step;
     if (sound) { skipped++; continue; }
@@ -315,6 +387,7 @@ for (const c of CASES) {
       }
     }
     if (c.io) for (const r of [1, 2]) if (gb.mem.io[r] !== w.high[0x100 + r]) diffs.push(`io $ff0${r} rom ${hx(gb.mem.io[r])} js ${hx(w.high[0x100 + r])}`);
+    if (c.check) diffs.push(...c.check(gb, w));   // (a case's own hardware comparison)
     for (let k = 0; k < 0x7F; k++) {
       if (w.high[0x180 + k] !== gb.mem.hram[k]) diffs.push(`hram $ff${hx(0x80 + k)} rom ${hx(gb.mem.hram[k])} js ${hx(w.high[0x180 + k])}`);
     }

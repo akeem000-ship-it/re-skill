@@ -13,6 +13,9 @@ import { ball, rd16, wr16, playerField as pf } from "./memory.js";
 import { loadShotView, aimMarker } from "./view.js";
 import { planShot } from "./ai.js";
 import { pauseMenu } from "./pause.js";
+import { linkReceiveShot, linkPartnerCallTick, linkSendShot } from "./serial.js";
+import * as Dp from "./render/display.js";
+import { registerFrameTask, unregisterFrameTask } from "./tasks.js";
 import * as D from "./render/hooks.js";
 
 function notPorted(what) { throw new Error(`${what} is not ported`); }
@@ -245,7 +248,7 @@ export function* aimMenu(sh, a) {
   r6[0x513] = 0;
   if (r6[0x4D7] === 1) return yield* cpuAim(sh);
   if (r6[0x4D7] === 2) return yield* cpuAim(sh, true);
-  if (r6[0x4D7] === 3) notPorted("link play (~10:5943)");
+  if (r6[0x4D7] === 3) return yield* linkPartnerAim(sh);
   w.high[0x1C1] = 0x21;                          // 02:482C SerialIdleSet21
   r6[0x44D] = 0xF0;
   r6[0x438] = r6[0x443] ? 4 : 2;                 // the camera on the target marker (the cup on the green)
@@ -260,6 +263,7 @@ export function* aimMenu(sh, a) {
     }
     at = "5D16";
     yield* sh.advance();
+    linkPartnerCallTick(sh);                     // 02:4812
     if (w0[0x0F4] && !(w0[0x0F6] | w0[0x0F7])) {   // 10:5D1C: the shot clock ran out: 60 frames, $8F (10:5EAF)
       yield* sh.advance(0x3C);                   // WaitFramesCmd $3C
       w.high[0x1C1] = 0x20; r6[0x4D4] = 0; return 0x8F;
@@ -275,8 +279,8 @@ export function* aimMenu(sh, a) {
       w.high[0x195] = old;
       if (!(a & 0x80)) { at = "5D16"; continue; }
       if (a === 0x81) {                          // 10:5DAA Give Up: 02:4924 LinkSendShotResult (only when the other
-        if (w0[0x880 + (w0[0x835] ? 0 : 0x40) + 0x13] === 3) notPorted("the link play's give-up (~02:493E)");   // player is
-        r6[0x4D4] = 0;                           // a link partner: field $13 = 3); $D4D4 = 0; no 10:5EAF
+        yield* linkSendShot(sh, 0x81);           // player is a link partner: field $13 = 3); $D4D4 = 0; no 10:5EAF
+        r6[0x4D4] = 0;
         return a;
       }
       w.high[0x1C1] = 0x20; r6[0x4D4] = 0; return a;   // 10:5EAF
@@ -340,4 +344,44 @@ function* lookAtPin(sh) {                         // 10:5D51: Select looks at th
     yield* loadShotView(sh, 0);
     sh.sound(0x61);                              // 10:5D8C
   }
+}
+
+// ---- the link partner's turn (10:5943: wPlayerControl $D4D7 = 3) ----
+// 10:5943: wBallObjectFlags $2D; the banner (3B:776D) while the partner's shot comes in (02:483A LinkReceiveShot), then
+// off (3B:7766); $D4DB not 0 (the partner gave up or quit: $80 / $81) is returned; else MissTable, the HUD's shot panel,
+// club icon and meter sprites, a frame, the distance and the lie icon, ShotClubParams; 0 (the address step then swings
+// with the received targets: Shot.cpuSwing)
+function* linkPartnerAim(sh) {
+  const w = sh.w, r6 = w.wram[6];
+  r6[0x485] = 0x2D;
+  showBannerSprite(w);
+  yield* linkReceiveShot(sh);
+  hideBannerSprite(w);
+  if (r6[0x4DB]) return r6[0x4DB];
+  r6[0x321] = S.missTable(w);                    // 10:6907
+  D.hud(w, "hudDrawShotPanel");                  // 12:46A6
+  D.hud(w, "hudDrawClubIcon");                   // 12:465C
+  D.hud(w, "hudSetMeterSpritesY");               // 12:4968
+  yield* sh.advance();
+  D.hud(w, "hudDistance");                       // 12:4CA6
+  D.hud(w, "hudDrawLieIcon");                    // 12:45F4
+  L.clubParams(w);                               // 10:5EEF
+  return 0;
+}
+// 3B:776D ShowBannerSprite: OBJ palette 3 from 3B:7850 (00:056C), the 12 tiles 3B:7790 -> $8C00 (queued), the frame
+// task BannerSpriteTask 3B:7858 (flags $10)
+export function showBannerSprite(w) {
+  Dp.inBank(w, 0x3B, () => {
+    Dp.loadPalettesImmediate(w, 0x7850, 0x0B, 0x01);
+    if (w.vram) Dp.queueVRAMCopy(w, 0x7790, 0x8C00, 0x0C);
+  });
+  registerFrameTask(w, 0x10, 0x3B, 0x7858);
+}
+// 3B:7766 HideBannerSprite: the task off
+export function hideBannerSprite(w) { unregisterFrameTask(w, 0x3B, 0x7858); }
+// 3B:7858 BannerSpriteTask: when hVBlankCount & $0F >= 6, the sprite template 3B:786E at y $40, x 0 (tiles from $C0,
+// palette 3)
+export function bannerSpriteTask(w) {
+  if ((w.high[0x18C] & 0x0F) < 6) return;
+  if (w.vram) Dp.queueSpriteTemplate(w, 0x786E, 0x40, 0x00, 0xC0, 0x03, a => rb(0x3B, a));
 }

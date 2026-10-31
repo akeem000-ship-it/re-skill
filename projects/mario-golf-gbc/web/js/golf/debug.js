@@ -527,3 +527,24 @@ function* mapGfxBrowser(sh) {
     yield* sh.advance();
   }
 }
+
+// 0B:4534 DebugMapGfxQuickMenu (unreferenced): the menu text $0123 (gb_04 / gb_05 / gb_03 / gb_06) at (1, 1) (05:4BB0,
+// its slot to $D82F), the shadow and windows drawn, frames while B is held, RunMenu; the choice to wMapGfxLoaded
+// $C32E; the menu closed, the shadow and windows again; a choice: MapLoadGfxScreen (0B:44C4, b = 1) and the shadow
+// restored
+export function* debugMapGfxQuickMenu(sh) {
+  const w = sh.w;
+  yield* inBankGen(w, 0x05, W.openMenuWindow(sh, 0x0123, 0x01, 0x01));
+  wr(w, 0xD82F, rd(w, 0xD820));
+  yield* inBankGen(w, 0x05, restoreShadowFromMap(sh));
+  yield* inBankGen(w, 0x05, W.updateWindows(sh));
+  do yield* sh.advance(); while (w.high[0x190] & 2);
+  const a = yield* inBankGen(w, 0x05, W.runMenu05(sh));
+  wr(w, 0xC32E, a);
+  D.inBank(w, 0x05, () => W.closeWindow(w, rd(w, 0xD82F)));
+  yield* inBankGen(w, 0x05, restoreShadowFromMap(sh));
+  yield* inBankGen(w, 0x05, W.updateWindows(sh));
+  if (rd(w, 0xC32E) === 0xFF) return;
+  yield* mapLoadGfxScreen(sh, rd(w, 0xC32E), 1);
+  yield* inBankGen(w, 0x05, restoreShadowFromMap(sh));
+}

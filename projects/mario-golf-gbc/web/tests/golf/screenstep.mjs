@@ -15,6 +15,7 @@ import { rasterize } from "../../js/golf/render/raster.js";
 import { applyPendingPaletteUpdates } from "../../js/golf/render/display.js";
 import { fadeVBlank, updateGameTimer } from "../../js/golf/screen.js";
 import { runFrameTasks } from "../../js/golf/tasks.js";
+import { serialVBlankTick } from "../../js/golf/serial.js";
 import { loadState } from "../../js/gb/state.js";
 import { writePng } from "./coreplay.mjs";
 import { SoundDriver } from "../../js/sound/driver.js";
@@ -29,7 +30,17 @@ const WRAM0_DISPLAY = [[0x000, 0x0A0], [0x100, 0x1C0], [0x1C0, 0x200], [0x200, 0
 
 // stateFile: out/...json from mkstate.mjs; run(sh, regs) -> the native routine (a generator); policy(frame) -> the
 // buttons held (default: A on alternate frames); returns { frames, pixelExact, modelExact, lag, bad: [...], end }
-export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFrames = 20000, verbose = false, trace = false, hook = null, lagVBlanks = true, open = false, setRegs = null, jumps = null, romPatch = null }) {
+export function runScreen(opts) {
+  const g = screenSteps(opts);
+  let r;
+  while (!(r = g.next()).done);
+  return r.value;
+}
+// the same as a generator that yields at each of the native code's yields (a frame's start; with a link cable also
+// "code", after the frame's VBlank work): the link test runs two of them in the order of the linked cores' clocks.
+// (setupCore(gb): a case's set-up of the core after its state is loaded, e.g. a cable; setupNative(w): the same for
+// the native machine before the routine starts)
+export function* screenSteps({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFrames = 20000, verbose = false, trace = false, hook = null, lagVBlanks = true, open = false, setRegs = null, jumps = null, romPatch = null, setupCore = null, setupNative = null, shotTag = "" }) {
   const romBytes = new Uint8Array(fs.readFileSync(path.join(root, "rom/mario_golf.gbc")));
   useRom(romBytes);
   const saved = JSON.parse(fs.readFileSync(path.join(root, stateFile)));
@@ -40,6 +51,7 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
     const [b, a] = k.split(":").map(x => parseInt(x, 16));
     bytes.forEach((v, i) => { core.gb.mem.rom[(a < 0x4000 ? 0 : b * 0x4000) + ((a + i) & 0x3FFF)] = v; });
   }
+  if (setupCore) setupCore(core.gb);
   const [bank, addr] = saved.at;
   if (!core.at(bank, addr)) throw new Error("the state is not at the routine's entry");
   const gb = core.gb, cpu = gb.cpu;
@@ -128,7 +140,9 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
     const fades = partialFade.splice(0);
     w.lagFadeOwed = [];
     if (lagVBlanks) for (let k = 0; k < n; k++) {
-      applyPendingPaletteUpdates(w); drv.frame(); updateGameTimer(w, id => w.onSound(id));   // (the countdown's ticks: sounds $9F / $A0)
+      applyPendingPaletteUpdates(w);
+      serialVBlankTick(w);                       // (00:2F50: the clock side's transfer of each VBlank; with no role, none)
+      drv.frame(); updateGameTimer(w, id => w.onSound(id));   // (the countdown's ticks: sounds $9F / $A0)
       const f = fades[k];
       if (f && (f[0] & 3) && !(w.high[0x1A2] & 3)) w.lagFadeOwed.push(f[0]);
       else if (!f || w.high[0x1A2] !== f[0] || w.high[0x1A4] >= f[1]) fadeVBlank(w);
@@ -174,8 +188,8 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
     if (lagNow) lagFrames.add(frame);
     res.frames++;
     if (hook) hook(frame, w, core);
-    if (shots.has(frame)) writePng(path.join(root, `out/ss_${frame}.png`), rasterize({ vram: w.vram, oam: w.oam, bgPal: w.bgPal, objPal: w.objPal, ...w.lcd }));
-    if (gameShots.has(frame)) writePng(path.join(root, `out/gs_${frame}.png`), rasterize(core.display()));
+    if (shots.has(frame)) writePng(path.join(root, `out/ss${shotTag}_${frame}.png`), rasterize({ vram: w.vram, oam: w.oam, bgPal: w.bgPal, objPal: w.objPal, ...w.lcd }));
+    if (gameShots.has(frame)) writePng(path.join(root, `out/gs${shotTag}_${frame}.png`), rasterize(core.display()));
     if (trace) {
       const js = new Error().stack.split("\n").slice(2).map(l => (l.match(/at (?:Generator\.next \()?(\S+)/) || [])[1])
         .filter(n => n && !n.startsWith("file") && !/\.next$|ev$|advance|runScreen/.test(n)).slice(0, 4).join("<");
@@ -208,10 +222,11 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
     runAhead();
   };
   ev.v = true;
+  if (setupNative) setupNative(w, res);
   const sh = new Shot(w, null, ev, null);
   const g = run(sh, regs);
   let r;
-  for (r = g.next(); !r.done; r = g.next()) {}
+  for (r = g.next(); !r.done; r = g.next()) yield r.value;
   res.native = r.value;
   if (!coreDone && !open) {                      // the core's code after its last AdvanceFrame, to its return
                                                  // (open: a routine that does not return; compared to here)

@@ -112,7 +112,8 @@ export function menuBobSpriteTask(w, m = MENU09) {
 // 09:47E0 MenuSelect09: a = the cursor: the item highlighted (palette $0C) and blinking; Up / Down move it (sound
 // $5B, wrapping), A picks it (sound $5C; a = the item), B leaves (sound $5D; $FF). With the link handshake on ($D205)
 // A on item 1, the link game, asks the cable for a partner (09:488D: with none, sound $5D and the menu goes on); the
-// partner's own choice (09:4810, $10 received) is not ported.
+// side that answers (the request made it the external-clock side, or the partner's $10 block came in) takes the
+// partner's choice (09:4810) and returns $11.
 export function* menuSelect(sh, a, m = MENU09) {
   const w = sh.w;
   let b = a;
@@ -124,7 +125,7 @@ export function* menuSelect(sh, a, m = MENU09) {
       wr(w, 0xD204, now);
       if ((old ^ now) & 0x10) yield* menuDrawItem(sh, (now >> 4) & 1, b, m);
       yield* sh.advance();
-      if (rd(w, 0xD205) && rd(w, 0xCB40) === 0x10) notPorted("the link partner's menu choice (~09:4810)");
+      if (rd(w, 0xD205) && rd(w, 0xCB40) === 0x10) return yield* partnerChoice(sh, b, m);
       const rep = w.high[0x191];
       if (rep & 2) {                             // B
         sh.sound(0x5D);
@@ -137,7 +138,7 @@ export function* menuSelect(sh, a, m = MENU09) {
           yield* serialSendLinkRequest(sh);
           yield* sh.advance();
           const role = w.high[0x1C2];
-          if (role === 2) notPorted("the link partner's menu choice (~09:4810)");
+          if (role === 2) return yield* partnerChoice(sh, b, m);
           let ok = false;
           if (role === 1) {                      // the clock side: $10 sent (00:3081), 10 frames for the partner's $20
             wr(w, 0xCB00, 0x10);
@@ -167,6 +168,21 @@ export function* menuSelect(sh, a, m = MENU09) {
       break;
     }
   }
+}
+
+// 09:4810 the partner chose the link game: $20 sent back (00:3081, one byte), the cursor's item drawn plain and
+// item 1 highlighted, then as A (09:48C0: sound $5C, item 1 drawn); returns $11
+function* partnerChoice(sh, b, m) {
+  const w = sh.w;
+  wr(w, 0xCB00, 0x20);
+  yield* serialSendBlock(sh, 0x01);
+  yield* menuDrawItem(sh, 1, b, m);
+  yield* menuItemPalette(sh, 0x0B, b, m);
+  yield* menuDrawItem(sh, 0, 1, m);
+  yield* menuItemPalette(sh, 0x0C, 1, m);
+  sh.sound(0x5C);
+  yield* menuDrawItem(sh, 0, 1, m);
+  return 0x11;
 }
 
 // 09:4A12 LinkMenu: the menu 09:4A4C (4 items from slot 1) with the link handshake, from the cursor $CAB8 (kept

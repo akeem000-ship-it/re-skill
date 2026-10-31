@@ -397,7 +397,8 @@ function* toAddress(sh, a) {
     D.golferActorTaskStop(w);                    // 04:5801
     initBallCamera(w);                           // 11:476E
     r6[0x438] = 0;
-    yield* V.loadShotView(sh, 4);
+    // (w.reloadViewMaps: a test's patch of 10:48E1's far call to export $10, 13:42A8 ReloadHoleViewMaps)
+    yield* (w.reloadViewMaps ? Cam.reloadHoleViewMaps(sh) : V.loadShotView(sh, 4));
   } else {
     r6[0x438] = 1;
     yield* Cam.snapToGoal(sh);

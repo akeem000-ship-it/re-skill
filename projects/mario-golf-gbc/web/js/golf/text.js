@@ -464,7 +464,7 @@ export function* textControlDispatch(sh, a, de) {
       setW(w, old);
       return de;
     }
-    case 0x5900: case 0x590B: case 0x5916: case 0x5921: {   // 05:5900-05:5921 TextCmdTile0A-0D ($10-$13): the tile at the pen
+    case 0x5900: case 0x590B: case 0x5916: case 0x5921: {   // 05:5900 / 05:590B / 05:5916 / 05:5921 TextCmdTile0A-0D ($10-$13): the tile at the pen
       const t = 0x0A + (h - 0x5900) / 11;
       wr(w, de, t);
       de = (de + 1) & 0xFFFF;
@@ -596,6 +596,14 @@ export function* printDecWordInline(sh, hl, de) {
   }
   return yield* printInlineString(sh, s, de);
 }
+
+// 05:59D1 PrintHexByteInline / 05:59E6 PrintHexWordInline / 05:59FC PrintDecByteInline (unreferenced): a (as $00a) /
+// hl in hex (00:20E0 FormatHexWord: 4 digits) / a in decimal 4 wide (00:21F0) on the stack, through
+// PrintInlineString (05:596C); de returned as it leaves it
+const hexWord = v => [...[12, 8, 4, 0].map(k => { const n = (v >> k) & 0x0F; return n < 10 ? 0x30 + n : 0x37 + n; }), 0];
+export function* printHexByteInline(sh, a, de) { return yield* printInlineString(sh, hexWord(a), de); }
+export function* printHexWordInline(sh, hl, de) { return yield* printInlineString(sh, hexWord(hl), de); }
+export function* printDecByteInline(sh, a, de) { return yield* printInlineString(sh, formatDecimalNumber(a, 4), de); }
 
 // 05:596C PrintInlineString: hl = string (an address, or the bytes of one on the stack): each char drawn at the
 // pen (03:4E6A, 03:4DF0) with the typing delay; de (the shadow address) moves one per char and wraps to the row's

@@ -107,7 +107,13 @@ export function newGame(w) {                     // 02:4E3D NewGame
 export function setupPlayerGolfer(w, b, c) {
   const r = w.wram[0], p = player(c);
   if (b === 0xFF) { r.fill(0, p, p + 0x40); r[p + 0x10] = 0xFF; return; }
-  if (b === 0x82) throw new Error("SetupPlayerGolfer $82 (the link partner) is not ported");
+  if (b === 0x82) {                              // 02:4A6C: the link partner's record as received (wSerialRecvBuf
+    r.fill(0, p, p + 0x40);                      // $CB40, $20 bytes), field $13 = 3
+    r[p + 0x28] = r[0x825];
+    r.copyWithin(p, 0xB40, 0xB60);
+    r[p + 0x13] = 3;
+    return;
+  }
   if (b === 0x81) {                              // 02:4A8C: the record at $C600 (a saved hole's), field $13 = 2
     r.fill(0, p, p + 0x40);
     r[p + 0x28] = r[0x825];
@@ -138,6 +144,7 @@ export function setupPlayerGolfer(w, b, c) {
 export function setupPlayerGolferA(w, b, c) {
   setupPlayerGolfer(w, b, c);
   if (b === 0xFF) return 0;
+  if (b === 0x82) return w.wram[0][0xB5F];
   if (b === 0x80) return w.wram[0][0x2A5] === 0x0F ? ((c & 1 ? 0xC0 : 0x80) + 0x28) & 0xFF : w.wram[0][0x81F];
   return b & 0x40 ? w.high[0x196] : b;
 }

@@ -421,3 +421,34 @@ export function* characterSelectScreen(sh, hl, b) {
 
 // 06:690F ResetCharSelectCursor
 export function resetCharSelectCursor(w) { wr(w, 0xCABE, 0); }
+
+// 06:6471 LoadSelectedCharPaletteUnused (unreferenced): BG palette 7 (00:056C, one) from the table 06:6494 by the
+// character of the roster record under the cursor ($D214; 06:697B: $0B for $0B and up, $FF an empty record: 2 l
+// in 8 bits)
+export function loadSelectedCharPaletteUnused(w) {
+  const l = rosterCharacter(w, cursor(w));
+  const p = (0x6494 + ((l << 1) & 0xFF)) & 0xFFFF;
+  D.inBank(w, 0x06, () => D.loadPalettesImmediate(w, rb(0x06, p) | rb(0x06, p + 1) << 8, 0x07, 0x01));
+}
+
+// 06:6D3E CharacterSelectNoPortrait (export $10; nothing calls it): CharacterSelectScreen without the big portrait
+// (06:6D9A and its task 06:6E4D) and without the fade out at the end; returns the slot or $FF
+export function* characterSelectNoPortrait(sh, hl, b) {
+  const w = sh.w;
+  charSelectInit(w, hl, b);
+  registerFrameTask(w, 0x1F, B, 0x66F6);         // CharSelectBobSprite
+  registerFrameTask(w, 0x1E, B, 0x6A4E);         // CharSelectDrawTrendMarks
+  initCursor(w);
+  yield* drawInfo(sh);
+  Scr.beginFadeIn(w, 0x10);
+  yield* Scr.waitFade(sh);
+  registerFrameTask(w, 0x1D, B, 0x65D9);         // CharSelectCursorTask
+  registerFrameTask(w, 0x1C, B, 0x6617);         // CharSelectPaletteTask
+  let a;
+  do {
+    yield* sh.advance();
+    a = yield* input(sh);
+  } while (a === 0xFE);
+  for (const t of [0x66F6, 0x65D9, 0x6A4E, 0x6617]) unregisterFrameTask(w, B, t);
+  return a;
+}

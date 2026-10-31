@@ -143,3 +143,22 @@ export function* powerOn(sh) {
 export function mapDebugCoordsTask(w) {
   if (testFlag(w, 32)) notPorted("the map's debug coordinates (~0A:4955)");
 }
+
+// 01:5278 CGBRequiredScreen (export $02, far-called by Start 00:2DA0 when hIsCGB is 0: never on a Game Boy Color,
+// whose boot sets it; the native power-on sets it too): LCD off, the LZ tiles 01:52B9 to $D000 and $80 blocks to
+// $9000, the LZ map 01:58CF to $D000 and $40 blocks to $9800 (00:03EB), BGP $E4, IF and IE 0, LCD on ($C1), ei, then
+// AdvanceFrame for ever (with IE 0 the halt never wakes: the game stops there). (frames: a test's limit, the ROM's
+// loop patched to return after so many)
+export function* cgbRequiredScreen(sh, frames = Infinity) {
+  const w = sh.w;
+  if (w.vram) w.lcd.lcdc = 0x00;
+  D.inBank(w, 0x01, () => {
+    D.lzTo(w, 0x01, 0x52B9, 0xD000);
+    D.copyMemoryFast(w, 0xD000, 0x9000, 0x80);
+    D.lzTo(w, 0x01, 0x58CF, 0xD000);
+    D.copyMemoryFast(w, 0xD000, 0x9800, 0x40);
+  });
+  if (w.vram) { w.lcd.bgp = 0xE4; w.lcd.lcdc = 0xC1; }
+  w.high[0x10F] = 0; w.high[0x1FF] = 0;
+  for (let n = 0; n < frames; n++) yield* sh.advance();
+}

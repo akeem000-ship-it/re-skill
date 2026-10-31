@@ -7,14 +7,15 @@
 // Training; the others throw.
 import { rb } from "./rom.js";
 import * as D from "./render/display.js";
-import { clearFrameTasks, unregisterFrameTask } from "./tasks.js";
+import { clearFrameTasks, unregisterFrameTask, registerFrameTask } from "./tasks.js";
+import { setLinkActive, serialSendBlock, serialWaitSendDone } from "./serial.js";
 import * as Scr from "./screen.js";
 import { initFontScreen } from "./pictures.js";
 import { initWindowSystem } from "./round.js";
 import { expScreen, drawGfxPrompt, awardExpPoints, openCharSummaryScreen } from "./exp.js";
 import { titleScreen } from "./title.js";
 import { linkMenu } from "./menu09.js";
-import { characterSelectScreen, resetCharSelectCursor } from "./charsel.js";
+import { characterSelectScreen, characterSelectNoPortrait, resetCharSelectCursor } from "./charsel.js";
 import { gameModeSelect, courseSelect, courseHoleSelect } from "./select.js";
 import { golfSessionEnd, scriptEnd } from "./boot.js";
 import * as St from "./start.js";
@@ -133,12 +134,14 @@ export function* modeSelectMain(sh) {
       D.clearMemory16(w, 0xCB40, 4);
       initSerialLink(w);
       yield* inBankGen(w, 0x40, titleScreen(sh, titleArg));
-      if (rd(w, 0xCB40) === 0x10) notPorted("the link partner's start (~32:508B)");
-      at = "link";
+      at = rd(w, 0xCB40) === 0x10 ? "partner" : "link";   // (32:508B: the partner's link game came in)
     }
-    if (at === "link") {                         // 32:5080
-      D.clearMemory16(w, 0xCB40, 4);
-      initSerialLink(w);
+    if (at === "link" || at === "partner") {     // 32:5080 (32:508B without the link's reset)
+      if (at === "link") {
+        D.clearMemory16(w, 0xCB40, 4);
+        initSerialLink(w);
+      }
+      at = "link";
       sh.sound(0x01);
       resumeBGM(sh);
       wr(w, 0xC33F, 0);
@@ -146,6 +149,11 @@ export function* modeSelectMain(sh) {
       if (r === 0xFF) { at = "title"; titleArg = 0xFF; continue; }
       if (r === 3) { yield* modeSelectOptionsMenu(sh); continue; }   // 32:54F2 (32:79D8), then 32:5080 again
       if (r === 2) { yield* inBankGen(w, 0x0B, modeSelectMenuLoop(sh)); continue; }   // 32:54EC (0B:4D9D)
+      if (r === 1 || r === 0x11) {               // 32:5313 / 32:53B8, the round, then 32:5080 (the link menu) again
+        const v = yield* (r === 1 ? linkHost(sh) : linkGuest(sh));   // (without sh.playGolfRound: the holes returned)
+        if (v !== null) return v;
+        continue;
+      }
       if (r !== 0) notPorted(`the link menu's item ${r} (~32:509F)`);
       at = "player";
     }
@@ -154,7 +162,8 @@ export function* modeSelectMain(sh) {
       resumeBGM(sh);
       D.inBank(w, 0x02, () => buildGolferListBySave(w, 0xD658));
       resetCharSelectCursor(w);
-      const r = yield* inBankGen(w, 0x06, characterSelectScreen(sh, 0xD658, 0));
+      // (w.charSelNoPortrait: a test's patch of 32:50C5's far call to export $10, 06:6D3E CharacterSelectNoPortrait)
+      const r = yield* inBankGen(w, 0x06, (w.charSelNoPortrait ? characterSelectNoPortrait : characterSelectScreen)(sh, 0xD658, 0));
       if (r === 0xFF) { at = "link"; continue; }
       const e = (0xD658 + ((r << 5) & 0xFFFF)) & 0xFFFF;
       const c = rd(w, e), b = rd(w, e + 1), d = rd(w, e + 0x10);
@@ -253,7 +262,10 @@ export function* modeSelectMain(sh) {
         continue;
       }
       if (m === 1) {                             // 32:51FF Tournament
-        if (flag(w, 139) && !flag(w, 123)) notPorted("the links-unlocked warp (~32:530C)");
+        if (flag(w, 139) && !flag(w, 123)) {     // 32:5304 ModeSelectCheckLinksUnlocked (as for Stroke): warp 6
+          wr(w, 0xC441, 6);
+          return null;
+        }
         const course = yield* inBankGen(w, 0x0F, courseSelect(sh));
         if (course === 0xFF) { at = "modes1"; continue; }
         St.golfSessionInit(w);                   // 10:4B28
@@ -283,6 +295,132 @@ export function* modeSelectMain(sh) {
       notPorted(`the game mode ${m} (~32:51DF)`);
     }
   }
+}
+
+// ---- the link game (LinkMenu's item 1: 1 the side that asked, $11 the side that answered) ----
+// 4A:6C1F LoadLinkWaitPicture: ClearFrameTasks; WRAM1; LCD off, no sprites; WY $90, no scroll; the palettes 4A:6CC5
+// (8 BG, 00:056C); the LZ tiles 4A:6D05 -> VRAM1 $9000 / $9400 (queued) and $8800, the attributes 4A:74D9 -> VRAM1
+// $9800, the map 4A:755E -> $9800 ($24 blocks each); LCD on; $C0F8 = 0 and the frame task LinkWaitPictureTask 4A:6CA2
+// (the copy of 48:5EE9 PictureAnimTiles with its tiles at 4A:7650: pictures.js)
+export function loadLinkWaitPicture(w) {
+  clearFrameTasks(w);
+  setW(w, 1);
+  if (w.vram) D.disableLCDSafely(w);
+  D.resetSprites(w);
+  if (w.vram) w.lcd.wy = 0x90;
+  w.high[0x18B] = w.high[0x18A] = 0;
+  D.inBank(w, 0x4A, () => {
+    D.loadPalettesImmediate(w, 0x6CC5, 0x00, 0x08);
+    D.lzTo(w, 0x4A, 0x6D05, 0xD000);
+    D.queueVRAMCopy(w, 0xD000, 0xB000, 0x40);
+    D.queueVRAMCopy(w, 0xD400, 0xB400, 0x40);
+    D.queueAndRunVRAMCopy(w, 0xD800, 0xA800, 0x40);
+    D.lzTo(w, 0x4A, 0x74D9, 0xD000);
+    D.queueAndRunVRAMCopy(w, 0xD000, 0xB800, 0x24);
+    D.lzTo(w, 0x4A, 0x755E, 0xD000);
+    D.queueAndRunVRAMCopy(w, 0xD000, 0x9800, 0x24);
+  });
+  if (w.vram) D.enableLCD(w);
+  wr(w, 0xC0F8, 0);
+  registerFrameTask(w, 0x01, 0x4A, 0x6CA2);
+}
+
+// 32:5428 LoadRosterEntryAsPlayer: the golfer list's entry a of de as player 1: its slot nibble to wSaveSlot; $F a
+// preset golfer (SetupPlayerGolfer with its id, SetPlayerControl 0, its +$10 bit 0 -> SetPlayerField11 1), else the
+// save slot loaded to $C800 (02:4355, its result not looked at), RestoreGameTimer 00:2CDE, SetupPlayerGolfer $80
+export function loadRosterEntryAsPlayer(w, a, de) {
+  const e = (de + ((a << 5) & 0xFFFF)) & 0xFFFF;
+  const c = rd(w, e), b = rd(w, e + 1), d = rd(w, e + 0x10);
+  wr(w, 0xC2A5, b & 0x0F);
+  if ((b & 0x0F) === 0x0F) {
+    St.setupPlayerGolfer(w, c & 0x0F, 0);
+    St.setPlayerControl(w, 0, 0);
+    if (d & 1) St.setPlayerField11(w, 0, 1);
+    return;
+  }
+  Sv.saveBlockLoad(w, b & 0x0F, 0xC800);
+  Sv.restoreGameTimer(w);
+  St.setupPlayerGolfer(w, 0x80, 0);
+}
+
+// the character select of the link game (32:532F / 32:53C4): the golfer list by the save file (02:5A2D), the cursor
+// reset (06:690F), the select (06:6071) until a pick (B starts it again); the pick as player 1 (32:5428)
+function* linkCharSelect(sh) {
+  const w = sh.w;
+  for (;;) {
+    D.inBank(w, 0x02, () => buildGolferListBySave(w, 0xD658));
+    resetCharSelectCursor(w);
+    const r = yield* inBankGen(w, 0x06, characterSelectScreen(sh, 0xD658, 0));
+    if (r === 0xFF) continue;
+    loadRosterEntryAsPlayer(w, r, 0xD658);
+    return;
+  }
+}
+
+// 32:5313 the side that asked (wLinkRole 1): the wait picture until the partner's $20 (its idle byte: it is in its
+// character select), a quick fade out (00:258A, c $7F), a frame, SetLinkActive; the character select; the game mode
+// (0D:4AA7 from wGameMode 2: the link list) to wGameMode and the record's +$17 ($C897), the course (0F:4AB7; B: the
+// mode again); the record $C880 ($20 bytes) sent with the wait picture and $21 to follow, until the partner's $22;
+// GolfSessionInit (10:4B28), player 1 ourselves ($80), player 2 the partner ($82: its record as received, field $13 3),
+// SetCourseHole (the course, hole 1), the mode; GolfRound $12, GolfSessionEnd (then 32:5080, the link menu)
+function* linkHost(sh) {
+  const w = sh.w;
+  wr(w, 0xC33F, 1);
+  loadLinkWaitPicture(w);
+  do yield* sh.advance(); while (w.high[0x1C0] !== 0x20);
+  Scr.forceFadeOut(w, 0x7F);
+  yield* sh.advance();
+  setLinkActive(w);
+  let course;
+  for (;;) {
+    yield* linkCharSelect(sh);
+    wr(w, 0xC834, 2);
+    let m;
+    for (;;) {
+      m = yield* inBankGen(w, 0x0D, gameModeSelect(sh));
+      if (m === 0xFF) break;
+      wr(w, 0xC834, m); wr(w, 0xC897, m);
+      course = yield* inBankGen(w, 0x0F, courseSelect(sh));
+      if (course !== 0xFF) break;
+    }
+    if (m !== 0xFF) break;
+  }
+  wr(w, 0xC836, course);
+  D.copyMemoryFast(w, 0xC880, 0xCB00, 0x02);
+  loadLinkWaitPicture(w);
+  w.high[0x1C9] = 0x21;
+  yield* serialSendBlock(sh, 0x20);
+  yield* serialWaitSendDone(sh);
+  do yield* sh.advance(); while (w.high[0x1C0] !== 0x22);
+  const mode = rd(w, 0xC834);
+  St.golfSessionInit(w);
+  St.setupPlayerGolfer(w, 0x80, 0);
+  St.setupPlayerGolfer(w, 0x82, 1);
+  St.setCourseHole(w, course, course, 1);
+  wr(w, 0xC834, mode);
+  return yield* golfRound(sh, 0x12);
+}
+
+// 32:53B8 the side that answered (wLinkRole 2): idle byte $20, SetLinkActive; the character select; the record sent
+// with the wait picture and $22 to follow, until the partner's $21; GolfSessionInit, player 1 copied to player 2 ($40
+// bytes), player 1 the partner ($82; its +$17, the mode it chose, to wGameMode); GolfRound $12, GolfSessionEnd
+function* linkGuest(sh) {
+  const w = sh.w;
+  wr(w, 0xC33F, 2);
+  w.high[0x1C1] = 0x20;
+  setLinkActive(w);
+  yield* linkCharSelect(sh);
+  loadLinkWaitPicture(w);
+  D.copyMemoryFast(w, 0xC880, 0xCB00, 0x02);
+  w.high[0x1C9] = 0x22;
+  yield* serialSendBlock(sh, 0x20);
+  yield* serialWaitSendDone(sh);
+  do yield* sh.advance(); while (w.high[0x1C0] !== 0x21);
+  St.golfSessionInit(w);
+  D.copyMemoryFast(w, 0xC880, 0xC8C0, 0x04);
+  St.setupPlayerGolfer(w, 0x82, 0);
+  wr(w, 0xC834, rd(w, 0xC897));
+  return yield* golfRound(sh, 0x12);
 }
 
 // 32:5474 ClearBgMapsBlank: LCD off; the WRAM2 / WRAM3 maps at $D000 cleared ($900 bytes); the BG map and its

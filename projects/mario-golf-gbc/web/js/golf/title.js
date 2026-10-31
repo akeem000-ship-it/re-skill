@@ -57,6 +57,7 @@ import { advanceRandomSeed } from "./round.js";
 import { printHexByte } from "./match.js";
 import { initFontScreen } from "./pictures.js";
 import { closeMessageWindow } from "./windows.js";
+import { serialSendBlock } from "./serial.js";
 
 const B = 0x40;
 const rd = D.rd, wr = D.wr;
@@ -64,14 +65,21 @@ const setW = (w, n) => D.setWramBank(w, n);
 function notPorted(what) { throw new Error(`${what} is not ported`); }
 const linkPartnerSkips = w => rd(w, 0xCB40) === 0x10;   // wSerialRecvBuf: the link partner pressed Start
 
-// 40:6217 DemoCheckSkip: true while Start or A is held (the link partner's $10: not ported)
-function demoCheckSkip(w) {
-  if (linkPartnerSkips(w)) notPorted("the link partner's skip (~00:3081 SerialSendBlock)");
+// 40:6217 DemoCheckSkip: true while Start or A is held, or when the link partner's $10 came in (its block: the
+// partner chose the link game): then $20 sent back (00:3081, one byte)
+function* demoCheckSkip(sh) {
+  const w = sh.w;
+  if (linkPartnerSkips(w)) { yield* linkPartnerReply(sh); return true; }
   return !!(w.high[0x190] & 9);
 }
-// 40:6238 IntroCheckSkip: as DemoCheckSkip, but it never skips (its xor a: z in every case)
-function introCheckSkip(w) {
-  if (linkPartnerSkips(w)) notPorted("the link partner's skip (~00:3081 SerialSendBlock)");
+function* linkPartnerReply(sh) {                  // 40:622A / 40:624B / 40:4161: $20 in wSerialSendBuf, one byte sent
+  wr(sh.w, 0xCB00, 0x20);
+  yield* serialSendBlock(sh, 0x01);
+}
+// 40:6238 IntroCheckSkip: as DemoCheckSkip (the reply to the partner's $10 too), but it never skips (its xor a: z in
+// every case)
+function* introCheckSkip(sh) {
+  if (linkPartnerSkips(sh.w)) yield* linkPartnerReply(sh);
   return false;
 }
 
@@ -80,7 +88,7 @@ function* waitFadeOrSkip(sh) {
   const w = sh.w;
   while (w.high[0x1A2]) {
     yield* sh.advance();
-    if (demoCheckSkip(w)) return true;
+    if (yield* demoCheckSkip(sh)) return true;
   }
   return false;
 }
@@ -142,10 +150,10 @@ function* introPicture(sh) {
   Scr.forceFadeIn(w, 0x7F);
   sh.sound(0x5E);
   let skip = false;
-  for (let c = 0x3C; c && !skip; c--) { yield* sh.advance(); skip = introCheckSkip(w); }
+  for (let c = 0x3C; c && !skip; c--) { yield* sh.advance(); skip = yield* introCheckSkip(sh); }
   if (!skip) {
     w.high[0x18A] = 0x80;
-    for (let c = 0x3C; c && !skip; c--) { yield* sh.advance(); skip = introCheckSkip(w); }
+    for (let c = 0x3C; c && !skip; c--) { yield* sh.advance(); skip = yield* introCheckSkip(sh); }
   }
   if (!skip) {
     Scr.beginFadeOut(w, 0x08);
@@ -289,7 +297,7 @@ function* demoSlide(sh, a) {
     printHexByte(w, hl & 0xFF, 0x0509);
     printHexByte(w, ra, 0x050A);
     yield* sh.advance();
-    if (demoCheckSkip(w)) { skip = true; break; }
+    if (yield* demoCheckSkip(sh)) { skip = true; break; }
     setW(w, 6);
     wr(w, 0xD24C, (rd(w, 0xD24C) + 1) & 0xFF);
     printHexByte(w, rd(w, 0xD24C), 0x0501);
@@ -417,8 +425,8 @@ export function* titleScreen(sh, a) {
       titleCheatInput(w);
       yield* sh.advance();
       advanceRandomSeed(w);                      // 00:0A61
-      if (linkPartnerSkips(w)) notPorted("the link partner's Start (~40:4161)");
-      if (w.high[0x190] & 9) { pressed = true; break; }
+      if (linkPartnerSkips(w)) { yield* linkPartnerReply(sh); pressed = true; break; }   // 40:4161 the partner's
+      if (w.high[0x190] & 9) { pressed = true; break; }                                 // link game: as Start
     }
     if (pressed) break;
     Scr.beginFadeOut(w, 0x08);

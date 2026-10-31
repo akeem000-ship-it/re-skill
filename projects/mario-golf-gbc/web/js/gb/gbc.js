@@ -30,6 +30,7 @@ export class GBC {
     this.apu.write(0x26, 0x80); this.apu.write(0x25, 0xF3); this.apu.write(0x24, 0x77);
     this.apu.write(0x11, 0x80); this.apu.write(0x12, 0xF3); this.apu.write(0x14, 0xBF);
     this.frames = 0; this.cycles = 0; this.caught = 0;
+    this.dots = 0; this.serialDue = 0;           // (the base-clock count and a linked transfer's end: link.js)
   }
   setInput(state) { this.joypad.set(state); }
   installRecomp(table) { this.exec = new Exec(this, table); }
@@ -45,6 +46,13 @@ export class GBC {
     this.cycles += cpuCycles;
     const m = this.mem;
     if (m.serialPending) { m.serialPending = false; m.io[1] = 0xFF; m.io[2] &= 0x7F; m.requestInterrupt(8); }
+    if (this.link) this.link.tick(this);
+  }
+  // a transfer started on the internal clock with a cable (link.js): it ends 8 bit times later in base clocks (the
+  // CGB fast clock, SC bit 1: 16 per bit, else 512; halved in double speed)
+  startSerial(v) {
+    const bit = v & 2 ? 16 : 512;
+    this.serialDue = this.dots + ((8 * bit) >> (this.mem.doubleSpeed ? 1 : 0));
   }
   // advance the timer, PPU and APU to `pre` cycles into the current instruction (before it accesses their registers)
   catchUp(pre) {
@@ -60,16 +68,21 @@ export class GBC {
     else if (p.ly < 144) d = (p.mode === 2 ? 80 : p.mode === 3 ? 252 : 456) - p.dots;
     else d = (p.ly === 153 && p.firstFrame ? 464 : 456) - p.dots;
     let c = d << shift;
+    if (this.link) {                             // (linked: wake for this side's or the partner's transfer end)
+      const due = this.link.wakeAt(this);
+      if (due) c = Math.min(c, Math.max(1, due - this.dots) << shift);
+    }
     if (t.reload) c = Math.min(c, t.reload);
     else if (t.tac & 4) c = Math.min(c, t.period - (t.div % t.period));
     return Math.max(4, c);
   }
   advance(cpuCycles) {
     const m = this.mem, dots = m.doubleSpeed ? cpuCycles >> 1 : cpuCycles;
+    this.dots += dots;
     this.timer.step(cpuCycles);
     const extra = this.ppu.step(dots);
     if (this.audioOn) this.apu.step(dots);
-    if (extra) { this.timer.step(extra); this.ppu.step(m.doubleSpeed ? extra >> 1 : extra); }
+    if (extra) { this.timer.step(extra); this.ppu.step(m.doubleSpeed ? extra >> 1 : extra); this.dots += m.doubleSpeed ? extra >> 1 : extra; }
   }
   // run one frame: until the PPU marks the next frame start (line 153 -> 0, the LCD switched on, or 70224 dots
   // with the LCD off: PyBoy's frame boundaries, so per-frame inputs and screens line up with it)

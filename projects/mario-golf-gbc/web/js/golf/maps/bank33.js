@@ -256,7 +256,8 @@ function* map08TalkCaddieMaster(sh) {
   clearFlag(w, 248);
   yield* moveAndWait(sh, 0x00, 0x0900, 0x0D00);
   S.actorsFaceEachOther(w, 0x00, 0x06);
-  if (!flag(w, 240)) { yield* map08RoundMenu(sh); return; }
+  // (w.oldCaddieDialog: a test's jump 33:491B -> 33:4929, the older dialog nothing reaches)
+  if (!flag(w, 240)) { yield* (w.oldCaddieDialog ? map08OldRoundDialog(sh) : map08RoundMenu(sh)); return; }
   if (mapId(w) === 0x08) yield* marionResultSpeech(sh); else yield* clubResultSpeech(sh);
 }
 // 33:5166 Map08CaddieMasterRoundMenu: the club won (#226: ~33:54CA) not ported; text base + 4 (the club's name),
@@ -2054,7 +2055,9 @@ export const HOOKS = {
 
 export const SCRIPTS = {
   "33:4722": map08Enter,
-  "33:4bd3": map08TriggerCallOver,
+  // (sh.w.placeGolfersPatch: a test's patch of map $08's trigger 1 word, 33:459A, to 33:4BA7)
+  "33:4bd3": sh => (sh.w.placeGolfersPatch ? map08PlaceGolfersThenCallOver(sh) : map08TriggerCallOver(sh)),
+  "33:4ba7": map08PlaceGolfersThenCallOver,
   "33:48ec": map08TalkCaddieMasterB,
   "33:48ef": map08TalkCaddieMaster,
   "33:4317": sh => map08TalkGolfer(sh, 0x08B7, 0x02),
@@ -2117,3 +2120,100 @@ export const SCRIPTS = {
   "33:713e": map26TriggerLeave,
 };
 export const TASKS = () => ({});
+
+// 33:4929 Map08CaddieMasterOldRoundDialog (dead: 33:491B jumps over it to 33:5166): an older dialog. A question
+// (ShowTextKeepOpen 6, 10 frames, AskYesNo, CloseText, 5 frames) is `ask`; returns its answer (0 Yes)
+function* oldAsk(sh, keepWait = true) {
+  yield* T.scriptShowTextKeepOpen(sh, 0x06);
+  if (keepWait) yield* wait(sh, 0x0A);
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* wait(sh, 0x05);
+  return a;
+}
+// not qualified (#227 clear): base + 1 asked: No: its next text, done; Yes: that text skipped, the one after shown, the
+// walk out (33:50BB). Qualified: base + 1 asked: No: the next text; Yes: base + $0A, the round's start scene (33:5257),
+// the round menu (33:5166), then a question (the text where the cursor is): No: the next text; Yes: base + 6, then
+// 33:49C4 (not qualified: asked: No: the club index, its text, the player's animation 7; Yes: 33:49F6) or 33:4A68
+// (qualified). 33:49F6: #224; not qualified: #244, base + 8 asked: Yes: base + 3, the walk out; No (33:4A2A): #224
+// cleared, base + 2. Qualified (33:4A39): #224 #244, base + 9 asked: No: 33:4A2A; Yes: base + $0A, #224, then 33:4A68:
+// base + $0B asked (no wait first: as the code has it, with one): No: the next text, then asked again (Yes: 33:49F6;
+// No: base + 5); Yes: the next text skipped, the one after shown, and on into 33:4ABB (the partner's talk)
+function* map08OldRoundDialog(sh) {
+  const w = sh.w;
+  setTextFromBase(w, 0x0001);
+  if (!flag(w, 227)) {
+    const a = yield* oldAsk(sh);
+    if (a) { yield* T.scriptShowText(sh, 0x06); return; }
+    T.scriptSkipText(w);
+    yield* T.scriptShowText(sh, 0x06);
+    yield* walkOutToPractice(sh);
+    return;
+  }
+  let a = yield* oldAsk(sh);
+  if (a) { yield* T.scriptShowText(sh, 0x06); return; }
+  setTextFromBase(w, 0x000A);                                     // 33:498A
+  yield* T.scriptShowText(sh, 0x06);
+  yield* clubRoundStartScene(sh);
+  yield* map08RoundMenu(sh);
+  yield* wait(sh, 0x0A);
+  a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* wait(sh, 0x05);
+  if (a) { yield* T.scriptShowText(sh, 0x06); return; }
+  setTextFromBase(w, 0x0006);                                     // 33:49B8
+  let at = flag(w, 227) ? "4A68" : "49C4";
+  for (;;) {
+    if (at === "49C4") {
+      a = yield* oldAsk(sh);
+      if (a) {
+        setTextClubIndex(w);
+        yield* T.scriptShowText(sh, 0x06);
+        S.actorPlayAnim(w, 0x00, 0x07);
+        yield* S.waitActorAnimDone(sh, 0x00);
+        return;
+      }
+      at = "49F6";
+    }
+    if (at === "49F6") {
+      setFlag(w, 224);
+      if (flag(w, 227)) at = "4A39";
+      else {
+        setFlag(w, 244);
+        setTextFromBase(w, 0x0008);
+        a = yield* oldAsk(sh, false);
+        if (a) { at = "4A2A"; }
+        else { setTextFromBase(w, 0x0003); yield* T.scriptShowText(sh, 0x06); yield* walkOutToPractice(sh); return; }
+      }
+    }
+    if (at === "4A2A") { clearFlag(w, 224); setTextFromBase(w, 0x0002); yield* T.scriptShowText(sh, 0x06); return; }
+    if (at === "4A39") {
+      setFlag(w, 224); setFlag(w, 244);
+      setTextFromBase(w, 0x0009);
+      a = yield* oldAsk(sh, false);
+      if (a) { at = "4A2A"; continue; }
+      setTextFromBase(w, 0x000A);
+      yield* T.scriptShowText(sh, 0x06);
+      setFlag(w, 224);
+      at = "4A68";
+    }
+    if (at === "4A68") {
+      setTextFromBase(w, 0x000B);
+      a = yield* oldAsk(sh);
+      if (!a) { T.scriptSkipText(w); yield* T.scriptShowText(sh, 0x06); yield* talkWithPartner(sh); return; }
+      a = yield* oldAsk(sh);
+      if (!a) { at = "49F6"; continue; }
+      setTextFromBase(w, 0x0005);
+      yield* T.scriptShowText(sh, 0x06);
+      return;
+    }
+  }
+}
+
+// 33:4BA7 Map08PlaceGolfersThenCallOver (unreferenced): actors 2-5 placed in a row at y $0D80 (x $1500 / $1700 /
+// $1B00 / $1900, 0A:43C6), then on into 33:4BD3 Map08TriggerCallOver
+function* map08PlaceGolfersThenCallOver(sh) {
+  const w = sh.w;
+  for (const [a, x] of [[0x02, 0x1500], [0x03, 0x1700], [0x04, 0x1B00], [0x05, 0x1900]]) S.actorSetPos(w, a, x, 0x0D80);
+  yield* map08TriggerCallOver(sh);
+}

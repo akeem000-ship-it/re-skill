@@ -8,7 +8,7 @@ import { mulHLByA } from "./math.js";
 import { registerFrameTask, unregisterFrameTask } from "./tasks.js";
 import * as D from "./render/display.js";
 import * as T from "./text.js";
-import { queueShadowRows } from "./shadow.js";
+import { queueShadowRows, copyShadowRowsFramed, restoreShadowFromMap } from "./shadow.js";
 import { renderMessageWindow } from "./msgbox.js";
 
 const rd = D.rd, wr = D.wr;
@@ -610,4 +610,72 @@ export function drawStringToWindow(w, a, s, d, e) {
     setWindowTile(w, a, d, e, t, 0x80);
     d = (d + 1) & 0xFF;
   }
+}
+
+// ---- the window buffers' text helpers of bank 05 (05:648E-05:6672; most unreferenced) ----
+// 05:648E PrintTextToShadow: text id hl printed into the BG shadow from (d, e) & 31 (05:62AA PrintTextToBuffer,
+// stride $20)
+export function* printTextToShadow(sh, hl, d, e) {
+  yield* T.printTextToBuffer(sh, hl, 0xD000 + ((e & 0x1F) << 5) + (d & 0x1F), 0x20);
+}
+// 05:64B8 PrintTextToShadowNow: the same, then 3 shadow rows from e - 1 queued 7 a frame (05:42AD, WRAM5)
+export function* printTextToShadowNow(sh, hl, d, e) {
+  yield* printTextToShadow(sh, hl, d, e);
+  yield* copyShadowRowsFramed(sh, (e - 1) & 0x1F, 3);
+}
+// 05:64D1 CopyShadowToVRAMFramed: WRAM5; the 32 shadow rows 8 at a time (05:42AD, a frame each after); the bank restored
+export function* copyShadowToVRAMFramed(sh) {
+  const w = sh.w, old = wbank(w);
+  setW(w, 5);
+  for (const a of [0x00, 0x08, 0x10, 0x18]) { yield* copyShadowRowsFramed(sh, a, 8); yield* sh.advance(); }
+  setW(w, old);
+}
+const windowBuffer = w => (0xD900 + 0x11D * rd(w, 0xD860)) & 0xFFFF;   // [$D860] wDrawWindowBuffer: $D900 + n x $11D
+// 05:6510 DrawWindowBuffer: the shadow restored from the map (05:4492), window buffer [$D860] drawn into it (05:4831)
+export function* drawWindowBuffer(sh) {
+  yield* restoreShadowFromMap(sh);
+  drawWindowToShadow(sh.w, windowBuffer(sh.w));
+}
+// 05:652F PrintTextInWindowBuffer / 05:6597 PrintTextInWindowBufferNow: WRAM5; text id hl at (d, e) inside window
+// buffer [$D860] (its x + 1, y + 1 added) by 05:648E / 05:64B8; the bank restored
+export function* printTextInWindowBuffer(sh, hl, d, e, now = false) {
+  const w = sh.w, old = wbank(w);
+  setW(w, 5);
+  const rec = windowBuffer(w);
+  d = (d + rd(w, rec + 1) + 1) & 0xFF; e = (e + rd(w, rec + 2) + 1) & 0xFF;
+  yield* (now ? printTextToShadowNow : printTextToShadow)(sh, hl, d, e);
+  setW(w, old);
+}
+// 05:6564 PrintNumberInWindowBuffer / 05:65CC PrintNumberInWindowBufferNow: WRAM5; wPrintNoPad 1; the number hl as an
+// argument (05:551F) of text $0118 by 05:652F / 05:6597; wPrintNoPad 0; the bank restored
+export function* printNumberInWindowBuffer(sh, hl, d, e, now = false) {
+  const w = sh.w, old = wbank(w);
+  setW(w, 5);
+  wr(w, 0xC360, 1);
+  T.pushTextNumberArg(w, hl);
+  yield* printTextInWindowBuffer(sh, 0x0118, d, e, now);
+  wr(w, 0xC360, 0);
+  setW(w, old);
+}
+// 05:6589 PrintStringInWindowBuffer / 05:65F1 PrintStringInWindowBufferNow: the string hl as an argument (05:54CF) of
+// text $0019 by 05:652F / 05:6597
+export function* printStringInWindowBuffer(sh, hl, d, e, now = false) {
+  T.pushTextStringArg(sh.w, hl);
+  yield* printTextInWindowBuffer(sh, 0x0019, d, e, now);
+}
+// (the string read as it is drawn: a record that overlaps the text buffer changes what follows, as on the ROM)
+function* textBufferBytes(w) { for (let p = 0xC600; ; p = (p + 1) & 0xFFFF) yield rd(w, p); }
+// 05:6646 DrawTextToWindow: text id hl loaded (05:6179), drawn into slot a's record from (d, e) (05:65FF)
+export function drawTextToWindow(w, a, hl, d, e) {
+  T.loadText(w, hl);
+  drawStringToWindow(w, a, textBufferBytes(w), d, e);
+}
+// 05:6658 DrawNumberToWindow (unreferenced): the number hl as an argument of text $0118 (wPrintNoPad 1 meanwhile),
+// drawn into slot a's record from (d, e)
+export function drawNumberToWindow(w, a, hl, d, e) {
+  T.pushTextNumberArg(w, hl);
+  wr(w, 0xC360, 1);
+  T.loadText(w, 0x0118);
+  drawStringToWindow(w, a, textBufferBytes(w), d, e);
+  wr(w, 0xC360, 0);
 }

@@ -571,6 +571,7 @@ let lastWinFrame = -1, talkPress = -100;
 let linkLostAt = -1;   // (boot_link_lost: the frame of its poke)
 let actorsShown = 0;   // (ACTORSMAP=n: the actors 200 frames after the map is first n, debugging a case)   // (the last frame a window was open: routeCase notes it)
 const talkQuiet = () => frameNow - lastWinFrame > 150;
+const flagPoke72 = (() => { let fp = null, f0 = -1; return (f, w, core) => { if (f === 0 || !fp) fp = flagPoke(72); fp(f, w, core); }; })();
 const CASES = [
   { name: "standings_match18", round: "match18", at: "3E:403F", run: sh => inBank(sh, 0x3E, matchStandingsScreen(sh)) },
   // the scorecard in match play (0E:43D6): Right on the standings page turns to the hole-by-hole card (0E:762F),
@@ -607,6 +608,10 @@ const CASES = [
   // takes in wLoadFrameCount $C3B6 and prints the count to the debug text $CD64: the game's lag frames, which the
   // native code has not, so those bytes and HRAM $FFA9 / $FFAA differ at the end, as in boot_coursemap)
   { name: "pause_r18_coursemap", state: "pause_r18", open: true, run: sh => onHole(sh, inBank(sh, 0x08, pauseMenu(sh))), policy: f => (f === 40 ? 0x80 : f === 60 ? 1 : f === 400 ? 1 : 0) },
+  // the same with 41:7882's far call patched to export $02 (w.courseMapTimed): 17:4232 CourseMapShowTimed, its
+  // 300 frames run out (no button), then the pause menu closes (wMenuResult $FF)
+  { name: "pause_r18_coursemap_timed", state: "pause_r18", open: true, romPatch: { "41:7883": [0x02] }, hook: (f, w) => { w.courseMapTimed = 1; },
+    run: sh => onHole(sh, inBank(sh, 0x08, pauseMenu(sh))), policy: f => (f === 40 ? 0x80 : f === 60 ? 1 : f === 600 ? 2 : 0) },
   ...[["scorecard", f => (f === 40 || f === 50 ? 0x80 : f === 70 ? 1 : f === 300 ? 1 : 0)],
     ["camera", f => (f === 40 ? 1 : f >= 120 && f < 160 ? 0x40 : f === 300 ? 2 : 0)],
     ["coursemap", f => (f === 40 ? 0x80 : f === 60 ? 1 : f === 400 ? 1 : 0)],
@@ -622,6 +627,10 @@ const CASES = [
   // into the address step's first frame: its HRAM scratch $FFA7, $FFAC-$FFAE differ)
   { name: "pause_scorecard_back", state: "shotsetup_r18", noRet: true, open: true, run: sh => onHole(sh, inBank(sh, 0x10, shotSetup(sh))),
     policy: f => (f === 200 ? 8 : f === 260 || f === 270 ? 0x80 : f === 290 ? 1 : f === 400 ? 1 : f === 600 ? 1 : 0) },
+  // the same with 10:48E1's far call (the view behind the golfer, 13:432B) patched to export $10, ReloadHoleViewMaps
+  // 13:42A8 (w.reloadViewMaps): A in the aiming menu: the course view's maps reloaded and drawn, the address step
+  { name: "shotsetup_reloadviewmaps", state: "shotsetup_r18", noRet: true, open: true, romPatch: { "10:48e1": [0x10] }, hook: (f, w) => { w.reloadViewMaps = 1; },
+    run: sh => onHole(sh, inBank(sh, 0x10, shotSetup(sh))), policy: f => (f === 200 ? 1 : 0) },
   // ShowPlayerPicture 3B:7717 (r18's first picture, mkstate.mjs --name r18 --at 3B:7717) given a = 0: the hole in
   // one's picture with its full-screen cycling picture (4A:6205)
   { name: "picture_hole_in_one", state: "picture_r18", regs: { a: 0 },
@@ -657,6 +666,10 @@ const CASES = [
     run: sh => { menuW = sh.w; return inBank(sh, 0x32, modeSelectMain(sh)); }, policy: frontEndPolicy },
   // power-on (00:0100, an empty save RAM) to the Stroke round's GolfRound call, the same buttons
   { name: "boot_poweron", state: "boot_poweron", open: true, noRet: true,
+    run: sh => { menuW = sh.w; return powerOn(sh); }, policy: frontEndPolicy },
+  // the same with 32:50C5's far call patched to export $10, CharacterSelectNoPortrait (06:6D3E, w.charSelNoPortrait):
+  // the character select without the big portrait and without its fade out
+  { name: "boot_poweron_noportrait", state: "boot_poweron", open: true, noRet: true, romPatch: { "32:50c5": [0x10] }, hook: (f, w) => { w.charSelNoPortrait = 1; },
     run: sh => { menuW = sh.w; return powerOn(sh); }, policy: frontEndPolicy },
   // power-on (an empty save RAM): Start, one player, A on the character select's slot 0 (empty: "Create a new
   // character here."): ModeSelectMain asks the map engine for warp 5, map $1E's enter script (31:43B9: the picks with
@@ -764,6 +777,33 @@ const CASES = [
   // the clubhouse's top door (trigger 2, 32:5C09) to the Caddie Master's office (map $08, 33:4722): his call
   // (trigger 1, 33:4BD3), the round menu (33:5166)
   { name: "boot_kid_story_office", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(72),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 },
+      [200, 0], { to: [0x1A, 0x0A] }, { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x08 },
+      { press: 1, every: 40, times: 20 }], 300) },
+  // the same with map $08's trigger 1 word (33:459A) patched to 33:4BA7 (w.placeGolfersPatch): the golfers placed in a
+  // row first, then the call over; stopped in the round menu's question (at the end $C404 holds the handler word the
+  // map engine read from the list: $4BD3 on the native side, whose ROM is not patched)
+  { name: "boot_kid_story_office_placegolfers", state: "boot_poweron_kid", open: true, noRet: true, sram: true, romPatch: { "33:459a": [0xA7, 0x4B] },
+    hook: (f, w, core) => { w.placeGolfersPatch = 1; flagPoke72(f, w, core); },
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 }, [200, 0], { to: [0x1A, 0x0A] }, { press: 1, every: 40, times: 6 }, [200, 0]], 100) },
+  // the same with 33:491B's jump patched to the older dialog nothing reaches (33:4929, w.oldCaddieDialog; the office's
+  // entry sets #227): base + 1 Yes, base + $0A, the round's start scene, the round menu (A: Club Tournament), the round,
+  // back to the office
+  { name: "boot_kid_story_office_old", state: "boot_poweron_kid", open: true, noRet: true, sram: true, jumps: { "33:491b": 0x4929 },
+    hook: (f, w, core) => { w.oldCaddieDialog = 1; flagPoke72(f, w, core); },
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 },
+      [200, 0], { to: [0x1A, 0x0A] }, { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x08 },
+      { press: 1, every: 40, times: 20 }], 300) },
+  // the same with B to the question: its No text, the office again
+  { name: "boot_kid_story_office_old_no", state: "boot_poweron_kid", open: true, noRet: true, sram: true, jumps: { "33:491b": 0x4929 },
+    hook: (f, w, core) => { w.oldCaddieDialog = 1; flagPoke72(f, w, core); },
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 },
+      [200, 0], { to: [0x1A, 0x0A] }, { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 2],
+      { press: 1, every: 40, times: 10 }, [300, 0]], 300) },
+  // the same with #227 cleared on both sides once on map $08 (not qualified): base + 1 Yes: the next text skipped, the
+  // one after, the walk out (33:50BB) and the practice round, back to the office
+  { name: "boot_kid_story_office_old_np", state: "boot_poweron_kid", open: true, noRet: true, sram: true, jumps: { "33:491b": 0x4929 },
+    hook: (f, w, core) => { w.oldCaddieDialog = 1; flagPoke72(f, w, core); if (w.wram[0][0x450] === 0x08 && roundsDone < 1) for (const m of [w.wram[0], core.wram(0)]) m[0x840 + (227 >> 3)] &= ~(0x80 >> (227 & 7)); },
     ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 },
       [200, 0], { to: [0x1A, 0x0A] }, { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x08 },
       { press: 1, every: 40, times: 20 }], 300) },
@@ -1082,6 +1122,13 @@ const CASES = [
       [300, 0], { to: [0x1D, 0x21], at: [0x1D00, 0x2100], noA: true }, [2, 0x40], [20, 0], [2, 1],
       { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
       { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x2C }, { press: 1, every: 40, times: 8 }, [300, 0]], 300) },
+  // the same way to the trigger with the Field's trigger list patched: trigger $0B's handler word (34:45FA) to
+  // 34:4654 Map02Trigger0AWarp0A (no Field cell has trigger $0A) and its warp number (34:465C) to $0B: the same
+  // question and the warp to map $2C (the native side runs its trigger $0B, the same code); stopped on map $2C
+  { name: "boot_kid_story_trigger0a", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(86),
+    romPatch: { "34:45fa": [0x54, 0x46], "34:465c": [0x0B] },
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x22, 0x1C], noA: true }, { to: [0x22, 0x1A], map: 0x2C, noA: true },
+      [300, 0]], 100) },
   // the same with a perfect card poked after the round (each hole on in one and one putt, $C8AC = $12, 9 under par,
   // $C8BE = $F7, on both sides): $155A (34:76B5), 300 EXP, #208 #159, the save flag $0200, the level-up screen, the
   // save, warp $0F: entrance 7 (34:770F)
@@ -1270,6 +1317,14 @@ const CASES = [
     ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], [2, 1], [120, 0], [2, 0x80], [20, 0],
       [2, 0x80], [20, 0], [2, 0x40], [20, 0], [2, 0x80], [40, 0], [2, 1], [200, 0], [40, 0x80], [30, 0x10], [100, 0],
       [2, 8], [60, 0], [2, 1], [150, 0], [2, 2], [100, 0]], 300) },
+  // the Field's start menu (MapStartMenuNav 41:7409): Stars (41:741F, the event list, B), Message (41:7425: the speed
+  // adjusted, the menu stays; B), Save & Quit (41:7437: "Save current progress?" B: the menu again; B)
+  { name: "boot_kid_story_navmenu", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0],
+      [2, 8], [60, 0], [2, 0x80], [20, 0], [2, 0x80], [20, 0], [2, 1], [200, 0], [2, 2], [150, 0],
+      [2, 8], [60, 0], [2, 0x80], [20, 0], [2, 0x80], [20, 0], [2, 0x80], [20, 0], [2, 1], [60, 0], [2, 0x10], [40, 0], [2, 2], [100, 0],
+      [2, 8], [60, 0], [2, 0x80], [20, 0], [2, 0x80], [20, 0], [2, 0x80], [20, 0], [2, 0x80], [20, 0], [2, 1], [120, 0], [2, 2], [100, 0],
+      [2, 2], [100, 0]], 300) },
   // the office's way to Hole 1 (trigger 2, 33:44F1): the Marion Club's driving range (map $0C, 31:4BEC); its
   // practice (trigger $0F, 31:51F4: "Practice here?" Yes): the same shot again and again (the hooks 31:5296) until the
   // pause menu's Quit Practice (41:6F08): back on the range
@@ -1321,6 +1376,14 @@ const CASES = [
       { to: [0x25, 0x1E], at: [0x2500, 0x1E00], noA: true }, [2, 0x40], [30, 0],
       { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x0E },
       { press: 1, every: 40, times: 25 }], 300) },
+  // the same, "Practice here?" answered Yes: the putting practice; at its first aim Start: the practice menu (41:7741,
+  // flag #100 clear): Down, A: Settings (41:774D: B, the menu again on row 1), Up, A: Quit Practice (41:7745)
+  { name: "boot_kid_story_green_practice", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(72),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 }, [200, 0], { to: [0x3A, 0x0C] }, { to: [0x3C, 0x0C], map: 0x0E },
+      [100, 0], { to: [0x25, 0x26], at: [0x2500, 0x2600], noA: true }, [16, 0x40],
+      { press: 1, every: 40, until: () => menuW.wram[0][0x834] !== 9 }, { press: 0, every: 40, until: () => lastMark === "aimmenu" }, [60, 0], [2, 8], [60, 0], [2, 0x80], [30, 0], [2, 1], [120, 0],
+      [2, 2], [90, 0], [2, 0x40], [30, 0], [2, 1], [60, 0],
+      { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x0E }, [300, 0]], 300) },
   // the same, at the aim after the second putt: Start, the mini-game pause menu (41:6F9F: Down, Up, A on Quit
   // Mini-Game): the challenge over (wGameMode 0: wStoryRoundKind 0, no result)
   { name: "boot_kid_story_green_quit", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(72),
@@ -1469,6 +1532,17 @@ const CASES = [
       for (const m of [w.wram[0], core.wram(0)]) { m[0x960] = 0x18; m[0x961] = 0x02; m[0x967] = 0x32; }
     }; })(),
     policy: scriptedPolicy({}, savedPolicy(1)) },
+  // the same with entrance 4 poked (the third place): the podium's tiles (31:7B96), actors 3 and 4 off, the trophy
+  // (31:7B1C), result 3
+  { name: "boot_kid74_ceremony3", state: "boot_poweron_kid74", open: true, noRet: true, sram: true,
+    run: sh => { sawMap18 = false; return gameCase(sh, 99, () => sawMap18 && sh.w.wram[0][0x450] === 0 && hasTask(sh.w, 0x0D, 0x428E)); },
+    hook: (() => { let done = false; return (f, w, core) => {
+      if (w.wram[0][0x450] === 0x18) sawMap18 = true;
+      if (done || f < 3000 || !w.wram[0][0x96C]) return;
+      done = true;
+      for (const m of [w.wram[0], core.wram(0)]) { m[0x960] = 0x18; m[0x961] = 0x04; m[0x967] = 0x32; }
+    }; })(),
+    policy: scriptedPolicy({}, savedPolicy(1)) },
   // a new game's Stroke round from power-on; in the first aiming menu Start, Up (to Quit), A, "OK to quit this round?":
   // Up (Yes), A: the round ends (wGameMode 0), GolfSessionEnd, the map engine runs map 0 again: the mode select
   { name: "boot_quit", state: "boot_poweron", open: true, noRet: true, run: sh => gameCase(sh),
@@ -1552,6 +1626,9 @@ const CASES = [
       "hole:2": [[160, 8], [200, 0x80], [215, 0x80], [230, 0x80], [245, 0x80], [260, 0x80], [290, 1], [450, 2], [560, 0x40],
         [580, 0x40], [600, 0x40], [630, 1]],
       "hole:3": [[160, 8], [200, 0x40], [230, 1]] }, frontEndRights(1)) },
+  // the same: after the holed 27th shot Back to Main Menu (41:76F7: Down three times, A): the mode select
+  { name: "boot_holed_training_menu", state: "boot_poweron", open: true, noRet: true, run: sh => gameCase(sh, 1),
+    policy: scriptedPolicy({ "aftershot:27": [[100, 0x80], [120, 0x80], [140, 0x80], [160, 1]] }, frontEndRights(1)) },
   // the same into the round, two holes (the saved character's round: SaveGameMidRound at each hole's start), A every
   // 40 frames for the swings
   // Options (32:79D8): the golf dictionary from the index (3F:4002 mode 6): the greeting read, letters moved, a

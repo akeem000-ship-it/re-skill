@@ -648,3 +648,22 @@ export function drawScoreToParUnused(w, both) {
   if (both) putScoreToPar(w, 0xD70E, sumScoreToPar(w, D.rd(w, 0xC4BE), 0xC8EC));
   D.setWramBank(w, 3);
 }
+// 0E:44AE ScorecardPutStringAccentA / 0E:44C8 ScorecardPutStringAccentB (unreferenced fragments of ScorecardPutString's
+// loop, entered with its hl and af pushed): the byte at hl - 2 (+ $20 below $A0) + $30 / $2B over the tile before de
+// (in the WRAM bank mapped), attribute 8 there (WRAM2); then the loop at 0E:4494 on from hl and de: tiles in WRAM3,
+// attribute 0 in WRAM2, read as written; returns de
+export function scorecardPutStringAccent(w, hl, de, base) {
+  let a = D.rd(w, (hl - 2) & 0xFFFF);
+  if (a < 0xA0) a = (a + 0x20) & 0xFF;
+  a = (a + base) & 0xFF;
+  de = (de - 1) & 0xFFFF;
+  D.wr(w, de, a);
+  D.setWramBank(w, 2); D.wr(w, de, 8); de = (de + 1) & 0xFFFF;
+  for (;;) {
+    D.setWramBank(w, 3);
+    const t = D.rd(w, hl); hl = (hl + 1) & 0xFFFF;
+    if (!t) return de;
+    D.wr(w, de, t);
+    D.setWramBank(w, 2); D.wr(w, de, 0); de = (de + 1) & 0xFFFF;
+  }
+}

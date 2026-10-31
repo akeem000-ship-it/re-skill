@@ -17,7 +17,8 @@ import { fadeVBlank, updateGameTimer } from "./screen.js";
 import * as V from "./view.js";
 import { ballInGreenArea } from "./view.js";
 import { readJoypad } from "./joypad.js";
-import { serialVBlankTick, linkLostReset } from "./serial.js";
+import { serialVBlankTick, linkLostReset, linkSendShot, serialWaitSendDone } from "./serial.js";
+import { bannerSpriteTask } from "./aim.js";
 import { taskFacade, runFrameTasks } from "./tasks.js";
 import { showCaption, captionMotionTask, captionAnimTask } from "./captions.js";
 import * as P from "./pictures.js";
@@ -188,6 +189,8 @@ export class Shot {
       "77:70b6": () => P.storyPictureTimerTask(w),     // 77:70B6
       "4a:62a3": () => P.pictureCycleTask(w),          // 4A:62A3
       "48:5ee9": () => P.pictureAnimTiles(w),          // 48:5EE9
+      "3b:7858": () => bannerSpriteTask(w),           // 3B:7858 BannerSpriteTask (link play: the partner's turn)
+      "4a:6ca2": () => P.pictureAnimTiles(w, 0x4A, 0x7650),   // 4A:6CA2 LinkWaitPictureTask (the link wait picture)
       "41:7e03": () => charSummaryTask(w),             // 41:7E03 CharSummaryTask
       "0e:6d47": () => scorecardStrokesTask(w),        // 0E:6D47
       "0e:76f5": () => scorecardMatchPlayTask(w),      // 0E:76F5
@@ -270,6 +273,7 @@ export class Shot {
       else if (!h[0x18D]) { if (h[0x19E]) updateDebugOverlay(w); h[0x18D] = 1; h[0x18C] = (h[0x18C] + 1) & 0xFF; }
       this.vblankWork();
       if (this.ev.v) this.ev("V");               // (VBlank done: AdvanceFrame leaves its wait, 00:2EBF)
+      if (w.cable) yield "code";                 // (linked: the frame's code begins; serial.js NativeCable)
       if (w.vram) clearUnusedSprites(w);
       runFrameTasks(w, false, this.dispatch);    // 00:247D (off while $FF8F is 0)
       h[0x18D] = 0;
@@ -297,6 +301,7 @@ export class Shot {
     else if (!h[0x18D]) { if (h[0x19E]) updateDebugOverlay(w); h[0x18D] = 1; h[0x18C] = (h[0x18C] + 1) & 0xFF; }
     this.vblankWork();
     if (this.ev.v) this.ev("V");
+    if (w.cable) yield "code";
     h[0x18D] = 0;
   }
 
@@ -480,7 +485,8 @@ export class Shot {
   *afterSwing() {                                 // 10:4921-10:49A0: from the swing to ShotLaunch
     const w = this.w, s = ball(w), r6 = w.wram[6], w0 = w.wram[0];
     s[0x85] &= 0xEF;
-    S.shotRecord(w);                             // 02:46B0 (~02:48B8 is for link play)
+    S.shotRecord(w);                             // 02:46B0
+    yield* linkSendShot(this);                   // 02:48B8 (with the other player a link partner)
     s[0x85] = 0x2D;
     if (s[0x43] === 4) {
       for (;;) { yield* this.advance(); if (s[0x64]) break; }   // 11:6E34: until the club meets the ball
@@ -550,6 +556,7 @@ export class Shot {
       yield* this.advance();
       this.ev("P");
     }
+    yield* serialWaitSendDone(this);             // 10:49F1 (link play: the shot's block out, LinkSendShot)
     D.behindViewTaskStop(w);                     // 15:47B1
     D.golferActorShow(this);                     // 04:57BA
     D.golferActorAnim3(w);                       // 04:5808

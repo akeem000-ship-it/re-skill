@@ -7,7 +7,7 @@ import { rb } from "./rom.js";
 import { rd, wr } from "./render/display.js";
 import { dist24 } from "./cup.js";
 import { loadText } from "./text.js";
-import { registerFrameTask } from "./tasks.js";
+import { registerFrameTask, unregisterFrameTask } from "./tasks.js";
 import { queueVRAMCopy } from "./render/display.js";
 import { mapScrollTask } from "./render/holeview.js";
 import { dist as distHL } from "./ball.js";
@@ -314,3 +314,194 @@ export function getLongestDriveRecord(w) {
   const hl = rd(w, 0xC96E) | rd(w, 0xC96F) << 8;
   return hl || 0x1900;
 }
+
+// ---- bank 05's unreferenced shadow helpers (the BG shadow: WRAM5 $D000 tiles / $D400 attributes) ----
+const setWB = (w, n) => { w.high[0x196] = n; };
+// 05:40E6 ClearBGShadow: WRAM5 $D000-$D7FF zeroed; the WRAM bank restored
+export function clearBGShadow(w) {
+  const old = w.high[0x196];
+  setWB(w, 5);
+  for (let a = 0xD000; a < 0xD800; a++) wr(w, a, 0);
+  setWB(w, old);
+}
+// 05:4102 DebugHDMAShadowToVRAM: with A held, VRAM bank 0, WRAM5 (left mapped), a general HDMA of $25 blocks
+// $D000 -> $9800 (the display copy: w.vram only)
+export function debugHDMAShadowToVRAM(w, hdma) {
+  if (!(w.high[0x190] & 1)) return;
+  if (w.vram) w.lcd.vbk = 0;
+  setWB(w, 5);
+  if (w.vram && hdma) hdma(w, 0xD000, 0x1800, 0x24);
+}
+// 05:413E ReadShadowTile: WRAM5 mapped (left so); the tile at (d, e) is read and dropped (a restored from the stack:
+// the routine returns its argument)
+export function readShadowTile(w, a) { setWB(w, 5); return a; }
+// 05:416F CopyVisibleShadowRows: b = WRAM bank (left mapped): 19 shadow rows from row [$C323] & 31 queued ($26
+// blocks; past row 31 in two parts, the second from row 0): tiles $D000 -> $9800, then attributes $D400 -> VRAM1
+export function copyVisibleShadowRows(w, b) {
+  setWB(w, b);
+  const r = w.wram[0][0x323] & 0x1F, bc = r << 5;
+  for (const [src, dst] of [[0xD000, 0x9800], [0xD400, 0xB800]]) {
+    const over = (r + 0x12 - 0x20) & 0xFF;
+    if (r + 0x12 > 0x20) {
+      queueVRAMCopy(w, src + bc, dst + bc, (0x26 - ((over << 1) & 0xFF)) & 0xFF);
+      queueVRAMCopy(w, src, dst, (over << 1) & 0xFF);
+    } else queueVRAMCopy(w, src + bc, dst + bc, 0x26);
+  }
+}
+// 05:41EF CopyShadowTilesToVRAM / 05:4208 CopyShadowAttrsToVRAM: b = WRAM bank (left mapped): $40 blocks queued,
+// $D000 -> $9800 / $D400 -> VRAM1 $9800
+export function copyShadowTilesToVRAM(w, b) { setWB(w, b); queueVRAMCopy(w, 0xD000, 0x9800, 0x40); }
+export function copyShadowAttrsToVRAM(w, b) { setWB(w, b); queueVRAMCopy(w, 0xD400, 0xB800, 0x40); }
+// 05:4221 CopyShadowRowToVRAM: a = row (& 31), b = WRAM bank (left mapped): its tiles and attributes queued (2 blocks
+// each)
+export function copyShadowRowToVRAM(w, a, b) {
+  setWB(w, b);
+  const bc = (a & 0x1F) << 5;
+  queueVRAMCopy(w, 0xD000 + bc, 0x9800 + bc, 2);
+  queueVRAMCopy(w, 0xD400 + bc, 0xB800 + bc, 2);
+}
+// 05:44B7 CopyMapEdgeRows: 7 map rows into the shadow (05:450B) from row [$C323] (+1 when wMapScrollY $C322 bit 7 is
+// set; + $0B when a's bit 0 is), each & $3F
+export function copyMapEdgeRows(w, a, copyMapRowToShadow) {
+  let r = (w.wram[0][0x323] + (w.wram[0][0x322] >> 7)) & 0xFF;
+  if (a & 1) r = (r + 0x0B) & 0xFF;
+  r &= 0x3F;
+  for (let n = 7; n; n--) { copyMapRowToShadow(w, r); r = (r + 1) & 0x3F; }
+}
+// 05:4717 BuildPlainWindowRecord: the record at hl: flags a, x d, y e, width b, height c, then the tiles with the
+// attribute [$D84D] (wWindowAttr): the frame 02 03.. 04 / 05 20.. 06 rows / 07 08.. 09 (an inner size of 0 runs 256
+// times, as the loops count down)
+export function buildPlainWindowRecord(w, hl, a, d, e, b, c) {
+  const put = v => { wr(w, hl, v); hl = (hl + 1) & 0xFFFF; };
+  put(a); put(d); put(e); put(b); put(c);
+  const iw = (b - 2) & 0xFF, ih = (c - 2) & 0xFF, at = rd(w, 0xD84D);
+  const row = (l, m, r) => { put(l); put(at); for (let n = iw || 256; n; n--) { put(m); put(at); } put(r); put(at); };
+  row(0x02, 0x03, 0x04);
+  for (let n = ih || 256; n; n--) row(0x05, 0x20, 0x06);
+  row(0x07, 0x08, 0x09);
+}
+// 05:486F EraseWindowFromShadow: the record at hl (x, y, width, height after its flags): tile 0 over its area of the
+// shadow (05:414F, the bank mapped as it is; 0 sizes run 256 times)
+export function eraseWindowFromShadow(w, hl) {
+  const d0 = rd(w, hl + 1), e0 = rd(w, hl + 2), b = rd(w, hl + 3), c = rd(w, hl + 4);
+  let e = e0;
+  for (let r = c || 256; r; r--, e = (e + 1) & 0xFF) {
+    let d = d0;
+    for (let k = b || 256; k; k--, d = (d + 1) & 0xFF) wr(w, 0xD000 + ((e & 0x1F) << 5) + (d & 0x1F), 0);
+  }
+}
+FUZZ.push(() => ({ name: "ClearBGShadow", bank: 0x05, addr: 0x40E6, js: w => clearBGShadow(w) }));
+FUZZ.push(rnd => ({ name: "DebugHDMAShadowToVRAM", bank: 0x05, addr: 0x4102, js: w => debugHDMAShadowToVRAM(w) }));
+FUZZ.push(rnd => ({ name: "ReadShadowTile", bank: 0x05, addr: 0x413E, regs: () => ({ a: rnd(256), d: rnd(256), e: rnd(256) }), out: ["a", "d", "e"],
+  js: (w, r) => ({ a: readShadowTile(w, r.a), d: r.d, e: r.e }) }));
+const sb = rnd => [1, 2, 3, 4, 5, 6, 7][rnd(7)];
+FUZZ.push(rnd => ({ name: "CopyVisibleShadowRows", bank: 0x05, addr: 0x416F, init: w => { if (rnd(2)) for (let k = 0; k < rnd(6); k++) w.wram[0][0x0A0 + 8 * rnd(10)] = 1; },
+  regs: () => ({ a: rnd(256), b: sb(rnd), c: rnd(256), d: rnd(256), e: rnd(256), h: rnd(256), l: rnd(256) }), out: ["a", "b", "c", "d", "e", "h", "l"],
+  js: (w, r) => { copyVisibleShadowRows(w, r.b); return r; } }));
+FUZZ.push(rnd => ({ name: "CopyShadowTilesToVRAM", bank: 0x05, addr: 0x41EF, regs: () => ({ a: rnd(256), b: sb(rnd), c: rnd(256), d: rnd(256), e: rnd(256), h: rnd(256), l: rnd(256) }),
+  out: ["a", "b", "c", "d", "e", "h", "l"], js: (w, r) => { copyShadowTilesToVRAM(w, r.b); return r; } }));
+FUZZ.push(rnd => ({ name: "CopyShadowAttrsToVRAM", bank: 0x05, addr: 0x4208, regs: () => ({ a: rnd(256), b: sb(rnd), c: rnd(256), d: rnd(256), e: rnd(256), h: rnd(256), l: rnd(256) }),
+  out: ["a", "b", "c", "d", "e", "h", "l"], js: (w, r) => { copyShadowAttrsToVRAM(w, r.b); return r; } }));
+FUZZ.push(rnd => ({ name: "CopyShadowRowToVRAM", bank: 0x05, addr: 0x4221, init: w => { if (rnd(2)) for (let k = 0; k < rnd(10); k++) w.wram[0][0x0A0 + 8 * rnd(10)] = 1; },
+  regs: () => ({ a: rnd(256), b: sb(rnd) }), js: (w, r) => copyShadowRowToVRAM(w, r.a, r.b) }));
+FUZZ.push(rnd => ({ name: "BuildPlainWindowRecord", bank: 0x05, addr: 0x4717,
+  regs: () => { const hl = 0xD900 + rnd(0x300), b = 2 + rnd(19); return { a: rnd(256), d: rnd(256), e: rnd(256), b, c: b === 2 ? 3 : 3 + rnd(16), h: hl >> 8, l: hl & 0xFF }; },   // (b 2: 256 per row, 3 rows; c 2, 256 rows, would run over the stack)
+  out: ["a", "b", "c", "d", "e", "h", "l"], js: (w, r) => { buildPlainWindowRecord(w, r.h << 8 | r.l, r.a, r.d, r.e, r.b, r.c); return r; } }));
+FUZZ.push(rnd => ({ name: "EraseWindowFromShadow", bank: 0x05, addr: 0x486F, steps: 3000000,
+  regs: w => { const hl = 0xC400 + rnd(0x300); const m = w.wram[0], wide = !rnd(8); m[hl - 0xC000 + 3] = wide ? 0 : 1 + rnd(31); m[hl - 0xC000 + 4] = wide ? 1 + rnd(8) : rnd(8) ? 1 + rnd(31) : 0;
+    /* (0: 256; not both large: the run is long) */ return { a: rnd(256), b: rnd(256), c: rnd(256), d: rnd(256), e: rnd(256), h: hl >> 8, l: hl & 0xFF }; },
+  out: ["a", "b", "c", "d", "e"], js: (w, r) => { eraseWindowFromShadow(w, r.h << 8 | r.l); return r; } }));
+
+// ---- bank 05's unreferenced window helpers ----
+const slotP = b => (0xD800 + ((b << 2) & 0xFF)) & 0xFFFF;
+// 05:5A75 GetWindowText: slot b (up to 5): hl = its text id (the priority bits off); else hl as it was
+export function getWindowText(w, b, hl) {
+  if (b > 5) return hl;
+  const p = slotP(b) + 2;
+  return (rd(w, p) & 0x1F) << 8 | rd(w, p + 1);
+}
+// 05:5B0F SetWindowPriorityAlt: slot b (up to 5), priority a (05:4C75 SetWindowPriority with the arguments swapped)
+export function setWindowPriorityAlt(w, b, a) {
+  if (b > 5) return;
+  const p = slotP(b) + 2;
+  wr(w, p, (rd(w, p) & 0x1F) | ((a << 5) & 0xFF));
+}
+FUZZ.push(rnd => ({ name: "GetWindowText", bank: 0x05, addr: 0x5A75, regs: () => ({ b: rnd(3) ? rnd(6) : rnd(256), h: rnd(256), l: rnd(256), a: rnd(256), c: rnd(256), d: rnd(256), e: rnd(256) }),
+  out: ["a", "b", "c", "d", "e", "h", "l"], js: (w, r) => { const hl = getWindowText(w, r.b, r.h << 8 | r.l); return { ...r, h: hl >> 8, l: hl & 0xFF }; } }));
+FUZZ.push(rnd => ({ name: "SetWindowPriorityAlt", bank: 0x05, addr: 0x5B0F, regs: () => ({ b: rnd(3) ? rnd(6) : rnd(256), a: rnd(256), c: rnd(256), d: rnd(256), e: rnd(256), h: rnd(256), l: rnd(256) }),
+  out: ["a", "b", "c", "d", "e", "h", "l"], js: (w, r) => { setWindowPriorityAlt(w, r.b, r.a); return r; } }));
+
+// ---- bank 3C's debug wind sweep: its two helpers (unreferenced but by the sweep) ----
+// 3C:6B3F AngleFromUp: de = bc + $4000 (bc - $C000: the angle from straight up)
+export const angleFromUp = bc => (bc + 0x4000) & 0xFFFF;
+// 3C:6BFE DebugShotAngle: the angle (00:1A03 AngleFromVector16, x = the ball's y - the tee's $D43B, y = its x - $D439)
+// of the ball's word positions $D401 / $D404 from the tee spot (with both parts nonzero AngleFromVector16 divides by
+// 00:0DDB DivAHLByDE, which leaves its HRAM $FFAC-$FFAE as 40:599C's copy does)
+export function debugShotAngle(w) {
+  const r16 = a => rd(w, a) | rd(w, a + 1) << 8;
+  const dx = (r16(0xD401) - r16(0xD439)) & 0xFFFF, dy = (r16(0xD404) - r16(0xD43B)) & 0xFFFF;
+  if (dy && dx) { const ax = dy & 0x8000 ? (-dy) & 0xFFFF : dy, ay = dx & 0x8000 ? (-dx) & 0xFFFF : dx; divAHLByDE40(w, ax >> 8, (ax & 0xFF) << 8, ay); }
+  return M.angleFromVector16(dy, dx);
+}
+FUZZ.push(rnd => ({ name: "AngleFromUp", bank: 0x3C, addr: 0x6B3F, regs: () => ({ a: rnd(256), b: rnd(256), c: rnd(256), d: rnd(256), e: rnd(256), h: rnd(256), l: rnd(256) }),
+  out: ["a", "b", "c", "d", "e", "h", "l"], js: (w, r) => { const de = angleFromUp(r.b << 8 | r.c); return { ...r, d: de >> 8, e: de & 0xFF }; } }));
+FUZZ.push(rnd => ({ name: "DebugShotAngle", bank: 0x3C, addr: 0x6BFE, out: ["b", "c"], js: w => { const bc = debugShotAngle(w); return { b: bc >> 8, c: bc & 0xFF }; } }));
+
+// ---- home bank: the vectors and helpers no screen runs ----
+// 00:0000 RST00_JumpTable / 00:0690 JumpTableDispatch (rst $00; dw ...: no code of this ROM uses it): the word at the
+// return address + 2a (a doubled in 8 bits) is jumped to (00:0699 JumpToHL); returns that target. de = 2a, hl = it
+export function jumpTableDispatch(w, ret, a) {
+  const p = (ret + ((a << 1) & 0xFF)) & 0xFFFF;
+  return rd(w, p) | rd(w, (p + 1) & 0xFFFF) << 8;
+}
+// 00:0048 IntLCDStat -> 00:2F81 LCDStatHandler, 00:0060 IntJoypad: reti (the LCD STAT and joypad interrupts are never
+// enabled: IE $0D); nothing to do here
+export function lcdStatInterrupt() {}
+export function joypadInterrupt() {}
+// 00:02C7 SwitchCPUSpeedSingle (as in Mario Tennis 00:02C7; nothing calls it): in double speed (KEY1 bit 7) the
+// switch is armed (KEY1 1), IE 0 meanwhile, P1 $30, STOP; when KEY1 bit 7 is clear, P1 0, IF 0, IE back; returns a =
+// IE (its push af), or KEY1 when already in single speed. The native engine has no CPU speed: w.doubleSpeed stands
+// for KEY1 bit 7; P1 / IF / IE as w.high[$100] / [$10F] / [$1FF]
+export function switchCPUSpeedSingle(w) {
+  if (!w.doubleSpeed) return 0x7E | (w.key1 & 1);
+  w.doubleSpeed = false; w.key1 = 0;
+  w.high[0x100] = 0; w.high[0x10F] = 0;
+  return w.high[0x1FF];
+}
+FUZZ.push(rnd => ({ name: "JumpTableDispatch", bank: 0, addr: 0xC800,
+  init: w => {                                   // rst $00 at $C800 with an 8-entry table after it, each target a ret
+    const m = w.wram[0]; m[0x800] = 0xC7;
+    for (let k = 0; k < 8; k++) { const t = 0xC900 + 3 * k; m[0x801 + 2 * k] = t & 0xFF; m[0x802 + 2 * k] = t >> 8; m[t - 0xC000] = 0xC9; }
+  },
+  regs: () => ({ a: rnd(8), b: rnd(256), c: rnd(256), d: rnd(256), e: rnd(256), h: rnd(256), l: rnd(256) }), out: ["a", "b", "c", "d", "e", "h", "l"],
+  js: (w, r) => { const t = jumpTableDispatch(w, 0xC801, r.a); return { ...r, a: t & 0xFF, h: t >> 8, l: t & 0xFF, d: 0, e: (r.a << 1) & 0xFF }; } }));
+FUZZ.push(rnd => ({ name: "IntLCDStat", bank: 0, addr: 0x0048, regs: () => ({ a: rnd(256), b: rnd(256), c: rnd(256), d: rnd(256), e: rnd(256), h: rnd(256), l: rnd(256) }),
+  out: ["a", "b", "c", "d", "e", "h", "l"], js: (w, r) => { lcdStatInterrupt(); return r; } }));
+FUZZ.push(rnd => ({ name: "IntJoypad", bank: 0, addr: 0x0060, regs: () => ({ a: rnd(256), b: rnd(256), c: rnd(256), d: rnd(256), e: rnd(256), h: rnd(256), l: rnd(256) }),
+  out: ["a", "b", "c", "d", "e", "h", "l"], js: (w, r) => { joypadInterrupt(); return r; } }));
+// (the card's accent fragments 0E:44AE / 0E:44C8: scorecard.js, fuzz-checked from a stub that pushes af and hl and
+// jumps in, as ScorecardPutString's loop has them pushed)
+
+// 40:5EFC DemoTaskDiagonalDown (an unreferenced demo task): WRAM6 (left mapped); wDemoScrollX $D247 and wDemoScrollY
+// $D248 + 1 each, to hSCX / hSCY
+export function demoTaskDiagonalDown(w) {
+  setWB(w, 6);
+  const r = w.wram[6];
+  r[0x247] = (r[0x247] + 1) & 0xFF; w.high[0x18B] = r[0x247];
+  r[0x248] = (r[0x248] + 1) & 0xFF; w.high[0x18A] = r[0x248];
+}
+// 11:410C BallDisplayStop (nothing calls it): the frame task 11:4113 BallDisplayTask off
+export function ballDisplayStop(w) { unregisterFrameTask(w, 0x11, 0x4113); }
+// 4F:618B WaitCaptionAnimEnd (nothing calls it): frames until the caption object's script ($CAA0) is done (0), then its
+// task 4F:62A7 off
+export function* waitCaptionAnimEnd(sh) {
+  const w = sh.w;
+  do yield* sh.advance(); while (w.wram[0][0xAA0] | w.wram[0][0xAA1]);
+  unregisterFrameTask(w, 0x4F, 0x62A7);
+}
+FUZZ.push(rnd => ({ name: "DemoTaskDiagonalDown", bank: 0x40, addr: 0x5EFC, js: w => demoTaskDiagonalDown(w) }));
+FUZZ.push(rnd => ({ name: "BallDisplayStop", bank: 0x11, addr: 0x410C,
+  init: w => { if (rnd(2)) { const p = 0x1C0 + 4 * rnd(16); w.wram[0].set([1 + rnd(255), 0x13, 0x41, 0x11], p); } }, js: w => ballDisplayStop(w) }));
+FUZZ.push(rnd => ({ name: "WaitCaptionAnimEnd", bank: 0x4F, addr: 0x618B, script: () => [0],
+  init: w => { w.wram[0][0xAA0] = 0; w.wram[0][0xAA1] = 0; if (rnd(2)) { const p = 0x1C0 + 4 * rnd(16); w.wram[0].set([1 + rnd(255), 0xA7, 0x62, 0x4F], p); } },
+  js: w => { const g = waitCaptionAnimEnd(w.sh); while (!g.next().done); } }));

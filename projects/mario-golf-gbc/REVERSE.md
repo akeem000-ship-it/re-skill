@@ -1435,10 +1435,62 @@ PlayLinkCallSound 02:47ED, LinkPartnerCallTick 02:4812, LinkReceiveShot 02:483A,
 LinkSendShotResult 02:4924) is ported and fuzzed with its frames stubbed (the routine tests' `script`: AdvanceFrame
 returns at once with the next received byte of a script on both sides, PlaySoundManaged returns with its id recorded
 and compared); quirk: both of LinkReceiveShot's waits run two frames first, then one per pass (their loops go back
-to the second AdvanceFrame). Not ported: two machines linked (the handshakes of the mode select 32:5313 / 32:53B8
-with the wait picture 4A:6C1F, the partner's menu choice 09:4810, the link round itself, 10:44EA / 10:4567, and the
-link pause items' partner side): the emulator core has no second machine on its cable, and the native engine is
-one machine, so a linked session could not be recorded or replayed.
+to the second AdvanceFrame).
+
+**Two machines linked.** The emulator core has a cable (web/js/gb/link.js `LinkCable`, tests only): a transfer started
+on the internal clock ends 8 bit times later (the CGB fast clock of SC $83: 16 base clocks a bit, halved in double
+speed; else 512); at its end, when the partner waits on the external clock (SC bit 7 set, bit 0 clear), the two SB
+are exchanged and both get the serial interrupt, else the clock side reads $FF. A halted side wakes at either side's
+transfer end. web/tests/golf/linkcores.mjs runs two power-on cores in step (the side whose base clock is behind runs
+its next instruction) and records a session: both sides' buttons per frame (frame k as the screen harness counts
+AdvanceFrame / WaitVBlankFlag), every transfer end that reached each side (its base-clock count and byte), the
+transfers each side started, each frame's VBlank and code start counts, the first access of each frame's code to the
+link state ($FFC0-$FFC9, $CB00-$CB7F, outside the interrupt handlers) and the SerialSendBlock entries. A single core
+replays one side exactly from that log (link.js `ScriptCable`: the recorded bytes put in SB at the recorded counts;
+checked: every PPU frame's hash equal to the two-core run's, 20,606 + 20,397 frames).
+
+The link game found that way: LinkMenu's VS game (A on item 1) sends $71 (00:306E); the side that gets $70 back
+(the asker) is the clock side (role 1), the other (role 2: it got $71) answers. The asker sends a $10 block; the
+other's menu (09:4810) answers $20 and returns $11 (from the title screen or its demo the same $10 is answered by
+40:4161 / 40:622A / 40:624B and the link menu taken at 32:508B without the link's reset). 32:5313 (wLinkRole 1): the
+wait picture 4A:6C1F (LoadLinkWaitPicture, its task the copy of 48:5EE9) until the partner's idle $20, a fade,
+SetLinkActive; the character select and LoadRosterEntryAsPlayer 32:5428 (a preset golfer: SetupPlayerGolfer with
+its id, its record's +$10 bit 0 to field $11; a save slot: SaveBlockLoad, RestoreGameTimer, SetupPlayerGolfer
+$80); the game mode (GameModeSelect from mode 2: the link list 2 3) and the course; its record ($C880, $20 bytes,
+the mode in +$17) sent with $21 to follow, until the partner's $22; GolfSessionInit, SetupPlayerGolfer $80 / $82
+(02:4A6C: the partner's record from $CB40, field $13 = 3), the course and hole 1, GolfRound $12, GolfSessionEnd, the
+link menu again. 32:53B8 (role 2): idle $20, the character select, its record sent with $22 to follow, until $21;
+player 1 copied to player 2, player 1 the partner ($82), the mode from the partner's +$17. In the round each hole
+starts with 10:4567 (the asker: until the partner's $24, the course, hole and wind sent with $23 to follow) /
+10:44EA (the answerer: idle $24 until $23, the hole and wind from the block); the partner's turn is 10:5943 (the
+banner 3B:776D / 3B:7766 with its task 3B:7858, 02:483A LinkReceiveShot, then the HUD and the swing with the received
+targets); one's own shot goes out after the swing (02:48B8 at 10:4929), the flight camera waits for it to be out
+(10:49F1 SerialWaitSendDone); the aim loop plays the partner's button calls (02:4812); the pause menu's Give Up sends
+the result $81 (02:4924); at the round's end both send $2E and wait for the other's (10:4659), ClearLinkActive.
+
+The native port joins two native machines with `NativeCable` (serial.js): a transfer on one side's clock exchanges
+the two SB at once when the other waits on the external clock, and both SerialHandlers run (the partner's in its own
+memory). The native code takes no time, so the order of the two machines' work decides who sees a byte when: with a
+cable each native frame yields "code" after its VBlank work, and SerialSendBlock yields "sync" past its wait; the
+link test (web/tests/golf_link_vs_cores.mjs) runs the two machines part by part in the order of the recorded core
+clocks (the VBlank part at its VBlank handler's entry, the code part at its first access to the link state, the
+SerialSendBlock part at 00:308C), and the cable's `defer` mode ends each native transfer at the count its core's
+transfer ended (the n-th a native side starts is the n-th its core started). Each side is compared frame by frame
+with its single core as the screen cases are (screenstep.mjs `screenSteps`; its lag VBlanks now run SerialVBlankTick
+too, as 00:2F50 does on the hardware: the clock side's lag VBlanks transfer bytes). Sessions (out/link/, not
+committed; `--record` makes them): `session` (a match game, the asker Mario, the answerer Luigi, both swinging by
+the meter: 45,000 / 45,570 frames, three holes played and the fourth begun): both sides exact on every frame (side 0
+44,881 pixel-exact, 4,843 differing after lag frames, 0 other; side 1 45,490 / 11,520 / 0; the lag-classed frames
+include off-screen BG map columns a view load cut by a lag frame leaves stale for a while, as in the one-machine
+rounds); `title` (the request reaching the answerer on its title screen, 40:4161): 5,998 / 6,013 frames, 0 other;
+`demo` (reaching it during the intro pictures, IntroCheckSkip 40:6238, which answers but never skips): 7,529 / 7,498
+frames, 0 other; `giveup` (the asker's Give Up on hole 2 after a stroke: 02:4924's $81 block, the partner's 10:5943
+returns it) 20,998 / 21,217, 0 other; `quit` (Quit on hole 2: both sides' 10:4659 and the link menu again) 20,998 /
+21,211, 0 other. On the play page (web/play.html) the "Link" mode runs two machines side by side joined by the cable
+(not deferred: the right machine's frame after the left one's), Tab switching which one the keys play;
+play_page.mjs `--link` plays a link round there by a policy in the page. The two-player Stroke round's end
+(08:4EBF RoundEndMode3Stroke with RoundResultScreen 2) and the Tournament's ModeSelectCheckLinksUnlocked (32:51FF,
+the same code as Stroke's) are ported with it.
 
 #### Home bank vs Mario Tennis (tools/compare_home.py)
 

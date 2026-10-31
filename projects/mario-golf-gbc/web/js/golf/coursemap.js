@@ -322,3 +322,15 @@ export function* courseMapScreen(sh) {
   }
   unregisterFrameTask(w, B, 0x43AC);
 }
+
+// 17:4232 CourseMapShowTimed (export $02; nothing calls it): CourseMapInit (no fade out first), then up to 300 frames
+// or a button (sound $5C); CourseMapTask stopped
+export function* courseMapShowTimed(sh) {
+  const w = sh.w;
+  yield* courseMapInit(sh);
+  for (let bc = 0x12C; bc; bc--) {
+    yield* sh.advance();
+    if (w.high[0x194]) { sh.sound(0x5C); break; }
+  }
+  unregisterFrameTask(w, B, 0x43AC);
+}

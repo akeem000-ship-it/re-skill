@@ -270,7 +270,8 @@ function* map02ConfirmQuitMatchGame(sh) {
   return 0;
 }
 // 34:4618 ... 34:4681 Map02Trigger06-0D: 34:5530, then warp 6-$0D (Windy Valley ... the Club Maker's Hut), sound $92 (the
-// same code with their warps; the screen cases take 34:4618 34:4627 34:4636 34:4645 34:4663 34:4672 34:4681, not ~34:4654)
+// same code with their warps; the screen cases take 34:4618 34:4627 34:4636 34:4645 34:4663 34:4672 34:4681, and 34:4654
+// (no Field cell has trigger $0A) with the trigger list patched: boot_kid_story_trigger0a)
 function* map02TriggerPlace(sh, warp) {
   const w = sh.w;
   if ((yield* map02ConfirmQuitMatchGame(sh)) === 1) return;

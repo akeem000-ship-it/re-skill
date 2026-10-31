@@ -1626,3 +1626,17 @@ export function* redrawStatsFrame(sh) {
   yield* inBankGen(w, 0x05, T.printTextToBuffer(sh, id, add8(0xD043, sub(w)), 0x40));
   setW(w, old);
 }
+
+// 0C:6E80 LoadBannerGfxUnused (unreferenced): LoadCourseBanner's code (the debug print, a frame, the LZ data to WRAM3
+// $D000, 10 tiles queued to de) with the table 0C:6EC3 (refs $40:18-22) and no frame after; the bank restored
+export function* loadBannerGfxUnused(sh, a, de) {
+  const w = sh.w, old = wbank(w);
+  printHexByte(w, a, 0x0D02);                    // 00:22A5
+  const p = add8(0x6EC3, a * 2);
+  const hl = R(p) | R(p + 1) << 8;
+  yield* sh.advance();
+  setW(w, 3);
+  decompressDataFromBank(w, hl, 0xD000);
+  D.queueVRAMCopy(w, 0xD000, de, 0x0A);
+  setW(w, old);
+}

@@ -15,7 +15,7 @@ import { showScorecard } from "./scorecard.js";
 import * as M from "./msgbox.js";
 import * as T from "./text.js";
 import { freeLookCursor } from "./freelook.js";
-import { courseMapScreen } from "./coursemap.js";
+import { courseMapShowTimed, courseMapScreen } from "./coursemap.js";
 import { saveGame } from "./save.js";
 import { mapSaveReturnPoint } from "./start.js";
 import { playerField } from "./memory.js";
@@ -346,7 +346,8 @@ function* menuHandler(sh, h) {
       clearMenuState(w);
       return;
     case 0x7451: case 0x7581:                    // Course Map: 41:7882 MenuShowCourseMap (17:437D), wMenuResult $FF
-      yield* inBankGen(w, 0x17, courseMapScreen(sh));
+      // (w.courseMapTimed: a test's patch of the far call's index to export $02, 17:4232 CourseMapShowTimed)
+      yield* inBankGen(w, 0x17, w.courseMapTimed ? courseMapShowTimed(sh) : courseMapScreen(sh));
       wr(w, 0xC3FD, 0xFF);
       clearMenuState(w);
       return;
@@ -385,7 +386,7 @@ function* menuHandler(sh, h) {
       yield* runMenu(sh, 0x1484, 0x7654, 0x0300);
       return;
     // the practice menus (41:76FF, 41:7741): Quit Practice $82 (41:7707 PracticeWindQuit, 41:7745 the same code); Wind Direction
-    // 41:770F / Wind Speed 41:7721 stay in the menu; Settings (41:7733, ~41:774D), then the menu again on row 3 / 1
+    // 41:770F / Wind Speed 41:7721 stay in the menu; Settings (41:7733, 41:774D PracticeSettings), then the menu again on row 3 / 1
     case 0x7707: case 0x7745: case 0x775F:       // (41:775F MiniGameQuit)
       wr(w, 0xC3FD, 0x82);
       clearMenuState(w);
@@ -409,7 +410,7 @@ function* menuHandler(sh, h) {
       yield* runMenu(sh, h === 0x7733 ? 0x1485 : 0x1486, h === 0x7733 ? 0x76FF : 0x7741, h === 0x7733 ? 0x0303 : 0x0305);
       return;
     // after a training shot (41:76B9 Continue / Mulligan / Hole Out: 41:76BF 41:76C7 41:76CF; 41:76D7 Continue /
-    // Mulligan / Start Over / Back to Main Menu: 41:76DF (the same code as 41:76BF) 41:76E7 41:76EF ~41:76F7): wMenuResult 0, 2, 5; 0, 2, 3, 4
+    // Mulligan / Start Over / Back to Main Menu: 41:76DF (the same code as 41:76BF) 41:76E7 41:76EF 41:76F7): wMenuResult 0, 2, 5; 0, 2, 3, 4
     case 0x76BF: case 0x76C7: case 0x76CF: case 0x76DF: case 0x76E7: case 0x76EF: case 0x76F7:
       wr(w, 0xC3FD, { 0x76BF: 0, 0x76C7: 2, 0x76CF: 5, 0x76DF: 0, 0x76E7: 2, 0x76EF: 3, 0x76F7: 4 }[h]);
       clearMenuState(w);
@@ -605,12 +606,12 @@ function* menuSaveAndQuit(sh) {
 function* mapStartMenuHandler(sh, h) {
   const w = sh.w;
   switch (h) {
-    case 0x73F0: case 0x7425:                    // Message (41:73F0 MapStartMessageSpeed): 41:7969, the menu stays (jp 41:701E)
+    case 0x73F0: case 0x7425:                    // Message (41:73F0 MapStartMessageSpeed, 41:7425 MapStartNavMessageSpeed): 41:7969, the menu stays (jp 41:701E)
       menuTextSpeedAdjust(sh);
       wr(w, 0xC3F9, rd(w, 0xD830));
       yield* runMenuBody(sh, h === 0x73F0 ? 0x73DC : 0x7409);
       return;
-    case 0x7402: case 0x7437:                    // Save & Quit ($C4B8 = 0 / 1: 41:7402 MapStartSaveQuit)
+    case 0x7402: case 0x7437:                    // Save & Quit ($C4B8 = 0 / 1: 41:7402 MapStartSaveQuit, 41:7437 MapStartNavSaveQuit)
       wr(w, 0xC4B8, h === 0x7402 ? 0 : 1);
       yield* menuSaveAndQuit(sh);
       return;
@@ -621,10 +622,25 @@ function* mapStartMenuHandler(sh, h) {
       wr(w, 0xC465, rd(w, 0xC2A4));
       clearMenuState(w);
       return;
-    case 0x73EA: case 0x741F:                    // Stars (41:73EA MapStartStars): 41:7965 -> 0A:6F56, then closed
+    case 0x73EA: case 0x741F:                    // Stars (41:73EA MapStartStars, 41:741F MapStartNavStars): 41:7965 -> 0A:6F56, then closed
       yield* inBankGen(w, 0x0A, eventListScreen(sh));
       clearMenuState(w);
       return;
     default: notPorted(`the start menu's item ~41:${h.toString(16)}`);
   }
+}
+
+// 41:6FC4 CharStartMenu (export $1A, called only from 70:6F79, which nothing reaches): the start menu's items (Char.
+// Data / Stars / Message / Save & Quit, $1480, the handlers 41:73DC, size $0404) without the map menu's set-up or the
+// font: the menu state cleared, $C3FC bit 7 (Start cancels), the text speed's bit 7 meanwhile; returns wMenuResult
+export function* charStartMenu(sh) {
+  const w = sh.w;
+  clearMenuState(w);
+  wr(w, 0xC3FC, rd(w, 0xC3FC) | 0x80);
+  const old = wbank(w);
+  wr(w, 0xC82D, rd(w, 0xC82D) | 0x80);
+  yield* runMenu(sh, 0x1480, 0x73DC, 0x0404);
+  wr(w, 0xC82D, rd(w, 0xC82D) & 0x7F);
+  setW(w, old);
+  return rd(w, 0xC3FD);
 }
