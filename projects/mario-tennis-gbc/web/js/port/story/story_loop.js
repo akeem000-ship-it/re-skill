@@ -140,20 +140,29 @@ export function* runStoryLocation(P) {
 // entry]) has no fade out or in, no name popup or wait, and no walk-in (the arrival script, or the courtyard's init walk): the new
 // area is there the next frame and the player walks on from its entry point. Nothing else changes (the actors, scripts and music of
 // the area are loaded as ever).
-const QUICK_CROSSINGS = [[19, 7, 2], [20, 8, 4]];
+// Each with where the new area lies from the old one (map pixels, as voxel.js draws them side by side: field_objects backdropMap):
+// the player arrives where they were, moved by that, instead of at the entry point, so in 3D they walk on without a jump.
+const QUICK_CROSSINGS = [[19, 7, 2, -118, -40], [20, 8, 4, 118, 40]];
 function quickCrossing(P) {
-  if (!P.quickCross) return false;
+  if (!P.quickCross) return null;
   const old = P.bus.u8(0xC32E), V = P.V;                  // (wCurMapID: still the area being left)
-  return QUICK_CROSSINGS.some(([m, loc, e]) => m === old && loc === V.storyModeCurrentLocation && e === V.storyModeEntryPoint);
+  return QUICK_CROSSINGS.find(([m, loc, e]) => m === old && loc === V.storyModeCurrentLocation && e === V.storyModeEntryPoint) || null;
+}
+// the player's position (actor 0, 1/256 tile) moved by the crossing's offset into the spawn position (1/256 tile = 1/32 px)
+function quickSpawn(P, q) {
+  const { bus } = P, old = P.V.wramBank; P.wramBank(WRAM_ACTORS);
+  const x = bus.u16(wActors + 0x0C), y = bus.u16(wActors + 0x0E); P.wramBank(old);
+  bus.w16(P.A.storyModeSpawnPosition, (x + q[3] * 32) & 0xFFFF); bus.w16(P.A.storyModeSpawnPosition + 2, (y + q[4] * 32) & 0xFFFF);
 }
 function* runLocation(P) {
   const { bus, V } = P;
-  const quick = quickCrossing(P); P.quickArrive = quick;
+  const q = quickCrossing(P), quick = !!q; P.quickArrive = quick;
   if (!quick) beginFadeOut(P, FADE_OUT_SPEED);
   clearTemporaryStoryFlags(P);
   clearStoryEventRequests(P);
   loadStoryLocationHeader(P);
   loadStoryEntryPointRecord(P);
+  if (quick) quickSpawn(P, q);
   V.gameMode = GAMEMODE_NONE;
   yield* advanceFrame(P);
   if (!testFlag(P, FLAG_ENDING_CREDITS_RUNNING) && V.storyLocationBGM !== BGM_UNCHANGED) playSoundManaged(P, V.storyLocationBGM);
