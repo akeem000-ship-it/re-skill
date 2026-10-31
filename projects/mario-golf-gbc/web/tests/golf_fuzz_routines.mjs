@@ -25,6 +25,7 @@ const N = +(process.argv.slice(2).find(a => /^\d+$/.test(a)) || 300);
 let seed = 0x13579bdf;
 const rnd = n => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return (seed >>> 8) % n; };
 const gb = newCore();
+const cpuStep = gb.cpu.step.bind(gb.cpu);
 
 // the copies of the map tile animation (28:7D0B MapTileAnimStart, +$A7 Stop, +$B6 Task, +$FD Step)
 const ANIM = { 0x28: 0x7D0B, 0x29: 0x7927, 0x2A: 0x76BF, 0x2B: 0x73ED, 0x2C: 0x7AD1, 0x2D: 0x739D, 0x2E: 0x79D5,
@@ -275,7 +276,7 @@ for (const c of CASES) {
     // (a call that reaches PlaySoundCmd 00:2BBB, QueueVRAMCopy's error sounds for more than $80 blocks, is not
     // compared: the sound driver's RAM is not modelled there; counted apart)
     let sound = false;
-    const step = gb.cpu.step.bind(gb.cpu);
+    const step = cpuStep;                       // (the CPU's own step: binding the last wrapper again nested them)
     // (c.script: the routine's frames stubbed: AdvanceFrame 00:2E3B returns at once with hSerialRecv set to the
     // script's next byte (its last one after the end), on both sides; PlaySoundManaged 00:2C19 returns at once with
     // its sound id recorded, compared as "sounds")

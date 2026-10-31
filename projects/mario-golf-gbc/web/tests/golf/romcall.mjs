@@ -28,6 +28,11 @@ export function romCall(gb, bank, addr, regs = {}, maxSteps = 20_000_000) {
   cpu.sp = (cpu.sp - 2) & 0xFFFF; m.write(cpu.sp, SENTINEL & 0xFF); m.write(cpu.sp + 1, SENTINEL >> 8);
   cpu.pc = addr;
   let n = 0;
-  while (cpu.pc !== SENTINEL) { coverStep(gb); cpu.step(); if (++n > maxSteps) throw new Error(`romCall ${bank.toString(16)}:${addr.toString(16)} did not return`); }
+  const trace = process.env.ROMCALL_TRACE;
+  while (cpu.pc !== SENTINEL) {
+    coverStep(gb); cpu.step();
+    if (++n > maxSteps) throw new Error(`romCall ${bank.toString(16)}:${addr.toString(16)} did not return`);
+    if (trace && !(n & 0xFFFF)) console.error("ROMCALL", n, m.romBank.toString(16), cpu.pc.toString(16));   // (debugging a hang)
+  }
   return { a: cpu.a, b: cpu.b, c: cpu.c, d: cpu.d, e: cpu.e, h: cpu.h, l: cpu.l, bc: cpu.b << 8 | cpu.c, de: cpu.d << 8 | cpu.e, hl: cpu.h << 8 | cpu.l };
 }
