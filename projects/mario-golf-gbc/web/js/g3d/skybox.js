@@ -6,7 +6,7 @@
 // changes): the clouds and the horizon round the course (THEMES by course, the round's $C836):
 //   campus     rolling hills, a tree line and the clubhouse roofs (the Marion Club)
 //   tropics    the sea to the horizon, the sun's path on it, islands with palms (the Palm Club)
-//   desert     dunes, mesas and a haze of heat (the Dune Club)
+//   desert     dunes, mesas and a haze of heat (the Dune Club); SAND: Fine: pale soft dunes under a white haze, far mesas
 //   coast      grey-green sea under cliffs and a lighthouse (the Links Club)
 //   castle     snowy mountains far off, green hills and a far tower (Peach's Castle)
 // Nothing in the game is read but the course.
@@ -94,8 +94,8 @@ export class SkyBox {
     try {
       if (!this.prog) this.init(gl);
       const S = skyColours(this.hour()), theme = this.theme();
-      const key = theme + ":" + (Math.round(S.h * 4) / 4);
-      if (key !== this.key) { this.key = key; this.upload(gl, panorama(theme, S)); }
+      const sand = this.v.sand ? this.v.sand() : "pixel", key = theme + ":" + (Math.round(S.h * 4) / 4) + ":" + sand;
+      if (key !== this.key) { this.key = key; this.upload(gl, panorama(theme, S, sand)); }
       const inv = invert(mvp), un = q => { const w = inv[3] * q[0] + inv[7] * q[1] + inv[11] * q[2] + inv[15]; return [0, 1, 2].map(i => (inv[i] * q[0] + inv[4 + i] * q[1] + inv[8 + i] * q[2] + inv[12 + i]) / w); };
       const [hy, hd] = this.v.horizon ? this.v.horizon() : [0, 3000];
       const eye = un([0, 0, -1]), e0 = Math.atan2(hy - eye[1], hd);
@@ -134,7 +134,7 @@ function ridge(g, f, fill, step = 4) {
   g.lineTo(TW, TH); g.closePath(); g.fill();
 }
 const waves = (r, n, amp, base) => { const w = []; for (let i = 0; i < n; i++) w.push([1 + Math.floor(r() * (6 + i * 8)), r() * 6.28, amp / (1 + i * 0.9)]); return x => base + w.reduce((s, [k, ph, a]) => s + a * Math.sin(x / TW * 6.2832 * k + ph), 0); };
-export function panorama(theme, S) {
+export function panorama(theme, S, sand = "pixel") {
   const cv = document.createElement("canvas"); cv.width = TW; cv.height = TH; const g = cv.getContext("2d"), r = rng(theme.length * 977 + 13);
   const night = S.night, dim = 1 - 0.82 * night, sunset = S.sunEl > -0.05 && S.sunEl < 12 * DEG ? 1 - S.sunEl / (12 * DEG) : 0;
   // haze: far shapes take the horizon's colour; a shape's own colour dimmed at night
@@ -180,6 +180,23 @@ export function panorama(theme, S) {
         g.strokeStyle = rgb(c); g.lineWidth = 4; for (let f = 0; f < 6; f++) { const a = -Math.PI / 2 + (f - 2.5) * 0.55; g.beginPath(); g.moveTo(px + 3, top); g.quadraticCurveTo(px + 3 + Math.cos(a) * 14, top + Math.sin(a) * 10 - 4, px + 3 + Math.cos(a) * 24, top + 8 + Math.abs(Math.cos(a)) * 6); g.stroke(); }
       }
     }
+  } else if (theme === "desert" && sand === "fine") {                         // SAND: Fine: pale, soft, a white haze
+    const dune = (c1, c2, n, hLo, hHi, wLo, wHi, haze) => {                   // dunes: a sunlit face and a shaded one
+      for (let i = 0; i < n; i++) {
+        const cx = r() * TW, w = wLo + r() * (wHi - wLo), h = (hLo + r() * (hHi - hLo)) * DEG, top = Y(h), sk = (r() - 0.5) * w * 0.3;
+        g.fillStyle = rgb(tone(c1, haze)); g.beginPath(); g.moveTo(cx - w, HY + 2); g.quadraticCurveTo(cx - w * 0.2, top - (HY - top) * 0.3, cx + sk, top); g.lineTo(cx + sk, HY + 2); g.fill();
+        g.fillStyle = rgb(tone(c2, haze)); g.beginPath(); g.moveTo(cx + sk, top); g.quadraticCurveTo(cx + w * 0.3, top - (HY - top) * 0.2, cx + w, HY + 2); g.lineTo(cx + sk, HY + 2); g.fill();
+      }
+    };
+    land([228, 205, 165], [240, 228, 205]);
+    for (let i = 0; i < 6; i++) {                                               // far mesas in the haze
+      const cx = r() * TW, w = 80 + r() * 220, h = (1.5 + r() * 3) * DEG, top = Y(h);
+      g.fillStyle = rgb(tone([215, 175, 140], 0.72)); g.beginPath(); g.moveTo(cx - w * 0.6, HY + 2); g.lineTo(cx - w * 0.42, top); g.lineTo(cx + w * 0.42, top); g.lineTo(cx + w * 0.6, HY + 2); g.fill();
+      g.fillStyle = rgb(tone([195, 150, 120], 0.72)); g.fillRect(cx - w * 0.46, top + (HY - top) * 0.35, w * 0.92, (HY - top) * 0.12);
+    }
+    dune([240, 222, 185], [214, 190, 150], 30, 0.6, 1.6, 120, 320, 0.45);
+    dune([246, 230, 196], [222, 198, 160], 26, 0.3, 0.9, 160, 380, 0.2);
+    for (let i = 0; i < 22; i++) { const x = r() * TW, y = Y((0.2 + r() * 0.4) * DEG), s = 10 + r() * 14; g.fillStyle = rgb(tone([80, 115, 70], 0.3)); g.fillRect(x, y - s, 4, s); g.fillRect(x - 6, y - s * 0.7, 6, 3); g.fillRect(x - 6, y - s * 0.9, 3, s * 0.25); g.fillRect(x + 4, y - s * 0.6, 6, 3); g.fillRect(x + 7, y - s * 0.8, 3, s * 0.25); }   // cacti
   } else if (theme === "desert") {
     land([200, 160, 100], [230, 200, 150]);
     const heat = g.createLinearGradient(0, Y(5 * DEG), 0, HY); heat.addColorStop(0, rgb(S.hor, 0)); heat.addColorStop(1, rgb(mixA(S.hor, [255, 230, 190], 0.4), 0.6)); g.fillStyle = heat; g.fillRect(0, Y(5 * DEG), TW, HY - Y(5 * DEG));

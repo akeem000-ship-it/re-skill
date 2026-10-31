@@ -76,7 +76,9 @@ export function terrainColours(art, ground) {
 }
 
 // ---- HILLS: heights at the cell corners ((CELLS + 1)^2, 2 px apart) ----
-export function buildHeights(art, { iterations = 160, greenCorner = null } = {}) {
+// sand: "fine" (SAND: Fine: rounded bunker hollows with a raised grass lip, type 2 only; the desert's low soft dunes) or "pixel"
+// (the look before: hollows under both bunker types); desert: the Dune course (its out-of-bounds sand)
+export function buildHeights(art, { iterations = 160, greenCorner = null, sand: sandStyle = "pixel", desert = false } = {}) {
   const N = CELLS, H = new Float32Array(N * N);
   const gx = new Float32Array(N * N), gz = new Float32Array(N * N);
   const K = 0.22, KG = 0.05;                      // the rise per pixel along a slope cell / per green slope step
@@ -132,12 +134,20 @@ export function buildHeights(art, { iterations = 160, greenCorner = null } = {})
     for (let i = 0; i < N * N; i++) if (d[i] > 1e8) d[i] = 60;
     return d;
   };
-  const ob = dist(t => t === T.OB), sand = dist(t => t === T.BUNKER || t === T.BUNKER2), water = dist(t => t === T.WATER);
+  // (SAND: Fine: only type 2 is a hollow bunker; type $0D, which the game also plays as a bunker (10:5068, the same TerrainPropTable
+  // row), is the Dune course's sandy waste round the holes and stays level with the ground round it)
+  const fine = sandStyle === "fine", isB = fine ? t => t === T.BUNKER : t => t === T.BUNKER || t === T.BUNKER2;
+  const ob = dist(t => t === T.OB), sand = dist(isB), water = dist(t => t === T.WATER), lip = fine ? dist(t => !isB(t)) : null;
   const noise = (x, z) => Math.sin(x * 0.11 + Math.sin(z * 0.07) * 2) * Math.cos(z * 0.09 + Math.sin(x * 0.05)) + 0.5 * Math.sin(x * 0.27 + z * 0.19);
+  const ss = (a, b, v) => { const t = Math.max(0, Math.min(1, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
   for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
     const i = z * N + x;
-    if (ob[i] > 0) H[i] += 14 * (1 - Math.exp(-ob[i] / 14)) * (1 + 0.35 * noise(x, z)) + 2.5 * Math.min(1, ob[i] / 4) * noise(x * 2.3, z * 2.1);
-    if (sand[i] > 0) H[i] -= 1.4 * Math.min(1, sand[i] / 2.5);
+    if (ob[i] > 0) {
+      if (fine && desert) H[i] += 9 * (1 - Math.exp(-ob[i] / 16)) * (1 + 0.3 * noise(x * 0.8, z * 0.8)) + 1.2 * Math.min(1, ob[i] / 4) * noise(x * 1.3, z * 1.2);
+      else H[i] += 14 * (1 - Math.exp(-ob[i] / 14)) * (1 + 0.35 * noise(x, z)) + 2.5 * Math.min(1, ob[i] / 4) * noise(x * 2.3, z * 2.1);
+    }
+    if (sand[i] > 0) H[i] -= fine ? 1.2 * ss(0, 3, sand[i]) : 1.4 * Math.min(1, sand[i] / 2.5);
+    else if (fine && lip[i] > 0 && lip[i] < 3) H[i] += 0.35 * (1 - lip[i] / 3);   // the raised grass lip
     if (water[i] > 0) H[i] -= 1.2 * Math.min(1, water[i] / 1.5);
   }
   // to the corners
@@ -159,4 +169,46 @@ export function heightSampler(Hc) {
     const ix = fx | 0, iz = fz | 0, ax = fx - ix, az = fz - iz, i = iz * V + ix;
     return (Hc[i] * (1 - ax) + Hc[i + 1] * ax) * (1 - az) + (Hc[i + V] * (1 - ax) + Hc[i + V + 1] * ax) * az;
   };
+}
+
+// ---- GRASS: Carpet: the lawn's colour without the game's dither (RGBA PX x PX): rgb the mean of the 5 x 5 pixels round each pixel
+// that have its terrain type; alpha near the green (the fringe: 255 next to it, fading out over 3 px) on the grass round it ----
+export function cleanMap(art, ground) {
+  const out = new Uint8Array(PX * PX * 4), tt = new Uint8Array(PX * PX);
+  for (let z = 0; z < PX; z++) for (let x = 0; x < PX; x++) tt[z * PX + x] = art.terrain[(z >> 1) * CELLS + (x >> 1)];
+  for (let z = 0; z < PX; z++) for (let x = 0; x < PX; x++) {
+    const i = z * PX + x, t = tt[i]; let r = 0, g = 0, b = 0, n = 0, dg = 9;
+    for (let dz = -3; dz <= 3; dz++) {
+      const Z = z + dz; if (Z < 0 || Z >= PX) continue;
+      for (let dx = -3; dx <= 3; dx++) {
+        const X = x + dx; if (X < 0 || X >= PX) continue;
+        const j = Z * PX + X, tj = tt[j];
+        if (tj === T.GREEN && t !== T.GREEN) dg = Math.min(dg, Math.max(Math.abs(dx), Math.abs(dz)));
+        if (tj !== t || dx < -2 || dx > 2 || dz < -2 || dz > 2) continue;
+        r += ground[j * 4]; g += ground[j * 4 + 1]; b += ground[j * 4 + 2]; n++;
+      }
+    }
+    out[i * 4] = r / n; out[i * 4 + 1] = g / n; out[i * 4 + 2] = b / n; out[i * 4 + 3] = dg > 3 ? 0 : Math.round(255 * Math.min(1, (4 - dg) / 3));
+  }
+  return out;
+}
+
+// ---- SAND: Fine: the sand's masks per cell (RGBA CELLS x CELLS): R the bunkers (type 2), blurred (their edge at 0.5: rounded
+// outlines); G the desert's sand (on the Dune course: the brown out-of-bounds and rough, and type $0D, the sandy waste round the
+// holes), blurred; A the bunker, hard ----
+export function sandMasks(art, ground, desert) {
+  const N = CELLS, b = new Float32Array(N * N), d = new Float32Array(N * N), out = new Uint8Array(N * N * 4);
+  for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+    const i = z * N + x, t = art.terrain[i];
+    b[i] = t === T.BUNKER ? 1 : 0;
+    if (desert && t === T.BUNKER2) d[i] = 1;
+    else if (desert && (t === T.OB || t === T.ROUGH)) { const q = (z * 2 * PX + x * 2) * 4; d[i] = ground[q] > ground[q + 1] + 8 ? 1 : 0; }
+  }
+  const blur = (a, r) => { const t = new Float32Array(N * N), o = new Float32Array(N * N);
+    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) { let s = 0, n = 0; for (let k = -r; k <= r; k++) { const X = x + k; if (X >= 0 && X < N) { s += a[z * N + X]; n++; } } t[z * N + x] = s / n; }
+    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) { let s = 0, n = 0; for (let k = -r; k <= r; k++) { const Z = z + k; if (Z >= 0 && Z < N) { s += t[Z * N + x]; n++; } } o[z * N + x] = s / n; }
+    return o; };
+  const bb = blur(blur(b, 1), 1), db = blur(blur(d, 2), 1);
+  for (let i = 0; i < N * N; i++) { out[i * 4] = Math.round(bb[i] * 255); out[i * 4 + 1] = Math.round(db[i] * 255); out[i * 4 + 3] = b[i] * 255; }
+  return out;
 }

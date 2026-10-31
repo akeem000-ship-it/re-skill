@@ -3,7 +3,8 @@
 // outcome; it writes nothing of the game.
 //   trail     dots behind the ball in flight and along a long roll, coloured by the shot: a full swing white, a power shot (shot mode 1)
 //             orange and hotter, an approach shot (mode 2) sky blue, a putt a faint line on the green; a curving ball's trail bends
-//   spin      a seam turning round the ball in flight at a rate from the spin byte (backspin one way, topspin the other)
+//   spin      a seam turning round the ball in flight at a rate from the spin byte (backspin one way, topspin the other), at the
+//             ball's drawn size (ball3d.js: the ball itself turns with the spin too)
 //   landing   at the first touch-down a burst coloured by what is under the ball: grass bits off the fairway and rough, sand out of a
 //             bunker, a spray on the green
 //   splash    in the water a column of drops, a ring of spray and rings spreading on the surface
@@ -78,8 +79,8 @@ export class BallFx {
     }
     // the spin's seam: two dots turning round the ball in the air
     if (this.air) {
-      const b = sc.ballWorld(), r = 0.45, ph = sc.time * (6 + Math.abs(this.spin || 0) * 0.4) * Math.sign(this.spin || 1);
-      for (let k = 0; k < 2; k++) { const a = ph + k * Math.PI; sc.point(b[0] + Math.cos(a) * r, b[1] + 0.3 + Math.sin(a) * r, b[2], 0.95, 0.2, 0.2, 0.9, 0.16); }
+      const br = sc.ballR || 0.2, b = sc.ballWorld(), r = Math.max(0.15, br * 2.2), ph = sc.time * (6 + Math.abs(this.spin || 0) * 0.4) * Math.sign(this.spin || 1);
+      for (let k = 0; k < 2; k++) { const a = ph + k * Math.PI; sc.point(b[0] + Math.cos(a) * r, b[1] + br * 0.85 + Math.sin(a) * r, b[2], 0.95, 0.2, 0.2, 0.9, Math.max(0.08, br * 0.9)); }
     }
     // rings spreading on the ground or the water
     const R = this.rings || []; let j = 0;

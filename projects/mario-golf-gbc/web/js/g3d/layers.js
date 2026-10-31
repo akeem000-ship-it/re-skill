@@ -5,13 +5,16 @@
 // frame as with none (web/tests/g3d_layers_same.mjs).
 // The page calls afterStep(game) after each game frame and present(game) once per drawn frame (js/play.js, the "3D LAYERS" blocks).
 // Settings: remembered in this browser ("mg3d"); URL ?g3d=on|off|all|none|key,key ?g3dq=lite|full ?g3dcam=follow|course|behind|tv
-// ?g3dhour=auto|clock|<hour> ?g3dtrees=courtyard|original.
+// ?g3dhour=auto|clock|<hour> ?g3dtrees=courtyard|original ?g3dgrass=carpet|pixel ?g3dsand=fine|pixel.
 import { Golf3D } from "./scene.js";
 import { installOamTags } from "./hud3d.js";
 import { PRESETS } from "./camera3d.js";
 import { HOURS } from "./light3d.js";
 import { FX } from "./fx.js";
 import { TREE_STYLES } from "./trees3d.js";
+
+// GRASS: Carpet (the Tennis-style shell carpet, the green's grain) or Pixel (the look before); SAND: Fine or Pixel (the look before)
+export const GRASS_STYLES = { carpet: "Carpet", pixel: "Pixel" }, SAND_STYLES = { fine: "Fine", pixel: "Pixel" };
 
 export const LAYERS = [
   // [key, label, phase, what it does]
@@ -31,7 +34,7 @@ export const LAYERS = [
   ["field3d", "3D overworld", 3, "the story mode's maps in 3D: walls and buildings stood up, trees, the people"],
   ["fieldlife", "Field life", 3, "birds, butterflies and swaying flowers on the 3D overworld"],
 ];
-const DEFAULTS = { on: Object.fromEntries(LAYERS.map(([k]) => [k, k !== "view3d"])), quality: "full", camera: "follow", hour: "auto", trees: "courtyard" };
+const DEFAULTS = { on: Object.fromEntries(LAYERS.map(([k]) => [k, k !== "view3d"])), quality: "full", camera: "follow", hour: "auto", trees: "courtyard", grass: "carpet", sand: "fine" };
 const KEY = "mg3d";
 
 export class Layers {
@@ -47,11 +50,13 @@ export class Layers {
     this.map = map;
     this.quality = q.get("g3dq") || s.quality; this.camera = q.get("g3dcam") || s.camera; this.hour = q.get("g3dhour") || s.hour;
     this.trees = q.get("g3dtrees") || s.trees; if (!(this.trees in TREE_STYLES)) this.trees = "courtyard";
+    this.grass = q.get("g3dgrass") || s.grass; if (!(this.grass in GRASS_STYLES)) this.grass = "carpet";
+    this.sand = q.get("g3dsand") || s.sand; if (!(this.sand in SAND_STYLES)) this.sand = "fine";
     this.fx = [];
   }
   on(k) { return !!this.map[k]; }
   set(k, v) { this.map[k] = !!v; this.save(); }
-  save() { try { localStorage.setItem(KEY, JSON.stringify({ on: this.map, quality: this.quality, camera: this.camera, hour: this.hour, trees: this.trees })); } catch (e) { /* private mode */ } }
+  save() { try { localStorage.setItem(KEY, JSON.stringify({ on: this.map, quality: this.quality, camera: this.camera, hour: this.hour, trees: this.trees, grass: this.grass, sand: this.sand })); } catch (e) { /* private mode */ } }
 }
 
 export function attach3D({ screen, getGame }) { return new Page(new Layers(), screen, getGame); }
@@ -137,7 +142,8 @@ class Page {
     const sel = (label, opts, cur, set) => { const s = el("select"); for (const [v, t] of Object.entries(opts)) s.append(el("option", { value: v, textContent: t, selected: String(v) === String(cur) })); s.onchange = () => { set(s.value); L.save(); }; return el("label", {}, label + " ", s); };
     head.append(sel("Camera", PRESETS, L.camera, v => { L.camera = v; }), " ", sel("Hour", HOURS, L.hour, v => { L.hour = v; }), " ",
       sel("Quality", { full: "Full", lite: "Lite (phones)" }, L.quality, v => { L.quality = v; if (this.scene && this.scene.hole) this.scene.hole.id = -1; }), " ",
-      sel("Trees", TREE_STYLES, L.trees, v => { L.trees = v; }));
+      sel("Trees", TREE_STYLES, L.trees, v => { L.trees = v; }), " ", sel("Grass", GRASS_STYLES, L.grass, v => { L.grass = v; }), " ",
+      sel("Sand", SAND_STYLES, L.sand, v => { L.sand = v; }));
     const list = el("div", { className: "g3dlist" });
     for (const [k, label, phase, what] of LAYERS) {
       const cb = el("input", { type: "checkbox", checked: L.on(k) });

@@ -99,6 +99,24 @@ export class HoleArt {
     h.use(true); const t = h.terrainAt(hl, de), s = h.slopeAt(hl, de); [h.attrs, h.tmap, h.slope, h.terrain] = keep;
     return [t, s[0], s[1]];
   }
+  // the green's slope per green tile, as the ball reads it while putting (views 1-3: the green maps; GreenSlopeAt 10:64D1 and its
+  // caller 10:66DB, as js/golf/ball.js slope()): RGBA 64 x 64, one texel per green tile (8 green px = 2 course px from the green's
+  // corner): R, G the push (downhill) direction (SlopeDirTable 10:6516 with the tile's flips) * 127.5 + 127.5; B the strength
+  // ((v >> 4) & 3) * 85; A 255 where the green maps' terrain at the tile's centre is the green (the push 10:6738: 2 / 4 / 6) else
+  // 0 (the push $20)
+  greenSlopes() {
+    if (this._gs) return this._gs;
+    const h = this.hole, keep = [h.attrs, h.tmap, h.slope, h.terrain], out = new Uint8Array(MAP * MAP * 4);
+    h.use(true);
+    for (let ty = 0; ty < MAP; ty++) for (let tx = 0; tx < MAP; tx++) {
+      const hl = tx << 8 | 0x80, de = ty << 8 | 0x80, [v, b] = h.slopeAt(hl, de), s = (v >> 4) & 3, q = (ty * MAP + tx) * 4;
+      const [dx, dz] = dirVec(b);
+      out[q] = Math.round(dx * 127.5 + 127.5); out[q + 1] = Math.round(dz * 127.5 + 127.5); out[q + 2] = s * 85;
+      out[q + 3] = h.terrainAt(hl, de) === T.GREEN ? 255 : 0;
+    }
+    [h.attrs, h.tmap, h.slope, h.terrain] = keep;
+    return (this._gs = out);
+  }
 }
 
 // the slope direction byte (SlopeDirTable 10:6516: an angle, 256 to the turn, from +x toward +y) as a unit vector of the push
