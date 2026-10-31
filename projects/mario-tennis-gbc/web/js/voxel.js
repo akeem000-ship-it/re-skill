@@ -290,8 +290,14 @@ const CAFE_BLOCKS = [
 const CAFE_BEHIND = [[23, -96, -360], [27, -470, -300], [24, -40, -720]];
 // and the paths from the road's gates up to each area's entrance (road map px): the dorm front's street (x 56), the senior courts' (x 296),
 // the practice courts' (x 440: up the gap between the senior and the junior courts, round behind the senior courts)
-const CAFE_PATHS = [[[56, 64], [56, -12], [-294, -12], [-294, -46]], [[296, 64], [296, -12], [248, -12], [248, -42]],
-  [[440, 64], [440, 16], [416, 16], [416, -412], [112, -412], [112, -466]]];
+const CAFE_PATHS = [[[56, 92], [56, -12], [-294, -12], [-294, -46]], [[296, 92], [296, -12], [248, -12], [248, -42]],
+  [[416, 92], [416, -412], [112, -412], [112, -466]], [[-150, 112], [-330, 112], [-330, -12], [-294, -12]]];
+const CAFE_GATES = [56, 296, 416];                 // (the road's trees in the way of a path cleared: within 26 px of these, above row 100)
+// the empty ground filled: [kind, x0, z0, x1, z1] (road map px): the lake (the junior courts' pond grown north into a lake, a footbridge
+// over it), a grove left of the dorm front, a running track on the lawn west of the courtyard; trees: [x, z] copies of the road's tree
+const CAFE_FILL = [["lake", 540, -700, 1060, -290], ["track", -250, 150, -20, 520]];
+const CAFE_TREES = [[-560, -300], [-620, -230], [-560, -160], [-620, -90], [-680, -300], [-740, -230], [-680, -160], [-740, -90], [-800, -300], [-860, -230], [-800, -160], [-860, -90],
+  [570, -330], [600, -720], [700, -740], [820, -730], [960, -720], [1060, -620], [1070, -480], [1060, -360], [540, -520], [530, -420], [-280, 160], [-290, 300], [-280, 440], [-200, 560], [-60, 560]];
 const WALL_SCALE = F3.WALL_SCALE, FIELD_TILT = 0.3, HUD_SCALE = 0.6, SEAM_GLIDE = 1100, MT_OUT = 420, MT_IN = 520;   // SEAM_GLIDE: ms of the camera's glide into the next map; MT_OUT / MT_IN: ms of the MAP FADE
 // the island (map 21) is an aerial picture, not a top-down map: shown as parallax layers. The road between the courts
 // (map 19) is a side-view picture too, but it is a walkable map: a field whose sky band and cafe stand up (FIELD_OBJECTS)
@@ -2099,6 +2105,12 @@ export class Voxel3D {
         for (const k of ["flowerGroups", "decor", "hedges"]) if (fx[k]) fx[k] = fx[k].filter(g => mine(g.centre[0]));
       }
     }
+    if (f.mapId === 19 && this.cafeConcept && this.cafeConcept() && !this.inNeighbour && f.fx && f.fx.plants) {   // (CAFE CONCEPT: the paths' way cleared, trees planted)
+      const px = p => p.centre ? p.centre[0] : p.model[12], pz = p => p.centre ? p.centre[2] : p.model[14], clear = (x, z) => z < 100 && CAFE_GATES.some(g => Math.abs(x - g) < 26);
+      f.fx.plants = f.fx.plants.filter(p => !clear(px(p), pz(p))); f.cards = f.cards.filter(c => c.band || !clear(c.X, c.Z));
+      const tree = f.fx.plants.filter(p => !p.centre).sort((a, b) => b.shape.r - a.shape.r)[0];
+      if (tree) for (const [x, z] of CAFE_TREES) { const m = Float32Array.from(tree.model); m[12] = x; m[14] = z; f.fx.plants.push({ ...tree, model: m, phase: x * 0.11 + z * 0.07 }); }
+    }
   }
   // one cushion mesh per connected group of foliage metatiles (drawn with the plants, coloured from the floor texture)
   buildHedges(fol, MW, MH) {
@@ -2365,7 +2377,7 @@ export class Voxel3D {
       if (this.nbInView(nb, mvp)) this.drawFieldScene(nb.f, M, T, true); else if (nb.f.skirt) { gl.useProgram(this.prog); gl.bindVertexArray(this.vao); this.drawSkirt(nb.f, M); }
     }
     this.drawFieldScene(f, mvp, T);
-    if (f.mapId === 19 && this.cafeConcept && this.cafeConcept()) this.drawCafePaths(f, mvp);   // (CAFE CONCEPT)
+    if (f.mapId === 19 && this.cafeConcept && this.cafeConcept()) { this.drawCafeFill(f, mvp); this.drawCafePaths(f, mvp); }   // (CAFE CONCEPT)
     if (this.life) this.life.draw(mvp, m4, T, cx, cz);                     // FIELD LIFE: birds, cloud shadows, fountain glints
     this.fieldRects = this.fieldOverlayRects();                         // once per frame: the actors and the overlays both need them
     this.drawFieldActors(mvp);
@@ -2401,10 +2413,41 @@ export class Voxel3D {
     if (!this.cafeTex) { const at = (x, y) => { const o = (y * 512 + x) * 4; return [d[o], d[o + 1], d[o + 2], 255]; }; this.cafeTex = { dirt: this.solidTexture(at(300, 100)), kerb: this.solidTexture([232, 228, 214, 255]) }; }
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
     const W = 26, K = 4;
-    for (const [tex, w, y] of [[this.cafeTex.kerb, W + 2 * K, -0.12], [this.cafeTex.dirt, W, -0.06]]) for (const P of CAFE_PATHS) for (let i = 1; i < P.length; i++) {
+    for (const [tex, w, y] of [[this.cafeTex.kerb, W + 2 * K, 1.4], [this.cafeTex.dirt, W, 1.6]]) for (const P of CAFE_PATHS) for (let i = 1; i < P.length; i++) {
       const [ax, az] = P[i - 1], [bx, bz] = P[i], x0 = Math.min(ax, bx) - w / 2, x1 = Math.max(ax, bx) + w / 2, z0 = Math.min(az, bz) - w / 2, z1 = Math.max(az, bz) + w / 2;
       this.draw(tex, m4.trs((x0 + x1) / 2, y, z1, x1 - x0, z1 - z0, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
     }
+  }
+  // CAFE CONCEPT: the lake and the running track, flat pictures on the lawn (made once on a canvas), the lake's footbridge a low box
+  drawCafeFill(f, mvp) {
+    const gl = this.gl;
+    if (!this.cafeFill) {
+      const mk = (w, h, fn) => { const c = document.createElement("canvas"); c.width = w; c.height = h; fn(c.getContext("2d"), w, h); return this.texture(w, h, new Uint8Array(c.getContext("2d").getImageData(0, 0, w, h).data.buffer), true); };
+      const blob = (g, pts, grow) => { g.beginPath(); for (const [x, y, rx, ry] of pts) { g.moveTo(x + rx + grow, y); g.ellipse(x, y, rx + grow, ry + grow, 0, 0, 7); } g.fill(); };
+      const LAKE = [[270, 250, 160, 110], [160, 190, 110, 85], [370, 310, 80, 70], [300, 120, 110, 70]];
+      this.cafeFill = {
+        lake: mk(480, 400, (g, w, h) => {
+          g.fillStyle = "#d8c08a"; blob(g, LAKE, 9); g.fillStyle = "#3a7ad8"; blob(g, LAKE, 0);
+          g.fillStyle = "#5c9ae8"; blob(g, LAKE.map(([x, y, rx, ry]) => [x, y, rx * 0.8, ry * 0.75]), 0);
+          let seed = 7; const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+          g.fillStyle = "rgba(255,255,255,.75)"; for (let i = 0; i < 260; i++) { const x = r() * w, y = r() * h, d = g.getImageData(x | 0, y | 0, 1, 1).data; if (d[2] > 200 && d[0] < 120) g.fillRect(x | 0, y | 0, 3, 1); }
+          g.fillStyle = "#3d8a2e"; for (const [x, y] of [[90, 120], [250, 60], [470, 250], [320, 395]]) { g.beginPath(); g.ellipse(x, y, 10, 6, 0, 0, 7); g.fill(); }   // (reeds' tufts on the shore)
+        }),
+        track: mk(256, 410, (g, w, h) => {
+          const lane = (r, col, lw) => { g.strokeStyle = col; g.lineWidth = lw; g.beginPath(); g.moveTo(w / 2 - r, h / 2 - 100); g.arc(w / 2, h / 2 - 100, r, Math.PI, 0); g.lineTo(w / 2 + r, h / 2 + 100); g.arc(w / 2, h / 2 + 100, r, 0, Math.PI); g.closePath(); g.stroke(); };
+          lane(98, "#c8553a", 44); for (const r of [78, 89, 98, 107, 118]) lane(r, "#f4efe4", 1.5);
+          g.fillStyle = "#4aa83a"; g.beginPath(); g.moveTo(w / 2 - 76, h / 2 - 100); g.arc(w / 2, h / 2 - 100, 76, Math.PI, 0); g.lineTo(w / 2 + 76, h / 2 + 100); g.arc(w / 2, h / 2 + 100, 76, 0, Math.PI); g.fill();
+          g.strokeStyle = "#f4efe4"; g.lineWidth = 2; g.strokeRect(w / 2 - 44, h / 2 - 120, 88, 240); g.beginPath(); g.moveTo(w / 2 - 44, h / 2); g.lineTo(w / 2 + 44, h / 2); g.stroke(); g.beginPath(); g.arc(w / 2, h / 2, 16, 0, 7); g.stroke();
+        }),
+        wood: this.solidTexture([160, 104, 58, 255]), rail: this.solidTexture([236, 226, 200, 255]),
+      };
+    }
+    gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
+    for (const [kind, x0, z0, x1, z1] of CAFE_FILL) this.draw(this.cafeFill[kind], m4.trs((x0 + x1) / 2, 1.2, z1, x1 - x0, z1 - z0, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
+    // the footbridge across the lake's narrow middle (planks raised a little, a rail each side)
+    const bx = 790, bz0 = -560, bz1 = -440;
+    this.draw(this.cafeFill.wood, m4.trs(bx, 4, bz1, 30, bz1 - bz0, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
+    for (const dx of [-15, 15]) this.draw(this.cafeFill.rail, m4.trs(bx + dx, 5, bz1, 3, bz1 - bz0, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);   // (the rails' tops)
   }
   // a neighbouring map in view: its ground (and 120 px up, its trees and walls) not wholly beyond one side of the view
   nbInView(nb, mvp) {
