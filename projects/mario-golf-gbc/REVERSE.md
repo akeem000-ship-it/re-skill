@@ -140,6 +140,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the debug menu's Map viewer (0B:4579, 05:5197), the save viewer (02:5D2F), MapSetTerrainAt / MapSetEventAt (fuzzed), 0B:497D | 230,162 | 94.85% |
 | + the test maps $1F-$22 of bank 32 (the VS scene, the result tests, the golfer grid) | 232,698 | 95.89% |
 | + map $23's test menu (31:47D7-31:4945) | 233,053 | 96.04% |
+| + the debug boot menu (01:40A6, 01:516E), the character editor (02:6176), GolfDebugEntry / DebugHoleSelect (10:4415, 10:7BAC) | 234,153 | 96.49% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -519,6 +520,14 @@ over: the retail game never has it. The screen cases poke it to 1 on both sides 
   the menu 31:483E: a one-hole Tournament / Match Game / Practice round (31:4873 / 48A3 / 48D3; the wind byte
   SetCourseHole gets is the a SetupPlayerGolfer 02:4A28 leaves: start.js setupPlayerGolferA), the event list
   (31:4902), the scorecard with fixed test values (31:4912), or warp 5 (31:4940).
+- The developer's boot menu DebugBootMenu 01:40A6 (debugboot.js; GameMain jumps over it at 01:40A3: the cases
+  `boot_kid_debugboot_*` let the core fall through, a patch given as the screen harness's `jumps`, and set
+  w.debugBoot natively): the build stamp (00:0153, "9908202118") for 180 frames, then the game with hDebugMode 1;
+  Up: a number 0-3 as $C810 and the staff roll, then a hang (jr $); Down: DebugCharacterEditor 02:6176 (stats by
+  the d-pad, types, the name entry, Start stores the record as save block 0-2: the only writer of the records
+  block 3 the status screens read; never returns, so the picture loop 01:412F-01:4157 after it is not reached); A:
+  GolfDebugEntry 10:4415 with DebugHoleSelect 10:7BAC before each 18-hole round; Right / B: the map engine at map
+  $01 (the debug room) / $23; Select: the sound test 01:516E (music / effect numbers, A plays).
 
 #### Status and the records screens (records.js, records0c.js; bank 07's menus in menu09.js)
 

@@ -49,6 +49,7 @@ function softReset(w) {
 }
 
 // ---- 01:400E GameMain (to 01:41A6 GameMainStart) ----
+import { debugBootMenu } from "./debugboot.js";
 function* gameMain(sh) {
   const w = sh.w;
   initSerialLink(w);                             // 00:304D
@@ -73,6 +74,8 @@ function* gameMain(sh) {
   if (w.vram) D.enableLCD(w);
   Scr.forceFadeIn(w, 0x7F);
   yield* sh.advance();
+  // (01:40A3 jumps over DebugBootMenu 01:40A6; a test's w.debugBoot falls through to it: debugboot.js)
+  if (w.debugBoot && (yield* debugBootMenu(sh))) return;
   wr(w, 0xC450, 0); wr(w, 0xC46A, 3);            // GameMainStart: map 0, entrance 3
 }
 

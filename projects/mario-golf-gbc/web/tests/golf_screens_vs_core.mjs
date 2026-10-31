@@ -266,6 +266,29 @@ const dwarp = (rec, ent) => [[30, 0x40], [60, 0], [2, 1], [90, 0], [2, 1], [90, 
 const talkSteps = (at, dir, n = null, no = false) => [typeof at === "number" ? { actor: at, off: dir === 0x40 ? [0, 0x200] : dir === 0x80 ? [0, -0x200] : dir === 0x10 ? [-0x200, 0] : [0x200, 0] } : { to: [at[0] >> 8, at[1] >> 8], at, noA: true }, [2, dir], [20, 0], [2, 1], [60, 0],
   ...(no ? [{ press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 0x80], [30, 0], [2, 1], [60, 0]] : []),
   n === null ? { talkWait: true } : { press: 1, every: 40, times: n }, [120, 0]];
+const DEBUG_BOOT_CASES = [
+  // no button: the menu's 180 frames run out, the game goes on (hDebugMode 1)
+  ["timeout", [], [], 1500],
+  // Start: on to the game at once
+  ["start", [], [[20, 8]], 900],
+  // Select: the sound test (01:516E): Right twice, A (sound 2), Down (to e), Right, A (sound $41), Up, Left (d to
+  // $7F... past 0), A
+  ["sound", [], [[20, 4], [60, 0x10], [80, 0x10], [100, 1], [160, 0x80], [180, 0x10], [200, 1], [260, 0x40], [280, 0x20], [300, 0x20],
+    [320, 0x20], [340, 1]], 600],
+  // Right: map $01 (the debug room) by MapEngine; B: map $23
+  ["room", [], [[20, 0x10]], 1500],
+  ["map23", [], [[20, 2]], 1500],
+  // A: GolfDebugEntry (10:4415): the hole select (10:7BAC): Right (course 2), Down (to the hole), Left (hole 0 -> $12),
+  // Right twice (past $12: 1, then 2), A: the round, to its first shot
+  ["golf", [], [[20, 1], [80, 0x10], [110, 0x80], [140, 0x20], [170, 0x10], [200, 0x10], [230, 1]], 2600],
+  // Down: the character editor (02:6176): Up / Left / Right / Down (stats), A x4 (types 1-4; 4 sets $C811), Select
+  // (block 1), Start (stored), B: the name entry (06:51DC): Start (to END), A
+  ["editor", [], [[20, 0x80], [100, 0x40], [130, 0x20], [160, 0x10], [190, 0x80], [220, 1], [250, 1], [280, 1], [310, 1], [340, 4],
+    [370, 8], [600, 2], [800, 8], [860, 1]], 1300],
+  // Up: the number (Right twice: 2), A: $C810 = 2 and the staff roll (41:7E07; the case stops inside it: the menu
+  // hangs after it)
+  ["credits", [], [[20, 0x40], [60, 0x10], [90, 0x10], [120, 1]], 1500],
+];
 const DEBUG_WARP_CASES = [
   // map $1F entrance 1: the two-player VS scene (32:4199, 32:44B4), A leaves the wait; entrance 2: the one-player scene
   ["1f_vs_results", 0x1F, 1, [[300, 0], [2, 1], [400, 0]]],
@@ -1105,6 +1128,18 @@ const CASES = [
   { name: "boot_kid_debug_warp", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: debugPoke(1), maxFrames: 30000,
     ...routeCase(savedPolicy(0), [[30, 0x40], [60, 0], [2, 1], [90, 0], [2, 1], [90, 0], [2, 0x10], [30, 0], [2, 0x10], [30, 0],
       [2, 0x80], [30, 0], [2, 0x10], [30, 0], [2, 1], [90, 0], [2, 2], [400, 0]], 100) },
+  // the developer's boot menu (01:40A6: the core's jump over it at 01:40A3 skipped, w.debugBoot on the native side;
+  // DEBUG_BOOT_CASES): `held` ([from, to, bits]) then `steps` ([frame, bits] pressed for 2 frames)
+  // (`frames`: the case's length)
+  ...DEBUG_BOOT_CASES.map(([n, held, steps, frames]) => ({ name: `boot_kid_debugboot_${n}`, state: "boot_poweron_kid", open: true,
+    noRet: true, sram: true, maxFrames: frames + 100, jumps: { "01:40a3": 0x40A6 },
+    run: sh => { sh.w.debugBoot = 1; return gameCase(sh, 0, () => frameNow >= frames); },
+    policy: f => {
+      frameNow = f;
+      for (const [a, b, bits] of held) if (f >= a && f < b) return bits;
+      for (const [g, bits] of steps) if (f >= g && f < g + 2) return bits;
+      return 0;
+    } })),
   // the debug warp to the test maps (DEBUG_WARP_CASES)
   ...DEBUG_WARP_CASES.map(([n, rec, ent, after]) => ({ name: `boot_kid_debug_map_${n}`, state: "boot_poweron_kid", open: true, noRet: true,
     sram: true, hook: debugPoke(1), maxFrames: 40000, ...routeCase(savedPolicy(0), [...dwarp(rec, ent), ...after], 100) })),
@@ -1521,7 +1556,7 @@ for (const c of CASES) {
     continue;
   }
   let r;
-  try { r = runScreen({ stateFile, run: c.run, policy: c.policy, maxFrames: c.maxFrames, hook: dumpHook(c.hook), verbose, open: c.open, setRegs: c.regs, trace: process.argv.includes("--trace") }); }
+  try { r = runScreen({ stateFile, run: c.run, policy: c.policy, maxFrames: c.maxFrames, hook: dumpHook(c.hook), verbose, open: c.open, setRegs: c.regs, jumps: c.jumps, trace: process.argv.includes("--trace") }); }
   catch (e) { console.log(`FAIL ${c.name}: ${e.stack}`); bad++; continue; }
   if (c.open) r.sounds.core = r.sounds.core.filter(x => +x.split(":")[0] < r.frames);   // (the game's next frame's)
   const sounds = r.sounds.core.join(" ") === r.sounds.native.join(" ");

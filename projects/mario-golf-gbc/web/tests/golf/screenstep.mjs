@@ -29,7 +29,7 @@ const WRAM0_DISPLAY = [[0x000, 0x0A0], [0x100, 0x1C0], [0x1C0, 0x200], [0x200, 0
 
 // stateFile: out/...json from mkstate.mjs; run(sh, regs) -> the native routine (a generator); policy(frame) -> the
 // buttons held (default: A on alternate frames); returns { frames, pixelExact, modelExact, lag, bad: [...], end }
-export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFrames = 20000, verbose = false, trace = false, hook = null, lagVBlanks = true, open = false, setRegs = null }) {
+export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFrames = 20000, verbose = false, trace = false, hook = null, lagVBlanks = true, open = false, setRegs = null, jumps = null }) {
   const romBytes = new Uint8Array(fs.readFileSync(path.join(root, "rom/mario_golf.gbc")));
   useRom(romBytes);
   const saved = JSON.parse(fs.readFileSync(path.join(root, stateFile)));
@@ -89,6 +89,8 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
       const sp = cpu.sp, r = gb.mem.read(sp) | gb.mem.read(sp + 1) << 8;
       if (!(r >= 0x2EAC && r < 0x2EBF) && !gb.mem.hram[0x0D]) { early = true; earlyFade = gb.mem.hram[0x22]; }
     }
+    // (jumps: {"BB:AAAA": pc}: a test's patch of the game's code, e.g. the jump over the debug boot menu)
+    if (jumps) { const to = jumps[`${h2(cpu.pc < 0x4000 ? 0 : gb.mem.romBank)}:${h4(cpu.pc)}`]; if (to !== undefined) cpu.pc = to; }
     orig();
     if (lyRead && cpu.pc === 0x2E55) lyQ.push(cpu.a);
     if (!coreDone && cpu.pc === ret && cpu.sp === ((sp0 + 2) & 0xFFFF) && gb.mem.romBank === retBank) { coreDone = true; res.coreA = cpu.a; res.coreFrame = frame; }
