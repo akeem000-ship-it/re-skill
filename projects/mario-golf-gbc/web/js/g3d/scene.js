@@ -346,7 +346,7 @@ export class Golf3D {
     this.flushPoints();
     for (const fx of this.layers.fx) if (fx.drawOverlay) fx.drawOverlay(this);
     // the game's HUD over the picture (not while an effect holds the hole on screen after the game has left it)
-    if (!this.held && !this.replaying) this.hud.draw(this, game, frame2d);
+    if (!this.held && !this.replaying && !globalThis.__golfAttractPlay) this.hud.draw(this, game, frame2d);   // (MTenn3D's game picker: no HUD, play.js ATTRACT)
     for (const fx of this.layers.fx) if (fx.drawInset) fx.drawInset(this);
     return true;
   }

@@ -53,7 +53,7 @@ export class TitleShow {
   }
   // the title's picture in front, its sky and sea let through
   drawOverlay(sc) {
-    if (!this.live || !this.title) return;
+    if (!this.live || !this.title || globalThis.__golfAttract) return;   // (MTenn3D's game picker: the fly-over alone, play.js ATTRACT)
     const w = this.title, gl = sc.gl, hud = sc.hud;
     const out = sc.hud.raster(w, () => true, { bg: true, skipPals: new Set([5, 6]) });
     // the sky's own colours (the commonest ones in the top band, all sky) let through where they show round the logo and Mario

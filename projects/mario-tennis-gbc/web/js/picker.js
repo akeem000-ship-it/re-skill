@@ -6,8 +6,11 @@
 //            the camera cuts between TV shots every few seconds (DEMO_SHOTS: wide shots, each player close, the ball followed from the
 //            stand, the court camera, the net from the umpire's side); after a game, or 50 s, the next match on another court.
 //            Without the ROM (the shareable app before you load yours) or the demos, a drawn court instead.
-//   golf     Mario Golf, drawn: its own decompiled game (../../mario-golf-gbc/web/play.html, in the app at ../golf/web), started with PLAY;
-//            it asks for your Mario Golf ROM the first time and keeps it (the app's Back returns here).
+//   golf     Mario Golf's own 3D title fly-over, live: its decompiled game's page (../../mario-golf-gbc/web/play.html, in the app at
+//            ../golf/web) in an iframe in its attract mode (?attract: silent, no buttons, the fly-over alone, on to the title unseen), shown
+//            through the golf half once it says "ready" (its drawn scene until then, and between two fly-overs; always, without the ROM:
+//            "norom"). The half not chosen is held (the rally's steps, the fly-over: {golfPreview: "pause"}) so only one game runs.
+//            PLAY starts the game itself, which asks for your Mario Golf ROM the first time and keeps it (the app's Back returns here).
 // Choosing tennis opens the game (full.html, with this page's #hash); its button bar's GAMES button comes back here.
 import { GBC } from "./gb/gbc.js";
 import { loadState } from "./gb/state.js";
@@ -28,6 +31,15 @@ const golfSaved = () => { try { for (let i = 0; i < localStorage.length; i++) if
 const APP = /MarioTennisWrapper/.test(navigator.userAgent);
 const GAMES = [{ id: "tennis", ready: true, url: "full.html" }, { id: "golf", ready: true, url: APP ? "../golf/web/play.html" : "../../mario-golf-gbc/web/play.html" }];   // (the app holds golf in assets/golf)
 let sel = 0, split = 0.6, W = 0, H = 0, dpr = 1, dirty = true, shake = 0, note = "";
+// ---------------- the golf half's live fly-over (an iframe of Mario Golf's page, attract mode) ----------------
+const golf = { el: $("golf"), live: false, gone: false, held: null };
+addEventListener("message", e => {
+  const m = e.data && e.data.golfPreview; if (!m || e.source !== (golf.el && golf.el.contentWindow)) return;
+  if (m === "ready") golf.live = true; else if (m === "away") golf.live = false; else if (m === "norom") { golf.gone = true; golf.live = false; golf.el.remove(); }
+  if (golf.el) golf.el.classList.toggle("live", golf.live); dirty = true;
+});
+setTimeout(() => { if (golf.el && !golf.gone) golf.el.src = GAMES[1].url + "?attract&g3d=on"; }, 1200);   // (after the rally has started)
+function golfHold(on) { if (golf.held === on || !golf.el || golf.gone) return; golf.held = on; try { golf.el.contentWindow.postMessage({ golfPreview: "pause", on }, "*"); } catch (e) { /* not loaded */ } }
 
 // ---------------- the picture of both halves (2D, over the live view) ----------------
 let seed = 7; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
@@ -100,7 +112,8 @@ function drawOverlay() {
   if (!demo.live) { g.save(); g.beginPath(); g.moveTo(0, 0); g.lineTo(at + slant, 0); g.lineTo(at - slant, H); g.lineTo(0, H); g.clip(); tennisScene(at * 0.5, s); g.restore(); }
   if (!k) { g.save(); g.beginPath(); g.moveTo(0, 0); g.lineTo(at + slant, 0); g.lineTo(at - slant, H); g.lineTo(0, H); g.clip(); g.fillStyle = "rgba(0,0,0,.45)"; g.fillRect(0, 0, W, H); g.restore(); }
   g.save(); g.beginPath(); g.moveTo(at + slant, 0); g.lineTo(W, 0); g.lineTo(W, H); g.lineTo(at - slant, H); g.clip();
-  golfScene(at + (W - at) / 2 + 30 * s, H * 0.42, H, s * 0.75);
+  if (!golf.live) golfScene(at + (W - at) / 2 + 30 * s, H * 0.42, H, s * 0.75);   // (the live fly-over shows through otherwise)
+  if (golf.el) { const x0 = at - slant; Object.assign(golf.el.style, { left: x0 + "px", width: (W - x0) + "px", clipPath: `polygon(${2 * slant}px 0, 100% 0, 100% 100%, 0 100%)` }); }   // (the fly-over centred in the golf half)
   if (k) { g.fillStyle = "rgba(0,0,0,.45)"; g.fillRect(0, 0, W, H); }
   g.restore();
   g.save(); g.strokeStyle = GOLD; g.lineWidth = 10 * s; g.shadowColor = "rgba(255,214,90,.8)"; g.shadowBlur = 24 * s; g.beginPath(); g.moveTo(at + slant, 0); g.lineTo(at - slant, H); g.stroke(); g.restore();
@@ -234,7 +247,9 @@ function loop(now) {
   pad();
   const want = sel === 0 ? 0.6 : 0.4; if (Math.abs(split - want) > 0.001) { split += (want - split) * 0.15; dirty = true; }
   if (shake && now - shake > 450) { shake = 0; dirty = true; } else if (shake) dirty = true;
-  if (demo.v) {
+  golfHold(sel === 0);                                              // (the game not chosen is held)
+  if (demo.v && sel === 1 && golf.live) acc = 0;                    // (the rally held while golf is chosen and showing)
+  else if (demo.v) {
     acc = Math.min(acc + now - last, 100);
     while (acc >= 1000 / 59.73) { step(); acc -= 1000 / 59.73; }
     try { demo.v.render(demo.gb.ppu.frame, 1); } catch (e) { console.warn("demo", e); demo.v = null; demo.live = false; dirty = true; }

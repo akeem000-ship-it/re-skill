@@ -15,7 +15,7 @@ import { useRom } from "./golf/rom.js";
 import { NativeCable } from "./golf/serial.js";
 import { GolfMemory, playerField } from "./golf/memory.js";
 import { playRoundFrames, playFromPowerOn } from "./golf/game.js";
-import { strokeRoundSetup, matchRoundSetup } from "./golf/start.js";
+import { strokeRoundSetup, matchRoundSetup, setCourseHole, setPlayerControl } from "./golf/start.js";
 import { initDisplay } from "./golf/render/display.js";
 import { rasterize } from "./golf/render/raster.js";
 import { SoundDriver } from "./sound/driver.js";
@@ -23,6 +23,7 @@ import { SynthAPU, CLOCK, DOTS_PER_FRAME } from "./sound/apu.js";
 import { pollGamepad } from "./gamepad.js";
 // ---- 3D LAYERS (web/js/g3d: the 3D hole view and its effects): render only, they read the game's state and never write it ----
 import { attach3D } from "./g3d/layers.js";
+import { Golf3D } from "./g3d/scene.js";
 // ---- (end 3D LAYERS) ----
 // ---- HD picture options (web/js/hd: HD text, HD menus, wide, portrait, handheld): render / UI only, never the game's state ----
 import { attachHD } from "./hd/page.js";
@@ -40,6 +41,26 @@ const g3d = attach3D({ screen: canvas, getGame: () => game });   // (3D LAYERS: 
 const hdPage = attachHD({ canvas, keys, getRom: () => rom, getGame: () => game });   // (HD: the picture options and the touch layouts)
 let rom = null, sha = "", game = null, paused = false, fast = false, muted = false, last = 0, acc = 0;
 let fps = 0, fpsFrames = 0, fpsT = 0;
+// ---- ATTRACT (?attract: MTenn3D's game picker shows this page behind its golf half): the game playing itself, silent, no buttons, no
+// save written. A Stroke round from a random hole of a random course with a preset golfer whose record says computer (+$13 = 1,
+// SetPlayerControl 02:4994: the turn's aim CpuPlanShotMain 3C:426A and SwingMeterCPU 10:5643, as a computer opponent's), seen in 3D;
+// when the hole is over, another. (?attract=title: the title's fly-over alone instead, the title's own picture left out:
+// g3d/titleshow.js.) It tells the page above it "ready" once the hole shows, "norom" when it has no ROM; {golfPreview: "pause", on}
+// holds it ----
+const ATTRACT = new URLSearchParams(location.search).has("attract"), ATTRACT_TITLE = new URLSearchParams(location.search).get("attract") === "title";
+const tell = what => { try { if (window.parent !== window) window.parent.postMessage({ golfPreview: what }, "*"); } catch (e) { /* no parent */ } };
+let attractShown = false;
+if (ATTRACT) {
+  muted = true; globalThis.__golfAttract = ATTRACT_TITLE; globalThis.__golfAttractPlay = !ATTRACT_TITLE; document.body.classList.add("attract");
+  const st = document.createElement("style");
+  st.textContent = "body.attract{background:#000;overflow:hidden} body.attract *{visibility:hidden} body.attract #view3d{visibility:visible}" +
+    " body.attract #screen{position:fixed!important;left:0!important;top:0!important;width:100vw!important;height:100vh!important;max-width:none!important;" +
+    "max-height:none!important;aspect-ratio:auto!important;transform:none!important;margin:0!important}";
+  document.head.appendChild(st);
+  addEventListener("message", e => { if (e.data && e.data.golfPreview === "pause") paused = !!e.data.on; });
+}
+const atTitle = () => !!(game && game.w && game.w.vram && Golf3D.taskOn(game.w, 0x40, 0x4D1D));
+// ---- (end ATTRACT) ----
 
 async function sha1Hex(bytes) {
   if (!crypto.subtle) return "";
@@ -108,6 +129,7 @@ const MAP = { KeyZ: 1, KeyX: 2, ShiftLeft: 4, ShiftRight: 4, KeyQ: 4, Enter: 8, 
 let pauseWas = false;
 let active = 0;                                    // (link mode: the machine the keys go to)
 function held() {
+  if (ATTRACT) return 0;                           // (ATTRACT: no buttons; the picker above has them)
   pollGamepad(keys);
   let b = 0;
   for (const [k, bit] of Object.entries(MAP)) if (keys[k]) b |= bit;
@@ -138,13 +160,16 @@ function initAudioSoon() { if (driver) initAudio(); }
 // ---- the round ----
 function newRound() {
   const w = new GolfMemory();
-  const mode = $("mode").value;                    // "title" (power-on), "stroke", "match:N" against preset golfer N, "link"
+  const mode = ATTRACT ? (ATTRACT_TITLE ? "title" : "stroke") : $("mode").value;   // "title" (power-on), "stroke", "match:N" against preset golfer N, "link"
   const fromPowerOn = mode === "title" || mode === "link";
   let holes = 0;
   if (!fromPowerOn) {
     const seed = crypto.getRandomValues(new Uint16Array(1))[0];   // (the menus' frames would have moved the seed)
     holes = mode.startsWith("match:") ? matchRoundSetup(w, { golfer: 8, opponent: +mode.slice(6), course: 1, seed })
-      : strokeRoundSetup(w, { golfer: 8, course: 1, seed });
+      : strokeRoundSetup(w, { golfer: ATTRACT ? [8, 9, 4][seed % 3] : 8, course: 1, seed });
+    if (ATTRACT) {                                 // (ATTRACT: a random course and hole, the golfer the computer's)
+      const course = 1 + (seed >> 2) % 4; setCourseHole(w, course, course, 1 + (seed >> 4) % 18); setPlayerControl(w, 0, 1);
+    }
   }
   savedCopy = null;
   if (fromPowerOn) {                               // power-on reads the save RAM (GameMain's SaveLoad 02:41F6)
@@ -203,7 +228,7 @@ function step() {                                  // one frame of the game
   game.frames++;
   g3d.afterStep(game);                             // (3D LAYERS: follows the frame; reads only)
   soundFrame(game.w);
-  checkSave(game.w);
+  if (!ATTRACT) checkSave(game.w);
   if (r.done) { game.done = r.value; roundMessage(r.value, true); }
 }
 function roundMessage(r, button) {               // (from power-on the game goes back to its menus after a round)
@@ -236,11 +261,19 @@ function draw() {
 }
 function loop(now) {
   requestAnimationFrame(loop);
+  if (ATTRACT && !ATTRACT_TITLE && game && (game.done || game.error)) newRound();   // (ATTRACT play: never stopped)
   if (!game || game.done || game.error) { last = 0; return; }
   if (!last) last = now;
   acc += Math.min(now - last, 100); last = now;
   held();                                          // (P toggles the pause even while paused)
   if (paused) { acc = 0; $("status").textContent = "paused (P)"; return; }
+  if (ATTRACT_TITLE && !atTitle()) {               // (ATTRACT title: on to the title unseen, a few hundred frames a picture; "away" meanwhile)
+    if (attractShown) { attractShown = false; tell("away"); }
+    try { for (let i = 0; i < 400 && !atTitle() && !game.done; i++) step(); } catch (e) { game.error = e.message; console.warn(e); }
+    acc = 0; return;
+  }
+  if (ATTRACT && !ATTRACT_TITLE && game.holes >= 1) { newRound(); return; }   // (ATTRACT play: the hole is over, another)
+  if (ATTRACT && !attractShown && (ATTRACT_TITLE || game.frames > 20)) { attractShown = true; tell("ready"); }
   let ran = 0;
   const budget = fast ? 8 : 4;
   try {
@@ -284,5 +317,5 @@ function keepRom(buffer) {
 }
 $("file").addEventListener("change", e => { const f = e.target.files[0]; if (f) f.arrayBuffer().then(buf => { keepRom(buf); start(buf); }); });
 fetch("../rom/mario_golf.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject())
-  .then(start).catch(() => { $("loader").hidden = false; $("status").textContent = "no ROM loaded"; });
+  .then(start).catch(() => { if (ATTRACT) { tell("norom"); return; } $("loader").hidden = false; $("status").textContent = "no ROM loaded"; });
 requestAnimationFrame(loop);
