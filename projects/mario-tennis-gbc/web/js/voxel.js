@@ -280,6 +280,14 @@ const STANDS = [
 //          courtyard paths' colour)
 // The ground behind cut-outs is keyed out (colours of the surrounding ground reachable from the edge) and the
 // floor under them is patched with the ground strip below.
+// CAFE CONCEPT (localStorage mt-cafe = "concept"; off by default): the café road's café as one deep building (its sign wing a gable end and
+// the long wing under one pitched roof, both running back 90 px), the road's sky band and hills left out, and the areas you reach
+// through the road's gates (the senior courts, the dorm front, the practice courts) laid out on the ground behind it: [map, x, y] of
+// each one's top left in the road's map px (they cross with a dissolve, so they need not meet their gates)
+const CAFE_BLOCKS = [
+  { x0: 200, y0: 32, x1: 260, y1: 80, fold: 47, back: -10, key: true, keyRect: [144, 32, 260, 80], pitch: { rise: 16, eave: 3, trim: [230, 66] } },
+  { x0: 144, y0: 32, x1: 209, y1: 80, fold: 64, back: -10, key: true, keyRect: [144, 32, 260, 80], gable: { ax: 176, ay: 32, ey: 64, roof: [222, 34, 234, 46] } }];
+const CAFE_BEHIND = [[23, -96, -360], [27, -470, -300], [24, -40, -720]];
 const WALL_SCALE = F3.WALL_SCALE, FIELD_TILT = 0.3, HUD_SCALE = 0.6, SEAM_GLIDE = 1100, MT_OUT = 420, MT_IN = 520;   // SEAM_GLIDE: ms of the camera's glide into the next map; MT_OUT / MT_IN: ms of the MAP FADE
 // the island (map 21) is an aerial picture, not a top-down map: shown as parallax layers. The road between the courts
 // (map 19) is a side-view picture too, but it is a walkable map: a field whose sky band and cafe stand up (FIELD_OBJECTS)
@@ -1730,7 +1738,8 @@ export class Voxel3D {
     // buildings: one batched mesh for roofs + fronts (+ the tops and front walls of solids), one for the side walls
     const front = { pos: [], uv: [] }, side = { pos: [], uv: [] }, glass = { pos: [], uv: [] }, glassEdges = new Set(), keyed = [], roofs = [{ pos: [], uv: [] }, { pos: [], uv: [] }], plainSides = []; let roofArt = null;
     const quad = (o, a, b, c, d, ua, ub, uc, ud) => { for (const [v, t] of [[a, ua], [b, ub], [c, uc], [a, ua], [c, uc], [d, ud]]) { o.pos.push(...v); o.uv.push(t[0] / 512, t[1] / 512); } };
-    for (const b of def.blocks || []) {
+    const cafe = f.mapId === 19 && this.cafeConcept && this.cafeConcept();   // (CAFE CONCEPT)
+    for (const b of (cafe ? CAFE_BLOCKS : def.blocks) || []) {
       if (!inMap(b.x0, b.y0)) continue;
       const { x0, x1, y0, y1, fold } = b, zb = b.back ?? y0;
       cover(x0, zb, x1, y1);
@@ -1795,6 +1804,7 @@ export class Voxel3D {
       }
       f.neighbour = f.neighbours[0] || null;
     } else if (f.neighbour) f.neighbours = [f.neighbour];
+    if (cafe && this.rom && !this.inNeighbour) for (const [m, x, y] of CAFE_BEHIND) { const n = this.neighbourField(m, 0, 0); if (n) f.neighbours.push({ f: n.f, dx: x, dz: y }); }
     // solids: low prisms with the exact outline of their picture (planters, fountain basins), stacked with "on"
     const solids = []; f.seats = [];
     for (const so of [...(def.solids || []), ...stampSolids]) {
@@ -1828,7 +1838,7 @@ export class Voxel3D {
       }
       for (let y = 0; y < ext; y++) for (let x = 0; x < W; x++) put(y * W + x, top);
       if (bd.hills) this.bandHills(art, MWp, MHp, W, H, put, src, top);         // hills and a little town on the horizon (the road)
-      f.cards.unshift({ tex: this.texture(W, H, d), mesh: null, d, src, own: true, band: true, w: W, h: H, X: W / 2 - side, Z: bd.z, tilt: 0, flat: true });
+      if (!cafe) f.cards.unshift({ tex: this.texture(W, H, d), mesh: null, d, src, own: true, band: true, w: W, h: H, X: W / 2 - side, Z: bd.z, tilt: 0, flat: true });
       // the night version of the band without its clouds: the shapes in the sky that do not reach down to the horizon (trees and roofs do)
       { const dn = d.slice(), seen = new Uint8Array(W * H), st = [];
         for (let j0 = 0; j0 < W * H; j0++) {
@@ -1839,7 +1849,7 @@ export class Voxel3D {
           if (low < ext + y1 - 6) for (const j of comp) { dn[j * 4] = art[top * 4]; dn[j * 4 + 1] = art[top * 4 + 1]; dn[j * 4 + 2] = art[top * 4 + 2]; }
         }
         if (f.nightBand) this.gl.deleteTexture(f.nightBand.tex);
-        f.nightBand = { card: f.cards[0], tex: this.texture(W, H, dn) }; }
+        f.nightBand = cafe ? null : { card: f.cards[0], tex: this.texture(W, H, dn) }; }
       // stars for the night: scattered over the sky's own pixels (not the clouds or anything standing in the band), fixed per map
       const st = new Uint8Array(W * H * 4); let seed = 0x5EED + this.field.mapId * 977; const rnd = () => ((seed = (Math.imul(seed, 1103515245) + 12345) | 0) >>> 0) / 4294967296;
       for (let j = 0; j < W * H; j++) {
