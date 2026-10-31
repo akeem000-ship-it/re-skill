@@ -68,8 +68,12 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
   let lastCall = "";
   const divQ = [];                               // rDIV as the game's code read it (ldh a, [$FF04]): the native code
   w.readDIV = () => (divQ.length ? divQ.shift() : 0);   // gets the same values (a hardware input, as the joypad)
+  const lyQ = [];                                // rLY as the debug meter of AdvanceFrame read it (00:2E53, with hDebugMode)
+  w.readLY = () => (lyQ.length ? lyQ.shift() : 0);
   core.step = () => {
     if (gb.mem.read(cpu.pc) === 0xF0 && gb.mem.read((cpu.pc + 1) & 0xFFFF) === 0x04) divQ.push(gb.mem.read(0xFF04));
+    const lyRead = cpu.pc === 0x2E53;            // (the value the instruction got: LY can move within it; an
+                                                 // interrupt taken there instead leaves pc elsewhere)
     if (trace && cpu.pc === 0x2E3B) {             // (trace: the caller of each of the game's AdvanceFrames)
       const sp = cpu.sp, rd = a => gb.mem.read(a);
       lastCall = `${gb.mem.romBank.toString(16)}:${(rd(sp) | rd(sp + 1) << 8).toString(16)}<${(rd(sp + 2) | rd(sp + 3) << 8).toString(16)}<${(rd(sp + 4) | rd(sp + 5) << 8).toString(16)}`;
@@ -86,6 +90,7 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
       if (!(r >= 0x2EAC && r < 0x2EBF) && !gb.mem.hram[0x0D]) { early = true; earlyFade = gb.mem.hram[0x22]; }
     }
     orig();
+    if (lyRead && cpu.pc === 0x2E55) lyQ.push(cpu.a);
     if (!coreDone && cpu.pc === ret && cpu.sp === ((sp0 + 2) & 0xFFFF) && gb.mem.romBank === retBank) { coreDone = true; res.coreA = cpu.a; res.coreFrame = frame; }
   };
   const runAhead = () => {                       // the core's code for the frame, to its next AdvanceFrame (or return)

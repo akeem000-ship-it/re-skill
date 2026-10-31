@@ -26,6 +26,9 @@ import { saveBlockStore, saveBlockLoad } from "../js/golf/save.js";
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const filter = process.argv.slice(2).find(a => !a.startsWith("--")) || "";
 const verbose = process.argv.includes("--verbose");
+// --shard k/n: only the cases whose index is k mod n (to run the cases in n processes)
+const shardArg = process.argv.find(a => a.startsWith("--shard="));
+const shard = shardArg ? shardArg.slice(8).split("/").map(Number) : null;
 const onHole = (sh, g) => { sh.hole = new Hole(sh.w.wram[6][0x320]); return g; };   // the hole's frame tasks run
 const inBank = (sh, bank, g) => (function* () {
   const old = sh.w.high[0x195]; sh.w.high[0x195] = bank;
@@ -115,6 +118,9 @@ function routeCase(base, steps, end) {
   };
   const policy0 = f => {
     frameNow = f;
+    if (menuW && menuW.wram[5][0x822]) lastWinFrame = f;
+    if (process.env.ACTORSMAP && menuW && menuW.wram[0][0x450] === +process.env.ACTORSMAP && !actorsShown && (actorsShown = f)) process.env.ACTORS = String(f + 200);
+    if (process.env.ACTORS && f === +process.env.ACTORS) process.env.GRID = process.env.GRID || String(f);
     if (process.env.ACTORS && f === +process.env.ACTORS) for (let k = 0; k < 24; k++) { const r = menuW.wram[4], o = k * 64; if (r[o + 0x17]) console.error("ACTOR", k, (r[o + 4] | r[o + 5] << 8).toString(16), (r[o + 6] | r[o + 7] << 8).toString(16)); }
     if (process.env.GRID && f === +process.env.GRID) for (let r = 0; r < 32; r++) console.error("GRID", r.toString().padStart(2), [...menuW.wram[6].subarray(r * 32, r * 32 + 32)].map(v => (v & 15).toString(16)).join(""), [...menuW.wram[6].subarray(0x400 + r * 32, 0x400 + r * 32 + 32)].map(v => v.toString(16).padStart(2, "0")).join(""));
     if (f === 0) { walkAt = -1; k = 0; until = -1; doneAt = -1; presses = 0; }
@@ -129,6 +135,12 @@ function routeCase(base, steps, end) {
         if (f < until) return s[1];
         until = -1; k++; continue;
       }
+      if (s.talkWait) {                          // A every 40 frames while a window is open, until none has been for 150
+        if (process.env.ROUTE > 2) console.error("TW", f, menuW.wram[5][0x822], lastWinFrame, frameNow);
+        if (talkQuiet()) { k++; continue; }
+        if (menuW.wram[5][0x822] && f - talkPress >= 40) { talkPress = f; return 1; }
+        return 0;
+      }
       if (s.press !== undefined) {
         if (until < 0) until = f;
         if (f < until) return 0;
@@ -137,6 +149,16 @@ function routeCase(base, steps, end) {
         return s.press;
       }
       const [x, y, xw, yw] = pos();
+      if (s.actor !== undefined) {               // {actor: n, off: [dx, dy]}: straight to a (walking) actor's point
+        const r = menuW.wram[4], o = s.actor * 64;
+        const ax = (r[o + 4] | r[o + 5] << 8) + s.off[0], ay = (r[o + 6] | r[o + 7] << 8) + s.off[1];
+        const dx = ax - xw, dy = ay - yw;
+        if (Math.abs(dx) <= 0x30 && Math.abs(dy) <= 0x30) { k++; until = -1; continue; }
+        if (until < 0) until = f + 900;
+        if (f > until) throw new Error(`the route's step ${k} did not reach actor ${s.actor}`);
+        if (Math.abs(dx) > 0x30) return dx > 0 ? 0x10 : 0x20;
+        return dy > 0 ? 0x80 : 0x40;
+      }
       if (process.env.ROUTE && (!(f % 10) || process.env.ROUTE > 1)) console.error("ROUTE", f, k, x, y, xw.toString(16), yw.toString(16), JSON.stringify(route && route.slice(0, 3)));
       if (s.map !== undefined ? menuW.wram[0][0x450] === s.map : s.at ? Math.abs(xw - s.at[0]) <= 0x20 && Math.abs(yw - s.at[1]) <= 0x20 : x >> 1 === s.to[0] >> 1 && y >> 1 === s.to[1] >> 1) { k++; last = null; until = -1; route = null; continue; }
       // the next waypoint: a breadth-first path over the terrain cells (WRAM6 $D000: 32 x 32 cells of 2 x 2 tiles,
@@ -168,7 +190,8 @@ function routeCase(base, steps, end) {
       return dx ? (dx > 0 ? 0x10 : 0x20) : dy > 0 ? 0x80 : 0x40;
     }
   };
-  const policy = f => { const v = policy0(f); if (process.env.ROUTE > 1) console.error("KEY", f, v, stuck, swap, JSON.stringify(route && route.slice(0, 2))); return v; };
+  let lastK = -1;
+  const policy = f => { const v = policy0(f); if (process.env.ROUTE && k !== lastK) { console.error("STEP", f, k); lastK = k; } if (process.env.ROUTE > 1) console.error("KEY", f, v, stuck, swap, JSON.stringify(route && route.slice(0, 2))); return v; };
   return { policy, run: sh => { walkAt = -1; return gameCase(sh, 1, () => doneAt >= 0 && frameNow > doneAt + end); } };
 }
 
@@ -223,6 +246,33 @@ function flagPoke(...ns) {
     if (done || !hasTask(w, 0x0D, 0x428E)) return;
     done = true;
     for (const n of ns) for (const m of [w.wram[0], core.wram(0)]) m[0x840 + (n >> 3)] |= 0x80 >> (n & 7);
+  };
+}
+// hDebugMode $FF9E set to `v` on both sides when the mode select first shows (a test's poke: the retail game never
+// sets it; REVERSE.md "Debug code")
+// the debug room's talks (map $01, by the debug warp: map record 3 -> 1; actors 2-8 at x 9, 9-$0F at x $0D, the player
+// between): `talks` after the warp; each case ends where the talk's warp leads
+const droom = (y, dir) => [{ to: [0x0B, y], at: [0x0B00, y << 8], noA: true }, [2, dir], [20, 0], [2, 1]];
+const DEBUG_ROOM = [[30, 0x40], [60, 0], [2, 1], [90, 0], [2, 1], [90, 0], [2, 0x20], [30, 0], [2, 0x20], [30, 0], [2, 1], [90, 0],
+  [2, 2], [400, 0]];
+const DEBUG_ROOM_CASES = [
+  // the sepia fade test (talk $0E, 35:7798: the room again by warp $0D), the Ranking screen (talk $0D, 35:778C; B
+  // leaves; warp $0C: the Field)
+  ["sepia_ranking", [...droom(0x0D, 0x10), [900, 0], ...droom(0x0B, 0x10), [200, 0], { press: 2, every: 60, times: 3 }, [400, 0]]],
+  // the Stars screen (talk $0B, 35:7774; warp $0A: the mode select)
+  ["stars", [...droom(0x07, 0x10), [200, 0], { press: 2, every: 60, times: 2 }, [300, 0]]],
+  // the Stats screen (talk $0C, 35:7780; warp $0B: the mode select)
+  ["stats", [...droom(0x09, 0x10), [200, 0], { press: 2, every: 60, times: 4 }, [300, 0]]],
+  // the clubhouse's warp (talk 5, 35:7747: map $03 entrance 1)
+  ["clubhouse", [...droom(0x09, 0x20), [400, 0]]],
+];
+function debugPoke(v) {
+  let done = false;
+  return (f, w, core) => {
+    if (f === 0) done = false;
+    if (done || !hasTask(w, 0x0D, 0x428E)) return;
+    done = true;
+    w.high[0x19E] = v; core.hram()[0x1E] = v;
   };
 }
 // the character's EXP ($C826-$C828) set to `v` on both sides when the mode select first shows (a test's poke)
@@ -411,12 +461,28 @@ const MINILAKE = [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x0A, 0x26],
   [300, 0], { to: [0x0E, 0x38], noA: true }, { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x28 }, [300, 0],
   { to: [0x19, 0x21], at: [0x1900, 0x2130], noA: true }, [2, 0x20], [20, 0], [2, 1], ...ynNo,
   { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x28 }];
+// a talk in routeCase steps: walk to the point `at` (8.8 tiles; a number: to that actor, 2 tiles before it), face `dir`, A, then A every 40 frames `n` times
+// (`no`: the first question answered No: Down before its A); then A every 40 frames while a window is open, until none has been for
+// 150 frames (or `n` times)
+let lastWinFrame = -1, talkPress = -100;
+let actorsShown = 0;   // (ACTORSMAP=n: the actors 200 frames after the map is first n, debugging a case)   // (the last frame a window was open: routeCase notes it)
+const talkQuiet = () => frameNow - lastWinFrame > 150;
+const talkSteps = (at, dir, n = null, no = false) => [typeof at === "number" ? { actor: at, off: dir === 0x40 ? [0, 0x200] : dir === 0x80 ? [0, -0x200] : dir === 0x10 ? [-0x200, 0] : [0x200, 0] } : { to: [at[0] >> 8, at[1] >> 8], at, noA: true }, [2, dir], [20, 0], [2, 1], [60, 0],
+  ...(no ? [{ press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 0x80], [30, 0], [2, 1], [60, 0]] : []),
+  n === null ? { talkWait: true } : { press: 1, every: 40, times: n }, [120, 0]];
 const CASES = [
   { name: "standings_match18", round: "match18", at: "3E:403F", run: sh => inBank(sh, 0x3E, matchStandingsScreen(sh)) },
   // the scorecard in match play (0E:43D6): Right on the standings page turns to the hole-by-hole card (0E:762F),
   // Left there back, A leaves
   { name: "scorecard_match18", round: "match18", at: "0E:43D6", run: sh => inBank(sh, 0x0E, showScorecard(sh)), noRet: true,
     policy: f => (f === 30 ? 0x10 : f === 70 ? 0x20 : f === 110 ? 0x10 : f > 150 && f & 1 ? 1 : 0) },
+  // the two-player Stroke round's scorecard after hole 1 (tools/round_suite.py stroke2p): the score screen (0E:4436 ->
+  // 3E:6361), Right to the hole-by-hole card (0E:7199), Left back, A leaves
+  { name: "scorecard_stroke2p", round: "stroke2p", at: "0E:43D6", run: sh => inBank(sh, 0x0E, showScorecard(sh)), noRet: true,
+    policy: f => (f === 60 ? 0x10 : f === 120 ? 0x20 : f === 200 ? 0x10 : f === 260 ? 0x80 : f > 300 && f & 1 ? 1 : 0) },
+  // the two-player Stroke round's result (RoundResultScreen 0B:59DE, the figures 0B:6143)
+  { name: "result_stroke2p", round: "stroke2p", at: "0B:59DE", run: (sh, r) => inBank(sh, 0x0B, roundResultScreen(sh, r.a)),
+    policy: f => (f > 120 && f & 1 ? 1 : 0) },
   { name: "result_match18", round: "match18", at: "0B:59DE", run: (sh, r) => inBank(sh, 0x0B, roundResultScreen(sh, r.a)),
     policy: f => (f > 120 && f & 1 ? 1 : 0) },
   // the pause menu (08:4666, made with web/tests/golf/mkstate_core.mjs --via 10:5BA6 --wait 60 --press 08 --at
@@ -426,6 +492,30 @@ const CASES = [
     policy: f => (f === 40 || f === 50 ? 0x80 : f === 60 || f === 70 || f === 80 ? 0x40 : f === 120 ? 8 : 0) },
   { name: "pause_r18_scorecard", state: "pause_r18", run: sh => onHole(sh, inBank(sh, 0x08, pauseMenu(sh))),
     policy: f => (f === 40 || f === 50 ? 0x80 : f === 70 ? 1 : f > 150 && f & 1 ? 1 : 0) },
+  // the link-play pause menu (41:6E49, wLinkRole $C33F poked to 1 on both sides once the first frame is done, before
+  // 08:4682 reads it; no partner is needed for these items): Scorecard (Down twice, A; A back), Camera Mode (A; B),
+  // Course Map (Down, A; A), Settings (Down 3 times, A, Right, B; the menu again; B), Give Up (Down 4 times, A) on the
+  // first stroke and (the stroke count poked) answered No, then Yes, Quit (Up, A) answered No then Yes
+  // with hDebugMode poked (1) once the first frame is done: B with Select held closes the menu into the points editor
+  // (08:46F3 -> 41:77EA; it reads the buttons every 6 frames): A held 13 frames (+100 twice), Right (+10 twice), B: the points as EXP (48:4D70; A through its
+  // screen); the pause menu returns
+  { name: "pause_r18_debug_points", state: "pause_r18", run: sh => onHole(sh, inBank(sh, 0x08, pauseMenu(sh))),
+    hook: (f, w, core) => { if (!f) { w.high[0x19E] = 1; core.hram()[0x1E] = 1; } },
+    policy: f => (f >= 60 && f < 64 ? 6 : f >= 64 && f < 90 ? 4 : f >= 200 && f < 213 ? 1 : f >= 230 && f < 243 ? 0x10 : f >= 260 && f < 272 ? 2 : f > 300 && !(f % 40) ? 1 : 0) },
+  // (the same Course Map from the stroke-play menu: 41:7451; open: CourseMapInit 17:436F counts the frames its load
+  // takes in wLoadFrameCount $C3B6 and prints the count to the debug text $CD64: the game's lag frames, which the
+  // native code has not, so those bytes and HRAM $FFA9 / $FFAA differ at the end, as in boot_coursemap)
+  { name: "pause_r18_coursemap", state: "pause_r18", open: true, run: sh => onHole(sh, inBank(sh, 0x08, pauseMenu(sh))), policy: f => (f === 40 ? 0x80 : f === 60 ? 1 : f === 400 ? 1 : 0) },
+  ...[["scorecard", f => (f === 40 || f === 50 ? 0x80 : f === 70 ? 1 : f === 300 ? 1 : 0)],
+    ["camera", f => (f === 40 ? 1 : f >= 120 && f < 160 ? 0x40 : f === 300 ? 2 : 0)],
+    ["coursemap", f => (f === 40 ? 0x80 : f === 60 ? 1 : f === 400 ? 1 : 0)],
+    ["settings", f => (f === 40 || f === 50 || f === 60 ? 0x80 : f === 80 ? 1 : f === 160 ? 0x10 : f === 200 ? 2 : f === 300 ? 2 : 0)],
+    ["giveup1", f => (f >= 40 && f <= 70 && !(f % 10) ? 0x80 : f === 100 ? 1 : f > 200 && f < 400 && !(f % 40) ? 1 : 0)],
+    ["giveup", f => (f >= 40 && f <= 70 && !(f % 10) ? 0x80 : f === 100 ? 1 : f === 200 ? 1 : f === 300 ? 1 : f === 340 ? 0x40 : f === 360 ? 1 : 0), true],
+    ["quit_no", f => (f === 40 ? 0x40 : f === 60 ? 1 : f === 160 ? 1 : f === 300 ? 2 : 0)],
+    ["quit", f => (f === 40 ? 0x40 : f === 60 ? 1 : f === 160 ? 0x40 : f === 200 ? 1 : 0)],
+  ].map(([n, policy, stroke]) => ({ name: `pause_link_${n}`, state: "pause_r18", open: n === "coursemap", run: sh => onHole(sh, inBank(sh, 0x08, pauseMenu(sh))), policy,
+    hook: (f, w, core) => { if (f) return; for (const m of [w.wram[0], core.wram(0)]) { m[0x33F] = 1; if (stroke) m[0x8A0] = 1; } } })),
   // ShotSetup 10:4798 at the first tee (mkstate_core.mjs --at 10:4798): Start in the aiming menu, Scorecard, A
   // back: the scene starts again (10:489D) and aiming goes on; up to the address step (10:56B0; the game is then
   // into the address step's first frame: its HRAM scratch $FFA7, $FFAC-$FFAE differ)
@@ -948,6 +1038,63 @@ const CASES = [
     ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x20, 0x2A], map: 0x0A }, [200, 0],
       { to: [0x3A, 0x0C] }, { to: [0x3C, 0x0C], map: 0x14 }, [300, 0], { to: [0x1F, 0x17], at: [0x1F00, 0x1700], noA: true }, [2, 0x40], [20, 0], [2, 1],
       { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x2B }, { press: 1, every: 40, times: 20 }, [300, 0]], 300) },
+  // the clubhouse (map $03) after the club rounds, talks of the lists the enter script patches in (32:5853 5928 59C7
+  // 5A4C 5B09; flags poked by the progress): the counter's member and visitor (actors 2 / 3, from inside the counter),
+  // the dogleg quiz (actor 9, after Marion), the fan (actor $0A), the Grand Champ quiz (actor 5); "y" / "n" answer the
+  // talk's question Yes / No
+  ...[["marion_lost", [112], "mvqqf"], ["marion_won", [112, 136], "mvQf"], ["palm_lost", [112, 113], "Mvf"],
+    ["palm_won", [112, 113, 136, 137], "mvf"], ["palm_wonno", [112, 113, 137], "Nvf"], ["dune_lost", [112, 113, 114], "mvf"],
+    ["dune_won", [112, 113, 114, 138], "mvf"], ["links_lost", [112, 113, 114, 115], "mvf"],
+    ["links_won", [112, 113, 114, 115, 139, 137], "mvfg"], ["links_wonno", [112, 113, 114, 115, 139], "G"]].map(([n, flags, talks]) => ({
+    name: `boot_kid_story_counter_${n}`, state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(...flags), maxFrames: 30000,
+    ...routeCase(savedPolicy(0), [...talks].flatMap(t => ({
+      m: talkSteps([0x2300, 0x2100], 0x20), M: talkSteps([0x2300, 0x2100], 0x20), N: talkSteps([0x2300, 0x2100], 0x20, null, true),
+      v: talkSteps([0x2300, 0x1F00], 0x20),
+      q: [{ to: [0x1C, 0x0C], noA: true }, ...talkSteps(9, 0x40)], Q: [{ to: [0x1C, 0x0C], noA: true }, ...talkSteps(9, 0x40, null, true)],
+      f: [{ to: [0x18, 0x1C], noA: true }, ...talkSteps(10, 0x40)],
+      g: talkSteps([0x1B00, 0x1F00], 0x10), G: talkSteps([0x1B00, 0x1F00], 0x10, null, true) })[t]), 200),
+  })),
+  // the Lounge (map $04, door 4) after the club rounds (#96: the tour seen), the talk lists 32:64E7 6530 6579 65C2:
+  // the member (actor 2: "Got a second?" Yes; "n": No), after the Grand Champ the two members (actors 6 / 5) and, while
+  // they are in the Lounge (not with all four clubs won), the champs (actors 7-$0A: their pair flags #80-#86 poked for
+  // the Grand Champ's lines; the Links champ's twice)
+  ...[["palm", [96, 112, 113], "2n"], ["dune", [96, 112, 113, 114], "2n"], ["links", [96, 112, 113, 114, 115], "2n"],
+    ["grand", [96, 112, 113, 114, 115, 139, 136, 80, 82, 84, 86], "2657AA89"],
+    ["grand_won", [96, 112, 113, 114, 115, 139, 136, 137, 138, 189], "2n65"]].map(([n, flags, talks]) => ({
+    name: `boot_kid_story_lounge_${n}`, state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(...flags), maxFrames: 40000,
+    ...routeCase(savedPolicy(0), [{ to: [0x2D, 0x05], map: 0x04 }, [400, 0], ...[...talks].flatMap(t => ({
+      2: talkSteps([0x1D00, 0x1900], 0x40), n: talkSteps([0x1D00, 0x1900], 0x40, null, true),
+      6: talkSteps([0x0900, 0x1500], 0x80), 5: talkSteps([0x0B00, 0x1B00], 0x40), 7: talkSteps([0x0710, 0x0B30], 0x40),
+      A: talkSteps([0x0D10, 0x0B30], 0x40), 8: talkSteps([0x0900, 0x0500], 0x80), 9: talkSteps([0x0B00, 0x0500], 0x80) })[t])], 200),
+  })),
+  // debug mode (hDebugMode $FF9E poked to 1 on both sides when the mode select shows; the retail game never sets it):
+  // the frame meter (00:2E4E) and the overlay (00:203E) every frame; on the clubhouse's floor A with nothing ahead
+  // opens the debug menu (05:6B2E), Scene (05:6C25): Right twice (map record 3 -> 5), Down, Right (entrance 1), A (the
+  // map and entrance set, the warp $FA asked; the debug menu again), B: the warp to the Director's Room
+  { name: "boot_kid_debug_warp", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: debugPoke(1), maxFrames: 30000,
+    ...routeCase(savedPolicy(0), [[30, 0x40], [60, 0], [2, 1], [90, 0], [2, 1], [90, 0], [2, 0x10], [30, 0], [2, 0x10], [30, 0],
+      [2, 0x80], [30, 0], [2, 0x10], [30, 0], [2, 1], [90, 0], [2, 2], [400, 0]], 100) },
+  // the debug room (DEBUG_ROOM_CASES)
+  ...DEBUG_ROOM_CASES.map(([n, talks]) => ({ name: `boot_kid_debug_room_${n}`, state: "boot_poweron_kid", open: true, noRet: true, sram: true,
+    hook: debugPoke(1), maxFrames: 40000, ...routeCase(savedPolicy(0), [...DEBUG_ROOM, ...talks], 100) })),
+  // the debug menu's Palette (Down twice, A: 44:42FB): the cursor Right, Down twice; A: the colour dialog (44:4156):
+  // Up held a while (red + 1 each frame), Right, Down held (green - 1), A closes; Left; B leaves; B closes the menu
+  { name: "boot_kid_debug_palette", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: debugPoke(1), maxFrames: 30000,
+    ...routeCase(savedPolicy(0), [[30, 0x40], [60, 0], [2, 1], [90, 0], [2, 0x80], [30, 0], [2, 0x80], [30, 0], [2, 1], [120, 0],
+      [2, 0x10], [30, 0], [2, 0x80], [30, 0], [2, 0x80], [30, 0], [2, 1], [90, 0], [6, 0x40], [30, 0], [2, 0x10], [30, 0], [4, 0x80],
+      [30, 0], [2, 1], [60, 0], [2, 0x20], [30, 0], [2, 2], [90, 0], [2, 2], [200, 0]], 100) },
+  // the same, the debug menu's Flag (Down 3 times, A: 05:6A57): A toggles flag 0, the cursor held right and down a
+  // while (moves every frame), A, Start (the next page) twice, A, B; the menu again: B
+  { name: "boot_kid_debug_flags", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: debugPoke(1), maxFrames: 30000,
+    ...routeCase(savedPolicy(0), [[30, 0x40], [60, 0], [2, 1], [90, 0], [2, 0x80], [30, 0], [2, 0x80], [30, 0], [2, 0x80], [30, 0],
+      [2, 1], [90, 0], [2, 1], [30, 0], [5, 0x10], [10, 0], [3, 0x80], [30, 0], [2, 1], [30, 0], [2, 8], [30, 0], [2, 8], [30, 0], [2, 1],
+      [30, 0], [2, 2], [90, 0], [2, 2], [200, 0]], 100) },
+  // the Director's Room (map $05, door 1) after the Palm / Dune / Links rounds: the Caddie Master's talk (actor 4,
+  // 32:6FB8 / 6FC7 / 6FD6: with a club won, the champion's line)
+  ...[["palm", [112, 113]], ["palm_won", [112, 113, 136]], ["dune", [112, 113, 114, 137]], ["links", [112, 113, 114, 115, 138]]].map(([n, flags]) => ({
+    name: `boot_kid_story_director_${n}`, state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(...flags), maxFrames: 30000,
+    ...routeCase(savedPolicy(0), [{ to: [0x07, 0x05], map: 0x05 }, [300, 0], ...talkSteps(4, 0x40)], 200),
+  })),
   // Mario beaten (#117 poked): the story begins in the Director's Room (map $05 entrance 1, 32:7461):
   // the staff's cover-up scene (32:7533: #120), warp 1: the clubhouse
   { name: "boot_kid_story_coverup", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(117),
@@ -977,6 +1124,14 @@ const CASES = [
     ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 }, [200, 0], { to: [0x24, 0x0C] }, { to: [0x24, 0x0A], map: 0x0C },
       [100, 0], { to: [0x1A, 0x38] }, { press: 1, every: 40, until: () => markLog.filter(m => m.n === "aimmenu").length >= 3 },
       [60, 0], [2, 8], [60, 0], [2, 1], { press: 0, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x0C }, [400, 0]], 300) },
+  // the same practice, its pause menu's other items (41:6F08 with #100): Wind Direction Right (41:770F), Wind Speed Left
+  // (41:7721), Settings (41:7733: B, the menu again), then Quit Practice
+  { name: "boot_kid_story_range_menu", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(72),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 }, [200, 0], { to: [0x24, 0x0C] }, { to: [0x24, 0x0A], map: 0x0C },
+      [100, 0], { to: [0x1A, 0x38] }, { press: 1, every: 40, until: () => markLog.filter(m => m.n === "aimmenu").length >= 3 },
+      [60, 0], [2, 8], [60, 0], [2, 0x80], [30, 0], [2, 0x10], [30, 0], [2, 0x10], [30, 0], [2, 0x80], [30, 0], [2, 0x20], [30, 0],
+      [2, 0x80], [30, 0], [2, 1], [120, 0], [2, 2], [90, 0], [2, 0x40], [30, 0], [2, 0x40], [30, 0], [2, 0x40], [30, 0], [2, 1],
+      { press: 0, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x0C }, [400, 0]], 300) },
   // the same range, the first coach (actor 3, talk 3: 31:4A8B): his demo (golfer $4F replaying 31:4C88, the hooks
   // 31:4C98: the texts 05:5E70), back on the range (entrance 4: 31:4EA9), the player's try (the hooks 31:4D14, the
   // judgement 31:4E5A), the result (entrance 6: 31:4D9C)
@@ -992,6 +1147,18 @@ const CASES = [
       [100, 0], { to: [0x1F, 0x22], at: [0x1F00, 0x2250], noA: true }, [2, 0x40], [30, 0],
       { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x0D && menuW.wram[0][0x46A] === 4 },
       { press: 1, every: 40, times: 25 }], 300) },
+  // the second coaches' lessons the same way (map $0D: the chip shot, actor 4, 30:41A2, after the demo 30:4726, the
+  // try, the result at entrance 5; map $0C: the iron shot, 31:4B11, 31:5137, entrance 7), then each coach again: tried,
+  // "Try again?" (30:471C / 31:512D) answered No
+  ...[["chip", 0x0D, [0x34, 0x0C], [0x34, 0x0A], [{ to: [0x1A, 0x1F], noA: true }, { to: [0x1B, 0x1D], at: [0x1B80, 0x1D00], noA: true }], 0x10, 5],
+    ["iron", 0x0C, [0x24, 0x0C], [0x24, 0x0A], [{ to: [0x20, 0x3B], at: [0x2000, 0x3B00], noA: true }], 0x40, 7]]
+    .map(([n, map, door, inside, walk, dir, ent]) => ({
+      name: `boot_kid_story_lesson_${n}`, state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(72), maxFrames: 60000,
+      ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 }, [200, 0], { to: door }, { to: inside, map },
+        [100, 0], ...walk, [2, dir], [30, 0],
+        { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === map && menuW.wram[0][0x46A] === ent },
+        { press: 1, every: 40, times: 25 }, [200, 0], ...walk, ...talkSteps(0, dir, null, true).slice(1)], 300),   // (its walk, then the talk)
+    })),
   // the office's way to the putting green (trigger 4, 33:4545): map $0E (30:69B9), "Practice here?" (30:6AEC) declined
   // on the way onto the green, the pro (actor 8, talk 30:6666): the putting challenge (30:6739: game mode 5, ten
   // putts on five holes, the hooks 30:6C2F / 6C58), the result (30:6CF2: not cleared)
@@ -1302,6 +1469,7 @@ const dumpHook = h => (f, w, core) => {
 let bad = 0;
 for (const c of CASES) {
   if (filter && !c.name.includes(filter)) continue;
+  if (shard && CASES.indexOf(c) % shard[1] !== shard[0]) continue;
   const stateFile = `out/state_${c.state || c.name}.json`;
   if (!fs.existsSync(path.join(root, stateFile))) {
     console.log(`skip ${c.name}: no ${stateFile} (node web/tests/golf/mkstate.mjs --name ${c.round} --at ${c.at} --out ${stateFile})`);

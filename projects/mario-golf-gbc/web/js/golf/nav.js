@@ -127,8 +127,8 @@ function navCountEntries(w) { let b = 0; while (rd(w, 0xC480 + b) !== 0xFF) b++;
 function* navDrawList(sh) {
   const w = sh.w;
   setW(w, 1);
-  D.lzTo(w, 0x0A, 0x6FE5, 0xD000);
-  D.lzTo(w, 0x0A, 0x7085, 0xD400);
+  D.lzTo(w, 0x0A, 0x6FE5, 0xD000);              // 0A:7257 NavLoadFrameTiles
+  D.lzTo(w, 0x0A, 0x7085, 0xD400);              // 0A:7267 NavLoadFrameAttrs
   setW(w, 1);
   D.inBank(w, 0x03, () => T.resetGlyphBuffer(w));
   yield* navDrawText(sh);

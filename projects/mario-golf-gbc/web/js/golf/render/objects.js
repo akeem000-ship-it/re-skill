@@ -215,7 +215,7 @@ function greenLookCursor(w) {                    // 11:4C12 GreenViewDrawLookCur
 // the handlers by object id (CourseViewObjectHandlerTable 11:4375 / GreenViewObjectHandlerTable 11:4984)
 const COURSE = [null, coursePin, courseTargetMarker, courseBall, courseAimArrow, coursePreviewSpot, courseOtherBall];
 const GREEN = [null, greenPin, greenTargetMarker, greenBall, greenAimArrow, greenPreviewSpot, greenOtherBall];
-export function drawBallObject(w, id) {          // 11:4E50 CallBallObjectHandler
+export function drawBallObject(w, id) {          // 11:4E50 CallBallObjectHandler (ids 0 and 7: 11:4E4F BallObjectNop)
   const t = W16(w.wram[6], 0x47E) === 0x4984 ? GREEN : COURSE;
   const f = t[id];
   if (f) f(w);

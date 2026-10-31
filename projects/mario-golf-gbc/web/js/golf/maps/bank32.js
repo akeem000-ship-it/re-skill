@@ -164,7 +164,8 @@ function* doorFrames(sh, door, frames) {
 }
 // 32:5EF5 / 5FBE / 6087 / 6150 / 6219 Map03DoorOpenAnim1-5; 32:5F4E / 6017 / 60E0 / 61A9 / 6272 Map03DoorSetOpen1-5;
 // 32:5F65 / 602E / 60F7 / 61C0 / 6289 Map03DoorCloseAnim1-5 (the same code with each door's rectangle; the screen cases
-// open doors 3-5 too: 32:6087 (boot_kid_story_door3), 32:6150 (the Lounge's), 32:6219 (boot_kid_story_trophies))
+// open doors 3-5 too: 32:6087 (boot_kid_story_door3), 32:6150 (the Lounge's; coming out of it 32:61A9 and 32:61C0), 32:6219
+// (boot_kid_story_trophies))
 const map03DoorOpenAnim = (sh, n) => doorFrames(sh, n, [1, 2, 3, 4]);
 const map03DoorSetOpen = (sh, n) => doorFrames(sh, n, [4]);
 const map03DoorCloseAnim = (sh, n) => doorFrames(sh, n, [3, 2, 1, 0]);
@@ -257,6 +258,75 @@ function* map03TalkCounter(sh, speaker) {
   if (hasPartner(w)) setTextByClubProgress(w, speaker === 2 ? 0x01D1 : 0x01DB);
   else T.scriptSetText(w, speaker === 2 ? 0x016B : 0x016C);
   yield* T.scriptShowText(sh, speaker);
+}
+// ---- map $03's talks after the club rounds (the lists 32:5853 5928 59C7 5A4C 5B09 the enter script patches in) ----
+// the counter (speaker s): with a partner hl + its progress (32:5B5A); else text `won` with the club flag n, `lost`
+// without (n null: always `won`), shown by speaker `show` (the ROM shows two of them by the other counter: 3)
+function* counterTalk(sh, hl, n, won, lost, show) {
+  const w = sh.w;
+  if (hasPartner(w)) setTextByClubProgress(w, hl);
+  else T.scriptSetText(w, n === null || flag(w, n) ? won : lost);
+  yield* T.scriptShowText(sh, show);
+}
+// 32:576F Map03TalkMemberCounterAfterMarion / 32:5796 Map03TalkVisitorCounterAfterMarion (#136: $176 / $178, else
+// $175 / $177); 32:5901 Map03TalkVisitorCounterAfterPalm (#137: $18E / $18D); 32:59A0 Map03TalkMemberCounterAfterDune
+// and 32:5979 Map03TalkVisitorCounterAfterDune (#138: $19A / $199 and $19C / $19B, both by speaker 3);
+// 32:5A18 Map03TalkMemberCounterAfterLinks ($1A7, by speaker 3) / 32:5A32 Map03TalkVisitorCounterAfterLinks ($1A8);
+// 32:5A9D Map03TalkMemberCounterGrandChamp ($1B3) / 32:5AB7 Map03TalkVisitorCounterGrandChamp ($1B4)
+const M03_COUNTERS = {
+  "32:576f": [0x01D1, 136, 0x0176, 0x0175, 2], "32:5796": [0x01DB, 136, 0x0178, 0x0177, 3],
+  "32:5901": [0x01DB, 137, 0x018E, 0x018D, 3],
+  "32:59a0": [0x01D1, 138, 0x019A, 0x0199, 3], "32:5979": [0x01DB, 138, 0x019C, 0x019B, 3],
+  "32:5a18": [0x01D1, null, 0x01A7, 0, 3], "32:5a32": [0x01DB, null, 0x01A8, 0, 3],
+  "32:5a9d": [0x01D1, null, 0x01B3, 0, 2], "32:5ab7": [0x01DB, null, 0x01B4, 0, 3],
+};
+// 32:58A4 Map03TalkMemberCounterAfterPalm: with a partner as above; else "You placed / won at Palm?" ($189 with #137,
+// else $185) kept open, the question (no wait first), closed, 5 + 5 frames; No (or B): the next text; Yes: it skipped
+// (and one more with #136), the text after, 10 frames
+function* map03TalkMemberCounterAfterPalm(sh) {
+  const w = sh.w;
+  if (hasPartner(w)) { setTextByClubProgress(w, 0x01D1); yield* T.scriptShowText(sh, 0x02); return; }
+  T.scriptSetText(w, flag(w, 137) ? 0x0189 : 0x0185);
+  yield* T.scriptShowTextKeepOpen(sh, 0x02);
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* S.scriptWaitFrames(sh, 0x05);
+  yield* S.scriptWaitFrames(sh, 0x05);
+  if (a) { yield* T.scriptShowText(sh, 0x02); return; }
+  T.scriptSkipText(w);
+  if (flag(w, 136)) T.scriptSkipText(w);
+  yield* T.scriptShowText(sh, 0x02);
+  yield* S.scriptWaitFrames(sh, 0x0A);
+}
+// 32:57BD Map03TalkDoglegQuiz (talk 9, speaker 9: $17E) / 32:5AD1 Map03TalkBeatGrandChampQuiz (talk 5, speaker 5:
+// $1B6): kept open, 10 frames, the question, closed, 5 frames; Yes: the next text (the Grand Champ's then 10 frames);
+// No (or B): the one after (the dogleg's then 10 frames)
+function* map03Quiz(sh, text, s, yesWaits) {
+  const w = sh.w;
+  T.scriptSetText(w, text);
+  yield* T.scriptShowTextKeepOpen(sh, s);
+  yield* S.scriptWaitFrames(sh, 0x0A);
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* S.scriptWaitFrames(sh, 0x05);
+  if (!a) { yield* T.scriptShowText(sh, s); if (yesWaits) yield* S.scriptWaitFrames(sh, 0x0A); return; }
+  T.scriptSkipText(w);
+  yield* T.scriptShowText(sh, s);
+  if (!yesWaits) yield* S.scriptWaitFrames(sh, 0x0A);
+}
+// 32:62E2 Map03TestClubWonFlag: game flag #136 + wScriptArg (the club wScriptArg won)
+const map03TestClubWonFlag = w => flag(w, 136 + rd(w, 0xC4BC));
+// 32:5817 / 5826 / 5835 / 5844 Map03TalkFanAfterMarion / Palm / Dune / Links (talk $0A): texts from $181 / $195 / $1A3
+// / $1AF, wScriptArg = the club (0-3); 32:57F5 Map03FanTextByClubResult: +2 with a partner, else +1 with the club
+// won, else +0; by speaker $0A, 10 frames
+function* map03TalkFan(sh, text, club) {
+  const w = sh.w;
+  T.scriptSetText(w, text);
+  wr(w, 0xC4BC, club);
+  if (hasPartner(w)) { T.scriptSkipText(w); T.scriptSkipText(w); }
+  else if (map03TestClubWonFlag(w)) T.scriptSkipText(w);
+  yield* T.scriptShowText(sh, 0x0A);
+  yield* S.scriptWaitFrames(sh, 0x0A);
 }
 // 32:5BEA Map03ObjectBookshelf (object 2): one of the texts $1E5-$1E8 at random (00:0A61's low byte & 3)
 function* map03ObjectBookshelf(sh) {
@@ -452,6 +522,16 @@ function* map05EnterRegular(sh) {
   for (const [n, hl] of [[115, 0x70CC], [138, 0x70AB], [114, 0x708A], [137, 0x7069], [113, 0x7048], [136, 0x7027],
     [112, 0x7006]]) if (flag(w, n)) { M.scriptSetMapField(w, hl, 0x000C); return; }
 }
+// 32:6FB8 / 6FC7 / 6FD6 Map05TalkCaddieMasterAfterPalm / Dune / Links (talk 4 of the lists 32:7048 708A 70CC): text
+// $49F / $4A8 / $4B1; 32:6F98 Map05SkipTextIfClubChamp: with the highest club won (#138 3, #137 2, #136 1) that course
+// index (05:57C3) and the next text; by speaker 4
+function* map05TalkCaddieMaster(sh, text) {
+  const w = sh.w;
+  T.scriptSetText(w, text);
+  const c = flag(w, 138) ? 3 : flag(w, 137) ? 2 : flag(w, 136) ? 1 : 0;
+  if (c) { setTextCourseIndex(w, c); T.scriptSkipText(w); }
+  yield* T.scriptShowText(sh, 0x04);
+}
 // 32:7156 Map05ObjectBookshelfA (object 2): text $806-$809 at random; 32:716C Map05ObjectBookshelfB (object 1): $80A-$80D
 function* map05Bookshelf(sh, base) {
   const w = sh.w;
@@ -604,6 +684,70 @@ function* champJoinAsPartner(sh) {
   wr(w, 0xC294, p & 0xFF); wr(w, 0xC295, p >> 8);
   wr(w, 0xC299, (arg - 7 + 4) & 0xFF);
 }
+// ---- the Lounge's talks after the club rounds (lists 32:64E7 6530 6579 65C2) ----
+// 32:6425 / 642F / 6439 / 6443 Map04TalkMemberAfterPalm / Dune / Links / GrandChamp (talk 2: texts $466 / $46B /
+// $470 / $475): 32:63F3 Map04AskGotASecond: "Got a second?" kept open by speaker 2, 10 frames, the question, closed,
+// 5 frames; No (or B): the next text; Yes: it skipped, the story after, 10 frames
+function* map04AskGotASecond(sh, text) {
+  const w = sh.w;
+  T.scriptSetText(w, text);
+  yield* T.scriptShowTextKeepOpen(sh, 0x02);
+  yield* S.scriptWaitFrames(sh, 0x0A);
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* S.scriptWaitFrames(sh, 0x05);
+  if (a) { yield* T.scriptShowText(sh, 0x02); return; }
+  T.scriptSkipText(w);
+  yield* T.scriptShowText(sh, 0x02);
+  yield* S.scriptWaitFrames(sh, 0x0A);
+}
+// 32:660B Map04TalkLoungeMemberAGrandChamp / 32:6639 Map04TalkLoungeMemberBGrandChamp (talks 5 / 6, by speaker 5):
+// $484 / $485 with #189; else $462 / $464, +1 with all four clubs won (#136-#139)
+function* map04TalkLoungeMember(sh, after, text) {
+  const w = sh.w;
+  T.scriptSetText(w, after);
+  if (!flag(w, 189)) {
+    T.scriptSetText(w, text);
+    if (flag(w, 136) && flag(w, 137) && flag(w, 138) && flag(w, 139)) T.scriptSkipText(w);
+  }
+  yield* T.scriptShowText(sh, 0x05);
+}
+// 32:6E9F ChampFlagPairCheck: a = 1 with the champ's #78 pair set and its #80 pair clear (ChampTestFlag2 32:6B57), but
+// its callers test the zero flag it leaves (`jp z`), which is clear only when both pairs are set (a quirk: a = 1 leaves
+// z set from the second test). True here when the callers go on to the Grand Champ line
+const champFlagPairCheck = w => !!champFlag2(w, 0x4E) && !!champFlag2(w, 0x50);
+// 32:6667 Map04TalkMarionChampGrandChamp (talk 7): wScriptArg 7; #80 clear: the champ's talk 32:63A8; else $47A (+1
+// with #136). 32:6686 / 66A5 Map04TalkPalmChampGrandChamp / DuneChampGrandChamp (talks 8 / 9): ChampFlagPairCheck
+// false: 32:63BA / 63CC; else $47C / $47E (+1 with #137 / #138)
+function* map04ChampGrandChamp(sh, slot) {
+  const w = sh.w;
+  wr(w, 0xC4BC, slot);
+  const base = [0x01FD, 0x0416, 0x042F][slot - 7];
+  if (slot === 7 ? !flag(w, 80) : !champFlagPairCheck(w)) { yield* champTalk(sh, base, slot); return; }
+  T.scriptSetText(w, [0x047A, 0x047C, 0x047E][slot - 7]);
+  if (flag(w, 136 + slot - 7)) T.scriptSkipText(w);
+  yield* T.scriptShowText(sh, slot);
+}
+// 32:66C4 Map04TalkLinksChampGrandChamp (talk $0A): ChampFlagPairCheck false: 32:63DE; else once (#148) texts
+// $480-$482 each after an animation (6, 7, 6) of the champ; then his animation 5 and $483
+function* map04TalkLinksChampGrandChamp(sh) {
+  const w = sh.w;
+  wr(w, 0xC4BC, 0x0A);
+  if (!champFlagPairCheck(w)) { yield* champTalk(sh, 0x0448, 0x0A); return; }
+  if (!flag(w, 148)) {
+    T.scriptSetText(w, 0x0480);
+    for (const anim of [0x06, 0x07, 0x06]) {
+      S.actorPlayAnim(w, 0x0A, anim);
+      yield* S.waitActorAnimDone(sh, 0x0A);
+      yield* T.scriptShowText(sh, 0x0A);
+    }
+    setFlag(w, 148);
+  }
+  S.actorPlayAnim(w, 0x0A, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x0A);
+  T.scriptSetText(w, 0x0483);
+  yield* T.scriptShowText(sh, 0x0A);
+}
 // 32:63A8 / 63BA / 63CC / 63DE: the champs' talks
 function* champTalk(sh, base, slot) {
   const w = sh.w;
@@ -723,6 +867,18 @@ export const SCRIPTS = {
   "32:5d0f": sh => map03TriggerDoor(sh, 3), "32:5d2f": sh => map03TriggerDoor(sh, 4),
   "32:56ea": sh => map03TalkCounter(sh, 2), "32:5704": sh => map03TalkCounter(sh, 3),
   "32:5bea": map03ObjectBookshelf,
+  ...Object.fromEntries(Object.entries(M03_COUNTERS).map(([k, v]) => [k, sh => counterTalk(sh, ...v)])),
+  "32:58a4": map03TalkMemberCounterAfterPalm,
+  "32:57bd": sh => map03Quiz(sh, 0x017E, 0x09, false), "32:5ad1": sh => map03Quiz(sh, 0x01B6, 0x05, true),
+  "32:5817": sh => map03TalkFan(sh, 0x0181, 0), "32:5826": sh => map03TalkFan(sh, 0x0195, 1),
+  "32:5835": sh => map03TalkFan(sh, 0x01A3, 2), "32:5844": sh => map03TalkFan(sh, 0x01AF, 3),
+  "32:6425": sh => map04AskGotASecond(sh, 0x0466), "32:642f": sh => map04AskGotASecond(sh, 0x046B),
+  "32:6439": sh => map04AskGotASecond(sh, 0x0470), "32:6443": sh => map04AskGotASecond(sh, 0x0475),
+  "32:660b": sh => map04TalkLoungeMember(sh, 0x0484, 0x0462), "32:6639": sh => map04TalkLoungeMember(sh, 0x0485, 0x0464),
+  "32:6667": sh => map04ChampGrandChamp(sh, 7), "32:6686": sh => map04ChampGrandChamp(sh, 8),
+  "32:66a5": sh => map04ChampGrandChamp(sh, 9), "32:66c4": map04TalkLinksChampGrandChamp,
+  "32:6fb8": sh => map05TalkCaddieMaster(sh, 0x049F), "32:6fc7": sh => map05TalkCaddieMaster(sh, 0x04A8),
+  "32:6fd6": sh => map05TalkCaddieMaster(sh, 0x04B1),
   "32:5033": map00EnterModeSelect,
   "32:71cf": map05EnterDirectorsRoom,
 };

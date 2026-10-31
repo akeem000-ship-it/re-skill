@@ -1132,7 +1132,7 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 *,C820,wCharSkillPoints,character record +$20-$24: points given to the four skills (+$23 unused by 02:4FFA)
 *,C826,wCharExp,character record +$26: 24-bit EXP (41:57A9)
 *,CAAD,wExpBonusKind,bonus line on the EXP screen: 1-3 trophy / $14-$19 and others = beaten opponent; $CAAE = bonus amount
-48,6C00,UnusedExport0C,export $0C of bank 48: no caller; the bytes are neither sensible code nor LZ data
+48,6C00,UnusedExport0CData,export $0C of bank 48 (no caller, no reference): data, not code (runs of tile numbers 0D 0D 0D 0E 0E 0E; decoded it writes sp to $C26C and a to ROM $0B4D); not an LZ stream either
 # --- banks 02 12 04 15 16 11 40 4F 77 (save, HUD, actors, golfer view, camera) ---
 77,6E3E,LoadStoryPicture,b = variant (via 77:6F86) c = picture < $0B: LZ tiles to WRAM1 (77:7346) queued to VRAM $9200-$97FF/$8800-$8DFF; map 77:7376/752E; palette 6; anim tasks 77:7033/6F8E; farcall 4A:6205 (called from banks 32 and 3B)
 *,D34B,wStoryPicture,WRAM6: picture id (c & $0F) shown by LoadStoryPicture 77:6E3E
@@ -1916,7 +1916,7 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 0C,726F,BestScoreSlotTable,18 x (column row) slots of the best score list
 0C,7297,DrawBestScoreValues,score vs 54 per listed character: sign tile $3D/$3E/$3F then DrawNumberTiles with base $33
 0C,7326,DrawNumberTiles,a = value b = digit tile base: 1-2 digits at hl; 100+ draws three tiles b + $0B
-0C,7380,BadExport10,export $10 points into data after the last routine (bytes f5 00 ff); no callers
+0C,7380,BadExport10Data,export $10 (no caller, no reference): an LZ asset, not code: tools/decompress.py reads 2539 bytes to $E00 (224 tiles); its first bytes f5 00 ff decode as push af; nop; rst $38
 0F,400B,CourseSelectInit,hl = id list e = start index d = count bc = descriptor table: LCD off; film strip and name box gfx; picture of the current course; tasks 4160/4292
 0F,4160,CourseTitleWaveTask,frame task: a row of 10 title sprites (0F:41B9) bobs with hVBlankCount through 0F:4179 (the Course title?)
 0F,41E2,CourseSelectInput,left/right scroll the film (4401/4328) when 2+ courses; A returns the id at [$D207 + hFFB0]; B returns $FF
@@ -3499,11 +3499,8 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 35,4193,Map07Trigger01MutterWindTip,trigger 01: shows $0172 "...low trajectory in headwinds..." between ScriptBegin / ScriptEnd
 35,41AE,Map07Enter,Trophy Room enter: Map07PlaceTrophies
 35,41B2,Map07PlaceTrophies,per club (flags #112-#116 placed / #136-#139 won) moves the matching trophy actors in place and hides the others at ($3F00 $3F00); place from TestCourseHoleBit 02:5C77
-35,41EA,Map07PlaceTrophiesMidData,not an entry: middle of an instruction in Map07PlaceTrophies (junk script root)
-35,42DF,Map07PlaceTrophiesMid2Data,not an entry: middle of an instruction in Map07PlaceTrophies (junk script root)
 35,4345,Map07DescribeTrophy,hl = win flag: set -> "victory trophy for {club}" ($083F / $0840 for Peach); else place trophy text ($0841 or $0843 by flag #0) with place number (Map07GetTrophyPlace)
 35,4396,Map07GetTrophyPlace,$C3E1 = 2 or 3 by TestCourseHoleBit(club $C3E0 / $16)
-35,43A5,Map07GetTrophyPlaceMidData,not an entry: middle of an instruction in Map07GetTrophyPlace (junk script root)
 35,43AE,Map07PushTrophyTextArgs,SetTextCourseIndex(club $C3E0) and PushTextNumberArg(place $C3E1)
 35,43BE,Map31HeaderData,map $31 header (End Director's Room)
 35,4415,Map31EnterEndingDirector,ending: replays the first-day scene in the Director's Room ("Hello {name}! It's your 1st day as our student!" $0487; actors from list 43D5); warp 1
@@ -3512,14 +3509,6 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 35,45D2,Map32AskYesNoAnswer,text already set: show (speaker 2) keep open; Yes/No; Yes -> next page / No -> skip one and show the other; used by the unused talk scripts 4604-4622 (texts $0466-$0475)
 35,465D,Map32ObjectTable,map $32 object list (one record -> 7B7B); junk script root
 35,466A,Map32Trigger01LoungeTour,End Lounge: player and script actor walk a route; flag #189 clear -> pointer sprite (Map32PointerSpriteTask) and "If you're going up there you'd better know who's who." ($01EE; skip a page when all club wins #136-#139)
-35,4700,Map32LoungeTourMidData,not an entry: middle of an instruction in Map32Trigger01LoungeTour (junk script root)
-35,4702,Map32LoungeTourPart2Data,not an entry: inside Map32Trigger01LoungeTour (junk script root)
-35,4703,Map32LoungeTourMid2Data,not an entry: middle of an instruction in Map32Trigger01LoungeTour (junk script root)
-35,4704,Map32LoungeTourMid3Data,not an entry: middle of an instruction in Map32Trigger01LoungeTour (junk script root)
-35,4705,Map32LoungeTourPart3Data,not an entry: inside Map32Trigger01LoungeTour (junk script root)
-35,4709,Map32LoungeTourMid4Data,not an entry: middle of an instruction in Map32Trigger01LoungeTour (junk script root)
-35,470A,Map32LoungeTourPart4Data,not an entry: inside Map32Trigger01LoungeTour (junk script root)
-35,4778,Map32LoungeTourMid5Data,not an entry: middle of an instruction in Map32Trigger01LoungeTour (junk script root)
 35,4795,Map32TriggerTableMidData,inside the map $32 trigger list (4791); not code (junk script root)
 35,479A,Map32EnterEndingLounge,End Lounge enter: fade in; Map32Trigger01LoungeTour; warp
 35,47AB,Map32PointerPosTable,4-byte records (d / e position and b attribute) of the pointer sprite indexed by $C4B3
@@ -3555,7 +3544,6 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 35,5B50,Map38HeaderData,map $38 header (End Match Game Event)
 35,5BAA,Map38EnterEndingMatchGame,Map38EndingMatchScene; warp
 35,5BB3,Map38EndingMatchScene,Map38DrawRoom; fade in; champions walk in and face each other (wordless replay of the Match Game Event)
-35,5C29,Map38MatchSceneMidData,not an entry: middle of an instruction in Map38EndingMatchScene (junk script root)
 35,5DCC,Map38DrawRoom,room tiles (MapBufCopyRectRedraw) and palettes 5D9C
 35,5DE8,Map39HeaderData,map $39 header (End Field)
 35,5E12,Map39EnterEndingField,ending replay of the Field letter event: actors walk; flash 6890; letter (65D4 6731); path-open scene 6639; warp
@@ -3565,7 +3553,6 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 35,65D4,Map39LoadLetterSpriteGfx,tiles 5EB0 -> VRAM $8100; palette 65CC (copy of 34:4FB4)
 35,65EC,Map39LoadMarkerSpriteGfx,tiles 5F70 -> VRAM $8100; palette 65BC (copy of 34:4FCC)
 35,6604,Map39DrawMarkerSpriteFrames,sprite 6570 at map ($1300 $1080) for $0A frames (copy of 34:4FE4)
-35,6621,Map39DrawMarkerFramesMidData,not an entry: inside Map39DrawMarkerSpriteFrames (junk script root)
 35,6639,Map39PathOpenScene,copy of 34:5019: sprites fly in / burst; MapCopyEventRect; Map39OpenCastlePath; marker frames
 35,66A5,Map39DrawMarkerSprite,sprite 6570 at map ($1300 $1080) when on screen (copy of 34:50A2)
 35,66E2,Map39DrawLetterSprite,falling letter sprite (copy of 34:50DF)
@@ -3624,7 +3611,6 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 35,791C,Map24EnterSpriteTest,enter: wTestSprite = 0; wTestSpriteCount from 04:4F0A; frame task Map24WalkAnimTask
 35,792F,Map24WalkAnimTask,frame task: a d-pad press -> player anim 1
 35,793F,Map24ApplySprite,player actor takes sprite a via 04:4D3D; palettes restored; anim 1
-35,7957,Map24ApplySpriteMidData,not an entry: middle of an instruction in Map24ApplySprite (junk script root)
 35,795C,Map25HeaderData,map $25 header (Terop: caption scenes)
 35,79D2,Map25EnterCaption,entrance 1: caption "Marion Club Director's Office" ($0486) 110 frames -> warp 1 (map 05); entrance 2/3: "A letter is falling from the sky." + Peach's invitation ($1442/$1443); set flag #123 and save flag $1E0; warp 2 (Field) / 3
 35,7B21,EndingActorScriptsData,actor script bytecode block (04:4234) after the Terop script: 7B22 is used by map $33 (35:49A2); not code (junk script root)
@@ -4129,3 +4115,15 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 30,4888,ApproachRangeKeepPracticingUnused,unreferenced script: fade in; "Keep practicing?" ($0C61) Yes/No; No -> text; Yes -> ApproachRangeStartPractice
 35,50DE,Map34PresentTrophyUnused,unreferenced script: fade in; actor 5 animation 2; "I present the {place} Place Trophy to {name}" ($0C41) with the place from wMapEntrance - 1; then 35:5011
 35,5011,Map34CeremonyActorsWalkIn,actors 2-5 speed 8; actor 2 faces down and walks to ($0A00 $0F00) / actor 3 to ($0A80 $0E00) ... (the ceremony walk-in); called only by Map34PresentTrophyUnused
+33,4ABB,Map08TalkCaddieMasterPartner,maps $08-$0B: the Caddie Master's talk with a partner (from 33:48F8): both walk to the counter; the partner match asked (33:4F4B)
+00,2BED,PlaySoundCmdCont,PlaySoundCmd 00:2BBB after JingleSongTable 00:2BE8 (its jr c target): the jingle check and the driver call
+01,516E,DebugBootMenuCont,DebugBootMenu 01:40A6 after CursorSpriteTiles 01:5120 (its jp target)
+08,4CAE,RoundEndMode1TournamentCont,RoundEndMode1Tournament 08:4BF9 after TournamentReturnMapTable 08:4C6E (its jump target)
+10,6740,SlopeAtCont,SlopeAt 10:66DB after GreenSlopeTable 10:6738 (its jr nz target)
+30,486C,ApproachRangeSetPracticeHoleCont,ApproachRangeSetPracticeHole 30:4855 after ApproachRangeMapTable 30:4868 (its jr z target)
+31,527A,DrivingRangeSetPracticeHoleCont,DrivingRangeSetPracticeHole 31:5263 after DrivingRangeMapTable 31:5276 (its jr z target)
+31,7308,ClinicCoach1CommentCont,ClinicCoach1Comment 31:72CF after ClinicCoach1CommentTable 31:72F6 (its jp nz target)
+31,747C,ClinicCoach2CommentCont,ClinicCoach2Comment 31:7444 after ClinicCoach2CommentTable 31:746A (its jr nz target)
+32,4956,Map20EnterResultTestsCont,Map20EnterResultTests 32:48AE after ScoreNamePictureTable 32:4951 (its jr nz target)
+3B,72C3,OutcomeRulesCont,OutcomeRules 3B:7260 after OutcomeByTerrainTable 3B:72A3 (its jr z target)
+3B,7602,OutcomeMode6Cont,OutcomeMode6 3B:75CE after OutcomeMode6ByTerrainTable 3B:75E2 (its jr z target)

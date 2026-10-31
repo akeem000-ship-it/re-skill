@@ -375,7 +375,7 @@ function* caddieMasterSendOff(sh) {
 function* clubRoundStartScene(sh) {
   const w = sh.w;
   const practice = !!flag(w, 224);
-  if (practice ? flag(w, clubFlag(w, 184)) : flag(w, clubFlag(w, 176))) {
+  if (practice ? flag(w, clubFlag(w, 184)) : flag(w, clubFlag(w, 176))) {   // 33:559C TestClubGroupPracticeSeen / 33:558E TestClubTournamentSeen
     yield* caddieMasterSendOff(sh);
     if (practice) yield* practiceRoundStart(sh); else yield* tournamentRoundStart(sh);
     return;

@@ -125,7 +125,7 @@ function* drawVsResult(sh, l, b, c, d, e) {
     registerFrameTask(w, 0x01, B, 0x5DE1);       // ConfettiTask
     wr(w, 0xC3F5, 0);
   }
-  if (l === 2) throw new Error("the two-player stroke result's figures (~0B:6143) are not ported");
+  if (l === 2) { twoPlayerStrokeFigures(w); return; }
   let bb = 5, cc = 0x0E;
   if (c) {
     M.mapBufCopyRect(w, 0x12, 0x2D, 0x0F, 0x0F, 0x04, 0x01);
@@ -331,6 +331,24 @@ function* drawRankResult(sh, b, c) {
     initResultActors(w, 4);                      // 0B:5BE6
     registerFrameTask(w, 0x01, B, 0x5DE1);       // ConfettiTask
   } else D.inBank(w, 0x0A, () => { for (let k = 2; k <= 7; k++) A.actorSetPos(w, k, 0x3F00, 0x3F00); });
+}
+// 0B:6143 (the two-player Stroke result's figures): three plates copied into row $0F (from (0, 0), ($14, 0), ($0A,
+// $2D)), each player's score against par ($C8BE / $C8FE: the sign, then its size, $CA and up negated) and the two
+// counts after it (+$17 / +$18 of each record) on rows $10 / $11
+function twoPlayerStrokeFigures(w) {
+  M.mapBufCopyRect(w, 0x00, 0x00, 0x05, 0x0F, 0x04, 0x01);
+  M.mapBufCopyRect(w, 0x14, 0x00, 0x0E, 0x0F, 0x05, 0x01);
+  M.mapBufCopyRect(w, 0x0A, 0x2D, 0x07, 0x0F, 0x05, 0x01);
+  for (const [p, d] of [[0xC8BE, 0x03], [0xC8FE, 0x0E]]) {
+    let a = rd(w, p);
+    drawResultSign(w, a, d, 0x0F);
+    if (a >= 0xCA) a = (-a) & 0xFF;
+    drawResultNumber(w, a, d + 1, 0x0F);
+  }
+  drawResultNumber(w, rd(w, 0xC897), 0x04, 0x10);
+  drawResultNumber(w, rd(w, 0xC898), 0x04, 0x11);
+  drawResultNumber(w, rd(w, 0xC8D7), 0x0F, 0x10);
+  drawResultNumber(w, rd(w, 0xC8D8), 0x0F, 0x11);
 }
 // 0B:6646 DrawResultSign: the score's mark at (d, e): even (3), minus ($CA and up: 1) or plus (0), row $2A
 function drawResultSign(w, a, d, e) {

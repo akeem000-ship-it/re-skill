@@ -375,7 +375,7 @@ function setRankExpBonus(w) {
   const p = (0x4D3D + ((((rd(w, 0xC836) & 7) << 3) + 2 * r) & 0xFF)) & 0xFFFF;
   wr(w, 0xCAAE, rb(0x08, p)); wr(w, 0xCAAF, rb(0x08, p + 1));
 }
-// 08:4BF9 RoundEndMode1Tournament: SaveCourseStats; the final standings (hole 18, phase 2) and the place to
+// 08:4BF9 RoundEndMode1Tournament (with 08:4CAE, its part after TournamentReturnMapTable): SaveCourseStats; the final standings (hole 18, phase 2) and the place to
 // wRoundResult $C96C (rank + 1); the placing screen (0B:59DE with a = 1); for places 1-3: the course record's
 // place bit ($14 + place; the first time also the EXP bonus), the return map and entrance (08:4C6E, unless one is
 // set; story kind $32) and the course's played / won flags (#112-#116, #136-#139, #117); 10 points; the EXP

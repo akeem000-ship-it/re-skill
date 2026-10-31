@@ -19,8 +19,8 @@ import { readJoypad } from "./joypad.js";
 import { taskFacade, runFrameTasks } from "./tasks.js";
 import { showCaption, captionMotionTask, captionAnimTask } from "./captions.js";
 import * as P from "./pictures.js";
-import { scorecardStrokesTask, scorecardMatchPlayTask, scorecardStandingsTask } from "./scorecard.js";
-import { matchStandingsTask } from "./standings.js";
+import { scorecardStrokesTask, scorecardMatchPlayTask, scorecardStandingsTask, scorecardTwoPlayerTask } from "./scorecard.js";
+import { matchStandingsTask, twoPlayerScoreTask } from "./standings.js";
 import { menuCursorTask } from "./windows.js";
 import { demoTasks } from "./title.js";
 import { menuBobSpriteTask } from "./menu09.js";
@@ -41,9 +41,10 @@ import { actorsUpdateTask, actorsDrawTask } from "./actors.js";
 import { confettiTask, resultPaletteCycleTask, resultSpriteTask } from "./result.js";
 import { mapScrollTask } from "./render/holeview.js";
 import { contestLeaderSpriteTask } from "./match.js";
-import { vblankDisplay, clearUnusedSprites } from "./render/display.js";
+import { vblankDisplay, clearUnusedSprites, debugFrameMeter, updateDebugOverlay } from "./render/display.js";
 import * as D from "./render/hooks.js";
 import { ball, rd16, wr16, playerField } from "./memory.js";
+import { palEditorSpriteTask } from "./debug.js";
 
 export function applyFx(w, fx) {                 // what the ported branches do outside $D400-$D4FF
   for (const f of fx) {
@@ -189,7 +190,11 @@ export class Shot {
       "0e:76f5": () => scorecardMatchPlayTask(w),      // 0E:76F5
       "0e:5348": () => scorecardStandingsTask(w),      // 0E:5348
       "3e:465a": () => matchStandingsTask(w),          // 3E:465A
+      "0e:725f": () => scorecardTwoPlayerTask(w),      // 0E:725F
+      "3e:645c": () => twoPlayerScoreTask(w),          // 3E:645C
       "05:4f20": () => menuCursorTask(w),              // 05:4F20 MenuCursorTask
+      "05:6a36": () => {},                             // 05:6A36 NullFrameTask (the debug flag editor's)
+      "44:4292": () => palEditorSpriteTask(w),         // 44:4292 PalEditorSpriteTask
       "05:53f9": () => moreArrowTask(w),               // 05:53F9 MoreArrowTask
       "48:4336": () => expCharSpriteTask(w),           // 48:4336 ExpCharSpriteTask
       "17:43a7": () => countLoadFramesTask17(w),       // 17:43A7 CountLoadFramesTask_17
@@ -247,16 +252,18 @@ export class Shot {
     return a;
   }
 
-  // 00:2E3B AdvanceFrame: VBlank 00:2EF9 (its display work, ReadJoypad 00:02EB, the fades, the VBlank tasks), then
+  // 00:2E3B AdvanceFrame: VBlank 00:2EF9 (the vector 00:0040 IntVBlank) (its display work, ReadJoypad 00:02EB, the fades, the VBlank tasks), then
   // ClearUnusedSprites 00:2688 and the frame tasks in table order
   *advance(n = 1) {                              // (a generator: the round is a coroutine, yield* at every caller)
     const w = this.w, h = w.high;
     for (let k = 0; k < n; k++) {
       yield;                                     // (the frame: a caller running the round frame by frame steps here)
       this.ev("F");
+      if (h[0x19E]) debugFrameMeter(w, w.readLY ? w.readLY() : 0);   // (AdvanceFrame's debug block, 00:2E4E: its rLY is the
+                                                 // core's, which ran its AdvanceFrame at "F")
       this.fx = this.newFx();                    // this frame's sounds and effects
       if (w.vram) vblankDisplay(w);              // palettes, scroll, OAM DMA, the VRAM queues
-      else if (!h[0x18D]) { h[0x18D] = 1; h[0x18C] = (h[0x18C] + 1) & 0xFF; }
+      else if (!h[0x18D]) { if (h[0x19E]) updateDebugOverlay(w); h[0x18D] = 1; h[0x18C] = (h[0x18C] + 1) & 0xFF; }
       if (this.input) readJoypad(h, this.input());
       if (w.onVBlankSound) w.onVBlankSound();    // 7E:40EB SoundUpdate, 00:2C4A (a sound driver, if any)
       updateGameTimer(w, id => this.sound(id));  // 00:2C6B
@@ -616,7 +623,7 @@ export class Shot {
     s[0x06] = s[0x07] = s[0x08] = 0;
     const t = lieTerrain(this.hole, s);
     const table = t === 0 || t === 0x0E ? lieFairway : t === 1 ? lieRough : null;
-    if (table) {
+    if (table) {                                 // 10:70B4 SetLieFairway / 10:70EB SetLieRough
       const q = table(((s[0x03] >> 4) + (s[0x00] >> 4)) & 0x0F);
       w.wram[0][playerField(w, 0x3F)] = q;
       s[0x46] = q;

@@ -269,7 +269,8 @@ function* map02ConfirmQuitMatchGame(sh) {
   S.actorSetPos(w, rd(w, 0xC298), 0x3F00, 0x3F00);
   return 0;
 }
-// 34:4618 ... 34:4681 Map02Trigger06-0D: 34:5530, then warp 6-$0D (Windy Valley ... the Club Maker's Hut), sound $92
+// 34:4618 ... 34:4681 Map02Trigger06-0D: 34:5530, then warp 6-$0D (Windy Valley ... the Club Maker's Hut), sound $92 (the
+// same code with their warps; the screen cases take 34:4618 34:4627 34:4636 34:4645 34:4663 34:4672 34:4681, not ~34:4654)
 function* map02TriggerPlace(sh, warp) {
   const w = sh.w;
   if ((yield* map02ConfirmQuitMatchGame(sh)) === 1) return;
@@ -1356,8 +1357,8 @@ function* map2CRoundResult(sh) {
   for (let k = 0; k < 9; k++) {
     const v = rd(w, 0xC8AC + k), g = v >> 4;
     wr(w, 0xC3E0, g);
-    if (g !== 0x01 && g !== 0x00) setFlag(w, 241);
-    if ((((v & 0x0F) - g) & 0xFF) !== 0x01) setFlag(w, 240);
+    if (g !== 0x01 && g !== 0x00) setFlag(w, 241);          // 34:765D Map2CSetMissedGreenInOne (its bytes run on: the texts 34:7661-)
+    if ((((v & 0x0F) - g) & 0xFF) !== 0x01) setFlag(w, 240);   // 34:7659 Map2CSetMissedOnePutt
   }
   const n = (rd(w, 0xC8BE) + 0x1B) & 0xFF;
   wr(w, 0xC3E2, n);

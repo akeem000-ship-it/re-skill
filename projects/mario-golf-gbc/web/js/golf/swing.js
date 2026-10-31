@@ -185,7 +185,7 @@ export function marker(w) {                      // 10:56EF / 10:5EE2: the targe
   wr16(r6, 0x428, (rd16(r6, 0x404) + de) & 0xFFFF);
 }
 
-export function shotRecord(w) {                  // 02:46B0 ShotRecord: 13 bytes -> $D5F8, and for the first four
+export function shotRecord(w) {                  // 02:46B0 ShotRecord: 13 bytes (02:46E3 WriteShotRecord) -> $D5F8, and for the first four
   const r6 = w.wram[6], w0 = w.wram[0];          // strokes of a human player -> $D680 (+$40 player 2) + stroke x 16
   const rec = [...r6.subarray(0x400, 0x406), r6[0x418], r6[0x419], r6[0x329], r6[0x32A], r6[0x450], r6[0x44F], r6[0x44D]];
   r6.set(rec, 0x5F8);

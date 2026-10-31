@@ -292,7 +292,7 @@ function* roundHookHoleStart(sh) {                // 08:47FD RoundHookHoleStart
       setTeeOrderByHonour(w);
       if (w0[0x8D0] !== 0xFF) yield* M.initHoleContest(sh);   // 08:420F
       break;
-    default: break;
+    default: break;                              // (08:483A HoleStartMode1Tournament: ret; other modes nothing)
   }
 }
 
@@ -330,6 +330,7 @@ export function* holeStart(sh) {
   r6[0x445] = 1;                                 // wTeeShot
   r6[0x321] = rb(0x10, 0x6907);                  // (a code byte: the first of MissTable 10:6907)
   if ([1, 2, 3].includes(mode(w))) saveGameMidRound(w);   // 08:47B4 RoundHookSaveAtHole (WRAM bank 6 kept)
+  // (its table 08:47D1: 08:47F1 / 08:47F5 / 08:47F9 SaveAtHoleMode1Tournament / 2Match / 3Stroke, each a call to 08:4EF4)
   yield* callGolfEventHook(sh, 3);               // 10:45CD
   sh.hole = new Hole(r6[0x320]);
   sh.mark("flyover");
@@ -391,7 +392,7 @@ function* roundHookAfterShot(sh) {                // 08:4901 RoundHookAfterShot 
   const w = sh.w, old = w.high[0x196];
   Dp.setWramBank(w, 6);
   switch (mode(w)) {
-    case 1:                                      // 08:441A UpdateTeeShotStats
+    case 1:                                      // 08:493E AfterShotMode1Tournament: 08:441A UpdateTeeShotStats
       yield* T.updateTeeShotStats(sh, () => lieTerrain(sh.hole, ball(w)), () => shotLength(ball(w), w.wram[6].subarray(0x5F8, 0x5FE)));
       break;
     case 2: yield* M.afterShotMode2(sh, H.scorecard); break;   // 08:494B

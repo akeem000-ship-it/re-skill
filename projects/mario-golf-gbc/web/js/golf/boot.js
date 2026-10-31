@@ -33,7 +33,7 @@ function softReset(w) {
   if (w.vram) D.disableLCDSafely(w);
   w.wram[0].fill(0, 0, 0xFF0);                   // ClearMemory16 $C000, $FF blocks
   w.high.fill(0, 0x180, 0x1F0);                  // $FF80-$FFEF
-  w.high[0x1FE] = 1;                             // hIsCGB (Start 00:2DA0)
+  w.high[0x1FE] = 1;                             // hIsCGB (Start 00:2DA0, from 00:0100 EntryPoint / 00:0150 EntryJump)
   if (w.vram) { w.lcd.scy = 0; w.lcd.scx = 0; w.lcd.vbk = 0; }
   setW(w, 0);
   for (let k = 0; k < 10; k++) w.high[0x180 + k] = rb(0, 0x067A + k);   // 00:066C CopyOAMDMARoutineToHRAM

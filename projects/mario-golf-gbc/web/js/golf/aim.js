@@ -71,7 +71,7 @@ export function placeTargetMarker(w) {
   const [dx, dy] = aimOffset(w);
   const ty = (rd16(r6, 0x404) + dy) & 0xFFFF, tx = (rd16(r6, 0x401) + dx) & 0xFFFF;
   const [left, right, top, bottom, green] = limits(w);
-  const rx = green ? ratioOrMax : ratio;
+  const rx = green ? ratioOrMax : ratio;          // (the green view's: 40:65D7 GreenClampRatioX / 40:6636 GreenClampRatioY)
   let fx, fy;                                    // 24-bit ratios (the stack frame's bytes 4-6 and 7-9)
   let o = sub(left, tx);
   if (!(o & 0x8000)) { fx = rx(o, dx); r6[0x36B] |= 2; }

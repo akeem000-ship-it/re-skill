@@ -12,6 +12,8 @@ import * as M from "../js/golf/math.js";
 import * as U from "../js/golf/unreached.js";
 import * as H from "../js/golf/home.js";
 import * as R0C from "../js/golf/records0c.js";
+import * as S3E from "../js/golf/standings.js";
+import * as SC from "../js/golf/scorecard.js";
 import { loadText } from "../js/golf/text.js";
 
 useRom(romBytes());
@@ -134,9 +136,59 @@ CASES.push({ name: "MapIdAt", bank: 0x0A, addr: 0x5336, regs: () => ({ a: rnd(0x
 CASES.push({ name: "PalOffset", bank: 0x0A, addr: 0x5675, regs: () => ({ b: rnd(16), h: rnd(256), l: rnd(256) }), out: ["h", "l"], js: (w, r) => { const hl = U.palOffset(r.h << 8 | r.l, r.b); return { h: hl >> 8, l: hl & 0xFF }; } });
 CASES.push({ name: "CopyTextToWram1D800", bank: 0x48, addr: 0x4D4C, regs: w => { let id; for (;;) { id = 0x1105 + rnd(0x40); const t = new GolfMemory(); t.wram[0].fill(1); try { loadText(t, id); } catch (e) { continue; } if (t.wram[0].subarray(0x600, 0x800).includes(0)) break; } return { h: id >> 8, l: id & 0xFF }; },   // (a text that ends in the buffer)
   js: (w, r) => U.copyTextToWram1D800(w, r.h << 8 | r.l) });
+// bank 3E's unreferenced cell writers and the two-player score screen's figure helpers (standings.js)
+const tileString = w => { const n = rnd(12); for (let k = 0; k < n; k++) w.wram[0][0x400 + k] = 1 + rnd(255); w.wram[0][0x400 + n] = 0; };
+const cell = () => ({ b: rnd(0x20), c: rnd(0x1F) });
+CASES.push({ name: "PutTileStringAttr0", bank: 0x3E, addr: 0x60C3, init: tileString, regs: () => ({ h: 0xC4, l: 0, ...cell() }), js: (w, r) => S3E.putTileStringAttr0(w, 0xC400, r.b, r.c) });
+CASES.push({ name: "PutTileStringNoAttr", bank: 0x3E, addr: 0x618D, init: tileString, regs: () => ({ h: 0xC4, l: 0, ...cell() }), js: (w, r) => S3E.putTileStringNoAttr(w, 0xC400, r.b, r.c) });
+const atString = w => { const n = rnd(12); const t = w.wram[0]; t[0x400] = rnd(0x14); t[0x401] = rnd(0x18); for (let k = 0; k < n; k++) t[0x402 + k] = 1 + rnd(255); t[0x402 + n] = 0; };
+CASES.push({ name: "DrawTileStringAttr0At", bank: 0x3E, addr: 0x626D, init: atString, regs: () => ({ h: 0xC4, l: 0, d: rnd(8) }), js: (w, r) => S3E.drawTileStringAttr0At(w, 0xC400, r.d) });
+CASES.push({ name: "DrawTileStringNoAttrAt", bank: 0x3E, addr: 0x6280, init: atString, regs: () => ({ h: 0xC4, l: 0, d: rnd(8) }), js: (w, r) => S3E.drawTileStringNoAttrAt(w, 0xC400, r.d) });
+CASES.push({ name: "DrawScoreLabelB", bank: 0x3E, addr: 0x65E3, regs: cell, js: (w, r) => S3E.drawScoreLabelBC(w, 0xCA, r.b, r.c) });
+CASES.push({ name: "DrawScoreLabelC", bank: 0x3E, addr: 0x660D, regs: cell, js: (w, r) => S3E.drawScoreLabelBC(w, 0xCD, r.b, r.c) });
+CASES.push({ name: "PutTileAttr0", bank: 0x3E, addr: 0x61E3, regs: () => ({ a: rnd(256), ...cell() }), out: ["a", "b", "c"], js: (w, r) => { S3E.putTileAttr0(w, r.a, r.b, r.c); return r; } });
+CASES.push({ name: "ScoreTensDigit", bank: 0x3E, addr: 0x62A6, regs: () => ({ a: rnd(256) }), out: ["a"], js: (w, r) => ({ a: S3E.scoreTensOnes(r.a)[0] }) });
+CASES.push({ name: "ScoreOnesDigit", bank: 0x3E, addr: 0x62D3, regs: () => ({ a: rnd(256) }), out: ["a"], js: (w, r) => ({ a: S3E.scoreTensOnes(r.a)[1] }) });
+CASES.push({ name: "DrawScoreVsPar", bank: 0x3E, addr: 0x6525, regs: () => ({ a: rnd(256), ...cell() }), js: (w, r) => S3E.drawScoreVsPar(w, r.a, r.b, r.c) });
+// bank 0E's unreferenced card writers (scorecard.js)
+CASES.push({ name: "ScorecardPutStringRight", bank: 0x0E, addr: 0x44E2, init: w => { const n = rnd(7); for (let k = 0; k < n; k++) w.wram[0][0x400 + k] = 1 + rnd(255); w.wram[0][0x400 + n] = 0; },
+  regs: () => { const de = 0xD000 + rnd(0xF00); return { h: 0xC4, l: 0, d: de >> 8, e: de & 0xFF }; }, js: (w, r) => SC.scorecardPutStringRight(w, 0xC400, r.d << 8 | r.e) });
+CASES.push({ name: "ScorecardFillBlank", bank: 0x0E, addr: 0x45CD, regs: () => { const hl = 0xD000 + rnd(0xE00); return { h: hl >> 8, l: hl & 0xFF, b: rnd(256) }; }, js: (w, r) => SC.scorecardFillBlank(w, r.h << 8 | r.l, r.b) });
+const holesDone = w => { w.wram[0][0x4BE] = rnd(19); w.wram[0][0x836] = rnd(11); };
+CASES.push({ name: "DrawP1ScoreToPar", bank: 0x0E, addr: 0x6E50, init: holesDone, js: w => SC.drawScoreToParUnused(w, false) });
+CASES.push({ name: "DrawTwoPlayerToPar", bank: 0x0E, addr: 0x7356, init: holesDone, js: w => SC.drawScoreToParUnused(w, true) });
+// bank 12's map readers (unreached.js)
+const in64 = () => ({ h: rnd(0x40), l: rnd(256), d: rnd(0x40), e: rnd(256) });
+CASES.push({ name: "GreenSlopeDirAt", bank: 0x12, addr: 0x4098, regs: in64, out: ["a", "b", "c", "d", "e", "h", "l"], js: (w, r) => U.greenSlopeDirAt(w, r.h, r.d) });
+CASES.push({ name: "TerrainAtPos", bank: 0x12, addr: 0x40FD, regs: in64, out: ["a", "b", "c", "d", "e", "h", "l"], js: (w, r) => U.terrainAtPos(w, r.h, r.l, r.d, r.e) });
+CASES.push({ name: "CellInfoAt", bank: 0x12, addr: 0x405E, init: w => { const r6 = w.wram[6]; r6[0x443] = [0, 1, 2, 4, 5][rnd(5)]; r6[0x441] = rnd(0x30); r6[0x442] = rnd(0x30); },
+  regs: w => ({ h: (w.wram[6][0x441] + rnd(0x10)) & 0x3F, l: rnd(256), d: (w.wram[6][0x442] + rnd(0x10)) & 0x3F, e: rnd(256) }),   // (within the 64 x 64 map)
+  out: ["a", "b", "c", "d", "e", "h", "l"], js: (w, r) => U.cellInfoAt(w, r.h, r.l, r.d, r.e) });
+CASES.push({ name: "TerrainAtTileUnused", bank: 0x12, addr: 0x416B, regs: () => ({ d: rnd(256), e: rnd(256) }), out: ["a", "b", "c", "d", "e", "h", "l"], js: (w, r) => U.terrainAtTileUnused(w, r.d, r.e) });
+CASES.push({ name: "SlopeAtBallUnused", bank: 0x12, addr: 0x42A2, init: w => { const r6 = w.wram[6]; r6[0x443] = [0, 1, 2, 4, 5][rnd(5)]; r6[0x441] = rnd(0x30); r6[0x442] = rnd(0x30);
+  const green = r6[0x443] && r6[0x443] !== 4; r6[0x402] = green ? r6[0x441] + rnd(0x10) : rnd(0x40); r6[0x405] = green ? r6[0x442] + rnd(0x10) : rnd(0x40); },
+  out: ["a", "b", "c", "d", "e", "h", "l"], js: w => U.slopeAtBallUnused(w) });
+// bank 04's unreferenced actor helpers (unreached.js)
+const actorHL = () => { const k = rnd(25); const hl = k === 24 ? 0 : 0xD000 + 0x40 * k; return { h: hl >> 8, l: hl & 0xFF }; };
+CASES.push({ name: "ActorsClearKeepTasks", bank: 0x04, addr: 0x40E9, init: w => { for (let k = 0; k < rnd(8); k++) { const p = 0x1C0 + 4 * rnd(16); w.wram[0][p] = 1 + rnd(255); w.wram[0][p + 1] = rnd(256); w.wram[0][p + 2] = 0x40 + rnd(0x40); w.wram[0][p + 3] = rnd(0x80); } },
+  js: w => U.actorsClearKeepTasks(w) });
+CASES.push({ name: "ActorIsWalking", bank: 0x04, addr: 0x4588, init: w => { if (rnd(2)) for (let k = 0; k < 24; k++) w.wram[4].copyWithin(k * 64 + 0x0A, k * 64 + 4, k * 64 + 4 + rnd(5)); },
+  regs: actorHL, out: ["a", "h", "l"], js: (w, r) => ({ a: U.actorIsWalking(w, r.h << 8 | r.l), h: r.h, l: r.l }) });
+CASES.push({ name: "ActorSetAnimSpeed", bank: 0x04, addr: 0x4EE0, regs: () => ({ a: rnd(256), ...actorHL() }), js: (w, r) => U.actorSetAnimSpeedField(w, r.h << 8 | r.l, 0x35, r.a) });
+CASES.push({ name: "ActorSetMoveAnimSpeed", bank: 0x04, addr: 0x4EF5, regs: () => ({ a: rnd(256), ...actorHL() }), js: (w, r) => U.actorSetAnimSpeedField(w, r.h << 8 | r.l, 0x36, r.a) });
+CASES.push({ name: "CountCharacterHeaders", bank: 0x04, addr: 0x4F0A, out: ["a"], js: () => ({ a: U.countCharacterHeaders() }) });
+// small unreferenced routines (unreached.js)
+CASES.push({ name: "QueueD000To8E00", bank: 0x12, addr: 0x4956, js: w => U.queueD000To8E00(w) });
+CASES.push({ name: "CountdownResume", bank: 0x12, addr: 0x4F67, js: w => U.countdownSet(w, 1) });
+CASES.push({ name: "CountdownStop", bank: 0x12, addr: 0x4F7F, js: w => U.countdownSet(w, 0) });
+CASES.push({ name: "ReturnStub", bank: 0x12, addr: 0x4DE8, js: () => U.returnStub() });
+CASES.push({ name: "CharAnimStub1", bank: 0x42, addr: 0x4008, js: () => U.returnStub() });
+CASES.push({ name: "CharAnimStub0", bank: 0x42, addr: 0x400A, js: () => U.returnStub() });
+CASES.push({ name: "DictScrollStepUnused", bank: 0x3F, addr: 0x41DC, regs: () => ({ h: rnd(0x40), l: rnd(256), d: rnd(4), e: rnd(256), b: rnd(0x40) }),
+  out: ["a"], js: (w, r) => U.dictScrollStepUnused(w, r.h << 8 | r.l, r.d << 8 | r.e, r.b) });
 for (const c of U.FUZZ || []) CASES.push(c(rnd));
 
-const hx = v => v.toString(16).padStart(2, "0");
+const hx = v => (v === undefined ? "undefined" : v.toString(16).padStart(2, "0"));
 let bad = 0;
 for (const c of CASES) {
   if (filter && !c.name.includes(filter)) continue;

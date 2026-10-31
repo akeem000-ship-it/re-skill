@@ -92,7 +92,9 @@ function setLcdc(w, v) {
   w.lcd.lcdc = v;
 }
 
-// ---- calls in other banks: hROMBank while it runs (FarCall 00:01B6 keeps it on the stack) ----
+// ---- calls in other banks: hROMBank while it runs (FarCall 00:01B6 keeps it on the stack; rst $18 00:0018 and
+// rst $10 00:0010 -> 00:01F6 FarCallVectorInline, which calls the export through 00:0213 CallVectorEntryE; 00:01E6
+// CallVectorEntryA the same by a; the call itself is the function call here) ----
 export function inBank(w, bank, fn) {
   const old = w.high[0x195];
   w.high[0x195] = bank;
@@ -438,8 +440,40 @@ export function vblankDisplay(w) {
     else { l.scx = 0; l.scy = 0x40; l.lcdc |= 0x08; }   // hWindowScroll: the $9C00 map
     w.oam.set(w.wram[0].subarray(0, 0xA0));      // OAM DMA from $C000 (00:067A)
     if (!processBGBlitQueue(w)) processVRAMCopyQueue(w);
+    if (h[0x19E]) updateDebugOverlay(w);
     h[0x18D] = 1;
     h[0x18C] = (h[0x18C] + 1) & 0xFF;
   }
   l.vbk = vbk;
+}
+
+// 00:203E UpdateDebugOverlay (VBlank, with hDebugMode): the CPU meter's four characters $C0FA-$C0FD to the $9C00 map at
+// $9D08; hWindowScroll $FF98 = 1 in mode 3, 0 in mode 1, else 1 on even hVBlankCounts (the debug window shown every
+// other frame); with $FF8E set (then cleared) the debug text $CC00 ($240 bytes, HDMA 00:2082) to $9D00. VRAM bank 0
+export function updateDebugOverlay(w) {
+  const h = w.high;
+  if (w.vram) {
+    w.lcd.vbk = 0;
+    for (let k = 0; k < 4; k++) w.vram[0][0x1D08 + k] = w.wram[0][0x0FA + k];
+  }
+  const m = h[0x19E];
+  h[0x198] = m === 3 ? 1 : m === 1 ? 0 : (h[0x18C] & 1) ? 0 : 1;
+  if (!h[0x18E]) return;
+  h[0x18E] = 0;
+  if (w.vram) for (let k = 0; k < 0x240; k++) w.vram[0][0x1D00 + k] = w.wram[0][0xC00 + k];
+}
+// 00:2E3B AdvanceFrame's debug block (with hDebugMode): the CPU meter: rLY as the frame's code ends (an input: the
+// time the code took, read from the hardware), the highest of the last 15 frames kept in $FFA0 (its timer $FFA1),
+// FormatHexWord 00:20E0 of (that, rLY) to $C0FA as four hex characters; Select + Start held starts the frame step
+// ($FF9A: not ported)
+export function debugFrameMeter(w, ly) {
+  const h = w.high;
+  let hi;
+  if (h[0x1A0] < ly) hi = null;
+  else { h[0x1A1] = (h[0x1A1] - 1) & 0xFF; hi = h[0x1A1] ? h[0x1A0] : null; }
+  if (hi === null) { hi = ly; h[0x1A0] = ly; h[0x1A1] = 0x0F; }
+  const hex = v => (v < 10 ? 0x30 + v : 0x37 + v);
+  const w0 = w.wram[0];
+  w0[0x0FA] = hex(hi >> 4); w0[0x0FB] = hex(hi & 0x0F); w0[0x0FC] = hex(ly >> 4); w0[0x0FD] = hex(ly & 0x0F);
+  if ((h[0x190] & 0x0C) === 0x0C || h[0x19A]) throw new Error("the debug frame step (~00:2E84) is not ported");
 }

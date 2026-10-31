@@ -68,7 +68,7 @@ export function charComputeStats(w) {            // 02:4F07 CharComputeStats
   r[b + 0x1E] = rb(2, (charTable(w, 0x33) + e) & 0xFFFF);
 }
 
-export function charLevelUp(w, d) {              // 02:4FFA CharLevelUp / 4FFD CharLevelUpBC: d = stat to raise
+export function charLevelUp(w, d) {              // 02:4FFA CharLevelUp / 02:4FFD CharLevelUpBC: d = stat to raise
   const r = w.wram[0], b = CHAR;
   if (r[b + 0x12] >= 0x63) return;
   const f = [0x20, 0x21, 0x22, 0x24][d];

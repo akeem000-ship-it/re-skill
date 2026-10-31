@@ -89,7 +89,8 @@ const LEVELUP_DIFF_SP = 0xCF56;                  // (the stack pointer there les
 function charLevelUpDiff(w, d, hl) {
   const r = w.wram[0];
   const old = r.slice(0x800, 0x830);
-  w.high[0x1B2] = LEVELUP_DIFF_SP & 0xFF; w.high[0x1B3] = LEVELUP_DIFF_SP >> 8;
+  const sp = w.levelUpDiffSP ?? LEVELUP_DIFF_SP;   // (another call path sets its own: the debug points editor)
+  w.high[0x1B2] = sp & 0xFF; w.high[0x1B3] = sp >> 8;
   charLevelUp(w, d);
   wr(w, hl, ((r[0x81A] | r[0x81B] << 8) - (old[0x1A] | old[0x1B] << 8)) & 0xFF);
   for (let k = 0; k < 4; k++) wr(w, hl + 1 + k, (r[0x81C + k] - old[0x1C + k]) & 0xFF);
@@ -303,7 +304,7 @@ function drawStatGauge(w, l, de) {
   if (l === 0xFE) { put(0xCB, 0x0C); put(0xEB, 0x1B); }
   put(0xCC, 0x0B); put(0xEC, 0x1A);
 }
-// 41:4ECE / 4E94 / 4F08 / 4F42 DrawStatGaugeRow0-3: the stat (+ its preview change unless phase 0) as a gauge
+// 41:4ECE / 41:4E94 / 41:4F08 / 41:4F42 DrawStatGaugeRow0-3: the stat (+ its preview change unless phase 0) as a gauge
 // (WRAM3), rows 0-2 queued to the BG map
 function drawStatGaugeRow(w, n) {
   const [val, dl, de, q] = [[0xD640, 0xD649, 0x000, [0xD0C0, 0x98C0, 4]], [0xD642, 0xD64A, 0x060, [0xD120, 0x9920, 4]],

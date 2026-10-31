@@ -13,6 +13,7 @@ import * as A from "./actors.js";
 import * as S from "./script.js";
 import { mapStartGfx } from "./mapgfx.js";
 import { MAP_SCRIPTS } from "./maps/index.js";
+import { debugMenu } from "./debug.js";
 import * as P from "./player.js";
 import * as W from "./windows.js";
 import { showMessage, showMessageKeepOpen } from "./msgbox.js";
@@ -157,6 +158,7 @@ export function* mapRunScript(sh, a, hl, b, end = true) {
   }
   const key = `${h2(a)}:${h4(hl)}`;
   const fn = MAP_SCRIPTS[key] || LOCAL_SCRIPTS[key];
+  if (globalThis.process && globalThis.process.env && globalThis.process.env.SCRIPTLOG) console.error("SCRIPT", key, b);   // (a test's log)
   if (!fn) notPorted(`the map script ~${h2(a)}:${h4(hl)}`);
   D.inBank(w, 0x0A, () => S.scriptBegin(w));     // 0A:4092
   setW(w, 4);
@@ -406,8 +408,10 @@ export function* mapEventLoop(sh) {
       else if ((a = mapFindObject(w))) yield* mapUseObject(sh, a);
       else if ((a = mapTriggerUnderPlayer(w))) yield* mapTrigger(sh, a, true);
       else if (b !== 2) {
-        if (w.high[0x19E]) notPorted("the debug menu (~05:6B2E DebugMenu)");
-        if (rd(w, 0xC450) === 2) {
+        if (w.high[0x19E]) {                     // 0A:4B50: the debug menu
+          yield* S.waitScriptActorIdle(sh);
+          yield* inBankGen(w, 0x05, debugMenu(sh));   // 05:6B2E
+        } else if (rd(w, 0xC450) === 2) {
           sh.sound(0x5C);
           yield* S.waitScriptActorIdle(sh);
           yield* inBankGen(w, 0x0A, navigationMenu(sh));   // 0A:7174

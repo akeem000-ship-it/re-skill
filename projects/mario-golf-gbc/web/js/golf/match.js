@@ -313,6 +313,9 @@ export function matchRoundEndFlags(w) {
   setSaveFlag(w, save);
   if (c === 7 && w0[0x960] === 0 && !testFlag(w, 188)) { w0[0x960] = 0x30; w0[0x961] = 0x05; }
 }
+// (the game flags: rst $20 / $28 / $30, 00:0020 / 00:0028 / 00:0030, run 00:2D86 SetGameFlagCmd / 00:2D93
+// ClearGameFlagCmd / 00:2D79 TestGameFlagCmd: 00:2D65 FetchInlineWordOperand takes the inline flag word, here the
+// argument)
 const testFlag = (w, n) => W0(w)[0x840 + (n >> 3)] & (0x80 >> (n & 7));   // 00:2D10
 const setFlag = (w, n) => { W0(w)[0x840 + (n >> 3)] |= 0x80 >> (n & 7); };   // 00:2D2E
 function awardFirstWinBonus(w, de, hl, c) {      // 08:4E97 AwardFirstWinBonus: de = flag << 5

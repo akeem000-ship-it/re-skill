@@ -163,7 +163,7 @@ export function startCaptionAnim(sh, a, c, d, e) {
   const course = r[0x836], hole = r[0x837];
   if (course === 0) { if (hole === 0x0A) p += 16; }
   else if ([1, 2, 6, 0x0A].includes(course)) { /* the first */ }
-  else if (course === 7) {                       // 4F:627B CaptionPaletteByHole3
+  else if (course === 7) {                       // 4F:627B CaptionPaletteByHole3 (each + 8: 4F:6272 SkipPalette)
     if (hole >= 0x0D) p += 8;
     if (hole >= 0x10) p += 8;
     if (hole >= 0x13) p += 8;

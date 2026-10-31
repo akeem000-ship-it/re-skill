@@ -11,7 +11,7 @@ import { clearFrameTasks, registerFrameTask } from "./tasks.js";
 import { mapScrollTask } from "./render/holeview.js";
 import { formatDecimalNumber } from "./render/text.js";
 import * as D from "./render/display.js";
-import { matchStandingsScreen } from "./standings.js";
+import { matchStandingsScreen, twoPlayerScoreScreen } from "./standings.js";
 import { loadTextShort, copyTextShortToDE, drawStringToGlyphs } from "./text.js";
 import { decompressDataFromBank } from "./mapgfx.js";
 import { buildStandings, getPlayerRank } from "./tournament.js";
@@ -53,6 +53,8 @@ const PAGES = {
   0x4432: sh => inBankGen(sh.w, 0x3E, matchStandingsScreen(sh)),   // 0E:4432 ScorecardPageMatchStandings -> 3E:403F
   0x762F: sh => pageMatchPlay(sh),               // 0E:762F ScorecardPageMatchPlay
   0x5209: sh => pageStandings(sh),               // 0E:5209 ScorecardPageStandings
+  0x4436: sh => inBankGen(sh.w, 0x3E, twoPlayerScoreScreen(sh)),   // 0E:4436 ScorecardPageTwoPlayer -> 3E:6361
+  0x7199: sh => pageTwoPlayerStrokes(sh),        // 0E:7199 ScorecardPageTwoPlayerStrokes
 };
 function* inBankGen(w, bank, g) {
   const old = w.high[0x195];
@@ -389,6 +391,88 @@ export function scorecardMatchPlayTask(w) {
   }
 }
 
+// ---- the two-player Stroke card (0E:7199 ScorecardPageTwoPlayerStrokes, page 1 with two players): the pars, both
+// players' strokes per hole and their totals ----
+function* pageTwoPlayerStrokes(sh) {
+  const w = sh.w;
+  yield* resetView(sh);
+  twoPlayerSetup(w);
+  registerFrameTask(w, 0x01, B, 0x725F);         // ScorecardTwoPlayerTask
+  for (;;) {
+    if (w.high[0x194] & 0x0B) { sh.sound(0x5C); return 0; }   // A / B / Start
+    if (w.high[0x194] & 0x20) { sh.sound(0x5C); return 1; }   // Left: the other page
+    yield* sh.advance();
+  }
+}
+function twoPlayerSetup(w) {                     // 0E:71C0 ScorecardTwoPlayerSetup
+  const w0 = w.wram[0];
+  if (w.vram) D.inBank(w, B, () => {
+    D.disableLCDSafely(w);
+    D.setWramBank(w, 1);
+    D.lzTo(w, B, 0x5480, 0xD200);
+    w.lcd.vbk = 0;
+    D.startVRAMDMAFromHL(w, 0xD200, 0x9200, 0x60);
+    D.startVRAMDMAFromHL(w, 0xD800, 0x8800, 0x80);
+    D.setWramBank(w, 1);
+    D.lzTo(w, B, 0x5E51, 0xD000);
+    w.lcd.vbk = 1;
+    D.startVRAMDMAFromHL(w, 0xD000, 0x9000, 0x80);
+    D.startVRAMDMAFromHL(w, 0xD800, 0x8800, 0x40);
+    D.setWramBank(w, 2);
+    D.lzTo(w, B, 0x70C2, 0xD000);                // the card's attributes
+    D.setWramBank(w, 3);
+    D.lzTo(w, B, 0x6F00, 0xD000);                // and tiles
+    D.loadPalettesUnlessFaded(w, 0x68E1, 0x00, 0x08);
+    loadCommonGfx(w);
+    drawTwoPlayerScorecard(w);
+  });
+  if (w0[0x837] >= 0x0A) w0[0x323] = 0x0C;
+  w0[0x32C] = 0x1E;
+  mapDrawFullScreen(w);                          // 0B:4306 with a = 1
+  D.inBank(w, 0x04, () => mapScrollTask(w));     // 04:4072
+  if (w.vram) D.enableLCD(w);                    // 00:0371
+}
+function drawTwoPlayerScorecard(w) {             // 0E:7377 DrawTwoPlayerScorecard
+  const w0 = w.wram[0];
+  // 0E:72E4 DrawTwoPlayerScoresColumn: h holes from hole l, a row ($40) apart: player 1's strokes ($C8AC) and, four
+  // cells after that pair, player 2's ($C8EC)
+  const scores = (h, de, l) => {
+    for (; h; h--, l++, de += 0x40) {
+      putDigitPair(w, putDigitPair(w, de, w0[0x8AC + l - 1] & 0x0F) + 4, w0[0x8EC + l - 1] & 0x0F);
+    }
+  };
+  // 0E:731A DrawTwoPlayerTotals: the two players' stroke totals over h holes from l (3 digits; three cells on)
+  const totals = (h, de, l) => {
+    if (!h) return;
+    let b = 0, c = 0;
+    for (; h; h--, l++) { b = (b + (w0[0x8AC + l - 1] & 0x0F)) & 0xFF; c = (c + (w0[0x8EC + l - 1] & 0x0F)) & 0xFF; }
+    putNumber(w, putNumber(w, de, b, 3) + 3, c, 3);
+  };
+  drawParColumn(w, 0xD145, 1);
+  drawParColumn(w, 0xD445, 0x0A);
+  scores(w0[0x480], 0xD149, 1);
+  scores(w0[0x481], 0xD449, 0x0A);
+  drawParTotal(w, 0xD385, 1, 9);
+  drawParTotal(w, 0xD685, 0x0A, 9);
+  drawParTotal(w, 0xD705, 1, 0x12);
+  totals(w0[0x480], 0xD388, 1);
+  totals(w0[0x481], 0xD688, 0x0A);
+  totals(w0[0x4BE], 0xD708, 1);
+}
+// 0E:725F ScorecardTwoPlayerTask: as 0E:76F5, the faces' second column at $1100
+export function scorecardTwoPlayerTask(w) {
+  scorecardScrollTask(w);
+  if (!w.vram) return;
+  scorecardQueueSprite(w, 0x4036, 0x00, 0x01, 0x16, 0x01);
+  const pairs = w.wram[0][0x878] === 1
+    ? [[0x09C0, 0x40, 0x02], [0x0BC0, 0x44, 0x03], [0x0FC0, 0x48, 0x04], [0x11C0, 0x4C, 0x05]]
+    : [[0x0A80, 0x40, 0x02], [0x1080, 0x44, 0x03]];
+  for (const [hl, c, b] of pairs) {
+    D.positionSpriteWorld(w, hl, 0x0500, c, b);  // 00:27B4
+    D.positionSpriteWorld(w, hl, 0x1100, c, b);
+  }
+}
+
 // ---- the tournament's standings (0E:5209 ScorecardPageStandings, page 0 in mode 1): rank, name (drawn as glyphs
 // into the row's own tiles), score to par and holes played for the 28 golfers, the player's row marked, an arrow
 // when the player's rank moved ----
@@ -534,4 +618,33 @@ export function setCourseHoleBit(w, h, l) {
   if (!h || h >= 6 || l >= 0x18) return;
   const p = 0xC996 + 25 * (h - 1) + (l >> 3);
   D.wr(w, p, D.rd(w, p) | rb(0x02, 0x5CEA + (l & 7)));
+}
+
+// ---- bank 0E's unreferenced card writers (fuzz-checked: web/tests/golf_fuzz_routines.mjs); each leaves the WRAM
+// bank its last write used mapped (ScorecardPutTile 0E:447C ends on WRAM2, ScorecardPutString 0E:4492 on WRAM3) ----
+const strAt = (w, hl) => { const s = []; for (let a = hl; ; a = (a + 1) & 0xFFFF) { const t = a >= 0xC000 ? D.rd(w, a) : rb(B, a); if (!t) break; s.push(t); } return s; };
+// 0E:44E2 ScorecardPutStringRight: the string at hl right-aligned in 6 cells from de (de + 6 - its length)
+export function scorecardPutStringRight(w, hl, de) {
+  const s = strAt(w, hl);
+  putString(w, (de + 6 - s.length) & 0xFFFF, s);
+  D.setWramBank(w, 3);
+}
+// 0E:45CD ScorecardFillBlank: b spaces ($20, attribute 0) from hl (b = 0: 256)
+export function scorecardFillBlank(w, hl, b) {
+  let n = b || 0x100;
+  for (; n; n--, hl = (hl + 1) & 0xFFFF) putTile(w, hl, 0x20);
+  D.setWramBank(w, 2);
+}
+// 0E:6EDB SumScoreToPar: l holes of the strokes at de (low nibbles) less their pars (13:7044, course $C836), 8-bit
+function sumScoreToPar(w, l, de) {
+  let b = 0;
+  for (let h = 1; l; l--, h++, de++) b = (((D.rd(w, de) & 0x0F) - parOf(w, h)) + b) & 0xFF;
+  return b;
+}
+// 0E:6E50 DrawP1ScoreToPar / 0E:7356 DrawTwoPlayerToPar: player 1's (and player 2's) score to par over wHolesDone
+// $C4BE at $D708 (and $D70E)
+export function drawScoreToParUnused(w, both) {
+  putScoreToPar(w, 0xD708, sumScoreToPar(w, D.rd(w, 0xC4BE), 0xC8AC));
+  if (both) putScoreToPar(w, 0xD70E, sumScoreToPar(w, D.rd(w, 0xC4BE), 0xC8EC));
+  D.setWramBank(w, 3);
 }

@@ -93,7 +93,7 @@ export function enableLCD(w) { if (on(w)) Dp.enableLCD(w); }
 export function golfAnimInit(w) {                // 11:6D69: the golfer's sprite tiles (11:6E1E LoadGolferSpriteTiles)
   if (!on(w)) return;
   Dp.setWramBank(w, 6);
-  Dp.inBank(w, 0x11, () => G.loadGolferSpriteTiles(w, w.wram[6][0x332], 0, 0xA000));
+  Dp.inBank(w, 0x11, () => G.loadGolferSpriteTiles(w, w.wram[6][0x332], 0, 0xA000));   // (11:6D65 GetGolferId: $D332)
 }
 export function behindViewTaskStop(w) { unregisterFrameTask(w, 0x15, 0x47AD); }      // 15:47B1 BehindViewTaskStop
 export function golferActorSetAnim(w, a) { if (on(w)) A.golferActorSetAnim(w, a); }   // 04:57A1

@@ -483,7 +483,16 @@ function sceneryBank(w) {                        // 15:462D DrawBehindViewScener
   if (fn === 0x4697) fn = r16(B15, 0x465F + 2 * ((w0[0x837] - 7) & 0x0F));   // 15:4697 course 7 by hole
   return rb(B15, fn + 2);                        // the farcall's bank byte (rst $18 ; db idx, bank)
 }
+// (the stubs it picks, each `rst $18 ; db $00, bank ; ret`: 15:467F SceneryMarion, 15:4683 SceneryPalm, 15:4687
+// SceneryDune, 15:468B SceneryLinks, 15:468F SceneryCourse5, 15:4693 SceneryPitchAndPutt)
 
+// The six copies (tools/compare_routines.py: the same instructions, the bank's own operands), as ported here:
+//   ComposeObjectPicture 4A:56C6 4B:570A 4C:572F 4D:5884 4E:5642 4F:5645; DrawObjectList23 4A:56FE 4B:5742 4C:5767
+//   4D:58BC 4E:567A 4F:567D; DrawObject23 4A:5728 4B:576C 4C:5791 4D:58E6 4E:56A4 4F:56A7; DrawObjectList1 4A:57D3
+//   4B:5817 4C:583C 4D:5991 4E:574F 4F:5752; DrawObject1 4A:580A 4B:584E 4C:5873 4D:59C8 4E:5786 4F:5789;
+//   DrawObjectOverlay23 4A:610A 4B:614E 4C:6173 4D:62C8 4E:6086 4F:6089; DrawObjectOverlay 4A:6130 4B:6174 4C:6199
+//   4D:62EE 4E:60AC 4F:60AF; BlitRowOpaque03 4A:61DD 4B:6221 4C:6246 4D:639B 4E:6159 4F:615C; BlitRowMasked 4A:61EA
+//   4B:622E 4C:6253 4D:63A8 4E:6166 4F:6169
 function composeObjectPicture(w, bank) {         // 4x:export 0 ComposeObjectPicture
   const E = r16(bank, 0x4000);
   const op = a => r16(bank, a);

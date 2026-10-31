@@ -74,7 +74,7 @@ function addPoints(w, de) {                      // 02:5411: $C83C += de x cours
   wr16(w0, 0x83C, (rd16(w0, 0x83C) + (g.mulHLByA(de, f) >> 1)) & 0xFFFF);
 }
 
-// 3B:7260 OutcomeRules: a = the shot's outcome: penalties, the water drop, bonus and points, the "on the green" flag,
+// 3B:7260 OutcomeRules (3B:72C3 after its table): a = the shot's outcome: penalties, the water drop, bonus and points, the "on the green" flag,
 // with the captions, the caption pictures (4F:619C) and the player's picture (3B:7717); returns 0, or $FF (out of
 // bounds: the old spot is kept).
 export function* outcomeRules(sh, a) {
@@ -90,7 +90,7 @@ export function* outcomeRules(sh, a) {
     yield* P.waitPictureTimeout(sh);
     return 0;
   }
-  if (m === 6) {                                 // 3B:75CE OutcomeMode6
+  if (m === 6) {                                 // 3B:75CE OutcomeMode6 (3B:7602 after its table)
     if (a === 0x80) {
       if (w0[pf(w, 0x20)] === 1) return yield* holeInOne(sh);
       sh.sound(0x1D);
@@ -211,17 +211,17 @@ function* byTerrain(sh, addr) {
       return 0;
     case 0x7447: return yield* green(sh, false);
     case 0x7639: return yield* green(sh, true);  // OutcomeMode6Green
-    case 0x7529:                                 // OutcomeBunker
+    case 0x7529:                                 // 3B:7529 OutcomeBunker
       yield* sh.advance(0x1E);
       yield* anim((r6[0x446] + 2) & 0xFF, 0x0D);
       return 0;
-    case 0x7541: yield* anim((r6[0x446] + 5) & 0xFF, 0x0E); return 0;   // OutcomeFairway
+    case 0x7541: yield* anim((r6[0x446] + 5) & 0xFF, 0x0E); return 0;   // 3B:7541 OutcomeFairway
     case 0x7555: r6[0x485] &= 0xF7; yield* anim(5, 0x0F); return 0;     // OutcomeTerrainA
-    case 0x756B: yield* anim((r6[0x446] + 8) & 0xFF, 0x10); return 0;   // OutcomeRough
-    case 0x757F: yield* anim(6, 0x12); return 0;                        // OutcomeSemiRough
+    case 0x756B: yield* anim((r6[0x446] + 8) & 0xFF, 0x10); return 0;   // 3B:756B OutcomeRough
+    case 0x757F: yield* anim(6, 0x12); return 0;                        // 3B:757F OutcomeSemiRough
     case 0x7590: yield* anim(0x0A, 0x11); return 0;                     // OutcomeTerrain5
-    case 0x75A1: yield* anim(0x0A, 0x2B); return 0;                     // OutcomeTerrainC
-    case 0x75B2:                                                        // OutcomeTerrainD
+    case 0x75A1: yield* anim(0x0A, 0x2B); return 0;                     // 3B:75A1 OutcomeTerrainC
+    case 0x75B2:                                                        // 3B:75B2 OutcomeTerrainD
       yield* sh.advance(0x1E);
       yield* anim((r6[0x446] + 0x0B) & 0xFF, 0x25);
       return 0;

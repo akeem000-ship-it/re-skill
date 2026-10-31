@@ -24,6 +24,7 @@ function notPorted(what) { throw new Error(`${what} is not ported`); }
 
 const LESSONS = {
   // 30:4119 Map0DTalk03RunningApproachLesson (coach 1, actor 3): the running approach
+  // (its copies of the engine: the retry 30:44D0, the after-demo question 30:44DA, the question 30:4506)
   running: { bank: B, map: 0x0D, coach: 0x03, flag: 101, seen: 160, ask: 0x0C9F, retry: 0x0D11, after: 0x0CA5,
     no: 0x0CAB, talkScript: 0x7D99, walkBack: 0x7DFF, walkFacing: 0xC0, afterFade: 0x04,
     demo: { entrance: 2, mode: 0x0C, strokes: 0x432E, golfer: 0x4F, hole: 0x08, tee: [0x1D60, 0x1F80], wind: 0xC000,
@@ -31,6 +32,7 @@ const LESSONS = {
     try: { entrance: 4, mode: 0x0C, hole: 0x08, tee: [0x1D60, 0x1F80], shot: [0x06, 0x8000], wind: 0xC000,
       hooks: 0x43AF, offTee: true } },
   // 30:41A2 Map0DTalk04ChipApproachLesson (coach 2, actor 4): the chip shot
+  // (the retry 30:471C, the after-demo question 30:4726, the question 30:4752; boot_kid_story_lesson_chip)
   chip: { bank: B, map: 0x0D, coach: 0x04, flag: 102, seen: 161, ask: 0x0CAD, retry: 0x0D12, after: 0x0CB3,
     no: 0x0CB9, talkScript: 0x7D99, walkBack: 0x7E08, walkFacing: 0x80, afterFade: 0x04,
     demo: { entrance: 3, mode: 0x0C, strokes: 0x459A, golfer: 0x4E, hole: 0x08, tee: [0x1E60, 0x1D60], wind: 0xC000,
@@ -70,7 +72,7 @@ function* map0DEnter(sh) {
   else if (e === 5) { yield* chipResult(sh); yield* Ls.lessonFirstSuccess(sh, LESSONS.chip, 0x0014, 7, saveGame); }
   else if (e === 0xFA && testFlag(w, 100)) clearFlag(w, 100);
 }
-// 30:480D ApproachRangeStartPractice: the hole (30:4855: 8 / $0B / $0E for maps $0D / $10 / $13, else $11), game mode
+// 30:480D ApproachRangeStartPractice: the hole (30:4855 / 30:486C: 8 / $0B / $0E for maps $0D / $10 / $13, else $11), game mode
 // $0C, the hooks 30:48BC
 function* approachRangeStartPractice(sh) {
   const m = rd(sh.w, 0xC450);
@@ -80,6 +82,7 @@ const within60 = sh => Ls.ballWithinPinDist(sh.w, 0x60);   // 30:7E2E with $60
 // ---- the Palm approach range: map $10 ----
 const LESSONS_10 = {
   // 30:4A26 Map10Talk03BunkerShotLesson (coach 1, actor 3): the bunker shot
+  // (the retry 30:4D6D, the after-demo question 30:4D77, the question 30:4DA3)
   bunker: { bank: B, map: 0x10, coach: 0x03, flag: 101, seen: 164, ask: 0x0CBA, retry: 0x0D11, after: 0x0CC1,
     no: 0x0CC7, talkScript: 0x7D99, walkBack: 0x7DFF, walkFacing: 0xC0, afterFade: 0x04, music: 0x0A,
     resultWalk: [0x7DFF, 0x00],
@@ -88,6 +91,7 @@ const LESSONS_10 = {
     try: { entrance: 4, mode: 0x0C, hole: 0x0B, tee: [0x2000, 0x2080], shot: [0x0C, 0xC000], wind: 0xC000,
       hooks: 0x4C83, offTee: true } },
   // 30:4AAF Map10Talk04SlopedGreenApproachLesson (coach 2, actor 4): the running approach on a sloped green
+  // (the retry 30:4F9B, the after-demo question 30:4FA5, the question 30:4FD1)
   sloped: { bank: B, map: 0x10, coach: 0x04, flag: 102, seen: 165, ask: 0x0CC8, retry: 0x0D12, after: 0x0CCF,
     no: 0x0CD5, talkScript: 0x7D99, walkBack: 0x7E08, walkFacing: 0x80, afterFade: 0x04, music: 0x0A,
     resultWalk: [0x7DFF, 0x40], resultNoEnd: true,
@@ -128,6 +132,7 @@ function* map10Enter(sh) {
 // ---- the Dune approach range: map $13 ----
 const LESSONS_13 = {
   // 30:51A7 Map13Talk03BackspinLesson (coach 1, actor 3): the backspin approach over a bunker
+  // (the retry 30:54E7, the after-demo question 30:54F1, the question 30:551D)
   backspin: { bank: B, map: 0x13, coach: 0x03, flag: 101, seen: 168, ask: 0x0CD6, retry: 0x0D11, after: 0x0CDD,
     no: 0x0CE4, talkScript: 0x7D99, walkBack: 0x7DFF, walkFacing: 0x00, afterFade: 0x04, music: 0x09,
     resultWalk: [0x7E11, 0x00],
@@ -136,6 +141,7 @@ const LESSONS_13 = {
     try: { entrance: 4, mode: 0x0C, hole: 0x0E, tee: [0x2360, 0x1E80], shot: [0x0C, 0xA5C0], wind: 0xC000,
       hooks: 0x53D5, offTee: true } },
   // 30:5230 Map13Talk04UphillGreenLesson (coach 2, actor 4): the approach to a green up a steep climb
+  // (the retry 30:5733, the after-demo question 30:573D, the question 30:5769)
   uphill: { bank: B, map: 0x13, coach: 0x04, flag: 102, seen: 169, ask: 0x0CE5, retry: 0x0D12, after: 0x0CEC,
     no: 0x0CF2, talkScript: 0x7D99, walkBack: 0x7E08, walkFacing: 0x00, afterFade: 0x04, music: 0x09,
     resultWalk: [0x7DFF, 0x00], resultNoEnd: true,
@@ -180,6 +186,7 @@ function* map13Enter(sh) {
 const LESSONS_16 = {
   // 30:5A94 Map16Talk03MoundApproachLesson (coach 1, actor 3): over a mound to a downhill pin (quirk: the try has no
   // forced shot)
+  // (the retry 30:5D4A, the after-demo question 30:5D54)
   mound: { bank: B, map: 0x16, coach: 0x03, flag: 101, seen: 172, ask: 0x0CF4, retry: 0x0D11, after: 0x0CFB,
     no: 0x0D02, talkScript: 0x7D99, walkBack: 0x7DFF, walkFacing: 0x80, afterFade: 0x04, music: 0x0B,
     resultWalk: [0x7E11, 0x80],
@@ -188,6 +195,7 @@ const LESSONS_16 = {
     try: { entrance: 4, mode: 0x0C, hole: 0x11, tee: [0x1EC0, 0x2060], shot: null, wind: 0xC000, hooks: 0x5C38,
       offTee: true } },
   // 30:5B2B Map16Talk04SlopeApproachLesson (coach 2, actor 4): across a steep slope (no forced shot either)
+  // (the retry 30:5F70, the after-demo question 30:5F7A, the question 30:5FA6)
   slope: { bank: B, map: 0x16, coach: 0x04, flag: 102, seen: 173, ask: 0x0D03, retry: 0x0D12, after: 0x0D0A,
     no: 0x0D10, talkScript: 0x7D99, walkBack: 0x7E08, walkFacing: 0x40, afterFade: 0x04, music: 0x0B,
     resultWalk: [0x7DFF, 0x40], resultNoEnd: true,
@@ -392,7 +400,7 @@ function greenIndex(w) {
   const m = rd(w, 0xC450);
   return m === 0x0E ? 0 : m === 0x11 ? 1 : m === 0x14 ? 2 : m === 0x17 ? 3 : m;
 }
-// 30:6E74 / 6E89 / 6E9E / 6EB3: the cleared (#194 + green) and tried (#190 + green) flags
+// 30:6E74 / 30:6E89 / 30:6E9E / 30:6EB3 (PuttingTestClearedFlag, PuttingSetTriedFlag, PuttingTestTriedFlag): the cleared (#194 + green) and tried (#190 + green) flags
 const clearedFlag = w => (194 + greenIndex(w)) & 0xFFFF, triedFlag = w => (190 + greenIndex(w)) & 0xFFFF;
 // 30:69B9 PuttingGreenEnter: a return ($FA) clears the name banner; Links ($17): the golfers 30:657F, the talk list
 // 30:68C7 (#139: 30:6919, #115: 30:68F0), the warps 30:662C; Dune ($14): 30:650A, 30:6886, 30:6613; Palm ($11): 30:64AD,

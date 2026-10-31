@@ -576,3 +576,38 @@ export function menuCursorTask(w) {
   }
 }
 
+
+// 05:444F GetWindowTile: slot a, (d, e) inside the window: [c = the tile, b = the attribute] of its record (e = 0
+// counts 256 rows, as SetWindowTile's loop)
+export function getWindowTile(w, a, d, e) {
+  const old = wbank(w);
+  setW(w, 5);
+  const rec = r16(w, slotAddr(a));
+  const width = rd(w, rec + 3);
+  let off = 0, k = e;
+  do { off = (off + width) & 0xFFFF; k = (k - 1) & 0xFF; } while (k);
+  off = ((off + d) << 1) & 0xFFFF;
+  const p = (rec + 5 + off) & 0xFFFF;
+  const r = [rd(w, p), rd(w, p + 1)];
+  setW(w, old);
+  return r;
+}
+// 05:4818 RebuildWindowRecord: slot a's record (05:60B0 GetWindowRecord) built again from its own x, y, w, h (05:4773)
+export function rebuildWindowRecord(w, a) {
+  const rec = r16(w, slotAddr(a));
+  buildTextWindowRecord(w, rec, rd(w, rec + 1), rd(w, rec + 2), rd(w, rec + 3), rd(w, rec + 4));
+}
+// 05:65FF DrawStringToWindow: slot a, the string (bytes; 0 ends) from (d, e) as tiles with attribute $80; $DE / $DF
+// change the tile above-left instead (to $0E / $0F when that tile is 3), the column not moving
+export function drawStringToWindow(w, a, s, d, e) {
+  for (const t of s) {
+    if (!t) break;
+    if (t === 0xDE || t === 0xDF) {
+      const [c] = getWindowTile(w, a, (d - 1) & 0xFF, (e - 1) & 0xFF);
+      setWindowTile(w, a, (d - 1) & 0xFF, (e - 1) & 0xFF, c === 3 ? (t - 0xD0) & 0xFF : t, 0x80);
+      continue;
+    }
+    setWindowTile(w, a, d, e, t, 0x80);
+    d = (d + 1) & 0xFF;
+  }
+}

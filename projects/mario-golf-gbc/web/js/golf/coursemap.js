@@ -78,8 +78,8 @@ function gatherBlockTerrain(w, de, bc) {
   for (let l = 0; l < 16; l++) tileTerrain(w, (de + rb(B, 0x4683 + l)) & 0xFFFF, (bc + rb(B, 0x4693 + l)) & 0xFFFF);
 }
 // 17:45C8 CourseMapRenderBlockTile: block (d = row, e = column x 4) to one 2bpp tile at hl (WRAM1): its 64 cells
-// gathered at $C600, coloured through $C400 (17:44B0 CourseMapRemapColors), packed (17:45E5, bit 0 of each colour in
-// the low plane, bit 1 in the high one); returns hl past the tile
+// gathered at $C600, coloured through $C400 (17:44B0 CourseMapRemapColors), packed (17:45E5; per row 17:45FE CourseMapPackRow, per
+// cell 17:4620 CourseMapPackPixel: bit 0 of each colour in the low plane, bit 1 in the high one); returns hl past the tile
 function renderBlockTile(w, de, hl) {
   gatherBlockTerrain(w, de, 0xC600);
   setW(w, 1);

@@ -164,7 +164,7 @@ export function greenXY(s) {                     // 10:66F1 / 10:67FA: relative 
   return [x, y];
 }
 
-export function slope(s, hole) {                 // 10:66DB: [magnitude, direction byte, nonzero]
+export function slope(s, hole) {                 // 10:66DB (and 10:6740 after its table): [magnitude, direction byte, nonzero]
   if (!s[0x43] || s[0x43] === 4) {               // off the green: 10:674E
     const [nz, b] = hole.slopeCell(...ballXY(s));
     return nz ? [0x20, b, nz] : [0, 0, 0];

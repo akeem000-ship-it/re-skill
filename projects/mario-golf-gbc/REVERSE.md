@@ -44,7 +44,7 @@ Standard Game Boy Color map. Project-specific uses so far:
 
 ## Decompile Coverage (tools/trace_code.py, tools/coverage.py)
 
-Every routine the code tracer reaches has a name and a comment in labels.csv: **242,689 bytes of traced code,
+Every routine the code tracer reaches has a name and a comment in labels.csv: **242,666 bytes of traced code,
 100.0% in named routines** (about 3,200 routine entries; labels.csv has ~3,600 ROM labels). `coverage.py` counts a code
 byte as named when the nearest entry at or below it has a name; `coverage.py --list BB` lists unnamed entries.
 
@@ -62,6 +62,23 @@ It stops at the `$FF` fill and does not seed data labels (names ending in `Table
 data names). Code it cannot see would be reached only through pointers computed at run time in ways not listed
 above; the scans used to look for such code (pointer tables into untraced code, code-like untraced runs) found
 nothing left in the code banks. Data banks (graphics, holes, text, songs) are not code and are not counted.
+
+**The total since this pass: 242,666 bytes** (was 242,689). Two export-table words of code banks pointed at data and
+the tracer seeded them as routines: 0C:7380 (export $10; no caller and no reference; `tools/decompress.py 0c:7380`
+reads it as an LZ stream of 2,539 bytes to $E00, 224 tiles: an asset, whose first bytes `f5 00 ff` were decoded as
+`push af ; nop ; rst $38`) and 48:6C00 (export $0C; no caller, no reference; not an LZ stream; runs of tile numbers
+`0d 0d 0d 0e 0e 0e`; decoded it would store sp to $C26C and a to ROM $0B4D). Both are now `...Data` labels, which the
+tracer does not seed: 23 bytes less. The bank-35 junk script roots (the ending maps' object lists that point at a
+`ret`; see "Bank 35") are no longer traced since tools/map_scripts.py skips those lists; what was left of them were 14
+`...MidData` labels inside real routines (Map07PlaceTrophies, Map32Trigger01LoungeTour, Map38EndingMatchScene,
+Map39DrawMarkerSpriteFrames, Map24ApplySprite, Map07GetTrophyPlace): they took those routines' bytes in the byte ->
+routine mapping (coverage.py, decomp_progress.py) without being entries. They are removed from labels.csv (the code
+bytes are the same; they now count under their routines). `tools/data_labels_in_code.py` lists data-named labels with
+traced code after them; the remaining ones are routines with data-like names (LoadBGPaletteData, BuildClubTable,
+MissTable ...) whose code is right, and the code after an inline table now has its own entry label (`...Cont`:
+00:2BED 01:516E 08:4CAE 10:6740 30:486C 31:527A 31:7308 31:747C 32:4956 3B:72C3 3B:7602; each the routine before the
+table jumping over it), so it is no longer counted under the table's name. `tools/code_at.py BB:AAAA` says whether an
+address is traced code and under which entry.
 
 ### Rewrite progress (tools/decomp_progress.py)
 
@@ -119,9 +136,18 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + map $08's tutors (the dictionary by category), the film select's bank-0D copies, the fuzzed copies and helpers (the map tile animation of banks 29-74, the launch speed classes of banks 38-3A, bank 40's math copies, home-bank helpers; web/tests/golf_fuzz_routines.mjs) | 211,301 | 87.07% |
 | + more fuzz-checked helpers and dead routines (banks 02 0A 0B 0C 10 3E 48) | 212,510 | 87.56% |
 | + the clubhouse door animations the screen cases open (32:6087 / 6150 / 6219) | 212,777 | 87.67% |
+| + (from here of 242,666 traced bytes: two junk exports out) the later-story talks of the clubhouse, the Lounge and the Director's Room, the lessons' other copies, the practice menu items, the link-play pause menu, the two-player Stroke screens (3E:6361, 0E:7199, 0B:6143), code the screen cases run but no comment cited (tools/cover_report.py: the RST vectors and far-call stubs, the per-mode hook stubs, the routines' parts after inline tables), the copies of the scenery (4A-4F) and tile animation (2A 2B 72, 51-54), fuzzed helpers of banks 3E 0E 12 04 42 3F 3C, the debug menu, warp menu, flag editor, palette editor and points editor, the debug room | 228,977 | 94.36% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
+
+**What the tests run of the ROM** (web/tests/golf/cover.mjs, tools/cover_report.py): with `COVER=out/scratch/x.bin`
+every test that runs the emulator core (the screen cases, the lockstep rounds, the routine fuzzers) records the ROM
+bytes the core executed; `cover_report.py FILES --todo` lists the traced routines run there that no rewrite cites
+(this pass cited the ones whose code the rewrite already had: the lesson engine's copies, the menu handlers, the
+per-mode stubs, the far-call vectors, ...) and `--runs BB:AAAA-AAAA` shows which instructions ran. Run over all
+the screen cases it found 138 such routines; after this pass the ones left are the link-play stubs (00:3038,
+00:30EB, 02:4812, 02:48B8: their "no link" early returns run) and 12:6F16 (its debug-mode test).
 
 The JS engine (`rom.js` ROM and LZ access, `memory.js` the RAM layout, `math.js`, `ball.js`, `cup.js`,
 `launch.js`, `swing.js`, `shot.js`, `hole.js`, `joypad.js`, `round.js`) is checked by two Node tests:
@@ -204,6 +230,7 @@ frames. Results (all 18 holes, no slips, all sound commands the same):
 | r18 (the bot's Stroke round) | 45,693 | 45,518 (the other 175 in lag frames) | 47,135 frames, 0 differ | 712 / 712 |
 | cpu18 (the computer golfer) | 34,459 | 34,307 (the other 152 in lag frames) | 35,816 frames, 0 differ | 620 / 620 |
 | match18 (match play, computer vs computer, through the standings, scorecards and the result screen) | 63,558 | 63,239 (the other 319 in lag frames) | 66,286 frames, 0 differ | 1,049 / 1,049 |
+| stroke2p (two-player Stroke play, computer vs computer: the two-player scorecard pages between holes) | 74,873 | 74,502 (the other 371 in lag frames) | 78,005 frames, 0 differ | 1,234 / 1,234 |
 
 `web/tests/golf_screens_vs_core.mjs` checks single screens: the core is saved at a routine's entry
 (`web/tests/golf/mkstate.mjs` in a lockstep round, `mkstate_core.mjs` by the core alone, `boottrace.mjs` from
@@ -416,6 +443,55 @@ by the mode select's screen cases; 0D:499A (a copy of 0F:49AA) is never called a
 Not checked and left: VectorLengthTail 40:5941 (pops registers it never pushed: cannot be called), the course view's
 HoleTileAnimStep copies ~51:7261-~54:7E31 (their fuzz needs a real hole's asset state), map $08's unreferenced
 Map08TutorAskKeepChecking 33:4E49.
+Added in this pass (golf_fuzz_routines.mjs unless said): bank 3E's unreferenced cell writers PutTileStringAttr0
+3E:60C3 (its loop 3E:617C), PutTileStringNoAttr 3E:618D, DrawTileStringAttr0At 3E:626D, DrawTileStringNoAttrAt 3E:6280,
+DrawScoreLabelB / C 3E:65E3 / 660D, and the two-player screen's PutTileAttr0 3E:61E3, ScoreTensDigit / ScoreOnesDigit
+3E:62A6 / 62D3, DrawScoreVsPar 3E:6525 over all score bytes (standings.js); bank 0E's ScorecardPutStringRight 0E:44E2,
+ScorecardFillBlank 0E:45CD (b = 0: 256), DrawP1ScoreToPar 0E:6E50 and DrawTwoPlayerToPar 0E:7356 with SumScoreToPar
+0E:6EDB (scorecard.js; each leaves the WRAM bank of its last write: 2 or 3); bank 12's map readers GreenSlopeDirAt
+12:4098, TerrainAtPos 12:40FD, CellInfoAt 12:405E (the debug readout's), TerrainAtTileUnused 12:416B (the row's
+half comes from the carry of the column's `rrca`s), SlopeAtBallUnused 12:42A2 (off the green it reads the terrain
+nibble in WRAM1, not WRAM6), QueueD000To8E00 12:4956, CountdownResume / Stop 12:4F67 / 4F7F, ReturnStub 12:4DE8 (for
+all, the map coordinates within the 64 x 64 map: past it the ROM reads ROM and echo RAM); bank 04's ActorsClearKeepTasks
+04:40E9, ActorIsWalking 04:4588, ActorSetAnimSpeed / ActorSetMoveAnimSpeed 04:4EE0 / 4EF5, CountCharacterHeaders
+04:4F0A; bank 42's `ret` stubs 42:4008 / 42:400A; DictScrollStepUnused 3F:41DC (a fragment; MapScrollTask leaves hl).
+In golf_ai_routines.mjs (hole set-up states): CpuBoostPower10Pct 3C:505B, CpuLieCarryCompensation 3C:5082 (a quirk: it
+pops its registers crossed, so the power is computed over de = the club and the flags register CpuPickClubForDistance
+returned, and a = the high byte of the wanted carry: ai.js pickClubForDistanceF models those flags),
+CpuFindSteepSlopeOnLine 3C:4B1A and CpuSteepSlopeMidTile 3C:4DE2. The map tile animation's Task / Step copies of
+banks 2A, 2B and 72 (no animations) are cited as the same instructions as bank 28's (compare_routines), as are the
+course view's HoleTileAnimStep copies 53:7F19 / 54:7E31 (51:7261 and 52:7291 run in the screen cases) and the
+scenery copies of banks 4A-4E (behind.js; bank 4B / 4C / 4D / 4E / 4F's run in the rounds).
+Left: ActorOpWalkNear 04:4612 (actor script op $05, which no script uses: it reads its second and third arguments
+from the bank the code runs in and subtracts the caller's leftover de: the result depends on registers the op
+dispatcher does not set) and ActorMoveToNear 0A:4466 / 0A:44A2 (export $24, no caller: it subtracts a stack address),
+ScorecardPutStringAccentA / B 0E:44AE / 44C8 (fragments after ScorecardPutString's `ret` that pop what they did not
+push).
+
+#### Debug code (debug.js; the screen cases `boot_kid_debug_*`)
+
+hDebugMode ($FF9E) is cleared at power-on (Start 00:2DE7) and set only by DebugBootMenu 01:40A6, which GameMain jumps
+over: the retail game never has it. The screen cases poke it to 1 on both sides when the mode select first shows
+(`debugPoke` in golf_screens_vs_core.mjs), as the story flags are poked. With it set:
+- AdvanceFrame 00:2E3B runs a CPU meter first (render/display.js debugFrameMeter): rLY as the frame's code ends, the
+  highest of the last 15 frames ($FFA0, its timer $FFA1), both as four hex characters at $C0FA (FormatHexWord
+  00:20E0). rLY is a hardware input that measures the CPU time the game's code took, so the native side gets the
+  value the game read (the harness hands the core's `ldh a, [$FF44]` at 00:2E53 to the native code, as it does rDIV;
+  an interrupt taken at that instruction does not count as the read). Select + Start held starts a frame-step mode
+  ($FF9A; not ported: the cases do not press them).
+- VBlank's UpdateDebugOverlay 00:203E: the meter's characters to the $9C00 map at $9D08, hWindowScroll ($FF98: the
+  $9C00 map shown) 1 in mode 3, 0 in mode 1, else on even frames; with $FF8E the debug text $CC00 by HDMA to $9D00.
+- On the map, A with nothing ahead opens DebugMenu 05:6B2E (MapEventLoop 0A:4B50): Scene (DebugWarpMenu 05:6C25: the
+  map record and the entrance, DebugDrawWarpWindow 05:6B8D, DebugAdjustValue 05:6CCC; A sets wMapId / wMapEntrance and
+  the warp $FA, which happens once the debug menu is left with B), Map (0B:4579, not ported), Palette (44:42FB, not
+  ported), Flag (DebugFlagEditor 05:6A57: three windows, the flags of a page of 64 as tiles $65 clear / $40 set,
+  05:687E-05:6A36; quirk: with flag #31 set each opening clears the cursor and page, since it tests #31 and sets it
+  again). The window helpers it needs are ported too: DrawStringToWindow 05:65FF (the dakuten codes $DE / $DF mark
+  the tile above-left), GetWindowTile 05:444F, RebuildWindowRecord 05:4818.
+- The debug room (map $01, by the warp menu; maps/bank35.js): its talks warp (the list 35:76C4: map $20 entrances 1
+  / 5, the Locker Room, the clubhouse, the Lounge, the Trophy Room, the office, map $21, the mode select's entrances,
+  the Field, the room again, map $24) or run a screen first: TwoPlayerScoreScreen 3E:6361, the Stars, Stats and
+  Ranking screens of bank 0C, the sepia fade test 35:7798; the save viewer 02:5D2F is not ported.
 
 #### Status and the records screens (records.js, records0c.js; bank 07's menus in menu09.js)
 
@@ -547,6 +623,16 @@ $81 from the aiming menu (10:5DAA: 02:4924 LinkSendShotResult does nothing witho
 strokes become 3 x par and StrokeLimit picks the ball up, redrawing the player's HUD panel first (10:4786
 HudRedrawCurPlayer, which the native round had left out: a frame of one tile wrong). A round saved by Save & Quit
 (`$C96D` = 1) loads through the card and its prompts to GolfRound `$FF` (Saved games, above).
+The link-play pause menu (GolfPauseMenu 41:6E49, which 08:46C2 / 08:46D3 open when wLinkRole $C33F is set: Camera
+Mode / Course Map / Scorecard / Settings / Give Up / Quit, text $147F, handlers 41:7317, at (5, 2); Scorecard
+41:732F goes through MenuShowScorecardByMode 41:78A5, in match play by 3E:675C; Give Up 41:7349 and Quit 41:739A
+reopen this menu, not the save menus) runs without a partner: none of its items sends anything. The cases
+`pause_link_*` poke $C33F = 1 on both sides once the first frame of the r18 pause state is done (08:4682 reads it
+after) and take every item (Give Up with the stroke count poked too). The Course Map from a pause state is `open`
+in the cases (`pause_r18_coursemap`, `pause_link_coursemap`), as `boot_coursemap` is: CourseMapInit 17:436F counts the
+frames its load takes in wLoadFrameCount $C3B6 (the task 17:43A7) and prints the count to the debug text $CD64; the
+game lags 13 frames there and the native code none, so those bytes and the print's HRAM scratch $FFA9 / $FFAA differ
+at the end (a CPU-time measure, as the busy waits are).
 
 #### The EXP screen (exp.js, bank 48; charsprite.js, bank 42)
 
@@ -1138,6 +1224,23 @@ badge DrawCharBadge 41:65D1 (GetCharFlags12 printed to the debug text and the ba
 the page arrows 0A:6C7A, Left / Right changing the page (passing empty ones, 0A:6E47), Up / Down scrolling by 2 up to
 (2 entries + 4 - $12) x 8 (0A:6D15); B leaves.
 
+**The clubhouse, the Lounge and the Director's Room after the club rounds** (`maps/bank32.js`): the enter scripts
+patch in the talk lists by progress (map $03: 32:5853 5928 59C7 5A4C 5B09 for #112 #113 #114 #115 #139; map $04:
+32:64E7 6530 6579 65C2; map $05: 32:7048 708A 70CC), and their code talks are ported: the counter's member and visitor
+(32:576F / 5796 after Marion, 32:58A4 "You placed / won at Palm?" with its question, 5901, 59A0 / 5979, 5A18 / 5A32,
+5A9D / 5AB7; with a partner each gives 32:5B5A's line; quirk: the member's talk after the Dune and Links rounds shows
+its text with speaker 3, the visitor), the dogleg quiz (32:57BD), the fan (32:5817 5826 5835 5844 through
+Map03FanTextByClubResult 32:57F5 and Map03TestClubWonFlag 32:62E2: + 1 with the club won, + 2 with a partner), the
+Grand Champion quiz (32:5AD1); the Lounge member's "Got a second?" (32:63F3 for 32:6425 642F 6439 6443), the two
+members after the Grand Champion (32:660B / 6639: #189, or all four clubs won) and the champions' Grand Champion
+lines (32:6667 6686 66A5, the Links champion's once-only story 32:66C4 with #148); the Caddie Master's talk in the
+Director's Room (32:6FB8 6FC7 6FD6 with Map05SkipTextIfClubChamp 32:6F98). Quirk: ChampFlagPairCheck 32:6E9F returns a
+= 1 when the champion's #78 pair is set and its #80 pair clear, but its callers test the zero flag (`jp z`), which is
+clear only when both pairs are set: so the Grand Champion line needs both, and every other case goes to the champion's
+ordinary talk (32:63A8 ...). The screen cases `boot_kid_story_counter_*` (ten: the progress flags poked at the mode
+select, the talks by actor, Yes and No), `boot_kid_story_lounge_*` (five) and `boot_kid_story_director_*` (four) run
+them; `talkSteps` in the test walks to a point (or after a wandering actor) and presses A while a window is open.
+
 #### Match play and the contests (web/js/golf/match.js)
 
 Bank 08's match-play rules: each hole to the player who holes out in fewer strokes (MatchHoleOutcome 08:4199, a
@@ -1152,7 +1255,14 @@ ported too: the match standings between holes (MatchStandingsScreen 3E:403F, sta
 marks, "n Up" / dormie, the banners, the portraits, MatchStandingsTask), the scorecard's match-play page (0E:762F,
 scorecard.js) and the result screen (RoundResultScreen 0B:59DE, result.js: map graphics from bank 0B, the map's
 actors (bank 04's script engine), confetti, the palette cycle); the match18 render test above runs all of it.
-Not ported: the two-player stroke result (0B:6143) and the tournament placing (0B:5B00).
+The two-player Stroke round (tools/round_suite.py stroke2p: the computer as Mario and as Luigi, wGameMode 3) has
+its own scorecard pages, ported now: TwoPlayerScoreScreen 3E:6361 (page 0 through 0E:4436: the names and kinds
+3E:659D, each score against par 3E:6525 with its digits 3E:62A6 / 3E:62D3 (|score| less 100 once: a quirk of 100 and
+more), the winner's and loser's faces 3E:665B, TwoPlayerScoreTask 3E:645C) and the hole-by-hole card 0E:7199 (both
+players' strokes per hole 0E:72E4, the totals 0E:731A, ScorecardTwoPlayerTask 0E:725F), and the result's figures
+0B:6143 (the plates, both scores against par and the two counts of each record); `scorecard_stroke2p`,
+`result_stroke2p` and `golf_render_vs_core.mjs --name stroke2p --holes 18` (74,873 frames, 0 other differences)
+check them. The tournament placing (0B:5B00) is ported too (see Tournament).
 
 #### The hole set-up (GolfRound 10:4451, per hole 10:44B4; tools/sm83_calltree.py lists what it calls)
 

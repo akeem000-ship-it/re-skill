@@ -20,6 +20,7 @@ import { saveGame } from "./save.js";
 import { mapSaveReturnPoint } from "./start.js";
 import { playerField } from "./memory.js";
 import { hudDrawWind } from "./view.js";
+import { debugPointsEditor, debugPaletteEditor } from "./debug.js";
 
 const rd = D.rd, wr = D.wr;
 const wbank = w => w.high[0x196];
@@ -226,6 +227,38 @@ function* quit(sh, match) {
   yield* reopen(sh, match, 5);
 }
 
+// ---- the link-play pause menu (41:6E49 GolfPauseMenu: wLinkRole $C33F set, 08:46C2 / 08:46D3) ----
+// 41:7A53 SetupGolfPauseMenu: the menu state cleared, $C3FC bit 7; Camera Mode / Course Map / Scorecard / Settings /
+// Give Up / Quit (text $147F, handlers 41:7317, at (5, 2))
+function setupGolfPauseMenu(w) { clearMenuState(w); wr(w, 0xC3FC, rd(w, 0xC3FC) | 0x80); }
+// 41:6E49 GolfPauseMenu: the font tiles (01:422C), the text speed's bit 7 meanwhile, the menu; returns wMenuResult
+const golfPauseMenuLink = sh => bank41Menu(sh, setupGolfPauseMenu, 0x147F, 0x7317, 0x0502, 0);
+// 41:7349 GolfPauseGiveUp: on the first stroke 41:7935 MenuCantGiveUp; else "Give up?" ($1490, No first): Yes $81;
+// No / B: the menu again on row 4 (41:7381)
+function* linkGiveUp(sh) {
+  const w = sh.w;
+  if (!rd(w, 0xC000 + playerField(w, 0x20))) {
+    sh.sound(0x5D);
+    M.scriptSetText(w, 0x1491);
+    yield* inBankGen(w, 0x0A, M.scriptShowText(sh, 0x80));
+    clearMenuState(w);
+    return;
+  }
+  if (!(yield* askYesNo(sh, 0x1490, 1))) { wr(w, 0xC3FD, 0x81); clearMenuState(w); return; }
+  setupGolfPauseMenu(w);
+  wr(w, 0xC3F9, 4);
+  yield* runMenu(sh, 0x147F, 0x7317, 0x0502);
+}
+// 41:739A GolfPauseQuit: "OK to quit this round?" ($148C; $148F in match play, No first): Yes $80; No / B: the menu
+// again on row 5 (41:7A53)
+function* linkQuit(sh) {
+  const w = sh.w;
+  if (!(yield* askYesNo(sh, rd(w, 0xC834) === 2 ? 0x148F : 0x148C, 1))) { wr(w, 0xC3FD, 0x80); clearMenuState(w); return; }
+  setupGolfPauseMenu(w);
+  wr(w, 0xC3F9, 5);
+  yield* runMenu(sh, 0x147F, 0x7317, 0x0502);
+}
+
 // 41:72A1 MenuWindDirectionAdjust / 41:72D8 MenuWindSpeedAdjust (Left / Right on the row: $C3FC low nibble 1 / 2):
 // the wind's angle wWindAngle $C816 -/+ $10, its speed wWindSpeed $C815 -/+ 1 within 0-$13 (sound $8B when it
 // changes), HudDrawWind 12:4A81; WRAM5 after
@@ -321,9 +354,9 @@ function* menuHandler(sh, h) {
     case 0x759B: yield* giveUp(sh, true); return;
     case 0x74AE: yield* quit(sh, false); return;
     case 0x75DE: yield* quit(sh, true); return;
-    // Training (41:7654): Camera Mode, Course Map as above (then 41:7078); Hole Out $80 with wRoundResult 0; Wind
-    // Direction / Wind Speed change the wind and stay in the menu; Settings, then the menu again on row 5; Back to
-    // Menu $80 with wRoundResult 1
+    // Training (41:7654): Camera Mode 41:7662, Course Map 41:7668 as above (the same bytes as 41:7323 / 41:7329; then
+    // 41:7078); Hole Out 41:766E $80 with wRoundResult 0; Wind Direction 41:767A / Wind Speed 41:768C change the wind
+    // and stay in the menu; Settings 41:769E, then the menu again on row 5; Back to Menu 41:76AC $80 with wRoundResult 1
     case 0x7662:
       yield* inBankGen(w, 0x12, freeLookCursor(sh));   // 41:7879
       wr(w, 0xC3FD, 0xFF);
@@ -351,8 +384,8 @@ function* menuHandler(sh, h) {
       wr(w, 0xC3F9, 5);
       yield* runMenu(sh, 0x1484, 0x7654, 0x0300);
       return;
-    // the practice menus (41:76FF, 41:7741): Quit Practice $82; Wind Direction / Wind Speed stay in the menu;
-    // Settings, then the menu again on row 3 / 1
+    // the practice menus (41:76FF, 41:7741): Quit Practice $82 (41:7707 PracticeWindQuit, ~41:7745); Wind Direction
+    // 41:770F / Wind Speed 41:7721 stay in the menu; Settings (41:7733, ~41:774D), then the menu again on row 3 / 1
     case 0x7707: case 0x7745: case 0x775F:       // (41:775F MiniGameQuit)
       wr(w, 0xC3FD, 0x82);
       clearMenuState(w);
@@ -375,8 +408,8 @@ function* menuHandler(sh, h) {
       wr(w, 0xC3F9, h === 0x7733 ? 3 : 1);
       yield* runMenu(sh, h === 0x7733 ? 0x1485 : 0x1486, h === 0x7733 ? 0x76FF : 0x7741, h === 0x7733 ? 0x0303 : 0x0305);
       return;
-    // after a training shot (41:76B9 Continue / Mulligan / Hole Out; 41:76D7 Continue / Mulligan / Start Over / Back
-    // to Main Menu): wMenuResult 0, 2, 5; 0, 2, 3, 4
+    // after a training shot (41:76B9 Continue / Mulligan / Hole Out: 41:76BF 41:76C7 41:76CF; 41:76D7 Continue /
+    // Mulligan / Start Over / Back to Main Menu: ~41:76DF 41:76E7 41:76EF ~41:76F7): wMenuResult 0, 2, 5; 0, 2, 3, 4
     case 0x76BF: case 0x76C7: case 0x76CF: case 0x76DF: case 0x76E7: case 0x76EF: case 0x76F7:
       wr(w, 0xC3FD, { 0x76BF: 0, 0x76C7: 2, 0x76CF: 5, 0x76DF: 0, 0x76E7: 2, 0x76EF: 3, 0x76F7: 4 }[h]);
       clearMenuState(w);
@@ -395,6 +428,33 @@ function* menuHandler(sh, h) {
       }
       yield* mapStartMenuHandler(sh, h);
       return;
+    // the link-play pause menu (41:7317): Camera Mode 41:7323, Course Map 41:7329 (as above); Scorecard 41:732F
+    // (41:78A5 MenuShowScorecardByMode: in match play through 3E:675C ShowStandingsFar, a jump to 0E:43D6 too);
+    // Settings 41:7335 (then the menu again on row 3, without SetupGolfPauseMenu); Give Up 41:7349; Quit 41:739A
+    case 0x7323:
+      yield* inBankGen(w, 0x12, freeLookCursor(sh));   // 41:7879
+      wr(w, 0xC3FD, 0xFF);
+      clearMenuState(w);
+      return;
+    case 0x7329:
+      yield* inBankGen(w, 0x17, courseMapScreen(sh));  // 41:7882
+      wr(w, 0xC3FD, 0xFF);
+      clearMenuState(w);
+      return;
+    case 0x732F:
+      wr(w, 0xC4BD, 0);
+      if (rd(w, 0xC834) === 2) yield* inBankGen(w, 0x3E, inBankGen(w, 0x0E, showScorecard(sh)));
+      else yield* inBankGen(w, 0x0E, showScorecard(sh));
+      wr(w, 0xC3FD, 0xFF);
+      clearMenuState(w);
+      return;
+    case 0x7335:
+      yield* menuSettings(sh);
+      wr(w, 0xC3F9, 3);
+      yield* runMenu(sh, 0x147F, 0x7317, 0x0502);
+      return;
+    case 0x7349: yield* linkGiveUp(sh); return;
+    case 0x739A: yield* linkQuit(sh); return;
     default: {
       const names = { 0x744B: "Camera Mode (41:744B)", 0x7451: "Course Map (41:7451)", 0x745D: "Settings (41:745D)",
         0x746B: "Give Up (41:746B)", 0x74AE: "Save & Quit (41:74AE)", 0x757B: "Camera Mode (41:757B)",
@@ -436,16 +496,21 @@ export function* pauseMenu(sh) {
   yield* sh.advance();
   const old = wbank(w);
   const mode = rd(w, 0xC834);
-  if (w.high[0x19E]) notPorted("the debug editors (~08:46F3)");
-  if (rd(w, 0xC33F)) notPorted("the link-play pause menu (~41:6E49 GolfPauseMenu)");
   let b;
-  if (mode === 1 || mode === 3) b = yield* inBankGen(w, 0x41, golfPauseMenu(sh, false));
+  if ((mode === 1 || mode === 2 || mode === 3) && rd(w, 0xC33F)) b = yield* inBankGen(w, 0x41, golfPauseMenuLink(sh));   // 08:46C2 / 08:46D3
+  else if (mode === 1 || mode === 3) b = yield* inBankGen(w, 0x41, golfPauseMenu(sh, false));
   else if (mode === 2) b = yield* inBankGen(w, 0x41, golfPauseMenu(sh, true));
   else if (mode === 4) b = yield* inBankGen(w, 0x41, bank41Menu(sh, setupTrainingPauseMenu, 0x1484, 0x7654, 0x0300, 51));   // 08:46D7
   else if (mode === 6 || mode === 0x0C) b = yield* inBankGen(w, 0x41, flag(w, 100) ? practiceWindMenu(sh) : practiceMenu(sh));   // 08:46E2
   else if (mode === 7) b = yield* inBankGen(w, 0x41, practiceMenu(sh));   // 08:46EF
   else if (mode === 5 || mode === 0x0A || mode === 0x0B) b = yield* inBankGen(w, 0x41, miniGamePauseMenu(sh));   // 08:46DE
   else notPorted(`the pause menu of game mode ${mode} (~08:4695)`);
+  // 08:46F3 PauseMenuDebugEditors after the stroke, match and training menus (not in link play): with hDebugMode, Select
+  // held 41:77EA DebugPointsEditor, then Up held 44:42FB DebugPaletteEditor
+  if (!rd(w, 0xC33F) && mode >= 1 && mode <= 4 && w.high[0x19E]) {
+    if (w.high[0x190] & 4) yield* inBankGen(w, 0x41, debugPointsEditor(sh));
+    if (w.high[0x190] & 0x40) yield* inBankGen(w, 0x44, debugPaletteEditor(sh));
+  }
   setW(w, old);
   wr(w, 0xD438, cam);
   wr(w, 0xC0F4, clock);
@@ -540,12 +605,12 @@ function* menuSaveAndQuit(sh) {
 function* mapStartMenuHandler(sh, h) {
   const w = sh.w;
   switch (h) {
-    case 0x73F0: case 0x7425:                    // Message: 41:7969, the menu stays (jp 41:701E)
+    case 0x73F0: case 0x7425:                    // Message (41:73F0 MapStartMessageSpeed): 41:7969, the menu stays (jp 41:701E)
       menuTextSpeedAdjust(sh);
       wr(w, 0xC3F9, rd(w, 0xD830));
       yield* runMenuBody(sh, h === 0x73F0 ? 0x73DC : 0x7409);
       return;
-    case 0x7402: case 0x7437:                    // Save & Quit ($C4B8 = 0 / 1)
+    case 0x7402: case 0x7437:                    // Save & Quit ($C4B8 = 0 / 1: 41:7402 MapStartSaveQuit)
       wr(w, 0xC4B8, h === 0x7402 ? 0 : 1);
       yield* menuSaveAndQuit(sh);
       return;
@@ -556,7 +621,7 @@ function* mapStartMenuHandler(sh, h) {
       wr(w, 0xC465, rd(w, 0xC2A4));
       clearMenuState(w);
       return;
-    case 0x73EA: case 0x741F:                    // Stars: 41:7965 -> 0A:6F56 EventListScreen, then the menu closed
+    case 0x73EA: case 0x741F:                    // Stars (41:73EA MapStartStars): 41:7965 -> 0A:6F56, then closed
       yield* inBankGen(w, 0x0A, eventListScreen(sh));
       clearMenuState(w);
       return;

@@ -188,7 +188,8 @@ export function holeTileAnimTask(w) {            // 50:71B3 HoleTileAnimTask (51
   w.high[0x196] = keep;
 }
 
-export function holeTileAnimStep(w, track) {     // 50:7201 HoleTileAnimStep (the copies ~51:7261 ~52:7291 ~53:7F19 ~54:7E31)
+export function holeTileAnimStep(w, track) {     // 50:7201 HoleTileAnimStep (the copies 51:7261 52:7291 run in the screen cases; 53:7F19 54:7E31: the same
+// instructions, tools/compare_routines.py)
   const w0 = w.wram[0];
   w0[0x33C] = w0[0x330 + 2 * track];
   let p;

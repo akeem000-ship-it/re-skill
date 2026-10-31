@@ -113,10 +113,13 @@ export function clubBanned(w, club) {            // 3C:465F CpuClubBanned
   return lie === 4 ? 1 : 0;
 }
 
-export function pickClubForDistance(w, bc) {     // 3C:45F9 CpuPickClubForDistance: the shortest club that reaches bc
+export function pickClubForDistance(w, bc) { return pickClubForDistanceF(w, bc)[0]; }
+// the same with the flags register it returns ([a, F]: its last `push af` at 3C:4643 keeps the flags of the `cp` /
+// `dec` / `inc` before; 3C:5082 passes them on)
+export function pickClubForDistanceF(w, bc) {    // 3C:45F9 CpuPickClubForDistance: the shortest club that reaches bc
   const lie = w.wram[6][0x4CD];
-  let a;
-  if (lie === 6 || lie === 0x0A) a = 0x0D;
+  let a, f;
+  if (lie === 6 || lie === 0x0A) { a = 0x0D; f = 0xC0; }
   else {
     a = 0;
     for (;;) {
@@ -125,13 +128,16 @@ export function pickClubForDistance(w, bc) {     // 3C:45F9 CpuPickClubForDistan
       if (compare16(bc, clubDistanceForLie(w, a)) === 1) break;   // this one falls short
       a++;
     }
-    if (a) {
+    if (!a) f = 0xC0;                            // (cp $00)
+    else {
+      const fd = (a === 1 ? 0x80 : 0) | 0x40 | (!(a & 0x0F) ? 0x20 : 0);   // dec a (the carry of cp $00: clear)
       a--;
-      if (clubBanned(w, a)) a++;
+      if (clubBanned(w, a)) { f = ((a & 0x0F) === 0x0F ? 0x20 : 0); a++; }   // inc a
+      else f = fd;
     }
   }
   if (((a - 3) & 0x80) && lie !== 0 && lie !== 0x0E) a = 3;   // woods only from the tee or the fairway
-  return a;
+  return [a, f];
 }
 
 // ---- the stroke schedule ----
@@ -825,4 +831,57 @@ export function planShot(w, hole) {
   else p = planApproach(w, hole);
   p.power &= 0xFE; p.impact &= 0xFE;
   return p;
+}
+
+// ---- bank 3C's unreferenced planning helpers (fuzz-checked in web/tests/golf_ai_routines.mjs) ----
+// 3C:505B CpuBoostPower10Pct: power h + h / 10, capped at $3C when the sum's byte less $3C is not negative; h = $3C
+// unchanged; returns hl (l kept)
+export function boostPower10Pct(hl) {
+  const h = hl >> 8;
+  if (h === 0x3C) return hl;
+  let b = (h + Math.floor(h / 10)) & 0xFF;
+  if (!(((b - 0x3C) & 0xFF) & 0x80)) b = 0x3C;
+  return b << 8 | (hl & 0xFF);
+}
+// 3C:5082 CpuLieCarryCompensation: a = club, h = power: on the rough (1), in a bunker (2) or lie $0C the carry at that
+// power (3C:4528) plus a tenth / ninth / eighth, the club for it (3C:45F9) and the power (3C:5021) for that club's
+// distance (3C:453F) over de = the club and the flags 3C:45F9 returned (a quirk: the registers are popped crossed);
+// returns [a, h]: a = the high byte of the wanted carry (also a quirk), h = that power; on other lies [club, h]
+export function lieCarryCompensation(w, club, h) {
+  const lie = w.wram[6][0x4CD];
+  const div = lie === 1 ? 0x0A : lie === 2 ? 0x09 : lie === 0x0C ? 0x08 : 0;
+  if (!div) return [club, h];
+  const hl = clubDistanceAtPower(w, club, h);
+  const bc = (hl + g.divHLByDE(hl, div)) & 0xFFFF;
+  const [c2, f] = pickClubForDistanceF(w, bc);
+  const dist = clubDistanceForLie(w, c2);
+  return [bc >> 8, powerForDistance(dist, c2 << 8 | f)];
+}
+// 3C:4DE2 CpuSteepSlopeMidTile: hl = x, de = y: 1 when the slope's strength (3C:45AF, bits 6-7) is 2 or more and the
+// x or y fraction (l / e) is in $40-$9F ($20-$BF on courses 3 and 4), else 0
+export function steepSlopeMidTile(w, hole, hl, de) {
+  const [lo, hi] = w.wram[0][0x836] === 3 || w.wram[0][0x836] === 4 ? [0x20, 0xC0] : [0x40, 0xA0];
+  if ((safeSlopeAt(hole, hl, de)[0] >> 6) < 2) return 0;
+  const mid = v => !(((v - lo) & 0xFF) & 0x80) && (((v - hi) & 0xFF) & 0x80);
+  return mid(hl & 0xFF) || mid(de & 0xFF) ? 1 : 0;
+}
+// 3C:4B1A CpuFindSteepSlopeOnLine: a = club, h = power, bc = aim: the carry (3C:453F / 60 x power) in $D527, from $20
+// in $80 steps ($D529) while the carry is longer, the point that far along the aim from the ball (00:11BA) tested
+// (3C:4DE2): [1, that distance] at the first steep one, else [0, the carry]; scratch $D525 (aim) $D52D (club) $D52E
+// (power)
+export function findSteepSlopeOnLine(w, hole, club, power, aim) {
+  const r6 = w.wram[6];
+  r6[0x52D] = club; r6[0x52E] = power;
+  wr16(r6, 0x525, aim);
+  const carry = g.mulHLByA(g.divHLByDE(clubDistanceForLie(w, r6[0x52D]), 0x3C), r6[0x52E]);
+  wr16(r6, 0x527, carry);
+  wr16(r6, 0x529, 0x0020);
+  for (;;) {
+    const c = compare16(rd16(r6, 0x527), rd16(r6, 0x529));
+    if (c !== 1) return [0, rd16(r6, 0x527)];
+    const [dx, dy] = g.mulSinCos(rd16(r6, 0x529), rd16(r6, 0x525));
+    const x = (rd16(r6, 0x401) + dx) & 0xFFFF, y = (rd16(r6, 0x404) + dy) & 0xFFFF;
+    if (steepSlopeMidTile(w, hole, x, y)) return [1, rd16(r6, 0x529)];
+    wr16(r6, 0x529, (rd16(r6, 0x529) + 0x80) & 0xFFFF);
+  }
 }

@@ -125,7 +125,7 @@ export class SoundDriver {
   // ---- public API ----
   // SoundInit (7E:4072), as Start runs it at power-on
   init() { this.bank = DRIVER_BANK; this.soundInit(); return this.take(); }
-  // a sound command as `rst $08 ; db id` makes it (PlaySoundCmd 00:2BBB): songs < $36, jingles $36-$3A, effects >= $40
+  // a sound command as `rst $08 ; db id` makes it (00:0008 RST08_SoundCmd: PlaySoundCmd 00:2BBB): songs < $36, jingles $36-$3A, effects >= $40
   playSound(id) { this.playSoundCmd(id & 0xFF); return this.take(); }
   // start song n directly (SoundCmdDispatch 7E:4016), bypassing the jingle and current-song bookkeeping
   playSong(n) { this.bank = DRIVER_BANK; this.soundCmdDispatch(n & 0xFF); return this.take(); }
@@ -140,7 +140,7 @@ export class SoundDriver {
     this.resumeBGMAfterJingle();
     return this.take();
   }
-  // SoundUpdate (7E:40EB) alone: what TimerHandler (00:2F6F) runs instead of a VBlank while the LCD is off
+  // SoundUpdate (7E:40EB) alone: what TimerHandler (00:2F6F, the vector 00:0050 IntTimer) runs instead of a VBlank while the LCD is off
   update() { this.bank = DRIVER_BANK; this.soundUpdate(); return this.take(); }
   // the bank-0 helpers around the commands (they keep hSoundFlags bit 0 = music off, from wOptionFlags bit 0)
   resumeBGM() { this.resumeBGMCmd(); return this.take(); }
@@ -153,7 +153,7 @@ export class SoundDriver {
   get songCount() { return this.rom[DRIVER_BANK * 0x4000 + SongCountData - 0x4000]; }
 
   // ---- bank 0: the command layer ----
-  // 00:2BBB PlaySoundCmd / 00:2C19 PlaySoundManaged
+  // 00:2BBB PlaySoundCmd / 00:2C19 PlaySoundManaged (00:2BED PlaySoundCmdCont: its part after JingleSongTable)
   playSoundCmd(a) {
     const r = this.ram;
     this.bank = DRIVER_BANK;

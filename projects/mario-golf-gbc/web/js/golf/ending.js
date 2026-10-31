@@ -37,7 +37,7 @@ function sepia(v) {
 }
 // 0A:5422 PalFadeInitSepia (WRAM6): the 16 select bytes $D5E0 cleared, the master palettes $C200 (128 bytes) to the
 // current $D540 and the target $D4A0 (0A:5441), the target's 64 colours turned sepia (0A:545E)
-function palFadeInitSepia(w) {
+export function palFadeInitSepia(w) {
   const old = w.high[0x196];
   setW(w, 6);
   for (let k = 0; k < 0x10; k++) wr(w, 0xD5E0 + k, 0);
@@ -50,7 +50,7 @@ function palFadeInitSepia(w) {
 }
 // 0A:54CF PalFadeSetup (WRAM6): $D5F0 = d steps, the delay $D5F9 = d / 31, the palettes to fade from the mask bc
 // (b bit 7 = BG 0 ... c bit 0 = OBJ 7) to $D5E0
-function palFadeSetup(w, b, c, d) {
+export function palFadeSetup(w, b, c, d) {
   const old = w.high[0x196];
   setW(w, 6);
   wr(w, 0xD5F0, d);
@@ -62,9 +62,9 @@ function palFadeSetup(w, b, c, d) {
 // 0A:561C PalStepComponent: one step toward the target, kept to 5 bits
 const stepToward = (v, t) => (t === v ? v : t > v ? (v + 1) & 0x1F : (v - 1) & 0x1F);
 // 0A:5561 PalFadeRun (WRAM6): each step: the delay, each selected palette's four colours a step toward the target
-// (0A:55AC / 55C6), all 16 palettes loaded (00:056C), a frame; then 0A:562E PalFadeFinish: the selected palettes
+// (0A:55AC PalFadeStepPalette / 0A:55C6 PalFadeStepColors), all 16 palettes loaded (00:056C), a frame; then 0A:562E PalFadeFinish: the selected palettes
 // set to the target and loaded
-function* palFadeRun(sh) {
+export function* palFadeRun(sh) {
   const w = sh.w, old = w.high[0x196];
   setW(w, 6);
   for (;;) {

@@ -6,6 +6,7 @@ import fs from "fs";
 import path from "path";
 import { GBC } from "../../js/gb/gbc.js";
 import { loadSnapshot } from "../../js/gb/snapshot.js";
+import { coverStep } from "./cover.mjs";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../..");
 export const MARKS = { hole: [0x10, 0x44B4], flyover: [0x08, 0x6432], windintro: [0x12, 0x6F8D], pick: [0x10, 0x45D9],
@@ -34,6 +35,7 @@ export class CoreRun {
   step() {
     const p = this.gb.ppu;
     p.frameDone = false;
+    coverStep(this.gb);
     this.gb.stepInstruction();
     if (p.frameDone) {                         // line 144: the frame is complete (before the VBlank handler runs)
       this.frames++;

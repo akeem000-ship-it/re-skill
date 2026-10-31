@@ -140,7 +140,8 @@ export function mapTileAnimStart(w, bank, a) {
   registerFrameTask(w, 0x01, bank, ANIM[bank][0] + 0xB6);   // MapTileAnimTask
 }
 // MapTileAnimTask (28:7DC1 and the copies 29:79DD 2C:7B87 2D:7453 2E:7A8B 2F:7DD6 73:777D 74:7A64; those of the banks
-// without an animation, ~2A:7775 ~2B:74A3 ~72:7773, never step: fuzzed with no tracks only): unless flag #24 is set (and #28 clear), WRAM6: each track's timer down from
+// without an animation, 2A:7775 2B:74A3 72:7773, never step: fuzzed with no tracks only, and the same instructions as 28:7DC1:
+// tools/compare_routines.py): unless flag #24 is set (and #28 clear), WRAM6: each track's timer down from
 // its start ($C338 + n, $FF ends the list: the loop reads on past track 3 while the timers run), a step at 0
 export function mapTileAnimTask(w, bank) {
   if (!testFlag(w, 28) && testFlag(w, 24)) return;
@@ -161,8 +162,8 @@ export function mapTileAnimTask(w, bank) {
   }
   setW(w, old);
 }
-// MapTileAnimStep (28:7E08 and the copies 29:7A24 2C:7BCE 2D:749A 2E:7AD2 2F:7E1D 73:77C4 74:7AAB; ~2A:77BC ~2B:74EA
-// ~72:77BA never run): track a's frame at its offset (src tile, count, dest tile, frames; $FF: back
+// MapTileAnimStep (28:7E08 and the copies 29:7A24 2C:7BCE 2D:749A 2E:7AD2 2F:7E1D 73:77C4 74:7AAB; 2A:77BC 2B:74EA
+// 72:77BA never run: the same instructions as 28:7E08, tools/compare_routines.py): track a's frame at its offset (src tile, count, dest tile, frames; $FF: back
 // to the track's start): count tiles from WRAM6 $D800 + 16 src queued to VRAM1 $9000 + 16 dest; the offset moves 4
 // (scratch $C33C), the timer = frames
 export function mapTileAnimStep(w, bank, a) {

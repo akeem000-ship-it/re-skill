@@ -378,3 +378,145 @@ export function matchStandingsTask(w) {
   });
   setW(w, old);
 }
+
+// ---- the two-player Stroke screen (TwoPlayerScoreScreen 3E:6361, page 0 of the two-player scorecard 0E:4436; also
+// the debug room's 35:775F): the two names and kinds, each score against par, the winner's and loser's faces ----
+const scoreWord = a => (a >= 0x91 ? 0xFF00 | a : a);   // 3E:6342 MatchScoreToWord
+const absWord = v => (v & 0x8000 ? (0x10000 - v) & 0xFFFF : v);
+// 3E:62A6 ScoreTensDigit / 3E:62D3 ScoreOnesDigit: |score|, less 100 once when it is 100 or more, its tens / ones
+function scoreTensOnes(a) {
+  let v = absWord(scoreWord(a));
+  const t = (v - 100) & 0xFFFF;
+  if (!(t & 0x8000)) v = t;
+  const q = Math.floor(v / 10);
+  return [q & 0xFF, (v - mulHLByA(q, 10)) & 0xFF];
+}
+const putTileAttr0 = (w, a, b, c) => put(w, b, c, a, 0);   // 3E:61E3 PutTileAttr0
+// 3E:6525 DrawScoreVsPar: a = the score byte at (b, c): the sign ('+', '-', or $60 when even), a '1' when |score|
+// has hundreds, the tens (none when 0 and the byte less 100 is negative), the ones
+function drawScoreVsPar(w, d, b, c) {
+  const v = scoreWord(d);
+  putTileAttr0(w, !v ? 0x60 : v & 0x8000 ? 0x2D : 0x2B, b, c);
+  b++;
+  if (d && (Math.floor(absWord(v) / 100) & 0xFF)) putTileAttr0(w, 0x31, b, c);
+  b++;
+  const [t, o] = scoreTensOnes(d);
+  if (t) putTileAttr0(w, (t + 0x30) & 0xFF, b, c);
+  else if (!(((d - 0x64) & 0xFF) & 0x80)) putTileAttr0(w, 0x30, b, c);
+  b++;
+  putTileAttr0(w, (o + 0x30) & 0xFF, b, c);
+}
+// 3E:659D DrawPlayerKindResult: a = player: the label 3E:402F for a computer golfer ($13 = 0 / 2, or golfer $0B) or
+// 3E:4028 for a person ($13 = 1 / 3)
+function drawPlayerKindResult(w, a) {
+  const [ch, k, d] = a === 1 ? [0xC8D0, 0xC8D3, 5] : [0xC890, 0xC893, 0];
+  let s = null;
+  if (rd(w, ch) === 0x0B) s = 0x402F;
+  else s = [0x402F, 0x4028, 0x402F, 0x4028][rd(w, k)] ?? null;
+  if (s !== null) drawTileStringAt(w, s, d);
+}
+// 3E:64FB DrawScoreLabel: tiles $39-$3B over $49-$4B at (b, c)
+function drawScoreLabel(w, b, c) {
+  for (let k = 0; k < 3; k++) putTileOnly(w, 0x39 + k, b + k, c);
+  for (let k = 0; k < 3; k++) putTileOnly(w, 0x49 + k, b + k, c + 1);
+}
+// 3E:6421 FillScorePanels: tile $C9 over columns 7-$10 of rows 8-9 and $0D-$0E
+function fillScorePanels(w) {
+  for (const c of [8, 9, 0x0D, 0x0E]) for (let b = 7; b < 0x11; b++) putTileOnly(w, 0xC9, b, c);
+}
+// 3E:665B LoadResultFaces: player 1's score word against player 2's (3E:6637): the lower gets the face 3E:5DE1
+// (palette 3E:6068), the other 3E:5E2E (3E:6058), to VRAM1 $8100 (OBJ palette 9) / $8200 ($0A); a tie: 3E:5DE1 both
+function loadResultFaces(w) {
+  const old = wbank(w);
+  setW(w, 1);
+  const p1 = scoreWord(rd(w, 0xC8BE)), p2 = scoreWord(rd(w, 0xC8FE));
+  const diff = (p1 - p2) & 0xFFFF;
+  const face = (src, de, pal, slot) => {
+    D.lzTo(w, B, src, 0xD000);
+    if (w.vram) { D.queueAndRunVRAMCopy(w, 0xD000, de, 0x06); D.loadPalettesMasterOnly(w, pal, slot, 0x01); }
+  };
+  if (!diff) {
+    D.lzTo(w, B, 0x5DE1, 0xD000);
+    if (w.vram) {
+      D.queueAndRunVRAMCopy(w, 0xD000, 0xA100, 0x06);
+      D.queueAndRunVRAMCopy(w, 0xD000, 0xA200, 0x06);
+      D.loadPalettesMasterOnly(w, 0x6068, 0x09, 0x01);
+      D.loadPalettesMasterOnly(w, 0x6068, 0x0A, 0x01);
+    }
+  } else if (diff & 0x8000) { face(0x5DE1, 0xA100, 0x6068, 0x09); face(0x5E2E, 0xA200, 0x6058, 0x0A); }
+  else { face(0x5E2E, 0xA100, 0x6058, 0x09); face(0x5DE1, 0xA200, 0x6068, 0x0A); }
+  setW(w, old);
+}
+// 3E:6361 TwoPlayerScoreScreen: returns 0 (A / B) or 1 (Right: the other page)
+export function* twoPlayerScoreScreen(sh) {
+  const w = sh.w;
+  Scr.beginFadeOut(w, 0x08);                     // 00:25A1
+  yield* Scr.waitFade(sh);                       // 00:2625
+  setW(w, 5);
+  yield* initWindowSystem(sh);                   // 05:407A
+  setW(w, 6);
+  reloadFontTiles(w);                            // 01:421A
+  D.inBank(w, 0x03, () => T.resetGlyphBuffer(w));   // 03:4EB8
+  if (w.vram) D.disableLCDSafely(w);             // 00:0341
+  clearFrameTasks(w);                            // 00:23B6
+  if (w.vram) { D.resetSprites(w); w.lcd.wy = 0x90; }   // 00:2683
+  w.high[0x18A] = w.high[0x18B] = 0;             // hSCY / hSCX
+  const old = wbank(w);
+  D.inBank(w, B, () => loadStandingsGfx(w));
+  fillScorePanels(w);
+  setW(w, 6);
+  drawHoleNumber(w);
+  yield* drawPlayerName(sh, 0, 0x06, 0x08);
+  drawPlayerKindResult(w, 0);
+  yield* drawPlayerName(sh, 1, 0x06, 0x0D);
+  drawPlayerKindResult(w, 1);
+  drawScoreLabel(w, 0x0E, 0x06);
+  drawScoreLabel(w, 0x0E, 0x0B);
+  drawScoreVsPar(w, rd(w, 0xC8BE), 0x0E, 0x08);
+  drawScoreVsPar(w, rd(w, 0xC8FE), 0x0E, 0x0D);
+  setW(w, 1);
+  if (w.vram) D.inBank(w, B, () => {
+    D.queueVRAMCopy(w, 0xD000, 0xB800, 0x24);
+    D.queueAndRunVRAMCopy(w, 0xD400, 0x9800, 0x24);
+  });
+  copyMapToScrollBuffers(w);                     // 00:0804
+  if (w.vram) yield* inBankGen(w, 0x03, T.uploadGlyphTiles(sh));   // 03:4F6C (LCD off: at once)
+  setW(w, 1);
+  D.inBank(w, B, () => { loadPlayerPortrait(w, 0); loadPlayerPortrait(w, 1); loadResultFaces(w); });
+  D.inBank(w, B, () => registerFrameTask(w, 0x0F, B, 0x645C));   // TwoPlayerScoreTask
+  if (w.vram) D.enableLCD(w);                    // 00:0371
+  Scr.beginFadeIn(w, 0x08);                      // 00:25AF
+  yield* Scr.waitFade(sh);
+  const a = yield* waitKeyNoTimeout(sh);
+  setW(w, old);
+  return a;
+}
+// 3E:645C TwoPlayerScoreTask: the two portrait panels (00:2756), the sprite templates 3E:6740 / 3E:674E and the
+// bobbing sprite 3E:4930 (offsets 3E:64BB by hVBlankCount); WRAM6 meanwhile
+export function twoPlayerScoreTask(w) {
+  const old = wbank(w);
+  setW(w, 6);
+  if (w.vram) D.inBank(w, B, () => {
+    D.queueSpriteGrid(w, 0x0201, 0x3030, 0x0C5C);
+    D.queueSpriteGrid(w, 0x0201, 0x3058, 0x0D6C);
+    D.queueSpriteTemplate(w, 0x6740, 0, 0, 0x10, 0x09);
+    D.queueSpriteTemplate(w, 0x674E, 0, 0, 0x20, 0x0A);
+    D.queueSpriteTemplate(w, 0x4930, 0, rb(B, 0x64BB + (w.high[0x18C] & 0x3F)), 0x00, 0x08);
+  });
+  setW(w, old);
+}
+
+// ---- bank 3E's unreferenced cell writers (fuzz-checked: web/tests/golf_fuzz_routines.mjs) ----
+const rdAny = (w, a) => (a >= 0xC000 ? rd(w, a) : rb(B, a));
+// 3E:60C3 PutTileStringAttr0 (the loop at 3E:617C) / 3E:618D PutTileStringNoAttr: the tiles at hl up to a 0 from (b, c)
+export function putTileStringAttr0(w, hl, b, c) { for (; rdAny(w, hl); hl = (hl + 1) & 0xFFFF, b = (b + 1) & 0xFF) putTileAttr0(w, rdAny(w, hl), b, c); }
+export function putTileStringNoAttr(w, hl, b, c) { for (; rdAny(w, hl); hl = (hl + 1) & 0xFFFF, b = (b + 1) & 0xFF) putTileOnly(w, rdAny(w, hl), b, c); }
+// 3E:626D DrawTileStringAttr0At / 3E:6280 DrawTileStringNoAttrAt: hl = (x, y + d, tiles..., 0)
+export function drawTileStringAttr0At(w, hl, d) { putTileStringAttr0(w, (hl + 2) & 0xFFFF, rdAny(w, hl), (rdAny(w, hl + 1) + d) & 0xFF); }
+export function drawTileStringNoAttrAt(w, hl, d) { putTileStringNoAttr(w, (hl + 2) & 0xFFFF, rdAny(w, hl), (rdAny(w, hl + 1) + d) & 0xFF); }
+// 3E:65E3 DrawScoreLabelB / 3E:660D DrawScoreLabelC: tiles $CA-$CC over $DA-$DC / $CD-$CF over $DD-$DF at (b, c)
+export function drawScoreLabelBC(w, t, b, c) {
+  for (let k = 0; k < 3; k++) putTileOnly(w, t + k, (b + k) & 0xFF, c);
+  for (let k = 0; k < 3; k++) putTileOnly(w, t + 0x10 + k, (b + k) & 0xFF, (c + 1) & 0xFF);
+}
+export { scoreTensOnes, drawScoreVsPar, putTileAttr0 };

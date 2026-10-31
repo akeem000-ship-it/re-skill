@@ -16,6 +16,10 @@ import { loadCursorSprite } from "../nav.js";
 import { setTextCourseIndex, pushTextNumberArg } from "../text.js";
 import { testCourseHoleBit } from "../scorecard.js";
 import { setSaveFlag } from "../match.js";
+import { twoPlayerScoreScreen } from "../standings.js";
+import * as R0C from "../records0c.js";
+import { palFadeInitSepia, palFadeSetup, palFadeRun } from "../ending.js";
+import { clearFrameTasks } from "../tasks.js";
 
 const rd = D.rd, wr = D.wr;
 const flag = (w, n) => w.wram[0][0x840 + (n >> 3)] & (0x80 >> (n & 7));
@@ -1269,6 +1273,36 @@ function* map3CAnimSparkle(sh) {
   for (let k = 0; k < 4; k++) for (const c of [0x50, 0x56, 0x5C]) yield* map3CDrawSparkle(sh, 0x07, c);
 }
 
+// ---- map $01, the debug room (reached by the debug menu's Scene warp, 05:6C25) ----
+// 35:7735 35:773B 35:7741 35:7747 35:774D 35:7753 35:7759 Map01TalkWarp...: warps 1-7 (the room's warp list 35:76C4: map
+// $20 entrances 1 / 5, the Locker Room 2, the clubhouse 1, the Lounge 1, the Trophy Room 1, the Caddie Master's office 2)
+function* map01Warp(sh, a) { wr(sh.w, 0xC441, a); }
+// 35:775F Map01TalkTwoPlayerScore: TwoPlayerScoreScreen 3E:6361, warp 8 (map $20)
+function* map01TwoPlayerScore(sh) {
+  yield* inBankGen(sh.w, 0x3E, twoPlayerScoreScreen(sh));
+  wr(sh.w, 0xC441, 0x08);
+}
+// 35:7774 / 35:7780 / 35:778C Map01TalkStarsScreen / StatsScreen / RankingScreen: ClearFrameTasks 00:23B6, the screen
+// (0C:4014 / 0C:4A15 / 0C:5AEC), warp $0A / $0B / $0C (the mode select's entrances 2 / 1, the Field); ~35:7768
+// Map01TalkSaveViewer: ~02:5D2F (not ported), warp 9 (map $21)
+function* map01Screen(sh, screen, warp) {
+  clearFrameTasks(sh.w);
+  yield* inBankGen(sh.w, 0x0C, screen(sh));
+  wr(sh.w, 0xC441, warp);
+}
+// 35:7798 Map01TalkSepiaFadeTest: the sepia fade (0A:5422, 0A:54CF bc $FFFF d $3C, 0A:5561), 60 frames, 30 x (sound
+// $5C, 10 frames), warp $0D (the room again)
+function* map01SepiaFadeTest(sh) {
+  const w = sh.w;
+  D.inBank(w, 0x0A, () => palFadeInitSepia(w));
+  D.inBank(w, 0x0A, () => palFadeSetup(w, 0xFF, 0xFF, 0x3C));
+  yield* inBankGen(w, 0x0A, palFadeRun(sh));
+  yield* sh.advance(0x3C);
+  for (let b = 0x1E; b; b--) { sh.sound(0x5C); yield* sh.advance(0x0A); }
+  wr(w, 0xC441, 0x0D);
+}
+// 35:783D Map01Trigger01Nop / 35:7847 Map01EnterNop: ret (the enter script's farcall 79:68B1 after it is never run)
+function* map01Nop() {}
 export const SCRIPTS = {
   "35:41ae": map07Enter,
   "35:4115": sh => map07ObjectTrophy(sh, 112, 0x01, 136),
@@ -1295,6 +1329,13 @@ export const SCRIPTS = {
   "35:73f7": map3DEnter,
   "35:7525": map3EEnter,
   "35:7b7b": function* () {},                     // 35:7B7B Bank35ObjectNop
+  ...Object.fromEntries([[0x7735, 1], [0x773B, 2], [0x7741, 3], [0x7747, 4], [0x774D, 5], [0x7753, 6], [0x7759, 7], [0x77BC, 0x0E]]
+    .map(([a, n]) => [`35:${a.toString(16)}`, sh => map01Warp(sh, n)])),   // (35:77BC Map01TalkWarpCharacterTest: warp $0E)
+  "35:775f": map01TwoPlayerScore,
+  "35:7768": function* () { throw new Error("the debug save viewer (~02:5D2F DebugSaveViewer) is not ported"); },
+  "35:7774": sh => map01Screen(sh, R0C.starsScreen, 0x0A), "35:7780": sh => map01Screen(sh, R0C.statsScreen, 0x0B),
+  "35:778c": sh => map01Screen(sh, R0C.rankingScreen, 0x0C),
+  "35:7798": map01SepiaFadeTest, "35:783d": map01Nop, "35:7847": map01Nop,
 };
 export const TASKS = w => ({
   "35:4666": () => map32PointerSpriteTask(w),     // 35:4666 -> 35:47BF Map32PointerSpriteTask

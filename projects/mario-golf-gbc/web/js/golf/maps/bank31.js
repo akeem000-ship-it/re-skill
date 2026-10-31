@@ -501,6 +501,7 @@ function* ceremonyCongratsAndLeave(sh) {
 // ---- the driving ranges: map $0C (the Marion Club's; maps $0F, $12, $15 share the practice): maps/lessons.js ----
 const LESSONS = {
   // 31:4A8B Map0CTalk03DriverLesson (coach 1, actor 3): the driver
+  // (its copies of the engine: the retry 31:4E9F, the after-demo question 31:4EA9, the question 31:4ED5)
   driver: { bank: B, map: 0x0C, coach: 0x03, flag: 101, seen: 162, ask: 0x102F, retry: 0x0D11, after: 0x1036,
     no: 0x103D, talkScript: 0x7CBE, walkBack: 0x7D24, walkFacing: 0x00, afterFade: 0x08,
     demo: { entrance: 4, mode: 0x06, strokes: 0x4C88, golfer: 0x4F, hole: 0x07, tee: [0x1400, 0x3980], wind: 0xC005,
@@ -508,6 +509,7 @@ const LESSONS = {
     try: { entrance: 6, mode: 0x06, hole: 0x07, tee: [0x1400, 0x3980], shot: [0x00, 0xC4D2], wind: 0xC005,
       hooks: 0x4D14, offTee: false } },
   // 31:4B11 Map0CTalk04IronShotLesson (coach 2, actor 4): the iron shot
+  // (the retry 31:512D, the after-demo question 31:5137, the question 31:5163; boot_kid_story_lesson_iron)
   iron: { bank: B, map: 0x0C, coach: 0x04, flag: 102, seen: 163, ask: 0x103F, retry: 0x0D12, after: 0x1046,
     no: 0x104D, talkScript: 0x7CBE, walkBack: 0x7D2D, walkFacing: 0x00, afterFade: 0x08,
     demo: { entrance: 5, mode: 0x06, strokes: 0x4F66, golfer: 0x4E, hole: 0x07, tee: [0x2000, 0x38E0], wind: 0xC005,
@@ -520,6 +522,7 @@ const LESSONS = {
 const map0FPre = (curve) => w => { if (curve) wr(w, 0xC89D, 0x03); wr(w, 0xC89A, 0xD2); wr(w, 0xC89B, 0x00); };
 const LESSONS_0F = {
   // 31:540E Map0FTalk03IntentionalShotLesson (coach 1, actor 3): the intentional hook / slice
+  // (the retry 31:584C, the after-demo question 31:5856, the question 31:5882)
   curve: { bank: B, map: 0x0F, coach: 0x03, flag: 101, seen: 166, ask: 0x104E, retry: 0x0D11, after: 0x1056,
     no: 0x1057, talkScript: 0x7CBE, walkBack: 0x7D24, resultWalk: [0x7D2D, 0x00], walkFacing: 0x00, afterFade: 0x08,
     music: 0x0A,
@@ -528,6 +531,7 @@ const LESSONS_0F = {
     try: { entrance: 6, mode: 0x06, hole: 0x0A, tee: [0x2000, 0x3A80], shot: [0x00, 0xC000], wind: 0xC000,
       hooks: 0x5681, offTee: false } },
   // 31:54A2 Map0FTalk04WindShotLesson (coach 2, actor 4): the shot into the wind
+  // (the retry 31:5ADA, the after-demo question 31:5AE4, the question 31:5B10)
   wind: { bank: B, map: 0x0F, coach: 0x04, flag: 102, seen: 167, ask: 0x1061, retry: 0x0D12, after: 0x1068,
     no: 0x1069, talkScript: 0x7CBE, walkBack: 0x7D2D, walkFacing: 0x00, afterFade: 0x08, music: 0x0A,
     demo: { entrance: 5, mode: 0x06, strokes: 0x5913, golfer: 0x4E, hole: 0x0A, tee: [0x17C0, 0x3A40], wind: 0x4005,
@@ -582,6 +586,7 @@ function* map0FEnter(sh) {
 // $C89C = 4), the tries' music is 9
 const LESSONS_12 = {
   // 31:5D2A Map12Talk03HighShotLesson (coach 1, actor 3): the high shot
+  // (the retry 31:60B6, the after-demo question 31:60C0, the question 31:60EC)
   high: { bank: B, map: 0x12, coach: 0x03, flag: 101, seen: 170, ask: 0x1070, retry: 0x0D11, after: 0x1078,
     no: 0x107F, talkScript: 0x7CBE, walkBack: 0x7D24, resultWalk: [0x7D2D, 0x00], walkFacing: 0x00, afterFade: 0x08,
     music: 0x09,
@@ -591,6 +596,7 @@ const LESSONS_12 = {
     try: { entrance: 6, mode: 0x06, hole: 0x0D, tee: [0x2400, 0x3A40], shot: [0x04, 0xC2F8], wind: 0x4002,
       pre: w => Ls.setForcedShot(w, 0x0A, 0xC2F8), hooks: 0x5F58, offTee: false } },
   // 31:5DBF Map12Talk04TreeRecoveryLesson (coach 2, actor 4): the low shot out of the trees
+  // (the retry 31:6368, the after-demo question 31:6372, the question 31:639E)
   tree: { bank: B, map: 0x12, coach: 0x04, flag: 102, seen: 171, ask: 0x1080, retry: 0x0D12, after: 0x1087,
     no: 0x108D, talkScript: 0x7CBE, walkBack: 0x7D2D, walkFacing: 0x00, afterFade: 0x08, music: 0x09,
     demo: { entrance: 5, mode: 0x06, strokes: 0x6185, golfer: 0x4E, hole: 0x0D, tee: [0x1000, 0x2D80], wind: 0x4000,
@@ -673,7 +679,7 @@ function unlockContests15(w) {
 function* say15(sh, coach, id) { yield* inBankGen(sh.w, 0x05, T.showMessageAt(sh, id, coach, 0x0A, 0x03)); }
 // the round of a lesson, a try or a contest: GolfRound 10:4451 (one hole), GolfSessionEnd 10:4B94
 const round15 = sh => Ls.lessonRound(sh);
-// 31:65B8 Map15Talk03TreeShotLesson (coach 1, actor 3): tried (#101): "Try again?" ($0D11) and the question; else the
+// 31:65B8 Map15Talk03TreeShotLesson (coach 1, actor 3): tried (#101): "Try again?" ($0D11) (31:6BC1 Map15TreeShotLessonRetry) and the question; else the
 // lesson's offer $108F (the contest's $1015 with #224): No the next text; Yes the one after and the coach's demo:
 // music 7, the return point (entrance 4), game mode 6, the demo strokes 31:68D9 for golfer $4F, course 0 hole $0A,
 // the wind direction 0, the tee ($2C60, $2120), player 1 off the tee, the wind $6000 (contest) or $C000, the hooks
@@ -739,7 +745,7 @@ function* treeAskTry(sh) {
   Ls.setGolfEventHook(w, B, 0x699C);
   yield* round15(sh);
 }
-// 31:666F Map15Talk04BuriedLieLesson (coach 2, actor 4): tried (#102): "Want to try again?" ($0D12) and the question;
+// 31:666F Map15Talk04BuriedLieLesson (coach 2, actor 4): tried (#102): "Want to try again?" ($0D12) (31:6F64 Map15BuriedLieLessonRetry) and the question;
 // the contest (#225): $1020 asked: No: the next text (quirk: $1028 instead once the Links is won, #139, which the
 // contest needs anyway); else the lesson's $109F: No the next text; Yes: (not the contest: the text after), the
 // coach's demo: music 7, the return point (entrance 5), game mode 6, the strokes 31:6CA6 for golfer $4E, course 7 hole
@@ -1111,7 +1117,7 @@ function* map0CEnter(sh) {
   else if (e === 7) { yield* ironResult(sh); yield* Ls.lessonFirstSuccess(sh, LESSONS.iron, 0x0014, 9, saveGame); }
   else if (e === 0xFA && testFlag(w, 100)) clearFlag(w, 100);
 }
-// 31:521B DrivingRangeStartPractice: the hole (31:5263: 7 / $0A / $0D / $10 for maps $0C / $0F / $12 / $15), game
+// 31:521B DrivingRangeStartPractice: the hole (31:5263 / 31:527A: 7 / $0A / $0D / $10 for maps $0C / $0F / $12 / $15), game
 // mode 6, the hooks 31:5296
 function* drivingRangeStartPractice(sh) {
   const m = rd(sh.w, 0xC450);
@@ -1240,7 +1246,10 @@ function* clinicJudge(sh, a, bases, id) {
   T.scriptSetText(w, id);
   yield* T.scriptShowText(sh, a);
 }
-// 31:72CF / 7444 ClinicCoach1Comment / ClinicCoach2Comment: ScriptBegin; no shot judged (#99 clear): the coach faces
+// 31:72CF / 31:7444 ClinicCoach1Comment / ClinicCoach2Comment (the class entries the screen cases reach: 31:7348
+// ClinicCoach1CommentNotSerious, 31:737C ClinicCoach1CommentBackspin with the common end, 31:7495
+// ClinicCoach2CommentMisHit; the others the same code with their texts: ~31:7321 ~31:732E ~31:733B ~31:7355 ~31:7362
+// ~31:736F ~31:74A2; after their tables 31:7308 / 31:747C): ScriptBegin; no shot judged (#99 clear): the coach faces
 // actor 3 / 4, $1562 / $1563; else he faces the player and comments by the shot class (31:72F6: 0 the judgement, 1-8
 // $15BC $15BD $15BE $15BF $15C1 $15C2 $15C3 $15C4; 31:746A: 0 the judgement, 1-4 $15C0, 5-8 $15C5); facing down;
 // ScriptEnd
