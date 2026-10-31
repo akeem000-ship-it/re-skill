@@ -3,3 +3,13 @@
 - **Camera**: Follow (the default), Course (the game's own framing, seen at a slant), Behind, TV.
 - **Hills**: soft contours made from the game's slope data (the fairway's slope cells, the green's slope bytes), wooded mounds out of bounds, hollow bunkers. Only drawn: the game plays on its flat values.
 - Everything here is render only. With every layer on the game runs frame for frame as with none (web/tests/g3d_layers_same.mjs). Quality **Lite** draws fewer pixels and a coarser ground for phones.
+- **Sky** and **Light**: a sky and a horizon for each club (rolling hills at the Marion Club, the sea and islands at the Palm Club, dunes and mesas at the Dune Club, cliffs and a lighthouse at the Links, mountains and a tower at Peach's Castle), at an hour of the round (Hour: Auto by course, the clock, or a fixed hour): the sun's light and its shadows, dusk, night with floodlights on masts at the tee and the green and a lamp at the pin.
+- **Terrain**: each terrain type drawn in the hole's own colours with its own surface: mown stripes on the fairway, blades in the rough bending with the game's wind, a mowing check on the green, ripples in the sand, moving water with the sky in it. On the green the putting view's own picture (4x finer) is laid in once the game has shown it.
+- **Wear**: divots from irons and wedges off the grass, pitch marks on the green, craters and footprints in the bunkers; they stay for the hole.
+- **Ball FX**: a trail by shot type (power shots orange, approach shots blue, putts faint), the spin's seam, a burst of grass or sand at the landing, a splash in the water, a sparkle out of the cup.
+- **Ambience**: leaves and grass blown by the game's wind (its speed and direction), mist over water, sand blown off the bunkers, motes in the low sun, fireflies at night.
+- **Replay**: a chip-in, a long putt holed, a hole in one or an eagle comes back from a camera following the ball. The game's own shot code is run again on a copy of its memory taken at the launch (the live game is not touched; web/tests/g3d_replay_rerun.mjs checks that every re-run shot follows the game's path frame for frame). A button ends it.
+- **Close calls**: a lip-out or a ball that stopped just short of the water gets a review panel in the corner.
+- **Big moments**: a hole in one, an albatross or an eagle: fireworks over the green and the camera circling it; a won tournament gets fireworks over the result screen.
+- **Gallery**: at tournament rounds people line the ropes round the green and the tee (the game's own map characters, recoloured) and react to the shots; a caddie stands by the golfer in every mode.
+- **Title fly-over**: behind PRESS START the 3D view flies over holes of every club, the title's logo and Mario in front.

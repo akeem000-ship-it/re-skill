@@ -46,13 +46,17 @@ precision highp float; in vec4 vCol; in vec3 vW; out vec4 o;
 ${LIGHT_GLSL}
 void main() { if (vCol.a < 0.01) discard; o = vec4(finish(vCol.rgb, vW), vCol.a); }`;
 const DEC_VS = `#version 300 es
-in vec2 aCorner; in vec4 aInst; in vec4 aInst2; in vec4 aCol; uniform mat4 uMVP; out vec4 vCol; out vec3 vW; out vec2 vQ;
+in vec2 aCorner; in vec4 aInst; in vec4 aInst2; in vec4 aCol; uniform mat4 uMVP; out vec4 vCol; out vec3 vW; out vec2 vQ; out float vKind;
 void main() { float c = cos(aInst2.x), s = sin(aInst2.x); vec2 q = aCorner * vec2(aInst.w, aInst.w * aInst2.y);
-  vec3 p = vec3(aInst.x + q.x * c - q.y * s, aInst.y + 0.05, aInst.z + q.x * s + q.y * c); vW = p; vQ = aCorner; vCol = aCol; gl_Position = uMVP * vec4(p, 1.0); }`;
+  vec3 p = vec3(aInst.x + q.x * c - q.y * s, aInst.y + 0.05, aInst.z + q.x * s + q.y * c); vW = p; vQ = aCorner; vCol = aCol; vKind = aInst2.z; gl_Position = uMVP * vec4(p, 1.0); }`;
 const DEC_FS = `#version 300 es
-precision highp float; in vec4 vCol; in vec3 vW; in vec2 vQ; uniform float uLightK; out vec4 o;
+precision highp float; in vec4 vCol; in vec3 vW; in vec2 vQ; in float vKind; uniform float uLightK; out vec4 o;
 ${LIGHT_GLSL}
-void main() { float d = length(vQ * 2.0); if (d > 1.0) discard; o = vec4(finish(vCol.rgb * uLightK, vW), vCol.a * (1.0 - d * d * 0.3)); }`;
+void main() { float d = length(vQ * 2.0); if (d > 1.0) discard; float a = vCol.a * (1.0 - d * d * 0.3);
+  if (vKind > 0.5 && vKind < 1.5) a *= smoothstep(0.6, 0.85, d);            // a ring
+  else if (vKind > 1.5) a = vCol.a * (1.0 - smoothstep(0.2, 1.0, d));        // a soft spot
+  else if (vKind < -0.5) { vec2 q = abs(vQ * 2.0); if (max(q.x, q.y) > 1.0) discard; a = vCol.a; }   // a square (a divot's turf)
+  o = vec4(finish(vCol.rgb * uLightK, vW), a); }`;
 const BB_VS = `#version 300 es
 in vec2 aCorner; in vec4 aInst; in vec4 aUV; in vec4 aInst2; uniform mat4 uMVP; uniform vec3 uRight; uniform float uTime; out vec2 vUV; out vec3 vW;
 void main() { float hop = max(0.0, sin(uTime * 9.0 + aInst2.x * 6.28)) * aInst2.y;
@@ -150,7 +154,7 @@ export class Golf3D {
   buildHole(hid, w) {
     const gl = this.gl, t0 = performance.now();
     if (this.hole) this.freeHole();
-    const art = new HoleArt(hid);
+    const art = new HoleArt(hid); this.decals.length = 0; this.parts = [];
     const pal = art.palette(this.livePal(w));
     const ground = art.paint(pal);
     const trees = extractTrees(art, ground);
@@ -193,7 +197,7 @@ export class Golf3D {
   }
   freeHole() {
     const gl = this.gl, h = this.hole; if (!h) return;
-    gl.deleteTexture(h.mapTex); gl.deleteTexture(h.terrTex); h.groundMesh.free(); h.groundMesh.dvao.free(); h.skirt.free();
+    gl.deleteTexture(h.mapTex); gl.deleteTexture(h.terrTex); if (h.greenTex) gl.deleteTexture(h.greenTex); h.groundMesh.free(); h.groundMesh.dvao.free(); h.skirt.free();
     for (const t of h.trees) if (t.mesh) { this.meshes.delete("tree:" + h.id + ":" + t.footX + ":" + t.footZ); t.mesh.free(); t.mesh.dvao.free(); }
     this.hole = null;
   }
@@ -243,7 +247,13 @@ export class Golf3D {
     if (kind !== "hole") { for (const fx of this.layers.fx) if (fx.frame) fx.frame(this, game, null); return; }
     const s = this.read(game); this.s = s;
     if (!this.hole || this.hole.id !== s.hid || this.hole.hills !== this.on("hills")) { this.course = s.course; this.buildHole(s.hid, game.w); }
+    this.windVec = [Math.cos(s.wind[1]) * s.wind[0] * 0.6, Math.sin(s.wind[1]) * s.wind[0] * 0.6];
     this.track(game, s);
+    // the green's own picture (the putting view's maps, 4x finer): painted in the colours the game shows it in, once it has
+    if (s.view === 1 && !this.hole.greenTex && !game.w.high[0x1A2] && !game.w.high[0x1BC] && this.hole.art.green.tiles.length) {
+      const img = this.hole.art.paintGreen(game.w.bgPal);
+      this.hole.greenTex = texture(this.gl, PX, PX, img); this.hole.greenAt = [s.green[0], s.green[1]];
+    }
     for (const fx of this.layers.fx) if (fx.frame) fx.frame(this, game, s);
   }
   // the golfer's spot: at the ball until a swing sends it off; kept there through the flight and the roll
@@ -259,14 +269,58 @@ export class Golf3D {
     else if (!this.golferPal) this.golferPal = w.objPal;
     if (s.mark === "aimmenu" || s.mark === "pick") this.golferFrameNo = 0;
     this.ballGround = H(s.ball[0], s.ball[2]);
+    this.watch(game, s);
   }
 
+  // the shot's events this frame (this.events: [kind, data]) from what the game's state did: launch (the ball left its spot after
+  // a swing), land (the first touch-down: the terrain under it), bounce, roll, stop (the shot's outcome, from the page's shot list:
+  // 0 fairway, 1 rough, 2 bunker, 3 water, 6 green, 7 out of bounds, 9 semi-rough, $80 holed), hole (a new hole)
+  watch(game, s) {
+    const ev = this.events = [], W = this.wst || (this.wst = { air: 0, rest: true, shots: game.shots ? game.shots.length : 0, hid: -1, prev: null, flight: null });
+    const terr = this.hole.art.terrainAtPx(s.ball[0], s.ball[2]);
+    if (W.hid !== s.hid) { W.hid = s.hid; ev.push(["hole", { hid: s.hid }]); W.prev = null; W.flight = null; }
+    const p = s.ball, moved = W.prev && Math.hypot(p[0] - W.prev[0], p[2] - W.prev[2]) > 0.001;
+    if (W.rest && moved && this.inShot) { W.rest = false; W.flight = { from: W.prev.slice(), club: s.club, mode: game.w.wram[6][0x32A], terr: this.hole.art.terrainAtPx(W.prev[0], W.prev[2]), maxH: 0, frames: 0, path: [] };
+      ev.push(["launch", { at: W.prev.slice(), club: s.club, aim: s.aim, terr: W.flight.terr, mode: W.flight.mode, air: s.air }]); }
+    if (W.flight) { W.flight.frames++; W.flight.maxH = Math.max(W.flight.maxH, p[1]); if (W.flight.frames < 2400) W.flight.path.push([p[0], p[1], p[2], s.air, s.view]); }
+    if (W.air && !s.air) ev.push([W.landed ? "bounce" : "land", { at: p.slice(), terr, vel: s.vel.slice() }]), W.landed = true;
+    if (!W.air && s.air && W.landed) { /* back in the air: a bounce */ }
+    if (game.shots && game.shots.length !== W.shots) {
+      W.shots = game.shots.length; const out = game.shots[W.shots - 1];
+      ev.push(["stop", { at: p.slice(), outcome: out, flight: W.flight, cup: s.cup.slice() }]);
+      W.rest = true; W.landed = false; W.lastFlight = W.flight; W.flight = null;
+    }
+    W.air = s.air; W.prev = p.slice();
+    this.lastEvents = ev.length ? ev : this.lastEvents;
+  }
+  // ---- particles: a shared pool the effects fill (spawn) and the scene moves (gravity, drag, the wind) and draws as points ----
+  spawn(p) { const P = this.parts || (this.parts = []); if (P.length < (this.lite ? 900 : 3000)) P.push(p); }
+  moveParticles(dt) {
+    const P = this.parts; if (!P || !P.length) return;
+    const H = this.hole.H, wv = this.windVec || [0, 0];
+    let j = 0;
+    for (let i = 0; i < P.length; i++) {
+      const q = P[i]; q.t += dt; if (q.t >= q.life) continue;
+      const k = q.drag ?? 0.5, wk = q.wind ?? 0;
+      q.vx += (wv[0] * wk - q.vx * k) * dt; q.vz += (wv[1] * wk - q.vz * k) * dt; q.vy -= (q.g ?? 30) * dt; q.vy -= q.vy * k * dt;
+      q.x += q.vx * dt; q.y += q.vy * dt; q.z += q.vz * dt;
+      const gy = H(q.x, q.z) + (q.floor ?? 0.05); if (q.y < gy) { q.y = gy; q.vy = q.bounce ? -q.vy * q.bounce : 0; q.vx *= 0.6; q.vz *= 0.6; if (q.stick) q.life = Math.min(q.life, q.t + q.stick); }
+      const a = (q.a ?? 1) * (q.fade === false ? 1 : Math.min(1, (q.life - q.t) / Math.min(0.4, q.life * 0.5)));
+      const c = q.c; this.point(q.x, q.y, q.z, c[0], c[1], c[2], a, q.size * (q.grow ? 1 + q.grow * q.t : 1));
+      P[j++] = q;
+    }
+    P.length = j;
+  }
   // ---- once per display frame ----
   render(game, frame2d) {
     const gl = this.gl, c = this.canvas;
     const now = performance.now() / 1000, dt = Math.min(0.1, this.lastT ? now - this.lastT : 0.016); this.lastT = now; this.time += dt;
-    this.dt = dt; this.game = game;
-    if (this.kind !== "hole" || !this.hole || !this.s) {
+    this.dt = dt; this.game = game; this.frame2d = frame2d;
+    const held = this.hole && this.s && this.layers.fx.some(f => f.holdsScene && f.holdsScene(this, game));
+    this.held = held && this.kind !== "hole";
+    if ((this.kind !== "hole" && !held) || !this.hole || !this.s) {
+      this.lastT2 = now;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, c.width, c.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       for (const fx of this.layers.fx) if (fx.drawOther && fx.drawOther(this, game, frame2d, dt)) return true;
       return false;
     }
@@ -283,18 +337,39 @@ export class Golf3D {
     this.shadowOn = shadowOn;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    this.drawWorld();
+    for (const fx of this.layers.fx) if (fx.draw) fx.draw(this, dt);
+    this.moveParticles(dt);
+    this.flushPoints();
+    for (const fx of this.layers.fx) if (fx.drawOverlay) fx.drawOverlay(this);
+    // the game's HUD over the picture (not while an effect holds the hole on screen after the game has left it)
+    if (!this.held && !this.replaying) this.hud.draw(this, game, frame2d);
+    for (const fx of this.layers.fx) if (fx.drawInset) fx.drawInset(this);
+    return true;
+  }
+  drawWorld() {
+    const gl = this.gl;
     gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.disable(gl.CULL_FACE); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     if (this.on("sky")) this.sky.draw(gl, this.mvp);
+    else { gl.clearColor(...this.light.fogCol, 1); gl.clear(gl.COLOR_BUFFER_BIT); }
     this.drawGround();
     for (const fx of this.layers.fx) if (fx.drawGround) fx.drawGround(this);
     this.drawDecals();
     this.drawBodies();
-    for (const fx of this.layers.fx) if (fx.draw) fx.draw(this, dt);
-    this.flushPoints();
-    for (const fx of this.layers.fx) if (fx.drawOverlay) fx.drawOverlay(this);
-    // the game's HUD over the picture
-    this.hud.draw(this, game, frame2d);
-    return true;
+  }
+  // a second picture of the hole in a corner of the view (rect: x, y, w, h as parts of the canvas, from the bottom left), from its own
+  // camera; the main picture's camera is put back after
+  renderInset(rect, eye, at, fov, before = null) {
+    const gl = this.gl, c = this.canvas, W = c.width, H = c.height;
+    const x = Math.round(rect[0] * W), y = Math.round(rect[1] * H), w = Math.round(rect[2] * W), h = Math.round(rect[3] * H);
+    const keep = { view: this.view, proj: this.proj, mvp: this.mvp, eye: this.eye, camEye: this.cam.eye, decNow: this.decNow };
+    this.view = m4.lookAt(eye, at, [0, 1, 0]); this.proj = m4.perspective(fov, w / h, 0.2, 9000); this.mvp = m4.mul(this.proj, this.view); this.eye = eye; this.cam.eye = eye;
+    gl.enable(gl.SCISSOR_TEST); gl.scissor(x, y, w, h); gl.viewport(x, y, w, h);
+    gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    if (before) before();
+    this.decNow = []; this.drawWorld(); this.flushPoints();
+    gl.disable(gl.SCISSOR_TEST); gl.viewport(0, 0, W, H);
+    Object.assign(this, { view: keep.view, proj: keep.proj, mvp: keep.mvp, eye: keep.eye, decNow: keep.decNow }); this.cam.eye = keep.camEye;
   }
 
   // ---- light uniforms shared by the programs ----
@@ -319,6 +394,8 @@ export class Golf3D {
     gl.uniform3fv(p.u.uTypeCol, h.typeCol); gl.uniform1f(p.u.uDetail, this.on("terrain") ? 1 : 0); gl.uniform1f(p.u.uTime, this.time);
     gl.uniform2fv(p.u.uWind, this.windVec || [0, 0]); gl.uniform3fv(p.u.uSkyCol, this.light.skyCol || [0.6, 0.75, 0.95]);
     gl.uniform1f(p.u.uLite, this.lite ? 1 : 0); gl.uniform1f(p.u.uSkirt, 0);
+    gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, h.greenTex || h.mapTex); gl.uniform1i(p.u.uGreen, 3);
+    gl.uniform4fv(p.u.uGreenRect, h.greenTex ? [h.greenAt[0], h.greenAt[1], 40, 32] : [0, 0, 0, 0]);
     gl.bindVertexArray(h.groundMesh.vao); gl.drawElements(gl.TRIANGLES, h.groundMesh.n, gl.UNSIGNED_INT, 0);
     gl.uniform1f(p.u.uSkirt, 1);
     gl.bindVertexArray(h.skirt.vao); gl.drawArrays(gl.TRIANGLES, 0, h.skirt.n);
@@ -348,7 +425,8 @@ export class Golf3D {
     this.worldMarks(out);
     // the pin and its flag
     const [cx, cz] = s.cup, cy = H(cx, cz);
-    out.push([this.pinMesh(), m4.tsy(cx, cy, cz, 1, 1, 1, face(cx, cz) + (this.windFlag || 0)), null, "pin"]);
+    const wv = this.windVec || [0, 0], flagYaw = Math.hypot(wv[0], wv[1]) > 0.1 ? Math.atan2(-wv[1], wv[0]) + 0.15 * Math.sin(this.time * 7) : face(cx, cz) - Math.PI / 2;
+    out.push([this.pinMesh(), m4.tsy(cx, cy, cz, 1, 1, 1, flagYaw), null, "pin"]);
     // the ball (kept at least ~2 screen pixels wide)
     const b = this.ballWorld(), d = Math.hypot(b[0] - this.eye[0], b[1] - this.eye[1], b[2] - this.eye[2]);
     const r = Math.max(0.2, d * 0.0042 * (this.cam.fovK || 1));
@@ -387,7 +465,7 @@ export class Golf3D {
     while (!row(bot)) bot--; while (!row(top)) top++;
     return { rgba: rgba.slice(top * 32, (bot + 1) * 32), w: 8, h: bot - top + 1 };
   }
-  ballWorld() { const s = this.s; return [s.ball[0], this.hole.H(s.ball[0], s.ball[2]) + Math.max(-0.6, s.ball[1]), s.ball[2]]; }
+  ballWorld() { const b = this.ballOverride || this.s.ball; return [b[0], this.hole.H(b[0], b[2]) + Math.max(-0.6, b[1]), b[2]]; }
   drawBodies() {
     const gl = this.gl, p = this.P.obj; gl.useProgram(p.p); this.setLight(p); this.bindShadow(p, 2);
     gl.uniformMatrix4fv(p.u.uMVP, false, this.mvp);
@@ -398,7 +476,7 @@ export class Golf3D {
     }
     // the ball's shadow on the ground under it (a dark spot; the sun's shadow too when LIGHT is on)
     const b = this.ballWorld(), gy = this.hole.H(b[0], b[2]), up = Math.max(0, b[1] - gy);
-    this.decal(b[0], gy, b[2], 0.9 + up * 0.04, 0, 1, [0, 0, 0, Math.max(0.12, 0.5 - up * 0.02)], true);
+    this.decal(b[0], gy, b[2], 0.9 + up * 0.04, 0, 1, [0, 0, 0, Math.max(0.15, 0.6 - up * 0.02)], true, 2);
     gl.bindVertexArray(null);
   }
   drawCasters(mvp) {
@@ -437,13 +515,13 @@ export class Golf3D {
     gl.bindVertexArray(null); P.n = 0;
   }
   // ---- decals on the ground (wear, shadows): this frame's list plus the kept ones ----
-  decal(x, y, z, size, angle, aspect, col, now = false) { (now ? (this.decNow || (this.decNow = [])) : this.decals).push({ x, y, z, size, angle, aspect, col }); }
+  decal(x, y, z, size, angle, aspect, col, now = false, kind = 0) { (now ? (this.decNow || (this.decNow = [])) : this.decals).push({ x, y, z, size, angle, aspect, col, kind }); }
   drawDecals() {
     const list = (this.on("wear") ? this.decals : []).concat(this.decNow || []); this.decNow = [];
     if (!list.length) return;
     const gl = this.gl, p = this.P.dec, n = Math.min(list.length, 2048);
     const a = new Float32Array(n * 4), b = new Float32Array(n * 4), c = new Float32Array(n * 4);
-    for (let i = 0; i < n; i++) { const d = list[list.length - n + i]; a.set([d.x, d.y, d.z, d.size], i * 4); b.set([d.angle, d.aspect, 0, 0], i * 4); c.set(d.col, i * 4); }
+    for (let i = 0; i < n; i++) { const d = list[list.length - n + i]; a.set([d.x, d.y, d.z, d.size], i * 4); b.set([d.angle, d.aspect, d.kind || 0, 0], i * 4); c.set(d.col, i * 4); }
     gl.useProgram(p.p); this.setLight(p); gl.uniformMatrix4fv(p.u.uMVP, false, this.mvp); gl.uniform1f(p.u.uLightK, this.light.groundK || 1);
     gl.bindVertexArray(this.decVao.vao);
     for (const [k, arr] of [["aInst", a], ["aInst2", b], ["aCol", c]]) { gl.bindBuffer(gl.ARRAY_BUFFER, this.decVao.bufs[k]); gl.bufferSubData(gl.ARRAY_BUFFER, 0, arr); }

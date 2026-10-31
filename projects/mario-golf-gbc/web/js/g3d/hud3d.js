@@ -16,7 +16,8 @@ export class HudLayer {
     this.gl = gl; this.rgba = new Uint8Array(W * H * 4); this.tex = null;
   }
   // the HUD as RGBA (alpha 0 where the BG shows the course); keep(slot) picks the sprites
-  raster(w, keep) {
+  raster(w, keep, opts = null) {
+    const bgOn = opts && opts.bg, skip = (opts && opts.skipPals) || null, clear0 = (opts && opts.clear0) || null;
     const d = { vram: w.vram, oam: w.oam, bgPal: w.bgPal, objPal: w.objPal, ...w.lcd }, out = this.rgba;
     out.fill(0);
     const lcdc = d.lcdc, v0 = d.vram[0], v1 = d.vram[1];
@@ -28,13 +29,27 @@ export class HudLayer {
       const windowOn = (lcdc & 0x20) && d.wy <= ly && d.wx <= 166;
       let windowDrawn = false;
       lineColor.fill(0); win.fill(0);
+      if (bgOn) for (let x = 0; x < W; x++) {          // (the BG too, for a caller that lets some palettes through)
+        const tx = (x + d.scx) & 0xFF, ty = (ly + d.scy) & 0xFF, map = lcdc & 0x08 ? 0x1C00 : 0x1800;
+        const cell = map + ((ty >> 3) << 5) + (tx >> 3), tile = v0[cell], attr = v1[cell];
+        if (skip && skip.has(attr & 7)) continue;
+        const addr = lcdc & 0x10 ? tile << 4 : 0x1000 + ((tile << 24 >> 24) << 4);
+        const row = attr & 0x40 ? 7 - (ty & 7) : ty & 7, bank = attr & 0x08 ? v1 : v0;
+        const lo = bank[addr + row * 2], hi = bank[addr + row * 2 + 1], bit = attr & 0x20 ? tx & 7 : 7 - (tx & 7);
+        const ci = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
+        if (clear0 && !ci && clear0.has(attr & 7)) continue;
+        lineColor[x] = ci; linePrio[x] = attr >> 7; win[x] = 1;
+        put(out, ly * W + x, d.bgPal, attr & 7, ci);
+      }
       if (windowOn) for (let x = Math.max(0, d.wx - 7); x < W; x++) {
         const tx = x - (d.wx - 7), ty = windowLine, map = lcdc & 0x40 ? 0x1C00 : 0x1800;
         const cell = map + ((ty >> 3) << 5) + (tx >> 3), tile = v0[cell], attr = v1[cell];
         const addr = lcdc & 0x10 ? tile << 4 : 0x1000 + ((tile << 24 >> 24) << 4);
         const row = attr & 0x40 ? 7 - (ty & 7) : ty & 7, bank = attr & 0x08 ? v1 : v0;
+        if (skip && skip.has(attr & 7)) { lineColor[x] = 0; win[x] = 0; const q = (ly * W + x) * 4; out[q + 3] = 0; windowDrawn = true; continue; }
         const lo = bank[addr + row * 2], hi = bank[addr + row * 2 + 1], bit = attr & 0x20 ? tx & 7 : 7 - (tx & 7);
         const ci = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
+        if (clear0 && !ci && clear0.has(attr & 7)) { windowDrawn = true; continue; }
         lineColor[x] = ci; linePrio[x] = attr >> 7; win[x] = 1; windowDrawn = true; winPx++;
         put(out, ly * W + x, d.bgPal, attr & 7, ci);
       }

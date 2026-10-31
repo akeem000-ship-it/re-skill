@@ -16,7 +16,7 @@ void main() { vW = aPos; vN = aNrm; vSh = uShadowMVP * vec4(aPos, 1.0); gl_Posit
 export const GROUND_FS = `#version 300 es
 precision highp float; precision highp sampler2DShadow;
 in vec3 vW; in vec3 vN; in vec4 vSh;
-uniform sampler2D uMap, uTerr; uniform sampler2DShadow uShadow; uniform float uShadowOn, uDetail, uTime, uLite, uSkirt;
+uniform sampler2D uMap, uTerr, uGreen; uniform vec4 uGreenRect; uniform sampler2DShadow uShadow; uniform float uShadowOn, uDetail, uTime, uLite, uSkirt;
 uniform vec3 uTypeCol[16]; uniform vec2 uWind; uniform vec3 uSkyCol;
 uniform vec3 uSunDir, uSunCol, uAmb, uFogCol; uniform float uFogNear, uFogFar, uNight; uniform vec3 uEye;
 uniform vec4 uLights[4]; uniform vec3 uLightCol[4]; uniform vec4 uFade;
@@ -29,6 +29,7 @@ vec3 pointLights(vec3 p, vec3 n) { vec3 s = vec3(0.0); for (int i = 0; i < 4; i+
 void main() {
   vec2 uv = clamp(vW.xz, 0.0, 511.9) / 512.0;
   vec3 tex = texture(uMap, uv).rgb;
+  if (uGreenRect.z > 0.0) { vec2 g = (vW.xz - uGreenRect.xy) / uGreenRect.zw; if (g.x >= 0.0 && g.y >= 0.0 && g.x < 1.0 && g.y < 1.0) tex = texture(uGreen, g * vec2(160.0, 128.0) / 512.0).rgb; }
   float t = floor(texture(uTerr, uv).r * 255.0 + 0.5);
   if (uSkirt > 0.5) { t = 7.0; tex = uTypeCol[7]; }
   vec3 c = tex; vec3 n = normalize(vN); float spec = 0.0;
