@@ -261,7 +261,17 @@ async function start(buffer) {
   $("loader").hidden = true;
   canvas.focus();
 }
-$("file").addEventListener("change", e => { const f = e.target.files[0]; if (f) f.arrayBuffer().then(start); });
+// the Android apps (this project's android/, and MTenn3D's game picker): remember the picked ROM there, so the next launch starts at
+// once (as js/main.js does)
+const app = window.MGolfApp;
+if (/MarioGolfWrapper/.test(navigator.userAgent)) document.body.classList.add("app");
+function keepRom(buffer) {
+  if (!app) return;
+  const b = new Uint8Array(buffer); let bin = "";
+  for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+  try { app.saveRom(btoa(bin)); } catch (e) { console.warn("rom", e); }
+}
+$("file").addEventListener("change", e => { const f = e.target.files[0]; if (f) f.arrayBuffer().then(buf => { keepRom(buf); start(buf); }); });
 fetch("../rom/mario_golf.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject())
   .then(start).catch(() => { $("loader").hidden = false; $("status").textContent = "no ROM loaded"; });
 requestAnimationFrame(loop);

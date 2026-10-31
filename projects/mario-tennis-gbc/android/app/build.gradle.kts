@@ -7,12 +7,15 @@ val syncWebAssets by tasks.registering(Sync::class) {
     into(webAssets)
     from(rootProject.file("../web")) { into("web") }          // includes web/gen/game.js when tools/recomp.py has been run
     from(rootProject.file("../rom")) { into("rom"); include("*.gbc") }
+    // MARIO GOLF (the game picker's other half): its web build, and its ROM only if ../../mario-golf-gbc/rom has one (a private build)
+    from(rootProject.file("../../mario-golf-gbc/web")) { into("golf/web"); exclude("tests/**") }
+    from(rootProject.file("../../mario-golf-gbc/rom")) { into("golf/rom"); include("*.gbc") }
 }
 
 android {
     namespace = "com.example.mariotennis"
     compileSdk = 34
-    defaultConfig { applicationId = "com.example.mariotennis"; minSdk = 24; targetSdk = 34; versionCode = 153; versionName = "0.35.99" }
+    defaultConfig { applicationId = "com.example.mariotennis"; minSdk = 24; targetSdk = 34; versionCode = 154; versionName = "0.36.0" }
     setProperty("archivesBaseName", "MTenn3D")
     // -Pedition=port: "MTenn3D Port", a separate app beside MTenn3D (its own saves and settings) that always starts
     // the game on the JS port (CODE: PORT); the CODE button still switches for that run

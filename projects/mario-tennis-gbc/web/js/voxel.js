@@ -2036,7 +2036,8 @@ export class Voxel3D {
     // water: outdoors, a solid metatile that is mostly water blue (a pond, a lake) stays flat on the ground, not a box (the shore is the
     // game's own picture; a box raised the water over the grass)
     // (f.water: the whole pond, every mostly-blue metatile joined to a solid one: fieldlife.js draws its surface)
-    const water = new Uint8Array(32 * 32), blue = new Uint8Array(32 * 32), outdoor = !INDOOR_MAPS.has(f.mapId), stack = [];
+    // (a map whose blue is courts, not water, says so in field_objects: noWater; map 24's blue practice courts took the pond's glints)
+    const water = new Uint8Array(32 * 32), blue = new Uint8Array(32 * 32), outdoor = !INDOOR_MAPS.has(f.mapId) && !(this.fieldDef(f.mapId) && this.fieldDef(f.mapId).noWater), stack = [];
     for (let my = 0; my < MH && outdoor; my++) for (let mx = 0; mx < MW; mx++) {
       let wb = 0; for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const o = ((my * 16 + y) * 512 + mx * 16 + x) * 4, r = art[o], gg = art[o + 1], b = art[o + 2]; if (b > 120 && b > r + 50 && b >= gg) wb++; }
       if (wb >= 64) blue[my * 32 + mx] = 1;
@@ -2186,6 +2187,9 @@ export class Voxel3D {
       if (this.seamKeep && !this.seamFrozen && this.mode === "field") {
         if (!this.seamTex) this.seamTex = this.texture(1, 1, new Uint8Array(4), true);
         gl.bindTexture(gl.TEXTURE_2D, this.seamTex); gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGB, 0, 0, cv.width, cv.height, 0);   // (the canvas has no alpha)
+      } else if (this.seamKeep && this.seamFrozen && this.seamTex) {   // (the player hidden at the exit, the view not a field for a frame:
+        gl.disable(gl.DEPTH_TEST); gl.useProgram(this.prog); gl.bindVertexArray(this.vao);   // the kept frame over it, not the flat picture)
+        this.draw(this.seamTex, m4.trs(0, -1, 0, 2, 2), m4.identity(), [0, 1, 1, -1], [1, 1, 1, 1], 0); gl.enable(gl.DEPTH_TEST);
       }
       return;
     }

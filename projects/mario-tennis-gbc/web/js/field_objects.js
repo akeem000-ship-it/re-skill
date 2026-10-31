@@ -1566,6 +1566,7 @@ export const FIELD_OBJECTS = {
  },
  "24": {
   "glass": false,
+  "noWater": true,
   "lampLight": {"r": 160, "k": 0.8},
   "lamps": [[145, 62], [392, 62], [145, 204], [392, 204], [44, 132], [470, 132], [255, 132]],
   "blocks": [],

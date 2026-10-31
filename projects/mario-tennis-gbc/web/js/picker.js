@@ -6,7 +6,8 @@
 //            the camera cuts between TV shots every few seconds (DEMO_SHOTS: wide shots, each player close, the ball followed from the
 //            stand, the court camera, the net from the umpire's side); after a game, or 50 s, the next match on another court.
 //            Without the ROM (the shareable app before you load yours) or the demos, a drawn court instead.
-//   golf     Mario Golf, drawn (its decompile is a project of its own, not in this app yet): COMING SOON.
+//   golf     Mario Golf, drawn: its own decompiled game (../../mario-golf-gbc/web/play.html, in the app at ../golf/web), started with PLAY;
+//            it asks for your Mario Golf ROM the first time and keeps it (the app's Back returns here).
 // Choosing tennis opens the game (full.html, with this page's #hash); its button bar's GAMES button comes back here.
 import { GBC } from "./gb/gbc.js";
 import { loadState } from "./gb/state.js";
@@ -22,7 +23,10 @@ import { pollGamepad } from "./gamepad.js";
 const $ = id => document.getElementById(id), gl = $("gl"), ov = $("ov"), g = ov.getContext("2d");
 const FONT = "MT Luckiest Guy", BODY = "Itim", NAVY = "#13183a", GOLD = "#ffd65a";
 const itim = typeof FontFace !== "undefined" ? new FontFace(BODY, `url(${new URL("../fonts/Itim-Regular.ttf", import.meta.url)})`).load().then(f => document.fonts.add(f)).catch(() => {}) : Promise.resolve();
-const GAMES = [{ id: "tennis", ready: true }, { id: "golf", ready: false }];
+// a Mario Golf battery save in this browser (its pages keep it in localStorage under a key starting "mg")
+const golfSaved = () => { try { for (let i = 0; i < localStorage.length; i++) if (/^mg/i.test(localStorage.key(i) || "") && /sav|sram/i.test(localStorage.key(i))) return true; } catch (e) { /* private mode */ } return false; };
+const APP = /MarioTennisWrapper/.test(navigator.userAgent);
+const GAMES = [{ id: "tennis", ready: true, url: "full.html" }, { id: "golf", ready: true, url: APP ? "../golf/web/play.html" : "../../mario-golf-gbc/web/play.html" }];   // (the app holds golf in assets/golf)
 let sel = 0, split = 0.6, W = 0, H = 0, dpr = 1, dirty = true, shake = 0, note = "";
 
 // ---------------- the picture of both halves (2D, over the live view) ----------------
@@ -110,7 +114,7 @@ function drawOverlay() {
     g.save(); g.globalAlpha = 0.75; drawCrest(g, 70 * s, 80 * s, 0.11 * s); word("MARIO TENNIS", 70 * s, 160 * s, 22 * s, TEN, "center"); g.restore();
   }
   if (k) { chip(save ? "CONTINUE" : "NEW GAME", 40 * s, 340 * s, 22 * s, GOLD, NAVY); if (demo.live && demo.names) chip(demo.names, 40 * s, 395 * s, 16 * s); }
-  else chip("COMING SOON", W - 40 * s, 340 * s, 22 * s, "#9cf06a", NAVY, "right");
+  else chip(golfSaved() ? "CONTINUE" : "NEW GAME", W - 40 * s, 340 * s, 22 * s, "#9cf06a", NAVY, "right");
   const ox = shake ? Math.sin(performance.now() / 30) * 8 * s : 0;
   if (note) chip(note, W - 40 * s + ox, 395 * s, 16 * s, "rgba(10,12,30,.8)", "#fff", "right");
   g.save(); g.font = `${18 * s}px "${BODY}"`; const hint = "◀ ▶  choose a game     A  play", hw = g.measureText(hint).width + 50 * s;
@@ -208,7 +212,7 @@ const sfx = {
 function choose(i) { if (i === sel) return; sel = i; note = ""; dirty = true; sfx.move(); }
 function play() {
   if (!GAMES[sel].ready) { note = "Mario Golf is still being decompiled: soon"; shake = performance.now(); dirty = true; sfx.no(); return; }
-  sfx.play(); setTimeout(() => { location.href = "full.html" + location.search + location.hash; }, 260);
+  const G = GAMES[sel]; sfx.play(); setTimeout(() => { location.href = G.url + (G.id === "tennis" ? location.search + location.hash : ""); }, 260);
 }
 const keys = {};
 addEventListener("keydown", e => { keys[e.code] = true; if (e.code === "ArrowLeft") choose(0); if (e.code === "ArrowRight") choose(1); if (e.code === "Enter" || e.code === "KeyZ" || e.code === "Space") play(); });

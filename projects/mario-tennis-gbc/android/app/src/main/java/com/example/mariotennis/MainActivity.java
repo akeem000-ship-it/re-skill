@@ -28,8 +28,9 @@ public class MainActivity extends Activity {
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setUseWideViewPort(true);
         s.setLoadWithOverviewMode(true);
-        s.setUserAgentString(s.getUserAgentString() + " MarioTennisWrapper");
+        s.setUserAgentString(s.getUserAgentString() + " MarioTennisWrapper MarioGolfWrapper");   // (Mario Golf's pages: assets/golf/web)
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/golf/rom/", path -> golfRomResponse())     // MARIO GOLF: your ROM, where its page looks for it
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this)).build();
         web.setWebViewClient(new WebViewClient() {
             @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
@@ -44,12 +45,13 @@ public class MainActivity extends Activity {
                 pick = cb;
                 android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_GET_CONTENT);
                 i.addCategory(android.content.Intent.CATEGORY_OPENABLE); i.setType("*/*");
-                try { startActivityForResult(android.content.Intent.createChooser(i, "Choose your Mario Tennis ROM (.gbc)"), 1); }
+                try { startActivityForResult(android.content.Intent.createChooser(i, web.getUrl() != null && web.getUrl().contains("/assets/golf/") ? "Choose your Mario Golf ROM (.gbc)" : "Choose your Mario Tennis ROM (.gbc)"), 1); }
                 catch (Exception e) { pick = null; cb.onReceiveValue(null); return false; }
                 return true;
             }
         });
         web.addJavascriptInterface(new FileBridge(), "MTennApp");   // the page's REC button saves recordings through this
+        web.addJavascriptInterface(new GolfBridge(), "MGolfApp");   // MARIO GOLF: its page keeps the ROM you pick through this
         setContentView(web);
         requestHighRefreshRate();
         immersive();
@@ -198,7 +200,29 @@ public class MainActivity extends Activity {
         getWindow().setAttributes(lp);
     }
     @Override public void onBackPressed() {           // keep the game running; Back shows / hides the page's button bar
+        String u = web.getUrl();
+        if (u != null && u.contains("/assets/golf/")) { web.loadUrl("https://appassets.androidplatform.net/assets/web/picker.html"); return; }   // MARIO GOLF: back to the game picker
         web.evaluateJavascript("window.__backPressed && window.__backPressed()", null);
+    }
+    // ---- MARIO GOLF (the game picker's other half: ../../mario-golf-gbc/web in assets/golf/web) ----
+    private java.io.File golfRomFile() { return new java.io.File(getFilesDir(), "mario_golf.gbc"); }
+    /** The golf ROM you picked once, else one bundled in the assets (a private build), else 404 (the page then asks for it). */
+    private WebResourceResponse golfRomResponse() {
+        try {
+            java.io.InputStream in = golfRomFile().exists() ? new java.io.FileInputStream(golfRomFile()) : getAssets().open("golf/rom/mario_golf.gbc");
+            return new WebResourceResponse("application/octet-stream", null, in);
+        } catch (Exception e) {
+            WebResourceResponse r = new WebResourceResponse("text/plain", "utf-8", null);
+            r.setStatusCodeAndReasonPhrase(404, "Not Found");
+            return r;
+        }
+    }
+    private class GolfBridge {
+        @android.webkit.JavascriptInterface public void saveRom(String base64) {
+            try (java.io.FileOutputStream o = new java.io.FileOutputStream(golfRomFile())) { o.write(android.util.Base64.decode(base64, android.util.Base64.DEFAULT)); }
+            catch (Exception e) { /* the game still runs; it asks again next time */ }
+        }
+        @android.webkit.JavascriptInterface public void forgetRom() { golfRomFile().delete(); }
     }
     @Override protected void onPause() {          // write a pending cartridge save before the WebView's timers stop
         web.evaluateJavascript("window.__flushSave && window.__flushSave(); window.__stopRec && window.__stopRec();", null);
