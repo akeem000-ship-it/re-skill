@@ -634,7 +634,7 @@ function* map08TriggerExitDown(sh) {
   wr(w, 0xC441, 0x04);
   sh.sound(0x92);
 }
-// 33:4566 Map08WalkOutAnim: facing up, 4.5 tiles up at speed $0B, 10 frames, animation $0A, 35 frames
+// 33:4566 Map08WalkOutAnim (33:4C59 Map08WalkOutAnimB is the same code): facing up, 4.5 tiles up at speed $0B, 10 frames, animation $0A, 35 frames
 function* map08WalkOutAnim(sh) {
   const w = sh.w;
   S.actorSetFacing(w, 0x00, 0xC0);

@@ -686,7 +686,7 @@ function* champJoinAsPartner(sh) {
 }
 // ---- the Lounge's talks after the club rounds (lists 32:64E7 6530 6579 65C2) ----
 // 32:6425 / 642F / 6439 / 6443 Map04TalkMemberAfterPalm / Dune / Links / GrandChamp (talk 2: texts $466 / $46B /
-// $470 / $475): 32:63F3 Map04AskGotASecond: "Got a second?" kept open by speaker 2, 10 frames, the question, closed,
+// $470 / $475): 32:63F3 Map04AskGotASecond (35:45D2 Map32AskYesNoAnswer is the same code): "Got a second?" kept open by speaker 2, 10 frames, the question, closed,
 // 5 frames; No (or B): the next text; Yes: it skipped, the story after, 10 frames
 function* map04AskGotASecond(sh, text) {
   const w = sh.w;

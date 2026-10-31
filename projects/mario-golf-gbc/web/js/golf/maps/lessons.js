@@ -70,7 +70,9 @@ export const ballWithinPinDist = (w, hl) => (((hl - pinDist(ball(w))) & 0xFFFF) 
 export const ballLie = sh => lieTerrain(sh.hole, ball(sh.w));
 
 // 30:7E7F AwardExpWithBonus / 31:7DA4: de EXP, a quarter more with flag #99 (holed out), AddExp 02:5465, the number
-// for text $011B (speaker $80, sound $38), WaitJingleEnd 00:2C1F, the level-up screen (30:7E73: fade out, 41:402A)
+// for text $011B (speaker $80, sound $38), WaitJingleEnd 00:2C1F, the level-up screen (30:7E73: fade out, 41:402A).
+// The unreferenced 33:7CC3 / 34:7DE4 are the same code, as 31:7D98 is 30:7E73's and 30:7E1A CurPlayerFieldAddr_30
+// is 32:7E8E's (tools/compare_routines.py; memory.js playerField)
 export function* awardExpWithBonus(sh, de) {
   const w = sh.w;
   if (testFlag(w, 99)) de = (de + (((de << 16 >> 16) >> 2) & 0xFFFF)) & 0xFFFF;   // (sra h / rr l twice)

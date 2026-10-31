@@ -195,7 +195,7 @@ export const demoTasks = w => ({
     const a = rd(w, 0xD247);
     if (a !== 0x58) { wr(w, 0xD247, (a + 6) & 0xFF); w.high[0x18B] = (a + 6) & 0xFF; }
   },
-  "40:5e9f": () => {                             // 40:5E9F DemoTaskDiagonalLate
+  "40:5e9f": () => {                             // 40:5E9F DemoTaskDiagonalLate (40:61AA the same code)
     setW(w, 6);
     if (rd(w, 0xD24C) < 0x3C) return;
     diagonalStep(w);

@@ -196,7 +196,8 @@ function* showStoryPictureB(sh, b, c) {
   yield* inBankGen(sh.w, 0x77, loadStoryPicture(sh, b, c));
 }
 // 32:4B3B RestoreBgRowsFromWram: WRAM6 wHoled $D444 = $FF; 8 rows x 20 of WRAM2 / WRAM3 $D100 (stride $40) to $C600 /
-// $C700 (stride $20), queued to $B880 / $9880 (00:0468, $10 each; 00:0460); the WRAM bank restored
+// $C700 (stride $20), queued to $B880 / $9880 (00:0468, $10 each; 00:0460); the WRAM bank restored. 08:4F82
+// CopyMapRowsToScreenUnused (unreferenced) is the same code (tools/compare_routines.py)
 function restoreBgRowsFromWram(w) {
   const old = w.high[0x196];
   setW(w, 6);

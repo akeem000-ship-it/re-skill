@@ -384,7 +384,7 @@ function* menuHandler(sh, h) {
       wr(w, 0xC3F9, 5);
       yield* runMenu(sh, 0x1484, 0x7654, 0x0300);
       return;
-    // the practice menus (41:76FF, 41:7741): Quit Practice $82 (41:7707 PracticeWindQuit, ~41:7745); Wind Direction
+    // the practice menus (41:76FF, 41:7741): Quit Practice $82 (41:7707 PracticeWindQuit, 41:7745 the same code); Wind Direction
     // 41:770F / Wind Speed 41:7721 stay in the menu; Settings (41:7733, ~41:774D), then the menu again on row 3 / 1
     case 0x7707: case 0x7745: case 0x775F:       // (41:775F MiniGameQuit)
       wr(w, 0xC3FD, 0x82);
@@ -409,7 +409,7 @@ function* menuHandler(sh, h) {
       yield* runMenu(sh, h === 0x7733 ? 0x1485 : 0x1486, h === 0x7733 ? 0x76FF : 0x7741, h === 0x7733 ? 0x0303 : 0x0305);
       return;
     // after a training shot (41:76B9 Continue / Mulligan / Hole Out: 41:76BF 41:76C7 41:76CF; 41:76D7 Continue /
-    // Mulligan / Start Over / Back to Main Menu: ~41:76DF 41:76E7 41:76EF ~41:76F7): wMenuResult 0, 2, 5; 0, 2, 3, 4
+    // Mulligan / Start Over / Back to Main Menu: 41:76DF (the same code as 41:76BF) 41:76E7 41:76EF ~41:76F7): wMenuResult 0, 2, 5; 0, 2, 3, 4
     case 0x76BF: case 0x76C7: case 0x76CF: case 0x76DF: case 0x76E7: case 0x76EF: case 0x76F7:
       wr(w, 0xC3FD, { 0x76BF: 0, 0x76C7: 2, 0x76CF: 5, 0x76DF: 0, 0x76E7: 2, 0x76EF: 3, 0x76F7: 4 }[h]);
       clearMenuState(w);

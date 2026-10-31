@@ -298,7 +298,7 @@ export function* showMessageAt(sh, hl, a, d, e) {
   clearArgCounters(w);
   setW(w, old);
 }
-// 05:605F OpenMessageBoxAt: the 20 x 7 message window at (0, 0) (05:4B20), the text loaded and measured (05:6179,
+// 05:605F OpenMessageBoxAt (05:682D OpenMessageBoxCentered is the same code): the 20 x 7 message window at (0, 0) (05:4B20), the text loaded and measured (05:6179,
 // 05:5B3B), the record moved to centre its size on (d, e) and rebuilt (05:4773)
 function* openMessageBoxAt(sh, hl, d, e) {
   const w = sh.w;

@@ -254,9 +254,11 @@ export function initFontScreen(w) {
   });
 }
 
-export function pictureAnimTiles(w) {           // 48:5EE9 PictureAnimTiles: 4 tiles 48:6900 + (frame & $FC) x 16
+// 48:5EE9 PictureAnimTiles: 4 tiles 48:6900 + (frame & $FC) x 16 (4A:6CA2 LinkWaitPictureTask, the link wait
+// picture's task, is the same code with its tiles at 4A:7650: tools/compare_routines.py)
+export function pictureAnimTiles(w, bank = 0x48, base = 0x6900) {
   const w0 = w.wram[0];
-  if (w.vram) D.inBank(w, 0x48, () => D.queueVRAMCopy(w, (0x6900 + (w0[0x0F8] & 0xFC) * 16) & 0xFFFF, 0xB000, 0x04));
+  if (w.vram) D.inBank(w, bank, () => D.queueVRAMCopy(w, (base + (w0[0x0F8] & 0xFC) * 16) & 0xFFFF, 0xB000, 0x04));
   w0[0x0F8] = (w0[0x0F8] + 1) & 0xFF;
   if (w0[0x0F8] >= 0x30) w0[0x0F8] = 0;
 }

@@ -190,7 +190,7 @@ export function getTextBoxWidth(w, hl) {
   return a;
 }
 
-// 0F:49AA DrawCourseEmblem: field 0's tiles (LZ to $D600) queued to VRAM1 $9070, a 3 x 3 block of tiles 7-$0F at
+// 0F:49AA DrawCourseEmblem (0D:499A ModeDrawEmblemUnused is the same code, its 0D:460F the same as 0F:4613): field 0's tiles (LZ to $D600) queued to VRAM1 $9070, a 3 x 3 block of tiles 7-$0F at
 // $D4C1 with the attributes of field 6 at $D1C1
 function drawCourseEmblem(w, c) {
   lz(w, c, getField(w, c, 0, 0), 0xD600);

@@ -150,8 +150,10 @@ export class SoftReset extends Error { constructor() { super("SoftReset 00:2DAA"
 // 08:555F LinkLostScreen: ClearFrameTasks; hSerialIdleByte 0, InitSerialLink 00:304D; LCD off, WRAM1, no sprites; the
 // LZ tiles 08:55E2 -> VRAM1 $9000 / $8800 ($80 + $80 blocks), the map 08:5E87 -> $9800, the attributes 08:5FD5 ->
 // VRAM1 $9800 ($40 each, 00:04DB); no scroll, WX 7, WY $90; the palettes 08:603C (all 8 BG, 00:056C), applied; LCD on;
-// song 6; VBlanks (00:2F82) until a button (hJoyPressed)
-export function* linkLostScreen(sh) {
+// song 6; VBlanks (00:2F82) until a button (hJoyPressed). 03:4028 UnusedPictureScreen (unreferenced) is the same
+// code with its own picture (03:40AB / 03:4950 / 03:4A9E / 03:4B05: `d`; tools/compare_routines.py)
+export const UNUSED_PICTURE_03 = { bank: 0x03, tiles: 0x40AB, map: 0x4950, attr: 0x4A9E, pal: 0x4B05 };
+export function* linkLostScreen(sh, d = { bank: 0x08, tiles: 0x55E2, map: 0x5E87, attr: 0x5FD5, pal: 0x603C }) {
   const w = sh.w, h = w.high;
   clearFrameTasksLL(w);
   h[0x1C1] = 0;
@@ -159,17 +161,17 @@ export function* linkLostScreen(sh) {
   if (w.vram) D.disableLCDSafely(w);
   D.setWramBank(w, 1);
   D.resetSprites(w);
-  D.inBank(w, 0x08, () => {
-    D.lzTo(w, 0x08, 0x55E2, 0xD000);
+  D.inBank(w, d.bank, () => {
+    D.lzTo(w, d.bank, d.tiles, 0xD000);
     D.queueAndRunVRAMCopy(w, 0xD000, 0xB000, 0x80);
     D.queueAndRunVRAMCopy(w, 0xD800, 0xA800, 0x80);
-    D.lzTo(w, 0x08, 0x5E87, 0xD000);
+    D.lzTo(w, d.bank, d.map, 0xD000);
     D.queueAndRunVRAMCopy(w, 0xD000, 0x9800, 0x40);
-    D.lzTo(w, 0x08, 0x5FD5, 0xD000);
+    D.lzTo(w, d.bank, d.attr, 0xD000);
     D.queueAndRunVRAMCopy(w, 0xD000, 0xB800, 0x40);
     h[0x18B] = 0; h[0x18A] = 0;
     if (w.vram) { w.lcd.wx = 0x07; w.lcd.wy = 0x90; }
-    D.loadPalettesImmediate(w, 0x603C, 0x00, 0x08);
+    D.loadPalettesImmediate(w, d.pal, 0x00, 0x08);
   });
   if (w.vram) { D.applyPendingPaletteUpdates(w); D.enableLCD(w); }
   sh.sound(0x06);
