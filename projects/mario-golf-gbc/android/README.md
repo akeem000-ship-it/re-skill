@@ -1,8 +1,10 @@
 # Android app
 
 A WebView app around the web build (`../web`), so the game installs and runs like a native app: full screen,
+the native page `web/play.html` (the game rewritten in JS, with its HD text, HD menus, wide view and touch layouts),
 touch pad (d-pad left, A / B right, Select / Start top right in landscape), Bluetooth / USB controllers, sound,
-the battery save kept on the phone.
+the battery save kept on the phone (the same localStorage key as before). Back opens the page's options; a built-in
+controller (a games handheld) is reported to the page (`window.__device`), L2 / R2 switch the view / run fast.
 
 The APK holds **no ROM**. On first launch it asks for your own `Mario Golf (USA).gbc` (the system file picker),
 keeps a private copy in the app's storage and starts straight away from then on. (`-PbundleRom` puts

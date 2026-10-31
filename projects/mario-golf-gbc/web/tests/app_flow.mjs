@@ -3,7 +3,8 @@
 // and a stand-in for its bridge (window.MGolfApp). First launch: no ROM -> the picker shows; choosing the ROM file
 // starts the game and hands the ROM to the app. Second launch: the kept ROM is served and the game starts at once.
 // The touch pad's A / START buttons drive the menus. Screenshots: out/app_first.png, out/app_second.png.
-// usage: node web/tests/app_flow.mjs
+// The app loads the native page web/play.html (--emu: the emulated web/index.html).
+// usage: node web/tests/app_flow.mjs [--emu]
 import { createRequire } from "module";
 import http from "http";
 import fs from "fs";
@@ -11,7 +12,9 @@ import path from "path";
 const { chromium, devices } = createRequire(import.meta.url)("playwright");
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 let kept = null;                                           // the ROM the "app" stored
-const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css" };
+const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".ttf": "font/ttf" };
+// the page the app loads: the native play.html (MainActivity); --emu: the emulated index.html it loaded before
+const PAGE = process.argv.includes("--emu") ? "index.html" : "play.html";
 const server = http.createServer((req, res) => {
   const u = decodeURIComponent(req.url.split("?")[0]);
   if (u === "/assets/rom/mario_golf.gbc") { if (kept) { res.writeHead(200); res.end(kept); } else { res.writeHead(404); res.end(); } return; }
@@ -32,7 +35,7 @@ const out = {};
 for (const run of ["first", "second"]) {
   const page = await ctx.newPage();
   page.on("pageerror", e => errors.push(run + ": " + e.message));
-  await page.goto("http://localhost:8766/assets/web/index.html");
+  await page.goto(`http://localhost:8766/assets/web/${PAGE}`);
   await page.waitForTimeout(1500);
   out[run] = { pickerShown: await page.isVisible("#loader") };
   if (run === "first") {
@@ -42,7 +45,7 @@ for (const run of ["first", "second"]) {
   }
   await page.waitForTimeout(11000);
   await tap(page, "Enter"); await page.waitForTimeout(3000); await tap(page, "Enter"); await page.waitForTimeout(3000); await tap(page, "KeyZ"); await page.waitForTimeout(2500);
-  Object.assign(out[run], await page.evaluate(() => ({ frames: window.__mg?.gb?.frames, padVisible: getComputedStyle(document.getElementById("pad")).display,
+  Object.assign(out[run], await page.evaluate(() => ({ frames: window.__golf ? window.__golf.frames : window.__mg?.gb?.frames, mark: window.__golf?.mark, padVisible: getComputedStyle(document.getElementById("pad")).display,
     screen: (r => [Math.round(r.width), Math.round(r.height)])(document.getElementById("screen").getBoundingClientRect()) })));
   await page.screenshot({ path: `out/app_${run}.png` });
   await page.close();

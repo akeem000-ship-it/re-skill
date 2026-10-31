@@ -50,6 +50,7 @@ public class MainActivity extends Activity {
             @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
                 return loader.shouldInterceptRequest(r.getUrl());
             }
+            @Override public void onPageFinished(WebView v, String url) { pushDevice(); }
         });
         // <input type=file>: the system file picker (any type: .gbc has no MIME type)
         web.setWebChromeClient(new WebChromeClient() {
@@ -68,7 +69,7 @@ public class MainActivity extends Activity {
         immersive();
         if (android.os.Build.VERSION.SDK_INT >= 28)
             getWindow().getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
-        web.loadUrl(ORIGIN + "/assets/web/index.html");
+        web.loadUrl(ORIGIN + "/assets/web/play.html");   // the native page (the game rewritten in JS); index.html is the emulated one
     }
 
     /** The saved ROM, else one bundled in the assets, else 404 (the page then shows its ROM picker). */
@@ -90,6 +91,27 @@ public class MainActivity extends Activity {
             catch (Exception e) { /* the game still runs; it asks again next time */ }
         }
         @JavascriptInterface public void forgetRom() { romFile().delete(); }
+        /** A short buzz (the page's Vibrate option: a shot at rest, a hole finished). */
+        @JavascriptInterface public void vibrate(int ms) {
+            android.os.Vibrator v = (android.os.Vibrator) getSystemService(VIBRATOR_SERVICE);
+            if (v == null || !v.hasVibrator()) return;
+            int d = Math.max(1, Math.min(ms, 400));
+            if (android.os.Build.VERSION.SDK_INT >= 26) v.vibrate(android.os.VibrationEffect.createOneShot(d, android.os.VibrationEffect.DEFAULT_AMPLITUDE));
+            else v.vibrate(d);
+        }
+        /** A picture of the game view (the page's Picture button, base64 PNG) to Downloads/MarioGolf (Android 10+). */
+        @JavascriptInterface public void saveImage(String name, String base64) {
+            if (android.os.Build.VERSION.SDK_INT < 29) return;
+            try {
+                android.content.ContentValues cv = new android.content.ContentValues();
+                cv.put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name);
+                cv.put(android.provider.MediaStore.Downloads.MIME_TYPE, "image/png");
+                cv.put(android.provider.MediaStore.Downloads.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/MarioGolf");
+                Uri u = getContentResolver().insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+                if (u == null) return;
+                try (java.io.OutputStream o = getContentResolver().openOutputStream(u)) { o.write(android.util.Base64.decode(base64, android.util.Base64.DEFAULT)); }
+            } catch (Exception e) { /* no picture */ }
+        }
     }
 
     @Override protected void onActivityResult(int req, int res, Intent data) {
@@ -126,6 +148,8 @@ public class MainActivity extends Activity {
             case KeyEvent.KEYCODE_DPAD_LEFT: return 32;
             case KeyEvent.KEYCODE_DPAD_UP: return 64;
             case KeyEvent.KEYCODE_DPAD_DOWN: return 128;
+            case KeyEvent.KEYCODE_BUTTON_L2: return 256;        // (the page: the view, 10:9 / wide)
+            case KeyEvent.KEYCODE_BUTTON_R2: return 512;        // (the page: fast while held)
         }
         return 0;
     }
@@ -144,7 +168,9 @@ public class MainActivity extends Activity {
         if ((e.getSource() & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK && e.getAction() == MotionEvent.ACTION_MOVE) {
             float x = e.getAxisValue(MotionEvent.AXIS_HAT_X), y = e.getAxisValue(MotionEvent.AXIS_HAT_Y);
             if (Math.abs(x) < 0.5f && Math.abs(y) < 0.5f) { x = e.getAxisValue(MotionEvent.AXIS_X); y = e.getAxisValue(MotionEvent.AXIS_Y); }
-            axisMask = (x > 0.5f ? 16 : 0) | (x < -0.5f ? 32 : 0) | (y < -0.5f ? 64 : 0) | (y > 0.5f ? 128 : 0);
+            float lt = Math.max(e.getAxisValue(MotionEvent.AXIS_LTRIGGER), e.getAxisValue(MotionEvent.AXIS_BRAKE));   // L2 / R2 as
+            float rt = Math.max(e.getAxisValue(MotionEvent.AXIS_RTRIGGER), e.getAxisValue(MotionEvent.AXIS_GAS));     // analog triggers
+            axisMask = (x > 0.5f ? 16 : 0) | (x < -0.5f ? 32 : 0) | (y < -0.5f ? 64 : 0) | (y > 0.5f ? 128 : 0) | (lt > 0.5f ? 256 : 0) | (rt > 0.5f ? 512 : 0);
             pushMask(); return true;
         }
         return super.dispatchGenericMotionEvent(e);
@@ -154,5 +180,19 @@ public class MainActivity extends Activity {
         web.evaluateJavascript("window.__flushSave && window.__flushSave();", null);
         super.onPause(); web.onPause();
     }
-    @Override protected void onResume() { super.onResume(); web.onResume(); }
+    @Override protected void onResume() { super.onResume(); web.onResume(); pushDevice(); }
+    /** Back: the game keeps running; the page shows or hides its options (window.__backPressed, web/js/hd/page.js). */
+    @Override public void onBackPressed() { web.evaluateJavascript("window.__backPressed && window.__backPressed()", null); }
+    /** HANDHELD (web/js/hd/handheld.js): the device's model and whether a game controller is built in (a games handheld's own
+     *  d-pad and buttons, not a Bluetooth / USB one), so the page keeps its touch controls hidden. */
+    private void pushDevice() {
+        boolean builtin = false;
+        for (int id : InputDevice.getDeviceIds()) {
+            InputDevice d = InputDevice.getDevice(id);
+            if (d == null || (d.getSources() & InputDevice.SOURCE_GAMEPAD) != InputDevice.SOURCE_GAMEPAD) continue;
+            if (android.os.Build.VERSION.SDK_INT >= 29 && !d.isExternal()) builtin = true;
+        }
+        final String js = "window.__device={model:" + org.json.JSONObject.quote(android.os.Build.MODEL) + ",builtinPad:" + builtin + "};";
+        web.post(() -> web.evaluateJavascript(js, null));
+    }
 }

@@ -1,3 +1,66 @@
 /* The play page's HD options and touch layouts (web/js/hd/page.js puts this sheet in). */
-#hdopts { text-align: center; font-size: 13px; margin: 4px 0; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-#hdopts select { font: inherit; background: var(--btn); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
+#hdopts { text-align: center; font-size: 13px; margin: 4px 0; display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap; }
+#hdopts select, #hdopts button { font: inherit; background: var(--btn); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
+#hdgear { display: none; }
+#deck { display: none; }
+#stickzone { display: none; }
+body.gamepad #pad, body.gamepad #stickzone { display: none !important; }
+
+/* ---- touch screens: golf-ball A / B, tee-shaped Start / Select, a gear for the options ---- */
+body.touch #pad button { -webkit-tap-highlight-color: transparent; }
+body.touch #pad .ab button { border: none; border-radius: 50%; color: #275d25; font: 800 20px system-ui;
+  background: radial-gradient(circle at 34% 28%, #fff 0 22%, #eef1f3 48%, #bcc4cc 100%),
+              radial-gradient(circle, rgba(0,0,0,0.10) 1.3px, transparent 1.8px) 0 0 / 8px 8px;
+  background-blend-mode: multiply; box-shadow: inset 0 -4px 7px rgba(0,0,0,0.22), 0 4px 10px rgba(0,0,0,0.35); }
+body.touch #pad .ab button.on { transform: translateY(2px) scale(0.96); box-shadow: inset 0 -2px 5px rgba(0,0,0,0.3), 0 2px 5px rgba(0,0,0,0.35); }
+body.touch #pad .ab .a.on { transform: translateY(-12px) scale(0.96); }
+body.touch #pad .mid .small { border: none; color: #4a3418; font-weight: 700; letter-spacing: 0.04em;
+  background: linear-gradient(#f6dfb0, #caa36a); border-radius: 14px 14px 6px 6px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
+body.touch #pad .dpad button { background: rgba(30, 40, 30, 0.55); color: #eaf3e6; border: 1px solid rgba(255,255,255,0.25); }
+body.touch #pad .dpad button.on { background: rgba(90, 150, 80, 0.75); }
+body.touch.stick .dpad { visibility: hidden; }
+body.touch.stick #stickzone { display: block; position: fixed; left: 0; bottom: 0; width: 45vw; height: 50vh; z-index: 3; touch-action: none; }
+.stick-base { position: absolute; left: 90px; top: calc(100% - 100px); width: 110px; height: 110px; transform: translate(-50%, -50%);
+  border-radius: 50%; background: rgba(30,40,30,0.45); border: 2px solid rgba(255,255,255,0.35); pointer-events: none; }
+.stick-base.active { background: rgba(30,40,30,0.6); }
+.stick-knob { position: absolute; left: 50%; top: 50%; width: 46%; height: 46%; border-radius: 50%; transform: translate(-50%, -50%);
+  background: radial-gradient(circle at 34% 28%, #fff 0 25%, #dfe4e8 60%, #aab3bb 100%); box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
+body.touch #hdgear { display: block; position: fixed; top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); z-index: 6;
+  width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.3); background: rgba(20,28,20,0.55); color: #fff; font-size: 20px; line-height: 1; padding: 0; }
+/* the options as a panel over the game, opened by the gear (or the app's Back) */
+body.touch #modes, body.touch #hdopts { display: none; }
+body.touch.showopts #modes, body.touch.showopts #hdopts { display: flex; position: fixed; left: 50%; transform: translateX(-50%); z-index: 7; width: min(94vw, 560px);
+  flex-wrap: wrap; gap: 8px; justify-content: center; padding: 10px 12px; border-radius: 12px; background: rgba(16,22,16,0.92); color: #eef3ea; font-size: 14px; margin: 0; }
+body.touch.showopts #modes { top: calc(max(8px, env(safe-area-inset-top)) + 44px); }
+body.touch.showopts #hdopts { top: calc(max(8px, env(safe-area-inset-top)) + 96px); }
+body.touch.showopts #modes select { max-width: 86vw; }
+
+/* ---- landscape phones: the picture as tall as the screen, the pad over its sides; the wide view keeps its shape ---- */
+@media (pointer: coarse) and (orientation: landscape) {
+  body.wide #screen { max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); }
+  body.touch #pad .dpad, body.touch #pad .ab { opacity: 0.88; }
+}
+
+/* ---- portrait (js/hd/portrait.js): the game on top, the golf deck below with the controls ---- */
+body.portrait main { max-width: none; padding: 0; }
+body.portrait header, body.portrait footer, body.portrait #note, body.portrait #loader:not([hidden]) ~ #note { display: none; }
+body.portrait #stage { position: fixed; top: 0; left: 0; right: 0; height: var(--game-h); display: flex; justify-content: center; align-items: center; background: #000; z-index: 1; }
+body.portrait #screen { width: auto; height: 100%; max-width: 100vw; max-height: none; border-radius: 0; }
+body.portrait #message { position: fixed; top: var(--game-h); left: 0; right: 0; z-index: 4; color: #fff; text-shadow: 0 1px 2px #000; pointer-events: none; }
+body.portrait #message button { pointer-events: auto; }
+body.portrait #deck { display: block; position: fixed; left: 0; right: 0; bottom: 0; top: var(--game-h); z-index: 0; overflow: hidden; }
+#deckbg { width: 100%; height: 100%; display: block; }
+#decklabel { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); white-space: nowrap; color: #fff; font: 600 13px system-ui;
+  text-shadow: 0 1px 2px #000; background: rgba(0,0,0,0.35); padding: 2px 12px; border-radius: 10px; }
+#decklabel:empty { display: none; }
+body.portrait #pad { display: flex; position: fixed; left: 0; right: 0; bottom: 0; top: var(--game-h); z-index: 2; align-items: center; justify-content: space-between;
+  padding: 30px max(18px, env(safe-area-inset-right)) calc(56px + env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left)); }
+body.portrait .dpad { grid-template: repeat(3, 56px) / repeat(3, 56px); }
+body.portrait .ab .a, body.portrait .ab .b { width: 74px; height: 74px; font-size: 22px; }
+body.portrait .ab { gap: 14px; }
+body.portrait .mid { position: absolute; bottom: calc(14px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); gap: 18px; }
+body.portrait.stick #stickzone { top: var(--game-h); height: auto; width: 50vw; }
+body.portrait .stick-base { top: 50%; }
+body.portrait #hdgear { top: calc(var(--game-h) + 8px); left: auto; right: max(8px, env(safe-area-inset-right)); }
+body.portrait.showopts #modes { top: calc(var(--game-h) + 50px); }
+body.portrait.showopts #hdopts { top: calc(var(--game-h) + 102px); }

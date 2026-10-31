@@ -6,7 +6,7 @@
 //   node web/tests/play_hd.mjs --same [frames]       the game unchanged: the session run with every option off and again with every
 //                                                    option on (and the touch layouts); a hash of the game's whole state (all RAM,
 //                                                    VRAM, OAM, palettes, LCD registers, save RAM) at every frame must be equal
-//   --opts a,b  (screenshots) only these option sets (off text ui wide all)
+//   --opts a,b  (screenshots) only these option sets (off text ui wide all portrait landscape)
 //   --save F  the browser's localStorage holds the save RAM file F (slot 0 a saved character: the session then goes into story mode)
 import { createRequire } from "module";
 import http from "http";
@@ -118,7 +118,9 @@ if (same) {
   }
 } else {
   // screenshots: one page per option set, each paused at the same screens
-  const OPTS = { off: "", text: "?font=itim", ui: "?ui=hd", wide: "?view=wide", all: "?font=itim&ui=hd&view=wide" };
+  const OPTS = { off: "", text: "?font=itim", ui: "?ui=hd", wide: "?view=wide", all: "?font=itim&ui=hd&view=wide",
+    portrait: "?font=itim&ui=hd&touch=1", landscape: "?font=itim&ui=hd&view=wide&touch=1" };   // (the last two: a phone, the whole page)
+  const PHONE = { portrait: [{ width: 412, height: 915 }, { hasTouch: true, isMobile: true }], landscape: [{ width: 915, height: 412 }, { hasTouch: true, isMobile: true }] };
   const STOPS = [
     ["title", g => g.mark === "menus" && (t => { for (let p = 0x1C0; p < 0x200; p += 4) if (t[p] && t[p + 3] === 0x40 && (t[p + 1] | t[p + 2] << 8) === 0x4D1D) return true; return false; })(g.w.wram[0])],
     ["charselect", g => g.mark === "menus" && (t => { for (let p = 0x1C0; p < 0x200; p += 4) if (t[p] && t[p + 3] === 0x06 && (t[p + 1] | t[p + 2] << 8) === 0x65D9) return true; return false; })(g.w.wram[0]) && g.w.wram[6][0x214] === 4],
@@ -132,7 +134,7 @@ if (same) {
   ];
   const STORY_STOPS = [["story_map", g => g.w.wram[0][0x450] && g.frames > 1700], ["story_walk", g => g.w.wram[0][0x450] && g.frames > 2150], ["story_talk", g => g.w.wram[0][0x450] && g.frames > 2400], ["story_talk2", g => g.w.wram[0][0x450] && g.frames > 2700], ["story_more", g => g.w.wram[0][0x450] && g.frames > 3300]];
   for (const [name, q] of Object.entries(OPTS).filter(([n]) => !only || only.includes(n))) {
-    const { page, errors } = await openPage(q);
+    const { page, errors } = await openPage(q, ...(PHONE[name] || []));
     await page.evaluate(() => {                    // (mark times for the stops)
       const g = window.__golf; let m = "";
       const prev = g.onFrame; g.onFrame = () => { if (prev) prev(); if (g.mark !== m) { m = g.mark; if (m === "aimmenu") { g.__aimAt = g.frames; g.__aims = (g.__aims || 0) + 1; } if (m === "address") g.__addrAt = g.frames; } };
@@ -141,7 +143,8 @@ if (same) {
       try {
         await page.waitForFunction(`(${fn})(window.__golf) || window.__golf.error`, null, { timeout: 240000, polling: 16 });
       } catch (e) { errors.push(`${stop}: not reached`); continue; }
-      await page.locator("#screen").screenshot({ path: path.join(outDir, `${stop}_${name}.png`) });
+      if (PHONE[name]) await page.screenshot({ path: path.join(outDir, `${stop}_${name}.png`) });
+      else await page.locator("#screen").screenshot({ path: path.join(outDir, `${stop}_${name}.png`) });
     }
     const r = await page.evaluate(() => ({ frames: window.__golf.frames, error: window.__golf.error, lines: window.__hd.view.hd ? window.__hd.view.hd.lines.map(l => l.text) : [] }));
     console.log(`${name}: ${r.frames} frames, error ${r.error}, last text lines ${JSON.stringify(r.lines.slice(0, 6))}, errors ${JSON.stringify(errors.slice(0, 4))}`);
