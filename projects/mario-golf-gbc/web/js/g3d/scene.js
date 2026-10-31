@@ -40,7 +40,7 @@ const DEPTH_FS = `#version 300 es
 precision mediump float; out vec4 o; void main() { o = vec4(1.0); }`;
 const PT_VS = `#version 300 es
 in vec3 aPos; in vec4 aCol; in float aSize; uniform mat4 uMVP; uniform float uScale; out vec4 vCol; out vec3 vW;
-void main() { vec4 p = uMVP * vec4(aPos, 1.0); gl_Position = p; gl_PointSize = max(1.0, aSize * uScale / p.w); vCol = aCol; vW = aPos; }`;
+void main() { vec4 p = uMVP * vec4(aPos, 1.0); gl_Position = p; gl_PointSize = clamp(aSize * uScale / p.w, 1.0, uScale * 0.03); vCol = aCol; vW = aPos; }`;
 const PT_FS = `#version 300 es
 precision highp float; in vec4 vCol; in vec3 vW; out vec4 o;
 ${LIGHT_GLSL}
@@ -123,6 +123,7 @@ export class Golf3D {
   }
   meshFrom(key, make) {                           // a cached body mesh {vao, n}
     let m = this.meshes.get(key);
+    if (m) { this.meshes.delete(key); this.meshes.set(key, m); }   // (the least recently used goes first)
     if (!m) {
       const d = make(); if (!d || !d.pos.length) return null;
       m = { ...vao(this.gl, this.P.obj, { aPos: [d.pos, 3], aCol: [d.col, 3] }), n: d.pos.length / 3, dvao: vao(this.gl, this.P.depth, { aPos: [d.pos, 3] }) };
@@ -131,6 +132,7 @@ export class Golf3D {
     }
     return m;
   }
+  meshOwn(d) { return d && d.pos.length ? { ...vao(this.gl, this.P.obj, { aPos: [d.pos, 3], aCol: [d.col, 3] }), n: d.pos.length / 3, dvao: vao(this.gl, this.P.depth, { aPos: [d.pos, 3] }) } : null; }
   bodyMesh(pic, R = 4, T = 3.6) {                // a sprite picture as a rounded body (voxround.js)
     return this.meshFrom("body:" + picKey(pic) + ":" + R + ":" + T, () => roundedMeshData(pic.rgba, pic.w, pic.h, R, T));
   }
@@ -190,7 +192,7 @@ export class Golf3D {
     hole.skirt = { ...vao(gl, this.P.ground, { aPos: [new Float32Array(sk), 3], aNrm: [new Float32Array(skn), 3] }), n: sk.length / 3 };
     // the tree bodies
     for (const t of trees) {
-      t.mesh = this.meshFrom("tree:" + hid + ":" + t.footX + ":" + t.footZ, () => roundedMeshData(t.rgba, t.w, t.h, 3, 3.2));
+      t.mesh = this.meshOwn(roundedMeshData(t.rgba, t.w, t.h, 3, 3.2));   // (owned by the hole, not the cache)
       t.y = H(t.footX, t.footZ);
     }
     this.status = `hole $${hid.toString(16)}: ${trees.length} trees, ${Math.round(performance.now() - t0)} ms`;
@@ -199,7 +201,7 @@ export class Golf3D {
   freeHole() {
     const gl = this.gl, h = this.hole; if (!h) return;
     gl.deleteTexture(h.mapTex); gl.deleteTexture(h.terrTex); if (h.greenTex) gl.deleteTexture(h.greenTex); h.groundMesh.free(); h.groundMesh.dvao.free(); h.skirt.free();
-    for (const t of h.trees) if (t.mesh) { this.meshes.delete("tree:" + h.id + ":" + t.footX + ":" + t.footZ); t.mesh.free(); t.mesh.dvao.free(); }
+    for (const t of h.trees) if (t.mesh) { t.mesh.free(); t.mesh.dvao.free(); }
     this.hole = null;
   }
   livePal(w) { return w.bgPal; }

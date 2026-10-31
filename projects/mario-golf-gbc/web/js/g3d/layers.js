@@ -66,6 +66,10 @@ class Page {
     this.fx = FX.map(F => new F());
     this.buildPanel();
     window.__g3d = this;
+    // while the game is not stepping (the page paused, a stopped round) the picture is still drawn from the last frame, so the
+    // camera, the effects and a changed option keep showing
+    const idle = () => { requestAnimationFrame(idle); const t = performance.now(); if (this.lastGame && t - this.presentAt > 120) this.present(this.lastGame, this.lastFrame, true); };
+    requestAnimationFrame(idle);
   }
   get active() { return this.L.on("view3d") && !this.failed; }
   ensure() {
@@ -81,7 +85,9 @@ class Page {
     catch (e) { this.fail(e); }
   }
   // once per drawn frame: true when the 3D view drew this frame (the 2D canvas is covered)
-  present(game, frame2d) {
+  present(game, frame2d, idle = false) {
+    if (!idle) { this.lastGame = game; this.lastFrame = frame2d; }
+    this.presentAt = performance.now();
     if (!this.active || !game || !game.w) { this.hide(); return false; }
     try {
       const sc = this.ensure(); if (!sc) { this.hide(); return false; }
