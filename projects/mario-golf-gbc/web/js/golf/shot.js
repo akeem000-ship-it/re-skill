@@ -16,6 +16,7 @@ import { fadeVBlank, updateGameTimer } from "./screen.js";
 import * as V from "./view.js";
 import { ballInGreenArea } from "./view.js";
 import { readJoypad } from "./joypad.js";
+import { serialVBlankTick, linkLostReset } from "./serial.js";
 import { taskFacade, runFrameTasks } from "./tasks.js";
 import { showCaption, captionMotionTask, captionAnimTask } from "./captions.js";
 import * as P from "./pictures.js";
@@ -257,6 +258,7 @@ export class Shot {
   *advance(n = 1) {                              // (a generator: the round is a coroutine, yield* at every caller)
     const w = this.w, h = w.high;
     for (let k = 0; k < n; k++) {
+      if (h[0x1C8] && (h[0x1C3] & 0xE0)) yield* linkLostReset(this);   // (00:2E3F: the cable lost: never returns)
       yield;                                     // (the frame: a caller running the round frame by frame steps here)
       this.ev("F");
       if (h[0x19E]) debugFrameMeter(w, w.readLY ? w.readLY() : 0);   // (AdvanceFrame's debug block, 00:2E4E: its rLY is the
@@ -264,17 +266,36 @@ export class Shot {
       this.fx = this.newFx();                    // this frame's sounds and effects
       if (w.vram) vblankDisplay(w);              // palettes, scroll, OAM DMA, the VRAM queues
       else if (!h[0x18D]) { if (h[0x19E]) updateDebugOverlay(w); h[0x18D] = 1; h[0x18C] = (h[0x18C] + 1) & 0xFF; }
-      if (this.input) readJoypad(h, this.input());
-      if (w.onVBlankSound) w.onVBlankSound();    // 7E:40EB SoundUpdate, 00:2C4A (a sound driver, if any)
-      updateGameTimer(w, id => this.sound(id));  // 00:2C6B
-      fadeVBlank(w);                             // 00:25DF / 00:25C9
-      runFrameTasks(w, true, this.dispatch);     // 00:247D with a = $80
+      this.vblankWork();
       if (this.ev.v) this.ev("V");               // (VBlank done: AdvanceFrame leaves its wait, 00:2EBF)
       if (w.vram) clearUnusedSprites(w);
       runFrameTasks(w, false, this.dispatch);    // 00:247D (off while $FF8F is 0)
       h[0x18D] = 0;
       w.wram[0][0x4B2] = (w.wram[0][0x4B2] + 1) & 0xFF;   // wFrameCounter
     }
+  }
+
+  // the VBlank handler's every-frame part after the display work (00:2F46-00:2F64)
+  vblankWork() {
+    const w = this.w, h = w.high;
+    if (this.input) readJoypad(h, this.input());   // 00:02EB
+    serialVBlankTick(w);                       // 00:3038
+    if (w.onVBlankSound) w.onVBlankSound();    // 7E:40EB SoundUpdate, 00:2C4A (a sound driver, if any)
+    updateGameTimer(w, id => this.sound(id));  // 00:2C6B
+    fadeVBlank(w);                             // 00:25DF / 00:25C9
+    runFrameTasks(w, true, this.dispatch);     // 00:247D with a = $80
+  }
+  // 00:2F82 WaitVBlankFlag: a VBlank (its work as in advance) and no more: no frame tasks, no ClearUnusedSprites, no
+  // frame count
+  *waitVBlankFlag() {
+    const w = this.w, h = w.high;
+    yield;
+    this.ev("W");
+    if (w.vram) vblankDisplay(w);
+    else if (!h[0x18D]) { if (h[0x19E]) updateDebugOverlay(w); h[0x18D] = 1; h[0x18C] = (h[0x18C] + 1) & 0xFF; }
+    this.vblankWork();
+    if (this.ev.v) this.ev("V");
+    h[0x18D] = 0;
   }
 
   displayTask() {                                // 11:4113 BallDisplayTask by view (the sprites are display)

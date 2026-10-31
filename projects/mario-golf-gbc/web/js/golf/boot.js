@@ -12,7 +12,7 @@ import { clearFrameTasks, registerFrameTask, unregisterFrameTask } from "./tasks
 import * as M from "./mapengine.js";
 import { initFontScreen } from "./pictures.js";
 import { newGame, mapWarpToReturnPoint } from "./start.js";
-import { initSerialLink } from "./modesel.js";
+import { initSerialLink, SoftReset } from "./serial.js";
 import { saveLoad, saveCheckAllBlocks } from "./save.js";
 
 const rd = D.rd, wr = D.wr;
@@ -109,10 +109,16 @@ export function* golfSessionEnd(sh) {
 export function* gameFromPowerOn(sh, playRound) {
   sh.playGolfRound = playRound;
   try {
-    yield* powerOn(sh);
     for (;;) {
-      yield* M.mapRunAfterScript(sh, sh.w.mapScriptBank, mapEngineRestart);
-      yield* inBankGen(sh.w, 0x0A, M.mapRunToEnterScript(sh));
+      try {
+        yield* powerOn(sh);
+        for (;;) {
+          yield* M.mapRunAfterScript(sh, sh.w.mapScriptBank, mapEngineRestart);
+          yield* inBankGen(sh.w, 0x0A, M.mapRunToEnterScript(sh));
+        }
+      } catch (e) {                              // (00:2DAA SoftReset, e.g. from LinkLostReset 00:2F8D: all again)
+        if (!(e instanceof SoftReset)) throw e;
+      }
     }
   } finally { sh.playGolfRound = undefined; }
 }

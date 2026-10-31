@@ -15,6 +15,7 @@ import * as R0C from "../js/golf/records0c.js";
 import * as S3E from "../js/golf/standings.js";
 import * as SC from "../js/golf/scorecard.js";
 import { loadText } from "../js/golf/text.js";
+import * as SER from "../js/golf/serial.js";
 
 useRom(romBytes());
 const filter = process.argv.slice(2).find(a => !/^\d+$/.test(a)) || "";
@@ -189,6 +190,32 @@ CASES.push({ name: "DictScrollStepUnused", bank: 0x3F, addr: 0x41DC, regs: () =>
 // bank 0B's unreferenced map cell writers (unreached.js; tiles within the 64 x 64 map)
 CASES.push({ name: "MapSetTerrainAt", bank: 0x0B, addr: 0x45E3, regs: () => ({ a: rnd(256), d: rnd(0x40), e: rnd(0x40) }), js: (w, r) => U.mapSetCellAt(w, 0xD000, r.d, r.e, r.a) });
 CASES.push({ name: "MapSetEventAt", bank: 0x0B, addr: 0x4637, regs: () => ({ a: rnd(256), d: rnd(0x40), e: rnd(0x40) }), js: (w, r) => U.mapSetCellAt(w, 0xD400, r.d, r.e, r.a) });
+// the link cable's protocol (serial.js; no partner: rSB / rSC are w.high[$101] / [$102], the core's io; romCall runs
+// the CPU without the hardware, so a transfer started stays started on both sides: w.noSerialHW)
+const serialState = w => {
+  const h = w.high;
+  h[0x1C2] = [0, 1, 2, rnd(256)][rnd(4)];
+  h[0x1C4] = rnd(4) ? rnd(3) : rnd(256);
+  h[0x1C5] = rnd(3) ? 1 + rnd(4) : rnd(256);
+  h[0x101] = [0x70, 0x71, 0x00, 0xFF, 0x40 + rnd(0x20), rnd(256)][rnd(6)];
+  h[0x102] = rnd(256) & 0x83;
+  w.noSerialHW = true;
+};
+const sjs = fn => (w, r) => { fn(w, r); return {}; };
+for (const [name, addr, fn, out] of [["SerialHandler", 0x2F93, w => SER.serialHandler(w)], ["SerialLoadSendByte", 0x2FF8, w => SER.serialLoadSendByte(w)],
+  ["SerialHandleRecvByte", 0x3021, w => SER.serialHandleRecvByte(w)], ["SerialVBlankTick", 0x3038, w => SER.serialVBlankTick(w)],
+  ["InitSerialLink", 0x304D, w => SER.initSerialLink(w)], ["SetLinkActive", 0x30F8, w => SER.setLinkActive(w)],
+  ["ClearLinkActive", 0x30FD, w => SER.clearLinkActive(w)]]) {
+  CASES.push({ name, bank: 0, addr, init: serialState, io: true, js: sjs(fn) });
+}
+CASES.push({ name: "SerialNextSendNibble", bank: 0, addr: 0x30AD, init: serialState, io: true, out: ["a", "b"],
+  js: w => { const a = SER.serialNextSendNibble(w); return { a, b: a }; } });
+CASES.push({ name: "SerialStoreNibble", bank: 0, addr: 0x30C9, init: serialState, io: true, regs: () => ({ a: 0x50 + rnd(0x10) }),
+  js: (w, r) => { SER.serialStoreNibble(w, r.a); return {}; } });
+CASES.push({ name: "SerialWaitSendDone", bank: 0, addr: 0x30EB, init: w => { serialState(w); w.high[0x1C4] = 0; }, io: true,
+  js: w => { const x = SER.serialWaitSendDone({ w, advance: function* () { yield; } }).next(); if (!x.done) throw new Error("it runs frames"); return {}; } });
+CASES.push({ name: "SerialSendBlock", bank: 0, addr: 0x3081, init: w => { serialState(w); w.high[0x1C4] = 0; }, io: true,
+  regs: () => ({ a: rnd(0x40) }), out: ["a"], js: (w, r) => { const g = SER.serialSendBlock({ w, advance: function* () { yield; } }, r.a); const x = g.next(); if (!x.done) throw new Error("it runs frames"); return { a: x.value }; } });
 for (const c of U.FUZZ || []) CASES.push(c(rnd));
 
 const hx = v => (v === undefined ? "undefined" : v.toString(16).padStart(2, "0"));
@@ -206,6 +233,7 @@ for (const c of CASES) {
     const regs = c.regs ? c.regs(w) : {};
     w.high[0x196] = 6; w.high[0x195] = c.bank;
     loadCore(gb, w);
+    if (c.io) { gb.mem.io[1] = w.high[0x101]; gb.mem.io[2] = w.high[0x102]; }   // (rSB / rSC)
     let got;
     // (a call that reaches PlaySoundCmd 00:2BBB, QueueVRAMCopy's error sounds for more than $80 blocks, is not
     // compared: the sound driver's RAM is not modelled there; counted apart)
@@ -227,6 +255,7 @@ for (const c of CASES) {
         if (m[k] !== w.wram[b][k]) { diffs.push(`wram${b} $${((b ? 0xD000 : 0xC000) + k).toString(16)} rom ${hx(m[k])} js ${hx(w.wram[b][k])}`); if (diffs.length >= 4) break; }
       }
     }
+    if (c.io) for (const r of [1, 2]) if (gb.mem.io[r] !== w.high[0x100 + r]) diffs.push(`io $ff0${r} rom ${hx(gb.mem.io[r])} js ${hx(w.high[0x100 + r])}`);
     for (let k = 0; k < 0x7F; k++) {
       if (w.high[0x180 + k] !== gb.mem.hram[k]) diffs.push(`hram $ff${hx(0x80 + k)} rom ${hx(gb.mem.hram[k])} js ${hx(w.high[0x180 + k])}`);
     }

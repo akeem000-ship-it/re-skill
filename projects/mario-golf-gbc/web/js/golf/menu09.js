@@ -4,6 +4,7 @@
 // $D202 = the items, $D203 = the first item's slot; each slot has a BG row (09:4400 + slot x 32, attributes filled
 // with the palette) and 16 tiles at VRAM1 ($9600 + slot x $100, wrapping into $8600 + ...). The highlighted item
 // blinks every 16 frames (wMenuBlink $D204); a sprite bobs beside the menu (MenuBobSpriteTask 09:4990).
+import { serialSendLinkRequest, serialSendBlock, initSerialLink } from "./serial.js";
 import { rb, rw } from "./rom.js";
 import * as D from "./render/display.js";
 import * as Scr from "./screen.js";
@@ -109,8 +110,9 @@ export function menuBobSpriteTask(w, m = MENU09) {
 }
 
 // 09:47E0 MenuSelect09: a = the cursor: the item highlighted (palette $0C) and blinking; Up / Down move it (sound
-// $5B, wrapping), A picks it (sound $5C; a = the item), B leaves (sound $5D; $FF). (With the link handshake on
-// ($D205) the partner's Start and A on item 1, the link game, are not ported.)
+// $5B, wrapping), A picks it (sound $5C; a = the item), B leaves (sound $5D; $FF). With the link handshake on ($D205)
+// A on item 1, the link game, asks the cable for a partner (09:488D: with none, sound $5D and the menu goes on); the
+// partner's own choice (09:4810, $10 received) is not ported.
 export function* menuSelect(sh, a, m = MENU09) {
   const w = sh.w;
   let b = a;
@@ -131,7 +133,23 @@ export function* menuSelect(sh, a, m = MENU09) {
         return 0xFF;
       }
       if (rep & 1) {                             // A
-        if (rd(w, 0xD205) && b === 1) notPorted("the link game's handshake (~09:488D SerialSendLinkRequest)");
+        if (rd(w, 0xD205) && b === 1) {          // 09:488D: the link game: $71 asked for (00:306E), a frame
+          yield* serialSendLinkRequest(sh);
+          yield* sh.advance();
+          const role = w.high[0x1C2];
+          if (role === 2) notPorted("the link partner's menu choice (~09:4810)");
+          let ok = false;
+          if (role === 1) {                      // the clock side: $10 sent (00:3081), 10 frames for the partner's $20
+            wr(w, 0xCB00, 0x10);
+            yield* serialSendBlock(sh, 0x10);
+            for (let c = 0x0A; c && !ok; c--) { yield* sh.advance(); ok = rd(w, 0xCB40) === 0x20; }
+          }
+          if (!ok) {                             // 09:48B8: no partner: sound $5D, InitSerialLink, on blinking
+            sh.sound(0x5D);
+            initSerialLink(w);
+            continue;
+          }
+        }
         sh.sound(0x5C);
         yield* menuDrawItem(sh, 0, b & 0x0F, m);
         return b;

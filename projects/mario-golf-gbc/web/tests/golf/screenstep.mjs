@@ -105,7 +105,7 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
     };
     partial = 0; partialFade = [];
     core.step();
-    while (!coreDone && cpu.pc !== 0x2E3B) { if (cpu.pc === 0x0340) lag = true; core.step(); }
+    while (!coreDone && cpu.pc !== 0x2E3B && cpu.pc !== 0x2F82) { if (cpu.pc === 0x0340) lag = true; core.step(); }   // (to AdvanceFrame or WaitVBlankFlag)
     let extra = partial; partialSeen = partial;
     delete m.read;
     for (const [a, v] of Object.entries(seen)) if (v !== null) w.high[a - 0xFE00] = v;
@@ -150,11 +150,11 @@ export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFr
   const taint = new Set();                       // bytes that have differed in every frame since a lag frame
   let fadeTaint = 0;
   const ev = kind => {
-    if (kind === "F") {
-      if (!core.at(0, 0x2E3B)) runAhead();       // (the first frame: the core's code from the entry)
+    if (kind === "F" || kind === "W") {        // (W: a WaitVBlankFlag 00:2F82 frame, to its end 00:2F89)
+      if (!core.at(0, kind === "F" ? 0x2E3B : 0x2F82)) runAhead();   // (the first frame: the core's code from the entry)
       core.setHeld(policy(frame));
       partial = 0; partialFade = [];
-      core.runToNext([[0, 0x2EBF]]);
+      core.runToNext([[0, kind === "F" ? 0x2EBF : 0x2F89]]);
       w.high.set(core.hram().subarray(0x10, 0x15), 0x190);
       lagWork(partial);                          // (AdvanceFrame's halt woke at a VBlank that found the work done)
       // the frame's full VBlank came early, inside the game's code, before a fade it then began: the native frame's

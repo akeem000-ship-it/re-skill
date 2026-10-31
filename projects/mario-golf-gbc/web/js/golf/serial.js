@@ -1,0 +1,187 @@
+// The link cable's protocol of bank 0 (00:2F93-00:3100). One byte is exchanged per transfer: the clock side
+// (hLinkRole 1, the one that got $70) starts one at every VBlank (SerialVBlankTick, SC = $83); the other (role 2)
+// answers on the external clock. Idle bytes ($10, or what hSerialIdleByte says: the handshakes' $20 / $21 / $22)
+// flow until a block is sent: $40 then its bytes as two $5x nibbles each (wSerialSendBuf $CB00 -> the partner's
+// wSerialRecvBuf $CB40). hLinkIdleCount counts the $00 / $FF bytes of a lost partner; AdvanceFrame (00:2E3B) gives
+// up at $20 (LinkLostReset 00:2F8D).
+// HRAM: $FFC0 hSerialRecv, $FFC1 hSerialIdleByte, $FFC2 hLinkRole, $FFC3 hLinkIdleCount, $FFC4 hSerialSendMode,
+// $FFC5 hSerialSendCount, $FFC6 hSerialRecvIndex, $FFC7 hSerialSendIndex, $FFC8 hLinkActive, $FFC9
+// hSerialNextIdleByte. The serial registers rSB / rSC are w.high[$101] / [$102] (w.high is $FE00-$FFFF).
+// No partner is modelled: a transfer on the internal clock completes at once with $FF in (an open cable), and its
+// interrupt runs SerialHandler (IE $0D has the serial interrupt).
+import { rb } from "./rom.js";
+import * as D from "./render/display.js";
+import { clearFrameTasks as clearFrameTasksLL } from "./tasks.js";
+
+const rd = D.rd, wr = D.wr;
+const SB = 0x101, SC = 0x102;
+
+// rSC written: bits 7, 1, 0 kept; a transfer on the internal clock (bits 7 and 0) ends with $FF received and the
+// serial interrupt, its handler at once (00:0058 IntSerial -> 00:2F93). (w.noSerialHW: a test that runs a routine
+// on the CPU alone, without the hardware: the transfer stays started)
+export function writeSC(w, v) {
+  const h = w.high;
+  h[SC] = v & 0x83;
+  if ((v & 0x81) !== 0x81 || w.noSerialHW) return;
+  h[SB] = 0xFF; h[SC] &= 0x7F;
+  serialHandler(w);
+}
+
+// 00:304D InitSerialLink: $70 sent on the external clock, the link state reset
+export function initSerialLink(w) {
+  const h = w.high;
+  h[SB] = 0x70;
+  h[0x1C0] = 0; h[0x1C1] = 0x10;
+  writeSC(w, 0x00); writeSC(w, 0x80);
+  h[0x1C2] = 0; h[0x1C3] = 0; h[0x1C4] = 0; h[0x1C8] = 0; h[0x1C9] = 0x10;
+}
+
+// 00:2F93 SerialHandler (the serial interrupt): the byte in to hSerialRecv; no role yet: $70 makes this side the
+// clock (role 1, SC $03), $71 the other (role 2: the ROM byte at $0070 out, the external clock started); role 1: the
+// next byte out (00:2FF8), hLinkIdleCount + 1 on $FF / $00 (else 0), the byte handled (00:3021); role 2: the same,
+// the external clock started again and the idle count cleared
+export function serialHandler(w) {
+  const h = w.high;
+  h[0x1C0] = h[SB];
+  const role = h[0x1C2];
+  if (!role) {
+    if (h[0x1C0] === 0x70) { h[0x1C2] = 1; writeSC(w, 0x03); }
+    else if (h[0x1C0] === 0x71) { h[0x1C2] = 2; h[SB] = rb(0, 0x0070); writeSC(w, 0x00); writeSC(w, 0x80); }
+    return;
+  }
+  if (role === 1) {
+    serialLoadSendByte(w);
+    const r = h[0x1C0];
+    h[0x1C3] = r === 0xFF || r === 0 ? (h[0x1C3] + 1) & 0xFF : 0;
+    serialHandleRecvByte(w);
+    return;
+  }
+  serialLoadSendByte(w);
+  writeSC(w, 0x80);
+  h[0x1C3] = 0;
+  serialHandleRecvByte(w);
+}
+
+// 00:2FF8 SerialLoadSendByte: by hSerialSendMode: 0 the idle byte; 1 the next nibble (00:30AD; at the count's end
+// mode 0 and the idle byte from hSerialNextIdleByte); 2 the block's $40 (mode 1 next)
+export function serialLoadSendByte(w) {
+  const h = w.high;
+  const m = h[0x1C4];
+  if (!m) { h[SB] = h[0x1C1]; return; }
+  if (m === 1) {
+    h[SB] = serialNextSendNibble(w);
+    h[0x1C5] = (h[0x1C5] - 1) & 0xFF;
+    if (h[0x1C5]) return;
+    h[0x1C4] = (h[0x1C4] - 1) & 0xFF;
+    h[0x1C1] = h[0x1C9];
+    return;
+  }
+  h[SB] = 0x40;
+  h[0x1C4] = (h[0x1C4] - 1) & 0xFF;
+}
+
+// 00:3021 SerialHandleRecvByte: $4x restarts the block (hSerialRecvIndex 0), $5x is a nibble of it (00:30C9)
+export function serialHandleRecvByte(w) {
+  const h = w.high, b = h[0x1C0], a = b & 0xF0;
+  if (a < 0x40) return;
+  if (a === 0x40) { h[0x1C6] = 0; return; }
+  if (a === 0x50) serialStoreNibble(w, b);
+}
+
+// 00:30AD SerialNextSendNibble: $50 | the next nibble of wSerialSendBuf (index hSerialSendIndex: even the high one)
+export function serialNextSendNibble(w) {
+  const h = w.high, i = h[0x1C7];
+  let a = rd(w, 0xCB00 + (i >> 1));
+  h[0x1C7] = (i + 1) & 0xFF;
+  if (!(i & 1)) a = ((a << 4) | (a >> 4)) & 0xFF;
+  return (a & 0x0F) | 0x50;
+}
+
+// 00:30C9 SerialStoreNibble: a's nibble into wSerialRecvBuf at hSerialRecvIndex / 2 (& $3F): even the high one (the
+// low cleared), odd ORed in
+export function serialStoreNibble(w, a) {
+  const h = w.high, i = h[0x1C6];
+  const p = 0xCB40 + ((i >> 1) & 0x3F);
+  if (!(i & 1)) wr(w, p, (((a << 4) | (a >> 4)) & 0xF0));
+  else wr(w, p, (a & 0x0F) | rd(w, p));
+  h[0x1C6] = (i + 1) & 0xFF;
+}
+
+// 00:3038 SerialVBlankTick (VBlank, 00:2F50): role 1 starts the next transfer (SC $83); role 2 counts the frames
+// since the last byte (hLinkIdleCount, stopping at $FF)
+export function serialVBlankTick(w) {
+  const h = w.high, r = h[0x1C2];
+  if (!r) return;
+  if (r === 1) { writeSC(w, 0x83); return; }
+  if (h[0x1C3] !== 0xFF) h[0x1C3]++;
+}
+
+// 00:3081 SerialSendBlock: a = bytes of wSerialSendBuf; frames until the last block is out; hSerialSendIndex 0; with
+// no link (role 0) returns $FF, else the count 2a nibbles, mode 2 and 0
+export function* serialSendBlock(sh, a) {
+  const h = sh.w.high;
+  while (h[0x1C4]) yield* sh.advance();
+  h[0x1C7] = 0;
+  if (!h[0x1C2]) return 0xFF;
+  h[0x1C5] = (a << 1) & 0xFF;
+  h[0x1C4] = 2;
+  return 0;
+}
+// 00:30EB SerialWaitSendDone: frames until hSerialSendMode is 0
+export function* serialWaitSendDone(sh) { while (sh.w.high[0x1C4]) yield* sh.advance(); }
+export function setLinkActive(w) { w.high[0x1C8] = 1; }     // 00:30F8 SetLinkActive
+export function clearLinkActive(w) { w.high[0x1C8] = 0; }   // 00:30FD ClearLinkActive
+
+// 00:306E SerialSendLinkRequest: $71 out on the internal clock (SC $03, then $83: with no partner it ends at once with
+// $FF in), then two VBlanks (00:2F82 WaitVBlankFlag)
+export function* serialSendLinkRequest(sh) {
+  const w = sh.w;
+  w.high[SB] = 0x71;
+  writeSC(w, 0x03);
+  writeSC(w, 0x83);
+  yield* sh.waitVBlankFlag();
+  yield* sh.waitVBlankFlag();
+}
+
+// ---- the cable lost (AdvanceFrame 00:2E3B: hLinkActive and hLinkIdleCount $20 or more) ----
+// a soft reset (00:2DAA SoftReset: the stack dropped, the whole start again): the game loop (boot.js) catches it
+export class SoftReset extends Error { constructor() { super("SoftReset 00:2DAA"); } }
+
+// 08:555F LinkLostScreen: ClearFrameTasks; hSerialIdleByte 0, InitSerialLink 00:304D; LCD off, WRAM1, no sprites; the
+// LZ tiles 08:55E2 -> VRAM1 $9000 / $8800 ($80 + $80 blocks), the map 08:5E87 -> $9800, the attributes 08:5FD5 ->
+// VRAM1 $9800 ($40 each, 00:04DB); no scroll, WX 7, WY $90; the palettes 08:603C (all 8 BG, 00:056C), applied; LCD on;
+// song 6; VBlanks (00:2F82) until a button (hJoyPressed)
+export function* linkLostScreen(sh) {
+  const w = sh.w, h = w.high;
+  clearFrameTasksLL(w);
+  h[0x1C1] = 0;
+  initSerialLink(w);
+  if (w.vram) D.disableLCDSafely(w);
+  D.setWramBank(w, 1);
+  D.resetSprites(w);
+  D.inBank(w, 0x08, () => {
+    D.lzTo(w, 0x08, 0x55E2, 0xD000);
+    D.queueAndRunVRAMCopy(w, 0xD000, 0xB000, 0x80);
+    D.queueAndRunVRAMCopy(w, 0xD800, 0xA800, 0x80);
+    D.lzTo(w, 0x08, 0x5E87, 0xD000);
+    D.queueAndRunVRAMCopy(w, 0xD000, 0x9800, 0x40);
+    D.lzTo(w, 0x08, 0x5FD5, 0xD000);
+    D.queueAndRunVRAMCopy(w, 0xD000, 0xB800, 0x40);
+    h[0x18B] = 0; h[0x18A] = 0;
+    if (w.vram) { w.lcd.wx = 0x07; w.lcd.wy = 0x90; }
+    D.loadPalettesImmediate(w, 0x603C, 0x00, 0x08);
+  });
+  if (w.vram) { D.applyPendingPaletteUpdates(w); D.enableLCD(w); }
+  sh.sound(0x06);
+  do yield* sh.waitVBlankFlag(); while (!h[0x194]);
+}
+// 00:2F8D LinkLostReset: 08:555F, then SoftReset 00:2DAA
+export function* linkLostReset(sh) {
+  yield* inBank08(sh.w, linkLostScreen(sh));
+  throw new SoftReset();
+}
+function* inBank08(w, g) {
+  const old = w.high[0x195];
+  w.high[0x195] = 0x08;
+  try { return yield* g; } finally { w.high[0x195] = old; }
+}

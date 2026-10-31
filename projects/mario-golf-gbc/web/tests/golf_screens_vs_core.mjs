@@ -531,6 +531,7 @@ const MINILAKE = [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x0A, 0x26],
   { to: [0x19, 0x21], at: [0x1900, 0x2130], noA: true }, [2, 0x20], [20, 0], [2, 1], ...ynNo,
   { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x28 }];
 let lastWinFrame = -1, talkPress = -100;
+let linkLostAt = -1;   // (boot_link_lost: the frame of its poke)
 let actorsShown = 0;   // (ACTORSMAP=n: the actors 200 frames after the map is first n, debugging a case)   // (the last frame a window was open: routeCase notes it)
 const talkQuiet = () => frameNow - lastWinFrame > 150;
 const CASES = [
@@ -1475,6 +1476,23 @@ const CASES = [
       [null, 0x80], [null, 0x40], [null, 0x10], [null, 0x10], [null, 0x20], [null, 0x40],
       [null, 0x40], [null, 1], {press: 1, every: 40, until: dictPage("list")},
       [dictPage("list"), 2], [dictPage("index"), 0x80], [null, 2], [menu09Items(2), 2]]) },
+  // the link menu's link game with no cable partner (09:488D): Down, A: $71 asked for (00:306E, two WaitVBlankFlag
+  // frames), nobody answers: sound $5D and the menu on; A again, then Up (the first item), A: the character select
+  { name: "boot_link_nopartner", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 30000,
+    run: sh => { stepsDone = -1; return gameCase(sh, 1, () => stepsDone >= 0 && frameNow > stepsDone + 200); },
+    policy: stepPolicy([[menu09Items(4), 0x80], [null, 1], [null, 1, 60], [null, 0x40, 60], [null, 1, 60]]) },
+  // the cable lost (a poke: hLinkActive 1 and hLinkIdleCount $20 on both sides once the link menu shows): the next
+  // AdvanceFrame gives up (00:2E3F -> 00:2F8D): the Link Lost screen (08:555F) until A, then SoftReset 00:2DAA: the
+  // game from the start again (to the link menu)
+  { name: "boot_link_lost", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 30000,
+    hook: (f, w, core) => {
+      if (f === 0) linkLostAt = -1;
+      if (linkLostAt >= 0 || !menu09Items(4)()) return;
+      linkLostAt = f;
+      w.high[0x1C8] = 1; w.high[0x1C3] = 0x20; core.hram()[0x48] = 1; core.hram()[0x43] = 0x20;
+    },
+    run: sh => gameCase(sh, 1, () => linkLostAt >= 0 && frameNow > linkLostAt + 3400),
+    policy: f => { frameNow = f; return f === 2600 ? 8 : linkLostAt >= 0 && (f === linkLostAt + 200 || f === linkLostAt + 201) ? 1 : 0; } },
   // Options, data management (32:7A0A): copy Kid (to slot 1), erase the copy, erase all answered No, then Yes
   { name: "boot_options_data", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 30000,
     run: sh => { stepsDone = -1; return gameCase(sh, 1, () => stepsDone >= 0 && frameNow > stepsDone + 200); },

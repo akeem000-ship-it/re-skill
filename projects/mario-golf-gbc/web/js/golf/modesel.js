@@ -33,11 +33,8 @@ function* inBankGen(w, bank, g) {
   try { return yield* g; } finally { w.high[0x195] = old; }
 }
 
-// 00:304D InitSerialLink: $70 sent, the link state $FFC0-$FFC9 reset (the serial registers are not modelled)
-export function initSerialLink(w) {
-  const h = w.high;
-  h[0x1C0] = 0; h[0x1C1] = 0x10; h[0x1C2] = 0; h[0x1C3] = 0; h[0x1C4] = 0; h[0x1C8] = 0; h[0x1C9] = 0x10;
-}
+export { initSerialLink } from "./serial.js";   // 00:304D
+import { initSerialLink } from "./serial.js";
 // 00:2B54 ResumeBGM: hSoundFlags bit 0 set: cleared, wCurrentBGM played again
 function resumeBGM(sh) {
   const w = sh.w;

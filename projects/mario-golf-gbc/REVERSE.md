@@ -141,6 +141,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the test maps $1F-$22 of bank 32 (the VS scene, the result tests, the golfer grid) | 232,698 | 95.89% |
 | + map $23's test menu (31:47D7-31:4945) | 233,053 | 96.04% |
 | + the debug boot menu (01:40A6, 01:516E), the character editor (02:6176), GolfDebugEntry / DebugHoleSelect (10:4415, 10:7BAC) | 234,153 | 96.49% |
+| + map $24's sprite test, map $30's Dune / Links rooms, the serial protocol of bank 0 with no partner (fuzzed; the link menu's no-cable path, the cable-lost screen and soft reset) | 234,839 | 96.77% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -1403,6 +1404,19 @@ block. What is sent depends on `hSerialSendMode`: the idle byte (`$10`), the blo
 SerialVBlankTick (00:3038) restarts the transfer each frame on the internal-clock side. InitSerialLink is called
 from GameMain 01:400E, 02:63B8, 03:402E, 07:7CDA, 08:5565 (the link-lost path), 09:48BA and three times in bank
 32: those are the link-mode entry points to trace.
+
+The port (serial.js) has the protocol of bank 0 and no partner: a transfer on the internal clock ends at once with
+`$FF` in (an open cable) and runs SerialHandler, as the hardware does. Checked: the routines one by one against the
+ROM (web/tests/golf_fuzz_routines.mjs `Serial*`, InitSerialLink, Set/ClearLinkActive: rSB / rSC are compared too; the
+tests' romCall runs the CPU alone, so a started transfer stays started on both sides there), and two screen cases:
+`boot_link_nopartner` (the link menu's link game with no cable: SerialSendLinkRequest 00:306E and its two
+WaitVBlankFlag 00:2F82 frames, nobody answers, sound `$5D` and the menu goes on; the screen harness syncs a
+WaitVBlankFlag frame at 00:2F89, its "W" event) and `boot_link_lost` (a poke of hLinkActive and hLinkIdleCount `$20`:
+AdvanceFrame's check 00:2E3F, LinkLostReset 00:2F8D, LinkLostScreen 08:555F until a button, SoftReset 00:2DAA: the
+native game loop starts again from power-on). Not ported: two machines linked (the handshakes of the mode select
+32:5313 / 32:53B8 with the wait picture 4A:6C1F, the partner's menu choice 09:4810, the link round's shot exchange
+02:483A / 02:48B8 / 02:4812, the link pause items' partner side): the emulator core has no second machine on its
+cable, and the native engine is one machine.
 
 #### Home bank vs Mario Tennis (tools/compare_home.py)
 
