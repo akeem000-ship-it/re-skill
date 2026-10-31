@@ -21,6 +21,9 @@ import { rasterize } from "./golf/render/raster.js";
 import { SoundDriver } from "./sound/driver.js";
 import { SynthAPU, CLOCK, DOTS_PER_FRAME } from "./sound/apu.js";
 import { pollGamepad } from "./gamepad.js";
+// ---- 3D LAYERS (web/js/g3d: the 3D hole view and its effects): render only, they read the game's state and never write it ----
+import { attach3D } from "./g3d/layers.js";
+// ---- (end 3D LAYERS) ----
 
 const EXPECTED_SHA1 = "7f2062e51b4fc87378c1d5e6b9578c9277b94e0b";
 const FRAME_MS = 1000 * DOTS_PER_FRAME / CLOCK;   // 16.74 ms
@@ -30,6 +33,7 @@ const canvas2 = $("screen2"), ctx2 = canvas2.getContext("2d"), image2 = ctx2.cre
 const rgba2 = new Uint32Array(image2.data.buffer);
 const rgb5 = new Uint8Array(160 * 144 * 3), rgba = new Uint32Array(image.data.buffer);
 const keys = {};
+const g3d = attach3D({ screen: canvas, getGame: () => game });   // (3D LAYERS: the options panel and the 3D canvas over the screen)
 let rom = null, sha = "", game = null, paused = false, fast = false, muted = false, last = 0, acc = 0;
 let fps = 0, fpsFrames = 0, fpsT = 0;
 
@@ -192,6 +196,7 @@ function step() {                                  // one frame of the game
     if (r2.done) game.link.done = true;
   }
   game.frames++;
+  g3d.afterStep(game);                             // (3D LAYERS: follows the frame; reads only)
   soundFrame(game.w);
   checkSave(game.w);
   if (r.done) { game.done = r.value; roundMessage(r.value, true); }
@@ -215,6 +220,7 @@ function draw() {
   const w = game.w;
   rasterize({ vram: w.vram, oam: w.oam, bgPal: w.bgPal, objPal: w.objPal, ...w.lcd }, rgb5, rgba);
   ctx.putImageData(image, 0, 0);
+  g3d.present(game, rgba);                         // (3D LAYERS: the 3D picture over the screen, when on)
   if (game.link) {
     const v = game.link.w2;
     rasterize({ vram: v.vram, oam: v.oam, bgPal: v.bgPal, objPal: v.objPal, ...v.lcd }, rgb5, rgba2);

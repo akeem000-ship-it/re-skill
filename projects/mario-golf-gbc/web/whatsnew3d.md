@@ -1,0 +1,5 @@
+# The 3D view
+- **3D view** (the option above): the hole the game is playing in 3D. The ground is the hole's own course map, read from your ROM; the golfer (the game's big swing frames), the pin, the hole's trees and the ball stand on it, the ball at its true height over its ground point with its shadow. The camera follows the game: behind the golfer at the address, after the ball in flight, behind the ball towards the pin on the green, close at the cup. The game's HUD stays on top as the game draws it.
+- **Camera**: Follow (the default), Course (the game's own framing, seen at a slant), Behind, TV.
+- **Hills**: soft contours made from the game's slope data (the fairway's slope cells, the green's slope bytes), wooded mounds out of bounds, hollow bunkers. Only drawn: the game plays on its flat values.
+- Everything here is render only. With every layer on the game runs frame for frame as with none (web/tests/g3d_layers_same.mjs). Quality **Lite** draws fewer pixels and a coarser ground for phones.

@@ -308,7 +308,14 @@ export function clearUnusedSprites(w) {          // 00:2688 ClearUnusedSprites
 }
 export function setSpriteQueueBase(w) { w.high[0x19C] = w.high[0x19B]; }   // 00:269F SetSpriteQueueBase
 
-function oamPut(w, l, y, x, t, a) { const o = w.wram[0]; o[l] = y & 0xFF; o[l + 1] = x & 0xFF; o[l + 2] = t & 0xFF; o[l + 3] = a & 0xFF; }
+function oamPut(w, l, y, x, t, a) {
+  const o = w.wram[0]; o[l] = y & 0xFF; o[l + 1] = x & 0xFF; o[l + 2] = t & 0xFF; o[l + 3] = a & 0xFF;
+  if (oamHook) oamHook(w, l >> 2);               // (3D layers: which code queued the slot)
+}
+// ---- 3D layers (web/js/g3d): told of every shadow OAM slot written, so the 3D view knows which bank's code (hROMBank) queued
+// each sprite (the HUD's, or the ball's and the golfer's it draws itself); it only reads the game's memory. null: nothing is told ----
+let oamHook = null;
+export function setOamHook(h) { oamHook = h; }
 
 export function queueSprite16(w, e, d, c, b) {   // 00:26A4 QueueSprite16: two 8x16 sprites side by side (X flip swaps)
   let l = w.high[0x19B];
