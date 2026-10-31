@@ -27,6 +27,8 @@ import { angleFromVector16 } from "../math.js";
 import { golfSessionEnd } from "../boot.js";
 import { eventListScreen } from "../nav.js";
 import { showScorecard } from "../scorecard.js";
+import { resetWindowsAndMap } from "../dict.js";
+import { copyTextShortToDE, pushTextStringArg } from "../text.js";
 
 const rd = D.rd, wr = D.wr;
 const setW = (w, n) => D.setWramBank(w, n);
@@ -428,3 +430,38 @@ export const TASKS = w => ({
   "32:43f5": () => vsConfettiTask(w),             // 32:43F5 VsConfettiTask
   "32:467b": () => resultPaletteCycleTask(w, 0x46B5),   // 32:467B VsRainbowPaletteTask
 });
+
+// 32:4ABD ScoreNameMenuWindowTest (unreferenced; never returns): the windows reset (05:6701); a window at (2, 0) of
+// 16 x 3 with text $0067; a message window at (0, $0B) of 20 x 7; the menu of text $011F at (4, 3); slots 0 and 2
+// redrawn and queued (05:6729, 05:679F) with 10 frames between (00:2ED5); then for ever: RunMenu (05:4CD7; B, $FF, runs
+// it again); the row picked is the next start row (wMenuInitCursor $C3F9); the short texts $00BC / $00BD copied to
+// WRAM5 $DD74 / $DD84 (05:40C2) and pushed as the text's arguments (05:54CF); slot 1 (the message window) gets text
+// $016B (05:5A51), redrawn (05:6729), the map under it restored (05:44E3) and queued (05:679F: a, 1, kept by 05:44E3)
+export function* scoreNameMenuWindowTest(sh) {
+  const w = sh.w;
+  yield* inBankGen(w, 0x05, resetWindowsAndMap(sh));   // 05:6701
+  yield* inBankGen(w, 0x05, T.openWindowWithText(sh, 0x0067, 0x02, 0x00, 0x10, 0x03));   // 05:6708
+  yield* inBankGen(w, 0x05, T.openMessageWindow(sh, 0x00, 0x0B, 0x14, 0x07));   // 05:4B20
+  yield* inBankGen(w, 0x05, W.openMenuWindow(sh, 0x011F, 0x04, 0x03));   // 05:4BB0
+  yield* inBankGen(w, 0x05, T.refreshWindowText(sh, 0));   // 05:6729
+  yield* inBankGen(w, 0x05, T.copyWindowToVRAM(sh, 0));    // 05:679F
+  yield* sh.advance(0x0A);                                 // 00:2ED5 WaitFramesCmd $0A
+  yield* inBankGen(w, 0x05, T.refreshWindowText(sh, 2));
+  yield* inBankGen(w, 0x05, T.copyWindowToVRAM(sh, 2));
+  for (;;) {
+    let a;
+    do a = yield* inBankGen(w, 0x05, W.runMenu05(sh));     // 05:4CD7
+    while (a === 0xFF);
+    wr(w, 0xC3F9, a);
+    D.inBank(w, 0x05, () => {
+      copyTextShortToDE(w, 0x00BC, 0xDD74);                // 05:40C2
+      pushTextStringArg(w, 0xDD74);                        // 05:54CF
+      copyTextShortToDE(w, 0x00BD, 0xDD84);
+      pushTextStringArg(w, 0xDD84);
+      W.setWindowText(w, 1, 0x016B);                       // 05:5A51
+    });
+    yield* inBankGen(w, 0x05, T.refreshWindowText(sh, 1));
+    D.inBank(w, 0x05, () => T.restoreMapUnderWindow(w, 1));   // 05:44E3
+    yield* inBankGen(w, 0x05, T.copyWindowToVRAM(sh, 1));
+  }
+}

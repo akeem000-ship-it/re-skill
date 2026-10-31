@@ -553,7 +553,7 @@ function* openMessageWindowVRAM1(sh, d, e, b, c) {
   if (s !== 0xFF) wr(w, 0xD824, s);
 }
 // 05:6701 ResetWindowsAndMap: InitWindowSystem, RestoreShadowFromMap
-function* resetWindowsAndMap(sh) {
+export function* resetWindowsAndMap(sh) {
   yield* initWindowSystem(sh);
   yield* restoreShadowFromMap(sh);
 }

@@ -24,6 +24,7 @@ import { GolfMemory } from "../js/golf/memory.js";
 import { holeIdFromCourse, loadHoleInfo } from "../js/golf/round.js";
 import { angleFromVector16 } from "../js/golf/math.js";
 import { saveBlockStore, saveBlockLoad } from "../js/golf/save.js";
+import { scoreNameMenuWindowTest } from "../js/golf/maps/testmaps.js";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const filter = process.argv.slice(2).find(a => !a.startsWith("--")) || "";
@@ -36,6 +37,8 @@ const inBank = (sh, bank, g) => (function* () {
   const old = sh.w.high[0x195]; sh.w.high[0x195] = bank;
   try { return yield* g; } finally { sh.w.high[0x195] = old; }
 })();
+// a routine that never returns, stopped after n frames (its yields)
+const framesOf = (sh, g, n) => (function* () { for (let r = g.next(); !r.done; r = g.next()) { if (n-- <= 0) return; yield r.value; } })();
 
 // the front end's buttons by the screen the native side is on (its frame tasks): Start at frame 2600 (the title),
 // then every 40 frames A, except Right in the character select until the cursor ($D214, WRAM6) is on Mario (4)
@@ -674,6 +677,15 @@ const CASES = [
   // is then into GolfRound's first frame: $C833 $C839 $C96D $D4F0 and hFF96 differ)
   { name: "boot_modeselectmain", state: "boot_modeselectmain", open: true, noRet: true,
     run: sh => { menuW = sh.w; return inBank(sh, 0x32, modeSelectMain(sh)); }, policy: frontEndPolicy },
+  // the same state with ModeSelectMain's first bytes (32:5037) patched to `jp $4ABD`: 32:4ABD ScoreNameMenuWindowTest,
+  // the unreferenced test screen whose menu loops for ever: Down, A (the names and text $016B in the message window),
+  // Down, Down, B (the menu again), Up, B; compared for 460 frames (the native routine stopped there). (A second pick is
+  // left out: each pick pushes two more text arguments, and the longer text's pen runs past the glyph buffer into the
+  // stack page $CF00-$CFFF, where the game's glyph blits 03:4B9D overwrite its own saved registers: no native code has
+  // the game's stack)
+  { name: "boot_scorenamemenutest", state: "boot_modeselectmain", open: true, noRet: true, romPatch: { "32:5037": [0xC3, 0xBD, 0x4A] },
+    run: sh => inBank(sh, 0x32, framesOf(sh, scoreNameMenuWindowTest(sh), 460)),
+    policy: f => ({ 80: 0x80, 120: 1, 220: 0x80, 250: 0x80, 300: 2, 340: 0x40, 380: 2 })[f] || 0 },
   // power-on (00:0100, an empty save RAM) to the Stroke round's GolfRound call, the same buttons
   { name: "boot_poweron", state: "boot_poweron", open: true, noRet: true,
     run: sh => { menuW = sh.w; return powerOn(sh); }, policy: frontEndPolicy },
