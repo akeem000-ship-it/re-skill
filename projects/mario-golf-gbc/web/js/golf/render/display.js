@@ -33,12 +33,17 @@ export function displayFromCore(w, gb) {
 export const svbk = w => (w.high[0x196] & 7) || 1;
 export function setWramBank(w, n) { w.high[0x196] = n; }
 
+// the cartridge RAM window $A000-$BFFF as the MBC5 maps it: open (RAMG $0A written to $0000-$1FFF) or reading $FF;
+// the RAM bank (RAMB, $4000-$5FFF) selects 8 KB of a RAM that has only 8 KB: every bank is the same RAM, as on the
+// emulator core (web/js/gb/mem.js: the offset modulo the RAM's size). The save code of save.js works on GolfMemory.sram
+// directly (it opens and closes the window around each access); the debug wind sweep (windsweep.js) logs through it.
+const sramIndex = (w, a) => (((w.sramBank || 0) << 13) | (a & 0x1FFF)) % w.sram.length;
 export function rd(w, a) {
   a &= 0xFFFF;
   if (a < 0x4000) return rb(0, a);
   if (a < 0x8000) return rb(w.high[0x195], a);
   if (a < 0xA000) return w.vram[w.lcd.vbk][a - 0x8000];
-  if (a < 0xC000) return 0xFF;
+  if (a < 0xC000) return w.sramEnable ? w.sram[sramIndex(w, a)] : 0xFF;
   if (a < 0xD000) return w.wram[0][a - 0xC000];
   if (a < 0xE000) return w.wram[svbk(w)][a - 0xD000];
   if (a < 0xFE00) return rd(w, a - 0x2000);
@@ -50,9 +55,13 @@ export function rd(w, a) {
 
 export function wr(w, a, v) {
   a &= 0xFFFF; v &= 0xFF;
-  if (a < 0x8000) return;                        // MBC registers (the bank is kept in hROMBank)
+  if (a < 0x8000) {                              // MBC registers (the ROM bank is kept in hROMBank)
+    if (a < 0x2000) w.sramEnable = (v & 0x0F) === 0x0A;   // RAMG
+    else if (a >= 0x4000 && a < 0x6000) w.sramBank = v & 0x0F;   // RAMB
+    return;
+  }
   if (a < 0xA000) { w.vram[w.lcd.vbk][a - 0x8000] = v; return; }
-  if (a < 0xC000) return;
+  if (a < 0xC000) { if (w.sramEnable) w.sram[sramIndex(w, a)] = v; return; }
   if (a < 0xD000) { w.wram[0][a - 0xC000] = v; return; }
   if (a < 0xE000) { w.wram[svbk(w)][a - 0xD000] = v; return; }
   if (a < 0xFE00) return wr(w, a - 0x2000, v);

@@ -40,7 +40,7 @@ export function runScreen(opts) {
 // "code", after the frame's VBlank work): the link test runs two of them in the order of the linked cores' clocks.
 // (setupCore(gb): a case's set-up of the core after its state is loaded, e.g. a cable; setupNative(w): the same for
 // the native machine before the routine starts)
-export function* screenSteps({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFrames = 20000, verbose = false, trace = false, hook = null, lagVBlanks = true, open = false, setRegs = null, jumps = null, romPatch = null, setupCore = null, setupNative = null, shotTag = "" }) {
+export function* screenSteps({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFrames = 20000, verbose = false, trace = false, hook = null, lagVBlanks = true, open = false, setRegs = null, jumps = null, romPatch = null, setupCore = null, setupNative = null, shotTag = "", spinAt = null }) {
   const romBytes = new Uint8Array(fs.readFileSync(path.join(root, "rom/mario_golf.gbc")));
   useRom(romBytes);
   const saved = JSON.parse(fs.readFileSync(path.join(root, stateFile)));
@@ -62,6 +62,7 @@ export function* screenSteps({ stateFile, run, policy = f => (f & 1 ? 0 : 1), ma
   for (let i = 0; i < 8; i++) w.wram[i].set(core.wram(i));
   w.high.set(core.hram().subarray(0, 0x7F), 0x180);
   w.sram.set(gb.mem.sram.subarray(0, 0x2000));   // (the save RAM's first bank)
+  w.sramEnable = gb.mem.ramEnable; w.sramBank = gb.mem.ramBank;   // (its window as the MBC has it)
   initDisplay(w); displayFromCore(w, gb);
   w.high[0x195] = gb.mem.romBank;
   const res = { frames: 0, pixelExact: 0, modelExact: 0, lag: 0, bad: [], sounds: { core: [], native: [] } };
@@ -111,6 +112,9 @@ export function* screenSteps({ stateFile, run, policy = f => (f & 1 ? 0 : 1), ma
     orig();
     if (lyRead && cpu.pc === 0x2E55) lyQ.push(cpu.a);
     if (!coreDone && cpu.pc === ret && cpu.sp === ((sp0 + 2) & 0xFFFF) && gb.mem.romBank === retBank) { coreDone = true; res.coreA = cpu.a; res.coreFrame = frame; }
+    // (spinAt: [bank, addr] of a `jr` to itself that ends the routine's code (only interrupts run after it): the core's
+    // code is done there)
+    if (spinAt && !coreDone && core.at(spinAt[0], spinAt[1])) { coreDone = true; res.coreFrame = frame; }
   };
   const runAhead = () => {                       // the core's code for the frame, to its next AdvanceFrame (or return)
     const m = gb.mem, read = m.read, seen = {};

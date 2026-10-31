@@ -85,11 +85,30 @@ export function addVelToPos(s, o, de) {          // 10:52DA: 24-bit position += 
   s[o] = v & 0xFF; s[o + 1] = (v >> 8) & 0xFF; s[o + 2] = v >> 16;
 }
 
+// (hramTrace.w: a GolfMemory whose HRAM gets what BallSpeedAndDir leaves there; the rest of the engine keeps no HRAM
+// scratch, and only the debug wind sweep (windsweep.js), which ends right after a ball step, needs it)
+export const hramTrace = { w: null };
 export function speedAndDir(s) {                 // 10:4CDE BallSpeedAndDir
   const vx = rd16(s, 0x09), vy = rd16(s, 0x0B);
+  if (hramTrace.w) speedAndDirHram(hramTrace.w.high, vx, vy);
   s[0x14] = g.angleFromVector16(vy, vx) >> 8;    // measured from the +x axis toward +y
   const xx = g.mulHLByDEBothSigned(vx, vx), yy = g.mulHLByDEBothSigned(vy, vy);
   s[0x13] = g.isqrtHL((xx + yy) & 0xFFFF);
+}
+
+// its HRAM: 00:1A03 AngleFromVector16 (x = vy, y = vx) divides with both nonzero (00:0DDB DivAHLByDE: $FFAC = a,
+// $FFAE / $FFAD the quotient's first / second phase bytes); the squares 00:0C8E MulHLByDEBothSigned ($FFA7 = h xor h,
+// 0; the product of the magnitudes at $FFA8-$FFAB, 00:0CB5), vy's last
+function speedAndDirHram(h, vx, vy) {
+  if (vx && vy) {
+    const ax = g.abs16(vy), ay = g.abs16(vx);
+    h[0x1AC] = ax >> 8;
+    const [qa, q] = g.divAHLByDE(ax >> 8, (ax & 0xFF) << 8, ay);
+    h[0x1AE] = qa; h[0x1AD] = q >> 8;
+  }
+  h[0x1A7] = 0;
+  const m = g.abs16(vy), p = BigInt(m) * BigInt(m);
+  for (let k = 0; k < 4; k++) h[0x1A8 + k] = Number((p >> BigInt(8 * k)) & 0xFFn);
 }
 
 export function wind(s, mph, wdir) {             // 10:52EE: [speed, direction << 8]; none on the ground

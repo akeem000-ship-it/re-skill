@@ -10,6 +10,8 @@ export class GolfMemory {
     this.wram = Array.from({ length: 8 }, () => new Uint8Array(0x1000));
     this.high = new Uint8Array(0x200);
     this.sram = new Uint8Array(0x2000);
+    this.sramEnable = false;                // the MBC's RAM window (RAMG / RAMB: render/display.js rd / wr)
+    this.sramBank = 0;
     this.tasks = null;                      // which frame tasks run (shot.js), set from the task table
   }
   // a snapshot as tools/emu_shot_record.py writes it: hex strings wram0-7, high, sram
