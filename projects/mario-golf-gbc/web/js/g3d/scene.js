@@ -77,7 +77,8 @@ const TREE_SCALE = 1.5, GOLFER_H = 4.2, PIN_H = 4.0;   // world sizes: the trees
 export class Golf3D {
   constructor(canvas, layers) {
     this.canvas = canvas; this.layers = layers;
-    const gl = this.gl = canvas.getContext("webgl2", { antialias: true, alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: true });
+    const aa = layers.quality !== "lite" && !/[?&]g3daa=0/.test(location.search);   // (Lite: no multisampling)
+    const gl = this.gl = canvas.getContext("webgl2", { antialias: aa, alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: false });
     if (!gl) throw new Error("no WebGL2");
     this.P = {
       ground: program(gl, GROUND_VS, GROUND_FS), obj: program(gl, OBJ_VS, OBJ_FS), depth: program(gl, DEPTH_VS, DEPTH_FS),
@@ -166,8 +167,8 @@ export class Golf3D {
     hole.mapTex = texture(gl, PX, PX, ground, { mip: false });
     const terr = new Uint8Array(CELLS * CELLS); terr.set(art.terrain);
     hole.terrTex = texture(gl, CELLS, CELLS, terr, { format: "r" });
-    // the ground mesh: a grid over the map (2 px apart, 4 on Lite), with a skirt out to the horizon at the edge's height
-    const S = this.lite ? 4 : 2, N = PX / S + 1, pos = new Float32Array(N * N * 3), nrm = new Float32Array(N * N * 3);
+    // the ground mesh: a grid over the map (4 px apart, 8 on Lite), with a skirt out to the horizon at the edge's height
+    const S = this.lite ? 8 : 4, N = PX / S + 1, pos = new Float32Array(N * N * 3), nrm = new Float32Array(N * N * 3);
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const x = i * S, z = j * S, k = (j * N + i) * 3, y = H(x, z);
       pos[k] = x; pos[k + 1] = y; pos[k + 2] = z;
@@ -453,7 +454,7 @@ export class Golf3D {
     if (seen.has(0x78)) { const x = u16(0x41E) / 32, z = u16(0x420) / 32, r = 0.3; out.push([this.ballMesh, m4.tsy(x, H(x, z) + r * 0.7, z, r, r, r), [1, 0.95, 0.8, 1], "ball2"]); }
   }
   // an 8 x 16 sprite from the game's VRAM (tile, OAM attribute: bank bit 3, OBJ palette), as a picture
-  spritePic(w, tile, attr) {
+  spritePic(w, tile, attr, full = false) {
     const bank = w.vram[attr & 8 ? 1 : 0], pal = w.objPal, rgba = new Uint8Array(8 * 16 * 4); let any = false, key = (attr & 15) + ":";
     for (let y = 0; y < 16; y++) {
       const o = ((tile & 0xFE) << 4) + y * 2, lo = bank[o], hi = bank[o + 1]; key += lo + "," + hi + ";";
@@ -463,7 +464,7 @@ export class Golf3D {
     if (!any) return null;
     let top = 0, bot = 15; const row = y => { for (let x = 0; x < 8; x++) if (rgba[(y * 8 + x) * 4 + 3]) return true; return false; };
     while (!row(bot)) bot--; while (!row(top)) top++;
-    return { rgba: rgba.slice(top * 32, (bot + 1) * 32), w: 8, h: bot - top + 1 };
+    return { rgba: rgba.slice(top * 32, (bot + 1) * 32), w: 8, h: bot - top + 1, full: rgba };
   }
   ballWorld() { const b = this.ballOverride || this.s.ball; return [b[0], this.hole.H(b[0], b[2]) + Math.max(-0.6, b[1]), b[2]]; }
   drawBodies() {

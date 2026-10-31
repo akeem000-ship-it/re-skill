@@ -67,7 +67,7 @@ void main() {
   if (uShadowOn > 0.5) {
     vec3 q = vSh.xyz / vSh.w * 0.5 + 0.5;
     if (q.x > 0.0 && q.x < 1.0 && q.y > 0.0 && q.y < 1.0) {
-      float b = 0.0015, s = 0.0; vec2 k = vec2(1.0 / 2048.0);
+      float b = 0.002, s = 0.0; vec2 k = vec2(1.0 / 1024.0);
       if (uLite > 0.5) s = texture(uShadow, vec3(q.xy, q.z - b));
       else { for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) s += texture(uShadow, vec3(q.xy + vec2(i, j) * k * 1.5, q.z - b)); s /= 9.0; }
       sh = s;

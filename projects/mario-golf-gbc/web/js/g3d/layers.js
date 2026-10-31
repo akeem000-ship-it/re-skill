@@ -99,7 +99,12 @@ class Page {
   // the canvas over the game's screen (its size in device pixels; Lite at a lower resolution)
   place() {
     const r = this.screen.getBoundingClientRect(), c = this.canvas, dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const k = this.L.quality === "lite" ? 0.6 : 1;
+    // the resolution: Lite at 0.6; both come down by themselves while the pictures come slower than ~40 a second, and go back up
+    const now = performance.now(), dtp = this.lastPlace ? now - this.lastPlace : 16; this.lastPlace = now;
+    this.avg = this.avg ? this.avg * 0.9 + Math.min(dtp, 200) * 0.1 : 16;
+    if (!this.resK) this.resK = 1;
+    if ((this.adjustAt = (this.adjustAt || 0) + 1) % 20 === 0) { if (this.avg > 25 && this.resK > 0.4) this.resK *= 0.85; else if (this.avg < 19 && this.resK < 1) this.resK = Math.min(1, this.resK * 1.1); }
+    const k = (this.L.quality === "lite" ? 0.6 : 1) * this.resK;
     const W = Math.max(160, Math.round(r.width * dpr * k)), H = Math.max(144, Math.round(r.height * dpr * k));
     if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
     const x = r.left + window.scrollX, y = r.top + window.scrollY;

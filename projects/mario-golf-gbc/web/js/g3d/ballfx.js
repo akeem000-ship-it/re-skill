@@ -24,7 +24,7 @@ export class BallFx {
     }
     // the trail: the ball's points while it flies or rolls fast
     const v = s.vel, sp = Math.hypot(v[0], v[2]);
-    if (sc.inShot && (s.air || sp > 0.02)) { this.trail.push([s.ball[0], s.ball[1], s.ball[2], s.air]); if (this.trail.length > 240) this.trail.shift(); }
+    if (sc.inShot && (s.air || sp > 0.02)) { this.trail.push([s.ball[0], s.ball[1], s.ball[2], s.air]); if (this.trail.length > (s.air ? 70 : 240)) this.trail.shift(); }
     this.spin = game.w.wram[6][0x411] << 24 >> 24; this.air = s.air;
   }
   landing(sc, d) {

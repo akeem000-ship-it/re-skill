@@ -63,7 +63,7 @@ export class Gallery {
     const tex = this.atlas(sc);
     // the caddie by the golfer (every mode): a step behind and to the side, with the bag
     if (sc.golferShown) {
-      const a = sc.golferAim || 0, g = sc.golferShown, x = g[0] - Math.cos(a) * 4 - Math.sin(a) * 3, z = g[1] - Math.sin(a) * 4 + Math.cos(a) * 3;
+      const a = sc.golferAim || 0, g = sc.golferShown, x = g[0] - Math.cos(a) * 1.5 + Math.sin(a) * 7, z = g[1] - Math.sin(a) * 1.5 - Math.cos(a) * 7;   // (to the golfer's left)
       this.cad = this.cad || { inst: new Float32Array(4), uv: new Float32Array([5 / V, 0, 1 / V, 1]), inst2: new Float32Array([0, 0, 1, 0]) };
       this.cad.inst.set([x, sc.hole.H(x, z), z, 2.6]);
       sc.drawBillboards(tex, this.cad.inst, this.cad.uv, this.cad.inst2, 1);

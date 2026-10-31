@@ -13,3 +13,6 @@
 - **Big moments**: a hole in one, an albatross or an eagle: fireworks over the green and the camera circling it; a won tournament gets fireworks over the result screen.
 - **Gallery**: at tournament rounds people line the ropes round the green and the tee (the game's own map characters, recoloured) and react to the shots; a caddie stands by the golfer in every mode.
 - **Title fly-over**: behind PRESS START the 3D view flies over holes of every club, the title's logo and Mario in front.
+- **3D overworld** (story mode): the clubhouse rooms, the courses' practice grounds and the Field in 3D while you walk: the blocked cells stand up as walls and counters, the Field's woods and rocks as rounded trees and boulders (hand annotations, `web/js/g3d/field_objects.js`), the people as rounded figures from their own sprites, the menus and message boxes on top.
+- **Field life**: birds crossing the sky with their shadows, butterflies by day and fireflies at night, dust in the rooms; grass and dirt detail on the ground and a glint on water.
+- Quality: the 3D picture's resolution comes down by itself while the pictures come slowly and goes back up when there is room.

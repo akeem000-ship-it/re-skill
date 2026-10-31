@@ -9,4 +9,6 @@ import { Moments } from "./moments.js";
 import { Replay } from "./replay.js";
 import { CloseCall } from "./closecall.js";
 import { TitleShow } from "./titleshow.js";
-export const FX = [Wear, BallFx, Ambience, Gallery, Moments, Replay, CloseCall, TitleShow];
+import { Field3D } from "./field3d.js";
+import { FieldLife } from "./fieldlife.js";
+export const FX = [Wear, BallFx, Ambience, Gallery, Moments, Replay, CloseCall, TitleShow, Field3D, FieldLife];

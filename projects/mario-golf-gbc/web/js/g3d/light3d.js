@@ -64,7 +64,7 @@ export class Lighting {
   }
   // ---- the shadow map ----
   beginShadow(focus) {
-    const sc = this.scene, gl = sc.gl, N = sc.lite ? 1024 : 2048;
+    const sc = this.scene, gl = sc.gl, N = sc.lite ? 512 : 1024;
     if (!this.fbo || this.fboN !== N) {
       if (this.fbo) { gl.deleteFramebuffer(this.fbo); gl.deleteTexture(this.depthTex); }
       this.fboN = N; this.depthTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, this.depthTex);

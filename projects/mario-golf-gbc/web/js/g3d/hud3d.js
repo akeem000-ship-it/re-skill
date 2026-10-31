@@ -78,8 +78,12 @@ export class HudLayer {
     return out;
   }
   draw(scene, game) {
-    const gl = this.gl, w = game.w, t = tagsOf(w);
+    const w = game.w, t = tagsOf(w);
     const keep = i => w.oam[i * 4] - 16 >= 124 || (!WORLD_BANKS.has(t[i]) && !(scene.hideSprite && scene.hideSprite(i)));   // (the meter row is the HUD)
+    this.drawLayer(scene, w, keep);
+  }
+  drawLayer(scene, w, keep) {
+    const gl = this.gl;
     this.raster(w, keep);
     if (!this.tex) {
       this.tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, this.tex);

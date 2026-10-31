@@ -5,8 +5,9 @@
 // crypto.getRandomValues for the round's seed), A pressed every 20 frames in menus, the swing pressed by the meter's count; the keys
 // go in through the page's own key events in the frame hook (window.__golf.onFrame), so both runs see the same buttons on the same
 // frames. Scenarios: "stroke" (a Stroke round started from the selector: the tee shots, flights, approaches, the green, putts,
-// the next hole) and "title" (power-on: the opening, the title, the menus, into a round).
-// usage: node web/tests/g3d_layers_same.mjs [frames=2400] [--scenario stroke|title|both] [--quality full|lite] [--shots outdir]
+// the next hole), "title" (power-on: the opening, the title, the menus, into a round) and "story" (power-on with a saved character,
+// out/kid.sav or --save F: into the story mode's clubhouse, the 3D overworld).
+// usage: node web/tests/g3d_layers_same.mjs [frames=2400] [--scenario stroke|title|story|both|all] [--quality full|lite] [--shots outdir]
 import { createRequire } from "module";
 import http from "http";
 import fs from "fs";
@@ -17,7 +18,8 @@ const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../.
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf("--" + k); return i >= 0 ? args[i + 1] : d; };
 const frames = +(args.find((a, i) => !a.startsWith("--") && !(i && args[i - 1].startsWith("--"))) || 2400);
-const scenarios = opt("scenario", "both") === "both" ? ["stroke", "title"] : [opt("scenario")];
+const scenarios = opt("scenario", "both") === "both" ? ["stroke", "title"] : opt("scenario") === "all" ? ["stroke", "title", "story"] : [opt("scenario")];
+const saveFile = path.join(root, opt("save", "out/kid.sav"));
 const quality = opt("quality", "full"), shotDir = opt("shots", null);
 
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".md": "text/plain" };
@@ -40,6 +42,7 @@ async function run(scenario, query) {
     const orig = crypto.getRandomValues.bind(crypto);
     crypto.getRandomValues = a => { if (a instanceof Uint16Array && a.length === 1) { a[0] = 0x2F6B; return a; } return orig(a); };
   });
+  if (scenario === "story") await page.addInitScript(([k, v]) => { localStorage.setItem(k, v); }, ["mg-sram-7f2062e51b4f", fs.readFileSync(saveFile).toString("base64")]);
   await page.goto(`http://localhost:${port}/web/play.html?${query}`);
   await page.waitForFunction(() => window.__golf && window.__golf.frames > 0, null, { timeout: 60000 });
   if (scenario === "stroke") {

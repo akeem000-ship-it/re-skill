@@ -356,6 +356,18 @@ r18:setup`). `play_page.mjs` goes through the menus (A skips the demo, Start on 
 a few shots in headless Chromium with scripted keys (no page errors; screenshots in out/); `--stroke` / `--match`
 start a round directly, `--pause` opens the pause menu's Scorecard on the first shot.
 
+#### The 3D layers (web/js/g3d; docs/g3d.md; web/tests/g3d_layers_same.mjs, g3d_replay_rerun.mjs)
+
+Render-only options on the play page (the "3D layers" panel): a WebGL view of the hole over the screen (the course map from the
+ROM as the ground, the tree tiles (bit 7 of the `$D700` tile byte) stood up, the golfer from his big frames 11:6EEF / 11:6F0F, the
+ball at its height `$D406-$D408` over its ground point), the game's HUD over it (shadow OAM slots tagged by the bank that queued
+them: `display.js setOamHook`), a camera following wOnGreen `$D443` and the course camera `$C320/$C322`; cosmetic hills from the
+slope cells and the green's slope bytes; sky, light, terrain surfaces, wear, ball effects, ambience in the game's wind, replays,
+close calls, big moments, a gallery, the title's fly-over and the story maps in 3D. Every layer only reads the game: with all of
+them on, the state hash after every frame equals the run with them off. The replay re-runs a shot with the engine's own `Shot`
+on a copy of the memory taken in its launch frame (`$D438` = `$11`, `$D4D3` = 0, the ball not moved) and matches the game's path
+and outcome frame for frame. Details: docs/g3d.md.
+
 #### The front end (web/js/golf: boot.js, title.js, menu09.js, charsel.js, select.js, modesel.js)
 
 Power-on: Start 00:2DA0 sets hIsCGB; SoftReset 00:2DAA clears WRAM0 ($C000-$CFEF) and HRAM $FF80-$FFEF, copies
