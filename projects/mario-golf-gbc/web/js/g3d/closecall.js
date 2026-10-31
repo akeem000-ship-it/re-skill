@@ -40,7 +40,7 @@ export class CloseCall {
     const fade = Math.min(1, c.t * 4, (c.dur - c.t) * 3);
     sc.renderInset([0.52, 0.5, 0.45, 0.42], eye, [s[0], gy + 0.3, s[1]], 0.75);
     sc.ballOverride = keep;
-    drawLabel(sc, c.title, 0.745, 0.06, 0.06, { size: 30, fg: "#ffe24a", bg: "rgba(0,0,0,0.6)", stroke: null }, fade);
-    drawLabel(sc, c.sub, 0.745, 0.47, 0.045, { size: 24, fg: "#fff", bg: "rgba(0,0,0,0.6)", stroke: null }, fade);
+    drawLabel(sc, c.title, 0.745, 0.05, 0.075, { size: 30, fg: "#ffe24a", bg: "rgba(0,0,0,0.6)", stroke: null }, fade);
+    drawLabel(sc, c.sub, 0.745, 0.47, 0.06, { size: 24, fg: "#fff", bg: "rgba(0,0,0,0.6)", stroke: null }, fade);
   }
 }
