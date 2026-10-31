@@ -112,6 +112,8 @@ const T = [
   ["CpuSteepSlopeMidTile", 0x4DE2, () => ({ hl: rnd(0x4000), de: rnd(0x4000) }), (s, r) => ({ a: AI.steepSlopeMidTile(s.w, s.hole, r.hl, r.de) })],
   ["CpuFindSteepSlopeOnLine", 0x4B1A, () => ({ a: rnd(13), hl: (1 + rnd(0x3C)) << 8 | rnd(256), bc: rnd(0x10000), de: rnd(0x10000) }),
     (s, r) => { const [a, bc] = AI.findSteepSlopeOnLine(s.w, s.hole, r.a, r.hl >> 8, r.bc); return { a, bc, hl: r.hl, de: r.de }; }],
+  // (bank 11's unreferenced older plan)
+  ["CpuPlanShot", 0x4046, () => ({}), s => AI.cpuPlanShot(s.w, s.hole), 0x11],
   ["CpuBoostPower10Pct", 0x505B, () => ({ hl: rnd(0x10000) }), (s, r) => ({ hl: AI.boostPower10Pct(r.hl) })],
   ["CpuLieCarryCompensation", 0x5082, s => { s.w.wram[6][0x4CD] = [0, 1, 2, 0x0C, 4][rnd(5)]; return { a: rnd(13), hl: (1 + rnd(0x3C)) << 8 | rnd(256) }; },
     (s, r) => { const [a, h] = AI.lieCarryCompensation(s.w, r.a, r.hl >> 8); const div = [1, 2, 0x0C].includes(s.w.wram[6][0x4CD]); return { a, h, l: div ? a : r.hl & 0xFF }; }],
@@ -124,7 +126,7 @@ function planRegs(p) {
 }
 
 let bad = 0;
-for (const [name, addr, gen, js] of T) {
+for (const [name, addr, gen, js, bank = 0x3C] of T) {
   if (filter && !name.includes(filter)) continue;
   let fails = 0, first = null, hung = 0;
   for (let k = 0; k < N; k++) {
@@ -135,7 +137,7 @@ for (const [name, addr, gen, js] of T) {
     coreFor(gb, s.w, s.hole);
     const snap = process.env.DEBUG ? { w: s.w.wram.map(b => b.slice()), h: s.w.high.slice() } : null;
     let out;
-    try { out = romCall(gb, 0x3C, addr, regs, STEPS[name] ?? 400_000_000); }
+    try { out = romCall(gb, bank, addr, regs, STEPS[name] ?? 400_000_000); }
     catch (err) {                                   // the ROM never returns from this state (a search that loops
       if (!/did not return/.test(err.message)) throw err;   // for ever): the JS port throws there too
       let threw = false;

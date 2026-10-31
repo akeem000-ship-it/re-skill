@@ -10,6 +10,8 @@ import { loadText } from "./text.js";
 import { registerFrameTask } from "./tasks.js";
 import { queueVRAMCopy } from "./render/display.js";
 import { mapScrollTask } from "./render/holeview.js";
+import { dist as distHL } from "./ball.js";
+import { mulHLByDEFull, negDE } from "./home.js";
 
 // 40:5AA9 MulHLByDE_40 (unreferenced; the same code as 00:0CB5 MulHLByDE, its jumps relative): the high 16 bits of hl x de;
 // the whole 32-bit product left in HRAM $FFA8-$FFAB (low byte first)
@@ -264,4 +266,23 @@ export function mapSetCellAt(w, base, d, e, a) {
   const c = ((d & 0xFE) >> 1) | (d & 0x80);
   const hl = (base + (e & 0xFE) * 16 + c) & 0xFFFF;
   w.wram[6][hl - 0xD000] = a;
+}
+
+// 10:77CC ReflectScaleUnused (unreferenced): the length (10:7372) of ($D4A9 - vx, $D4AB - vy); then $D4A9 = -$D4A1 x
+// vx / length and $D4AB = -$D4A3 x vy / length: the product's low 24 bits (00:0CB5's HRAM; $FFFFFF when its top byte
+// is set) divided (00:0DDB), $3FFF when the quotient passes 16 bits
+export function reflectScaleUnused(w) {
+  const r16 = a => rd(w, a) | rd(w, a + 1) << 8;
+  const len = distHL((r16(0xD4A9) - r16(0xD409)) & 0xFFFF, (r16(0xD4AB) - r16(0xD40B)) & 0xFFFF);
+  for (const [out, k, v] of [[0xD4A9, 0xD4A1, 0xD409], [0xD4AB, 0xD4A3, 0xD40B]]) {
+    mulHLByDEFull(w, r16(v), negDE(r16(k)));
+    const h = w.high;
+    let a, hl;
+    if (h[0x1AB]) { a = 0xFF; hl = 0xFFFF; } else { a = h[0x1AA]; hl = h[0x1A8] | h[0x1A9] << 8; }
+    h[0x1AC] = a;
+    let [qa, q] = M.divAHLByDE(a, hl, len);
+    if (len) { h[0x1AE] = qa; h[0x1AD] = q >> 8; }
+    if (qa) q = 0x3FFF;
+    wr(w, out, q & 0xFF); wr(w, out + 1, q >> 8);
+  }
 }

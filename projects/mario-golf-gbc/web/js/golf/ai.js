@@ -12,6 +12,7 @@ import { pinDist } from "./cup.js";
 import * as S from "./swing.js";
 import * as A from "./aim.js";
 import { lieTerrain } from "./shot.js";
+import { pickClub as pickClubFn } from "./hole.js";
 
 const pinDistOf = w => pinDist(ball(w));         // 10:62AD PinDist
 
@@ -42,7 +43,8 @@ export function compare16(bc, de) {              // 3C:4404 CpuCompare16: 0 equa
   return hl & 0x8000 ? 2 : hl ? 1 : 0;
 }
 
-// 3C:4483: the distance of (hl, de) (16-bit signed offsets) in steps that keep the squares in range
+// 3C:4483: the distance of (hl, de) (16-bit signed offsets) in steps that keep the squares in range (40:5941
+// VectorLengthTail, unreferenced, is the same code: tools/compare_routines.py 40:5941 3C:4483 0x5B)
 function scaledDist(hl, de) {
   const habs = v => ((v >> 8) & 0x80 ? (-(v >> 8)) & 0xFF : v >> 8);
   let a = habs(de);
@@ -884,4 +886,26 @@ export function findSteepSlopeOnLine(w, hole, club, power, aim) {
     if (steepSlopeMidTile(w, hole, x, y)) return [1, rd16(r6, 0x529)];
     wr16(r6, 0x529, (rd16(r6, 0x529) + 0x80) & 0xFFFF);
   }
+}
+
+// 11:4046 CpuPlanShot (unreferenced: an older plan than 3C:426A): the aim (SmartAim 10:6406); on the green ($D4CD =
+// 6) the putter ($0D) with mode 1 and the power by PinDist 10:62AD p: from $3C0 on $3C, from $140 (2p >> 5) + 1
+// with bit 0 cleared, below it (6p >> 5) + 1 so, mode 0 there; off the green from $780 on PickClub 10:6341's club,
+// power $3C, mode 0, else club $0B (a pitch), power (p >> 5) + 1 (bit 0 cleared), mode 2. Returns a = club, h = power,
+// l = 0, d = mode, e = $FF, bc = the aim
+export function cpuPlanShot(w, hole) {
+  const bc = A.smartAim(w, hole), r6 = w.wram[6];
+  const pw = v => ((((v >> 5) + 1) & 0xFF) & 0xFE);
+  let a, h, d;
+  const p = pinDist(ball(w));
+  if (r6[0x4CD] === 6) {
+    a = 0x0D;
+    if (!(((p + 0xFC40) & 0xFFFF) & 0x8000)) { h = 0x3C; d = 1; }
+    else if (!(((p + 0xFEC0) & 0xFFFF) & 0x8000)) { h = pw((p << 1) & 0xFFFF); d = 1; }
+    else { h = pw((p * 6) & 0xFFFF); d = 0; }
+  } else if (!(((p + 0xF880) & 0xFFFF) & 0x8000)) {
+    pickClubFn(w);
+    a = r6[0x329]; h = 0x3C; d = 0;
+  } else { a = 0x0B; h = pw(p); d = 2; }
+  return { a, h, l: 0, d, e: 0xFF, bc };
 }

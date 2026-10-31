@@ -189,6 +189,8 @@ CASES.push({ name: "DictScrollStepUnused", bank: 0x3F, addr: 0x41DC, regs: () =>
   out: ["a"], js: (w, r) => U.dictScrollStepUnused(w, r.h << 8 | r.l, r.d << 8 | r.e, r.b) });
 // bank 0B's unreferenced map cell writers (unreached.js; tiles within the 64 x 64 map)
 CASES.push({ name: "MapSetTerrainAt", bank: 0x0B, addr: 0x45E3, regs: () => ({ a: rnd(256), d: rnd(0x40), e: rnd(0x40) }), js: (w, r) => U.mapSetCellAt(w, 0xD000, r.d, r.e, r.a) });
+CASES.push({ name: "ReflectScaleUnused", bank: 0x10, addr: 0x77CC, init: w => { for (const a of [0x409, 0x40A, 0x40B, 0x40C, 0x4A1, 0x4A2, 0x4A3, 0x4A4, 0x4A9, 0x4AA, 0x4AB, 0x4AC]) if (rnd(2)) w.wram[6][a] = rnd(2) ? 0 : 0xFF; },
+  js: w => U.reflectScaleUnused(w) });
 CASES.push({ name: "MapSetEventAt", bank: 0x0B, addr: 0x4637, regs: () => ({ a: rnd(256), d: rnd(0x40), e: rnd(0x40) }), js: (w, r) => U.mapSetCellAt(w, 0xD400, r.d, r.e, r.a) });
 // the link cable's protocol (serial.js; no partner: rSB / rSC are w.high[$101] / [$102], the core's io; romCall runs
 // the CPU without the hardware, so a transfer started stays started on both sides: w.noSerialHW)
