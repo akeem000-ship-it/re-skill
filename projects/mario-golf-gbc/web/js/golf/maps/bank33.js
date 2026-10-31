@@ -2032,6 +2032,12 @@ function* map08TutorAskDictionary(sh) {
   yield* T.scriptCloseText(sh);
   yield* wait(sh, 0x05);
   if (a) { yield* tutorText(sh, 1, false); return; }
+  yield* map08TutorDictionary(sh);
+}
+// 33:4E1C: fade out, the dictionary in mode wScriptArg - $0C (3F:4002), then the map again where the player stood (warp
+// $FA, wPlayerPosSave $C2A0)
+function* map08TutorDictionary(sh) {
+  const w = sh.w;
   Scr.beginFadeOut(w, 0x08);
   yield* Scr.waitFade(sh);
   yield* inBankGen(w, 0x3F, golfDictionary(sh, (rd(w, 0xC4BC) - 0x0C) & 0xFF));
@@ -2040,12 +2046,31 @@ function* map08TutorAskDictionary(sh) {
   for (let k = 0; k < 4; k++) wr(w, 0xC466 + k, rd(w, 0xC2A0 + k));
   wr(w, 0xC465, rd(w, 0xC2A4));
 }
+// 33:4E49 Map08TutorAskKeepChecking (unreferenced): fade in (8); "Keep checking?" ($087D) kept open by the speaker
+// wScriptArg; 5 frames; Yes / No; closed; 5 frames; Yes: the dictionary again (33:4E1C); No (or B): it falls into
+// 33:4E74 TutorShowTextFromBase with the de it was entered with, kept by every routine on the way (from
+// Map08TalkTutor*: the text base, so text base x 2: $10AE for the lingo tutor)
+function* map08TutorAskKeepChecking(sh, de) {
+  const w = sh.w;
+  Scr.beginFadeIn(w, 0x08);
+  yield* Scr.waitFade(sh);
+  T.scriptSetText(w, 0x087D);
+  yield* T.scriptShowTextKeepOpen(sh, rd(w, 0xC4BC));
+  yield* wait(sh, 0x05);
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* wait(sh, 0x05);
+  if (!a) { yield* map08TutorDictionary(sh); return; }
+  yield* tutorText(sh, de, false);
+}
 // 33:42AB / 42BD / 42CF / 42E1 / 42F3 / 4305 Map08Talk*Tutor: the text base and the speaker (= the talk $0C-$11)
 function* map08TalkTutor(sh, base, arg) {
   const w = sh.w;
   wr(w, 0xC4BA, base & 0xFF); wr(w, 0xC4BB, base >> 8);
   wr(w, 0xC4BC, arg);
-  yield* map08TutorAskDictionary(sh);
+  // (w.keepCheckingPatch: a test's patch of the call in 33:42B9 to 33:4E49, entered with de = the text base)
+  if (w.keepCheckingPatch) yield* map08TutorAskKeepChecking(sh, base);
+  else yield* map08TutorAskDictionary(sh);
 }
 
 export const HOOKS = {

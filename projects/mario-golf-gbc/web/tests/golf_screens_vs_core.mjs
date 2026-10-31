@@ -574,6 +574,7 @@ let lastWinFrame = -1, talkPress = -100;
 let linkLostAt = -1;   // (boot_link_lost: the frame of its poke)
 let actorsShown = 0;   // (ACTORSMAP=n: the actors 200 frames after the map is first n, debugging a case)   // (the last frame a window was open: routeCase notes it)
 const talkQuiet = () => frameNow - lastWinFrame > 150;
+const flagPoke112 = (() => { let fp = null; return (f, w, core) => { if (f === 0 || !fp) fp = flagPoke(112); fp(f, w, core); }; })();
 const flagPoke72 = (() => { let fp = null, f0 = -1; return (f, w, core) => { if (f === 0 || !fp) fp = flagPoke(72); fp(f, w, core); }; })();
 const CASES = [
   { name: "standings_match18", round: "match18", at: "3E:403F", run: sh => inBank(sh, 0x3E, matchStandingsScreen(sh)) },
@@ -838,6 +839,18 @@ const CASES = [
       { press: 1, every: 40, until: dictPage("list") }, [30, 0], [2, 0x10], [60, 0], [2, 2],
       { press: 0, every: 40, until: () => !inDict() && menuW.wram[0][0x450] === 0x08 }, [300, 0]], 100),
   })),
+  // the lingo tutor with the call in 33:42B9 patched to 33:4E49 Map08TutorAskKeepChecking (w.keepCheckingPatch): its
+  // fade in, the question; Yes: the dictionary (Right, B), the office again; No: the text base + de
+  { name: "boot_kid_story_tutor_keepchecking", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 30000,
+    romPatch: { "33:42ba": [0x49, 0x4E] }, hook: (f, w, core) => { w.keepCheckingPatch = 1; flagPoke72(f, w, core); },
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 }, [200, 0], { to: [0x0D, 0x0D] }, [4, 0x40], [20, 0],
+      { press: 1, every: 40, until: inDict }, [150, 0], [2, 0x10], [60, 0], [2, 2],
+      { press: 0, every: 40, until: () => !inDict() && menuW.wram[0][0x450] === 0x08 }, [300, 0]], 100) },
+  { name: "boot_kid_story_tutor_keepchecking_no", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 30000,
+    romPatch: { "33:42ba": [0x49, 0x4E] }, hook: (f, w, core) => { w.keepCheckingPatch = 1; flagPoke72(f, w, core); },
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x02], map: 0x08 }, [200, 0], { to: [0x0D, 0x0D] }, [4, 0x40], [20, 0],
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 0x80], [30, 0], [2, 1],
+      { press: 1, every: 40, times: 6 }, [300, 0]], 100) },
   // the same, Practice Round in the menu (Down, A; the question: A): the walk out (33:50BB), the practice round (one
   // hole), back to the office
   { name: "boot_kid_story_practice", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(72),
@@ -887,6 +900,17 @@ const CASES = [
       [100, 0], { to: [0x20, 0x23], at: [0x2000, 0x2330], noA: true }, [2, 0x40], [30, 0],
       { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x10 && menuW.wram[0][0x46A] === 4 },
       { press: 1, every: 40, times: 25 }], 300) },
+  // the same coach's talk word (30:499B) patched to 30:4888 ApproachRangeKeepPracticingUnused (w.keepPracticingPatch):
+  // its fade in, "Keep practicing?"; No: the text again, the map; Yes: the practice round (course 7 hole $0B, mode $0C)
+  ...[["no", [[30, 0], [2, 0x80], [30, 0], [2, 1], { press: 1, every: 40, times: 4 }, [300, 0]]],
+    ["yes", [[30, 0], [2, 1], { press: 1, every: 40, times: 30 }, [300, 0]]]].map(([n, tail]) => ({
+    name: `boot_kid_story_palmapproach_keeppracticing_${n}`, state: "boot_poweron_kid", open: true, noRet: true, sram: true,
+    romPatch: { "30:499b": [0x88, 0x48] }, hook: (f, w, core) => { w.keepPracticingPatch = 1; flagPoke112(f, w, core); },
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x04, 0x16], map: 0x09 }, [200, 0],
+      { to: [0x34, 0x0C], noA: true }, { to: [0x34, 0x0A], map: 0x10 },
+      [100, 0], { to: [0x20, 0x23], at: [0x2000, 0x2330], noA: true }, [2, 0x40], [30, 0], [2, 1],
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, ...tail], 100),
+  })),
   // the same, the second coach (actor 4, 30:4AAF): the running approach on a sloped green (the hooks 30:4E67-4EF5),
   // the result (30:4F23: no ScriptEnd)
   { name: "boot_kid_story_palmapproach_sloped", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: flagPoke(112),
@@ -1024,6 +1048,19 @@ const CASES = [
   { name: "boot_kid_story_peachwin", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 200000,
     hook: (() => { const fp = flagPoke(114, 115, 139, 123, 125, 149, 72); let done = false; return (f, w, core) => {
       fp(f, w, core);
+      if (!done && roundsDone >= 1) { done = true; w.wram[0][0x96C] = 1; core.wram(0)[0x96C] = 1; }
+    }; })(),
+    ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x14, 0x12], map: 0x1C, noA: true },
+      [300, 0], { to: [0x0D, 0x0D], noA: true }, [2, 0x20], [20, 0], [2, 1], { press: 0, every: 40, until: () => menuW.wram[0][0x450] === 0x1D },
+      { press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 1],
+      { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x1D }, { press: 1, every: 40, times: 30 },
+      { press: 0, every: 60, until: () => menuW.wram[0][0x450] === 0x00 }, [600, 0]], 300) },
+  // the same with the ending's map $34 (35:4F35) calling 35:50DE Map34PresentTrophyUnused for its ceremony (the call
+  // 35:4F48 patched; w.presentTrophyPatch): the fade in, the crowd's walk-in, warp 1; the ending goes on to map 0
+  { name: "boot_kid_story_peachwin_presenttrophy", state: "boot_poweron_kid", open: true, noRet: true, sram: true, maxFrames: 200000,
+    romPatch: { "35:4f49": [0xDE, 0x50] },
+    hook: (() => { const fp = flagPoke(114, 115, 139, 123, 125, 149, 72); let done = false; return (f, w, core) => {
+      fp(f, w, core); w.presentTrophyPatch = 1;
       if (!done && roundsDone >= 1) { done = true; w.wram[0][0x96C] = 1; core.wram(0)[0x96C] = 1; }
     }; })(),
     ...routeCase(savedPolicy(0), [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x14, 0x12], map: 0x1C, noA: true },

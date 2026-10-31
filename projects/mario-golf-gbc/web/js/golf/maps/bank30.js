@@ -78,6 +78,23 @@ function* approachRangeStartPractice(sh) {
   const m = rd(sh.w, 0xC450);
   yield* Ls.startPractice(sh, B, m === 0x0D ? 0x08 : m === 0x10 ? 0x0B : m === 0x13 ? 0x0E : 0x11, 0x0C, 0x48BC);
 }
+// 30:4888 ApproachRangeKeepPracticingUnused (unreferenced): ScriptBegin; fade in (8); "Keep practicing?" ($0C61) kept open
+// (speaker $80); Yes / No; closed; 5 frames; Yes: ApproachRangeStartPractice (30:480D); No (or B): the text shown
+// ($80); ScriptEnd
+function* approachRangeKeepPracticing(sh) {
+  const w = sh.w;
+  D.inBank(w, 0x0A, () => S.scriptBegin(w));
+  Scr.beginFadeIn(w, 0x08);
+  yield* Scr.waitFade(sh);
+  T.scriptSetText(w, 0x0C61);
+  yield* T.scriptShowTextKeepOpen(sh, 0x80);
+  const a = yield* T.scriptAskYesNo(sh);
+  yield* T.scriptCloseText(sh);
+  yield* S.scriptWaitFrames(sh, 0x05);
+  if (a) yield* T.scriptShowText(sh, 0x80);
+  else yield* approachRangeStartPractice(sh);
+  D.inBank(w, 0x0A, () => S.scriptEnd(w));
+}
 const within60 = sh => Ls.ballWithinPinDist(sh.w, 0x60);   // 30:7E2E with $60
 // ---- the Palm approach range: map $10 ----
 const LESSONS_10 = {
@@ -1274,7 +1291,8 @@ export const SCRIPTS = {
   "30:4b62": map10Enter,
   "30:49d0": sh => Ls.tipTalk(sh, 0x0C6A, 0x02, false),   // 30:49D0 Map10Talk02ApproachClubTip
   "30:49fb": sh => Ls.tipTalk(sh, 0x0C6D, 0x06, false),   // 30:49FB Map10Talk05SpinTip (speaker 6)
-  "30:4a26": sh => Ls.lessonTalk(sh, LESSONS_10.bunker),
+  // (w.keepPracticingPatch: a test's patch of this talk's word, 30:499B, to 30:4888)
+  "30:4a26": sh => (sh.w.keepPracticingPatch ? approachRangeKeepPracticing(sh) : Ls.lessonTalk(sh, LESSONS_10.bunker)),
   "30:4aaf": sh => Ls.lessonTalk(sh, LESSONS_10.sloped),
   "30:52cb": map13Enter,
   "30:515d": sh => Ls.chainedTip(sh, 0x0C72, 0x06, false),   // 30:515D Map13Talk05SpinTip

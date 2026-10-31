@@ -149,13 +149,14 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the loaded card's place in the story (48:480D), small unreferenced helpers fuzzed (02:4550 30:7E46 06:69E7 08:43B8 02:461F 34:5BC7) | 238,344 | 98.22% |
 | + link play with two machines (32:5313 32:53B8 32:5428 4A:6C1F 09:4810, the title's replies, 10:44EA 10:4567 10:4659 10:5943, the banner 3B:776D-3B:7858, 02:4A6C; "Serial link"), the two-player Stroke round's end (08:4EBF) | 238,609 | 98.33% |
 | + bank 05's shadow, window and message-box helpers, the home vectors and speed switch, the debug sweep's helpers, the actor move-near ops, the last menu items and outcomes, and the dead or unreferenced routines of the "Unreached code" list (fuzz, text-routine and patched screen cases) | 241,949 | 99.70% |
+| + bank 3C's debug wind sweep (3C:6A23 6A55 6B59 6BCA, with the cartridge RAM window; web/tests/golf_wind_sweep.mjs), the test screen 32:4ABD and the three unreferenced map scripts 35:50DE 30:4888 33:4E49 (patched screen cases) | 242,666 | 100.00% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
 
-What is left of the traced code (717 bytes, 0.30%): bank 3C's debug wind sweep 3C:6A23 / 3C:6A55 / 3C:6B59 / 3C:6BCA,
-the test screen 32:4ABD and three unreferenced map scripts (35:50DE, 30:4888, 33:4E49); the reasons are in "Unreached
-code" below.
+All of the traced code is rewritten (242,666 bytes in 3,211 routines). The last 717 bytes were unreferenced or
+debug-only code that needed a test of its own: bank 3C's debug wind sweep, the test screen 32:4ABD and three
+unreferenced map scripts; how each is checked is in "Unreached code" below.
 
 **What the tests run of the ROM** (web/tests/golf/cover.mjs, tools/cover_report.py): with `COVER=out/scratch/x.bin`
 every test that runs the emulator core (the screen cases, the lockstep rounds, the routine fuzzers) records the ROM
@@ -517,13 +518,39 @@ ROM patches, and the stack excluded from the lowest sp the call reached instead 
   boot_kid_story_placegolfers (33:4BA7), boot_kid_story_office_old / _no / _np (33:4929 by the jump at 33:491B: both
   first questions and the qualified path to the round menu; the code after the round menu, 33:499B-33:4ABA, is not
   run by them: the menu starts the round).
-Left (not ported): DebugWindCarryTest 3C:6A23 with DebugWindCarrySweep 3C:6A55, DebugLogShot 3C:6B59 and
-DebugTestShot 3C:6BCA (unreferenced: 13 clubs x 16 wind angles x 9 speeds of full simulated shots, ShotLaunch and
-the BallTask / RestWatch loop as routines, logged to the save RAM through its $A000 window, which the native memory
-map does not have: rd answers $FF there); ScoreNameMenuWindowTest 32:4ABD (a test screen that never returns: its
-menu loops for ever); Map34PresentTrophyUnused 35:50DE, ApproachRangeKeepPracticingUnused 30:4888 and
-Map08TutorAskKeepChecking 33:4E49 (unreferenced map scripts that begin with a fade, which runs in VBlank: the
-stubbed-frame tests cannot run them, and no screen case was patched into them yet).
+The last of them, each with a test of its own:
+- the debug wind sweep (windsweep.js: DebugWindCarryTest 3C:6A23, DebugWindCarrySweep 3C:6A55, DebugLogShot 3C:6B59,
+  DebugTestShot 3C:6BCA; web/tests/golf_wind_sweep.mjs). It logs to the save RAM through the cartridge RAM window
+  $A000-$BFFF, which the native memory map now has (render/display.js rd / wr: RAMG $0A written to $0000-$1FFF opens
+  it, RAMB at $4000-$5FFF picks the bank; the 8 KB RAM is every bank, as on the core; closed it reads $FF). Nothing
+  calls export $04, so the test patches the core's ROM at a state's entry (ShotSetup 10:4798 in a round and
+  GameModeSelect 0D:4AA7) into `rst $18 ; db $04, $3C` and runs the native routine beside it: all 1,872 shots, a
+  frame each, plus a frame in GolfSceneStart and one after "COMPLETE", to the `jr` to itself at 3C:6A4A where the
+  code ends (the harness's `spinAt`): 1,874 frames pixel-exact and with the display state equal in both cases, the
+  1,872 shot sounds the same, and at the end all WRAM, HRAM, the save RAM (the log $A000-$BD3F, the pointer $BFF0 =
+  $BD40) and the RAM window equal. What it does: SetCourseHole's wind direction is the 6 just written to hWRAMBank
+  (course 0 hole 1); DebugTestShot's loop `BallTask ; RestWatch ; jr z` runs while RestWatch leaves the zero flag set
+  (its count wrapping to 0, or the height test's `cp $02` equal), so after the launch each "shot" is one ball step
+  and the log holds the angle and distance of that first step, not of a flight. The HRAM it leaves at the end is a
+  ball step's BallSpeedAndDir 10:4CDE (AngleFromVector16's division, the squares: ball.js `hramTrace`) and the log's
+  distance and base distance products (3C:4483, 02:511A).
+- ScoreNameMenuWindowTest 32:4ABD (maps/testmaps.js; screen case boot_scorenamemenutest: ModeSelectMain's first
+  bytes 32:5037 patched to `jp $4ABD`): its windows, a pick (Ken and Kid pushed as the arguments of text $016B in
+  the message window), moves and B, 460 frames, each pixel-exact (5 lag-classed), the end equal. A second pick is left
+  out: each pick pushes two more arguments, and the longer text's pen runs past the glyph buffer $D000 into the stack
+  page $CF00-$CFFF, where the game's BlitGlyphByte 03:4B9D overwrites its own saved registers (the glyph loop's de
+  jumps, later glyphs land in $C780...); the native code has no such stack.
+- Map08TutorAskKeepChecking 33:4E49 (maps/bank33.js; boot_kid_story_tutor_keepchecking / _no: the lingo tutor's call
+  33:42B9 patched to it): the fade in, "Keep checking?"; Yes: the dictionary again (33:4E1C); No: it falls into
+  33:4E74 with the de it was entered with, which every routine on the way keeps: Map08TalkTutor's text base, so text
+  $0857 + $0857 = $10AE.
+- ApproachRangeKeepPracticingUnused 30:4888 (maps/bank30.js; boot_kid_story_palmapproach_keeppracticing_no / _yes:
+  the Palm approach range's first coach's talk word 30:499B patched to it): the fade in, "Keep practicing?"; No: the
+  text shown again; Yes: the practice round (30:480D).
+- Map34PresentTrophyUnused 35:50DE (maps/bank35.js; boot_kid_story_peachwin_presenttrophy: in the ending, map $34's
+  call 35:4F48 patched to it): the fade in, actor 2's animation 5 to its end, text $0C41 set
+  with the place wMapEntrance - 1 pushed (not shown), the crowd's walk-in 35:5011 (which Map34AwardCeremony falls
+  into), warp 1; the ending goes on.
 
 #### Debug code (debug.js; the screen cases `boot_kid_debug_*`)
 
@@ -2579,9 +2606,10 @@ rival $1A is clamped against the player's total (PlayerField $3E). This is the t
 **Debug leftover**: export `$04` DebugWindCarryTest (3C:6A23) has no caller. It prints the build stamp at 00:0153,
 enables SRAM bank 1, and DebugWindCarrySweep (3C:6A55) sets hDebugMode = 3, then for every club 0-$0C, 16 wind
 angles and wind speeds 1-9 fires a perfect full-power shot straight up the screen (DebugTestShot 3C:6BCA:
-ShotLaunch + BallTask until RestWatch) and logs the angle and distance minus the club's base distance to SRAM
-through the pointer at $BFF0 (DebugLogShot 3C:6B59); then prints "COMPLETE" (3C:6A4C) and hangs. It looks like the
-tool used to build the wind tables 3C:535D / 3C:545D.
+ShotLaunch, then BallTask and RestWatch while RestWatch leaves the zero flag set: in effect one ball step, see
+"Unreached code") and logs the angle and distance minus the club's base distance to SRAM through the pointer at $BFF0
+(DebugLogShot 3C:6B59); then prints "COMPLETE" (3C:6A4C) and hangs. It looks like the tool used to build the wind
+tables 3C:535D / 3C:545D (with the loop's test the wrong way round it no longer measures a flight).
 
 **Bugs**
 - 3C:601B in CpuReadPutt: `ld a, [$000C]` reads ROM (`$FF`), so `and 1` is always nonzero and the per-step

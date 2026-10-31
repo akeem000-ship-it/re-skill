@@ -327,7 +327,9 @@ function* map34Enter(sh) {
   Scr.beginFadeOut(w, 0x7F);
   S.actorSetState(w, 0x04, 0x00);
   S.actorSetState(w, 0x05, 0x00);
-  yield* map34AwardCeremony(sh);                                // 35:4F51
+  // (w.presentTrophyPatch: a test's patch of the call 35:4F48 to 35:50DE)
+  if (w.presentTrophyPatch) yield* map34PresentTrophyUnused(sh);
+  else yield* map34AwardCeremony(sh);                          // 35:4F51
   wr(w, 0xC441, 0x01);
 }
 // 35:5352 Map35Trigger01EndingCaretaker: ending: ball piles drawn; caretaker: "Those darn kids! Balls everywhere!"
@@ -903,6 +905,21 @@ function* map33Scene1(sh) {
   yield* wait(sh, 0xAA);
   wr(w, 0xC441, 0x01);
 }
+// 35:50DE Map34PresentTrophyUnused (unreferenced): ScriptBegin; fade in (4); 20 frames; actor 2's animation 5 and its end;
+// "I present the {place} Place Trophy" ($0C41, set, not shown) with the place
+// wMapEntrance - 1 pushed as a number (05:551F); the crowd's walk-in (35:5011)
+function* map34PresentTrophyUnused(sh) {
+  const w = sh.w;
+  D.inBank(w, 0x0A, () => S.scriptBegin(w));
+  Scr.beginFadeIn(w, 0x04);
+  yield* Scr.waitFade(sh);
+  yield* wait(sh, 0x14);
+  S.actorPlayAnim(w, 0x02, 0x05);
+  yield* S.waitActorAnimDone(sh, 0x02);
+  T.scriptSetText(w, 0x0C41);
+  pushTextNumberArg(w, (rd(w, 0xC46A) - 1) & 0xFF);  // 05:551F
+  yield* map34CeremonyActorsWalkIn(sh);
+}
 // 35:5117 Map34SetClubByMapId: SetTextCourseIndex 05:57C3 = 4 / 3 / 2 for maps $1B / $1A / $19, else 1
 function map34SetClubByMapId(w) {
   const m = rd(w, 0xC450);
@@ -941,7 +958,13 @@ function* map34AwardCeremony(sh) {
   yield* wait(sh, 0x14);
   S.actorFaceActor(w, 0x02, 0x00);
   yield* wait(sh, 0x14);
-  S.actorSetSpeed(w, 0x02, 0x0008);                               // 35:5011 Map34CeremonyActorsWalkIn
+  yield* map34CeremonyActorsWalkIn(sh);          // (falls into 35:5011)
+}
+// 35:5011 Map34CeremonyActorsWalkIn: the crowd (actors 2-5) walks in, actor 2 last faces the player; 20 frames; warp 1;
+// ScriptEnd
+function* map34CeremonyActorsWalkIn(sh) {
+  const w = sh.w;
+  S.actorSetSpeed(w, 0x02, 0x0008);
   S.actorSetSpeed(w, 0x03, 0x0008);
   S.actorSetSpeed(w, 0x04, 0x0008);
   S.actorSetSpeed(w, 0x05, 0x0008);

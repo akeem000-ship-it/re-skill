@@ -4113,7 +4113,7 @@ B,46DF,MapStartGfx,a = wMapGfx (bit 7 = keep the loaded graphics); counts the de
 06,6465,SlotPaletteTable,12 bytes: BG palette of each character's slot (PutSlotPalette 06:6422 and 06:62F4)
 06,6471,LoadSelectedCharPaletteUnused,unreferenced: BG palette 7 from table 06:6494 by the character of the roster slot under the cursor ($D214)
 30,4888,ApproachRangeKeepPracticingUnused,unreferenced script: fade in; "Keep practicing?" ($0C61) Yes/No; No -> text; Yes -> ApproachRangeStartPractice
-35,50DE,Map34PresentTrophyUnused,unreferenced script: fade in; actor 5 animation 2; "I present the {place} Place Trophy to {name}" ($0C41) with the place from wMapEntrance - 1; then 35:5011
+35,50DE,Map34PresentTrophyUnused,unreferenced script: fade in; actor 2 animation 5; "I present the {place} Place Trophy to {name}" ($0C41) with the place from wMapEntrance - 1; then 35:5011
 35,5011,Map34CeremonyActorsWalkIn,actors 2-5 speed 8; actor 2 faces down and walks to ($0A00 $0F00) / actor 3 to ($0A80 $0E00) ... (the ceremony walk-in); called only by Map34PresentTrophyUnused
 33,4ABB,Map08TalkCaddieMasterPartner,maps $08-$0B: the Caddie Master's talk with a partner (from 33:48F8): both walk to the counter; the partner match asked (33:4F4B)
 00,2BED,PlaySoundCmdCont,PlaySoundCmd 00:2BBB after JingleSongTable 00:2BE8 (its jr c target): the jingle check and the driver call
