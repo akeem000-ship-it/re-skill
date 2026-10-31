@@ -307,7 +307,7 @@ export function* expScreen(sh, a, de, h) {
     yield* drawYesNoBox(sh);                     // 48:458C
     registerFrameTask(w, 0x0E, B, 0x42F7);       // YesNoCursorTask
     if (rd(w, 0xC834) !== 9) yield* drawCardRoundInfo(sh);   // 48:4696
-    else notPorted("the card's place in the story (~48:480D DrawCardMapName)");
+    else yield* drawCardMapName(sh);             // 48:480D
     setW(w, 1);                                  // 48:42B9
     D.queueVRAMCopy(w, 0xD000, 0xB800, 0x24);
     D.queueAndRunVRAMCopy(w, 0xD400, 0x9800, 0x24);
@@ -425,6 +425,22 @@ function* drawYesNoBox(sh) {
   for (let c = 5, hl = 0x4550; c < 0x0A; c++) for (let b = 0; b < 6; b++, hl += 2) putCardTile(w, b, c, rb(B, hl), rb(B, hl + 1));
   yield* inBankGen(w, 5, T.printTextToBuffer(sh, 0x1A, 0xD4C2, 0x20));
   yield* inBankGen(w, 5, T.printTextToBuffer(sh, 0x1A, 0xD502, 0x20, true));
+}
+// 48:480D DrawCardMapName (a character saved in the story, mode 9): rows $0D-$11 (48:47D7 ClearCardRows13b, the same
+// code as 48:4791) and $0B-$0C (48:47B4) cleared; the name of the map wReturnMap $C960 (text $012C + 0A:5348's index)
+// at $D5C1; when the index is in the list 48:47FA (to $FF) its second line again at $D601 (05:638A, from its first
+// line break: the names of two lines)
+function* drawCardMapName(sh) {
+  const w = sh.w;
+  fillTiles(w, 1, 0x14, 0x0D, 0x12, 0x20, 0x01);
+  fillTiles(w, 1, 0x0A, 0x0B, 0x0D, 0x20, 0x01);
+  const a = mapIndexOf(rd(w, 0xC960));
+  yield* inBankGen(w, 5, T.printTextToBuffer(sh, (0x012C + a) & 0xFFFF, 0xD5C1, 0x20));
+  for (let p = 0x47FA; rb(B, p) !== 0xFF; p++) {
+    if (rb(B, p) !== a) continue;
+    yield* inBankGen(w, 5, T.printTextToBuffer(sh, (0x012C + a) & 0xFFFF, 0xD601, 0x20, true));
+    break;
+  }
 }
 // 48:4696 DrawCardRoundInfo: rows $0B-$11 cleared (48:47B4, 48:4791); the mode's name (text $14A8 + mode - 1), the
 // course (text $21 + course), "Hole n" ($14A0 with the hole pushed) and "Score" ($14A1) with the score to par

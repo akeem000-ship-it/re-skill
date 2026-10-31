@@ -1410,6 +1410,26 @@ const CASES = [
     run: sh => { stepsDone = -1; return gameCase(sh, 1, () => stepsDone >= 0 && frameNow > stepsDone + 200); },
     policy: stepPolicy([[menu09Items(4), 1], [inCharSel, 1, 60], [inTask(0x48, 0x42F7), 2, 80], [inCharSel, 0, 60]]),
   })),
+  // a save made in the story (block 0 poked: game mode 9, wReturnMap $C960 = each map): the card shows the map's name
+  // (48:480D; Windy Valley's and the castle's on two lines), then B (back to the character select)
+  ...[["field", 0x02], ["clubhouse", 0x03], ["windy", 0x0A], ["castle", 0x26]].map(([n, map]) => ({
+    name: `boot_kidsq_storycard_${n}`, state: "boot_poweron_kidsq", open: true, noRet: true, sram: true,
+    hook: (f, w, core) => {
+      if (f !== 1) return;
+      const t = new GolfMemory();
+      t.sram.set(w.sram);
+      t.high[0x196] = 1;
+      if (saveBlockLoad(t, 0, 0xD000)) throw new Error("no saved block 0");
+      const m = t.wram[1];
+      m[0x034] = 9; m[0x160] = map;
+      for (let k = 0; k < 0x18; k++) m[0xE00 + k] = t.sram[0x48 + k];
+      saveBlockStore(t, 0, 0xD000, 0xDE00);
+      w.sram.set(t.sram);
+      core.gb.mem.sram.set(t.sram, 0);
+    },
+    run: sh => { stepsDone = -1; return gameCase(sh, 1, () => stepsDone >= 0 && frameNow > stepsDone + 200); },
+    policy: stepPolicy([[menu09Items(4), 1], [inCharSel, 1, 60], [inTask(0x48, 0x42F7), 2, 80], [inCharSel, 0, 60]]),
+  })),
   // the same, the prompts: No ("Saved data will be erased, OK?"), B (back), No, No (the first prompt again), B: the
   // character select;
   // the card again: No, Yes on the second prompt: the mode select
