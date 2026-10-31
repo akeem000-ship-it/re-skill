@@ -199,9 +199,13 @@ function adIcon(g, kind, x, y, s) {
   }
   g.restore();
 }
-function adTextures(gl) {
-  return ADS.map(a => {
-    const c = document.createElement("canvas"); c.width = AD_W; c.height = AD_H; const g = c.getContext("2d");
+// the boards' artwork, all of it on one texture: each ad a row of AD_H, AD_PAD apart (the gaps keep the smaller mip levels from
+// bleeding one ad into the next); { tex, rows, v(i) -> [v0, v1] of ad i }
+const AD_PAD = 8;
+function adAtlas(gl) {
+  const n = ADS.length, rowH = AD_H + AD_PAD, c = document.createElement("canvas"); c.width = AD_W; c.height = n * rowH; const g = c.getContext("2d");
+  ADS.forEach((a, i) => {
+    g.save(); g.translate(0, i * rowH); g.beginPath(); g.rect(0, 0, AD_W, AD_H); g.clip();
     const gr = g.createLinearGradient(0, 0, 0, AD_H); gr.addColorStop(0, a.bg[0]); gr.addColorStop(1, a.bg[1]); g.fillStyle = gr; g.fillRect(0, 0, AD_W, AD_H);
     g.fillStyle = "rgba(255,255,255,.18)"; g.fillRect(0, 0, AD_W, AD_H * 0.42);                       // a gloss across the top
     const iconW = a.icon ? AD_H : 0; if (a.icon) adIcon(g, a.icon, AD_H * 0.55, AD_H / 2, AD_H * 0.9);
@@ -209,11 +213,27 @@ function adTextures(gl) {
     const room = AD_W - iconW - 24; while (g.measureText(a.text).width > room && size > 20) { size -= 2; g.font = `900 ${size}px "Arial Black", Impact, sans-serif`; }
     g.textAlign = "center"; g.textBaseline = "middle"; const tx = iconW + (AD_W - iconW) / 2, ty = AD_H / 2 + 3;
     g.lineWidth = Math.max(3, size * 0.12); g.strokeStyle = "rgba(0,0,0,.35)"; g.strokeText(a.text, tx + 2, ty + 2); g.fillStyle = a.fg; g.fillText(a.text, tx, ty);
-    const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
-    gl.generateMipmap(gl.TEXTURE_2D);
-    for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
-    return t;
+    g.restore();
+    g.drawImage(c, 0, i * rowH + AD_H - 1, AD_W, 1, 0, i * rowH + AD_H, AD_W, AD_PAD / 2);                // (the gap half filled with each
+    if (i) g.drawImage(c, 0, i * rowH, AD_W, 1, 0, i * rowH - AD_PAD / 2, AD_W, AD_PAD / 2);              // neighbour's edge row)
   });
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+  gl.generateMipmap(gl.TEXTURE_2D);
+  for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+  const H = c.height; return { tex: t, v: i => [(i * rowH + 0.5) / H, (i * rowH + AD_H - 0.5) / H] };
+}
+// every board as two triangles in world space, for the 3D mesh program (voxel.js prog3: aPos3, aUV3): one draw for them all. A board's
+// model m places voxel.js's quad (x -0.5..0.5, y 0..1 up; u 0..1, v 1 at the bottom)
+function adMesh(gl, boards, atlas, adOf) {
+  const pos = [], uv = [], P = (m, x, y) => [m[0] * x + m[4] * y + m[12], m[1] * x + m[5] * y + m[13], m[2] * x + m[6] * y + m[14]];
+  boards.forEach((b, i) => {
+    const m = b.m, [v0, v1] = atlas.v(adOf(b, i)), A = P(m, -0.5, 0), B = P(m, 0.5, 0), C = P(m, 0.5, 1), D = P(m, -0.5, 1);
+    pos.push(...A, ...B, ...C, ...A, ...C, ...D); uv.push(0, v1, 1, v1, 1, v0, 0, v1, 1, v0, 0, v0);
+  });
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+  const pb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, pb); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+  const ub = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, ub); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(uv), gl.STATIC_DRAW); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
+  return { vao, pb, ub, count: pos.length / 3 };
 }
 // the players' tunnels, through the bottom rows of the side stands beside the net, opening onto the court (x, z: the centre of the mouth at
 // the stand's inner edge; dir: into the stand along x; w wide, d deep, h high): stadium3d.js builds them, intro.js walks the players out of them
@@ -780,10 +800,17 @@ export class Stadium3D {
       if (jc) { gl.useProgram(v.prog); gl.bindVertexArray(v.vao); v.draw(jc.tex, new Float32Array([J.w * 1.15, 0, 0, 0, 0, J.h * JUDGE_TOP * 1.15, 0, 0, 0, 0, 1, 0, J.x, J.y - 6, J.z + 4, 1]), mvp, [0, 0, 1, JUDGE_TOP], [1, 1, 1, 1], 0.5); }
       // ADS: the advertising boards along the stands
       if (this.built.adBoards && this.built.adBoards.length) {
-        if (!this.adTex) this.adTex = adTextures(gl);
+        if (!this.adAtlas) this.adAtlas = adAtlas(gl);
+        const sp = v.tour && v.tour.sponsorAds(), key = sp && sp.length ? sp.join(",") : "";     // TOUR+: your sponsors on every other board in your tour matches
+        let M = this.adMeshes;                                                                   // (one mesh per court and sponsor line-up: rebuilt only when they change)
+        if (!M || M.built !== this.built || M.key !== key) {
+          if (M) { gl.deleteBuffer(M.pb); gl.deleteBuffer(M.ub); gl.deleteVertexArray(M.vao); }
+          M = this.adMeshes = { ...adMesh(gl, this.built.adBoards, this.adAtlas, (b, i) => (key && !(i & 1) ? sp[(i >> 1) % sp.length] : b.ad)), built: this.built, key };
+        }
+        gl.useProgram(v.prog3); gl.bindVertexArray(M.vao); gl.bindTexture(gl.TEXTURE_2D, this.adAtlas.tex);
+        gl.uniformMatrix4fv(v.u3.uMVP, false, mvp); gl.uniform4fv(v.u3.uTint, [1, 1, 1, 1]); gl.uniform1f(v.u3.uAlphaTest, 0);
+        gl.drawArrays(gl.TRIANGLES, 0, M.count);
         gl.useProgram(v.prog); gl.bindVertexArray(v.vao);
-        const sp = v.tour && v.tour.sponsorAds();                                                // TOUR+: your sponsors on every other board in your tour matches
-        this.built.adBoards.forEach((b, i) => v.draw(this.adTex[sp && sp.length && !(i & 1) ? sp[(i >> 1) % sp.length] : b.ad], b.m, mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0));
       }
       if (this.built.banners && this.built.banners.length && this.fill > 0) this.drawBanners(mvp, T);
       if (this.built.hall) this.drawHall(mvp);                                                    // the drill hall's spectators and glass

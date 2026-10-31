@@ -285,6 +285,8 @@ const WALL_SCALE = F3.WALL_SCALE, FIELD_TILT = 0.3, HUD_SCALE = 0.6, SEAM_GLIDE 
 // (map 19) is a side-view picture too, but it is a walkable map: a field whose sky band and cafe stand up (FIELD_OBJECTS)
 const SIDE_VIEW_MAPS = new Set([21]);
 
+const same = (a, b, n) => { for (let i = 0; i < n; i++) if (a[i] !== b[i]) return false; return true; };   // (draw: a uniform unchanged)
+
 export class Voxel3D {
   constructor(canvas, gb, rom = null) {
     this.cv = canvas; this.gb = gb; this.rom = rom; this.courtMaps = rom ? courtTilemaps(rom, VIEW_COURTS) : null; this.courtId = -1; this.detectAt = 0; this.fieldAt = 0; this.fieldOn = false; this.stands = null;
@@ -953,10 +955,16 @@ export class Voxel3D {
   }
 
   // ---- drawing ----
+  // (the camera, UV rectangle, tint and alpha test are sent only when they change: a program keeps its uniforms, and most of a
+  // frame's ~120 quads share them; compared by value, as callers reuse and rebuild their arrays)
   draw(tex, model, mvp, uv = [0, 0, 1, 1], tint = [1, 1, 1, 1], alphaTest = 0.5) {
-    const gl = this.gl;
-    gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniformMatrix4fv(this.u.uModel, false, model); gl.uniformMatrix4fv(this.u.uMVP, false, mvp);
-    gl.uniform4fv(this.u.uUVRect, uv); gl.uniform4fv(this.u.uTint, tint); gl.uniform1f(this.u.uAlphaTest, alphaTest);
+    const gl = this.gl, U = this.u, c = this.uCache && this.uCache.prog === this.prog ? this.uCache : (this.uCache = { prog: this.prog, mvp: new Float32Array(16).fill(NaN), uv: [NaN, 0, 0, 0], tint: [NaN, 0, 0, 0], at: NaN });
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.uniformMatrix4fv(U.uModel, false, model);
+    if (!same(c.mvp, mvp, 16)) { gl.uniformMatrix4fv(U.uMVP, false, mvp); c.mvp.set(mvp); }
+    if (!same(c.uv, uv, 4)) { gl.uniform4fv(U.uUVRect, uv); for (let i = 0; i < 4; i++) c.uv[i] = uv[i]; }
+    if (!same(c.tint, tint, 4)) { gl.uniform4fv(U.uTint, tint); for (let i = 0; i < 4; i++) c.tint[i] = tint[i]; }
+    if (c.at !== alphaTest) { gl.uniform1f(U.uAlphaTest, alphaTest); c.at = alphaTest; }
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
   // per game frame (also called by the page after each emulated frame, so skipped display frames keep it whole):

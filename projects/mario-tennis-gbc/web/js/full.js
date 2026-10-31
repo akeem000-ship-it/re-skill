@@ -37,6 +37,7 @@ import { portraitArea, attachPortrait } from "./portrait.js";   // touch screens
 import { Recorder, maskOf, packRecording, bytesToBase64, stateOf } from "./recorder.js";
 import { HDText, FONTS, FONT_ORDER, HD } from "./hdtext.js";
 import { setToastHold } from "./hdpanel.js";
+import { PerfHud } from "./perfhud.js";   // PERF: what a frame costs on this device
 import { mountCreator } from "./look/creator.js";
 import { lookEvent } from "./look/index.js";
 import { freshProfile, learnNote } from "./engine/learn.js";   // PLAY+ SCOUTING: the CPU learns how you play
@@ -316,11 +317,12 @@ function loop(now) {
     acc = Math.min(acc + (now - last), STEP * 4); last = now;
     const per = turbo || modes.fastText(lastInp) ? 4 : 1;   // (MODES: FAST TEXT)
     if (replay && replay.playing) { while (acc >= STEP) { replay.step(); acc -= STEP; fps.n++; } }   // INSTANT REPLAY: the point again (no saves, no run-ahead)
-    else if (acc >= STEP) { settle(); while (acc >= STEP) { for (let i = 0; i < per; i++) frame(); acc -= STEP; fps.n++; } maybeSave(); lookAhead(); }
-    if (!phone || phone.allowDraw(now)) draw(acc / STEP);   // (BATTERY saver: at most 60 pictures a second)
+    else if (acc >= STEP) { const t0 = performance.now(); settle(); while (acc >= STEP) { for (let i = 0; i < per; i++) { frame(); perf.frame("game"); } acc -= STEP; fps.n++; } maybeSave(); lookAhead(); perf.time("game", performance.now() - t0); }
+    if (!phone || phone.allowDraw(now)) { const t0 = performance.now(); draw(acc / STEP); perf.time("draw", performance.now() - t0); perf.frame("view"); }   // (BATTERY saver: at most 60 pictures a second)
     if (hd) { const dt = now - (hdLast || now); hdLast = now; hdDt = hdDt * 0.9 + Math.min(dt, 100) * 0.1; hd.struggling = hdDt > 24; }   // below ~40 fps the HD art waits while the screen moves
     if (now - fps.t >= 1000) { $("fps").textContent = view3d ? `game ${fps.n} · view ${fps.r} fps` + (turbo ? " (turbo)" : "") : fps.n + " fps" + (turbo ? " (turbo)" : ""); fps.n = 0; fps.r = 0; fps.t = now; }
   } else last = now;
+  perf.tick(now, view3d);
   requestAnimationFrame(loop);
 }
 
@@ -464,6 +466,7 @@ $("forgetrom").addEventListener("click", () => romStore("readwrite", s => s.dele
   b.addEventListener("pointerdown", () => { flushSave(); location.href = "picker.html" + location.search + location.hash; });
   $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b);
 }
+const perf = new PerfHud($("hud"), () => voxel);   // PERF (menu bar, OPTIONS > PICTURE)
 $("reset").addEventListener("click", () => { if (port) { location.reload(); return; } if (gb) { settle(); gb.reset(); rec.event("reset"); } });
 // ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
 // a .mtrec file (Android: Downloads/MTenn3D and the share sheet; browser: a download). Hiding the app stops and saves.
