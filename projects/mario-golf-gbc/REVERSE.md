@@ -138,6 +138,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the clubhouse door animations the screen cases open (32:6087 / 6150 / 6219) | 212,777 | 87.67% |
 | + (from here of 242,666 traced bytes: two junk exports out) the later-story talks of the clubhouse, the Lounge and the Director's Room, the lessons' other copies, the practice menu items, the link-play pause menu, the two-player Stroke screens (3E:6361, 0E:7199, 0B:6143), code the screen cases run but no comment cited (tools/cover_report.py: the RST vectors and far-call stubs, the per-mode hook stubs, the routines' parts after inline tables), the copies of the scenery (4A-4F) and tile animation (2A 2B 72, 51-54), fuzzed helpers of banks 3E 0E 12 04 42 3F 3C, the debug menu, warp menu, flag editor, palette editor and points editor, the debug room | 228,977 | 94.36% |
 | + the debug menu's Map viewer (0B:4579, 05:5197), the save viewer (02:5D2F), MapSetTerrainAt / MapSetEventAt (fuzzed), 0B:497D | 230,162 | 94.85% |
+| + the test maps $1F-$22 of bank 32 (the VS scene, the result tests, the golfer grid) | 232,698 | 95.89% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -497,6 +498,22 @@ over: the retail game never has it. The screen cases poke it to 1 on both sides 
   block 3 or a bad sum it prints "NO FILE" / "CHECK SUM ERROR" and hangs on a `jr $`, which the port throws on;
   the case boot_kid_debug_room_save_viewer pokes a records block). Its "FAT INIT/RECOVER" message after SaveLoad
   (~02:5D35) is jumped over unconditionally.
+- The test maps of bank 32 (maps/testmaps.js), reached by the Scene warp (cases `boot_kid_debug_map_*`): map $1F
+  (VS Results) 32:4199: entrance 1 the two-player VS scene (32:44B4: both portraits by 32:4469 with 11:4EAB, the
+  panels and actors, confetti 32:4219 / 32:434E / 32:43F5, the bob 32:471B, the palette cycle 32:467B), entrance 2
+  the one-player scene (32:456A), then a wait for A / B / Start; talk 8 opens the palette editor (32:40EB). Bank
+  32's confetti is an older copy of bank 0B's: one seed per actor, the column $18 reset to row $0780 (0B: $0680 at
+  row $0F), the bob around $0900 (0B: $0800); FillTileBlock4x8 32:4427, VsPortraitTileBase 32:44A0, VsHidePanelActors
+  32:45EE and VsRainbowPaletteTask 32:467B (its table 32:46B5) are the same code as 0B:5E13 / 5F40 / 6402 / 648F
+  (tools/compare_routines.py). Map $20 (Course Parameters) 32:48AE: entrance 4 a paged character menu into
+  RoundResultScreen 0B:59DE forever; 5-7 fixed results; others (32:4956) the paged menu, then the menu $011F (Hole in
+  One .. Bogey) showing that story picture (32:4AA6 -> 77:6E3E, endless) until A / B, restored by 32:4B3B. Map $21
+  (Norio Status!) 32:4C66: a 3 x 3 golfer grid (32:4DAB, the bar 32:4D74 / 4D4C / 4D1F; quirks: the bar shown is
+  the old cell's except after Down, and the cursor is the player's actor through an actor number $34 / $4C / $64
+  that ActorSlotAddr maps to slot 0); A starts an 18-hole round with that preset golfer (32:4E0C; the wind byte is
+  the golfer id SetupPlayerGolfer leaves in a). Map $22 has an empty enter script; the wind tips 32:417E / 4844 /
+  4F92 are the same code as 34:429B. Not reached: ScoreNameMenuWindowTest 32:4ABD (no caller) and 32:49D9-32:4A00
+  after the endless loop.
 
 #### Status and the records screens (records.js, records0c.js; bank 07's menus in menu09.js)
 
@@ -2888,6 +2905,8 @@ Map names below are the banner texts (`$12C` + map id, bank 18).
 | 32:4778 | 20 | "Course Parameters" test map |
 | 32:4C1B | 21 | "Norio Status!" test map |
 | 32:4EB4 | 22 | "Norio Sample" (a copy of the clubhouse NPC list; empty enter script) |
+
+(The test maps $1F-$22 are ported in maps/testmaps.js: see "Debug code".)
 
 - **Mode Select (map 00)**: ModeSelectMain 32:5037 is the front end. It shows the title (40:4032), then LinkMenu 09:4A12:
   0 = load a character (CharacterSelectScreen; SaveBlockLoad; pending EXP `$C95C` scaled by level 32:54B5 and

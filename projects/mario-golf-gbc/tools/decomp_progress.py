@@ -8,8 +8,8 @@ not count.
 Sources: every web/js/**/*.js except the emulator core web/js/gb/ (the golf engine web/js/golf, the sound
 driver web/js/sound, ...) and the Python ports (tools/golfmath.py, ball_sim.py,
 cup_sim.py, launch_py.py, swing_py.py, shot_py.py, hole_py.py, joypad.py).
-usage: decomp_progress.py [--list] [--js | --py | --dir golf]   (--list: the cited routines with their sizes;
-       --dir: only web/js/<dir>)
+usage: decomp_progress.py [--list | --todo] [--js | --py | --dir golf]   (--list: the cited routines with their sizes;
+       --todo: the routines not cited, largest first; --dir: only web/js/<dir>)
 """
 import sys, os, re, json, bisect, glob
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -54,6 +54,7 @@ def measure(cites):
         ent.setdefault(0 if a < 0x4000 else b, set()).add(a)
     tot = done = 0
     sizes = {}
+    todo = {}
     for b in sorted(code):
         starts = sorted(ent.get(b, ()))
         for addr in code[b]:
@@ -62,6 +63,10 @@ def measure(cites):
             if i >= 0 and (b, starts[i]) in cites:
                 done += 1
                 sizes[(b, starts[i])] = sizes.get((b, starts[i]), 0) + 1
+            else:
+                k = (b, starts[i] if i >= 0 else 0)
+                todo[k] = todo.get(k, 0) + 1
+    measure.todo = todo
     return tot, done, sizes, labels
 
 
@@ -73,6 +78,10 @@ def main():
     tot, done, sizes, labels = measure(cited(sources(which, sub)))
     if "--list" in sys.argv:
         for (b, a), n in sorted(sizes.items()):
+            name = (labels.get(b, a) or ("",))[0]
+            print("%02x:%04x %5d  %s" % (b, a, n, name))
+    if "--todo" in sys.argv:
+        for (b, a), n in sorted(measure.todo.items(), key=lambda kv: -kv[1]):
             name = (labels.get(b, a) or ("",))[0]
             print("%02x:%04x %5d  %s" % (b, a, n, name))
     print("rewritten (%s): %d of %d traced code bytes in %d routines (%.2f%%)" % (

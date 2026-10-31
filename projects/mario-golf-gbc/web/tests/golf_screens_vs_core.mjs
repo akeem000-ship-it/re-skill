@@ -255,6 +255,38 @@ function flagPoke(...ns) {
 const droom = (y, dir) => [{ to: [0x0B, y], at: [0x0B00, y << 8], noA: true }, [2, dir], [20, 0], [2, 1]];
 const DEBUG_ROOM = [[30, 0x40], [60, 0], [2, 1], [90, 0], [2, 1], [90, 0], [2, 0x20], [30, 0], [2, 0x20], [30, 0], [2, 1], [90, 0],
   [2, 2], [400, 0]];
+// the debug menu's Scene warp from the clubhouse (map record 3) to map record `rec`, entrance `ent` (Right / Left once
+// each 20 frames), then B: the warp
+const dwarp = (rec, ent) => [[30, 0x40], [60, 0], [2, 1], [90, 0], [2, 1], [90, 0],
+  { press: rec > 3 ? 0x10 : 0x20, every: 20, times: Math.abs(rec - 3) }, [30, 0], [2, 0x80], [30, 0],
+  { press: 0x10, every: 20, times: ent }, [30, 0], [2, 1], [90, 0], [2, 2], [400, 0]];
+// a talk in routeCase steps: walk to the point `at` (8.8 tiles; a number: to that actor, 2 tiles before it), face `dir`, A, then A every 40 frames `n` times
+// (`no`: the first question answered No: Down before its A); then A every 40 frames while a window is open, until none has been for
+// 150 frames (or `n` times)
+const talkSteps = (at, dir, n = null, no = false) => [typeof at === "number" ? { actor: at, off: dir === 0x40 ? [0, 0x200] : dir === 0x80 ? [0, -0x200] : dir === 0x10 ? [-0x200, 0] : [0x200, 0] } : { to: [at[0] >> 8, at[1] >> 8], at, noA: true }, [2, dir], [20, 0], [2, 1], [60, 0],
+  ...(no ? [{ press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 0x80], [30, 0], [2, 1], [60, 0]] : []),
+  n === null ? { talkWait: true } : { press: 1, every: 40, times: n }, [120, 0]];
+const DEBUG_WARP_CASES = [
+  // map $1F entrance 1: the two-player VS scene (32:4199, 32:44B4), A leaves the wait; entrance 2: the one-player scene
+  ["1f_vs_results", 0x1F, 1, [[300, 0], [2, 1], [400, 0]]],
+  ["1f_one_player", 0x1F, 2, [[300, 0], [2, 1], [400, 0]]],
+  // entrance 0: no scene, A leaves the wait; talk 8 (actor 8, from its left: 32:40EB): the palette editor (44:42FB): Right, B leaves
+  ["1f_talk8", 0x1F, 0, [[100, 0], [2, 1], [100, 0], { to: [0x03, 0x08], at: [0x0300, 0x0880], noA: true }, ...talkSteps([0x0300, 0x0480], 0x10, 0), [200, 0], [2, 0x10], [60, 0], [2, 2], [300, 0]]],
+  // map $20 entrance 4: the paged character menu, Right (the next page), A: RoundResultScreen; A leaves it; the menu
+  // again
+  ["20_char_result", 0x20, 4, [[200, 0], [2, 0x10], [60, 0], [2, 0x80], [30, 0], [2, 1], [900, 0], [2, 1], [600, 0]]],
+  // entrances 5-7: the fixed results
+  ...[5, 6, 7].map(e => [`20_result${e}`, 0x20, e, [[900, 0], [2, 1], [400, 0]]]),
+  // entrance 0: the paged menu, A; the score-name menu: Down, A (the eagle picture), A; Down twice, A (the par
+  // picture), B; B: the paged menu
+  ["20_pictures", 0x20, 0, [[200, 0], [2, 1], [200, 0], [2, 0x80], [30, 0], [2, 1], [400, 0], [2, 1], [200, 0], [2, 0x80], [30, 0],
+    [2, 0x80], [30, 0], [2, 1], [400, 0], [2, 2], [200, 0], [2, 2], [200, 0]]],
+  // map $21: the golfer grid: Up, Left, Down, Right, Right, Down (each bar redrawn tile by tile over frames); A: the round with that golfer (to its first shot)
+  ["21_golfer_test", 0x21, 0, [[100, 0], [2, 0x40], [80, 0], [2, 0x20], [80, 0], [2, 0x80], [80, 0], [2, 0x10], [80, 0], [2, 0x10],
+    [80, 0], [2, 0x80], [80, 0], [2, 1], [1500, 0]]],
+  // map $22: nothing on entering; talk 8 (32:47B1 the palette editor) on map $20? (map $22's talks are texts)
+  ["22", 0x22, 0, [[300, 0]]],
+];
 const DEBUG_ROOM_CASES = [
   // the sepia fade test (talk $0E, 35:7798: the room again by warp $0D), the Ranking screen (talk $0D, 35:778C; B
   // leaves; warp $0C: the Field)
@@ -461,15 +493,9 @@ const MINILAKE = [{ to: [0x1A, 0x2E], map: 0x02 }, [200, 0], { to: [0x0A, 0x26],
   [300, 0], { to: [0x0E, 0x38], noA: true }, { press: 1, every: 40, until: () => roundsDone >= 1 && menuW.wram[0][0x450] === 0x28 }, [300, 0],
   { to: [0x19, 0x21], at: [0x1900, 0x2130], noA: true }, [2, 0x20], [20, 0], [2, 1], ...ynNo,
   { press: 1, every: 40, until: () => roundsDone >= 2 && menuW.wram[0][0x450] === 0x28 }];
-// a talk in routeCase steps: walk to the point `at` (8.8 tiles; a number: to that actor, 2 tiles before it), face `dir`, A, then A every 40 frames `n` times
-// (`no`: the first question answered No: Down before its A); then A every 40 frames while a window is open, until none has been for
-// 150 frames (or `n` times)
 let lastWinFrame = -1, talkPress = -100;
 let actorsShown = 0;   // (ACTORSMAP=n: the actors 200 frames after the map is first n, debugging a case)   // (the last frame a window was open: routeCase notes it)
 const talkQuiet = () => frameNow - lastWinFrame > 150;
-const talkSteps = (at, dir, n = null, no = false) => [typeof at === "number" ? { actor: at, off: dir === 0x40 ? [0, 0x200] : dir === 0x80 ? [0, -0x200] : dir === 0x10 ? [-0x200, 0] : [0x200, 0] } : { to: [at[0] >> 8, at[1] >> 8], at, noA: true }, [2, dir], [20, 0], [2, 1], [60, 0],
-  ...(no ? [{ press: 1, every: 40, until: () => hasTask(menuW, 0x05, 0x4F20) }, [30, 0], [2, 0x80], [30, 0], [2, 1], [60, 0]] : []),
-  n === null ? { talkWait: true } : { press: 1, every: 40, times: n }, [120, 0]];
 const CASES = [
   { name: "standings_match18", round: "match18", at: "3E:403F", run: sh => inBank(sh, 0x3E, matchStandingsScreen(sh)) },
   // the scorecard in match play (0E:43D6): Right on the standings page turns to the hole-by-hole card (0E:762F),
@@ -1074,6 +1100,9 @@ const CASES = [
   { name: "boot_kid_debug_warp", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: debugPoke(1), maxFrames: 30000,
     ...routeCase(savedPolicy(0), [[30, 0x40], [60, 0], [2, 1], [90, 0], [2, 1], [90, 0], [2, 0x10], [30, 0], [2, 0x10], [30, 0],
       [2, 0x80], [30, 0], [2, 0x10], [30, 0], [2, 1], [90, 0], [2, 2], [400, 0]], 100) },
+  // the debug warp to the test maps (DEBUG_WARP_CASES)
+  ...DEBUG_WARP_CASES.map(([n, rec, ent, after]) => ({ name: `boot_kid_debug_map_${n}`, state: "boot_poweron_kid", open: true, noRet: true,
+    sram: true, hook: debugPoke(1), maxFrames: 40000, ...routeCase(savedPolicy(0), [...dwarp(rec, ent), ...after], 100) })),
   // the debug room (DEBUG_ROOM_CASES)
   ...DEBUG_ROOM_CASES.map(([n, talks]) => ({ name: `boot_kid_debug_room_${n}`, state: "boot_poweron_kid", open: true, noRet: true, sram: true,
     hook: debugPoke(1), maxFrames: 40000, ...routeCase(savedPolicy(0), [...DEBUG_ROOM, ...talks], 100) })),

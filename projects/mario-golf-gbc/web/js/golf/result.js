@@ -163,7 +163,7 @@ function* drawResultPortrait(sh, a, b, c, d, e) {
 
 // 11:4EAB LoadPictureTiles: c = entry of the LZ list 11:4F02 -> WRAM1 $D000 -> VRAM1 $8800 + (e - 8) x $100 + d x 16
 // ($20 tiles; LCD off meanwhile); leaves VRAM bank 1
-function loadPictureTiles(w, c, d, e) {
+export function loadPictureTiles(w, c, d, e) {
   const old = w.high[0x196];
   if (w.vram) D.disableLCDSafely(w);
   setW(w, 1);
@@ -174,7 +174,7 @@ function loadPictureTiles(w, c, d, e) {
   setW(w, old);
 }
 
-function putTileBlock4x8(w, b, c, d, e) {        // 0B:5E13 PutTileBlock4x8: tiles c x 16 + b on, 4 x 8 at (d, e) in WRAM3
+export function putTileBlock4x8(w, b, c, d, e) { // 0B:5E13 PutTileBlock4x8: tiles c x 16 + b on, 4 x 8 at (d, e) in WRAM3
   const old = w.high[0x196];
   let t = (mulHLByA(c, 0x10) + b) & 0xFF;
   let hl = (0xD000 + mulHLByA(e, 0x40) + d) & 0xFFFF;
@@ -274,15 +274,17 @@ function resultBobActor(w) {                     // 0B:652F ResultBobActor: acto
   const [, s] = vectorFromLengthAndAngle(0x40, a);
   w16(w, p + 6, (0x0800 + s) & 0xFFFF);
 }
-function clearResultActors(w) {                  // 0B:6402 ClearResultActors: +$17 of actors 8-13 (leaves WRAM4)
+export function clearResultActors(w) {           // 0B:6402 ClearResultActors: +$17 of actors 8-13 (leaves WRAM4)
   setW(w, 4);
   for (let k = 8; k <= 0x0D; k++) { const p = A.actorSlotAddr(k); setCur(w, p); wr(w, p + 0x17, 0); }
 }
 
-export function resultPaletteCycleTask(w) {      // 0B:648F ResultPaletteCycleTask: colours 0B:64C9 by $C3F4 (0-$26)
+// 0B:648F ResultPaletteCycleTask: colours 0B:64C9 by $C3F4 (0-$26) (`table`: 32:467B VsRainbowPaletteTask, the same
+// code, reads 32:46B5)
+export function resultPaletteCycleTask(w, table = 0x64C9) {
   let a = rd(w, 0xC3F4);
   if (a >= 0x27) { a = 0; wr(w, 0xC3F4, 0); }
-  const hl = 0x64C9 + ((a << 1) & 0xFF);
+  const hl = table + ((a << 1) & 0xFF);
   if (w.vram) { D.loadPalettesImmediate(w, hl, 0x0A, 0x01); D.loadPalettesImmediate(w, hl + 6, 0x0C, 0x01); }
   wr(w, 0xC3F4, (rd(w, 0xC3F4) + 1) & 0xFF);
 }
