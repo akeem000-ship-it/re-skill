@@ -942,7 +942,8 @@ export class Voxel3D {
     const c = Math.cos(tilt), s = Math.sin(tilt), pm = post ? m => m4.mul(post, m) : m => m;
     if (b.mesh) { if (this.voxelSprites || b.vox) this.drawMesh(b.mesh, pm(m4.trs3(X + b.dx * scale, lift + b.up * scale * c, Yw - b.up * scale * s, scale * (b.ms || 1), scale * (b.ms || 1), scale * (b.ms || 1), -tilt)), mvp); return; }
     if (this.voxelSprites) return;
-    for (const q of b.cards) this.draw(q.tex, pm(m4.trs(X + q.dx * scale, lift + q.up * scale * c, Yw - q.up * scale * s, (q.w || 8) * scale, (q.h || 8) * scale, -tilt, 0)), mvp);
+    const yw = this.cardYaw || 0, cy = Math.cos(yw), sy = Math.sin(yw);   // (cardYaw: the cards turned round Y to face a camera circling them)
+    for (const q of b.cards) this.draw(q.tex, pm(m4.trs(X + q.dx * scale * cy, lift + q.up * scale * c, Yw - q.up * scale * s - q.dx * scale * sy, (q.w || 8) * scale, (q.h || 8) * scale, -tilt, yw)), mvp);
   }
   // draws one OAM sprite's tiles relative to an anchor screen point (ax, ay) mapped to world (X, Yw) at height lift
   blitSprite(sp, ax, ay, X, Yw, lift, scale, tilt, mvp) {
