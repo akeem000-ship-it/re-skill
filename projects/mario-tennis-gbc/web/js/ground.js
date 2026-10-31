@@ -320,13 +320,17 @@ export class Ground {
     // the map's lawn colour (its mean), for the apron
     let lawnC = null;
     const lawnMean = () => { if (lawnC) return lawnC; let r = 0, g = 0, b = 0, n = 0; for (let o = 0; o < 512 * MY * 4; o += 4 * 7) if (lawn(o)) { r += d[o]; g += d[o + 1]; b += d[o + 2]; n++; } return (lawnC = n ? [r / n, g / n, b / n] : [60, 150, 40]); };
+    // a lawn pixel, or one of the lawn's dither (a darker green between lawn pixels: lawn on 3 of its 4 sides), so the carpet covers the
+    // lawn evenly instead of leaving the game's checkerboard showing through it
+    const lawnAt = (x, y) => (inMap(x, y) && lawn(px(x, y)) ? 1 : 0);
+    const lawnish = (x, y) => lawnAt(x, y) === 1 || lawnAt(x - 1, y) + lawnAt(x + 1, y) + lawnAt(x, y - 1) + lawnAt(x, y + 1) >= 3;
     // ---- the carpet's mask: the lawn's colour without the dither (dry patches yellower), alpha its height (taller patches) ----
     let carpet = null;
     if (this.carpet) {
       const B = band || apron.length ? 240 : 0, W = MX + 2 * B, Hc = MY + 2 * B, t = new Uint8Array(W * Hc * 4), sh = shadeMap(W, Hc, -B, -B);
       for (let j = 0; j < Hc; j++) for (let i = 0; i < W; i++) {
         const x = i - B, y = j - B; let c = null;
-        if (inArea(x, y)) { if (open(x, y) && lawn(px(x, y))) c = mean(x, y, 3, lawn); }
+        if (inArea(x, y)) { if (open(x, y) && lawnish(x, y)) c = mean(x, y, 3, lawn); }
         else if (band && !(y < 0 && f.neighbour)) c = band;
         else if (inApron(x, y)) c = lawnMean();
         if (!c) continue;

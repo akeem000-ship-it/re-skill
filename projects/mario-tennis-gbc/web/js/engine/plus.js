@@ -29,6 +29,9 @@ const TOUR = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0x0A, 0x0B, 0x0C, 0x0D, 0x10, 0x11, 
 const U16 = v => v & 0xFFFF;
 const STAMINA_LEVEL = 0x3F, STORY_RECORDS = [0xC900, 0xC940];       // the story records' unused last byte: the STAMINA level
 const storyMatch = mode => mode === 1 || mode === 2 || mode === 3 || mode === 10;
+// STAMINA in matches only: not in the training drills, the ball machine, wall practice or the mini-games (wGameMode 5-8)
+const TRAINING = new Set([5, 6, 7, 8]);
+const staminaOn = E => !!(E.plus && E.plus.stamina) && !TRAINING.has(E.mem.u8(0xC8A6));
 // the match's place in the tour (wGameMode, the match list and its entry) as 0..1, or -1 when it is not one of the tour's matches
 function tourStage(m) {
   const mode = m.u8(0xC8A6), list = m.u8(0xC8F6), idx = m.u8(0xC8F7);
@@ -49,7 +52,7 @@ export function plusShotSpeed(E, bc) {
   let k = 1;
   const side = E.C.index & 1, m = E.mom;
   if (P.momentum && m && m[side] >= 3) k += 0.06;
-  const r = P.stamina ? effortOf(E) : 0, t = 12 + endurance(E); if (P.stamina && r > t) k -= Math.min(0.08, (r - t) * 0.004 * slope(E));
+  const st = staminaOn(E), r = st ? effortOf(E) : 0, t = 12 + endurance(E); if (st && r > t) k -= Math.min(0.08, (r - t) * 0.004 * slope(E));
   return k === 1 ? bc : U16(Math.round((bc & 0xFFFF) * k));
 }
 // a serve's speed (shot.js shotPlacement, serve rows): timing against the top of the toss
@@ -60,7 +63,7 @@ export function plusServeSpeed(E, bc) {
 }
 // running speed (chars.js): fatigue in long rallies
 export function plusRunSpeed(E, s) {
-  const P = E.plus; if (!P || !P.stamina) return s;
+  if (!staminaOn(E)) return s;
   const r = effortOf(E), t = 10 + endurance(E); if (r <= t) return s;
   return U16(Math.round((s & 0xFFFF) * (1 - Math.min(0.12, (r - t) * 0.006 * slope(E)))));
 }
@@ -94,19 +97,19 @@ function effort(E) {
 // STAMINA (shot.js executeShot, the shot's handler done): the swing's effort to the hitter: 1, + up to 3 by the charge
 // (wShotChargeLevel, the swing's windup frames: a quick swing has under 8, a full charge 63), + 1 for a power shot
 export function plusSwing(E) {
-  const P = E.plus; if (!P || !P.stamina) return;
+  if (!staminaOn(E)) return;
   const S = E.S, c = Math.min(S.shotChargeLevel, 63), power = S.lastShotWasPowerShot || S.specialShotFlag ? 1 : 0;
   effort(E)[E.C.index & 3] += 1 + 3 * Math.max(0, c - 8) / 55 + power;
 }
 // STAMINA (chars.js updateChar, after the move): running in a rally (the serve hit, no outcome yet) costs 1 per 650 units
 export function plusMove(E) {
-  const P = E.plus, S = E.S; if (!P || !P.stamina || !S.rallyLength || S.pointOutcome) return;
+  const S = E.S; if (!staminaOn(E) || !S.rallyLength || S.pointOutcome) return;
   const C = E.C, v = Math.hypot(C.velX << 16 >> 16, C.velDepth << 16 >> 16) / 256;
   if (v < 64) effort(E)[C.index & 3] += v / 650;
 }
 // STAMINA (flow.js awardSet): what the set took stays a little into the next sets, by how much was spent
 export function plusSetWon(E) {
-  const P = E.plus; if (!P || !P.stamina || !E.setUsed) return;
+  if (!staminaOn(E) || !E.setUsed) return;
   if (E.effort) for (let i = 0; i < 4; i++) { E.setUsed[i] += E.effort[i]; E.effort[i] = 0; }   // (the set's last point)
   const c = E.carry || (E.carry = [0, 0, 0, 0]);
   for (let i = 0; i < 4; i++) { c[i] += Math.min(2.5, E.setUsed[i] * 0.02 * slope(E, i)); E.setUsed[i] = 0; }
@@ -116,7 +119,7 @@ const effortOf = E => effort(E)[E.C.index & 3] + carried(E, E.C.index & 3);
 // STAMINA for the HUD: character i's stamina left, 1 (fresh) .. 0 (as slow as it gets), and whether they are tiring (past
 // the running threshold); null while PLAY+ stamina is off or no match has run
 export function plusStaminaGauge(E, i) {
-  const P = E.plus; if (!P || !P.stamina || !E.effort) return null;
+  if (!staminaOn(E) || !E.effort) return null;
   const t = 10 + endurance(E, i), empty = t + 20 / slope(E, i), r = effort(E)[i] + carried(E, i);
   return { left: Math.max(0, 1 - r / empty), tiring: r > t, mark: 1 - t / empty };
 }
