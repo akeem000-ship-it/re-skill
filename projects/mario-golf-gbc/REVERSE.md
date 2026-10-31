@@ -143,6 +143,8 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + the debug boot menu (01:40A6, 01:516E), the character editor (02:6176), GolfDebugEntry / DebugHoleSelect (10:4415, 10:7BAC) | 234,153 | 96.49% |
 | + map $24's sprite test, map $30's Dune / Links rooms, the serial protocol of bank 0 with no partner (fuzzed; the link menu's no-cable path, the cable-lost screen and soft reset) | 234,839 | 96.77% |
 | + the link round's shot exchange of bank 02 (fuzzed with stubbed frames) | 235,167 | 96.91% |
+| + CpuPlanShot 11:4046 and ReflectScaleUnused 10:77CC (fuzzed), copies found by tools/find_copies.py and checked with compare_routines.py (40:5941 03:4028 0D:499A 05:682D 35:45D2 33:4C59 4A:6CA2 40:61AA 41:76DF 41:7745 08:4F82 33:7CC3 34:7DE4 31:7D98 30:7E1A) | 236,440 | 97.43% |
+| + the clubhouse doors 2, 3, 5 in and out, the clinic's judgement and every comment class (the class poked), the map graphics browser and the bank-41 summary card (patched cases) | 237,800 | 97.99% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -529,6 +531,17 @@ over: the retail game never has it. The screen cases poke it to 1 on both sides 
   the d-pad, types, the name entry, Start stores the record as character save block 0-2; it never returns, so the picture loop 01:412F-01:4157 after it is not reached); A:
   GolfDebugEntry 10:4415 with DebugHoleSelect 10:7BAC before each 18-hole round; Right / B: the map engine at map
   $01 (the debug room) / $23; Select: the sound test 01:516E (music / effect numbers, A plays).
+- Unreferenced code reached by a test's patch of the ROM the core runs (the screen harness's `jumps`: a pc changed
+  where an instruction starts; `romPatch`: bytes changed, e.g. a far call's export and bank), with a flag on the native
+  side that takes the same way: the map graphics browser 0B:4776 (MapGfxBrowserInit 0B:4739, MapBrowserScroll 0B:4788
+  with MapBrowserDPadMove 0B:4826, MapGfxBrowserPick 0B:4501; quirk: wMapGfxCount is ($FF00 + entries) / 9, b never
+  cleared) in place of the debug menu's viewer 0B:4579 (`boot_kid_debug_gfxbrowser`); the older summary card of bank
+  41 (OpenCharSummaryScreen 41:7DB3, DrawCharSummary 41:7C7D, its task 41:7E03; only its closer 41:7DF4 is still
+  called) in place of the loaded game's ExpScreen card at 32:7D39 (`boot_kidsq_charsummary`).
+- Map $24 (bank 35, by the Scene warp): a sprite test: talks 2 / 3 step the player's character through the 04:4F1C
+  headers (35:789B / 78B7, 35:793F), talks 4 / 5 play animations 3 / 4, a d-pad press animation 1 (task 35:792F).
+- Map $30's test entrances $0C on (34:77EB) give a won match result for each club: `boot_kid_debug_map_30_dune` /
+  `_links` reach the Dune and Links rooms 34:7CB5 / 34:7CD1.
 
 #### Status and the records screens (records.js, records0c.js; bank 07's menus in menu09.js)
 
