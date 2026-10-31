@@ -133,7 +133,11 @@ async function romBytes() {
 async function startDemo() {
   const rom = await romBytes(); if (!rom) return;
   let list = null;
-  try { const r = await fetch("gen/demos.json.gz"); if (!r.ok) return; list = JSON.parse(await new Response(r.body.pipeThrough(new DecompressionStream("gzip"))).text()); } catch (e) { return; }
+  try {                                                                  // (the APK holds it as demos.json: Android's packager unpacks .gz assets)
+    const r = await fetch("gen/demos.json.gz");
+    if (r.ok) list = JSON.parse(await new Response(r.body.pipeThrough(new DecompressionStream("gzip"))).text());
+    else { const p = await fetch("gen/demos.json"); if (!p.ok) return; list = await p.json(); }
+  } catch (e) { return; }
   if (!list || !list.length) return;
   const gb = new GBC(rom, { audio: false });
   try { const mod = await import("../gen/game.js"); const T = {}; mod.install(T); gb.installRecomp(T); if (mod.HRAM_SIG) gb.exec.setHramSig(mod.HRAM_SIG); } catch (e) { /* the interpreter */ }
