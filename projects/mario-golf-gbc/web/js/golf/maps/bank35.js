@@ -20,6 +20,7 @@ import { twoPlayerScoreScreen } from "../standings.js";
 import * as R0C from "../records0c.js";
 import { palFadeInitSepia, palFadeSetup, palFadeRun } from "../ending.js";
 import { clearFrameTasks } from "../tasks.js";
+import { debugSaveViewer } from "../debug.js";
 
 const rd = D.rd, wr = D.wr;
 const flag = (w, n) => w.wram[0][0x840 + (n >> 3)] & (0x80 >> (n & 7));
@@ -1283,8 +1284,8 @@ function* map01TwoPlayerScore(sh) {
   wr(sh.w, 0xC441, 0x08);
 }
 // 35:7774 / 35:7780 / 35:778C Map01TalkStarsScreen / StatsScreen / RankingScreen: ClearFrameTasks 00:23B6, the screen
-// (0C:4014 / 0C:4A15 / 0C:5AEC), warp $0A / $0B / $0C (the mode select's entrances 2 / 1, the Field); ~35:7768
-// Map01TalkSaveViewer: ~02:5D2F (not ported), warp 9 (map $21)
+// (0C:4014 / 0C:4A15 / 0C:5AEC), warp $0A / $0B / $0C (the mode select's entrances 2 / 1, the Field); 35:7768
+// Map01TalkSaveViewer: the same with the save viewer 02:5D2F (bank 02; it never returns: warp 9, map $21, is not reached)
 function* map01Screen(sh, screen, warp) {
   clearFrameTasks(sh.w);
   yield* inBankGen(sh.w, 0x0C, screen(sh));
@@ -1332,7 +1333,7 @@ export const SCRIPTS = {
   ...Object.fromEntries([[0x7735, 1], [0x773B, 2], [0x7741, 3], [0x7747, 4], [0x774D, 5], [0x7753, 6], [0x7759, 7], [0x77BC, 0x0E]]
     .map(([a, n]) => [`35:${a.toString(16)}`, sh => map01Warp(sh, n)])),   // (35:77BC Map01TalkWarpCharacterTest: warp $0E)
   "35:775f": map01TwoPlayerScore,
-  "35:7768": function* () { throw new Error("the debug save viewer (~02:5D2F DebugSaveViewer) is not ported"); },
+  "35:7768": function* (sh) { clearFrameTasks(sh.w); yield* inBankGen(sh.w, 0x02, debugSaveViewer(sh)); wr(sh.w, 0xC441, 0x09); },
   "35:7774": sh => map01Screen(sh, R0C.starsScreen, 0x0A), "35:7780": sh => map01Screen(sh, R0C.statsScreen, 0x0B),
   "35:778c": sh => map01Screen(sh, R0C.rankingScreen, 0x0C),
   "35:7798": map01SepiaFadeTest, "35:783d": map01Nop, "35:7847": map01Nop,

@@ -255,3 +255,13 @@ export function dictScrollStepUnused(w, hl, de, b) {
   mapScrollTask(w);
   return { a, h: hl >> 8, l: hl & 0xFF };
 }
+
+// ---- bank 0B's unreferenced map cell writers ----
+// 0B:45E3 MapSetTerrainAt / 0B:4637 MapSetEventAt: the WRAM6 cell of tile (d, e) in the terrain grid $D000 (0B:45AB
+// MapTerrainCellAddr) / the event grid $D400 (0B:45FF MapEventCellAddr) = a: 32 x 32 cells of 2 x 2 tiles, the
+// column from an arithmetic shift (d of $80 and up: the cell past the row); the WRAM bank kept
+export function mapSetCellAt(w, base, d, e, a) {
+  const c = ((d & 0xFE) >> 1) | (d & 0x80);
+  const hl = (base + (e & 0xFE) * 16 + c) & 0xFFFF;
+  w.wram[6][hl - 0xD000] = a;
+}

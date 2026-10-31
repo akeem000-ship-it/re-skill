@@ -1077,6 +1077,17 @@ const CASES = [
   // the debug room (DEBUG_ROOM_CASES)
   ...DEBUG_ROOM_CASES.map(([n, talks]) => ({ name: `boot_kid_debug_room_${n}`, state: "boot_poweron_kid", open: true, noRet: true, sram: true,
     hook: debugPoke(1), maxFrames: 40000, ...routeCase(savedPolicy(0), [...DEBUG_ROOM, ...talks], 100) })),
+  // the debug room's save viewer (talk $0A, 35:7768: 02:5D2F) with a records block poked (save block 3): Right through
+  // all ten pages and on (wrapping), then Left back past page 0
+  { name: "boot_kid_debug_room_save_viewer", state: "boot_poweron_kid", open: true, noRet: true, sram: true,
+    hook: recordsPoke(5, () => {}, debugPoke(1)), maxFrames: 40000,
+    ...routeCase(savedPolicy(0), [...DEBUG_ROOM, ...droom(0x05, 0x10), [200, 0], { press: 0x10, every: 40, times: 11 }, [60, 0],
+      { press: 0x20, every: 40, times: 3 }, [200, 0]], 100) },
+  // the debug menu's Map (Down, A: 0B:4579): the paged menu of graphics ids (05:5197): Right (the next page), Left,
+  // Right, Down, A: that id's map graphics (0B:44C4) and tile animation; the debug menu again: B
+  { name: "boot_kid_debug_mapgfx", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: debugPoke(1), maxFrames: 30000,
+    ...routeCase(savedPolicy(0), [[30, 0x40], [60, 0], [2, 1], [90, 0], [2, 0x80], [30, 0], [2, 1], [120, 0],
+      [2, 0x10], [90, 0], [2, 0x20], [90, 0], [2, 0x10], [90, 0], [2, 0x80], [30, 0], [2, 1], [300, 0], [2, 2], [300, 0]], 100) },
   // the debug menu's Palette (Down twice, A: 44:42FB): the cursor Right, Down twice; A: the colour dialog (44:4156):
   // Up held a while (red + 1 each frame), Right, Down held (green - 1), A closes; Left; B leaves; B closes the menu
   { name: "boot_kid_debug_palette", state: "boot_poweron_kid", open: true, noRet: true, sram: true, hook: debugPoke(1), maxFrames: 30000,

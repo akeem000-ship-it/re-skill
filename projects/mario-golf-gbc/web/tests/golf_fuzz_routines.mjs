@@ -186,6 +186,9 @@ CASES.push({ name: "CharAnimStub1", bank: 0x42, addr: 0x4008, js: () => U.return
 CASES.push({ name: "CharAnimStub0", bank: 0x42, addr: 0x400A, js: () => U.returnStub() });
 CASES.push({ name: "DictScrollStepUnused", bank: 0x3F, addr: 0x41DC, regs: () => ({ h: rnd(0x40), l: rnd(256), d: rnd(4), e: rnd(256), b: rnd(0x40) }),
   out: ["a"], js: (w, r) => U.dictScrollStepUnused(w, r.h << 8 | r.l, r.d << 8 | r.e, r.b) });
+// bank 0B's unreferenced map cell writers (unreached.js; tiles within the 64 x 64 map)
+CASES.push({ name: "MapSetTerrainAt", bank: 0x0B, addr: 0x45E3, regs: () => ({ a: rnd(256), d: rnd(0x40), e: rnd(0x40) }), js: (w, r) => U.mapSetCellAt(w, 0xD000, r.d, r.e, r.a) });
+CASES.push({ name: "MapSetEventAt", bank: 0x0B, addr: 0x4637, regs: () => ({ a: rnd(256), d: rnd(0x40), e: rnd(0x40) }), js: (w, r) => U.mapSetCellAt(w, 0xD400, r.d, r.e, r.a) });
 for (const c of U.FUZZ || []) CASES.push(c(rnd));
 
 const hx = v => (v === undefined ? "undefined" : v.toString(16).padStart(2, "0"));

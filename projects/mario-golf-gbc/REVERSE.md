@@ -137,6 +137,7 @@ a branch not ported) is written `~BB:AAAA` and does not count.
 | + more fuzz-checked helpers and dead routines (banks 02 0A 0B 0C 10 3E 48) | 212,510 | 87.56% |
 | + the clubhouse door animations the screen cases open (32:6087 / 6150 / 6219) | 212,777 | 87.67% |
 | + (from here of 242,666 traced bytes: two junk exports out) the later-story talks of the clubhouse, the Lounge and the Director's Room, the lessons' other copies, the practice menu items, the link-play pause menu, the two-player Stroke screens (3E:6361, 0E:7199, 0B:6143), code the screen cases run but no comment cited (tools/cover_report.py: the RST vectors and far-call stubs, the per-mode hook stubs, the routines' parts after inline tables), the copies of the scenery (4A-4F) and tile animation (2A 2B 72, 51-54), fuzzed helpers of banks 3E 0E 12 04 42 3F 3C, the debug menu, warp menu, flag editor, palette editor and points editor, the debug room | 228,977 | 94.36% |
+| + the debug menu's Map viewer (0B:4579, 05:5197), the save viewer (02:5D2F), MapSetTerrainAt / MapSetEventAt (fuzzed), 0B:497D | 230,162 | 94.85% |
 
 (All sources together, with the sound driver of web/js/sound: 55,947 bytes, 23.05% when the native screen was
 added; before it 34,056 bytes, 14.03%. The later rows count all sources.)
@@ -483,15 +484,19 @@ over: the retail game never has it. The screen cases poke it to 1 on both sides 
   $9C00 map shown) 1 in mode 3, 0 in mode 1, else on even frames; with $FF8E the debug text $CC00 by HDMA to $9D00.
 - On the map, A with nothing ahead opens DebugMenu 05:6B2E (MapEventLoop 0A:4B50): Scene (DebugWarpMenu 05:6C25: the
   map record and the entrance, DebugDrawWarpWindow 05:6B8D, DebugAdjustValue 05:6CCC; A sets wMapId / wMapEntrance and
-  the warp $FA, which happens once the debug menu is left with B), Map (0B:4579, not ported), Palette (44:42FB, not
-  ported), Flag (DebugFlagEditor 05:6A57: three windows, the flags of a page of 64 as tiles $65 clear / $40 set,
+  the warp $FA, which happens once the debug menu is left with B), Map (DebugMapGfxViewer 0B:4579: a paged menu
+  of the gfx ids, 05:5197, then the screen and its tile animation), Palette (DebugPaletteEditor 44:42FB), Flag (DebugFlagEditor 05:6A57: three windows, the flags of a page of 64 as tiles $65 clear / $40 set,
   05:687E-05:6A36; quirk: with flag #31 set each opening clears the cursor and page, since it tests #31 and sets it
   again). The window helpers it needs are ported too: DrawStringToWindow 05:65FF (the dakuten codes $DE / $DF mark
   the tile above-left), GetWindowTile 05:444F, RebuildWindowRecord 05:4818.
 - The debug room (map $01, by the warp menu; maps/bank35.js): its talks warp (the list 35:76C4: map $20 entrances 1
   / 5, the Locker Room, the clubhouse, the Lounge, the Trophy Room, the office, map $21, the mode select's entrances,
   the Field, the room again, map $24) or run a screen first: TwoPlayerScoreScreen 3E:6361, the Stars, Stats and
-  Ranking screens of bank 0C, the sepia fade test 35:7798; the save viewer 02:5D2F is not ported.
+  Ranking screens of bank 0C, the sepia fade test 35:7798, or the save viewer DebugSaveViewer 02:5D2F (debug.js: save block 3 to $D000
+  in WRAM1, ten pages of debug text, Left / Right; it never returns, so the talk's warp 9 is not reached; with no
+  block 3 or a bad sum it prints "NO FILE" / "CHECK SUM ERROR" and hangs on a `jr $`, which the port throws on;
+  the case boot_kid_debug_room_save_viewer pokes a records block). Its "FAT INIT/RECOVER" message after SaveLoad
+  (~02:5D35) is jumped over unconditionally.
 
 #### Status and the records screens (records.js, records0c.js; bank 07's menus in menu09.js)
 

@@ -267,3 +267,11 @@ export function* mapBufCopyRectRedraw(sh, b, c, d, e, h, l) {
 // MapTileAnimStop (28:7DB2 and its copies 29:79CE 2A:7766 2B:7494 2C:7B78 2D:7444 2E:7A7C 2F:7DC7 72:7764 73:776E
 // 74:7A55): the bank's MapTileAnimTask unregistered (0B:497D, its only caller, never sends a bank-72-74 graphics id)
 export function mapTileAnimStop(w, bank) { unregisterFrameTask(w, bank, ANIM[bank][0] + 0xB6); }
+// 0B:497D MapGfxStopTileAnim: a = graphics id: MapGfxAnimTable 0B:42C0's bank slot 0-6 stops the animation of bank
+// $28-$2E, any other the one of bank $2F (a quirk: banks $72-$74's ids stop bank $2F's task; only the debug viewer
+// 0B:4579 sends them)
+export function mapGfxStopTileAnim(w, a) {
+  const slot = rb(B, 0x42C0 + ((a << 1) & 0x1FE) + 1);
+  const bank = slot <= 6 ? 0x28 + slot : 0x2F;
+  D.inBank(w, bank, () => mapTileAnimStop(w, bank));
+}

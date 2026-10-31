@@ -200,7 +200,7 @@ function sortObjectsByDepth(w) {                 // 15:4AC7 SortObjectsByDepth: 
 }
 
 // ---- the flag ----
-function printDecimalWord(w, hl, d, e) {         // 00:2303 PrintDecimalWord -> the debug text buffer $CC00 (00:20B1)
+export function printDecimalWord(w, hl, d, e) {  // 00:2303 PrintDecimalWord -> the debug text buffer $CC00 (00:20B1)
   const text = formatDecimalNumber(hl, 6);
   let p = 0xCC00 + d + e * 32;
   for (const ch of text) {

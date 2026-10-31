@@ -12,6 +12,12 @@ import { registerFrameTask, unregisterFrameTask } from "./tasks.js";
 import { adjustColor } from "./home.js";
 import { addPointsSigned } from "./unreached.js";
 import { awardExpPoints } from "./exp.js";
+import { mapLoadGfxScreen, mapGfxStartTileAnim, mapGfxStopTileAnim } from "./mapgfx.js";
+import { printString, printHexByte, printDecimalByte } from "./match.js";
+import { printHexWord, printDecimalByteSigned } from "./home.js";
+import { printDecimalWord } from "./render/behind.js";
+import { saveLoad, saveBlockLoad } from "./save.js";
+import { mulHLByA } from "./math.js";
 
 const rd = D.rd, wr = D.wr;
 const setW = (w, n) => D.setWramBank(w, n);
@@ -39,7 +45,7 @@ export function* debugMenu(sh) {
     yield* inBankGen(w, 0x05, W.updateWindows(sh));
     if (a === 0xFF) return;
     if (a === 0) yield* debugWarpMenu(sh);       // 05:6B76 -> 05:6C25
-    else if (a === 1) notPorted("the debug map graphics viewer (~0B:4579)");
+    else if (a === 1) { yield* inBankGen(w, 0x0B, debugMapGfxViewer(sh)); D.restorePalettesFromMaster(w); }   // 05:6B7B
     else if (a === 2) yield* inBankGen(w, 0x44, debugPaletteEditor(sh));   // 05:6B83 -> 44:42FB
     else yield* debugFlagEditor(sh);             // 05:6B88 -> 05:6A57
   }
@@ -332,4 +338,127 @@ export function* debugPointsEditor(sh) {
     yield* inBankGen(w, 0x48, awardExpPoints(sh, rd(w, 0xC83C) | rd(w, 0xC83D) << 8, 0xC8));
   } finally { delete w.levelUpDiffSP; }
   setW(w, old);
+}
+
+// 05:5197 RunPagedMenu: hl = the first page's text id, a = the pages: WRAM5; $D846 = 0; each page: the menu of text hl +
+// page at (1, 1) (05:4C4A OpenPagedMenuWindow: 05:4BB0, then the window's flag bits 0-1 set: Left / Right report $FE /
+// $FD), drawn, RunMenu_05, closed (wMenuWindow_2 $D82F = $FF), drawn; a row: page x 4 + row; $FF: $FF; $FE / $FD the page
+// before / after (wrapping); wMenuCursor = the result; the WRAM bank restored
+export function* runPagedMenu(sh, hl, pages) {
+  const w = sh.w, old = w.high[0x196];
+  setW(w, 5);
+  wr(w, 0xD846, 0);
+  let a;
+  for (;;) {
+    yield* inBankGen(w, 0x05, W.openMenuWindow(sh, (hl + rd(w, 0xD846)) & 0xFFFF, 1, 1));
+    W.setWindowFlags(w, rd(w, 0xD820), 3, 1);
+    yield* redraw(sh);
+    a = yield* inBankGen(w, 0x05, W.runMenu05(sh));
+    W.closeWindow(w, rd(w, 0xD82F));
+    wr(w, 0xD82F, 0xFF);
+    yield* redraw(sh);
+    if (a < 0x7F) { a = ((rd(w, 0xD846) << 2) + a) & 0xFF; break; }
+    if (a === 0xFF) break;
+    let p = rd(w, 0xD846);
+    if (a === 0xFE) { p = (p - 1) & 0xFF; if (p === 0xFF) p = (pages - 1) & 0xFF; }
+    else { p = (p + 1) & 0xFF; if (p >= pages) p = 0; }
+    wr(w, 0xD846, p);
+  }
+  wr(w, 0xD830, a);
+  setW(w, old);
+  return a;
+}
+// 0B:4579 DebugMapGfxViewer (the debug menu's Map): the loaded graphics ($C32E) kept in $C33D, its tile animation
+// stopped (0B:497D); a paged menu of the graphics ids (05:5197, text $0123 on, (count - 1) / 4 + 1 pages); a choice:
+// MapLoadGfxScreen 0B:44C4 (b = 1) and its tile animation (0B:4900); then (05:6B7E) RestorePalettesFromMaster 00:05DD
+function* debugMapGfxViewer(sh) {
+  const w = sh.w;
+  const pages = ((((rd(w, 0xC32D) - 1) & 0xFF) << 24 >> 24 >> 2) + 1) & 0xFF;
+  wr(w, 0xC33D, rd(w, 0xC32E));
+  mapGfxStopTileAnim(w, rd(w, 0xC32E));
+  const a = yield* inBankGen(w, 0x05, runPagedMenu(sh, 0x0123, pages));
+  wr(w, 0xC32E, a);
+  if (a !== 0xFF) {
+    yield* mapLoadGfxScreen(sh, a, 1);
+    mapGfxStartTileAnim(w, rd(w, 0xC32E));
+  }
+}
+
+// ---- the save viewer (02:5D2F DebugSaveViewer, the debug room's talk $0A 35:7768; bank 02 export $68) ----
+const romString02 = (a) => { const s = []; for (let c; (c = rb(0x02, a)); a++) s.push(c); s.push(0); return s; };
+const field = (w, bc, a) => rd(w, (bc + a) & 0xFFFF);
+// 02:608E DebugPrintScoreField: byte [bc + a] - $36 signed (00:22E9), or the string 02:60A7 ("   -") when 0
+function printScoreField(w, bc, a, de) {
+  const v = field(w, bc, a);
+  if (v) printDecimalByteSigned(w, (v - 0x36) & 0xFF, de);
+  else printString(w, romString02(0x60A7), de >> 8, de & 0xFF);
+}
+const FIELD = {
+  s: printScoreField,
+  g: (w, bc, a, de) => printDecimalByteSigned(w, field(w, bc, a), de),             // 02:60AC DebugPrintSignedField
+  w: (w, bc, a, de) => printDecimalWord(w, field(w, bc, a) | field(w, bc, a + 1) << 8, de >> 8, de & 0xFF),   // 02:60B7
+  h: (w, bc, a, de) => printHexByte(w, field(w, bc, a), de),                       // 02:60C4 DebugPrintHexField
+  p: (w, bc, a, de) => {                                                           // 02:60CF DebugPrintHexWordPair
+    printHexWord(w, field(w, bc, a) | field(w, bc, a + 1) << 8, de);
+    printHexWord(w, field(w, bc, a + 2) | field(w, bc, a + 3) << 8, (de + 0x0800) & 0xFFFF);
+  },
+};
+// the pages' call lists ([printer, offset a, de]) as the code runs them
+const REC_FIELDS = [["w", 0x00, 0x0102], ["s", 0x02, 0x0303], ["g", 0x03, 0x0304], ["w", 0x04, 0x0802], ["w", 0x06, 0x0803],
+  ["g", 0x08, 0x0A04], ["g", 0x09, 0x0F02], ["g", 0x0A, 0x0F03], ["g", 0x0B, 0x0F04], ["g", 0x0C, 0x0F05], ["h", 0x0D, 0x0305],
+  ...[0x07, 0x08, 0x09].flatMap((e, r) => [0, 5, 10, 15].map((d, k) => ["s", 0x0E + r * 4 + k, d << 8 | e])),
+  ["s", 0x1A, 0x000A],                                                             // (byte $1B is not shown)
+  ...[0, 5, 10, 15].map((d, k) => ["s", 0x1C + k, d << 8 | 0x0B]),
+  ...[0x0D, 0x0E, 0x0F].flatMap((e, r) => [0, 4, 8, 12, 16].map((d, k) => [k === 4 ? "s" : "g", 0x20 + r * 5 + k, d << 8 | e])),
+  ["h", 0x2F, 0x0111], ["h", 0x30, 0x0711], ["h", 0x31, 0x0D11]];
+const BYTE_FIELDS = [["h", 0, 0x0102], ...[1, 2, 3, 4, 5, 6].map(k => ["h", k, 0x0103 + k]), ["g", 7, 0x010B]];
+const WORD_FIELDS = Array.from({ length: 17 }, (_, k) => ["p", k * 4, 0x0101 + k]);
+const BALL_FIELDS = [["w", 0, 0x0101], ["h", 2, 0x0801], ["w", 3, 0x0102], ["h", 5, 0x0802], ["w", 6, 0x0103], ["h", 8, 0x0803]];
+const printFields = (w, bc, list) => { for (const [k, a, de] of list) FIELD[k](w, bc, a, de); };
+// 02:60F0 ClearDebugLines: the string 02:6109 (spaces) at (0, 1) to (0, $11)
+function clearDebugLines(w) {
+  const s = romString02(0x6109);
+  for (let e = 1; e <= 0x11; e++) printString(w, s, 0, e);
+}
+// 02:5DCE DebugSaveViewerPage: ClearDebugLines, then page b by the table 02:5DDF: 0-5 02:5E03 DebugSavePageRecord (the
+// number b + 1 at (0, 1), record b: $32 bytes at $D000 + $32 b, 00:08B9), 6 02:5DF3 DebugSavePageAll ("ALL", 02:5DFF, at
+// (1, 1), record 6), 7 02:5F8A DebugSavePageBytes ($D15E), 8 02:5FCE DebugSavePageWords ($D166), 9 02:605A
+// DebugSavePageBall ($D400)
+function debugSaveViewerPage(w, b) {
+  clearDebugLines(w);
+  if (b < 7) {
+    if (b === 6) printString(w, romString02(0x5DFF), 1, 1);
+    else printDecimalByte(w, b + 1, 0x0001);
+    printFields(w, (mulHLByA(b, 0x32) + 0xD000) & 0xFFFF, REC_FIELDS);
+  } else if (b === 7) printFields(w, 0xD15E, BYTE_FIELDS);
+  else if (b === 8) printFields(w, 0xD166, WORD_FIELDS);
+  else printFields(w, 0xD400, BALL_FIELDS);
+}
+// 02:5D2F DebugSaveViewer: SaveLoad 02:41F6 (its result ignored: the jr over 02:5D35's "FAT INIT/RECOVER" message and
+// wait is unconditional, ~02:5D35 never runs); hDebugMode 3; WRAM1; save block 3 to $D000 (02:4355): $FF prints "CHECK
+// SUM ERROR" (02:5D7F), another failure "NO FILE" (02:5D77), at (8, 4), one frame, then hangs (jr $, 02:5D67 /
+// 02:5D75); 0: sound $01, page 0 and every frame (00:2E3B) Left / Right (hJoyRepeat) the previous / next page (0-9,
+// wrapping) drawn. It never returns
+export function* debugSaveViewer(sh) {
+  const w = sh.w;
+  saveLoad(w);
+  w.high[0x19E] = 3;
+  setW(w, 1);
+  const r = saveBlockLoad(w, 3, 0xD000);
+  if (r) {
+    printString(w, romString02(r === 0xFF ? 0x5D7F : 0x5D77), 8, 4);
+    yield* sh.advance();
+    throw new Error(`02:${r === 0xFF ? "5D67" : "5D75"} DebugSaveViewer: hangs (jr $) after the save block 3 load failed`);
+  }
+  sh.sound(0x01);
+  let b = 0;
+  for (;;) {
+    debugSaveViewerPage(w, b);
+    for (;;) {
+      yield* sh.advance();
+      const a = w.high[0x191];
+      if (a & 0x20) { b = (b - 1) & 0xFF; if (b & 0x80) b = 9; break; }
+      if (a & 0x10) { b++; if (b >= 10) b = 0; break; }
+    }
+  }
 }
