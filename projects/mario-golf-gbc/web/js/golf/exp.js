@@ -15,6 +15,7 @@ import { copyMapToScrollBuffers } from "./standings.js";
 import { initWindowSystem } from "./round.js";
 import { initCharSprite, charSpriteTask } from "./charsprite.js";
 import { levelUpScreen } from "./levelup.js";
+import { mapIndexOf } from "./mapengine.js";
 
 const rd = D.rd, wr = D.wr;
 const wbank = w => w.high[0x196];
@@ -483,3 +484,65 @@ export function drawGfxPrompt(w, b) {
   D.queueVRAMCopy(w, 0xD400, 0x9800, 0x08);
   setW(w, old);
 }
+
+// ---- the older summary card of bank 41 (OpenCharSummaryScreen, bank 41 export $1C: nothing calls it; the loaded
+// game's card is ExpScreen 48:4053 a = 0. A test's patch of LoadSummaryPrompt's farcall 32:7D39 reaches it:
+// w.charSummary) ----
+// 41:7C7D DrawCharSummary: WRAM1; the tile rows 41:7BFD (row 0), 41:7C1D (rows 1-16), 41:7C3D (row 17) to $D400 and
+// the attribute row 41:7C5D x 18 to $D000 (32 bytes each); the texts (05:62AA, $20 wide): the name $149B at $D4C7, the
+// level (+$12; $149C) at $D507, the drive yards (+$1A word; $149D) at $D547; the place: the saved mode +$34 9 (the
+// story): the map's name ($012C + 0A:5348 of wReturnMap $C960) at $D587, else the mode's ($14A8 + mode - 1) at $D587,
+// the course (+$36; text $21 + it) at $D5C7, the hole (+$37; $14A0) at $D607; the attributes and tiles to the BG
+// (00:0468, 00:04DB), the scroll buffers (00:0804); the WRAM bank restored
+function* drawCharSummary(sh) {
+  const w = sh.w, old = w.high[0x196];
+  setW(w, 1);
+  const B41 = 0x41;
+  D.inBank(w, B41, () => {
+    D.copyMemoryFast(w, 0x7BFD, 0xD400, 0x02);
+    for (let a = 0; a < 0x10; a++) D.copyMemoryFast(w, 0x7C1D, (0xD420 + a * 0x20) & 0xFFFF, 0x02);
+    D.copyMemoryFast(w, 0x7C3D, 0xD620, 0x02);
+    for (let a = 0; a < 0x12; a++) D.copyMemoryFast(w, 0x7C5D, (0xD000 + a * 0x20) & 0xFFFF, 0x02);
+  });
+  const text = function* (id, de) { yield* inBankGen(w, 0x05, T.printTextToBuffer(sh, id, de, 0x20)); };
+  yield* text(0x149B, 0xD4C7);
+  T.pushTextNumberArg(w, rd(w, 0xC812));
+  yield* text(0x149C, 0xD507);
+  T.pushTextNumberArg(w, rd(w, 0xC81A) | rd(w, 0xC81B) << 8);
+  yield* text(0x149D, 0xD547);
+  const m = rd(w, 0xC834);
+  if (m === 0x09) {
+    yield* text((0x012C + mapIndexOf(rd(w, 0xC960))) & 0xFFFF, 0xD587);
+  } else {
+    yield* text((0x14A8 + ((m - 1) & 0xFF)) & 0xFFFF, 0xD587);
+    yield* text((0x0021 + rd(w, 0xC836)) & 0xFFFF, 0xD5C7);
+    T.pushTextNumberArg(w, rd(w, 0xC837));
+    yield* text(0x14A0, 0xD607);
+  }
+  D.queueVRAMCopy(w, 0xD000, 0xB800, 0x24);
+  D.queueAndRunVRAMCopy(w, 0xD400, 0x9800, 0x24);
+  copyMapToScrollBuffers(w);                     // 00:0804
+  setW(w, old);
+}
+// 41:7DB3 OpenCharSummaryScreen: ClearFrameTasks, InitWindowSystem 05:407A, InitFontScreen 01:41E8, LCD off; 41:7C7D;
+// WY $90, no sprites; WRAM6 $D504 = 0, the character's sprite (42:400B); LCD on; the task 41:7E03 (42:4074) in slot 3;
+// a frame; the WRAM bank restored
+export function* openCharSummaryScreen(sh) {
+  const w = sh.w, old = w.high[0x196];
+  clearFrameTasks(w);
+  yield* inBankGen(w, 0x05, initWindowSystem(sh));
+  initFontScreen(w);
+  if (w.vram) D.disableLCDSafely(w);
+  yield* drawCharSummary(sh);
+  if (w.vram) w.lcd.wy = 0x90;
+  D.resetSprites(w);
+  setW(w, 6);
+  wr(w, 0xD504, 0);
+  initCharSprite(w);
+  setW(w, 6);
+  if (w.vram) D.enableLCD(w);
+  registerFrameTask(w, 0x03, 0x41, 0x7E03);
+  yield* sh.advance();
+  setW(w, old);
+}
+export const charSummaryTask = w => charSpriteTask(w);   // 41:7E03 CharSummaryTask: 42:4074

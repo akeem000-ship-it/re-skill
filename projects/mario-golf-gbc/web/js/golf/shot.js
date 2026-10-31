@@ -1,6 +1,7 @@
 // A shot (tools/shot_py.py): BallTask 10:4D45 complete, and the shot's main thread from the golfer addressing
 // the ball (AddressBall 10:56B0) through the swing, ShotLaunch, the flight-camera loop and ShotMainLoop
 // 10:6E99 to the outcome. Graphics, sprites and sounds are left out; what they would do goes to fx.
+import { charSummaryTask } from "./exp.js";
 import { moreArrowTask } from "./text.js";
 import { expCharSpriteTask, expDrawCounters, yesNoCursorTask } from "./exp.js";
 import { countLoadFramesTask17, courseMapTask } from "./coursemap.js";
@@ -187,6 +188,7 @@ export class Shot {
       "77:70b6": () => P.storyPictureTimerTask(w),     // 77:70B6
       "4a:62a3": () => P.pictureCycleTask(w),          // 4A:62A3
       "48:5ee9": () => P.pictureAnimTiles(w),          // 48:5EE9
+      "41:7e03": () => charSummaryTask(w),             // 41:7E03 CharSummaryTask
       "0e:6d47": () => scorecardStrokesTask(w),        // 0E:6D47
       "0e:76f5": () => scorecardMatchPlayTask(w),      // 0E:76F5
       "0e:5348": () => scorecardStandingsTask(w),      // 0E:5348

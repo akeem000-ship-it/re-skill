@@ -1347,6 +1347,12 @@ const CASES = [
   { name: "boot_kidsq_continue", state: "boot_poweron_kidsq", open: true, noRet: true, sram: true,
     run: sh => gameCase(sh, 1, () => markLog.filter(m => m.n === "aimmenu").length >= 2 && frameNow > markLog.filter(m => m.n === "aimmenu")[1].f + 300),
     policy: scriptedPolicy({}, savedPolicy(0)) },
+  // the same with LoadSummaryPrompt's card patched to the older one nothing calls (32:7D3A: farcall export $1C of bank
+  // 41, OpenCharSummaryScreen 41:7DB3, w.charSummary): its card (41:7C7D) under the prompts
+  { name: "boot_kidsq_charsummary", state: "boot_poweron_kidsq", open: true, noRet: true, sram: true, romPatch: { "32:7d3a": [0x1C, 0x41] },
+    hook: (f, w) => { w.charSummary = 1; },
+    run: sh => gameCase(sh, 1, () => markLog.filter(m => m.n === "aimmenu").length >= 1 && frameNow > markLog.filter(m => m.n === "aimmenu")[0].f + 100),
+    policy: scriptedPolicy({}, savedPolicy(0)) },
   // the saved round made a match (save slot 0's block poked at frame 1: game mode 2, hole `hole`, wMatchHoles
   // $C96E from `holes`, playoff `po`): the card's holes-up line (48:4724), then B (back to the character select)
   ...[["ahead", 9, [1, 1, 0, 2, 1, 1, 1, 2, 1], 0], ["behind", 5, [2, 2, 1, 2, 0], 0], ["level", 4, [1, 2, 2, 1], 0], ["playoff", 3, [1, 0, 0], 1]].map(([n, hole, holes, po]) => ({
@@ -1610,7 +1616,7 @@ for (const c of CASES) {
     continue;
   }
   let r;
-  try { r = runScreen({ stateFile, run: c.run, policy: c.policy, maxFrames: c.maxFrames, hook: dumpHook(c.hook), verbose, open: c.open, setRegs: c.regs, jumps: c.jumps, trace: process.argv.includes("--trace") }); }
+  try { r = runScreen({ stateFile, run: c.run, policy: c.policy, maxFrames: c.maxFrames, hook: dumpHook(c.hook), verbose, open: c.open, setRegs: c.regs, jumps: c.jumps, romPatch: c.romPatch, trace: process.argv.includes("--trace") }); }
   catch (e) { console.log(`FAIL ${c.name}: ${e.stack}`); bad++; continue; }
   if (c.open) r.sounds.core = r.sounds.core.filter(x => +x.split(":")[0] < r.frames);   // (the game's next frame's)
   const sounds = r.sounds.core.join(" ") === r.sounds.native.join(" ");

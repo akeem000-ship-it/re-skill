@@ -29,12 +29,17 @@ const WRAM0_DISPLAY = [[0x000, 0x0A0], [0x100, 0x1C0], [0x1C0, 0x200], [0x200, 0
 
 // stateFile: out/...json from mkstate.mjs; run(sh, regs) -> the native routine (a generator); policy(frame) -> the
 // buttons held (default: A on alternate frames); returns { frames, pixelExact, modelExact, lag, bad: [...], end }
-export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFrames = 20000, verbose = false, trace = false, hook = null, lagVBlanks = true, open = false, setRegs = null, jumps = null }) {
+export function runScreen({ stateFile, run, policy = f => (f & 1 ? 0 : 1), maxFrames = 20000, verbose = false, trace = false, hook = null, lagVBlanks = true, open = false, setRegs = null, jumps = null, romPatch = null }) {
   const romBytes = new Uint8Array(fs.readFileSync(path.join(root, "rom/mario_golf.gbc")));
   useRom(romBytes);
   const saved = JSON.parse(fs.readFileSync(path.join(root, stateFile)));
   const core = new CoreRun();
   loadState(core.gb, saved.state);
+  // (romPatch: {"BB:AAAA": [bytes]}: a test's patch of the core's ROM, e.g. a far call's target)
+  if (romPatch) for (const [k, bytes] of Object.entries(romPatch)) {
+    const [b, a] = k.split(":").map(x => parseInt(x, 16));
+    bytes.forEach((v, i) => { core.gb.mem.rom[(a < 0x4000 ? 0 : b * 0x4000) + ((a + i) & 0x3FFF)] = v; });
+  }
   const [bank, addr] = saved.at;
   if (!core.at(bank, addr)) throw new Error("the state is not at the routine's entry");
   const gb = core.gb, cpu = gb.cpu;

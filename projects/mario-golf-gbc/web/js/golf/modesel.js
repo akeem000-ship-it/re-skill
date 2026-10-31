@@ -11,7 +11,7 @@ import { clearFrameTasks, unregisterFrameTask } from "./tasks.js";
 import * as Scr from "./screen.js";
 import { initFontScreen } from "./pictures.js";
 import { initWindowSystem } from "./round.js";
-import { expScreen, drawGfxPrompt, awardExpPoints } from "./exp.js";
+import { expScreen, drawGfxPrompt, awardExpPoints, openCharSummaryScreen } from "./exp.js";
 import { titleScreen } from "./title.js";
 import { linkMenu } from "./menu09.js";
 import { characterSelectScreen, resetCharSelectCursor } from "./charsel.js";
@@ -321,7 +321,8 @@ function* twoChoicePrompt(sh, a) {
 // prompt; then the fade out, 41:7DF4 CloseCharSummaryScreen (its task 41:7E03 off), the font screen
 function* loadSummaryPrompt(sh) {
   const w = sh.w;
-  yield* inBankGen(w, 0x48, expScreen(sh, 0, 0, 0));
+  if (w.charSummary) yield* inBankGen(w, 0x41, openCharSummaryScreen(sh));   // (a test's patch: 41:7DB3)
+  else yield* inBankGen(w, 0x48, expScreen(sh, 0, 0, 0));
   let r;
   for (;;) {
     D.inBank(w, 0x48, () => drawGfxPrompt(w, 0));
