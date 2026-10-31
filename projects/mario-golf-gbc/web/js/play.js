@@ -24,6 +24,9 @@ import { pollGamepad } from "./gamepad.js";
 // ---- 3D LAYERS (web/js/g3d: the 3D hole view and its effects): render only, they read the game's state and never write it ----
 import { attach3D } from "./g3d/layers.js";
 // ---- (end 3D LAYERS) ----
+// ---- HD picture options (web/js/hd: HD text, HD menus, wide, portrait, handheld): render / UI only, never the game's state ----
+import { attachHD } from "./hd/page.js";
+// ---- (end HD) ----
 
 const EXPECTED_SHA1 = "7f2062e51b4fc87378c1d5e6b9578c9277b94e0b";
 const FRAME_MS = 1000 * DOTS_PER_FRAME / CLOCK;   // 16.74 ms
@@ -34,6 +37,7 @@ const rgba2 = new Uint32Array(image2.data.buffer);
 const rgb5 = new Uint8Array(160 * 144 * 3), rgba = new Uint32Array(image.data.buffer);
 const keys = {};
 const g3d = attach3D({ screen: canvas, getGame: () => game });   // (3D LAYERS: the options panel and the 3D canvas over the screen)
+const hdPage = attachHD({ canvas, keys, getRom: () => rom, getGame: () => game });   // (HD: the picture options and the touch layouts)
 let rom = null, sha = "", game = null, paused = false, fast = false, muted = false, last = 0, acc = 0;
 let fps = 0, fpsFrames = 0, fpsT = 0;
 
@@ -110,6 +114,7 @@ function held() {
   const p = !!keys.KeyP;                           // P: the page's own pause (Start is the game's: its pause menu)
   if (p && !pauseWas) paused = !paused;
   pauseWas = p;
+  { const t = hdPage.input(game, b); if (t !== undefined) return t; }   // (HD: a test's scripted buttons; js/hd/page.js)
   return b;
 }
 addEventListener("keydown", e => {
@@ -219,7 +224,7 @@ $("mode").addEventListener("change", () => { if (rom) { newRound(); canvas.focus
 function draw() {
   const w = game.w;
   rasterize({ vram: w.vram, oam: w.oam, bgPal: w.bgPal, objPal: w.objPal, ...w.lcd }, rgb5, rgba);
-  ctx.putImageData(image, 0, 0);
+  if (!hdPage.present(w, game.frames, image)) ctx.putImageData(image, 0, 0);   // (HD: the picture options)
   g3d.present(game, rgba);                         // (3D LAYERS: the 3D picture over the screen, when on)
   if (game.link) {
     const v = game.link.w2;

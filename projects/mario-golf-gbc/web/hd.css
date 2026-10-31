@@ -1,0 +1,3 @@
+/* The play page's HD options and touch layouts (web/js/hd/page.js puts this sheet in). */
+#hdopts { text-align: center; font-size: 13px; margin: 4px 0; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+#hdopts select { font: inherit; background: var(--btn); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }

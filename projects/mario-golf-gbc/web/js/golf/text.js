@@ -34,14 +34,20 @@ const FONT = 0x50F0, WIDTHS = 0x5750;
 
 // 03:4B45 DrawGlyph: a = char; its 16 font bytes OR-ed in at the pen de; returns the pen moved by the glyph's width
 export function drawGlyph(w, a, de) {
+  if (glyphHook) glyphHook.pre(w, a, de);        // (HD text: web/js/hd/hdtext.js; reads only)
   const g = (a - 0x20) & 0xFF;
   let src = (g << 4) + FONT, p = de;
   for (let k = 0; k < 16; k++) { blitGlyphByte(w, rb(3, src++), p); p = (p + 8) & 0xFFFF; }
   const b = ((de & 7) + lookupGlyphWidth(g)) & 0xFF;
   let e = de & 0xFF, d = de >> 8;
   if (b & 8) { e += 0x80; if (e > 0xFF) { e &= 0xFF; d = (d + 1) & 0xFF; } }   // (only bit 3: a 16-pixel step is lost)
+  if (glyphHook) glyphHook.post(w, a, de);
   return d << 8 | (e & 0xF8) | (b & 7);
 }
+// ---- HD text (the play page's option, web/js/hd/hdtext.js): told of every glyph drawn, before and after, so it knows which
+// characters each glyph tile holds; it only reads the game's memory. null: nothing is told ----
+let glyphHook = null;
+export function setGlyphHook(h) { glyphHook = h; }
 export const getCharWidth = a => lookupGlyphWidth((a - 0x20) & 0xFF);   // 03:4B89 GetCharWidth
 export const lookupGlyphWidth = g => rb(3, WIDTHS + (g & 0xFF));        // 03:4B93 LookupGlyphWidth
 
