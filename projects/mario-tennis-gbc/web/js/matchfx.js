@@ -2,8 +2,10 @@
 // shot count ($C4B6) are watched, nothing in the game changes.
 //   set / match point   the crowd hushes as the point is about to be played (crowdsound hush); when it is won, a second roar
 //   long rally          from the 10th shot on, an "ooh" every few shots, rising the longer it lasts
-//   game / set won      after every game and every set, whoever won it, the camera sweeps slowly round the stadium, until a button
-//   end of the match    the camera circles the winner, two cheers, and confetti falls over the stands; an opponent from a switched-on mod
+//   game / set won      WINNER! (TV broadcast): while the game plays its own celebration, the camera turns a full circle round whoever
+//                       won it (a wide telephoto shot, letterboxed; the players turned to face it: voxel.js cardYaw) and a broadcast
+//                       caption slides in with WINNER!, the name and the score; a button or the next serve ends it
+//   end of the match    the same, slower, round the match's winner, two cheers, and confetti falls over the stands; an opponent from a switched-on mod
 //                       with lines (mods.js lines.win / lose) has their say about the result in a speech box
 //   claps               before a big point (or now and then) the crowd claps in rhythm, faster and faster, until the serve
 //   pause               while the game's pause menu is up (its labels written over the court: many BG tiles off the court map)
@@ -24,6 +26,7 @@ const KEY = "mt-matchfx";
 const OUT_WINNER = 6, OUT_NET = 4, OUT_OUT = 5, OUT_DOUBLE = 2;   // wPointOutcome values (engine/ball.js POINTOUTCOME)
 const ease = u => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
 const SWEEP = 3.2, CELEB = 2.6;                             // seconds (the game leaves the court for its results about 2.3 s after match point)
+const TV = { R: 1100, H: 210, at: 120, lens: 0.42 };         // WINNER!: the broadcast camera (distance, height, aim height, lens: a telephoto)
 const CONF_LIFE = 5.5, FW_COLOURS = [[255, 90, 80], [255, 210, 60], [120, 200, 255], [140, 255, 140], [255, 140, 230], [255, 255, 255]];
 const REACT = 2.2;                                          // seconds a point's reaction marks stay up at most (the game moves on sooner)
 // the reaction marks, 9 x 9 (1 ink, 2 shine): a star, a sweat drop, a cloud
@@ -56,10 +59,10 @@ export class MatchFX {
   constructor(voxel) {
     this.v = voxel; this.on = (() => { try { return localStorage.getItem(KEY) !== "off"; } catch (e) { return true; } })();
     this.prev = null; this.react = new Map(); this.cine = null; this.stats = null; this.mom = 0; this.momShown = 0; this.streak = { side: -1, n: 0 }; this.ptMax = 0; this.serveAt = 0; this.confetti = null; this.tense = false; this.oohAt = 0; this.claps = null; this.pauseN = 0;
-    this.skip = () => { if (this.cine && this.cine.kind === "sweep") this.cine = null; };
+    this.skip = () => { if (this.cine && (this.cine.kind === "sweep" || (this.cine.kind === "win" && !this.cine.match))) { this.cine = null; this.tvCaption(null); } };
     addEventListener("pointerdown", this.skip, true); addEventListener("keydown", this.skip, true);
   }
-  setOn(on) { this.on = !!on; try { localStorage.setItem(KEY, this.on ? "on" : "off"); } catch (e) { /* private mode */ } if (!this.on) { this.cine = null; this.confetti = null; } }
+  setOn(on) { this.on = !!on; try { localStorage.setItem(KEY, this.on ? "on" : "off"); } catch (e) { /* private mode */ } if (!this.on) { this.cine = null; this.confetti = null; this.tvCaption(null); } }
   score(w) {
     return { sets: [w[0x8E0], w[0x8E1]], games: [w[0x8E2], w[0x8E3]], pts: [w[0x8E4], w[0x8E5]], tb: w[0x8E7], nsets: w[0x8F0] || 1, short: w[0x8F1] === 2, won: w[0x8E8], hits: w[0x4B6] };
   }
@@ -88,7 +91,7 @@ export class MatchFX {
       if (S.won && !p.won) { this.celebrate(S.sets[0] >= S.sets[1] ? 0 : 1, st); return; }
       if (this.tense && setDone && snd) setTimeout(() => snd.cheer(1), 700);           // the set point was won: a second roar
       if (setDone && st.mom) st.mom.setWon(S.sets[0] > p.sets[0] ? 0 : 1, st.built && st.built.venue);   // BIG MOMENTS: the venue's event, the cards
-      if (gameDone) this.cine = { kind: "sweep", t0: now, a0: Math.random() < 0.5 ? -1 : 1 };
+      if (gameDone) this.winShot(setDone ? (S.sets[0] > p.sets[0] ? 0 : 1) : (S.games[0] > p.games[0] ? 0 : 1), S, setDone ? "set" : "game", SWEEP);
       if (!S.won && (setDone || (gameDone && (S.games[0] + S.games[1]) % 2 === 1))) this.showStats(setDone ? "SET " + (S.sets[0] + S.sets[1]) : "CHANGEOVER");
       const k = Math.max(this.stakes(S, 0), this.stakes(S, 1)); this.tense = k > 0;
       if (k && snd) setTimeout(() => snd.hush(st.fill), 1400);
@@ -104,7 +107,9 @@ export class MatchFX {
     if (pz && (!this.cine || this.cine.kind !== "pause")) { if (++this.pauseN > 20) this.cine = { kind: "pause", t0: now, first: Math.floor(Math.random() * PAUSE_SHOTS.length) }; }
     else if (!pz) { this.pauseN = 0; if (this.cine && this.cine.kind === "pause") this.cine = null; }
     if (S.hits > p.hits && S.hits >= 10 && now - this.oohAt > 1.2 && (S.hits - 10) % 3 === 0 && snd) { this.oohAt = now; snd.ooh(st.fill, Math.min(1, (S.hits - 10) / 15)); }
+    const W = this.cine; if (W && W.kind === "win" && !W.match) { if (!S.hits) W.zero = true; else if (W.zero) this.cine = null; }   // (the next serve: the rally's count back to 0, then the serve)
     if (this.cine && this.cine.kind !== "pause" && now - this.cine.t0 > (this.cine.kind === "sweep" ? SWEEP : this.cine.dur || CELEB)) this.cine = null;
+    if (this.tvOn && (!this.cine || this.cine.kind !== "win")) this.tvCaption(null);
   }
   // seconds since a reaction began, in game frames (held with the game: the pause menu, the intro)
   reactAge(q) { return (this.v.gb.ppu.frames - q.f0) / 60; }
@@ -269,13 +274,48 @@ export class MatchFX {
   celebrate(side, st) {
     const now = performance.now() / 1000, snd = st.sound;
     if (st.mom) st.mom.matchWon(side, st.built && st.built.venue);                     // BIG MOMENTS: the venue's event, the cards, the trophy
-    this.cine = { kind: "win", t0: now, side, a0: Math.random() * Math.PI * 2, dur: st.mom && st.mom.cer ? 8 : CELEB };
+    this.winShot(side, this.score(this.v.gb.mem.wram[0]), "match", st.mom && st.mom.cer ? 8 : CELEB);
     if (snd) { snd.cheer(1); setTimeout(() => snd.cheer(1), 1200); }
     // round the winner (where the camera looks) and over the stands
     const h = ((this.v.interp().players || []).filter(q => (q.slot & 1) === side)[0]) || { X: 0, Y: side ? -1200 : 1200 };
     const w = this.v.gb.mem.wram[0], c = this.v.gb.modChar && this.v.gb.modChar(w[0xA8B] & 0x3F), line = c && c.lines && (side ? c.lines.win : c.lines.lose);
     if (line) setTimeout(() => this.quote(c.name || "", line), 700);
     this.confettiAt(h.X, h.Y, 130, 800, 260); this.confettiAt(0, -300, 130, 2200, 700);   // round the winner (where the camera looks) and over the stands
+  }
+  // WINNER!: the broadcast shot round who won the game, the set or the match (side), as long as dur at most
+  winShot(side, S, what, dur) {
+    const w = this.v.gb.mem.wram[0], nm = a0 => { let o = ""; for (let i = 0; i < 16; i++) { const c = w[a0 + i]; if (c < 0x20 || c > 0x7E) break; o += String.fromCharCode(c); } return o.trim(); };
+    const dbl = (this.v.interp().players || []).length > 2, names = [nm(side ? 0xA80 : 0xA00), dbl ? nm(side ? 0xAC0 : 0xA40) : ""].filter(Boolean);
+    const mine = k => S[k][side] + "-" + S[k][1 - side];
+    const line = what === "match" ? "WINS THE MATCH  \u00b7  SETS " + mine("sets") : what === "set" ? "TAKES THE SET  \u00b7  SETS " + mine("sets") : "GAMES " + mine("games") + (S.sets[0] + S.sets[1] ? "  \u00b7  SETS " + mine("sets") : "");
+    this.cine = { kind: "win", t0: performance.now() / 1000, side, dur, match: what === "match", a0: side ? 0 : Math.PI, name: (names.join(" & ") || "PLAYER").toUpperCase(), line };
+  }
+  // the broadcast look over the 3D view while WINNER! runs: bars top and bottom, a caption sliding in from the left (inK 0..1) and out
+  // (outK 0..1), a LIVE 360 tag in the corner; c null: away
+  tvCaption(c, inK = 1, outK = 0) {
+    if (typeof document === "undefined" || !this.v.cv) return;
+    let e = this.tv;
+    if (!c) { if (e) e.style.display = "none"; this.tvOn = false; return; }
+    if (!e) {
+      e = this.tv = document.createElement("div"); e.style.cssText = "position:fixed;z-index:7;pointer-events:none;overflow:hidden";
+      e.innerHTML = '<div data-k="t" style="position:absolute;left:0;right:0;top:0;background:#000"></div><div data-k="b" style="position:absolute;left:0;right:0;bottom:0;background:#000"></div>' +
+        '<div data-k="cap" style="position:absolute;left:4%;bottom:15%;font-family:&quot;MT Luckiest Guy&quot;,system-ui,sans-serif">' +
+        '<div data-k="w" style="display:inline-block;background:#c8102e;color:#fff;padding:.12em 1.4em .02em .5em;clip-path:polygon(0 0,100% 0,94% 100%,0 100%);letter-spacing:.02em">WINNER!</div><br>' +
+        '<div data-k="n" style="display:inline-block;background:#141c50;color:#ffd65a;padding:.25em 1.6em .25em .7em;clip-path:polygon(0 0,100% 0,95% 100%,0 100%);font-family:&quot;MT Itim&quot;,system-ui,sans-serif"></div></div>' +
+        '<div data-k="live" style="position:absolute;right:3%;padding:.2em .7em;border-radius:6px;background:rgba(0,0,0,.6);color:#fff;font-family:&quot;MT Itim&quot;,system-ui,sans-serif"><span style="display:inline-block;width:.7em;height:.7em;border-radius:50%;background:#e61e28;margin-right:.45em;vertical-align:-.05em"></span>LIVE 360\u00b0</div>';
+      document.body.appendChild(e);
+      if (typeof FontFace !== "undefined") for (const [fam, file] of [["MT Luckiest Guy", "LuckiestGuy-Regular.ttf"], ["MT Itim", "Itim-Regular.ttf"]])
+        new FontFace(fam, `url(${new URL("../fonts/" + file, import.meta.url)})`).load().then(f => document.fonts.add(f)).catch(() => {});
+    }
+    const r = this.v.cv.getBoundingClientRect(), q = k => e.querySelector(`[data-k="${k}"]`), bar = r.height * 0.11 * Math.min(1, inK * 2) * (1 - outK);
+    Object.assign(e.style, { display: "block", left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" });
+    q("t").style.height = q("b").style.height = bar + "px";
+    const fs = Math.max(14, Math.min(r.width * 0.055, r.height * 0.11)); q("w").style.fontSize = fs + "px"; q("n").style.fontSize = fs * 0.42 + "px"; q("live").style.fontSize = fs * 0.3 + "px";
+    q("live").style.top = (r.height * 0.11 + 8) + "px"; q("live").style.opacity = String(inK * (1 - outK));
+    q("n").textContent = c.name + "   \u00b7   " + c.line;
+    const slide = 1 - ease(Math.max(0, inK * 1.4 - 0.4)) + ease(outK);   // (the caption follows the bars in, and leaves first)
+    q("cap").style.transform = `translateX(${-slide * 110}%)`; q("cap").style.bottom = (r.height * 0.11 + r.height * 0.06) + "px";
+    this.tvOn = true;
   }
   // a speech box low over the view for a few seconds: who, and what they say
   quote(who, text) {
@@ -324,6 +364,7 @@ export class MatchFX {
   }
   // voxel.js renderCourt: the camera while a sweep or the celebration runs (null: the usual camera)
   camera(aspect, m4, clip, players) {
+    this.v.cardYaw = 0;
     const c = this.cine; if (!c || !this.on) return null;
     const t = performance.now() / 1000 - c.t0;
     let eye, at;
@@ -336,10 +377,15 @@ export class MatchFX {
     } else if (c.kind === "sweep") {                               // a slow arc high round the stadium, centred on the court
       const u = ease(t / SWEEP), a = c.a0 * (-0.55 + 1.1 * u), R = 4200;
       eye = [R * Math.sin(a), 1500 - 200 * Math.sin(Math.PI * u), R * Math.cos(a)]; at = [0, 0, -200];
-    } else {                                                // circling the winner, coming in
-      const pl = (players || []).filter(q => (q.slot & 1) === c.side), h = pl[0] || { X: 0, Y: c.side ? -1200 : 1200, Z: 0 };
-      const u = t / CELEB, a = c.a0 + 1.6 * ease(u), R = 1300 - 500 * ease(u);
-      eye = [h.X + R * Math.sin(a), 300 + 200 * (1 - ease(u)), h.Y + R * Math.cos(a)]; at = [h.X, 110, h.Y];
+    } else {                                                // WINNER!: a full turn round the winner (both, in doubles), a telephoto from wide
+      const pl = (players || []).filter(q => (q.slot & 1) === c.side), n = pl.length || 1;
+      const h = pl.length ? { X: pl.reduce((s, q) => s + q.X, 0) / n, Y: pl.reduce((s, q) => s + q.Y, 0) / n } : { X: 0, Y: c.side ? -1200 : 1200 };
+      const a = c.a0 + Math.PI * 2 * ease(t / c.dur), ex = Math.sin(a), ez = Math.cos(a); let R = TV.R * (n > 1 ? 1.35 : 1);
+      if (Math.abs(h.Y + R * ez) > 1750) R = Math.min(R, (1750 - Math.sign(ez) * h.Y) / Math.abs(ez));   // (in front of the back fences
+      if (Math.abs(h.X + R * ex) > 1250) R = Math.min(R, (1250 - Math.sign(ex) * h.X) / Math.abs(ex));   // and the side stands)
+      eye = [h.X + R * ex, TV.H, h.Y + R * ez]; at = [h.X, TV.at, h.Y]; lens = TV.lens * (n > 1 ? 1.25 : 1);
+      this.v.cardYaw = a;                                   // (the players turned to face the camera as it goes round)
+      this.tvCaption(c, Math.min(1, t / 0.35), Math.max(0, (t - (c.dur - 0.3)) / 0.3));
     }
     return { mvp: m4.mul(m4.perspective(lens, aspect, clip.near, clip.far), m4.lookAt(eye, at, [0, 1, 0])), tilt: 0 };
   }

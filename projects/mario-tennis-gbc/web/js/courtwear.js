@@ -9,14 +9,15 @@ const LOOK = {
   grass: { scuff: "rgba(150,124,70,A)", mark: "rgba(60,90,40,A)", markA: 0.18, rate: 0.03, skid: "rgba(120,100,55,A)", skidA: 0.42, lite: "rgba(190,215,140,A)" },
   hard:  { scuff: "rgba(30,30,34,A)", mark: "rgba(40,40,44,A)", markA: 0.10, rate: 0.012, skid: "rgba(28,28,32,A)", skidA: 0.38, lite: "rgba(255,255,255,A)" },
 };
-// STYLE (test: localStorage mt-wear, "spots" the old look): how the players mark the court instead of a dot under them every frame
+// STYLE (localStorage mt-wear; "skid" by default, "spots" the old look, "trail" / "sweep" the other two looks offered): how the players
+// mark the court instead of a dot under them every frame
 //   skid    brake skids: where a player stops or turns hard, two short parallel strokes (the two feet) along the way they were going,
 //           as long as they were fast; the ball's bounce a streak along its flight
 //   trail   footwork: every step a soft pale line along the run, so the running lanes along the baseline wear in (scraped lighter);
 //           shorter, fainter skids on a hard stop; the ball's bounce a streak
 //   sweep   slides: on a turn the feet sweep a curved arc (out the old way, round into the new), wide and soft with a darker leading
 //           edge and a little spray of kicked-up dots; the ball's bounce a comet with a short tail
-const STYLE = (() => { try { return localStorage.getItem("mt-wear") || "spots"; } catch (e) { return "spots"; } })();
+const STYLE = (() => { try { return localStorage.getItem("mt-wear") || "skid"; } catch (e) { return "skid"; } })();
 export class CourtWear {
   constructor(v) { this.v = v; this.cv = null; this.tex = null; this.dirty = 0; this.kind = "hard"; this.matchKey = -1; this.lastBall = 0; this.frames = 0; }
   reset(kind) {
