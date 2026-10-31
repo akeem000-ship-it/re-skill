@@ -314,6 +314,10 @@ const DEBUG_WARP_CASES = [
   ["24_sprites", 0x24, 0, [[100, 0], [2, 0x10], [20, 0], [2, 1], [120, 0], [2, 1], [120, 0], [2, 0x20], [20, 0], [2, 1], [120, 0], [2, 1],
     [120, 0], [2, 1], [120, 0], { to: [0x0B, 0x07], at: [0x0B00, 0x0700], noA: true }, [2, 0x20], [20, 0], [2, 1], [200, 0], [2, 0x10],
     [20, 0], [2, 1], [200, 0]]],
+  // map $30 (the Match Game Event) entrances $0D / $0E (34:77EB's test entry: a won result, warp to entrance 3 / 4): the
+  // Dune / Links Club's room (34:7CB5 / 34:7CD1) and the champion's scene
+  ["30_dune", 0x30, 0x0D, [[2500, 0]]],
+  ["30_links", 0x30, 0x0E, [[2500, 0]]],
   // map $23 (31:47D7): the angle tests, the menu (31:483E): Down n times, A: the row's handler
   ...[["23_tournament", 0, [[1500, 0]]], ["23_match", 1, [[1500, 0]]], ["23_practice", 2, [[1500, 0]]],
     ["23_clubhouse", 3, [[300, 0], [2, 0x80], [30, 0], [2, 2], [600, 0]]], ["23_vs_scorecard", 4, [[600, 0], [2, 1], [600, 0]]],

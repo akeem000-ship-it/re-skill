@@ -452,7 +452,7 @@ function* map02Trigger0F(sh) {
   yield* treeLetter(sh);
 }
 
-// 34:7C99 / 7CB5 / 7CD1 Map30DrawPalmRoom / DuneRoom / LinksRoom (by 34:7CED Map30DrawClubRoom: entrance 2-4):
+// 34:7C99 / 34:7CB5 / 34:7CD1 Map30DrawPalmRoom / DuneRoom / LinksRoom (by 34:7CED Map30DrawClubRoom: entrance 2-4):
 // WaitScriptActorIdle, the room's $14 x $14 tiles from the map buffer at (b, c) = ($1A, 0) / (0, $18) / ($1A, $18)
 // to (0, 0) (MapBufCopyRectRedraw 0B:4864), six palettes from 2 (34:7BE9 / 7C29 / 7C69, master only)
 function* map30DrawClubRoom(sh) {
