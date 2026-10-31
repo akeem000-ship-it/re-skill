@@ -5,12 +5,13 @@
 // frame as with none (web/tests/g3d_layers_same.mjs).
 // The page calls afterStep(game) after each game frame and present(game) once per drawn frame (js/play.js, the "3D LAYERS" blocks).
 // Settings: remembered in this browser ("mg3d"); URL ?g3d=on|off|all|none|key,key ?g3dq=lite|full ?g3dcam=follow|course|behind|tv
-// ?g3dhour=auto|clock|<hour>.
+// ?g3dhour=auto|clock|<hour> ?g3dtrees=courtyard|original.
 import { Golf3D } from "./scene.js";
 import { installOamTags } from "./hud3d.js";
 import { PRESETS } from "./camera3d.js";
 import { HOURS } from "./light3d.js";
 import { FX } from "./fx.js";
+import { TREE_STYLES } from "./trees3d.js";
 
 export const LAYERS = [
   // [key, label, phase, what it does]
@@ -30,7 +31,7 @@ export const LAYERS = [
   ["field3d", "3D overworld", 3, "the story mode's maps in 3D: walls and buildings stood up, trees, the people"],
   ["fieldlife", "Field life", 3, "birds, butterflies and swaying flowers on the 3D overworld"],
 ];
-const DEFAULTS = { on: Object.fromEntries(LAYERS.map(([k]) => [k, k !== "view3d"])), quality: "full", camera: "follow", hour: "auto" };
+const DEFAULTS = { on: Object.fromEntries(LAYERS.map(([k]) => [k, k !== "view3d"])), quality: "full", camera: "follow", hour: "auto", trees: "courtyard" };
 const KEY = "mg3d";
 
 export class Layers {
@@ -45,11 +46,12 @@ export class Layers {
     else if (g) { for (const [k] of LAYERS) map[k] = false; for (const k of g.split(",")) map[k] = true; map.view3d = true; }
     this.map = map;
     this.quality = q.get("g3dq") || s.quality; this.camera = q.get("g3dcam") || s.camera; this.hour = q.get("g3dhour") || s.hour;
+    this.trees = q.get("g3dtrees") || s.trees; if (!(this.trees in TREE_STYLES)) this.trees = "courtyard";
     this.fx = [];
   }
   on(k) { return !!this.map[k]; }
   set(k, v) { this.map[k] = !!v; this.save(); }
-  save() { try { localStorage.setItem(KEY, JSON.stringify({ on: this.map, quality: this.quality, camera: this.camera, hour: this.hour })); } catch (e) { /* private mode */ } }
+  save() { try { localStorage.setItem(KEY, JSON.stringify({ on: this.map, quality: this.quality, camera: this.camera, hour: this.hour, trees: this.trees })); } catch (e) { /* private mode */ } }
 }
 
 export function attach3D({ screen, getGame }) { return new Page(new Layers(), screen, getGame); }
@@ -134,7 +136,8 @@ class Page {
     const head = el("div", { className: "g3dhead" });
     const sel = (label, opts, cur, set) => { const s = el("select"); for (const [v, t] of Object.entries(opts)) s.append(el("option", { value: v, textContent: t, selected: String(v) === String(cur) })); s.onchange = () => { set(s.value); L.save(); }; return el("label", {}, label + " ", s); };
     head.append(sel("Camera", PRESETS, L.camera, v => { L.camera = v; }), " ", sel("Hour", HOURS, L.hour, v => { L.hour = v; }), " ",
-      sel("Quality", { full: "Full", lite: "Lite (phones)" }, L.quality, v => { L.quality = v; if (this.scene && this.scene.hole) this.scene.hole.id = -1; }));
+      sel("Quality", { full: "Full", lite: "Lite (phones)" }, L.quality, v => { L.quality = v; if (this.scene && this.scene.hole) this.scene.hole.id = -1; }), " ",
+      sel("Trees", TREE_STYLES, L.trees, v => { L.trees = v; }));
     const list = el("div", { className: "g3dlist" });
     for (const [k, label, phase, what] of LAYERS) {
       const cb = el("input", { type: "checkbox", checked: L.on(k) });

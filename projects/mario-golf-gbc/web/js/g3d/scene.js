@@ -8,6 +8,7 @@ import { m4, program, vao, texture, updateTexture, clamp, lerp, gbc } from "./gl
 import { HoleArt, T, PX, CELLS } from "./hole3d.js";
 import { extractTrees, terrainColours, buildHeights, heightSampler } from "./terrain3d.js";
 import { roundedMeshData } from "./voxround.js";
+import { courtyardTrees, treePalette, treeMeshData, treeHeight } from "./trees3d.js";
 import { golferFrame, picKey } from "./sprites3d.js";
 import { SkyBox } from "./skybox.js";
 import { HudLayer, tagsOf } from "./hud3d.js";
@@ -24,7 +25,13 @@ vec3 pointLights(vec3 p, vec3 n) { vec3 s = vec3(0.0); for (int i = 0; i < 4; i+
 vec3 finish(vec3 c, vec3 p) { float f = clamp((distance(p, uEye) - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0); c = mix(c, uFogCol, f * f); return mix(c, uFade.rgb, uFade.a); }`;
 const OBJ_VS = `#version 300 es
 in vec3 aPos; in vec3 aCol; uniform mat4 uMVP; uniform mat4 uModel; uniform mat4 uShadowMVP; out vec3 vCol; out vec3 vW; out vec4 vSh;
-void main() { vec4 w = uModel * vec4(aPos, 1.0); vW = w.xyz; vCol = aCol; vSh = uShadowMVP * w; gl_Position = uMVP * w; }`;
+// TREES: a body sways in the wind: uSway = (amount, phase, height of the top in the mesh's units, -); uWindT = (wind x, wind z, time)
+uniform vec4 uSway; uniform vec3 uWindT;
+vec3 sway(vec3 a) { if (uSway.x <= 0.0) return a; float h = clamp(a.y / uSway.z, 0.0, 1.0); h *= h;
+  float g = 0.55 + 0.45 * sin(uWindT.z * 1.3 + uSway.y) + 0.18 * sin(uWindT.z * 3.7 + uSway.y * 2.0 + a.y * 0.3);
+  vec2 d = uWindT.xy * 0.045 + vec2(0.12, 0.08) * sin(uWindT.z * 0.9 + uSway.y);
+  return a + vec3(d.x, 0.0, d.y) * uSway.x * h * g; }
+void main() { vec4 w = uModel * vec4(sway(aPos), 1.0); vW = w.xyz; vCol = aCol; vSh = uShadowMVP * w; gl_Position = uMVP * w; }`;
 const OBJ_FS = `#version 300 es
 precision highp float; precision highp sampler2DShadow; in vec3 vCol; in vec3 vW; in vec4 vSh; uniform vec4 uTint; uniform sampler2DShadow uShadow; uniform float uShadowOn; out vec4 o;
 ${LIGHT_GLSL}
@@ -35,7 +42,14 @@ void main() {
   o = vec4(finish(vCol * uTint.rgb * l, vW), uTint.a);
 }`;
 const DEPTH_VS = `#version 300 es
-in vec3 aPos; uniform mat4 uMVP; uniform mat4 uModel; void main() { gl_Position = uMVP * uModel * vec4(aPos, 1.0); }`;
+in vec3 aPos; uniform mat4 uMVP; uniform mat4 uModel;
+// TREES: a body sways in the wind: uSway = (amount, phase, height of the top in the mesh's units, -); uWindT = (wind x, wind z, time)
+uniform vec4 uSway; uniform vec3 uWindT;
+vec3 sway(vec3 a) { if (uSway.x <= 0.0) return a; float h = clamp(a.y / uSway.z, 0.0, 1.0); h *= h;
+  float g = 0.55 + 0.45 * sin(uWindT.z * 1.3 + uSway.y) + 0.18 * sin(uWindT.z * 3.7 + uSway.y * 2.0 + a.y * 0.3);
+  vec2 d = uWindT.xy * 0.045 + vec2(0.12, 0.08) * sin(uWindT.z * 0.9 + uSway.y);
+  return a + vec3(d.x, 0.0, d.y) * uSway.x * h * g; }
+void main() { gl_Position = uMVP * uModel * vec4(sway(aPos), 1.0); }`;
 const DEPTH_FS = `#version 300 es
 precision mediump float; out vec4 o; void main() { o = vec4(1.0); }`;
 const PT_VS = `#version 300 es
@@ -72,6 +86,7 @@ const HUD_FS = `#version 300 es
 precision mediump float; in vec2 vUV; uniform sampler2D uTex; uniform vec4 uRect; uniform float uAlpha; out vec4 o;
 void main() { vec2 q = (vUV - uRect.xy) / uRect.zw; if (q.x < 0.0 || q.y < 0.0 || q.x > 1.0 || q.y > 1.0) discard; vec4 c = texture(uTex, q); if (c.a < 0.01) discard; o = vec4(c.rgb, c.a * uAlpha); }`;
 
+const NO_SWAY = new Float32Array(4), TREE_FAR = 70;
 const TREE_SCALE = 1.5, GOLFER_H = 4.2, PIN_H = 4.0;   // world sizes: the trees are 24 yards tall (TreeCheck's levels), a golfer ~4
 
 export class Golf3D {
@@ -190,18 +205,35 @@ export class Golf3D {
       for (const p of [a, b, c, a, c, d]) { const ye = p[0] >= 0 && p[0] <= 512 && p[1] >= 0 && p[1] <= 512 ? H(clamp(p[0], 0, 511.9), clamp(p[1], 0, 511.9)) - 0.05 : edgeH; sk.push(p[0], ye, p[1]); skn.push(0, 1, 0); }
     }
     hole.skirt = { ...vao(gl, this.P.ground, { aPos: [new Float32Array(sk), 3], aNrm: [new Float32Array(skn), 3] }), n: sk.length / 3 };
-    // the tree bodies
-    for (const t of trees) {
+    // the tree bodies: TREES: Courtyard (trees3d.js: one per tree tile, shaped for the course, a few shared meshes) or Original (the
+    // tile pictures stood up as rounded bodies)
+    hole.treeStyle = this.layers.trees;
+    if (hole.treeStyle === "original") for (const t of trees) {
       t.mesh = this.meshOwn(roundedMeshData(t.rgba, t.w, t.h, 3, 3.2));   // (owned by the hole, not the cache)
       t.y = H(t.footX, t.footZ);
+    } else {
+      const sand = typeCol[T.BUNKER * 3 + 1] > 0 ? [typeCol[T.BUNKER * 3] * 255, typeCol[T.BUNKER * 3 + 1] * 255, typeCol[T.BUNKER * 3 + 2] * 255] : null;
+      const pal = treePalette(trees, sand), meshes = hole.treeMeshes = new Map();
+      hole.ctrees = courtyardTrees(trees, this.course);
+      for (const c of hole.ctrees) {
+        const key = c.kind + ":" + c.variant + ":" + Math.round(c.size * 4);
+        if (!meshes.has(key)) { const d = treeMeshData(c.kind, pal, Math.round(c.size * 4) / 4, c.variant, this.lite);
+          const dvao = vao(gl, this.P.depth, { aPos: [d.dpos, 3] }), dn = d.dpos.length / 3;
+          meshes.set(key, d.pos.length ? { ...vao(gl, this.P.obj, { aPos: [d.pos, 3], aCol: [d.col, 3] }), n: d.pos.length / 3, dvao, dn } : null);
+          if (d.far && d.far.pos.length) meshes.set(key + ":far", { ...vao(gl, this.P.obj, { aPos: [d.far.pos, 3], aCol: [d.far.col, 3] }), n: d.far.pos.length / 3, dvao, dn, shared: true }); }
+        c.mesh = meshes.get(key); c.far = meshes.get(key + ":far") || null; c.y = H(c.x, c.z) - 0.1;
+        c.sway = [c.kind === "cactus" ? 0 : c.kind === "palm" ? 1.6 : c.kind === "bush" ? 0.5 : 1, c.phase, treeHeight(c.kind), 0];
+      }
     }
-    this.status = `hole $${hid.toString(16)}: ${trees.length} trees, ${Math.round(performance.now() - t0)} ms`;
+    hole.treeCount = hole.ctrees ? hole.ctrees.length : trees.length;
+    this.status = `hole $${hid.toString(16)}: ${hole.treeCount} trees, ${Math.round(performance.now() - t0)} ms`;
     for (const fx of this.layers.fx) if (fx.holeBuilt) fx.holeBuilt(this, hole);
   }
   freeHole() {
     const gl = this.gl, h = this.hole; if (!h) return;
     gl.deleteTexture(h.mapTex); gl.deleteTexture(h.terrTex); if (h.greenTex) gl.deleteTexture(h.greenTex); h.groundMesh.free(); h.groundMesh.dvao.free(); h.skirt.free();
     for (const t of h.trees) if (t.mesh) { t.mesh.free(); t.mesh.dvao.free(); }
+    if (h.treeMeshes) for (const m of h.treeMeshes.values()) if (m) { m.free(); if (!m.shared) m.dvao.free(); }
     this.hole = null;
   }
   livePal(w) { return w.bgPal; }
@@ -249,7 +281,7 @@ export class Golf3D {
     this.kind = kind;
     if (kind !== "hole") { for (const fx of this.layers.fx) if (fx.frame) fx.frame(this, game, null); return; }
     const s = this.read(game); this.s = s;
-    if (!this.hole || this.hole.id !== s.hid || this.hole.hills !== this.on("hills")) { this.course = s.course; this.buildHole(s.hid, game.w); }
+    if (!this.hole || this.hole.id !== s.hid || this.hole.hills !== this.on("hills") || this.hole.treeStyle !== this.layers.trees) { this.course = s.course; this.buildHole(s.hid, game.w); }
     this.windVec = [Math.cos(s.wind[1]) * s.wind[0] * 0.6, Math.sin(s.wind[1]) * s.wind[0] * 0.6];
     this.track(game, s);
     // the green's own picture (the putting view's maps, 4x finer): painted in the colours the game shows it in, once it has
@@ -408,7 +440,11 @@ export class Golf3D {
   bodies() {
     const s = this.s, h = this.hole, out = [], H = h.H, cam = this.cam;
     const face = cam.yawToEye;                       // a body turns to face the camera (about the vertical)
-    for (const t of h.trees) if (t.mesh) out.push([t.mesh, m4.tsy(t.footX, t.y, t.footZ, TREE_SCALE, TREE_SCALE, TREE_SCALE * 0.9, face(t.footX, t.footZ)), null, "tree"]);
+    if (h.ctrees) {                                  // TREES: Courtyard: the lit side turned to the camera (as the courtyard's), swaying in the game's wind
+      const e = this.eye, fd = (this.lite ? 0.65 : 1) * TREE_FAR / (this.cam.fovK || 1), far2 = fd * fd;   // (the trees far off in bigger boxes)
+      for (const t of h.ctrees) if (t.mesh) { const dx = t.x - e[0], dz = t.z - e[2], m = t.far && dx * dx + dz * dz > far2 ? t.far : t.mesh;
+        out.push([m, m4.tsy(t.x, t.y, t.z, t.k, t.k, t.k, face(t.x, t.z)), null, "tree", t.sway]); }
+    } else for (const t of h.trees) if (t.mesh) out.push([t.mesh, m4.tsy(t.footX, t.y, t.footZ, TREE_SCALE, TREE_SCALE, TREE_SCALE * 0.9, face(t.footX, t.footZ)), null, "tree"]);
     // the golfer
     if (this.golferAt && this.golferPal) {
       const g = this.golferAt, sh = this.golferShown || (this.golferShown = g.slice()), dd = Math.hypot(g[0] - sh[0], g[1] - sh[1]), step = 40 * (this.dt || 0.016);
@@ -473,20 +509,25 @@ export class Golf3D {
     const gl = this.gl, p = this.P.obj; gl.useProgram(p.p); this.setLight(p); this.bindShadow(p, 2);
     gl.uniformMatrix4fv(p.u.uMVP, false, this.mvp);
     const list = this.bodies(); this.lastBodies = list;
-    for (const [m, model, tint] of list) {
-      gl.uniformMatrix4fv(p.u.uModel, false, model); gl.uniform4fv(p.u.uTint, tint || [1, 1, 1, 1]);
+    this.setWind(p);
+    for (const [m, model, tint, , sway] of list) {
+      gl.uniformMatrix4fv(p.u.uModel, false, model); gl.uniform4fv(p.u.uTint, tint || [1, 1, 1, 1]); gl.uniform4fv(p.u.uSway, sway || NO_SWAY);
       gl.bindVertexArray(m.vao); gl.drawArrays(gl.TRIANGLES, 0, m.n);
     }
+    gl.uniform4fv(p.u.uSway, NO_SWAY);
     // the ball's shadow on the ground under it (a dark spot; the sun's shadow too when LIGHT is on)
     const b = this.ballWorld(), gy = this.hole.H(b[0], b[2]), up = Math.max(0, b[1] - gy);
     this.decal(b[0], gy, b[2], 0.9 + up * 0.04, 0, 1, [0, 0, 0, Math.max(0.15, 0.6 - up * 0.02)], true, 2);
     gl.bindVertexArray(null);
   }
+  setWind(p) { const wv = this.windVec || [0, 0]; this.gl.uniform3f(p.u.uWindT, wv[0], wv[1], this.time); }
   drawCasters(mvp) {
     const gl = this.gl, p = this.P.depth; gl.useProgram(p.p); gl.uniformMatrix4fv(p.u.uMVP, false, mvp);
     gl.uniformMatrix4fv(p.u.uModel, false, m4.identity());
     if (this.hole.Hc) { gl.bindVertexArray(this.hole.groundMesh.dvao.vao); gl.drawElements(gl.TRIANGLES, this.hole.groundMesh.n, gl.UNSIGNED_INT, 0); }
-    for (const [m, model] of this.bodies()) { if (!m.dvao) continue; gl.uniformMatrix4fv(p.u.uModel, false, model); gl.bindVertexArray(m.dvao.vao); gl.drawArrays(gl.TRIANGLES, 0, m.n); }
+    this.setWind(p);
+    for (const [m, model, , , sway] of this.bodies()) { if (!m.dvao) continue; gl.uniformMatrix4fv(p.u.uModel, false, model); gl.uniform4fv(p.u.uSway, sway || NO_SWAY); gl.bindVertexArray(m.dvao.vao); gl.drawArrays(gl.TRIANGLES, 0, m.dn || m.n); }
+    gl.uniform4fv(p.u.uSway, NO_SWAY);
     gl.bindVertexArray(null);
   }
   // the pin: a white pole and the flag (the flag's colour: the game's pin sprite, read from VRAM in the course view when it can)

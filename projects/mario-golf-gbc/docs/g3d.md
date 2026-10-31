@@ -43,7 +43,7 @@ yard; heights in the same units (the ball's height / 32). The trees stand 24 uni
 
 | Layer | Module | What it does |
 |-------|--------|--------------|
-| 3D view | scene.js, hole3d.js, terrain3d.js, camera3d.js, hud3d.js, sprites3d.js, voxround.js | the hole's course map as the ground; its tree tiles cut out and stood up as rounded bodies; the golfer from his big frames as a rounded body (walks to the ball between shots); the pin with a flag in the wind; the ball at its true height with its shadow; the game's marks (target marker, preview spot, look cursor, the other ball) from their VRAM tiles; the HUD (window + non-world sprites) on top. Camera: Follow / Course / Behind / TV |
+| 3D view | scene.js, hole3d.js, terrain3d.js, trees3d.js, camera3d.js, hud3d.js, sprites3d.js, voxround.js | the hole's course map as the ground; its tree tiles cut out and grown as trees (TREES, below); the golfer from his big frames as a rounded body (walks to the ball between shots); the pin with a flag in the wind; the ball at its true height with its shadow; the game's marks (target marker, preview spot, look cursor, the other ball) from their VRAM tiles; the HUD (window + non-world sprites) on top. Camera: Follow / Course / Behind / TV |
 | Hills | terrain3d.js | cosmetic heights: a Poisson solve whose gradient follows the slope cells and the green's slope bytes, mounds in the woods, hollow bunkers, lowered water; the ball drawn at its height over this surface |
 | Sky | skybox.js | the sky of the hour and a panorama per club (campus hills, tropics, desert, coast, castle) |
 | Light | light3d.js | the hour (Auto by course, the clock, fixed), sun colour and direction, a shadow map, night floodlights and a pin lamp |
@@ -58,6 +58,24 @@ yard; heights in the same units (the ball's height / 32). The trees stand 24 uni
 | Title fly-over | titleshow.js | holes of each club flown over behind PRESS START, the title's logo, Mario and texts in front (the sky's palettes let through) |
 | 3D overworld | field3d.js, field_objects.js, ground.js, shimmer.js | the story maps: blocked cells as boxes, annotated blocks and plants (tools/field_objects_preview.py), the people as rounded bodies |
 | Field life | fieldlife.js | birds, butterflies, fireflies, motes; grass and dirt detail, water glint |
+
+TREES (the panel's Trees: Courtyard, the default, or Original): the hole's tree tiles (bit 7 of the tile byte) are cut out of the
+ground picture (terrain3d.js extractTrees) and stand where they are. **Courtyard** (trees3d.js) grows one tree per tree tile in the
+design of Mario Tennis's courtyard and restaurant plaza (its stadium3d.js `egg()`): an egg-shaped crown of small leaf boxes rising to
+a point, its waist low, pale yellow-green with white glints up the lit side, deep green below the waist and round the back, a dark
+rim, on a trunk with an orange-soil base. The shape fits the course and the tile's picture: egg crowns for broadleaf trees, cypress
+cones (deeper, cooler green) for narrow tiles and one tree in eight, low mounds for small tiles (bushes), palms on the Palm club (a
+ringed trunk bending to one side, eight drooping fronds; Lite six) and cacti on the Dune club (ribbed rounded columns with one or
+two arms and white spines). The colours are the hole's own tree pictures' (lightest, middle and darkest greens, a brown for the
+trunks) and its bunkers' mean sand for the soil, each pulled toward the courtyard's; the size from the tile picture's extent, with
+a little variety. Only the faces between a leaf box and an empty cell are drawn; three variants per kind and size are built per hole
+and shared (built at run time, nothing from the ROM stored). The tree's front (its lit side) turns to the camera, as the courtyard's
+face the Tennis camera; the bodies sway in the game's wind (`uSway` in the body and depth shaders: wind x / z `$C815/$C816`, a
+per-tree phase, more for palms, none for cacti), and cast sun shadows through the shadow map. As a tree always faces the camera,
+its picture mesh leaves out the faces the camera cannot see (the back, the sides turned away from its axis: about half), while the
+shadow map draws them all (in boxes 2.4x Full's). Lite uses boxes 1.8x larger (about a third of the faces, so a Lite tree draws about
+as many triangles as an old one); the trees far from the camera (70 units in Full, 45 in Lite, further when the view is zoomed in)
+are drawn in bigger boxes (Full: Lite's; Lite: 2.8x Full's). **Original** keeps the old bodies: the tile pictures stood up and rounded by voxround.js, turned to the camera.
 
 Quality: Full (multisampled, a 4 px ground grid, a 1024 shadow map with 9 taps) or Lite (no multisampling, an 8 px grid, a 512
 shadow map with one tap, 60% resolution, fewer particles and people). The canvas's resolution also comes down by itself while the

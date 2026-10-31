@@ -58,7 +58,7 @@ function treePicture(art, ground, idx, tiles) {
   // the ground under it: the background colour (the picture on the ground loses the tree)
   const bgRGB = [bg >> 16 & 255, bg >> 8 & 255, bg & 255];
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (!clear[y * w + x]) { const q = at(x, y) * 4; ground[q] = bgRGB[0]; ground[q + 1] = bgRGB[1]; ground[q + 2] = bgRGB[2]; }
-  return { rgba: out.subarray(0, w * (bottom + 1) * 4), w, h: bottom + 1, footX: x0 + sumX / cnt + 0.5, footZ: y0 + bottom + 1, key: [...out.subarray(0, w * (bottom + 1) * 4)].join(",").length + ":" + tiles.map(j => art.tmap[j] + "/" + art.attrs[j]).join(",") };
+  return { rgba: out.subarray(0, w * (bottom + 1) * 4), w, h: bottom + 1, x0, y0, footX: x0 + sumX / cnt + 0.5, footZ: y0 + bottom + 1, key: [...out.subarray(0, w * (bottom + 1) * 4)].join(",").length + ":" + tiles.map(j => art.tmap[j] + "/" + art.attrs[j]).join(",") };
 }
 const colourKey = (img, p) => img[p * 4] << 16 | img[p * 4 + 1] << 8 | img[p * 4 + 2];
 
