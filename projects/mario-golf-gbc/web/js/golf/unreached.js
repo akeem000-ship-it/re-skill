@@ -12,6 +12,7 @@ import { queueVRAMCopy } from "./render/display.js";
 import { mapScrollTask } from "./render/holeview.js";
 import { dist as distHL } from "./ball.js";
 import { mulHLByDEFull, negDE } from "./home.js";
+import { saveCommit } from "./save.js";
 
 // 40:5AA9 MulHLByDE_40 (unreferenced; the same code as 00:0CB5 MulHLByDE, its jumps relative): the high 16 bits of hl x de;
 // the whole 32-bit product left in HRAM $FFA8-$FFAB (low byte first)
@@ -285,4 +286,31 @@ export function reflectScaleUnused(w) {
     if (qa) q = 0x3FFF;
     wr(w, out, q & 0xFF); wr(w, out + 1, q >> 8);
   }
+}
+
+// 02:4550 ClearSaveFlag (unreferenced; the opposite of 02:4522): SRAM bank 0; the bit mask 02:44EA[e rotated left
+// 3 times] cleared in $A038 + d; SaveCommit 02:41C1
+export function clearSaveFlag(w, d, e) {
+  w.high[0x197] = 0;
+  const a = rb(0x02, (0x44EA + (((e << 3) | (e >> 5)) & 0xFF)) & 0xFFFF);
+  w.sram[0x38 + d] &= ~a & 0xFF;
+  saveCommit(w);
+}
+// 30:7E46 GetPlayerActorPos (unreferenced): the player's actor ($C290; hFFE0) in WRAM4: [x word +4, y word +6]
+export function getPlayerActorPos(w) {
+  const p = rd(w, 0xC290) | rd(w, 0xC291) << 8;
+  w.high[0x1E0] = p & 0xFF; w.high[0x1E1] = p >> 8;
+  w.high[0x196] = 4;
+  const r16 = a => rd(w, a & 0xFFFF) | rd(w, (a + 1) & 0xFFFF) << 8;
+  return [r16(((p & 0xFF00) | ((p + 4) & 0xFF))), r16(((p & 0xFF00) | ((p + 6) & 0xFF)))];
+}
+// 06:69E7 RosterWord10 (unreferenced): the byte +$10 of roster record c ($D216's list + 32 c), as hl (h 0); de = $10
+export function rosterWord10(w, c) {
+  const base = rd(w, 0xD216) | rd(w, 0xD217) << 8;
+  return rd(w, (base + ((c << 5) & 0xFFFF) + 0x10) & 0xFFFF);
+}
+// 08:43B8 GetLongestDriveRecord (unreferenced): the word at $C96E, $1900 when 0
+export function getLongestDriveRecord(w) {
+  const hl = rd(w, 0xC96E) | rd(w, 0xC96F) << 8;
+  return hl || 0x1900;
 }

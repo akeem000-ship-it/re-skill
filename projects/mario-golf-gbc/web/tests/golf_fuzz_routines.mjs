@@ -16,6 +16,8 @@ import * as S3E from "../js/golf/standings.js";
 import * as SC from "../js/golf/scorecard.js";
 import { loadText } from "../js/golf/text.js";
 import * as SER from "../js/golf/serial.js";
+import * as B34 from "../js/golf/maps/bank34.js";
+import * as AIM from "../js/golf/aim.js";
 
 useRom(romBytes());
 const filter = process.argv.slice(2).find(a => !/^\d+$/.test(a)) || "";
@@ -191,6 +193,15 @@ CASES.push({ name: "DictScrollStepUnused", bank: 0x3F, addr: 0x41DC, regs: () =>
 CASES.push({ name: "MapSetTerrainAt", bank: 0x0B, addr: 0x45E3, regs: () => ({ a: rnd(256), d: rnd(0x40), e: rnd(0x40) }), js: (w, r) => U.mapSetCellAt(w, 0xD000, r.d, r.e, r.a) });
 CASES.push({ name: "ReflectScaleUnused", bank: 0x10, addr: 0x77CC, init: w => { for (const a of [0x409, 0x40A, 0x40B, 0x40C, 0x4A1, 0x4A2, 0x4A3, 0x4A4, 0x4A9, 0x4AA, 0x4AB, 0x4AC]) if (rnd(2)) w.wram[6][a] = rnd(2) ? 0 : 0xFF; },
   js: w => U.reflectScaleUnused(w) });
+CASES.push({ name: "Map27SetTeeForBallPile", bank: 0x34, addr: 0x5BC7, init: w => { w.wram[0][0x3E0] = rnd(12); }, js: w => B34.map27SetTeeForBallPile(w) });
+CASES.push({ name: "ClearSaveFlag", bank: 0x02, addr: 0x4550, sram: true, regs: () => ({ d: rnd(0x10), e: rnd(8) }), js: (w, r) => U.clearSaveFlag(w, r.d, r.e) });
+CASES.push({ name: "GetPlayerActorPos", bank: 0x30, addr: 0x7E46, init: w => { w.wram[0][0x290] = rnd(256); w.wram[0][0x291] = 0xD0 + rnd(0x0F); }, out: ["h", "l", "d", "e"],
+  js: w => { const [x, y] = U.getPlayerActorPos(w); return { h: x >> 8, l: x & 0xFF, d: y >> 8, e: y & 0xFF }; } });
+CASES.push({ name: "RosterWord10", bank: 0x06, addr: 0x69E7, init: w => { w.wram[6][0x216] = rnd(256); w.wram[6][0x217] = 0xD0 + rnd(8); }, regs: () => ({ c: rnd(0x20) }),
+  out: ["a", "h", "l", "d", "e"], js: (w, r) => { const v = U.rosterWord10(w, r.c); return { a: v, h: 0, l: v, d: 0, e: 0x10 }; } });
+CASES.push({ name: "GetLongestDriveRecord", bank: 0x08, addr: 0x43B8, init: w => { if (rnd(2)) { w.wram[0][0x96E] = 0; w.wram[0][0x96F] = 0; } }, out: ["h", "l"],
+  js: w => { const v = U.getLongestDriveRecord(w); return { h: v >> 8, l: v & 0xFF }; } });
+CASES.push({ name: "LoadShotStart", bank: 0x02, addr: 0x461F, js: w => { AIM.loadShotRecord(w, 0x5F8); return {}; } });
 CASES.push({ name: "MapSetEventAt", bank: 0x0B, addr: 0x4637, regs: () => ({ a: rnd(256), d: rnd(0x40), e: rnd(0x40) }), js: (w, r) => U.mapSetCellAt(w, 0xD400, r.d, r.e, r.a) });
 // the link cable's protocol (serial.js; no partner: rSB / rSC are w.high[$101] / [$102], the core's io; romCall runs
 // the CPU without the hardware, so a transfer started stays started on both sides: w.noSerialHW)
@@ -259,6 +270,7 @@ for (const c of CASES) {
     w.high[0x196] = 6; w.high[0x195] = c.bank;
     loadCore(gb, w);
     if (c.io) { gb.mem.io[1] = w.high[0x101]; gb.mem.io[2] = w.high[0x102]; }   // (rSB / rSC)
+    if (c.sram) { for (let k = 0; k < 0x2000; k++) w.sram[k] = rnd(256); gb.mem.sram.set(w.sram, 0); gb.mem.ramBank = 0; }   // (the save RAM's bank 0 compared too)
     let got;
     // (a call that reaches PlaySoundCmd 00:2BBB, QueueVRAMCopy's error sounds for more than $80 blocks, is not
     // compared: the sound driver's RAM is not modelled there; counted apart)
@@ -292,6 +304,7 @@ for (const c of CASES) {
     try { want = c.js(w, regs) || {}; } catch (e) { if (!first) first = `js: ${e.message} (${JSON.stringify(regs)})`; continue; }
     const diffs = [];
     for (const k of c.out || []) if (want[k] !== got[k]) diffs.push(`${k} rom ${hx(got[k])} js ${hx(want[k])}`);
+    if (c.sram) for (let k = 0; k < 0x2000 && diffs.length < 4; k++) if (gb.mem.sram[k] !== w.sram[k]) diffs.push(`sram $${(0xA000 + k).toString(16)} rom ${hx(gb.mem.sram[k])} js ${hx(w.sram[k])}`);
     if (script && coreSounds.join() !== w.jsSounds.join()) diffs.push(`sounds rom ${coreSounds.join()} js ${w.jsSounds.join()}`);
     for (let b = 0; b < 8 && diffs.length < 4; b++) {
       const m = gb.mem.wram[b];

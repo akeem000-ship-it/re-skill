@@ -10,7 +10,7 @@ import { mapBufCopyRectRedraw, mapCopyTerrainRect, mapCopyEventRect } from "../m
 import { navGuideStart } from "../nav.js";
 import * as Scr from "../screen.js";
 import { advanceRandomSeed, golfViewExit } from "../round.js";
-import { rb } from "../rom.js";
+import { rb, rw } from "../rom.js";
 import * as St from "../start.js";
 import * as Ls from "./lessons.js";
 import { golfSessionEnd } from "../boot.js";
@@ -1819,6 +1819,14 @@ Object.assign(HOOKS, {
   "34:71ed": map29PinShotAfterShot,
   "34:65c3": function* (sh) { map29PinShotSceneStart(sh.w); },   // 34:65C3 (hook 4)
 });
+// 34:5BC7 Map27SetTeeForBallPile (unreferenced): by $C3E0 (the balls cleared, 9 down to 0: the tests at 34:5BCA) the
+// forced tee (10:4C04) at one of ten spots, the hl / de pairs of the branches 34:5BFD + 10 k; above 9 nothing
+export function map27SetTeeForBallPile(w) {
+  const a = rd(w, 0xC3E0);
+  if (a > 9) return;
+  const p = 0x5BFD + (9 - a) * 10;
+  Ls.setForcedTee(w, rw(0x34, p + 1), rw(0x34, p + 4));
+}
 export const SCRIPTS = {
   "34:4690": map02Enter,
   "34:4474": sh => map02TriggerEnter(sh, 1, 0x0500, 0x2F00),

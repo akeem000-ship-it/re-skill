@@ -152,9 +152,13 @@ function* cpuAim(sh, replay = false) {
 // player 2, + 16 x the stroke) loaded (02:463E LoadShotRecord): the ball's position (its height 0), the aim, the club,
 // the shot mode, the swing's power / impact / pad
 function loadStrokeRecord(w) {
-  const r6 = w.wram[6], n = w.wram[0][pf(w, 0x20)];
+  const n = w.wram[0][pf(w, 0x20)];
   if (n >= 4) return;
-  let p = 0x680 + (w.wram[0][0x835] ? 0x40 : 0) + ((n & 3) << 4);
+  loadShotRecord(w, 0x680 + (w.wram[0][0x835] ? 0x40 : 0) + ((n & 3) << 4));
+}
+// 02:463E LoadShotRecord: the record at WRAM6 $D000 + p (02:461F LoadShotStart: $D5F8, wShotStart)
+export function loadShotRecord(w, p) {
+  const r6 = w.wram[6];
   for (let k = 0; k < 6; k++) r6[0x400 + k] = r6[p++];
   r6[0x406] = r6[0x407] = r6[0x408] = 0;
   r6[0x418] = r6[p++]; r6[0x419] = r6[p++];
