@@ -92,10 +92,37 @@ export class HudLayer {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     } else { gl.bindTexture(gl.TEXTURE_2D, this.tex); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, this.rgba); }
     const p = scene.P.hud; gl.useProgram(p.p); gl.disable(gl.DEPTH_TEST);
-    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tex); gl.uniform1i(p.u.uTex, 0);
-    gl.uniform4fv(p.u.uRect, [0, 0, 1, 1]); gl.uniform1f(p.u.uAlpha, 1);
-    gl.bindVertexArray(scene.emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tex); gl.uniform1i(p.u.uTex, 0); gl.uniform1f(p.u.uAlpha, 1);
+    gl.bindVertexArray(scene.emptyVao);
+    for (const [off, sx, sy, sw, sh] of this.pieces(scene.canvas, w.lcd)) {
+      gl.uniform4fv(p.u.uRect, off); if (sw > 0) { gl.enable(gl.SCISSOR_TEST); gl.scissor(sx, sy, sw, sh); }
+      gl.drawArrays(gl.TRIANGLES, 0, 3); gl.disable(gl.SCISSOR_TEST);
+    }
     gl.enable(gl.DEPTH_TEST);
+  }
+  // VIEW 4:3 / Fill / Wide (hd/view.js: the 3D picture wider than the Game Boy's): the HUD at the picture's height, not stretched,
+  // in pieces: the window's rows (the bottom bar, message boxes) in the middle; above them each group of columns the HUD covers (the
+  // hole and yards at the top left, the wind and the player at the top right) pinned to its own side, a group across the middle
+  // (a caption) in the middle. At 10:9 one piece, the whole screen, as before. Returns [uRect, scissor x, y, w, h (w 0: none)].
+  pieces(c, lcd) {
+    const CW = c.width, CH = c.height, hs = CH / H, bw = W * hs;
+    if (bw >= CW - 2) return [[[0, 0, 1, 1], 0, 0, 0, 0]];
+    const at = off => [off / CW, 0, bw / CW, 1], mid = (CW - bw) / 2;
+    let top = (lcd.lcdc & 0x20) && lcd.wx <= 7 ? Math.max(0, Math.min(H, lcd.wy)) : H;
+    if (top < 16) return [[at(mid), 0, 0, 0, 0]];                                   // (a full-screen window: all in the middle)
+    const used = new Uint8Array(W), a = this.rgba;
+    for (let y = 0; y < top; y++) for (let x = 0; x < W; x++) if (a[(y * W + x) * 4 + 3]) used[x] = 1;
+    const out = [], yTop = Math.round(CH - top * hs), hTop = CH - yTop;
+    for (let x = 0; x < W;) {
+      if (!used[x]) { x++; continue; }
+      let e = x; for (let gap = 0; e < W && gap < 6; e++) gap = used[e] ? 0 : gap + 1;     // (a group: columns with gaps under 6 px)
+      while (e > x && !used[e - 1]) e--;
+      const off = e <= W * 0.45 ? 0 : x >= W * 0.55 ? CW - bw : mid;
+      out.push([at(off), Math.floor(off + x * hs), yTop, Math.ceil((e - x) * hs) + 1, hTop]);
+      x = e;
+    }
+    if (top < H) out.push([at(mid), 0, 0, CW, yTop]);
+    return out;
   }
 }
 function put(out, p, pal, n, ci) {

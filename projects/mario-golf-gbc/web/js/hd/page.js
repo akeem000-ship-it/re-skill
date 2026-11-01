@@ -6,7 +6,7 @@
 //   A test can script the buttons per frame with window.__golfInput = game => mask (web/tests/play_hd.mjs).
 // Everything here draws or reads; the game's memory is never written.
 import { handheld } from "./handheld.js";           // (first: a handheld's defaults are in place before the settings are read)
-import { HDView } from "./view.js";
+import { HDView, VIEWS } from "./view.js";
 import "./hudtext.js";                               // (the HUD glyph tracker from the start, as the text one)
 import { portraitArea, attachDeck } from "./portrait.js";
 import { mountStick, stickBits } from "./stick.js";
@@ -73,7 +73,7 @@ export function attachHD({ canvas, keys, getRom, getGame }) {
   const pads = () => {
     requestAnimationFrame(pads);
     if (!!keys.PadR2 !== r2) { r2 = !!keys.PadR2; dispatchEvent(new KeyboardEvent(r2 ? "keydown" : "keyup", { code: "Space", key: " " })); }
-    if (keys.PadL2 && !l2) view.set("view", view.view === "wide" ? "normal" : "wide");
+    if (keys.PadL2 && !l2) view.set("view", VIEWS[(VIEWS.indexOf(view.view) + 1) % VIEWS.length]);
     l2 = !!keys.PadL2;
   };
   requestAnimationFrame(pads);

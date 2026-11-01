@@ -65,7 +65,8 @@ export class TitleShow {
     else { gl.bindTexture(gl.TEXTURE_2D, this.tex); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 160, 144, gl.RGBA, gl.UNSIGNED_BYTE, out); }
     const p = sc.P.hud; gl.useProgram(p.p); gl.disable(gl.DEPTH_TEST);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tex); gl.uniform1i(p.u.uTex, 0);
-    gl.uniform4fv(p.u.uRect, [0, 0, 1, 1]); gl.uniform1f(p.u.uAlpha, 1);
+    const s = Math.min(1, (160 / 144) * sc.canvas.height / sc.canvas.width);   // (a wider picture, VIEW 4:3 / Fill: the title in its middle, unstretched)
+    gl.uniform4fv(p.u.uRect, [(1 - s) / 2, 0, s, 1]); gl.uniform1f(p.u.uAlpha, 1);
     gl.bindVertexArray(sc.emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.enable(gl.DEPTH_TEST);
   }
 }

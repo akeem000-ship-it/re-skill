@@ -71,7 +71,7 @@ export class CameraRig {
     // keep the eye above the ground
     const gy = sc.hole.H(this.eye[0], this.eye[2]) + 1.2; if (this.eye[1] < gy) this.eye[1] = gy;
     const view = m4.lookAt(this.eye, this.at, [0, 1, 0]);
-    const fovY = this.fov * Math.min(1, 1.11 / aspect * 1.0 + 0.0);   // (a tall view keeps the width)
+    const fovY = aspect > 1.12 ? this.fov : this.fov * Math.min(1, 1.11 / aspect);   // (a wider view, VIEW 4:3 / Fill / Wide, sees more to the sides)
     const proj = m4.perspective(fovY, aspect, 0.4, 9000);
     this.fovK = Math.tan(fovY / 2) / Math.tan(25 * DEG);
     return { view, proj, eye: this.eye, focus: this.at };

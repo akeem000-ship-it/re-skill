@@ -1,7 +1,8 @@
 // The play page's picture options (web/play.html, wired in js/play.js): how the game's frame is shown, never what the game does.
 //   Text   Game (the game's own font) | Itim | Kode Mono: the game's text redrawn in a high-resolution font (hdtext.js)
 //   UI     Game | HD: menus, windows, cursors, frames and the HUD redrawn as clean 4x art (hdui.js and its painters, hdmenus/)
-//   View   10:9 (the Game Boy's screen) | Wide: 16:9 with the real map on both sides where the screen shows a map (wide.js)
+//   View   10:9 (the Game Boy's screen) | 4:3 | Fill (the space the picture has) | Wide 16:9: the wider ones with the real map on both
+//          sides where the screen shows a map (wide.js); the 3D view takes the same shape (g3d/hud3d.js keeps the HUD's corners in the corners)
 // With all three off the page draws exactly as before (present() returns false and play.js puts its own image). Settings are kept in
 // localStorage (mg-font, mg-ui, mg-view) and can be given in the URL (?font=itim&ui=hd&view=wide). Nothing here writes to the game's
 // memory: the display model is read through GbView (gbview.js).
@@ -13,6 +14,10 @@ import { scale2x } from "./hdui_cursors.js";
 const stored = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const keep = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } };
 export const WIDE_W = 256;                           // 16:9
+// View: the picture's shape. 10:9 the Game Boy's; 4:3, Fill (the space it has) and Wide 16:9 add the real map at both sides (wide.js)
+export const VIEWS = ["normal", "4:3", "fill", "wide"];
+const VIEW_NAMES = { normal: "10:9", "4:3": "4:3", fill: "Fill", wide: "Wide 16:9" };
+const viewOf = v => (VIEWS.includes(v) ? v : "normal");
 
 export class HDView {
   // canvas: the page's #screen; getRom(): the ROM bytes
@@ -21,7 +26,7 @@ export class HDView {
     const q = new URLSearchParams(location.search);
     this.font = q.get("font") || stored("mg-font") || "game"; if (!FONTS[this.font]) this.font = "game";
     this.ui = (q.get("ui") || stored("mg-ui") || "game") === "hd" ? "hd" : "game";
-    this.view = (q.get("view") || stored("mg-view") || "normal") === "wide" ? "wide" : "normal";
+    this.view = viewOf(q.get("view") || stored("mg-view"));
     this.gbv = new GbView(); this.hd = null; this.w = null; this.width = 160; this.frameKey = -1; this.wideOn = false;
     this.small = document.createElement("canvas"); this.sg = this.small.getContext("2d");
     this.wideImg = null; this.wide32 = null;
@@ -30,12 +35,22 @@ export class HDView {
     this.bgImg = this.sprG.createImageData(160, 144); this.bg32 = new Uint32Array(this.bgImg.data.buffer);
     this.listeners = [];
   }
-  get on() { return this.font !== "game" || this.ui === "hd" || this.view === "wide"; }
+  get on() { return this.font !== "game" || this.ui === "hd" || this.view !== "normal"; }
+  // the picture's width (Game Boy px, 144 high): 10:9 160, 4:3 192, Wide 16:9 256, Fill as wide as the space the picture has
+  // (a phone held sideways: the whole screen; upright: the game's part of it; a computer: the window's shape), even, 160 to 400
+  pictureW() {
+    if (this.view === "wide") return WIDE_W;
+    if (this.view === "4:3") return 192;
+    if (this.view !== "fill") return 160;
+    const b = document.body, touch = b.classList.contains("touch"), portrait = b.classList.contains("portrait");
+    const ar = portrait ? innerWidth / (innerHeight * 0.6) : touch ? (innerWidth - 16) / Math.max(1, innerHeight - 16) : innerWidth / Math.max(1, innerHeight);
+    return Math.max(160, Math.min(400, Math.round(144 * ar / 2) * 2));
+  }
   onChange(fn) { this.listeners.push(fn); }
   set(k, v) {
     if (k === "font") { this.font = FONTS[v] ? v : "game"; keep("mg-font", this.font); if (this.hd) this.hd.setFont(this.font); }
     if (k === "ui") { this.ui = v === "hd" ? "hd" : "game"; keep("mg-ui", this.ui); if (this.hd) this.hd.setUI(this.ui === "hd"); }
-    if (k === "view") { this.view = v === "wide" ? "wide" : "normal"; keep("mg-view", this.view); }
+    if (k === "view") { this.view = viewOf(v); keep("mg-view", this.view); }
     this.frameKey = -1;
     for (const f of this.listeners) f();
   }
@@ -52,7 +67,7 @@ export class HDView {
     };
     sel("hdfont", "Text", FONT_ORDER.map(f => [f, f === "game" ? "Game font" : FONTS[f].label + " (HD)"]), this.font, "font");
     sel("hdui", "Menus", [["game", "Game"], ["hd", "HD"]], this.ui, "ui");
-    sel("hdview", "View", [["normal", "10:9"], ["wide", "Wide 16:9"]], this.view, "view");
+    sel("hdview", "View", VIEWS.map(v => [v, VIEW_NAMES[v]]), this.view, "view");
     after.after(d);
     return d;
   }
@@ -74,7 +89,7 @@ export class HDView {
     const hd = this.hd && this.hd.active ? this.hd : null;
     if (hd) hd.update();
     // the picture W x 144: the game's frame (or the map-widened one)
-    const W = this.view === "wide" ? WIDE_W : 160, pad = (W - 160) >> 1;
+    const W = this.pictureW(), pad = (W - 160) >> 1;
     if (W !== this.width) this.layout(W);
     const ui = !!(hd && hd.ui);                                // HD menus: the base is the picture without sprites, smoothed; the
     let base = rgba;                                           // sprites go on top of the art, smoothed too (drawSprites)
