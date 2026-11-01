@@ -140,14 +140,15 @@ if (cost) {
       await page.waitForTimeout(500);
       const r = await page.evaluate(async () => {
         const ap = window.__aimPower, g = window.__golf, G = window.__g3d, t = [], pv = [], d3 = [[], []];
-        for (let i = 0; i < 40; i++) { const t0 = performance.now(); ap.paint(g); t.push(performance.now() - t0); }
+        for (let j = 0; j < 8; j++) { const t0 = performance.now(); for (let i = 0; i < 25; i++) ap.paint(g); t.push((performance.now() - t0) / 25); }   // (batches: the clock's grain is 0.1 ms)
         for (let i = 0; i < 12; i++) { ap.preview.key = ""; const t0 = performance.now(); ap.preview.get(g.w); pv.push(performance.now() - t0); }
         if (G && G.active && G.scene) for (const on of [0, 1]) {               // the 3D picture alone, then with the helpers drawn after it
-          for (let i = 0; i < 8; i++) { const t0 = performance.now(); G.present(g, G.lastFrame, true); if (on) ap.paint(g); G.canvas.getContext("webgl2").finish(); d3[on].push(performance.now() - t0); }
+          const gl = G.canvas.getContext("webgl2"), px = new Uint8Array(4);                // (readPixels waits for the GPU's work)
+          for (let i = 0; i < 8; i++) { const t0 = performance.now(); G.present(g, G.lastFrame, true); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); if (on) ap.paint(g); d3[on].push(performance.now() - t0); }
         }
         return { t, pv, d3 };
       });
-      console.log(`${name} ${m}: helpers ${median(r.t).toFixed(2)} ms a picture (median of ${r.t.length}); a preview run ${median(r.pv).toFixed(1)} ms` +
+      console.log(`${name} ${m}: helpers ${median(r.t).toFixed(2)} ms a picture (median of ${r.t.length} batches of 25); a preview run ${median(r.pv).toFixed(1)} ms` +
         (r.d3[0].length ? `; the 3D picture ${median(r.d3[0]).toFixed(1)} ms, with the helpers ${median(r.d3[1]).toFixed(1)} ms` : ""));
     }
     if (errors.length) { console.log(name, "page errors", errors.slice(0, 3)); ok = false; }
@@ -178,13 +179,15 @@ if (cost) {
     await page.close();
   }
   // the preview and markers on four courses (tee, a second shot, a putt), 2D and 3D
-  const COURSES = [[1, 3, 8], [2, 1, 8], [3, 5, 8], [4, 2, 8]];
-  for (const [c, h] of COURSES) for (const [mode, q] of [["2d", "g3d=none&ui=hd&font=itim"], ["3d", "g3d=all"]]) {
+  const STD = [["tee_aim", { shot: 0, phase: "aim", n: 75 }], ["tee_addr", { shot: 0, phase: "address", n: 30 }], ["second_aim", { shot: 1, phase: "aim", n: 75 }], ["third_aim", { shot: 2, phase: "aim", n: 75 }]];
+  const PUTTS = [["third_aim", { shot: 2, phase: "aim", n: 75 }], ["third_addr", { shot: 2, phase: "address", n: 30 }], ["fourth_aim", { shot: 3, phase: "aim", n: 75 }]];   // (putts on the green)
+  const COURSES = [[1, 3, 8], [2, 1, 8], [3, 5, 8], [4, 2, 8], [3, 12, 8, { seed: 2024, shots: [{ aim: 30 }, { aim: -24 }, {}, {}, {}] }, PUTTS]];
+  for (const [c, h, , P, M] of COURSES) for (const [mode, q] of [["2d", "g3d=none&ui=hd&font=itim"], ["3d", "g3d=all"]]) {
     const name = `course${c}_h${h}_${mode}`;
     if (only && !only.includes(name) && !only.includes("courses")) continue;
-    const plan = { shots: [{ aim: 10 }, { aim: -6 }, {}, {}, {}], seed: 1000 + c };
+    const plan = P || { shots: [{ aim: 10 }, { aim: -6 }, {}, {}, {}], seed: 1000 + c };
     const { page, errors } = await openPage(`${q}&course=${c}&hole=${h}`, DESK, plan);
-    for (const [m, wnt] of [["tee_aim", { shot: 0, phase: "aim", n: 75 }], ["tee_addr", { shot: 0, phase: "address", n: 30 }], ["second_aim", { shot: 1, phase: "aim", n: 75 }], ["third_aim", { shot: 2, phase: "aim", n: 75 }]]) {
+    for (const [m, wnt] of M || STD) {
       const s = await holdAt(page, wnt);
       if (s.error) { console.log(name, m, "game error", s.error); ok = false; break; }
       await setOpts(page, ON); await grab(page, path.join(outDir, `${name}_${m}.png`), false);

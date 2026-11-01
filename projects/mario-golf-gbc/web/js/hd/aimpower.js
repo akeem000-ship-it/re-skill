@@ -146,7 +146,7 @@ export function attachAimPower({ screen, keys, getGame }) {
     const P = (x, y, z) => { const o = [0, 0, 0, 0]; for (let i = 0; i < 4; i++) o[i] = m[i] * x + m[4 + i] * y + m[8 + i] * z + m[12 + i]; return o[3] > 0.05 ? (0.5 - o[1] / o[3] * 0.5) * 144 : null; };
     const feet = P(gx, gy, gz), head = P(gx, gy + 4.6, gz);
     if (feet === null || head === null) return { y: 52, h: 30, x0: 0.05, x1: 0.95 };
-    const x0 = 0.15, x1 = 0.85;   // (narrower: the HUD's text and face stay clear at the top corners)
+    const x0 = 0.15, x1 = 0.82;   // (narrower: the HUD's text and face stay clear at the top corners)
     const top = 22, bottom = 114, above = head - top, below = bottom - feet;   // (the bar needs its labels' row above it, the pill's too)
     if (above >= below) { const h = Math.max(18, Math.min(30, above - 22)); return { y: Math.max(top + 12, head - 6 - h), h, x0, x1 }; }
     const h = Math.max(18, Math.min(30, below - 18)); return { y: Math.min(bottom - h, feet + 16), h, x0, x1 };
@@ -312,7 +312,7 @@ export function attachAimPower({ screen, keys, getGame }) {
         g.globalAlpha = 1;
         if (!res.stale) {
           const at = res.putt ? e : pr.P(L[0], 0, L[2], 0.2);
-          const text = res.putt ? `full putt: ${res.outcome === 0x80 ? "in" : rollFeet(res) + " ft"}` : `carry ${res.carry} y · ${res.rest} y`;
+          const text = res.putt ? `full putt: ${res.outcome === 0x80 ? "in" : (res.path.some(q => q[3]) ? "off the pin · " : "") + rollFeet(res) + " ft"}` : `carry ${res.carry} y · ${res.rest} y`;   // (a putt that hits the pin hops: in the air a moment)
           if (at) pills.add(text, at[0] - (behind ? 30 * u : 0), at[1] + (behind ? 8 : 11) * u, (behind ? 5.4 : 5.8) * u, "rgba(0,110,150,0.92)", 1);
         }
       }

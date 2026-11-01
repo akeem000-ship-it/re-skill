@@ -200,6 +200,12 @@ projection, by the depth). The game puts its sprites' centres at these points. B
 into a band at the horizon, so there the marks are of a fixed size (the target, the landing, the rest), with no rings, aim line
 or arc.
 
+Cost (`aim_power.mjs --cost`, headless Chromium, SwiftShader, a shared 4-core machine): the helpers' drawing 0.04-0.1 ms of
+script a picture in 2D / HD and 0.3 ms in 3D while aiming (the arc's dots, the rings), 0.06-0.1 ms with the meter; a preview's
+run 2.6-5.5 ms in the page (only when the shot's inputs change); the 3D picture with and without the helpers drawn after it is the
+same within the noise (Lite ~32-38 ms, Full ~150-225 ms a picture, dominated by SwiftShader's rendering). A putt that reaches the
+pin can hop off it and come back (the preview shows it: "off the pin").
+
 Checks: `web/tests/shot_preview.mjs` (the preview against real perfect swings), `web/tests/aim_power.mjs` (the same in the page,
 the frame cost; `--shots` the pictures in out/aimpower), `play_page.mjs --tap`, and the game-unchanged tests with the helpers off
 in one run and on in the other (`g3d_layers_same.mjs`, `play_hd.mjs --same`).
