@@ -419,7 +419,7 @@ async function loadRom(buf) {
   if (port) { session.start(gb, recMeta()); sessionLook = creator.look; analogAt = "stick:"; }
   $("loader").hidden = true; cv.focus();
   showHud(!document.body.classList.contains("touch"));            // phones: the bar stays hidden until Back
-  if (document.body.classList.contains("touch")) hint("Swipe back (or press Back) for the menu");
+  if (document.body.classList.contains("touch")) hint(window.__device && window.__device.desktop ? "Press Esc for the menu" : "Swipe back (or press Back) for the menu");   // (desktop: MTenn3D.exe, tools/winapp)
   const m3 = q.has("vox") ? "vox" : q.has("3d") ? "3d" : q.has("2d") ? "off" : (stored("mt-3d") || "vox");   // remembered view mode; VOX (voxel sprites) by default
   if (m3 === "3d" || m3 === "vox") setView3d(true, m3 === "vox");
 }
