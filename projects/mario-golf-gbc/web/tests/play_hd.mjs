@@ -102,14 +102,15 @@ if (same) {
     await page.waitForFunction(n => window.__golf.frames >= n || window.__golf.error || window.__golf.done, N, { timeout: 1800000 });
     const r = await page.evaluate(() => ({ hashes: window.__golf.hashes, error: window.__golf.error, mark: window.__golf.mark, shots: window.__golf.shots.length,
       hd: window.__hd ? { font: window.__hd.view.font, ui: window.__hd.view.ui, view: window.__hd.view.view, lines: window.__hd.view.hd ? window.__hd.view.hd.lines.length : 0 } : null }));
-    await page.screenshot({ path: path.join(outDir, `same_${query ? "on" : "off"}_${viewport.width}x${viewport.height}.png`) });
+    await page.screenshot({ path: path.join(outDir, `same_${query.includes("meter=game") ? "off" : "on"}_${viewport.width}x${viewport.height}.png`) });
     await page.close();
     return { ...r, errors };
   };
-  const off = await run("", { width: 900, height: 1000 });
-  const ons = [await run("?font=itim&ui=hd&view=wide", { width: 900, height: 1000 }),
-    await run("?font=kode&ui=hd&view=wide&touch=1", { width: 412, height: 915 }, { hasTouch: true, isMobile: true }),
-    await run("?font=itim&ui=hd&view=normal&touch=1", { width: 915, height: 412 }, { hasTouch: true, isMobile: true })];
+  // (with the aim and swing helpers, web/js/hd/aimpower.js: off in the plain run, on in the others)
+  const off = await run("?meter=game&preview=off&marks=off&tap=off", { width: 900, height: 1000 });
+  const ons = [await run("?font=itim&ui=hd&view=wide&meter=big&preview=on&marks=on&tap=on", { width: 900, height: 1000 }),
+    await run("?font=kode&ui=hd&view=wide&touch=1&meter=big&preview=on&marks=on&tap=on", { width: 412, height: 915 }, { hasTouch: true, isMobile: true }),
+    await run("?font=itim&ui=hd&view=normal&touch=1&meter=big&preview=on&marks=on&tap=on", { width: 915, height: 412 }, { hasTouch: true, isMobile: true })];
   for (const on of ons) {
     let n = 0, diff = -1;
     for (let i = 1; i <= N; i++) { if (!(i in off.hashes) || !(i in on.hashes)) continue; n++; if (off.hashes[i] !== on.hashes[i]) { diff = i; break; } }

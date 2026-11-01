@@ -81,8 +81,8 @@ async function run(scenario, query) {
 
 let ok = true;
 for (const sc of scenarios) {
-  const off = await run(sc, "g3d=none");
-  const on = await run(sc, `g3d=all&g3dq=${quality}`);
+  const off = await run(sc, "g3d=none&meter=game&preview=off&marks=off&tap=off");                     // (the aim and swing helpers off, then on: web/js/hd/aimpower.js)
+  const on = await run(sc, `g3d=all&g3dq=${quality}&meter=big&preview=on&marks=on&tap=on`);
   const n = Math.min(off.hashes.length, on.hashes.length);
   let first = -1, from = 0; while (from < n && (off.hashes[from] == null || on.hashes[from] == null)) from++;
   for (let i = from; i < n; i++) if (off.hashes[i] !== on.hashes[i]) { first = i; break; }

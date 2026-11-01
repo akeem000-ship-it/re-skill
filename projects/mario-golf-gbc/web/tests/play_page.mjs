@@ -21,7 +21,10 @@
 // link menu's VS game, the right one waits; Right to slot 4 / 3 in the character selects, A every 40 frames, the
 // swings by the meter) until the left machine has seen `shots` shots of the link round (both players' shots: the
 // partner's come in by the cable) and both machines hold the partner as the other player (its field $13 = 3).
-// usage: node web/tests/play_page.mjs [shots=3] [outdir=out] [--match] [--stroke] [--pause] [--save out/kid.sav] [--newchar] [--link]
+// With --tap the page is a phone held upright (412 x 915, touch) and the swings are touches on the tap area (web/js/hd/aimpower.js:
+// at the address the lower half of the screen is the A button): a finger down in the deck, away from the pad's buttons, for the
+// power and again for the impact (a Stroke round started from the selector).
+// usage: node web/tests/play_page.mjs [shots=3] [outdir=out] [--match] [--stroke] [--pause] [--save out/kid.sav] [--newchar] [--link] [--tap]
 import { createRequire } from "module";
 import http from "http";
 import fs from "fs";
@@ -31,9 +34,10 @@ const { chromium } = createRequire(import.meta.url)("playwright");
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const match = process.argv.includes("--match");
 const pause = process.argv.includes("--pause");
-const direct = process.argv.includes("--stroke");
+const direct = process.argv.includes("--stroke") || process.argv.includes("--tap");
 const newChar = process.argv.includes("--newchar");
 const link = process.argv.includes("--link");
+const tapArea = process.argv.includes("--tap");
 const saveFile = process.argv.includes("--save") ? process.argv[process.argv.indexOf("--save") + 1] : null;
 const [shotsArg = "3", outDir = path.join(root, "out")] = process.argv.slice(2).filter((a, i, all) => !a.startsWith("--") && all[i - 1] !== "--save");
 const want = +shotsArg;
@@ -49,19 +53,19 @@ const server = http.createServer((req, res) => {
 const port = server.address().port;
 
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 800, height: 900 } });
+const page = await browser.newPage(tapArea ? { viewport: { width: 412, height: 915 }, hasTouch: true, isMobile: true } : { viewport: { width: 800, height: 900 } });
 const errors = [];
 page.on("pageerror", e => errors.push(e.message));
 const SAVE_KEY = "mg-sram-7f2062e51b4f";        // js/main.js: "mg-sram-" + the ROM's SHA-1, 12 digits
 if (saveFile) await page.addInitScript(([k, v]) => { localStorage.setItem(k, v); }, [SAVE_KEY, fs.readFileSync(path.resolve(root, saveFile)).toString("base64")]);
 page.on("console", m => { if (m.type() === "error") errors.push(m.text()); });
-await page.goto(`http://localhost:${port}/web/play.html`);
+await page.goto(`http://localhost:${port}/web/play.html${tapArea ? "?touch=1&tap=on" : ""}`);
 await page.waitForFunction(() => window.__golf && window.__golf.frames > 0, null, { timeout: 30000 });
 if (match) {
   await page.selectOption("#mode", "match:9");
   await page.waitForFunction(() => window.__golf && window.__golf.w.wram[0][0x834] === 2 && window.__golf.frames > 0, null, { timeout: 30000 });
 } else if (direct) {
-  await page.selectOption("#mode", "stroke");
+  await page.evaluate(() => { const m = document.getElementById("mode"); m.value = "stroke"; m.dispatchEvent(new Event("change")); });   // (hidden on a phone)
   await page.waitForFunction(() => window.__golf && window.__golf.mark !== "menus" && window.__golf.frames > 0, null, { timeout: 30000 });
 }
 
@@ -74,6 +78,13 @@ const press = async (key, n = 3) => {                // held for n frames
   await page.keyboard.down(key);
   await untilFrames((await frames()) + n);
   await page.keyboard.up(key);
+};
+// --tap: a finger on the tap area (the deck's middle, between the d-pad and B / A) held for n frames
+const cdp = tapArea ? await page.context().newCDPSession(page) : null;
+const tapDown = async on => cdp.send("Input.dispatchTouchEvent", { type: on ? "touchStart" : "touchEnd", touchPoints: on ? [{ x: 206, y: 760 }] : [] });
+const swingPress = async (n = 2) => {
+  if (!tapArea) return press("KeyZ", n);
+  await tapDown(true); await untilFrames((await frames()) + n); await tapDown(false);
 };
 let shotN = 0;
 const shot = async name => page.locator("#screen").screenshot({ path: path.join(outDir, `play_${String(shotN++).padStart(2, "0")}_${name}.png`) });
@@ -157,13 +168,13 @@ try {
     await untilFrames((await frames()) + 20);
     await shot(`shot${k + 1}_address`);
     const f0 = await frames();
-    await press("KeyZ", 2);                        // the swing starts
+    await swingPress(2);                           // the swing starts
     await untilFrames(f0 + 58);                    // the cursor near full power
-    await press("KeyZ", 2);
+    await swingPress(2);
     await untilFrames(f0 + 80);
     await shot(`shot${k + 1}_swing`);
     await untilFrames(f0 + 110);                   // back down to the impact zone
-    await press("KeyZ", 2);
+    await swingPress(2);
     await untilFrames(f0 + 220);
     await shot(`shot${k + 1}_flight`);
     await until(n => window.__golf.shots.length > n || window.__golf.error, k);

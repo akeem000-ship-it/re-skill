@@ -27,6 +27,7 @@ import { Golf3D } from "./g3d/scene.js";
 // ---- (end 3D LAYERS) ----
 // ---- HD picture options (web/js/hd: HD text, HD menus, wide, portrait, handheld): render / UI only, never the game's state ----
 import { attachHD } from "./hd/page.js";
+import { attachAimPower } from "./hd/aimpower.js";
 // ---- (end HD) ----
 
 const EXPECTED_SHA1 = "7f2062e51b4fc87378c1d5e6b9578c9277b94e0b";
@@ -39,6 +40,7 @@ const rgb5 = new Uint8Array(160 * 144 * 3), rgba = new Uint32Array(image.data.bu
 const keys = {};
 const g3d = attach3D({ screen: canvas, getGame: () => game });   // (3D LAYERS: the options panel and the 3D canvas over the screen)
 const hdPage = attachHD({ canvas, keys, getRom: () => rom, getGame: () => game });   // (HD: the picture options and the touch layouts)
+const aimPower = attachAimPower({ screen: canvas, keys, getGame: () => game });   // (HD: the aim and swing helpers: big meter, shot preview, markers, tap area)
 let rom = null, sha = "", game = null, paused = false, fast = false, muted = false, last = 0, acc = 0;
 let fps = 0, fpsFrames = 0, fpsT = 0;
 // ---- ATTRACT (?attract: MTenn3D's game picker shows this page behind its golf half): the game playing itself, silent, no buttons, no
@@ -167,6 +169,10 @@ function newRound() {
     const seed = crypto.getRandomValues(new Uint16Array(1))[0];   // (the menus' frames would have moved the seed)
     holes = mode.startsWith("match:") ? matchRoundSetup(w, { golfer: 8, opponent: +mode.slice(6), course: 1, seed })
       : strokeRoundSetup(w, { golfer: ATTRACT ? [8, 9, 4][seed % 3] : 8, course: 1, seed });
+    const q = new URLSearchParams(location.search), qc = +q.get("course"), qh = +q.get("hole");
+    if (!ATTRACT && mode === "stroke" && (qc || qh)) {   // (?course=1-4&hole=1-18: the Stroke start on another course or hole, as CourseSelect would)
+      const c = qc >= 1 && qc <= 4 ? qc : 1; setCourseHole(w, c, c, qh >= 1 && qh <= 18 ? qh : 1);
+    }
     if (ATTRACT) {                                 // (ATTRACT: a random course and hole, the golfer the computer's)
       const course = 1 + (seed >> 2) % 4; setCourseHole(w, course, course, 1 + (seed >> 4) % 18); setPlayerControl(w, 0, 1);
     }
@@ -251,6 +257,7 @@ function draw() {
   rasterize({ vram: w.vram, oam: w.oam, bgPal: w.bgPal, objPal: w.objPal, ...w.lcd }, rgb5, rgba);
   if (!hdPage.present(w, game.frames, image)) ctx.putImageData(image, 0, 0);   // (HD: the picture options)
   g3d.present(game, rgba);                         // (3D LAYERS: the 3D picture over the screen, when on)
+  aimPower.present(game, image);                   // (HD: the aim and swing helpers over it; they only read the game)
   if (game.link) {
     const v = game.link.w2;
     rasterize({ vram: v.vram, oam: v.oam, bgPal: v.bgPal, objPal: v.objPal, ...v.lcd }, rgb5, rgba2);

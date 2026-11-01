@@ -144,3 +144,62 @@ again and again (median; before = the commit before them, paired runs): Lite 42-
 the fairway view and the putt on the Marion and Dune clubs); Full (640 x 576, multisampled) 135-214 ms before, 283-421 ms after
 (x1.7-2.4; most of it the shells near the camera). Grass: Pixel with Sand: Pixel runs the old shader at the old cost; Sand: Fine
 alone adds about a tenth (the sand near bunkers and the desert).
+
+## Aim and swing helpers (web/js/hd/aimpower.js, shotpreview.js)
+
+Four page options (in the picture options row, `#hdopts`; on phones under OPTIONS), drawn on a 2D canvas over the screen (over the
+3D view when it shows, over the 2D or HD picture otherwise). They read the game's memory and never write it; the tap area only
+sets the same key the pad's A button sets. Settings in localStorage (`mg-meter`, `mg-preview`, `mg-marks`, `mg-tap`) or the URL
+(`?meter=big|game&preview=on|off&marks=on|off&tap=on|off`).
+
+- **Meter: Big** (default) | Game. From the first frame the swing loop (10:57E0) counts (wSwingCount `$D44E` moving) the meter
+  grows out of the HUD's small meter into the middle of the picture in 10 game frames (~170 ms), and shrinks back 14 frames after
+  the swing ends (the count stops: the impact, the putter's press, B or the timeout) in 10 more. It draws only what the game's
+  meter variables say: the cursor wSwingCursor `$D44F` (full power `$3C` at the left, 0 at 60/78 of the bar, the timeout's -18 at
+  the right end, as HudDrawMeterCursor 12:456E lays the small one out), a trail of the cursor's last ten counts (the cursor is a
+  function of the count), wSwingPower `$D450` held with "NN% · YYY y" (power / 60, ScaleByPower 10:6865 of ClubBaseDistance 10:68B1:
+  the club's yards before the lie, wind and impact; the putter: the percentage), a glowing MAX mark, the PERFECT line at 0 (one
+  count wide) with a faint +-3 window, and NICE! when wSwingPerfect `$D451` is set after the impact. The speed and timing are the
+  game's: nothing here touches the count. While it is big the game's small meter (the HUD row y 128-143, x 43-130) is covered
+  with the HUD's own colour. Placement: in 2D (the view behind the golfer) the golfer stands at the bottom, so the bar sits at
+  y 56-86; in 3D the golfer is projected with the 3D view's matrix and the bar takes the larger free space above his head or below
+  his feet, narrower (15-85% of the width) to keep the HUD's corner text and face clear. In portrait the picture is the top of the
+  screen and the bar stays inside it, away from the control deck.
+- **Preview: On** (default) | Off: a helper showing where a **perfect full-power swing** would go with the current club, aim, lie,
+  shot mode and wind. shotpreview.js copies the game's memory (g3d/replay.js `cloneMemory`, without the display: its hooks are
+  skipped), sets the meter as such a swing leaves it (count `$78`, cursor 0, power `$3C`, perfect 1, full power 1, the impact pad
+  table's first entry as SwingPadTask 10:55AC leaves it with only A held; the putter: one press at `$3C`, the putt range `$D32B`
+  as the shot mode), does what 10:4921-10:49A0 does between the swing and the launch (the shot record `$D5F8`, the landing-preview
+  task off: `$D485` = `$2D`, the retry flags `$D35F/$D360`, the tree tile `$D519/$D516`, the ball objects bit 2) and runs the
+  engine's own `Shot.launch()` (ShotLaunch 10:5F94, the flight camera's loop and ShotMainLoop with BallTask every frame, the cup,
+  the green's view change) to its outcome. Without the landing-preview task off the copy's PreviewFrame keeps rewriting the shot
+  and the ball goes ~50 y long. Drawn: the dotted arc (and its shadow), the landing ring, the roll to rest, "carry X y · Y y"
+  (ShotLength 10:6276 >> 5, as the HUD measures a shot); a putt: the roll line and "full putt: N ft" (or "in"). It is run again
+  only when what decides the shot changes (the hole, the ball's spot, the aim, the club, the shot mode, the putt range, the wind,
+  the view, the player, the club's stats) and that has held still ~90 ms (the aim keys move it every frame; meanwhile the last
+  one shows dimmed). Exact: web/tests/shot_preview.mjs (Node) plays perfect full swings on the four courses, from the tee, the
+  fairway, the rough, bunkers, the fringe and the green, straight and well off the line, three golfers, winds 4-19 mph: 51 of 51
+  came to rest exactly (to the fraction) where the preview said, both when it was computed in the aiming menu and at the address,
+  outcome too; swings that are not perfect come out elsewhere. web/tests/aim_power.mjs checks the same on the page itself.
+  Cost: 2 ms median per run (Node; up to ~25 ms for a long drive with a cold JIT), a few ms in the page.
+- **Markers: On** (default) | Off: the aim line from the ball to the target marker `$D426/$D428` (10:56EF: ClubBaseDistance along
+  the aim), a bold ring there with the club's yards (the shot panel's number), faint rings every 50 y round the ball, the pin's
+  distance over the flag (PinDist 10:62AD >> 5; feet with the putter near the green, as the HUD's 12:4CB1). The ring goes on the
+  target marker, not on the game's landing preview ghost (`$D374/$D377`): PreviewFrame 11:4E5E relaunches the ghost every 32 frames,
+  so it only ever shows the first ~40 y of the flight. Labels are placed so they don't overlap (the pin's, the target's, the
+  preview's), and one whose point is off the picture sits at its edge with an arrow.
+- **Tap area: On** (default on touch screens) | Off: at the address (the swing can be started) and through the swing the lower half
+  of the screen is the A button: a touch there sets `keys.KeyZ` as the pad's A does (and lights it); the pad's own buttons, the
+  stick zone, the menus and the gear keep their touches (the d-pad's hook / slice and height during the swing, B to cancel). The
+  first three addresses show a dashed outline with the cut-outs and "TAP HERE = A". `play_page.mjs --tap` plays its swings with it.
+
+Projections: 3D: the 3D view's matrix (`scene.mvp`, the ground height `hole.H`). 2D: the hole view's own: the course view at 1 px
+per world px from the scroll `$C320/$C322` (heights at half, as CourseViewDrawBall 11:4385), the green view at 4x from its corner
+`$D441/$D442` (GreenViewDrawBall 11:4994), the view behind the golfer through its camera `$D456/$D458` angle `$D45A` (11:4795's
+projection, by the depth). The game puts its sprites' centres at these points. Behind the golfer the picture squeezes the course
+into a band at the horizon, so there the marks are of a fixed size (the target, the landing, the rest), with no rings, aim line
+or arc.
+
+Checks: `web/tests/shot_preview.mjs` (the preview against real perfect swings), `web/tests/aim_power.mjs` (the same in the page,
+the frame cost; `--shots` the pictures in out/aimpower), `play_page.mjs --tap`, and the game-unchanged tests with the helpers off
+in one run and on in the other (`g3d_layers_same.mjs`, `play_hd.mjs --same`).

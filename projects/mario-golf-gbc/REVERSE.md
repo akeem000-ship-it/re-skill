@@ -354,7 +354,8 @@ the browser), or a match against Luigi or Putts (the VS path 32:5240-32:52A2; ma
 in the menus). A round from empty RAM through start.js plays exactly as the recorded one (`golf_native_round.mjs
 r18:setup`). `play_page.mjs` goes through the menus (A skips the demo, Start on the title, Right to Mario) and plays
 a few shots in headless Chromium with scripted keys (no page errors; screenshots in out/); `--stroke` / `--match`
-start a round directly, `--pause` opens the pause menu's Scorecard on the first shot.
+start a round directly, `--pause` opens the pause menu's Scorecard on the first shot, `--tap` swings with the tap area on a phone held upright.
+`?course=1-4&hole=1-18` starts the selector's Stroke round on another course or hole (SetCourseHole 10:423B, as CourseSelect).
 
 #### The 3D layers (web/js/g3d; docs/g3d.md; web/tests/g3d_layers_same.mjs, g3d_replay_rerun.mjs)
 
@@ -387,6 +388,15 @@ Wide 16:9); `?font=itim&ui=hd&view=wide` in the URL. They only read the game's m
   the game's frame untouched between them.
 - Touch: an upright phone gets the game on top and a deck below (the hole's map as its art, golf-ball A / B); a
   games handheld's built-in controller hides the touch pad (`window.__device` from the Android app).
+- Aim and swing helpers (`web/js/hd/aimpower.js`, `shotpreview.js`; docs/g3d.md "Aim and swing helpers"): a big swing
+  meter drawn from wSwingCount / wSwingCursor / wSwingPower / wSwingPerfect (`$D44E-$D451`) while the swing loop 10:57E0 runs;
+  a shot preview: a perfect full swing (count `$78`, cursor 0, power `$3C`; the putter one press at `$3C`) set on a copy of the
+  memory, 10:4921's steps (`$D485` = `$2D`: the landing-preview task off, else the copy's PreviewFrame 11:4E5E rewrites the shot
+  and it flies ~50 y long), then the engine's ShotLaunch / BallTask / ShotMainLoop to the outcome: the rest spot equals real
+  perfect swings to the fraction (`web/tests/shot_preview.mjs`: 51 of 51 on four courses); ground markers (the target marker
+  `$D426/$D428`, PinDist 10:62AD); a tap area (touch: the lower half of the screen sets the pad's A key at the address).
+  Projected in 2D with the hole view's own rules (course view 1:1 from `$C320/$C322`, green view 4x from `$D441/$D442`, behind
+  the golfer by 11:4795's camera `$D456/$D458/$D45A`); the sprites' centres are those points (queueSprite takes centres).
 `web/tests/play_hd.mjs` takes the screenshots (out/hd) and, with `--same`, runs a scripted session (menus, pause
 menu, scorecard, shots) with the options off and on (also on a phone held upright and sideways) and compares a hash
 of the whole game state (RAM, VRAM, OAM, palettes, LCD registers, save RAM) at every frame: equal.
