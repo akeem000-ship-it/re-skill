@@ -2479,7 +2479,22 @@ export class Voxel3D {
       };
     }
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
-    for (const [kind, x0, z0, x1, z1] of CAFE_FILL) this.draw(this.cafeFill[kind], m4.trs((x0 + x1) / 2, 1.2, z1, x1 - x0, z1 - z0, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
+    // the lake in the pond's own style, once the junior courts' map (its pond) is at hand: pondLake below
+    if (!this.cafeFill.pondLake) { const src = [f, ...(f.neighbours || []).map(n => n.f)].find(x => x && x.mapId === 30 && x.floorData && x.water); if (src) this.cafeFill.pondLake = this.pondLake(src); }
+    const PL = this.cafeFill.pondLake;
+    for (const [kind, x0, z0, x1, z1] of CAFE_FILL) {
+      if (kind === "lake" && PL) {
+        this.draw(PL.tex, m4.trs((PL.x0 + PL.x1) / 2, 1.2, PL.z1, PL.x1 - PL.x0, PL.z1 - PL.z0, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
+        const G = this.groundFx;                                               // (its shore's stones: the 3D ground's bricks, as on the pond)
+        if (G && G.pX && PL.bricks.at.length) {
+          if (!PL.brickVao || PL.brickG !== G) { PL.brickG = G; PL.brickVao = G.vao(G.cube, 4, [[PL.bricks.at, 4], [PL.bricks.size, 4], [PL.bricks.col, 3]]); }
+          gl.useProgram(G.pX); gl.uniformMatrix4fv(G.uX.uMVP, false, mvp); gl.bindVertexArray(PL.brickVao.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 30, PL.brickVao.n);
+          gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
+        }
+        continue;
+      }
+      this.draw(this.cafeFill[kind], m4.trs((x0 + x1) / 2, 1.2, z1, x1 - x0, z1 - z0, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
+    }
     // the footbridge across the lake's narrow middle (planks raised a little, a rail each side)
     const bx = 790, bz0 = -560, bz1 = -440;
     this.draw(this.cafeFill.wood, m4.trs(bx, 4, bz1, 30, bz1 - bz0, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
@@ -2501,11 +2516,73 @@ export class Voxel3D {
     // the lake's water alive: sun glints twinkling on it, each on its own beat (as the ponds', fieldlife.js)
     const T = performance.now() / 1000;
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE); gl.depthMask(false);
-    for (const [x, z, h1, h2] of F.glints) {
+    for (const [x, z, h1, h2] of (PL ? PL.glints : F.glints)) {
       const tw = Math.pow(Math.max(0, Math.sin(T * (1.1 + 1.8 * h1) + h2 * 40)), 12); if (tw < 0.05) continue;
       const sz = 3 + 5 * tw; this.draw(F.glint, m4.trs(x, 1.6, z + sz / 2, sz, sz, -Math.PI / 2, 0.785 * h2), mvp, [0, 0, 1, 1], [1, 1, 0.92, 0.9 * tw], 0);
     }
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(true);
+  }
+  // THE LAKE IN THE POND'S STYLE: the lake laid out of the junior courts' pond's own 16 x 16 tiles (map 30, src: its field), on the pond's
+  // grid (x 408 + 16k, z -336 + 16k in the road's map px), the way the game lays its ponds: each lake tile takes the pond tile whose
+  // water neighbours (the 8 round it) match its own best, so the shore's white stones and orange edge run round the lake as they run
+  // round the pond and the middle is the pond's open water, its white sparkles and all; the tiles' grass is left out (the lawn under
+  // it shows). Read from the map at run time, nothing of the game's is stored. Returns { tex, x0, z0, x1, z1, glints } (road map px).
+  pondLake(src) {
+    const W = src.water, D = src.floorData, OX = 408, OZ = -336, X0 = OX + 8 * 16, Z0 = OZ - 24 * 16, NX = 33, NZ = 24;
+    // the pond: the water cells joined to the one at row 2, column 22 (not the blue strips elsewhere in the map)
+    const pond = new Uint8Array(1024), st = [2 * 32 + 22];
+    while (st.length) { const i = st.pop(); if (pond[i] || !W[i]) continue; pond[i] = 1; const x = i & 31, y = i >> 5; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const X = x + dx, Y = y + dy; if (X >= 0 && Y >= 0 && X < 32 && Y < 32) st.push(Y * 32 + X); } }
+    const N8 = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]], EDGE = 0b01010101;
+    const pw = (x, y) => (y < 0 ? x >= 0 && x < 32 && pond[x] : x >= 0 && y >= 0 && x < 32 && y < 32 && pond[y * 32 + x]) ? 1 : 0;   // (above row 0: the lake)
+    // each pond tile, also flipped and turned (t: bit 0 flip x, bit 1 flip y, bit 2 swap x and y; the pond has no north shore of its
+    // own, it runs off its map's top), with its water neighbours as they are after the turn; the open-water tiles (all 8 water) only
+    // as they are, and only the evenly sparkled ones (the pond's white dots are thicker in its middle: a mix of those was blotchy)
+    const turn = (t, a, b) => { if (t & 4) [a, b] = [b, a]; if (t & 1) a = -a; if (t & 2) b = -b; return [a, b]; };
+    const white = (x, y) => { let n = 0; for (let v = 0; v < 16; v++) for (let u = 0; u < 16; u++) { const o = ((y * 16 + v) * 512 + x * 16 + u) * 4; if (D[o] > 200 && D[o + 1] > 200 && D[o + 2] > 200) n++; } return n / 256; };
+    const cells = [], open = [];
+    for (let i = 0; i < 1024; i++) if (pond[i]) {
+      const x = i & 31, y = i >> 5;
+      for (let t = 0; t < 8; t++) { let sig = 0; N8.forEach(([dx, dy], k) => { const [a, b] = turn(t, dx, dy); sig |= pw(x + a, y + b) << k; }); if (sig === 255 && t) continue; cells.push({ x, y, sig, t }); }
+      if (N8.every(([dx, dy]) => pw(x + dx, y + dy))) open.push({ x, y, t: 0, w: white(x, y) });
+    }
+    open.sort((a, b) => a.w - b.w); const calm = open.slice(Math.floor(open.length * 0.15), Math.max(Math.floor(open.length * 0.15) + 1, Math.ceil(open.length * 0.6)));
+    // the lake's cells: water where the cell's middle is in the lake's shape (the blobs of the old lake picture: canvas 480 x 400 over
+    // x 540-1060, z -720 to -330), and the pond's cells below its south edge
+    const LAKE = [[270, 245, 160, 108], [160, 185, 110, 83], [370, 300, 80, 68], [300, 117, 110, 68], [242, 365, 72, 42], [242, 398, 76, 24]];
+    const inLake = (wx, wz) => { const cx = (wx - 540) * 480 / 520, cy = (wz + 720) * 400 / 390; return LAKE.some(([x, y, rx, ry]) => ((cx - x) / rx) ** 2 + ((cy - y) / ry) ** 2 <= 1); };
+    const lake = new Uint8Array(NX * NZ); for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) lake[j * NX + i] = inLake(X0 + i * 16 + 8, Z0 + j * 16 + 8) ? 1 : 0;
+    const lw = (i, j) => j >= NZ ? pw(i + 8, j - NZ) : i >= 0 && j >= 0 && i < NX && lake[j * NX + i] ? 1 : 0;   // (below: the pond, columns 8 on)
+    const pop = v => { let n = 0; for (; v; v &= v - 1) n++; return n; }, hsh = (a, b) => { const v = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return v - Math.floor(v); };
+    const OV = 4, out = new Uint8Array(NX * 16 * (NZ * 16 + OV) * 4), glints = [];   // (OV: 4 rows on over the pond's top row, no seam between them)
+    for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
+      if (!lake[j * NX + i]) continue;
+      let want = 0; N8.forEach(([dx, dy], k) => { want |= lw(i + dx, j + dy) << k; });
+      let best = null, bs = 1e9; const r = hsh(i, j);
+      if (want === 255 && calm.length) best = calm[Math.floor(hsh(i * 5 + 1, j * 3 + 2) * calm.length)];
+      else for (const c of cells) { const d = c.sig ^ want, sc = pop(d & EDGE) * 4 + pop(d & ~EDGE & 255) + (c.t ? 0.3 : 0) + hsh(c.x + r * 7, c.y + c.t) * 0.2; if (sc < bs) { bs = sc; best = c; } }
+      const px = (x, y) => { const [a, b] = turn(best.t, x - 7.5, y - 7.5); return ((best.y * 16 + b + 7.5) * 512 + best.x * 16 + a + 7.5) * 4; };
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+        const o = px(x, y), R = D[o], G = D[o + 1], B = D[o + 2];
+        if (G > R + 40 && G > B + 40) continue;                          // (the tile's grass: left out, the lawn shows)
+        const q = (((j * 16 + y) * NX * 16) + i * 16 + x) * 4; out[q] = R; out[q + 1] = G; out[q + 2] = B; out[q + 3] = 255;
+      }
+      if (want === 255 && hsh(j, i) < 0.5) glints.push([X0 + i * 16 + 3 + 10 * hsh(i * 3, j), Z0 + j * 16 + 3 + 10 * hsh(i, j * 3), hsh(i + 1, j), hsh(i, j + 1)]);
+    }
+    // the shore's stones: the pond's white foam stands up as small bricks where it meets the orange bank, as the 3D ground's edging
+    // does it on the pond (ground.js: a brick per 2 x 2 px of kerb colour within 4 px of dirt), built here from the lake's picture
+    const TW = NX * 16, TH = NZ * 16, at = [], size = [], col = [];
+    const pix = (x, y) => (x >= 0 && y >= 0 && x < TW && y < TH ? (y * TW + x) * 4 : -1);
+    const dirt = o => o >= 0 && out[o + 3] && out[o] > 120 && out[o] > out[o + 1] * 1.25 && out[o + 2] < out[o] * 0.45;
+    const kerb = o => { const r = out[o], g = out[o + 1], b = out[o + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b); return out[o + 3] && mx - mn < 40 && mx > 90; };
+    for (let y = 1; y < TH; y += 2) for (let x = 1; x < TW; x += 2) {
+      const o = pix(x, y); if (!kerb(o)) continue;
+      if (![[4, 0], [-4, 0], [0, 4], [0, -4], [2, 0], [-2, 0], [0, 2], [0, -2]].some(([dx, dy]) => dirt(pix(x + dx, y + dy)))) continue;
+      const course = Math.floor((x + y * 0.5) / 6) & 1, k = 0.92 + course * 0.08;
+      at.push(X0 + x, 0, Z0 + y, 0); size.push(2.05, 2.6 + course * 0.25 + hsh(x, y) * 0.15, 2.05, 0); col.push(out[o] / 255 * k, out[o + 1] / 255 * k, out[o + 2] / 255 * k);
+    }
+    out.copyWithin(TH * TW * 4, (TH - 16) * TW * 4, (TH - 16 + OV) * TW * 4);   // (the overlap: the water's pattern a tile up, where the lake meets the pond)
+    for (let x = 0; x < TW; x++) if (!out[((TH - 1) * TW + x) * 4 + 3]) for (let y = TH; y < TH + OV; y++) out[(y * TW + x) * 4 + 3] = 0;
+    return { tex: this.texture(TW, TH + OV, out), x0: X0, z0: Z0, x1: X0 + TW, z1: Z0 + TH + OV, glints, bricks: { at, size, col } };
   }
   // a neighbouring map in view: its ground (and 120 px up, its trees and walls) not wholly beyond one side of the view
   nbInView(nb, mvp) {
