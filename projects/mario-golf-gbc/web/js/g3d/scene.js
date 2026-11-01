@@ -185,15 +185,25 @@ export class Golf3D {
     const hole = this.hole = { id: hid, art, pal, ground, trees, typeCol, Hc, H, hills, grass, sand, desert };
     hole.mapTex = texture(gl, PX, PX, ground, { mip: false });
     const terr = new Uint8Array(CELLS * CELLS); terr.set(art.terrain);
-    hole.terrTex = texture(gl, CELLS, CELLS, terr, { format: "r" });
     // GRASS: Carpet and SAND: Fine: the lawn without the dither; the sand's masks; the bunker lip's grass (the greenest of rough,
     // semi-rough, fairway); the green's slope per green tile (the grain: hole3d.js greenSlopes, as the ball reads it)
     const clean = grass === "carpet" || sand === "fine" ? cleanMap(art, ground) : null;
     if (clean) hole.cleanTex = texture(gl, PX, PX, clean, { linear: true });
     if (sand === "fine") {
-      hole.sandTex = texture(gl, CELLS, CELLS, sandMasks(art, ground, desert), { linear: true });
+      const sm = sandMasks(art, ground, desert);
+      hole.sandTex = texture(gl, CELLS, CELLS, sm, { linear: true });
+      // (bit 5 of the terrain texture: a cell next to some sand, so the shader looks at the sand only there)
+      for (let z = 0; z < CELLS; z++) for (let x = 0; x < CELLS; x++) {
+        let near = false;
+        for (let dz = -1; dz <= 1 && !near; dz++) for (let dx = -1; dx <= 1; dx++) {
+          const X = x + dx, Z = z + dz; if (X < 0 || Z < 0 || X >= CELLS || Z >= CELLS) continue;
+          const j = Z * CELLS + X; if (sm[j * 4] > 5 || sm[j * 4 + 1] > 76 || art.terrain[j] === T.BUNKER) { near = true; break; }
+        }
+        if (near) terr[z * CELLS + x] |= 32;
+      }
       hole.lipCol = [T.ROUGH, T.SEMI, T.FAIRWAY].map(t => Array.from(typeCol.slice(t * 3, t * 3 + 3))).sort((a, b) => (b[1] - Math.max(b[0], b[2])) - (a[1] - Math.max(a[0], a[2])))[0];
     }
+    hole.terrTex = texture(gl, CELLS, CELLS, terr, { format: "r" });
     if (grass === "carpet") hole.slopeTex = texture(gl, MAP, MAP, art.greenSlopes());
     // the ground mesh: a grid over the map (4 px apart, 8 on Lite), with a skirt out to the horizon at the edge's height
     const S = this.lite ? 8 : 4, N = PX / S + 1, pos = new Float32Array(N * N * 3), nrm = new Float32Array(N * N * 3);
@@ -203,11 +213,11 @@ export class Golf3D {
       const dx = H(x + 1, z) - H(x - 1, z), dz = H(x, z + 1) - H(x, z - 1), l = Math.hypot(dx, 2, dz);
       nrm[k] = -dx / l; nrm[k + 1] = 2 / l; nrm[k + 2] = -dz / l;
     }
-    // the triangles in chunks of 32 x 32 px; GRASS: Carpet: in each chunk the quads in groups by their tallest grass (from their terrain
+    // the triangles in chunks of 16 x 16 px; GRASS: Carpet: in each chunk the quads in groups by their tallest grass (from their terrain
     // types where the lawn is green: green, fairway / tee, semi-rough, rough / woods; none), each group drawn as shells only as high as
     // its grass, and only on the chunks near the eye
-    const idx = new Uint32Array((N - 1) * (N - 1) * 6); let q = 0; const CQ = 32 / S, chunks = [];
-    const tallest = { [T.GREEN]: 1, [T.FAIRWAY]: 2, [T.TEE]: 2, [T.SEMI]: 3, [T.ROUGH]: 4, [T.OB]: 4 }, HEIGHT = [0, 0.054, 0.13, 0.57, 1.24];
+    const idx = new Uint32Array((N - 1) * (N - 1) * 6); let q = 0; const CQ = Math.max(1, 16 / S), chunks = [];
+    const tallest = { [T.GREEN]: 1, [T.FAIRWAY]: 2, [T.TEE]: 2, [T.SEMI]: 3, [T.ROUGH]: 4, [T.OB]: 4 }, HEIGHT = [0, 0.054, 0.13, 0.57, 1.24], STRANDS = [0, 36, 5, 4.5, 3.5];   // (groundshader.js: height, strands a unit)
     const quadClass = (i, j) => {
       if (!clean) return 0; let c = 0;
       for (let pz = j * S; pz < (j + 1) * S && pz < PX; pz += 2) for (let px = i * S; px < (i + 1) * S && px < PX; px += 2) {
@@ -223,7 +233,7 @@ export class Golf3D {
       for (let c = 4; c >= 0; c--) {
         const g0 = q;
         for (const a of byClass[c]) { idx.set([a, a + N, a + 1, a + 1, a + N, a + N + 1], q); q += 6; }
-        if (c && q > g0) groups.push({ off: g0, n: q - g0, h: HEIGHT[c] });
+        if (c && q > g0) groups.push({ off: g0, n: q - g0, h: HEIGHT[c], D: STRANDS[c] });
       }
       const x = (ci + CQ / 2) * S, z = (cj + CQ / 2) * S;
       chunks.push({ x, z, y: H(x, z), off, n: q - off, groups });
@@ -495,19 +505,22 @@ export class Golf3D {
     gl.uniform2fv(p.u.uAlong, [ax / al, az / al]);
     gl.uniform3fv(p.u.uPush, this.golferShown ? [this.golferShown[0], this.golferShown[1], 1] : [0, 0, 0]);
     gl.uniform3fv(p.u.uLipCol, h.lipCol || [0.3, 0.6, 0.2]);
-    const NS = this.lite ? 5 : 10;
+    const NS = this.lite ? 4 : 8;
     gl.uniform1f(p.u.uHmax, 1.0);
     gl.bindVertexArray(h.groundMesh.vao);
     if (!shells) gl.drawElements(gl.TRIANGLES, h.groundMesh.n, gl.UNSIGNED_INT, 0);
     else {                                       // the shells above the soil: the chunks near the eye, in front of it, as high as their grass
-      const e = this.eye, f = this.cam.at, fx = f[0] - e[0], fz = f[2] - e[2], fl = Math.hypot(fx, fz) || 1, R = (this.lite ? 32 : 60) / Math.max(0.5, this.cam.fovK || 1);
+      const e = this.eye, f = this.cam.at, fx = f[0] - e[0], fz = f[2] - e[2], fl = Math.hypot(fx, fz) || 1, R = (this.lite ? 26 : 60) / Math.max(0.5, this.cam.fovK || 1);
       gl.uniform1f(p.u.uShellN, NS); gl.uniform1f(p.u.uShellBase, 1); let drawn = 0;
+      // (a group only as far as its strands are wider than about a pixel: the shader drops them beyond; the green's fine strands
+      // show only close up)
+      const near = this.canvas.height / (2 * Math.tan(25 * Math.PI / 180) * (this.cam.fovK || 1) * 1.2);
       for (const c of h.groundMesh.chunks) {
         if (!c.groups.length) continue;
         const dx = c.x - e[0], dz = c.z - e[2], d = Math.hypot(dx, dz, (c.y - e[1]) * 0.5);
-        if (d > R + 23 || (dx * fx + dz * fz) / fl < -23) continue;
-        const k = Math.min(1, Math.max(0.45, 1.5 - d / R));   // (fewer shells further off)
-        for (const g of c.groups) gl.drawElementsInstanced(gl.TRIANGLES, g.n, gl.UNSIGNED_INT, g.off * 4, Math.min(NS - 1, Math.ceil(NS * Math.sqrt(g.h) * k)));
+        if (d > R + 12 || (dx * fx + dz * fz) / fl < -12) continue;
+        const k = Math.min(1, Math.max(0.35, 1.4 - d / R));   // (fewer shells further off)
+        for (const g of c.groups) if (d - 12 < near / g.D) gl.drawElementsInstanced(gl.TRIANGLES, g.n, gl.UNSIGNED_INT, g.off * 4, Math.min(NS - 1, Math.ceil(NS * Math.sqrt(g.h) * k)));
         drawn++;
       }
       this.shellChunks = drawn;
@@ -568,7 +581,8 @@ export class Golf3D {
     if (seen.has(0x3A)) stand(0x3A, 0x426, 0x428, 5 * mk, 0.3 + 0.3 * Math.sin(this.time * 5));
     if (seen.has(0x2C)) stand(0x2C, 0x422, 0x424, 4 * mk, 1 + 0.5 * Math.sin(this.time * 6));
     if (seen.has(0x3E)) { const x = u16(0x374) / 32, z = u16(0x377) / 32; this.decal(x, H(x, z), z, 1.6 + 0.3 * Math.sin(this.time * 8), 0, 1, [1, 1, 1, 0.55], true); }
-    if (seen.has(0x78)) { const x = u16(0x41E) / 32, z = u16(0x420) / 32, r = 0.3; out.push([this.ballMesh, m4.tsy(x, H(x, z) + r * 0.7, z, r, r, r), [1, 0.95, 0.8, 1], "ball2"]); }
+    if (seen.has(0x78)) { const x = u16(0x41E) / 32, z = u16(0x420) / 32, y = H(x, z), { r } = this.ball3d.radius([x, y, z]);   // (a ball's size, as the ball)
+      out.push([this.ballMesh, m4.tsy(x, y + r * 0.85 + this.ballLift([x, y, z]), z, r, r, r), [1, 0.97, 0.9, 1], "ball2"]); }
   }
   // an 8 x 16 sprite from the game's VRAM (tile, OAM attribute: bank bit 3, OBJ palette), as a picture
   spritePic(w, tile, attr, full = false) {

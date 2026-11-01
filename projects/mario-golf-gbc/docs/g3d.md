@@ -79,9 +79,9 @@ as many triangles as an old one); the trees far from the camera (70 units in Ful
 are drawn in bigger boxes (Full: Lite's; Lite: 2.8x Full's). **Original** keeps the old bodies: the tile pictures stood up and rounded by voxround.js, turned to the camera.
 
 GRASS (the panel's Grass: Carpet, the default, or Pixel, the look before; under the Terrain layer). **Carpet** is Mario Tennis's
-shell carpet turf (its ground.js VS_SHELL / FS_SHELL) on every grass area of the hole: the ground mesh, cut in chunks of 32 x 32 px,
-is drawn again as shells above the soil (instanced; shell i at (i / N)^2 over it, N = 10 Full, 5 Lite) only on the chunks near the
-eye (60 units Full, 32 Lite, further when zoomed in) and in front of it, fewer further off; in each chunk the grid's quads are kept
+shell carpet turf (its ground.js VS_SHELL / FS_SHELL) on every grass area of the hole: the ground mesh, cut in chunks of 16 x 16 px,
+is drawn again as shells above the soil (instanced; shell i at (i / N)^2 over it, N = 10 Full, 4 Lite) only on the chunks near the
+eye (60 units Full, 26 Lite, further when zoomed in) and in front of it, fewer further off; in each chunk the grid's quads are kept
 in groups by their tallest grass (their terrain types where the lawn is green: green, fairway / tee, semi-rough, rough / woods) and
 each group is drawn only up to its grass (a green quad two or three shells, a fairway four, the rough all; sand, water and brown
 ground none); a shell keeps the strands that reach it, thinning to their tips, and far away (a strand under a pixel) the strands
@@ -103,9 +103,11 @@ stronger the slope, with a slow wave along it; the base is combed into short bla
 uphill root and light at its downhill tip (so a still picture shows which way is down), a sheen turns with the view (lighter
 looking down the grain) and a bright band travels slowly downhill, faster and stronger on steeper tiles; flat tiles stand upright
 and still. (The game's greens often draw one even slope as tiles of strength 3, 2, 1 and flat in turn, as its chevrons do; the
-grain shows them tile by tile as the ball feels them.) Only a light wind sway stays on top. Checked: out/scratch/looks/slopecheck.mjs compares the grain's data with the
-engine's own slope() (js/golf/ball.js) at every quarter pixel of all 107 greens (no mismatch), and breakcheck.mjs compares the sideways
-change of the ball's velocity in real putts with the grain's lean under it. Off the green the grass sways in the game's **wind**
+grain shows them tile by tile as the ball feels them.) Only a light wind sway stays on top. Checked: web/tests/g3d_grain_slopes.mjs
+compares the grain's data with the engine's own slope() (js/golf/ball.js) at every quarter pixel of all 107 greens (no mismatch);
+and in played putts on the six courses the push the game gave the rolling ball across its way (recovered from its velocities each
+frame) points along the grain's lean on every tile where it is larger than the friction's rounding (cos 0.99-1.00; on gentle tiles
+at low speed the game's push truncates to nothing). Off the green the grass sways in the game's **wind**
 (`$C815` mph, `$C816` direction, as the HUD shows them): the strands bend along the wind, more (and faster) the more mph, a gust
 of shade runs across the grass in the wind's direction, the flag flutters quicker and the trees sway further.
 
@@ -136,3 +138,9 @@ pictures come slower than about 40 a second and goes back up when there is room.
 Measured in headless Chromium with SwiftShader (CPU rendering; a GPU is much faster): Lite about 19 pictures a second with the game
 at 59 frames a second; Full about 9 pictures a second at a reduced resolution (the game at about 36 frames a second, as the page
 runs at most four game frames per drawn frame).
+
+The cost of GRASS: Carpet, SAND: Fine and the new ball, SwiftShader on a shared 4-core machine, the game held and one picture drawn
+again and again (median; before = the commit before them, paired runs): Lite 42-61 ms before, 56-81 ms after (x1.3-1.7: the tee,
+the fairway view and the putt on the Marion and Dune clubs); Full (640 x 576, multisampled) 135-214 ms before, 283-421 ms after
+(x1.7-2.4; most of it the shells near the camera). Grass: Pixel with Sand: Pixel runs the old shader at the old cost; Sand: Fine
+alone adds about a tenth (the sand near bunkers and the desert).

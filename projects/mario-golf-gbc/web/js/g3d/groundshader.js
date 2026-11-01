@@ -103,7 +103,10 @@ float sway(vec2 p, vec2 wd, float wk) {
 }
 void main() {
   vec2 uv = clamp(vXZ, 0.0, 511.9) / 512.0;
-  float t = floor(texture(uTerr, uv).r * 255.0 + 0.5);
+  float t = floor(texture(uTerr, uv).r * 255.0 + 0.5), sandNear = 0.0;
+#if SAND || CARPET
+  sandNear = step(31.5, t); t -= 32.0 * sandNear;            // (SAND: Fine: bit 5 of the terrain texture: near sand, scene.js)
+#endif
   if (uSkirt > 0.5) t = 7.0;
   vec3 V = normalize(uEye - vW);
   // ---- GRASS: Carpet: which grass, its strand size and height ----
@@ -163,7 +166,7 @@ void main() {
       col = mix(col, col * vec3(1.25, 1.0, 0.5) + vec3(0.07, 0.05, 0.0), smoothstep(0.55, 0.15, pa) * 0.4);
       col = mix(col, col * vec3(1.35, 1.12, 0.5) + vec3(0.06, 0.04, 0.0), step(0.86, kk) * 0.7);   // straw strands
     }
-    col *= t == 6.0 ? mix(0.8, 1.12, up) : mix(0.55, 1.18, up * 0.7 + vL * 0.3); col += vec3(0.04, 0.05, 0.0) * up * up;
+    col *= t == 6.0 ? mix(0.88, 1.08, up) : mix(0.55, 1.18, up * 0.7 + vL * 0.3); col += vec3(0.04, 0.05, 0.0) * up * up;
     o = finish(col, normalize(vN), shadowAt(true), 0.0);
   }
 #else
@@ -183,9 +186,9 @@ void main() {
         // the combed blades: short streaks along the slope, each dark at its uphill root and light at its downhill tip (so a still
         // picture shows which way is down), in rows across it with their own offsets
         float f = fract(a * 1.4 + hash(vec2(row, 7.0))), blade = f * f;
-        float gk = 0.4 + 0.6 * gr.z;                          // (a gentle slope shows, a steep one more)
-        c *= 1.0 + (blade - 0.4) * 1.1 * gk * (0.7 + 0.3 * hash(vec2(row, floor(a * 1.4 + hash(vec2(row, 7.0))))));
-        c += vec3(0.05, 0.06, 0.0) * blade * gk;              // (the tips catch the light)
+        float gk = (0.4 + 0.6 * gr.z) * smoothstep(0.2, 0.9, pix);   // (a gentle slope shows, a steep one more; close up the strands show it)
+        c *= 1.0 + (blade - 0.4) * 0.8 * gk * (0.7 + 0.3 * hash(vec2(row, floor(a * 1.4 + hash(vec2(row, 7.0))))));
+        c += vec3(0.025, 0.035, 0.0) * blade * gk;              // (the tips catch the light)
         c *= 1.0 + 0.22 * gk * -dot(gr.xy, vxz);              // the sheen: lighter looking down the grain
         float w = fract(a * 0.25 - uTime * (0.2 + 0.25 * gr.z));
         c *= 1.0 + 0.3 * gk * smoothstep(0.0, 0.15, w) * smoothstep(0.5, 0.15, w);
@@ -235,10 +238,10 @@ void main() {
   }
   // ---- SAND: Fine: the bunkers (type 2) on every course; the Dune course's sand ----
 #if SAND
-  if (uDetail > 0.5) {
+  if (uDetail > 0.5 && (sandNear > 0.5 || uSkirt > 0.5)) {   // (only near sand: the rest pays nothing)
     vec2 p = vXZ, swd = length(uWind) > 0.01 ? normalize(uWind) : vec2(0.8, 0.6);
     vec4 sm = uSkirt > 0.5 ? vec4(0.0, 1.0, 0.0, 0.0) : texture(uSandM, uv);
-    if (sm.r > 0.02 || sm.g > 0.3 || t == 2.0 || uSkirt > 0.5) {   // (only near sand: the rest of the grass pays one fetch)
+    if (sm.r > 0.02 || sm.g > 0.3 || t == 2.0 || uSkirt > 0.5) {
       float dx = 1.0 / 512.0, gx = texture(uSandM, uv + vec2(dx, 0.0)).r - texture(uSandM, uv - vec2(dx, 0.0)).r, gz = texture(uSandM, uv + vec2(0.0, dx)).r - texture(uSandM, uv - vec2(0.0, dx)).r;
       float g1 = hash(floor(p * 9.0)), nz = vnoise(p * 0.6);
       bool bunkT = t == 2.0;
