@@ -296,9 +296,11 @@ const CAFE_PATHS = CAMPUS_PATHS.map(p => p.pts);   // (web/js/campus.js: the pat
 const CAFE_GATES = [56, 296, 440];                 // (the road's trees in the way of a path cleared: within 26 px of these, above row 100)
 // the empty ground filled: [kind, x0, z0, x1, z1] (road map px): the lake (the junior courts' pond grown north into a lake, a footbridge
 // over it), a grove left of the dorm front, a running track on the lawn west of the courtyard; trees: [x, z] copies of the road's tree
-const CAFE_FILL = [["lake", 540, -720, 1060, -345], ["track", -250, 150, -20, 520]];
+const CAFE_FILL = [["lake", 540, -720, 1060, -330], ["track", -250, 150, -20, 520]];   // (the lake's south end runs into the junior courts' pond: map 30's top row, x 712-888)
+// the track's stand: a few tiers of seats along its west side, facing the track: [x of its front, z0, z1, tiers]
+const CAFE_STAND = [-258, 250, 420, 4];
 const CAFE_TREES = [[-560, -300], [-620, -230], [-560, -160], [-620, -90], [-680, -300], [-740, -230], [-680, -160], [-740, -90], [-800, -300], [-860, -230], [-800, -160], [-860, -90],
-  [570, -330], [600, -720], [700, -740], [820, -730], [960, -720], [1060, -620], [1070, -480], [1060, -360], [540, -520], [530, -420], [-280, 160], [-290, 300], [-280, 440], [-200, 560], [-60, 560]];
+  [570, -330], [600, -720], [700, -740], [820, -730], [960, -720], [1060, -620], [1070, -480], [1060, -360], [540, -520], [530, -420], [-300, 170], [-335, 300], [-330, 470], [-200, 560], [-60, 560]];   // (the track's: clear of its stand)
 const WALL_SCALE = F3.WALL_SCALE, FIELD_TILT = 0.3, HUD_SCALE = 0.6, SEAM_GLIDE = 1100, MT_OUT = 420, MT_IN = 520;   // SEAM_GLIDE: ms of the camera's glide into the next map; MT_OUT / MT_IN: ms of the MAP FADE
 // the island (map 21) is an aerial picture, not a top-down map: shown as parallax layers. The road between the courts
 // (map 19) is a side-view picture too, but it is a walkable map: a field whose sky band and cafe stand up (FIELD_OBJECTS)
@@ -2119,8 +2121,17 @@ export class Voxel3D {
     if (f.mapId === 19 && this.cafeConcept && this.cafeConcept() && f.fx && f.fx.plants) {   // (CAFE CONCEPT: the paths' way cleared, trees planted; the road as a neighbour too)
       const px = p => p.centre ? p.centre[0] : p.model[12], pz = p => p.centre ? p.centre[2] : p.model[14], clear = (x, z) => z < 100 && CAFE_GATES.some(g => Math.abs(x - g) < 26);
       f.fx.plants = f.fx.plants.filter(p => !clear(px(p), pz(p))); f.cards = f.cards.filter(c => c.band || !clear(c.X, c.Z));
-      const tree = f.fx.plants.filter(p => !p.centre).sort((a, b) => b.shape.r - a.shape.r)[0];
-      if (tree) for (const [x, z] of CAFE_TREES) { const m = Float32Array.from(tree.model); m[12] = x; m[14] = z; f.fx.plants.push({ ...tree, model: m, phase: x * 0.11 + z * 0.07 }); }
+      // the new trees: the road's kinds of tree (the three biggest shapes it has), each a little bigger or smaller and nudged off the grid,
+      // so a grove reads as grown, not planted in rows
+      const all = [...new Map(f.fx.plants.filter(p => !p.centre).sort((a, b) => b.shape.r - a.shape.r).map(p => [p.shape, p])).values()];
+      const kinds = all.filter(p => p.shape.r >= all[0].shape.r * 0.7).slice(0, 3);   // (trees, not the shrubs)
+      const hsh = (x, z, k) => { const v = Math.sin(x * 12.9898 + z * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
+      if (kinds.length) for (const [x0, z0] of CAFE_TREES) {
+        const tree = kinds[Math.floor(hsh(x0, z0, 1) * kinds.length)], k = (0.72 + 0.36 * hsh(x0, z0, 2)) * (tree === kinds[0] ? 1 : 1.15);
+        const x = x0 + (hsh(x0, z0, 3) - 0.5) * 30, z = z0 + (hsh(x0, z0, 4) - 0.5) * 30, m = Float32Array.from(tree.model);
+        for (const i of [0, 1, 2, 4, 5, 6, 8, 9, 10]) m[i] *= k;
+        m[12] = x; m[14] = z; f.fx.plants.push({ ...tree, model: m, phase: x * 0.11 + z * 0.07 });
+      }
     }
   }
   // one cushion mesh per connected group of foliage metatiles (drawn with the plants, coloured from the floor texture)
@@ -2437,13 +2448,22 @@ export class Voxel3D {
     if (!this.cafeFill) {
       const mk = (w, h, fn) => { const c = document.createElement("canvas"); c.width = w; c.height = h; fn(c.getContext("2d"), w, h); return this.texture(w, h, new Uint8Array(c.getContext("2d").getImageData(0, 0, w, h).data.buffer), true); };
       const blob = (g, pts, grow) => { g.beginPath(); for (const [x, y, rx, ry] of pts) { g.moveTo(x + rx + grow, y); g.ellipse(x, y, rx + grow, ry + grow, 0, 0, 7); } g.fill(); };
-      const LAKE = [[270, 250, 160, 110], [160, 190, 110, 85], [370, 310, 80, 70], [300, 120, 110, 70]];
+      // (canvas 480 x 400 over x 540-1060, z -720 to -330; the last two run off its south edge into the junior courts' pond)
+      const LAKE = [[270, 245, 160, 108], [160, 185, 110, 83], [370, 300, 80, 68], [300, 117, 110, 68], [242, 365, 72, 42], [242, 398, 76, 24]];
+      const glints = [];
       this.cafeFill = {
         lake: mk(480, 400, (g, w, h) => {
-          g.fillStyle = "#d8c08a"; blob(g, LAKE, 9); g.fillStyle = "#3a7ad8"; blob(g, LAKE, 0);
-          g.fillStyle = "#5c9ae8"; blob(g, LAKE.map(([x, y, rx, ry]) => [x, y, rx * 0.8, ry * 0.75]), 0);
+          // the shore (sand, a darker wet band at the water's edge), then the water: shallow and light at the edge, deeper and darker
+          // towards the middle (the pond's own light blue where the channel meets it)
+          g.fillStyle = "#d8c08a"; blob(g, LAKE.slice(0, 4), 10); g.fillStyle = "#b39a62"; blob(g, LAKE.slice(0, 4), 4);
+          const steps = [["#64aef0", 1, 1], ["#4f98e6", 0.86, 0.82], ["#3d82d8", 0.7, 0.64], ["#2f6ec6", 0.52, 0.46]];
+          g.save(); g.beginPath(); for (const [x, y, rx, ry] of LAKE) { g.moveTo(x + rx, y); g.ellipse(x, y, rx, ry, 0, 0, 7); } g.clip(); g.filter = "blur(10px)";   // (soft, inside the shore)
+          for (const [col, kx, ky] of steps) { g.fillStyle = col; blob(g, LAKE.map(([x, y, rx, ry], i) => i >= 4 && kx < 1 ? [x, y, 0, 0] : [x, y, rx * kx, ry * ky]), kx < 1 ? 0 : 12); }
+          g.restore();
           let seed = 7; const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-          g.fillStyle = "rgba(255,255,255,.75)"; for (let i = 0; i < 260; i++) { const x = r() * w, y = r() * h, d = g.getImageData(x | 0, y | 0, 1, 1).data; if (d[2] > 200 && d[0] < 120) g.fillRect(x | 0, y | 0, 3, 1); }
+          const px = g.getImageData(0, 0, w, h).data, water = (x, y) => { const o = ((y | 0) * w + (x | 0)) * 4; return px[o + 2] > 180 && px[o] < 110; };
+          g.fillStyle = "rgba(255,255,255,.55)"; for (let i = 0; i < 260; i++) { const x = r() * w, y = r() * h; if (water(x, y)) g.fillRect(x | 0, y | 0, 3, 1); }
+          for (let i = 0; i < 400 && glints.length < 70; i++) { const x = r() * w, y = r() * h; if (water(x, y) && water(x + 8, y) && water(x - 8, y) && water(x, y + 8) && water(x, y - 8)) glints.push([540 + x * 520 / w, -720 + y * 390 / h, r(), r()]); }
           g.fillStyle = "#3d8a2e"; for (const [x, y] of [[90, 120], [250, 60], [470, 250], [320, 395]]) { g.beginPath(); g.ellipse(x, y, 10, 6, 0, 0, 7); g.fill(); }   // (reeds' tufts on the shore)
         }),
         track: mk(256, 410, (g, w, h) => {
@@ -2453,6 +2473,9 @@ export class Voxel3D {
           g.strokeStyle = "#f4efe4"; g.lineWidth = 2; g.strokeRect(w / 2 - 44, h / 2 - 120, 88, 240); g.beginPath(); g.moveTo(w / 2 - 44, h / 2); g.lineTo(w / 2 + 44, h / 2); g.stroke(); g.beginPath(); g.arc(w / 2, h / 2, 16, 0, 7); g.stroke();
         }),
         wood: this.solidTexture([160, 104, 58, 255]), rail: this.solidTexture([236, 226, 200, 255]),
+        seat: this.solidTexture([206, 208, 214, 255]), riser: this.solidTexture([150, 154, 166, 255]), bench: this.solidTexture([58, 104, 196, 255]),
+        glint: (() => { const N = 16, d = new Uint8Array(N * N * 4); for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const dx = x - 7.5, dy = y - 7.5, a = Math.max(0, 1 - Math.hypot(dx, dy) / 7.5), star = Math.max(0, 1 - Math.min(Math.abs(dx), Math.abs(dy)) / 1.2) * a, v = Math.min(1, a * a * 0.8 + star); d.set([255, 255, 255, Math.round(255 * v)], (y * N + x) * 4); } return this.texture(N, N, d, true); })(),
+        glints,
       };
     }
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
@@ -2461,6 +2484,28 @@ export class Voxel3D {
     const bx = 790, bz0 = -560, bz1 = -440;
     this.draw(this.cafeFill.wood, m4.trs(bx, 4, bz1, 30, bz1 - bz0, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
     for (const dx of [-15, 15]) this.draw(this.cafeFill.rail, m4.trs(bx + dx, 5, bz1, 3, bz1 - bz0, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);   // (the rails' tops)
+    // the track's stand: tiers stepping up westward, a seat top and a riser each, blue benches along the seats, a back wall
+    const cull = gl.isEnabled(gl.CULL_FACE); if (cull) gl.disable(gl.CULL_FACE);
+    const [sx, sz0, sz1, tiers] = CAFE_STAND, D = 9, R = 6, zc = (sz0 + sz1) / 2, L = sz1 - sz0, F = this.cafeFill;
+    for (let i = 0; i < tiers; i++) {
+      const xf = sx - D * i, y = R * (i + 1);
+      this.draw(F.riser, m4.trs(xf, R * i, zc, L, R, 0, Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
+      this.draw(F.seat, m4.trs(xf - D / 2, y, sz1, D, L, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
+      this.draw(F.bench, m4.trs(xf - D * 0.7, y + 1.6, sz1 - 2, 2.5, L - 4, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
+    }
+    const xb = sx - D * tiers;
+    this.draw(F.riser, m4.trs(xb, 0, zc, L, R * tiers + 10, 0, Math.PI / 2), mvp, [0, 0, 1, 1], [0.85, 0.85, 0.9, 1], 0);
+    for (const o of [-0.4, 0.4]) this.draw(F.bench, m4.trs(xb + o, R * tiers + 2, zc, L, 6, 0, Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);   // (a blue band along the back's top, both sides)
+    for (const z of [sz0, sz1]) this.draw(F.riser, m4.trs(sx - D * tiers / 2, 0, z, D * tiers, R * tiers, 0, 0), mvp, [0, 0, 1, 1], [0.8, 0.8, 0.86, 1], 0);   // (its ends)
+    if (cull) gl.enable(gl.CULL_FACE);
+    // the lake's water alive: sun glints twinkling on it, each on its own beat (as the ponds', fieldlife.js)
+    const T = performance.now() / 1000;
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE); gl.depthMask(false);
+    for (const [x, z, h1, h2] of F.glints) {
+      const tw = Math.pow(Math.max(0, Math.sin(T * (1.1 + 1.8 * h1) + h2 * 40)), 12); if (tw < 0.05) continue;
+      const sz = 3 + 5 * tw; this.draw(F.glint, m4.trs(x, 1.6, z + sz / 2, sz, sz, -Math.PI / 2, 0.785 * h2), mvp, [0, 0, 1, 1], [1, 1, 0.92, 0.9 * tw], 0);
+    }
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(true);
   }
   // a neighbouring map in view: its ground (and 120 px up, its trees and walls) not wholly beyond one side of the view
   nbInView(nb, mvp) {
