@@ -19,7 +19,7 @@ export function attachHD({ canvas, keys, getRom, getGame }) {
   const link = document.createElement("link"); link.rel = "stylesheet"; link.href = new URL("../../hd.css", import.meta.url).href;
   document.head.appendChild(link);
   const q = new URLSearchParams(location.search), body = document.body;
-  const touch = /MarioGolfWrapper/.test(navigator.userAgent) || q.has("touch") || (typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches);
+  const touch = /MarioGolfWrapper|MarioTennisWrapper/.test(navigator.userAgent) || q.has("touch") || (typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches);
   body.classList.toggle("touch", touch);
   if (handheld) body.classList.add("handheld");
   const view = new HDView(canvas, getRom);
@@ -46,10 +46,23 @@ export function attachHD({ canvas, keys, getRom, getGame }) {
     opts.appendChild(b);
   }
   applyPad();
-  // the options panel on touch screens: the gear button, the app's Back
-  const gear = document.createElement("button"); gear.id = "hdgear"; gear.textContent = "⚙"; gear.title = "options"; gear.setAttribute("aria-label", "options");
+  // the button bar on touch screens, as Mario Tennis's: Back (the app's, or the gear) shows a column of buttons down the left-hand side,
+  // the game keeps running. OPTIONS there opens the settings (the start mode, the picture, the 3D layers); GAMES (inside the
+  // MTenn3D app, which carries this game) goes back to the screen where you pick a game. Back again closes what is open.
+  const gear = document.createElement("button"); gear.id = "hdgear"; gear.textContent = "⚙"; gear.title = "menu"; gear.setAttribute("aria-label", "menu");
   body.appendChild(gear);
-  const toggleOpts = () => { body.classList.toggle("showopts"); return true; };
+  const side = document.createElement("div"); side.id = "mgside";
+  const sideBtn = (label, title, fn) => { const b = document.createElement("button"); b.textContent = label; b.title = title; b.addEventListener("click", e => { e.stopPropagation(); fn(); }); side.appendChild(b); return b; };
+  sideBtn("OPTIONS", "the start mode, the picture, the 3D view", () => { body.classList.remove("showside"); body.classList.add("showopts"); });
+  sideBtn("PICTURE", "save a picture of the game view", () => { const n = phone.screenshot(canvas); const m = document.getElementById("message"); if (m) m.textContent = "Picture saved: " + n; body.classList.remove("showside"); });
+  if (/MarioTennisWrapper/.test(navigator.userAgent) || q.has("games"))
+    sideBtn("GAMES", "back to the screen where you pick a game", () => { location.href = new URL("../../web/picker.html", location.href).href; });
+  body.appendChild(side);
+  const toggleOpts = () => {
+    if (body.classList.contains("showopts")) body.classList.remove("showopts");
+    else body.classList.toggle("showside");
+    return true;
+  };
   gear.addEventListener("click", toggleOpts);
   window.__backPressed = toggleOpts;
   // the layout: portrait's game and deck heights, the canvas's shape

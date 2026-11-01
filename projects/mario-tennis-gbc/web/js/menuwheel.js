@@ -13,6 +13,7 @@
 import { sigHits } from "./hdmenus/b_common.js";
 import { MenuSkins } from "./menuskins.js";   // the sub-menus in the same look
 import { crestLogo } from "./crestlogo.js";
+import { isStandard } from "./hudmenu.js";   // (settings that are now simply how the game plays: in no menu)
 const TITLE_LOGO = [[20, 20, "3a2df153"], [60, 24, "847037c7"], [100, 40, "2ee97ec9"], [130, 30, "b3a7e81d"], [40, 56, "bf70c43a"], [80, 64, "10cddfdc"], [120, 60, "d82c442b"]];
 const ZOOM = 1.0, HOLD = 90;                          // seconds of the title -> menu move; game frames a screen's picture is held between two (BACKDROP)
 // ---- the ball (drawn once, 512 px): felt (seam and fibres, turned with the ball), light (fixed shading over it), rim (the fuzzy edge) ----
@@ -94,11 +95,13 @@ const NC = CELLS.length;
 const OPTION_CATS = [
   ["PICTURE", "the view, the camera, the screen", ["view3d", "cam", "aspect", "smoothbtn", "resbtn", "voxstylebtn", "lightbtn", "fieldlifebtn", "treesbtn", "perfbtn"]],
   ["STADIUM", "the court, the crowd, the effects", ["stadiumbtn", "stadiumqbtn", "seasonbtn", "venuetourbtn", "courtbtn", "farendbtn", "crowdsndbtn", "ballfxbtn", "matchfxbtn", "kitbtn", "introbtn", "vsbtn", "callsbtn", "aimbtn"]],
-  ["MENUS & TEXT", "how menus and words are drawn", ["uibtn", "fontbtn", "sprbtn"]],
+  ["MENUS & TEXT", "how menus, words and your player look", ["lookbtn", "uibtn", "menubtn", "fontbtn", "sprbtn"]],
   ["MODES", "exhibition rules, rematch, practice, partner, text", ["mode-sets", "mode-games", "mode-tiebreak", "mode-noAd", "mode-rematch", "mode-machine", "mode-mgHard", "mode-partner", "mode-fastText", "recordsbtn"]],
   ["PLAY", "the rules, the feel, the controls", ["physbtn", "netbtn", "crossbtn", "plusbtn", "learnbtn", "forgetbtn", "tourlenbtn", "runaheadbtn", "padmode", "stickfeelbtn", "vibratebtn", "batterybtn", "tourplusbtn", "tourbtn"]],
 ];
-const OPTION_NAMES = { resbtn: "RESOLUTION", view3d: "3D VIEW", aspect: "SCREEN", cam: "CAMERA", padmode: "TOUCH PAD", lightbtn: "LIGHT", perfbtn: "PERFORMANCE", uibtn: "MENUS", sprbtn: "SPRITES" };
+// VIEW (a match's pause bar, its own tab): what you may want to change between points
+const VIEW_CATS = [["VIEW", "the camera and the match's extras", ["view3d", "cam", "aspect", "matchfxbtn", "aimbtn", "callsbtn", "crowdsndbtn"]]];
+const OPTION_NAMES = { tourlenbtn: "TOUR LENGTH", tourbtn: "TOUR PANEL", resbtn: "RESOLUTION", view3d: "3D VIEW", aspect: "SCREEN", cam: "CAMERA", padmode: "TOUCH PAD", lightbtn: "LIGHT", perfbtn: "PERFORMANCE", uibtn: "MENUS", sprbtn: "SPRITES" };
 // the BACKDROP's court in perspective, seen from behind the near baseline (a camera 6 m back, its eye about 3.7 m up): u across
 // (-1..1, the doubles sidelines at +-0.62), v along (0 the far baseline, 0.6 the net, 1.2 the near baseline, low on the screen).
 // A point at z metres from the camera sits 1/z below the horizon, so the far half is small and the near half comes towards you;
@@ -120,26 +123,36 @@ export class MenuWheel {
   sync() {
     const P = this.getPort(); if (!P) return;
     P.menuWheel = P.menuWheel || { on: false, active: false }; P.menuWheel.on = this.on;
-    P.menuWheel.openOptions = () => this.openOptions(); P.menuWheel.optionsInput = input => this.optionsInput(input);   // OPTIONS (main_menu.js)
+    P.menuWheel.openOptions = view => this.openOptions(!!view); P.menuWheel.optionsInput = input => this.optionsInput(input);   // OPTIONS (main_menu.js)
   }
   // ---- OPTIONS ----
   optionRows(cat) {
-    return OPTION_CATS[cat][2].map(id => document.getElementById(id)).filter(e => e && !e.hidden && e.offsetParent !== undefined).map(el => {
+    const only = this.opts && this.opts.only, ids = this.cats()[cat][2];
+    return ids.map(id => document.getElementById(id)).filter(e => e && !e.hidden && (only || !isStandard(e.id))).map(el => {
       const t = el.textContent.trim(), i = t.indexOf(":"), name = OPTION_NAMES[el.id] || (i > 0 ? t.slice(0, i) : t).toUpperCase();
       const value = el.id === "view3d" ? (el.classList.contains("on") ? t : "Off") : i > 0 ? t.slice(i + 1).trim() : el.classList.contains("on") ? "On" : t;
       return { el, name, value, help: el.title || "" };
     });
   }
-  // two steps, as every menu: ▲ ▼ the category round the ball, A opens it; then ▲ ▼ its settings, A changes one, B back to the categories
-  openOptions() { const P = this.getPort(); this.opts = { cat: this.opts ? this.opts.cat : 0, row: 0, pos: this.opts ? this.opts.cat : 0, flash: 0, inCat: false }; if (P && P.menuWheel) P.menuWheel.optionsOpen = true; }
+  cats() { return this.opts && this.opts.only ? VIEW_CATS : OPTION_CATS; }
+  // two steps, as every menu: ▲ ▼ the category round the ball, A opens it; then ▲ ▼ its settings, A changes one, B back to the categories.
+  // view: the pause bar's VIEW tab, its one category open (B closes it). anywhere: opened from the button bar (full.js), over whatever
+  // is on the screen (the game held meanwhile), not from the game's own menus
+  openOptions(view = false, anywhere = false) {
+    const P = this.getPort(), was = this.opts && !this.opts.only ? this.opts.cat : 0;
+    this.opts = view ? { cat: 0, row: 0, pos: 0, flash: 0, inCat: true, only: true } : { cat: was, row: 0, pos: was, flash: 0, inCat: false };
+    this.anywhere = anywhere; if (P && P.menuWheel) P.menuWheel.optionsOpen = true;
+  }
+  closeOptions() { const P = this.getPort(); if (P && P.menuWheel) P.menuWheel.optionsOpen = false; this.anywhere = false; }
+  get optionsShown() { const P = this.getPort(); return !!(this.opts && (this.anywhere || (P && P.menuWheel && P.menuWheel.optionsOpen))); }
   // a frame's pad (the edges) while the panel is open; returns the sound to play ("move", "select", "cancel") or null
   optionsInput(input) {
     const o = this.opts, P = this.getPort(); if (!o) return null;
     const rows = this.optionRows(o.cat);
-    if (input & 0x08 || (input & 0x02 && !o.inCat)) { if (P && P.menuWheel) P.menuWheel.optionsOpen = false; return "cancel"; }   // START, or B on the categories: back to the wheel
+    if (input & 0x08 || (input & 0x02 && (!o.inCat || o.only))) { this.closeOptions(); return "cancel"; }   // START, or B on the categories (VIEW: B): back
     if (input & 0x02) { o.inCat = false; return "cancel"; }                                              // B in a category: back to the categories
     if (!o.inCat) {                                                                                      // the categories: ▲ ▼ (◀ ▶ too), A opens one
-      if (input & 0xF0) { o.cat = (o.cat + (input & 0x90 ? 1 : -1) + OPTION_CATS.length) % OPTION_CATS.length; o.row = 0; return "move"; }
+      if (input & 0xF0) { const n = this.cats().length; o.cat = (o.cat + (input & 0x90 ? 1 : -1) + n) % n; o.row = 0; return "move"; }
       if (input & 0x01 && rows.length) { o.inCat = true; o.row = 0; return "select"; }
       return null;
     }
@@ -158,21 +171,21 @@ export class MenuWheel {
     g.beginPath(); g.arc(0, 0, r * 0.82, 0, 6.2832); g.fill(); g.fillStyle = "#f4f6fb"; g.beginPath(); g.arc(0, 0, r * 0.36, 0, 6.2832); g.fill(); g.restore();
   }
   drawOptions(W, H) {
-    const g = this.cv.getContext("2d"), k = Math.min(W / 1280, H / 720), o = this.opts, cy = H / 2, br = 250 * k, bx = -60 * k, n = OPTION_CATS.length;
+    const g = this.cv.getContext("2d"), k = Math.min(W / 1280, H / 720), o = this.opts, cy = H / 2, br = 250 * k, bx = -60 * k, CATS = this.cats(), n = CATS.length;
     g.clearRect(0, 0, W, H);
     let d = o.cat - o.pos; if (d > n / 2) d -= n; if (d < -n / 2) d += n; o.pos += d * 0.3; if (Math.abs(d) < 0.01) o.pos = o.cat;
     this.menuBall(g, bx, cy, br, -o.pos * 0.6);
-    g.font = `${54 * k}px "${FONT}", ${BODY}`; g.textBaseline = "top"; g.fillStyle = "rgba(0,0,0,0.5)"; g.fillText("OPTIONS", 404 * k, 34 * k); g.fillStyle = "#ffd65a"; g.fillText("OPTIONS", 400 * k, 30 * k); g.textBaseline = "middle";
+    g.font = `${54 * k}px "${FONT}", ${BODY}`; g.textBaseline = "top"; g.fillStyle = "rgba(0,0,0,0.5)"; const head = o.only ? "VIEW" : "OPTIONS"; g.fillText(head, 404 * k, 34 * k); g.fillStyle = "#ffd65a"; g.fillText(head, 400 * k, 30 * k); g.textBaseline = "middle";
     for (let i = 0; i < n; i++) {                                                     // the categories round the ball
       let off = i - o.pos; if (off > n / 2) off -= n; if (off < -n / 2) off += n;
-      const a = off * 0.42, rr = br + 80 * k + (Math.abs(off) < 0.5 ? 40 * k * (1 - Math.abs(off) * 2) : 0), x = bx + rr * Math.cos(a), y = cy + rr * Math.sin(a), label = OPTION_CATS[i][0];
+      const a = off * 0.42, rr = br + 80 * k + (Math.abs(off) < 0.5 ? 40 * k * (1 - Math.abs(off) * 2) : 0), x = bx + rr * Math.cos(a), y = cy + rr * Math.sin(a), label = CATS[i][0];
       if (i === o.cat) { g.font = `${40 * k}px "${FONT}", ${BODY}`; const tw = g.measureText(label).width; g.fillStyle = "#ffd65a"; this.pill(g, x - 20 * k, y - 34 * k, tw + 56 * k, 68 * k, 34 * k); g.fill(); g.fillStyle = "#281e0a"; g.fillText(label, x + 8 * k, y + 3 * k); }
       else { g.globalAlpha = Math.max(0.3, 1 - Math.abs(off) * 0.25); g.font = `${28 * k}px "${FONT}", ${BODY}`; g.fillStyle = "#000"; g.fillText(label, x + 2 * k, y + 2 * k); g.fillStyle = "#c8d0eb"; g.fillText(label, x, y); g.globalAlpha = 1; }
     }
     // the panel: the category's settings, the chosen row gold, each value on a pill
     const rows = this.optionRows(o.cat), px = W - 600 * k, py = 96 * k, pw = 540 * k, rh = (rows.length > 8 ? 36 : 46) * k, ph = Math.max(220 * k, 80 * k + rows.length * rh + 90 * k);
     g.fillStyle = "rgba(250,250,255,0.95)"; this.pill(g, px, py, pw, ph, 28 * k); g.fill(); g.lineWidth = 4 * k; g.strokeStyle = "#ffd65a"; g.stroke();
-    g.fillStyle = "#8a7a50"; g.font = `${20 * k}px ${BODY}`; g.fillText(OPTION_CATS[o.cat][1], px + 30 * k, py + 36 * k);
+    g.fillStyle = "#8a7a50"; g.font = `${20 * k}px ${BODY}`; g.fillText(CATS[o.cat][1], px + 30 * k, py + 36 * k);
     if (!rows.length) { g.fillStyle = "#7a7f98"; g.font = `${24 * k}px ${BODY}`; g.fillText("Turn on 3D VIEW (PICTURE) for these", px + 30 * k, py + 100 * k); }
     rows.forEach((r, i) => {
       const y = py + 80 * k + i * rh, on = o.inCat && i === Math.min(o.row, rows.length - 1);
@@ -189,7 +202,7 @@ export class MenuWheel {
       g.strokeStyle = "rgba(70,74,100,0.18)"; g.lineWidth = 2 * k; g.beginPath(); g.moveTo(px + 30 * k, py + ph - 82 * k); g.lineTo(px + pw - 30 * k, py + ph - 82 * k); g.stroke();
       lines.slice(0, 3).forEach((l, i) => g.fillText(l, px + 30 * k, py + ph - 62 * k + i * 22 * k));
     }
-    g.fillStyle = "#dce2f5"; g.font = `${24 * k}px ${BODY}`; g.textAlign = "right"; g.fillText(o.inCat ? "▲ ▼ setting   A change   B back" : "▲ ▼ category   A open   B back", W - 60 * k, H - 40 * k); g.textAlign = "start";
+    g.fillStyle = "#dce2f5"; g.font = `${24 * k}px ${BODY}`; g.textAlign = "right"; g.fillText(o.only ? "▲ ▼ setting   A change   B play on" : o.inCat ? "▲ ▼ setting   A change   B back" : "▲ ▼ category   A open   B back", W - 60 * k, H - 40 * k); g.textAlign = "start";
   }
   // the tour files' summaries (main_menu.js BuildSaveSlotSummaries: WRAM 3 $D300, 16 bytes each: character or $3F, colour, level, name, minutes (+14), hours (+15))
   file(gb, k) {
@@ -238,13 +251,13 @@ export class MenuWheel {
     const title = onTitle || this.phase === "attract";
     if (this.phase === "zoom" && T - this.zoomAt > ZOOM && (wheel || T - this.zoomAt > ZOOM + 1.5)) this.phase = "none";   // (the wheel up, or soon after: a quick player may already be past the main menu)
     const skin = this.on && P && P.menuWheel && P.menuWheel.skin, skinOn = !!(skin && !wheel && !title && this.phase !== "zoom" && P.frames - skin.at <= 2);   // (a sub-menu's loop running now)
-    const opts = !!(this.on && P && P.menuWheel && P.menuWheel.optionsOpen && this.opts);   // OPTIONS: open (from the main menu or a match's options)
+    const opts = !!((this.on && P && P.menuWheel && P.menuWheel.optionsOpen && this.opts) || (this.anywhere && this.opts));   // OPTIONS: open (from the main menu, a match's pause, the button bar)
     const show = title || wheel || this.phase === "zoom" || skinOn || opts;
     // BACKDROP: the front end's screens (the wheel, the sub-menus, OPTIONS from the menu) play over a moving night court of their own,
     // not the game's screen; a match's pause menu and its OPTIONS keep the match behind them. Between two screens (the game's
     // slide-out, load and slide-in, where no skin is up) the last picture stays up over the backdrop for a moment, fading, so the
     // game's own menu never shows through.
-    const front = show && !title && (wheel || this.phase === "zoom" || (skinOn && skin.icon !== "pause") || (opts && !P.menuWheel.pauseMore));
+    const front = show && !title && (wheel || this.phase === "zoom" || (skinOn && skin.icon !== "pause") || (opts && !this.anywhere && !(P && P.menuWheel && P.menuWheel.pauseMore)));
     if (front) this.lastFront = F;
     const court = this.isCourt && this.isCourt();                                  // (a match's court is up: no more holding)
     const hold = !show && !court && this.on && this.lastFront && F - this.lastFront < HOLD && F >= this.lastFront && this.snap;

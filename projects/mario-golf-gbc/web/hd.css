@@ -27,7 +27,14 @@ body.touch.stick #stickzone { display: block; position: fixed; left: 0; bottom: 
   background: radial-gradient(circle at 34% 28%, #fff 0 25%, #dfe4e8 60%, #aab3bb 100%); box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
 body.touch #hdgear { display: block; position: fixed; top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); z-index: 6;
   width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.3); background: rgba(20,28,20,0.55); color: #fff; font-size: 20px; line-height: 1; padding: 0; }
-/* the options as a panel over the game, opened by the gear (or the app's Back) */
+/* the button bar (as Mario Tennis's): a column down the left-hand side, opened by the app's Back or the gear */
+#mgside { display: none; }
+body.touch.showside #mgside { display: flex; flex-direction: column; gap: 6px; position: fixed; z-index: 6; box-sizing: border-box;
+  top: 0; bottom: 0; left: 0; width: min(230px, 42vw); overflow-y: auto;
+  padding: calc(max(8px, env(safe-area-inset-top)) + 46px) 8px 10px max(8px, env(safe-area-inset-left)); background: rgba(12,14,22,0.9); border-radius: 0 14px 14px 0; }
+#mgside button { background: #2c3140; border: 1px solid #555; border-radius: 6px; color: #fff; padding: 10px 12px; font-size: 14px; text-align: left; font-weight: bold; }
+body.touch #hdgear { z-index: 8; }
+/* the options as a panel over the game, opened by OPTIONS on the button bar */
 body.touch #modes, body.touch #hdopts, body.touch #layers3d, body.touch #note { display: none; }   /* (the page's notes: not on a touch screen) */
 /* the 3D layers' options too only with the options open (a large touch screen, a foldable's inner one, left them under the game) */
 body.touch.showopts #layers3d { display: block; position: fixed; left: 50%; transform: translateX(-50%); z-index: 7; width: min(94vw, 560px);

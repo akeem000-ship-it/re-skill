@@ -201,7 +201,10 @@ public class MainActivity extends Activity {
     }
     @Override public void onBackPressed() {           // keep the game running; Back shows / hides the page's button bar
         String u = web.getUrl();
-        if (u != null && u.contains("/assets/golf/")) { web.loadUrl("https://appassets.androidplatform.net/assets/web/picker.html"); return; }   // MARIO GOLF: back to the game picker
+        if (u != null && u.contains("/assets/golf/")) {   // MARIO GOLF: its own button bar (web/js/hd/page.js: OPTIONS, GAMES), as here; the picker if it has none (its ROM screen)
+            web.evaluateJavascript("window.__backPressed ? window.__backPressed() : (location.href = 'https://appassets.androidplatform.net/assets/web/picker.html')", null);
+            return;
+        }
         web.evaluateJavascript("window.__backPressed && window.__backPressed()", null);
     }
     // ---- MARIO GOLF (the game picker's other half: ../../mario-golf-gbc/web in assets/golf/web) ----

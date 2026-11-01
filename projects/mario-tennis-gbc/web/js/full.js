@@ -517,7 +517,8 @@ $("smoothbtn").after(document.createTextNode(" "), raBtn); showRA();
 // RES: the 3D view's resolution against the screen's pixels (voxel.js resScale): Auto follows the frame rate; 100% (the default) is
 // the screen's own pixels; less is faster and softer, more is sharper and slower
 const RES_STEPS = ["auto", 0.5, 0.67, 0.75, 1, 1.25, 1.5];
-let res = (() => { const v = q.get("res") || stored("mt-res"); return v === "auto" ? "auto" : RES_STEPS.includes(+v) ? +v : 1; })();
+// (not chosen: Auto in the app, picked for the device as it plays; 100% in a browser)
+let res = (() => { const v = q.get("res") || stored("mt-res"); return v === "auto" ? "auto" : v && RES_STEPS.includes(+v) ? +v : navigator.userAgent.includes("MarioTennisWrapper") && !navigator.webdriver ? "auto" : 1; })();
 const resBtn = document.createElement("span"); resBtn.className = "k"; resBtn.id = "resbtn"; resBtn.hidden = true;
 resBtn.title = "3D / VOX resolution: Auto (lower while the frame rate drops, back up when there is room), 50% to 150% of the screen's pixels";
 const applyRes = () => {
@@ -632,6 +633,26 @@ function crossMode() { const v = q.get("cross") || stored("mt-cross"); return v 
 menuWheel = attachMenuWheel(() => gb, () => port, $("hud"), () => hd);
 menuWheel.show = new TitleShow(() => (view3d && voxel ? voxel : null));   // TITLE SHOW: the venues in 3D behind PRESS START
 menuWheel.isCourt = () => !!(view3d && voxel && voxel.mode === "3d" && voxel.isCourt());   // (BACKDROP: a match is up, stop holding the menu)
+// OPTIONS (the button bar): the game's settings menu (menuwheel.js) from anywhere, over whatever is on the screen; the game is held
+// until it closes (B on its categories, or START), and the pad drives it as it does in the game's own menus
+{
+  const b = document.createElement("span"); b.className = "k"; b.id = "optionsbtn"; b.textContent = "OPTIONS"; b.title = "every setting: picture, stadium, menus, modes and play";
+  b.addEventListener("pointerdown", e => {
+    e.stopPropagation(); if (!gb || menuWheel.optionsShown) return;
+    const was = paused; paused = true; menuWheel.openOptions(false, true);
+    if (document.body.classList.contains("touch")) showHud(false);
+    let held = 0xFF;                                                      // (what is down as it opens is not a press)
+    const step = () => {
+      pollGamepad(keys); const p = input(), m = (p.a ? 1 : 0) | (p.b ? 2 : 0) | (p.start ? 8 : 0) | (p.right ? 0x10 : 0) | (p.left ? 0x20 : 0) | (p.up ? 0x40 : 0) | (p.down ? 0x80 : 0);
+      const edge = m & ~held; held = m; if (edge) menuWheel.optionsInput(edge);
+      menuWheel.update();
+      if (!menuWheel.anywhere && !m) { paused = was; renderedAt = -1; drawnFrame = -1; return; }   // (closed, and B / START let go: not seen by the game)
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+  $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b);
+}
 // TOUR MATCH: 3x3 / Game's: remembered, read by the port when a tour match is set up (the next match, no reload)
 {
   const b = document.createElement("span"); b.className = "k"; b.id = "tourlenbtn"; b.title = "tour match length: the best of 3 sets of 3 games, or the game's own (3 sets of 6 games, 5 sets at the Island Open); needs the JS port (CODE: PORT)";
