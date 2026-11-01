@@ -297,6 +297,9 @@ const CAFE_GATES = [56, 296, 440];                 // (the road's trees in the w
 // the empty ground filled: [kind, x0, z0, x1, z1] (road map px): the lake (the junior courts' pond grown north into a lake, a footbridge
 // over it), a grove left of the dorm front, a running track on the lawn west of the courtyard; trees: [x, z] copies of the road's tree
 const CAFE_FILL = [["lake", 540, -720, 1060, -330], ["track", -250, 150, -20, 520]];   // (the lake's south end runs into the junior courts' pond: map 30's top row, x 712-888)
+// the lake's footbridge: across the channel where the lake runs into the junior courts' pond, shore to shore (x0 to x1 at z, w wide,
+// its deck arching rise px up in the middle), built of small blocks as the 3D ground's stones are
+const CAFE_BRIDGE = { x0: 700, x1: 900, z: -356, w: 22, rise: 9 };
 // the track's stand: a few tiers of seats along its west side, facing the track: [x of its front, z0, z1, tiers]
 const CAFE_STAND = [-258, 250, 420, 4];
 const CAFE_TREES = [[-560, -300], [-620, -230], [-560, -160], [-620, -90], [-680, -300], [-740, -230], [-680, -160], [-740, -90], [-800, -300], [-860, -230], [-800, -160], [-860, -90],
@@ -2495,10 +2498,17 @@ export class Voxel3D {
       }
       this.draw(this.cafeFill[kind], m4.trs((x0 + x1) / 2, 1.2, z1, x1 - x0, z1 - z0, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0.5);
     }
-    // the footbridge across the lake's narrow middle (planks raised a little, a rail each side)
-    const bx = 790, bz0 = -560, bz1 = -440;
-    this.draw(this.cafeFill.wood, m4.trs(bx, 4, bz1, 30, bz1 - bz0, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
-    for (const dx of [-15, 15]) this.draw(this.cafeFill.rail, m4.trs(bx + dx, 5, bz1, 3, bz1 - bz0, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);   // (the rails' tops)
+    // the footbridge (CAFE_BRIDGE): blocks, drawn as the 3D ground's stones; without the ground's blocks, a flat deck and rails
+    const GB = this.groundFx, B = CAFE_BRIDGE;
+    if (GB && GB.pX) {
+      const FB = this.cafeFill;
+      if (!FB.bridge || FB.bridgeG !== GB) { FB.bridgeG = GB; const b = this.bridgeBlocks(); FB.bridge = GB.vao(GB.cube, 4, [[b.at, 4], [b.size, 4], [b.col, 3]]); }
+      gl.useProgram(GB.pX); gl.uniformMatrix4fv(GB.uX.uMVP, false, mvp); gl.bindVertexArray(FB.bridge.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 30, FB.bridge.n);
+      gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
+    } else {
+      this.draw(this.cafeFill.wood, m4.trs((B.x0 + B.x1) / 2, 4, B.z + B.w / 2, B.x1 - B.x0, B.w, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
+      for (const dz of [-B.w / 2, B.w / 2]) this.draw(this.cafeFill.rail, m4.trs((B.x0 + B.x1) / 2, 5, B.z + dz + 1.5, B.x1 - B.x0, 3, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
+    }
     // the track's stand: tiers stepping up westward, a seat top and a riser each, blue benches along the seats, a back wall
     const cull = gl.isEnabled(gl.CULL_FACE); if (cull) gl.disable(gl.CULL_FACE);
     const [sx, sz0, sz1, tiers] = CAFE_STAND, D = 9, R = 6, zc = (sz0 + sz1) / 2, L = sz1 - sz0, F = this.cafeFill;
@@ -2521,6 +2531,26 @@ export class Voxel3D {
       const sz = 3 + 5 * tw; this.draw(F.glint, m4.trs(x, 1.6, z + sz / 2, sz, sz, -Math.PI / 2, 0.785 * h2), mvp, [0, 0, 1, 1], [1, 1, 0.92, 0.9 * tw], 0);
     }
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(true);
+  }
+  // the footbridge's blocks ({at, size, col} per block, the 3D ground's box instances): an arched deck of planks across, a dark beam
+  // under each side, posts every 16 px and a handrail along their tops, both sides
+  bridgeBlocks() {
+    const B = CAFE_BRIDGE, at = [], size = [], col = [], L = B.x1 - B.x0, hsh = (a, b) => { const v = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return v - Math.floor(v); };
+    const box = (x, y, z, sx, sy, sz, c) => { at.push(x, y, z, 0); size.push(sx, sy, sz, 0); col.push(...c); };
+    const deck = x => { const t = (x - B.x0) / L; return 1.5 + B.rise * Math.sin(Math.PI * Math.min(1, Math.max(0, (t - 0.06) / 0.88))); };
+    for (let x = B.x0 + 1.5, n = 0; x < B.x1; x += 3, n++) {                      // the planks, a hair apart, each its own shade
+      const k = 0.88 + hsh(n, 1) * 0.2, c = n & 1 ? [0.69, 0.47, 0.25] : [0.6, 0.39, 0.2];
+      box(x, deck(x), B.z, 2.6, 1.3, B.w + (hsh(n, 2) - 0.5) * 1.5, c.map(v => v * k));
+    }
+    for (const side of [-1, 1]) {
+      const zs = B.z + side * (B.w / 2 - 1);
+      for (let x = B.x0 + 1, n = 0; x < B.x1; x += 2, n++) {
+        box(x, deck(x) - 1.6, B.z + side * (B.w / 2 - 0.5), 2.1, 1.7, 1.6, [0.36, 0.22, 0.11]);   // the side beam
+        box(x, deck(x) + 7.2, zs, 2.1, 1.3, 1.6, [0.78, 0.55, 0.32]);                              // the handrail
+      }
+      for (let x = B.x0 + 4; x <= B.x1 - 4; x += 16) box(x, deck(x) + 1.3, zs, 1.8, 6.2, 1.8, [0.47, 0.29, 0.15]);   // the posts
+    }
+    return { at, size, col };
   }
   // THE LAKE IN THE POND'S STYLE: the lake laid out of the junior courts' pond's own 16 x 16 tiles (map 30, src: its field), on the pond's
   // grid (x 408 + 16k, z -336 + 16k in the road's map px), the way the game lays its ponds: each lake tile takes the pond tile whose
