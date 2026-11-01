@@ -107,7 +107,7 @@ export class HudLayer {
   // SIZE: the HUD at most HUD_PX screen (CSS) pixels to the game's pixel, so a big screen (a foldable's inner one) shows more of the course
   // around a HUD of the same size, as Mario Tennis's does, not the same picture larger: its top pinned to the top, the bar to the bottom
   pieces(c, lcd) {
-    const CW = c.width, CH = c.height, css = c.clientHeight || CH, hs = Math.min(CH / H, (CH / css) * HUD_PX), bw = W * hs, bh = H * hs;
+    const CW = c.width, CH = c.height, css = c.clientHeight || CH, hs = Math.min(CH / H, CW / W, (CH / css) * HUD_PX), bw = W * hs, bh = H * hs;
     if (bw >= CW - 2 && bh >= CH - 2) return [[[0, 0, 1, 1], 0, 0, 0, 0]];
     const at = (off, y = 0) => [off / CW, y / CH, bw / CW, bh / CH], mid = (CW - bw) / 2, low = CH - bh;
     let top = (lcd.lcdc & 0x20) && lcd.wx <= 7 ? Math.max(0, Math.min(H, lcd.wy)) : H;

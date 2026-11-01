@@ -44,8 +44,11 @@ export class HDView {
     if (this.view === "4:3") return 192;
     if (this.view !== "fill") return 160;
     const b = document.body, touch = b.classList.contains("touch"), portrait = b.classList.contains("portrait");
-    const ar = portrait ? innerWidth / (innerHeight * 0.6) : innerWidth / Math.max(1, innerHeight);   // (a phone held sideways: edge to edge, page.js FULL SCREEN)
-    return Math.max(160, Math.min(400, Math.round(144 * ar / 2) * 2));
+    // (the page's own visible size, not the window's: an app's browser can report a window wider than the page while it lays it out, and
+    // a picture made for that widened the page, which widened the window... rounded down, so it never comes out wider than the screen)
+    const de = document.documentElement, vw = de.clientWidth || innerWidth, vh = de.clientHeight || innerHeight;
+    const ar = portrait ? vw / (vh * 0.6) : vw / Math.max(1, vh);   // (a phone held sideways: edge to edge, page.js FULL SCREEN)
+    return Math.max(160, Math.min(400, Math.floor(144 * ar / 2) * 2));
   }
   onChange(fn) { this.listeners.push(fn); }
   set(k, v) {

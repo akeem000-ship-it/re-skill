@@ -81,8 +81,9 @@ export function attachHD({ canvas, keys, getRom, getGame }) {
   // (in 3D the bar is at most 3.4 screen pixels to the game's, in the bottom's middle: g3d/hud3d.js HUD_PX; checked again each second, as
   // the 3D view comes and goes)
   const lift = () => {
-    const r = full() && $screen() ? $screen().getBoundingClientRect() : null, v3 = document.getElementById("view3d");
-    const barW = r ? (v3 && v3.style.display === "block" ? Math.min(r.width, 160 * 3.4) : r.width) : 0, barH = r ? (barW / r.width) * r.height * 26 / 144 : 0;
+    const v3 = document.getElementById("view3d"), on3 = v3 && v3.style.display === "block", de = document.documentElement;
+    const r = !full() ? null : on3 ? { top: 0, width: de.clientWidth, height: de.clientHeight } : $screen() ? $screen().getBoundingClientRect() : null;   // (3D: the whole screen, g3d/layers.js)
+    const barW = r ? (on3 ? Math.min(r.width, 160 * 3.4, r.height * 160 / 144) : r.width) : 0, barH = on3 ? barW * 144 / 160 * 26 / 144 : r ? r.height * 26 / 144 : 0;
     const v = r && (r.width - barW) / 2 < 190 ? Math.max(26, Math.round(innerHeight - (r.top + r.height) + barH + 10)) : 26;
     body.style.setProperty("--padlift", v + "px");
   };

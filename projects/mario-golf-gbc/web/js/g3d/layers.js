@@ -111,7 +111,9 @@ class Page {
   hide() { if (this.canvas.style.display !== "none") this.canvas.style.display = "none"; }
   // the canvas over the game's screen (its size in device pixels; Lite at a lower resolution)
   place() {
-    const r = this.screen.getBoundingClientRect(), c = this.canvas, dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // (a phone's full-screen layout, hd/page.js FULL SCREEN: the whole screen, as Mario Tennis's 3D view; its HUD keeps to the corners)
+    const fullScreen = document.body.classList.contains("full"), de = document.documentElement;
+    const r = fullScreen ? { left: 0, top: 0, width: de.clientWidth, height: de.clientHeight } : this.screen.getBoundingClientRect(), c = this.canvas, dpr = Math.min(window.devicePixelRatio || 1, 2);
     // the resolution: Lite at 0.6; both come down by themselves while the pictures come slower than ~40 a second, and go back up
     const now = performance.now(), dtp = this.lastPlace ? now - this.lastPlace : 16; this.lastPlace = now;
     this.avg = this.avg ? this.avg * 0.9 + Math.min(dtp, 200) * 0.1 : 16;
@@ -120,7 +122,8 @@ class Page {
     const k = (this.L.quality === "lite" ? 0.6 : 1) * this.resK;
     const W = Math.max(160, Math.round(r.width * dpr * k)), H = Math.max(144, Math.round(r.height * dpr * k));
     if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
-    const x = r.left + window.scrollX, y = r.top + window.scrollY;
+    const x = fullScreen ? 0 : r.left + window.scrollX, y = fullScreen ? 0 : r.top + window.scrollY;
+    if (fullScreen !== this.wasFull) { this.wasFull = fullScreen; c.style.position = fullScreen ? "fixed" : "absolute"; this.px = null; }
     if (this.px !== x || this.py !== y || this.pw !== r.width || this.ph !== r.height) {
       this.px = x; this.py = y; this.pw = r.width; this.ph = r.height;
       Object.assign(c.style, { left: x + "px", top: y + "px", width: r.width + "px", height: r.height + "px" });

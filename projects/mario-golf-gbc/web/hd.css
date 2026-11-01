@@ -108,3 +108,6 @@ body.full #pad .ab button { background: rgba(44,49,64,0.45); border: 2px solid r
 body.full #pad .ab button.on { background: rgba(80,90,120,0.65); }
 body.full #pad .mid { opacity: 1; }
 body.full #pad .mid .small { background: rgba(44,49,64,0.55); color: #fff; border: 1px solid rgba(255,255,255,0.3); box-shadow: none; }
+/* (never wider or taller than the screen: an app's browser widens a page that is, and the picture then grew with it) */
+html:has(body.full), body.full { overflow: hidden; }
+body.full #screen, body.full.wide #screen { max-width: 100vw !important; max-height: 100dvh !important; object-fit: contain; }
