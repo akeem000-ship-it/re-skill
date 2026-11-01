@@ -66,7 +66,23 @@ export function attachHD({ canvas, keys, getRom, getGame }) {
   gear.addEventListener("click", toggleOpts);
   window.__backPressed = toggleOpts;
   // the layout: portrait's game and deck heights, the canvas's shape
-  const layout = () => { portraitArea(); deck.resize(); };
+  // FULL SCREEN (as Mario Tennis on a phone): everywhere but an upright phone (the deck), the picture edge to edge on black and the
+  // controls over it, see-through; a big screen (a foldable's inner one) bigger buttons; inside the app (Back opens the bar) no gear
+  body.classList.toggle("inapp", /MarioGolfWrapper|MarioTennisWrapper/.test(navigator.userAgent));
+  const layout = () => {
+    const area = portraitArea();
+    const full = touch && !area; body.classList.toggle("full", full); body.classList.toggle("big", full && Math.min(innerWidth, innerHeight) >= 600);
+    body.classList.toggle("tall", full && innerHeight / innerWidth > 144 / 160);   // (taller than the picture: it goes to the top, the controls below it)
+    deck.resize();
+    // the controls clear the game's bottom bar (the swing meter, its last 26 of 144 rows) wherever it runs under them: a picture no wider
+    // than the screen's middle leaves the corners free (the 3D view keeps the bar in its middle: g3d/hud3d.js), else they sit above it
+    requestAnimationFrame(() => {
+      const r = full && $screen() ? $screen().getBoundingClientRect() : null;
+      const lift = r && r.width < r.height * 1.6 ? Math.max(26, Math.round(innerHeight - (r.top + r.height * (1 - 26 / 144)) + 10)) : 26;
+      body.style.setProperty("--padlift", lift + "px");
+    });
+  };
+  const $screen = () => document.getElementById("screen");
   addEventListener("resize", layout); view.onChange(layout); layout();
   // a controller's L2 / R2 (gamepad.js): the view, the fast run (as the page's Space key)
   let l2 = false, r2 = false;

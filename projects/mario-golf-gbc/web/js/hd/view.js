@@ -26,7 +26,8 @@ export class HDView {
     const q = new URLSearchParams(location.search);
     this.font = q.get("font") || stored("mg-font") || "game"; if (!FONTS[this.font]) this.font = "game";
     this.ui = (q.get("ui") || stored("mg-ui") || "game") === "hd" ? "hd" : "game";
-    this.view = viewOf(q.get("view") || stored("mg-view"));
+    const touchy = /MarioGolfWrapper|MarioTennisWrapper/.test(navigator.userAgent) || (typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches);
+    this.view = viewOf(q.get("view") || stored("mg-view") || (touchy ? "fill" : "normal"));   // (a phone: Fill unless chosen, as Mario Tennis)
     this.gbv = new GbView(); this.hd = null; this.w = null; this.width = 160; this.frameKey = -1; this.wideOn = false;
     this.small = document.createElement("canvas"); this.sg = this.small.getContext("2d");
     this.wideImg = null; this.wide32 = null;
@@ -43,7 +44,7 @@ export class HDView {
     if (this.view === "4:3") return 192;
     if (this.view !== "fill") return 160;
     const b = document.body, touch = b.classList.contains("touch"), portrait = b.classList.contains("portrait");
-    const ar = portrait ? innerWidth / (innerHeight * 0.6) : touch ? (innerWidth - 16) / Math.max(1, innerHeight - 16) : innerWidth / Math.max(1, innerHeight);
+    const ar = portrait ? innerWidth / (innerHeight * 0.6) : innerWidth / Math.max(1, innerHeight);   // (a phone held sideways: edge to edge, page.js FULL SCREEN)
     return Math.max(160, Math.min(400, Math.round(144 * ar / 2) * 2));
   }
   onChange(fn) { this.listeners.push(fn); }
