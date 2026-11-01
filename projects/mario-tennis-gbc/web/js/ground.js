@@ -545,7 +545,9 @@ export class Ground {
   // (or of the map) builds the ground again (else the grass keeps the last map's area: the road by the cafe was never mown)
   // the neighbouring map drawn beyond this one's edge (voxel.js drawFieldScene, with v.gb its ROM copy of that map: its size, collision and
   // id): its own ground, built and kept apart from this map's, so the mown lawn, kerbs and grit run on across the seam
-  drawPart(f, mvp, T) { const own = this.built; this.built = this.builtPart || null; this.inPart = true; try { this.draw(f, mvp, T); } finally { this.inPart = false; this.builtPart = this.built; this.built = own; } }
+  // a neighbouring map's ground: built once and kept with that map (f.groundPart), not in one shared slot: with the campus several
+  // neighbours draw each frame, and one slot had each of them build its blades, grit and stones again every frame
+  drawPart(f, mvp, T) { const own = this.built; this.built = f.groundPart || null; this.inPart = true; try { this.draw(f, mvp, T); } finally { this.inPart = false; f.groundPart = this.built; this.built = own; } }
   mapSize() { const w0 = this.v.gb.mem.wram[0]; return w0[0x32B] << 8 | w0[0x32C]; }
   // the floor's colours were repainted (voxel.js recolourField: a fade, a palette change) and have been still for 0.4 s: what grows where
   // is read from those colours, so a ground first built during a fade-in (all dark: no lawn, no dirt) is built again in the real ones
@@ -574,13 +576,13 @@ export class Ground {
       gl.uniform1f(this.uS.uFlat, 0);
     }
     if (B.carpet) {
-      const N = 14;
+      const N = this.inPart ? 5 : 14;              // (a neighbouring map's lawn: 5 layers, it is seen from further off; 14 layered over a few maps at once was most of a campus frame's drawing)
       gl.useProgram(this.pS); gl.uniformMatrix4fv(this.uS.uMVP, false, mvp); gl.uniform4fv(this.uS.uRect, B.carpet.rect); gl.uniform4fv(this.uS.uKept, B.carpet.kept); gl.uniform1f(this.uS.uN, N);
       gl.uniform1f(this.uS.uHmax, 3.4); gl.uniform1f(this.uS.uTime, T); gl.uniform3fv(this.uS.uPush, me ? [me.x, me.y + 4, 1] : [0, 0, 0]);
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, B.carpet.tex); gl.uniform1i(this.uS.uMask, 0);
       gl.bindVertexArray(this.unitVao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, N);
     }
-    if (B.boxes.n) { gl.useProgram(this.pX); gl.uniformMatrix4fv(this.uX.uMVP, false, mvp); gl.bindVertexArray(B.boxes.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 30, B.boxes.n); }
+    if (B.boxes.n && !(this.inPart && f.nbFar)) { gl.useProgram(this.pX); gl.uniformMatrix4fv(this.uX.uMVP, false, mvp); gl.bindVertexArray(B.boxes.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 30, B.boxes.n); }
     if (B.clumps.n) {
       gl.useProgram(this.pC); gl.uniformMatrix4fv(this.uC.uMVP, false, mvp); gl.uniform1f(this.uC.uTime, T);
       gl.bindVertexArray(B.clumps.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, this.sphereN, B.clumps.n);

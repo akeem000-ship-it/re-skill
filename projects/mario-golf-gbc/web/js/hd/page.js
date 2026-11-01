@@ -29,7 +29,7 @@ export function attachHD({ canvas, keys, getRom, getGame }) {
   // touch: D-pad or the analog stick (remembered), the vibration, a picture
   const zone = document.createElement("div"); zone.id = "stickzone"; body.appendChild(zone);
   const stick = mountStick(zone);
-  let pad = (q.get("pad") || stored("mg-pad")) === "stick" ? "stick" : "dpad";
+  let pad = (q.get("pad") || stored("mg-pad") || (touch ? "stick" : "dpad")) === "stick" ? "stick" : "dpad";   // (a touch screen: the stick, as Mario Tennis, unless the d-pad was chosen)
   const applyPad = () => { const on = touch && pad === "stick"; body.classList.toggle("stick", on); stick.setEnabled(on); };
   if (opts && touch) {
     const l = document.createElement("label"); l.textContent = "Touch ";
@@ -76,12 +76,18 @@ export function attachHD({ canvas, keys, getRom, getGame }) {
     deck.resize();
     // the controls clear the game's bottom bar (the swing meter, its last 26 of 144 rows) wherever it runs under them: a picture no wider
     // than the screen's middle leaves the corners free (the 3D view keeps the bar in its middle: g3d/hud3d.js), else they sit above it
-    requestAnimationFrame(() => {
-      const r = full && $screen() ? $screen().getBoundingClientRect() : null;
-      const lift = r && r.width < r.height * 1.6 ? Math.max(26, Math.round(innerHeight - (r.top + r.height * (1 - 26 / 144)) + 10)) : 26;
-      body.style.setProperty("--padlift", lift + "px");
-    });
+    requestAnimationFrame(lift);
   };
+  // (in 3D the bar is at most 3.4 screen pixels to the game's, in the bottom's middle: g3d/hud3d.js HUD_PX; checked again each second, as
+  // the 3D view comes and goes)
+  const lift = () => {
+    const r = full() && $screen() ? $screen().getBoundingClientRect() : null, v3 = document.getElementById("view3d");
+    const barW = r ? (v3 && v3.style.display === "block" ? Math.min(r.width, 160 * 3.4) : r.width) : 0, barH = r ? (barW / r.width) * r.height * 26 / 144 : 0;
+    const v = r && (r.width - barW) / 2 < 190 ? Math.max(26, Math.round(innerHeight - (r.top + r.height) + barH + 10)) : 26;
+    body.style.setProperty("--padlift", v + "px");
+  };
+  const full = () => body.classList.contains("full");
+  setInterval(lift, 1000);
   const $screen = () => document.getElementById("screen");
   addEventListener("resize", layout); view.onChange(layout); layout();
   // a controller's L2 / R2 (gamepad.js): the view, the fast run (as the page's Space key)

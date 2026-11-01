@@ -5,7 +5,7 @@
 // its shadow, the golfer, the target marker; bank 15: the flag behind the golfer) itself and leaves those out.
 import { setOamHook } from "../golf/render/display.js";
 
-const W = 160, H = 144;
+const W = 160, H = 144, HUD_PX = 3.4;
 export const WORLD_BANKS = new Set([0x11, 0x04, 0x15]);
 const tags = new WeakMap();                       // GolfMemory -> Uint8Array(40): the bank that wrote each slot (0: unknown)
 export function tagsOf(w) { let t = tags.get(w); if (!t) tags.set(w, t = new Uint8Array(40)); return t; }
@@ -104,15 +104,17 @@ export class HudLayer {
   // in pieces: the window's rows (the bottom bar, message boxes) in the middle; above them each group of columns the HUD covers (the
   // hole and yards at the top left, the wind and the player at the top right) pinned to its own side, a group across the middle
   // (a caption) in the middle. At 10:9 one piece, the whole screen, as before. Returns [uRect, scissor x, y, w, h (w 0: none)].
+  // SIZE: the HUD at most HUD_PX screen (CSS) pixels to the game's pixel, so a big screen (a foldable's inner one) shows more of the course
+  // around a HUD of the same size, as Mario Tennis's does, not the same picture larger: its top pinned to the top, the bar to the bottom
   pieces(c, lcd) {
-    const CW = c.width, CH = c.height, hs = CH / H, bw = W * hs;
-    if (bw >= CW - 2) return [[[0, 0, 1, 1], 0, 0, 0, 0]];
-    const at = off => [off / CW, 0, bw / CW, 1], mid = (CW - bw) / 2;
+    const CW = c.width, CH = c.height, css = c.clientHeight || CH, hs = Math.min(CH / H, (CH / css) * HUD_PX), bw = W * hs, bh = H * hs;
+    if (bw >= CW - 2 && bh >= CH - 2) return [[[0, 0, 1, 1], 0, 0, 0, 0]];
+    const at = (off, y = 0) => [off / CW, y / CH, bw / CW, bh / CH], mid = (CW - bw) / 2, low = CH - bh;
     let top = (lcd.lcdc & 0x20) && lcd.wx <= 7 ? Math.max(0, Math.min(H, lcd.wy)) : H;
-    if (top < 16) return [[at(mid), 0, 0, 0, 0]];                                   // (a full-screen window: all in the middle)
+    if (top < 16) return [[at(mid, (CH - bh) / 2), 0, 0, 0, 0]];                    // (a full-screen window: all in the middle)
     const used = new Uint8Array(W), a = this.rgba;
     for (let y = 0; y < top; y++) for (let x = 0; x < W; x++) if (a[(y * W + x) * 4 + 3]) used[x] = 1;
-    const out = [], yTop = Math.round(CH - top * hs), hTop = CH - yTop;
+    const out = [], yTop = Math.round(CH - top * hs), hTop = CH - yTop;               // (the top rows: from the top down)
     for (let x = 0; x < W;) {
       if (!used[x]) { x++; continue; }
       let e = x; for (let gap = 0; e < W && gap < 6; e++) gap = used[e] ? 0 : gap + 1;     // (a group: columns with gaps under 6 px)
@@ -121,7 +123,7 @@ export class HudLayer {
       out.push([at(off), Math.floor(off + x * hs), yTop, Math.ceil((e - x) * hs) + 1, hTop]);
       x = e;
     }
-    if (top < H) out.push([at(mid), 0, 0, CW, yTop]);
+    if (top < H) out.push([at(mid, low), 0, 0, CW, Math.round(bh - top * hs)]);      // (the window's rows: the bar, at the bottom)
     return out;
   }
 }

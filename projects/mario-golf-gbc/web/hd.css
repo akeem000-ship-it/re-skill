@@ -97,3 +97,14 @@ body.full.big .dpad { grid-template: repeat(3, 62px) / repeat(3, 62px); }
 body.full.big .ab .a, body.full.big .ab .b { width: 82px; height: 82px; font-size: 24px; }
 body.full.big .ab { gap: 16px; }
 body.full.inapp #hdgear { display: none; }
+/* the controls as Mario Tennis's over the picture: the stick where the thumb lands (left), dark see-through A / B (right), dark pills */
+body.full.stick #stickzone { z-index: 6; width: 46vw; height: 60dvh; }
+body.full .stick-base { left: calc(80px + env(safe-area-inset-left)); top: calc(100% - 100px - var(--padlift, 26px) + 26px); width: 120px; height: 120px;
+  background: rgba(44,49,64,0.45); border: 2px solid rgba(255,255,255,0.35); }
+body.full .stick-base.active { background: rgba(44,49,64,0.6); }
+body.full #pad .ab { opacity: 1; }
+body.full #pad .ab button { background: rgba(44,49,64,0.45); border: 2px solid rgba(255,255,255,0.35); color: #fff; font: 700 22px system-ui;
+  box-shadow: none; background-blend-mode: normal; }
+body.full #pad .ab button.on { background: rgba(80,90,120,0.65); }
+body.full #pad .mid { opacity: 1; }
+body.full #pad .mid .small { background: rgba(44,49,64,0.55); color: #fff; border: 1px solid rgba(255,255,255,0.3); box-shadow: none; }

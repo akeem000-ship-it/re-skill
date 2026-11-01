@@ -2399,6 +2399,10 @@ export class Voxel3D {
     this.lateBlocks = [];
     for (const nb of f.neighbours || []) {                               // the map beyond the edge (CAMPUS: every other area in view; out of view,
       const M = m4.mul(mvp, m4.translate(nb.dx, 0, nb.dz));               // still its plain ground to the horizon)
+      // its grass blades, leaves and stones (ground.js) only within 200 px of the view's middle: they were nearly all of a campus frame's
+      // cost, for blades too small to see from the next area
+      const [a0, a1] = nb.f.floorX || [0, nb.f.mapW || 512], gx = Math.max(nb.dx + a0 - cx, 0, cx - nb.dx - a1), gz = Math.max(nb.dz + (nb.f.floorY0 || 0) - cz, 0, cz - nb.dz - (nb.f.mapH || 512));
+      const gd = Math.hypot(gx, gz); nb.f.nbNear = gd < 200; nb.f.nbFar = gd > 120;   // (ground.js: its grit and stones only within 120 px)
       if (this.nbInView(nb, mvp)) this.drawFieldScene(nb.f, M, T, true); else if (nb.f.skirt) { gl.useProgram(this.prog); gl.bindVertexArray(this.vao); this.drawSkirt(nb.f, M); }
     }
     this.drawFieldScene(f, mvp, T);
@@ -2659,7 +2663,8 @@ export class Voxel3D {
       gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
     }
     if (this.groundFx && !part) this.groundFx.draw(f, mvp, T);            // GROUND: grass, leaves, path edging, pebbles
-    else if (this.groundFx && f.core) {                                    // (the neighbouring map beyond the edge too: one look across the seam)
+    else if (this.groundFx && f.core && f.nbNear !== false) {             // (the neighbouring map beyond the edge too: one look across the seam;
+                                                                           //  CAMPUS: only one near the player, far off its painted ground is enough)
       const real = this.gb; this.gb = f.core; try { this.groundFx.drawPart(f, mvp, T); } finally { this.gb = real; }
     }
     // buildings and the stand-up cut-outs
