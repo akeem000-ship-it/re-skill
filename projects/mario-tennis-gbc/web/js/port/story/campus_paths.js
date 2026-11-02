@@ -8,6 +8,14 @@ import { areaPath, onPath } from "../../campus.js";
 
 const cache = new Map();
 export const CAMERA_REACH = 96;                        // tiles the camera may go past the map's size while the paths are on
+// the camera's clamp with the paths on: the game's clamp compares tiles by their 8-bit signed difference, which with a limit past 128
+// tiles (a map's size plus the reach) took a camera near the map's left or top edge for one past its far edge (the practice courts: the
+// camera thrown to tile 140, the 3D view looking at empty lawn and the game's 2D screen showing through). Here the whole numbers are
+// compared: pos (1/256 tile, 16-bit, signed), min and max (tiles); the position clamped
+export function campusClamp(pos, min, max) {
+  const s = pos & 0x8000 ? (pos & 0xFFFF) - 0x10000 : pos & 0xFFFF, tile = Math.floor(s / 256);
+  return tile < min ? min << 8 : tile >= max ? max << 8 : pos & 0xFFFF;
+}
 // the current map's path (in its own px), when the paths are on and the map is one of the areas; else null
 export function campusArea(P) {
   if (!P.campusPaths) return null;

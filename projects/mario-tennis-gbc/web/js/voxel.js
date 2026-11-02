@@ -2437,16 +2437,78 @@ export class Voxel3D {
     }
     return px > a - 0.06 && px < b + 0.06 && py > c - 0.06 && py < d + 0.06;
   }
-  // CAFE CONCEPT: the paths up to the areas behind the road, flat on the lawn: a light stone kerb, the dirt of the road's own path
+  // THE CAMPUS PATHS, as the courtyard's and the café road's paths are drawn: their own dirt (a patch of the courtyard's path pixels,
+  // read from the map as it runs, repeated at the map's scale), a kerb of small raised bricks along both edges in the courtyard edging's
+  // colours (its courses a shade apart), and the 3D ground's fine grit with the odd stone on the dirt (as ground.js strews the paths)
+  cafePathLook(src) {
+    const D = src.floorData, isDirt = o => D[o] > 120 && D[o] > D[o + 1] * 1.25 && D[o + 2] < D[o] * 0.45;
+    const isKerb = o => { const r = D[o], g = D[o + 1], b = D[o + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b); return mx - mn < 40 && mx > 90; };
+    // a 16 x 16 patch of all dirt (the path's own texture)
+    let at = null;
+    for (let y = 0; y + 16 <= 512 && !at; y += 4) for (let x = 0; x + 16 <= 512 && !at; x += 4) {
+      let ok = true; for (let v = 0; v < 16 && ok; v++) for (let u = 0; u < 16 && ok; u++) if (!isDirt(((y + v) * 512 + x + u) * 4)) ok = false;
+      if (ok) at = [x, y];
+    }
+    if (!at) return null;
+    const tile = new Uint8Array(16 * 16 * 4), mean = [0, 0, 0];
+    for (let v = 0; v < 16; v++) for (let u = 0; u < 16; u++) { const o = ((at[1] + v) * 512 + at[0] + u) * 4, q = (v * 16 + u) * 4; for (let k = 0; k < 3; k++) { tile[q + k] = D[o + k]; mean[k] += D[o + k] / 256; } tile[q + 3] = 255; }
+    // the edging's colours: the commonest kerb colours within 4 px of the dirt (a light and a dark course)
+    const n = new Map();
+    for (let y = 4; y < 508; y += 2) for (let x = 4; x < 508; x += 2) {
+      const o = (y * 512 + x) * 4; if (!isKerb(o)) continue;
+      if (![[4, 0], [-4, 0], [0, 4], [0, -4], [2, 0], [-2, 0], [0, 2], [0, -2]].some(([dx, dy]) => isDirt(((y + dy) * 512 + x + dx) * 4))) continue;
+      const c = D[o] << 16 | D[o + 1] << 8 | D[o + 2]; n.set(c, (n.get(c) || 0) + 1);
+    }
+    const kerb = [...n].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([c]) => [(c >> 16) / 255, (c >> 8 & 255) / 255, (c & 255) / 255]);
+    if (!kerb.length) kerb.push([0.91, 0.89, 0.84]); if (kerb.length < 2) kerb.push(kerb[0].map(v => v * 0.85));
+    return { tex: this.texture(16, 16, tile, false, true), kerb, dirt: mean.map(v => v / 255) };
+  }
+  cafePathBlocks(look) {
+    const at = [], size = [], col = [], W = 26, hsh = (a, b, k) => { const v = Math.sin(a * 12.9898 + b * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
+    const inAny = (x, z, pad) => CAFE_PATHS.some(P => { for (let i = 1; i < P.length; i++) { const [ax, az] = P[i - 1], [bx, bz] = P[i]; if (x >= Math.min(ax, bx) - W / 2 - pad && x <= Math.max(ax, bx) + W / 2 + pad && z >= Math.min(az, bz) - W / 2 - pad && z <= Math.max(az, bz) + W / 2 + pad) return true; } return false; });
+    const box = (x, y, z, sx, sy, sz, c, r = 0) => { at.push(x, y, z, r); size.push(sx, sy, sz, 0); col.push(...c); };
+    const seen = new Set();
+    for (const P of CAFE_PATHS) for (let i = 1; i < P.length; i++) {
+      const [ax, az] = P[i - 1], [bx, bz] = P[i], len = Math.hypot(bx - ax, bz - az), dx = (bx - ax) / len, dz = (bz - az) / len, nx = -dz, nz = dx;
+      // the kerb: a brick each 2 px along both edges, where the next path does not carry on (corners and joins stay open)
+      for (let t = -W / 2; t <= len + W / 2; t += 2) for (const side of [-1, 1]) {
+        const x = Math.round(ax + dx * t + nx * side * (W / 2 + 1)), z = Math.round(az + dz * t + nz * side * (W / 2 + 1)), key = x + "," + z;
+        if (seen.has(key) || inAny(x, z, -1.5)) continue; seen.add(key);
+        const course = Math.floor((t + side * 3) / 6) & 1, k = 0.92 + course * 0.08, c = look.kerb[course].map(v => v * k);
+        box(x, 0, z, 2.05, 2.6 + course * 0.25 + hsh(x, z, 7) * 0.15, 2.05, c);
+      }
+      // the grit: on the dirt every 4 x 4 px, mostly the dirt's own colour, now and then a grey one or a small stone
+      for (let t = 0; t <= len; t += 4) for (let w = -W / 2 + 2; w <= W / 2 - 2; w += 4) {
+        const x0 = ax + dx * t + nx * w, z0 = az + dz * t + nz * w;
+        for (let k = 0; k < 5; k++) {
+          if (hsh(x0, z0, 60 + k) > 0.7) continue;
+          const stone = hsh(x0, z0, 70 + k) < 0.06, grey = hsh(x0, z0, 75 + k) < 0.12, sz = stone ? 1.1 + hsh(x0, z0, 80 + k) * 0.9 : 0.35 + hsh(x0, z0, 80 + k) * 0.55, kk = 0.72 + hsh(x0, z0, 90 + k) * 0.5;
+          const c = grey ? [0.66 * kk, 0.62 * kk, 0.55 * kk] : [Math.min(1, look.dirt[0] * kk * 1.05), look.dirt[1] * kk, look.dirt[2] * kk * 0.9];
+          box(x0 - 1 + hsh(x0, z0, 100 + k) * 4, 1.62, z0 - 1 + hsh(x0, z0, 110 + k) * 4, sz, sz * (0.25 + hsh(x0, z0, 130 + k) * 0.3), sz * (0.7 + hsh(x0, z0, 140 + k) * 0.5), c, hsh(x0, z0, 120 + k) * 3.14);
+        }
+      }
+    }
+    return { at, size, col };
+  }
   drawCafePaths(f, mvp) {
-    const gl = this.gl, road = f.mapId === 19 ? f : ((f.neighbours || []).find(n => n.f.mapId === 19) || {}).f, d = road && road.floorData;
-    if (!this.cafeTex && d) { const o = (100 * 512 + 300) * 4; this.cafeTex = { dirt: this.solidTexture([d[o], d[o + 1], d[o + 2], 255]), kerb: this.solidTexture([232, 228, 214, 255]) }; }   // (the road's own path colour)
-    if (!this.cafeTex) return;
+    const gl = this.gl, by = id => id === f.mapId ? f : ((f.neighbours || []).find(n => n.f.mapId === id) || {}).f;
+    if (!this.cafePath) { const src = [by(20), by(19)].find(x => x && x.floorData); if (src) this.cafePath = this.cafePathLook(src) || { tex: null }; }
+    const L = this.cafePath; if (!L) return;
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
+    if (!L.tex) {                                                          // (no dirt to copy: the plain colour, as before)
+      const road = by(19), d = road && road.floorData; if (!d) return; const o = (100 * 512 + 300) * 4;
+      if (!this.cafeTex) this.cafeTex = { dirt: this.solidTexture([d[o], d[o + 1], d[o + 2], 255]), kerb: this.solidTexture([232, 228, 214, 255]) };
+    }
     const W = 26, K = 4;
-    for (const [tex, w, y] of [[this.cafeTex.kerb, W + 2 * K, 1.4], [this.cafeTex.dirt, W, 1.6]]) for (const P of CAFE_PATHS) for (let i = 1; i < P.length; i++) {
+    for (const [tex, w, y] of L.tex ? [[L.tex, W, 1.6]] : [[this.cafeTex.kerb, W + 2 * K, 1.4], [this.cafeTex.dirt, W, 1.6]]) for (const P of CAFE_PATHS) for (let i = 1; i < P.length; i++) {
       const [ax, az] = P[i - 1], [bx, bz] = P[i], x0 = Math.min(ax, bx) - w / 2, x1 = Math.max(ax, bx) + w / 2, z0 = Math.min(az, bz) - w / 2, z1 = Math.max(az, bz) + w / 2;
-      this.draw(tex, m4.trs((x0 + x1) / 2, y, z1, x1 - x0, z1 - z0, -Math.PI / 2), mvp, [0, 0, 1, 1], [1, 1, 1, 1], 0);
+      this.draw(tex, m4.trs((x0 + x1) / 2, y, z1, x1 - x0, z1 - z0, -Math.PI / 2), mvp, L.tex ? [x0 / 16, z0 / 16, (x1 - x0) / 16, (z1 - z0) / 16] : [0, 0, 1, 1], [1, 1, 1, 1], 0);
+    }
+    const G = this.groundFx;                                               // the kerb bricks and the grit (the 3D ground's boxes)
+    if (L.tex && G && G.pX) {
+      if (!L.vao || L.g !== G) { L.g = G; const b = this.cafePathBlocks(L); L.vao = G.vao(G.cube, 4, [[b.at, 4], [b.size, 4], [b.col, 3]]); }
+      gl.useProgram(G.pX); gl.uniformMatrix4fv(G.uX.uMVP, false, mvp); gl.bindVertexArray(L.vao.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 30, L.vao.n);
+      gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
     }
   }
   // CAFE CONCEPT: the lake and the running track, flat pictures on the lawn (made once on a canvas), the lake's footbridge a low box

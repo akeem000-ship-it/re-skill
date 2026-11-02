@@ -183,13 +183,19 @@ function frame() {
   rec.frame(gb, mask); session.frame(gb, mask);
   creator.frame(); deck.frame(); tour.frame(); modes.frame();
   if (port && port.plus) port.plus.fatigue = tour.fatigue();   // TOUR+: a tired player (PLAY+ stamina)
-  stamMeter.frame(port, view3d && voxel && voxel.mode === "3d" ? $("gl") : cv, onCourt());   // STAMINA METER
+  if (!onCourt()) courtSince = Infinity; else if (courtSince === Infinity) courtSince = port ? port.frames : gb.frames;
+  const results = !!(port && port.winLoseSeen && port.winLoseSeen.at >= courtSince);   // (the match over: its WIN! / LOSE, statistics and EXP screens)
+  stamMeter.frame(port, shownCanvas(), onCourt() && !results);   // STAMINA METER
   if (audioReady && anode) { const n = gb.apu.drain(abuf); if (n) anode.port.postMessage(abuf.slice(0, n)); } else gb.apu.outPos = 0;
 }
 const stamMeter = new StaminaMeter();
+let courtSince = Infinity;                  // the frame the court map came up (the match after it)
 let drawnFrame = -1;
 const wideImg = g.createImageData(WIDE_W, WIDE_H), wideBuf = new Uint32Array(wideImg.data.buffer), wideIdx = new Uint8Array(WIDE_W * WIDE_H);
 const onCourt = () => gb.mem.wram[0][0x32E] <= 15;   // wCurMapID: courts (the map is wider than the screen)
+// the canvas on screen, for the HD panels laid over it: the 3D view's whenever it is on (menus and the WIN! / LOSE and EXP screens too,
+// drawn there as layers: the 2D canvas is hidden then, and a panel sized to it would be zero-sized)
+const shownCanvas = () => view3d ? $("gl") : cv;
 let insetAt = 0;
 function draw(alpha = 1) {                 // alpha: fraction of the next game frame already elapsed (3D interpolation)
   const f = gb.ppu.frame;
@@ -197,10 +203,10 @@ function draw(alpha = 1) {                 // alpha: fraction of the next game f
   if (hd) hd.setSpriteHide(true);            // sprites replaced by HD art: every view leaves them out (2D, 3D court / field / menu layers)
   if (hd && hd.update()) drawnFrame = -1;    // the text on screen (HD font) changed
   if (menuWheel) menuWheel.update();         // MENU: Wheel
-  statPanel.frame(port, view3d && voxel && voxel.mode === "3d" ? $("gl") : cv, gb, tour.on && tour.data ? tour.coach() : null);   // the level-up stat screen's HD panel
-  expPanel.frame(port, view3d && voxel && voxel.mode === "3d" ? $("gl") : cv, gb, tour.on && tour.data ? tour.coach() : null);    // and the EXP sharing screen's
+  statPanel.frame(port, shownCanvas(), gb, tour.on && tour.data ? tour.coach() : null);   // the level-up stat screen's HD panel
+  expPanel.frame(port, shownCanvas(), gb, tour.on && tour.data ? tour.coach() : null);    // and the EXP sharing screen's
   tour.coachFrame();                         // TOUR+: the coach's pick on the stat screen
-  tour.rewardFrame(view3d && voxel && voxel.mode === "3d" ? $("gl") : cv);   // TOUR+: the rewards card over the WIN! / LOSE screen
+  tour.rewardFrame(shownCanvas());   // TOUR+: the rewards card over the WIN! / LOSE screen
   modes.overlay();                           // MODES: the rematch question
   if (voxel && voxel.ballfx) { voxel.ballfx.serveCue = !!(port && port.plus && port.plus.serve); voxel.ballfx.fire = port && port.plus && port.plus.momentum && port.E ? port.E.mom || null : null; }   // PLAY+: its cues
   if (view3d && voxel) {
