@@ -10,9 +10,9 @@
 //                                                page's four lines are the game's own (each line's end and roll = runPreview in Node's
 //                                                putt_lines.mjs: the same numbers); (3) with the swing started the camera leaves it
 //   node web/tests/putting_view.mjs --shots [dir] pictures (default out/putting_built): before (Follow + Arrows) and after, the putts
-//                                                in the putting view and at the approach, desktop and portrait phone; frame strips and
+//                                                in the putting view and at the approach, desktop, portrait and landscape phone; frame strips and
 //                                                GIFs of the green's grass motion; the speed (the 3D picture's time, before / after)
-//   --only name,name   only these putts
+//   --only name,name   only these putts; --layouts desk,phone,land (the default: all three; land = a phone on its side, full screen)
 import { createRequire } from "module";
 import http from "http";
 import fs from "fs";
@@ -33,7 +33,8 @@ const server = http.createServer((req, res) => {
 }).listen(0);
 const port = server.address().port;
 const browser = await chromium.launch({ args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
-const DESK = { name: "desk", viewport: [900, 1000] }, PORT = { name: "phone", viewport: [412, 915], touch: true, dpr: 2 };
+const DESK = { name: "desk", viewport: [900, 1000] }, PORT = { name: "phone", viewport: [412, 915], touch: true, dpr: 2 }, LAND = { name: "land", viewport: [915, 412], touch: true, dpr: 2 };
+const LAYOUTS = (args.includes("--layouts") ? args[args.indexOf("--layouts") + 1].split(",") : ["desk", "phone", "land"]).map(n => ({ desk: DESK, phone: PORT, land: LAND })[n]);
 
 // the putts (as putt_lines.mjs): name, course, hole, the approach shots' power presses
 const PUTTS = [
@@ -133,7 +134,7 @@ const sel = PUTTS.filter(p => !only || only.includes(p[0]));
 if (shots) {
   fs.mkdirSync(outDir, { recursive: true });
   const speed = [];
-  for (const L of [DESK, PORT]) for (const [name, course, hole, powers] of sel) {
+  for (const L of LAYOUTS) for (const [name, course, hole, powers] of sel) {
     const plan = { course, hole, powers };
     const { page, errors } = await openPage("g3d=all", L, plan);
     const f = n => path.join(outDir, `${name}_${L.name}_${n}.png`), whole = !!L.touch;

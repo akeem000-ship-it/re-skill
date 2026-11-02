@@ -109,10 +109,12 @@ export function attachAimPower({ screen, keys, getGame }) {
 
   // ---- where things are: the overlay over the screen, and the game's picture in it ----
   function place() {
-    const r = screen.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
+    // (over the 3D view's canvas when it shows: on a phone's full-screen layout it covers the whole screen, not only #screen)
+    const v3 = scene3d() && window.__g3d.canvas, r = (v3 || screen).getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
     const W = Math.max(160, Math.round(r.width * dpr)), H = Math.max(144, Math.round(r.height * dpr));
     if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
-    Object.assign(cv.style, { left: r.left + scrollX + "px", top: r.top + scrollY + "px", width: r.width + "px", height: r.height + "px" });
+    const fixed = !!v3 && v3.style.position === "fixed";
+    Object.assign(cv.style, { position: fixed ? "fixed" : "absolute", left: r.left + (fixed ? 0 : scrollX) + "px", top: r.top + (fixed ? 0 : scrollY) + "px", width: r.width + "px", height: r.height + "px" });
     return [W, H];
   }
   // the 3D view's scene when it drew this hole, else null

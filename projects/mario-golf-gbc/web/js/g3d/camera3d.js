@@ -115,7 +115,9 @@ export class CameraRig {
       const aiming = this.puttAiming(s);
       if (aiming) { const p = this.puttGoal(s, aspect); if (p) this.putt = { ...p, hid: s.hid, view: s.view }; }
       if (this.putt && (this.putt.hid !== s.hid || s.view !== 1)) this.putt = null;
-      this.tilt = !this.putt ? 1 : clamp(this.tilt + (aiming ? -dt : dt) / EASE, 0, 1);
+      // (the blend runs on the clock, not on the picture's capped step: a slow renderer still eases in 0.8 s)
+      const now = performance.now() / 1000, rdt = clamp(this.tiltAt ? now - this.tiltAt : dt, 0, 0.5); this.tiltAt = now;
+      this.tilt = !this.putt ? 1 : clamp(this.tilt + (aiming ? -rdt : rdt) / EASE, 0, 1);
       if (aiming && !this.wasAiming && this.eye) this.from = { eye: this.eye.slice(), at: this.at.slice(), fov: this.fov / DEG };   // (in from where the camera is)
       if (!aiming) this.from = null;
       if (this.putt && this.tilt < 1) {

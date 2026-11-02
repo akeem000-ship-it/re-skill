@@ -177,7 +177,8 @@ Two options on the 3D panel (URL `?g3dputt=green|follow&g3dgreen=clean|arrows`, 
   ring round the ball and a tick along the aim `$D418` mark it; the white-lined cup with GREEN: Clean. When the swing starts (or the
   option, the club or the view changes) the camera blends back to the FOLLOW green camera in 0.8 s (eye, target and field of view
   eased with a smoothstep; it blends in from wherever the camera is at the next putt), so the stroke and the roll are seen as
-  before; the big meter is placed as before.
+  before; the big meter is placed as before. The blend runs on the clock (a slow renderer's capped picture step would stretch it).
+  The helpers' overlay lies over the 3D canvas when it shows (on a phone's full-screen layout it covers the whole screen).
 - **The break** (the putting view's marks, aimpower.js drawPuttView; with Preview On): the putts struck at 100, 77, 50 and 27 % of
   the meter, each run by the game's own shot code on a copy of the memory (shotpreview.js runPreview with the putter's press count:
   `$D44E` = `$D44F` = `$D450` = the count): the roll path and its stop, the label "NN%: X ft" (or "in") beside the stop at the
