@@ -12,13 +12,20 @@
 //            (PinDist 10:62AD >> 5, feet with the putter as the HUD's 12:4CB1); marks off the picture sit at its edge with an arrow.
 //   Tap area On (default on touch screens) | Off: at the address and through the swing the lower half of the screen is the A
 //            button (the d-pad, B and the other controls keep their own places): it sets the same key the pad's A sets.
+// PUTTING VIEW (the 3D view's Putting: Green camera, scene.puttView while a putt is aimed): instead of the aim line and the full
+//            putt, THE BREAK: the roll path and stop point of a putt struck at 100 / 75 / 50 / 25 % (the putter's one press at count
+//            $3C / $2D / $1E / $0F), each run by the game's own shot code on a copy (shotpreview.js runPreview), with its roll in feet
+//            (ShotLength 10:6276 in the HUD's conversion 12:4CB1) or "in"; labels placed so they don't overlap; and a light grid of the
+//            green's tiles only near the line, each with a chevron along its slope (GreenSlopeAt 10:64D1, hole3d.js greenSlopes; its
+//            colour the strength 1 / 2 / 3), a ring round the cup (never smaller than ~7 px, so a long putt's cup stays readable).
+//            Lines with Preview on, the grid and the cup's ring with Markers on.
 // 3D: the marks are drawn from the 3D view's own matrix; 2D: from the hole view's projection (the course view's scroll, the green
 // view's 4x corner, the view behind the golfer's camera, 11:4795). Nothing here writes to the game's memory.
 import { rd16 } from "../golf/memory.js";
 import { pinDist } from "../golf/cup.js";
 import { baseDistance, scaleByPower } from "../golf/launch.js";
 import { mapPlace } from "./wide.js";
-import { ShotPreview, previewKey, humanTurn, PUTTER } from "./shotpreview.js";
+import { ShotPreview, previewKey, humanTurn, PUTTER, feetText, runPreview, PUTT_POWERS } from "./shotpreview.js";
 
 const stored = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const keep = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } };
@@ -254,6 +261,7 @@ export function attachAimPower({ screen, keys, getGame }) {
     // at its horizon: marks of a fixed size there, no rings, aim line or arc)
     const flat = (p, rx, ry, color, wd) => { if (!p) return; g.beginPath(); g.ellipse(p[0], p[1], rx, ry, 0, 0, 7); g.strokeStyle = "rgba(0,0,0,0.5)"; g.lineWidth = wd + 2 * u; g.stroke(); g.strokeStyle = color; g.lineWidth = wd; g.stroke(); };
     g.save(); g.beginPath(); g.rect(F.sc ? 0 : F.ox, 0, F.sc ? F.W : 160 * F.sx, F.Y(126)); g.clip();   // (the picture above the HUD row)
+    if (F.sc && F.sc.puttView && putter) { drawPuttView(game, F, pr, ball); g.restore(); return; }
     if (opt.marks === "on") {
       const aim = rd16(r6, 0x418) / 65536 * Math.PI * 2, ad = [Math.cos(aim), Math.sin(aim)], side = [ad[1], -ad[0]];
       const t = [rd16(r6, 0x426) / 32, rd16(r6, 0x428) / 32], tR = Math.hypot(t[0] - ball[0], t[1] - ball[1]);
@@ -284,7 +292,7 @@ export function attachAimPower({ screen, keys, getGame }) {
       const hl = pinDist(r6.subarray(0x400, 0x500)), feet = putter && ((hl + 0xF7CB) & 0x8000);
       const cup = [rd16(r6, 0x43D) / 32, rd16(r6, 0x43F) / 32];
       const pp = pr.P(cup[0], green ? (pr.kind === "3d" ? 4.6 : 5) : (pr.kind === "3d" ? 5.5 : 14), cup[1]);
-      if (pp && !behind) pills.add(feet ? (((hl * 3 + 8) & 0xFFFF) >> 5) + " ft to cup" : (hl >> 5) + " y to pin", pp[0], pp[1] - 6 * u, 6 * u, "rgba(200,30,40,0.92)", 3);
+      if (pp && !behind) pills.add(feet ? feetText(hl) + " ft to cup" : (hl >> 5) + " y to pin", pp[0], pp[1] - 6 * u, 6 * u, "rgba(200,30,40,0.92)", 3);
     }
     if (opt.preview === "on") {
       const res = previewFor(w);
@@ -320,8 +328,87 @@ export function attachAimPower({ screen, keys, getGame }) {
     g.restore();
     pills.draw();
   }
-  // a putt's length in feet as the HUD gives the putter's distances (12:4CB1: yards x 3)
-  const rollFeet = res => Math.round(Math.hypot(res.end[0] - res.from[0], res.end[2] - res.from[1]) * 3);
+  // ---- the putting view: the break lines and the slope grid near the line ----
+  const putts = { key: "", runs: null, ms: 0, pend: "", since: 0 };
+  // the four putts (run again only when what decides the putt has held still ~90 ms, as the preview)
+  function puttRuns(w) {
+    const key = previewKey(w), now = performance.now();
+    if (key === putts.key) return putts.runs;
+    if (key !== putts.pend) { putts.pend = key; putts.since = now; }
+    if (now - putts.since < 90 && putts.runs && putts.hole === w.wram[6][0x320]) return putts.runs.map(r => ({ ...r, stale: true }));
+    const t = performance.now();
+    try { putts.runs = PUTT_POWERS.map(power => runPreview(w, { power })); } catch (e) { console.warn("putt lines", e); putts.runs = null; }
+    putts.ms = performance.now() - t; putts.key = key; putts.hole = w.wram[6][0x320];
+    return putts.runs;
+  }
+  const PCOL = ["#ffffff", "#ffd84a", "#ffa040", "#ff6a5a"], SCOL = ["", "255,236,120", "255,160,40", "240,60,40"];
+  function drawPuttView(game, F, pr, ball) {
+    const w = game.w, r6 = w.wram[6], sc = F.sc, H = sc.hole.H, u = pr.unit, s = sc.s;
+    const cup = [rd16(r6, 0x43D) / 32, rd16(r6, 0x43F) / 32], P = (x, z, up = 0.02) => pr.P(x, 0, z, up);
+    const vx = cup[0] - ball[0], vz = cup[1] - ball[1], L2 = vx * vx + vz * vz || 1;
+    const segDist = (x, z) => { const t = Math.max(-0.15, Math.min(1.25, ((x - ball[0]) * vx + (z - ball[1]) * vz) / L2)); return Math.hypot(x - ball[0] - vx * t, z - ball[1] - vz * t); };
+    g.lineCap = "round"; g.lineJoin = "round";
+    // the grid: the green's tiles (2 px) near the line, fading away from it; a chevron along each sloped tile's push
+    if (opt.marks === "on") {
+      const gs = sc.hole.art.greenSlopes();
+      for (let ty = 0; ty < 16; ty++) for (let tx = 0; tx < 20; tx++) {
+        const q = (ty * 64 + tx) * 4; if (!gs[q + 3]) continue;
+        const x0 = s.green[0] + tx * 2, z0 = s.green[1] + ty * 2, a = Math.exp(-Math.pow(segDist(x0 + 1, z0 + 1) / 2.5, 2)); if (a < 0.04) continue;
+        const c = [P(x0, z0, 0.01), P(x0 + 2, z0, 0.01), P(x0 + 2, z0 + 2, 0.01)]; if (c.some(p => !p)) continue;
+        g.strokeStyle = `rgba(255,255,255,${0.5 * a})`; g.lineWidth = Math.max(1, 0.5 * u); g.beginPath(); g.moveTo(c[0][0], c[0][1]); g.lineTo(c[1][0], c[1][1]); g.lineTo(c[2][0], c[2][1]); g.stroke();
+        const st = gs[q + 2] / 85; if (!st) continue;
+        const dx = (gs[q] - 127.5) / 127.5, dz = (gs[q + 1] - 127.5) / 127.5, cx = x0 + 1, cz = z0 + 1, l = 0.35 + 0.2 * st, wv = 0.32, n = [-dz, dx];
+        const tip = P(cx + dx * l, cz + dz * l), tail = P(cx - dx * l, cz - dz * l);
+        const bl = P(cx + dx * (l - wv) + n[0] * wv * 0.8, cz + dz * (l - wv) + n[1] * wv * 0.8), br = P(cx + dx * (l - wv) - n[0] * wv * 0.8, cz + dz * (l - wv) - n[1] * wv * 0.8);
+        if (!tip || !tail || !bl || !br) continue;
+        g.strokeStyle = `rgba(${SCOL[Math.round(st)]},${(0.95 * a).toFixed(2)})`; g.lineWidth = Math.max(1.5, 1.1 * u);
+        g.beginPath(); g.moveTo(tail[0], tail[1]); g.lineTo(tip[0], tip[1]); g.moveTo(bl[0], bl[1]); g.lineTo(tip[0], tip[1]); g.lineTo(br[0], br[1]); g.stroke();
+      }
+    }
+    // the cup, kept readable far off (a long putt): a white ring round it, at least ~7 px across on the picture
+    if (opt.marks === "on") {
+      const c0 = P(cup[0] - 0.15, cup[1]), c1 = P(cup[0] + 0.15, cup[1]), c = P(cup[0], cup[1]);
+      if (c && c0 && c1) {
+        const k = Math.max(1, 3.5 * u / Math.max(0.5, Math.hypot(c1[0] - c0[0], c1[1] - c0[1]) / 2)), pts = [];
+        for (let i = 0; i <= 36; i++) { const a = i / 36 * Math.PI * 2; pts.push(P(cup[0] + Math.cos(a) * 0.3 * k, cup[1] + Math.sin(a) * 0.3 * k)); }
+        if (pts.every(Boolean)) { g.beginPath(); pts.forEach((q, i) => i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1])); g.strokeStyle = "rgba(0,0,0,0.45)"; g.lineWidth = 2.4 * u; g.stroke(); g.strokeStyle = "rgba(255,255,255,0.95)"; g.lineWidth = 1.1 * u; g.stroke(); }
+      }
+    }
+    if (opt.preview !== "on") return;
+    const R = puttRuns(w); if (!R) return;
+    g.globalAlpha = R[0].stale ? 0.4 : 1;
+    // the paths, the softest first; each to where it stops
+    for (let i = R.length - 1; i >= 0; i--) {
+      const pts = R[i].path.map(p => pr.P(p[0], p[1], p[2], 0.03));
+      g.beginPath(); let on = false; for (const p of pts) { if (!p) { on = false; continue; } if (on) g.lineTo(p[0], p[1]); else { g.moveTo(p[0], p[1]); on = true; } }
+      g.strokeStyle = "rgba(0,0,0,0.4)"; g.lineWidth = (i ? 2.2 : 2.8) * u; g.setLineDash([]); g.stroke();
+      g.strokeStyle = PCOL[i]; g.lineWidth = Math.max(1.5, (i ? 0.9 : 1.3) * u); g.setLineDash(i ? [2 * u, 2.5 * u] : []); g.stroke(); g.setLineDash([]);
+    }
+    const stops = R.map(r => pr.P(r.end[0], r.end[1], r.end[2], 0.03));
+    stops.forEach((p, i) => { if (!p) return; g.beginPath(); g.arc(p[0], p[1], (i ? 1.6 : 2.1) * u, 0, 7); g.fillStyle = PCOL[i]; g.fill(); g.strokeStyle = "rgba(0,0,0,0.8)"; g.lineWidth = Math.max(1, 0.5 * u); g.stroke(); });
+    g.globalAlpha = 1;
+    if (R[0].stale) return;
+    // the labels beside their stops, each at the first free spot of a few (right, left, above, below, the corners), clear of the
+    // other labels and the stop dots, inside the picture between the HUD's rows
+    const placed = [], sz = 5.2 * u, top = 30 * u, bot = 120 * u;
+    const free = (x, y, tw, th) => !placed.some(q => Math.abs(q[0] - x) < (q[2] + tw) / 2 + u && Math.abs(q[1] - y) < (q[3] + th) / 2 + 0.5 * u)
+      && !stops.some(p => p && Math.abs(p[0] - x) < tw / 2 + 2 * u && Math.abs(p[1] - y) < th / 2 + 2 * u);
+    R.forEach((r, i) => {
+      const p = stops[i]; if (!p) return;
+      const text = `${Math.round(r.power / 0.6)}%: ${r.outcome === 0x80 ? "in" : feetText(r.len) + " ft"}`, [tw, th] = pillSize(g, text, sz);
+      const dx = tw / 2 + 4 * u, tries = [[dx, 0], [-dx, 0], [0, -th - u], [0, th + u], [dx, -th], [-dx, th], [dx, th], [-dx, -th], [dx, -2 * th], [-dx, 2 * th], [dx, 2 * th], [-dx, -2 * th]];
+      let best = null;
+      for (const [ox, oy] of tries) {
+        const x = Math.max(tw / 2 + 2 * u, Math.min(F.W - tw / 2 - 2 * u, p[0] + ox)), y = Math.max(top, Math.min(bot, p[1] + oy));
+        if (free(x, y, tw, th)) { best = [x, y]; break; }
+      }
+      if (!best) best = [Math.max(tw / 2, Math.min(F.W - tw / 2, p[0] + dx)), Math.max(top, Math.min(bot, p[1] - (th + u) * (placed.length + 1)))];
+      placed.push([best[0], best[1], tw, th]);
+      pill(g, text, best[0], best[1], sz, i ? "rgba(30,30,30,0.82)" : "rgba(200,30,40,0.92)", i ? PCOL[i] : "#fff");
+    });
+  }
+  // a putt's roll in feet as the HUD gives the putter's distances (ShotLength 10:6276 in 12:4CB1's conversion)
+  const rollFeet = res => feetText(res.len);
 
   // the preview for this moment: run again only after what decides the shot has held still a moment (the aim keys held down move it
   // every frame); meanwhile the last one dimmed
@@ -404,12 +491,24 @@ export function attachAimPower({ screen, keys, getGame }) {
     const ms = performance.now() - t0; stats.ms += ms; stats.n++; stats.paints++;
     if (stats.n >= 60) { stats.cpu = stats.ms / stats.n; stats.ms = 0; stats.n = 0; }
   }
-  // while the game is not stepping (paused, a held test) the overlay still follows the page's layout and the options
-  const idle = () => { requestAnimationFrame(idle); if (performance.now() - paintedAt > 60) { try { paint(); } catch (e) { console.warn("aim helpers", e); } } };
+  // while the game is not stepping (paused, a held test) the overlay still follows the page's layout, the options and the 3D camera,
+  // but is painted again only when one of them changed (or a preview is due): a repaint costs the GPU a whole canvas, and with a CPU
+  // renderer (SwiftShader) painting it at every animation frame starved the page's frames (requestAnimationFrame stopped coming)
+  let idleSig = "";
+  const idle = () => {
+    requestAnimationFrame(idle);
+    if (performance.now() - paintedAt <= 60 || !lastGame) return;
+    const r = screen.getBoundingClientRect(), G = window.__g3d;
+    const sig = [lastGame.frames, G && G.stats ? G.stats.drawn : 0, r.left, r.top, r.width, r.height, scrollX, scrollY, opt.meter, opt.preview, opt.marks, opt.tap,
+      preview.key === pv.key && putts.key === putts.pend ? "" : performance.now() - Math.max(pv.since, putts.since) > 90 ? "due" : "wait"].join(",");
+    if (sig === idleSig) return;
+    idleSig = sig;
+    try { paint(); } catch (e) { console.warn("aim helpers", e); }
+  };
   requestAnimationFrame(idle);
   mount();
   const api = {
-    opt, preview, stats,
+    opt, preview, stats, putts,
     // once per drawn frame, after the picture (js/play.js): the game and its 2D frame (the HUD's colour under the small meter)
     present(game, image) { lastGame = game; lastImage = image; try { paint(game); } catch (e) { console.warn("aim helpers", e); } },
     set(k, v) { if (!(k in OPTIONS)) return; opt[k] = v; keep(OPTIONS[k].key, v); const s = document.getElementById("ap" + k); if (s) s.value = v; paint(); },

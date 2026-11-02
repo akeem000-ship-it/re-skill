@@ -35,15 +35,17 @@ export function humanTurn(w) {
 
 // run the shot on a copy: { path: [[x, height, z, inAir]] per frame in world px (1 = 1/32 of the RAM's units: a yard), land: the
 // first frame on the ground, carry / rest: yards (the game's ShotLength 10:6276, as the HUD shows a shot), outcome, putt, ms }
-export function runPreview(w, { maxFrames = 1600, display = false } = {}) {
+// power: the putter's one press at that count (wSwingCount = wSwingCursor = wSwingPower, an even count: $3C full; 10:57E0);
+// other clubs always a perfect full swing
+export function runPreview(w, { maxFrames = 1600, display = false, power = 0x3C } = {}) {
   const t0 = (typeof performance !== "undefined" ? performance : Date).now();
   const c = cloneMemory(w);
   if (!display) c.vram = null;                    // (no pictures in the copy: its display hooks are skipped, render/hooks.js)
   const c6 = c.wram[6], c0 = c.wram[0], s = c6.subarray(0x400, 0x500);
   const putt = c6[0x329] === PUTTER;
   // the swing meter as a perfect full swing leaves it (Shot.swing / swingEnd, 10:57E0)
-  s[0x4F] = putt ? 0x3C : 0; s[0x50] = 0x3C; s[0x51] = putt ? 0 : 1; s[0x52] = putt ? 0 : 1;
-  s[0x4E] = putt ? 0x3C : 0x78;
+  s[0x4F] = putt ? power : 0; s[0x50] = putt ? power : 0x3C; s[0x51] = putt ? 0 : 1; s[0x52] = putt ? 0 : 1;
+  s[0x4E] = putt ? power : 0x78;
   if (putt) c6[0x32A] = c6[0x32B];               // (the putter's press: the putt range as the shot mode, 10:5833)
   else { s[0x4D] = 1; setImpactFromPad(c, 1); }  // (SwingPadTask 10:55AC at the impact frame: A held, no d-pad)
   // 10:4921-10:49A0 without its waits and pictures: the shot record, the preview off, the stroke's records, the launch
@@ -72,8 +74,21 @@ export function runPreview(w, { maxFrames = 1600, display = false } = {}) {
   if (land < 0) { land = path.length - 1; carry = shotLength(s, start) >> 5; }
   const rest = shotLength(s, start) >> 5;
   const ms = (typeof performance !== "undefined" ? performance : Date).now() - t0;
-  return { path, land, carry, rest, outcome, putt, hole: c6[0x320], end: path[path.length - 1], frames: n, ms, from: [(u16(w.wram[6], 0x401) + w.wram[6][0x400] / 256) / 32, (u16(w.wram[6], 0x404) + w.wram[6][0x403] / 256) / 32] };
+  return { len: shotLength(s, start), power: putt ? power : 0x3C, path, land, carry, rest, outcome, putt, hole: c6[0x320], end: path[path.length - 1], frames: n, ms, from: [(u16(w.wram[6], 0x401) + w.wram[6][0x400] / 256) / 32, (u16(w.wram[6], 0x404) + w.wram[6][0x403] / 256) / 32] };
 }
+
+// THE PUTTER'S FEET, as the HUD shows them (HudDrawPinDistance 12:4CB1): a length in RAM units (1/32 yard) under $6A in feet and
+// tenths ((len x 3) >> 5, the rest x 10 >> 5), else (len x 3 + 8) >> 5 (16-bit, arithmetic shift). Every number of feet on the page
+// comes from here (the pin's distance PinDist 10:62AD, a putt's roll ShotLength 10:6276).
+export function feetText(len) {
+  const sra5 = v => (v << 16 >> 16) >> 5;
+  if ((len + 0xFF96) & 0x8000) { const f = (len * 3) & 0xFFFF, ft = sra5(f); return ft + "." + sra5((((f - ((ft << 5) & 0xFFFF)) & 0xFFFF) * 10) & 0xFFFF); }
+  return String(sra5((len * 3 + 8) & 0xFFFF));
+}
+// the putts the putting view shows: one press at these counts, about 100 / 75 / 50 / 25 % of the meter. Only even counts can be
+// struck: SwingMeterLoop 10:57E0 reads A on an even count and only latches it on an odd one (into $D453, acted on at the next
+// count), so a press at $2D strikes at $2E; the lines use the counts a real press gives ($2E = 77 %, $10 = 27 %)
+export const PUTT_POWERS = [0x3C, 0x2E, 0x1E, 0x10];
 
 // the cache: one result per key (the copy's run is skipped while nothing that decides the shot has changed)
 export class ShotPreview {

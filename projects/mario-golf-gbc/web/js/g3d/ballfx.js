@@ -65,7 +65,7 @@ export class BallFx {
   }
   draw(sc, dt) {
     const tr = this.trail || [];
-    if (tr.length > 1) {
+    if (tr.length > 1 && !sc.puttView) {   // (off in the putting view: its own lines show the putt)
       const putt = this.shot && this.shot.club === 0x0D, base = putt ? [1, 1, 1] : TRAIL[(this.shot && this.shot.mode) || 0] || TRAIL[0];
       const H = sc.hole.H, n = tr.length;
       for (let i = 1; i < n; i++) {

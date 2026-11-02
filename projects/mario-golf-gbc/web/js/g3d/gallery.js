@@ -62,7 +62,7 @@ export class Gallery {
     const s = sc.s; if (!s) return;
     const tex = this.atlas(sc);
     // the caddie by the golfer (every mode): a step behind and to the side, with the bag
-    if (sc.golferShown) {
+    if (sc.golferShown && !sc.puttView) {   // (not in the putting view: the golfer is only his shadow there)
       const a = sc.golferAim || 0, g = sc.golferShown, x = g[0] - Math.cos(a) * 1.5 + Math.sin(a) * 7, z = g[1] - Math.sin(a) * 1.5 - Math.cos(a) * 7;   // (to the golfer's left)
       this.cad = this.cad || { inst: new Float32Array(4), uv: new Float32Array([5 / V, 0, 1 / V, 1]), inst2: new Float32Array([0, 0, 1, 0]) };
       this.cad.inst.set([x, sc.hole.H(x, z), z, 2.6]);

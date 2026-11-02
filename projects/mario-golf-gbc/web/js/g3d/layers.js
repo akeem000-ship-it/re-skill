@@ -5,7 +5,8 @@
 // frame as with none (web/tests/g3d_layers_same.mjs).
 // The page calls afterStep(game) after each game frame and present(game) once per drawn frame (js/play.js, the "3D LAYERS" blocks).
 // Settings: remembered in this browser ("mg3d"); URL ?g3d=on|off|all|none|key,key ?g3dq=lite|full ?g3dcam=follow|course|behind|tv
-// ?g3dhour=auto|clock|<hour> ?g3dtrees=courtyard|original ?g3dgrass=carpet|pixel ?g3dsand=fine|pixel.
+// ?g3dhour=auto|clock|<hour> ?g3dtrees=courtyard|original ?g3dgrass=carpet|pixel ?g3dsand=fine|pixel ?g3dputt=green|follow
+// ?g3dgreen=clean|arrows.
 import { Golf3D } from "./scene.js";
 import { installOamTags } from "./hud3d.js";
 import { PRESETS } from "./camera3d.js";
@@ -15,6 +16,9 @@ import { TREE_STYLES } from "./trees3d.js";
 
 // GRASS: Carpet (the Tennis-style shell carpet, the green's grain) or Pixel (the look before); SAND: Fine or Pixel (the look before)
 export const GRASS_STYLES = { carpet: "Carpet", pixel: "Pixel" }, SAND_STYLES = { fine: "Fine", pixel: "Pixel" };
+// PUTTING: Green camera (camera3d.js puttGoal: low behind the ball at the cup, the break lines) or Follow (the camera before);
+// GREEN (with GRASS: Carpet): Clean (groundshader.js: no painted chevrons, mown turf, the slope's grass motion) or Arrows (the look before)
+export const PUTT_STYLES = { green: "Green camera", follow: "Follow" }, GREEN_STYLES = { clean: "Clean", arrows: "Arrows" };
 
 export const LAYERS = [
   // [key, label, phase, what it does]
@@ -34,7 +38,7 @@ export const LAYERS = [
   ["field3d", "3D overworld", 3, "the story mode's maps in 3D: walls and buildings stood up, trees, the people"],
   ["fieldlife", "Field life", 3, "birds, butterflies and swaying flowers on the 3D overworld"],
 ];
-const DEFAULTS = { on: Object.fromEntries(LAYERS.map(([k]) => [k, k !== "view3d"])), quality: "full", camera: "follow", hour: "auto", trees: "courtyard", grass: "carpet", sand: "fine" };
+const DEFAULTS = { on: Object.fromEntries(LAYERS.map(([k]) => [k, k !== "view3d"])), quality: "full", camera: "follow", hour: "auto", trees: "courtyard", grass: "carpet", sand: "fine", putting: "green", green: "clean" };
 const KEY = "mg3d";
 
 export class Layers {
@@ -52,11 +56,13 @@ export class Layers {
     this.trees = q.get("g3dtrees") || s.trees; if (!(this.trees in TREE_STYLES)) this.trees = "courtyard";
     this.grass = q.get("g3dgrass") || s.grass; if (!(this.grass in GRASS_STYLES)) this.grass = "carpet";
     this.sand = q.get("g3dsand") || s.sand; if (!(this.sand in SAND_STYLES)) this.sand = "fine";
+    this.putting = q.get("g3dputt") || s.putting; if (!(this.putting in PUTT_STYLES)) this.putting = "green";
+    this.green = q.get("g3dgreen") || s.green; if (!(this.green in GREEN_STYLES)) this.green = "clean";
     this.fx = [];
   }
   on(k) { return !!this.map[k]; }
   set(k, v) { this.map[k] = !!v; this.save(); }
-  save() { try { localStorage.setItem(KEY, JSON.stringify({ on: this.map, quality: this.quality, camera: this.camera, hour: this.hour, trees: this.trees, grass: this.grass, sand: this.sand })); } catch (e) { /* private mode */ } }
+  save() { try { localStorage.setItem(KEY, JSON.stringify({ on: this.map, quality: this.quality, camera: this.camera, hour: this.hour, trees: this.trees, grass: this.grass, sand: this.sand, putting: this.putting, green: this.green })); } catch (e) { /* private mode */ } }
 }
 
 export function attach3D({ screen, getGame }) { return new Page(new Layers(), screen, getGame); }
@@ -92,14 +98,24 @@ class Page {
     catch (e) { this.fail(e); }
   }
   // once per drawn frame: true when the 3D view drew this frame (the 2D canvas is covered)
-  present(game, frame2d, idle = false) {
+  present(game, frame2d, idle = false, force = false) {   // (force: draw even while the last picture is in the GPU: a test's timing loop)
     if (!idle) { this.lastGame = game; this.lastFrame = frame2d; }
     this.presentAt = performance.now();
     if (!this.active || !game || !game.w) { this.hide(); return false; }
     try {
       const sc = this.ensure(); if (!sc) { this.hide(); return false; }
+      // one picture at a time: while the GPU still works on the last one (a CPU renderer such as SwiftShader can take longer over a
+      // picture than the page waits between them) this one is skipped and the last stays on the canvas. Without this the pictures
+      // queue up faster than they are drawn, and once the queue grows the browser stops calling requestAnimationFrame at all (the
+      // page froze in the course view when the ground got a little dearer). A fence after each picture tells when it is done.
+      const gl = sc.gl;
+      if (this.fence) {
+        if (!force && gl.clientWaitSync(this.fence, 0, 0) === gl.TIMEOUT_EXPIRED) { this.stats.skipped = (this.stats.skipped || 0) + 1; return this.canvas.style.display !== "none"; }
+        gl.deleteSync(this.fence); this.fence = null;
+      }
       this.place();
       const t = performance.now(), drew = sc.render(game, frame2d);
+      if (drew) { this.fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0); gl.flush(); }
       if (!drew) { this.hide(); return false; }
       this.canvas.style.display = "block";
       const st = this.stats; st.n++; st.drawn++; st.ms += performance.now() - t;
@@ -117,8 +133,8 @@ class Page {
     // the resolution: Lite at 0.6; both come down by themselves while the pictures come slower than ~40 a second, and go back up
     const now = performance.now(), dtp = this.lastPlace ? now - this.lastPlace : 16; this.lastPlace = now;
     this.avg = this.avg ? this.avg * 0.9 + Math.min(dtp, 200) * 0.1 : 16;
-    if (!this.resK) this.resK = 1;
-    if ((this.adjustAt = (this.adjustAt || 0) + 1) % 20 === 0) { if (this.avg > 25 && this.resK > 0.4) this.resK *= 0.85; else if (this.avg < 19 && this.resK < 1) this.resK = Math.min(1, this.resK * 1.1); }
+    if (!this.resK || this.fixedRes) this.resK = 1;   // (fixedRes: a test keeps the full resolution)
+    if (!this.fixedRes && (this.adjustAt = (this.adjustAt || 0) + 1) % 20 === 0) { if (this.avg > 25 && this.resK > 0.4) this.resK *= 0.85; else if (this.avg < 19 && this.resK < 1) this.resK = Math.min(1, this.resK * 1.1); }
     const k = (this.L.quality === "lite" ? 0.6 : 1) * this.resK;
     const W = Math.max(160, Math.round(r.width * dpr * k)), H = Math.max(144, Math.round(r.height * dpr * k));
     if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
@@ -146,7 +162,8 @@ class Page {
     head.append(sel("Camera", PRESETS, L.camera, v => { L.camera = v; }), " ", sel("Hour", HOURS, L.hour, v => { L.hour = v; }), " ",
       sel("Quality", { full: "Full", lite: "Lite (phones)" }, L.quality, v => { L.quality = v; if (this.scene && this.scene.hole) this.scene.hole.id = -1; }), " ",
       sel("Trees", TREE_STYLES, L.trees, v => { L.trees = v; }), " ", sel("Grass", GRASS_STYLES, L.grass, v => { L.grass = v; }), " ",
-      sel("Sand", SAND_STYLES, L.sand, v => { L.sand = v; }));
+      sel("Sand", SAND_STYLES, L.sand, v => { L.sand = v; }), " ", sel("Putting", PUTT_STYLES, L.putting, v => { L.putting = v; }), " ",
+      sel("Green", GREEN_STYLES, L.green, v => { L.green = v; }));
     const list = el("div", { className: "g3dlist" });
     for (const [k, label, phase, what] of LAYERS) {
       const cb = el("input", { type: "checkbox", checked: L.on(k) });

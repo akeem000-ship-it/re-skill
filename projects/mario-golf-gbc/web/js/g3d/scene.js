@@ -88,6 +88,15 @@ precision mediump float; in vec2 vUV; uniform sampler2D uTex; uniform vec4 uRect
 void main() { vec2 q = (vUV - uRect.xy) / uRect.zw; if (q.x < 0.0 || q.y < 0.0 || q.x > 1.0 || q.y > 1.0) discard; vec4 c = texture(uTex, q); if (c.a < 0.01) discard; o = vec4(c.rgb, c.a * uAlpha); }`;
 
 const NO_SWAY = new Float32Array(4), TREE_FAR = 70;
+// GREEN: Clean: the green's base colour without the painted chevrons: the commonest colour of the green picture's pixels on the
+// green's own tiles (the 20 x 16 tiles of the putting view where greenSlopes says green; the chevrons are a few pixels of each)
+export function greenBaseOf(art, img) {
+  const gs = art.greenSlopes(), n = new Map();
+  for (let ty = 0; ty < 16; ty++) for (let tx = 0; tx < 20; tx++) if (gs[(ty * 64 + tx) * 4 + 3]) for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+    const q = ((ty * 8 + y) * PX + tx * 8 + x) * 4, k = img[q] << 16 | img[q + 1] << 8 | img[q + 2]; n.set(k, (n.get(k) || 0) + 1); }
+  let best = 0, bk = 0; for (const [k, c] of n) if (c > best) { best = c; bk = k; }
+  return best ? [(bk >> 16) / 255, ((bk >> 8) & 255) / 255, (bk & 255) / 255] : null;
+}
 const TREE_SCALE = 1.5, GOLFER_H = 4.2, PIN_H = 4.0;   // world sizes: the trees are 24 yards tall (TreeCheck's levels), a golfer ~4
 
 export class Golf3D {
@@ -205,6 +214,8 @@ export class Golf3D {
     }
     hole.terrTex = texture(gl, CELLS, CELLS, terr, { format: "r" });
     if (grass === "carpet") hole.slopeTex = texture(gl, MAP, MAP, art.greenSlopes());
+    // (GREEN: Clean: the green's base colour, from the ROM's green palette until the game shows the green in its live colours)
+    try { if (art.green.tiles.length) { const gp = new Uint8Array(64); gp.set(art.green.romPal.subarray(0, 0x28), 0x10); hole.greenBase = greenBaseOf(art, art.paintGreen(gp)); } } catch (e) { hole.greenBase = null; }
     // the ground mesh: a grid over the map (4 px apart, 8 on Lite), with a skirt out to the horizon at the edge's height
     const S = this.lite ? 8 : 4, N = PX / S + 1, pos = new Float32Array(N * N * 3), nrm = new Float32Array(N * N * 3);
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
@@ -333,6 +344,7 @@ export class Golf3D {
     if (s.view === 1 && !this.hole.greenTex && !game.w.high[0x1A2] && !game.w.high[0x1BC] && this.hole.art.green.tiles.length) {
       const img = this.hole.art.paintGreen(game.w.bgPal);
       this.hole.greenTex = texture(this.gl, PX, PX, img); this.hole.greenAt = [s.green[0], s.green[1]];
+      this.hole.greenBase = greenBaseOf(this.hole.art, img) || this.hole.greenBase;
     }
     for (const fx of this.layers.fx) if (fx.frame) fx.frame(this, game, s);
   }
@@ -470,6 +482,8 @@ export class Golf3D {
     const key = "ground" + (shell ? ":shell" : carpet ? ":carpet" : "") + (sand && !shell ? ":sand" : "");
     return this.P[key] || (this.P[key] = key === "ground" ? this.P.ground : program(this.gl, ...groundSources({ carpet, sand, shell })));
   }
+  // GREEN: Clean (with GRASS: Carpet and TERRAIN): the green without the chevrons, its grass moved by the slope (groundshader.js)
+  get cleanGreen() { return this.hole && this.hole.grass === "carpet" && this.on("terrain") && this.layers.green === "clean" && !!this.hole.greenBase; }
   drawGround() {
     const h = this.hole, carpet = h.grass === "carpet" && this.on("terrain"), fine = h.sand === "fine";
     this.gl.disable(this.gl.BLEND);                  // (opaque: no blending, cheaper on a CPU renderer)
@@ -503,7 +517,8 @@ export class Golf3D {
     gl.uniform4fv(p.u.uSlopeRect, slopeOn ? [gc[0], gc[1], 20, 16] : [0, 0, 0, 0]);
     const tee = this.teeAt || [this.s.cup[0], this.s.cup[1] + 100], ax = this.s.cup[0] - tee[0], az = this.s.cup[1] - tee[1], al = Math.hypot(ax, az) || 1;
     gl.uniform2fv(p.u.uAlong, [ax / al, az / al]);
-    gl.uniform3fv(p.u.uPush, this.golferShown ? [this.golferShown[0], this.golferShown[1], 1] : [0, 0, 0]);
+    gl.uniform3fv(p.u.uPush, this.golferShown && !this.puttView ? [this.golferShown[0], this.golferShown[1], 1] : [0, 0, 0]);
+    gl.uniform1f(p.u.uGreenLook, this.cleanGreen ? 1 : 0); gl.uniform3fv(p.u.uGreenBase, h.greenBase || [0.4, 0.7, 0.3]);
     gl.uniform3fv(p.u.uLipCol, h.lipCol || [0.3, 0.6, 0.2]);
     const NS = this.lite ? 4 : 8;
     gl.uniform1f(p.u.uHmax, 1.0);
@@ -552,7 +567,7 @@ export class Golf3D {
         if (m) out.push([m, m4.tsy(x, H(x, z), z, k, k, k, cam.golferYaw(yaw, x, z)), null, "golfer"]);
       }
     }
-    this.worldMarks(out);
+    if (!this.puttView) this.worldMarks(out);         // (the putting view: the game's marks left out; its own lines instead)
     // the pin and its flag
     const [cx, cz] = s.cup, cy = H(cx, cz);
     // (the flag flies with the game's wind: harder wind, a quicker flutter)
@@ -610,15 +625,17 @@ export class Golf3D {
     const list = this.bodies(); this.lastBodies = list;
     this.setWind(p);
     for (const [m, model, tint, tag, sway] of list) {
-      if (tag === "ball") continue;
+      if (tag === "ball" || (tag === "golfer" && this.puttView)) continue;   // (the putting view: the golfer only as his shadow)
       gl.uniformMatrix4fv(p.u.uModel, false, model); gl.uniform4fv(p.u.uTint, tint || [1, 1, 1, 1]); gl.uniform4fv(p.u.uSway, sway || NO_SWAY);
       gl.bindVertexArray(m.vao); gl.drawArrays(gl.TRIANGLES, 0, m.n);
     }
     gl.uniform4fv(p.u.uSway, NO_SWAY);
     gl.bindVertexArray(null);
-    // the cup: a dark hole in the green (a golf cup's size next to the ball)
-    const [cx, cz] = this.s.cup; this.decal(cx, this.hole.H(cx, cz), cz, CUP_D, 0, 1, [0.03, 0.035, 0.03, 0.92], true, 0);
-    this.decal(cx, this.hole.H(cx, cz), cz, CUP_D * 1.08, 0, 1, [0.92, 0.94, 0.9, 0.5], true, 1);
+    // the cup: a dark hole in the green (a golf cup's size next to the ball); GREEN: Clean: with its white liner
+    const [cx, cz] = this.s.cup, cy = this.hole.H(cx, cz);
+    if (this.cleanGreen) { this.decal(cx, cy, cz, CUP_D * 1.16, 0, 1, [0.97, 0.98, 0.95, 0.95], true, 0); this.decal(cx, cy, cz, CUP_D * 0.94, 0, 1, [0.02, 0.025, 0.02, 1], true, 0); }
+    else { this.decal(cx, cy, cz, CUP_D, 0, 1, [0.03, 0.035, 0.03, 0.92], true, 0); this.decal(cx, cy, cz, CUP_D * 1.08, 0, 1, [0.92, 0.94, 0.9, 0.5], true, 1); }
+    if (this.puttView) this.puttMarks();
     // the ball, then its shadow on the ground under it: a soft contact shadow at rest and rolling, the dark spot that shrinks and
     // fades as it rises in the air (the sun's shadow too when LIGHT is on)
     const b = this.ballWorld(), gy = this.hole.H(b[0], b[2]), up = Math.max(0, b[1] - gy);
@@ -627,6 +644,15 @@ export class Golf3D {
       if (up < r * 2) this.decal(b[0], gy, b[2], r * 3.4, 0, 1, [0, 0, 0, 0.6 * (1 - up / (r * 2))], true, 2);
       if (up > r * 0.5) this.decal(b[0], gy, b[2], 0.9 + up * 0.04, 0, 1, [0, 0, 0, Math.max(0.15, 0.6 - up * 0.02) * Math.min(1, up / (r * 4))], true, 2);
     }
+  }
+  // the putting view's marks on the ground: a ring round the ball and a tick along the aim ($D418) where the golfer would stand; his
+  // shadow (the sun's, from the shadow map; without LIGHT a soft spot where he stands)
+  puttMarks() {
+    const s = this.s, H = this.hole.H, b = s.ball, a = s.aim, d = [Math.cos(a), Math.sin(a)];
+    this.decal(b[0], H(b[0], b[2]), b[2], 0.5, 0, 1, [1, 1, 1, 0.9], true, 1);
+    const tx = b[0] + d[0] * 0.44, tz = b[2] + d[1] * 0.44;
+    this.decal(tx, H(tx, tz), tz, 0.07, a - Math.PI / 2, 5, [1, 1, 1, 0.85], true, -1);
+    if (!this.shadowOn && this.golferShown) { const [gx, gz] = this.golferShown; this.decal(gx, H(gx, gz), gz, 1.6, a, 0.6, [0, 0, 0, 0.3], true, 2); }
   }
   setWind(p) { const wv = this.windVec || [0, 0]; this.gl.uniform3f(p.u.uWindT, wv[0], wv[1], this.time); }
   drawCasters(mvp) {

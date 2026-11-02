@@ -18,6 +18,13 @@
 //                   strands lean downhill along the slope the ball rolls on (uSlope: hole3d.js greenSlopes, GreenSlopeAt 10:64D1
 //                   per green tile), more the steeper the tile, combed streaks along it, a sheen that turns with the view and a
 //                   slow bright band travelling downhill; a flat tile stands upright and still
+// GREEN: Clean (uGreenLook 1, the default; Arrows = 0 is the look above): the green without the game's painted chevrons (uGreenBase:
+// the green picture's commonest colour on the green's tiles, scene.js greenBaseOf), very short dense turf with a fine mottle and a
+// subtle two-way mowing pattern whose bands turn with the view, a darker collar round it; its grass moves only with THE SLOPE
+// (exactly the game's: GreenSlopeAt 10:64D1 per green tile, hole3d.js greenSlopes): waves running downhill along each tile's push,
+// bigger and quicker the steeper, flat tiles still, plus a slight still lean (lighter looking downhill). The wind does not move the
+// green's grass (off it the grass keeps showing the wind). Each tile's own slope holds in its middle; only its outer part is blended
+// with the neighbours' (no checker look; the centre stays exact).
 // Off the green the strands sway in the game's wind (uWind: its direction and mph, as the HUD shows them): a bigger, faster sway
 // and gusts running across the grass in the wind's direction the harder it blows; on the green only a light sway over the lean
 // (the game's ball ignores the wind on the ground: 10:52EE). Only where the colour is green (the desert's brown stays as it is);
@@ -48,6 +55,7 @@ precision highp float; precision highp sampler2DShadow;
 in vec3 vW; in vec3 vN; in vec4 vSh; in vec2 vXZ; in float vL;
 uniform sampler2D uMap, uTerr, uGreen, uClean, uSandM, uSlope; uniform vec4 uGreenRect, uSlopeRect; uniform sampler2DShadow uShadow;
 uniform float uShadowOn, uDetail, uTime, uLite, uSkirt, uDesert, uHmax;
+uniform float uGreenLook; uniform vec3 uGreenBase;
 uniform vec3 uTypeCol[16]; uniform vec2 uWind; uniform vec3 uSkyCol; uniform vec2 uAlong; uniform vec3 uPush, uLipCol;
 uniform vec3 uSunDir, uSunCol, uAmb, uFogCol; uniform float uFogNear, uFogFar, uNight; uniform vec3 uEye;
 uniform vec4 uLights[4]; uniform vec3 uLightCol[4]; uniform vec4 uFade;
@@ -96,6 +104,31 @@ vec3 grainAt(vec2 p) {
   vec4 q = texelFetch(uSlope, ivec2(g), 0);
   return q.b > 0.1 ? vec3(normalize(q.rg * 2.0 - 1.0), q.b) : vec3(0.0);
 }
+// GREEN: Clean: a tile's slope (push, strength) or 0 off the green's tiles
+vec3 tileAt(vec2 c) {
+  if (c.x < 0.0 || c.y < 0.0 || c.x >= uSlopeRect.z || c.y >= uSlopeRect.w) return vec3(0.0);
+  vec4 q = texelFetch(uSlope, ivec2(c), 0); return q.b > 0.1 ? vec3(normalize(q.rg * 2.0 - 1.0), q.b) : vec3(0.0);
+}
+// the push x strength at p: the tile's own in its middle 40%, blended with the next tile's only across the outer part of each tile
+vec2 slopeVec(vec2 p) {
+  if (uSlopeRect.z <= 0.0) return vec2(0.0);
+  vec2 g = (p - uSlopeRect.xy) * 0.5 - 0.5, i = floor(g), f = smoothstep(0.3, 0.7, fract(g));
+  vec3 a = tileAt(i), b = tileAt(i + vec2(1, 0)), c = tileAt(i + vec2(0, 1)), d = tileAt(i + vec2(1, 1));
+  return mix(mix(a.xy * a.z, b.xy * b.z, f.x), mix(c.xy * c.z, d.xy * d.z, f.x), f.y);
+}
+vec3 slopeOf(vec2 p) { vec2 sv = slopeVec(p); float sl = length(sv); return sl > 0.02 ? vec3(sv / sl, sl) : vec3(0.0); }
+// the slope's wave: -1..1, running downhill along the push, quicker the steeper; flat: still
+float swayWave(vec2 p, vec3 gr) { return gr.z > 0.0 ? sin(dot(p, gr.xy) * 2.4 - uTime * (0.9 + 2.6 * gr.z)) : 0.0; }
+// the clean turf: the green's base colour, a fine mottle, mown in two directions (a band's shade turns with the view); the slope's
+// moving shade and the still lean (a strand bent toward you shows its lit side)
+vec3 cleanGreen(vec2 p, vec2 vxz, vec3 gr) {
+  vec2 pp = vec2(-uAlong.y, uAlong.x);
+  float sa = mod(floor(dot(p, uAlong) / 1.5), 2.0) * 2.0 - 1.0, sb = mod(floor(dot(p, pp) / 1.5), 2.0) * 2.0 - 1.0;
+  vec3 c = uGreenBase * (0.965 + 0.05 * vnoise(p * 1.3) + 0.025 * vnoise(p * 6.0));
+  c *= 1.0 + 0.04 * sb * dot(vxz, uAlong) + 0.03 * sa * dot(vxz, pp);
+  c *= 1.0 + 0.3 * gr.z * swayWave(p, gr) * (0.6 + 0.4 * -dot(gr.xy, vxz));
+  return c * (1.0 + 0.12 * gr.z * -dot(gr.xy, vxz));
+}
 // the wind's sway: -1..1, a gust running across the grass along the wind's direction, faster the harder it blows
 float sway(vec2 p, vec2 wd, float wk) {
   float ph = -dot(p, wd) * 0.21 + sin(p.x * 0.031 + sin(p.y * 0.043) * 1.5) * 1.2, t = uTime * (0.9 + 1.6 * wk);
@@ -119,7 +152,7 @@ void main() {
   {
     cl = uSkirt > 0.5 ? vec4(uTypeCol[7], 0.0) : texture(uClean, uv);
     bool grassT = t == 0.0 || t == 1.0 || t == 6.0 || t == 9.0 || t == 14.0 || t == 7.0;
-    grass = grassT && cl.g > cl.r + 0.015 && cl.g > cl.b + 0.015;
+    grass = grassT && cl.g > cl.r + 0.015 && cl.g > cl.b + 0.015 || (t == 6.0 && uGreenLook > 0.5);   // (Clean: every club's green)
     fringe = (t == 0.0 || t == 9.0 || t == 1.0) ? cl.a : 0.0;
     if (t == 6.0) { D = 36.0; base = 0.045; var = 0.25; tuft = 0.0; }
     else if (t == 0.0 || t == 14.0) { D = 5.0; base = 0.12; var = 0.15; tuft = 0.0; }
@@ -130,7 +163,7 @@ void main() {
     pix = fwidth(Q.x) + fwidth(Q.y); near = 1.0 - smoothstep(0.7, 1.7, pix);   // (a strand under a pixel: none)
     stripe = mod(floor(dot(vXZ, perp) / 9.0), 2.0) * 2.0 - 1.0;              // the mowing: bands along the hole
     ck = mod(floor(dot(vXZ, uAlong) / 2.5) + floor(dot(vXZ, perp) / 2.5), 2.0); // the green's mown check
-    if (t == 6.0 && grass) gr = grainAt(vXZ);
+    if (t == 6.0 && grass) gr = uGreenLook > 0.5 ? slopeOf(vXZ) : grainAt(vXZ);
   }
 #endif
 #if SHELL
@@ -141,7 +174,9 @@ void main() {
     bool mown = t == 0.0 || t == 14.0 || t == 6.0 || fringe > 0.5;
     float k2 = H / max(base * (1.0 + var), 0.01), s = sway(vXZ, wd, wk);
     vec2 bend;
-    if (t == 6.0) {                                           // the green: the lean downhill, a slow wave along it, a light wind
+    if (t == 6.0 && uGreenLook > 0.5)                         // GREEN: Clean: the slope's waves and the still lean, no wind
+      bend = gr.xy * gr.z * (0.06 + 0.16 * (0.5 + 0.5 * swayWave(vXZ, gr)));
+    else if (t == 6.0) {                                      // the green: the lean downhill, a slow wave along it, a light wind
       float wave = 0.8 + 0.2 * sin(dot(vXZ, gr.xy) * 1.4 - uTime * (1.0 + 1.5 * gr.z));
       bend = gr.xy * gr.z * 0.07 * wave + wd * (0.35 + 0.65 * s) * wk * 0.006;
     } else bend = wd * (0.3 + 0.7 * s) * wk * (mown ? 0.09 : 0.36) + (mown ? uAlong * stripe * 0.04 : vec2(0.0));
@@ -156,7 +191,8 @@ void main() {
     if (length(f - j * 0.35) > (t == 6.0 ? 0.4 * (1.0 - H / hgt) + 0.08 : 0.62 * (1.0 - H / hgt) + 0.12)) discard;   // (the green's finer)
     float kk = h21(id + 11.3), up = H / max(hgt, 0.001);
     vec3 col = cl.rgb;
-    if (t == 6.0) {                                           // (the green's own picture under the strands: the chevrons show through)
+    if (t == 6.0 && uGreenLook > 0.5) col = cleanGreen(vXZ, vxz, gr) * (1.0 + 0.2 * gr.z * swayWave(vXZ, gr) * (up - 0.5));
+    else if (t == 6.0) {                                      // (the green's own picture under the strands: the chevrons show through)
       col = mix(cl.rgb, greenPic(vXZ, cl.rgb), 0.85) * (0.96 + 0.07 * ck);
       col *= 1.0 + 0.16 * gr.z * -dot(gr.xy, vxz);            // the sheen: lighter looking down the grain
     }
@@ -166,6 +202,7 @@ void main() {
       col = mix(col, col * vec3(1.25, 1.0, 0.5) + vec3(0.07, 0.05, 0.0), smoothstep(0.55, 0.15, pa) * 0.4);
       col = mix(col, col * vec3(1.35, 1.12, 0.5) + vec3(0.06, 0.04, 0.0), step(0.86, kk) * 0.7);   // straw strands
     }
+    if (uGreenLook > 0.5 && fringe > 0.5 && t != 6.0) col *= 0.84;   // (Clean: the darker collar)
     col *= t == 6.0 ? mix(0.88, 1.08, up) : mix(0.55, 1.18, up * 0.7 + vL * 0.3); col += vec3(0.04, 0.05, 0.0) * up * up;
     o = finish(col, normalize(vN), shadowAt(true), 0.0);
   }
@@ -179,7 +216,8 @@ void main() {
   if (grass) {                                                // GRASS: Carpet: the lawn's colour, darker under tall grass nearby
     vec2 p = vXZ; float pa = vnoise(p / 5.0), s = sway(p, wd, wk);
     c = cl.rgb;
-    if (t == 6.0) {
+    if (t == 6.0 && uGreenLook > 0.5) c = cleanGreen(p, vxz, gr);   // GREEN: Clean (no chevrons, no wind)
+    else if (t == 6.0) {
       c = mix(cl.rgb, tex, 0.85) * (0.96 + 0.07 * ck);        // (the game's green picture: its slope chevrons)
       if (gr.z > 0.0) {                                       // THE GRAIN: blades combed downhill, the sheen, a band travelling downhill
         float a = dot(p, gr.xy), b = dot(p, vec2(-gr.y, gr.x)), row = floor(b * 4.0);
@@ -197,6 +235,7 @@ void main() {
     }
     else if (t == 0.0 || t == 14.0 || fringe > 0.5) c *= (1.0 + 0.14 * stripe * dot(vxz, uAlong) * (1.0 - fringe)) * (0.95 + 0.1 * pa) * (1.0 + 0.05 * wk * s);
     else c *= (0.84 + 0.3 * pa) * (1.0 + 0.09 * wk * s);      // (the gusts: a shade running across the long grass with the wind)
+    if (uGreenLook > 0.5 && fringe > 0.5 && t != 6.0) c *= 0.84 * (0.96 + 0.08 * vnoise(p * 1.5));   // (Clean: a darker collar round the green)
     c *= mix(1.0, mix(1.0, 0.45, smoothstep(0.05, 0.4, base)), near);
     c *= 1.0 + (vnoise(Q * 0.3) - 0.5) * 0.12 * (1.0 - near) * clamp(2.5 - pix * 0.25, 0.0, 1.0);   // (far: the strands' grain as a fine mottle)
   } else

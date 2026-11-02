@@ -35,7 +35,7 @@ byte fails it at frame 1).
 | the green's slope | the putting view's maps (refs 2/3): GreenSlopeAt 10:64D1 per green tile, as the ball's roll reads it (hole3d.js greenSlopes) |
 | the course | `$C836` (the sky's theme, the hour) |
 | the screen state | the frame task table `$C1C0` (BallDisplayTask 11:4113, BehindViewTask 15:47AD, TitlePressStartTask 40:4D1D, the actors 04:4B69, MapGfxScrollTask 0B:4784, the result confetti 0B:5DE1), the fade `$FFA2/$FFA4/$FFBC` |
-| the overworld | wMapGfx `$C32E` (MapGfxTable 0B:4048: tile map, attributes, collision `$D000` 32 x 32 cells of 16 px with `$0F` blocked), the live VRAM1 tiles and palettes, the actors' sprites (bank 04 slots) |
+| the overworld | wMapGfx `$C32E` (MapGfxTable 0B:4048: collision `$D000` 32 x 32 cells of 16 px with `$0F` blocked, the event grid), the live map buffers (WRAM3 / WRAM2 `$D000`: the 64 x 64 tile map and attributes, as the map scripts edit them), the live VRAM tiles, BG map and palettes, the actors' sprites (bank 04 slots) |
 
 World units: 1 = a pixel of the course view = 32 position units (a tile is 8 px = 256 units, about 8 yards), so a unit is about a
 yard; heights in the same units (the ball's height / 32). The trees stand 24 units tall (TreeCheck 08:51D2's height levels).
@@ -57,8 +57,25 @@ yard; heights in the same units (the ball's height / 32). The trees stand 24 uni
 | Big moments | moments.js | hole in one / albatross / eagle (fireworks, the camera circling the green), birdies (a small burst), a won tournament (fireworks over the result screen) |
 | Gallery | gallery.js, people.js | at tournament rounds people along the ropes (the game's map characters 04:4F1C, recoloured), reacting; a caddie in every mode |
 | Title fly-over | titleshow.js | holes of each club flown over behind PRESS START, the title's logo, Mario and texts in front (the sky's palettes let through) |
-| 3D overworld | field3d.js, field_objects.js, ground.js, shimmer.js | the story maps: blocked cells as boxes, annotated blocks and plants (tools/field_objects_preview.py), the people as rounded bodies |
+| 3D overworld | field3d.js, field_objects.js, ground.js, shimmer.js | the story maps: blocked cells as boxes, annotated blocks and plants (tools/field_objects_preview.py), the people as rounded bodies standing on their feet, the game's own picture of everything over the map (OVERWORLD, below) |
 | Field life | fieldlife.js | birds, butterflies, fireflies, motes; grass and dirt detail, water glint |
+
+OVERWORLD (field3d.js; web/tests/story3d.mjs). The map is the game's live map buffers (WRAM3 tiles, WRAM2 attributes; rebuilt when
+a map script edits them) painted with the live tiles and palettes (repainted when they change, a fade's end included, the plants
+too). Over it, as the game draws it, goes everything the map does not explain: the window layer, the sprites that are not stood up,
+and the BG cells on screen whose tile or attributes (bits 0-3, 5, 6) differ from the map's at the scroll (`$C320 / $C322` / 32):
+bank 05 draws its message boxes, menus, name plates and portraits into the BG over the map (its WRAM5 shadow), not into the window
+(hud3d.js raster's `bgCells`). The people: the actors' sprites (bank 04 slots), a run of consecutive slots whose sprites touch (side
+by side, or one above the other; at most 16 x 32) is one figure, painted with its flips and OBJ palette and stood up as a rounded
+body at the game's size, the front of its feet on the sprite's bottom line, leaning back 0.32 rad towards the camera (which looks
+down at about 45 degrees; upright a person shows at 0.7 of its height); the people are drawn after a depth clear so no wall box
+hides them (in the game a sprite is over the BG; an actor may stand in a blocked cell). Left to the 2D picture (render() false):
+a map that is only a picture (no blocked cell, no event, no annotation: the new character's room `$1E`, gfx `$1E`), a screen
+whose BG cells are more than 55% not the map's (the name entry, the encyclopedia, the navigation menu, the EXP screen), and a
+fade (`$FFA2/$FFA4/$FFBC`). The plain round the map lies 3 units under it and the near plane is 12 (a 16-bit depth buffer let the
+plain through the floor at some scrolls: the "black floor"). story3d.mjs plays the new character and a continue in 3D and checks
+on sampled frames that the game's picture over the map is in the 3D picture (90% of its pixels) and that the people's pixels (the
+3D picture against one drawn without them, over the square of the view's scale) are at least 0.7 of the game's.
 
 TREES (the panel's Trees: Courtyard, the default, or Original): the hole's tree tiles (bit 7 of the tile byte) are cut out of the
 ground picture (terrain3d.js extractTrees) and stand where they are. **Courtyard** (trees3d.js) grows one tree per tree tile in the
@@ -95,7 +112,7 @@ over the game's own green picture (the putting view's, with its slope chevrons, 
 the ball sits on fine grass in a close-up). The golfer parts
 the grass round his feet. On the Carpet the ball sits on the short grass and down in the rough.
 
-Reading the grass. The game's ball ignores the wind on the ground (Wind 10:52EE returns nothing at height 0), so on the green the
+Reading the grass (GREEN: Arrows; GREEN: Clean, the default, is under "Putting" below). The game's ball ignores the wind on the ground (Wind 10:52EE returns nothing at height 0), so on the green the
 grass shows the **slope** instead, tile by tile exactly as the roll reads it (hole3d.js greenSlopes: GreenSlopeAt 10:64D1 on the
 putting view's maps, the direction through SlopeDirTable 10:6516 with the tile's flips, the strength (v >> 4) & 3; one texel per
 green tile of 2 x 2 course px, from the green's corner `$D441/$D442`): the strands lean downhill (the push's direction), more the
@@ -144,6 +161,63 @@ again and again (median; before = the commit before them, paired runs): Lite 42-
 the fairway view and the putt on the Marion and Dune clubs); Full (640 x 576, multisampled) 135-214 ms before, 283-421 ms after
 (x1.7-2.4; most of it the shells near the camera). Grass: Pixel with Sand: Pixel runs the old shader at the old cost; Sand: Fine
 alone adds about a tenth (the sand near bunkers and the desert).
+
+## Putting (camera3d.js, groundshader.js, scene.js; the lines in hd/aimpower.js)
+
+Two options on the 3D panel (URL `?g3dputt=green|follow&g3dgreen=clean|arrows`, remembered in "mg3d").
+
+- **Putting: Green camera** (default) | Follow. While a putt is aimed (the green view `$D443` = 1, the putter `$D329` = `$0D`, the
+  meter not started `$D44E` = 0, the ball at rest, a human or computer turn; with Camera Follow or Behind) the camera (camera3d.js
+  puttGoal) stands low behind the ball on the line to the cup (`$D43D/$D43F`): back 3.2 + 0.2 L, up 1.7 + 0.12 L (L the putt in
+  yards) plus 0.22 per yard beyond 12 (a long putt seen from higher, so the cup is not squeezed into the horizon), and its pitch, yaw
+  and field of view are fitted (12 steps) so the ball, the cup and its flag, and the green's edge beyond the cup (along the line,
+  less of it on a long putt; the green's tiles from greenSlopes) fill the rows between the HUD's top text and its bottom strip
+  (ndc y -0.62..0.66). While it shows (`scene.puttView`) the golfer is drawn only into the shadow map (his sun shadow stays; without
+  LIGHT a soft spot), the caddie, the game's marks (target marker, look cursor) and the last shot's Ball FX trail are left out, and a
+  ring round the ball and a tick along the aim `$D418` mark it; the white-lined cup with GREEN: Clean. When the swing starts (or the
+  option, the club or the view changes) the camera blends back to the FOLLOW green camera in 0.8 s (eye, target and field of view
+  eased with a smoothstep; it blends in from wherever the camera is at the next putt), so the stroke and the roll are seen as
+  before; the big meter is placed as before.
+- **The break** (the putting view's marks, aimpower.js drawPuttView; with Preview On): the putts struck at 100, 77, 50 and 27 % of
+  the meter, each run by the game's own shot code on a copy of the memory (shotpreview.js runPreview with the putter's press count:
+  `$D44E` = `$D44F` = `$D450` = the count): the roll path and its stop, the label "NN%: X ft" (or "in") beside the stop at the
+  first free place of twelve around it, clear of the other labels and the stop dots and inside the rows between the HUD. Why 77 and
+  27: SwingMeterLoop 10:57E0 reads A only on an even count (on an odd one it latches the press into `$D453` and acts on it at the
+  next count), so a press can strike only at an even count; 75 % ($2D) and 25 % ($0F) cannot be struck, the nearest are $2E and
+  $10 (shotpreview.js PUTT_POWERS). The percentage is the count / 60, as the big meter shows the power. The runs are made again only
+  when what decides the shot changes and has held still 90 ms (about 10 ms for the four in the page). With Markers On, a light grid of
+  the green's tiles (2 px) fading out 2.5 px from the ball-to-cup line, each sloped tile with a chevron along its push in yellow /
+  orange / red by its strength 1 / 2 / 3 (GreenSlopeAt 10:64D1 via hole3d.js greenSlopes), and a white ring round the cup, never
+  under ~7 px across (on a 60 ft putt the cup is a few pixels far up the picture). The usual aim line, "full putt" line and
+  pin label are not drawn in this view (the 100 % line is the full putt).
+  Exact: `web/tests/putt_lines.mjs` (Node) reaches putts on eight greens (Marion 1 and 3 (from the fringe), Palm 1 and 18, Dune 2
+  and 5, Links 3 and 18) and strikes each at the four counts in turn (the round played again from its start for each): 32 of 32
+  stopped exactly (to the fraction; a holed one "in") where the line computed in the aiming menu and at the address ends, with the
+  same roll; `web/tests/putting_view.mjs` checks that the page's own four lines are the same numbers.
+- **Feet**: every number of feet on the page comes from shotpreview.js feetText, the HUD's conversion (HudDrawPinDistance 12:4CB1):
+  a length under `$6A` units as feet and tenths ((len x 3) >> 5, the rest x 10 >> 5), else (len x 3 + 8) >> 5; the pin's distance
+  from PinDist 10:62AD, a putt's roll from ShotLength 10:6276. (The full putt's label used to round the straight distance x 3 and
+  could say 30 ft where the game's own conversion gives 29.)
+- **Green: Clean** (default, with GRASS: Carpet and TERRAIN) | Arrows (the look before: the green picture's chevrons, the grain's
+  combed blades and travelling band). Clean draws the green in its base colour (scene.js greenBaseOf: the commonest colour of the
+  green picture's pixels on the green's own tiles; first from the ROM's green palette, then from the live one once the game shows
+  the green) without the chevrons: a fine mottle, a subtle two-way mowing pattern (1.5 px bands along and across the hole whose
+  shade turns with the view), a darker collar (the fringe ring x 0.84), the cup with a white liner. Its grass moves only with the
+  slope (groundshader.js slopeOf / swayWave): per green tile the push and strength as the ball reads them, the tile's own value in
+  the middle 40 % of the tile and blended with its neighbours only across the outer part (no checker look, each tile's centre exact);
+  waves running downhill along the push (sin(2.4 x along the push - t (0.9 + 2.6 s))), their size by the strength, flat tiles still,
+  and a slight still lean (a strand bent toward the eye shows its lit side: lighter looking downhill). The shells bend the same way;
+  the wind does not move the green's grass any more (off the green the grass keeps the wind). Every club's green is drawn so, also
+  a green whose colour is not green.
+
+Frames on a slow renderer. The 3D picture is now drawn only when the GPU has finished the last one (layers.js: a fence after each
+picture, `clientWaitSync` with no wait before the next; until then the last picture stays), and the helpers' overlay is painted
+again while the game is held only when something it shows changed. Before, on SwiftShader the page queued pictures (the idle redraw
+every 120 ms, the overlay at every animation frame) faster than they were drawn; once a picture took longer than that (the course
+view at the full resolution, more so with the green's new look in the concepts) the queue grew and Chrome all but stopped calling
+requestAnimationFrame (3-20 calls in 8 s held at the approach on Dune 2, the pictures seconds late; the concepts' captures timed
+out). Now 480 calls in 8 s, the 3D picture redrawn as fast as the renderer finishes it. `web/tests/putting_view.mjs` holds the
+game at the full resolution in the course view and in the putting view with every option and fails below 15 calls a second.
 
 ## Aim and swing helpers (web/js/hd/aimpower.js, shotpreview.js)
 

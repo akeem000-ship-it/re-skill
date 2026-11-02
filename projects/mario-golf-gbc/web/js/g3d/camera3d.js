@@ -4,13 +4,62 @@
 // COURSE (the game's own framing: the course view's camera centre seen from above at a slant, the green view's, the behind view's),
 // BEHIND (always low behind the ball along the aim or the flight) and TV (a broadcast camera beside the shot). Effects may take the
 // camera for a while (scene.camOverride: the replay, the big moments, the title's fly-over). Reads the game's state; writes nothing.
+// PUTTING: Green camera (layers.putting "green", with FOLLOW or BEHIND): while a putt is aimed (the green view, the putter, no swing
+// yet) the camera is low behind the ball looking at the cup, its field of view fitted to the ball, the cup and its flag and the
+// green's edge beyond the cup, zoomed by the putt's length (a long putt: a higher eye, a tighter fit, so the cup stays readable);
+// when the swing starts it eases back to the FOLLOW green camera (a smooth blend of eye, target and field of view) so the stroke and
+// the roll are seen as before, and eases in again at the next putt. scene.puttView says when it shows (the putting view's marks).
 import { m4, norm, sub, lerp, clamp } from "./gl.js";
 
 export const PRESETS = { follow: "Follow", course: "Course", behind: "Behind", tv: "TV" };
 const DEG = Math.PI / 180;
 
+const PUTTER = 0x0D, EASE = 0.8;                  // (the putting view's blend in and out, seconds)
+const smooth = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+
 export class CameraRig {
-  constructor(scene) { this.scene = scene; this.eye = null; this.at = null; this.fov = 50 * DEG; this.lastView = -1; this.fovK = 1; }
+  constructor(scene) { this.scene = scene; this.eye = null; this.at = null; this.fov = 50 * DEG; this.lastView = -1; this.fovK = 1; this.tilt = 1; this.putt = null; }
+  // is a putt being aimed, in the putting view's camera? (the green view, the putter, the swing not started, the ball at rest)
+  puttAiming(s) {
+    const sc = this.scene, preset = sc.layers.camera;
+    return sc.layers.putting === "green" && (preset === "follow" || preset === "behind") && s.view === 1 && s.club === PUTTER && !s.air && !s.swing && !sc.inShot && !sc.replaying;
+  }
+  // the green's tile at a point (hole3d.js greenSlopes: 20 x 16 tiles of 2 px from the green's corner)?
+  onGreen(s, x, z) {
+    const gs = this.scene.hole.art.greenSlopes(), tx = Math.floor((x - s.green[0]) / 2), tz = Math.floor((z - s.green[1]) / 2);
+    return tx >= 0 && tz >= 0 && tx < 20 && tz < 16 && gs[(tz * 64 + tx) * 4 + 3] > 0;
+  }
+  // the putting view: low behind the ball, the field of view fitted to the ball, the cup with its flag and the green's edge beyond
+  // the cup, kept in the picture's rows between the HUD's top text and its bottom strip
+  puttGoal(s, aspect) {
+    const sc = this.scene, H = sc.hole.H, b = [s.ball[0], s.ball[2]], [cx, cz] = s.cup, L = Math.hypot(cx - b[0], cz - b[1]);
+    if (L < 0.05) return null;
+    const d = [(cx - b[0]) / L, (cz - b[1]) / L];
+    const far = Math.max(0, L - 12);                   // (beyond ~36 ft: higher, so the cup is not squeezed to a dot at the horizon)
+    const back = 3.2 + 0.2 * L, up = 1.7 + 0.12 * L + 0.22 * far;
+    const eye = [b[0] - d[0] * back, H(b[0], b[1]) + up, b[1] - d[1] * back];
+    const pts = [[b[0], H(b[0], b[1]), b[1]], [cx, H(cx, cz) + 4.3, cz], [cx, H(cx, cz), cz]];
+    let ex = cx, ez = cz;                              // the green's edge beyond the cup (less of it on a long putt)
+    for (let t = 0, lim = Math.max(2, 14 - far * 0.8); t < lim && this.onGreen(s, ex + d[0] * 0.5, ez + d[1] * 0.5); t += 0.5) { ex += d[0] * 0.5; ez += d[1] * 0.5; }
+    pts.push([ex, H(ex, ez), ez]);
+    const top = 0.66, bot = -0.62;                     // (ndc: below the HUD's top rows, above its bottom strip)
+    let pitch = -Math.atan2(up, back + L * 0.6), fov = 40 * DEG, yaw = Math.atan2(d[1], d[0]);
+    const pr = (P, yw, pt, fv) => {
+      const f = [Math.cos(pt) * Math.cos(yw), Math.sin(pt), Math.cos(pt) * Math.sin(yw)];
+      const m = m4.mul(m4.perspective(fv, aspect, 0.2, 9000), m4.lookAt(eye, [eye[0] + f[0], eye[1] + f[1], eye[2] + f[2]], [0, 1, 0]));
+      return P.map(p => { const q = m4.apply(m, [p[0], p[1], p[2], 1]); return q[3] > 0 ? [q[0] / q[3], q[1] / q[3]] : null; }).filter(Boolean);
+    };
+    for (let it = 0; it < 12; it++) {
+      const n = pr(pts, yaw, pitch, fov); if (!n.length) break;
+      const y0 = Math.min(...n.map(q => q[1])), y1 = Math.max(...n.map(q => q[1])), x0 = Math.min(...n.map(q => q[0])), x1 = Math.max(...n.map(q => q[0]));
+      const ty = Math.tan(fov / 2);
+      pitch += Math.atan(((y0 + y1) / 2 - (top + bot) / 2) * ty) * 0.9;
+      yaw += Math.atan(((x0 + x1) / 2) * ty * aspect) * 0.9;
+      fov = clamp(2 * Math.atan(ty * Math.max((y1 - y0) / (top - bot), (x1 - x0) / 1.8)), 12 * DEG, 100 * DEG);
+    }
+    const f = [Math.cos(pitch) * Math.cos(yaw), Math.sin(pitch), Math.cos(pitch) * Math.sin(yaw)];
+    return { eye, at: [eye[0] + f[0] * 10, eye[1] + f[1] * 10, eye[2] + f[2] * 10], fov: fov / DEG };
+  }
   yawToEye = (x, z) => Math.atan2(this.eye[0] - x, this.eye[2] - z);
   // the golfer turns to the camera, but no further than 75 degrees from facing back along the aim
   golferYaw = (back, x, z) => { const y = this.yawToEye(x, z); let d = ((y - back + Math.PI * 3) % (Math.PI * 2)) - Math.PI; d = clamp(d, -75 * DEG, 75 * DEG); return back + d; };
@@ -59,7 +108,22 @@ export class CameraRig {
   update(s, dt, aspect) {
     const sc = this.scene;
     let g = sc.camOverride ? sc.camOverride(s, dt) : null;
-    if (!g) g = this.goal(s);
+    sc.puttView = false;
+    if (!g) {
+      g = this.goal(s);
+      // PUTTING: Green camera: the putting view while aiming; blended to and from the FOLLOW camera (the tilt: 0 the putting view)
+      const aiming = this.puttAiming(s);
+      if (aiming) { const p = this.puttGoal(s, aspect); if (p) this.putt = { ...p, hid: s.hid, view: s.view }; }
+      if (this.putt && (this.putt.hid !== s.hid || s.view !== 1)) this.putt = null;
+      this.tilt = !this.putt ? 1 : clamp(this.tilt + (aiming ? -dt : dt) / EASE, 0, 1);
+      if (aiming && !this.wasAiming && this.eye) this.from = { eye: this.eye.slice(), at: this.at.slice(), fov: this.fov / DEG };   // (in from where the camera is)
+      if (!aiming) this.from = null;
+      if (this.putt && this.tilt < 1) {
+        const e = smooth(this.tilt), P = this.putt, B = this.from || g, mix = (a, b) => a.map((v, i) => v + (b[i] - v) * e);
+        g = { eye: mix(P.eye, B.eye), at: mix(P.at, B.at), fov: P.fov + (B.fov - P.fov) * e, snap: true };
+      }
+      sc.puttView = aiming && !!this.putt; this.wasAiming = aiming;
+    }
     const snap = !this.eye || g.snap || (s.view !== this.lastView && (s.view === 4 || this.lastView === 4) && !sc.camOverride);
     this.lastView = s.view;
     if (snap) { this.eye = g.eye.slice(); this.at = g.at.slice(); this.fov = g.fov * DEG; }

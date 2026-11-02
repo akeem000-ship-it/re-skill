@@ -144,7 +144,7 @@ if (cost) {
         for (let i = 0; i < 12; i++) { ap.preview.key = ""; const t0 = performance.now(); ap.preview.get(g.w); pv.push(performance.now() - t0); }
         if (G && G.active && G.scene) for (const on of [0, 1]) {               // the 3D picture alone, then with the helpers drawn after it
           const gl = G.canvas.getContext("webgl2"), px = new Uint8Array(4);                // (readPixels waits for the GPU's work)
-          for (let i = 0; i < 8; i++) { const t0 = performance.now(); G.present(g, G.lastFrame, true); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); if (on) ap.paint(g); d3[on].push(performance.now() - t0); }
+          for (let i = 0; i < 8; i++) { const t0 = performance.now(); G.present(g, G.lastFrame, true, true); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); if (on) ap.paint(g); d3[on].push(performance.now() - t0); }
         }
         return { t, pv, d3 };
       });
