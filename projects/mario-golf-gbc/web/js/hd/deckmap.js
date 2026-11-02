@@ -176,11 +176,12 @@ export function attachDeckMap(deck) {
     view.phi = view.phi + angDiff(view.phi, phi) * k; view.set = true; shownHole = hid;
     // (settled: exactly at the target, so a held game is not drawn again and again)
     if (Math.abs(view.cx - tcx) + Math.abs(view.cz - tcz) < 0.3 / sc * dpr && Math.abs(Math.log(view.s / sc)) < 0.003 && Math.abs(angDiff(view.phi, phi)) < 0.002) { view.cx = tcx; view.cz = tcz; view.s = sc; view.phi = phi; }
+    api.settled = view.cx === tcx && view.cz === tcz && view.s === sc && view.phi === phi;
     // drawn again only when something changed (the view still moving, the ball, the preview, the size)
     const sig = [hid, Math.round(view.cx * 50), Math.round(view.cz * 50), Math.round(view.s * 1000), Math.round(view.phi * 1000), ball[0], ball[1], hgt, cv.width, cv.height,
       res ? res.len + ":" + res.end.join() + (res.stale ? "s" : "") : "-", putts ? putts.map(r => r.len).join() + (putts[0].stale ? "s" : "") : "-", aimA, r6[0x426], r6[0x428], game.mark, track.pts.length, w0[0x815], w0[0x816]].join(",");
     if (sig === lastSig) return true;
-    lastSig = sig; api.draws++; const t0 = performance.now();
+    lastSig = sig; api.sig = sig; api.draws++; const t0 = performance.now();
     // (the flight and after it: the preview the swing was aimed with, faded, under the ball's own track)
     const after = !aiming && track.from && track.pts.length;
     const fade = r => r && { ...r, stale: true };
@@ -220,6 +221,7 @@ export function attachDeckMap(deck) {
       }
     }
     const aimV = [Math.cos(aimA), Math.sin(aimA)];
+    const ringNums = [];
     // rings every 50 y round the ball (not on the green)
     if (!putts && !(res && res.putt) && !o.putter) {
       const vis = Math.hypot(W, H) / view.s;
@@ -227,7 +229,7 @@ export function attachDeckMap(deck) {
       for (let r = 50; r <= 350 && r < vis + Math.hypot(o0[0] - view.cx, o0[1] - view.cz); r += 50) {
         const p = S(o0[0], o0[1]); g.beginPath(); g.arc(p[0], p[1], r * view.s, 0, 7);
         g.setLineDash([4 * u, 4 * u]); g.strokeStyle = `rgba(255,255,255,${(0.34 - r / 1400).toFixed(2)})`; g.lineWidth = 1 * u; g.stroke(); g.setLineDash([]);
-        if (r % 100 === 0) { const a = aimA + 0.45, q = S(o0[0] + Math.cos(a) * r, o0[1] + Math.sin(a) * r); softText(g, String(r), q[0], q[1], 10 * u, 0.8); }
+        if (r % 100 === 0) { const a = aimA + 0.45, q = S(o0[0] + Math.cos(a) * r, o0[1] + Math.sin(a) * r); ringNums.push([String(r), q[0], q[1]]); }
       }
     }
     // the aim line to the target
@@ -306,6 +308,8 @@ export function attachDeckMap(deck) {
     }
     pl.avoid.push([F.l * dpr, F.t * dpr, F.l * dpr + 104 * u, F.t * dpr + 46 * u]);   // (the wind badge)
     pl.draw();
+    // (the rings' numbers last, where no tag sits)
+    for (const [t, x, y] of ringNums) if (!pl.placed.some(q => x > q[0] - 12 * u && x < q[2] + 12 * u && y > q[1] - 6 * u && y < q[3] + 6 * u)) softText(g, t, x, y, 10 * u, 0.8);
     // the wind: a badge at the free area's top left, its arrow turned with the map
     const mph = w0[0x815] & 0x1F, wa = w0[0x816] / 256 * Math.PI * 2 + view.phi, bx = F.l * dpr + 26 * u, by = F.t * dpr + 24 * u, R = 18 * u;
     g.beginPath(); g.arc(bx, by, R, 0, 7); g.fillStyle = "rgba(10,16,26,0.72)"; g.fill(); g.strokeStyle = "rgba(255,255,255,0.22)"; g.lineWidth = 1 * u; g.stroke();

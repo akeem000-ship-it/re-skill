@@ -57,6 +57,7 @@ if (shots) {
   }
 } else {
   // the check
+  const sel = arg("--cases", null)?.split(",").map(Number);
   const CASES = [
     { q: "g3d=none&course=1&hole=1", seed: 4321, shots: [{}, { aim: 8 }, {}, {}, {}] },
     { q: "g3d=all&g3dq=lite&course=2&hole=1", seed: 777, shots: [{ aim: -14 }, { club: 1 }] },
@@ -65,7 +66,8 @@ if (shots) {
     { q: "g3d=none&course=3&hole=2", seed: 4321, putter: true, aimWait: -5, addrWait: 30, hold2: true, shots: [{ power: 52 }, {}, {}] },
   ];
   let n = 0, same = 0;
-  for (const C of CASES) {
+  for (const [ci, C] of CASES.entries()) {
+    if (sel && !sel.includes(ci)) continue;
     const { page, errors } = await openPage(browser, port, C.q, LAYOUTS.cover, C);
     const want = C.shots.length;
     await page.waitForFunction(n => window.__bot.log.length >= n || window.__golf.error || window.__golf.done, want, { timeout: 900000, polling: 500 });
@@ -80,14 +82,14 @@ if (shots) {
       console.log(`${C.q} shot ${s.shot + 1}: club ${s.club}: map rest (${restMark ? restMark.map(v => v.toFixed(3)).join(", ") : "-"})${d && d.restY !== undefined ? ` ${d.restY} y carry ${d.carry}` : ""}; preview ${pvSame ? "same" : "DIFFERS"}; real (${real ? real.map(v => v.toFixed(3)).join(", ") : "-"}) ${realSame ? "SAME" : "differs"}`);
     }
     // held: the map draws only when something changed
-    await holdAt(page, { shot: r.log.length, phase: "aim", n: 70 }).catch(() => null);
-    // (first settled: the pan and zoom to the new shot can take seconds of software rendering here)
-    await page.evaluate(() => new Promise(r => { const d = window.__deckMap; let last = d.draws, at = performance.now(); const t0 = at;
-      const chk = () => { if (d.draws !== last) { last = d.draws; at = performance.now(); } if (performance.now() - at > 1000 || performance.now() - t0 > 30000) r(); else setTimeout(chk, 100); }; chk(); }));
-    const d0 = await page.evaluate(() => window.__deckMap.draws); await page.waitForTimeout(1500);
-    const d1 = await page.evaluate(() => window.__deckMap.draws);
-    console.log(`  portrait ${r.portrait}; map draws while held 1.5 s: ${d1 - d0}`);
-    if (!r.portrait || d1 - d0 > 0) ok = false;
+    const hs = await holdAt(page, { shot: r.log.length, phase: "aim", n: 70 }).catch(() => null);
+    // (first settled: the pan and zoom to the new shot can take many seconds of software rendering here)
+    await page.waitForFunction(() => window.__deckMap.settled, null, { timeout: 120000, polling: 200 }).catch(() => console.log("  (not settled in 120 s)"));
+    const d0 = await page.evaluate(() => [window.__deckMap.draws, window.__golf.frames, window.__deckMap.sig]); await page.waitForTimeout(1500);
+    const d1 = await page.evaluate(() => [window.__deckMap.draws, window.__golf.frames, window.__deckMap.sig]);
+    console.log(`  portrait ${r.portrait}; held at ${hs && hs.mark} (game frames while measured: ${d1[1] - d0[1]}); map draws while held 1.5 s: ${d1[0] - d0[0]}`);
+    if (d1[0] !== d0[0]) console.log("   ", d0[2], "\n   ", d1[2]);
+    if (!r.portrait || d1[0] - d0[0] > 0) ok = false;
     if (r.error || errors.length) { console.log("  errors", r.error, errors.slice(0, 3)); ok = false; }
     await page.close();
   }

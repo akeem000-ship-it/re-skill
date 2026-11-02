@@ -257,13 +257,17 @@ sets the same key the pad's A button sets. Settings in localStorage (`mg-meter`,
   engine's own `Shot.launch()` (ShotLaunch 10:5F94, the flight camera's loop and ShotMainLoop with BallTask every frame, the cup,
   the green's view change) to its outcome. Without the landing-preview task off the copy's PreviewFrame keeps rewriting the shot
   and the ball goes ~50 y long. Drawn (hd/aimdraw.js, the look shared with the deck's shot map): the flight as a tapered tube
-  (its half-width from the 3D view's scale at each point, ~0.45-1.5 game px, narrowing a further 35 % towards the landing; a soft
-  dark edge so it reads on sky, sand, grass and water, a tinted body, a white core, and a light travelling along it once every
-  90 game frames: its phase is the frame count, so a held game holds it), its shadow on the ground as a soft line, the landing
+  (its half-width from the 3D view's scale at each point, ~0.4-1 game px, narrowing a further 35 % towards the landing; a soft
+  dark edge so it reads on sky, sand, grass and water, a tinted body, a white core, in 3D fainter over its first third so a
+  flight rising straight at the camera does not read as a bar; a light travelling along it once every 90 game frames: its phase
+  is the frame count, so a held game holds it), its shadow on the ground as a soft line, a faint curtain between the two with
+  height ticks, the apex (the highest frame of the path) with a dashed drop to the ground; when the flight's picture is nearly a
+  straight line (the camera behind the ball: the rise and the fall on top of each other) a small panel at the lower right draws
+  the same path from the side (the distance along the ground, the height x2) with the apex, the landing and the roll; the landing
   as a reticle lying on the ground (rings and four ticks, perspective-correct through the same projection, never smaller than
   ~4 game px), the roll as a dotted line to a small rest ring, and one tag "284 y  carry 280" (ShotLength 10:6276 >> 5, as the
-  HUD measures a shot: the rest, then the carry); a putt: the roll line and "N ft  full putt" (or "in"). The game gives the
-  ball's height but shows no height of its own, so no apex number is drawn. It is run again
+  HUD measures a shot: the rest, then the carry); a putt: the roll line and "N ft  full putt" (or "in"). The game shows no
+  height of its own, so the apex has no number. Tags are at least 15 CSS px (the break's 14) so they read on a phone. It is run again
   only when what decides the shot changes (the hole, the ball's spot, the aim, the club, the shot mode, the putt range, the wind,
   the view, the player, the club's stats) and that has held still ~90 ms (the aim keys move it every frame; meanwhile the last
   one shows dimmed). Exact: web/tests/shot_preview.mjs (Node) plays perfect full swings on the four courses, from the tee, the
@@ -343,5 +347,6 @@ the art. Render only: it reads the game's memory and the ROM; it writes nothing.
   the preview, the putts, the aim, the wind, the size); `window.__deckMap.draws` counts them.
 - **Exact**: `window.__deckMap.marks` keeps the world spots it drew (landing, rest, the putts' stops, the yards).
   `web/tests/deck_map.mjs` plays perfect full swings and full putts in the cover screen's layout: at the address the map's marks
-  must be the preview's and the ball's real rest spot must be the map's rest mark to the last fraction; held, the map must not
-  draw again. `--shots` takes the pictures in out/deckmap (aiming, the flight, putting, the menus; cover and inner screens).
+  must be the preview's and the ball's real rest spot must be the map's rest mark to the last fraction (17 of 17 on Marion 1
+  and 7, Palm 1, Dune 5 and 2, drives to wedges, a full putt); held, once settled the map must not draw again (`--cases 0,4`
+  runs some of the cases). `--shots` takes the pictures in out/deckmap (aiming, the flight, putting, the menus; cover and inner screens).
