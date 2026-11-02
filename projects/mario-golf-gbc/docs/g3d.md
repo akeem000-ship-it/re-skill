@@ -220,6 +220,13 @@ requestAnimationFrame (3-20 calls in 8 s held at the approach on Dune 2, the pic
 out). Now 480 calls in 8 s, the 3D picture redrawn as fast as the renderer finishes it. `web/tests/putting_view.mjs` holds the
 game at the full resolution in the course view and in the putting view with every option and fails below 15 calls a second.
 
+Cost (`putting_view.mjs --shots`, the 3D picture redrawn with the game held, Full 640 x 576, SwiftShader on a shared machine, median
+of 7; before = Putting: Follow with Green: Arrows): the course view at the approach the same within the noise (282-404 ms both);
+the putt 494 -> 339 ms (Marion 1), 592 -> 423 (Palm 18), 337 -> 307 (Dune 2), 483 -> 520 (Links 18), 455 -> 512 (Marion 3, from the
+fringe): the low camera sees less of the course, a long putt's view more of the green's grass shells. The four break lines cost
+7-18 ms of script once per aim (four runs of the shot code), their drawing well under a millisecond. `g3d_layers_same.mjs --scenario
+putt` plays a putt in the putting view with every layer and helper on (the game's state the same every frame).
+
 ## Aim and swing helpers (web/js/hd/aimpower.js, shotpreview.js)
 
 Four page options (in the picture options row, `#hdopts`; on phones under OPTIONS), drawn on a 2D canvas over the screen (over the
