@@ -17,7 +17,7 @@ export class HudLayer {
   }
   // the HUD as RGBA (alpha 0 where the BG shows the course); keep(slot) picks the sprites
   raster(w, keep, opts = null) {
-    const bgOn = opts && opts.bg, skip = (opts && opts.skipPals) || null, clear0 = (opts && opts.clear0) || null;
+    const bgOn = opts && opts.bg, cells = (opts && opts.bgCells) || null, skip = (opts && opts.skipPals) || null, clear0 = (opts && opts.clear0) || null;
     const d = { vram: w.vram, oam: w.oam, bgPal: w.bgPal, objPal: w.objPal, ...w.lcd }, out = this.rgba;
     out.fill(0);
     const lcdc = d.lcdc, v0 = d.vram[0], v1 = d.vram[1];
@@ -31,6 +31,7 @@ export class HudLayer {
       lineColor.fill(0); win.fill(0);
       if (bgOn) for (let x = 0; x < W; x++) {          // (the BG too, for a caller that lets some palettes through)
         const tx = (x + d.scx) & 0xFF, ty = (ly + d.scy) & 0xFF, map = lcdc & 0x08 ? 0x1C00 : 0x1800;
+        if (cells && !cells[((ty >> 3) << 5) + (tx >> 3)]) continue;   // (the 3D overworld: only the BG cells the map does not explain)
         const cell = map + ((ty >> 3) << 5) + (tx >> 3), tile = v0[cell], attr = v1[cell];
         if (skip && skip.has(attr & 7)) continue;
         const addr = lcdc & 0x10 ? tile << 4 : 0x1000 + ((tile << 24 >> 24) << 4);
@@ -82,9 +83,9 @@ export class HudLayer {
     const keep = i => w.oam[i * 4] - 16 >= 124 || (!WORLD_BANKS.has(t[i]) && !(scene.hideSprite && scene.hideSprite(i)));   // (the meter row is the HUD)
     this.drawLayer(scene, w, keep);
   }
-  drawLayer(scene, w, keep) {
+  drawLayer(scene, w, keep, opts = null) {
     const gl = this.gl;
-    this.raster(w, keep);
+    this.raster(w, keep, opts);
     if (!this.tex) {
       this.tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, this.tex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, this.rgba);

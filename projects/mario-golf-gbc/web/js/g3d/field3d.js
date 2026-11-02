@@ -1,14 +1,17 @@
 // 3D OVERWORLD (render only; adapted from Mario Tennis's field3d.js / voxel.js "field" scene): the story mode's maps in 3D while the map
-// engine runs (bank 04's actor tasks 04:4234 / 04:4B69 registered). The map is the one the game has loaded (wMapGfx $C32E: its
-// MapGfxTable 0B:4048 entry, read from the ROM: tile map, attributes, the collision grid WRAM6 $D000 (32 x 32 cells of 16 px, low
-// nibble $0F = blocked)), drawn with the game's live tiles (VRAM1 $8800-$97FF: the map's animated tiles move as the game moves them)
-// and palettes. On it:
+// engine runs (bank 04's actor tasks 04:4234 / 04:4B69 registered). The map is the one the game has loaded (wMapGfx $C32E): its tile
+// map and attributes as the game holds them (WRAM3 / WRAM2 $D000, 64 x 64, edited by the map scripts), its MapGfxTable 0B:4048
+// entry's collision grid (read from the ROM: 32 x 32 cells of 16 px, low nibble $0F = blocked) and event grid, drawn with the game's
+// live tiles (VRAM $8800-$97FF: the map's animated tiles move as the game moves them) and palettes. On it:
 //   * the blocked cells as low boxes (their own picture on the top and the front), unless the map's annotation says otherwise;
 //   * the annotated objects (field_objects.js): building blocks (roof and front wall), plants and props found by their tiles stood
 //     up as rounded bodies (voxround.js) that sway in the wind (FIELD LIFE);
-//   * the people: the sprites the actors' code (bank 04) queues, paired into their 16 x 16 frames and stood up at their spot as
-//     rounded bodies, in their own colours;
-//   * the window layer and the other sprites (menus, the message box) laid over it as the game draws them.
+//   * the people: the sprites the actors' code (bank 04) queues, joined into their figures (the touching 8 x 16 sprites: a 16 x 16
+//     frame, a taller one) and stood up as rounded bodies at their feet's spot, at the game's own size, turned to the camera;
+//   * the game's own picture of everything the map does not explain, laid over it as the game draws it: the window layer, the other
+//     sprites, and the BG cells that are not the map's (the message boxes, menus and portraits bank 05 draws into the BG over the map).
+// What it cannot draw it leaves to the 2D picture (render() returns false): a screen whose BG is mostly not the map (a full-screen
+// picture, a menu, the name entry) and a map that is only a picture (no walls, no events, no annotation: the new character's room).
 // The camera looks down at a slant over the game's own view centre (the scroll $C320 / $C322). GROUND (ground.js) adds grass
 // blades and dirt to the ground's own colours, SHIMMER (shimmer.js) the glint on water and glass. Nothing of the game is written.
 import { m4, program, vao, texture, updateTexture, clamp, mulberry32 } from "./gl.js";
@@ -17,6 +20,7 @@ import { roundedMeshData } from "./voxround.js";
 import { FIELD_OBJECTS } from "./field_objects.js";
 import { Golf3D } from "./scene.js";
 import { tagsOf } from "./hud3d.js";
+import { picKey } from "./sprites3d.js";
 import { GROUND_GLSL } from "./ground.js";
 import { SHIMMER_GLSL } from "./shimmer.js";
 
@@ -55,15 +59,20 @@ export class Field3D {
     this.tex = texture(gl, 512, 512, new Uint8Array(512 * 512 * 4));
   }
   build(sc, w, id) {
-    const gl = sc.gl, refs = gfxRefs(id), tmap = refData(refs[2]), amap = refData(refs[3]), coll = refData(refs[4]);
+    // the tile map and its attributes as the game holds them (WRAM3 / WRAM2 $D000: the map scripts edit them, doors and rooms);
+    // the walls from the ROM's terrain grid
+    const gl = sc.gl, refs = gfxRefs(id), tmap = w.wram[3].slice(0, 4096), amap = w.wram[2].slice(0, 4096), coll = refData(refs[4]);
     const ann = FIELD_OBJECTS[String(id)] || {};
     if (this.map) { this.map.mesh.free(); for (const b of this.map.bodies) { b.free(); } }
-    this.map = { id, tmap, amap, coll, ann, bodies: [], img: new Uint8Array(512 * 512 * 4), tileHash: -1, palHash: -1 };
+    // a map that is only a picture (no blocked cell, no event, no annotation): the 2D picture shows it
+    const events = refData(refs[5]), picture = !FIELD_OBJECTS[String(id)] && coll.every(c => (c & 0x0F) !== 0x0F) && events.every(c => !c);
+    this.map = { id, tmap, amap, coll, ann, picture, mapHash: mapHash(w), bodies: [], img: new Uint8Array(512 * 512 * 4), tileHash: -1, palHash: -1 };
     this.paint(w, true);
     // the boxes and the blocks: one mesh (position, uv, shade, sway)
     const pos = [], uv = [], sh = [], sw = [];
     const quad = (p, t, s, sway = 0) => { for (const i of [0, 1, 2, 0, 2, 3]) { pos.push(...p[i]); uv.push(t[i][0] / 512, t[i][1] / 512); sh.push(s); sw.push(sway); } };
-    quad([[-1500, -0.02, -1500], [2012, -0.02, -1500], [2012, -0.02, 2012], [-1500, -0.02, 2012]], [[0, 0], [1, 0], [1, 1], [0, 1]], 0.55);   // (the plain round the map: its corner colour)
+    // (the plain round the map: its corner colour; well under the map, so a coarse depth buffer never lets it through the floor)
+    quad([[-1500, -3, -1500], [2012, -3, -1500], [2012, -3, 2012], [-1500, -3, 2012]], [[0, 0], [1, 0], [1, 1], [0, 1]], 0.55);
     quad([[0, 0, 0], [512, 0, 0], [512, 0, 512], [0, 0, 512]], [[0, 0], [512, 0], [512, 512], [0, 512]], 1);   // the map
     const covered = new Uint8Array(32 * 32);
     for (const b of ann.blocks || []) {
@@ -132,14 +141,15 @@ export class Field3D {
     for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const q = ((ty * 8 + y) * 512 + tx * 8 + x) * 4; if ((img[q] << 16 | img[q + 1] << 8 | img[q + 2]) === c0) same++; }
     return same >= 58;
   }
-  // the map's picture from the game's live tiles and palettes (repainted when either changes: the tile animations, a palette swap)
+  // the map's picture from the game's live tiles and palettes (repainted when either changes: the tile animations, a palette swap,
+  // the end of a fade)
   paint(w, force) {
     const M = this.map, v1 = w.vram[1], pal = w.bgPal;
     let th = 2166136261; for (let i = 0x0800; i < 0x1800; i += 7) th = Math.imul(th ^ v1[i], 16777619);
     let ph = 2166136261; for (let i = 0; i < 64; i++) ph = Math.imul(ph ^ pal[i], 16777619);
-    const fading = w.high[0x1A2] || w.high[0x1BC];
-    if (!force && (th === M.tileHash && (ph === M.palHash || fading))) return false;
-    M.tileHash = th; if (!fading || force) M.palHash = ph;
+    // (repainted on any change, a fade's palettes too: a faded screen is the 2D picture's, and the picture comes back with the colours)
+    if (!force && th === M.tileHash && ph === M.palHash) return false;
+    const palChanged = ph !== M.palHash; M.tileHash = th; M.palHash = ph;
     const img = M.img;
     for (let ty = 0; ty < 64; ty++) for (let tx = 0; tx < 64; tx++) {
       const t = M.tmap[ty * 64 + tx], a = M.amap[ty * 64 + tx], base = 0x1000 + ((t << 24 >> 24) << 4), bank = a & 8 ? v1 : w.vram[0];
@@ -151,45 +161,98 @@ export class Field3D {
         }
       }
     }
-    return true;
+    return palChanged ? "pal" : true;
   }
   frame(sc, game, s) {
     this.on = !s && this.active(game);
     if (!this.on) return;
     const w = game.w, id = w.wram[0][0x32E];
     this.init(sc);
-    if (!this.map || this.map.id !== id) this.build(sc, w, id);
-    if ((sc.frames & 7) === 0 && this.paint(w, false)) updateTexture(sc.gl, this.tex, 512, 512, this.map.img);
+    if (!this.map || this.map.id !== id || ((sc.frames & 7) === 0 && mapHash(w) !== this.map.mapHash)) this.build(sc, w, id);
+    const pt = (sc.frames & 7) === 0 && this.paint(w, false);
+    if (pt) updateTexture(sc.gl, this.tex, 512, 512, this.map.img);
+    if (pt === "pal") { for (const b of this.map.bodies) b.free(); this.map.bodies = []; this.buildPlants(sc); }   // (the plants in the new colours)
     if (this.map.fresh !== true) { updateTexture(sc.gl, this.tex, 512, 512, this.map.img); this.map.fresh = true; }
     this.w = w;
   }
-  // the people: the actors' sprites (bank 04), side-by-side 8 x 16 pairs joined into one 16 x 16 picture, at their map spot
+  // the people: the actors' sprites (bank 04). An actor queues its figure's sprites in a row of slots, so a run of slots whose
+  // sprites touch (side by side at one height, or one above the other in a column) is one figure: a 16 x 16 frame is two 8 x 16
+  // sprites, a taller one more (at most 16 x 32: two people side by side stay two). Painted as the game paints them (the flips, the
+  // OBJ palette, the lower slot in front); each is [mesh, feet x, feet z, the slots].
   people(sc, w, ox, oz) {
-    const t = tagsOf(w), spr = [];
-    for (let i = 0; i < 40; i++) if (t[i] === 0x04 && w.oam[i * 4]) spr.push({ i, y: w.oam[i * 4] - 16, x: w.oam[i * 4 + 1] - 8, tile: w.oam[i * 4 + 2], attr: w.oam[i * 4 + 3] });
-    spr.sort((a, b) => a.y - b.y || a.x - b.x);
-    const out = [];
-    for (let k = 0; k < spr.length; k++) {
-      const a = spr[k], b = spr[k + 1], pair = b && b.y === a.y && b.x === a.x + 8;
-      const parts = pair ? [a, b] : [a]; if (pair) k++;
-      const pic = { w: 8 * parts.length, h: 16, rgba: new Uint8Array(8 * parts.length * 16 * 4) };
-      parts.forEach((p, j) => { const one = sc.spritePic(w, p.tile, p.attr, true); if (!one) return; for (let y = 0; y < 16; y++) pic.rgba.set(one.full.subarray(y * 32, y * 32 + 32), (y * pic.w + j * 8) * 4); });
-      const mesh = sc.bodyMesh(pic, 3, 2.6); if (!mesh) continue;
-      out.push([mesh, ox + a.x + pic.w / 2, oz + a.y + 16]);
+    const t = tagsOf(w), spr = [], sh = w.lcd.lcdc & 0x04 ? 16 : 8;
+    for (let i = 0; i < 40; i++) {
+      const y = w.oam[i * 4] - 16, x = w.oam[i * 4 + 1] - 8;
+      if (t[i] === 0x04 && y > -sh && y < 144 && x > -8 && x < 160) spr.push({ i, y, x, tile: w.oam[i * 4 + 2], attr: w.oam[i * 4 + 3] });
+    }
+    const groups = [];
+    for (const b of spr) {
+      const g = groups[groups.length - 1], last = g && g[g.length - 1];
+      const touch = g && last.i === b.i - 1 && g.some(m => (m.y === b.y && Math.abs(m.x - b.x) === 8) || (m.x === b.x && Math.abs(m.y - b.y) === sh));
+      const span = (k, d) => Math.max(...g.map(m => m[k]), b[k]) - Math.min(...g.map(m => m[k]), b[k]) + d;
+      if (touch && span("x", 8) <= 16 && span("y", sh) <= 32) g.push(b); else groups.push([b]);
+    }
+    const out = [], v = w.vram, pal = w.objPal;
+    for (const g of groups) {
+      let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+      for (const p of g) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x + 8); y1 = Math.max(y1, p.y + sh); }
+      const pw = x1 - x0, ph = y1 - y0;
+      const rgba = new Uint8Array(pw * ph * 4); let any = false;
+      for (const p of g.sort((a, b) => a.i - b.i)) for (let r = 0; r < sh; r++) {
+        const row = p.attr & 0x40 ? sh - 1 - r : r, bank = v[p.attr & 8 ? 1 : 0], o = ((sh === 16 ? p.tile & 0xFE : p.tile) << 4) + row * 2, lo = bank[o], hi = bank[o + 1];
+        for (let px = 0; px < 8; px++) {
+          const bit = p.attr & 0x20 ? px : 7 - px, ci = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1); if (!ci) continue;
+          const q = ((p.y - y0 + r) * pw + p.x - x0 + px) * 4; if (rgba[q + 3]) continue;
+          const po = (p.attr & 7) * 8 + ci * 2, c = pal[po] | pal[po + 1] << 8;
+          rgba[q] = (c & 31) << 3; rgba[q + 1] = ((c >> 5) & 31) << 3; rgba[q + 2] = ((c >> 10) & 31) << 3; rgba[q + 3] = 255; any = true;
+        }
+      }
+      if (!any) continue;
+      const mesh = this.bodyMesh(sc, { rgba, w: pw, h: ph }); if (!mesh) continue;
+      out.push([mesh, ox + x0 + pw / 2, oz + y1, g.map(p => p.i)]);
     }
     return out;
   }
+  bodyMesh(sc, pic) {                               // (cached by picture, in this layer's own program)
+    const M = this.meshes || (this.meshes = new Map()), k = picKey(pic);
+    let m = M.get(k);
+    if (m) { M.delete(k); M.set(k, m); return m; }
+    const d = roundedMeshData(pic.rgba, pic.w, pic.h, 3, 2.6); if (!d.pos.length) return null;
+    m = { ...vao(sc.gl, this.B, { aPos: [d.pos, 3], aCol: [d.col, 3] }), n: d.pos.length / 3 };
+    M.set(k, m);
+    if (M.size > 160) { const k0 = M.keys().next().value; M.get(k0).free(); M.delete(k0); }
+    return m;
+  }
+  // the BG cells (32 x 32, BG map order) on screen that are not the map's tile there (a message box, a menu, a portrait): their
+  // count and the share of the screen's cells they are
+  overlay(w, ox, oz) {
+    const l = w.lcd, v0 = w.vram[0], v1 = w.vram[1], base = l.lcdc & 0x08 ? 0x1C00 : 0x1800, T = this.map.tmap, A = this.map.amap;
+    const cells = this.cells || (this.cells = new Uint8Array(1024)); cells.fill(0);
+    const bx0 = l.scx >> 3, by0 = l.scy >> 3, bx1 = (l.scx + 159) >> 3, by1 = (l.scy + 143) >> 3, dx = ox - l.scx, dz = oz - l.scy;
+    let n = 0, all = 0;
+    for (let by = by0; by <= by1; by++) for (let bx = bx0; bx <= bx1; bx++) {
+      const c = ((by & 31) << 5) | (bx & 31), mx = (dx + bx * 8) >> 3, my = (dz + by * 8) >> 3; all++;
+      const off = (dx & 7) || (dz & 7) || mx < 0 || my < 0 || mx > 63 || my > 63;
+      if (off || v0[base + c] !== T[my * 64 + mx] || (v1[base + c] & 0x6F) !== (A[my * 64 + mx] & 0x6F)) { cells[c] = 1; n++; }
+    }
+    return { cells, n, share: n / all };
+  }
   drawOther(sc, game, frame2d, dt) {
-    if (!this.on || !this.map || !this.w) return false;
+    if (!this.on || !this.map || !this.w || this.map.picture) return false;
     const gl = sc.gl, w = this.w, c = sc.canvas, W = c.width, H = c.height, ann = this.map.ann;
     const w0 = w.wram[0], ox = Math.floor((w0[0x320] | w0[0x321] << 8) / 32), oz = Math.floor((w0[0x322] | w0[0x323] << 8) / 32);
+    // a screen that is mostly not the map (a full-screen picture or menu over it, a map not drawn yet): the 2D picture
+    const ov = this.overlay(w, ox, oz); this.lastOverlay = ov;
+    if (ov.share > 0.55) return false;
+    // a fade (to black or white, between maps and scenes): the game's own faded picture
+    const fd = fadeArr(w, this); if (fd[3] > 0.02) return false;
     const cx = ox + 80, cz = oz + 70;
     sc.light.update(null, dt);
     const lk = ann.sky ? sc.light.groundK : 1;
     const eye = [cx, 118, cz + 112], at = [cx, 0, cz + 6];
-    const view = m4.lookAt(eye, at, [0, 1, 0]), proj = m4.perspective(0.72 * Math.min(1, 1.11 * H / W), W / H, 1, 4000), mvp = m4.mul(proj, view);
+    const view = m4.lookAt(eye, at, [0, 1, 0]), proj = m4.perspective(0.72 * Math.min(1, 1.11 * H / W), W / H, 12, 4000), mvp = m4.mul(proj, view);   // (near 12: the depth buffer's precision on the floor)
     sc.view = view; sc.proj = proj; sc.mvp = mvp; sc.eye = eye; sc.cam.eye = eye;
-    const fd = fadeArr(w, this); sc.fade = fd;
+    sc.fade = fd;
     gl.viewport(0, 0, W, H); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.disable(gl.CULL_FACE);
     const sky = sc.light.fogCol, edge = this.map.img;
     gl.clearColor(ann.sky ? sky[0] : edge[0] / 255 * 0.5, ann.sky ? sky[1] : edge[1] / 255 * 0.5, ann.sky ? sky[2] : edge[2] / 255 * 0.5, 1);
@@ -202,18 +265,29 @@ export class Field3D {
     const B = this.B; gl.useProgram(B.p); gl.uniformMatrix4fv(B.u.uMVP, false, mvp); gl.uniform1f(B.u.uLightK, lk); gl.uniform4fv(B.u.uFade, fd);
     gl.uniformMatrix4fv(B.u.uModel, false, m4.identity());
     for (const b of this.map.bodies) { gl.bindVertexArray(b.vao); gl.drawArrays(gl.TRIANGLES, 0, b.n); }
-    for (const [mesh, x, z] of this.people(sc, w, ox, oz)) {
-      gl.uniformMatrix4fv(B.u.uModel, false, m4.tsy(x, 0, z - 1, 1, 1, 1, 0, 0.3));
-      gl.bindVertexArray(mesh.vao); gl.drawArrays(gl.TRIANGLES, 0, mesh.n);
-    }
-    gl.bindVertexArray(null);
     for (const fx of sc.layers.fx) if (fx.drawField) fx.drawField(sc, this, dt, ann);
-    // the window and the other sprites over it
-    const t = tagsOf(w);
-    sc.hud.drawLayer(sc, w, i => t[i] !== 0x04);
+    // (as in the game's picture, where a sprite is over the BG, no box hides a person: an actor stands in a hedge's cell, behind a
+    // counter, on a cell the terrain grid blocks; the people hide only each other)
+    gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.useProgram(B.p);
+    // the people upright on their feet (the front of the feet on the sprite's bottom line), at the game's size, leaning back a little
+    // to face the camera (which looks down at ~45 degrees; upright, a person would show at 0.7 of the game's height)
+    const people = this.hidePeople ? [] : this.people(sc, w, ox, oz), stood = new Set();   // (hidePeople: web/tests/story3d.mjs measures them)
+    for (const [mesh, x, z, slots] of people) {
+      gl.uniformMatrix4fv(B.u.uModel, false, m4.tsy(x, -2.6 * Math.sin(PEOPLE_LEAN), z - 2.6, 1, 1, 1, 0, -PEOPLE_LEAN));
+      gl.bindVertexArray(mesh.vao); gl.drawArrays(gl.TRIANGLES, 0, mesh.n);
+      for (const i of slots) stood.add(i);
+    }
+    this.lastPeople = people.length;
+    gl.bindVertexArray(null);
+    // the game's own picture over it: the window, the sprites not stood up, the BG cells that are not the map
+    const t = tagsOf(w), keep = this.hidePeople ? i => t[i] !== 0x04 : i => !stood.has(i);
+    sc.hud.drawLayer(sc, w, keep, { bg: ov.n > 0, bgCells: ov.cells });
     return true;
   }
 }
+const PEOPLE_LEAN = 0.32;
+// a hash of the map buffers (WRAM3 tiles, WRAM2 attributes): a map script's edit rebuilds the map
+function mapHash(w) { let h = 2166136261; for (const b of [w.wram[3], w.wram[2]]) for (let i = 0; i < 4096; i += 3) h = Math.imul(h ^ b[i], 16777619); return h; }
 function fadeArr(w, keep) {
   const h = w.high, st = h[0x1A2], lv = h[0x1A4];
   if (st & 0x80) keep.white = true; else if (st) keep.white = false;
