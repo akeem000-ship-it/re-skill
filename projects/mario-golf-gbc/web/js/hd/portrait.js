@@ -4,7 +4,14 @@
 // tiles, WRAM2 the attributes) drawn with its tiles from VRAM and the frame's palettes, taken once the picture is fully faded in
 // and darkened towards the bottom; elsewhere a mown fairway (stripes drawn here). A and B are golf balls, Start and Select tees,
 // and a label names the hole (hole, par and yards, read from RAM). Nothing from the game is stored; nothing is written to it.
+// DECK option (Shot map, the default | Art): during golf the deck shows a live overhead map of the hole with the shot preview, the
+// putts' break lines and the ball in flight instead (deckmap.js); menus and the story's maps keep the art. With the map on, a tall
+// narrow deck (a phone, the Fold's cover screen) puts its controls lower, leaving the map's middle free above them; a wide deck (the
+// Fold's inner screen held upright) keeps them at its sides and shows the map between them.
 import { mapPlace } from "./wide.js";
+import { attachDeckMap } from "./deckmap.js";
+const stored = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const keep = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } };
 const PORTRAIT = 1.15;                                 // height / width above which the screen counts as upright (a foldable's
                                                        // near-square inner screen held upright too: the game on top, the deck below)
 
@@ -15,6 +22,7 @@ export function portraitArea() {                       // the game's box in CSS 
   const cv = document.getElementById("screen"), p = cv && cv.style.aspectRatio ? cv.style.aspectRatio.split("/").map(Number) : [160, 144], ar = p[0] / p[1] || 160 / 144;
   const w = innerWidth, h = Math.round(Math.min(w / ar, innerHeight * 0.6));
   b.style.setProperty("--game-h", h + "px"); b.style.setProperty("--deck-h", (innerHeight - h) + "px");
+  b.classList.toggle("deckwide", w > (innerHeight - h) * 1.6);   // (the Fold's inner screen: the controls at the sides, the map between)
   return { w, h };
 }
 
@@ -45,6 +53,21 @@ export function attachDeck() {
   const art = document.createElement("canvas"); art.width = art.height = 512;
   const ag = art.getContext("2d"), img = ag.createImageData(512, 512), buf = new Uint32Array(img.data.buffer);
   const arts = new Map();                              // place key -> { canvas, mean, box: the map's bounds in pixels, at: the camera }
+  const map = attachDeckMap(deck), body = document.body;
+  const q = new URLSearchParams(location.search);
+  let mode = (q.get("deck") || stored("mg-deck") || "map") === "art" ? "art" : "map";
+  const applyMode = () => body.classList.toggle("deckmap", mode === "map");
+  applyMode();
+  // the option (with the picture options; on a touch screen in the options panel)
+  const mount = () => {
+    const d = document.getElementById("hdopts"); if (!d || document.getElementById("hddeck") || !body.classList.contains("touch")) return;
+    const l = document.createElement("label"); l.textContent = "Deck ";
+    const s = document.createElement("select"); s.id = "hddeck"; s.title = "the controls' background in the portrait layout during golf";
+    for (const [v, t] of [["map", "Shot map"], ["art", "Art"]]) { const o = document.createElement("option"); o.value = v; o.textContent = t; s.appendChild(o); }
+    s.value = mode; s.addEventListener("change", () => { mode = s.value; keep("mg-deck", mode); applyMode(); size = ""; tick = -1; s.blur(); });
+    l.appendChild(s); d.appendChild(l); d.appendChild(document.createTextNode(" "));
+  };
+  mount();
   let size = "", tick = 0, shown = null;
   function paint() {
     const w = deck.clientWidth, h = deck.clientHeight, dpr = Math.min(2, devicePixelRatio || 1);
@@ -63,8 +86,13 @@ export function attachDeck() {
   }
   let ids = 0;
   return {
-    frame(game) {                                      // once per drawn frame (cheap: works every 20th)
-      if (++tick % 20 || !document.body.classList.contains("portrait") || !game) return;
+    frame(game) {                                      // once per drawn frame (the art: cheap, works every 20th; the map: when it changed)
+      const portrait = document.body.classList.contains("portrait");
+      let onMap = false;
+      try { onMap = map.frame(game, portrait && mode === "map"); } catch (e) { console.warn("deck map", e); }
+      cv.style.visibility = onMap ? "hidden" : "visible";
+      if (!(tick % 300)) mount();
+      if (++tick % 20 || !portrait || !game) return;
       const w = game.w, w0 = w.wram[0], place = mapPlace(w);
       const round = game.mark && game.mark !== "menus";
       const key = round ? `hole${w.wram[6][0x320]}:${w.high[0x1B0]}` : w0[0x450] ? `map${w0[0x450]}` : "";
@@ -83,6 +111,7 @@ export function attachDeck() {
       label.textContent = round && w0[0x837] ? `Hole ${w0[0x837]} · Par ${w.wram[6][0x325]} · ${w.wram[6][0x323] | w.wram[6][0x324] << 8} y` : "";
       paint();
     },
-    resize() { size = ""; paint(); },
+    resize() { size = ""; paint(); map.resize(); },
+    map,
   };
 }

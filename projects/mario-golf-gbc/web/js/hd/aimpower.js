@@ -26,6 +26,7 @@ import { pinDist } from "../golf/cup.js";
 import { baseDistance, scaleByPower } from "../golf/launch.js";
 import { mapPlace } from "./wide.js";
 import { ShotPreview, previewKey, humanTurn, PUTTER, feetText, runPreview, PUTT_POWERS } from "./shotpreview.js";
+import { COL, PUTT_COL, Placer, softText, softLine, smooth, dotted, ribbon, reticle, groundRing, groundMark, screenMark, hexA } from "./aimdraw.js";
 
 const stored = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const keep = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } };
@@ -53,30 +54,6 @@ function pill(g, text, x, y, size, bg, fg = "#fff") {
   g.fillStyle = bg; rrect(g, x - w / 2, y - h / 2, w, h, h / 2); g.fill();
   g.strokeStyle = "rgba(0,0,0,0.55)"; g.lineWidth = Math.max(1, size * 0.1); g.stroke();
   g.fillStyle = fg; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(text, x, y + size * 0.04);
-}
-
-// labels collected, then placed so they don't overlap (later ones move down or up) and kept inside the box; a label whose point is
-// off the picture sits at the edge with an arrow
-class Pills {
-  constructor(g, box) { this.g = g; this.box = box; this.list = []; }
-  add(text, x, y, size, bg, prio = 0) { this.list.push({ text, x, y, size, bg, prio }); }
-  draw() {
-    const g = this.g, b = this.box, placed = [];
-    this.list.sort((a, c) => c.prio - a.prio);
-    for (const p of this.list) {
-      let arrow = "", { x, y } = p;
-      if (y < b.t) { arrow = "▲ "; y = b.t; } else if (y > b.b) { arrow = "▼ "; y = b.b; }
-      if (x < b.l) { arrow = arrow || "◀ "; } else if (x > b.r) { arrow = arrow || "▶ "; }
-      const text = arrow + p.text, [w, h] = pillSize(g, text, p.size);
-      x = Math.max(b.l + w / 2, Math.min(b.r - w / 2, x));
-      const hit = yy => placed.some(q => Math.abs(q.x - x) < (q.w + w) / 2 + 2 && Math.abs(q.y - yy) < (q.h + h) / 2 + 1);
-      let yy = y;
-      for (let k = 1; k < 12 && hit(yy); k++) yy = y + (k & 1 ? 1 : -1) * Math.ceil(k / 2) * (h + 2);
-      yy = Math.max(b.t, Math.min(b.b, yy));
-      placed.push({ x, y: yy, w, h });
-      pill(g, text, x, yy, p.size, p.bg);
-    }
-  }
 }
 
 export function attachAimPower({ screen, keys, getGame }) {
@@ -251,80 +228,160 @@ export function attachAimPower({ screen, keys, getGame }) {
   }
 
   // ---- A5 + A2: the marks while aiming ----
+  // the HUD's corners and the golfer, in overlay px: tags keep clear of them
+  function avoidZones(F, pr, ball) {
+    const sc = F.sc, out = [];
+    if (sc) {                                       // (3D: the HUD at most 3.4 CSS px a game px, its corners pinned to the canvas's: hud3d.js)
+      const css = sc && window.__g3d.canvas ? window.__g3d.canvas.clientHeight || F.H : F.H, hs = Math.min(F.H / 144, F.W / 160, F.H / css * 3.4);
+      out.push([0, 0, 33 * hs, 30 * hs], [F.W - 36 * hs, 0, F.W, 56 * hs], [0, F.H - 46 * hs, 33 * hs, F.H]);
+      if (sc.golferAt && !sc.puttView) {
+        const H = sc.hole.H, [gx, gz] = sc.golferAt, a = pr.P(gx, 0, gz, 0), b = pr.P(gx, 4.6, gz, 0);
+        if (a && b) { const hh = Math.abs(a[1] - b[1]); out.push([a[0] - hh * 0.55, b[1] - hh * 0.1, a[0] + hh * 0.55, a[1] + hh * 0.15]); }
+      }
+    } else {
+      out.push([F.X(0), 0, F.X(33), F.Y(30)], [F.X(124), 0, F.X(160), F.Y(56)], [F.X(0), F.Y(98), F.X(33), F.Y(144)]);
+      if (pr.kind === "behind") out.push([F.X(48), F.Y(88), F.X(100), F.Y(144)]);
+      else { const p = pr.P(ball[0], 0, ball[1]); if (p) out.push([p[0] - 11 * F.sx, p[1] - 27 * F.sy, p[0] + 11 * F.sx, p[1] + 4 * F.sy]); }
+    }
+    return out;
+  }
   function drawAim(game, F, pr) {
     const w = game.w, r6 = w.wram[6], club = r6[0x329], putter = club === PUTTER, u = pr.unit;
     const ball = [(rd16(r6, 0x401) + r6[0x400] / 256) / 32, (rd16(r6, 0x404) + r6[0x403] / 256) / 32];
-    const box = { l: F.sc ? 4 * u : F.ox + 4 * u, r: F.sc ? F.W - 4 * u : F.ox + 156 * F.sx, t: 8 * u, b: 118 * u };
-    const pills = new Pills(g, box);
+    const box = { l: F.sc ? 4 * u : F.ox + 4 * u, r: F.sc ? F.W - 4 * u : F.ox + 156 * F.sx, t: 6 * u, b: 123 * u };
+    const dots = [], pills = new Placer(g, box, avoidZones(F, pr, ball), dots), TS = Math.max(6 * u, 15 * Math.min(2, devicePixelRatio || 1));   // (at least 15 CSS px: a phone)
+    stats.avoid = pills.avoid; stats.box = box;   // (for the tests)
+    const G = (x, z, up = 0.05) => pr.P(x, 0, z, up);
     g.lineCap = "round"; g.lineJoin = "round";
-    const line = (pts, color, width, dash = null) => { g.beginPath(); let on = false; for (const p of pts) { if (!p) { on = false; continue; } if (on) g.lineTo(p[0], p[1]); else { g.moveTo(p[0], p[1]); on = true; } } g.setLineDash(dash || []); g.strokeStyle = color; g.lineWidth = width; g.stroke(); g.setLineDash([]); };
-    const ring = (cx, cz, r, n = 72) => { const out = []; for (let i = 0; i <= n; i++) { const a = i / n * Math.PI * 2; out.push(pr.P(cx + Math.cos(a) * r, 0, cz + Math.sin(a) * r)); } return out; };
     const green = !!pr.green, behind = pr.kind === "behind";   // (behind the golfer the game's picture squeezes the course into a band
-    // at its horizon: marks of a fixed size there, no rings, aim line or arc)
-    const flat = (p, rx, ry, color, wd) => { if (!p) return; g.beginPath(); g.ellipse(p[0], p[1], rx, ry, 0, 0, 7); g.strokeStyle = "rgba(0,0,0,0.5)"; g.lineWidth = wd + 2 * u; g.stroke(); g.strokeStyle = color; g.lineWidth = wd; g.stroke(); };
+    // at its horizon: flat marks of a fixed size there, no rings, aim line or arc)
+    const flat = (p, rx, ry, color, wd, inner = true) => {
+      if (!p) return;
+      g.beginPath(); g.ellipse(p[0], p[1], rx, ry, 0, 0, 7); g.fillStyle = hexA(color, 0.16); g.fill();
+      g.strokeStyle = "rgba(0,0,0,0.5)"; g.lineWidth = wd + 1.6 * u; g.stroke(); g.strokeStyle = color; g.lineWidth = wd; g.stroke();
+      if (inner) { g.beginPath(); g.ellipse(p[0], p[1], rx * 0.42, ry * 0.42, 0, 0, 7); g.lineWidth = wd * 0.7; g.stroke(); }
+    };
     g.save(); g.beginPath(); g.rect(F.sc ? 0 : F.ox, 0, F.sc ? F.W : 160 * F.sx, F.Y(126)); g.clip();   // (the picture above the HUD row)
     if (F.sc && F.sc.puttView && putter) { drawPuttView(game, F, pr, ball); g.restore(); return; }
+    const aim = rd16(r6, 0x418) / 65536 * Math.PI * 2, ad = [Math.cos(aim), Math.sin(aim)], side = [ad[1], -ad[0]];
+    const res = opt.preview === "on" ? previewFor(w) : null, has = res && res.path.length > 1;
+    // the flight's side of the aim line (the rings' numbers go to the other side)
+    const curve = has ? Math.sign((res.end[0] - ball[0]) * side[0] + (res.end[2] - ball[1]) * side[1]) || 1 : 1;
     if (opt.marks === "on") {
-      const aim = rd16(r6, 0x418) / 65536 * Math.PI * 2, ad = [Math.cos(aim), Math.sin(aim)], side = [ad[1], -ad[0]];
       const t = [rd16(r6, 0x426) / 32, rd16(r6, 0x428) / 32], tR = Math.hypot(t[0] - ball[0], t[1] - ball[1]);
-      // rings every 50 y round the ball (not on the green: it shows a few yards)
+      // faint rings every 50 y round the ball, fading with the distance; numbers only at 100 and 200 (and 50 alone), beside the line
       if (!green && !behind) {
-        let lastLab = null;
-        for (let r = 50; r <= Math.min(300, tR + 40); r += 50) {
-          line(ring(ball[0], ball[1], r, 120), "rgba(255,255,255,0.33)", 1.3 * u, [5 * u, 4 * u]);
-          const p = pr.P(ball[0] + ad[0] * r + side[0] * 7, 0.2, ball[1] + ad[1] * r + side[1] * 7);
-          if (p && (lastLab === null || Math.abs(p[1] - lastLab) > 9 * u)) { label(g, r + "", p[0], p[1], 5.2 * u, "rgba(255,255,255,0.9)"); lastLab = p[1]; }
+        const top = Math.min(300, tR + 40);
+        for (let r = 50; r <= top; r += 50) {
+          const a = 0.34 - 0.04 * (r / 50);
+          softLine(g, groundRing(G, ball[0], ball[1], r, 120), `rgba(${COL.ring},${a.toFixed(2)})`, 0.95 * u, { dash: [4 * u, 4 * u], under: 0.1 });
+          if (r % 100 && !(r === 50 && top < 100)) continue;
+          // (the number where the ring shows, on the side away from the flight's curve, a little off the line)
+          for (const da of [0.3, 0.42, 0.56, 0.72, 0.9, 1.1, 1.35]) {
+            const ang = aim - curve * da, p = G(ball[0] + Math.cos(ang) * r, ball[1] + Math.sin(ang) * r);
+            if (p && p[0] > box.l + 8 * u && p[0] < box.r - 8 * u && p[1] > box.t + 4 * u && p[1] < box.b - 2 * u) { softText(g, String(r), p[0], p[1], 4 * u, 0.92 - r / 700); dots.push(p, [p[0] - 5 * u, p[1]], [p[0] + 5 * u, p[1]]); break; }
+          }
         }
       }
-      // the aim line to the target marker, the target's ring and the club's yards
+      // the aim line to the target marker (fading away), the target as a small ring lying there
       if (rd16(r6, 0x428) && behind) {
-        const p = pr.P(t[0], 0, t[1]); flat(p, 7 * u, 2.2 * u, "#ffd23a", 1.6 * u);
-        if (p) pills.add("target " + (baseDistance(w) >> 5) + " y", p[0] + 30 * u, p[1] - 6 * u, 5.4 * u, "rgba(200,140,0,0.92)", 2);
+        const p = pr.P(t[0], 0, t[1]); flat(p, 6 * u, 1.9 * u, COL.aim, 1.2 * u, false);
+        if (p) pills.add({ main: (baseDistance(w) >> 5) + " y", sub: "club", size: TS * 0.92, accent: COL.aim }, p[0], p[1], 0);
       } else if (rd16(r6, 0x428)) {
-        const pts = []; for (let i = 0; i <= 40; i++) pts.push(pr.P(ball[0] + (t[0] - ball[0]) * i / 40, 0.15, ball[1] + (t[1] - ball[1]) * i / 40));
-        line(pts, "rgba(0,0,0,0.45)", 3.4 * u); line(pts, "rgba(255,240,90,0.95)", 1.6 * u, [4 * u, 3 * u]);
+        const pts = []; for (let i = 0; i <= 40; i++) pts.push(G(ball[0] + (t[0] - ball[0]) * i / 40, ball[1] + (t[1] - ball[1]) * i / 40, 0.15));
+        const a = pts[0], z = pts[pts.length - 1];
+        if (a && z) { const gr = g.createLinearGradient(a[0], a[1], z[0], z[1]); gr.addColorStop(0, "rgba(255,226,90,0.9)"); gr.addColorStop(1, "rgba(255,226,90,0.35)");
+          softLine(g, pts, gr, 1.1 * u, { dash: [3 * u, 3 * u], under: 0.22 }); }
         if (!green) {
-          const rr = ring(t[0], t[1], 6);
-          line(rr, "rgba(0,0,0,0.5)", 4.2 * u); line(rr, "#ffd23a", 2.4 * u); line(ring(t[0], t[1], 1.6), "#ffd23a", 1.6 * u);
-          const p = pr.P(t[0], 0.2, t[1]);
-          if (p) pills.add("target " + (baseDistance(w) >> 5) + " y", p[0] + 26 * u, p[1], 6 * u, "rgba(200,140,0,0.92)", 2);
+          groundMark(g, G, t[0], t[1], 2.6, COL.aim, u, { k: 0.85, minPx: 2.4 * u });
+          const p = G(t[0], t[1], 0.2);
+          if (p) pills.add({ main: (baseDistance(w) >> 5) + " y", sub: "club", size: TS * 0.92, accent: COL.aim }, p[0], p[1], 0);
         }
       }
       // the pin's distance over the flag (yards; feet with the putter near the green, as the HUD)
       const hl = pinDist(r6.subarray(0x400, 0x500)), feet = putter && ((hl + 0xF7CB) & 0x8000);
       const cup = [rd16(r6, 0x43D) / 32, rd16(r6, 0x43F) / 32];
       const pp = pr.P(cup[0], green ? (pr.kind === "3d" ? 4.6 : 5) : (pr.kind === "3d" ? 5.5 : 14), cup[1]);
-      if (pp && !behind) pills.add(feet ? feetText(hl) + " ft to cup" : (hl >> 5) + " y to pin", pp[0], pp[1] - 6 * u, 6 * u, "rgba(200,30,40,0.92)", 3);
+      if (pp && !behind) pills.add({ main: feet ? feetText(hl) + " ft" : (hl >> 5) + " y", sub: feet ? "cup" : "pin", size: TS, accent: COL.pin, icon: "flag" }, pp[0], pp[1] - 5 * u, 3);
     }
-    if (opt.preview === "on") {
-      const res = previewFor(w);
-      if (res && res.path.length > 1) {
-        const path = res.path, land = res.land, L = path[land], E = path[path.length - 1];
-        const alpha = res.stale ? 0.35 : 1;
-        g.globalAlpha = alpha;
-        if (behind) flat(pr.P(L[0], 0, L[2]), 6 * u, 2 * u, "#7ef0ff", 1.6 * u);
-        else if (!res.putt) {
-          // the dotted arc and its shadow on the ground
-          line(path.slice(0, land + 1).map(p => pr.P(p[0], 0, p[2], 0.05)), "rgba(0,0,0,0.25)", 1.4 * u, [1, 3 * u]);
-          for (let i = 0; i <= land; i += 3) { const p = pr.P(path[i][0], path[i][1], path[i][2]); if (!p) continue;
-            g.beginPath(); g.arc(p[0], p[1], 1.3 * u, 0, 7); g.fillStyle = "rgba(0,0,0,0.5)"; g.fill(); g.beginPath(); g.arc(p[0], p[1], 0.85 * u, 0, 7); g.fillStyle = "#fff"; g.fill(); }
-          // the roll to rest
-          line(path.slice(land).map(p => pr.P(p[0], 0, p[2], 0.12)), "rgba(255,255,255,0.8)", 1.2 * u, [2 * u, 2 * u]);
-          const lr = ring(L[0], L[2], green || pr.kind === "green" ? 1.2 : 4.5);
-          line(lr, "rgba(0,0,0,0.5)", 3.6 * u); line(lr, "#7ef0ff", 2 * u);
-        } else {
-          // the putt: the roll line to where a full-power putt stops
-          const pts = path.map(p => pr.P(p[0], 0, p[2], 0.08));
-          line(pts, "rgba(0,0,0,0.45)", 3 * u); line(pts, "#7ef0ff", 1.5 * u, [3 * u, 2 * u]);
+    if (has) {
+      const path = res.path, land = res.land, L = path[land], E = path[path.length - 1];
+      g.globalAlpha = res.stale ? 0.35 : 1;
+      if (behind) { flat(pr.P(L[0], 0, L[2]), 6.5 * u, 2.1 * u, COL.land, 1.3 * u); }
+      else if (!res.putt) {
+        // the shadow on the ground: a soft projected line
+        const sh = path.slice(0, land + 1).map(p => G(p[0], p[2], 0.04));
+        g.lineCap = "round"; smooth(g, sh); g.strokeStyle = "rgba(0,0,0,0.12)"; g.lineWidth = 3.2 * u; g.stroke(); g.strokeStyle = "rgba(0,0,0,0.3)"; g.lineWidth = 1.2 * u; g.stroke();
+        // the curtain between the flight and its shadow (a faint sheet, height ticks along it): the rise, the fall and the curve read
+        // even from the camera behind the ball, where the flight itself is seen edge-on
+        const air = path.slice(0, land + 1).map(p => pr.P(p[0], p[1], p[2], 0.05));
+        if (air.every(Boolean) && sh.every(Boolean)) {
+          g.beginPath(); air.forEach((q, i) => i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1])); for (let i = sh.length - 1; i >= 0; i--) g.lineTo(sh[i][0], sh[i][1]); g.closePath();
+          g.fillStyle = "rgba(114,232,255,0.16)"; g.fill();
+          g.beginPath(); for (let k = 1; k < 10; k++) { const i = Math.round(land * k / 10), a = air[i], b = sh[i]; g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); }
+          g.strokeStyle = "rgba(255,255,255,0.32)"; g.lineWidth = 0.6 * u; g.stroke();
         }
-        const e = pr.P(E[0], 0, E[2], 0.2);
-        if (e) { g.beginPath(); g.arc(e[0], e[1], 2 * u, 0, 7); g.fillStyle = "#7ef0ff"; g.fill(); g.strokeStyle = "#000"; g.lineWidth = 0.8 * u; g.stroke(); }
-        g.globalAlpha = 1;
-        if (!res.stale) {
-          const at = res.putt ? e : pr.P(L[0], 0, L[2], 0.2);
-          const text = res.putt ? `full putt: ${res.outcome === 0x80 ? "in" : (res.path.some(q => q[3]) ? "off the pin · " : "") + rollFeet(res) + " ft"}` : `carry ${res.carry} y · ${res.rest} y`;   // (a putt that hits the pin hops: in the air a moment)
-          if (at) pills.add(text, at[0] - (behind ? 30 * u : 0), at[1] + (behind ? 8 : 11) * u, (behind ? 5.4 : 5.8) * u, "rgba(0,110,150,0.92)", 1);
+        // the roll to rest: a thinner dotted line to a small rest mark
+        dotted(g, path.slice(land).map(p => G(p[0], p[2], 0.12)), 2.6 * u, 0.55 * u, "rgba(255,255,255,0.95)");
+        // the landing reticle lying on the ground
+        reticle(g, G, L[0], L[2], green || pr.kind === "green" ? 1.3 : 4.6, COL.land, u, 1, 4.2 * u);
+        groundMark(g, G, E[0], E[2], green || pr.kind === "green" ? 0.5 : 1.6, COL.rest, u, { k: 0.8, fill: 0.25, minPx: 1.6 * u });
+        // the flight: a tapered tube, thick near and thin far (in 3D its width from the distance), a light travelling along it
+        const pts = [];
+        for (let i = 0; i <= land; i++) {
+          const p = path[i], s = pr.P(p[0], p[1], p[2], 0.05); if (!s) { pts.push(null); continue; }
+          let d = u; if (pr.kind === "3d") { const q = pr.P(p[0] + side[0], p[1], p[2] + side[1], 0.05); d = q ? Math.hypot(q[0] - s[0], q[1] - s[1]) : u; }
+          pts.push([s[0], s[1], Math.max(0.42 * u, Math.min(1.05 * u, 0.22 * u + 0.3 * d)) * (1 - 0.35 * i / Math.max(1, land))]);
+          if (i % 2 === 0) dots.push(s);
         }
+        ribbon(g, pts, u, res.stale ? -1 : (game.frames % 90) / 90, COL.land, pr.kind === "3d");
+        // the apex: the flight's highest frame (the game's own height, no number: the game shows none), a dashed drop to its shadow
+        let top = 0; for (let i = 1; i <= land; i++) if (path[i][1] > path[top][1]) top = i;
+        const ap = pr.P(path[top][0], path[top][1], path[top][2], 0.05), ag = G(path[top][0], path[top][2], 0.04);
+        if (ap && ag && Math.hypot(ap[0] - ag[0], ap[1] - ag[1]) > 4 * u) {
+          g.setLineDash([2 * u, 2 * u]); g.beginPath(); g.moveTo(ap[0], ap[1]); g.lineTo(ag[0], ag[1]); g.strokeStyle = "rgba(0,0,0,0.35)"; g.lineWidth = 1.6 * u; g.stroke();
+          g.strokeStyle = "rgba(255,255,255,0.85)"; g.lineWidth = 0.7 * u; g.stroke(); g.setLineDash([]);
+          g.beginPath(); g.arc(ag[0], ag[1], 1 * u, 0, 7); g.fillStyle = "rgba(255,255,255,0.8)"; g.fill();
+          g.beginPath(); g.arc(ap[0], ap[1], 1.5 * u, 0, 7); g.fillStyle = "#fff"; g.fill(); g.strokeStyle = "rgba(0,20,40,0.7)"; g.lineWidth = 0.7 * u; g.stroke();
+        }
+        for (let i = land; i < path.length; i += 3) { const s = G(path[i][0], path[i][2]); if (s) dots.push(s); }
+        // seen from behind (the flight's picture nearly a straight line: the rise and the fall on top of each other), its profile
+        // from the side in a small panel at the lower right: the same path (the distance along the ground, the height x2), the apex,
+        // the landing and the roll to rest
+        const a0 = pts[0], a1 = pts[land];
+        if (a0 && a1 && !res.stale) {
+          const L2 = Math.hypot(a1[0] - a0[0], a1[1] - a0[1]) || 1; let dev = 0;
+          for (const q of pts) if (q) dev = Math.max(dev, Math.abs((q[0] - a0[0]) * (a1[1] - a0[1]) - (q[1] - a0[1]) * (a1[0] - a0[0])) / L2);
+          let hi = 0; for (const q of path) hi = Math.max(hi, q[1]);
+          if (dev < 0.12 * L2 && hi > 2) {
+            const bw = 46 * u, bh = 22 * u, bx = (F.sc ? F.W : F.X(160)) - bw - 3 * u, by = F.Y(123) - bh;
+            pills.avoid.push([bx - 2 * u, by - 2 * u, bx + bw + 2 * u, by + bh + 2 * u]);
+            g.fillStyle = "rgba(10,16,26,0.72)"; rrect(g, bx, by, bw, bh, 4 * u); g.fill(); g.strokeStyle = "rgba(255,255,255,0.2)"; g.lineWidth = Math.max(1, 0.4 * u); g.stroke();
+            const d = path.map(q => Math.hypot(q[0] - path[0][0], q[2] - path[0][2])), D = Math.max(...d) || 1, k = Math.min((bw - 8 * u) / D, (bh - 9 * u) / (hi * 2));
+            const X = v => bx + 4 * u + v * k, Y = h => by + bh - 4 * u - h * 2 * k;
+            g.beginPath(); g.moveTo(bx + 3 * u, Y(0)); g.lineTo(bx + bw - 3 * u, Y(0)); g.strokeStyle = "rgba(160,230,140,0.6)"; g.lineWidth = 0.6 * u; g.stroke();
+            g.beginPath(); for (let i = 0; i <= land; i++) { const x = X(d[i]), y = Y(path[i][1]); i ? g.lineTo(x, y) : g.moveTo(x, y); }
+            g.strokeStyle = "#fff"; g.lineWidth = 1 * u; g.lineCap = "round"; g.stroke();
+            g.beginPath(); g.moveTo(X(d[land]), Y(0)); g.lineTo(X(d[path.length - 1]), Y(0)); g.setLineDash([1 * u, 1.2 * u]); g.strokeStyle = "#fff"; g.lineWidth = 0.8 * u; g.stroke(); g.setLineDash([]);
+            let tp = 0; for (let i = 1; i <= land; i++) if (path[i][1] > path[tp][1]) tp = i;
+            g.beginPath(); g.arc(X(d[tp]), Y(path[tp][1]), 1.1 * u, 0, 7); g.fillStyle = "#fff"; g.fill();
+            g.beginPath(); g.arc(X(d[land]), Y(0), 1.4 * u, 0, 7); g.strokeStyle = COL.land; g.lineWidth = 0.7 * u; g.stroke();
+            g.beginPath(); g.arc(X(d[path.length - 1]), Y(0), 0.9 * u, 0, 7); g.fillStyle = COL.rest; g.fill();
+          }
+        }
+      } else {
+        // the putt: the roll line to where a full-power putt stops
+        const pts = path.map(p => G(p[0], p[2], 0.08));
+        softLine(g, pts, "#ffffff", 1.25 * u, { under: 0.4 });
+        const e = G(E[0], E[2], 0.2); if (e) screenMark(g, e[0], e[1], 2.2 * u, COL.land, u);
+        for (const p of pts) if (p) dots.push(p);
+      }
+      g.globalAlpha = 1;
+      if (!res.stale) {
+        const at = res.putt ? G(E[0], E[2], 0.2) : G(L[0], L[2], 0.2);
+        const t = res.putt ? { main: res.outcome === 0x80 ? "in" : rollFeet(res) + " ft", sub: res.path.some(q => q[3]) ? "off the pin" : "full putt", accent: COL.land, icon: "ring" }   // (a putt that hits the pin hops: in the air a moment)
+          : { main: res.rest + " y", sub: "carry " + res.carry, accent: COL.land, icon: "ring" };
+        if (at) pills.add({ ...t, size: TS }, at[0], at[1], 2);
       }
     }
     g.restore();
@@ -343,7 +400,7 @@ export function attachAimPower({ screen, keys, getGame }) {
     putts.ms = performance.now() - t; putts.key = key; putts.hole = w.wram[6][0x320];
     return putts.runs;
   }
-  const PCOL = ["#ffffff", "#ffd84a", "#ffa040", "#ff6a5a"], SCOL = ["", "255,236,120", "255,160,40", "240,60,40"];
+  const PCOL = PUTT_COL, SCOL = ["", "255,236,120", "255,160,40", "240,60,40"];
   function drawPuttView(game, F, pr, ball) {
     const w = game.w, r6 = w.wram[6], sc = F.sc, H = sc.hole.H, u = pr.unit, s = sc.s;
     const cup = [rd16(r6, 0x43D) / 32, rd16(r6, 0x43F) / 32], P = (x, z, up = 0.02) => pr.P(x, 0, z, up);
@@ -379,35 +436,24 @@ export function attachAimPower({ screen, keys, getGame }) {
     if (opt.preview !== "on") return;
     const R = puttRuns(w); if (!R) return;
     g.globalAlpha = R[0].stale ? 0.4 : 1;
-    // the paths, the softest first; each to where it stops
+    // the paths, the softest first, each a smooth curve to where it stops; the full putt solid and a little thicker
     for (let i = R.length - 1; i >= 0; i--) {
       const pts = R[i].path.map(p => pr.P(p[0], p[1], p[2], 0.03));
-      g.beginPath(); let on = false; for (const p of pts) { if (!p) { on = false; continue; } if (on) g.lineTo(p[0], p[1]); else { g.moveTo(p[0], p[1]); on = true; } }
-      g.strokeStyle = "rgba(0,0,0,0.4)"; g.lineWidth = (i ? 2.2 : 2.8) * u; g.setLineDash([]); g.stroke();
-      g.strokeStyle = PCOL[i]; g.lineWidth = Math.max(1.5, (i ? 0.9 : 1.3) * u); g.setLineDash(i ? [2 * u, 2.5 * u] : []); g.stroke(); g.setLineDash([]);
+      softLine(g, pts, PCOL[i], Math.max(1.4, (i ? 0.85 : 1.25) * u), { dash: i ? [2.6 * u, 2.2 * u] : null, under: 0.45 });
     }
+    // the stops: small rings lying on the green
     const stops = R.map(r => pr.P(r.end[0], r.end[1], r.end[2], 0.03));
-    stops.forEach((p, i) => { if (!p) return; g.beginPath(); g.arc(p[0], p[1], (i ? 1.6 : 2.1) * u, 0, 7); g.fillStyle = PCOL[i]; g.fill(); g.strokeStyle = "rgba(0,0,0,0.8)"; g.lineWidth = Math.max(1, 0.5 * u); g.stroke(); });
+    R.forEach((r, i) => groundMark(g, P, r.end[0], r.end[2], 0.32, PCOL[i], u, { k: i ? 0.8 : 1, fill: 0.3 }));
     g.globalAlpha = 1;
     if (R[0].stale) return;
-    // the labels beside their stops, each at the first free spot of a few (right, left, above, below, the corners), clear of the
-    // other labels and the stop dots, inside the picture between the HUD's rows
-    const placed = [], sz = 5.2 * u, top = 30 * u, bot = 120 * u;
-    const free = (x, y, tw, th) => !placed.some(q => Math.abs(q[0] - x) < (q[2] + tw) / 2 + u && Math.abs(q[1] - y) < (q[3] + th) / 2 + 0.5 * u)
-      && !stops.some(p => p && Math.abs(p[0] - x) < tw / 2 + 2 * u && Math.abs(p[1] - y) < th / 2 + 2 * u);
-    R.forEach((r, i) => {
-      const p = stops[i]; if (!p) return;
-      const text = `${Math.round(r.power / 0.6)}%: ${r.outcome === 0x80 ? "in" : feetText(r.len) + " ft"}`, [tw, th] = pillSize(g, text, sz);
-      const dx = tw / 2 + 4 * u, tries = [[dx, 0], [-dx, 0], [0, -th - u], [0, th + u], [dx, -th], [-dx, th], [dx, th], [-dx, -th], [dx, -2 * th], [-dx, 2 * th], [dx, 2 * th], [-dx, -2 * th]];
-      let best = null;
-      for (const [ox, oy] of tries) {
-        const x = Math.max(tw / 2 + 2 * u, Math.min(F.W - tw / 2 - 2 * u, p[0] + ox)), y = Math.max(top, Math.min(bot, p[1] + oy));
-        if (free(x, y, tw, th)) { best = [x, y]; break; }
-      }
-      if (!best) best = [Math.max(tw / 2, Math.min(F.W - tw / 2, p[0] + dx)), Math.max(top, Math.min(bot, p[1] - (th + u) * (placed.length + 1)))];
-      placed.push([best[0], best[1], tw, th]);
-      pill(g, text, best[0], best[1], sz, i ? "rgba(30,30,30,0.82)" : "rgba(200,30,40,0.92)", i ? PCOL[i] : "#fff");
-    });
+    // the tags beside their stops: the roll ("60 ft", or "in") and a small caption with the press ("100%"), clear of each other, the
+    // stops, the lines and the HUD's corners
+    const dots = [], box = { l: 3 * u, r: F.W - 3 * u, t: 24 * u, b: 122 * u };
+    stops.forEach(p => { if (p) dots.push(p, [p[0] + 2 * u, p[1]], [p[0] - 2 * u, p[1]]); });
+    R.forEach(r => r.path.forEach((p, k) => { if (k % 3 === 0) { const s = pr.P(p[0], p[1], p[2], 0.03); if (s) dots.push(s); } }));
+    const pl = new Placer(g, box, avoidZones(F, pr, ball), dots);
+    R.forEach((r, i) => { const p = stops[i]; if (p) pl.add({ main: r.outcome === 0x80 ? "in" : feetText(r.len) + " ft", sub: Math.round(r.power / 0.6) + "%", size: Math.max(5.6 * u, 14 * Math.min(2, devicePixelRatio || 1)), accent: PCOL[i], icon: "ring" }, p[0], p[1], 4 - i); });
+    pl.draw();
   }
   // a putt's roll in feet as the HUD gives the putter's distances (ShotLength 10:6276 in 12:4CB1's conversion)
   const rollFeet = res => feetText(res.len);
@@ -511,6 +557,8 @@ export function attachAimPower({ screen, keys, getGame }) {
   mount();
   const api = {
     opt, preview, stats, putts,
+    // the same results the marks over the picture use (the deck's shot map draws them from above: deckmap.js)
+    shotNow: w => previewFor(w), puttLines: w => puttRuns(w),
     // once per drawn frame, after the picture (js/play.js): the game and its 2D frame (the HUD's colour under the small meter)
     present(game, image) { lastGame = game; lastImage = image; try { paint(game); } catch (e) { console.warn("aim helpers", e); } },
     set(k, v) { if (!(k in OPTIONS)) return; opt[k] = v; keep(OPTIONS[k].key, v); const s = document.getElementById("ap" + k); if (s) s.value = v; paint(); },

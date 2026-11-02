@@ -181,8 +181,9 @@ Two options on the 3D panel (URL `?g3dputt=green|follow&g3dgreen=clean|arrows`, 
   The helpers' overlay lies over the 3D canvas when it shows (on a phone's full-screen layout it covers the whole screen).
 - **The break** (the putting view's marks, aimpower.js drawPuttView; with Preview On): the putts struck at 100, 77, 50 and 27 % of
   the meter, each run by the game's own shot code on a copy of the memory (shotpreview.js runPreview with the putter's press count:
-  `$D44E` = `$D44F` = `$D450` = the count): the roll path and its stop, the label "NN%: X ft" (or "in") beside the stop at the
-  first free place of twelve around it, clear of the other labels and the stop dots and inside the rows between the HUD. Why 77 and
+  `$D44E` = `$D44F` = `$D450` = the count): the roll path as a smooth curve (the 100 % one solid, the others dashed), its stop
+  as a small ring lying on the green, the tag "X ft  NN%" (or "in") beside the stop, placed by aimdraw.js Placer clear of the
+  other tags, the stops, the lines and the HUD's corners, inside the rows between the HUD. Why 77 and
   27: SwingMeterLoop 10:57E0 reads A only on an even count (on an odd one it latches the press into `$D453` and acts on it at the
   next count), so a press can strike only at an even count; 75 % ($2D) and 25 % ($0F) cannot be struck, the nearest are $2E and
   $10 (shotpreview.js PUTT_POWERS). The percentage is the count / 60, as the big meter shows the power. The runs are made again only
@@ -255,8 +256,14 @@ sets the same key the pad's A button sets. Settings in localStorage (`mg-meter`,
   task off: `$D485` = `$2D`, the retry flags `$D35F/$D360`, the tree tile `$D519/$D516`, the ball objects bit 2) and runs the
   engine's own `Shot.launch()` (ShotLaunch 10:5F94, the flight camera's loop and ShotMainLoop with BallTask every frame, the cup,
   the green's view change) to its outcome. Without the landing-preview task off the copy's PreviewFrame keeps rewriting the shot
-  and the ball goes ~50 y long. Drawn: the dotted arc (and its shadow), the landing ring, the roll to rest, "carry X y · Y y"
-  (ShotLength 10:6276 >> 5, as the HUD measures a shot); a putt: the roll line and "full putt: N ft" (or "in"). It is run again
+  and the ball goes ~50 y long. Drawn (hd/aimdraw.js, the look shared with the deck's shot map): the flight as a tapered tube
+  (its half-width from the 3D view's scale at each point, ~0.45-1.5 game px, narrowing a further 35 % towards the landing; a soft
+  dark edge so it reads on sky, sand, grass and water, a tinted body, a white core, and a light travelling along it once every
+  90 game frames: its phase is the frame count, so a held game holds it), its shadow on the ground as a soft line, the landing
+  as a reticle lying on the ground (rings and four ticks, perspective-correct through the same projection, never smaller than
+  ~4 game px), the roll as a dotted line to a small rest ring, and one tag "284 y  carry 280" (ShotLength 10:6276 >> 5, as the
+  HUD measures a shot: the rest, then the carry); a putt: the roll line and "N ft  full putt" (or "in"). The game gives the
+  ball's height but shows no height of its own, so no apex number is drawn. It is run again
   only when what decides the shot changes (the hole, the ball's spot, the aim, the club, the shot mode, the putt range, the wind,
   the view, the player, the club's stats) and that has held still ~90 ms (the aim keys move it every frame; meanwhile the last
   one shows dimmed). Exact: web/tests/shot_preview.mjs (Node) plays perfect full swings on the four courses, from the tee, the
@@ -265,11 +272,17 @@ sets the same key the pad's A button sets. Settings in localStorage (`mg-meter`,
   outcome too; swings that are not perfect come out elsewhere. web/tests/aim_power.mjs checks the same on the page itself.
   Cost: 2 ms median per run (Node; up to ~25 ms for a long drive with a cold JIT), a few ms in the page.
 - **Markers: On** (default) | Off: the aim line from the ball to the target marker `$D426/$D428` (10:56EF: ClubBaseDistance along
-  the aim), a bold ring there with the club's yards (the shot panel's number), faint rings every 50 y round the ball, the pin's
-  distance over the flag (PinDist 10:62AD >> 5; feet with the putter near the green, as the HUD's 12:4CB1). The ring goes on the
+  the aim; dashed, fading with the distance), a small ring there with the club's yards (the shot panel's number: "270 y  club"),
+  faint rings every 50 y round the ball (fading with the distance; numbers only at 100, 200, 300, on the side away from the
+  flight's curve, where the ring shows), the pin's distance over the flag (PinDist 10:62AD >> 5; feet with the putter near the
+  green, as the HUD's 12:4CB1: "376 y  pin", "35 ft  cup"). The ring goes on the
   target marker, not on the game's landing preview ghost (`$D374/$D377`): PreviewFrame 11:4E5E relaunches the ghost every 32 frames,
-  so it only ever shows the first ~40 y of the flight. Labels are placed so they don't overlap (the pin's, the target's, the
-  preview's), and one whose point is off the picture sits at its edge with an arrow.
+  so it only ever shows the first ~40 y of the flight. Every number is one tag style (a dark glass pill, a coloured accent: a ring
+  for the landing, a flag for the pin, a dot for the target; the number bold, a small caption after it). aimdraw.js Placer puts
+  each tag at the first of 25 spots round its point (nearest first) that overlaps no other tag, none of the HUD's corners (in 3D
+  scaled as hud3d.js pins them), not the golfer (in 3D projected from his place, 2D round the ball's sprite or at the bottom of
+  the view behind him), and the fewest points of the flight, roll and putt lines; a tag moved far gets a thin leader back to its
+  point, and one whose point is off the picture sits at its edge with an arrow pointing there.
 - **Tap area: On** (default on touch screens) | Off: at the address (the swing can be started) and through the swing the lower half
   of the screen is the A button: a touch there sets `keys.KeyZ` as the pad's A does (and lights it); the pad's own buttons, the
   stick zone, the menus and the gear keep their touches (the d-pad's hook / slice and height during the swing, B to cancel). The
@@ -291,3 +304,44 @@ pin can hop off it and come back (the preview shows it: "off the pin").
 Checks: `web/tests/shot_preview.mjs` (the preview against real perfect swings), `web/tests/aim_power.mjs` (the same in the page,
 the frame cost; `--shots` the pictures in out/aimpower), `play_page.mjs --tap`, and the game-unchanged tests with the helpers off
 in one run and on in the other (`g3d_layers_same.mjs`, `play_hd.mjs --same`).
+Pictures: `web/tests/arc_shots.mjs` (a tee shot, an approach, a curved shot in the wind, a bunker shot, putts on three courses;
+desktop, the Fold8's inner and cover screens upright, a phone on its side; 3D and 2D+HD; `--root` serves an older tree for the
+"before" pictures) into out/arcs/{before,after}, sheets in out/arcs/sheet_*.png (tools/sheet.py).
+
+## The deck's shot map (web/js/hd/deckmap.js; portrait.js)
+
+The portrait layout (touch screens held upright: the game on top, the controls on a deck below) shows, during golf (`game.mark` one
+of the round's marks and a hole loaded), a live overhead map of the hole on the deck instead of the hole's art. Option **Deck**:
+Shot map (default) | Art (`mg-deck`, `?deck=map|art`; in the options panel on a touch screen). Menus and the story's maps keep
+the art. Render only: it reads the game's memory and the ROM; it writes nothing.
+
+- **The course**: g3d/hole3d.js HoleArt (built from the ROM at run time, nothing stored): the terrain type of each 2 x 2 px cell
+  (TerrainAt 10:6536) mapped to nine classes (fairway, tee, first cut, rough, deep rough `$0C`, sand `$02/$0D`, water, green, out of
+  bounds), each class's cells blurred (a 5-cell box, twice) and the class with the highest field taken per picture pixel (1024 x
+  1024 for the 512 x 512 px map), so the tiles' steps become rounded shapes; procedural colours, mowing stripes, a fine grain, a
+  darker outline where the class changes, water lighter at its banks; a round canopy with a shadow on each tree tile (bit 7 of the
+  tile byte, TreeCheck 08:51D2). ~0.1-0.3 s once per hole (cached, the last three holes).
+- **The view**: turned so the aim (`$D418`) points up the deck; framed on the ball, the preview's landing and rest (the pin when
+  it is within the rest + 70 y; the aim's target when there is no preview), padded 22 y; putting: the ball, the cup and the four
+  stops, at most ~22 CSS px a yard. It eases (time constant 0.2 s) in centre, log-scale and angle, and snaps when it is within a
+  fraction of a pixel, so a held game draws nothing. During the flight it keeps the aim's frame and adds the ball.
+- **Marks**: the ball (larger with its height in flight, a shadow offset by it), the cup and its flag, the aim line to the target
+  `$D426/$D428` and its ring, rings every 50 y round the shot's start (numbered every 100), the wind badge (the HUD's speed
+  `$C815 & $1F`; the arrow along `$C816` as the flight's wind push 10:52EE: the same angle convention as the aim, turned with the
+  map), the shot preview from above (aimpower.js `shotNow`: the very result the marks over the picture draw, previewFor's cache):
+  the flight as the tube (wider where it flies higher), the landing reticle, the roll dotted to the rest mark, the tag "rest y  carry
+  N". With the putter: the green's slope per green tile from the green's corner `$D441/$D442` (HoleArt greenSlopes, GreenSlopeAt
+  10:64D1: a chevron along the push, yellow / orange / red by strength; a dot where flat) once a tile is over 7 px, and the four
+  break lines (aimpower.js `puttLines`) with stop rings and tags. In flight: the preview faded, the ball's track since the swing.
+  Tags (aimdraw.js Placer) keep clear of the controls, the label, the gear and the wind badge.
+- **The controls**: the map's middle (where the view centres its frame) is the free space: on a tall narrow deck (a phone, the
+  Fold's cover screen ~412 x 960 CSS px) with the map on the d-pad / stick and A / B sit low (`#pad` aligned to the bottom, 66 px
+  above it for Select / Start) and the middle is the space above them; on a wide deck (wider than 1.6 x its height: the Fold's inner
+  screen held upright, ~906 x 1088 CSS px, the deck ~906 x 435) they stay at the sides, the label goes to the top left and Select /
+  Start under A / B, and the middle is the whole height between them. Under each control the map is darkened (a radial shade).
+- **Cost**: the map draws only when something it shows changed (its own animation frames compare a signature: the view, the ball,
+  the preview, the putts, the aim, the wind, the size); `window.__deckMap.draws` counts them.
+- **Exact**: `window.__deckMap.marks` keeps the world spots it drew (landing, rest, the putts' stops, the yards).
+  `web/tests/deck_map.mjs` plays perfect full swings and full putts in the cover screen's layout: at the address the map's marks
+  must be the preview's and the ball's real rest spot must be the map's rest mark to the last fraction; held, the map must not
+  draw again. `--shots` takes the pictures in out/deckmap (aiming, the flight, putting, the menus; cover and inner screens).
