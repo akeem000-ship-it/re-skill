@@ -9,7 +9,7 @@
 //   golf     Mario Golf's own 3D title fly-over, live: its decompiled game's page (../../mario-golf-gbc/web/play.html, in the app at
 //            ../golf/web) in an iframe in its attract mode (?attract: silent, no buttons, the fly-over alone, on to the title unseen), shown
 //            through the golf half once it says "ready" (its drawn scene until then, and between two fly-overs; always, without the ROM:
-//            "norom"). The fly-over is held while tennis is chosen ({golfPreview: "pause"}); the rally plays on all the time.
+//            "norom"). Both play on all the time, whichever half is chosen.
 //            PLAY starts the game itself, which asks for your Mario Golf ROM the first time and keeps it (the app's Back returns here).
 // Choosing tennis opens the game (full.html, with this page's #hash); its button bar's GAMES button comes back here.
 import { GBC } from "./gb/gbc.js";
@@ -247,7 +247,7 @@ function loop(now) {
   pad();
   const want = sel === 0 ? 0.6 : 0.4; if (Math.abs(split - want) > 0.001) { split += (want - split) * 0.15; dirty = true; }
   if (shake && now - shake > 450) { shake = 0; dirty = true; } else if (shake) dirty = true;
-  golfHold(sel === 0);                                              // (the game not chosen is held)
+  golfHold(false);                                                  // (both play on, whichever is chosen)
   if (demo.v) {                                                     // (the rally plays on whichever game is chosen)
     acc = Math.min(acc + now - last, 100);
     while (acc >= 1000 / 59.73) { step(); acc -= 1000 / 59.73; }
