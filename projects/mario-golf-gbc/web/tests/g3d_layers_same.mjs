@@ -54,7 +54,7 @@ async function run(scenario, query) {
   }
   // the script and the per-frame hash (FNV-1a over the state), installed before the next frame runs
   await page.evaluate(([n, putt]) => {
-    const g = window.__golf, w = g.w, r6 = w.wram[6]; let k = 0, down = 0, held = 0, mark = "", since = 0, shot = 0, prevM = -1;
+    const g = window.__golf, w = g.w, r6 = w.wram[6]; let k = 0, down = 0, held = 0, mark = "", since = 0, shot = 0;
     g.hashes = [];
     const key = (c, d) => dispatchEvent(new KeyboardEvent(d ? "keydown" : "keyup", { code: c }));
     const hashState = () => {
@@ -69,13 +69,17 @@ async function run(scenario, query) {
       k = g.frames; const m = w.wram[6][0x44E];
       let a, b = false;
       if (putt) {                                  // (the putt scenario: approach presses 60, 56; on the green the putter, A at 50, the putt at $2E)
-        if (g.mark !== mark) { mark = g.mark; since = 0; } else since++;
+        // (everything from the game's own record, never from when this script was installed: the page installs it after a frame or
+        // two that depend on its drawing speed, which differs between the off and on runs; since = frames since this mark began,
+        // from play.js's marks list [frame, name])
+        mark = g.mark; { let i = g.marks.length - 1; while (i > 0 && g.marks[i - 1][1] === mark) i--; since = i >= 0 ? k - g.marks[i][0] - 1 : k; }
         shot = g.shots.length;
         if (mark === "aimmenu") { if (r6[0x443] === 1 && r6[0x329] !== 0x0D) b = since >= 12 && since % 8 < 2; else a = r6[0x443] === 1 ? since >= 50 && since < 52 : since >= 30 && since < 32; }
         else if (mark === "address") { a = !m && since >= 30 && since < 32; const pw = r6[0x329] === 0x0D ? 0x2E : [60, 56][shot] ?? 60;
-          if (m && m !== prevM && (m === pw || (r6[0x329] !== 0x0D && m === 0x78))) a = true; prevM = m; }
+          if (m && (m === pw || (r6[0x329] !== 0x0D && m === 0x78))) a = true; }   // (the count moves every frame: one frame each)
         else a = k % 20 < 2;
-        a = !!a;
+        a = !!a && k >= 30;                        // (no buttons before frame 30: the script is installed a frame or two later in one run
+                                                   // than in the other, and a press there (k % 20 < 2 at frame 1) made them differ from frame 2)
       } else if (m) a = w.wram[6][0x329] === 0x0D ? (m === 0x14 || m === 0x15) : (m === 0x38 || m === 0x39 || m === 0x76 || m === 0x77);
       else a = k % 20 === 0;
       if (a !== down) { key("KeyZ", a); down = a; }
