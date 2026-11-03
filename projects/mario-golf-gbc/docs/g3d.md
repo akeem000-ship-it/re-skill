@@ -1,13 +1,44 @@
 # The play page's 3D layers (web/js/g3d)
 
-Render-only options over the native game on `web/play.html` (the panel "3D layers" under the mode selector; notes in
-`web/whatsnew3d.md`). Off (the default) the page shows exactly the 2D picture it always did. On, a WebGL2 canvas lies over the
+Render-only options over the native game on `web/play.html` (OPTIONS > 3D view, Effects and Story, see "The OPTIONS screen" below;
+notes in `web/whatsnew3d.md`, OPTIONS > About). Off (the default) the page shows exactly the 2D picture it always did. On, a WebGL2 canvas lies over the
 game's screen (wherever the page's layout puts `#screen`) and draws the hole in 3D with the game's HUD on top; on screens the 3D
 view does not know (menus, the scorecard) the canvas is hidden or clear and the 2D picture shows. Adapted from Mario Tennis's
 `web/js` modules (voxel.js, voxround.js, skybox.js, lighting.js, courtfloor.js, courtwear.js, ballfx.js, ambience.js, replay.js,
 closecall.js, matchfx.js / bigmoments.js, stadium3d / crowdfans / courtside, titleshow.js, field3d.js, field_objects.js, ground.js,
 shimmer.js, fieldlife.js); nothing from the ROM is stored in the source: every map, tile, sprite and colour is read from the user's
 ROM or the game's memory at run time.
+
+## The OPTIONS screen (web/js/hd/options.js)
+
+Every setting of the play page is on one screen, in categories, as Mario Tennis's OPTIONS (its `menuwheel.js` OPTION_CATS):
+the categories down the left (a narrow screen, such as the Fold's cover screen: a 4 x 2 grid of tabs on top), one category's
+settings at a time on a white panel with a gold edge, each row the setting's name and its value on a pill (an On / Off switch for
+the 3D layers), the row under the pad gold and its help at the bottom. It opens from the button bar's OPTIONS (touch screens: the
+gear, or Back in the Android apps, Mario Golf's own and MTenn3D, whose user agent says `MarioTennisWrapper MarioGolfWrapper`),
+from the OPTIONS button under the picture (a computer) or the O key; BACK, Escape, START or Back close it. The game runs on behind it
+(as it did with the old panels); while it is open the keys and a controller drive the screen and the game gets none of them:
+▲ ▼ (◀ ▶) a category, A opens it; ▲ ▼ a setting, A or ▶ the next value, ◀ the one before; B back to the categories, B again closes.
+The last category shown is remembered (`mg-optcat`).
+
+| Category | Settings (storage key / URL parameter) |
+| --- | --- |
+| PLAY | Start (the mode selector `#mode`; changing it starts again), Course and Hole of the Stroke start (`?course=` `?hole=`), Meter (`mg-meter`), Preview (`mg-preview`), Markers (`mg-marks`), Tap area (`mg-tap`, touch), Putting (mg3d.putting, `?g3dputt`) |
+| PICTURE | View (`mg-view`), Text (`mg-font`), Menus (`mg-ui`), Deck (`mg-deck`, touch), Quality (mg3d.quality, `?g3dq`), Picture (save a picture) |
+| 3D VIEW | 3D view, Camera (`?g3dcam`), Hour (`?g3dhour`), Light, Sky, Hills, Trees (`?g3dtrees`), Grass (`?g3dgrass`), Sand (`?g3dsand`), Green (`?g3dgreen`), Terrain, Wear; the 3D view's status line (all in "mg3d", `?g3d=`) |
+| EFFECTS | Ball FX, Ambience, Replay, Close calls, Big moments, Gallery, Title fly-over ("mg3d") |
+| STORY | 3D overworld, Field life ("mg3d") |
+| CONTROLS | Touch: Stick / D-pad (`mg-pad`, `?pad`; touch), Vibrate (`mg-vibrate`; touch), the keys and controllers |
+| SOUND | Sound On / Off (the M key; not kept, as before) |
+| ABOUT | the page's notes and What's new in 3D, folded |
+
+The rows are the page's own controls, made as before by view.js, portrait.js, aimpower.js, page.js and g3d/layers.js (same ids, same
+handlers, same keys and URL parameters): the screen moves them into its rows and restyles them, so settings saved by an older page
+keep working, and the old rows under the picture (`#modes`, `#hdopts`, `#layers3d`, the notes) are gone from the page.
+`web/tests/options_panel.mjs` opens it from the bar inside the app on the cover screen, changes one setting in each category and
+checks it took effect, was stored under its key and is still there after a reload; then an older page's stored settings and the URL
+parameters, and the keys on a computer. `--shots`: every category on the cover screen, the inner screen both ways and a computer,
+in the app and standalone (out/options/).
 
 ## Rule: read only
 
@@ -164,7 +195,7 @@ alone adds about a tenth (the sand near bunkers and the desert).
 
 ## Putting (camera3d.js, groundshader.js, scene.js; the lines in hd/aimpower.js)
 
-Two options on the 3D panel (URL `?g3dputt=green|follow&g3dgreen=clean|arrows`, remembered in "mg3d").
+Two options (OPTIONS > Play: Putting, OPTIONS > 3D view: Green; URL `?g3dputt=green|follow&g3dgreen=clean|arrows`, remembered in "mg3d").
 
 - **Putting: Green camera** (default) | Follow. While a putt is aimed (the green view `$D443` = 1, the putter `$D329` = `$0D`, the
   meter not started `$D44E` = 0, the ball at rest, a human or computer turn; with Camera Follow or Behind) the camera (camera3d.js
@@ -230,7 +261,7 @@ putt` plays a putt in the putting view with every layer and helper on (the game'
 
 ## Aim and swing helpers (web/js/hd/aimpower.js, shotpreview.js)
 
-Four page options (in the picture options row, `#hdopts`; on phones under OPTIONS), drawn on a 2D canvas over the screen (over the
+Four page options (OPTIONS > Play), drawn on a 2D canvas over the screen (over the
 3D view when it shows, over the 2D or HD picture otherwise). They read the game's memory and never write it; the tap area only
 sets the same key the pad's A button sets. Settings in localStorage (`mg-meter`, `mg-preview`, `mg-marks`, `mg-tap`) or the URL
 (`?meter=big|game&preview=on|off&marks=on|off&tap=on|off`).
@@ -316,7 +347,7 @@ desktop, the Fold8's inner and cover screens upright, a phone on its side; 3D an
 
 The portrait layout (touch screens held upright: the game on top, the controls on a deck below) shows, during golf (`game.mark` one
 of the round's marks and a hole loaded), a live overhead map of the hole on the deck instead of the hole's art. Option **Deck**:
-Shot map (default) | Art (`mg-deck`, `?deck=map|art`; in the options panel on a touch screen). Menus and the story's maps keep
+Shot map (default) | Art (`mg-deck`, `?deck=map|art`; OPTIONS > Picture on a touch screen). Menus and the story's maps keep
 the art. Render only: it reads the game's memory and the ROM; it writes nothing.
 
 - **The course**: g3d/hole3d.js HoleArt (built from the ROM at run time, nothing stored): the terrain type of each 2 x 2 px cell

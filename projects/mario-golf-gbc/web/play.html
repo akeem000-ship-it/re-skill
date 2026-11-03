@@ -66,6 +66,8 @@
     </div>
   </div>
 
+  <!-- the options (the start, the picture, the 3D view...) and these notes are on the OPTIONS screen (js/hd/options.js): the button under
+       the picture, the O key, or on a touch screen the gear / the app's Back and OPTIONS on the button bar -->
   <section id="note" class="panel dim">
     <p>This page runs the game's own rules rewritten in JavaScript (<code>web/js/golf</code>), with no Game Boy CPU:
       the shots, the ball, the computer's play, the course drawing, the HUD, the sprites and the sound driver.</p>
@@ -75,7 +77,7 @@
       and the wind settings), the course. The battery save is kept in this
       browser in the same place and format as the <a href="index.html">emulated version</a>'s, so a character made
       there plays here, and a <b>new character</b> can be made here too (the character select's empty slot: the questions, the
-      name, the first day at the club), and its saves go back (a round left with Save &amp; Quit continues from the saved card). The selector below the screen can also start
+      name, the first day at the club), and its saves go back (a round left with Save &amp; Quit continues from the saved card). <b>OPTIONS &gt; Play: Start</b> can also start
       straight at a round as a new game would: Mario on course 1, a Stroke round of 18 holes, or <b>match play</b>
       against a computer golfer, with the standings between holes, the scorecard and the result screen.
       <kbd>Start</kbd> while aiming opens the pause menu: all its items work (Camera Mode, Course Map, Scorecard, Settings,
@@ -90,23 +92,23 @@
       Clubs' driving ranges and approach ranges (with the Links contests), the letter at the tree after the Links is won with the path it opens, the Road to Peach's Castle, the castle's welcome and Peach's Tournament with its award ceremony and, after a win, the ending; the Club Maker's Hut, Windy Valley's targets with the guru, the Tiny-Tots clean-up on the shot clock, the Mini-Mini Lake shot, Raven Woods' crow, the Golf Guru's Pitch and Putt, the Golf Clinic, the hidden friends, the Dune green's golfers with the Alternate
       Game, and the staff roll after the Links Champion's ceremony. The main menu's <b>Status</b> shows a character's data,
       stats, VS results and stars and the saved birdies, eagles and holes in one, and <b>Options</b> has the golf dictionary
-      and data management (copy, erase, erase all). The shot records replay a saved hole. <b>Link</b> (the selector) runs two Game Boys side by side joined by
+      and data management (copy, erase, erase all). The shot records replay a saved hole. <b>Link</b> (OPTIONS &gt; Play: Start) runs two Game Boys side by side joined by
       a cable in JS: the main menu's VS game on one finds the other (the handshakes, both character selects, the mode
       and course on the asking side), and the link round plays with each side's shots sent to the other; <kbd>Tab</kbd>
       switches which one the keys play. In the other modes the link game finds no cable partner, as the game does with
       none. All of the traced code is rewritten (REVERSE.md, "Rewrite progress"), the unreferenced and debug-only
       routines too; the page stops with a message where it reaches a path the rewrite does not have.</p>
-    <p><b>Aim and swing helpers</b> (the options row): <b>Meter</b> Big grows the swing meter into the middle of the picture while
+    <p><b>Aim and swing helpers</b> (OPTIONS &gt; Play): <b>Meter</b> Big grows the swing meter into the middle of the picture while
       you swing (the game's own timing); <b>Preview</b> is a helper that shows the flight of a <b>perfect full-power swing</b> with the
       current club, aim, lie and wind (the game's shot code run on a copy of the game: a weaker or mistimed swing lands elsewhere);
       <b>Markers</b> draws the aim line, the target's yards and the pin's distance; on touch screens <b>Tap area</b> makes the lower half
       of the screen the A button while you swing. They only draw: the game plays the same with them on or off.</p>
-    <p><b>Deck</b> (touch screens held upright, the game on top and the controls below it): <b>Shot map</b> (the default) turns the
+    <p><b>Deck</b> (OPTIONS &gt; Picture; touch screens held upright, the game on top and the controls below it): <b>Shot map</b> (the default) turns the
       deck into a live map of the hole from above while you play, drawn from the game's own hole data and turned so your shot goes
       up: the ball, the pin, the aim line, rings every 50 y, the wind, and the same preview as over the picture (the flight, where it
       lands and where it stops); on the green the slope of every tile and the break of four putts; in flight the ball's live place.
       <b>Art</b> keeps the hole's art behind the controls. Menus and the story's maps keep the art either way.</p>
-    <p><b>Putting in 3D</b> (the 3D layers panel): <b>Putting: Green camera</b> puts the camera low behind the ball looking at the
+    <p><b>Putting in 3D</b> (OPTIONS &gt; Play: Putting and OPTIONS &gt; 3D view: Green): <b>Putting: Green camera</b> puts the camera low behind the ball looking at the
       cup while you aim a putt, the golfer only as his shadow, and draws <b>the break</b>: where a putt struck at 100, 77, 50 and 27 %
       of the meter rolls and stops, with its roll in feet (the game's own putt run on a copy of the game, so a putt struck at that
       point of the meter stops exactly there), and a light grid of the green's slope near the line; the camera eases back when you
@@ -118,7 +120,7 @@
 
   <footer class="dim">
     <span>Keys: arrows, <kbd>Z</kbd> A, <kbd>X</kbd> B, <kbd>Shift</kbd> Select, <kbd>Enter</kbd> Start, <kbd>P</kbd> pause the page,
-      <kbd>Space</kbd> fast, <kbd>M</kbd> mute, <kbd>Tab</kbd> the other Game Boy (link). Gamepads work too. <a href="index.html">Emulated version</a></span>
+      <kbd>Space</kbd> fast, <kbd>M</kbd> mute, <kbd>O</kbd> options, <kbd>Tab</kbd> the other Game Boy (link). Gamepads work too. <a href="index.html">Emulated version</a></span>
     <span><span id="save"></span> <span id="score"></span></span>
   </footer>
 </main>

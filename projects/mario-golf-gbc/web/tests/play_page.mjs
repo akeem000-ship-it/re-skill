@@ -62,7 +62,7 @@ page.on("console", m => { if (m.type() === "error") errors.push(m.text()); });
 await page.goto(`http://localhost:${port}/web/play.html${tapArea ? "?touch=1&tap=on" : ""}`);
 await page.waitForFunction(() => window.__golf && window.__golf.frames > 0, null, { timeout: 30000 });
 if (match) {
-  await page.selectOption("#mode", "match:9");
+  await page.evaluate(() => { const m = document.getElementById("mode"); m.value = "match:9"; m.dispatchEvent(new Event("change")); });   // (the selector is on the OPTIONS screen, hidden: OPTIONS > Play)
   await page.waitForFunction(() => window.__golf && window.__golf.w.wram[0][0x834] === 2 && window.__golf.frames > 0, null, { timeout: 30000 });
 } else if (direct) {
   await page.evaluate(() => { const m = document.getElementById("mode"); m.value = "stroke"; m.dispatchEvent(new Event("change")); });   // (hidden on a phone)
@@ -100,7 +100,7 @@ const screenNow = () => page.evaluate(() => {
 });
 try {
   if (link) {
-    await page.selectOption("#mode", "link");
+    await page.evaluate(() => { const m = document.getElementById("mode"); m.value = "link"; m.dispatchEvent(new Event("change")); });   // (the selector is on the OPTIONS screen, hidden: OPTIONS > Play)
     await page.waitForFunction(() => window.__golf && window.__golf.link && window.__golf.frames > 0, null, { timeout: 30000 });
     await page.evaluate(() => {
       const g = window.__golf, ws = [g.w, g.link.w2], st = [{ menuAt: -1 }, {}];

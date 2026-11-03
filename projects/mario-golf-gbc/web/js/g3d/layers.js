@@ -151,22 +151,22 @@ class Page {
     el.textContent = this.failed ? `3D view unavailable: ${this.failed}` : !this.L.on("view3d") ? "3D view off (the 2D picture)"
       : `3D ${st.fps.toFixed(0)} fps, ${(st.cpu || 0).toFixed(1)} ms a frame${sc && sc.status ? " · " + sc.status : ""}`;
   }
-  // ---- the panel of options (the page's #layers3d section, or made here) ----
+  // ---- the panel of options (the page's #layers3d section, or made here; hd/options.js then moves each control into its OPTIONS category) ----
   buildPanel() {
     let p = document.getElementById("layers3d");
     if (!p) { p = document.createElement("section"); p.id = "layers3d"; p.className = "panel dim"; const m = document.getElementById("modes"); (m ? m.parentNode : document.body).insertBefore(p, m ? m.nextSibling : null); }
     const L = this.L, el = (t, a = {}, ...kids) => { const e = document.createElement(t); Object.assign(e, a); for (const k of kids) e.append(k); return e; };
     p.innerHTML = "";
     const head = el("div", { className: "g3dhead" });
-    const sel = (label, opts, cur, set) => { const s = el("select"); for (const [v, t] of Object.entries(opts)) s.append(el("option", { value: v, textContent: t, selected: String(v) === String(cur) })); s.onchange = () => { set(s.value); L.save(); }; return el("label", {}, label + " ", s); };
-    head.append(sel("Camera", PRESETS, L.camera, v => { L.camera = v; }), " ", sel("Hour", HOURS, L.hour, v => { L.hour = v; }), " ",
-      sel("Quality", { full: "Full", lite: "Lite (phones)" }, L.quality, v => { L.quality = v; if (this.scene && this.scene.hole) this.scene.hole.id = -1; }), " ",
-      sel("Trees", TREE_STYLES, L.trees, v => { L.trees = v; }), " ", sel("Grass", GRASS_STYLES, L.grass, v => { L.grass = v; }), " ",
-      sel("Sand", SAND_STYLES, L.sand, v => { L.sand = v; }), " ", sel("Putting", PUTT_STYLES, L.putting, v => { L.putting = v; }), " ",
-      sel("Green", GREEN_STYLES, L.green, v => { L.green = v; }));
+    const sel = (label, opts, cur, set, id) => { const s = el("select", { id }); for (const [v, t] of Object.entries(opts)) s.append(el("option", { value: v, textContent: t, selected: String(v) === String(cur) })); s.onchange = () => { set(s.value); L.save(); }; return el("label", {}, label + " ", s); };
+    head.append(sel("Camera", PRESETS, L.camera, v => { L.camera = v; }, "g3dcam"), " ", sel("Hour", HOURS, L.hour, v => { L.hour = v; }, "g3dhour"), " ",
+      sel("Quality", { full: "Full", lite: "Lite (phones)" }, L.quality, v => { L.quality = v; if (this.scene && this.scene.hole) this.scene.hole.id = -1; }, "g3dq"), " ",
+      sel("Trees", TREE_STYLES, L.trees, v => { L.trees = v; }, "g3dtrees"), " ", sel("Grass", GRASS_STYLES, L.grass, v => { L.grass = v; }, "g3dgrass"), " ",
+      sel("Sand", SAND_STYLES, L.sand, v => { L.sand = v; }, "g3dsand"), " ", sel("Putting", PUTT_STYLES, L.putting, v => { L.putting = v; }, "g3dputt"), " ",
+      sel("Green", GREEN_STYLES, L.green, v => { L.green = v; }, "g3dgreen"));
     const list = el("div", { className: "g3dlist" });
     for (const [k, label, phase, what] of LAYERS) {
-      const cb = el("input", { type: "checkbox", checked: L.on(k) });
+      const cb = el("input", { type: "checkbox", checked: L.on(k), id: "g3d-" + k });   // (the OPTIONS screen's rows: hd/options.js)
       cb.onchange = () => { L.set(k, cb.checked); if (k === "view3d") { this.showStatus(); if (!cb.checked) this.hide(); } };
       list.append(el("label", { title: what, className: k === "view3d" ? "master" : "" }, cb, " " + label));
     }

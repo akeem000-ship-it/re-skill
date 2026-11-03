@@ -49,7 +49,7 @@ async function run(scenario, query) {
   await page.goto(`http://localhost:${port}/web/play.html?${query}${scenario === "putt" ? "&course=2&hole=18" : ""}`);
   await page.waitForFunction(() => window.__golf && window.__golf.frames > 0, null, { timeout: 60000 });
   if (scenario === "stroke" || scenario === "putt") {
-    await page.selectOption("#mode", "stroke");
+    await page.evaluate(() => { const m = document.getElementById("mode"); m.value = "stroke"; m.dispatchEvent(new Event("change")); });   // (the selector is on the OPTIONS screen, hidden: OPTIONS > Play)
     await page.waitForFunction(() => window.__golf && window.__golf.mark !== "menus", null, { timeout: 60000 });
   }
   // the script and the per-frame hash (FNV-1a over the state), installed before the next frame runs

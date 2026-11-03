@@ -28,6 +28,7 @@ import { Golf3D } from "./g3d/scene.js";
 // ---- HD picture options (web/js/hd: HD text, HD menus, wide, portrait, handheld): render / UI only, never the game's state ----
 import { attachHD } from "./hd/page.js";
 import { attachAimPower } from "./hd/aimpower.js";
+import { attachOptions } from "./hd/options.js";
 // ---- (end HD) ----
 import { GolfRecorder, pack, saveFile } from "./rec.js";   // REC: a session to send in (js/rec.js)
 
@@ -43,6 +44,9 @@ const g3d = attach3D({ screen: canvas, getGame: () => game });   // (3D LAYERS: 
 const hdPage = attachHD({ canvas, keys, getRom: () => rom, getGame: () => game });   // (HD: the picture options and the touch layouts)
 const aimPower = attachAimPower({ screen: canvas, keys, getGame: () => game });   // (HD: the aim and swing helpers: big meter, shot preview, markers, tap area)
 let rom = null, sha = "", game = null, paused = false, fast = false, muted = false, last = 0, acc = 0;
+// (HD: the OPTIONS screen, every setting above by category; the game runs on behind it, the keys go to it while it is open)
+const sound = { muted: () => muted, set(m) { muted = !!m; }, onChange: null };
+const options = attachOptions({ keys, hdPage, g3d, sound });
 let fps = 0, fpsFrames = 0, fpsT = 0;
 // ---- ATTRACT (?attract: MTenn3D's game picker shows this page behind its golf half): the game playing itself, silent, no buttons, no
 // save written. A Stroke round from a random hole of a random course with a preset golfer whose record says computer (+$13 = 1,
@@ -139,6 +143,7 @@ function held() {
   const p = !!keys.KeyP;                           // P: the page's own pause (Start is the game's: its pause menu)
   if (p && !pauseWas) paused = !paused;
   pauseWas = p;
+  if (options && options.isOpen) return 0;           // (HD: the OPTIONS screen has the keys while it is open)
   { const t = hdPage.input(game, b); if (t !== undefined) return t; }   // (HD: a test's scripted buttons; js/hd/page.js)
   return b;
 }
@@ -146,7 +151,7 @@ addEventListener("keydown", e => {
   if (e.code in MAP || e.code === "Space") e.preventDefault();
   keys[e.code] = true; initAudioSoon();
   if (e.code === "Space") fast = true;
-  if (e.code === "KeyM" && !e.repeat) muted = !muted;
+  if (e.code === "KeyM" && !e.repeat) { muted = !muted; if (sound.onChange) sound.onChange(muted); }
   if (e.code === "Tab" && game && game.link) { e.preventDefault(); if (!e.repeat) { active ^= 1; showActive(); } }
 });
 addEventListener("keyup", e => { keys[e.code] = false; if (e.code === "Space") fast = false; });

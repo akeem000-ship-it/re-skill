@@ -47,19 +47,19 @@ export function attachHD({ canvas, keys, getRom, getGame }) {
   }
   applyPad();
   // the button bar on touch screens, as Mario Tennis's: Back (the app's, or the gear) shows a column of buttons down the left-hand side,
-  // the game keeps running. OPTIONS there opens the settings (the start mode, the picture, the 3D layers); GAMES (inside the
+  // the game keeps running. OPTIONS there opens the OPTIONS screen (options.js: every setting by category); GAMES (inside the
   // MTenn3D app, which carries this game) goes back to the screen where you pick a game. Back again closes what is open.
   const gear = document.createElement("button"); gear.id = "hdgear"; gear.textContent = "⚙"; gear.title = "menu"; gear.setAttribute("aria-label", "menu");
   body.appendChild(gear);
   const side = document.createElement("div"); side.id = "mgside";
   const sideBtn = (label, title, fn) => { const b = document.createElement("button"); b.textContent = label; b.title = title; b.addEventListener("click", e => { e.stopPropagation(); fn(); }); side.appendChild(b); return b; };
-  sideBtn("OPTIONS", "the start mode, the picture, the 3D view", () => { body.classList.remove("showside"); body.classList.add("showopts"); });
+  sideBtn("OPTIONS", "every setting: play, picture, 3D view, controls", () => { body.classList.remove("showside"); if (window.__options) window.__options.open(); else body.classList.add("showopts"); });
   sideBtn("PICTURE", "save a picture of the game view", () => { const n = phone.screenshot(canvas); const m = document.getElementById("message"); if (m) m.textContent = "Picture saved: " + n; body.classList.remove("showside"); });
   if (/MarioTennisWrapper/.test(navigator.userAgent) || q.has("games"))
     sideBtn("GAMES", "back to the screen where you pick a game", () => { location.href = new URL("../../web/picker.html", location.href).href; });
   body.appendChild(side);
   const toggleOpts = () => {
-    if (body.classList.contains("showopts")) body.classList.remove("showopts");
+    if (body.classList.contains("showopts")) { if (window.__options) window.__options.close(); else body.classList.remove("showopts"); }
     else body.classList.toggle("showside");
     return true;
   };
