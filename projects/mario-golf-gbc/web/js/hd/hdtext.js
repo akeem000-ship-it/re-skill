@@ -117,7 +117,9 @@ export class HDText {
     this.frame = p.frames; this.dirty = false;
     const skey = this.screen.scan();
     let lines = [];
-    if (textOn) { if (skey === this.readKey && this.readLines && this.readSize === content.size) lines = this.readLines; else { lines = this.read(); this.readKey = skey; this.readLines = lines; this.readSize = content.size; } }
+    // (read again when the tiles, the tracker or the palettes changed: a line's colours, and whether it shows at all, are the palette's)
+    const pk = textOn ? String.fromCharCode.apply(null, p.bgPal) : "";
+    if (textOn) { if (skey === this.readKey && this.readLines && this.readSize === content.size && pk === this.readPal) lines = this.readLines; else { lines = this.read(); this.readKey = skey; this.readLines = lines; this.readSize = content.size; this.readPal = pk; } }
     const key = this.font + "|" + uiOn + "|" + (uiOn ? skey + ":" + watchKey(this.screen) : "") + "|" + lines.map(l => `${l.x},${l.y},${l.win},${l.text},${l.c.join(",")}`).join("|");
     const okey = uiOn ? this.screen.oamKey(true) : "";
     if (key === this.key) {
@@ -170,8 +172,8 @@ export class HDText {
       let line = null;
       const flush = () => {
         if (!line) return;
-        const pal = v1[line.cell.c] & 7;
-        out.push({ x: line.x, y: b.y, w: line.end - line.x, win: b.win, text: line.text, c: [1, 2, 3].map(ci => col5(p.bgPal, pal, ci)) });
+        const pal = v1[line.cell.c] & 7, c = [1, 2, 3].map(ci => col5(p.bgPal, pal, ci));
+        if (!unseen(c)) out.push({ x: line.x, y: b.y, w: line.end - line.x, win: b.win, text: line.text, c });
         line = null;
       };
       for (const ax of xs) {
@@ -191,10 +193,8 @@ export class HDText {
       if (ch[k] === null || ch[k] === " ") { k++; continue; }
       let e = k; while (e < cells.length && ch[e] !== null && !(ch[e] === " " && (e + 1 >= cells.length || ch[e + 1] === " " || ch[e + 1] === null))) e++;
       const text = ch.slice(k, e).join("");
-      if (/[A-Za-z0-9]/.test(text)) {
-        const c0 = cells[k], pal = v1[c0.c] & 7, ppu = this.gb.ppu;
-        out.push({ x: c0.x, y: band.y, w: (e - k) * 8, win: band.win, text, c: [1, 2, 3].map(ci => col5(ppu.bgPal, pal, ci)), bold: true });
-      }
+      const c0 = cells[k], pal = v1[c0.c] & 7, c = [1, 2, 3].map(ci => col5(this.gb.ppu.bgPal, pal, ci));
+      if (/[A-Za-z0-9]/.test(text) && !unseen(c)) out.push({ x: c0.x, y: band.y, w: (e - k) * 8, win: band.win, text, c, bold: true });
       k = e;
     }
   }
@@ -302,5 +302,10 @@ function makeCanvas() {
   if (typeof document === "undefined") return null;
   const c = document.createElement("canvas"); c.width = 160 * HD; c.height = 144 * HD; return c;
 }
+// a line whose palette draws its ink and its shadow in (nearly) its box's colour shows (next to) nothing on the game's screen (a fade
+// to white or black: the new character's room, map $1E, comes in with the stars' map already pointing at the character select's font
+// tiles, which read as "FGFGFGFGF45GFG..." in ink 3 steps of blue off the box's white): not read, so the HD font draws nothing there
+const near = (a, b) => Math.abs((a & 31) - (b & 31)) <= 4 && Math.abs((a >> 5 & 31) - (b >> 5 & 31)) <= 4 && Math.abs((a >> 10 & 31) - (b >> 10 & 31)) <= 4;
+const unseen = c => near(c[0], c[1]) && near(c[0], c[2]);
 const col5 = (pal, p, i) => { const o = p * 8 + i * 2; return pal[o] | (pal[o + 1] << 8); };
 const css = c => `rgb(${(c & 31) * 8},${(c >> 5 & 31) * 8},${(c >> 10 & 31) * 8})`;
