@@ -191,7 +191,8 @@ function recPress() {
   const add = (parent, before) => { if (!parent) return; const b = document.createElement("button"); b.className = "recbtn"; b.textContent = "REC"; b.title = "record what happens (press again to save the recording)";
     b.addEventListener("click", e => { e.stopPropagation(); recPress(); }); parent.insertBefore(b, before || null); recButtons.push(b); };
   const side = $("mgside"); add(side, side && side.children[1]);   // (the button bar: after OPTIONS)
-  add($("modes"));                                                 // (the settings: the desktop and browsers)
+  { const box = document.createElement("div"); add(box);             // (the settings: a row of the OPTIONS screen's PLAY, js/hd/options.js)
+    options.addButton("PLAY", { id: "optrec", name: "Rec", help: "record what happens: pressed, it marks where the part you mean begins; pressed again, the recording is saved", button: box.firstChild }); }
   setInterval(() => { if (rec.marking) recLabel(); }, 1000);
 }
 addEventListener("visibilitychange", () => { if (document.hidden && rec.marking) saveRecording(true); });

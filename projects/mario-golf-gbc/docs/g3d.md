@@ -23,7 +23,7 @@ The last category shown is remembered (`mg-optcat`).
 
 | Category | Settings (storage key / URL parameter) |
 | --- | --- |
-| PLAY | Start (the mode selector `#mode`; changing it starts again), Course and Hole of the Stroke start (`?course=` `?hole=`), Meter (`mg-meter`), Preview (`mg-preview`), Markers (`mg-marks`), Tap area (`mg-tap`, touch), Putting (mg3d.putting, `?g3dputt`) |
+| PLAY | Start (the mode selector `#mode`; changing it starts again), Rec (REC, as on the button bar: play.js), Course and Hole of the Stroke start (`?course=` `?hole=`), Meter (`mg-meter`), Preview (`mg-preview`), Markers (`mg-marks`), Tap area (`mg-tap`, touch), Putting (mg3d.putting, `?g3dputt`) |
 | PICTURE | View (`mg-view`), Text (`mg-font`), Menus (`mg-ui`), Deck (`mg-deck`, touch), Quality (mg3d.quality, `?g3dq`), Picture (save a picture) |
 | 3D VIEW | 3D view, Camera (`?g3dcam`), Hour (`?g3dhour`), Light, Sky, Hills, Trees (`?g3dtrees`), Grass (`?g3dgrass`), Sand (`?g3dsand`), Green (`?g3dgreen`), Terrain, Wear; the 3D view's status line (all in "mg3d", `?g3d=`) |
 | EFFECTS | Ball FX, Ambience, Replay, Close calls, Big moments, Gallery, Title fly-over ("mg3d") |

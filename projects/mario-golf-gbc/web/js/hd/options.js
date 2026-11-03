@@ -216,7 +216,16 @@ export function attachOptions({ keys, hdPage, g3d, sound }) {
     if (state.open && e.code === "Backspace") e.preventDefault();
   });
   paint();
-  const api = { get isOpen() { return state.open; }, get muted() { return !!(sound && sound.muted()); }, open, close: closeIt, toggle() { if (state.open) closeIt(); else open(); }, sections, state, show(name) { const i = CATEGORIES.findIndex(c => c[0] === name); if (i >= 0) { show(i); state.inCat = false; paint(); } } };
+  // a button the page makes later (REC: play.js) as a row of a category: its text is its value
+  function addButton(cat, { id, name, help: hint = "", button }) {
+    const ci = CATEGORIES.findIndex(c => c[0] === cat); if (ci < 0 || !button) return;
+    const s = sections[ci], row = el("div", { className: "mo-row" }); row.dataset.id = id; button.classList.add("mo-pill");
+    row.append(el("span", { className: "mo-name", textContent: name }), button);
+    const r = { id, row, ctl: button, help: hint }; s.rows.push(r);
+    row.addEventListener("pointerdown", () => { state.cat = ci; state.row = s.rows.filter(x => !x.row.hidden).indexOf(r); state.inCat = true; paint(); });
+    const info = s.box.querySelector(".mo-info"); s.box.insertBefore(row, info);
+  }
+  const api = { addButton, get isOpen() { return state.open; }, get muted() { return !!(sound && sound.muted()); }, open, close: closeIt, toggle() { if (state.open) closeIt(); else open(); }, sections, state, show(name) { const i = CATEGORIES.findIndex(c => c[0] === name); if (i >= 0) { show(i); state.inCat = false; paint(); } } };
   window.__options = api;
   return api;
 }

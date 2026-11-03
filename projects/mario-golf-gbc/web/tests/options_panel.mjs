@@ -120,6 +120,7 @@ if (args.includes("--shots")) {
     if (live.stick || s["mg-pad"] !== "dpad") fail("CONTROLS pad");
     if (!live.muted) fail("SOUND");
     if (live.visible !== 1) fail("one category at a time");
+    if (!(await page.evaluate(() => !!document.querySelector('#mgopts .mo-sec[data-cat="play"] .mo-row[data-id="optrec"] button')))) fail("REC in PLAY");
     if (live.frames <= f0 + 30) fail("the game kept running", f0, live.frames);
     // Back closes it; Back again opens the bar (GAMES there in the app)
     await page.evaluate(() => window.__backPressed());
