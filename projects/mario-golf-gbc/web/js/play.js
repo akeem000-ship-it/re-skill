@@ -29,6 +29,7 @@ import { Golf3D } from "./g3d/scene.js";
 import { attachHD } from "./hd/page.js";
 import { attachAimPower } from "./hd/aimpower.js";
 // ---- (end HD) ----
+import { GolfRecorder, pack, saveFile } from "./rec.js";   // REC: a session to send in (js/rec.js)
 
 const EXPECTED_SHA1 = "7f2062e51b4fc87378c1d5e6b9578c9277b94e0b";
 const FRAME_MS = 1000 * DOTS_PER_FRAME / CLOCK;   // 16.74 ms
@@ -159,19 +160,53 @@ for (const el of document.querySelectorAll("#pad button")) {
 canvas.addEventListener("pointerdown", () => initAudioSoon());
 function initAudioSoon() { if (driver) initAudio(); }
 
+// ---- REC (as Mario Tennis's): pressed, it marks where the part you mean begins; pressed again, the session is saved (a .mgrec file:
+// in the MTenn3D app to Downloads/MTenn3D and the share sheet, else a download). Hiding the page saves it too. ----
+const rec = new GolfRecorder();
+const recButtons = [];
+const recLabel = () => { const on = rec.marking, t = on ? rec.seconds() : 0;
+  for (const b of recButtons) { b.classList.toggle("recon", on); b.textContent = on ? `REC ${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}` : "REC"; } };
+async function saveRecording(quick = false) {
+  if (!rec.marking || !game) return;
+  const settings = {}; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^mg/i.test(k) && !/sram|rom/i.test(k)) settings[k] = localStorage.getItem(k); } } catch (e) { /* private mode */ }
+  const obj = rec.snapshot({ rom: sha, marks: game.marks, meta: { ua: navigator.userAgent, url: location.pathname + location.search, settings, screen: [innerWidth, innerHeight] } });
+  rec.from = -1; recLabel();
+  const { bytes, gz } = await pack(obj, quick);
+  const d = new Date(), p2 = n => String(n).padStart(2, "0");
+  const name = `mgolf-${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}.mgrec${gz ? "" : ".json"}`;
+  saveFile(name, bytes);
+  $("message").textContent = `Recording saved: ${name} (${Math.round((obj.frames - obj.from) / 59.73)} s)`;
+}
+function recPress() {
+  if (!game || !rec.on) { $("message").textContent = game && game.link ? "REC: the link mode is not recorded" : "REC: start the game first"; return; }
+  if (rec.marking) saveRecording(); else { rec.mark(); recLabel(); }
+}
+{
+  const css = document.createElement("style"); css.textContent = ".recon { background: #c8202c !important; border-color: #ff6b74 !important; color: #fff !important; }"; document.head.appendChild(css);
+  const add = (parent, before) => { if (!parent) return; const b = document.createElement("button"); b.className = "recbtn"; b.textContent = "REC"; b.title = "record what happens (press again to save the recording)";
+    b.addEventListener("click", e => { e.stopPropagation(); recPress(); }); parent.insertBefore(b, before || null); recButtons.push(b); };
+  const side = $("mgside"); add(side, side && side.children[1]);   // (the button bar: after OPTIONS)
+  add($("modes"));                                                 // (the settings: the desktop and browsers)
+  setInterval(() => { if (rec.marking) recLabel(); }, 1000);
+}
+addEventListener("visibilitychange", () => { if (document.hidden && rec.marking) saveRecording(true); });
+window.__stopRec = () => { if (rec.marking) saveRecording(true); };   // (the Android wrapper calls it when the app is sent away)
+window.__golfRec = rec;                            // (tests)
+
 // ---- the round ----
 function newRound() {
   const w = new GolfMemory();
   const mode = ATTRACT ? (ATTRACT_TITLE ? "title" : "stroke") : $("mode").value;   // "title" (power-on), "stroke", "match:N" against preset golfer N, "link"
   const fromPowerOn = mode === "title" || mode === "link";
-  let holes = 0;
+  let holes = 0, seed = 0, qCourse = 0, qHole = 0;
+  if (rec.marking) saveRecording(true);           // (REC: a new start ends the recording: saved first)
   if (!fromPowerOn) {
-    const seed = crypto.getRandomValues(new Uint16Array(1))[0];   // (the menus' frames would have moved the seed)
+    seed = crypto.getRandomValues(new Uint16Array(1))[0];   // (the menus' frames would have moved the seed)
     holes = mode.startsWith("match:") ? matchRoundSetup(w, { golfer: 8, opponent: +mode.slice(6), course: 1, seed })
       : strokeRoundSetup(w, { golfer: ATTRACT ? [8, 9, 4][seed % 3] : 8, course: 1, seed });
     const q = new URLSearchParams(location.search), qc = +q.get("course"), qh = +q.get("hole");
     if (!ATTRACT && mode === "stroke" && (qc || qh)) {   // (?course=1-4&hole=1-18: the Stroke start on another course or hole, as CourseSelect would)
-      const c = qc >= 1 && qc <= 4 ? qc : 1; setCourseHole(w, c, c, qh >= 1 && qh <= 18 ? qh : 1);
+      const c = qc >= 1 && qc <= 4 ? qc : 1; qCourse = c; qHole = qh >= 1 && qh <= 18 ? qh : 1; setCourseHole(w, c, c, qHole);
     }
     if (ATTRACT) {                                 // (ATTRACT: a random course and hole, the golfer the computer's)
       const course = 1 + (seed >> 2) % 4; setCourseHole(w, course, course, 1 + (seed >> 4) % 18); setPlayerControl(w, 0, 1);
@@ -202,14 +237,17 @@ function newRound() {
     initDisplay(w2);
     const cable = new NativeCable(w, w2);
     const input = k => () => { const b = held(); return game.testInput ? game.testInput[k] : active === k ? b : 0; };
-    game.link = { w2, cable, frames2: 0 };
+    game.link = { w2, cable, frames2: 0 }; rec.stop();   // (REC: not the link mode)
     game.g = playFromPowerOn(w, input(0), opts);
     game.link.g2 = playFromPowerOn(w2, input(1), {});
     canvas2.hidden = false;
     showActive();
   } else {
     canvas2.hidden = true;
-    game.g = mode === "title" ? playFromPowerOn(w, held, opts) : playRoundFrames(w, holes, held, opts);
+    // REC: every start kept (the save RAM the power-on reads, the seed, the course and hole) and each button read (js/rec.js)
+    if (ATTRACT) rec.stop(); else rec.begin({ mode, seed, course: qCourse, hole: qHole, sram: fromPowerOn ? w.sram.slice() : null });
+    const input = () => rec.read(held());
+    game.g = mode === "title" ? playFromPowerOn(w, input, opts) : playRoundFrames(w, holes, input, opts);
   }
   window.__golf = game;
   $("message").textContent = "";
@@ -232,6 +270,7 @@ function step() {                                  // one frame of the game
     if (r2.done) game.link.done = true;
   }
   game.frames++;
+  rec.frame(game.w);                               // (REC)
   g3d.afterStep(game);                             // (3D LAYERS: follows the frame; reads only)
   soundFrame(game.w);
   if (!ATTRACT) checkSave(game.w);
