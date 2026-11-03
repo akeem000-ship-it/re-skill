@@ -137,7 +137,7 @@ const save = (() => { try { for (let i = 0; i < localStorage.length; i++) if (lo
 
 // ---------------- the live rally ----------------
 const REC = [0xA00, 0xA80, 0xA40, 0xAC0];                 // the players' records by index (07:5C42 CharAttrStructPtrs: $CA00, $CA80, $CA40, $CAC0)
-const demo = { live: false, gb: null, v: null, list: [], i: -1, at: 0, games: -1, names: "" };
+const demo = { live: false, gb: null, v: null, rom: null, list: [], i: -1, at: 0, games: -1, names: "" };
 const romStore = (mode, fn) => new Promise((ok, fail) => {
   try { const open = indexedDB.open("mt-rom", 1); open.onupgradeneeded = () => open.result.createObjectStore("rom");
     open.onsuccess = () => { const tx = open.result.transaction("rom", mode), r = fn(tx.objectStore("rom")); tx.oncomplete = () => ok(r && r.result); tx.onerror = () => fail(tx.error); }; open.onerror = () => fail(open.error); }
@@ -162,8 +162,9 @@ async function startDemo() {
   const v = new Voxel3D(gl, gb, new Rom(gb.mem.rom)), hud = document.createElement("div");   // (the attach* buttons go to a bar nobody sees)
   attachLighting(v, hud); attachStadium(v, hud); attachBallFX(v, hud); if (v.ballfx) v.ballfx.showSpeed = () => {};   // (no speed tags here)
   v.res = "auto"; v.replayCam = (aspect, m4, clip, st) => camera(aspect, m4, clip, st);
-  Object.assign(demo, { gb, v, list: list.sort(() => Math.random() - 0.5), i: -1 });
+  Object.assign(demo, { gb, v, rom, list: list.sort(() => Math.random() - 0.5), i: -1 });
   next();
+  startMusic(rom, demo.list[0].state);                                   // THE TITLE MUSIC (the sound section below)
 }
 // the next match, from its start
 function next() {
@@ -204,11 +205,51 @@ function camera(aspect, m4, clip, st) {
   return { mvp: m4.mul(m4.perspective(sh[2], aspect, clip.near, clip.far), m4.lookAt(sh[0], sh[1], [0, 1, 0])), tilt: 0 };
 }
 // ---------------- sound ----------------
-// small sounds of its own (Web Audio, made here: none of the game's): a tick to move, a rising pair to play, a dull "no" for a game
+// small sounds of its own (Web Audio, made here): a tick to move, a rising pair to play, a dull "no" for a game
 // not ready, and a soft racket thock at each hit of the rally behind. They start with the first touch or key (the browser's rule).
 let actx = null, mute = false;
 try { mute = localStorage.getItem("mt-picker-sound") === "off"; } catch (e) { /* private mode */ }
-function audio() { if (mute) return null; if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { mute = true; return null; } } if (actx.state === "suspended") actx.resume(); return actx; }
+function audio() { if (mute) return null; if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 }); } catch (e) { mute = true; return null; } } if (actx.state === "suspended") actx.resume(); return actx; }
+// ---------------- the title music ----------------
+// Mario Tennis's PRESS START music (BGM_TITLE_SCREEN, song 2), played by the game's own sound driver from your ROM: a machine of its own
+// (the JS port, no CPU) from the start of a demo match, the song requested (PlaySound 00:3297), then each frame the driver's tick
+// (UpdateSoundEngine 00:2F1A) and the hardware, the APU's samples to a worklet (as full.js plays the walk-out's music). It starts with
+// the page when the browser lets it (the app does), else with the first touch or key; it fades out when a game is chosen.
+const music = { P: null, node: null, gain: null, acc: 0, last: 0, buf: new Float32Array(2 * 4096), starting: false, failed: false };
+async function startMusic(rom, state) {
+  if (music.P || music.starting || music.failed || mute) return; music.starting = true;
+  try {
+    const a = audio(); if (!a) return;
+    const [{ GamePort }, { entry }, { program }] = await Promise.all([import("./port/port.js"), import("./port/entry.js"), import("./port/program.js")]);
+    const src = `class P extends AudioWorkletProcessor {
+      constructor() { super(); this.q = []; this.cur = null; this.pos = 0; this.port.onmessage = e => { this.q.push(e.data); if (this.q.length > 12) this.q.shift(); }; }
+      process(inputs, outputs) { const L = outputs[0][0], R = outputs[0][1] || L; for (let i = 0; i < L.length; i++) {
+        if (!this.cur || this.pos >= this.cur.length) { this.cur = this.q.shift() || null; this.pos = 0; }
+        if (this.cur) { L[i] = this.cur[this.pos]; R[i] = this.cur[this.pos + 1]; this.pos += 2; } else { L[i] = R[i] = 0; } }
+        return true; } }
+      registerProcessor("mt-picker-pcm", P);`;
+    await a.audioWorklet.addModule(URL.createObjectURL(new Blob([src], { type: "application/javascript" })));
+    const node = new AudioWorkletNode(a, "mt-picker-pcm", { outputChannelCount: [2] }), gain = a.createGain(); gain.gain.value = 0.8;
+    node.connect(gain).connect(a.destination);
+    const P = new GamePort(rom, { ...entry, hooks: program.hooks }, { audio: true, sampleRate: a.sampleRate, noCpu: true });
+    loadState(P.gb, state); P.ime = false;                               // (only the driver runs: no interrupts, no game)
+    P.callRom(0, 0x3297, { a: 0x02 });                                   // PlaySound BGM_TITLE_SCREEN
+    Object.assign(music, { P, node, gain, acc: 0, last: performance.now() });
+  } catch (e) { console.warn("title music", e); music.failed = true; }
+  finally { music.starting = false; }
+}
+function musicFrames(now) {
+  const m = music; if (!m.P) return;
+  m.acc = Math.min(m.acc + now - m.last, 1000 / 59.73 * 8); m.last = now;
+  for (; m.acc >= 1000 / 59.73; m.acc -= 1000 / 59.73) {
+    m.P.callRom(0, 0x2F1A); m.P.runHardware();                          // UpdateSoundEngine, then the frame's hardware
+    const n = m.P.gb.apu.drain(m.buf); if (n && actx && actx.state === "running") m.node.port.postMessage(m.buf.slice(0, n));
+  }
+}
+function musicFade() { if (music.gain && actx) music.gain.gain.setTargetAtTime(0, actx.currentTime, 0.08); }
+addEventListener("visibilitychange", () => { if (!actx) return; if (document.hidden) actx.suspend(); else if (!mute) actx.resume(); });
+const unlock = () => { const a = audio(); if (a && a.state === "suspended") a.resume(); if (!music.P && demo.list.length && demo.rom) startMusic(demo.rom, demo.list[0].state); };
+addEventListener("pointerdown", unlock, true); addEventListener("keydown", unlock, true);
 function tone(f0, f1, dur, vol, type = "sine", at = 0) {
   const a = audio(); if (!a) return; const t = a.currentTime + at, o = a.createOscillator(), v = a.createGain();
   o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
@@ -225,7 +266,7 @@ const sfx = {
 function choose(i) { if (i === sel) return; sel = i; note = ""; dirty = true; sfx.move(); }
 function play() {
   if (!GAMES[sel].ready) { note = "Mario Golf is still being decompiled: soon"; shake = performance.now(); dirty = true; sfx.no(); return; }
-  const G = GAMES[sel]; sfx.play(); setTimeout(() => { location.href = G.url + (G.id === "tennis" ? location.search + location.hash : ""); }, 260);
+  const G = GAMES[sel]; sfx.play(); musicFade(); setTimeout(() => { location.href = G.url + (G.id === "tennis" ? location.search + location.hash : ""); }, 260);
 }
 const keys = {};
 addEventListener("keydown", e => { keys[e.code] = true; if (e.code === "ArrowLeft") choose(0); if (e.code === "ArrowRight") choose(1); if (e.code === "Enter" || e.code === "KeyZ" || e.code === "Space") play(); });
@@ -254,6 +295,7 @@ function loop(now) {
     try { demo.v.render(demo.gb.ppu.frame, 1); } catch (e) { console.warn("demo", e); demo.v = null; demo.live = false; dirty = true; }
   }
   last = now;
+  musicFrames(now);                                                 // THE TITLE MUSIC
   if (dirty) { drawOverlay(); dirty = false; }
   requestAnimationFrame(loop);
 }
@@ -261,5 +303,5 @@ Promise.all([crestFont, itim]).then(() => { dirty = true; });
 requestAnimationFrame(loop);
 startDemo().catch(e => console.warn("demo", e));
 // (tests)
-window.__picker = { get demo() { return demo; }, choose, play, next, clock: null,
+window.__picker = { get demo() { return demo; }, get music() { return music; }, choose, play, next, clock: null,
   advance(n) { for (let i = 0; i < n; i++) step(); demo.v.render(demo.gb.ppu.frame, 1); } };
