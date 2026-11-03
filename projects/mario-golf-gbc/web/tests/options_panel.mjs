@@ -41,7 +41,7 @@ async function open(lay, app, q = "", keep = false, ctxIn = null) {
 }
 // the screen opened as a player would: the app's Back (the bar) or the gear, then OPTIONS; on a computer the OPTIONS button
 async function openOptions(page, lay, app, force = false) {
-  if (LAY[lay].touch) {
+  if (LAY[lay].touch || app) {                       // (the app's user agent makes the page a touch one, a computer's window too: the MTenn3D exe)
     if (app) await page.evaluate(() => window.__backPressed());
     else await page.click("#hdgear", { force });
     await page.waitForSelector("body.showside #mgside", { state: "visible" });
