@@ -126,6 +126,17 @@ shadow map draws them all (in boxes 2.4x Full's). Lite uses boxes 1.8x larger (a
 as many triangles as an old one); the trees far from the camera (70 units in Full, 45 in Lite, further when the view is zoomed in)
 are drawn in bigger boxes (Full: Lite's; Lite: 2.8x Full's). **Original** keeps the old bodies: the tile pictures stood up and rounded by voxround.js, turned to the camera.
 
+No tree fills the picture (scene.js treesSeeThrough, both styles). Each picture, for each tree (its place, foot, top and crown
+radius from its shape: trees3d.js kinds, or the Original picture's size): a tree the camera stands in or right against (within its
+crown's radius + 1, below its top) is not drawn; one whose crown the lines from the camera to the ball and to the golfer (his feet
+and his head; not in the putting view) pass through, short of them, is dithered see-through (up to 85 % of its pixels left out,
+less toward the crown's edge); one near the camera and in its view that would cover more than about half the picture's height
+is dithered too (up to 85 %); within 5 units of the camera up to 90 %. The share eases in and out (time constant ~0.08 s) so a
+tree does not pop; the dither is a 4 x 4 Bayer screen door in the bodies' shader (`uSee`, discarding fragments), so it needs no
+sorting and overlapping trees keep the same pixels (they do not add up to a wall). The sun's shadows stay (the depth pass is not
+dithered). Seen on the chase camera's low flights past the woods, the landing view with a tree between the camera and the ball, and
+the address of a second shot from the trees (out/polish/trees_*.png); `scene.treeFaded` counts the trees shown see-through.
+
 GRASS (the panel's Grass: Carpet, the default, or Pixel, the look before; under the Terrain layer). **Carpet** is Mario Tennis's
 shell carpet turf (its ground.js VS_SHELL / FS_SHELL) on every grass area of the hole: the ground mesh, cut in chunks of 16 x 16 px,
 is drawn again as shells above the soil (instanced; shell i at (i / N)^2 over it, N = 10 Full, 4 Lite) only on the chunks near the

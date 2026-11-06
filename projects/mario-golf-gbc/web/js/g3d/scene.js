@@ -34,9 +34,14 @@ vec3 sway(vec3 a) { if (uSway.x <= 0.0) return a; float h = clamp(a.y / uSway.z,
   return a + vec3(d.x, 0.0, d.y) * uSway.x * h * g; }
 void main() { vec4 w = uModel * vec4(sway(aPos), 1.0); vW = w.xyz; vCol = aCol; vSh = uShadowMVP * w; gl_Position = uMVP * w; }`;
 const OBJ_FS = `#version 300 es
-precision highp float; precision highp sampler2DShadow; in vec3 vCol; in vec3 vW; in vec4 vSh; uniform vec4 uTint; uniform sampler2DShadow uShadow; uniform float uShadowOn; out vec4 o;
+precision highp float; precision highp sampler2DShadow; in vec3 vCol; in vec3 vW; in vec4 vSh; uniform vec4 uTint; uniform sampler2DShadow uShadow; uniform float uShadowOn; uniform float uSee; out vec4 o;
 ${LIGHT_GLSL}
+// TREES: a tree between the camera and the ball or the golfer (or round the camera) is drawn see-through: a fine screen-door dither
+// (a 4 x 4 Bayer pattern) keeps 1 - uSee of its pixels, so the picture behind shows and no tree fills the frame
+float bayer4(vec2 f) { ivec2 q = ivec2(mod(f, 4.0)); int i = q.y * 4 + q.x;
+  int b[16] = int[16](0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5); return (float(b[i]) + 0.5) / 16.0; }
 void main() {
+  if (uSee > 0.0 && bayer4(gl_FragCoord.xy) < uSee) discard;
   float sh = 1.0;
   if (uShadowOn > 0.5) { vec3 q = vSh.xyz / vSh.w * 0.5 + 0.5; if (q.x > 0.0 && q.x < 1.0 && q.y > 0.0 && q.y < 1.0) sh = texture(uShadow, vec3(q.xy, q.z - 0.004)); }
   vec3 l = uAmb + uSunCol * 0.78 * (0.35 + 0.65 * sh) + pointLights(vW, vec3(0.0, 1.0, 0.0));
@@ -97,7 +102,17 @@ export function greenBaseOf(art, img) {
   let best = 0, bk = 0; for (const [k, c] of n) if (c > best) { best = c; bk = k; }
   return best ? [(bk >> 16) / 255, ((bk >> 8) & 255) / 255, (bk & 255) / 255] : null;
 }
-const TREE_SCALE = 1.5, GOLFER_H = 4.2, PIN_H = 4.0;   // world sizes: the trees are 24 yards tall (TreeCheck's levels), a golfer ~4
+const TREE_SCALE = 1.5, GOLFER_H = 4.2, PIN_H = 4.0;
+const smooth01 = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+// a tree's place and extent for the camera's see-through: [x, z, foot y, top y, crown radius] (trees3d.js shapes; Original: its picture)
+function treeBounds(t) {
+  if (t.bounds) return t.bounds;
+  if (t.kind) {
+    const s = t.size * 8, r = t.kind === "cypress" ? s * 0.5 : t.kind === "bush" ? s * 0.72 : t.kind === "palm" ? s * 1.1 : t.kind === "cactus" ? 4 : s * 0.82;
+    return (t.bounds = [t.x, t.z, t.y, t.y + treeHeight(t.kind) * 1.12 * t.k, Math.max(2, r * t.k)]);
+  }
+  return (t.bounds = [t.footX, t.footZ, t.y, t.y + t.h * TREE_SCALE, Math.max(2, t.w * TREE_SCALE * 0.5)]);
+}   // world sizes: the trees are 24 yards tall (TreeCheck's levels), a golfer ~4
 
 export class Golf3D {
   constructor(canvas, layers) {
@@ -421,6 +436,7 @@ export class Golf3D {
     this.light.update(s, dt);
     const cam = this.cam.update(s, dt, W / H);
     this.view = cam.view; this.proj = cam.proj; this.mvp = m4.mul(cam.proj, cam.view); this.eye = cam.eye;
+    this.treesSeeThrough(dt);
     this.fade = fadeOf(game.w, this);
     for (const fx of this.layers.fx) if (fx.update) fx.update(this, game, s, dt);
     // the shadow map (sun shadows)
@@ -549,8 +565,8 @@ export class Golf3D {
     if (h.ctrees) {                                  // TREES: Courtyard: the lit side turned to the camera (as the courtyard's), swaying in the game's wind
       const e = this.eye, fd = (this.lite ? 0.65 : 1) * TREE_FAR / (this.cam.fovK || 1), far2 = fd * fd;   // (the trees far off in bigger boxes)
       for (const t of h.ctrees) if (t.mesh) { const dx = t.x - e[0], dz = t.z - e[2], m = t.far && dx * dx + dz * dz > far2 ? t.far : t.mesh;
-        out.push([m, m4.tsy(t.x, t.y, t.z, t.k, t.k, t.k, face(t.x, t.z)), null, "tree", t.sway]); }
-    } else for (const t of h.trees) if (t.mesh) out.push([t.mesh, m4.tsy(t.footX, t.y, t.footZ, TREE_SCALE, TREE_SCALE, TREE_SCALE * 0.9, face(t.footX, t.footZ)), null, "tree"]);
+        out.push([m, m4.tsy(t.x, t.y, t.z, t.k, t.k, t.k, face(t.x, t.z)), null, "tree", t.sway, t.see || 0]); }
+    } else for (const t of h.trees) if (t.mesh) out.push([t.mesh, m4.tsy(t.footX, t.y, t.footZ, TREE_SCALE, TREE_SCALE, TREE_SCALE * 0.9, face(t.footX, t.footZ)), null, "tree", null, t.see || 0]);
     // the golfer
     if (this.golferAt && this.golferPal) {
       const g = this.golferAt, sh = this.golferShown || (this.golferShown = g.slice()), dd = Math.hypot(g[0] - sh[0], g[1] - sh[1]), step = 40 * (this.dt || 0.016);
@@ -579,6 +595,44 @@ export class Golf3D {
     if (!this.hideBall) out.push([this.ballMesh, m4.tsy(b[0], b[1] + r * 0.85 + lift, b[2], r, r, r), [1, 1, 1, 1], "ball"]);
     for (const fx of this.layers.fx) if (fx.bodies) fx.bodies(this, out);
     return out;
+  }
+  // TREES: no tree fills the picture. A tree the camera stands in (or right against) is not drawn; a tree between the camera and what
+  // it shows (the ball, the golfer) and a tree so near that it would cover a large part of the picture are
+  // dithered see-through (uSee: the share of its pixels left out, up to 85-90 %), eased in and out over ~0.2 s. Their shadows stay.
+  treesSeeThrough(dt) {
+    const h = this.hole, e = this.eye, cam = this.cam; if (!h || !e) return;
+    const list = h.ctrees || h.trees; if (!list) return;
+    const targets = [];
+    if (!this.hideBall) { const b = this.ballWorld(); targets.push([b[0], b[1] + 0.3, b[2]]); }
+    if (this.golferShown && !this.puttView) { const [gx, gz] = this.golferShown, gy = h.H(gx, gz); targets.push([gx, gy + 1.2, gz], [gx, gy + 3.6, gz]); }
+    const fwd = cam.at ? [cam.at[0] - e[0], cam.at[1] - e[1], cam.at[2] - e[2]] : [0, 0, -1], fl = Math.hypot(...fwd) || 1;
+    const tanF = Math.tan((cam.fov || 0.9) / 2), k = 1 - Math.exp(-12 * Math.min(dt, 0.1));
+    let n = 0;
+    for (const t of list) {
+      if (!t.mesh) continue;
+      const g = treeBounds(t), x = g[0], z = g[1], y0 = g[2], top = g[3], r = g[4];
+      let see = 0;
+      const dx = x - e[0], dz = z - e[2], de = Math.hypot(dx, dz);
+      if (e[1] < top + 1) {                                       // the camera in the tree or right against it
+        if (de < r + 1) see = 1; else see = Math.max(see, 0.9 * (1 - smooth01((de - r - 1) / 5)));
+      }
+      // near the camera, in front of it, covering much of the picture's height
+      const along = (dx * fwd[0] + ((y0 + top) / 2 - e[1]) * fwd[1] + dz * fwd[2]) / fl;
+      const lat = Math.abs(dx * fwd[2] - dz * fwd[0]) / (Math.hypot(fwd[0], fwd[2]) || 1), asp = this.canvas.width / Math.max(1, this.canvas.height);
+      if (along > 0 && de < 60 && (lat - r) / along < tanF * asp) { const cover = Math.max(r, (top - y0) / 2) / Math.max(1, along) / tanF; see = Math.max(see, 0.85 * smooth01((cover - 0.55) / 0.45)); }
+      // between the camera and a target
+      for (const p of targets) {
+        const sx = p[0] - e[0], sz = p[2] - e[2], L2 = sx * sx + sz * sz; if (L2 < 1) continue;
+        const u = clamp((dx * sx + dz * sz) / L2, 0, 1), L = Math.sqrt(L2);
+        if (u * L > L - r * 0.6) continue;                        // (the tree at or beyond the target)
+        const qx = e[0] + sx * u - x, qz = e[2] + sz * u - z, d = Math.hypot(qx, qz), y = e[1] + (p[1] - e[1]) * u;
+        if (y > top + 0.5 || y < y0 - 1) continue;                // (the line passes over the tree)
+        see = Math.max(see, 0.85 * (1 - smooth01((d - r * 0.7) / (r * 0.6 + 1))));
+      }
+      t.see = (t.see || 0) + (see - (t.see || 0)) * (see >= 1 ? 1 : k);
+      if (t.see < 0.01) t.see = 0; else n++;
+    }
+    this.treeFaded = n;
   }
   // the marks the game draws on the course as sprites (bank 11, the ball display task 11:4113), stood up in 3D from their own tiles in
   // VRAM: the target marker ($D426 / $D428, tile $3A), the landing preview's spot ($D374 / $D377, $3E), the other player's ball
@@ -624,12 +678,14 @@ export class Golf3D {
     gl.uniformMatrix4fv(p.u.uMVP, false, this.mvp);
     const list = this.bodies(); this.lastBodies = list;
     this.setWind(p);
-    for (const [m, model, tint, tag, sway] of list) {
+    for (const [m, model, tint, tag, sway, see] of list) {
       if (tag === "ball" || (tag === "golfer" && this.puttView)) continue;   // (the putting view: the golfer only as his shadow)
+      if (see >= 0.995) continue;                                            // (a tree the camera stands in: not drawn)
       gl.uniformMatrix4fv(p.u.uModel, false, model); gl.uniform4fv(p.u.uTint, tint || [1, 1, 1, 1]); gl.uniform4fv(p.u.uSway, sway || NO_SWAY);
+      gl.uniform1f(p.u.uSee, see || 0);
       gl.bindVertexArray(m.vao); gl.drawArrays(gl.TRIANGLES, 0, m.n);
     }
-    gl.uniform4fv(p.u.uSway, NO_SWAY);
+    gl.uniform4fv(p.u.uSway, NO_SWAY); gl.uniform1f(p.u.uSee, 0);
     gl.bindVertexArray(null);
     // the cup: a dark hole in the green (a golf cup's size next to the ball); GREEN: Clean: with its white liner
     const [cx, cz] = this.s.cup, cy = this.hole.H(cx, cz);
