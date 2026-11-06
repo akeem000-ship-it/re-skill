@@ -16,17 +16,20 @@ const invert = m4.invert;
 const STRETCH = 3.5, TEX_TOP = 1.05, TEX_BOT = -0.35, TW = 4096, TH = 1024;   // the panorama covers elevations TEX_BOT..TEX_TOP (radians)
 const SUN_LOW = 0.45, MOON = [-0.5, 0.13];                                     // the sun drawn lower than it is (a sunset sits in the view), the moon's place
 // the sky through the day: zenith, horizon (0..255), how much night (stars, moon), the sun's colour
+// glow: the warm light along the horizon (strongest toward the sun); band: a coloured layer above it (rgb, strength): the sunset's
+// gold, orange, rose and violet, the dawn's pink
 const SKY = [
   { h: 0,    top: [5, 9, 28],     hor: [26, 38, 80],    night: 1,   sun: [255, 200, 150] },
   { h: 5,    top: [8, 14, 40],    hor: [40, 50, 95],    night: 1,   sun: [255, 170, 120] },
-  { h: 6.2,  top: [48, 72, 140],  hor: [245, 160, 120], night: 0.3, sun: [255, 170, 110] },
-  { h: 7.5,  top: [60, 120, 210], hor: [250, 214, 180], night: 0,   sun: [255, 225, 170] },
+  { h: 6.2,  top: [52, 78, 150],  hor: [250, 170, 128], night: 0.3, sun: [255, 170, 110], glow: [190, 90, 40], band: [210, 140, 170, 0.4] },
+  { h: 7.5,  top: [60, 120, 210], hor: [250, 214, 180], night: 0,   sun: [255, 225, 170], glow: [50, 30, 10] },
   { h: 10,   top: [44, 112, 222], hor: [180, 216, 250], night: 0,   sun: [255, 250, 225] },
   { h: 14,   top: [40, 104, 214], hor: [172, 212, 248], night: 0,   sun: [255, 252, 232] },
   { h: 16.5, top: [52, 110, 200], hor: [214, 224, 236], night: 0,   sun: [255, 238, 200] },
-  { h: 18.2, top: [64, 74, 156],  hor: [255, 172, 98],  night: 0,   sun: [255, 168, 80] },
-  { h: 19.4, top: [30, 32, 92],   hor: [214, 98, 112],  night: 0.35, sun: [255, 120, 70] },
-  { h: 20.5, top: [10, 16, 48],   hor: [44, 52, 110],   night: 0.9, sun: [255, 120, 70] },
+  { h: 18.2, top: [58, 82, 172],  hor: [255, 184, 100], night: 0,   sun: [255, 172, 80],  glow: [150, 80, 10],  band: [240, 150, 110, 0.3] },
+  { h: 19.0, top: [44, 52, 140],  hor: [255, 136, 70],  night: 0.1, sun: [255, 140, 60],  glow: [210, 90, 20],  band: [214, 100, 150, 0.5] },
+  { h: 19.8, top: [28, 30, 96],   hor: [226, 96, 104],  night: 0.4, sun: [255, 110, 70],  glow: [150, 40, 40],  band: [130, 70, 160, 0.5] },
+  { h: 20.6, top: [10, 16, 48],   hor: [44, 52, 110],   night: 0.9, sun: [255, 120, 70],  glow: [20, 10, 30],   band: [60, 50, 120, 0.25] },
   { h: 24,   top: [5, 9, 28],     hor: [26, 38, 80],    night: 1,   sun: [255, 200, 150] },
 ];
 const mixA = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
@@ -34,9 +37,10 @@ export function skyColours(hour) {
   const h = ((hour % 24) + 24) % 24; let i = 0; while (i < SKY.length - 2 && h >= SKY[i + 1].h) i++;
   const a = SKY[i], b = SKY[i + 1], t0 = Math.min(1, Math.max(0, (h - a.h) / (b.h - a.h))), t = t0 * t0 * (3 - 2 * t0);
   const top = mixA(a.top, b.top, t), hor = mixA(a.hor, b.hor, t); const night = a.night + (b.night - a.night) * t, sunC = mixA(a.sun, b.sun, t);
+  const glow = mixA(a.glow || [0, 0, 0], b.glow || [0, 0, 0], t), band = mixA(a.band || [0, 0, 0, 0], b.band || [0, 0, 0, 0], t);
   // the sun: up at 6, down at 19.8, highest (62 degrees) between; from the left of the far end in the morning to its right in the evening
   const k = (h - 6) / 13.8, sunEl = k > 0 && k < 1 ? 62 * Math.sin(Math.PI * k) * Math.PI / 180 : -0.3, sunAz = (-50 + 90 * Math.min(1, Math.max(0, k))) * Math.PI / 180;
-  return { h, top, hor, night, sunC, sunEl, sunAz };
+  return { h, top, hor, night, sunC, sunEl, sunAz, glow, band };
 }
 const dirOf = (az, el) => [Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el)];
 
@@ -45,7 +49,7 @@ out vec2 vUV;
 void main() { vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); vUV = p; gl_Position = vec4(p * 2.0 - 1.0, 1.0, 1.0); }`;
 const FS = `#version 300 es
 precision highp float; in vec2 vUV; out vec4 o;
-uniform mat4 uInv; uniform float uE0, uK, uNight, uT, uSunOn; uniform vec3 uTop, uHor, uSunV, uSunC, uMoonV; uniform vec2 uTexE; uniform sampler2D uTex;
+uniform mat4 uInv; uniform float uE0, uK, uNight, uT, uSunOn; uniform vec3 uTop, uHor, uSunV, uSunC, uMoonV, uGlow; uniform vec4 uBand; uniform vec2 uTexE; uniform sampler2D uTex;
 float hash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 void main() {
   vec2 n = vUV * 2.0 - 1.0;
@@ -55,6 +59,10 @@ void main() {
   float e = clamp((el - uE0) * uK, -1.5, 1.5);
   vec3 r = vec3(sin(az) * cos(e), sin(e), -cos(az) * cos(e));
   vec3 c = mix(uHor, uTop, pow(clamp(e / 0.9, 0.0, 1.0), 0.6));
+  // dawn and dusk: a coloured band above the horizon and a warm glow along it, strongest toward the sun
+  float toward = max(dot(normalize(vec2(r.x, r.z)), normalize(vec2(uSunV.x, uSunV.z) + 1e-5)), 0.0);
+  c = mix(c, uBand.rgb, uBand.a * exp(-pow((e - 0.16) / 0.13, 2.0)) * (0.55 + 0.45 * toward));
+  c += uGlow * exp(-max(e, 0.0) * 9.0) * (0.35 + 0.65 * pow(toward, 3.0));
   // the sun: a wide glow, a tight one, the disc
   float sd = max(dot(r, uSunV), 0.0);
   c += uSunC * (pow(sd, 6.0) * 0.22 + pow(sd, 90.0) * 0.55) * uSunOn;
@@ -86,7 +94,7 @@ export class SkyBox {
     const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(p);
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
     this.gl = gl; this.prog = p; this.vao = gl.createVertexArray(); this.u = {};
-    for (const k of ["uInv", "uE0", "uK", "uNight", "uT", "uSunOn", "uTop", "uHor", "uSunV", "uSunC", "uMoonV", "uTexE", "uTex"]) this.u[k] = gl.getUniformLocation(p, k);
+    for (const k of ["uInv", "uE0", "uK", "uNight", "uT", "uSunOn", "uTop", "uHor", "uSunV", "uSunC", "uMoonV", "uTexE", "uTex", "uGlow", "uBand"]) this.u[k] = gl.getUniformLocation(p, k);
   }
   // draw the sky into the bound target for this view (mvp: the scene's view-projection); the caller restores its program
   draw(gl, mvp) {
@@ -105,7 +113,7 @@ export class SkyBox {
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tex); gl.uniform1i(U.uTex, 0);
       gl.uniformMatrix4fv(U.uInv, false, inv); gl.uniform1f(U.uE0, e0); gl.uniform1f(U.uK, STRETCH);
       gl.uniform1f(U.uNight, S.night); gl.uniform1f(U.uT, performance.now() / 1000); gl.uniform1f(U.uSunOn, S.sunEl > -0.05 ? 1 : 0);
-      gl.uniform3fv(U.uTop, c3(S.top)); gl.uniform3fv(U.uHor, c3(S.hor)); gl.uniform3fv(U.uSunC, c3(S.sunC));
+      gl.uniform3fv(U.uTop, c3(S.top)); gl.uniform3fv(U.uHor, c3(S.hor)); gl.uniform3fv(U.uSunC, c3(S.sunC)); gl.uniform3fv(U.uGlow, c3(S.glow)); gl.uniform4fv(U.uBand, [...c3(S.band.slice(0, 3)), S.band[3]]);
       gl.uniform3fv(U.uSunV, dirOf(S.sunAz, Math.max(S.sunEl * SUN_LOW, -0.2))); gl.uniform3fv(U.uMoonV, dirOf(MOON[0], MOON[1])); gl.uniform2f(U.uTexE, TEX_TOP, TEX_BOT);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.enable(gl.BLEND);

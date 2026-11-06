@@ -78,7 +78,7 @@ yard; heights in the same units (the ball's height / 32). The trees stand 24 uni
 | 3D view | scene.js, ball3d.js, hole3d.js, terrain3d.js, trees3d.js, camera3d.js, hud3d.js, sprites3d.js, voxround.js | the hole's course map as the ground; its tree tiles cut out and grown as trees (TREES, below); the golfer from his big frames as a rounded body (walks to the ball between shots); the pin with a flag in the wind (its flutter quicker in a harder wind) and the cup; the ball (BALL, below) at its true height with its shadow; the game's marks (target marker, preview spot, look cursor, the other ball) from their VRAM tiles; the HUD (window + non-world sprites) on top. Camera: Follow / Course / Behind / TV |
 | Hills | terrain3d.js | cosmetic heights: a Poisson solve whose gradient follows the slope cells and the green's slope bytes, mounds in the woods, hollow bunkers, lowered water; the ball drawn at its height over this surface |
 | Sky | skybox.js | the sky of the hour and a panorama per club (campus hills, tropics, desert, coast, castle) |
-| Light | light3d.js | the hour (Auto by course, the clock, fixed), sun colour and direction, a shadow map, night floodlights and a pin lamp |
+| Light | light3d.js | the hour (Auto by course, the clock, fixed), sun colour and direction, a shadow map, night floodlights and a pin lamp (LIGHT, below) |
 | Terrain | groundshader.js, terrain3d.js | surfaces by terrain type in the hole's own mean colours (stripes, blades in the wind, mowing check, ripples, moving water); GRASS and SAND below |
 | Wear | wear.js | divots, pitch marks, bunker craters and footprints, kept for the hole |
 | Ball FX | ballfx.js | trail by shot type, spin seam, landing burst, splash, cup sparkle |
@@ -112,6 +112,20 @@ fade (`$FFA2/$FFA4/$FFBC`). The plain round the map lies 3 units under it and th
 plain through the floor at some scrolls: the "black floor"). story3d.mjs plays the new character and a continue in 3D and checks
 on sampled frames that the game's picture over the map is in the 3D picture (90% of its pixels) and that the people's pixels (the
 3D picture against one drawn without them, over the square of the view's scale) are at least 0.7 of the game's.
+
+LIGHT (light3d.js, skybox.js). The light of each hour is its own table (light3d.js LIGHT, hand-tuned for a readable picture), not
+taken from the sky's colours: the sun's light (the moon's at night) and the ambient (the sky's light in the shade). Day as before;
+dawn (6.2) and the sunset (18.2-19.4) a warm low sun (up to 1.05 / 0.62 / 0.42) over a cool blue-violet ambient (0.44 / 0.45 /
+0.64), so the lit sides glow and the shade stays blue and the greens green; night (20.5-5) moonlight (0.27 / 0.33 / 0.54) and a
+cool ambient (0.26 / 0.30 / 0.45) with the floodlights on three masts (radius 200, a neutral white) and a small lamp at the pin. The
+light's sun is never lower than 0.42 rad (~24 degrees; the sky still draws the sun on the horizon): a sun at a few degrees left the
+ground in the dark (the ground's light is the ambient plus the sun times the slope's cosine) and every shadow endless, which made
+Peach's Castle at dusk dim and muddy and its trees brown. The golfer, the pin and the game's marks are lit at least as a day's
+(`heroK`: 1 / the light's brightness, at most 1.45). The haze at dusk and night is the horizon's colour pulled toward the sky above
+it. The sky: dawn and sunset have a coloured band above the horizon (gold, rose, violet: skybox.js SKY `band`) and a warm glow
+along it strongest toward the sun (`glow`). Auto: Peach's Castle 18.8 (the sunset, deepening over the round: hole 18 at ~19.8) instead
+of 19.6. Before / after: out/polish/light_*.png (every course at its Auto hour and at 6.6, 12, 19 and 21.5: aiming, the address, a
+putt).
 
 TREES (the panel's Trees: Courtyard, the default, or Original): the hole's tree tiles (bit 7 of the tile byte) are cut out of the
 ground picture (terrain3d.js extractTrees) and stand where they are. **Courtyard** (trees3d.js) grows one tree per tree tile in the

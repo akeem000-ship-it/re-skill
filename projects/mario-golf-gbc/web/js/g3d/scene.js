@@ -681,7 +681,8 @@ export class Golf3D {
     for (const [m, model, tint, tag, sway, see] of list) {
       if (tag === "ball" || (tag === "golfer" && this.puttView)) continue;   // (the putting view: the golfer only as his shadow)
       if (see >= 0.995) continue;                                            // (a tree the camera stands in: not drawn)
-      gl.uniformMatrix4fv(p.u.uModel, false, model); gl.uniform4fv(p.u.uTint, tint || [1, 1, 1, 1]); gl.uniform4fv(p.u.uSway, sway || NO_SWAY);
+      const hk = tag === "golfer" || tag === "pin" || tag === "mark" ? this.light.heroK || 1 : 1;   // (LIGHT: kept readable at dusk and night)
+      gl.uniformMatrix4fv(p.u.uModel, false, model); gl.uniform4fv(p.u.uTint, tint ? tint.map((v, i) => i < 3 ? v * hk : v) : [hk, hk, hk, 1]); gl.uniform4fv(p.u.uSway, sway || NO_SWAY);
       gl.uniform1f(p.u.uSee, see || 0);
       gl.bindVertexArray(m.vao); gl.drawArrays(gl.TRIANGLES, 0, m.n);
     }
