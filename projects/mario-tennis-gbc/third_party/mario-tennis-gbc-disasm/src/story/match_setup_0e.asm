@@ -1,0 +1,396 @@
+ActorScript_0e_16:
+	; $7b11, 19 bytes (actor_script)
+	as_set_target 5.0, 31.0
+	as_wait_move
+	as_set_target 13.0, 31.0
+	as_wait_move
+	as_set_target 13.0, 27.0
+	as_wait_move
+	as_halt
+ActorScript_0e_17:
+	; $7b24, 11 bytes (actor_script)
+	as_set_target 19.0, 23.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_LEFT
+	as_halt
+ActorScript_0e_18:
+	; $7b2f, 23 bytes (actor_script)
+	as_set_target 9.0, 23.0
+	as_wait_move
+	as_set_target 9.0, 13.0
+	as_wait_move
+	as_set_target 13.0, 13.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_DOWN
+	as_halt
+ActorScript_0e_19:
+	; $7b46, 23 bytes (actor_script)
+	as_set_target 9.0, 23.0
+	as_wait_move
+	as_set_target 9.0, 17.0
+	as_wait_move
+	as_set_target 15.0, 17.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_DOWN
+	as_halt
+ActorScript_0e_20:
+	; $7b5d, 17 bytes (actor_script)
+	as_set_target 13.0, 29.0
+	as_wait_move
+	as_set_target 15.0, 29.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_UP
+	as_halt
+ActorScript_0e_21:
+	; $7b6e, 17 bytes (actor_script)
+	as_set_target 15.0, 25.0
+	as_wait_move
+	as_set_target 13.0, 25.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_UP
+	as_halt
+PrepareStoryMatch:
+	ld a, STORYLOC_SPECIAL_COURT ; $7b7f
+	ld [wStoryModeCurrentLocation], a ; $7b81
+	ld a, $0a ; $7b84
+	ld [wStoryModeEntryPoint], a ; $7b86
+	ld a, $ff ; $7b89
+	ld [wUnusedExitTriggerIdMirror], a ; $7b8b
+	ld [wStoryModeExitTriggerRequest], a ; $7b8e
+	farcall InitStoryMatchSettings ; $7b91
+	ld a, [wMapScratch + 2] ; $7b94
+	add a ; $7b97
+	ld_hl_indexed PrepareStoryMatchTable ; $7b98
+	ld a, [hl+] ; $7b9f
+	ld h, [hl] ; $7ba0
+	ld l, a ; $7ba1
+	call JumpToHL ; $7ba2
+	farcall RunStoryMatch ; $7ba5
+	farcall RestoreOverworldAfterMatch ; $7ba8
+	ret ; $7bab
+PrepareStoryMatchTable:
+	dw LoadExhibitionMatchSettings0 ; $7bac
+	dw LoadExhibitionMatchSettings1 ; $7bae
+	dw LoadExhibitionMatchSettings2 ; $7bb0
+	dw LoadExhibitionMatchSettings3 ; $7bb2
+	dw LoadExhibitionMatchSettings4 ; $7bb4
+	dw LoadExhibitionMatchSettings5 ; $7bb6
+LoadExhibitionMatchSettings0:
+	load_match_settings MATCHLIST_SINGLES, STORYMATCH_DREAM_HARD ; $7bb8
+	ret ; $7bc5
+LoadExhibitionMatchSettings1:
+	load_match_settings MATCHLIST_SINGLES, STORYMATCH_DREAM_INTENSE ; $7bc6
+	ret ; $7bd3
+LoadExhibitionMatchSettings2:
+	load_match_settings MATCHLIST_SINGLES, STORYMATCH_DREAM_MAX ; $7bd4
+	ret ; $7be1
+LoadExhibitionMatchSettings3:
+	load_match_settings MATCHLIST_DOUBLES, STORYMATCH_DREAM_HARD ; $7be2
+	ret ; $7bef
+LoadExhibitionMatchSettings4:
+	load_match_settings MATCHLIST_DOUBLES, STORYMATCH_DREAM_INTENSE ; $7bf0
+	ret ; $7bfd
+LoadExhibitionMatchSettings5:
+	load_match_settings MATCHLIST_DOUBLES, STORYMATCH_DREAM_MAX ; $7bfe
+	ret ; $7c0b
+HandleExhibitionMatchResult:
+	ld a, [wMatchWinLoseFlag] ; $7c0c
+	cp WINLOSE_WIN ; $7c0f
+	jr nz, .lost ; $7c11
+	test_flag FLAG_DOUBLES ; $7c13
+	jr nz, .won ; $7c16
+	test_flag FLAG_WON_DREAM_MATCH_SINGLES ; $7c18
+	jr nz, .aborted ; $7c1b
+	jr .lost ; $7c1d
+.won:
+	test_flag FLAG_WON_DREAM_MATCH_DOUBLES ; $7c1f
+	jr nz, .aborted ; $7c22
+.lost:
+	ld a, STORYLOC_PEACHS_CASTLE ; $7c24
+	ld [wStoryModeCurrentLocation], a ; $7c26
+	ld a, $0e ; $7c29
+	ld [wStoryModeEntryPoint], a ; $7c2b
+	ld a, $ff ; $7c2e
+	ld [wUnusedExitTriggerIdMirror], a ; $7c30
+	ld [wStoryModeExitTriggerRequest], a ; $7c33
+	ret ; $7c36
+.aborted:
+	test_flag FLAG_DOUBLES ; $7c37
+	jr nz, .returnToLocation ; $7c3a
+	ld b, $02 ; $7c3c
+	ld a, [wStoryModeGenderOfMainCharacter] ; $7c3e
+	add $04 ; $7c41
+	ld c, a ; $7c43
+	farcall RunStorySceneByMode ; $7c44
+	jr .done ; $7c47
+.returnToLocation:
+	ld b, $02 ; $7c49
+	ld a, [wStoryModeGenderOfMainCharacter] ; $7c4b
+	ld d, a ; $7c4e
+	sla a ; $7c4f
+	ld c, a ; $7c51
+	ld a, [wStoryModeGenderOfPartnerCharacter] ; $7c52
+	xor d ; $7c55
+	or c ; $7c56
+	ld c, a ; $7c57
+	farcall RunStorySceneByMode ; $7c58
+.done:
+	ld a, STORYLOC_MAIN_MENU ; $7c5b
+	ld [wStoryModeCurrentLocation], a ; $7c5d
+	ld a, $0a ; $7c60
+	ld [wStoryModeEntryPoint], a ; $7c62
+	ld a, $ff ; $7c65
+	ld [wUnusedExitTriggerIdMirror], a ; $7c67
+	ld [wStoryModeExitTriggerRequest], a ; $7c6a
+	ret ; $7c6d
+ActorScript_0e_22:
+	; $7c6e, 40 bytes (actor_script)
+	as_halt
+	as_anim ANIM_STILL
+	as_halt
+.L4:
+	as_step
+	as_wait 1
+	as_jump .L4
+	as_begin_path
+.Lb:
+	as_rand_box $02, $02
+	as_wait_move2
+	as_wait 40
+	as_jump .Lb
+	as_begin_path
+.L15:
+	as_rand_box $01, $02
+	as_wait_move2
+	as_wait 40
+	as_jump .L15
+	as_begin_path
+.L1f:
+	as_rand_box $01, $01
+	as_wait_move2
+	as_wait 40
+	as_jump .L1f
+MapScriptNop_0e:
+	ret ; $7c96
+Unused_0e_MapScriptClearActiveFlag:
+	xor a ; $7c97
+	ld [wStoryScriptRan], a ; $7c98
+	ret ; $7c9b
+Unused_0e_MapScriptPlaySoundA2:
+	sound SFX_STORY_CUE ; $7c9c
+	ret ; $7c9e
+Unused_0e_MapScriptHideLocationName:
+	xor a ; $7c9f
+	ld [wStoryModeShowLocationName], a ; $7ca0
+	ret ; $7ca3
+ActorScript_0e_23:
+	; $7ca4, 103 bytes (actor_script)
+	as_anim ANIM_WALK
+	as_target_rel 4.0, 2.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_DOWN
+	as_anim ANIM_SWING
+	as_wait 75
+	as_anim ANIM_WALK
+	as_target_rel -4.0, 0.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_DOWN
+	as_anim ANIM_SWING
+	as_wait 75
+	as_anim ANIM_WALK
+	as_target_rel 4.0, -2.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_DOWN
+	as_anim ANIM_SWING
+	as_wait 75
+	as_anim ANIM_WALK
+	as_target_rel -4.0, 0.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_DOWN
+	as_anim ANIM_SWING
+	as_wait 75
+	as_anim ANIM_WALK
+	as_target_rel 4.0, 0.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_DOWN
+	as_anim ANIM_SWING
+	as_wait 75
+	as_anim ANIM_WALK
+	as_target_rel -4.0, 0.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_DOWN
+	as_anim ANIM_SWING
+	as_wait 75
+	as_jump ActorScript_0e_23
+	as_anim ANIM_STILL
+	as_wait 60
+ActorScript_0e_24:
+	; $7d0b, 103 bytes (actor_script)
+	as_anim ANIM_WALK
+	as_target_rel -4.0, 0.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_UP
+	as_anim ANIM_SWING
+	as_wait 75
+	as_anim ANIM_WALK
+	as_target_rel 4.0, 0.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_UP
+	as_anim ANIM_SWING
+	as_wait 75
+	as_anim ANIM_WALK
+	as_target_rel -4.0, -2.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_UP
+	as_anim ANIM_SWING
+	as_wait 75
+	as_anim ANIM_WALK
+	as_target_rel 4.0, 0.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_UP
+	as_anim ANIM_SWING
+	as_wait 75
+	as_anim ANIM_WALK
+	as_target_rel -4.0, 2.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_UP
+	as_anim ANIM_SWING
+	as_wait 75
+	as_anim ANIM_WALK
+	as_target_rel 4.0, 0.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_UP
+	as_anim ANIM_SWING
+	as_wait 75
+	as_jump ActorScript_0e_24
+	as_anim ANIM_STILL
+	as_wait 30
+ActorScript_0e_25:
+	; $7d72, 105 bytes (actor_script)
+	as_anim ANIM_WALK
+	as_target_rel 4.0, 0.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_DOWN
+	as_anim ANIM_SWING
+	as_wait 75
+	as_anim ANIM_WALK
+	as_target_rel -4.0, 0.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_DOWN
+	as_anim ANIM_SWING
+	as_wait 75
+	as_anim ANIM_WALK
+	as_target_rel 4.0, 2.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_DOWN
+	as_anim ANIM_SWING
+	as_wait 75
+	as_anim ANIM_WALK
+	as_target_rel -4.0, 0.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_DOWN
+	as_anim ANIM_SWING
+	as_wait 75
+	as_anim ANIM_WALK
+	as_target_rel 4.0, -2.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_DOWN
+	as_anim ANIM_SWING
+	as_wait 75
+	as_anim ANIM_WALK
+	as_target_rel -4.0, 0.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_DOWN
+	as_anim ANIM_SWING
+	as_wait 75
+	as_jump ActorScript_0e_25
+	as_anim ANIM_STILL
+	as_wait 30
+	as_wait 60
+ActorScript_0e_26:
+	; $7ddb, 99 bytes (actor_script)
+	as_anim ANIM_WALK
+	as_target_rel -4.0, -2.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_UP
+	as_anim ANIM_SWING
+	as_wait 75
+	as_anim ANIM_WALK
+	as_target_rel 4.0, 0.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_UP
+	as_anim ANIM_SWING
+	as_wait 75
+	as_anim ANIM_WALK
+	as_target_rel -4.0, 2.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_UP
+	as_anim ANIM_SWING
+	as_wait 75
+	as_anim ANIM_WALK
+	as_target_rel 4.0, 0.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_UP
+	as_anim ANIM_SWING
+	as_wait 75
+	as_anim ANIM_WALK
+	as_target_rel -4.0, 0.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_UP
+	as_anim ANIM_SWING
+	as_wait 75
+	as_anim ANIM_WALK
+	as_target_rel 4.0, 0.0
+	as_wait_move
+	as_set_field ACTORF_HEADING, FACE_UP
+	as_anim ANIM_SWING
+	as_wait 75
+	as_jump ActorScript_0e_26
+ActorScript_0e_27:
+	; $7e3e, 13 bytes (actor_script)
+	as_wait 240
+	as_anim ANIM_NOD
+	as_wait 80
+	as_anim ANIM_NOD
+	as_wait 60
+	as_jump ActorScript_0e_27
+ActorScript_0e_28:
+	; $7e4b, 15 bytes (actor_script)
+	as_wait 140
+	as_anim ANIM_SHAKE
+	as_wait 140
+	as_anim ANIM_SHAKE
+	as_wait 140
+	as_anim ANIM_NOD
+	as_jump ActorScript_0e_28
+; Instruction-identical to ComputeRankingProgressIndex_11, ComputeRankingProgressIndex_12 and Unused_27_ComputeRankingProgressIndex (one copy per bank); a change here belongs in every copy.
+	twin_in compute_ranking_progress_index, ComputeRankingProgressIndex_0e, 0e ; $7e5a ComputeRankingProgressIndex_0e
+; This bank's copy of ComputeStoryRankTier_13, identical instruction for instruction; only bank $13's copy is called (by Unused_27_SetStoryRankTier). Nothing calls this one.
+Unused_0e_ComputeStoryRankTier:
+	ld a, $00 ; $7ea1
+	test_flag FLAG_WON_JUNIOR_SINGLES_RANK_1 ; $7ea3
+	jr z, .storeIsland ; $7ea6
+	inc a ; $7ea8
+	test_flag FLAG_WON_SENIOR_SINGLES_RANK_1 ; $7ea9
+	jr z, .storeIsland ; $7eac
+	inc a ; $7eae
+	test_flag FLAG_DOUBLES ; $7eaf
+	jr nz, .doublesIsland ; $7eb2
+	test_flag FLAG_REACHED_ISLAND_OPEN_SINGLES ; $7eb4
+	jr z, .storeIsland ; $7eb7
+	inc a ; $7eb9
+	test_flag FLAG_STORY_COMPLETE_SINGLES ; $7eba
+	jr z, .storeIsland ; $7ebd
+	inc a ; $7ebf
+.storeIsland:
+	ld [wMapSceneStage], a ; $7ec0
+	ret ; $7ec3
+.doublesIsland:
+	test_flag FLAG_REACHED_ISLAND_OPEN_DOUBLES ; $7ec4
+	jr z, .storeIsland ; $7ec7
+	inc a ; $7ec9
+	test_flag FLAG_STORY_COMPLETE_DOUBLES ; $7eca
+	jr z, .storeIsland ; $7ecd
+	inc a ; $7ecf
+	jr .storeIsland ; $7ed0
+	; $7ed2, 302 bytes fill to bank end (linker-padded)

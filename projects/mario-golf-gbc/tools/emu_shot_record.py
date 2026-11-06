@@ -1,0 +1,88 @@
+"""Record a whole shot for tools/shot_sim.py: a full RAM snapshot at the first main-thread event (L or P, so the
+replay starts with the main thread at a known point), then the ordered events
+  T  BallTask entry (10:4D45)       L  main-loop pass (10:6EAA, just after its AdvanceFrame; with SP)
+  P  pass of the flight-camera loop before it (10:49DD, after its AdvanceFrame; with SP)
+  F  AdvanceFrame entry (00:2E3B): the T events up to the next F ran in that frame
+each with WRAM6 $D400-$D4FF (and, since F, $C800-$C8FF: round and player data; WRAM6 $D300-$D3FF, $D500-$D5FF), until FRAMES have run. (Recordings made before F existed started at the first T.)
+
+  --from-launch: the snapshot is taken at ShotLaunch's entry (10:5F94, event S) instead, so the swing's
+  result is replayed through the launch too
+  --from-address: the snapshot is taken where the golfer addresses the ball (10:56B0, event A; or at its
+  loop top 10:5713, event a, for a state saved inside it): the swing meter, its joypad input and the launch
+  are replayed too
+  --hole: as without options (snapshot at the first loop pass) but every later address step is an A event too
+  (for tools/hole_run.py from a ball in flight)
+The joypad bytes $FF90-$FF94 of each frame (read at 00:2EBF, after VBlank) are kept in "joy" by F event index.
+usage: emu_shot_record.py OUT.json FRAMES [--state FILE] [--from-launch | --from-address] [--press FRAME:BUTTON ...]
+"""
+import sys, os, json
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from tools.emu.session import Emu
+from tools.emu_script import parse_presses, run_script
+
+
+def snapshot(e):
+    pb = e.pb
+    snap = {"wram%d" % i: e.wram(i, 0xD000, 0x1000).hex() for i in range(1, 8)}
+    snap["wram0"] = bytes(pb.memory[0xC000:0xD000]).hex()
+    snap["vram0"], snap["vram1"] = e.vram(0, 0x8000, 0x2000).hex(), e.vram(1, 0x8000, 0x2000).hex()
+    snap["high"] = bytes(pb.memory[0xFE00:0x10000]).hex() if False else bytes(pb.memory[a] for a in range(0xFE00, 0x10000)).hex()
+    snap["sram"] = bytes(e.sram(0, 0xA000 + i) for i in range(0x2000)).hex()
+    snap["rom_bank"] = pb.memory[0xFF95]
+    return snap
+
+
+def main():
+    a = sys.argv[1:]
+    out, frames = a[0], int(a[1])
+    state = a[a.index("--state") + 1] if "--state" in a else "states/stroke_hole1.state"
+    e = Emu()
+    e.load(state)
+    rec = {"events": [], "snapshot": None}
+    cur = [0]
+
+    def ev(kind):
+        def f(emu):
+            if rec["snapshot"] is None:
+                if kind in "TF" or (from_launch and kind not in "SAa"):
+                    return
+                rec["snapshot"] = snapshot(emu)
+            r = emu.regs()
+            rec["events"].append([kind, cur[0], emu.wram(6, 0xD400, 0x100).hex(), r["SP"],
+                                  [r["A"], r["F"], r["B"], r["C"], r["D"], r["E"], r["HL"]],
+                                  bytes(emu.pb.memory[0xC800:0xC900]).hex(),
+                                  emu.wram(6, 0xD300, 0x100).hex(), emu.wram(6, 0xD500, 0x100).hex()])
+        return f
+    e.hook(0x10, 0x4D45, ev("T"))
+    e.hook(0x10, 0x6EAA, ev("L"))
+    e.hook(0x10, 0x49DD, ev("P"))
+    from_launch = "--from-launch" in a or "--from-address" in a
+    if "--from-address" in a:                   # the snapshot at the swing's address step (10:56B0)
+        e.hook(0x10, 0x56B0, ev("A"))           # (every later address step is an A event too)
+        first_a = ev("a")                       # or, from a state already in it, at its loop top (10:5713)
+        e.hook(0x10, 0x5713, lambda emu: first_a(emu) if rec["snapshot"] is None else None)
+    elif "--hole" in a:                         # from the first loop pass, with every later address step
+        e.hook(0x10, 0x56B0, ev("A"))
+    else:
+        e.hook(0x10, 0x5F94, ev("S"))
+
+    def joy(emu):                               # 00:2EBF: this frame's joypad, read in VBlank, for its F event
+        if rec["snapshot"] is not None:
+            last_f = max((i for i, x in enumerate(rec["events"]) if x[0] == "F"), default=None)
+            if last_f is not None:
+                rec["joy"][str(last_f)] = [emu.pb.memory[0xFF90 + i] for i in range(5)]
+    rec["joy"] = {}
+    e.hook(0x00, 0x2EBF, joy)
+    e.hook(0x00, 0x2E3B, ev("F"))
+
+    def each(f):
+        cur[0] = f
+    run_script(e, frames, parse_presses(a), each=each)
+    json.dump(rec, open(out, "w"))
+    print("%s: %d events (%d T, %d L)" % (out, len(rec["events"]), sum(1 for x in rec["events"] if x[0] == "T"),
+          sum(1 for x in rec["events"] if x[0] == "L")))
+    e.stop()
+
+
+if __name__ == "__main__":
+    main()
