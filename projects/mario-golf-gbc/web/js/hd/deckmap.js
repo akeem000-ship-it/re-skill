@@ -27,6 +27,12 @@ CLASS[T.WATER] = 6; CLASS[T.GREEN] = 7; CLASS[T.OB] = 8;
 const RGB = [[112, 198, 84], [126, 208, 96], [94, 176, 72], [72, 150, 60], [58, 128, 52], [238, 222, 170], [62, 146, 220], [150, 230, 112], [50, 98, 56], [214, 180, 124]];
 // (class 9: the Dune course's desert: its out of bounds, rough and sandy waste $0D are brown sand there, as the game draws them)
 const N = 1024;
+// value noise: the hash at whole points, eased between them
+function vnoise(x, y) {
+  const x0 = Math.floor(x), y0 = Math.floor(y), u = x - x0, v = y - y0, su = u * u * (3 - 2 * u), sv = v * v * (3 - 2 * v);
+  const a = hash(x0, y0), b = hash(x0 + 1, y0), c = hash(x0, y0 + 1), d = hash(x0 + 1, y0 + 1);
+  return (a + (b - a) * su) * (1 - sv) + (c + (d - c) * su) * sv;
+}
 function hash(x, y) { let h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
 // a class's membership (1 in its cells) blurred twice by a 5-cell box: the tiles' steps become rounded shapes
 function field(cls, c) {
@@ -41,18 +47,30 @@ function field(cls, c) {
   pass(a, b, 1, 0); pass(b, a, 0, 1); pass(a, b, 1, 0); pass(b, a, 0, 1);
   return a;
 }
-export function paintCourse(art, desert = false) {
+// the classes and their blurred fields of a hole (once per hole), and the tree tiles' canopies (course px: x, z, r)
+export function courseFields(art, desert = false) {
   const cls = new Uint8Array(256 * 256);
   for (let i = 0; i < cls.length; i++) { const t = art.terrain[i]; cls[i] = desert && (t === T.OB || t === T.ROUGH || t === T.BUNKER2) ? 9 : CLASS[t]; }
   const present = [...new Set(cls)], F = [];
   for (const c of present) F[c] = field(cls, c);
-  const cv = document.createElement("canvas"); cv.width = cv.height = N;
-  const g = cv.getContext("2d"), img = g.createImageData(N, N), d = img.data;
-  const cl = v => Math.max(0, Math.min(255, v));
-  for (let y = 0; y < N; y++) {
-    const fy = (y + 0.5) / 4 - 0.5, y0 = Math.floor(fy), ty = fy - y0, ya = cl(y0) * 256, yb = cl(y0 + 1) * 256;
-    for (let x = 0; x < N; x++) {
-      const fx = (x + 0.5) / 4 - 0.5, x0 = Math.floor(fx), tx = fx - x0, xa = cl(x0), xb = cl(x0 + 1);
+  const trees = [];
+  for (let ty = 0; ty < 64; ty++) for (let tx = 0; tx < 64; tx++) if (art.treeTile[ty * 64 + tx])
+    trees.push([tx * 8 + 4 + (hash(tx, ty) - 0.5) * 3, ty * 8 + 4 + (hash(ty, tx) - 0.5) * 3, (9 + hash(tx + 7, ty) * 3) / 2]);
+  return { present, F, trees };
+}
+// the course from above: the course px X0..X0+w, Z0..Z0+h at ppx picture px a course px (the whole hole: 2; the close-ups: finer,
+// so a green seen close has crisp edges instead of an enlarged soft picture)
+export function paintRegion(fd, X0, Z0, w, h, ppx) {
+  const { present, F, trees } = fd, PW = Math.round(w * ppx), PH = Math.round(h * ppx);
+  const cv = document.createElement("canvas"); cv.width = PW; cv.height = PH;
+  const g = cv.getContext("2d"), img = g.createImageData(PW, PH), d = img.data;
+  const cl = v => Math.max(0, Math.min(255, v)), whole = ppx === 2 && !X0 && !Z0;
+  for (let y = 0; y < PH; y++) {
+    const wz = Z0 + (y + 0.5) / ppx, Y2 = whole ? y : wz * 2;
+    const fy = wz / 2 - 0.5, y0 = Math.floor(fy), ty = fy - y0, ya = cl(y0) * 256, yb = cl(y0 + 1) * 256;
+    for (let x = 0; x < PW; x++) {
+      const wx = X0 + (x + 0.5) / ppx, X2 = whole ? x : wx * 2;
+      const fx = wx / 2 - 0.5, x0 = Math.floor(fx), tx = fx - x0, xa = cl(x0), xb = cl(x0 + 1);
       // the class whose blurred field is highest here (bilinear between the cells): smooth, rounded edges
       let best = 0, bw = -1, second = 0;
       for (const c of present) {
@@ -60,25 +78,25 @@ export function paintCourse(art, desert = false) {
         if (v > bw) { second = Math.max(second, bw); bw = v; best = c; } else if (v > second) second = v;
       }
       const [r, gg, b] = RGB[best];
-      let k = 1 + (hash(x >> 1, y >> 1) - 0.5) * 0.06;                       // a fine grain
-      if (best <= 1) k *= ((x + (y >> 1)) / 28 | 0) & 1 ? 1.05 : 0.96;        // mowing stripes
-      if (best === 7) k *= ((x - y) / 10 | 0) & 1 ? 1.03 : 0.98;
+      let k = 1 + ((whole ? hash(x >> 1, y >> 1) : vnoise(wx * 1.5, wz * 1.5)) - 0.5) * 0.06;   // a fine grain (finer pictures: a soft mottle, not blocks)
+      if (best <= 1) k *= ((X2 + Math.floor(Y2 / 2)) / 28 | 0) & 1 ? 1.05 : 0.96;   // mowing stripes
+      if (best === 7) k *= ((X2 - Y2) / 10 | 0) & 1 ? 1.03 : 0.98;
       const edge = bw - second < 0.14 ? 1 - (bw - second) / 0.14 : 0;         // an outline where the class changes
       if (best === 6) k *= 0.9 + 0.16 * Math.min(1, (1 - bw) * 2);           // water: lighter at its banks
       if (best === 5) k *= 1.03 - edge * 0.14;
       else k *= 1 - edge * 0.15;
-      const q = (y * N + x) * 4; d[q] = Math.min(255, r * k); d[q + 1] = Math.min(255, gg * k); d[q + 2] = Math.min(255, b * k); d[q + 3] = 255;
+      const q = (y * PW + x) * 4; d[q] = Math.min(255, r * k); d[q + 1] = Math.min(255, gg * k); d[q + 2] = Math.min(255, b * k); d[q + 3] = 255;
     }
   }
   g.putImageData(img, 0, 0);
   // trees: a round canopy over each tree tile (8 course px), a shadow beside it
-  const trees = [];
-  for (let ty = 0; ty < 64; ty++) for (let tx = 0; tx < 64; tx++) if (art.treeTile[ty * 64 + tx])
-    trees.push([(tx * 8 + 4 + (hash(tx, ty) - 0.5) * 3) * 2, (ty * 8 + 4 + (hash(ty, tx) - 0.5) * 3) * 2, 9 + hash(tx + 7, ty) * 3]);
-  g.fillStyle = "rgba(0,0,0,0.28)"; for (const [x, y, r] of trees) { g.beginPath(); g.arc(x + 3, y + 4, r, 0, 7); g.fill(); }
-  for (const [x, y, r] of trees) { g.beginPath(); g.arc(x, y, r, 0, 7); g.fillStyle = "#2f6b33"; g.fill(); g.beginPath(); g.arc(x - r * 0.25, y - r * 0.3, r * 0.6, 0, 7); g.fillStyle = "#43894a"; g.fill(); }
+  g.setTransform(ppx, 0, 0, ppx, -X0 * ppx, -Z0 * ppx);
+  const near = trees.filter(([x, z, r]) => x + r + 3 > X0 && z + r + 3 > Z0 && x - r < X0 + w && z - r < Z0 + h);
+  g.fillStyle = "rgba(0,0,0,0.28)"; for (const [x, y, r] of near) { g.beginPath(); g.arc(x + 1.5, y + 2, r, 0, 7); g.fill(); }
+  for (const [x, y, r] of near) { g.beginPath(); g.arc(x, y, r, 0, 7); g.fillStyle = "#2f6b33"; g.fill(); g.beginPath(); g.arc(x - r * 0.25, y - r * 0.3, r * 0.6, 0, 7); g.fillStyle = "#43894a"; g.fill(); }
   return cv;
 }
+export function paintCourse(art, desert = false) { return paintRegion(courseFields(art, desert), 0, 0, 512, 512, 2); }
 
 const ease = (a, b, k) => a + (b - a) * k;
 const angDiff = (a, b) => { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; };
@@ -99,7 +117,7 @@ export function attachDeckMap(deck) {
     const key = hid + (desert ? "d" : "");
     let a = arts.get(key);
     if (!a) {
-      const art = new HoleArt(hid); a = { art, pic: paintCourse(art, desert), desert };
+      const art = new HoleArt(hid), fd = courseFields(art, desert); a = { art, fd, pic: paintRegion(fd, 0, 0, 512, 512, 2), desert, patches: [] };
       if (arts.size > 2) arts.delete(arts.keys().next().value);
       arts.set(key, a);
     }
@@ -191,6 +209,30 @@ export function attachDeckMap(deck) {
     return true;
   }
 
+  // the close-up's finer picture of the course in view (ppx 4, 8 or 16 picture px a course px, never over ~3 M pixels), on a grid of
+  // 32 course px with a margin; kept (the last four) while the view stays inside one of the same fineness
+  function detailPatch(A, W, H, ox, oy, c, s, dpr) {
+    if (view.s < 3) return null;
+    const ppx = view.s >= 12 ? 16 : view.s >= 6 ? 8 : 4;
+    let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+    for (const [px, py] of [[0, 0], [W, 0], [0, H], [W, H]]) {   // (the canvas's corners on the course)
+      const u = (px - ox) / view.s, v = (py - oy) / view.s, x = view.cx + u * c + v * s, z = view.cz - u * s + v * c;
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z);
+    }
+    x0 = Math.max(0, x0); z0 = Math.max(0, z0); x1 = Math.min(512, x1); z1 = Math.min(512, z1);
+    if (x1 <= x0 || z1 <= z0) return null;
+    const hit = A.patches.find(p => p.ppx === ppx && p.x0 <= x0 && p.z0 <= z0 && p.x0 + p.w >= x1 && p.z0 + p.h >= z1);
+    if (hit) return hit;
+    const gx0 = Math.max(0, Math.floor(x0 / 32) * 32 - 16), gz0 = Math.max(0, Math.floor(z0 / 32) * 32 - 16);
+    const gx1 = Math.min(512, Math.ceil(x1 / 32) * 32 + 16), gz1 = Math.min(512, Math.ceil(z1 / 32) * 32 + 16);
+    let k = ppx; while (k > 4 && (gx1 - gx0) * (gz1 - gz0) * k * k > 3e6) k /= 2;
+    if ((gx1 - gx0) * (gz1 - gz0) * k * k > 3e6) return null;
+    const t0 = performance.now();
+    const p = { ppx, x0: gx0, z0: gz0, w: gx1 - gx0, h: gz1 - gz0, cv: paintRegion(A.fd, gx0, gz0, gx1 - gx0, gz1 - gz0, k) };
+    api.patchMs = performance.now() - t0;
+    A.patches.push(p); if (A.patches.length > 4) A.patches.shift();
+    return p;
+  }
   function draw(o) {
     const { w, r6, w0, A, ball, cup, aimA, aiming, res, putts, dpr, u, focus: F } = o;
     const W = cv.width, H = cv.height, c = Math.cos(view.phi), s = Math.sin(view.phi), ox = (F.l + F.r) / 2 * dpr, oy = (F.t + F.b) / 2 * dpr;
@@ -202,6 +244,9 @@ export function attachDeckMap(deck) {
     g.save(); g.translate(ox, oy); g.rotate(view.phi); g.scale(view.s, view.s); g.translate(-view.cx, -view.cz);
     g.imageSmoothingEnabled = true; g.imageSmoothingQuality = view.s < dpr ? "high" : "low";   // (enlarged: plain bilinear, cheap)
     g.drawImage(A.pic, 0, 0, 512, 512);
+    // zoomed in (a green, a short shot): the part in view painted again finer, so its edges are crisp
+    const P = detailPatch(A, W, H, ox, oy, c, s, dpr);
+    if (P) { g.imageSmoothingQuality = "high"; g.drawImage(P.cv, P.x0, P.z0, P.w, P.h); }
     g.restore();
     const marks = { hole: r6[0x320], ball: ball.slice() };
     g.lineCap = "round"; g.lineJoin = "round";

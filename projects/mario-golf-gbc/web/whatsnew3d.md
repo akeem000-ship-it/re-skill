@@ -1,6 +1,7 @@
 # Polish
 - **No tree in your face**: a tree the camera passes through or stands against is left out, and the trees between the camera and the ball or your golfer (and those so close they would fill the picture) turn see-through for as long as they are in the way, so the low chase of a flight past the woods, a landing behind a tree or a shot from the trees always shows the ball. Their shadows stay.
 - **The Field's people and the trees**: on the story's Field a person behind the trees (or a building) is hidden by them now instead of standing over them, and shows through them as a dark blue silhouette, so you never lose anyone; low walls and counters still never hide a person.
+- **Deck shot map close up**: zoomed in on a green, the map's grass, fringe and bunker edges are drawn sharp instead of blurred.
 - **Dusk and night**: sunsets with a gold, rose and violet band over the horizon and a warm glow toward the sun; the low sun lights the course warmly with cool blue shade, so the greens stay green and the trees no longer go brown; at night moonlight and the floodlights keep the course readable. Your golfer, the pin and the marks stay bright at any hour. Peach's Castle (Hour: Auto) now plays at sunset, deepening to dusk over the round.
 
 # Putting

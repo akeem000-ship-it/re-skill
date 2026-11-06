@@ -385,7 +385,12 @@ the art. Render only: it reads the game's memory and the ROM; it writes nothing.
   bounds), each class's cells blurred (a 5-cell box, twice) and the class with the highest field taken per picture pixel (1024 x
   1024 for the 512 x 512 px map), so the tiles' steps become rounded shapes; procedural colours, mowing stripes, a fine grain, a
   darker outline where the class changes, water lighter at its banks; a round canopy with a shadow on each tree tile (bit 7 of the
-  tile byte, TreeCheck 08:51D2). ~0.1-0.3 s once per hole (cached, the last three holes).
+  tile byte, TreeCheck 08:51D2). ~0.1-0.3 s once per hole (cached, the last three holes). Zoomed in (more than 3 device px a course px: a green,
+  a short shot) the part of the course in view is painted again finer from the same blurred fields (paintRegion: 4, 8 or 16 picture
+  px a course px, on a grid of 32 course px with a margin, at most ~3 M pixels; the last four kept while the view stays inside one),
+  with a soft value-noise grain instead of the whole map's per-pixel grain, and laid over the whole map: the edges of the green, the
+  bunkers and the fringe stay crisp instead of an enlarged soft picture (out/polish/deckmap_green*.png). `__deckMap.patchMs` is the
+  last one's cost.
 - **The view**: turned so the aim (`$D418`) points up the deck; framed on the ball, the preview's landing and rest (the pin when
   it is within the rest + 70 y; the aim's target when there is no preview), padded 22 y; putting: the ball, the cup and the four
   stops, at most ~22 CSS px a yard. It eases (time constant 0.2 s) in centre, log-scale and angle, and snaps when it is within a
