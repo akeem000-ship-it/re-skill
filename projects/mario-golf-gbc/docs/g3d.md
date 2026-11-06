@@ -99,8 +99,13 @@ bank 05 draws its message boxes, menus, name plates and portraits into the BG ov
 (hud3d.js raster's `bgCells`). The people: the actors' sprites (bank 04 slots), a run of consecutive slots whose sprites touch (side
 by side, or one above the other; at most 16 x 32) is one figure, painted with its flips and OBJ palette and stood up as a rounded
 body at the game's size, the front of its feet on the sprite's bottom line, leaning back 0.32 rad towards the camera (which looks
-down at about 45 degrees; upright a person shows at 0.7 of its height); the people are drawn after a depth clear so no wall box
-hides them (in the game a sprite is over the BG; an actor may stand in a blocked cell). Left to the 2D picture (render() false):
+down at about 45 degrees; upright a person shows at 0.7 of its height). No low box hides a person (in the game a sprite is over
+the BG; an actor may stand in a blocked cell, behind a counter): the depth is cleared before the people and only the tall scenery is
+put back into it (depth only: the annotated plants of kind "tree" and the building blocks' roofs and front walls), and each person is
+drawn scaled about the eye by 1 - 7 / its distance (the same picture, 7 units nearer), so a person at a tree's foot or a door is not
+cut by it. Where the trees or a building are really in front, the person's hidden parts show as a dark blue see-through silhouette
+(the person drawn first with the depth test reversed and the colour pulled toward blue in a fine two-tone checker), the rest as
+before; a person is never lost. Left to the 2D picture (render() false):
 a map that is only a picture (no blocked cell, no event, no annotation: the new character's room `$1E`, gfx `$1E`), a screen
 whose BG cells are more than 55% not the map's (the name entry, the encyclopedia, the navigation menu, the EXP screen), and a
 fade (`$FFA2/$FFA4/$FFBC`). The plain round the map lies 3 units under it and the near plane is 12 (a 16-bit depth buffer let the

@@ -39,8 +39,12 @@ void main() { vec4 t = texture(uMap, vUV); if (t.a < 0.5) discard; vec3 c = t.rg
   o = vec4(mix(c * vShade * uLightK, uFade.rgb, uFade.a), 1.0); }`;
 const BVS = `#version 300 es
 in vec3 aPos; in vec3 aCol; uniform mat4 uMVP; uniform mat4 uModel; out vec3 vCol; void main() { vCol = aCol; gl_Position = uMVP * uModel * vec4(aPos, 1.0); }`;
+// (uSil: a person's parts hidden behind a tree or a building, drawn as a dark blue see-through silhouette: two tones in a fine checker)
 const BFS = `#version 300 es
-precision mediump float; in vec3 vCol; uniform float uLightK; uniform vec4 uFade; out vec4 o; void main() { o = vec4(mix(vCol * uLightK, uFade.rgb, uFade.a), 1.0); }`;
+precision mediump float; in vec3 vCol; uniform float uLightK, uSil; uniform vec4 uFade; out vec4 o;
+void main() { vec3 c = vCol * uLightK;
+  if (uSil > 0.5) { vec2 q = floor(gl_FragCoord.xy); float ck = mod(q.x + q.y, 2.0); c = mix(c, mix(vec3(0.10, 0.13, 0.30), vec3(0.55, 0.62, 0.85), ck * 0.35), 0.62); }
+  o = vec4(mix(c, uFade.rgb, uFade.a), 1.0); }`;
 
 const r16 = (b, a) => rb(b, a) | rb(b, (a + 1) & 0xFFFF) << 8;
 function gfxRefs(id) { const e = (0x4048 + id * 18) & 0xFFFF; return Array.from({ length: 9 }, (_, k) => r16(0x0B, e + 2 * k)); }
@@ -63,7 +67,7 @@ export class Field3D {
     // the walls from the ROM's terrain grid
     const gl = sc.gl, refs = gfxRefs(id), tmap = w.wram[3].slice(0, 4096), amap = w.wram[2].slice(0, 4096), coll = refData(refs[4]);
     const ann = FIELD_OBJECTS[String(id)] || {};
-    if (this.map) { this.map.mesh.free(); for (const b of this.map.bodies) { b.free(); } }
+    if (this.map) { this.map.mesh.free(); for (const b of this.map.bodies) { b.free(); } if (this.map.occ) this.map.occ.free(); }
     // a map that is only a picture (no blocked cell, no event, no annotation): the 2D picture shows it
     const events = refData(refs[5]), picture = !FIELD_OBJECTS[String(id)] && coll.every(c => (c & 0x0F) !== 0x0F) && events.every(c => !c);
     this.map = { id, tmap, amap, coll, ann, picture, mapHash: mapHash(w), bodies: [], img: new Uint8Array(512 * 512 * 4), tileHash: -1, palHash: -1 };
@@ -74,13 +78,14 @@ export class Field3D {
     // (the plain round the map: its corner colour; well under the map, so a coarse depth buffer never lets it through the floor)
     quad([[-1500, -3, -1500], [2012, -3, -1500], [2012, -3, 2012], [-1500, -3, 2012]], [[0, 0], [1, 0], [1, 1], [0, 1]], 0.55);
     quad([[0, 0, 0], [512, 0, 0], [512, 0, 512], [0, 0, 512]], [[0, 0], [512, 0], [512, 512], [0, 512]], 1);   // the map
-    const covered = new Uint8Array(32 * 32);
+    const covered = new Uint8Array(32 * 32), occ = [];
     for (const b of ann.blocks || []) {
       const h = b.y1 - b.fold, x0 = b.x0, x1 = b.x1, z0 = b.y0, z1 = b.y1;
       quad([[x0, h, z0], [x1, h, z0], [x1, h, z1], [x0, h, z1]], [[x0, b.y0], [x1, b.y0], [x1, b.fold], [x0, b.fold]], 1.04);        // the roof
       quad([[x0, h, z1], [x1, h, z1], [x1, 0, z1], [x0, 0, z1]], [[x0, b.fold], [x1, b.fold], [x1, b.y1], [x0, b.y1]], 0.98);         // the front wall
       quad([[x0, h, z0], [x0, h, z1], [x0, 0, z1], [x0, 0, z0]], [[x0, b.fold], [x0 + 1, b.fold], [x0 + 1, b.y1], [x0, b.y1]], 0.7);   // the sides
       quad([[x1, h, z1], [x1, h, z0], [x1, 0, z0], [x1, 0, z1]], [[x1 - 1, b.fold], [x1, b.fold], [x1, b.y1], [x1 - 1, b.y1]], 0.7);
+      for (const q of [[[x0, h, z0], [x1, h, z0], [x1, h, z1], [x0, h, z1]], [[x0, h, z1], [x1, h, z1], [x1, 0, z1], [x0, 0, z1]]]) for (const i of [0, 1, 2, 0, 2, 3]) occ.push(...q[i]);   // (a building hides the people behind it)
       for (let cz = z0 >> 4; cz < (z1 + 15) >> 4; cz++) for (let cx = x0 >> 4; cx < (x1 + 15) >> 4; cx++) covered[cz * 32 + cx] = 1;
     }
     if (ann.walls !== false) {
@@ -97,13 +102,14 @@ export class Field3D {
       }
     }
     this.map.mesh = { ...vao(gl, this.P, { aPos: [new Float32Array(pos), 3], aUV: [new Float32Array(uv), 2], aShade: [new Float32Array(sh), 1], aSway: [new Float32Array(sw), 1] }), n: pos.length / 3 };
+    this.map.blockOcc = occ;
     this.buildPlants(sc);
   }
   // the annotated stamps: every cell whose tile (number and attribute) is one of the example's (not a plain one-colour tile) is part
   // of a plant; connected groups (up to 2 x 2 tiles) stand up as rounded bodies, all in one mesh
   buildPlants(sc) {
     const M = this.map, ann = M.ann, img = M.img, key = (x, y) => M.tmap[y * 64 + x] | ((M.amap[y * 64 + x] & 0x6F) << 8);
-    const pos = [], col = [], used = new Uint8Array(64 * 64);
+    const pos = [], col = [], used = new Uint8Array(64 * 64), occ = (M.blockOcc || []).slice();
     for (const st of [...(ann.stamps || []), ...(ann.cards || [])]) {
       const keys = new Set();
       for (let y = st.y >> 3; y < (st.y + st.h) >> 3; y++) for (let x = st.x >> 3; x < (st.x + st.w) >> 3; x++) if (!this.plainTile(x, y)) keys.add(key(x, y));
@@ -127,6 +133,7 @@ export class Field3D {
         const fx = tx * 8 + 8, fz = ty * 8 + 16;
         for (let i = 0; i < d.pos.length; i += 3) {
           pos.push(fx + d.pos[i] * k, d.pos[i + 1] * k, fz - 2 + d.pos[i + 2] * k * 0.8);
+          if (plant === "tree") occ.push(fx + d.pos[i] * k, d.pos[i + 1] * k, fz - 2 + d.pos[i + 2] * k * 0.8);   // (a tree hides the people behind it)
           const up = d.pos[i + 1] / h; col.push(d.col[i], d.col[i + 1], d.col[i + 2]);
           (this.swayBuf || (this.swayBuf = [])).push(up * sway);
         }
@@ -135,6 +142,9 @@ export class Field3D {
     // (sway goes in through aCol's companion: a second mesh program would be cleaner; the bodies are drawn without wind here)
     this.swayBuf = null;
     if (pos.length) M.bodies.push({ ...vao(sc.gl, this.B, { aPos: [new Float32Array(pos), 3], aCol: [new Float32Array(col), 3] }), n: pos.length / 3 });
+    // the tall scenery (the trees, the buildings) again, for the people's depth test only
+    if (M.occ) M.occ.free(); M.occ = null;
+    if (occ.length) M.occ = { ...vao(sc.gl, this.B, { aPos: [new Float32Array(occ), 3], aCol: [new Float32Array(occ.length), 3] }), n: occ.length / 3 };
   }
   plainTile(tx, ty) {                                   // a tile of one colour (plain ground): never a plant's
     const img = this.map.img, q0 = ((ty * 8) * 512 + tx * 8) * 4, c0 = img[q0] << 16 | img[q0 + 1] << 8 | img[q0 + 2]; let same = 0;
@@ -266,17 +276,31 @@ export class Field3D {
     gl.uniformMatrix4fv(B.u.uModel, false, m4.identity());
     for (const b of this.map.bodies) { gl.bindVertexArray(b.vao); gl.drawArrays(gl.TRIANGLES, 0, b.n); }
     for (const fx of sc.layers.fx) if (fx.drawField) fx.drawField(sc, this, dt, ann);
-    // (as in the game's picture, where a sprite is over the BG, no box hides a person: an actor stands in a hedge's cell, behind a
-    // counter, on a cell the terrain grid blocks; the people hide only each other)
-    gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.useProgram(B.p);
+    // The people. In the game a sprite is over the BG, so no low box may hide a person (an actor stands in a hedge's cell, behind a
+    // counter, on a cell the terrain grid blocks): the depth is cleared and only the tall scenery (the trees, the buildings) is put
+    // back for them, and a person is drawn a few units nearer the eye along its own lines of sight (the picture is the same; only its
+    // depth changes) so a person at a tree's foot or a door is not cut by it. A person behind a tree or a building shows there as a
+    // dark see-through silhouette (drawn where the scenery is nearer), and in full where nothing is in front.
+    gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.useProgram(B.p); gl.uniform1f(B.u.uSil, 0);
+    const occ = this.map.occ;
+    if (occ) { gl.colorMask(false, false, false, false); gl.uniformMatrix4fv(B.u.uModel, false, m4.identity()); gl.bindVertexArray(occ.vao); gl.drawArrays(gl.TRIANGLES, 0, occ.n); gl.colorMask(true, true, true, true); }
     // the people upright on their feet (the front of the feet on the sprite's bottom line), at the game's size, leaning back a little
     // to face the camera (which looks down at ~45 degrees; upright, a person would show at 0.7 of the game's height)
     const people = this.hidePeople ? [] : this.people(sc, w, ox, oz), stood = new Set();   // (hidePeople: web/tests/story3d.mjs measures them)
-    for (const [mesh, x, z, slots] of people) {
-      gl.uniformMatrix4fv(B.u.uModel, false, m4.tsy(x, -2.6 * Math.sin(PEOPLE_LEAN), z - 2.6, 1, 1, 1, 0, -PEOPLE_LEAN));
-      gl.bindVertexArray(mesh.vao); gl.drawArrays(gl.TRIANGLES, 0, mesh.n);
-      for (const i of slots) stood.add(i);
+    const models = people.map(([, x, z]) => {
+      const m = m4.tsy(x, -2.6 * Math.sin(PEOPLE_LEAN), z - 2.6, 1, 1, 1, 0, -PEOPLE_LEAN), d = Math.hypot(x - eye[0], 6 - eye[1], z - 2.6 - eye[2]), k = 1 - PEOPLE_BIAS / d;
+      return m4.mul([k, 0, 0, 0, 0, k, 0, 0, 0, 0, k, 0, eye[0] * (1 - k), eye[1] * (1 - k), eye[2] * (1 - k), 1], m);   // (scaled about the eye: the same picture, nearer)
+    });
+    if (occ) {                                         // the parts hidden by the scenery: the silhouette
+      gl.depthFunc(gl.GREATER); gl.depthMask(false); gl.uniform1f(B.u.uSil, 1);
+      people.forEach(([mesh], i) => { gl.uniformMatrix4fv(B.u.uModel, false, models[i]); gl.bindVertexArray(mesh.vao); gl.drawArrays(gl.TRIANGLES, 0, mesh.n); });
+      gl.depthFunc(gl.LEQUAL); gl.depthMask(true); gl.uniform1f(B.u.uSil, 0);
     }
+    people.forEach(([mesh, , , slots], i) => {
+      gl.uniformMatrix4fv(B.u.uModel, false, models[i]);
+      gl.bindVertexArray(mesh.vao); gl.drawArrays(gl.TRIANGLES, 0, mesh.n);
+      for (const j of slots) stood.add(j);
+    });
     this.lastPeople = people.length;
     gl.bindVertexArray(null);
     // the game's own picture over it: the window, the sprites not stood up, the BG cells that are not the map
@@ -285,7 +309,7 @@ export class Field3D {
     return true;
   }
 }
-const PEOPLE_LEAN = 0.32;
+const PEOPLE_LEAN = 0.32, PEOPLE_BIAS = 7;
 // a hash of the map buffers (WRAM3 tiles, WRAM2 attributes): a map script's edit rebuilds the map
 function mapHash(w) { let h = 2166136261; for (const b of [w.wram[3], w.wram[2]]) for (let i = 0; i < 4096; i += 3) h = Math.imul(h ^ b[i], 16777619); return h; }
 function fadeArr(w, keep) {
