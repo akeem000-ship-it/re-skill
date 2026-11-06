@@ -143,6 +143,7 @@ export function overrideCharStatsForDebug(E) {
   C.aiReactionDelayNear = 4; C.aiReactionDelayFar = 4; C.aiTrackingParam = 0; C.aiAimAwayChance = 0xFF;
   C.aiServeStyle = 2; C.aimJitterScale = 0; C.aiPositionStrategy = 1;
 }
+const GAMEMODE_EXHIBITION_ONLINE = 0x04;                                   // (ONLINE: exhibition matches only)
 // 08:687F InitAllChars: clear the four structs, then set up the on-court characters (character 0 on the pad).
 // The graphics upload at the end (LoadOnCourtCharacterGfx, 09) only writes VRAM and its copy queue.
 export function initAllChars(E) {
@@ -155,6 +156,9 @@ export function initAllChars(E) {
   if (n >= 1) { E.setBank(5); initChar(E, 1, S.player2CurrentMainCharacter, S.player2MainPalette); }
   E.setBank(4); initChar(E, 0, S.player1CurrentMainCharacter, S.player1MainPalette);
   E.C.inputSource = 0;
+  // ONLINE (not the game's: the page's online play, web/js/online.js): in an exhibition match the opponent (character 1) is the friend on
+  // the other phone, input source 4 (the link's seat on the far side, as the game's link match plays it), its buttons E.remote.bits
+  if (E.remote && n >= 1 && S.gameMode === GAMEMODE_EXHIBITION_ONLINE) { E.setBank(5); E.C.inputSource = 4; E.setBank(4); }
   E.ext.loadOnCourtCharacterGfx(E);                                     // 09:40B5 (VRAM and its copy queue)
 }
 
@@ -866,7 +870,7 @@ export function readCharInput(E) {
   C.inputBits = 0;
   switch (C.inputSource) {
     case 1: ai.charInputHandler1(E); return;                              // 08:7863 the CPU (ai.js)
-    case 4: C.inputBits = S.linkInput; return;                            // 08:782D CharInputHandler4_08
+    case 4: C.inputBits = E.remote ? E.remote.bits : S.linkInput; return;   // 08:782D CharInputHandler4_08 (ONLINE: the friend's buttons)
     case 5:                                                               // 08:7833 link, local seat
       if (S.linkState === LINKSTATE_SLAVE) { C.inputBits = S.linkRemoteInput; return; }
       if (S.linkState === LINKSTATE_MASTER) { C.inputBits = S.linkRemoteInputBuf; return; }

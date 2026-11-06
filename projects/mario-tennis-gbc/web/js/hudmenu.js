@@ -1,6 +1,6 @@
 // The button bar (Back on a phone shows it): only what you reach for while playing. On a phone it is a column down the left-hand
 // side (hm-side), on a computer a row at the top.
-//   PANEL      the buttons on the bar: 3D, CAMERA, REC, TURBO, OPTIONS (the game's settings menu, from anywhere: full.js), GAMES
+//   PANEL      the buttons on the bar: 3D, CAMERA, REC, TURBO, OPTIONS (the game's settings menu, from anywhere: full.js), ONLINE (online.js), GAMES
 //              (the game picker), WHAT'S NEW, RESET
 //   OPTIONS    every other setting lives in the game's own OPTIONS menu only (menuwheel.js OPTION_CATS); its button is kept here,
 //              out of sight, so its handler and its "NAME: value" are still what the menu reads and presses
@@ -12,7 +12,7 @@
 // The buttons themselves are the page's own elements (full.js and the attach* modules make them and keep their handlers): they are only
 // moved where they belong, also the ones added later (the 3D view's buttons appear when it is first turned on), by watching the bar.
 import { handheld } from "./handheld.js";
-export const PANEL = ["view3d", "cam", "rec", "turbo", "optionsbtn", "gamesbtn", "whatsnewbtn", "reset"];
+export const PANEL = ["view3d", "cam", "rec", "turbo", "optionsbtn", "onlinebtn", "gamesbtn", "whatsnewbtn", "reset"];
 const DEVS = ["engbtn", "runaheadbtn", "qsave1", "qsave2", "qload1", "qload2", "expbtn", "shotbtn"];
 const STATUS = ["romstatus", "fps", "savestatus"];
 // the standard: the button's value (after its "NAME:") when it plays the usual way; a list: any of them is standard

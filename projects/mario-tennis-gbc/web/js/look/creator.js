@@ -57,6 +57,7 @@ body.touch #lookoffer { top: 44px; }
 export function mountCreator({ hud, keys, pause, onChange }) {
   const mgr = new LookManager();
   // "Sprites: Game / Detailed": the characters redrawn at 3x from their own pixels (spritedetail.js); kept per browser, ?sprites=detail|game overrides
+  const PLAIN = typeof location !== "undefined" && new URLSearchParams(location.search).get("look") === "plain";   // ONLINE (online.js)
   const SPR_KEY = "mt-sprites", detail = new SpriteDetail();
   let sprMode = (() => { const q = new URLSearchParams(location.search).get("sprites"); if (q === "detail" || q === "game") return q; try { return localStorage.getItem(SPR_KEY) === "detail" ? "detail" : "game"; } catch (e) { return "game"; } })();
   let gb = null, open = false, draft = null, hero = "boy", pristine = null, detectAt = 0, onPick = false, offered = false, lastSlot = -1, pressFrames = 0, wasPaused = false;
@@ -260,6 +261,7 @@ export function mountCreator({ hud, keys, pause, onChange }) {
     closePanel();
   };
   function apply(look, store) {
+    if (PLAIN) return;                                           // (ONLINE: no look changes in play)
     if (lookKey(look) === lookKey(mgr.look)) return;
     mgr.set(look);
     if (store) { saveMods(look); save(KEY, stripMods(look)); const s = gb ? gb.mem.wram[0][WRAM_STORY_SLOT] : -1; if (s >= 0 && s < 3) save(SLOT_KEY(s), look); }
@@ -286,7 +288,8 @@ export function mountCreator({ hud, keys, pause, onChange }) {
     manager: mgr,
     // before the machine: apply the stored look to the ROM bytes
     ready,
-    prepare(bytes) { pristine = Uint8Array.from(bytes); portraitSets = portraitKeys(pristine); mgr.prepare(bytes, withMods(load(KEY)), { detail: sprMode === "detail" }); },
+    // ONLINE (online.js: both phones must play the same game): ?look=plain: the game's own looks, no mods, and nothing changes in play
+    prepare(bytes) { pristine = Uint8Array.from(bytes); portraitSets = portraitKeys(pristine); mgr.prepare(bytes, PLAIN ? normalizeLook({ boy: null, girl: null }) : withMods(load(KEY)), { detail: sprMode === "detail" }); },
     attach(machine) { gb = machine; mgr.attach(gb); gb.modChar = modChar;
       // the hero's 24x24 portrait as the game shows it now (its own, recoloured by the look, or the redrawn one): the VS screen
       gb.heroPortrait = key => { if (!pristine) return null; const L = mgr.look; return heroPreview(pristine, key === "girl" ? "nina" : "alex", L && L[key], 0, !!(L && L.portraits === "redrawn")).portrait; }; lastSlot = -1; detail.attach(gb, document.getElementById("screen")); detail.setEnabled(sprMode === "detail"); },
@@ -298,6 +301,7 @@ export function mountCreator({ hud, keys, pause, onChange }) {
     frame() {
       if (!gb) return;
       detail.frame();
+      if (PLAIN) return;                                         // (ONLINE: the look stays as prepared)
       if (pressFrames > 0) { keys.Enter = pressFrames > 3; pressFrames--; if (!pressFrames) keys.Enter = false; }
       if (gb.frames < detectAt) return; detectAt = gb.frames + 20;
       const up = gateNow(); if (up !== seniorUp) { seniorUp = up; if (mgr.look && mgr.look.mods) { mgr.set(mgr.look); onChange(mgr.look); } }

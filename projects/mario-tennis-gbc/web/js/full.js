@@ -40,7 +40,8 @@ import { setToastHold } from "./hdpanel.js";
 import { PerfHud } from "./perfhud.js";   // PERF: what a frame costs on this device
 import { mountCreator } from "./look/creator.js";
 import { lookEvent } from "./look/index.js";
-import { freshProfile, learnNote } from "./engine/learn.js";   // PLAY+ SCOUTING: the CPU learns how you play
+import { freshProfile, learnNote } from "./engine/learn.js";
+import { onlineParams, OnlineSession, onlineChip, onlinePanel } from "./online.js";   // ONLINE: two phones, one match   // PLAY+ SCOUTING: the CPU learns how you play
 
 const $ = id => document.getElementById(id);
 const cv = $("screen"), g = cv.getContext("2d");
@@ -50,6 +51,10 @@ let gb = null, keys = {}, paused = false, turbo = false, romHash = "", phone = n
 const deck = attachPortrait(() => gb);
 const SAVE_KEY = () => "mt-sram-" + romHash.slice(0, 12);
 const q = new URLSearchParams(location.search);
+// ONLINE (online.js): ?online=host|join; what must be the same on both phones is fixed before anything reads it (the game's own menu, no
+// SCOUTING, the game's own looks)
+const onlineP = onlineParams(q); let online = null, onlineUi = null;
+if (onlineP) { const u = new URL(location.href); for (const [k, v] of [["menu", "game"], ["learn", "off"], ["look", "plain"]]) { u.searchParams.set(k, v); q.set(k, v); } history.replaceState(null, "", u.href); }
 const stored = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 if (q.has("hold")) paused = true;          // (tests: no frame runs until __gb.step, so a power-on recording plays into the page from frame 0)
 // once (0.35.18): characters back to the game's own sprites as blocky voxels (SPRITES: Game, 3D view VOX, VOX: Blocky); the buttons still
@@ -86,6 +91,7 @@ function bytesToBinary(b) { let s = ""; for (let i = 0; i < b.length; i += 8192)
 let saveTimer = 0, savePending = false;
 function writeSave() {                     // (with run-ahead on: the real machine's save, not the look-ahead frame's)
   savePending = false;
+  if (online) return;                        // (ONLINE: no save written on either phone)
   try { localStorage.setItem(SAVE_KEY(), btoa(bytesToBinary(raSnap ? raSnap.mem.sram : gb.mem.sram))); $("savestatus").textContent = "saved " + new Date().toLocaleTimeString(); } catch (e) { console.warn("save", e); }
 }
 function maybeSave() {                     // the game writes its save in bursts: store it 0.5 s after the last write
@@ -165,8 +171,9 @@ function resultsGate(inp) {
 }
 // THE CAMPUS's walkable paths (port/story/campus_paths.js): with the 3D view on (the campus laid out: voxel.js CAFE_*) and CROSSING
 // Instant; a change is a recorded event, so a replay walks the same
+const pathsWanted = () => !!(port.quickCross && view3d && voxel && voxel.cafeConcept && voxel.cafeConcept());
 function campusPaths() {
-  const want = !!(port.quickCross && view3d && voxel && voxel.cafeConcept && voxel.cafeConcept());
+  const want = pathsWanted();
   if (!!port.campusPaths !== want) { port.campusPaths = want; session.event("paths:" + (want ? "on" : "off")); }
 }
 let padL2 = false, padR2 = false;            // HANDHELD (handheld.js): a controller's L2 / R2 last frame
@@ -175,8 +182,18 @@ function frame() {
   if (!!keys.PadR2 !== padR2) { padR2 = !!keys.PadR2; turbo = padR2; $("turbo").classList.toggle("on", turbo); }   // R2 held: turbo
   if (keys.PadL2 && !padL2 && view3d && voxel && voxel.mode === "3d") setPreset(PRESET_ORDER[(PRESET_ORDER.indexOf(preset) + 1) % PRESET_ORDER.length]);   // L2: the next court camera
   padL2 = !!keys.PadL2;
-  const inp = modes.filterInput(resultsGate(frameInput())), mask = maskOf(inp); gb.setInput(inp); lastInp = inp;   // (MODES: the partner's commands kept from the game)
-  if (port) { campusPaths(); setAnalog(); portFrame(); } else gb.runFrame();
+  let inp;
+  if (online) {                              // ONLINE: the host's buttons drive the game, the friend's the opponent (online.js)
+    const own = window.__onlinePad ? window.__onlinePad(online.F + online.delay) & 0xFF : maskOf(online.isHost ? resultsGate(frameInput()) : frameInput()), r =   // (__onlinePad: the tests' buttons)
+      online.step(online.isHost ? [own, pathsWanted() ? 1 : 0] : own);
+    inp = stateOf(r.host);
+    if (!!port.campusPaths !== r.paths) { port.campusPaths = r.paths; session.event("paths:" + (r.paths ? "on" : "off")); }
+    if (online.remotePad.bits !== online.lastBits) { online.lastBits = online.remotePad.bits; session.event("remote:" + online.remotePad.bits); }
+    port.analog = null;
+  } else inp = modes.filterInput(resultsGate(frameInput()));   // (MODES: the partner's commands kept from the game)
+  const mask = maskOf(inp); gb.setInput(inp); lastInp = inp;
+  if (port) { if (!online) { campusPaths(); setAnalog(); } portFrame(); } else gb.runFrame();
+  if (online) online.afterFrame(gb.frameHash());
   if (view3d && voxel && voxel.mode === "3d") voxel.tick();
   if (phone) phone.frame(gb);                // VIBRATE: hits and points
   if (replay) replay.afterFrame(gb, inp);   // INSTANT REPLAY: the buttons of the point (the port: the point's tape)
@@ -327,9 +344,10 @@ function loop(now) {
     introGb = null; introPort = null;
     if (!last) last = now;
     acc = Math.min(acc + (now - last), STEP * 4); last = now;
-    const per = turbo || modes.fastText(lastInp) ? 4 : 1;   // (MODES: FAST TEXT)
+    const per = online ? 1 : turbo || modes.fastText(lastInp) ? 4 : 1;   // (MODES: FAST TEXT; ONLINE: in step with the friend)
     if (replay && replay.playing) { while (acc >= STEP) { replay.step(); acc -= STEP; fps.n++; } }   // INSTANT REPLAY: the point again (no saves, no run-ahead)
-    else if (acc >= STEP) { const t0 = performance.now(); settle(); while (acc >= STEP) { for (let i = 0; i < per; i++) { frame(); perf.frame("game"); } acc -= STEP; fps.n++; } maybeSave(); lookAhead(); perf.time("game", performance.now() - t0); }
+    else if (acc >= STEP) { const t0 = performance.now(); settle(); while (acc >= STEP) { if (online && !online.canStep()) { acc = Math.min(acc, STEP); break; } for (let i = 0; i < per; i++) { frame(); perf.frame("game"); } acc -= STEP; fps.n++; } maybeSave(); lookAhead(); perf.time("game", performance.now() - t0); }   // (ONLINE: a frame waits for the friend's buttons)
+    if (online) online.stalled(now);
     if (!phone || phone.allowDraw(now)) { const t0 = performance.now(); draw(acc / STEP); perf.time("draw", performance.now() - t0); perf.frame("view"); }   // (BATTERY saver: at most 60 pictures a second)
     if (hd) { const dt = now - (hdLast || now); hdLast = now; hdDt = hdDt * 0.9 + Math.min(dt, 100) * 0.1; hd.struggling = hdDt > 24; }   // below ~40 fps the HD art waits while the screen moves
     if (now - fps.t >= 1000) { $("fps").textContent = view3d ? `game ${fps.n} · view ${fps.r} fps` + (turbo ? " (turbo)" : "") : fps.n + " fps" + (turbo ? " (turbo)" : ""); fps.n = 0; fps.r = 0; fps.t = now; }
@@ -370,7 +388,8 @@ const netMode = () => { const v = netChoice(); return v === "even" || v === "ori
 // The JS port is the only way to play (0.35.67): the original code (CODE: ROM) is kept for the automated tests only
 // (navigator.webdriver: Playwright), many of which start from saved machine states that the port can't load.
 const ROM_FOR_TESTS = typeof navigator !== "undefined" && !!navigator.webdriver;
-const portMode = () => { if (!ROM_FOR_TESTS) return "port"; const h = location.hash.slice(1), sel = $("engine") && $("engine").value, m = h === "port" || h === "portall" || q.has("port") ? "port" : sel || "rom"; return m === "rom" && (physicsMode() !== "classic" || netChoice() === "even") ? "port" : m; };
+const portMode = () => { if (!ROM_FOR_TESTS || onlineP) return "port";   // (ONLINE: always the port)
+  const h = location.hash.slice(1), sel = $("engine") && $("engine").value, m = h === "port" || h === "portall" || q.has("port") ? "port" : sel || "rom"; return m === "rom" && (physicsMode() !== "classic" || netChoice() === "even") ? "port" : m; };
 if (!ROM_FOR_TESTS && $("engine")) { $("engine").value = "port"; $("engine").disabled = true; }   // port only: no engine choice
 if ($("engine")) {
   const saved = stored("mt-engine");
@@ -410,8 +429,25 @@ async function loadRom(buf) {
   await creator.ready;                         // bundled opponent mods (web/mods) are fetched
   creator.prepare(bytes);                      // the player's look (web/js/look) patches the ROM copy before the machine is built
   raSnap = null;
+  let joined = null;
+  if (onlineP) {                                // ONLINE: the session first (the friend joining: the host's settings before the machine)
+    onlineUi = onlineChip(leaveOnline);
+    online = new OnlineSession(onlineP, q, { romHash, ui: onlineUi }); window.__online = online;   // (tests)
+    try {
+      await online.open();
+      if (!online.isHost) {
+        joined = await online.handshake();
+        for (const k of ["physics", "net", "cross", "tourlen", "plus"]) if (joined.settings[k] != null) q.set(k, joined.settings[k]);
+      }
+    } catch (e) { onlineUi.status("ONLINE · " + e.message, "stop"); online.stopped = e.message; return; }
+  }
   if (portMode() !== "rom") { port = await makePort(bytes); gb = port.gb; portError = null; modes.apply(); }
   else gb = new GBC(bytes, { sampleRate: 44100, audio: true });
+  if (online) {                                 // (ONLINE: what the page adds to the game is the host's, or nothing)
+    Object.assign(port, { rematchOn: false, machineCourt: null, minigameHard: false, extraMatchExp: null, partnerCmd: null, remote: online.remotePad });
+    if (joined) port.rules = joined.settings.rules || null;
+    tour.on = false;
+  }
   creator.attach(gb);
   drawnFrame = -1;
   setToastHold(() => hd && hd.textOn && hd.lines.some(l => l.text && l.text.trim().length > 8));                    // (tour notes wait for a message window to close)
@@ -421,13 +457,31 @@ async function loadRom(buf) {
   // functions; without it everything is interpreted (same results, see web/tests/recomp_vs_interp.mjs)
   if (port) $("romstatus").textContent += ` · JS port (${port.hooks.size} routines${port.trap === true ? ", no Game Boy CPU" : ""})`;
   else try { const mod = await import("../gen/game.js"); const T = {}; mod.install(T); gb.installRecomp(T); if (mod.HRAM_SIG) gb.exec.setHramSig(mod.HRAM_SIG); recomp = { T, sig: mod.HRAM_SIG }; $("romstatus").textContent += " · recompiled code"; } catch (e) { $("romstatus").textContent += " · interpreter"; }
-  loadSave();
+  if (joined) gb.mem.sram.set(joined.sram.subarray(0, gb.mem.sram.length)); else loadSave();   // (ONLINE: the friend plays on the host's save)
   if (port) { session.start(gb, recMeta()); sessionLook = creator.look; analogAt = "stick:"; }
   $("loader").hidden = true; cv.focus();
   showHud(!document.body.classList.contains("touch"));            // phones: the bar stays hidden until Back
   if (document.body.classList.contains("touch")) hint(window.__device && window.__device.desktop ? "Press Esc for the menu" : "Swipe back (or press Back) for the menu");   // (desktop: MTenn3D.exe, tools/winapp)
   const m3 = q.has("vox") ? "vox" : q.has("3d") ? "3d" : q.has("2d") ? "off" : (stored("mt-3d") || "vox");   // remembered view mode; VOX (voxel sprites) by default
   if (m3 === "3d" || m3 === "vox") setView3d(true, m3 === "vox");
+  if (online) for (const id of ONLINE_HIDDEN) { const el = $(id); if (el) el.hidden = true; }   // (ONLINE: no setting that changes the play on one phone only)
+  if (online && !online.stopped) {              // ONLINE: the host waits for the friend here; then both start at frame 0
+    try {
+      if (online.isHost) await online.handshake(() => ({ settings: { physics: physicsMode(), net: netMode(), cross: crossMode(), tourlen: tourLen(), plus: plusOn() ? "on" : "off", rules: port.rules || null }, sram: gb.mem.sram.slice() }));
+      online.begin(); last = 0; acc = 0;
+    } catch (e) { onlineUi.status("ONLINE · " + e.message, "stop"); online.stopped = e.message; }
+  }
+}
+// ONLINE: the settings that change how the game plays (not just how it looks) are out of the OPTIONS menu during a session: one phone
+// changing them would take the two games apart
+const ONLINE_HIDDEN = ["physbtn", "netbtn", "crossbtn", "plusbtn", "learnbtn", "forgetbtn", "tourlenbtn", "runaheadbtn", "stickfeelbtn", "tourplusbtn", "tourbtn",
+  "lookbtn", "menubtn", "courtbtn", "kitbtn", "mode-sets", "mode-games", "mode-tiebreak", "mode-noAd", "mode-rematch", "mode-machine", "mode-mgHard", "mode-partner", "mode-fastText", "reset"];
+addEventListener("pagehide", () => { if (online) online.leave(); });   // (the friend hears at once)
+// ONLINE: LEAVE (the chip): the session ends for both, and this phone goes back to playing on its own
+function leaveOnline() {
+  if (online) online.leave();
+  const u = new URL(location.href); for (const k of ["online", "room", "menu", "learn", "look", "physics", "net", "cross", "tourlen", "plus"]) u.searchParams.delete(k);
+  location.href = u.href;
 }
 
 // ---- input wiring ----
@@ -479,6 +533,12 @@ $("forgetrom").addEventListener("click", () => romStore("readwrite", s => s.dele
   b.addEventListener("pointerdown", () => { flushSave(); location.href = "picker.html" + location.search + location.hash; });
   $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b);
 }
+// ONLINE: play a friend on another phone (online.js): HOST / JOIN; in a session the button leaves it
+{
+  const b = document.createElement("span"); b.className = "k"; b.id = "onlinebtn"; b.textContent = onlineP ? "LEAVE ONLINE" : "ONLINE"; b.title = "play a friend on another phone";
+  b.addEventListener("pointerdown", () => { if (onlineP) leaveOnline(); else { flushSave(); onlinePanel(); } });
+  $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b);
+}
 const perf = new PerfHud($("hud"), () => voxel);   // PERF (menu bar, OPTIONS > PICTURE)
 $("reset").addEventListener("click", () => { if (port) { location.reload(); return; } if (gb) { settle(); gb.reset(); rec.event("reset"); } });
 // ---- session recording: REC starts (the machine state now + every frame's buttons), REC again stops and saves
@@ -507,7 +567,7 @@ $("rec").addEventListener("pointerdown", () => {
 setInterval(() => { if (!recording()) return; const t = rec.on ? rec.seconds : (session.n - portRecFrom) / 60; $("rec").textContent = "REC " + Math.floor(t / 60) + ":" + String(Math.floor(t % 60)).padStart(2, "0"); }, 1000);
 addEventListener("visibilitychange", () => { if (document.hidden && recording()) saveRecording(true); });
 window.__stopRec = () => { if (recording()) saveRecording(true); };   // called by the Android wrapper from onPause
-replay = new InstantReplay({ gb: () => gb, voxel: () => voxel, canRun: () => view3d && !!voxel && voxel.mode === "3d", isPort: () => !!port, settle });
+if (!onlineP) replay = new InstantReplay({ gb: () => gb, voxel: () => voxel, canRun: () => view3d && !!voxel && voxel.mode === "3d", isPort: () => !!port, settle });
 phone = attachPhone($("hud"), { gb: () => gb, voxel: () => voxel, view3d: () => view3d, redraw: () => { renderedAt = -1; drawnFrame = -1; if (gb) draw(1); },
   saveState: () => { settle(); return saveState(gb); }, loadState: st => { raSnap = null; loadState(gb, st); drawnFrame = -1; }, romHash: () => romHash, hint, isPort: () => !!port });
 $("view3d").addEventListener("pointerdown", () => { if (!gb) return; const vox = voxel && voxel.voxelSprites; setView3d(!view3d || !vox, view3d && !vox); });   // off -> cards -> voxels -> off
@@ -697,7 +757,7 @@ $("engbtn").addEventListener("pointerdown", () => {
   location.reload();
 });
 // a private build bundles the ROM; a shared one doesn't, so the app starts with the ROM the player picked last time
-fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(loadRom)
+fetch("../rom/mario_tennis.gbc").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(buf => loadRom(buf).catch(e => { console.error("loadRom", e); $("romstatus").textContent = "could not start: " + e.message; }))
   .catch(() => { if (navigator.userAgent.includes("MarioTennisWrapper")) romStore("readonly", s => s.get("rom")).then(b => { if (b && !gb) loadRom(b.buffer.slice(0)); }).catch(() => {}); });
 // port only: the buttons for what needs the original code (the engine switch, run-ahead, the quick save slots) hidden
 if (!ROM_FOR_TESTS) for (const id of ["engbtn", "runaheadbtn", "qsave1", "qsave2", "qload1", "qload2"]) { const e = document.getElementById(id); if (e) e.hidden = true; }
