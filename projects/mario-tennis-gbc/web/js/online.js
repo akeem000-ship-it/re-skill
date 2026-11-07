@@ -12,7 +12,7 @@
 // a game setting). Every 120 frames both send the picture's hash: a difference stops the session ("out of step").
 // What can't be the same on both phones is off in an online session (full.js): the menu ball wheel, mods and created looks, Tour+'s
 // extras, the partner commands, rematch, the analog stick, instant replay, turbo, and no save is written on either phone.
-export const NET_VERSION = "0.36.26";                                  // both phones must run the same build (release.sh keeps it)
+export const NET_VERSION = "0.36.27";                                  // both phones must run the same build (release.sh keeps it)
 const PREFIX = "mtenn3d-", CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 export function onlineParams(q) {
   const role = q.get("online"); if (role !== "host" && role !== "join") return null;

@@ -67,6 +67,31 @@ if (ATTRACT) {
   addEventListener("message", e => { if (e.data && e.data.golfPreview === "pause") paused = !!e.data.on; });
 }
 const atTitle = () => !!(game && game.w && game.w.vram && Golf3D.taskOn(game.w, 0x40, 0x4D1D));
+// ATTRACT music (MTenn3D's game picker sends {golfPreview: "music", on} as the golf half is chosen or left): the title's song (sound $24,
+// TitleScreen 40:4069) on a sound driver of its own, beside the silent game; buffers queued on the audio clock, a quarter second ahead,
+// so its tempo is the driver's own whatever the page's frame rate. Off: faded and the audio suspended (on again: it carries on)
+const tm = { on: false, drv: null, apu: null, ctx: null, gain: null, next: 0 };
+function titleMusic(on) {
+  tm.on = on;
+  if (!rom) return;
+  if (on) {
+    if (!tm.ctx) { try { tm.ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: RATE }); tm.gain = tm.ctx.createGain(); tm.gain.connect(tm.ctx.destination); } catch (e) { return; } }
+    if (!tm.drv) { tm.drv = new SoundDriver(rom); tm.apu = new SynthAPU(RATE); tm.apu.writeAll(tm.drv.init()); tm.apu.writeAll(tm.drv.playSound(0x24)); }
+    tm.ctx.resume(); tm.gain.gain.cancelScheduledValues(tm.ctx.currentTime); tm.gain.gain.setTargetAtTime(0.9, tm.ctx.currentTime, 0.05);
+  } else if (tm.ctx) { tm.gain.gain.setTargetAtTime(0, tm.ctx.currentTime, 0.08); setTimeout(() => { if (!tm.on && tm.ctx) tm.ctx.suspend(); }, 400); }
+}
+function titleMusicFrames() {
+  if (!tm.on || !tm.drv || !tm.ctx || tm.ctx.state !== "running") return;
+  if (tm.next < tm.ctx.currentTime) tm.next = tm.ctx.currentTime + 0.03;
+  while (tm.next < tm.ctx.currentTime + 0.25) {
+    const n = Math.ceil(CHUNK * DOTS_PER_FRAME / tm.apu.samplesPer) + 4, L = new Float32Array(n), R = new Float32Array(n); let at = 0;
+    for (let i = 0; i < CHUNK; i++) { tm.apu.writeAll(tm.drv.frame()); at = tm.apu.renderFrame(L, R, at); }
+    const buf = tm.ctx.createBuffer(2, at, RATE); buf.copyToChannel(L.subarray(0, at), 0); buf.copyToChannel(R.subarray(0, at), 1);
+    const src = tm.ctx.createBufferSource(); src.buffer = buf; src.connect(tm.gain); src.start(tm.next); tm.next += at / RATE;
+  }
+}
+if (ATTRACT) addEventListener("message", e => { if (e.data && e.data.golfPreview === "music") titleMusic(!!e.data.on); });
+window.__titleMusic = tm;                          // (tests)
 // ---- (end ATTRACT) ----
 
 async function sha1Hex(bytes) {
@@ -313,6 +338,7 @@ function draw() {
 }
 function loop(now) {
   requestAnimationFrame(loop);
+  if (ATTRACT) titleMusicFrames();                 // (ATTRACT music: the picker's golf half chosen)
   if (ATTRACT && !ATTRACT_TITLE && game && (game.done || game.error)) newRound();   // (ATTRACT play: never stopped)
   if (!game || game.done || game.error) { last = 0; return; }
   if (!last) last = now;
@@ -353,6 +379,7 @@ async function start(buffer) {
   if (sha && sha !== EXPECTED_SHA1) $("status").textContent = "unexpected ROM (SHA-1 " + sha.slice(0, 8) + "…); running it anyway";
   rom = bytes;
   useRom(rom);
+  if (tm.on) titleMusic(true);                   // (ATTRACT music asked for before the ROM was here)
   newRound();
   $("loader").hidden = true;
   canvas.focus();

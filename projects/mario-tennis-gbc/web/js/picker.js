@@ -35,10 +35,13 @@ let sel = 0, split = 0.6, W = 0, H = 0, dpr = 1, dirty = true, shake = 0, note =
 const golf = { el: $("golf"), live: false, gone: false, held: null };
 addEventListener("message", e => {
   const m = e.data && e.data.golfPreview; if (!m || e.source !== (golf.el && golf.el.contentWindow)) return;
-  if (m === "ready") golf.live = true; else if (m === "away") golf.live = false; else if (m === "norom") { golf.gone = true; golf.live = false; golf.el.remove(); }
+  if (m === "ready") { golf.live = true; songFor(); } else if (m === "away") golf.live = false; else if (m === "norom") { golf.gone = true; golf.live = false; golf.el.remove(); }
   if (golf.el) golf.el.classList.toggle("live", golf.live); dirty = true;
 });
 setTimeout(() => { if (golf.el && !golf.gone) golf.el.src = GAMES[1].url + "?attract&g3d=on"; }, 1200);   // (after the rally has started)
+// the music of the game chosen: Mario Tennis's title song here (startMusic), Mario Golf's in its preview (play.js ATTRACT music)
+function golfMusic(on) { if (!golf.el || golf.gone) return; try { golf.el.contentWindow.postMessage({ golfPreview: "music", on }, "*"); } catch (e) { /* not loaded */ } }
+function songFor() { golfMusic(sel === 1 && !mute); if (music.gain && actx) music.gain.gain.setTargetAtTime(sel === 0 ? 0.8 : 0, actx.currentTime, 0.08); }
 function golfHold(on) { if (golf.held === on || !golf.el || golf.gone) return; golf.held = on; try { golf.el.contentWindow.postMessage({ golfPreview: "pause", on }, "*"); } catch (e) { /* not loaded */ } }
 
 // ---------------- the picture of both halves (2D, over the live view) ----------------
@@ -234,6 +237,7 @@ async function startMusic(rom, state) {
     const P = new GamePort(rom, { ...entry, hooks: program.hooks }, { audio: true, sampleRate: a.sampleRate, noCpu: true });
     loadState(P.gb, state); P.ime = false;                               // (only the driver runs: no interrupts, no game)
     P.callRom(0, 0x3297, { a: 0x02 });                                   // PlaySound BGM_TITLE_SCREEN
+    P.ime = false;                                                       // (PlaySound ends with ei: the VBlank handler would tick the driver a second time each frame, the song at double speed)
     Object.assign(music, { P, node, gain, acc: 0, last: performance.now() });
   } catch (e) { console.warn("title music", e); music.failed = true; }
   finally { music.starting = false; }
@@ -246,7 +250,7 @@ function musicFrames(now) {
     const n = m.P.gb.apu.drain(m.buf); if (n && actx && actx.state === "running") m.node.port.postMessage(m.buf.slice(0, n));
   }
 }
-function musicFade() { if (music.gain && actx) music.gain.gain.setTargetAtTime(0, actx.currentTime, 0.08); }
+function musicFade() { if (music.gain && actx) music.gain.gain.setTargetAtTime(0, actx.currentTime, 0.08); golfMusic(false); }
 addEventListener("visibilitychange", () => { if (!actx) return; if (document.hidden) actx.suspend(); else if (!mute) actx.resume(); });
 const unlock = () => { const a = audio(); if (a && a.state === "suspended") a.resume(); if (!music.P && demo.list.length && demo.rom) startMusic(demo.rom, demo.list[0].state); };
 addEventListener("pointerdown", unlock, true); addEventListener("keydown", unlock, true);
@@ -263,7 +267,7 @@ const sfx = {
   hit: () => { if (actx && actx.state === "running") tone(320, 120, 0.09, 0.05, "sine"); },   // (only once sound is on: never starts it)
 };
 // ---------------- choosing ----------------
-function choose(i) { if (i === sel) return; sel = i; note = ""; dirty = true; sfx.move(); }
+function choose(i) { if (i === sel) return; sel = i; note = ""; dirty = true; sfx.move(); songFor(); }
 function play() {
   if (!GAMES[sel].ready) { note = "Mario Golf is still being decompiled: soon"; shake = performance.now(); dirty = true; sfx.no(); return; }
   const G = GAMES[sel]; sfx.play(); musicFade(); setTimeout(() => { location.href = G.url + (G.id === "tennis" ? location.search + location.hash : ""); }, 260);
