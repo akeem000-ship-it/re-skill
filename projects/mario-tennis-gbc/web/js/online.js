@@ -12,19 +12,23 @@
 // a game setting). Every 120 frames both send the picture's hash: a difference stops the session ("out of step").
 // What can't be the same on both phones is off in an online session (full.js): the menu ball wheel, mods and created looks, Tour+'s
 // extras, the partner commands, rematch, the analog stick, instant replay, turbo, and no save is written on either phone.
-export const NET_VERSION = "0.36.25";                                  // both phones must run the same build (release.sh keeps it)
+export const NET_VERSION = "0.36.26";                                  // both phones must run the same build (release.sh keeps it)
 const PREFIX = "mtenn3d-", CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 export function onlineParams(q) {
   const role = q.get("online"); if (role !== "host" && role !== "join") return null;
-  return { role: role === "host" ? "host" : "guest", room: (q.get("room") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8) };
+  return { role: role === "host" ? "host" : "guest", room: (q.get("room") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8),
+    public: role === "host" && q.get("public") === "1", name: (q.get("name") || "").slice(0, 12) };   // (public: listed in the lobby, lobby.js)
 }
 export const newCode = () => Array.from(crypto.getRandomValues(new Uint8Array(5)), b => CODE_CHARS[b % CODE_CHARS.length]).join("");
 const b64 = u8 => { let s = ""; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return btoa(s); };
 const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-function loadPeerJs() {
+export function loadPeerJs() {
   if (window.Peer) return Promise.resolve(window.Peer);
   return new Promise((ok, fail) => { const s = document.createElement("script"); s.src = new URL("./vendor/peerjs.min.js", import.meta.url).href; s.onload = () => ok(window.Peer); s.onerror = () => fail(new Error("could not load the connection library")); document.head.appendChild(s); });
 }
+
+// the broker: PeerJS's public one, or ?peerhost=&peerport=&peerpath=&peersecure=1 another (the tests run one)
+export const peerOptions = q => (q.get("peerhost") ? { host: q.get("peerhost"), port: +(q.get("peerport") || 9000), path: q.get("peerpath") || "/", secure: q.get("peersecure") === "1" } : {});
 
 export class OnlineSession {
   // q: the page's URLSearchParams; romHash: this phone's game; ui: { status(text, kind) } (the chip over the game)
@@ -38,13 +42,12 @@ export class OnlineSession {
   get isHost() { return this.role === "host"; }
   // ---- the connection ----
   async open() {
-    const Peer = await loadPeerJs(), q = this.q;
-    const opts = q.get("peerhost") ? { host: q.get("peerhost"), port: +(q.get("peerport") || 9000), path: q.get("peerpath") || "/", secure: q.get("peersecure") === "1" } : {};
-    this.ui.status(this.isHost ? `ONLINE · your code: ${this.room} · waiting for your friend to join…` : `ONLINE · joining ${this.room}…`, "wait");
+    const Peer = await loadPeerJs(), q = this.q, opts = peerOptions(q);
+    this.ui.status(this.isHost ? (this.public ? `ONLINE · your game is in the lobby (code ${this.room}) · waiting for someone to join…` : `ONLINE · your code: ${this.room} · waiting for your friend to join…`) : `ONLINE · joining ${this.room}…`, "wait");
     const peer = this.peer = new Peer(this.isHost ? PREFIX + this.room : undefined, { ...opts, debug: 0 });
     const conn = await new Promise((ok, fail) => {
       peer.on("error", e => fail(new Error(e.type === "unavailable-id" ? "that code is in use: host again for a new one" : e.type === "peer-unavailable" ? "no game with that code (check it, or ask your friend to host again)" : (e.message || e.type))));
-      if (this.isHost) peer.on("connection", c => { if (this.conn) { c.close(); return; } c.on("open", () => ok(c)); });
+      if (this.isHost) { peer.on("open", () => this.onListening && this.onListening()); peer.on("connection", c => { if (this.conn) { c.close(); return; } c.on("open", () => ok(c)); }); }   // (onListening: full.js lists a public game then)
       else peer.on("open", () => { const c = peer.connect(PREFIX + this.room, { reliable: true, serialization: "json" }); c.on("open", () => ok(c)); });
     });
     this.conn = conn; this.inbox = []; this.waiters = [];
@@ -76,8 +79,8 @@ export class OnlineSession {
   // ---- the handshake: host -> { setup }, guest -> { ready }, host -> { go } ----
   // host: settings() gives its settings and save, once the guest is there. Returns { settings, sram } (the guest: the host's)
   async handshake(settings) {
-    this.send({ t: "hello", v: NET_VERSION, rom: this.romHash, role: this.role });
-    const hello = await this.next("hello");
+    this.send({ t: "hello", v: NET_VERSION, rom: this.romHash, role: this.role, name: this.name || onlineName() });
+    const hello = await this.next("hello"); this.peerName = String(hello.name || "your friend").slice(0, 12);
     if (hello.v !== NET_VERSION) throw new Error(`your friend has version ${hello.v}, you have ${NET_VERSION}: update both apps`);
     if (hello.rom !== this.romHash) throw new Error("your friend's game file is a different one (both need Mario Tennis USA)");
     if (this.isHost) {
@@ -103,7 +106,7 @@ export class OnlineSession {
   begin() {
     for (let f = 0; f < this.delay; f++) { this.local.set(f, this.isHost ? [0, 0] : 0); this.remote.set(f, this.isHost ? 0 : [0, 0]); }
     this.started = true; this.waitingSince = 0;
-    this.ui.status(`ONLINE · ${this.isHost ? "you host" : "you play the opponent in exhibition matches"} · ping ${Math.round(this.rtt)} ms`, "ok");
+    this.ui.status(`ONLINE · vs ${this.peerName} · ${this.isHost ? "you host" : "you play the opponent in exhibition matches"} · ping ${Math.round(this.rtt)} ms`, "ok");
   }
   // ---- the frames ----
   canStep() { return this.started && !this.stopped && this.remote.has(this.F); }
@@ -152,22 +155,61 @@ export function onlineChip(onLeave) {
   return { status(t, kind) { text.textContent = t; el.style.opacity = "1"; el.style.borderLeft = `4px solid ${kind === "ok" ? "#3ccf6a" : kind === "stop" ? "#ff5a5a" : "#ffcf3a"}`; clearTimeout(fade); if (kind === "ok") fade = setTimeout(() => { el.style.opacity = ".55"; }, 4000); }, el };
 }
 
-// the ONLINE panel (the button bar's ONLINE): HOST, or JOIN with a code
-export function onlinePanel() {
-  const d = document.createElement("div");
+// the ONLINE panel (the button bar's ONLINE): your name, the lobby's OPEN GAMES (tap one to join it), HOST A PUBLIC GAME (it appears there for
+// everyone), HOST WITH A CODE (only whoever you give the code to), or JOIN with a friend's code. q: the page's URLSearchParams (a test's broker)
+export const NAME_KEY = "mt-online-name";
+export function onlineName() {
+  try { const n = localStorage.getItem(NAME_KEY); if (n) return n; } catch (e) { /* private mode */ }
+  return "Player " + (10 + Math.floor(Math.random() * 90));
+}
+export function onlinePanel(q = new URLSearchParams(location.search)) {
+  const d = document.createElement("div"); d.id = "onlinepanel";
   d.style.cssText = "position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:rgba(5,8,18,.72)";
-  d.innerHTML = `<div style="width:min(420px,92vw);padding:20px 22px;border-radius:18px;background:#141a33;border:3px solid #ffcf3a;color:#f0f2fa;font:16px Itim,system-ui,sans-serif">
-    <div style="font:700 22px system-ui,sans-serif;color:#ffcf3a;margin-bottom:6px">PLAY ONLINE</div>
-    <div style="opacity:.85;margin-bottom:14px">One of you hosts and gives the other the code. The host picks EXHIBITION and a match against the computer: the friend plays that opponent.</div>
-    <button data-a="host" style="width:100%;padding:12px;margin-bottom:10px;border:0;border-radius:12px;background:#ffcf3a;color:#141a33;font:700 17px system-ui,sans-serif">HOST A GAME</button>
-    <div style="display:flex;gap:8px"><input maxlength="8" placeholder="CODE" autocapitalize="characters" style="flex:1;min-width:0;padding:11px;border-radius:12px;border:2px solid #555c80;background:#0d1124;color:#fff;font:700 18px system-ui,sans-serif;letter-spacing:.15em;text-transform:uppercase">
-    <button data-a="join" style="padding:11px 16px;border:0;border-radius:12px;background:#3c82eb;color:#fff;font:700 16px system-ui,sans-serif">JOIN</button></div>
-    <button data-a="close" style="margin-top:14px;width:100%;padding:9px;border:1px solid #555c80;border-radius:12px;background:transparent;color:#ccd;font:15px system-ui,sans-serif">CLOSE</button></div>`;
-  const go = (role, room) => { const u = new URL(location.href); u.searchParams.set("online", role); if (room) u.searchParams.set("room", room); else u.searchParams.delete("room"); location.href = u.href; };
-  d.addEventListener("pointerdown", e => { if (e.target === d) d.remove(); });
-  d.querySelector('[data-a="host"]').addEventListener("click", () => go("host"));
-  d.querySelector('[data-a="join"]').addEventListener("click", () => { const c = d.querySelector("input").value.toUpperCase().replace(/[^A-Z0-9]/g, ""); if (c.length >= 4) go("join", c); });
-  d.querySelector('[data-a="close"]').addEventListener("click", () => d.remove());
-  document.body.appendChild(d); setTimeout(() => d.querySelector("input").focus(), 50);
+  const B = (bg, fg) => `border:0;border-radius:12px;background:${bg};color:${fg};font:700 15px system-ui,sans-serif`;
+  d.innerHTML = `<div style="width:min(460px,94vw);max-height:92dvh;overflow:auto;box-sizing:border-box;padding:16px 18px;border-radius:18px;background:#141a33;border:3px solid #ffcf3a;color:#f0f2fa;font:15px Itim,system-ui,sans-serif">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><div style="font:700 21px system-ui,sans-serif;color:#ffcf3a;flex:1">PLAY ONLINE</div>
+      <label style="opacity:.8">Your name <input data-a="name" maxlength="12" style="width:8.5em;padding:6px 8px;border-radius:9px;border:2px solid #555c80;background:#0d1124;color:#fff;font:700 14px system-ui,sans-serif"></label></div>
+    <div style="display:flex;align-items:baseline;gap:8px"><b style="color:#ffcf3a">OPEN GAMES</b><small data-a="lstat" style="opacity:.7">connecting to the lobby…</small></div>
+    <div data-a="rooms" style="margin:6px 0 12px;display:flex;flex-direction:column;gap:6px;min-height:52px"></div>
+    <div style="display:flex;gap:8px;margin-bottom:8px"><button data-a="public" style="flex:1;padding:11px;${B("#ffcf3a", "#141a33")}">HOST A PUBLIC GAME</button>
+      <button data-a="host" style="flex:1;padding:11px;${B("#2c3456", "#fff")}">HOST WITH A CODE</button></div>
+    <div style="display:flex;gap:8px"><input data-a="code" maxlength="8" placeholder="FRIEND'S CODE" autocapitalize="characters" style="flex:1;min-width:0;padding:10px;border-radius:12px;border:2px solid #555c80;background:#0d1124;color:#fff;font:700 16px system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase">
+      <button data-a="join" style="padding:10px 16px;${B("#3c82eb", "#fff")}">JOIN</button></div>
+    <div style="opacity:.75;font-size:13px;margin-top:10px">The host picks EXHIBITION and a match against the computer: the player who joins plays that opponent.</div>
+    <button data-a="close" style="margin-top:10px;width:100%;padding:8px;border:1px solid #555c80;border-radius:12px;background:transparent;color:#ccd;font:15px system-ui,sans-serif">CLOSE</button></div>`;
+  const $ = a => d.querySelector(`[data-a="${a}"]`), nameEl = $("name");
+  nameEl.value = onlineName();
+  const name = () => { const n = nameEl.value.trim().slice(0, 12) || "Player"; try { localStorage.setItem(NAME_KEY, n); } catch (e) { /* private mode */ } return n; };
+  let lobby = null;
+  const go = (role, room, extra = {}) => {
+    const u = new URL(location.href); u.searchParams.set("online", role);
+    if (room) u.searchParams.set("room", room); else u.searchParams.delete("room");
+    for (const [k, v] of Object.entries({ name: name(), ...extra })) u.searchParams.set(k, v);
+    if (lobby) lobby.stop(); location.href = u.href;
+  };
+  const close = () => { if (lobby) lobby.stop(); d.remove(); };
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const show = (rooms, players) => {
+    const box = $("rooms"); box.innerHTML = "";
+    $("lstat").textContent = `${players} ${players === 1 ? "player" : "players"} in the lobby`;
+    if (!rooms.length) { box.innerHTML = `<div style="opacity:.7;padding:10px 4px">No open games right now. Host a public game and it shows here for everyone.</div>`; return; }
+    for (const r of rooms) {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;background:#1d2547";
+      row.innerHTML = `<div style="flex:1;min-width:0"><b>${esc(r.name)}</b><div style="opacity:.7;font-size:13px">${esc(r.rules || "exhibition")}</div></div><button style="padding:8px 14px;${B("#3ccf6a", "#0d1124")}">JOIN</button>`;
+      row.querySelector("button").addEventListener("click", () => go("join", r.code));
+      box.appendChild(row);
+    }
+  };
+  show([], 1); $("lstat").textContent = "connecting to the lobby…";
+  import("./lobby.js").then(({ Lobby }) => { if (!d.isConnected) return; lobby = new Lobby(q, { name: name(), onRooms: show, onStatus: t => { if (t !== "in the lobby") $("lstat").textContent = t; } }); window.__lobby = lobby; return lobby.start(); })
+    .catch(e => { $("lstat").textContent = "the lobby is unreachable: " + e.message; });
+  d.addEventListener("pointerdown", e => { if (e.target === d) close(); });
+  $("public").addEventListener("click", () => go("host", null, { public: "1" }));
+  $("host").addEventListener("click", () => go("host"));
+  $("join").addEventListener("click", () => { const c = $("code").value.toUpperCase().replace(/[^A-Z0-9]/g, ""); if (c.length >= 4) go("join", c); });
+  $("close").addEventListener("click", close);
+  addEventListener("pagehide", () => { if (lobby) lobby.stop(); });
+  document.body.appendChild(d);
   return d;
 }

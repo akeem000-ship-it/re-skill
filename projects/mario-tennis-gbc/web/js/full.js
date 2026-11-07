@@ -433,8 +433,15 @@ async function loadRom(buf) {
   if (onlineP) {                                // ONLINE: the session first (the friend joining: the host's settings before the machine)
     onlineUi = onlineChip(leaveOnline);
     online = new OnlineSession(onlineP, q, { romHash, ui: onlineUi }); window.__online = online;   // (tests)
+    let lobby = null;
+    if (online.public) online.onListening = async () => {     // (a public game: in the lobby's OPEN GAMES until someone joins, lobby.js)
+      try { const { Lobby } = await import("./lobby.js"); lobby = await new Lobby(q, { name: onlineP.name }).start(); window.__lobby = lobby;
+        lobby.announce({ code: online.room, name: onlineP.name || "Player", rules: `${PHYSICS_LABEL[physicsMode()]} physics${plusOn() ? " · PLAY+" : ""}` }); }
+      catch (e) { onlineUi.status("ONLINE · the lobby is unreachable: give your friend the code " + online.room, "wait"); }
+    };
     try {
       await online.open();
+      if (lobby) lobby.stop();                    // (someone joined: out of the list)
       if (!online.isHost) {
         joined = await online.handshake();
         for (const k of ["physics", "net", "cross", "tourlen", "plus"]) if (joined.settings[k] != null) q.set(k, joined.settings[k]);
@@ -480,7 +487,7 @@ addEventListener("pagehide", () => { if (online) online.leave(); });   // (the f
 // ONLINE: LEAVE (the chip): the session ends for both, and this phone goes back to playing on its own
 function leaveOnline() {
   if (online) online.leave();
-  const u = new URL(location.href); for (const k of ["online", "room", "menu", "learn", "look", "physics", "net", "cross", "tourlen", "plus"]) u.searchParams.delete(k);
+  const u = new URL(location.href); for (const k of ["online", "room", "public", "name", "menu", "learn", "look", "physics", "net", "cross", "tourlen", "plus"]) u.searchParams.delete(k);
   location.href = u.href;
 }
 
@@ -536,7 +543,7 @@ $("forgetrom").addEventListener("click", () => romStore("readwrite", s => s.dele
 // ONLINE: play a friend on another phone (online.js): HOST / JOIN; in a session the button leaves it
 {
   const b = document.createElement("span"); b.className = "k"; b.id = "onlinebtn"; b.textContent = onlineP ? "LEAVE ONLINE" : "ONLINE"; b.title = "play a friend on another phone";
-  b.addEventListener("pointerdown", () => { if (onlineP) leaveOnline(); else { flushSave(); onlinePanel(); } });
+  b.addEventListener("pointerdown", () => { if (onlineP) leaveOnline(); else { flushSave(); onlinePanel(q); } });
   $("hud").appendChild(document.createTextNode(" ")); $("hud").appendChild(b);
 }
 const perf = new PerfHud($("hud"), () => voxel);   // PERF (menu bar, OPTIONS > PICTURE)
