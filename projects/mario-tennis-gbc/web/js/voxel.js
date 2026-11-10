@@ -12,6 +12,7 @@
 //  * everything else (title, menus, mini-games): the BG, window and sprite layers are stacked at
 //    different depths and a gently swaying camera gives them parallax.
 // Sprites are textured cards or, in voxel mode, one lit cube per opaque pixel.
+import { hdPicture, hdRect, teamColour } from "./look/hdpack.js";   // "Sprites: HD": hero frames redrawn by an HD sprite pack
 import { project } from "./camera.js";
 import { courtTilemaps, courtImage, courtIndexMap, COURTS } from "./assets.js";
 import { FIELD_OBJECTS } from "./field_objects.js";
@@ -943,11 +944,40 @@ export class Voxel3D {
   // the inflated mesh in voxel mode, else one texture per 8x8 tile
   bodyOf(list, ax, ay, vox = false) {
     if (this.voxelSprites || vox) { const o = this.objectMesh(list); return { mesh: o.mesh, dx: o.x0 + o.w / 2 - ax, up: ay - o.y1, ms: o.ms, gen: this.meshGen || 0, vox }; }
-    if (this.gb.detail && this.gb.detail.enabled) { const q = this.detailCard(list, ax, ay); if (q) return q; }          // "Sprites: Detailed": one 3x card for the whole object
+    if (this.gb.detail && this.gb.detail.enabled) {
+      if (this.gb.detail.hdOn) { const q = this.hdCard(list, ax, ay); if (q) return q; }                                   // "Sprites: HD": a hero frame an HD pack redraws
+      const q = this.detailCard(list, ax, ay); if (q) return q;                                                            // "Sprites: Detailed": one 3x card for the whole object
+    }
     const cards = [];
     for (const sp of list) for (let half = 0; half < sp.h / 8; half++)
       cards.push({ tex: this.spriteTexture(sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half), sp.vb ?? ((sp.attr >> 3) & 1), sp.attr & 7, (sp.attr >> 5) & 1, (sp.attr >> 6) & 1),
                    dx: sp.sx + 4 - ax, up: ay - (sp.sy + (half + 1) * 8) });
+    return { cards, gen: this.texGen || 0 };
+  }
+  // an object holding a hero frame an HD pack has a picture for (look/hdpack.js): the picture as one card (mirrored by its UVs, in
+  // the side's colour), with the object's other sprites as tile cards; the frame's standing-shadow tiles (inside the frame, not its
+  // tiles) are left out: the 3D view draws its own shadow. null when there is no such frame
+  hdCard(list, ax, ay) {
+    const hd = this.gb.detail.hdInstances(list); if (!hd.length) return null;
+    const cache = this.hdPackTex || (this.hdPackTex = new Map()), cards = [], gl = this.gl, mine = new Set();
+    for (const { inst, e } of hd) {
+      const p = hdPicture(e, teamColour(this.objPal(), inst.pal)), R = hdRect(inst, e);
+      let tex = cache.get(p);
+      if (!tex) {
+        if (cache.size >= 200) { for (const t of cache.values()) gl.deleteTexture(t); cache.clear(); }
+        tex = this.texture(p.w, p.h, new Uint8Array(p.data.buffer, p.data.byteOffset, p.data.byteLength), true);
+        gl.generateMipmap(gl.TEXTURE_2D); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); cache.set(p, tex);
+      }
+      cards.push({ tex, dx: R.x + R.w / 2 - ax, up: ay - (R.y + R.h), w: R.w, h: R.h, uv: R.mir ? [1, 0, -1, 1] : undefined });
+      const fw = inst.frame.cols * 8, fh = inst.frame.rows * 8, fx0 = inst.mir ? inst.ox + 1 - fw : inst.ox;
+      mine.add({ x0: fx0, y0: inst.oy, x1: fx0 + fw, y1: inst.oy + fh, tiles: inst.tiles });
+    }
+    const inFrame = (sx, sy) => [...mine].some(m => sx >= m.x0 && sx + 8 <= m.x1 && sy >= m.y0 && sy + 8 <= m.y1);
+    for (const sp of list) for (let half = 0; half < sp.h / 8; half++) {
+      const sy = sp.sy + half * 8; if (inFrame(sp.sx, sy)) continue;
+      cards.push({ tex: this.spriteTexture(sp.tile + (sp.attr & 0x40 ? (sp.h / 8 - 1 - half) : half), sp.vb ?? ((sp.attr >> 3) & 1), sp.attr & 7, (sp.attr >> 5) & 1, (sp.attr >> 6) & 1),
+                   dx: sp.sx + 4 - ax, up: ay - (sy + 8) });
+    }
     return { cards, gen: this.texGen || 0 };
   }
   // the object as one card of a 3x texture (spritedetail.js objectImage), cached by the object's tiles and layout
@@ -967,7 +997,7 @@ export class Voxel3D {
     if (b.mesh) { if (this.voxelSprites || b.vox) this.drawMesh(b.mesh, pm(m4.trs3(X + b.dx * scale, lift + b.up * scale * c, Yw - b.up * scale * s, scale * (b.ms || 1), scale * (b.ms || 1), scale * (b.ms || 1), -tilt)), mvp); return; }
     if (this.voxelSprites) return;
     const yw = this.cardYaw || 0, cy = Math.cos(yw), sy = Math.sin(yw);   // (cardYaw: the cards turned round Y to face a camera circling them)
-    for (const q of b.cards) this.draw(q.tex, pm(m4.trs(X + q.dx * scale * cy, lift + q.up * scale * c, Yw - q.up * scale * s - q.dx * scale * sy, (q.w || 8) * scale, (q.h || 8) * scale, -tilt, yw)), mvp);
+    for (const q of b.cards) this.draw(q.tex, pm(m4.trs(X + q.dx * scale * cy, lift + q.up * scale * c, Yw - q.up * scale * s - q.dx * scale * sy, (q.w || 8) * scale, (q.h || 8) * scale, -tilt, yw)), mvp, q.uv);
   }
   // draws one OAM sprite's tiles relative to an anchor screen point (ax, ay) mapped to world (X, Yw) at height lift
   blitSprite(sp, ax, ay, X, Yw, lift, scale, tilt, mvp) {

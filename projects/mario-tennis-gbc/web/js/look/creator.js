@@ -9,6 +9,7 @@ import { heroPreview, blit, POSES, detailPoses } from "./preview.js";
 import { FACE, FACE_LABEL, normalizeFace } from "./portrait.js";
 import { hdFaceCanvas } from "./hdface.js";
 import { SpriteDetail } from "./spritedetail.js";
+import { loadHDPacks } from "./hdpack.js";
 import { faceColours } from "./faces.js";
 import { lzDecompress } from "./lz.js";
 import { HEROES } from "./build.js";
@@ -59,7 +60,11 @@ export function mountCreator({ hud, keys, pause, onChange }) {
   // "Sprites: Game / Detailed": the characters redrawn at 3x from their own pixels (spritedetail.js); kept per browser, ?sprites=detail|game overrides
   const PLAIN = typeof location !== "undefined" && new URLSearchParams(location.search).get("look") === "plain";   // ONLINE (online.js)
   const SPR_KEY = "mt-sprites", detail = new SpriteDetail();
-  let sprMode = (() => { const q = new URLSearchParams(location.search).get("sprites"); if (q === "detail" || q === "game") return q; try { return localStorage.getItem(SPR_KEY) === "detail" ? "detail" : "game"; } catch (e) { return "game"; } })();
+  // "HD": the detailed sprites, and the hero frames a bundled HD sprite pack redraws (hdpack.js); offered once a pack has loaded, and
+  // the choice when none was made yet
+  const sprQ = new URLSearchParams(location.search).get("sprites"), sprStored = (() => { try { return localStorage.getItem(SPR_KEY); } catch (e) { return null; } })();
+  let sprMode = sprQ === "detail" || sprQ === "game" ? sprQ : sprStored === "detail" ? "detail" : "game", hdReady = false;
+  const sprOn = () => sprMode !== "game";
   let gb = null, open = false, draft = null, hero = "boy", pristine = null, detectAt = 0, onPick = false, offered = false, lastSlot = -1, pressFrames = 0, wasPaused = false;
   let portraitSets = null, inStory = false, seniorUp = true;
   // mods' "from": "senior" characters: their look only outside story mode (the map last walked is not an RPG map) or once a junior
@@ -104,12 +109,17 @@ export function mountCreator({ hud, keys, pause, onChange }) {
   const btn = document.createElement("span"); btn.className = "k"; btn.id = "lookbtn"; btn.textContent = "LOOK"; btn.title = "your player's appearance (hairstyle and colours)";
   hud.appendChild(document.createTextNode(" ")); hud.appendChild(btn);
   const sprBtn = document.createElement("span"); sprBtn.className = "k"; sprBtn.id = "sprbtn"; sprBtn.title = "sprites: the game's own, or redrawn at 3x resolution with outlines, shading and faces with expressions";
-  const showSpr = () => { sprBtn.textContent = "SPRITES: " + (sprMode === "detail" ? "Detailed" : "Game"); sprBtn.classList.toggle("on", sprMode === "detail"); };
-  function setSprites(mode) {
-    sprMode = mode; showSpr(); try { localStorage.setItem(SPR_KEY, mode); } catch (e) { /* private mode */ }
-    mgr.setDetail(mode === "detail"); detail.setEnabled(mode === "detail");
+  const showSpr = () => { sprBtn.textContent = "SPRITES: " + (sprMode === "hd" ? "HD" : sprMode === "detail" ? "Detailed" : "Game"); sprBtn.classList.toggle("on", sprOn()); };
+  function setSprites(mode, keep = true) {
+    sprMode = mode; showSpr(); if (keep) try { localStorage.setItem(SPR_KEY, mode); } catch (e) { /* private mode */ }
+    mgr.setDetail(sprOn()); detail.setEnabled(sprOn()); detail.setHD(mode === "hd");
   }
-  sprBtn.addEventListener("pointerdown", () => setSprites(sprMode === "detail" ? "game" : "detail"));
+  sprBtn.addEventListener("pointerdown", () => setSprites(sprMode === "game" ? "detail" : sprMode === "detail" && hdReady ? "hd" : "game"));
+  loadHDPacks().then(P => {
+    if (!P.size) return; hdReady = true;
+    let first = false; try { first = !localStorage.getItem(SPR_KEY + "-hd"); localStorage.setItem(SPR_KEY + "-hd", "1"); } catch (e) { /* private mode */ }   // (once: a pack's first run turns it on)
+    if (sprQ === "hd" || (!sprQ && (sprStored === "hd" || first))) { if (gb) setSprites("hd", !!first); else { sprMode = "hd"; showSpr(); if (first) try { localStorage.setItem(SPR_KEY, "hd"); } catch (e) { /* private mode */ } } }
+  });
   hud.appendChild(document.createTextNode(" ")); hud.appendChild(sprBtn); showSpr();
   // KIT: Class / Game (remembered, mt-kit; ?kit=on|off): in a tour match your player wears the class's colour (junior green, senior
   // blue, varsity red, the Island Open gold; index.js withKit); the look is rebuilt when a class match starts or ends
@@ -289,10 +299,10 @@ export function mountCreator({ hud, keys, pause, onChange }) {
     // before the machine: apply the stored look to the ROM bytes
     ready,
     // ONLINE (online.js: both phones must play the same game): ?look=plain: the game's own looks, no mods, and nothing changes in play
-    prepare(bytes) { pristine = Uint8Array.from(bytes); portraitSets = portraitKeys(pristine); mgr.prepare(bytes, PLAIN ? normalizeLook({ boy: null, girl: null }) : withMods(load(KEY)), { detail: sprMode === "detail" }); },
+    prepare(bytes) { pristine = Uint8Array.from(bytes); portraitSets = portraitKeys(pristine); mgr.prepare(bytes, PLAIN ? normalizeLook({ boy: null, girl: null }) : withMods(load(KEY)), { detail: sprOn() }); },
     attach(machine) { gb = machine; mgr.attach(gb); gb.modChar = modChar;
       // the hero's 24x24 portrait as the game shows it now (its own, recoloured by the look, or the redrawn one): the VS screen
-      gb.heroPortrait = key => { if (!pristine) return null; const L = mgr.look; return heroPreview(pristine, key === "girl" ? "nina" : "alex", L && L[key], 0, !!(L && L.portraits === "redrawn")).portrait; }; lastSlot = -1; detail.attach(gb, document.getElementById("screen")); detail.setEnabled(sprMode === "detail"); },
+      gb.heroPortrait = key => { if (!pristine) return null; const L = mgr.look; return heroPreview(pristine, key === "girl" ? "nina" : "alex", L && L[key], 0, !!(L && L.portraits === "redrawn")).portrait; }; lastSlot = -1; detail.attach(gb, document.getElementById("screen")); detail.setEnabled(sprOn()); detail.setHD(sprMode === "hd"); },
     get look() { return mgr.look; },
     get kit() { return mgr.kit; },
     set kit(k) { setKit(k); },                                  // (tests: a class's trim without a tour match)

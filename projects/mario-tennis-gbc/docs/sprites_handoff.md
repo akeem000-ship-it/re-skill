@@ -166,6 +166,17 @@ same indices, drawing only the frame numbers whose block is listed in `blocks` (
 shoes...), a second set of PNGs of the same frames painted with one flat colour per region, with a key, so the region map can be
 made from it.
 
+### HD sprite packs (high-resolution redraws, in full colour)
+
+A hero's frames can also be redrawn at a much higher resolution in full colour and shown in their place (SPRITES: HD), in the
+2D view and as the player card in 3D. The game still picks the frame; the pack answers by the frame it shows, and a frame the pack
+lacks keeps the game's sprite. Deliver one sheet per shot list (the hero's frames laid out by pose and view, made from your own
+ROM), each drawing where the game frame sits, on flat magenta (#FF00FF), at 2x the shot list's size or more, the feet on the game
+frame's feet, the red team-colour parts (cap, collar, shoes, racket frame) in red only. `tools/cut_hd_sheets.py SHEETS cells.json`
+cuts the sheets into `web/hdpacks/<hero>/` (atlas, team-colour mask, pack.json keyed by each frame's ROM offset) and writes
+`out/hd_check_<hero>.png`, each picture over the game frame it replaces. `web/tests/hd_sprites.mjs` shows them in the game.
+The packs are private art of the game's characters: `web/hdpacks/` is gitignored and left out of the shareable builds.
+
 ---
 
 ## 7. Rules that keep the game working

@@ -20,3 +20,5 @@ web/mods/
 # the Windows launcher's embedded files (tools/winapp/build.sh): the game files, and in a private build your ROMs
 tools/winapp/site/
 tools/winapp/*.exe
+# HD sprite packs cut from redrawn sheets (tools/cut_hd_sheets.py): private art of the game's characters, never committed
+web/hdpacks/
