@@ -12,8 +12,10 @@
 //     sprites, and the BG cells that are not the map's (the message boxes, menus and portraits bank 05 draws into the BG over the map).
 // What it cannot draw it leaves to the 2D picture (render() returns false): a screen whose BG is mostly not the map (a full-screen
 // picture, a menu, the name entry) and a map that is only a picture (no walls, no events, no annotation: the new character's room).
-// The camera looks down at a slant over the game's own view centre (the scroll $C320 / $C322). GROUND (ground.js) adds grass
-// blades and dirt to the ground's own colours, SHIMMER (shimmer.js) the glint on water and glass. Nothing of the game is written.
+// The camera looks down at a slant over the game's own view centre (the scroll $C320 / $C322). GROUND (ground.js) adds a carpet
+// turf, mown stripes, grit and the paths' raised kerb to the ground's own colours, SHIMMER (shimmer.js) the glint on water and glass.
+// OVERWORLD TREES (fieldtrees.js, field_objects.js trees / cards / mounds): the painted trees and signs cut out of the ground and
+// stood up, the hills risen as low solids (buildMounds). Nothing of the game is written.
 import { m4, program, vao, texture, updateTexture, clamp, mulberry32 } from "./gl.js";
 import { rb, rw, lzDecompress, offset } from "../golf/rom.js";
 import { roundedMeshData } from "./voxround.js";
@@ -35,7 +37,7 @@ precision highp float; in vec2 vUV; in float vShade; in vec3 vW; in float vFace;
 ${GROUND_GLSL}
 ${SHIMMER_GLSL}
 void main() { vec4 t = texture(uMap, vUV); if (t.a < 0.5) discard; vec3 c = t.rgb;
-  if (uGround > 0.5 && vShade > 0.99) c = groundDetail(c, vW.xz, uTime, uWind);
+  if (uGround > 0.5 && vShade > 0.99) c = groundDetail(c, vW.xz, vUV, uTime, uWind);
   if (uShimmer > 0.5) c = shimmer(c, vW, uTime);
   if (uShadowOn > 0.5 && vShade > 0.99) c *= mix(vec3(1.0), vec3(0.58, 0.62, 0.76), texture(uShade, vW.xz / 512.0).r);   // OVERWORLD TREES: the trees' shadows (fieldtrees.js shadows), the shade cool
   o = vec4(mix(c * vShade * uLightK, uFade.rgb, uFade.a), 1.0); }`;
@@ -69,10 +71,10 @@ export class Field3D {
     // the walls from the ROM's terrain grid
     const gl = sc.gl, refs = gfxRefs(id), tmap = w.wram[3].slice(0, 4096), amap = w.wram[2].slice(0, 4096), coll = refData(refs[4]);
     const ann = FIELD_OBJECTS[String(id)] || {};
-    if (this.map) { this.map.mesh.free(); for (const b of this.map.bodies) { b.free(); } if (this.map.occ) this.map.occ.free(); if (this.map.ftrees) this.map.ftrees.free(gl); }
+    if (this.map) { this.map.mesh.free(); if (this.map.mounds) this.map.mounds.free(); for (const b of this.map.bodies) { b.free(); } if (this.map.occ) this.map.occ.free(); if (this.map.ftrees) this.map.ftrees.free(gl); }
     // a map that is only a picture (no blocked cell, no event, no annotation): the 2D picture shows it
     const events = refData(refs[5]), picture = !FIELD_OBJECTS[String(id)] && coll.every(c => (c & 0x0F) !== 0x0F) && events.every(c => !c);
-    this.map = { id, tmap, amap, coll, ann, picture, mapHash: mapHash(w), bodies: [], img: new Uint8Array(512 * 512 * 4), ci: new Uint8Array(512 * 512), tileHash: -1, palHash: -1 };
+    this.map = { id, tmap, amap, coll, ann, picture, mapHash: mapHash(w), bodies: [], img: new Uint8Array(512 * 512 * 4), raw: new Uint8Array(512 * 512 * 4), ci: new Uint8Array(512 * 512), tileHash: -1, palHash: -1 };
     this.paint(w, true);
     // OVERWORLD TREES (fieldtrees.js): the painted trees found, painted over with the lawn and stood up once the colours are the map's
     // own (not in a fade: frame())
@@ -110,13 +112,55 @@ export class Field3D {
     this.map.blockOcc = occ;
     this.buildPlants(sc);
   }
+  // OVERWORLD TREES (with the trees, field_objects.js mounds): the hills and rocks the map paints (the Field's pyramids of orange and
+  // purple, its boulders) rise as low solids: in each mounds rectangle the pixels of their colours (red above green, or purple: red
+  // and blue above green) raised by their distance to the nearest other pixel (0.75 a px, at most 13; smoothed), a 2 px grid with
+  // the map's picture on it, lit from the sun; and the signs (field_objects.js cards) are cut out of the ground (field3d.js paint: the
+  // lawn under them) as they stand up
+  buildMounds(sc) {
+    const M = this.map, img = M.raw, rects = M.ann.mounds || [];
+    if (M.mounds) { M.mounds.free(); M.mounds = null; }
+    // the signs and props standing up: their pixels (not the group's ground colour) cut out of the ground
+    for (const st of M.ann.cards || []) {
+      const key = (x, y) => M.tmap[y * 64 + x] | ((M.amap[y * 64 + x] & 0x6F) << 8), keys = new Set();
+      for (let y = st.y >> 3; y < (st.y + st.h) >> 3; y++) for (let x = st.x >> 3; x < (st.x + st.w) >> 3; x++) if (!this.plainTile(x, y)) keys.add(key(x, y));
+      for (let ty = 0; ty < 64; ty++) for (let tx = 0; tx < 64; tx++) {
+        if (!keys.has(key(tx, ty))) continue;
+        for (let y = ty * 8; y < ty * 8 + 8; y++) for (let x = tx * 8; x < tx * 8 + 8; x++) { const q = (y * 512 + x) * 4, r = img[q], g = img[q + 1], b = img[q + 2]; if (!(g > r + 15 && g > b + 15)) M.found.cut[y * 512 + x] = 1; }
+      }
+    }
+    if (!rects.length) return;
+    const H = new Float32Array(513 * 513), m = new Uint8Array(512 * 512);
+    for (const r of rects) for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) {
+      const q = (y * 512 + x) * 4, R = img[q], G = img[q + 1], B = img[q + 2];
+      if (!M.found.cut[y * 512 + x] && ((R > G + 20 && G >= B) || (R > G + 20 && B > G + 20))) m[y * 512 + x] = 1;
+    }
+    // (chamfer distance to the nearest other pixel, two passes)
+    const D = new Float32Array(512 * 512); for (let i = 0; i < D.length; i++) D[i] = m[i] ? 1e4 : 0;
+    for (let y = 1; y < 511; y++) for (let x = 1; x < 511; x++) { const i = y * 512 + x; if (!m[i]) continue; D[i] = Math.min(D[i], D[i - 1] + 1, D[i - 512] + 1, D[i - 513] + 1.4, D[i - 511] + 1.4); }
+    for (let y = 510; y > 0; y--) for (let x = 510; x > 0; x--) { const i = y * 512 + x; if (!m[i]) continue; D[i] = Math.min(D[i], D[i + 1] + 1, D[i + 512] + 1, D[i + 513] + 1.4, D[i + 511] + 1.4); }
+    const S = 2, N = 256, h = (x, z) => { x = clamp(x, 0, 511); z = clamp(z, 0, 511); return Math.min(13, D[z * 512 + x] * 0.75); };
+    const hv = new Float32Array((N + 1) * (N + 1));
+    for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) { let a = 0; for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) a += h(i * S + dx, j * S + dz); hv[j * (N + 1) + i] = a / 9; }
+    const L = sc.light.sunDir, pos = [], uv = [], sh = [], sw = [], inR = (x, z) => rects.some(r => x >= r.x - 2 && z >= r.y - 2 && x <= r.x + r.w + 2 && z <= r.y + r.h + 2);
+    const at = (i, j) => hv[Math.min(N, Math.max(0, j)) * (N + 1) + Math.min(N, Math.max(0, i))];
+    const shade = (i, j) => { const nx = (at(i - 1, j) - at(i + 1, j)) / (2 * S), nz = (at(i, j - 1) - at(i, j + 1)) / (2 * S), l = Math.hypot(nx, 1, nz); return clamp(0.93 + 0.38 * ((nx * L[0] + L[1] + nz * L[2]) / l - L[1]) + 0.12 * (1 - 1 / l), 0.66, 1.12); };
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const x = i * S, z = j * S; if (!inR(x, z)) continue;
+      if (at(i, j) + at(i + 1, j) + at(i, j + 1) + at(i + 1, j + 1) < 0.05) continue;
+      for (const [di, dj] of [[0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1]]) {
+        const X = (i + di) * S, Z = (j + dj) * S; pos.push(X, at(i + di, j + dj) + 0.04, Z); uv.push(X / 512, Z / 512); sh.push(Math.min(0.985, shade(i + di, j + dj))); sw.push(0);
+      }
+    }
+    if (pos.length) M.mounds = { ...vao(sc.gl, this.P, { aPos: [new Float32Array(pos), 3], aUV: [new Float32Array(uv), 2], aShade: [new Float32Array(sh), 1], aSway: [new Float32Array(sw), 1] }), n: pos.length / 3 };
+  }
   // the annotated stamps: every cell whose tile (number and attribute) is one of the example's (not a plain one-colour tile) is part
   // of a plant; connected groups (up to 2 x 2 tiles) stand up as rounded bodies, all in one mesh
   buildPlants(sc) {
-    const M = this.map, ann = M.ann, img = M.img, key = (x, y) => M.tmap[y * 64 + x] | ((M.amap[y * 64 + x] & 0x6F) << 8);
+    const M = this.map, ann = M.ann, img = M.raw, key = (x, y) => M.tmap[y * 64 + x] | ((M.amap[y * 64 + x] & 0x6F) << 8);
     const pos = [], col = [], used = new Uint8Array(64 * 64), occ = (M.blockOcc || []).slice();
     for (const st of [...(ann.stamps || []), ...(ann.cards || [])]) {
-      if (st.plant === "tree" && M.found) continue;                 // (OVERWORLD TREES: lifted by fieldtrees.js instead)
+      if ((st.plant === "tree" || (st.plant === "rock" && M.mounds)) && M.found) continue;   // (OVERWORLD TREES: lifted by fieldtrees.js, risen as mounds instead)
       const keys = new Set();
       for (let y = st.y >> 3; y < (st.y + st.h) >> 3; y++) for (let x = st.x >> 3; x < (st.x + st.w) >> 3; x++) if (!this.plainTile(x, y)) keys.add(key(x, y));
       const plant = st.plant;
@@ -153,7 +197,7 @@ export class Field3D {
     if (occ.length) M.occ = { ...vao(sc.gl, this.B, { aPos: [new Float32Array(occ), 3], aCol: [new Float32Array(occ.length), 3] }), n: occ.length / 3 };
   }
   plainTile(tx, ty) {                                   // a tile of one colour (plain ground): never a plant's
-    const img = this.map.img, q0 = ((ty * 8) * 512 + tx * 8) * 4, c0 = img[q0] << 16 | img[q0 + 1] << 8 | img[q0 + 2]; let same = 0;
+    const img = this.map.raw, q0 = ((ty * 8) * 512 + tx * 8) * 4, c0 = img[q0] << 16 | img[q0 + 1] << 8 | img[q0 + 2]; let same = 0;
     for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const q = ((ty * 8 + y) * 512 + tx * 8 + x) * 4; if ((img[q] << 16 | img[q + 1] << 8 | img[q + 2]) === c0) same++; }
     return same >= 58;
   }
@@ -166,15 +210,16 @@ export class Field3D {
     // (repainted on any change, a fade's palettes too: a faded screen is the 2D picture's, and the picture comes back with the colours)
     if (!force && th === M.tileHash && ph === M.palHash) return false;
     const palChanged = ph !== M.palHash; M.tileHash = th; M.palHash = ph;
-    const img = M.img, CI = M.ci, cut = M.found && M.found.cut, gnd = M.found && M.found.ground;
+    const img = M.img, raw = M.raw, CI = M.ci, cut = M.found && M.found.cut, gnd = M.found && M.found.ground;
     for (let ty = 0; ty < 64; ty++) for (let tx = 0; tx < 64; tx++) {
       const t = M.tmap[ty * 64 + tx], a = M.amap[ty * 64 + tx], base = 0x1000 + ((t << 24 >> 24) << 4), bank = a & 8 ? v1 : w.vram[0];
       for (let y = 0; y < 8; y++) {
         const row = a & 0x40 ? 7 - y : y, lo = bank[base + row * 2], hi = bank[base + row * 2 + 1];
         for (let x = 0; x < 8; x++) {
           const bit = a & 0x20 ? x : 7 - x, pi = (ty * 8 + y) * 512 + tx * 8 + x, q = pi * 4; let ci = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1), pn = a & 7;
-          CI[pi] = ci; if (cut && cut[pi]) { pn = gnd[0]; ci = gnd[1]; }   // (a lifted tree's pixel: the lawn)
-          const o = pn * 8 + ci * 2, c = pal[o] | pal[o + 1] << 8;
+          CI[pi] = ci; let o = pn * 8 + ci * 2, c = pal[o] | pal[o + 1] << 8;
+          raw[q] = (c & 31) << 3; raw[q + 1] = ((c >> 5) & 31) << 3; raw[q + 2] = ((c >> 10) & 31) << 3; raw[q + 3] = 255;
+          if (cut && cut[pi]) { o = gnd[0] * 8 + gnd[1] * 2; c = pal[o] | pal[o + 1] << 8; }   // (a lifted tree's or sign's pixel: the lawn)
           img[q] = (c & 31) << 3; img[q + 1] = ((c >> 5) & 31) << 3; img[q + 2] = ((c >> 10) & 31) << 3; img[q + 3] = 255;
         }
       }
@@ -197,7 +242,7 @@ export class Field3D {
     if (M.treesOn && M.treePal !== M.palHash && fadeArr(w, {})[3] < 0.02) {
       if (M.found === undefined) {                       // (the trees found, painted over, the stamps made again without them)
         M.found = findPlants(M, M.ann.trees, (tx, ty) => this.plainTile(tx, ty));
-        if (M.found) { this.paint(w, true); updateTexture(sc.gl, this.tex, 512, 512, M.img); for (const b of M.bodies) b.free(); M.bodies = []; this.buildPlants(sc); }
+        if (M.found) { this.buildMounds(sc); this.paint(w, true); updateTexture(sc.gl, this.tex, 512, 512, M.img); for (const b of M.bodies) b.free(); M.bodies = []; this.buildPlants(sc); }
       }
       if (M.ftrees) M.ftrees.free(sc.gl); M.ftrees = M.found ? new FieldTrees(sc, M.found, M, w.bgPal) : null; M.treePal = M.palHash;
     }
@@ -295,11 +340,13 @@ export class Field3D {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     const P = this.P; gl.useProgram(P.p);
     gl.uniformMatrix4fv(P.u.uMVP, false, mvp); gl.uniform1f(P.u.uTime, sc.time); gl.uniform2fv(P.u.uWind, [3, 1]);
+    const mown = new Float32Array(16).fill(-1); (ann.mown || []).slice(0, 4).forEach((r, i) => mown.set([r.x, r.y, r.x + r.w, r.y + r.h], i * 4)); gl.uniform4fv(P.u.uMown, mown); gl.uniform1f(P.u.uGLite, sc.lite ? 1 : 0);
     gl.uniform1f(P.u.uGround, sc.on("fieldlife") ? 1 : 0); gl.uniform1f(P.u.uShimmer, sc.on("fieldlife") && ann.sky ? 1 : 0); gl.uniform1f(P.u.uLightK, lk); gl.uniform4fv(P.u.uFade, fd);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tex); gl.uniform1i(P.u.uMap, 0);
     const shade = FT && ann.sky && sc.light.night < 0.6 ? FT.shadows(sc, sc.light.sunDir) : null;   // (the trees' shadows: by day, outdoors)
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, shade || this.tex); gl.uniform1i(P.u.uShade, 2); gl.uniform1f(P.u.uShadowOn, shade ? 1 : 0); gl.activeTexture(gl.TEXTURE0);
     gl.bindVertexArray(this.map.mesh.vao); gl.drawArrays(gl.TRIANGLES, 0, this.map.mesh.n);
+    if (this.map.mounds) { gl.bindVertexArray(this.map.mounds.vao); gl.drawArrays(gl.TRIANGLES, 0, this.map.mounds.n); }
     const B = this.B; gl.useProgram(B.p); gl.uniformMatrix4fv(B.u.uMVP, false, mvp); gl.uniform1f(B.u.uLightK, lk); gl.uniform4fv(B.u.uFade, fd);
     gl.uniformMatrix4fv(B.u.uModel, false, m4.identity());
     for (const b of this.map.bodies) { gl.bindVertexArray(b.vao); gl.drawArrays(gl.TRIANGLES, 0, b.n); }

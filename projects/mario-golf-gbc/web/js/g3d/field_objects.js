@@ -8,6 +8,9 @@
 //          tiles (plain one-colour tiles left out) is part of a plant; each 16 x 16 group stands up as a rounded voxel body;
 //          plant: "tree" (taller) | "bush" | "rock"
 //  cards:  single upright cut-outs (signs, posts, statues)
+//  mounds: OVERWORLD TREES: rectangles whose hills and rocks (their orange, brown and purple pixels) rise as low solids (field3d.js
+//          buildMounds; the "rock" stamps are left out then)
+//  mown:   rectangles of lawn mown in stripes (ground.js; at most 4: round the club houses)
 //  walls:  false: no boxes from the collision grid (the default stands every blocked 16 x 16 cell up as a low box)
 //  wallH:  the height of those boxes (default 10)
 //  sky:    true: an outdoor map (the sky's colour behind, the field life's birds)
@@ -19,6 +22,12 @@ export const FIELD_OBJECTS = {
  "20": {
   "sky": true,
   "walls": false,
+  "blocks": [
+   {"x0": 32, "y0": 176, "x1": 48, "y1": 192, "fold": 184},
+   {"x0": 224, "y0": 144, "x1": 240, "y1": 160, "fold": 152},
+   {"x0": 32, "y0": 336, "x1": 48, "y1": 352, "fold": 344},
+   {"x0": 256, "y0": 336, "x1": 272, "y1": 352, "fold": 344}
+  ],
   "trees": {"pal": [6], "broad": [3590, 3591, 3592, 3593, 3594, 3595, 3606, 3607, 3608, 3609, 3610, 3611], "narrow": [
    {"kind": "palm", "top": 3585, "foot": 3601, "size": 1.6},
    {"kind": "cactus", "top": 3586, "foot": 3602},
@@ -29,6 +38,27 @@ export const FIELD_OBJECTS = {
    {"x": 128, "y": 224, "w": 64, "h": 32, "plant": "tree"},
    {"x": 240, "y": 192, "w": 16, "h": 32, "plant": "tree"},
    {"x": 224, "y": 256, "w": 96, "h": 48, "plant": "rock"}
+  ],
+  "cards": [
+   {"x": 64, "y": 208, "w": 16, "h": 16},
+   {"x": 128, "y": 192, "w": 16, "h": 16},
+   {"x": 16, "y": 208, "w": 16, "h": 16},
+   {"x": 208, "y": 176, "w": 16, "h": 16},
+   {"x": 208, "y": 288, "w": 16, "h": 16},
+   {"x": 272, "y": 368, "w": 16, "h": 16}
+  ],
+  "mounds": [
+   {"x": 0, "y": 128, "w": 16, "h": 104},
+   {"x": 0, "y": 328, "w": 16, "h": 72},
+   {"x": 0, "y": 384, "w": 320, "h": 16},
+   {"x": 176, "y": 256, "w": 144, "h": 144},
+   {"x": 160, "y": 272, "w": 16, "h": 128}
+  ],
+  "mown": [
+   {"x": 8, "y": 152, "w": 64, "h": 56},
+   {"x": 200, "y": 120, "w": 64, "h": 56},
+   {"x": 8, "y": 312, "w": 64, "h": 56},
+   {"x": 232, "y": 312, "w": 64, "h": 56}
   ]
  },
  "0": {

@@ -127,16 +127,27 @@ crown pixels are 90 or more. The tufts stay painted. All of it is done once the 
 fade would make every tile one colour), and again for the colours when the palettes change outside a fade. Every lifted pixel is
 painted (field3d.js paint) with the lawn's palette entry, so the ground under the trees is lawn in the live palettes; the old
 "tree" stamps are left out. The trees are trees3d.js shapes (egg crowns, cypress cones, palms, cacti) at 0.74 of the hole's size
-(a crown ~16 px across, as the game's), in bigger boxes (x2, Lite x1.6 of Lite's) and without the far meshes, in colours from the
-lifted pixels (the courtyard palette pulled halfway to the map's lightest and darkest tree greens), drawn with the scene's lit body
+(a crown ~16 px across, as the game's), in bigger boxes (x2, Lite x2 of Lite's), as indexed quads and without the far meshes, in colours from the
+lifted pixels (the courtyard palette pulled halfway to the map's lightest and darkest tree greens; the cacti a deeper green), drawn with the scene's lit body
 program (turned to the camera, the sway of a light wind), the ones in the view's frustum, nearest first. Their shadows on the ground
 are baked into a 512 x 512 texture (a soft blot per tree cast away from the sun, a contact spot at the foot; redone when the sun
 moves; by day, outdoors) that the overworld's ground shader darkens toward a cool shade (a shadow map's depth pass over ~100 trees
 cost more than the trees). The people: the trees near a person go into the people's depth pass, so a person behind a tree is hidden
 by it and shows the silhouette; the trees in front of the player (the person nearest the view's centre: within the crown's reach in
 front, across its width) are dithered see-through (uSee up to 0.82, eased over ~0.2 s) and left out of that pass, as in the hole view.
-SwiftShader, the Field at 5 spots (out/scratch/fieldshots.mjs, ms a frame): Lite 54-65 before, 40-66 after; Full 137-180 before,
-180-288 after. Before / after: out/overworld/.
+With the trees (same option): the signposts (field_objects.js `cards`: the sign and arrow boards, by tile, as the stamps) stand up
+and are cut out of the ground (their pixels that are not green painted with the lawn); the hills and boulders in field_objects.js
+`mounds` rectangles (their orange, brown and purple pixels; the trees' and signs' left out) rise as low solids (field3d.js
+buildMounds: a 2 px grid over the rectangles, each pixel raised 0.75 per px of its distance to the nearest other pixel, at most 13,
+smoothed over 3 x 3, lit from the sun with a high floor, the map's picture on it; the old "rock" stamps left out then); the club
+houses are solid blocks (`blocks`: the striped roof on top, the white front 8 px tall). The paint and the stamps read the picture
+before the cut (field3d.js `raw`), the ground texture the cut one (`img`). GROUND (ground.js, with Field life): the lawn a short
+carpet turf (strands a third of a px across in soft patches, swaying), mown in 8 px stripes in field_objects.js `mown` rectangles
+(round the club houses, up to 4: uniform uMown); the dirt with fine grit, grey grains and the odd pale stone; the paths' light
+kerb band a soft raised edge (its slopes from the picture's neighbours: lit facing north, shaded facing the camera). Lite (uGLite)
+leaves out the kerb's four texture reads and the patch noise.
+SwiftShader, the Field at 5 spots (out/scratch/fieldshots.mjs, ms a frame): Lite 52-63 before, 45-74 after; Full 137-180 before,
+170-294 after. Before / after: out/overworld/field_overworld_sheet.png, field_trees_behind.png.
 
 LIGHT (light3d.js, skybox.js). The light of each hour is its own table (light3d.js LIGHT, hand-tuned for a readable picture), not
 taken from the sky's colours: the sun's light (the moon's at night) and the ambient (the sky's light in the shade). Day as before;

@@ -19,13 +19,13 @@ import { treePalette, treeMeshData, treeHeight } from "./trees3d.js";
 const hash = (x, z, k) => { const s = Math.sin(x * 12.9898 + z * 78.233 + k * 37.719) * 43758.5453; return s - Math.floor(s); };
 // the trees at about the game's size (its 16 x 16 tree pictures: a crown ~16 px across), the boxes a little bigger than the hole's
 // (the overworld's camera is farther off; fewer faces)
-const SCALE = 0.74, BOX = 2, BOX_LITE = 1.6;
+const SCALE = 0.74, BOX = 2, BOX_LITE = 2;
 const smooth01 = t => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
 
 // the map's plants: { trees: [{x, z, kind, size, ...}], cut: Uint8Array(512 * 512) (1: painted over with the lawn), ground: [pal, ci] }
-// M: the field's map (tmap, amap, img: the live picture); spec: field_objects.js trees; plain(tx, ty): a one-colour tile
+// M: the field's map (tmap, amap, raw: the live picture before the cut); spec: field_objects.js trees; plain(tx, ty): a one-colour tile
 export function findPlants(M, spec, plain) {
-  const pals = new Set(spec.pal || []), img = M.img, ci = M.ci, keyAt = (x, y) => { const c = (y >> 3) * 64 + (x >> 3); return M.tmap[c] | ((M.amap[c] & 0x6F) << 8); };
+  const pals = new Set(spec.pal || []), img = M.raw, ci = M.ci, keyAt = (x, y) => { const c = (y >> 3) * 64 + (x >> 3); return M.tmap[c] | ((M.amap[c] & 0x6F) << 8); };
   // the lawn: the commonest colour of the plain tiles in the plant palettes (and a palette entry that holds it, for the paint)
   const cnt = new Map(), rgb = q => img[q * 4] << 16 | img[q * 4 + 1] << 8 | img[q * 4 + 2];
   for (let ty = 0; ty < 64; ty++) for (let tx = 0; tx < 64; tx++) {
@@ -116,11 +116,11 @@ export class FieldTrees {
     // the colours: from the lifted pixels (trees3d.js treePalette), the soil from the paths (the map's commonest orange)
     const rgba = [];
     for (let p = 0; p < 512 * 512; p += 3) if (found.cut[p]) rgba.push(...gbc(bgPal, M.amap[((p >> 12) << 6) + ((p & 511) >> 3)] & 7, M.ci[p]), 255);   // (their own colours: the picture has the lawn there)
-    const pal = fieldPalette(rgba);
+    const pal = fieldPalette(rgba), cactusPal = { ...pal, leaf: mix3(pal.lo, pal.leaf, 0.5), lo: mix3(pal.lo, pal.rim, 0.25) };   // (the cacti a deeper green: the pale leaf reads as glass on them)
     for (const t of this.trees) {
       const sz = Math.round(t.size * 4) / 4, key = t.kind + ":" + t.variant + ":" + sz;
       if (!this.meshes.has(key)) {
-        const d = treeMeshData(t.kind, pal, sz, t.variant, sc.lite, sc.lite ? BOX_LITE : BOX, false);
+        const d = treeMeshData(t.kind, t.kind === "cactus" ? cactusPal : pal, sz, t.variant, sc.lite, sc.lite ? BOX_LITE : BOX, false);
         const c = quads([d.pos, d.col]), z = quads([d.dpos]);
         this.meshes.set(key, d.pos.length ? { ...vao(gl, sc.P.obj, { aPos: [c.a[0], 3], aCol: [c.a[1], 3] }, c.idx), n: c.idx.length,
           dvao: vao(gl, sc.P.depth, { aPos: [z.a[0], 3] }, z.idx), dn: z.idx.length } : null);
