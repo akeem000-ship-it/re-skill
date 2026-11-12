@@ -11,7 +11,6 @@ import { detail3x } from "./detail.js";
 import { faceCanvas, cleanFace } from "./detailface.js";
 import { faceOfFigure } from "./faceauto.js";
 import { buildMoodTable } from "./moods.js";
-import { hdPacks, hdPicture, hdRect, teamColour } from "./hdpack.js";
 
 const SW = 160, SH = 144;
 const pack = (r, g, b) => (0xFF000000 | (b << 16) | (g << 8) | r) >>> 0;
@@ -20,18 +19,16 @@ const darken = (c, k) => pack(((c & 255) * k) | 0, (((c >> 8) & 255) * k) | 0, (
 // ---- hero faces among a list of sprites ------------------------------------------------------------------------------------
 // sprs: [{ sx, sy, h, tile, attr, i? }] (OAM-like; tile already even for 8x16). Returns the hero frames on show, each with a map
 // from a frame pixel to the screen: { frame, mir, tiles: Map(t -> { tx, ty, fx, fy, i }), at(px, py) -> { X, Y, i, fx, fy } | null }
-// any: also the frames without a face (seen from behind: the HD sprite packs want every frame); ox, oy: the screen place of frame
-// pixel (0, 0) (mirrored: its right edge), pal: the OBJ palette, fy: drawn upside down
-export function heroFaces(L, sprs, any = false) {
+export function heroFaces(L, sprs) {
   const out = new Map();
   if (!L || !L.frameTile) return [];
   for (const s of sprs) {
-    const n = s.h >> 3, bank = s.vb ?? ((s.attr >> 3) & 1), fx = !!(s.attr & 0x20), fy = !!(s.attr & 0x40); if (bank > 1) continue;   // (vb 2: fieldlife.js's own tiles, not VRAM)
+    const n = s.h >> 3, bank = s.vb ?? ((s.attr >> 3) & 1), fx = !!(s.attr & 0x20), fy = !!(s.attr & 0x40);
     for (let half = 0; half < n; half++) {
-      const e = L.frameTile(bank, s.tile + (fy ? n - 1 - half : half)); if (!e || !(any || e.frame.info)) continue;
+      const e = L.frameTile(bank, s.tile + (fy ? n - 1 - half : half)); if (!e || !e.frame.info) continue;
       const fr = e.frame, cx = (e.t / fr.rows) | 0, cy = e.t % fr.rows, tx = s.sx, ty = s.sy + half * 8;
       const ox = fx ? tx + cx * 8 + 7 : tx - cx * 8, oy = fy ? ty + cy * 8 + 7 : ty - cy * 8, key = e.fi + (fx ? "m" : "n") + ox + "," + oy;
-      let inst = out.get(key); if (!inst) out.set(key, inst = { frame: fr, fi: e.fi, mir: fx, fy, ox, oy, pal: s.attr & 7, tiles: new Map(), at: null });
+      let inst = out.get(key); if (!inst) out.set(key, inst = { frame: fr, fi: e.fi, mir: fx, tiles: new Map(), at: null });
       inst.tiles.set(e.t, { tx, ty, fx, fy, i: s.i === undefined ? -1 : s.i });
     }
   }
@@ -129,18 +126,7 @@ export class SpriteDetail {
     this.enabled = false; this.gb = null; this.screen = null; this.canvas = null; this.ctx = null; this.prev = [];
     this.spr = { rgba: new Uint32Array(SW * SH), idx: new Uint8Array(SW * SH), hide: false };
     this.work = new Uint32Array(SW * SH); this.moods = null; this.auto = true; this.objCache = new Map(); this.figCache = new Map(); this.lab = new Int32Array(SW * SH);
-    this.hdOn = false; this.hdCanvas = null; this.hdPrev = [];         // HD sprite packs (hdpack.js): the heroes' frames they redraw, on a canvas of their own
   }
-  // "Sprites: HD": the detailed sprites, and the frames an HD pack redraws in its pictures
-  setHD(on) { this.hdOn = !!on; if (!this.hdOn) this._hideHD(); }
-  // the hero instances among sprs that an HD pack has a picture for: [{ inst, e (pack entry) }]
-  hdInstances(sprs) {
-    const L = this.look, P = hdPacks(); if (!this.hdOn || !P.size || !L || !L.frameTile) return [];
-    const out = [];
-    for (const inst of heroFaces(L, sprs, true)) { if (inst.fy) continue; const e = P.get(inst.frame.key); if (e) out.push({ inst, e }); }
-    return out;
-  }
-  _hideHD() { if (this.hdCanvas) { this.hdCanvas.style.display = "none"; this.hdCtx.clearRect(0, 0, this.hdCanvas.width, this.hdCanvas.height); } this.hdPrev = []; }
   get look() { return this.gb && this.gb.look; }
   _moodTable() { if (!this.moods) { try { this.moods = buildMoodTable(this.gb.mem.rom); } catch (e) { this.moods = { moodAt: () => "neutral" }; } } return this.moods; }
   // screen: the page's 2D canvas (#screen), under which the overlay is stacked
@@ -189,7 +175,7 @@ export class SpriteDetail {
     (this.screen && this.screen.parentNode || document.body).appendChild(c);
     this.canvas = c; this.ctx = c.getContext("2d"); this.img = this.ctx.createImageData(SW * 3, SH * 3); this.img32 = new Uint32Array(this.img.data.buffer);
   }
-  _hide() { this._hideHD(); if (this.canvas) this.canvas.style.display = "none"; this.prev = []; if (this.ctx) this.ctx.clearRect(0, 0, SW * 3, SH * 3); if (this.img32) this.img32.fill(0); }
+  _hide() { if (this.canvas) this.canvas.style.display = "none"; this.prev = []; if (this.ctx) this.ctx.clearRect(0, 0, SW * 3, SH * 3); if (this.img32) this.img32.fill(0); }
   // lay the overlay over the page's screen canvas (object-fit: contain: the picture keeps 10:9 inside the element's box)
   _place() {
     const s = this.screen, c = this.canvas; if (!s) return false;
@@ -225,50 +211,19 @@ export class SpriteDetail {
     if (!this.enabled || !this.gb) return;
     this._ensureCanvas();
     const show = this._place(); this.spr.hide = show;
-    if (!show) { if (this.prev.length || this.canvas.style.display !== "none") this._hide(); return; }   // (3D view: nothing of the 2D layer stays on show)
+    if (!show) { this.prev = []; return; }
     const spr = this.spr, idx = spr.idx, img32 = this.img32, W3 = SW * 3, dirty = [];
     for (const r of this.prev) { for (let y = r.y0 * 3; y < (r.y1 + 1) * 3; y++) img32.fill(0, y * W3 + r.x0 * 3, y * W3 + (r.x1 + 1) * 3); dirty.push(r); }
     this.prev = [];
-    const L = this.gb.look, oam = this.gb.mem.oam, tall = this.gb.ppu.lcdc & 4, sprs = [], frames = this.gb.frames;
-    if (L && L.frameTile) for (let i = 0; i < 40; i++) {
-      const sy = oam[i * 4] - 16, sx = oam[i * 4 + 1] - 8; if (sy <= -16 || sy >= SH || sx <= -8 || sx >= SW) continue;
-      sprs.push({ i, sx, sy, h: tall ? 16 : 8, tile: tall ? oam[i * 4 + 2] & 0xFE : oam[i * 4 + 2], attr: oam[i * 4 + 3] });
-    }
-    // HD pictures: their frames' pixels leave the layer (the frame's tiles only: a standing shadow tile stays the game's)
-    const hd = this.hdInstances(sprs), work = this.work;
-    if (hd.length) {
-      work.set(spr.rgba);
-      const rom = this.gb.mem.rom;
-      for (const { inst } of hd) {
-        for (const t of inst.tiles.values()) {
-          if (t.i < 0) continue;
-          for (let y = Math.max(0, t.ty); y < Math.min(SH, t.ty + 8); y++) for (let x = Math.max(0, t.tx); x < Math.min(SW, t.tx + 8); x++) { const j = y * SW + x; if (idx[j] === t.i + 1) { idx[j] = 0; work[j] = 0; } }
-        }
-        // a standing frame's bottom row shows shadow tiles (feet and shadow): its feet go too (the pixels the frame's own bottom tile
-        // has), the shadow stays
-        const fr = inst.frame, fw = fr.cols * 8, fh = fr.rows * 8, at = new Set([...inst.tiles.values()].map(t => t.tx + "," + t.ty));
-        for (const sp of sprs) for (let half = 0; half < sp.h / 8; half++) {
-          const sx = sp.sx, sy = sp.sy + half * 8; if (at.has(sx + "," + sy)) continue;
-          const fx0 = inst.mir ? inst.ox - (sx + 7) : sx - inst.ox, fy0 = sy - inst.oy;
-          if (fx0 < 0 || fy0 < 0 || fx0 + 8 > fw || fy0 + 8 > fh || (fx0 & 7) || (fy0 & 7)) continue;
-          const o = fr.key + ((fx0 >> 3) * fr.rows + (fy0 >> 3)) * 16;
-          for (let ly = 0; ly < 8; ly++) {
-            const Y = sy + ly; if (Y < 0 || Y >= SH) continue; const lo = rom[o + ly * 2], hi = rom[o + ly * 2 + 1];
-            for (let lx = 0; lx < 8; lx++) {
-              const X = sx + lx; if (X < 0 || X >= SW) continue; const bx = inst.mir ? 7 - lx : lx;
-              if (!(((lo >> (7 - bx)) & 1) | ((hi >> (7 - bx)) & 1))) continue;
-              const j = Y * SW + X; if (idx[j] === sp.i + 1) { idx[j] = 0; work[j] = 0; }
-            }
-          }
-        }
-      }
-    }
-    this._drawHD(hd);
     const boxes = this._figures(idx);
     if (boxes.length) {
-      if (!hd.length) work.set(spr.rgba);
-      const hdKeys = new Set(hd.map(({ inst }) => inst.fi + "," + inst.ox + "," + inst.oy));
-      const heroes = heroFaces(L, sprs).filter(h => !hdKeys.has(h.fi + "," + h.ox + "," + h.oy)), decals = prepareFaces(heroes, work, SW, idx, SW, 0, 0), hb = decals.map(d => faceBox(d.inst));
+      const work = this.work; work.set(spr.rgba);
+      const L = this.gb.look, oam = this.gb.mem.oam, tall = this.gb.ppu.lcdc & 4, sprs = [], frames = this.gb.frames;
+      if (L && L.frameTile) for (let i = 0; i < 40; i++) {
+        const sy = oam[i * 4] - 16, sx = oam[i * 4 + 1] - 8; if (sy <= -16 || sy >= SH || sx <= -8 || sx >= SW) continue;
+        sprs.push({ i, sx, sy, h: tall ? 16 : 8, tile: tall ? oam[i * 4 + 2] & 0xFE : oam[i * 4 + 2], attr: oam[i * 4 + 3] });
+      }
+      const heroes = heroFaces(L, sprs), decals = prepareFaces(heroes, work, SW, idx, SW, 0, 0), hb = decals.map(d => faceBox(d.inst));
       decals.forEach((d, k) => { if (d.mood === "neutral" && blinks(frames, hb[k][0])) { d.mood = "blink"; d.canvas = faceCanvas(d.inst.frame.info, "blink", {}); } });
       for (const b of boxes) {
         const x0 = Math.max(0, b.x0 - 1), y0 = Math.max(0, b.y0 - 1), x1 = Math.min(SW - 1, b.x1 + 1), y1 = Math.min(SH - 1, b.y1 + 1), cw = x1 - x0 + 1, ch = y1 - y0 + 1;
@@ -292,34 +247,5 @@ export class SpriteDetail {
       }
     }
     for (const r of dirty) this.ctx.putImageData(this.img, 0, 0, r.x0 * 3, r.y0 * 3, (r.x1 - r.x0 + 1) * 3, (r.y1 - r.y0 + 1) * 3);
-  }
-  // the HD pictures, on their own canvas over the overlay (HS pixels per game pixel), placed like it; the game's fade through white
-  // is added on top (it adds the same amount to every colour component, as `lighter` does)
-  _drawHD(hd) {
-    if (!hd.length && !this.hdPrev.length) { if (this.hdCanvas) this.hdCanvas.style.display = "none"; return; }
-    const HS = 8;
-    if (!this.hdCanvas) {
-      const c = document.createElement("canvas"); c.width = SW * HS; c.height = SH * HS; c.id = "spritehd";
-      c.style.cssText = this.canvas.style.cssText; c.style.zIndex = "4"; c.style.imageRendering = "auto";     // (smooth: the pictures are drawn down to the screen's size)
-      this.canvas.parentNode.insertBefore(c, this.canvas.nextSibling); this.hdCanvas = c; this.hdCtx = c.getContext("2d");
-    }
-    const c = this.hdCanvas, x = this.hdCtx, os = this.canvas.style, st = c.style;
-    st.display = "block"; st.left = os.left; st.top = os.top; st.width = os.width; st.height = os.height;
-    for (const r of this.hdPrev) x.clearRect(r[0], r[1], r[2], r[3]);
-    this.hdPrev = [];
-    const pal = this.gb.ppu.objPal, L = this.look;
-    x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high";
-    for (const { inst, e } of hd) {
-      const p = hdPicture(e, teamColour(pal, inst.pal)), R = hdRect(inst, e); if (!p.canvas) continue;
-      const X = Math.round(R.x * HS), Y = Math.round(R.y * HS), W = Math.round(R.w * HS), H = Math.round(R.h * HS);
-      const fade = L && L.fade ? L.fade(pal, inst.pal) : -1;
-      const draw = img => { if (R.mir) { x.save(); x.translate(X + W, Y); x.scale(-1, 1); x.drawImage(img, 0, 0, W, H); x.restore(); } else x.drawImage(img, X, Y, W, H); };
-      draw(p.canvas);
-      if (fade > 0 && fade < 32) {
-        if (!p.white) { const w = document.createElement("canvas"); w.width = p.w; w.height = p.h; const wx = w.getContext("2d"); wx.drawImage(p.canvas, 0, 0); wx.globalCompositeOperation = "source-in"; wx.fillStyle = "#fff"; wx.fillRect(0, 0, p.w, p.h); p.white = w; }
-        x.save(); x.globalCompositeOperation = "lighter"; x.globalAlpha = Math.min(1, fade * 8.2 / 255); draw(p.white); x.restore();
-      }
-      this.hdPrev.push([X - 2, Y - 2, W + 4, H + 4]);
-    }
   }
 }
