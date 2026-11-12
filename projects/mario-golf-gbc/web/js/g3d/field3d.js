@@ -23,6 +23,7 @@ import { tagsOf } from "./hud3d.js";
 import { picKey } from "./sprites3d.js";
 import { GROUND_GLSL } from "./ground.js";
 import { SHIMMER_GLSL } from "./shimmer.js";
+import { findPlants, FieldTrees } from "./fieldtrees.js";
 
 const VS = `#version 300 es
 in vec3 aPos; in vec2 aUV; in float aShade; in float aSway; uniform mat4 uMVP; uniform float uTime; uniform vec2 uWind; out vec2 vUV; out float vShade; out vec3 vW; out float vFace;
@@ -30,12 +31,13 @@ void main() { vec3 p = aPos; float s = sin(uTime * 1.9 + p.x * 0.07 + p.z * 0.05
   p.xz += (uWind * 0.06 + vec2(0.35, 0.12)) * s * aSway;
   vUV = aUV; vShade = aShade; vW = p; vFace = aSway < -0.5 ? 1.0 : 0.0; gl_Position = uMVP * vec4(p, 1.0); }`;
 const FS = `#version 300 es
-precision highp float; in vec2 vUV; in float vShade; in vec3 vW; in float vFace; uniform sampler2D uMap; uniform float uTime, uGround, uShimmer, uLightK; uniform vec4 uFade; uniform vec2 uWind; out vec4 o;
+precision highp float; in vec2 vUV; in float vShade; in vec3 vW; in float vFace; uniform sampler2D uMap, uShade; uniform float uTime, uGround, uShimmer, uLightK, uShadowOn; uniform vec4 uFade; uniform vec2 uWind; out vec4 o;
 ${GROUND_GLSL}
 ${SHIMMER_GLSL}
 void main() { vec4 t = texture(uMap, vUV); if (t.a < 0.5) discard; vec3 c = t.rgb;
   if (uGround > 0.5 && vShade > 0.99) c = groundDetail(c, vW.xz, uTime, uWind);
   if (uShimmer > 0.5) c = shimmer(c, vW, uTime);
+  if (uShadowOn > 0.5 && vShade > 0.99) c *= mix(vec3(1.0), vec3(0.58, 0.62, 0.76), texture(uShade, vW.xz / 512.0).r);   // OVERWORLD TREES: the trees' shadows (fieldtrees.js shadows), the shade cool
   o = vec4(mix(c * vShade * uLightK, uFade.rgb, uFade.a), 1.0); }`;
 const BVS = `#version 300 es
 in vec3 aPos; in vec3 aCol; uniform mat4 uMVP; uniform mat4 uModel; out vec3 vCol; void main() { vCol = aCol; gl_Position = uMVP * uModel * vec4(aPos, 1.0); }`;
@@ -67,11 +69,14 @@ export class Field3D {
     // the walls from the ROM's terrain grid
     const gl = sc.gl, refs = gfxRefs(id), tmap = w.wram[3].slice(0, 4096), amap = w.wram[2].slice(0, 4096), coll = refData(refs[4]);
     const ann = FIELD_OBJECTS[String(id)] || {};
-    if (this.map) { this.map.mesh.free(); for (const b of this.map.bodies) { b.free(); } if (this.map.occ) this.map.occ.free(); }
+    if (this.map) { this.map.mesh.free(); for (const b of this.map.bodies) { b.free(); } if (this.map.occ) this.map.occ.free(); if (this.map.ftrees) this.map.ftrees.free(gl); }
     // a map that is only a picture (no blocked cell, no event, no annotation): the 2D picture shows it
     const events = refData(refs[5]), picture = !FIELD_OBJECTS[String(id)] && coll.every(c => (c & 0x0F) !== 0x0F) && events.every(c => !c);
-    this.map = { id, tmap, amap, coll, ann, picture, mapHash: mapHash(w), bodies: [], img: new Uint8Array(512 * 512 * 4), tileHash: -1, palHash: -1 };
+    this.map = { id, tmap, amap, coll, ann, picture, mapHash: mapHash(w), bodies: [], img: new Uint8Array(512 * 512 * 4), ci: new Uint8Array(512 * 512), tileHash: -1, palHash: -1 };
     this.paint(w, true);
+    // OVERWORLD TREES (fieldtrees.js): the painted trees found, painted over with the lawn and stood up once the colours are the map's
+    // own (not in a fade: frame())
+    this.map.treesOn = !!(ann.trees && sc.on("fieldtrees"));
     // the boxes and the blocks: one mesh (position, uv, shade, sway)
     const pos = [], uv = [], sh = [], sw = [];
     const quad = (p, t, s, sway = 0) => { for (const i of [0, 1, 2, 0, 2, 3]) { pos.push(...p[i]); uv.push(t[i][0] / 512, t[i][1] / 512); sh.push(s); sw.push(sway); } };
@@ -111,6 +116,7 @@ export class Field3D {
     const M = this.map, ann = M.ann, img = M.img, key = (x, y) => M.tmap[y * 64 + x] | ((M.amap[y * 64 + x] & 0x6F) << 8);
     const pos = [], col = [], used = new Uint8Array(64 * 64), occ = (M.blockOcc || []).slice();
     for (const st of [...(ann.stamps || []), ...(ann.cards || [])]) {
+      if (st.plant === "tree" && M.found) continue;                 // (OVERWORLD TREES: lifted by fieldtrees.js instead)
       const keys = new Set();
       for (let y = st.y >> 3; y < (st.y + st.h) >> 3; y++) for (let x = st.x >> 3; x < (st.x + st.w) >> 3; x++) if (!this.plainTile(x, y)) keys.add(key(x, y));
       const plant = st.plant;
@@ -160,13 +166,15 @@ export class Field3D {
     // (repainted on any change, a fade's palettes too: a faded screen is the 2D picture's, and the picture comes back with the colours)
     if (!force && th === M.tileHash && ph === M.palHash) return false;
     const palChanged = ph !== M.palHash; M.tileHash = th; M.palHash = ph;
-    const img = M.img;
+    const img = M.img, CI = M.ci, cut = M.found && M.found.cut, gnd = M.found && M.found.ground;
     for (let ty = 0; ty < 64; ty++) for (let tx = 0; tx < 64; tx++) {
       const t = M.tmap[ty * 64 + tx], a = M.amap[ty * 64 + tx], base = 0x1000 + ((t << 24 >> 24) << 4), bank = a & 8 ? v1 : w.vram[0];
       for (let y = 0; y < 8; y++) {
         const row = a & 0x40 ? 7 - y : y, lo = bank[base + row * 2], hi = bank[base + row * 2 + 1];
         for (let x = 0; x < 8; x++) {
-          const bit = a & 0x20 ? x : 7 - x, ci = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1), o = (a & 7) * 8 + ci * 2, c = pal[o] | pal[o + 1] << 8, q = ((ty * 8 + y) * 512 + tx * 8 + x) * 4;
+          const bit = a & 0x20 ? x : 7 - x, pi = (ty * 8 + y) * 512 + tx * 8 + x, q = pi * 4; let ci = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1), pn = a & 7;
+          CI[pi] = ci; if (cut && cut[pi]) { pn = gnd[0]; ci = gnd[1]; }   // (a lifted tree's pixel: the lawn)
+          const o = pn * 8 + ci * 2, c = pal[o] | pal[o + 1] << 8;
           img[q] = (c & 31) << 3; img[q + 1] = ((c >> 5) & 31) << 3; img[q + 2] = ((c >> 10) & 31) << 3; img[q + 3] = 255;
         }
       }
@@ -178,11 +186,21 @@ export class Field3D {
     if (!this.on) return;
     const w = game.w, id = w.wram[0][0x32E];
     this.init(sc);
-    if (!this.map || this.map.id !== id || ((sc.frames & 7) === 0 && mapHash(w) !== this.map.mapHash)) this.build(sc, w, id);
+    const ann0 = FIELD_OBJECTS[String(id)] || {}, treesOn = !!(ann0.trees && sc.on("fieldtrees"));
+    if (!this.map || this.map.id !== id || this.map.treesOn !== treesOn || ((sc.frames & 7) === 0 && mapHash(w) !== this.map.mapHash)) this.build(sc, w, id);
     const pt = (sc.frames & 7) === 0 && this.paint(w, false);
     if (pt) updateTexture(sc.gl, this.tex, 512, 512, this.map.img);
     if (pt === "pal") { for (const b of this.map.bodies) b.free(); this.map.bodies = []; this.buildPlants(sc); }   // (the plants in the new colours)
     if (this.map.fresh !== true) { updateTexture(sc.gl, this.tex, 512, 512, this.map.img); this.map.fresh = true; }
+    // OVERWORLD TREES: the 3D trees in the map's colours, made (again) when the palettes change outside a fade
+    const M = this.map;
+    if (M.treesOn && M.treePal !== M.palHash && fadeArr(w, {})[3] < 0.02) {
+      if (M.found === undefined) {                       // (the trees found, painted over, the stamps made again without them)
+        M.found = findPlants(M, M.ann.trees, (tx, ty) => this.plainTile(tx, ty));
+        if (M.found) { this.paint(w, true); updateTexture(sc.gl, this.tex, 512, 512, M.img); for (const b of M.bodies) b.free(); M.bodies = []; this.buildPlants(sc); }
+      }
+      if (M.ftrees) M.ftrees.free(sc.gl); M.ftrees = M.found ? new FieldTrees(sc, M.found, M, w.bgPal) : null; M.treePal = M.palHash;
+    }
     this.w = w;
   }
   // the people: the actors' sprites (bank 04). An actor queues its figure's sprites in a row of slots, so a run of slots whose
@@ -250,9 +268,10 @@ export class Field3D {
   drawOther(sc, game, frame2d, dt) {
     if (!this.on || !this.map || !this.w || this.map.picture) return false;
     const gl = sc.gl, w = this.w, c = sc.canvas, W = c.width, H = c.height, ann = this.map.ann;
-    const w0 = w.wram[0], ox = Math.floor((w0[0x320] | w0[0x321] << 8) / 32), oz = Math.floor((w0[0x322] | w0[0x323] << 8) / 32);
+    const w0 = w.wram[0], dv = this.debugView;   // (debugView: a test's camera spot, the map's top-left in px; the game's picture over it left out)
+    const ox = dv ? dv[0] : Math.floor((w0[0x320] | w0[0x321] << 8) / 32), oz = dv ? dv[1] : Math.floor((w0[0x322] | w0[0x323] << 8) / 32);
     // a screen that is mostly not the map (a full-screen picture or menu over it, a map not drawn yet): the 2D picture
-    const ov = this.overlay(w, ox, oz); this.lastOverlay = ov;
+    const ov = dv ? { cells: new Uint8Array(1024), n: 0, share: 0 } : this.overlay(w, ox, oz); this.lastOverlay = ov;
     if (ov.share > 0.55) return false;
     // a fade (to black or white, between maps and scenes): the game's own faded picture
     const fd = fadeArr(w, this); if (fd[3] > 0.02) return false;
@@ -263,6 +282,13 @@ export class Field3D {
     const view = m4.lookAt(eye, at, [0, 1, 0]), proj = m4.perspective(0.72 * Math.min(1, 1.11 * H / W), W / H, 12, 4000), mvp = m4.mul(proj, view);   // (near 12: the depth buffer's precision on the floor)
     sc.view = view; sc.proj = proj; sc.mvp = mvp; sc.eye = eye; sc.cam.eye = eye;
     sc.fade = fd;
+    // OVERWORLD TREES: the trees in view, turned to the camera; the player (the person nearest the view's centre) for the see-through
+    const people = this.hidePeople ? [] : this.people(sc, w, ox, oz), FT = this.map.ftrees, wind = [3, 1];
+    const tlist = FT ? FT.inView(mvp) : [];
+    if (FT) {
+      let pl = null, best = 1e9; for (const [, x, z] of people) { const d = Math.hypot(x - cx, z - (oz + 80)); if (d < best && d < 90) { best = d; pl = [x, z, 22]; } }
+      FT.seeThrough(tlist, eye, pl, dt); for (const t of tlist) t.m = FT.model(sc, t);
+    }
     gl.viewport(0, 0, W, H); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.disable(gl.CULL_FACE);
     const sky = sc.light.fogCol, edge = this.map.img;
     gl.clearColor(ann.sky ? sky[0] : edge[0] / 255 * 0.5, ann.sky ? sky[1] : edge[1] / 255 * 0.5, ann.sky ? sky[2] : edge[2] / 255 * 0.5, 1);
@@ -271,10 +297,13 @@ export class Field3D {
     gl.uniformMatrix4fv(P.u.uMVP, false, mvp); gl.uniform1f(P.u.uTime, sc.time); gl.uniform2fv(P.u.uWind, [3, 1]);
     gl.uniform1f(P.u.uGround, sc.on("fieldlife") ? 1 : 0); gl.uniform1f(P.u.uShimmer, sc.on("fieldlife") && ann.sky ? 1 : 0); gl.uniform1f(P.u.uLightK, lk); gl.uniform4fv(P.u.uFade, fd);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tex); gl.uniform1i(P.u.uMap, 0);
+    const shade = FT && ann.sky && sc.light.night < 0.6 ? FT.shadows(sc, sc.light.sunDir) : null;   // (the trees' shadows: by day, outdoors)
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, shade || this.tex); gl.uniform1i(P.u.uShade, 2); gl.uniform1f(P.u.uShadowOn, shade ? 1 : 0); gl.activeTexture(gl.TEXTURE0);
     gl.bindVertexArray(this.map.mesh.vao); gl.drawArrays(gl.TRIANGLES, 0, this.map.mesh.n);
     const B = this.B; gl.useProgram(B.p); gl.uniformMatrix4fv(B.u.uMVP, false, mvp); gl.uniform1f(B.u.uLightK, lk); gl.uniform4fv(B.u.uFade, fd);
     gl.uniformMatrix4fv(B.u.uModel, false, m4.identity());
     for (const b of this.map.bodies) { gl.bindVertexArray(b.vao); gl.drawArrays(gl.TRIANGLES, 0, b.n); }
+    sc.shadowOn = false; if (tlist.length) FT.draw(sc, tlist, mvp, wind);   // (the trees lit without the shadow map)
     for (const fx of sc.layers.fx) if (fx.drawField) fx.drawField(sc, this, dt, ann);
     // The people. In the game a sprite is over the BG, so no low box may hide a person (an actor stands in a hedge's cell, behind a
     // counter, on a cell the terrain grid blocks): the depth is cleared and only the tall scenery (the trees, the buildings) is put
@@ -283,15 +312,19 @@ export class Field3D {
     // dark see-through silhouette (drawn where the scenery is nearer), and in full where nothing is in front.
     gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.useProgram(B.p); gl.uniform1f(B.u.uSil, 0);
     const occ = this.map.occ;
-    if (occ) { gl.colorMask(false, false, false, false); gl.uniformMatrix4fv(B.u.uModel, false, m4.identity()); gl.bindVertexArray(occ.vao); gl.drawArrays(gl.TRIANGLES, 0, occ.n); gl.colorMask(true, true, true, true); }
+    const hides = occ || tlist.length;
+    if (hides) { gl.colorMask(false, false, false, false);
+      if (occ) { gl.uniformMatrix4fv(B.u.uModel, false, m4.identity()); gl.bindVertexArray(occ.vao); gl.drawArrays(gl.TRIANGLES, 0, occ.n); }
+      if (tlist.length) { FT.drawDepth(sc, tlist, mvp, wind, people.map(([, x, z]) => [x, z])); gl.useProgram(B.p); }
+      gl.colorMask(true, true, true, true); }
     // the people upright on their feet (the front of the feet on the sprite's bottom line), at the game's size, leaning back a little
     // to face the camera (which looks down at ~45 degrees; upright, a person would show at 0.7 of the game's height)
-    const people = this.hidePeople ? [] : this.people(sc, w, ox, oz), stood = new Set();   // (hidePeople: web/tests/story3d.mjs measures them)
+    const stood = new Set();   // (hidePeople: web/tests/story3d.mjs measures them)
     const models = people.map(([, x, z]) => {
       const m = m4.tsy(x, -2.6 * Math.sin(PEOPLE_LEAN), z - 2.6, 1, 1, 1, 0, -PEOPLE_LEAN), d = Math.hypot(x - eye[0], 6 - eye[1], z - 2.6 - eye[2]), k = 1 - PEOPLE_BIAS / d;
       return m4.mul([k, 0, 0, 0, 0, k, 0, 0, 0, 0, k, 0, eye[0] * (1 - k), eye[1] * (1 - k), eye[2] * (1 - k), 1], m);   // (scaled about the eye: the same picture, nearer)
     });
-    if (occ) {                                         // the parts hidden by the scenery: the silhouette
+    if (hides) {                                       // the parts hidden by the scenery: the silhouette
       gl.depthFunc(gl.GREATER); gl.depthMask(false); gl.uniform1f(B.u.uSil, 1);
       people.forEach(([mesh], i) => { gl.uniformMatrix4fv(B.u.uModel, false, models[i]); gl.bindVertexArray(mesh.vao); gl.drawArrays(gl.TRIANGLES, 0, mesh.n); });
       gl.depthFunc(gl.LEQUAL); gl.depthMask(true); gl.uniform1f(B.u.uSil, 0);

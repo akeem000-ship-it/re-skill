@@ -37,6 +37,7 @@ export const LAYERS = [
   ["titleshow", "Title fly-over", 2, "a fly-over of the course behind PRESS START"],
   ["field3d", "3D overworld", 3, "the story mode's maps in 3D: walls and buildings stood up, trees, the people"],
   ["fieldlife", "Field life", 3, "birds, butterflies and swaying flowers on the 3D overworld"],
+  ["fieldtrees", "Overworld trees", 3, "the trees painted on the story maps lifted off the ground as 3D trees (Mario Tennis's courtyard style), lawn under them"],
 ];
 const DEFAULTS = { on: Object.fromEntries(LAYERS.map(([k]) => [k, k !== "view3d"])), quality: "full", camera: "follow", hour: "auto", trees: "courtyard", grass: "carpet", sand: "fine", putting: "green", green: "clean" };
 const KEY = "mg3d";

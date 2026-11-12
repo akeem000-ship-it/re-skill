@@ -27,7 +27,7 @@ The last category shown is remembered (`mg-optcat`).
 | PICTURE | View (`mg-view`), Text (`mg-font`), Menus (`mg-ui`), Deck (`mg-deck`, touch), Quality (mg3d.quality, `?g3dq`), Picture (save a picture) |
 | 3D VIEW | 3D view, Camera (`?g3dcam`), Hour (`?g3dhour`), Light, Sky, Hills, Trees (`?g3dtrees`), Grass (`?g3dgrass`), Sand (`?g3dsand`), Green (`?g3dgreen`), Terrain, Wear; the 3D view's status line (all in "mg3d", `?g3d=`) |
 | EFFECTS | Ball FX, Ambience, Replay, Close calls, Big moments, Gallery, Title fly-over ("mg3d") |
-| STORY | 3D overworld, Field life ("mg3d") |
+| STORY | 3D overworld, Overworld trees, Field life ("mg3d") |
 | CONTROLS | Touch: Stick / D-pad (`mg-pad`, `?pad`; touch), Vibrate (`mg-vibrate`; touch), the keys and controllers |
 | SOUND | Sound On / Off (the M key; not kept, as before) |
 | ABOUT | the page's notes and What's new in 3D, folded |
@@ -89,6 +89,7 @@ yard; heights in the same units (the ball's height / 32). The trees stand 24 uni
 | Gallery | gallery.js, people.js | at tournament rounds people along the ropes (the game's map characters 04:4F1C, recoloured), reacting; a caddie in every mode |
 | Title fly-over | titleshow.js | holes of each club flown over behind PRESS START, the title's logo, Mario and texts in front (the sky's palettes let through) |
 | 3D overworld | field3d.js, field_objects.js, ground.js, shimmer.js | the story maps: blocked cells as boxes, annotated blocks and plants (tools/field_objects_preview.py), the people as rounded bodies standing on their feet, the game's own picture of everything over the map (OVERWORLD, below) |
+| Overworld trees | fieldtrees.js, field_objects.js (trees), trees3d.js | the trees painted in the story maps' tiles lifted off the ground as the hole view's Courtyard trees, lawn under them, their shadows on the ground (OVERWORLD TREES, below) |
 | Field life | fieldlife.js | birds, butterflies, fireflies, motes; grass and dirt detail, water glint |
 
 OVERWORLD (field3d.js; web/tests/story3d.mjs). The map is the game's live map buffers (WRAM3 tiles, WRAM2 attributes; rebuilt when
@@ -112,6 +113,30 @@ fade (`$FFA2/$FFA4/$FFBC`). The plain round the map lies 3 units under it and th
 plain through the floor at some scrolls: the "black floor"). story3d.mjs plays the new character and a continue in 3D and checks
 on sampled frames that the game's picture over the map is in the 3D picture (90% of its pixels) and that the people's pixels (the
 3D picture against one drawn without them, over the square of the view's scale) are at least 0.7 of the game's.
+
+OVERWORLD TREES (fieldtrees.js; the STORY tab's Overworld trees, on by default; the Field, gfx `$14`). As Mario Tennis's overworld
+stands its plants up (voxel.js, cut out of the map's picture), the trees the game paints into the map's tiles are lifted off the
+ground. They are found by their tiles: field_objects.js `trees` lists, as a hand annotation (tile keys, `tile | (attr & $6F) << 8`;
+`tools/map_tiles_sheet.py GFX OUT --pal 6 --where x0,y0,x1,y1` labels them on the map), the broadleaf trees' tiles (`$06-$0B`,
+`$16-$1B` of VRAM bank 1, palette 6: 16 x 16 trees, overlapping in the woods) and the narrow plants' top and foot tiles (palms
+`$01/$11`, cacti `$02/$12`, poplars `$03/$13` and `$00/$10`: 8 x 16 pictures). A plant's pixels are its tiles' pixels that are not
+the lawn's colour (the commonest colour of the plain tiles of the plant palette, `trees.pal`; colours, not palette entries). A
+narrow plant stands on each foot tile at its pixels' middle; a broadleaf over each trunk (8-connected brown pixels, joined across a
+row of shade), taking the crown pixels round and above it, and where the tree in front hides the trunk one per 16 x 16 cell whose
+crown pixels are 90 or more. The tufts stay painted. All of it is done once the palettes are the map's own (not in a fade: a black
+fade would make every tile one colour), and again for the colours when the palettes change outside a fade. Every lifted pixel is
+painted (field3d.js paint) with the lawn's palette entry, so the ground under the trees is lawn in the live palettes; the old
+"tree" stamps are left out. The trees are trees3d.js shapes (egg crowns, cypress cones, palms, cacti) at 0.74 of the hole's size
+(a crown ~16 px across, as the game's), in bigger boxes (x2, Lite x1.6 of Lite's) and without the far meshes, in colours from the
+lifted pixels (the courtyard palette pulled halfway to the map's lightest and darkest tree greens), drawn with the scene's lit body
+program (turned to the camera, the sway of a light wind), the ones in the view's frustum, nearest first. Their shadows on the ground
+are baked into a 512 x 512 texture (a soft blot per tree cast away from the sun, a contact spot at the foot; redone when the sun
+moves; by day, outdoors) that the overworld's ground shader darkens toward a cool shade (a shadow map's depth pass over ~100 trees
+cost more than the trees). The people: the trees near a person go into the people's depth pass, so a person behind a tree is hidden
+by it and shows the silhouette; the trees in front of the player (the person nearest the view's centre: within the crown's reach in
+front, across its width) are dithered see-through (uSee up to 0.82, eased over ~0.2 s) and left out of that pass, as in the hole view.
+SwiftShader, the Field at 5 spots (out/scratch/fieldshots.mjs, ms a frame): Lite 54-65 before, 40-66 after; Full 137-180 before,
+180-288 after. Before / after: out/overworld/.
 
 LIGHT (light3d.js, skybox.js). The light of each hour is its own table (light3d.js LIGHT, hand-tuned for a readable picture), not
 taken from the sky's colours: the sun's light (the moon's at night) and the ambient (the sky's light in the shade). Day as before;

@@ -97,10 +97,11 @@ const LL = (() => { const l = [-0.42, 0.62, 0.66], n = Math.hypot(...l); return 
 // ---- the shapes (world units: 1 = a course pixel; the foot at the origin, y up). size: the tile's picture across (1 = 8 px) ----
 // returns { pos, col } (the faces the camera sees), dpos (every face, for the shadow map: in boxes 2.4x Full's) and, in Full,
 // far: { pos, col } in bigger boxes (Full: Lite's; Lite: 2.8x Full's) for the trees far from the camera
-export function treeMeshData(kind, pal, size, variant, lite) {
-  const d = shape(kind, pal, size, variant, lite ? 1.8 : 1);
-  const c = shape(kind, pal, size, variant, lite ? 2.8 : 1.8); d.far = { pos: c.pos, col: c.col };   // (far: the trees far off, in bigger boxes)
-  d.dpos = shape(kind, pal, size, variant, 2.4).dpos;                  // (the shadow: coarser still)
+// (box: the boxes' size times this (the 3D overworld's smaller trees: fieldtrees.js); far: false, no far mesh)
+export function treeMeshData(kind, pal, size, variant, lite, box = 1, far = true) {
+  const d = shape(kind, pal, size, variant, (lite ? 1.8 : 1) * box);
+  if (far) { const c = shape(kind, pal, size, variant, lite ? 2.8 : 1.8); d.far = { pos: c.pos, col: c.col }; }   // (far: the trees far off, in bigger boxes)
+  d.dpos = shape(kind, pal, size, variant, 2.4 * box).dpos;            // (the shadow: coarser still)
   return d;
 }
 function shape(kind, pal, size, variant, coarse) {

@@ -38,7 +38,7 @@ export const CATEGORIES = [
   ["PICTURE", "the picture's shape, its text and menus, the deck", ["hdview", "hdfont", "hdui", "hddeck", "g3dq", "hdshot"]],
   ["3D VIEW", "the hole in 3D: the camera, the light, the ground", ["g3d-view3d", "g3dcam", "g3dhour", "g3d-light", "g3d-sky", "g3d-hills", "g3dtrees", "g3dgrass", "g3dsand", "g3dgreen", "g3d-terrain", "g3d-wear", "info:g3dstatus"]],
   ["EFFECTS", "the 3D view's extras round the shots", ["g3d-ballfx", "g3d-ambience", "g3d-replay", "g3d-closecall", "g3d-moments", "g3d-gallery", "g3d-titleshow"]],
-  ["STORY", "the story mode's maps between the clubs", ["g3d-field3d", "g3d-fieldlife"]],
+  ["STORY", "the story mode's maps between the clubs", ["g3d-field3d", "g3d-fieldtrees", "g3d-fieldlife"]],
   ["CONTROLS", "touch, vibration, the keys and controllers", ["hdpad", "hdvibrate", "info:keys"]],
   ["SOUND", "the game's music and sounds", ["optsound"]],
   ["ABOUT", "this page, how to play, what's new", ["about"]],
