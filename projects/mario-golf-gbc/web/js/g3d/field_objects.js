@@ -4,6 +4,10 @@
 // annotations, checked with tools/field_objects_preview.py. Keep the object literal JSON-compatible: the preview tool parses it.
 //  blocks: a building part as a solid box: rows y0..fold of the picture are its roof (the top face, stretched over the footprint
 //          y0..y1), rows fold..y1 its front wall, standing on the ground line y1 (the wall as tall as those rows)
+//  houses: OVERWORLD BUILDINGS (fieldhouses.js; with the trees): a building painted in the map, its rectangle x0..x1, y0..y1 (y1 the
+//          ground line of its front): roof "hip" (rows ridge..eave its roof's full-width rows, the rows above them its spire's when
+//          spire, rows eave..y1 its facade) or "gable" (rows y0..eave a gable end facing the camera, rows eave..y1 its log wall);
+//          tools/field_building_art.py prints a rectangle's pixels
 //  stamps: an example rectangle of trees / bushes / rocks (multiples of 8): every map tile with the number and attribute of one of its
 //          tiles (plain one-colour tiles left out) is part of a plant; each 16 x 16 group stands up as a rounded voxel body;
 //          plant: "tree" (taller) | "bush" | "rock"
@@ -22,11 +26,12 @@ export const FIELD_OBJECTS = {
  "20": {
   "sky": true,
   "walls": false,
-  "blocks": [
-   {"x0": 32, "y0": 176, "x1": 48, "y1": 192, "fold": 184},
-   {"x0": 224, "y0": 144, "x1": 240, "y1": 160, "fold": 152},
-   {"x0": 32, "y0": 336, "x1": 48, "y1": 352, "fold": 344},
-   {"x0": 256, "y0": 336, "x1": 272, "y1": 352, "fold": 344}
+  "houses": [
+   {"x0": 32, "y0": 176, "x1": 48, "y1": 192, "ridge": 179, "eave": 186, "roof": "hip", "spire": true},
+   {"x0": 224, "y0": 144, "x1": 240, "y1": 160, "ridge": 145, "eave": 152, "roof": "hip"},
+   {"x0": 32, "y0": 336, "x1": 48, "y1": 352, "ridge": 338, "eave": 345, "roof": "hip", "spire": true},
+   {"x0": 256, "y0": 336, "x1": 272, "y1": 352, "ridge": 338, "eave": 346, "roof": "hip", "spire": true},
+   {"x0": 160, "y0": 240, "x1": 176, "y1": 272, "eave": 256, "roof": "gable"}
   ],
   "trees": {"pal": [6], "broad": [3590, 3591, 3592, 3593, 3594, 3595, 3606, 3607, 3608, 3609, 3610, 3611], "narrow": [
    {"kind": "palm", "top": 3585, "foot": 3601, "size": 1.6},

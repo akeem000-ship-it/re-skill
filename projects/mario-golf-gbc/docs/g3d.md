@@ -89,7 +89,7 @@ yard; heights in the same units (the ball's height / 32). The trees stand 24 uni
 | Gallery | gallery.js, people.js | at tournament rounds people along the ropes (the game's map characters 04:4F1C, recoloured), reacting; a caddie in every mode |
 | Title fly-over | titleshow.js | holes of each club flown over behind PRESS START, the title's logo, Mario and texts in front (the sky's palettes let through) |
 | 3D overworld | field3d.js, field_objects.js, ground.js, shimmer.js | the story maps: blocked cells as boxes, annotated blocks and plants (tools/field_objects_preview.py), the people as rounded bodies standing on their feet, the game's own picture of everything over the map (OVERWORLD, below) |
-| Overworld trees | fieldtrees.js, field_objects.js (trees), trees3d.js | the trees painted in the story maps' tiles lifted off the ground as the hole view's Courtyard trees, lawn under them, their shadows on the ground (OVERWORLD TREES, below) |
+| Overworld trees | fieldtrees.js, fieldhouses.js, field_objects.js (trees, houses), trees3d.js | the trees painted in the story maps' tiles lifted off the ground as the hole view's Courtyard trees, lawn under them, their shadows on the ground; the Field's buildings with walls and roofs (OVERWORLD TREES, OVERWORLD BUILDINGS, below) |
 | Field life | fieldlife.js | birds, butterflies, fireflies, motes; grass and dirt detail, water glint |
 
 OVERWORLD (field3d.js; web/tests/story3d.mjs). The map is the game's live map buffers (WRAM3 tiles, WRAM2 attributes; rebuilt when
@@ -102,7 +102,7 @@ by side, or one above the other; at most 16 x 32) is one figure, painted with it
 body at the game's size, the front of its feet on the sprite's bottom line, leaning back 0.32 rad towards the camera (which looks
 down at about 45 degrees; upright a person shows at 0.7 of its height). No low box hides a person (in the game a sprite is over
 the BG; an actor may stand in a blocked cell, behind a counter): the depth is cleared before the people and only the tall scenery is
-put back into it (depth only: the annotated plants of kind "tree" and the building blocks' roofs and front walls), and each person is
+put back into it (depth only: the annotated plants of kind "tree", the building blocks' roofs and front walls, the trees and the OVERWORLD BUILDINGS), and each person is
 drawn scaled about the eye by 1 - 7 / its distance (the same picture, 7 units nearer), so a person at a tree's foot or a door is not
 cut by it. Where the trees or a building are really in front, the person's hidden parts show as a dark blue see-through silhouette
 (the person drawn first with the depth test reversed and the colour pulled toward blue in a fine two-tone checker), the rest as
@@ -140,7 +140,7 @@ and are cut out of the ground (their pixels that are not green painted with the 
 `mounds` rectangles (their orange, brown and purple pixels; the trees' and signs' left out) rise as low solids (field3d.js
 buildMounds: a 2 px grid over the rectangles, each pixel raised 0.75 per px of its distance to the nearest other pixel, at most 13,
 smoothed over 3 x 3, lit from the sun with a high floor, the map's picture on it; the old "rock" stamps left out then); the club
-houses are solid blocks (`blocks`: the striped roof on top, the white front 8 px tall). The paint and the stamps read the picture
+houses and the cabin are little buildings (OVERWORLD BUILDINGS, below). The paint and the stamps read the picture
 before the cut (field3d.js `raw`), the ground texture the cut one (`img`). GROUND (ground.js, with Field life): the lawn a short
 carpet turf (strands a third of a px across in soft patches, swaying), mown in 8 px stripes in field_objects.js `mown` rectangles
 (round the club houses, up to 4: uniform uMown); the dirt with fine grit, grey grains and the odd pale stone; the paths' light
@@ -153,12 +153,36 @@ takes the purple rim colour (0.85; Lite 0.6, its boxes are bigger); the cells wh
 to it, and the crown darkens toward its foot (to 0.5 at the base, where it meets its neighbours). Each tree has its own size (0.84-1.16)
 and height (x 0.86-1.16) and one of 4 shapes and 6 tints (uTint: plain, darker, yellower, blue-green, a purple-green shade, lighter;
 x 0.9-1.04), all from its place. The grass tufts among the tree tiles (a plant palette's non-tree tile with 3 or more tree tiles round
-it: its green pixels) are painted with the lawn too; a club house's two sides both take its front wall's right column.
+it: its green pixels) are painted with the lawn too.
 SwiftShader, the six spots (out/scratch/woods_shots.sh, ms a frame; two runs before): Lite 34-67 before, 42-66 after; Full 150-269 before, 156-290 after (the same
 triangles within 2 %, one uniform more per tree: the spread is the CPU renderer's noise). Before / after: out/overworld/woods_sheet.png,
 woods_close.png.
 SwiftShader, the Field at 5 spots (out/scratch/fieldshots.mjs, ms a frame): Lite 52-63 before, 45-74 after; Full 137-180 before,
 170-294 after. Before / after: out/overworld/field_overworld_sheet.png, field_trees_behind.png.
+
+OVERWORLD BUILDINGS (fieldhouses.js; with Overworld trees; field_objects.js `houses`, which replace the Field's `blocks`). The
+buildings the Field paints into its tiles stand up as small 3D buildings in the manner of Mario Tennis's overworld blocks with a
+`pitch` (voxel.js: a roof folded along a ridge, eaves overhanging the walls), built from their own pixels: each one's rectangle of the
+live picture (field3d.js `raw`) is copied into a 128 x 64 atlas, its lawn-green pixels filled from the nearest building pixel in their
+row (the roof's corners, the grass dots between the columns), so no lawn shows on a building. The four club houses ("hip"; the art:
+a striped roof of 7-8 rows with a peak, a white facade of 6-8 rows with columns, cyan windows and door): walls (facade rows eave..y1
+on the front, 1.45 units a row; the sides and back in each facade row's own commonest non-outline colour, darker), a hipped roof
+(eaves 1.25 over the walls, a short ridge, hips at 45 degrees in plan; the art's roof rows ridge..eave on the front slope, as the
+art's columns across it, the same rows on the hips and back), the fascia and soffit under the eaves and thin caps on the ridge and
+hips in the art's outline colour (its darkest), a slim spire at the ridge's middle from the art's peak rows, a step at the door.
+The cabin in the woods ("gable"; 16 x 32: rows 240-255 a peaked front with a window, rows 256-271 logs; flat before, as a block
+it was a striped tower): log walls (the log rows on the front, their middle columns round the sides and back; 0.8 a row), corner
+posts, a gable end facing the camera with the art's top rows on it (the peak and window), a pitched roof running back over both
+ends with shingles made from the gable's own colours (deeper than the logs), barge boards and a ridge beam. Every face is shaded
+from its normal and the sun (at build). The rectangles are painted lawn (their pixels in the trees' cut), their shadows baked with
+the trees' (fieldtrees.js shadows: each footprint swept away from the sun over half its height, soft edged), the people's depth
+pass draws them (a person behind one shows the silhouette), and one hiding the player (the height of him it covers: (pz - zt) / 0.9,
+zt the ground its top shows over; 3 units or more, across its width) is dithered see-through as the trees are (uSee up to 0.82,
+eased). Rebuilt with the trees when the palettes change. Same in Lite (about 280 triangles for the five, one draw each). Seen from the game's
+camera and turned / nearer (field3d.js debugView [x, z, yaw degrees, distance factor, person x, z]: a test's spot; out/scratch/
+bldshots.mjs): out/overworld/buildings_sheet.png (before = the blocks, after). tools/field_building_art.py prints a building's pixels
+from a picture dump. SwiftShader, the six woods spots (out/scratch/woods_shots.sh, ms a frame): Lite 39-53 before, 31-53 after;
+Full 143-273 before, 150-220 after (the CPU renderer's noise: the buildings add five draws).
 
 LIGHT (light3d.js, skybox.js). The light of each hour is its own table (light3d.js LIGHT, hand-tuned for a readable picture), not
 taken from the sky's colours: the sun's light (the moon's at night) and the ambient (the sky's light in the shade). Day as before;

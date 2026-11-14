@@ -179,6 +179,19 @@ export class FieldTrees {
         const q = z * 512 + x; a[q] = Math.max(a[q], v * 0.85, foot);
       }
     }
+    // the buildings (fieldhouses.js boxes: footprint and height): the footprint swept away from the sun over half the height, soft
+    // edged, and a darker band along the walls' foot
+    for (const o of this.boxes || []) {
+      const ex = dx * o.h * 0.5, ez = dz * o.h * 0.5, S = 10;
+      for (let z = Math.max(0, Math.floor(Math.min(o.z0, o.z0 + ez) - 3)); z <= Math.min(511, Math.ceil(Math.max(o.z1, o.z1 + ez) + 3)); z++) for (let x = Math.max(0, Math.floor(Math.min(o.x0, o.x0 + ex) - 3)); x <= Math.min(511, Math.ceil(Math.max(o.x1, o.x1 + ex) + 3)); x++) {
+        let v = 0;
+        for (let i = 0; i <= S; i++) {
+          const t = i / S, X = x + 0.5 - ex * t, Z = z + 0.5 - ez * t, d = Math.max(o.x0 - X, X - o.x1, o.z0 - Z, Z - o.z1);
+          v = Math.max(v, clamp((1.6 - d) / 2.2, 0, 1) * (1 - 0.35 * t));
+        }
+        const q = z * 512 + x; a[q] = Math.max(a[q], v * 0.85);
+      }
+    }
     const b = new Uint8Array(512 * 512); for (let i = 0; i < b.length; i++) b[i] = Math.round(a[i] * 255);
     if (!this.shTex) this.shTex = texture(gl, 512, 512, b, { linear: true, format: "r" }); else updateTexture(gl, this.shTex, 512, 512, b, "r");
     return this.shTex;

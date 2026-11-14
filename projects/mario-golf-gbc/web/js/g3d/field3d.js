@@ -15,7 +15,8 @@
 // The camera looks down at a slant over the game's own view centre (the scroll $C320 / $C322). GROUND (ground.js) adds a carpet
 // turf, mown stripes, grit and the paths' raised kerb to the ground's own colours, SHIMMER (shimmer.js) the glint on water and glass.
 // OVERWORLD TREES (fieldtrees.js, field_objects.js trees / cards / mounds): the painted trees and signs cut out of the ground and
-// stood up, the hills risen as low solids (buildMounds). Nothing of the game is written.
+// stood up, the hills risen as low solids (buildMounds), the buildings built with walls and roofs (fieldhouses.js, field_objects.js
+// houses). Nothing of the game is written.
 import { m4, program, vao, texture, updateTexture, clamp, mulberry32 } from "./gl.js";
 import { rb, rw, lzDecompress, offset } from "../golf/rom.js";
 import { roundedMeshData } from "./voxround.js";
@@ -26,6 +27,7 @@ import { picKey } from "./sprites3d.js";
 import { GROUND_GLSL } from "./ground.js";
 import { SHIMMER_GLSL } from "./shimmer.js";
 import { findPlants, FieldTrees } from "./fieldtrees.js";
+import { FieldHouses } from "./fieldhouses.js";
 
 const VS = `#version 300 es
 in vec3 aPos; in vec2 aUV; in float aShade; in float aSway; uniform mat4 uMVP; uniform float uTime; uniform vec2 uWind; out vec2 vUV; out float vShade; out vec3 vW; out float vFace;
@@ -71,7 +73,7 @@ export class Field3D {
     // the walls from the ROM's terrain grid
     const gl = sc.gl, refs = gfxRefs(id), tmap = w.wram[3].slice(0, 4096), amap = w.wram[2].slice(0, 4096), coll = refData(refs[4]);
     const ann = FIELD_OBJECTS[String(id)] || {};
-    if (this.map) { this.map.mesh.free(); if (this.map.mounds) this.map.mounds.free(); for (const b of this.map.bodies) { b.free(); } if (this.map.occ) this.map.occ.free(); if (this.map.ftrees) this.map.ftrees.free(gl); }
+    if (this.map) { this.map.mesh.free(); if (this.map.mounds) this.map.mounds.free(); for (const b of this.map.bodies) { b.free(); } if (this.map.occ) this.map.occ.free(); if (this.map.ftrees) this.map.ftrees.free(gl); if (this.map.houses) this.map.houses.free(gl); }
     // a map that is only a picture (no blocked cell, no event, no annotation): the 2D picture shows it
     const events = refData(refs[5]), picture = !FIELD_OBJECTS[String(id)] && coll.every(c => (c & 0x0F) !== 0x0F) && events.every(c => !c);
     this.map = { id, tmap, amap, coll, ann, picture, mapHash: mapHash(w), bodies: [], img: new Uint8Array(512 * 512 * 4), raw: new Uint8Array(512 * 512 * 4), ci: new Uint8Array(512 * 512), tileHash: -1, palHash: -1 };
@@ -242,9 +244,13 @@ export class Field3D {
     if (M.treesOn && M.treePal !== M.palHash && fadeArr(w, {})[3] < 0.02) {
       if (M.found === undefined) {                       // (the trees found, painted over, the stamps made again without them)
         M.found = findPlants(M, M.ann.trees, (tx, ty) => this.plainTile(tx, ty));
+        if (M.found) for (const h of M.ann.houses || []) for (let y = h.y0; y < h.y1; y++) for (let x = h.x0; x < h.x1; x++) M.found.cut[y * 512 + x] = 1;   // (OVERWORLD BUILDINGS: lawn under them)
         if (M.found) { this.buildMounds(sc); this.paint(w, true); updateTexture(sc.gl, this.tex, 512, 512, M.img); for (const b of M.bodies) b.free(); M.bodies = []; this.buildPlants(sc); }
       }
       if (M.ftrees) M.ftrees.free(sc.gl); M.ftrees = M.found ? new FieldTrees(sc, M.found, M, w.bgPal) : null; M.treePal = M.palHash;
+      // OVERWORLD BUILDINGS (fieldhouses.js): from the live picture, their shadows baked with the trees'
+      if (M.houses) M.houses.free(sc.gl); M.houses = M.found && M.ann.houses ? new FieldHouses(sc, M.ann.houses, M, sc.light.sunDir) : null;
+      if (M.ftrees && M.houses) M.ftrees.boxes = M.houses.boxes();
     }
     this.w = w;
   }
@@ -323,17 +329,18 @@ export class Field3D {
     const cx = ox + 80, cz = oz + 70;
     sc.light.update(null, dt);
     const lk = ann.sky ? sc.light.groundK : 1;
-    const eye = [cx, 118, cz + 112], at = [cx, 0, cz + 6];
+    const at = [cx, 0, cz + 6], yaw = dv && dv[2] ? dv[2] * Math.PI / 180 : 0, zk = dv && dv[3] ? dv[3] : 1;   // (a test's spot may turn the camera about the view's centre and bring it nearer)
+    const eye = [cx + Math.sin(yaw) * 106 * zk, 118 * zk, cz + 6 + Math.cos(yaw) * 106 * zk];
     const view = m4.lookAt(eye, at, [0, 1, 0]), proj = m4.perspective(0.72 * Math.min(1, 1.11 * H / W), W / H, 12, 4000), mvp = m4.mul(proj, view);   // (near 12: the depth buffer's precision on the floor)
     sc.view = view; sc.proj = proj; sc.mvp = mvp; sc.eye = eye; sc.cam.eye = eye;
     sc.fade = fd;
     // OVERWORLD TREES: the trees in view, turned to the camera; the player (the person nearest the view's centre) for the see-through
     const people = this.hidePeople ? [] : this.people(sc, w, ox, oz), FT = this.map.ftrees, wind = [3, 1];
-    const tlist = FT ? FT.inView(mvp) : [];
-    if (FT) {
-      let pl = null, best = 1e9; for (const [, x, z] of people) { const d = Math.hypot(x - cx, z - (oz + 80)); if (d < best && d < 90) { best = d; pl = [x, z, 22]; } }
-      FT.seeThrough(tlist, eye, pl, dt); for (const t of tlist) t.m = FT.model(sc, t);
-    }
+    if (dv && dv.length > 5 && people.length) { const [, x, z] = people[0]; for (const p of people) { p[1] += dv[4] - x; p[2] += dv[5] - z; } }   // (a test's spot may put the people at a map spot)
+    const tlist = FT ? FT.inView(mvp) : [], HS = this.map.houses;
+    let pl = null, best = 1e9; for (const [, x, z] of people) { const d = Math.hypot(x - cx, z - (oz + 80)); if (d < best && d < 90) { best = d; pl = [x, z, 22]; } }
+    if (FT) { FT.seeThrough(tlist, eye, pl, dt); for (const t of tlist) t.m = FT.model(sc, t); }
+    if (HS) HS.seeThrough(eye, pl, dt);
     gl.viewport(0, 0, W, H); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.disable(gl.CULL_FACE);
     const sky = sc.light.fogCol, edge = this.map.img;
     gl.clearColor(ann.sky ? sky[0] : edge[0] / 255 * 0.5, ann.sky ? sky[1] : edge[1] / 255 * 0.5, ann.sky ? sky[2] : edge[2] / 255 * 0.5, 1);
@@ -350,6 +357,7 @@ export class Field3D {
     const B = this.B; gl.useProgram(B.p); gl.uniformMatrix4fv(B.u.uMVP, false, mvp); gl.uniform1f(B.u.uLightK, lk); gl.uniform4fv(B.u.uFade, fd);
     gl.uniformMatrix4fv(B.u.uModel, false, m4.identity());
     for (const b of this.map.bodies) { gl.bindVertexArray(b.vao); gl.drawArrays(gl.TRIANGLES, 0, b.n); }
+    if (HS) HS.draw(sc, mvp, lk, fd);   // (OVERWORLD BUILDINGS)
     sc.shadowOn = false; if (tlist.length) FT.draw(sc, tlist, mvp, wind);   // (the trees lit without the shadow map)
     for (const fx of sc.layers.fx) if (fx.drawField) fx.drawField(sc, this, dt, ann);
     // The people. In the game a sprite is over the BG, so no low box may hide a person (an actor stands in a hedge's cell, behind a
@@ -359,10 +367,11 @@ export class Field3D {
     // dark see-through silhouette (drawn where the scenery is nearer), and in full where nothing is in front.
     gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.useProgram(B.p); gl.uniform1f(B.u.uSil, 0);
     const occ = this.map.occ;
-    const hides = occ || tlist.length;
+    const hides = occ || tlist.length || HS;
     if (hides) { gl.colorMask(false, false, false, false);
       if (occ) { gl.uniformMatrix4fv(B.u.uModel, false, m4.identity()); gl.bindVertexArray(occ.vao); gl.drawArrays(gl.TRIANGLES, 0, occ.n); }
       if (tlist.length) { FT.drawDepth(sc, tlist, mvp, wind, people.map(([, x, z]) => [x, z])); gl.useProgram(B.p); }
+      if (HS) { HS.drawDepth(sc, mvp); gl.useProgram(B.p); }
       gl.colorMask(true, true, true, true); }
     // the people upright on their feet (the front of the feet on the sprite's bottom line), at the game's size, leaning back a little
     // to face the camera (which looks down at ~45 degrees; upright, a person would show at 0.7 of the game's height)
