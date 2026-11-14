@@ -106,9 +106,9 @@ export function treeMeshData(kind, pal, size, variant, lite, box = 1, far = true
 }
 function shape(kind, pal, size, variant, coarse) {
   const cs = (kind === "cactus" ? 0.42 : kind === "palm" ? 0.7 : 0.8) * coarse, V = new Vox(cs), lite = coarse > 1, R = (k) => hash(variant * 17.3 + 1, kind.length * 3.1, k);
-  const each = (x0, x1, y0, y1, z0, z1, f) => {           // every cell centre in a box
+  const each = (x0, x1, y0, y1, z0, z1, f, keys = null) => {   // every cell centre in a box (keys: a Set that collects the cells set)
     for (let i = Math.floor(x0 / cs); i * cs <= x1; i++) for (let j = Math.max(0, Math.floor(y0 / cs)); j * cs <= y1; j++) for (let k = Math.floor(z0 / cs); k * cs <= z1; k++) {
-      const c = f((i + 0.5) * cs, (j + 0.5) * cs, (k + 0.5) * cs, i, j, k); if (c) V.set(i, j, k, c);
+      const c = f((i + 0.5) * cs, (j + 0.5) * cs, (k + 0.5) * cs, i, j, k); if (c) { V.set(i, j, k, c); if (keys) keys.add(Vox.key(i, j, k)); }
     }
   };
   const lump = (nx, ny, nz, s) => 1 + 0.13 * Math.sin(nx * 5.1 + s) * Math.sin(ny * 4.3 + s * 1.7) + 0.08 * Math.sin(nz * 7.7 + ny * 3.1 + s * 2.3);   // leaf clumps
@@ -117,10 +117,10 @@ function shape(kind, pal, size, variant, coarse) {
     const cx = bend * (y / h) * (y / h), d = Math.hypot(x - cx - cs / 2, z - cs / 2);
     return d <= Math.max(r * (1 - 0.25 * y / h), cs * 0.5) ? (Math.floor(y / 1.1) % 2 && bend ? mul(pal.trunk, 0.78) : x - cx < 0 ? pal.trunk : mul(pal.trunk, 0.8)) : null;
   });
-  const glint = (lit, t, x, y, z) => lit > 0.45 && t > 0.4 && hash(x + z * 1.73, y * 1.31 - z * 0.67, 11) < 0.11;
+  const glint = (lit, t, x, y, z) => lit > 0.45 && t > 0.4 && hash(x + z * 1.73, y * 1.31 - z * 0.67, 11) < (pal.glintP ?? 0.11);
   const s = size * 8;                                            // the tile picture's width in px (world units)
   if (kind === "egg" || kind === "cypress") {
-    const cyp = kind === "cypress";
+    const cyp = kind === "cypress", crown = pal.field ? new Set() : null;
     const Ht = (cyp ? 26 : 21) * (0.9 + 0.2 * R(1)), rx = cyp ? s * 0.42 : s * 0.7, base = Ht * (cyp ? 0.12 : 0.24), hy = Ht - base, waist = cyp ? 0.22 : 0.32;
     soil(rx * (cyp ? 0.85 : 0.48)); trunk(base + 1, cyp ? 0.55 : 0.75);
     const lo = cyp ? mix(pal.lo, [20, 70, 60], 0.3) : pal.lo, leaf = cyp ? mix(pal.leaf, pal.lo, 0.3) : pal.leaf;
@@ -133,11 +133,11 @@ function shape(kind, pal, size, variant, coarse) {
       const nx = x / rx, nz = z / rx, ny = (t - waist) * 1.6, nl = Math.hypot(nx, ny, nz) || 1;
       if (d > lump(nx, ny, nz, variant * 2.3) * (cyp ? 1.05 : 1)) return null;
       const lit = (nx * LL[0] + ny * LL[1] + nz * LL[2]) / nl, rim = d > 0.82 && lit < -0.15;
-      if (rim) return t < waist ? mix(pal.rim, lo, 0.4) : mul(lo, 0.8);
-      if (t < waist) return lit > 0.25 ? mix(lo, leaf, 0.35) : lo;
-      if (glint(lit, t, x, y, z)) return pal.glint;
-      return lit > 0.22 ? (hash(x + 3, y, z) < 0.2 ? mix(leaf, pal.glint, 0.18) : leaf) : lit > -0.12 ? mix(leaf, lo, 0.5) : lo;
-    });
+      const c = rim ? (t < waist ? mix(pal.rim, lo, 0.4) : mul(lo, 0.8)) : t < waist ? (lit > 0.25 ? mix(lo, leaf, 0.35) : lo) : glint(lit, t, x, y, z) ? pal.glint
+        : lit > 0.22 ? (hash(x + 3, y, z) < 0.2 ? mix(leaf, pal.glint, 0.18) : leaf) : lit > -0.12 ? mix(leaf, lo, 0.5) : lo;
+      return pal.field ? fieldShade(pal, c, nx / nl, ny / nl, nz / nl, t, d) : c;
+    }, crown);
+    if (pal.field) outline(V, crown, pal);
   } else if (kind === "bush") {
     const rx = s * 0.62 * (0.9 + 0.2 * R(1)), hy = rx * 1.05;
     soil(rx * 0.95);
@@ -195,6 +195,29 @@ function shape(kind, pal, size, variant, coarse) {
     }
   }
   return V.mesh();
+}
+// the 3D overworld's crowns (fieldtrees.js; pal.field = { view: the direction to the camera in the tree's space, cut, soft, edge, ao }): as the
+// 2D art's outlined trees, the crown's edge as the camera sees it (the cells whose surface turns away from the view) pulled toward
+// the dark rim colour, and the crown darkened toward its foot (where it meets the crowns round it), so each crown reads on its own
+// the outline: the crown's cells projected on the screen plane of that view (in cells: across, x; up the screen, y * view z - z *
+// view y), each splatted a little up and down the screen so the solid shape has no holes; a cell next to an empty spot there lies on
+// the crown's outline as the camera sees it, and takes the dark rim colour (the one behind the edge is hidden by it anyway)
+function outline(V, crown, pal) {
+  const F = pal.field, vy = F.view[1], vz = F.view[2], G = new Set(), P = new Map(), at = (a, b) => (a + 512) * 1024 + b + 512;
+  for (const key of crown) {
+    const k = key % 512 - 256, j = Math.floor(key / 512) % 512 - 256, i = Math.floor(key / 262144) - 256, sy = j * vz - k * vy;
+    P.set(key, [i, Math.round(sy)]); for (const o of [-0.35, 0, 0.35]) G.add(at(i, Math.round(sy + o)));
+  }
+  for (const [key, [i, sy]] of P) {
+    let e = 0; for (const [di, dj, w] of [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, 2, 0.7], [0, -1, 0.6]]) if (!G.has(at(i + di, sy + dj))) e = Math.max(e, w);
+    if (e) V.m.set(key, mix(V.m.get(key), pal.rim, e * F.edge));
+  }
+}
+function fieldShade(pal, c, nx, ny, nz, t, d) {
+  const F = pal.field, v = nx * F.view[0] + ny * F.view[1] + nz * F.view[2];
+  const e = Math.min(1, Math.max(0, (F.cut - v) / 0.3)) * Math.min(1, Math.max(0, (d - 0.55) / 0.25));
+  const ao = 1 - F.ao * Math.pow(1 - Math.min(1, t / 0.75), 1.5);
+  return mul(mix(c, pal.rim, e * F.soft), ao);
 }
 // the crown's height (world units) for the sway and the shadow spot
 export const treeHeight = kind => kind === "cypress" ? 26 : kind === "palm" ? 21 : kind === "cactus" ? 13 : kind === "bush" ? 6 : 21;

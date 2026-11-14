@@ -128,7 +128,7 @@ fade would make every tile one colour), and again for the colours when the palet
 painted (field3d.js paint) with the lawn's palette entry, so the ground under the trees is lawn in the live palettes; the old
 "tree" stamps are left out. The trees are trees3d.js shapes (egg crowns, cypress cones, palms, cacti) at 0.74 of the hole's size
 (a crown ~16 px across, as the game's), in bigger boxes (x2, Lite x2 of Lite's), as indexed quads and without the far meshes, in colours from the
-lifted pixels (the courtyard palette pulled halfway to the map's lightest and darkest tree greens; the cacti a deeper green), drawn with the scene's lit body
+lifted pixels (the courtyard palette pulled toward the map's lightest and darkest tree greens and made more saturated, the rim the darkest green pulled toward the 2D trees' purple, few glints; the cacti a deeper green), drawn with the scene's lit body
 program (turned to the camera, the sway of a light wind), the ones in the view's frustum, nearest first. Their shadows on the ground
 are baked into a 512 x 512 texture (a soft blot per tree cast away from the sun, a contact spot at the foot; redone when the sun
 moves; by day, outdoors) that the overworld's ground shader darkens toward a cool shade (a shadow map's depth pass over ~100 trees
@@ -146,6 +146,17 @@ carpet turf (strands a third of a px across in soft patches, swaying), mown in 8
 (round the club houses, up to 4: uniform uMown); the dirt with fine grit, grey grains and the odd pale stone; the paths' light
 kerb band a soft raised edge (its slopes from the picture's neighbours: lit facing north, shaded facing the camera). Lite (uGLite)
 leaves out the kerb's four texture reads and the patch noise.
+THE WOODS (each tree on its own, as the 2D art's outlined trees): the crowns (egg, cypress) are built with `pal.field` (trees3d.js
+fieldShade, outline): their cells projected on the screen plane of the overworld's view (~48 degrees down on the tree's +z side, the
+side turned to the camera), a cell next to an empty spot there (left, right, one or two up, below: weaker) is the crown's outline and
+takes the purple rim colour (0.85; Lite 0.6, its boxes are bigger); the cells whose surface turns from the view are pulled half way
+to it, and the crown darkens toward its foot (to 0.5 at the base, where it meets its neighbours). Each tree has its own size (0.84-1.16)
+and height (x 0.86-1.16) and one of 4 shapes and 6 tints (uTint: plain, darker, yellower, blue-green, a purple-green shade, lighter;
+x 0.9-1.04), all from its place. The grass tufts among the tree tiles (a plant palette's non-tree tile with 3 or more tree tiles round
+it: its green pixels) are painted with the lawn too; a club house's two sides both take its front wall's right column.
+SwiftShader, the six spots (out/scratch/woods_shots.sh, ms a frame; two runs before): Lite 34-67 before, 42-66 after; Full 150-269 before, 156-290 after (the same
+triangles within 2 %, one uniform more per tree: the spread is the CPU renderer's noise). Before / after: out/overworld/woods_sheet.png,
+woods_close.png.
 SwiftShader, the Field at 5 spots (out/scratch/fieldshots.mjs, ms a frame): Lite 52-63 before, 45-74 after; Full 137-180 before,
 170-294 after. Before / after: out/overworld/field_overworld_sheet.png, field_trees_behind.png.
 

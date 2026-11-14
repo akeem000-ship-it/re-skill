@@ -90,7 +90,7 @@ export class Field3D {
       const h = b.y1 - b.fold, x0 = b.x0, x1 = b.x1, z0 = b.y0, z1 = b.y1;
       quad([[x0, h, z0], [x1, h, z0], [x1, h, z1], [x0, h, z1]], [[x0, b.y0], [x1, b.y0], [x1, b.fold], [x0, b.fold]], 1.04);        // the roof
       quad([[x0, h, z1], [x1, h, z1], [x1, 0, z1], [x0, 0, z1]], [[x0, b.fold], [x1, b.fold], [x1, b.y1], [x0, b.y1]], 0.98);         // the front wall
-      quad([[x0, h, z0], [x0, h, z1], [x0, 0, z1], [x0, 0, z0]], [[x0, b.fold], [x0 + 1, b.fold], [x0 + 1, b.y1], [x0, b.y1]], 0.7);   // the sides
+      quad([[x0, h, z0], [x0, h, z1], [x0, 0, z1], [x0, 0, z0]], [[x1 - 1, b.fold], [x1, b.fold], [x1, b.y1], [x1 - 1, b.y1]], 0.7);   // the sides (both the wall's right column: its left one is partly lawn)
       quad([[x1, h, z1], [x1, h, z0], [x1, 0, z0], [x1, 0, z1]], [[x1 - 1, b.fold], [x1, b.fold], [x1, b.y1], [x1 - 1, b.y1]], 0.7);
       for (const q of [[[x0, h, z0], [x1, h, z0], [x1, h, z1], [x0, h, z1]], [[x0, h, z1], [x1, h, z1], [x1, 0, z1], [x0, 0, z1]]]) for (const i of [0, 1, 2, 0, 2, 3]) occ.push(...q[i]);   // (a building hides the people behind it)
       for (let cz = z0 >> 4; cz < (z1 + 15) >> 4; cz++) for (let cx = x0 >> 4; cx < (x1 + 15) >> 4; cx++) covered[cz * 32 + cx] = 1;

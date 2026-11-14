@@ -19,7 +19,13 @@ import { treePalette, treeMeshData, treeHeight } from "./trees3d.js";
 const hash = (x, z, k) => { const s = Math.sin(x * 12.9898 + z * 78.233 + k * 37.719) * 43758.5453; return s - Math.floor(s); };
 // the trees at about the game's size (its 16 x 16 tree pictures: a crown ~16 px across), the boxes a little bigger than the hole's
 // (the overworld's camera is farther off; fewer faces)
-const SCALE = 0.74, BOX = 2, BOX_LITE = 2;
+const SCALE = 0.74, BOX = 2, BOX_LITE = 2, VARIANTS = 4;
+// each tree's colour (a tint of its mesh's, from its place): plain, darker, yellower, blue-green, a deep purple-green shade, a little
+// lighter; the darker ones toward the map's own deep greens and the purple shade of its 2D trees
+const TINTS = [[1, 1, 1], [0.72, 0.8, 0.74], [1.12, 1.05, 0.6], [0.66, 0.86, 1.12], [0.8, 0.7, 0.9], [1.05, 1.08, 0.9]];
+const tintOf = t => { const c = TINTS[Math.floor(hash(t.x, t.z, 6) * TINTS.length)], v = 0.9 + hash(t.x, t.z, 7) * 0.14; return [c[0] * v, c[1] * v, c[2] * v, 1]; };
+// the field crowns' outline and shading (trees3d.js fieldShade): the overworld camera looks down at ~48 degrees on the tree's +z side
+const FIELD_LOOK = { view: [0, 0.74, 0.67], cut: 0.35, soft: 0.5, edge: 0.85, ao: 0.5 };
 const smooth01 = t => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
 
 // the map's plants: { trees: [{x, z, kind, size, ...}], cut: Uint8Array(512 * 512) (1: painted over with the lawn), ground: [pal, ci] }
@@ -44,7 +50,9 @@ export function findPlants(M, spec, plain) {
     const k = keyAt(x, y); if ((broad.has(k) || role.has(k)) && rgb(y * 512 + x) !== gcol) mask[y * 512 + x] = 1;
   }
   const cut = new Uint8Array(512 * 512), trees = [];
-  const tree = (x, z, kind, size, n) => trees.push({ x, z, kind, size, variant: Math.floor(hash(x, z, 2) * 3), k: SCALE * (0.92 + hash(x, z, 3) * 0.16), phase: hash(x, z, 4) * 6.28, px: n });
+  // (each tree its own size and height, a little, from its place: the canopy has depth; variant: one of VARIANTS shapes)
+  const tree = (x, z, kind, size, n) => { const k = SCALE * (0.84 + hash(x, z, 3) * 0.32);
+    trees.push({ x, z, kind, size, variant: Math.floor(hash(x, z, 2) * VARIANTS), k, ky: k * (0.86 + hash(x, z, 5) * 0.3), phase: hash(x, z, 4) * 6.28, px: n }); };
   // the narrow plants (palms, cacti, poplars: an 8 x 16 picture, a top tile over a foot tile): one on each foot tile, at its
   // pixels' middle, the foot at the tile's bottom
   for (let ty = 0; ty < 64; ty++) for (let tx = 0; tx < 64; tx++) {
@@ -84,6 +92,16 @@ export function findPlants(M, spec, plain) {
     let sx = 0, sy = 0; for (const q of pts) { sx += q & 511; sy += q >> 9; }
     tree(sx / pts.length, sy / pts.length + 6, "egg", 2, pts.length);
   }
+  // the grass tufts left in the woods (a plant palette's tile that is no tree's, among the tree tiles: 3 or more of its 8 neighbours)
+  // painted with the lawn too: under the 3D crowns they read as dark holes in the canopy's floor
+  const treeTile = (tx, ty) => tx >= 0 && ty >= 0 && tx < 64 && ty < 64 && (broad.has(M.tmap[ty * 64 + tx] | ((M.amap[ty * 64 + tx] & 0x6F) << 8)));
+  for (let ty = 0; ty < 64; ty++) for (let tx = 0; tx < 64; tx++) {
+    if (treeTile(tx, ty) || role.has(keyAt(tx * 8, ty * 8)) || !pals.has(M.amap[ty * 64 + tx] & 7) || plain(tx, ty)) continue;
+    let n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && treeTile(tx + dx, ty + dy)) n++;
+    if (n < 3) continue;
+    for (let y = ty * 8; y < ty * 8 + 8; y++) for (let x = tx * 8; x < tx * 8 + 8; x++) { const q = y * 512 + x, r = img[q * 4], g = img[q * 4 + 1], b = img[q * 4 + 2];
+      if (rgb(q) !== gcol && g > r && g >= b * 0.9) cut[q] = 1; }
+  }
   return { trees, cut, ground };
 }
 
@@ -96,7 +114,9 @@ function fieldPalette(rgba) {
   const greens = [...g.keys()].map(k => k.split(",").map(Number)).sort((a, b) => lum3(a) - lum3(b));
   if (!greens.length) return pal;
   const light = greens[greens.length - 1], dark = greens[0];
-  return { ...pal, leaf: mix3(pal.leaf, mix3(light, [230, 255, 120], 0.25), 0.5), lo: mix3(pal.lo, dark, 0.45), rim: mix3(pal.rim, mix3(dark, [40, 10, 50], 0.5), 0.5) };
+  const sat = (c, k) => { const m = lum3(c); return c.map(v => clamp(m + (v - m) * k, 0, 255)); };   // (the GBC's saturated greens, not an olive)
+  return { ...pal, leaf: sat(mix3(pal.leaf, mix3(light, [170, 235, 40], 0.3), 0.6), 1.35), lo: sat(mix3(pal.lo, dark, 0.6), 1.2), rim: mix3(dark, [60, 8, 96], 0.8),
+    glint: mix3(pal.glint, [210, 250, 140], 0.5), glintP: 0.04, field: FIELD_LOOK };
 }
 
 // a voxel mesh's faces (trees3d.js: two triangles per face, corners 0 1 2 0 2 3) as 4 corners and 6 indices: a third fewer vertices
@@ -117,6 +137,7 @@ export class FieldTrees {
     const rgba = [];
     for (let p = 0; p < 512 * 512; p += 3) if (found.cut[p]) rgba.push(...gbc(bgPal, M.amap[((p >> 12) << 6) + ((p & 511) >> 3)] & 7, M.ci[p]), 255);   // (their own colours: the picture has the lawn there)
     const pal = fieldPalette(rgba), cactusPal = { ...pal, leaf: mix3(pal.lo, pal.leaf, 0.5), lo: mix3(pal.lo, pal.rim, 0.25) };   // (the cacti a deeper green: the pale leaf reads as glass on them)
+    if (pal.field) pal.field = { ...FIELD_LOOK, edge: sc.lite ? 0.6 : FIELD_LOOK.edge };   // (Lite's big boxes: a lighter outline)
     for (const t of this.trees) {
       const sz = Math.round(t.size * 4) / 4, key = t.kind + ":" + t.variant + ":" + sz;
       if (!this.meshes.has(key)) {
@@ -125,7 +146,7 @@ export class FieldTrees {
         this.meshes.set(key, d.pos.length ? { ...vao(gl, sc.P.obj, { aPos: [c.a[0], 3], aCol: [c.a[1], 3] }, c.idx), n: c.idx.length,
           dvao: vao(gl, sc.P.depth, { aPos: [z.a[0], 3] }, z.idx), dn: z.idx.length } : null);
       }
-      t.mesh = this.meshes.get(key); t.h = treeHeight(t.kind) * t.k; t.r = (t.kind === "bush" ? 0.62 : t.kind === "cypress" ? 0.42 : t.kind === "palm" ? 1.1 : t.kind === "cactus" ? 0.4 : 0.7) * sz * 8 * t.k;
+      t.mesh = this.meshes.get(key); t.h = treeHeight(t.kind) * t.ky; t.tint = t.kind === "cactus" ? [1, 1, 1, 1] : tintOf(t); t.r = (t.kind === "bush" ? 0.62 : t.kind === "cypress" ? 0.42 : t.kind === "palm" ? 1.1 : t.kind === "cactus" ? 0.4 : 0.7) * sz * 8 * t.k;
       t.sway = [t.kind === "cactus" ? 0 : t.kind === "palm" ? 1.4 : t.kind === "bush" ? 0.5 : 1, t.phase, treeHeight(t.kind), 0];
       t.see = 0;
     }
@@ -176,16 +197,16 @@ export class FieldTrees {
       t.see += (see - t.see) * k; if (t.see < 0.01) t.see = 0;
     }
   }
-  model(sc, t) { return m4.tsy(t.x, -0.1, t.z, t.k, t.k, t.k, sc.cam.yawToEye(t.x, t.z)); }
+  model(sc, t) { return m4.tsy(t.x, -0.1, t.z, t.k, t.ky, t.k, sc.cam.yawToEye(t.x, t.z)); }
   // the picture (the scene's lit, shadowed body program)
   draw(sc, list, mvp, wind) {
     const gl = sc.gl, p = sc.P.obj; gl.useProgram(p.p); sc.setLight(p); sc.bindShadow(p, 2);
     gl.uniformMatrix4fv(p.u.uMVP, false, mvp); gl.uniform3f(p.u.uWindT, wind[0], wind[1], sc.time); gl.uniform4fv(p.u.uTint, [1, 1, 1, 1]);
     for (const t of list) {
-      gl.uniformMatrix4fv(p.u.uModel, false, t.m); gl.uniform4fv(p.u.uSway, t.sway); gl.uniform1f(p.u.uSee, t.see);
+      gl.uniformMatrix4fv(p.u.uModel, false, t.m); gl.uniform4fv(p.u.uSway, t.sway); gl.uniform1f(p.u.uSee, t.see); gl.uniform4fv(p.u.uTint, t.tint);
       gl.bindVertexArray(t.mesh.vao); gl.drawElements(gl.TRIANGLES, t.mesh.n, gl.UNSIGNED_INT, 0);
     }
-    gl.uniform4fv(p.u.uSway, [0, 0, 1, 0]); gl.uniform1f(p.u.uSee, 0); gl.bindVertexArray(null);
+    gl.uniform4fv(p.u.uSway, [0, 0, 1, 0]); gl.uniform1f(p.u.uSee, 0); gl.uniform4fv(p.u.uTint, [1, 1, 1, 1]); gl.bindVertexArray(null);
   }
   // depth only (the sun's shadow map; the people's depth pass: the see-through trees left out there, so the player shows through them)
   // near: the people's [x, z] (only the trees that can stand in front of one of them)
