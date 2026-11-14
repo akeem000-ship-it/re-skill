@@ -1,0 +1,191 @@
+/* The play page's HD options and touch layouts (web/js/hd/page.js puts this sheet in). */
+#hdgear { display: none; }
+#deck { display: none; }
+#stickzone { display: none; }
+body.gamepad #pad, body.gamepad #stickzone { display: none !important; }
+
+/* ---- touch screens: golf-ball A / B, tee-shaped Start / Select, a gear for the options ---- */
+body.touch #pad button { -webkit-tap-highlight-color: transparent; }
+body.touch #pad .ab button { border: none; border-radius: 50%; color: #275d25; font: 800 20px system-ui;
+  background: radial-gradient(circle at 34% 28%, #fff 0 22%, #eef1f3 48%, #bcc4cc 100%),
+              radial-gradient(circle, rgba(0,0,0,0.10) 1.3px, transparent 1.8px) 0 0 / 8px 8px;
+  background-blend-mode: multiply; box-shadow: inset 0 -4px 7px rgba(0,0,0,0.22), 0 4px 10px rgba(0,0,0,0.35); }
+body.touch #pad .ab button.on { transform: translateY(2px) scale(0.96); box-shadow: inset 0 -2px 5px rgba(0,0,0,0.3), 0 2px 5px rgba(0,0,0,0.35); }
+body.touch #pad .ab .a.on { transform: translateY(-12px) scale(0.96); }
+body.touch #pad .mid .small { border: none; color: #4a3418; font-weight: 700; letter-spacing: 0.04em;
+  background: linear-gradient(#f6dfb0, #caa36a); border-radius: 14px 14px 6px 6px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
+body.touch #pad .dpad button { background: rgba(30, 40, 30, 0.55); color: #eaf3e6; border: 1px solid rgba(255,255,255,0.25); }
+body.touch #pad .dpad button.on { background: rgba(90, 150, 80, 0.75); }
+body.touch.stick .dpad { visibility: hidden; }
+body.touch.stick #stickzone { display: block; position: fixed; left: 0; bottom: 0; width: 45vw; height: 50vh; z-index: 3; touch-action: none; }
+.stick-base { position: absolute; left: 90px; top: calc(100% - 100px); width: 110px; height: 110px; transform: translate(-50%, -50%);
+  border-radius: 50%; background: rgba(30,40,30,0.45); border: 2px solid rgba(255,255,255,0.35); pointer-events: none; }
+.stick-base.active { background: rgba(30,40,30,0.6); }
+.stick-knob { position: absolute; left: 50%; top: 50%; width: 46%; height: 46%; border-radius: 50%; transform: translate(-50%, -50%);
+  background: radial-gradient(circle at 34% 28%, #fff 0 25%, #dfe4e8 60%, #aab3bb 100%); box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
+body.touch #hdgear { display: block; position: fixed; top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); z-index: 6;
+  width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.3); background: rgba(20,28,20,0.55); color: #fff; font-size: 20px; line-height: 1; padding: 0; }
+/* the button bar (as Mario Tennis's): a column down the left-hand side, opened by the app's Back or the gear */
+#mgside { display: none; }
+body.touch.showside #mgside { display: flex; flex-direction: column; gap: 6px; position: fixed; z-index: 6; box-sizing: border-box;
+  top: 0; bottom: 0; left: 0; width: min(230px, 42vw); overflow-y: auto;
+  padding: calc(max(8px, env(safe-area-inset-top)) + 46px) 8px 10px max(8px, env(safe-area-inset-left)); background: rgba(12,14,22,0.9); border-radius: 0 14px 14px 0; }
+#mgside button { background: #2c3140; border: 1px solid #555; border-radius: 6px; color: #fff; padding: 10px 12px; font-size: 14px; text-align: left; font-weight: bold; }
+body.touch #hdgear { z-index: 8; }
+/* (the old option rows under the picture, before js/hd/options.js moves their controls into the OPTIONS screen) */
+#modes, #hdopts, #layers3d { display: none; }
+
+/* ---- OPTIONS (js/hd/options.js), as Mario Tennis's: the categories down the left, one category's settings on a white panel with a
+   gold edge, each value on a pill (gold on the row under the pad), the row's help at the bottom; over the game, which runs on behind it.
+   A narrow screen (a phone upright, the Fold's cover screen): the categories as a grid of tabs over the panel ---- */
+@font-face { font-family: "Luckiest Guy"; src: url("fonts/LuckiestGuy-Regular.ttf") format("truetype"); font-display: swap; }
+#optrow { display: flex; justify-content: center; }
+#optsbtn { font: 700 15px system-ui; padding: 10px 22px; border-radius: 999px; border: 2px solid #ffd65a; background: #2c3140; color: #fff; cursor: pointer; letter-spacing: .04em; }
+#optsbtn:hover { background: #3a4156; }
+body.touch #optrow { display: none; }
+#mgopts { display: none; }
+body.showopts #mgopts { display: grid; position: fixed; inset: 0; z-index: 20; box-sizing: border-box; overflow: hidden;
+  grid-template: "head head" auto "cats panel" minmax(0, 1fr) "keys keys" auto / minmax(150px, 230px) minmax(0, 640px); justify-content: center; gap: 10px 22px;
+  padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: rgba(8,10,32,0.55); backdrop-filter: blur(6px) brightness(0.7); -webkit-backdrop-filter: blur(6px) brightness(0.7);
+  color: #fff; font: 15px/1.35 system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
+#mgopts .mo-head { grid-area: head; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+#mgopts .mo-title { font: 44px/1 "Luckiest Guy", system-ui, sans-serif; color: #ffd65a; text-shadow: 3px 3px 0 rgba(0,0,0,0.5); letter-spacing: .02em; }
+#mgopts .mo-close { font: 22px/1 "Luckiest Guy", system-ui, sans-serif; color: #281e0a; background: #ffd65a; border: none; border-radius: 999px;
+  padding: 12px 22px 9px; min-height: 48px; cursor: pointer; box-shadow: 0 3px 0 rgba(0,0,0,0.35); }
+#mgopts .mo-cats { grid-area: cats; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; min-height: 0; padding: 2px; }
+#mgopts .mo-tab { font: 24px/1 "Luckiest Guy", system-ui, sans-serif; color: #c8d0eb; background: transparent; border: none; border-radius: 999px;
+  text-align: left; padding: 13px 20px 10px; min-height: 50px; cursor: pointer; text-shadow: 2px 2px 0 #000; }
+#mgopts .mo-tab:hover { color: #fff; }
+#mgopts .mo-tab.on { background: #ffd65a; color: #281e0a; text-shadow: none; font-size: 28px; }
+#mgopts .mo-tab.focus { box-shadow: 0 0 0 3px #fff; }
+#mgopts .mo-panel { grid-area: panel; align-self: start; max-height: 100%; box-sizing: border-box; display: flex; flex-direction: column; min-height: 0; background: rgba(250,250,255,0.985); border: 4px solid #ffd65a;
+  border-radius: 26px; color: #281e0a; padding: 14px 14px 12px; }
+#mgopts .mo-desc { color: #8a7a50; font-size: 14px; padding: 0 10px 8px; }
+#mgopts .mo-rows { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+#mgopts .mo-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 14px; min-height: 54px; padding: 6px 12px;
+  border-radius: 16px; box-sizing: border-box; }
+#mgopts .mo-row + .mo-row { border-top: 1px solid rgba(70,74,100,0.1); }
+#mgopts .mo-row.cur { background: rgba(255,214,90,0.4); border-top-color: transparent; }
+#mgopts .mo-name { font: 21px/1.1 "Luckiest Guy", system-ui, sans-serif; letter-spacing: .02em; padding-top: 3px; text-transform: uppercase; }
+#mgopts .mo-pill, #mgopts .mo-toggle .mo-pill { appearance: none; -webkit-appearance: none; font: 700 15px system-ui, sans-serif; color: #281e0a;
+  background: #e4e6f0; border: none; border-radius: 999px; padding: 10px 18px; min-height: 42px; min-width: 104px; max-width: 100%; text-align: center;
+  text-align-last: center; cursor: pointer; box-sizing: border-box; text-overflow: ellipsis; }
+#mgopts select.mo-pill { padding-right: 30px; background-image: linear-gradient(45deg, transparent 50%, #281e0a 50%), linear-gradient(135deg, #281e0a 50%, transparent 50%);
+  background-position: calc(100% - 17px) 50%, calc(100% - 12px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
+#mgopts select.mo-pill option { background: #fff; color: #281e0a; }
+#mgopts .mo-row.cur .mo-pill { background-color: #ffd65a; }
+#mgopts .mo-row #mode { flex: 1 1 260px; }
+#mgopts .mo-toggle { display: inline-flex; cursor: pointer; }
+#mgopts .mo-toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+#mgopts .mo-toggle .mo-pill { display: inline-flex; align-items: center; justify-content: center; }
+#mgopts .mo-toggle .mo-pill::after { content: "Off"; color: #7a7f98; }
+#mgopts .mo-toggle input:checked + .mo-pill { background-color: #6cc070; }
+#mgopts .mo-toggle input:checked + .mo-pill::after { content: "On"; color: #10300f; }
+#mgopts .mo-row.cur .mo-toggle input:checked + .mo-pill { background-color: #ffd65a; }
+#mgopts .mo-row[data-id="g3d-view3d"] .mo-name { color: #1d4fb8; }
+#mgopts .mo-info { color: #464a64; font-size: 13px; padding: 10px 12px 2px; }
+#mgopts .mo-info p { margin: 0 0 8px; }
+#mgopts .mo-info kbd, #mgopts .mo-about kbd { border: 1px solid #c9cbd8; border-radius: 4px; padding: 0 4px; font: 12px ui-monospace, monospace; }
+#mgopts .mo-about { font-size: 13px; color: #33364a; padding: 0 6px; }
+#mgopts .mo-about details { border-radius: 14px; background: #eef0f6; margin: 0 0 8px; padding: 0 12px; }
+#mgopts .mo-about summary { font: 20px/1 "Luckiest Guy", system-ui, sans-serif; text-transform: uppercase; padding: 15px 0 12px; cursor: pointer; min-height: 22px; }
+#mgopts .mo-about p { margin: 0 0 8px; }
+#mgopts .mo-about h3 { font-size: 14px; margin: 10px 0 4px; }
+#mgopts .mo-about ul { margin: 2px 0 8px; padding-left: 18px; }
+#mgopts .mo-about a { color: #1d4fb8; }
+#mgopts .mo-help { border-top: 2px solid rgba(70,74,100,0.18); color: #464a64; font-size: 13px; padding: 8px 10px 0; margin-top: 6px; min-height: 2.7em; }
+#mgopts .mo-help[hidden] { display: none; }
+#mgopts .mo-keys { grid-area: keys; text-align: right; color: #dce2f5; font-size: 15px; white-space: pre; text-shadow: 1px 1px 0 #000; }
+body.touch:not(.gamepad) #mgopts .mo-keys { display: none; }
+@media (max-width: 640px) {
+  body.showopts #mgopts { grid-template: "head" auto "cats" auto "panel" minmax(0, 1fr) "keys" auto / minmax(0, 1fr); gap: 10px; }
+  #mgopts .mo-title { font-size: 34px; }
+  #mgopts .mo-cats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; overflow: visible; }
+  #mgopts .mo-tab, #mgopts .mo-tab.on { font-size: 15px; text-align: center; padding: 12px 2px 9px; min-height: 46px; border-radius: 14px; background: rgba(44,49,64,0.7); }
+  #mgopts .mo-tab.on { background: #ffd65a; }
+  #mgopts .mo-panel { border-radius: 20px; padding: 10px 8px; }
+  #mgopts .mo-name { font-size: 19px; }
+  #mgopts .mo-row { padding: 6px 8px; }
+}
+@media (max-height: 520px) and (min-width: 641px) {   /* (a phone held sideways: less head, smaller tabs) */
+  body.showopts #mgopts { gap: 6px 16px; padding-top: max(8px, env(safe-area-inset-top)); }
+  #mgopts .mo-title { font-size: 30px; }
+  #mgopts .mo-close { min-height: 40px; padding: 9px 18px 7px; font-size: 18px; }
+  #mgopts .mo-tab { font-size: 19px; min-height: 40px; padding: 10px 16px 7px; }
+  #mgopts .mo-tab.on { font-size: 21px; }
+  #mgopts .mo-row { min-height: 48px; }
+}
+
+/* ---- landscape phones: the picture as tall as the screen, the pad over its sides; the wide view keeps its shape ---- */
+@media (pointer: coarse) and (orientation: landscape) {
+  body.wide #screen { max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); }
+  body.touch #pad .dpad, body.touch #pad .ab { opacity: 0.88; }
+}
+
+/* ---- portrait (js/hd/portrait.js): the game on top, the golf deck below with the controls ---- */
+body.portrait main { max-width: none; padding: 0; }
+body.portrait header, body.portrait footer, body.portrait #note, body.portrait #loader:not([hidden]) ~ #note { display: none; }
+body.portrait #stage { position: fixed; top: 0; left: 0; right: 0; height: var(--game-h); display: flex; justify-content: center; align-items: center; background: #000; z-index: 1; }
+body.portrait #screen { width: auto; height: 100%; max-width: 100vw; max-height: none; border-radius: 0; }
+body.portrait #message { position: fixed; top: var(--game-h); left: 0; right: 0; z-index: 4; color: #fff; text-shadow: 0 1px 2px #000; pointer-events: none; }
+body.portrait #message button { pointer-events: auto; }
+body.portrait #deck { display: block; position: fixed; left: 0; right: 0; bottom: 0; top: var(--game-h); z-index: 0; overflow: hidden; }
+#deckbg { width: 100%; height: 100%; display: block; }
+#decklabel { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); white-space: nowrap; color: #fff; font: 600 13px system-ui;
+  text-shadow: 0 1px 2px #000; background: rgba(0,0,0,0.35); padding: 2px 12px; border-radius: 10px; }
+#decklabel:empty { display: none; }
+/* the shot map (js/hd/deckmap.js) over the art; with it on, a tall narrow deck puts the controls low (the map's middle free above them) */
+#deckmap { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: none; }
+body.portrait.deckmap:not(.deckwide) #pad { align-items: flex-end; padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
+body.portrait.deckmap:not(.deckwide) .stick-base { top: calc(100% - 150px - env(safe-area-inset-bottom)); }
+/* a wide deck (the Fold's inner screen upright): the map's middle is the whole height between the d-pad and A / B; the hole's label
+   goes to the top left, Select / Start under A / B */
+body.portrait.deckmap.deckwide #decklabel { left: max(12px, env(safe-area-inset-left)); transform: none; }
+body.portrait.deckmap.deckwide .mid { left: auto; right: max(18px, env(safe-area-inset-right)); transform: none; }
+body.portrait #pad { display: flex; position: fixed; left: 0; right: 0; bottom: 0; top: var(--game-h); z-index: 2; align-items: center; justify-content: space-between;
+  padding: 30px max(18px, env(safe-area-inset-right)) calc(56px + env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left)); }
+body.portrait .dpad { grid-template: repeat(3, 56px) / repeat(3, 56px); }
+body.portrait .ab .a, body.portrait .ab .b { width: 74px; height: 74px; font-size: 22px; }
+body.portrait .ab { gap: 14px; }
+body.portrait .mid { position: absolute; bottom: calc(14px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); gap: 18px; }
+body.portrait.stick #stickzone { top: var(--game-h); height: auto; width: 50vw; }
+body.portrait .stick-base { top: 50%; }
+body.portrait #hdgear { top: calc(var(--game-h) + 8px); left: auto; right: max(8px, env(safe-area-inset-right)); }
+
+/* ---- FULL SCREEN (js/hd/page.js: a touch screen not held upright, a foldable's inner screen either way): as Mario Tennis, the picture
+   edge to edge on black (View Fill makes it the screen's shape), the controls over it and see-through, SELECT / START at the bottom ---- */
+body.full { background: #000; }
+body.full main { max-width: none; height: 100dvh; padding: 0; display: grid; grid-template: "screen" 1fr / 1fr; }
+body.full header, body.full footer, body.full #note { display: none; }
+body.full #stage { grid-area: screen; display: flex; align-items: center; justify-content: center; }
+body.full #screen, body.full.wide #screen { width: auto; height: 100dvh; max-width: 100vw; max-height: 100dvh; border-radius: 0; }
+body.full #loader { position: fixed; inset: 16px; z-index: 7; margin: auto; height: fit-content; max-width: 520px; }
+body.full #message { position: fixed; top: max(8px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 6; color: #fff;
+  text-shadow: 0 1px 2px #000; pointer-events: none; }
+body.full #message button { pointer-events: auto; }
+body.full #pad { position: fixed; inset: 0; z-index: 6; display: flex; align-items: flex-end; justify-content: space-between; pointer-events: none;
+  padding: 0 max(22px, env(safe-area-inset-right)) calc(var(--padlift, 26px) + env(safe-area-inset-bottom)) max(22px, env(safe-area-inset-left)); }
+body.full.tall #stage { align-items: flex-start; }
+body.full #pad > * { pointer-events: auto; }
+body.full #pad .dpad, body.full #pad .ab { opacity: 0.6; }
+body.full #pad .mid { position: fixed; top: max(8px, env(safe-area-inset-top)); right: auto; bottom: auto; left: 50%; transform: translateX(-50%);
+  flex-direction: row; gap: 16px; opacity: 0.72; }   /* (the top middle: sky in every view of the game's, the HUD is in the corners) */
+body.full.big .dpad { grid-template: repeat(3, 62px) / repeat(3, 62px); }
+body.full.big .ab .a, body.full.big .ab .b { width: 82px; height: 82px; font-size: 24px; }
+body.full.big .ab { gap: 16px; }
+body.full.inapp #hdgear { display: none; }
+/* the controls as Mario Tennis's over the picture: the stick where the thumb lands (left), dark see-through A / B (right), dark pills */
+body.full.stick #stickzone { z-index: 6; width: 46vw; height: 60dvh; }
+body.full .stick-base { left: calc(80px + env(safe-area-inset-left)); top: calc(100% - 100px - var(--padlift, 26px) + 26px); width: 120px; height: 120px;
+  background: rgba(44,49,64,0.45); border: 2px solid rgba(255,255,255,0.35); }
+body.full .stick-base.active { background: rgba(44,49,64,0.6); }
+body.full #pad .ab { opacity: 1; }
+body.full #pad .ab button { background: rgba(44,49,64,0.45); border: 2px solid rgba(255,255,255,0.35); color: #fff; font: 700 22px system-ui;
+  box-shadow: none; background-blend-mode: normal; }
+body.full #pad .ab button.on { background: rgba(80,90,120,0.65); }
+body.full #pad .mid { opacity: 1; }
+body.full #pad .mid .small { background: rgba(44,49,64,0.55); color: #fff; border: 1px solid rgba(255,255,255,0.3); box-shadow: none; }
+/* (never wider or taller than the screen: an app's browser widens a page that is, and the picture then grew with it) */
+html:has(body.full), body.full { overflow: hidden; }
+body.full #screen, body.full.wide #screen { max-width: 100vw !important; max-height: 100dvh !important; object-fit: contain; }

@@ -75,6 +75,10 @@ If the same task is attempted across 3+ sessions without progress, escalate: the
 - **Bank-aware xref**: on banked ROMs (NES/GB), cross-bank byte matches are false positives. Always pass the bank filter to `xref.py`.
 - **WRAM tilemap stride varies**: Game Boy WRAM buffers may use 20-col stride, not the standard 32-col VRAM stride. Verify actual layout.
 - **Struct stride off-by-one**: a wrong stride corrupts every subsequent struct in the table. Cross-check decoded fields against emulator memory dump.
+- **Inline-argument RSTs/calls**: many GB/NES engines put arguments after `rst`/`call` (e.g. `rst $18 ; db idx, bank` farcalls, `rst $00` + inline jump table). Teach dis.py/xref.py about them first or linear disassembly desyncs and farcall targets stay invisible.
+- **Per-bank export tables**: if most banks start with a word table at the bank base, it is the farcall/asset index. Enumerate it per bank — it gives every entry point and asset in one pass.
+- **Trace the loader before guessing layouts**: map/sprite dimensions, VRAM bank and signed vs unsigned tile indexing come from the loading code. Guessing a 4 KB block's shape wastes many tool calls.
+- **Keep ROMs and extracted assets out of git**: gitignore `rom/`, `gfx/` and text dumps; commit the tools plus a `tools/gen_all.py` that regenerates everything from the user's own dump.
 
 ## Tool rules
 

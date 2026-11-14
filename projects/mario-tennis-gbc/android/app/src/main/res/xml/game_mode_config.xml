@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android's Game Mode (12+; Samsung Game Booster uses it): the game handles the Performance and Battery modes itself
+     (MainActivity passes the mode to the page: Battery turns the battery saver on), so the system leaves its resolution
+     alone; it may cap the frame rate (Game Booster's FPS limit). -->
+<game-mode-config xmlns:android="http://schemas.android.com/apk/res/android"
+    android:supportsPerformanceGameMode="true"
+    android:supportsBatteryGameMode="true"
+    android:allowGameDownscaling="false"
+    android:allowGameFpsOverride="true" />

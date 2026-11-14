@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mario Golf GBC</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header>
+    <h1>Mario Golf <span class="dim">(Game Boy Color)</span></h1>
+    <div id="status" class="dim">loading…</div>
+  </header>
+
+  <section id="loader" class="panel" hidden>
+    <p>Load your own <code>Mario Golf (USA).gbc</code> (SHA-1 <code>7f2062e5…</code>).
+      Nothing from the game ships with this page; it runs on this project's own Game Boy Color core.
+      Served from the project folder with the ROM at <code>rom/mario_golf.gbc</code>, it loads by itself.</p>
+    <label class="file">Choose ROM <input type="file" id="file" accept=".gbc,.gb"></label>
+  </section>
+
+  <div id="stage">
+    <canvas id="screen" width="160" height="144" tabindex="0" aria-label="game screen"></canvas>
+  </div>
+
+  <div id="pad" aria-hidden="true">
+    <div class="dpad">
+      <button data-key="ArrowUp" class="up">▲</button>
+      <button data-key="ArrowLeft" class="left">◀</button>
+      <button data-key="ArrowRight" class="right">▶</button>
+      <button data-key="ArrowDown" class="down">▼</button>
+    </div>
+    <div class="mid">
+      <button data-key="ShiftLeft" class="small">SELECT</button>
+      <button data-key="Enter" class="small">START</button>
+    </div>
+    <div class="ab">
+      <button data-key="KeyX" class="b">B</button>
+      <button data-key="KeyZ" class="a">A</button>
+    </div>
+  </div>
+
+  <footer class="dim">
+    <span>Keys: arrows, <kbd>Z</kbd> A, <kbd>X</kbd> B, <kbd>Enter</kbd> Start, <kbd>Shift</kbd> Select,
+      <kbd>Space</kbd> fast, <kbd>P</kbd> pause, <kbd>M</kbd> mute. Gamepads work too.</span>
+    <span id="save"></span>
+  </footer>
+</main>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

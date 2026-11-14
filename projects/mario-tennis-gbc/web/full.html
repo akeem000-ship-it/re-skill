@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<link rel="icon" href="icons/icon-32.png" sizes="32x32"><link rel="icon" href="icons/icon-192.png" sizes="192x192"><link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mario Tennis GBC — Full Game</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  #hud { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  #hud .k { background:#2c3140; border:1px solid #555; border-radius:6px; color:#fff; padding:4px 10px; cursor:pointer; user-select:none; }
+  #hud .k.on { background:var(--acc); }
+  #gl { width: 480px; max-width: 100%; aspect-ratio: 160/144; background:#000; display:block; touch-action:none; }
+  body.touch #hud { gap: 4px 6px; } body.touch #hud .k { padding: 2px 7px; font-size: 11px; } body.touch #romstatus { display: none; }   /* one compact row on phones */
+  #screen { object-fit: contain; }   /* a 10:9 frame inside a 4:3 box is pillarboxed, never stretched */
+  /* analog stick: a zone over the lower-left of the screen; the stick appears where the thumb lands */
+  #stickzone { display: none; }
+  body.touch #stickzone { display: block; position: fixed; left: 0; bottom: 0; width: 46vw; height: 55dvh; z-index: 2; touch-action: none; }
+  body.touch.stick .dpad { display: none; }
+  body.gamepad #stickzone { display: none !important; }
+  .stick-base { position: absolute; left: calc(80px + max(env(safe-area-inset-left, 0px), var(--cut-l, 0px))); top: calc(100% - 100px); width: 120px; height: 120px; transform: translate(-50%, -50%);
+                border-radius: 50%; background: rgba(44,49,64,0.45); border: 2px solid rgba(255,255,255,0.35); pointer-events: none; }
+  .stick-base.active { background: rgba(44,49,64,0.6); }
+  .stick-knob { position: absolute; left: 50%; top: 50%; width: 46%; height: 46%; border-radius: 50%; transform: translate(-50%, -50%);
+                background: rgba(230,230,240,0.75); box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
+  body.touch #gl { position: fixed; inset: 0; transform: none; width: 100vw; height: 100dvh; max-width: none; aspect-ratio: auto; }   /* the 3D view fills the screen, whatever its shape */
+  a { color:#8ab4f8; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Mario Tennis (GBC) — full game <span class="note">(<a href="index.html">match-engine port</a>)</span></h1>
+  <div id="loader" class="panel">
+    <label for="engine">Run the game with</label>
+    <select id="engine">
+      <option value="rom">the original code (on the emulator's CPU)</option>
+      <option value="port">the JS port</option>
+    </select>
+    <div>Load your own <code>Mario Tennis (USA).gbc</code> (SHA-1 <code>414ba583…</code>): <input type="file" id="file" accept=".gbc,.gb"></div>
+    <div id="remembered" hidden><button id="startsaved" class="k">Start with the ROM saved in this browser</button>
+      <button id="forgetrom" class="k">Forget it</button></div>
+    <div class="note">The JS port runs the parts of the game already rewritten as readable JavaScript, and the original
+      code for the rest. Choose before loading the ROM; Reset reloads the page. A ROM you load is kept in this
+      browser (only here, never uploaded) so next time you can start without picking it again.</div>
+    <div class="note">The whole game (story mode, tour, mini-games, link-less) runs on the project's own Game Boy Color core
+      (<code>web/js/gb</code>), verified frame-for-frame against the reference emulator. Nothing from the game ships with this page.</div>
+    <div class="note">Credits: game-engine names and notes cross-checked against the
+      <a href="https://github.com/gerbiljames/mario-tennis-gbc-disasm">Mario Tennis (GBC) disassembly</a> by James White (MIT).</div>
+  </div>
+  <div id="setup" class="panel" hidden></div>
+  <div id="hud" class="panel" hidden>
+    <span id="romstatus" class="note"></span> <span id="fps" class="note"></span> <span id="savestatus" class="note"></span>
+    <span class="k" id="turbo" title="hold Space on a keyboard">Turbo</span> <span class="k" id="reset">Reset</span> <span class="k" id="view3d" title="3D diorama view: tap for cards, again for voxels, again for off">3D</span> <span class="k" id="cam" title="court camera preset" hidden>CAM</span> <span class="k" id="smoothbtn" title="3D / VOX: draw at every display refresh (120 Hz) with the motion interpolated between game frames, or once per game frame" hidden>SMOOTH</span> <span class="k" id="aspect" title="screen shape: Fill, 4:3 (courts widened in 2D), 10:9">VIEW</span> <span class="k" id="fontbtn" title="text font: the game's own, or Itim / Kode Mono drawn in high resolution">FONT</span> <span class="k" id="uibtn" title="menus: the game's own frames and icons, or clean high-resolution art drawn over them">UI</span> <span class="k" id="padmode" title="touch movement: analog stick or d-pad">STICK</span> <span class="k" id="rec" title="record this session (buttons per frame) to a .mtrec file for replay">REC</span> <span class="k" id="engbtn" title="what runs the game: the original code, the JS port's finished parts, or every part of the port (reloads)">CODE: ROM</span>
+  </div>
+  <canvas id="screen" width="160" height="144" tabindex="0"></canvas>
+  <canvas id="gl" width="640" height="576" hidden></canvas>
+  <div id="stickzone" hidden></div>
+  <div id="pad">
+    <div class="dpad">
+      <div></div><div class="k" data-key="ArrowUp">&#9650;</div><div></div>
+      <div class="k" data-key="ArrowLeft">&#9664;</div><div></div><div class="k" data-key="ArrowRight">&#9654;</div>
+      <div></div><div class="k" data-key="ArrowDown">&#9660;</div><div></div>
+    </div>
+    <div class="btns">
+      <div class="k" data-key="KeyX">B</div><div class="k" data-key="KeyZ">A</div>
+      <div class="k start" data-key="Enter">START</div>
+      <div class="k select" data-key="Backspace">SELECT</div>
+    </div>
+  </div>
+  <div class="panel info">
+    <div class="note"><kbd>←→↑↓</kbd> d-pad · <kbd>Z</kbd>/<kbd>A</kbd> = A · <kbd>X</kbd>/<kbd>S</kbd> = B · <kbd>Enter</kbd> = Start ·
+      <kbd>Q</kbd>/<kbd>Backspace</kbd> = Select · <kbd>Space</kbd> = turbo · <kbd>P</kbd> = pause. The cartridge save is kept in this browser (localStorage).</div>
+  </div>
+</main>
+<script type="module" src="js/full.js"></script>
+</body>
+</html>
